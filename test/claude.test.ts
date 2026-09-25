@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createClaudeDriver, resolvePackagedClaudeBinary } from "../src/main/agents/claude";
+import type { SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
+import { createClaudeDriver, resolvePackagedClaudeBinary, turnEndFromResult } from "../src/main/agents/claude";
+import type { ThreadEvent } from "../src/shared/types";
 
 describe("resolvePackagedClaudeBinary", () => {
   it("leaves development installs to the SDK", () => {
@@ -40,4 +42,38 @@ describe("Claude driver models", () => {
       expect(opus.label).toMatch(/Opus/i);
     }
   }, 30_000);
+});
+
+describe("turnEndFromResult", () => {
+  const result = (usage: Record<string, number>) =>
+    ({ type: "result", subtype: "success", duration_ms: 1200, total_cost_usd: 0.42, usage }) as unknown as SDKResultMessage;
+
+  const turnEnd = (event: ThreadEvent) => {
+    if (event.kind !== "turn-end") throw new Error(`expected turn-end, got ${event.kind}`);
+    return event;
+  };
+
+  it("keeps cached tokens out of inputTokens and reports a hit rate", () => {
+    const event = turnEnd(
+      turnEndFromResult(
+        result({ input_tokens: 1000, output_tokens: 50, cache_read_input_tokens: 8000, cache_creation_input_tokens: 2000 }),
+      ),
+    );
+    expect(event.inputTokens).toBe(1000);
+    expect(event.outputTokens).toBe(50);
+    expect(event.costUsd).toBe(0.42);
+    expect(event.durationMs).toBe(1200);
+    expect(event.usage?.cacheReadTokens).toBe(8000);
+    expect(event.usage?.cacheWriteTokens).toBe(2000);
+    expect(event.usage?.hitRate).toBe(8000 / 11000);
+    expect(event.usage?.provenance).toBe("reported");
+  });
+
+  it("reports cache usage unavailable when the vendor omits it", () => {
+    const event = turnEnd(turnEndFromResult(result({ input_tokens: 1000, output_tokens: 50 })));
+    expect(event.inputTokens).toBe(1000);
+    expect(event.usage?.cacheReadTokens).toBeNull();
+    expect(event.usage?.hitRate).toBeNull();
+    expect(event.usage?.provenance).toBe("unavailable");
+  });
 });

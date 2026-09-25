@@ -1,6 +1,4 @@
 import { mkdtempSync } from "node:fs";
-import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -11,6 +9,7 @@ import type { LimitsPatch } from "../src/main/agents/limits";
 import { onPath } from "../src/main/agents/registry";
 import type { HarnessTool, TurnInput } from "../src/main/agents/types";
 import { startToolServer } from "../src/main/mcp-http";
+import { startFakeOpenAI } from "./fixtures/fake-openai.mjs";
 import { closeAfter } from "./helpers";
 
 // The real `codex app-server` against a fake Responses API model, so the
@@ -19,53 +18,9 @@ import { closeAfter } from "./helpers";
 // when codex is on PATH, or at UNSKILLED_CODEX_BIN.
 const codex = process.env.UNSKILLED_CODEX_BIN ?? (onPath("codex") ? "codex" : null);
 
-/** A model that calls mcp__unskilled.browser_eval whenever it's offered and not yet called this turn. */
-async function fakeModel(): Promise<{ server: Server; url: string; offered: string[][]; namespaces: string[][] }> {
-  const offered: string[][] = [];
-  const namespaces: string[][] = [];
-  let n = 0;
-  const sse = (events: object[]) => events.map((e) => `event: ${(e as { type: string }).type}\ndata: ${JSON.stringify(e)}\n\n`).join("");
-  const server = createServer((req, res) => {
-    let body = "";
-    req.on("data", (c) => (body += c));
-    req.on("end", () => {
-      if (!req.url?.endsWith("/responses")) return void res.writeHead(404).end();
-      const request = JSON.parse(body) as { tools?: { name?: string; tools?: { name: string }[] }[]; input: unknown };
-      const ns = request.tools?.find((t) => t.name === "mcp__unskilled");
-      offered.push(ns?.tools?.map((t) => t.name) ?? []);
-      namespaces.push((request.tools ?? []).filter((t) => t.tools).map((t) => `${t.name}: ${t.tools!.map((x) => x.name).join(",")}`));
-      const id = `r${++n}`;
-      const called = JSON.stringify(request.input).includes("function_call_output");
-      const item =
-        ns && !called
-          ? { type: "function_call", call_id: `c${n}`, namespace: "mcp__unskilled", name: "browser_eval", arguments: '{"expression":"1+1"}' }
-          : { type: "message", role: "assistant", id: `m${n}`, content: [{ type: "output_text", text: called ? "Evaluated." : "Hello." }] };
-      const usage = { input_tokens: 10, input_tokens_details: null, output_tokens: 5, output_tokens_details: null, total_tokens: 15 };
-      res.writeHead(200, {
-        "content-type": "text/event-stream",
-        // What the real backend sends for plan limits; Codex turns them into account/rateLimits/updated.
-        "x-codex-primary-used-percent": "42",
-        "x-codex-primary-window-minutes": "300",
-        "x-codex-primary-reset-at": "1790000000",
-        "x-codex-secondary-used-percent": "9",
-        "x-codex-secondary-window-minutes": "10080",
-      });
-      res.end(
-        sse([
-          { type: "response.created", response: { id } },
-          { type: "response.output_item.done", item },
-          { type: "response.completed", response: { id, usage } },
-        ]),
-      );
-    });
-  });
-  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  return { server, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`, offered, namespaces };
-}
-
 describe.skipIf(!codex)("Codex end to end (real app-server, fake model)", () => {
   it("adds the browser tools mid-thread and runs one with approval", async () => {
-    const model = await fakeModel();
+    const model = await startFakeOpenAI();
     closeAfter(() => void model.server.close());
     const ran: string[] = [];
     const limitReports: LimitsPatch[] = [];
@@ -140,7 +95,7 @@ describe.skipIf(!codex)("Codex end to end (real app-server, fake model)", () => 
     expect(model.offered.at(-1)).toEqual(["browser_eval"]);
     expect(second.asked).toEqual(["browser_eval: expression: 1+1"]);
     expect(ran).toEqual(["1+1"]);
-    expect(second.events.filter((e) => e.kind !== "turn-end")).toEqual([
+    expect(second.events.filter((e) => e.kind !== "turn-start" && e.kind !== "turn-end")).toEqual([
       { kind: "tool-use", toolUseId: expect.any(String), name: "browser_eval", summary: '{"expression":"1+1"}' },
       { kind: "tool-result", toolUseId: expect.any(String), isError: false, summary: "2" },
       { kind: "assistant-text", text: "Evaluated." },

@@ -294,9 +294,12 @@ export const useStore = create<State>((set, get) => ({
           };
         });
         return;
-      case "text-delta":
-        set((s) => ({ liveText: { ...s.liveText, [update.threadId]: (s.liveText[update.threadId] ?? "") + update.text } }));
+      case "delta": {
+        const delta = update.delta;
+        if (delta.kind !== "text-delta") return;
+        set((s) => ({ liveText: { ...s.liveText, [update.threadId]: (s.liveText[update.threadId] ?? "") + delta.text } }));
         return;
+      }
       case "running":
         if (!update.running) void api().listAgents().then((agents) => set({ agents }));
         set((s) => ({

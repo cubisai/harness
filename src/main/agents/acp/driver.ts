@@ -1,9 +1,11 @@
-import type { ModelOption, PermissionDecision, PermissionMode } from "../../../shared/types";
+import type { ModelOption, PermissionDecision, PermissionMode, PlanEntry } from "../../../shared/types";
+import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { summarizeToolResult } from "../summarize";
 import type { AgentDriver, TurnInput } from "../types";
 import { forAcp } from "../../mcp/servers";
 import { RpcError, StdioRpc } from "../rpc";
+import { normalizeUsage } from "../../usage";
 
 /** An ACP agent the app can drive: deepseek-harness, Cursor, or any agent that speaks ACP over stdio. */
 export interface AcpAgentConfig {
@@ -37,6 +39,7 @@ type SessionUpdate =
   | { sessionUpdate: "agent_message_chunk" | "agent_thought_chunk" | "user_message_chunk"; content: { type: string; text?: string } }
   | ({ sessionUpdate: "tool_call" | "tool_call_update" } & ToolCallFields)
   | { sessionUpdate: "usage_update"; used: number; size: number; cost?: { amount: number; currency: string } | null }
+  | { sessionUpdate: "plan"; entries: { content: string; priority: "high" | "medium" | "low"; status: "pending" | "in_progress" | "completed" }[] }
   | { sessionUpdate: "config_option_update"; configOptions: ConfigOption[] }
   | { sessionUpdate: string };
 interface ConfigOption {
@@ -185,6 +188,9 @@ export function createAcpDriver(
         }
         return;
       }
+      case "plan":
+        if (t) t.input.onEvent({ kind: "plan", entries: (update as { entries: PlanEntry[] }).entries });
+        return;
       case "config_option_update":
         l.configOptions = (update as { configOptions: ConfigOption[] }).configOptions;
         knownModels = modelsFrom(l.configOptions) ?? knownModels;
@@ -374,22 +380,41 @@ export function createAcpDriver(
       const onAbort = () => l.conn.notify("session/cancel", { sessionId: l.sessionId });
       input.signal.addEventListener("abort", onAbort, { once: true });
       try {
-        const res = await l.conn.request<{ stopReason: string; usage?: { inputTokens?: number; outputTokens?: number } | null }>(
-          "session/prompt",
-          { sessionId: l.sessionId, prompt: [{ type: "text", text: input.prompt }] },
-        );
+        // The user may have aborted while the agent was still starting up; the
+        // listener above missed it, so stop before sending the prompt.
+        if (input.signal.aborted) {
+          input.onEvent({ kind: "notice", text: "Stopped." });
+          return;
+        }
+        input.onEvent({ kind: "turn-start", turnId: randomUUID(), agent: config.id, model: input.model });
+        const res = await l.conn.request<{
+          stopReason: string;
+          usage?: { inputTokens?: number; outputTokens?: number; cachedReadTokens?: number; cachedWriteTokens?: number } | null;
+        }>("session/prompt", { sessionId: l.sessionId, prompt: [{ type: "text", text: input.prompt }] });
         flushText(turn);
         if (res.stopReason === "cancelled") input.onEvent({ kind: "notice", text: "Stopped." });
         else if (res.stopReason === "refusal") input.onEvent({ kind: "error", message: `${config.label} declined this request.` });
         else if (res.stopReason === "max_tokens" || res.stopReason === "max_turn_requests") {
           input.onEvent({ kind: "notice", text: `${config.label} stopped early (${res.stopReason.replace(/_/g, " ")}).` });
         }
+        // `usage_update.used` is context-window occupancy, not per-turn input:
+        // only the prompt response's usage is a real input count.
+        const usage = res.usage
+          ? normalizeUsage({
+              inputTokens: res.usage.inputTokens ?? 0,
+              outputTokens: res.usage.outputTokens ?? 0,
+              cacheReadTokens: res.usage.cachedReadTokens ?? null,
+              cacheWriteTokens: res.usage.cachedWriteTokens ?? null,
+              provenance: "reported",
+            })
+          : normalizeUsage({ inputTokens: 0, outputTokens: 0, provenance: "unavailable" });
         input.onEvent({
           kind: "turn-end",
           costUsd: turn.usage.costUsd,
-          inputTokens: res.usage?.inputTokens ?? turn.usage.used,
-          outputTokens: res.usage?.outputTokens ?? 0,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
           durationMs: Date.now() - started,
+          usage,
         });
       } catch (err) {
         flushText(turn);

@@ -1,6 +1,7 @@
-import type { McpServerEntry, ModelOption, PermissionDecision, PermissionMode } from "../../shared/types";
+import type { McpServerEntry, ModelOption, PermissionDecision, PermissionMode, ThreadEvent } from "../../shared/types";
 import { homedir } from "node:os";
 import { forCodex } from "../mcp/servers";
+import { normalizeUsage } from "../usage";
 import { RpcError, StdioRpc } from "./rpc";
 import { codexLimitsPatch, type CodexRateLimits, type LimitsListener } from "./limits";
 import { summarizeToolInput, summarizeToolResult } from "./summarize";
@@ -34,6 +35,9 @@ interface TokenBreakdown {
   inputTokens: number;
   cachedInputTokens: number;
   outputTokens: number;
+  cacheWriteInputTokens?: number;
+  reasoningOutputTokens?: number;
+  netNewInputTokens?: number;
 }
 
 export interface CodexConfig {
@@ -67,6 +71,39 @@ export function codexPolicy(mode: PermissionMode): { approvalPolicy: string; san
 
 export function codexDecision(d: PermissionDecision): "accept" | "acceptForSession" | "decline" {
   return d === "allow-always" ? "acceptForSession" : d === "allow-once" ? "accept" : "decline";
+}
+
+/**
+ * Codex reports OpenAI-style input that *includes* cached tokens, so the
+ * top-level `inputTokens` is net-new only. `netNewInputTokens`, when the
+ * server sends it, is authoritative over the subtraction.
+ */
+export function turnEndFromUsage(usage: TokenBreakdown | undefined, durationMs: number): ThreadEvent {
+  if (!usage) {
+    return {
+      kind: "turn-end",
+      costUsd: null,
+      inputTokens: 0,
+      outputTokens: 0,
+      durationMs,
+      usage: normalizeUsage({ inputTokens: 0, outputTokens: 0, provenance: "unavailable" }),
+    };
+  }
+  const netNew = usage.netNewInputTokens ?? Math.max(0, usage.inputTokens - usage.cachedInputTokens);
+  return {
+    kind: "turn-end",
+    costUsd: null,
+    inputTokens: netNew,
+    outputTokens: usage.outputTokens,
+    durationMs,
+    usage: normalizeUsage({
+      inputTokens: netNew,
+      outputTokens: usage.outputTokens,
+      reasoningTokens: usage.reasoningOutputTokens ?? null,
+      cacheReadTokens: usage.cachedInputTokens ?? null,
+      cacheWriteTokens: usage.cacheWriteInputTokens ?? null,
+    }),
+  };
 }
 
 /**
@@ -109,6 +146,8 @@ interface TurnState {
   usage: TokenBreakdown | null;
   /** Retrying errors already shown this turn, so each shows once. */
   retrying: Set<string>;
+  /** A compaction was already emitted this turn (both notification paths can fire). */
+  compacted: boolean;
   done: (turn: Turn) => void;
 }
 
@@ -125,6 +164,12 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   const loaded = new Map<string, string>();
   /** MCP tools the user chose "always allow" for, by thread. */
   const alwaysAllowed = new Map<string, Set<string>>();
+
+  const emitCompaction = (t: TurnState) => {
+    if (t.compacted) return;
+    t.compacted = true;
+    t.input.onEvent({ kind: "compaction", trigger: "auto", preTokens: null, postTokens: null });
+  };
 
   const onNotification = (method: string, params: unknown) => {
     if (method === "account/rateLimits/updated") {
@@ -151,9 +196,23 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       case "thread/tokenUsage/updated":
         t.usage = (params as { tokenUsage: { last: TokenBreakdown } }).tokenUsage.last;
         return;
-      case "turn/started":
-        t.turnId = (params as { turn: Turn }).turn.id;
+      case "turn/plan/updated": {
+        const plan = (params as { plan: { step: string; status: "pending" | "inProgress" | "completed" }[] }).plan;
+        t.input.onEvent({
+          kind: "plan",
+          entries: plan.map((e) => ({ content: e.step, status: e.status === "inProgress" ? "in_progress" : e.status })),
+        });
         return;
+      }
+      case "thread/compacted":
+        emitCompaction(t);
+        return;
+      case "turn/started": {
+        const turn = (params as { turn: Turn }).turn;
+        t.turnId = turn.id;
+        t.input.onEvent({ kind: "turn-start", turnId: turn.id, agent: "codex", model: t.input.model });
+        return;
+      }
       case "turn/completed":
         if (p.turn) t.done(p.turn);
         return;
@@ -178,6 +237,10 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   };
 
   const onItemCompleted = (t: TurnState, item: ThreadItem) => {
+    if (item.type === "contextCompaction") {
+      emitCompaction(t);
+      return;
+    }
     if (item.type === "agentMessage") {
       const text = (item as { text: string }).text || t.deltas.get(item.id) || "";
       t.deltas.delete(item.id);
@@ -343,7 +406,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       const started = Date.now();
       let resolveTurn!: (t: Turn) => void;
       const finished = new Promise<Turn>((r) => (resolveTurn = r));
-      const state: TurnState = { input, threadId, turnId: null, deltas: new Map(), usage: null, retrying: new Set(), done: resolveTurn };
+      const state: TurnState = { input, threadId, turnId: null, deltas: new Map(), usage: null, retrying: new Set(), compacted: false, done: resolveTurn };
       turns.set(threadId, state);
       const onAbort = () => {
         if (state.turnId) void conn.request("turn/interrupt", { threadId, turnId: state.turnId }).catch(() => {});
@@ -362,13 +425,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         for (const text of state.deltas.values()) if (text.trim()) input.onEvent({ kind: "assistant-text", text });
         if (turn.status === "interrupted") input.onEvent({ kind: "notice", text: "Stopped." });
         else if (turn.status === "failed") input.onEvent({ kind: "error", message: `Codex: ${turn.error?.message ?? "the turn failed."}` });
-        input.onEvent({
-          kind: "turn-end",
-          costUsd: null,
-          inputTokens: state.usage?.inputTokens ?? 0,
-          outputTokens: state.usage?.outputTokens ?? 0,
-          durationMs: turn.durationMs ?? Date.now() - started,
-        });
+        input.onEvent(turnEndFromUsage(state.usage ?? undefined, turn.durationMs ?? Date.now() - started));
       } catch (err) {
         input.onEvent({ kind: "error", message: err instanceof Error ? err.message : String(err) });
       } finally {

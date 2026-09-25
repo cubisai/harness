@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { PermissionDecision, ThreadEvent } from "../src/shared/types";
 import { z } from "zod";
-import { codexDecision, codexPolicy, codexToolConfig, createCodexDriver } from "../src/main/agents/codex";
+import { codexDecision, codexPolicy, codexToolConfig, createCodexDriver, turnEndFromUsage } from "../src/main/agents/codex";
 import type { LimitsPatch } from "../src/main/agents/limits";
 import type { HarnessTool, TurnInput } from "../src/main/agents/types";
 import { startToolServer } from "../src/main/mcp-http";
@@ -52,7 +52,7 @@ describe("Codex driver", () => {
     await d.runTurn(t.input);
     expect(t.sessions).toEqual(["thread-1"]);
     expect(t.deltas.join("")).toBe("Hi, there");
-    expect(t.events.map((e) => e.kind)).toEqual(["thinking", "assistant-text", "turn-end"]);
+    expect(t.events.map((e) => e.kind)).toEqual(["turn-start", "thinking", "assistant-text", "turn-end"]);
     expect(t.events.at(-1)).toMatchObject({ inputTokens: 900, outputTokens: 12, durationMs: 42 });
     expect(d.models().map((m) => m.id)).toEqual(["default", "gpt-mock"]);
   });
@@ -76,7 +76,7 @@ describe("Codex driver", () => {
     const d = driver();
     const t = turn("roots");
     await d.runTurn(t.input);
-    expect(t.events[0]).toMatchObject({ kind: "assistant-text", text: '["/skills/here"]' });
+    expect(t.events[1]).toMatchObject({ kind: "assistant-text", text: '["/skills/here"]' });
   });
 
   it("resumes a known thread and starts fresh for an unknown one", async () => {
@@ -95,7 +95,7 @@ describe("Codex driver", () => {
     const t = turn("tool");
     await d.runTurn(t.input);
     expect(t.asked).toEqual(["npm test"]);
-    expect(t.events.slice(0, 2)).toEqual([
+    expect(t.events.slice(1, 3)).toEqual([
       { kind: "tool-use", toolUseId: "c1", name: "Run", summary: "npm test" },
       { kind: "tool-result", toolUseId: "c1", isError: false, summary: "3 passed (accept)" },
     ]);
@@ -109,6 +109,66 @@ describe("Codex driver", () => {
     t.controller.abort();
     await running;
     expect(t.events.some((e) => e.kind === "notice" && e.text === "Stopped.")).toBe(true);
+  });
+
+  it("starts with turn-start before any content event", async () => {
+    const d = driver();
+    const t = turn("there");
+    await d.runTurn(t.input);
+    expect(t.events[0]).toMatchObject({ kind: "turn-start", turnId: "turn-1", agent: "codex", model: "default" });
+    const content = t.events.findIndex((e) => e.kind === "assistant-text" || e.kind === "thinking" || e.kind === "tool-use");
+    expect(content).toBeGreaterThan(0);
+  });
+
+  it("maps turn/plan/updated to a plan event", async () => {
+    const d = driver();
+    const t = turn("plan");
+    await d.runTurn(t.input);
+    expect(t.events.find((e) => e.kind === "plan")).toEqual({
+      kind: "plan",
+      entries: [
+        { content: "Read code", status: "completed" },
+        { content: "Fix bug", status: "in_progress" },
+        { content: "Test", status: "pending" },
+      ],
+    });
+  });
+
+  it("emits exactly one compaction for a contextCompaction item", async () => {
+    const d = driver();
+    const t = turn("compact");
+    await d.runTurn(t.input);
+    expect(t.events.filter((e) => e.kind === "compaction")).toEqual([
+      { kind: "compaction", trigger: "auto", preTokens: null, postTokens: null },
+    ]);
+  });
+
+  it("reports cached tokens as cache reads and net-new input", async () => {
+    const d = driver();
+    const t = turn("cached");
+    await d.runTurn(t.input);
+    const end = t.events.at(-1);
+    expect(end).toMatchObject({ kind: "turn-end", inputTokens: 1000, outputTokens: 12 });
+    expect(end?.kind === "turn-end" ? end.usage?.cacheReadTokens : undefined).toBe(8000);
+  });
+});
+
+describe("turnEndFromUsage", () => {
+  it("prefers netNewInputTokens over the subtraction", () => {
+    const e = turnEndFromUsage(
+      { inputTokens: 9000, cachedInputTokens: 8000, outputTokens: 12, netNewInputTokens: 750, cacheWriteInputTokens: 100, reasoningOutputTokens: 3 },
+      42,
+    );
+    expect(e).toMatchObject({ kind: "turn-end", inputTokens: 750, outputTokens: 12, durationMs: 42, costUsd: null });
+    if (e.kind !== "turn-end") return;
+    expect(e.usage).toMatchObject({ inputTokens: 750, cacheReadTokens: 8000, cacheWriteTokens: 100, reasoningTokens: 3, provenance: "reported" });
+  });
+
+  it("reports unavailable usage when none was seen", () => {
+    const e = turnEndFromUsage(undefined, 7);
+    expect(e).toMatchObject({ kind: "turn-end", inputTokens: 0, outputTokens: 0, durationMs: 7 });
+    if (e.kind !== "turn-end") return;
+    expect(e.usage).toMatchObject({ inputTokens: 0, outputTokens: 0, provenance: "unavailable" });
   });
 });
 
@@ -144,7 +204,7 @@ describe("Codex with the harness's tools", () => {
     const t = turn("browser", { tools: [evalTool] });
     await d.runTurn(t.input);
     expect(t.asked).toEqual(["expression: 1+1"]);
-    expect(t.events.slice(0, 2)).toEqual([
+    expect(t.events.slice(1, 3)).toEqual([
       { kind: "tool-use", toolUseId: "t1", name: "browser_eval", summary: '{"expression":"1+1"}' },
       { kind: "tool-result", toolUseId: "t1", isError: false, summary: "evaluated 1+1" },
     ]);
@@ -157,18 +217,18 @@ describe("Codex with the harness's tools", () => {
     expect(auto.asked).toEqual([]);
     const denied = turn("browser", { tools: [evalTool], requestPermission: async () => "deny" });
     await d.runTurn(denied.input);
-    expect(denied.events[1]).toMatchObject({ kind: "tool-result", isError: true, summary: "user rejected MCP tool call" });
+    expect(denied.events[2]).toMatchObject({ kind: "tool-result", isError: true, summary: "user rejected MCP tool call" });
   });
 
   it("reattaches a loaded thread once the tools appear", async () => {
     const d = await withServer();
     const first = turn("browser");
     await d.runTurn(first.input);
-    expect(first.events[0]).toMatchObject({ kind: "assistant-text", text: "no tools" });
+    expect(first.events[1]).toMatchObject({ kind: "assistant-text", text: "no tools" });
     const second = turn("browser", { sessionId: first.sessions[0]!, tools: [evalTool], permissionMode: "full" });
     await d.runTurn(second.input);
     expect(second.sessions).toEqual(first.sessions);
-    expect(second.events[1]).toMatchObject({ kind: "tool-result", summary: "evaluated 1+1" });
+    expect(second.events[2]).toMatchObject({ kind: "tool-result", summary: "evaluated 1+1" });
   });
 });
 

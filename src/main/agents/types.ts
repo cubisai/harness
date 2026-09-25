@@ -1,5 +1,5 @@
 import type { ZodRawShape, z } from "zod";
-import type { McpServerEntry, ModelOption, PermissionDecision, PermissionMode, ThreadEvent } from "../../shared/types";
+import type { McpServerEntry, ModelOption, PermissionDecision, PermissionMode, Provenance, ThreadEvent } from "../../shared/types";
 
 export interface ToolOutput {
   text: string;
@@ -40,6 +40,8 @@ export interface TurnInput {
   tools: HarnessTool[];
   /** The user's MCP servers (mcp.json), passed to the agent alongside its own. */
   mcpServers: McpServerEntry[];
+  /** Who is running this turn, for the events it produces. */
+  provenance?: Provenance;
 }
 
 /**

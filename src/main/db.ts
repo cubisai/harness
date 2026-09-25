@@ -1,7 +1,8 @@
-import { randomUUID } from "node:crypto";
-import { basename } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { PermissionMode, Project, StoredEvent, Thread, ThreadEvent } from "../shared/types";
+import type { PermissionMode, Project, Provenance, StoredEvent, Thread, ThreadEvent } from "../shared/types";
 
 /**
  * Plain rows in SQLite (node:sqlite, so no native module to rebuild per
@@ -10,9 +11,13 @@ import type { PermissionMode, Project, StoredEvent, Thread, ThreadEvent } from "
  */
 export class Store {
   private db: DatabaseSync;
+  private blobsDir: string;
 
   constructor(file: string) {
-    this.db = new DatabaseSync(file);
+    // The busy timeout must apply before the first statement, or a second
+    // connection opening the same file fails "database is locked" on setup.
+    this.db = new DatabaseSync(file, { timeout: 5000 });
+    this.blobsDir = join(dirname(file), "blobs");
     this.db.exec(`
       PRAGMA journal_mode = WAL;
       PRAGMA foreign_keys = ON;
@@ -38,7 +43,29 @@ export class Store {
         seq INTEGER NOT NULL,
         payload TEXT NOT NULL,
         created_at INTEGER NOT NULL,
+        provenance TEXT,
+        message_id TEXT,
+        turn_id TEXT,
+        item_id TEXT,
+        parent_id TEXT,
+        payload_ref TEXT,
+        payload_bytes INTEGER,
         PRIMARY KEY (thread_id, seq)
+      );
+      CREATE TABLE IF NOT EXISTS blobs (
+        sha256 TEXT PRIMARY KEY,
+        bytes INTEGER NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS injection_ledger (
+        thread_id TEXT NOT NULL,
+        target_provider TEXT NOT NULL,
+        target_session_id TEXT NOT NULL,
+        checkpoint_id TEXT NOT NULL,
+        item_fingerprint TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('intent', 'injected', 'failed')),
+        injected_at INTEGER,
+        PRIMARY KEY (thread_id, target_provider, target_session_id, checkpoint_id, item_fingerprint)
       );
     `);
     this.migrate();
@@ -46,19 +73,54 @@ export class Store {
 
   /** Additive migrations, in order. Each runs once per database. */
   private migrate(): void {
-    const steps: string[] = [
+    const steps: { applied: (db: DatabaseSync) => boolean; sql: string }[] = [
       // 1: threads choose their agent
-      "ALTER TABLE threads ADD COLUMN agent TEXT NOT NULL DEFAULT 'claude'",
+      { applied: () => this.hasColumn("threads", "agent"), sql: "ALTER TABLE threads ADD COLUMN agent TEXT NOT NULL DEFAULT 'claude'" },
+      // 2-8: semantic ids, provenance, and blob pointers on events
+      { applied: () => this.hasColumn("events", "provenance"), sql: "ALTER TABLE events ADD COLUMN provenance TEXT" },
+      { applied: () => this.hasColumn("events", "message_id"), sql: "ALTER TABLE events ADD COLUMN message_id TEXT" },
+      { applied: () => this.hasColumn("events", "turn_id"), sql: "ALTER TABLE events ADD COLUMN turn_id TEXT" },
+      { applied: () => this.hasColumn("events", "item_id"), sql: "ALTER TABLE events ADD COLUMN item_id TEXT" },
+      { applied: () => this.hasColumn("events", "parent_id"), sql: "ALTER TABLE events ADD COLUMN parent_id TEXT" },
+      { applied: () => this.hasColumn("events", "payload_ref"), sql: "ALTER TABLE events ADD COLUMN payload_ref TEXT" },
+      { applied: () => this.hasColumn("events", "payload_bytes"), sql: "ALTER TABLE events ADD COLUMN payload_bytes INTEGER" },
+      // 9-10: content-addressed blobs and the Phase 6 injection ledger
+      {
+        applied: () => this.hasTable("blobs"),
+        sql: "CREATE TABLE IF NOT EXISTS blobs (sha256 TEXT PRIMARY KEY, bytes INTEGER NOT NULL, created_at INTEGER NOT NULL)",
+      },
+      {
+        applied: () => this.hasTable("injection_ledger"),
+        sql: `CREATE TABLE IF NOT EXISTS injection_ledger (
+          thread_id TEXT NOT NULL,
+          target_provider TEXT NOT NULL,
+          target_session_id TEXT NOT NULL,
+          checkpoint_id TEXT NOT NULL,
+          item_fingerprint TEXT NOT NULL,
+          state TEXT NOT NULL CHECK (state IN ('intent', 'injected', 'failed')),
+          injected_at INTEGER,
+          PRIMARY KEY (thread_id, target_provider, target_session_id, checkpoint_id, item_fingerprint)
+        )`,
+      },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;
     if (!row) this.db.prepare("INSERT INTO schema_version (version) VALUES (0)").run();
     for (; version < steps.length; version++) {
-      const cols = this.db.prepare("PRAGMA table_info(threads)").all() as unknown as { name: string }[];
-      // A fresh database may already have the column from a newer CREATE; skip if so.
-      if (!(version === 0 && cols.some((c) => c.name === "agent"))) this.db.exec(steps[version]!);
+      const step = steps[version]!;
+      // A fresh database may already have the column/table from the newer CREATE; skip if so.
+      if (!step.applied(this.db)) this.db.exec(step.sql);
       this.db.prepare("UPDATE schema_version SET version = ?").run(version + 1);
     }
+  }
+
+  private hasColumn(table: string, col: string): boolean {
+    const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as unknown as { name: string }[];
+    return cols.some((c) => c.name === col);
+  }
+
+  private hasTable(table: string): boolean {
+    return !!this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
   }
 
   close(): void {
@@ -134,24 +196,67 @@ export class Store {
     this.db.prepare("DELETE FROM threads WHERE id = ?").run(id);
   }
 
-  appendEvent(threadId: string, event: ThreadEvent): StoredEvent {
-    const row = this.db.prepare("SELECT COALESCE(MAX(seq), 0) AS seq FROM events WHERE thread_id = ?").get(threadId) as unknown as {
-      seq: number;
-    };
-    const stored: StoredEvent = { seq: row.seq + 1, event, createdAt: Date.now() };
-    this.db
-      .prepare("INSERT INTO events (thread_id, seq, payload, created_at) VALUES (?, ?, ?, ?)")
-      .run(threadId, stored.seq, JSON.stringify(event), stored.createdAt);
-    return stored;
+  appendEvent(threadId: string, event: ThreadEvent, provenance: Provenance | null = null): StoredEvent {
+    const createdAt = Date.now();
+    let storedEvent = event;
+    let payloadRef: string | null = null;
+    let payloadBytes: number | null = null;
+    // Large tool I/O moves to a content-addressed blob; the event JSON keeps a stub.
+    if ((event.kind === "tool-use" || event.kind === "tool-result") && event.payload !== undefined) {
+      const json = JSON.stringify(event.payload);
+      const bytes = Buffer.byteLength(json);
+      if (bytes > 65536) {
+        const sha = createHash("sha256").update(json).digest("hex");
+        const file = join(this.blobsDir, sha);
+        if (!existsSync(file)) {
+          mkdirSync(this.blobsDir, { recursive: true });
+          writeFileSync(file, json);
+        }
+        this.db.prepare("INSERT OR IGNORE INTO blobs (sha256, bytes, created_at) VALUES (?, ?, ?)").run(sha, bytes, createdAt);
+        storedEvent = { ...event, payload: { blobRef: sha, bytes, truncated: true, preview: json.slice(0, 1024) } };
+        payloadRef = sha;
+        payloadBytes = bytes;
+      }
+    }
+    const row = this.db
+      .prepare(
+        `INSERT INTO events (thread_id, seq, payload, created_at, provenance, message_id, turn_id, item_id, parent_id, payload_ref, payload_bytes)
+         SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM events WHERE thread_id = ?
+         RETURNING seq`,
+      )
+      .get(
+        threadId,
+        JSON.stringify(storedEvent),
+        createdAt,
+        provenance ? JSON.stringify(provenance) : null,
+        storedEvent.messageId ?? null,
+        storedEvent.turnId ?? null,
+        storedEvent.itemId ?? null,
+        storedEvent.parentId ?? null,
+        payloadRef,
+        payloadBytes,
+        threadId,
+      ) as unknown as { seq: number };
+    return { seq: row.seq, event: storedEvent, createdAt, provenance };
+  }
+
+  /** Read an offloaded payload back by its sha256. */
+  readBlob(sha256: string): string {
+    return readFileSync(join(this.blobsDir, sha256), "utf8");
   }
 
   listEvents(threadId: string): StoredEvent[] {
     return this.db
-      .prepare("SELECT seq, payload, created_at FROM events WHERE thread_id = ? ORDER BY seq")
+      .prepare("SELECT seq, payload, created_at, provenance FROM events WHERE thread_id = ? ORDER BY seq")
       .all(threadId)
       .map((r) => {
-        const row = r as unknown as { seq: number; payload: string; created_at: number };
-        return { seq: row.seq, event: JSON.parse(row.payload) as ThreadEvent, createdAt: row.created_at };
+        const row = r as unknown as { seq: number; payload: string; created_at: number; provenance: string | null };
+        return {
+          seq: row.seq,
+          event: JSON.parse(row.payload) as ThreadEvent,
+          createdAt: row.created_at,
+          provenance: row.provenance ? (JSON.parse(row.provenance) as Provenance) : null,
+        };
       });
   }
 }

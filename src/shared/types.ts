@@ -3,7 +3,7 @@
 
 export type Invocation = "model" | "user";
 
-/** One entry of skilled's skills.json (see HARNESS.md at the repo root). */
+/** One entry of skilled's skills.json (see plan/docs/HARNESS.md). */
 export interface SkillEntry {
   name: string;
   description: string;
@@ -174,24 +174,105 @@ export interface Thread {
   updatedAt: number;
 }
 
+/** Who produced an event: the agent, its model, and how it was reached. */
+export interface Provenance {
+  agent: string;
+  model: string;
+  provider: string | null;
+  instanceId: string | null;
+}
+
+/** Whether the numbers came from the vendor, were estimated, or weren't reported. */
+export type UsageProvenance = "reported" | "estimated" | "unavailable";
+
+/** Why a turn missed the prompt cache (Phase 5 classifies it). */
+export type MissCause =
+  | "tool-definitions"
+  | "system-prompt"
+  | "model"
+  | "compaction"
+  | "ttl-expiry"
+  | "session-rebuild"
+  | "unknown";
+
+/** One turn's token usage. `inputTokens` is uncached (net-new) tokens only. */
+export interface Usage {
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheWriteTokens: number | null;
+  cacheTtl: "5m" | "1h" | "30m" | "unknown" | null;
+  hitRate: number | null;
+  miss: boolean;
+  missCause?: MissCause;
+  provenance: UsageProvenance;
+}
+
+/** One entry of a plan the agent is working through. */
+export interface PlanEntry {
+  content: string;
+  status: "pending" | "in_progress" | "completed";
+  priority?: "high" | "medium" | "low";
+}
+
+/** Stable semantic ids shared by every event, so a handoff can replay exactly. */
+export interface EventIds {
+  messageId?: string;
+  turnId?: string;
+  itemId?: string;
+  parentId?: string;
+}
+
 /**
- * What a thread shows, normalized across agents. Stored in order, one row
- * each; `text-delta` is live-only and never stored.
+ * The terminal, persisted union: what a thread shows, normalized across agents.
+ * Stored in order, one row each. Live-only kinds live in `LiveDelta` and are
+ * never persisted.
  */
-export type ThreadEvent =
+export type ThreadEvent = (
   | { kind: "user"; text: string; skill?: string }
   | { kind: "assistant-text"; text: string }
-  | { kind: "thinking"; text: string }
-  | { kind: "tool-use"; toolUseId: string; name: string; summary: string }
-  | { kind: "tool-result"; toolUseId: string; isError: boolean; summary: string }
-  | { kind: "turn-end"; costUsd: number | null; inputTokens: number; outputTokens: number; durationMs: number }
+  | { kind: "thinking"; text: string; signature?: string; opaque?: boolean }
+  | { kind: "tool-use"; toolUseId: string; name: string; summary: string; payload?: unknown }
+  | { kind: "tool-result"; toolUseId: string; isError: boolean; summary: string; payload?: unknown }
+  | { kind: "turn-end"; costUsd: number | null; inputTokens: number; outputTokens: number; durationMs: number; usage?: Usage }
   | { kind: "error"; message: string }
-  | { kind: "notice"; text: string };
+  | { kind: "notice"; text: string }
+  | { kind: "turn-start"; turnId: string; agent: string; model: string }
+  | { kind: "plan"; entries: PlanEntry[] }
+  | { kind: "compaction"; trigger: "manual" | "auto" | "unknown"; preTokens: number | null; postTokens: number | null }
+) &
+  EventIds;
+
+/**
+ * Live-only kinds pushed while a turn runs. Never persisted: `appendEvent`
+ * only accepts `ThreadEvent`, so this is a compile-time guarantee.
+ */
+export type LiveDelta =
+  | { kind: "text-delta"; itemId: string; text: string }
+  | { kind: "reasoning-delta"; itemId: string; text: string; opaque?: boolean }
+  | { kind: "reasoning-summary"; itemId: string; index: number; text: string }
+  | { kind: "tool-input-delta"; toolUseId: string; text: string }
+  | { kind: "tool-output-delta"; toolUseId: string; text: string }
+  | { kind: "plan-delta"; entries: PlanEntry[] }
+  | {
+      kind: "usage-update";
+      inputTokens?: number;
+      outputTokens?: number;
+      cacheReadTokens?: number | null;
+      cacheWriteTokens?: number | null;
+      reasoningTokens?: number | null;
+      costUsd?: number | null;
+      contextUsed?: number;
+      contextSize?: number;
+    }
+  | { kind: "thinking-progress"; estimatedTokens: number };
 
 export interface StoredEvent {
   seq: number;
   event: ThreadEvent;
   createdAt: number;
+  provenance?: Provenance | null;
 }
 
 /** A tool call waiting on the user in "ask" mode. */
@@ -245,7 +326,7 @@ export interface SendRequest {
 /** Pushed from main to renderer while a turn runs. */
 export type LiveUpdate =
   | { type: "event"; threadId: string; stored: StoredEvent }
-  | { type: "text-delta"; threadId: string; text: string }
+  | { type: "delta"; threadId: string; delta: LiveDelta }
   | { type: "running"; threadId: string; running: boolean }
   | { type: "permission"; request: PermissionRequest }
   | { type: "thread"; thread: Thread }

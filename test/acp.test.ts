@@ -10,6 +10,17 @@ import { closeAfter, tempDir } from "./helpers";
 
 const MOCK = join(__dirname, "fixtures", "mock-acp-agent.mjs");
 
+/** Fail rather than hang if a turn never settles. */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("timed out")), ms);
+    p.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
+}
+
 function driver() {
   const d = createAcpDriver({ id: "mock", label: "Mock", command: process.execPath, args: [MOCK] }, { clientVersion: "test" });
   closeAfter(() => d.dispose?.());
@@ -53,8 +64,36 @@ describe("ACP driver", () => {
     await d.runTurn(t.input);
     expect(t.sessions).toEqual(["s-1"]);
     expect(t.deltas.join("")).toBe("Hello, world (mock-small)");
-    expect(t.events.map((e) => e.kind)).toEqual(["thinking", "assistant-text", "turn-end"]);
+    expect(t.events.map((e) => e.kind)).toEqual(["turn-start", "thinking", "assistant-text", "turn-end"]);
+    expect(t.events[0]).toMatchObject({ kind: "turn-start", agent: "mock", model: "default" });
     expect(t.events.at(-1)).toMatchObject({ kind: "turn-end", costUsd: 0.01, inputTokens: 1200, outputTokens: 34 });
+    expect(t.events.at(-1)).toMatchObject({ usage: { provenance: "reported", inputTokens: 1200, cacheReadTokens: null } });
+  });
+
+  it("ignores context-window usage when the prompt response has no usage", async () => {
+    const d = driver();
+    const t = turn("nousage");
+    await d.runTurn(t.input);
+    // The fixture still emits usage_update used: 1234; that must not become input.
+    expect(t.events.at(-1)).toMatchObject({
+      kind: "turn-end",
+      inputTokens: 0,
+      outputTokens: 0,
+      usage: { provenance: "unavailable", cacheReadTokens: null },
+    });
+  });
+
+  it("maps an ACP plan update", async () => {
+    const d = driver();
+    const t = turn("plan");
+    await d.runTurn(t.input);
+    expect(t.events.find((e) => e.kind === "plan")).toMatchObject({
+      kind: "plan",
+      entries: [
+        { content: "Read the code", priority: "high", status: "completed" },
+        { content: "Write the fix", priority: "medium", status: "pending" },
+      ],
+    });
   });
 
   it("loads models at startup without a turn", async () => {
@@ -97,8 +136,8 @@ describe("ACP driver", () => {
     await d.runTurn(t.input);
     expect(t.asked).toEqual(["npm test"]);
     const kinds = t.events.map((e) => e.kind);
-    expect(kinds).toEqual(["thinking", "assistant-text", "tool-use", "tool-result", "assistant-text", "turn-end"]);
-    expect(t.events[3]).toMatchObject({ kind: "tool-result", isError: false, summary: "3 passed (yes)" });
+    expect(kinds).toEqual(["turn-start", "thinking", "assistant-text", "tool-use", "tool-result", "assistant-text", "turn-end"]);
+    expect(t.events[4]).toMatchObject({ kind: "tool-result", isError: false, summary: "3 passed (yes)" });
   });
 
   it("denies when the user denies, and runs without asking in Full mode", async () => {
@@ -149,6 +188,15 @@ describe("ACP driver", () => {
     t.controller.abort();
     await running;
     expect(t.events.some((e) => e.kind === "notice" && e.text === "Stopped.")).toBe(true);
+  });
+
+  it("stops when aborted before startup finishes", async () => {
+    const d = driver();
+    const t = turn("world");
+    t.controller.abort();
+    await withTimeout(d.runTurn(t.input), 5000);
+    expect(t.events.some((e) => e.kind === "notice" && e.text === "Stopped.")).toBe(true);
+    expect(t.events.some((e) => e.kind === "turn-start")).toBe(false);
   });
 
   it("reports an agent that can't start", async () => {

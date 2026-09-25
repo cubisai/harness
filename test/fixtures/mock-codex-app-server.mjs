@@ -3,6 +3,9 @@
 //   "slow" - streams until turn/interrupt
 //   "browser" - calls browser_eval on the thread's "unskilled" MCP server,
 //              asking first when its config says to, as Codex does
+//   "plan" - sends turn/plan/updated, then the normal reply
+//   "compact" - sends a contextCompaction item, then the normal reply
+//   "cached" - the normal reply, but reports cached input tokens
 //   other  - replies "Hi, <prompt>" in two deltas
 // Like Codex, a thread keeps the config it was loaded with until it is
 // unsubscribed (unloaded); resuming a loaded thread doesn't change it.
@@ -125,11 +128,31 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
         const ok = res.decision === "accept" || res.decision === "acceptForSession";
         notify("item/completed", { threadId, turnId: turn.id, item: { ...item, status: ok ? "completed" : "declined", aggregatedOutput: ok ? `3 passed (${res.decision})` : null, exitCode: ok ? 0 : null } });
       }
+      if (text === "plan") {
+        notify("turn/plan/updated", {
+          threadId,
+          turnId: turn.id,
+          explanation: null,
+          plan: [
+            { step: "Read code", status: "completed" },
+            { step: "Fix bug", status: "inProgress" },
+            { step: "Test", status: "pending" },
+          ],
+        });
+      }
+      if (text === "compact") {
+        notify("item/started", { threadId, turnId: turn.id, item: { type: "contextCompaction", id: "cc1" } });
+        notify("item/completed", { threadId, turnId: turn.id, item: { type: "contextCompaction", id: "cc1" } });
+      }
       notify("item/completed", { threadId, turnId: turn.id, item: { type: "reasoning", id: "r1", summary: ["Considering it."], content: [] } });
       notify("item/agentMessage/delta", { threadId, turnId: turn.id, itemId: "m2", delta: "Hi, " });
       notify("item/agentMessage/delta", { threadId, turnId: turn.id, itemId: "m2", delta: text });
       notify("item/completed", { threadId, turnId: turn.id, item: { type: "agentMessage", id: "m2", text: `Hi, ${text}` } });
-      notify("thread/tokenUsage/updated", { threadId, turnId: turn.id, tokenUsage: { last: { inputTokens: 900, cachedInputTokens: 0, outputTokens: 12, totalTokens: 912, reasoningOutputTokens: 0, cacheWriteInputTokens: 0 }, total: {}, modelContextWindow: null } });
+      const usage =
+        text === "cached"
+          ? { inputTokens: 9000, cachedInputTokens: 8000, outputTokens: 12, totalTokens: 9012, reasoningOutputTokens: 0, cacheWriteInputTokens: 0 }
+          : { inputTokens: 900, cachedInputTokens: 0, outputTokens: 12, totalTokens: 912, reasoningOutputTokens: 0, cacheWriteInputTokens: 0 };
+      notify("thread/tokenUsage/updated", { threadId, turnId: turn.id, tokenUsage: { last: usage, total: {}, modelContextWindow: null } });
       // Codex sends these as responses arrive: sparse, account-wide, no threadId.
       notify("account/rateLimits/updated", { rateLimits: { limitId: "codex", primary: { usedPercent: 37, windowDurationMins: 300, resetsAt: 1790000000 }, secondary: null, planType: "plus" } });
       return done("completed");

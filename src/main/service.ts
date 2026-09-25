@@ -6,6 +6,7 @@ import type {
   McpServerEntry,
   PermissionMode,
   PermissionDecision,
+  Provenance,
   SendRequest,
   SkillEntry,
   StoredEvent,
@@ -88,8 +89,8 @@ export class Service {
     return this.running.has(threadId);
   }
 
-  private emit(threadId: string, event: ThreadEvent): StoredEvent {
-    const stored = this.store.appendEvent(threadId, event);
+  private emit(threadId: string, event: ThreadEvent, provenance: Provenance | null = null): StoredEvent {
+    const stored = this.store.appendEvent(threadId, event, provenance);
     this.broadcast({ type: "event", threadId, stored });
     return stored;
   }
@@ -99,6 +100,7 @@ export class Service {
     const thread = this.store.getThread(req.threadId);
     const project = this.store.getProject(thread.projectId);
     const driver = this.driverFor(thread.agent);
+    const provenance: Provenance = { agent: thread.agent, model: thread.model, provider: null, instanceId: null };
     const prompt = composePrompt(this.catalog, req.text, req.skill, driver.skillCallPrefix);
 
     this.emit(thread.id, { kind: "user", text: req.text, skill: req.skill });
@@ -124,8 +126,9 @@ export class Service {
         signal: controller.signal,
         tools: this.harnessTools(),
         mcpServers: this.mcpServers(),
-        onEvent: (event) => this.emit(thread.id, event),
-        onTextDelta: (text) => this.broadcast({ type: "text-delta", threadId: thread.id, text }),
+        provenance,
+        onEvent: (event) => this.emit(thread.id, event, provenance),
+        onTextDelta: (text) => this.broadcast({ type: "delta", threadId: thread.id, delta: { kind: "text-delta", itemId: "", text } }),
         onSession: (sessionId) => {
           if (sessionId !== this.store.getThread(thread.id).sessionId) {
             this.broadcast({ type: "thread", thread: this.store.updateThread(thread.id, { sessionId }) });

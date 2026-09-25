@@ -100,6 +100,10 @@ function EventRow({ stored, results, running }: { stored: StoredEvent; results: 
       return <div className="error-card">{e.message}</div>;
     case "notice":
       return <div className="notice">{e.text}</div>;
+    case "turn-start":
+    case "plan":
+    case "compaction":
+      return null; // display lands in a later phase
   }
 }
 

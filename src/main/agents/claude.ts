@@ -1,10 +1,12 @@
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
-import type { HookCallback, ModelInfo, Options, PermissionResult, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
-import type { McpServerEntry, ModelOption, PermissionMode } from "../../shared/types";
+import type { HookCallback, ModelInfo, Options, PermissionResult, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { McpServerEntry, ModelOption, PermissionMode, ThreadEvent } from "../../shared/types";
 import { forClaude } from "../mcp/servers";
 import { checkCommand } from "../guard";
+import { normalizeUsage } from "../usage";
 import { PLUGIN_NAME } from "../skills/plugin";
 import { claudeLimitsPatch, type LimitsListener } from "./limits";
 import { summarizeToolInput, summarizeToolResult } from "./summarize";
@@ -218,10 +220,12 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         },
       };
 
+      const turn: TurnState = { started: false, turnId: randomUUID() };
+
       try {
         for await (const message of query({ prompt: input.prompt, options })) {
           if (message.type === "rate_limit_event") config.onLimits?.(claudeLimitsPatch(message.rate_limit_info));
-          else handleMessage(message, input);
+          else handleMessage(message, input, turn);
         }
       } catch (err) {
         if (input.signal.aborted) {
@@ -234,19 +238,64 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
   };
 }
 
-function handleMessage(message: SDKMessage, input: TurnInput): void {
+/** Per-turn state: turn-start fires once, on the turn's first main-thread frame. */
+interface TurnState {
+  started: boolean;
+  turnId: string;
+}
+
+/**
+ * The turn-end event for a `result` message. inputTokens is uncached (net-new)
+ * only — folding cache reads in would make the hit-rate denominator unknowable.
+ */
+export function turnEndFromResult(message: SDKResultMessage): ThreadEvent {
+  return {
+    kind: "turn-end",
+    costUsd: typeof message.total_cost_usd === "number" ? message.total_cost_usd : null,
+    inputTokens: message.usage.input_tokens,
+    outputTokens: message.usage.output_tokens,
+    durationMs: message.duration_ms,
+    usage: normalizeUsage({
+      inputTokens: message.usage.input_tokens,
+      outputTokens: message.usage.output_tokens,
+      cacheReadTokens: message.usage.cache_read_input_tokens ?? null,
+      cacheWriteTokens: message.usage.cache_creation_input_tokens ?? null,
+    }),
+  };
+}
+
+/** Emit the once-per-turn turn-start, stamped with the model that arrived. */
+function startTurn(turn: TurnState, input: TurnInput, model: string | undefined): void {
+  if (turn.started) return;
+  turn.started = true;
+  input.onEvent({ kind: "turn-start", turnId: turn.turnId, agent: "claude", model: model || input.model });
+}
+
+function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnState): void {
   switch (message.type) {
-    case "system":
+    case "system": {
       if (message.subtype === "init") input.onSession(message.session_id);
+      else if (message.subtype === "compact_boundary") {
+        const meta = message.compact_metadata;
+        input.onEvent({
+          kind: "compaction",
+          trigger: meta.trigger === "manual" || meta.trigger === "auto" ? meta.trigger : "unknown",
+          preTokens: meta.pre_tokens ?? null,
+          postTokens: meta.post_tokens ?? null,
+        });
+      }
       return;
+    }
     case "stream_event": {
       if (message.parent_tool_use_id) return; // subagent chatter stays out of the main thread
       const ev = message.event;
+      if (ev.type === "message_start") startTurn(turn, input, ev.message.model);
       if (ev.type === "content_block_delta" && ev.delta.type === "text_delta") input.onTextDelta(ev.delta.text);
       return;
     }
     case "assistant": {
       if (message.parent_tool_use_id) return;
+      startTurn(turn, input, message.message.model);
       if (message.error) {
         input.onEvent({ kind: "error", message: describeError(message.error) });
       }
@@ -254,7 +303,8 @@ function handleMessage(message: SDKMessage, input: TurnInput): void {
         if (block.type === "text" && block.text.trim()) {
           input.onEvent({ kind: "assistant-text", text: block.text });
         } else if (block.type === "thinking" && block.thinking.trim()) {
-          input.onEvent({ kind: "thinking", text: block.thinking });
+          const signature = block.signature;
+          input.onEvent({ kind: "thinking", text: block.thinking, opaque: false, ...(signature ? { signature } : {}) });
         } else if (block.type === "tool_use") {
           input.onEvent({
             kind: "tool-use",
@@ -283,13 +333,7 @@ function handleMessage(message: SDKMessage, input: TurnInput): void {
       return;
     }
     case "result": {
-      input.onEvent({
-        kind: "turn-end",
-        costUsd: typeof message.total_cost_usd === "number" ? message.total_cost_usd : null,
-        inputTokens: message.usage.input_tokens + (message.usage.cache_read_input_tokens ?? 0),
-        outputTokens: message.usage.output_tokens,
-        durationMs: message.duration_ms,
-      });
+      input.onEvent(turnEndFromResult(message));
       if (message.subtype !== "success") {
         input.onEvent({ kind: "error", message: `The turn ended early (${message.subtype}).` });
       }

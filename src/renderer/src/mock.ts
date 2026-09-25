@@ -340,10 +340,10 @@ export function installMock(): void {
     if (scene === "palette") void import("./store").then(({ useStore }) => useStore.getState().setPaletteOpen(true));
     if (scene === "running" || scene === "permission") {
       emit({ type: "running", threadId: "t1", running: true });
-      emit({ type: "text-delta", threadId: "t1", text: "Setting `trust proxy` so the limiter sees the real client IP. I'll check how the app is" });
+      emit({ type: "delta", threadId: "t1", delta: { kind: "text-delta", itemId: "", text: "Setting `trust proxy` so the limiter sees the real client IP. I'll check how the app is" } });
     }
     if (scene === "permission") {
-      emit({ type: "text-delta", threadId: "t1", text: "" });
+      emit({ type: "delta", threadId: "t1", delta: { kind: "text-delta", itemId: "", text: "" } });
       emit({
         type: "permission",
         request: { requestId: "r1", threadId: "t1", toolName: "Bash", summary: "npm install express-rate-limit@7", canAlwaysAllow: true },
