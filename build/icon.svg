@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Source for icon.png. The body follows the macOS grid: 824px, inset 100px. -->
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a3a40"/>
+      <stop offset="1" stop-color="#141417"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.14"/>
+      <stop offset="0.5" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="dot" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4aa3ff"/>
+      <stop offset="1" stop-color="#0a84ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#body)"/>
+    <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#sheen)"/>
+    <rect x="101.5" y="101.5" width="821" height="821" rx="183.5" fill="none" stroke="#fff" stroke-opacity="0.08" stroke-width="3"/>
+  </g>
+  <!-- The U, drawn as one stroke, and the accent caret after it. -->
+  <g transform="translate(-19 12)">
+    <path d="M330 330 V530 a140 140 0 0 0 280 0 V330" fill="none" stroke="#f5f5f7" stroke-width="84" stroke-linecap="round"/>
+    <rect x="690" y="628" width="84" height="84" rx="24" fill="url(#dot)"/>
+  </g>
+</svg>

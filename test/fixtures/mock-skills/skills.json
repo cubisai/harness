@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "skills": [
+    {
+      "name": "tdd",
+      "invocation": "model",
+      "description": "Test driven development skill for testing.",
+      "calls": ["module-design"],
+      "sha256": "1234567890abcdef"
+    },
+    {
+      "name": "module-design",
+      "invocation": "model",
+      "description": "Module design skill for testing.",
+      "calls": [],
+      "sha256": "abcdef1234567890"
+    },
+    {
+      "name": "implement",
+      "invocation": "user",
+      "description": "Implementation skill for testing.",
+      "calls": ["tdd"],
+      "sha256": "fedcba0987654321"
+    }
+  ]
+}

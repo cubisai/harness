@@ -1,0 +1,48 @@
+appId: dev.aiharness.app
+productName: AI Harness
+copyright: Copyright © 2026 AI Harness contributors
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - package.json
+extraResources:
+  # The window icon on Linux (build/ holds the icon electron-builder bundles for each OS).
+  - from: build/icon.png
+    to: icon.png
+# The Agent SDK spawns its bundled Claude Code binary; binaries can't run
+# from inside an asar archive.
+asarUnpack:
+  - "node_modules/@anthropic-ai/claude-agent-sdk*/**"
+  # node-pty's native module (and its macOS spawn-helper) must be real files.
+  - "node_modules/node-pty/**"
+# Where the app looks for updates (electron-updater). Builds never upload by
+# themselves: the release workflow publishes the release.
+publish:
+  provider: github
+  owner: cubisai
+  repo: harness
+# Signing and notarization happen only when the release workflow has the
+# secrets for them (see README): CSC_LINK / CSC_KEY_PASSWORD, and APPLE_ID,
+# APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID on macOS.
+mac:
+  # zip is what auto-update downloads; dmg is for first installs.
+  target: [dmg, zip]
+  category: public.app-category.developer-tools
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+win:
+  target: [nsis]
+nsis:
+  # No spaces: GitHub renames uploaded files with spaces, which would break latest.yml.
+  artifactName: ${productName}-Setup-${version}.${ext}
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+linux:
+  target: [AppImage]
+  # Links the running window to the .desktop entry, for its icon and name.
+  syncDesktopName: true
+  category: Development
+  synopsis: A minimal desktop coding-agent harness
