@@ -14,7 +14,7 @@ import type {
 } from "../../shared/types";
 import { api } from "./api";
 
-export type LibraryTab = "skills" | "mcp" | "agents";
+export type LibraryTab = "experts" | "skills" | "connectors" | "mcp" | "agents";
 
 interface State {
   projects: Project[];
