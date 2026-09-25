@@ -1,12 +1,12 @@
 # UnSkilled
 
-A minimal desktop coding-agent harness for Windows, macOS, and Linux, with the [skilled](../../README.md) workflow built in.
+A minimal desktop coding-agent harness for Windows, macOS, and Linux, with modular plugin and skill support.
 
-You open a project folder, start a thread, and work with Claude inside it. Typing `/` shows skilled's workflow skills (`/skilled-setup`, `/domain-interview`, `/implement`, …). The agent picks up skilled's design and review skills (`tdd`, `review-diff`, `release-safety`, …) by itself as the work calls for them.
+You open a project folder, start a thread, and work with Claude inside it. Typing `/` shows workflow skills. The agent picks up design and review skills by itself as the work calls for them.
 
 ## How skills get in without costing context
 
-The app follows the contract in [HARNESS.md](../../HARNESS.md):
+The app follows the contract in [HARNESS.md](HARNESS.md) (see also [Research: AI Coding-Agent Harnesses](research-ai-agent-harnesses.md)):
 
 - **Model-invoked skills (15)** go to Claude as a local plugin, generated into the app's data folder from the bundled `skills/`. Claude lists them and loads each one only when it needs it. Inside a plugin they are named `skilled:<name>`, so the app rewrites every `Call the Skill tool with "x"` in the plugin's copies to match.
 - **User-invoked skills (23)** never go to the agent. The `/` menu lists them from `skills.json`. When you pick one, the app puts the skill's body into your message, the same thing Claude Code does for a typed `/command`.
