@@ -45,7 +45,7 @@ function source(p: Provider): InjectionSource {
 }
 
 describe.skipIf(!codex)("Codex end to end (real app-server, fake model)", () => {
-  it("adds the browser tools mid-thread and runs one with approval", async () => {
+  it("offers the browser tools from the first turn and runs one with approval", async () => {
     const model = await startFakeOpenAI();
     closeAfter(() => void model.server.close());
     const ran: string[] = [];
@@ -108,25 +108,23 @@ describe.skipIf(!codex)("Codex end to end (real app-server, fake model)", () => 
       return { events, asked, session };
     };
 
-    const first = await run({});
-    expect(first.events.find((e) => e.kind === "assistant-text")).toMatchObject({ text: "Hello." });
-    expect(model.offered.at(-1)).toEqual([]);
+    const first = await run({ tools: [evalTool] });
+    expect(model.offered.at(-1)).toEqual(["browser_eval"]);
     expect(model.namespaces[0]).toContain("mcp__docs: whoami");
     // Limits come from the model's response headers, with no extra request.
     expect(limitReports.flatMap((p) => p.windows ?? [])).toContainEqual({ id: "codex:primary", label: "5-hour", usedPercent: 42, resetsAt: 1_790_000_000_000 });
     expect(limitReports.flatMap((p) => p.windows ?? [])).toContainEqual({ id: "codex:secondary", label: "Weekly", usedPercent: 9, resetsAt: null });
+    // The tools are there from the first turn, so that's when the approval and the eval happen.
+    expect(first.asked).toEqual(["browser_eval: expression: 1+1"]);
+    expect(ran).toEqual(["1+1"]);
 
     const second = await run({ sessionId: first.session, tools: [evalTool] });
     expect(second.session).toBe(first.session);
     expect(model.offered.at(-1)).toEqual(["browser_eval"]);
-    expect(second.asked).toEqual(["browser_eval: expression: 1+1"]);
-    expect(ran).toEqual(["1+1"]);
+    // The same tools on the same thread change nothing, so there's no reopen notice;
+    // the model already has the result and just answers.
     expect(second.events.filter((e) => e.kind !== "turn-start" && e.kind !== "turn-end")).toEqual([
-      // Attaching the browser tools reopens the thread, which restarts its prompt cache: said, not silent.
-      { kind: "notice", text: expect.stringMatching(/added the app's browser tools.*reopened/) },
-      { kind: "tool-use", toolUseId: expect.any(String), name: "browser_eval", summary: '{"expression":"1+1"}' },
-      { kind: "tool-result", toolUseId: expect.any(String), isError: false, summary: "2" },
-      { kind: "assistant-text", text: "Evaluated." },
+      { kind: "assistant-text", text: "Evaluated.", itemId: expect.any(String) },
     ]);
   }, 60_000);
 

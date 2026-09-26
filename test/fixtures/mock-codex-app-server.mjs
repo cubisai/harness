@@ -6,6 +6,8 @@
 //   "slow" - streams until turn/interrupt
 //   "browser" - calls browser_eval on the thread's "unskilled" MCP server,
 //              asking first when its config says to, as Codex does
+//   "roots" - reports the extra skills roots the app set
+//   "unsubs" - reports how many thread/unsubscribe requests the mock has seen
 //   "plan" - sends turn/plan/updated, then the normal reply
 //   "compact" - sends a contextCompaction item, then the normal reply
 //   "cached" - the normal reply, but reports cached input tokens
@@ -30,6 +32,7 @@ const ask = (method, params) =>
 const threads = new Set(["known-thread"]);
 let interrupted = false;
 let extraRoots = [];
+let unsubscribes = 0;
 const configs = new Map(); // loaded thread id -> its config
 
 async function callTool(server, name, args) {
@@ -71,6 +74,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
       if (!configs.has(params.threadId)) configs.set(params.threadId, params.config ?? null);
       return send({ id, result: { thread: { id: params.threadId } } });
     case "thread/unsubscribe":
+      unsubscribes++;
       configs.delete(params.threadId);
       return send({ id, result: { status: "unsubscribed" } });
     case "turn/interrupt":
@@ -86,6 +90,10 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
       const done = (status) => notify("turn/completed", { threadId, turn: { ...turn, status, durationMs: 42 } });
       if (text === "roots") {
         notify("item/completed", { threadId, turnId: turn.id, item: { type: "agentMessage", id: "m", text: JSON.stringify(extraRoots) } });
+        return done("completed");
+      }
+      if (text === "unsubs") {
+        notify("item/completed", { threadId, turnId: turn.id, item: { type: "agentMessage", id: "m", text: String(unsubscribes) } });
         return done("completed");
       }
       if (text === "slow") {

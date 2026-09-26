@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { formatSnapshot } from "../src/main/browser/snapshot";
+import { browserTools } from "../src/main/browser/tools";
 import { isAllowedUrl, normalizeUrl } from "../src/main/browser/url";
+import type { BrowserController } from "../src/main/browser/controller";
 
 describe("browser urls", () => {
   it("adds a scheme the way an address bar does", () => {
@@ -52,6 +54,29 @@ describe("formatSnapshot", () => {
   it("says when a page is empty or cut short", () => {
     expect(formatSnapshot({ url: "about:blank", title: "", nodes: [], truncated: false })).toContain("(no visible content)");
     expect(formatSnapshot({ url: "x", title: "t", nodes: [{ kind: "text", name: "a" }], truncated: true })).toContain("snapshot truncated");
+  });
+});
+
+describe("browser tools gate", () => {
+  const tools = browserTools({ enabled: false } as unknown as BrowserController);
+
+  it("offers exactly the seven named tools", () => {
+    expect(tools.map((t) => t.name)).toEqual([
+      "browser_open",
+      "browser_snapshot",
+      "browser_click",
+      "browser_type",
+      "browser_eval",
+      "browser_logs",
+      "browser_screenshot",
+    ]);
+  });
+
+  it("answers \"Browser pane not open\" for every tool", async () => {
+    const args: Record<string, unknown> = { url: "http://x", ref: "e1", text: "a", expression: "1" };
+    for (const tool of tools) {
+      expect(await tool.run(args)).toEqual({ text: "Browser pane not open", isError: true });
+    }
   });
 });
 

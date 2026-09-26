@@ -186,10 +186,11 @@ async function main(): Promise<void> {
   const { agents: acpAgents, custom: customAgents, problems } = loadAcpAgents(join(userData, "agents.json"));
   for (const p of problems) console.warn(p);
   const modelSkillsDir = join(userData, "harness-skills");
-  const enabledTools = () => (browser.enabled ? tools : []);
+  // Always offered: adding them when the tab opens would rewrite the prompt prefix and reload the session.
+  const harnessTools = () => tools;
   // Started on first use, for Codex and ACP agents, which take tools over MCP.
   let toolServer: Promise<ToolServer> | null = null;
-  const getToolServer = () => (toolServer ??= startToolServer(enabledTools));
+  const getToolServer = () => (toolServer ??= startToolServer(harnessTools));
   const drivers = [
     driver,
     // Codex when it's installed: the same model-invoked skills as an extra skills root, and the browser tools over MCP.
@@ -259,7 +260,7 @@ async function main(): Promise<void> {
     catalog,
     drivers,
     broadcast,
-    enabledTools,
+    harnessTools,
     () => {
       const s = settings.get();
       return { agent: s.defaultAgent, permissionMode: s.defaultPermissionMode };

@@ -358,17 +358,20 @@ describe("Codex with the harness's tools", () => {
     expect(denied.events[2]).toMatchObject({ kind: "tool-result", isError: true, summary: "user rejected MCP tool call" });
   });
 
-  it("reattaches a loaded thread once the tools appear", async () => {
+  it("offers the tools from the first turn and never reloads the thread", async () => {
     const d = await withServer();
-    const first = turn("browser");
+    const first = turn("browser", { tools: [evalTool], permissionMode: "full" });
     await d.runTurn(first.input);
-    expect(first.events[1]).toMatchObject({ kind: "assistant-text", text: "no tools" });
+    expect(first.events.filter((e) => e.kind !== "notice")[2]).toMatchObject({ kind: "tool-result", summary: "evaluated 1+1" });
     const second = turn("browser", { sessionId: first.sessions[0]!, tools: [evalTool], permissionMode: "full" });
     await d.runTurn(second.input);
+    // The tool set never changes, so the thread stays loaded: no notice, no unsubscribe.
     expect(second.sessions).toEqual(first.sessions);
-    // Attaching the tools reopens the thread, and that's said (it restarts the prompt cache).
-    expect(second.events[0]).toMatchObject({ kind: "notice", text: expect.stringMatching(/browser tools.*reopened/) });
+    expect(second.events.filter((e) => e.kind === "notice")).toEqual([]);
     expect(second.events.filter((e) => e.kind !== "notice")[2]).toMatchObject({ kind: "tool-result", summary: "evaluated 1+1" });
+    const probe = turn("unsubs", { sessionId: first.sessions[0]!, tools: [evalTool], permissionMode: "full" });
+    await d.runTurn(probe.input);
+    expect(probe.events.find((e) => e.kind === "assistant-text")).toMatchObject({ text: "0" });
   });
 });
 

@@ -10,6 +10,12 @@ async function safely(fn: () => Promise<ToolOutput>): Promise<ToolOutput> {
   }
 }
 
+/** Refuse, without touching the browser, until the user opens the pane. */
+function gated(browser: BrowserController, fn: () => Promise<ToolOutput>): Promise<ToolOutput> {
+  if (!browser.enabled) return Promise.resolve({ text: "Browser pane not open", isError: true });
+  return safely(fn);
+}
+
 function define<S extends z.ZodRawShape>(t: HarnessTool<S>): HarnessTool {
   return t as unknown as HarnessTool;
 }
@@ -17,7 +23,9 @@ function define<S extends z.ZodRawShape>(t: HarnessTool<S>): HarnessTool {
 /**
  * The browser pane's tools, named as HARNESS.md specifies. Snapshots are
  * text with element refs; screenshots are files, shown to the model only
- * when it asks to look.
+ * when it asks to look. They are always offered, so the tool set never
+ * changes mid-conversation; until the user opens the Browser tab they
+ * answer "Browser pane not open".
  */
 export function browserTools(browser: BrowserController): HarnessTool[] {
   return [
@@ -28,7 +36,7 @@ export function browserTools(browser: BrowserController): HarnessTool[] {
       input: { url: z.string().describe("URL to open, e.g. http://localhost:5173/login") },
       autoAllow: true,
       run: ({ url }) =>
-        safely(async () => {
+        gated(browser, async () => {
           await browser.page(url);
           return { text: await browser.snapshot() };
         }),
@@ -39,14 +47,14 @@ export function browserTools(browser: BrowserController): HarnessTool[] {
         "Text snapshot of the current page in the browser pane: headings, text, and every link, button, and field with a ref like e3 for browser_click and browser_type. Refs change when the page changes; take a new snapshot after acting.",
       input: {},
       autoAllow: true,
-      run: () => safely(async () => ({ text: await browser.snapshot() })),
+      run: () => gated(browser, async () => ({ text: await browser.snapshot() })),
     }),
     define({
       name: "browser_click",
       description: "Click the element with this ref from the latest browser_snapshot, as a real mouse click.",
       input: { ref: z.string().describe("Element ref from browser_snapshot, e.g. e7") },
       autoAllow: true,
-      run: ({ ref }) => safely(async () => ({ text: await browser.click(ref) })),
+      run: ({ ref }) => gated(browser, async () => ({ text: await browser.click(ref) })),
     }),
     define({
       name: "browser_type",
@@ -57,7 +65,7 @@ export function browserTools(browser: BrowserController): HarnessTool[] {
         submit: z.boolean().optional().describe("Press Enter after typing"),
       },
       autoAllow: true,
-      run: ({ ref, text, submit }) => safely(async () => ({ text: await browser.type(ref, text, submit ?? false) })),
+      run: ({ ref, text, submit }) => gated(browser, async () => ({ text: await browser.type(ref, text, submit ?? false) })),
     }),
     define({
       name: "browser_eval",
@@ -65,7 +73,7 @@ export function browserTools(browser: BrowserController): HarnessTool[] {
         "Evaluate a JavaScript expression in the page and return its JSON value. For checks a snapshot can't show (localStorage, computed styles, app state).",
       input: { expression: z.string().describe("A JavaScript expression; may be async") },
       autoAllow: false,
-      run: ({ expression }) => safely(async () => ({ text: await browser.evaluateForAgent(expression) })),
+      run: ({ expression }) => gated(browser, async () => ({ text: await browser.evaluateForAgent(expression) })),
     }),
     define({
       name: "browser_logs",
@@ -73,7 +81,7 @@ export function browserTools(browser: BrowserController): HarnessTool[] {
         "Console errors and warnings, uncaught exceptions, and failed or 4xx/5xx network requests since the page loaded. Check after each step of a UI test.",
       input: { clear: z.boolean().optional().describe("Clear the log after reading") },
       autoAllow: true,
-      run: ({ clear }) => safely(async () => ({ text: await browser.readLogs(clear ?? false) })),
+      run: ({ clear }) => gated(browser, async () => ({ text: await browser.readLogs(clear ?? false) })),
     }),
     define({
       name: "browser_screenshot",
@@ -82,7 +90,7 @@ export function browserTools(browser: BrowserController): HarnessTool[] {
       input: { look: z.boolean().optional().describe("Return the image to you as well as saving it") },
       autoAllow: true,
       run: ({ look }) =>
-        safely(async () => {
+        gated(browser, async () => {
           const { path, png } = await browser.screenshot();
           return { text: `Saved ${path}`, imagePng: look ? png.toString("base64") : undefined };
         }),

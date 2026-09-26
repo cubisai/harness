@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { CredentialChoice, PermissionDecision, PermissionMode, Provider, Settings, ThreadEvent } from "../src/shared/types";
+import type { CredentialChoice, McpServerEntry, PermissionDecision, PermissionMode, Provider, Settings, ThreadEvent } from "../src/shared/types";
 import { createAcpDriver, optionFor, pickPermission } from "../src/main/agents/acp/driver";
 import { type InjectionSource, injectionFor } from "../src/main/inject";
 import { loadAcpAgents, onPath } from "../src/main/agents/registry";
@@ -179,32 +179,40 @@ describe("ACP driver", () => {
     expect(t.events.filter((e) => e.kind === "notice" && /Blocked by git guardrails/.test((e as { text: string }).text))).toEqual([]);
   });
 
-  it("attaches the harness's tool server when tools exist, even mid-conversation", async () => {
+  it("attaches the harness's tool server from the first turn, with no reload later", async () => {
     const d = createAcpDriver(
       { id: "mock", label: "Mock", command: process.execPath, args: [MOCK] },
       { clientVersion: "test", toolServer: async () => ({ url: "http://127.0.0.1:9/mcp", token: "t" }) },
     );
     closeAfter(() => d.dispose?.());
-    const before = turn("mcp");
-    await d.runTurn(before.input);
-    expect(before.deltas.join("")).toBe("[]");
     const tool = { name: "browser_snapshot", description: "", input: {}, autoAllow: true, run: async () => ({ text: "" }) };
-    const after = turn("mcp", { sessionId: before.sessions[0]!, tools: [tool] });
-    await d.runTurn(after.input);
-    expect(after.deltas.join("")).toBe('[["http","unskilled","http://127.0.0.1:9/mcp"]]');
+    const first = turn("mcp", { tools: [tool] });
+    await d.runTurn(first.input);
+    expect(first.deltas.join("")).toBe('[["http","unskilled","http://127.0.0.1:9/mcp"]]');
+    const second = turn("mcp", { sessionId: first.sessions[0]!, tools: [tool] });
+    await d.runTurn(second.input);
+    expect(second.deltas.join("")).toBe('[["http","unskilled","http://127.0.0.1:9/mcp"]]');
+    expect(second.events.some((e) => e.kind === "notice" && (e as { text: string }).text.includes("reopened"))).toBe(false);
   });
 
   it("passes the user's MCP servers, and reopens the session when they change", async () => {
     const d = driver();
     const docs = { name: "docs", enabled: true, spec: { type: "stdio" as const, command: "docs-mcp", args: ["--stdio"] } };
     const remote = { name: "remote", enabled: true, spec: { type: "http" as const, url: "https://mcp.example.com/mcp" } };
+    const lint = { name: "lint", enabled: true, spec: { type: "stdio" as const, command: "lint-mcp", args: [] } };
     const first = turn("mcp", { mcpServers: [docs] });
     await d.runTurn(first.input);
     // stdio servers have no type field in ACP.
     expect(first.deltas.join("")).toBe('[[null,"docs",null]]');
-    const second = turn("mcp", { sessionId: first.sessions[0]!, mcpServers: [docs, remote] });
+    // Two edits between turns still cost one reopen: the list is compared only at the next turn.
+    const edited: McpServerEntry[] = [docs];
+    edited.push(remote);
+    edited.push(lint);
+    const second = turn("mcp", { sessionId: first.sessions[0]!, mcpServers: edited });
     await d.runTurn(second.input);
-    expect(second.deltas.join("")).toBe('[[null,"docs",null],["http","remote","https://mcp.example.com/mcp"]]');
+    expect(second.deltas.join("")).toBe('[[null,"docs",null],["http","remote","https://mcp.example.com/mcp"],[null,"lint",null]]');
+    const notices = second.events.filter((e) => e.kind === "notice").map((e) => (e as { text: string }).text);
+    expect(notices.filter((t) => t.includes("reopened"))).toHaveLength(1);
   });
 
   it("names the HTTP servers an agent without MCP-over-HTTP can't take, once", async () => {

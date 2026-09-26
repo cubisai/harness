@@ -90,7 +90,7 @@ The `/` menu works the same for every agent, since the app composes the skill's 
 
 ## The built-in browser
 
-The Browser tab (⌘⇧B) is a real Chromium page beside the thread: open your dev server there, and the agent can drive the same page. Once you've opened the tab, the agent gets seven tools: `browser_open`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_eval`, `browser_logs`, and `browser_screenshot`. Before that, they aren't sent at all, so they cost no context.
+The Browser tab (⌘⇧B) is a real Chromium page beside the thread: open your dev server there, and the agent can drive the same page. The agent always has seven tools: `browser_open`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_eval`, `browser_logs`, and `browser_screenshot`. Until you open the tab they answer "Browser pane not open"; they're always offered because adding tools mid-conversation would invalidate the prompt cache and reload the session.
 
 - Snapshots are text with element refs (`[e3] button "Sign in"`), a fraction of a screenshot's tokens. Screenshots are saved to files, and the model sees the image only when it asks.
 - Clicks are real mouse events through the Chrome DevTools Protocol. Console errors, uncaught exceptions, and failed or 4xx/5xx requests are captured as they happen.
