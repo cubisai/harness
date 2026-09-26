@@ -63,7 +63,7 @@ interface State {
   paneLayout: PaneLayout;
   setPaneLayout(patch: Partial<PaneLayout>, persist: boolean): void;
   inspectorOpen: boolean;
-  inspectorTab: "changes" | "browser" | "terminal";
+  inspectorTab: "changes" | "browser";
   /** The browser pane has been shown this session, so its <webview> stays mounted. */
   browserMounted: boolean;
   /** A URL for the browser pane to load. */
@@ -92,8 +92,11 @@ interface State {
   interrupt(): Promise<void>;
   respond(requestId: string, decision: "allow-once" | "allow-always" | "deny"): Promise<void>;
   toggleInspector(): void;
-  showInspector(tab: "changes" | "browser" | "terminal"): void;
-  /** Terminals opened this session (by project id, or "home"), kept mounted so their shells survive tab switches. */
+  showInspector(tab: "changes" | "browser"): void;
+  toggleTerminal(): void;
+  /** Add the current terminal to `terminals` if missing, so its shell is mounted. */
+  ensureTerminal(): void;
+  /** Terminals opened this session (by project id, or "home"), kept mounted so their shells survive the drawer closing. */
   terminals: string[];
   apply(update: LiveUpdate): void;
 }
@@ -373,16 +376,25 @@ export const useStore = create<State>((set, get) => ({
     set((s) => {
       // Clicking the open tab's button again closes the inspector.
       if (s.inspectorOpen && s.inspectorTab === tab) return { inspectorOpen: false };
-      const term = s.selectedProjectId ?? "home";
       return {
         inspectorOpen: true,
         inspectorTab: tab,
         browserMounted: s.browserMounted || tab === "browser",
-        terminals: tab === "terminal" && !s.terminals.includes(term) ? [...s.terminals, term] : s.terminals,
       };
     });
     // Reopening restores a collapsed inspector at its stored width.
     if (opens && get().paneLayout.inspectorCollapsed) get().setPaneLayout({ inspectorCollapsed: false }, true);
+  },
+
+  ensureTerminal() {
+    const term = get().selectedProjectId ?? "home";
+    set((s) => (s.terminals.includes(term) ? {} : { terminals: [...s.terminals, term] }));
+  },
+
+  toggleTerminal() {
+    const open = !get().paneLayout.terminalOpen;
+    if (open) get().ensureTerminal();
+    get().setPaneLayout({ terminalOpen: open }, true);
   },
 
   apply(update) {

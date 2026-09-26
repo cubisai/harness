@@ -58,7 +58,7 @@ function Palette() {
     if (selectedProjectId) action("import-thread", "Import Thread…", () => void s.importThread(), { keywords: "open json restore" });
     if (selectedProjectId) action("changes", "Show Changes", () => s.showInspector("changes"), { shortcut: mac ? "⌘⇧D" : "Ctrl+Shift+D", keywords: "diff git" });
     action("browser", "Show Browser", () => s.showInspector("browser"), { shortcut: mac ? "⌘⇧B" : "Ctrl+Shift+B", keywords: "web page preview" });
-    action("terminal", "Show Terminal", () => s.showInspector("terminal"), { shortcut: "⌃`", keywords: "shell console" });
+    action("terminal", "Toggle Terminal", () => s.toggleTerminal(), { shortcut: "⌃`", keywords: "shell console" });
     if (selectedProjectId) {
       const preferred = settings?.editor ?? null;
       const ordered = [...editors].sort((a, b) => Number(b.id === preferred) - Number(a.id === preferred));

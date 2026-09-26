@@ -2,6 +2,7 @@ import { useState } from "react";
 import { IconChevron, IconCompose, IconFolder, IconGear, IconLibrary } from "../icons";
 import { api } from "../api";
 import { useStore } from "../store";
+import { SidebarToggle } from "./PaneRail";
 
 export function Sidebar() {
   const projects = useStore((s) => s.projects);
@@ -17,6 +18,7 @@ export function Sidebar() {
     <aside className="sidebar" id="sidebar">
       <div className="sidebar-top drag">
         <span className="wordmark">UnSkilled</span>
+        <SidebarToggle collapsed={false} />
         <button className="icon-button" title="New thread (⌘N)" onClick={() => void newThread()} disabled={!selectedProjectId}>
           <IconCompose />
         </button>

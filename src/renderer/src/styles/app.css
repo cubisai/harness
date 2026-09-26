@@ -187,6 +187,11 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .thread-row .spinner { flex-shrink: 0; }
 .sidebar-foot { padding: 10px; border-top: 1px solid var(--hairline); }
 
+/* ---------- collapsed sidebar rail ---------- */
+
+.pane-rail { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0; background: var(--bg-sidebar); border-right: 1px solid var(--hairline); min-width: 0; }
+.pane-rail .rail-top { height: calc(var(--titlebar) - 10px); display: flex; align-items: flex-end; }
+
 /* ---------- buttons ---------- */
 
 .icon-button {
@@ -674,6 +679,14 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .terminal-host { height: 100%; width: 100%; }
 .terminal-host .xterm { height: 100%; }
 .terminal-host .xterm-viewport { background: transparent !important; }
+
+/* ---------- terminal drawer ---------- */
+
+.terminal-drawer { position: relative; flex-shrink: 0; display: flex; flex-direction: column; border-top: 1px solid var(--hairline); background: var(--bg); min-height: 0; }
+.terminal-drawer[hidden] { display: none; }
+.terminal-drawer .terminal-body { flex: 1; min-height: 0; }
+.terminal-drawer .terminal-body[hidden] { display: none; }
+.splitter.splitter-drawer { position: absolute; top: -14px; left: 0; right: 0; }
 
 /* ---------- settings ---------- */
 

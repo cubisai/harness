@@ -64,7 +64,7 @@ Beside it, a limit meter shows how close the thread's agent is to its plan's rat
 
 ## Terminal
 
-The Terminal tab (⌃\`) is a real shell in the project folder: `$SHELL` on macOS and Linux, and PowerShell 7, Windows PowerShell, or cmd on Windows. It runs through node-pty and xterm.js, with one shell per project that keeps running while you switch tabs. If the shell exits, press any key to start a new one.
+The terminal drawer (⌃\`, at the bottom of the window) is a real shell in the project folder: `$SHELL` on macOS and Linux, and PowerShell 7, Windows PowerShell, or cmd on Windows. It runs through node-pty and xterm.js, with one shell per project that keeps running while the drawer is closed. If the shell exits, press any key to start a new one.
 
 ## Agents
 
@@ -158,7 +158,7 @@ CI runs typecheck, tests, packaging, and a smoke test of the packaged app on all
 | `src/main/db.ts` | SQLite store (`node:sqlite`): projects, threads, events |
 | `src/main/git.ts` | Working-tree diff for the Changes panel |
 | `src/main/mcp-http.ts` | The harness's tools as a local MCP server, for ACP agents |
-| `src/main/terminal.ts` | The Terminal tab's shells (node-pty) |
+| `src/main/terminal.ts` | The terminal drawer's shells (node-pty) |
 | `src/main/browser/` | The browser pane's controller (DevTools Protocol), page snapshots, and the agent's `browser_*` tools |
 | `src/main/guard.ts` | git-guardrails pre-tool hook |
 | `src/preload/` | The `window.unskilled` bridge |

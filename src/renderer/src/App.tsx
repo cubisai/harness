@@ -7,6 +7,8 @@ import { CacheMeter } from "./components/CacheMeter";
 import { Inspector } from "./components/Inspector";
 import { SettingsSheet } from "./components/SettingsSheet";
 import { Sidebar } from "./components/Sidebar";
+import { PaneRail } from "./components/PaneRail";
+import { TerminalDrawer } from "./components/TerminalDrawer";
 import { Splitter } from "./components/Splitter";
 import { SwitchDialogHost } from "./components/SwitchDialog";
 import { ThreadView } from "./components/ThreadView";
@@ -59,7 +61,7 @@ export function App() {
         showInspector("changes");
       } else if (e.ctrlKey && e.key === "`") {
         e.preventDefault();
-        showInspector("terminal");
+        useStore.getState().toggleTerminal();
       } else if (mod && e.shiftKey && e.key.toLowerCase() === "b") {
         e.preventDefault();
         showInspector("browser");
@@ -79,7 +81,7 @@ export function App() {
 
   return (
     <div className={`app${inspectorVisible && pane.inspector !== null ? " with-inspector" : ""}`}>
-      <Sidebar />
+      {layout.sidebarCollapsed ? <PaneRail /> : <Sidebar />}
       <main className="main">
         <header className="main-header drag">
           <div className="main-title">
@@ -141,6 +143,8 @@ export function App() {
               <button
                 className={`icon-button${inspectorOpen && inspectorTab === "changes" ? " active" : ""}`}
                 title="Changes (⌘⇧D)"
+                aria-expanded={inspectorOpen && inspectorTab === "changes"}
+                aria-controls="inspector"
                 onClick={() => showInspector("changes")}
               >
                 <IconDiff />
@@ -148,14 +152,18 @@ export function App() {
               <button
                 className={`icon-button${inspectorOpen && inspectorTab === "browser" ? " active" : ""}`}
                 title="Browser (⌘⇧B)"
+                aria-expanded={inspectorOpen && inspectorTab === "browser"}
+                aria-controls="inspector"
                 onClick={() => showInspector("browser")}
               >
                 <IconGlobe />
               </button>
               <button
-                className={`icon-button${inspectorOpen && inspectorTab === "terminal" ? " active" : ""}`}
+                className={`icon-button${layout.terminalOpen ? " active" : ""}`}
                 title="Terminal (⌃`)"
-                onClick={() => showInspector("terminal")}
+                aria-expanded={layout.terminalOpen}
+                aria-controls="terminal-drawer"
+                onClick={() => useStore.getState().toggleTerminal()}
               >
                 <IconTerminal />
               </button>
@@ -194,6 +202,7 @@ export function App() {
             <Composer threadId={thread.id} />
           </>
         )}
+        <TerminalDrawer />
       </main>
       <Splitter
         orientation="vertical"
