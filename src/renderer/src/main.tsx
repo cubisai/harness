@@ -11,6 +11,7 @@ async function boot(): Promise<void> {
     installMock();
   }
   document.documentElement.classList.add(`platform-${window.unskilled.platform}`);
+  if (window.unskilled.opaqueSidebar) document.documentElement.classList.add("opaque-sidebar");
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <App />

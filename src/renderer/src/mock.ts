@@ -47,10 +47,10 @@ export function installMock(): void {
           { id: "p1", path: "/Users/you/code/acme-web", name: "acme-web", createdAt: now },
           { id: "p2", path: "/Users/you/code/billing-service", name: "billing-service", createdAt: now },
         ];
-  const t = (id: string, projectId: string, title: string, ago: number): Thread => ({
+  const t = (id: string, projectId: string, title: string, ago: number, agent = "claude"): Thread => ({
     id,
     projectId,
-    agent: "claude",
+    agent,
     title,
     sessionId: "s-" + id,
     bindings: {},
@@ -65,8 +65,9 @@ export function installMock(): void {
         ? []
         : [
             t("t1", "p1", "Add rate limiting to the login endpoint", 60_000),
-            t("t2", "p1", "/domain-interview checkout redesign", 3_600_000),
-            t("t3", "p1", "Why is the settings page slow?", 86_400_000),
+            t("t2", "p1", "/domain-interview checkout redesign", 3_600_000, "deepseek"),
+            // Four days idle: Settled.
+            t("t3", "p1", "Why is the settings page slow?", 4 * 86_400_000),
           ],
     p2: [t("t4", "p2", "/implement ticket 03: invoice PDFs", 7_200_000)],
   };
@@ -205,6 +206,7 @@ export function installMock(): void {
 
   const api: UnskilledApi = {
     platform: params.get("platform") ?? "darwin",
+    opaqueSidebar: params.has("opaque"),
     listProjects: async () => projects,
     addProject: async () => null,
     listThreads: async (pid) => threads[pid] ?? [],
@@ -371,6 +373,7 @@ export function installMock(): void {
     installUpdate: async () => {},
     terminalResize: () => {},
     terminalClose: async () => {},
+    projectBranch: async () => (scene === "thread" ? "feat/rate-limit" : null),
     getDiff: async () => [
       {
         path: "src/middleware/rateLimit.ts",

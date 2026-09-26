@@ -47,4 +47,13 @@ describe("rankCommands", () => {
     expect(titles(rankCommands(commands, "acme")).at(0)).toBe("acme-web");
     expect(titles(rankCommands(commands, "thread"))).toEqual(["Thread 0", "Thread 1", "Thread 2", "Thread 3", "Thread 4", "Thread 5", "Thread 6", "New Thread"]);
   });
+
+  it("lists only actions for a query starting with >", () => {
+    expect(titles(rankCommands(commands, ">"))).toEqual(["New Thread", "Show Terminal", "Settings…"]);
+    expect(titles(rankCommands(commands, ">new"))).toEqual(["New Thread"]);
+    expect(titles(rankCommands(commands, ">  settings"))).toEqual(["Settings…"]);
+    expect(rankCommands(commands, ">impl")).toEqual([]);
+    expect(titles(rankCommands(commands, "new"))).toContain("New Thread");
+    expect(titles(rankCommands(commands, "impl"))).toEqual(["/implement", "/implement-spec"]);
+  });
 });

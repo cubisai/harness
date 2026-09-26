@@ -579,6 +579,8 @@ export type LiveUpdate =
 /** The API the preload script exposes as `window.unskilled`. */
 export interface UnskilledApi {
   platform: string;
+  /** The window has no vibrancy or Mica behind it (Linux, Windows 10): paint the sidebar opaque. */
+  opaqueSidebar: boolean;
   listProjects(): Promise<Project[]>;
   addProject(): Promise<Project | null>;
   listThreads(projectId: string): Promise<Thread[]>;
@@ -598,6 +600,8 @@ export interface UnskilledApi {
   interrupt(threadId: string): Promise<void>;
   respondPermission(requestId: string, decision: PermissionDecision): Promise<void>;
   getDiff(projectId: string): Promise<DiffFile[]>;
+  /** The project's current branch; null on its default branch, detached, or outside git. */
+  projectBranch(projectId: string): Promise<string | null>;
   /** The browser pane's <webview> is ready; main takes control of it. */
   browserAttached(webContentsId: number): Promise<void>;
   /** Start picking an element in the browser pane. */

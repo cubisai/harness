@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseUnifiedDiff, workingTreeDiff } from "../src/main/git";
+import { branchLabel, parseUnifiedDiff, workingTreeDiff } from "../src/main/git";
 import { tempDir } from "./helpers";
 
 describe("parseUnifiedDiff", () => {
@@ -54,5 +54,33 @@ describe("workingTreeDiff", () => {
 
   it("is empty outside a git repository", async () => {
     expect(await workingTreeDiff(tempDir())).toEqual([]);
+  });
+});
+
+describe("branchLabel", () => {
+  const repo = () => {
+    const dir = tempDir();
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: dir });
+    git("init", "-q", "-b", "main");
+    git("config", "user.email", "t@example.com");
+    git("config", "user.name", "t");
+    writeFileSync(join(dir, "a.txt"), "one\n");
+    git("add", ".");
+    git("commit", "-qm", "init");
+    return { dir, git };
+  };
+
+  it("is null on the default branch and names any other", async () => {
+    const { dir, git } = repo();
+    expect(await branchLabel(dir)).toBeNull();
+    git("checkout", "-qb", "feat/x");
+    expect(await branchLabel(dir)).toBe("feat/x");
+  });
+
+  it("is null when detached or outside a repository", async () => {
+    const { dir, git } = repo();
+    git("checkout", "-q", "--detach");
+    expect(await branchLabel(dir)).toBeNull();
+    expect(await branchLabel(tempDir())).toBeNull();
   });
 });

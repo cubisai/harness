@@ -34,7 +34,7 @@ import {
 } from "./cache-policy";
 import { Approvals } from "./approvals";
 import type { Store } from "./db";
-import { workingTreeDiff } from "./git";
+import { branchLabel, workingTreeDiff } from "./git";
 import {
   bloatSignal,
   buildCheckpoint,
@@ -494,6 +494,10 @@ export class Service {
 
   getDiff(projectId: string): Promise<DiffFile[]> {
     return workingTreeDiff(this.store.getProject(projectId).path);
+  }
+
+  projectBranch(projectId: string): Promise<string | null> {
+    return branchLabel(this.store.getProject(projectId).path);
   }
 }
 

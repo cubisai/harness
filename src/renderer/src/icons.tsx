@@ -11,7 +11,9 @@ const svg = (size: number, children: React.ReactNode) => (
 export const IconCompose = ({ size = 16 }: P) =>
   svg(size, <><path d="M9.5 2.5H4A1.5 1.5 0 0 0 2.5 4v8A1.5 1.5 0 0 0 4 13.5h8a1.5 1.5 0 0 0 1.5-1.5V6.5" /><path d="M12.2 1.8a1.1 1.1 0 0 1 1.6 1.6L8 9.2l-2.2.6.6-2.2z" /></>);
 
-export const IconFolder = ({ size = 16 }: P) =>
+export const IconPin = ({ size = 14 }: P) =>
+  svg(size, <><path d="M6 2.5h4l-.6 4 2.1 2H4.5l2.1-2z" /><path d="M8 8.5v5" /></>);
+export const IconFolder =({ size = 16 }: P) =>
   svg(size, <path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.6l1.4 1.5h5A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5z" />);
 
 export const IconPlus = ({ size = 16 }: P) => svg(size, <><path d="M8 3v10" /><path d="M3 8h10" /></>);

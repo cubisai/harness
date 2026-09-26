@@ -100,8 +100,8 @@ button { cursor: default; }
 ::selection { background: var(--accent-soft); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* Platforms without window vibrancy get an opaque sidebar. */
-.platform-linux { --bg-sidebar: var(--bg-subtle); }
+/* Windows without vibrancy or Mica (Linux, Windows 10) get an opaque sidebar. */
+.platform-linux, .opaque-sidebar { --bg-sidebar: var(--bg-subtle); }
 
 /* ---------- layout ---------- */
 
@@ -180,11 +180,32 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 }
 .project-row { font-weight: 600; color: var(--text); }
 .project-row .count { margin-left: auto; font-weight: 400; color: var(--text-tertiary); font-size: 11px; }
-.thread-row { padding-left: 30px; color: var(--text); }
-.thread-row .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thread-row { padding: 0 4px 0 0; gap: 0; color: var(--text); }
+.thread-open {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 4px 4px 4px 30px;
+  border-radius: inherit;
+}
+.thread-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.thread-row .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thread-meta { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 11px; color: var(--text-tertiary); white-space: nowrap; }
+.branch-chip { font: 10.5px var(--mono); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.branch-chip::before { content: "⎇ "; }
 .thread-row:hover, .project-row:hover { background: var(--bg-hover); }
 .thread-row.selected { background: var(--bg-selected); }
 .thread-row .spinner { flex-shrink: 0; }
+.thread-pin { flex-shrink: 0; width: 22px; height: 22px; opacity: 0; }
+.thread-row:hover .thread-pin, .thread-pin[aria-pressed="true"], .thread-pin:focus-visible { opacity: 1; }
+.thread-pin[aria-pressed="true"] { color: var(--accent); }
+.thread-section-label { font-size: 10.5px; font-weight: 600; color: var(--text-tertiary); padding: 6px 8px 2px 30px; }
 .sidebar-foot { padding: 10px; border-top: 1px solid var(--hairline); }
 
 /* ---------- collapsed sidebar rail ---------- */

@@ -18,9 +18,14 @@ const SECTION_ORDER: Command["section"][] = ["Actions", "Skills", "Threads", "Pr
  * Commands matching the query, best first. Every word of the query has to
  * appear in the title, detail, or keywords; a title that starts with the
  * query, or has a word that does, ranks above one that only contains it.
- * With no query: actions, then the most recent threads.
+ * With no query: actions, then the most recent threads. A query starting with
+ * ">" ranks only Actions against whatever follows the ">".
  */
 export function rankCommands(commands: Command[], query: string, limit = 60): Command[] {
+  if (query.trimStart().startsWith(">")) {
+    const actions = commands.filter((c) => c.section === "Actions");
+    return rankCommands(actions, query.trimStart().slice(1), limit);
+  }
   const q = query.trim().toLowerCase().replace(/^\//, "");
   if (!q) {
     const actions = commands.filter((c) => c.section === "Actions");

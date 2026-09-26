@@ -61,6 +61,12 @@ interface State {
   events: Record<string, StoredEvent[]>; // by thread id
   live: Record<string, LiveThread>; // streaming state not yet stored
   running: Record<string, boolean>;
+  /** Pinned threads; session-local until pins get a column (Phase 8 Pass 3). */
+  pinned: Record<string, boolean>;
+  togglePin(threadId: string): void;
+  /** Each project's current branch, or null on its default branch, detached, or outside git. */
+  projectBranches: Record<string, string | null>;
+  loadBranch(projectId: string): Promise<void>;
   /** Which tool disclosures are open, by thread id and disclosure id; never persisted. */
   disclosures: Record<string, Record<string, boolean>>;
   setDisclosure(threadId: string, id: string, open: boolean): void;
@@ -237,6 +243,20 @@ export const useStore = create<State>((set, get) => ({
   events: {},
   live: {},
   running: {},
+  pinned: {},
+  togglePin(threadId) {
+    set((s) => {
+      const { [threadId]: was, ...rest } = s.pinned;
+      return { pinned: was ? rest : { ...rest, [threadId]: true } };
+    });
+  },
+  projectBranches: {},
+  async loadBranch(projectId) {
+    const branch = await api()
+      .projectBranch(projectId)
+      .catch(() => null);
+    set((s) => ({ projectBranches: { ...s.projectBranches, [projectId]: branch } }));
+  },
   disclosures: {},
   permissions: [],
   paneLayout: { ...DEFAULT_LAYOUT },
@@ -329,6 +349,7 @@ export const useStore = create<State>((set, get) => ({
     applyTheme(settings.theme);
     const threads: Record<string, Thread[]> = {};
     for (const p of projects) threads[p.id] = await api().listThreads(p.id);
+    for (const p of projects) void get().loadBranch(p.id);
     const limits = Object.fromEntries(limitList.map((l) => [l.agent, l]));
     set((s) => ({ projects, skills, agents, threads, settings, paneLayout: sanitizeLayout(settings.paneLayout), appUpdate, limits: { ...limits, ...s.limits } }));
     const first = projects[0];
@@ -354,6 +375,7 @@ export const useStore = create<State>((set, get) => ({
 
   async selectProject(id) {
     set({ selectedProjectId: id });
+    void get().loadBranch(id);
     if (!get().threads[id]) {
       const list = await api().listThreads(id);
       set((s) => ({ threads: { ...s.threads, [id]: list } }));
@@ -509,6 +531,8 @@ export const useStore = create<State>((set, get) => ({
       }
       case "running":
         if (!update.running) void api().listAgents().then((agents) => set({ agents }));
+        // A turn may have switched branches.
+        if (!update.running && get().selectedProjectId) void get().loadBranch(get().selectedProjectId!);
         if (!update.running) {
           for (let i = queued.length - 1; i >= 0; i--) if (queued[i]!.threadId === update.threadId) queued.splice(i, 1);
         }

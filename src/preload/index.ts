@@ -3,6 +3,7 @@ import type { LiveUpdate, UnskilledApi } from "../shared/types";
 
 const api: UnskilledApi = {
   platform: process.platform,
+  opaqueSidebar: process.argv.includes("--opaque-sidebar"),
   listProjects: () => ipcRenderer.invoke("projects:list"),
   addProject: () => ipcRenderer.invoke("projects:add"),
   listThreads: (projectId) => ipcRenderer.invoke("threads:list", projectId),
@@ -19,6 +20,7 @@ const api: UnskilledApi = {
   interrupt: (threadId) => ipcRenderer.invoke("turn:interrupt", threadId),
   respondPermission: (requestId, decision) => ipcRenderer.invoke("permission:respond", requestId, decision),
   getDiff: (projectId) => ipcRenderer.invoke("diff:get", projectId),
+  projectBranch: (projectId) => ipcRenderer.invoke("project:branch", projectId),
   browserAttached: (webContentsId) => ipcRenderer.invoke("browser:attached", webContentsId),
   browserPick: () => ipcRenderer.invoke("browser:pick"),
   browserDevice: (preset) => ipcRenderer.invoke("browser:device", preset),

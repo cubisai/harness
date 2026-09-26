@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { IconChevron, IconCompose, IconFolder, IconGear, IconLibrary } from "../icons";
+import { IconChevron, IconCompose, IconFolder, IconGear, IconLibrary, IconPin } from "../icons";
 import { api } from "../api";
+import { sectionThreads } from "../sections";
 import { useStore } from "../store";
 import { SidebarToggle } from "./PaneRail";
 
@@ -11,7 +12,12 @@ export function Sidebar() {
   const selectedProjectId = useStore((s) => s.selectedProjectId);
   const selectedThreadId = useStore((s) => s.selectedThreadId);
   const readyVersion = useStore((s) => s.appUpdate?.ready);
-  const { addProject, selectProject, selectThread, newThread } = useStore.getState();
+  const agents = useStore((s) => s.agents);
+  const pinned = useStore((s) => s.pinned);
+  const branches = useStore((s) => s.projectBranches);
+  const { addProject, selectProject, selectThread, newThread, togglePin } = useStore.getState();
+  // Sections are re-read on every render (any thread update re-renders), so Settled stays current enough.
+  const now = Date.now();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   return (
@@ -44,18 +50,46 @@ export function Sidebar() {
                 <span className="count">{list.length || ""}</span>
               </button>
               {open &&
-                list.map((t) => (
-                  <button
-                    key={t.id}
-                    className={`thread-row${t.id === selectedThreadId ? " selected" : ""}`}
-                    onClick={() => {
-                      void selectProject(p.id);
-                      void selectThread(t.id);
-                    }}
-                  >
-                    <span className="title">{t.title}</span>
-                    {running[t.id] && <span className="spinner" />}
-                  </button>
+                sectionThreads(list, { running, pinned, now }).map((section) => (
+                  <div className="thread-section" key={section.name}>
+                    <div className="thread-section-label">{section.name === "Pinned" ? "Pinned · this session" : section.name}</div>
+                    {section.threads.map((t) => {
+                      const agent = agents.find((a) => a.id === t.agent)?.label ?? t.agent;
+                      const branch = branches[p.id];
+                      return (
+                        <div key={t.id} className={`thread-row${t.id === selectedThreadId ? " selected" : ""}`}>
+                          <button
+                            className="thread-open"
+                            onClick={() => {
+                              void selectProject(p.id);
+                              void selectThread(t.id);
+                            }}
+                          >
+                            <span className="thread-text">
+                              <span className="title">{t.title}</span>
+                              <span className="thread-meta">
+                                <span>{agent}</span>
+                                {branch && (
+                                  <span className="branch-chip" title={`Branch ${branch}`}>
+                                    {branch}
+                                  </span>
+                                )}
+                              </span>
+                            </span>
+                            {running[t.id] && <span className="spinner" />}
+                          </button>
+                          <button
+                            className="icon-button thread-pin"
+                            aria-pressed={Boolean(pinned[t.id])}
+                            title={pinned[t.id] ? "Unpin" : "Pin (until the app restarts)"}
+                            onClick={() => togglePin(t.id)}
+                          >
+                            <IconPin />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
                 ))}
             </div>
           );

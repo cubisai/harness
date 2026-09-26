@@ -95,3 +95,26 @@ export async function gitState(cwd: string): Promise<GitState | null> {
   }
   return { head, branch, dirty };
 }
+
+/**
+ * The branch to label a thread row with: the current branch, or null when
+ * it's the repository's default (origin's HEAD, else main/master), detached,
+ * or `cwd` isn't in a work tree. Read-only.
+ */
+export async function branchLabel(cwd: string): Promise<string | null> {
+  let branch: string;
+  try {
+    branch = (await run("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd })).stdout.trim();
+  } catch {
+    return null;
+  }
+  if (!branch || branch === "HEAD") return null;
+  let defaults = ["main", "master"];
+  try {
+    const ref = (await run("git", ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"], { cwd })).stdout.trim();
+    if (ref) defaults = [ref.replace(/^origin\//, "")];
+  } catch {
+    // No remote HEAD: fall back to the usual names.
+  }
+  return defaults.includes(branch) ? null : branch;
+}

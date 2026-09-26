@@ -15,6 +15,7 @@ import { ThreadView } from "./components/ThreadView";
 import { IconArrowLeft, IconDiff, IconFolder, IconGlobe, IconSparkle, IconTerminal } from "./icons";
 import { usePaneLayout } from "./hooks/usePaneLayout";
 import { BOUNDS, DEFAULT_LAYOUT } from "./layout";
+import { nthVisibleThread } from "./sections";
 import { useSelectedThread, useStore } from "./store";
 
 const MODES: { id: PermissionMode; label: string; title: string }[] = [
@@ -65,7 +66,18 @@ export function App() {
       } else if (mod && e.shiftKey && e.key.toLowerCase() === "b") {
         e.preventDefault();
         showInspector("browser");
-      } else if (e.key === "Escape" && running && !document.querySelector(".skill-menu, .palette, .sheet, .library")) {
+      } else if (mod && !e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key)) {
+        // ⌘1–9: the nth thread in the sidebar's order. Not over a modal, and not
+        // while the browser pane has focus (its page keeps its own shortcuts).
+        if (document.querySelector(".palette, .sheet, .library") || document.activeElement?.tagName === "WEBVIEW") return;
+        const s = useStore.getState();
+        const list = s.selectedProjectId ? (s.threads[s.selectedProjectId] ?? []) : [];
+        const target = nthVisibleThread(list, Number(e.key), { running: s.running, pinned: s.pinned, now: Date.now() });
+        if (target) {
+          e.preventDefault();
+          void s.selectThread(target.id);
+        }
+      } else if (e.key === "Escape" && running &&!document.querySelector(".skill-menu, .palette, .sheet, .library")) {
         void interrupt();
       }
     };

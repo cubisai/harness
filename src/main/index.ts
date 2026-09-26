@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, release } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell } from "electron";
@@ -78,6 +78,8 @@ function appIcon(): string {
 function createWindow(): BrowserWindow {
   const isMac = process.platform === "darwin";
   const isWin = process.platform === "win32";
+  // Mica needs Windows 11 (build 22000+); without it a transparent window shows through as grey.
+  const mica = isWin && Number(release().split(".")[2] ?? 0) >= 22000;
   const win = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -96,14 +98,16 @@ function createWindow(): BrowserWindow {
       : { color: "#00000000", symbolColor: nativeTheme.shouldUseDarkColors ? "#f5f5f7" : "#1d1d1f", height: 52 },
     vibrancy: isMac ? "sidebar" : undefined,
     visualEffectState: isMac ? "followWindow" : undefined,
-    backgroundMaterial: isWin ? "mica" : undefined,
-    backgroundColor: isMac || isWin ? "#00000000" : nativeTheme.shouldUseDarkColors ? "#1c1c1e" : "#f5f5f7",
+    backgroundMaterial: mica ? "mica" : undefined,
+    backgroundColor: isMac || mica ? "#00000000" : nativeTheme.shouldUseDarkColors ? "#1c1c1e" : "#f5f5f7",
     webPreferences: {
       preload: join(here, "../preload/index.cjs"),
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
       webviewTag: true, // the browser pane
+      // No vibrancy or Mica behind the window: the renderer paints the sidebar opaque.
+      additionalArguments: isMac || mica ? [] : ["--opaque-sidebar"],
     },
   });
   // The browser pane's <webview> gets no preload, no Node, and only web URLs.
@@ -473,6 +477,7 @@ async function main(): Promise<void> {
     service.respondPermission(requestId, decision),
   );
   ipcMain.handle("diff:get", (_e, projectId: string) => service.getDiff(projectId));
+  ipcMain.handle("project:branch", (_e, projectId: string) => service.projectBranch(projectId));
   ipcMain.handle("browser:attached", (_e, webContentsId: number) => browser.attach(webContentsId));
   ipcMain.handle("browser:pick", () => browser.startPick());
   ipcMain.handle("browser:takeover", (_e, paused: boolean) => browser.setPaused(paused === true));

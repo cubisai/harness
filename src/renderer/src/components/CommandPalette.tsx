@@ -140,7 +140,7 @@ function Palette() {
         <input
           ref={input}
           className="palette-input"
-          placeholder="Search actions, skills, and threads"
+          placeholder="Search actions, skills, and threads (> for actions only)"
           spellCheck={false}
           value={query}
           role="combobox"
