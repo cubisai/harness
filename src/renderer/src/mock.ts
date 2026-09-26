@@ -220,6 +220,8 @@ export function installMock(): void {
       throw new Error("no thread");
     },
     deleteThread: async () => {},
+    exportThread: async () => null,
+    importThread: async () => null,
     listEvents: async (id) => events[id] ?? [],
     listSkills: async () => skills,
     listAgents: async () => [

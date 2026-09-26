@@ -54,6 +54,8 @@ function Palette() {
     action("library-mcp", "Library: MCP Servers", () => useStore.setState({ libraryTab: "mcp" }), { keywords: "mcp tools add server" });
     action("library-agents", "Library: Agents", () => useStore.setState({ libraryTab: "agents" }), { keywords: "install antigravity agy opencode codex" });
     action("settings", "Settings…", () => s.setSettingsOpen(true), { shortcut: key(","), keywords: "preferences api keys" });
+    if (thread) action("export-thread", "Export Thread…", () => void s.exportThread(), { keywords: "save json backup" });
+    if (selectedProjectId) action("import-thread", "Import Thread…", () => void s.importThread(), { keywords: "open json restore" });
     if (selectedProjectId) action("changes", "Show Changes", () => s.showInspector("changes"), { shortcut: mac ? "⌘⇧D" : "Ctrl+Shift+D", keywords: "diff git" });
     action("browser", "Show Browser", () => s.showInspector("browser"), { shortcut: mac ? "⌘⇧B" : "Ctrl+Shift+B", keywords: "web page preview" });
     action("terminal", "Show Terminal", () => s.showInspector("terminal"), { shortcut: "⌃`", keywords: "shell console" });

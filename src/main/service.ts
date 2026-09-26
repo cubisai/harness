@@ -13,6 +13,7 @@ import type {
   StoredEvent,
   Thread,
   ThreadEvent,
+  ThreadExport,
   Usage,
 } from "../shared/types";
 import type { AgentDriver, HarnessTool, ModelSwitch } from "./agents/types";
@@ -30,6 +31,7 @@ import {
 import { Approvals } from "./approvals";
 import type { Store } from "./db";
 import { workingTreeDiff } from "./git";
+import { exportThread, importThread } from "./handoff";
 import type { Catalog } from "./skills/catalog";
 import { composePrompt } from "./skills/compose";
 import { memoryScopeCheck } from "./inject/memory-scope";
@@ -110,6 +112,15 @@ export class Service {
       return this.store.updateThread(id, { ...patch, model: patch.model ?? driver.defaultModel, sessionId: null });
     }
     return this.store.updateThread(id, patch);
+  }
+
+  exportThread(threadId: string): ThreadExport {
+    return exportThread(this.store, threadId);
+  }
+
+  /** Restores an export as a new thread in the project; the original, if it still exists, is untouched. */
+  importThread(projectId: string, data: unknown): Thread {
+    return importThread(this.store, projectId, data);
   }
 
   dispose(): void {

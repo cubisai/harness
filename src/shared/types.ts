@@ -243,6 +243,16 @@ export interface Thread {
   updatedAt: number;
 }
 
+/** A thread exported to JSON: the only way back from the bindings migration. */
+export interface ThreadExport {
+  schemaVersion: number;
+  exportedAt: number;
+  thread: Thread;
+  events: StoredEvent[];
+  /** Offloaded tool payloads by sha256, inlined so an import elsewhere has no dangling refs. */
+  blobs: Record<string, string>;
+}
+
 /** Who produced an event: the agent, its model, and how it was reached. */
 export interface Provenance {
   agent: string;
@@ -455,6 +465,10 @@ export interface UnskilledApi {
   createThread(projectId: string, agent?: string): Promise<Thread>;
   updateThread(threadId: string, patch: Partial<Pick<Thread, "title" | "model" | "permissionMode" | "agent">>): Promise<Thread>;
   deleteThread(threadId: string): Promise<void>;
+  /** Save a thread to a JSON file; null when the dialog was cancelled. */
+  exportThread(threadId: string): Promise<string | null>;
+  /** Restore a thread from a JSON file as a new thread; null when cancelled. */
+  importThread(projectId: string): Promise<Thread | null>;
   listEvents(threadId: string): Promise<StoredEvent[]>;
   listSkills(): Promise<SkillEntry[]>;
   listAgents(): Promise<AgentInfo[]>;

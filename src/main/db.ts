@@ -207,12 +207,7 @@ export class Store {
       const bytes = Buffer.byteLength(json);
       if (bytes > 65536) {
         const sha = createHash("sha256").update(json).digest("hex");
-        const file = join(this.blobsDir, sha);
-        if (!existsSync(file)) {
-          mkdirSync(this.blobsDir, { recursive: true });
-          writeFileSync(file, json);
-        }
-        this.db.prepare("INSERT OR IGNORE INTO blobs (sha256, bytes, created_at) VALUES (?, ?, ?)").run(sha, bytes, createdAt);
+        this.writeBlob(sha, json);
         storedEvent = { ...event, payload: { blobRef: sha, bytes, truncated: true, preview: json.slice(0, 1024) } };
         payloadRef = sha;
         payloadBytes = bytes;
@@ -243,6 +238,60 @@ export class Store {
   /** Read an offloaded payload back by its sha256. */
   readBlob(sha256: string): string {
     return readFileSync(join(this.blobsDir, sha256), "utf8");
+  }
+
+  /** Store an offloaded payload under its sha256; content-addressed, so a second write is a no-op. */
+  writeBlob(sha256: string, content: string): void {
+    const file = join(this.blobsDir, sha256);
+    if (!existsSync(file)) {
+      mkdirSync(this.blobsDir, { recursive: true });
+      writeFileSync(file, content);
+    }
+    this.db
+      .prepare("INSERT OR IGNORE INTO blobs (sha256, bytes, created_at) VALUES (?, ?, ?)")
+      .run(sha256, Buffer.byteLength(content), Date.now());
+  }
+
+  /**
+   * Insert an exported thread and its events as a new thread, all or nothing.
+   * Events keep their seq, time, provenance and ids; blobs must already be written.
+   */
+  restoreThread(projectId: string, data: { thread: Thread; events: StoredEvent[] }): Thread {
+    const id = randomUUID();
+    const { thread } = data;
+    this.db.exec("BEGIN");
+    try {
+      this.db
+        .prepare(
+          "INSERT INTO threads (id, project_id, agent, title, session_id, model, permission_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .run(id, projectId, thread.agent, thread.title, thread.sessionId, thread.model, thread.permissionMode, thread.createdAt, Date.now());
+      const insert = this.db.prepare(
+        `INSERT INTO events (thread_id, seq, payload, created_at, provenance, message_id, turn_id, item_id, parent_id, payload_ref, payload_bytes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      for (const { seq, event, createdAt, provenance } of data.events) {
+        const ref = blobRefOf(event);
+        insert.run(
+          id,
+          seq,
+          JSON.stringify(event),
+          createdAt,
+          provenance ? JSON.stringify(provenance) : null,
+          event.messageId ?? null,
+          event.turnId ?? null,
+          event.itemId ?? null,
+          event.parentId ?? null,
+          ref?.sha256 ?? null,
+          ref?.bytes ?? null,
+        );
+      }
+      this.db.exec("COMMIT");
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
+    return this.getThread(id);
   }
 
   listEvents(threadId: string): StoredEvent[] {
@@ -280,6 +329,14 @@ interface ThreadRow {
   permission_mode: string;
   created_at: number;
   updated_at: number;
+}
+
+/** The blob a tool event's payload was offloaded to, or null when it's inline. */
+export function blobRefOf(event: ThreadEvent): { sha256: string; bytes: number | null } | null {
+  if (event.kind !== "tool-use" && event.kind !== "tool-result") return null;
+  const p = event.payload as { blobRef?: unknown; bytes?: unknown } | null | undefined;
+  if (!p || typeof p !== "object" || typeof p.blobRef !== "string") return null;
+  return { sha256: p.blobRef, bytes: typeof p.bytes === "number" ? p.bytes : null };
 }
 
 function toProject(r: ProjectRow): Project {

@@ -71,6 +71,10 @@ interface State {
   selectThread(id: string | null): Promise<void>;
   newThread(skill?: string): Promise<void>;
   takePendingSkill(): string | null;
+  /** Save the open thread to a JSON file. */
+  exportThread(): Promise<void>;
+  /** Restore a thread export into the selected project and open it. */
+  importThread(): Promise<void>;
   updateThread(patch: Partial<Pick<Thread, "title" | "model" | "permissionMode" | "agent">>): Promise<void>;
   send(text: string, skill?: string): Promise<void>;
   interrupt(): Promise<void>;
@@ -85,6 +89,11 @@ interface State {
 function upsertThread(list: Thread[] | undefined, thread: Thread): Thread[] {
   const rest = (list ?? []).filter((t) => t.id !== thread.id);
   return [thread, ...rest].sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+function ipcErrorText(err: unknown): string {
+  const text = err instanceof Error ? err.message : String(err);
+  return text.replace(/^Error invoking remote method '[^']+': (Error: )?/, "");
 }
 
 let initialized = false;
@@ -254,6 +263,30 @@ export const useStore = create<State>((set, get) => ({
     const skill = get().pendingSkill;
     if (skill) set({ pendingSkill: null });
     return skill;
+  },
+
+  async exportThread() {
+    const id = get().selectedThreadId;
+    if (!id) return;
+    try {
+      const path = await api().exportThread(id);
+      if (path) get().showNotice(`Exported to ${path}`);
+    } catch (err) {
+      get().showNotice(ipcErrorText(err));
+    }
+  },
+
+  async importThread() {
+    const projectId = get().selectedProjectId;
+    if (!projectId) return;
+    try {
+      const thread = await api().importThread(projectId);
+      if (!thread) return;
+      set((s) => ({ threads: { ...s.threads, [projectId]: upsertThread(s.threads[projectId], thread) } }));
+      await get().selectThread(thread.id);
+    } catch (err) {
+      get().showNotice(ipcErrorText(err));
+    }
   },
 
   async updateThread(patch) {

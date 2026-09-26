@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -413,6 +413,31 @@ async function main(): Promise<void> {
   ipcMain.handle("threads:delete", (_e, id: string) => {
     service.interrupt(id);
     store.deleteThread(id);
+  });
+  ipcMain.handle("threads:export", async (event, id: string) => {
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    const title = store.getThread(id).title.replace(/[\\/:*?"<>|]+/g, " ").trim() || "thread";
+    const options: Electron.SaveDialogOptions = {
+      title: "Export thread",
+      defaultPath: `${title}.thread.json`,
+      filters: [{ name: "Thread export", extensions: ["json"] }],
+    };
+    const res = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options);
+    if (res.canceled || !res.filePath) return null;
+    writeFileSync(res.filePath, JSON.stringify(service.exportThread(id), null, 2), "utf8");
+    return res.filePath;
+  });
+  ipcMain.handle("threads:import", async (event, projectId: string) => {
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    const options: Electron.OpenDialogOptions = {
+      title: "Import thread",
+      properties: ["openFile"],
+      filters: [{ name: "Thread export", extensions: ["json"] }],
+    };
+    const res = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+    const path = res.filePaths[0];
+    if (res.canceled || !path) return null;
+    return service.importThread(projectId, JSON.parse(readFileSync(path, "utf8")));
   });
   ipcMain.handle("events:list", (_e, threadId: string) => store.listEvents(threadId));
   ipcMain.handle("skills:list", () => service.listSkills());
