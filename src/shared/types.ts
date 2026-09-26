@@ -25,6 +25,8 @@ export interface Project {
 export type PermissionMode = "ask" | "auto-edit" | "full";
 
 export type Theme = "system" | "light" | "dark";
+/** How much the UI animates. `prefers-reduced-motion: reduce` always wins and means instant. */
+export type Motion = "instant" | "subtle" | "full";
 /** @deprecated a provider id; kept one release */
 export type SecretName = string;
 
@@ -103,6 +105,8 @@ export interface PaneLayout {
 
 export interface Settings {
   theme: Theme;
+  /** Panel and thread-switch animation; SettingsStore.get() always fills it in (default instant). */
+  motion?: Motion;
   /** The agent new threads start with; null = the first available (Claude). */
   defaultAgent: string | null;
   defaultPermissionMode: PermissionMode;

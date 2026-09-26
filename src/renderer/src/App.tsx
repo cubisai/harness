@@ -7,7 +7,7 @@ import { CacheMeter } from "./components/CacheMeter";
 import { Inspector } from "./components/Inspector";
 import { SettingsSheet } from "./components/SettingsSheet";
 import { Sidebar } from "./components/Sidebar";
-import { PaneRail } from "./components/PaneRail";
+import { PaneRail, toggleSidebar } from "./components/PaneRail";
 import { TerminalDrawer } from "./components/TerminalDrawer";
 import { Splitter } from "./components/Splitter";
 import { SwitchDialogHost } from "./components/SwitchDialog";
@@ -39,7 +39,7 @@ export function App() {
     void init();
   }, [init]);
 
-  // ⌘K: command palette. ⌘N / Ctrl+N: new thread. ⌘⇧D: changes. Esc: stop the running turn.
+  // ⌘K: command palette. ⌘\: sidebar. ⌘N / Ctrl+N: new thread. ⌘⇧D: changes. Esc: stop the running turn.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
@@ -60,6 +60,9 @@ export function App() {
       } else if (mod && e.shiftKey && e.key.toLowerCase() === "d") {
         e.preventDefault();
         showInspector("changes");
+      } else if (mod && e.key === "\\") {
+        e.preventDefault();
+        toggleSidebar();
       } else if (e.ctrlKey && e.key === "`") {
         e.preventDefault();
         useStore.getState().toggleTerminal();

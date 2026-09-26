@@ -170,6 +170,11 @@ export function applyTheme(theme: SettingsView["theme"]): void {
   window.dispatchEvent(new Event("unskilled-theme"));
 }
 
+/** The motion preference on <html data-motion>; app.css plays entrances only for subtle/full. */
+export function applyMotion(motion: SettingsView["motion"]): void {
+  document.documentElement.dataset.motion = motion ?? "instant";
+}
+
 export function isDark(): boolean {
   const forced = document.documentElement.dataset.theme;
   return forced ? forced === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
@@ -347,6 +352,7 @@ export const useStore = create<State>((set, get) => ({
       .listEditors()
       .then((editors) => set({ editors }));
     applyTheme(settings.theme);
+    applyMotion(settings.motion);
     const threads: Record<string, Thread[]> = {};
     for (const p of projects) threads[p.id] = await api().listThreads(p.id);
     for (const p of projects) void get().loadBranch(p.id);
@@ -583,6 +589,7 @@ export const useStore = create<State>((set, get) => ({
         return;
       case "settings":
         applyTheme(update.settings.theme);
+        applyMotion(update.settings.motion);
         // A broadcast during a drag would fight the pointer; keep the local layout then.
         set((s) => ({
           settings: update.settings,

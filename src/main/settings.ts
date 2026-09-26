@@ -23,7 +23,7 @@ export interface SecretBox {
   decrypt(b64: string): string;
 }
 
-const DEFAULTS: Settings = { theme: "system", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {}, paneLayout: { ...DEFAULT_LAYOUT } };
+const DEFAULTS: Settings = { theme: "system", motion: "instant", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {}, paneLayout: { ...DEFAULT_LAYOUT } };
 
 interface FileShape {
   schemaVersion?: number; // absent = the legacy v1 shape
@@ -133,6 +133,7 @@ export class SettingsStore {
   update(patch: Partial<Settings>): Settings {
     const next = { ...this.get() };
     if (patch.theme && ["system", "light", "dark"].includes(patch.theme)) next.theme = patch.theme;
+    if (patch.motion && ["instant", "subtle", "full"].includes(patch.motion)) next.motion = patch.motion;
     if (patch.defaultAgent !== undefined) next.defaultAgent = patch.defaultAgent;
     if (patch.defaultPermissionMode && (["ask", "auto-edit", "full"] as PermissionMode[]).includes(patch.defaultPermissionMode)) {
       next.defaultPermissionMode = patch.defaultPermissionMode;

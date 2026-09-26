@@ -212,6 +212,7 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 
 .pane-rail { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0; background: var(--bg-sidebar); border-right: 1px solid var(--hairline); min-width: 0; }
 .pane-rail .rail-top { height: calc(var(--titlebar) - 10px); display: flex; align-items: flex-end; }
+.pane-rail .rail-foot { margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 6px; }
 
 /* ---------- buttons ---------- */
 
@@ -491,7 +492,6 @@ details.tool[open]::details-content { height: auto; }
   border-radius: var(--radius-l);
   padding: 14px 16px;
   margin: 14px 0;
-  animation: rise 220ms var(--ease);
 }
 .permission-card .head { font-weight: 600; margin-bottom: 6px; }
 .permission-card code {
@@ -594,7 +594,6 @@ details.tool[open]::details-content { height: auto; }
   border-radius: var(--radius-m);
   box-shadow: var(--shadow-pop);
   padding: 6px;
-  animation: rise 160ms var(--ease);
   z-index: 10;
 }
 .skill-menu .item { display: flex; gap: 10px; align-items: baseline; padding: 7px 10px; border-radius: var(--radius-s); }
@@ -612,9 +611,17 @@ details.tool[open]::details-content { height: auto; }
   border-left: 1px solid var(--hairline);
   background: var(--bg);
   min-width: 0;
-  animation: slide-in 220ms var(--ease);
 }
 @keyframes slide-in { from { opacity: 0; transform: translateX(12px); } }
+
+/* Entrances play only when Settings → Motion asks for them (default instant) and the OS allows motion. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-motion="full"] .inspector { animation: slide-in 220ms var(--ease); }
+  [data-motion="subtle"] .inspector { animation: slide-in 120ms var(--ease); }
+  [data-motion="full"] .permission-card { animation: rise 220ms var(--ease); }
+  [data-motion="subtle"] .permission-card { animation: rise 120ms var(--ease); }
+  [data-motion="full"] .skill-menu, [data-motion="subtle"] .skill-menu { animation: rise 160ms var(--ease); }
+}
 .inspector-head {
   height: var(--titlebar);
   display: flex;

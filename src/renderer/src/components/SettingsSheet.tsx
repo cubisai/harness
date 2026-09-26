@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { PermissionMode, Theme } from "../../../shared/types";
+import type { Motion, PermissionMode, Theme } from "../../../shared/types";
 import { api } from "../api";
 import { ProvidersSection } from "./ProviderSheet";
 import { useStore } from "../store";
@@ -8,6 +8,12 @@ const THEMES: { id: Theme; label: string }[] = [
   { id: "system", label: "System" },
   { id: "light", label: "Light" },
   { id: "dark", label: "Dark" },
+];
+
+const MOTIONS: { id: Motion; label: string }[] = [
+  { id: "instant", label: "Instant" },
+  { id: "subtle", label: "Subtle" },
+  { id: "full", label: "Full" },
 ];
 
 const MODES: { id: PermissionMode; label: string }[] = [
@@ -62,6 +68,16 @@ export function SettingsSheet() {
               {THEMES.map((t) => (
                 <button key={t.id} className={settings.theme === t.id ? "on" : ""} onClick={() => update({ theme: t.id })}>
                   {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="row">
+            <span className="label" title="Your system's reduce-motion setting always wins">Motion</span>
+            <div className="segmented">
+              {MOTIONS.map((m) => (
+                <button key={m.id} className={(settings.motion ?? "instant") === m.id ? "on" : ""} onClick={() => update({ motion: m.id })}>
+                  {m.label}
                 </button>
               ))}
             </div>
