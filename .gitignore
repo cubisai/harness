@@ -3,3 +3,5 @@ out/
 dist/
 *.tsbuildinfo
 .DS_Store
+.ai/
+.claude/

@@ -375,21 +375,20 @@ Hermes, Reasonix, WorkBuddy/CodeBuddy, Qoder. [P] ✅ (verified the sidebar in f
 9. https://opencode.ai/v2/docs/providers/
 10. https://opencode.ai/v2/docs/config/
 11. https://opencode.ai/v2/docs/cli/acp
-12. https://opencode.ai/v2/docs/lsp
-13. https://raw.githubusercontent.com/anomalyco/opencode/v2/package.json
-14. https://github.com/charmbracelet/crush
+12. https://raw.githubusercontent.com/anomalyco/opencode/v2/package.json
+13. https://github.com/charmbracelet/crush
 
 ### ZCode
-15. https://zcode.z.ai/en
-16. https://zcode.z.ai/en/docs/install
-17. https://zcode.z.ai/en/docs/configuration
-18. https://zcode.z.ai/en/docs/agent-framework
-19. https://zcode.z.ai/en/docs/subagents
-20. https://zcode.z.ai/en/docs/mcp-services
-21. https://zcode.z.ai/en/changelog
-22. https://docs.z.ai/devpack/tool/zcode
-23. https://docs.z.ai/devpack/tool/claude
-24. https://github.com/kingsword09/zcode-cli · https://github.com/yangmain/zcode-acp
+14. https://zcode.z.ai/en
+15. https://zcode.z.ai/en/docs/install
+16. https://zcode.z.ai/en/docs/configuration
+17. https://zcode.z.ai/en/docs/agent-framework
+18. https://zcode.z.ai/en/docs/subagents
+19. https://zcode.z.ai/en/docs/mcp-services
+20. https://zcode.z.ai/en/changelog
+21. https://docs.z.ai/devpack/tool/zcode
+22. https://docs.z.ai/devpack/tool/claude
+23. https://github.com/kingsword09/zcode-cli · https://github.com/yangmain/zcode-acp
 
 ### WorkBuddy
 25. https://api-docs.deepseek.com/quick_start/agent_integrations/workbuddy/
