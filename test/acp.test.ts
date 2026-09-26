@@ -248,6 +248,74 @@ describe("ACP driver", () => {
     expect(t.events.some((e) => e.kind === "notice" && e.text === "Stopped.")).toBe(true);
   });
 
+  it("streams thought chunks, keyed before the terminal thinking event", async () => {
+    const d = driver();
+    const log: { kind: string; [key: string]: unknown }[] = [];
+    const reasoning: { itemId: string; text: string; opaque: boolean }[] = [];
+    const t = turn("reason", {
+      onEvent: (e) => log.push(e as { kind: string }),
+      onReasoningDelta: (r) => {
+        reasoning.push(r);
+        log.push({ kind: "cb-reasoning", ...r });
+      },
+    });
+    await d.runTurn(t.input);
+
+    expect(reasoning.map((r) => r.text)).toEqual(["wait", "let me think", "aha"]);
+    expect(reasoning.map((r) => r.opaque)).toEqual([false, false, false]);
+    const thinkingIndex = log.findIndex((e) => e.kind === "thinking");
+    const lastDeltaIndex = log.reduce((last, e, i) => (e.kind === "cb-reasoning" ? i : last), -1);
+    expect(thinkingIndex).toBeGreaterThan(lastDeltaIndex);
+    expect(log[thinkingIndex]).toMatchObject({ kind: "thinking", itemId: reasoning[0]!.itemId });
+  });
+
+  it("surfaces intermediate tool output before the terminal result", async () => {
+    const d = driver();
+    const log: { kind: string; [key: string]: unknown }[] = [];
+    const toolOutputs: { toolUseId: string; text: string }[] = [];
+    const t = turn("tool", {
+      onEvent: (e) => log.push(e as { kind: string }),
+      onToolOutputDelta: (o) => {
+        toolOutputs.push(o);
+        log.push({ kind: "cb-tool-output", ...o });
+      },
+    });
+    await d.runTurn(t.input);
+
+    expect(toolOutputs).toContainEqual({ toolUseId: "t1", text: "running" });
+    const outputIndex = log.findIndex((e) => e.kind === "cb-tool-output" && e.toolUseId === "t1");
+    const resultIndex = log.findIndex((e) => e.kind === "tool-result" && e.toolUseId === "t1");
+    expect(outputIndex).toBeGreaterThanOrEqual(0);
+    expect(resultIndex).toBeGreaterThan(outputIndex);
+  });
+
+  it("flushes streamed text before the Stopped notice when cancelled", async () => {
+    const d = driver();
+    const log: { kind: string; [key: string]: unknown }[] = [];
+    const deltas: string[] = [];
+    const t = turn("slow", {
+      onEvent: (e) => log.push(e as { kind: string }),
+      onTextDelta: (text) => {
+        deltas.push(text);
+        log.push({ kind: "cb-text", text });
+      },
+    });
+    const running = d.runTurn(t.input);
+    // Abort only once something has streamed: a fixed sleep races a slow agent start under load.
+    for (let i = 0; i < 200 && deltas.length < 2; i++) await new Promise((r) => setTimeout(r, 25));
+    t.controller.abort();
+    await running;
+
+    const assistant = log.find((e) => e.kind === "assistant-text");
+    expect(assistant).toBeDefined();
+    const text = String(assistant?.text ?? "");
+    expect(deltas.length).toBeGreaterThan(0);
+    for (const delta of deltas) expect(text).toContain(delta);
+    const assistantIndex = log.findIndex((e) => e.kind === "assistant-text");
+    const stoppedIndex = log.findIndex((e) => e.kind === "notice" && e.text === "Stopped.");
+    expect(stoppedIndex).toBeGreaterThan(assistantIndex);
+  });
+
   it("stops when aborted before startup finishes", async () => {
     const d = driver();
     const t = turn("world");

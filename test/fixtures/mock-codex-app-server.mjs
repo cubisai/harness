@@ -9,6 +9,7 @@
 //   "plan" - sends turn/plan/updated, then the normal reply
 //   "compact" - sends a contextCompaction item, then the normal reply
 //   "cached" - the normal reply, but reports cached input tokens
+//   "reason" - streams reasoning text and summaries plus a command's output, then replies
 //   other  - replies "Hi, <prompt>" in two deltas
 // Like Codex, a thread keeps the config it was loaded with until it is
 // unsubscribed (unloaded); resuming a loaded thread doesn't change it.
@@ -168,7 +169,25 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
         notify("item/started", { threadId, turnId: turn.id, item: { type: "contextCompaction", id: "cc1" } });
         notify("item/completed", { threadId, turnId: turn.id, item: { type: "contextCompaction", id: "cc1" } });
       }
-      notify("item/completed", { threadId, turnId: turn.id, item: { type: "reasoning", id: "r1", summary: ["Considering it."], content: [] } });
+      if (text === "reason") {
+        notify("item/started", { threadId, turnId: turn.id, item: { type: "reasoning", id: "r1", summary: [], content: [] } });
+        notify("item/reasoning/textDelta", { threadId, turnId: turn.id, itemId: "r1", contentIndex: 0, delta: "Let me " });
+        notify("item/reasoning/textDelta", { threadId, turnId: turn.id, itemId: "r1", contentIndex: 0, delta: "see." });
+        notify("item/reasoning/summaryTextDelta", { threadId, turnId: turn.id, itemId: "r1", summaryIndex: 0, delta: "Looking" });
+        notify("item/reasoning/summaryPartAdded", { threadId, turnId: turn.id, itemId: "r1", summaryIndex: 1 });
+        notify("item/reasoning/summaryTextDelta", { threadId, turnId: turn.id, itemId: "r1", summaryIndex: 1, delta: "Checking" });
+        notify("item/completed", {
+          threadId,
+          turnId: turn.id,
+          item: { type: "reasoning", id: "r1", summary: ["Looking", "Checking"], content: [] },
+        });
+        const cmd = { type: "commandExecution", id: "c2", command: "ls", status: "inProgress", aggregatedOutput: null, exitCode: null };
+        notify("item/started", { threadId, turnId: turn.id, item: cmd });
+        notify("item/commandExecution/outputDelta", { threadId, turnId: turn.id, itemId: "c2", delta: "a.txt\n" });
+        notify("item/completed", { threadId, turnId: turn.id, item: { ...cmd, status: "completed", aggregatedOutput: "a.txt\n", exitCode: 0 } });
+      }
+      // The "reason" scenario reports its own reasoning item above.
+      if (text !== "reason") notify("item/completed", { threadId, turnId: turn.id, item: { type: "reasoning", id: "r1", summary: ["Considering it."], content: [] } });
       notify("item/agentMessage/delta", { threadId, turnId: turn.id, itemId: "m2", delta: "Hi, " });
       notify("item/agentMessage/delta", { threadId, turnId: turn.id, itemId: "m2", delta: text });
       notify("item/completed", { threadId, turnId: turn.id, item: { type: "agentMessage", id: "m2", text: `Hi, ${text}` } });

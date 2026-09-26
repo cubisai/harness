@@ -134,11 +134,18 @@ interface TurnState {
   input: TurnInput;
   text: string;
   thought: string;
-  tools: Map<string, { name: string; done: boolean }>;
+  tools: Map<string, { name: string; done: boolean; streamed?: string }>;
   usage: { used: number; costUsd: number | null };
+  /** Bumped when flushText emits an item, so the next run of chunks gets fresh keys. */
+  run: number;
 }
 
 const IDLE_MS = 10 * 60_000;
+
+/** The live item key for a run of chunks; flushText bumps `run` to start a new one. */
+function itemKey(t: TurnState, kind: "text" | "thought"): string {
+  return `${kind}-${t.run}`;
+}
 
 /**
  * Drives any agent speaking the Agent Client Protocol over stdio. One agent
@@ -190,10 +197,18 @@ export function createAcpDriver(
   };
 
   const flushText = (t: TurnState) => {
-    if (t.thought.trim()) t.input.onEvent({ kind: "thinking", text: t.thought });
-    if (t.text.trim()) t.input.onEvent({ kind: "assistant-text", text: t.text });
+    let flushed = false;
+    if (t.thought.trim()) {
+      t.input.onEvent({ kind: "thinking", text: t.thought, itemId: itemKey(t, "thought") });
+      flushed = true;
+    }
+    if (t.text.trim()) {
+      t.input.onEvent({ kind: "assistant-text", text: t.text, itemId: itemKey(t, "text") });
+      flushed = true;
+    }
     t.text = "";
     t.thought = "";
+    if (flushed) t.run++;
   };
 
   const onUpdate = (l: Live, update: SessionUpdate) => {
@@ -203,13 +218,18 @@ export function createAcpDriver(
         const text = (update as { content: { text?: string } }).content.text ?? "";
         if (t && text) {
           t.text += text;
-          t.input.onTextDelta(text);
+          t.input.onTextDelta(text, itemKey(t, "text"));
         }
         return;
       }
-      case "agent_thought_chunk":
-        if (t) t.thought += (update as { content: { text?: string } }).content.text ?? "";
+      case "agent_thought_chunk": {
+        const text = (update as { content: { text?: string } }).content.text ?? "";
+        if (t && text) {
+          t.thought += text;
+          t.input.onReasoningDelta?.({ itemId: itemKey(t, "thought"), text, opaque: false });
+        }
         return;
+      }
       case "tool_call":
       case "tool_call_update": {
         if (!t) return;
@@ -221,9 +241,17 @@ export function createAcpDriver(
           t.tools.set(u.toolCallId, tool);
           t.input.onEvent({ kind: "tool-use", toolUseId: u.toolCallId, name: kindLabel(u.kind), summary: u.title ?? "" });
         }
+        const text = (u.content ?? []).map((c) => c.content?.text ?? "").join(" ");
+        // An update's content replaces the previous one (a snapshot, not an
+        // increment): stream only what it adds when it extends what was sent.
+        if (!tool.done && text && u.status !== "completed" && u.status !== "failed") {
+          const sent = tool.streamed ?? "";
+          const added = text.startsWith(sent) ? text.slice(sent.length) : `\n${text}`;
+          if (added) t.input.onToolOutputDelta?.({ toolUseId: u.toolCallId, text: added });
+          tool.streamed = text;
+        }
         if (!tool.done && (u.status === "completed" || u.status === "failed")) {
           tool.done = true;
-          const text = (u.content ?? []).map((c) => c.content?.text ?? "").join(" ");
           t.input.onEvent({
             kind: "tool-result",
             toolUseId: u.toolCallId,
@@ -234,10 +262,15 @@ export function createAcpDriver(
         return;
       }
       case "usage_update": {
-        const u = update as { used: number; cost?: { amount: number; currency: string } | null };
+        const u = update as { used: number; size: number; cost?: { amount: number; currency: string } | null };
         if (t) {
           t.usage.used = u.used;
           if (u.cost?.currency === "USD") t.usage.costUsd = u.cost.amount;
+          t.input.onUsageUpdate?.({
+            contextUsed: u.used,
+            contextSize: u.size,
+            ...(u.cost?.currency === "USD" ? { costUsd: u.cost.amount } : {}),
+          });
         }
         return;
       }
@@ -480,7 +513,7 @@ export function createAcpDriver(
         return;
       }
       clearTimeout(l.idleTimer);
-      const turn: TurnState = { input, text: "", thought: "", tools: new Map(), usage: { used: 0, costUsd: null } };
+      const turn: TurnState = { input, text: "", thought: "", tools: new Map(), usage: { used: 0, costUsd: null }, run: 0 };
       l.turn = turn;
       const started = Date.now();
       const onAbort = () => l.conn.notify("session/cancel", { sessionId: l.sessionId });

@@ -152,6 +152,8 @@ interface TurnState {
   threadId: string;
   turnId: string | null;
   deltas: Map<string, string>;
+  /** Verbatim reasoning text per itemId; never mixed into `deltas` (that flushes as assistant text). */
+  reasoning: Map<string, string>;
   usage: TokenBreakdown | null;
   /** Retrying errors already shown this turn, so each shows once. */
   retrying: Set<string>;
@@ -193,15 +195,39 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       config.onLimits?.(codexLimitsPatch((params as { rateLimits: CodexRateLimits }).rateLimits));
       return;
     }
-    const p = params as { threadId?: string; turnId?: string; itemId?: string; delta?: string; item?: ThreadItem; turn?: Turn };
+    const p = params as {
+      threadId?: string;
+      turnId?: string;
+      itemId?: string;
+      delta?: string;
+      contentIndex?: number;
+      summaryIndex?: number;
+      item?: ThreadItem;
+      turn?: Turn;
+    };
     const t = p.threadId ? turns.get(p.threadId) : undefined;
     if (!t) return;
     switch (method) {
       case "item/agentMessage/delta":
         if (p.itemId && p.delta) {
           t.deltas.set(p.itemId, (t.deltas.get(p.itemId) ?? "") + p.delta);
-          t.input.onTextDelta(p.delta);
+          t.input.onTextDelta(p.delta, p.itemId);
         }
+        return;
+      case "item/reasoning/textDelta":
+        if (p.itemId && p.delta) {
+          t.reasoning.set(p.itemId, (t.reasoning.get(p.itemId) ?? "") + p.delta);
+          t.input.onReasoningDelta?.({ itemId: p.itemId, text: p.delta, opaque: false });
+        }
+        return;
+      case "item/reasoning/summaryTextDelta":
+        if (p.itemId && p.delta) t.input.onReasoningSummary?.({ itemId: p.itemId, index: p.summaryIndex ?? 0, text: p.delta });
+        return;
+      case "item/reasoning/summaryPartAdded":
+        // No state to keep: the next summaryTextDelta carries its own summaryIndex.
+        return;
+      case "item/commandExecution/outputDelta":
+        if (p.itemId && p.delta) t.input.onToolOutputDelta?.({ toolUseId: p.itemId, text: p.delta });
         return;
       case "item/started":
         if (p.item) onItemStarted(t, p.item);
@@ -209,9 +235,12 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       case "item/completed":
         if (p.item) onItemCompleted(t, p.item);
         return;
-      case "thread/tokenUsage/updated":
-        t.usage = (params as { tokenUsage: { last: TokenBreakdown } }).tokenUsage.last;
+      case "thread/tokenUsage/updated": {
+        const last = (params as { tokenUsage: { last: TokenBreakdown } }).tokenUsage.last;
+        t.usage = last;
+        t.input.onUsageUpdate?.({ inputTokens: last.inputTokens, outputTokens: last.outputTokens, cacheReadTokens: last.cachedInputTokens ?? null });
         return;
+      }
       case "turn/plan/updated": {
         const plan = (params as { plan: { step: string; status: "pending" | "inProgress" | "completed" }[] }).plan;
         t.input.onEvent({
@@ -260,13 +289,14 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     if (item.type === "agentMessage") {
       const text = (item as { text: string }).text || t.deltas.get(item.id) || "";
       t.deltas.delete(item.id);
-      if (text.trim()) t.input.onEvent({ kind: "assistant-text", text });
+      if (text.trim()) t.input.onEvent({ kind: "assistant-text", text, itemId: item.id });
       return;
     }
     if (item.type === "reasoning") {
       const r = item as { summary: string[] };
-      const text = r.summary.join("\n\n").trim();
-      if (text) t.input.onEvent({ kind: "thinking", text });
+      const text = r.summary.join("\n\n").trim() || t.reasoning.get(item.id)?.trim() || "";
+      if (text) t.input.onEvent({ kind: "thinking", text, itemId: item.id });
+      t.reasoning.delete(item.id);
       return;
     }
     if (!toolFor(item)) return;
@@ -460,7 +490,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       const started = Date.now();
       let resolveTurn!: (t: Turn) => void;
       const finished = new Promise<Turn>((r) => (resolveTurn = r));
-      const state: TurnState = { input, threadId, turnId: null, deltas: new Map(), usage: null, retrying: new Set(), compacted: false, done: resolveTurn };
+      const state: TurnState = { input, threadId, turnId: null, deltas: new Map(), reasoning: new Map(), usage: null, retrying: new Set(), compacted: false, done: resolveTurn };
       turns.set(threadId, state);
       const onAbort = () => {
         if (state.turnId) void conn.request("turn/interrupt", { threadId, turnId: state.turnId }).catch(() => {});
@@ -476,7 +506,10 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         state.turnId ??= res.turn.id;
         if (input.signal.aborted) onAbort();
         const turn = await finished;
-        for (const text of state.deltas.values()) if (text.trim()) input.onEvent({ kind: "assistant-text", text });
+        // Flush what the terminal events didn't: thinking first, then assistant
+        // text, both before the interrupted-turn notice.
+        for (const [itemId, text] of state.reasoning) if (text.trim()) input.onEvent({ kind: "thinking", text, itemId });
+        for (const [itemId, text] of state.deltas) if (text.trim()) input.onEvent({ kind: "assistant-text", text, itemId });
         if (turn.status === "interrupted") input.onEvent({ kind: "notice", text: "Stopped." });
         else if (turn.status === "failed") input.onEvent({ kind: "error", message: `Codex: ${turn.error?.message ?? "the turn failed."}` });
         input.onEvent(turnEndFromUsage(state.usage ?? undefined, turn.durationMs ?? Date.now() - started));

@@ -27,6 +27,7 @@ const EXACT_DEFAULTS = {
   webSearch: false,
   planMode: false,
   interrupt: false,
+  liveReasoning: false,
   skillsDelivery: { mode: "none" },
   permissionGranularity: "modeOnly",
   guardEnforcement: { ask: "warnOnly", "auto-edit": "warnOnly", full: "warnOnly" },

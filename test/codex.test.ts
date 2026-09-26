@@ -178,6 +178,73 @@ describe("Codex driver", () => {
     expect(t.events.some((e) => e.kind === "notice" && e.text === "Stopped.")).toBe(true);
   });
 
+  it("streams reasoning, summaries, and tool output, keyed by item id", async () => {
+    const d = driver();
+    const log: { kind: string; [key: string]: unknown }[] = [];
+    const reasoning: { itemId: string; text: string; opaque: boolean }[] = [];
+    const summaries: { itemId: string; index: number; text: string }[] = [];
+    const toolOutputs: { toolUseId: string; text: string }[] = [];
+    const t = turn("reason", {
+      onEvent: (e) => log.push(e as { kind: string }),
+      onReasoningDelta: (r) => {
+        reasoning.push(r);
+        log.push({ kind: "cb-reasoning", ...r });
+      },
+      onReasoningSummary: (s) => {
+        summaries.push(s);
+        log.push({ kind: "cb-summary", ...s });
+      },
+      onToolOutputDelta: (o) => {
+        toolOutputs.push(o);
+        log.push({ kind: "cb-tool-output", ...o });
+      },
+    });
+    await d.runTurn(t.input);
+
+    expect(reasoning).toEqual([
+      { itemId: "r1", text: "Let me ", opaque: false },
+      { itemId: "r1", text: "see.", opaque: false },
+    ]);
+    expect(summaries).toEqual([
+      { itemId: "r1", index: 0, text: "Looking" },
+      { itemId: "r1", index: 1, text: "Checking" },
+    ]);
+    expect(toolOutputs).toContainEqual({ toolUseId: "c2", text: "a.txt\n" });
+    expect(log.find((e) => e.kind === "thinking")).toMatchObject({ kind: "thinking", itemId: "r1", text: "Looking\n\nChecking" });
+    expect(log.find((e) => e.kind === "assistant-text")).toMatchObject({ kind: "assistant-text", itemId: "m2" });
+    const outputIndex = log.findIndex((e) => e.kind === "cb-tool-output" && e.toolUseId === "c2");
+    const resultIndex = log.findIndex((e) => e.kind === "tool-result" && e.toolUseId === "c2");
+    expect(outputIndex).toBeGreaterThanOrEqual(0);
+    expect(resultIndex).toBeGreaterThan(outputIndex);
+  });
+
+  it("flushes streamed text before the Stopped notice when interrupted", async () => {
+    const d = driver();
+    const log: { kind: string; [key: string]: unknown }[] = [];
+    const deltas: string[] = [];
+    const t = turn("slow", {
+      onEvent: (e) => log.push(e as { kind: string }),
+      onTextDelta: (text) => {
+        deltas.push(text);
+        log.push({ kind: "cb-text", text });
+      },
+    });
+    const running = d.runTurn(t.input);
+    // Abort only once something has streamed: a fixed sleep races a slow start under load.
+    for (let i = 0; i < 200 && deltas.length < 2; i++) await new Promise((r) => setTimeout(r, 25));
+    t.controller.abort();
+    await running;
+
+    const assistant = log.find((e) => e.kind === "assistant-text");
+    expect(assistant).toBeDefined();
+    const text = String(assistant?.text ?? "");
+    expect(deltas.length).toBeGreaterThan(0);
+    for (const delta of deltas) expect(text).toContain(delta);
+    const assistantIndex = log.findIndex((e) => e.kind === "assistant-text");
+    const stoppedIndex = log.findIndex((e) => e.kind === "notice" && e.text === "Stopped.");
+    expect(stoppedIndex).toBeGreaterThan(assistantIndex);
+  });
+
   it("starts with turn-start before any content event", async () => {
     const d = driver();
     const t = turn("there");

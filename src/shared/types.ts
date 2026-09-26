@@ -403,6 +403,8 @@ export interface AgentCapabilities {
   webSearch: boolean;
   planMode: boolean;
   interrupt: boolean;
+  /** Reasoning arrives as it's produced; when false the UI says it shows up at the end. */
+  liveReasoning?: boolean;
   skillsDelivery: SkillsDelivery;
   permissionGranularity: "perTool" | "perCommand" | "modeOnly";
   /** Per permission mode: whether the git guardrail can veto a command before it runs. */
