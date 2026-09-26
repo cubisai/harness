@@ -19,6 +19,7 @@ export const ACP_PRESETS: AcpAgentConfig[] = [
     // (packages/skill/skill-filesystem: DSH_BUNDLED_SKILL_DIR).
     skillsDirEnv: "DSH_BUNDLED_SKILL_DIR",
     capabilities: { mcpStdio: true, interrupt: true, perMessageModel: true },
+    keyVar: "DEEPSEEK_API_KEY",
     install: "npm install -g @deepseek-ai/dsh",
     homepage: "https://github.com/deepseek-ai/deepseek-harness",
   },
@@ -31,6 +32,8 @@ export const ACP_PRESETS: AcpAgentConfig[] = [
     command: "agy-acp",
     args: [],
     capabilities: { mcpStdio: true, interrupt: true, perMessageModel: false, skillsDelivery: { mode: "projectWrite", prefix: "" } },
+    // Its provider setting is unverified (spike S6).
+    providerEnvOnly: true,
     install: "npm install -g agy-acp",
     homepage: "https://github.com/shindgew/agy-acp",
   },
@@ -104,7 +107,7 @@ export function loadAcpAgents(configFile: string, isInstalled: (cmd: string) => 
       // agents.json declares no capabilities: a user entry gets SAFE_DEFAULTS
       // (and only skillsDirEnv upgrades it to envDir), so it can never claim
       // support the driver hasn't verified. Injector/guard metadata is preset-only.
-      custom = parsed.map(({ capabilities: _ignored, injector: _injector, guardPlugin: _guardPlugin, ...rest }) => rest);
+      custom = parsed.map(({ capabilities: _ignored, injector: _injector, guardPlugin: _guardPlugin, keyVar: _keyVar, providerEnvOnly: _providerEnvOnly, ...rest }) => rest);
     } catch (err) {
       problems.push(`agents.json is not valid JSON: ${err instanceof Error ? err.message : String(err)}`);
     }

@@ -5,6 +5,7 @@ import { joinCommandLine, splitCommandLine } from "../cmdline";
 import { IconCopy } from "../icons";
 import { Markdown } from "../markdown";
 import { useStore, type LibraryTab } from "../store";
+import { CantDoList, CapabilityChips } from "./Capabilities";
 
 const TABS: { id: "experts" | "skills" | "connectors"; label: string; icon: string }[] = [
   { id: "experts", label: "Experts", icon: "🧑‍💼" },
@@ -323,6 +324,12 @@ function ExpertsTab() {
                 </div>
               </div>
               <p className="wb-card-desc">{a.skills || a.mcp || "AI Coding Agent"}</p>
+              {a.capabilities && (
+                <>
+                  <CapabilityChips capabilities={a.capabilities} />
+                  <CantDoList capabilities={a.capabilities} />
+                </>
+              )}
               <div className="wb-card-footer">
                 <div className="wb-tags">
                   <span className="wb-tag">{a.installed ? "Installed" : "Not Installed"}</span>

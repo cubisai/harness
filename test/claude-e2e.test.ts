@@ -172,7 +172,7 @@ describe("Claude end to end (real Claude Code, fake API)", () => {
     const driver = createClaudeDriver({
       pluginDir: () => ensurePlugin(catalog(), join(pluginRoot, "skilled-plugin")),
       guardScript: join(__dirname, "missing-guard.py"), // Bash never runs in this turn
-      injection: () => injectionFor(planSource, "claude", process.env),
+      injection: () => injectionFor(planSource, "claude", process.env, { injector: "claude" }),
     });
     const events: ThreadEvent[] = [];
     let text = "";

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
 import { agentCatalog, skillDetail, skillRoute } from "../src/main/library";
 import { catalog } from "./helpers";
 
@@ -29,6 +30,14 @@ describe("agentCatalog", () => {
     expect(byId.deepseek!.skills).toMatch(/DSH_BUNDLED_SKILL_DIR/);
     expect(byId.antigravity!).toMatchObject({ command: "agy-acp", install: "npm install -g agy-acp" });
     expect(byId.antigravity!.skills).toMatch(/install/);
+  });
+
+  it("gives every entry capabilities, and prefers a live patched set", () => {
+    const list = agentCatalog({ installed: () => true, custom: [] });
+    for (const entry of list) expect(entry.capabilities).toBeDefined();
+    const patched = { ...SAFE_DEFAULTS, mcpHttp: true };
+    const withLive = agentCatalog({ installed: () => true, custom: [], liveCapabilities: (id) => (id === "opencode" ? patched : undefined) });
+    expect(withLive.find((a) => a.id === "opencode")!.capabilities).toBe(patched);
   });
 });
 

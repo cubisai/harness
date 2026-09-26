@@ -188,7 +188,7 @@ describe.skipIf(!onPath("opencode") || !findPython())("OpenCode guard plugin end
       clientVersion: "test",
       guardScript: GUARD,
       injection: () =>
-        withOpenCodeGuard(injectionFor(injected, "opencode", process.env, { opencodeVersion: () => opencodeVersion(preset.command) }), {
+        withOpenCodeGuard(injectionFor(injected, "opencode", process.env, { injector: "opencode", opencodeVersion: () => opencodeVersion(preset.command) }), {
           pluginUrl,
           script: GUARD,
           python: findPython()!,

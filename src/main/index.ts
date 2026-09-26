@@ -167,7 +167,7 @@ async function main(): Promise<void> {
     pluginDir: () => ensurePlugin(catalog, pluginDir),
     guardScript,
     onLimits: limits.for("claude"),
-    injection: () => injectionFor(settings, "claude"),
+    injection: () => injectionFor(settings, "claude", process.env, { injector: "claude" }),
     byokModels: () => {
       const c = settings.credential("claude");
       if (c.kind !== "byok") return null;
@@ -206,6 +206,7 @@ async function main(): Promise<void> {
             injection: () =>
               prepareCodexPlan(
                 injectionFor(settings, "codex", process.env, {
+                  injector: "codex",
                   codexCatalogDir: join(userData, "codex-catalogs"),
                   codexInstructions: () => codexInstructions("codex"),
                 }),
@@ -235,6 +236,9 @@ async function main(): Promise<void> {
         guardScript,
         injection: () => {
           const plan = injectionFor(settings, config.id, process.env, {
+            injector: config.injector ?? "acp",
+            keyVar: config.keyVar,
+            providerEnvOnly: config.providerEnvOnly,
             agentLabel: config.label,
             ...(config.injector === "opencode" ? { opencodeVersion: () => opencodeVersion(config.command) } : {}),
           });
@@ -265,7 +269,12 @@ async function main(): Promise<void> {
   );
 
   // The Library: skills, agents, and MCP servers, as the agents will see them.
-  const catalogOfAgents = () => agentCatalog({ installed: (c) => onPath(c), custom: customAgents });
+  const catalogOfAgents = () =>
+    agentCatalog({
+      installed: (c) => onPath(c),
+      custom: customAgents,
+      liveCapabilities: (id) => service.listAgents().find((a) => a.id === id)?.capabilities,
+    });
   const projectPathOf = (projectId: string | null) => {
     try {
       return projectId ? store.getProject(projectId).path : null;
@@ -493,7 +502,7 @@ async function main(): Promise<void> {
     first.webContents.once("did-finish-load", async () => {
       try {
         const ok = await first.webContents.executeJavaScript(
-          "typeof window.unskilled === 'object' && Promise.all([window.unskilled.listSkills(), window.unskilled.getSettings(), window.unskilled.listAllSkills(), window.unskilled.getMcp(null), window.unskilled.listAgentCatalog()]).then(([s, st, all, mcp, agents]) => Array.isArray(s) && typeof st.theme === 'string' && Array.isArray(all) && mcp.builtIn.tools.length > 0 && agents.some((a) => a.id === 'claude'))",
+          "typeof window.unskilled === 'object' && Promise.all([window.unskilled.listSkills(), window.unskilled.getSettings(), window.unskilled.listAllSkills(), window.unskilled.getMcp(null), window.unskilled.listAgentCatalog()]).then(([s, st, all, mcp, agents]) => Array.isArray(s) && typeof st.theme === 'string' && Array.isArray(all) && mcp.builtIn.tools.length > 0 && agents.some((a) => a.kind === 'agent-sdk'))",
         );
         // A packaged build must be able to launch the Claude Code binary the
         // Agent SDK ships, from outside the asar archive.

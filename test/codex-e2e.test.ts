@@ -145,6 +145,7 @@ describe.skipIf(!codex)("Codex end to end (real app-server, fake model)", () => 
     const catalogDir = mkdtempSync(join(tmpdir(), "unskilled-codex-catalogs-"));
     const plan = prepareCodexPlan(
       injectionFor(source(provider(model.url)), "codex", process.env, {
+        injector: "codex",
         codexCatalogDir: catalogDir,
         codexInstructions: () => codexInstructions(codex!),
       }),
@@ -197,6 +198,7 @@ describe.skipIf(!codex)("Codex end to end (real app-server, fake model)", () => 
 
     const catalogDir = mkdtempSync(join(tmpdir(), "unskilled-codex-good-"));
     const plan = injectionFor(source(provider("https://gw.example.com/v1")), "codex", env, {
+      injector: "codex",
       codexCatalogDir: catalogDir,
       codexInstructions: () => codexInstructions(codex!, env),
     });

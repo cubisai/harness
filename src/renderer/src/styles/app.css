@@ -416,6 +416,8 @@ button { cursor: default; }
   word-break: break-all;
 }
 .permission-card .actions { display: flex; gap: 8px; justify-content: flex-end; }
+.permission-guard { font-size: 11px; color: var(--text-secondary); margin-top: 8px; }
+.permission-guard.warn { color: var(--warning); }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
 
 /* ---------- empty states ---------- */
@@ -1104,6 +1106,16 @@ button.hunk:hover { color: var(--accent); }
   background: var(--bg-hover);
   color: var(--text-tertiary);
   white-space: nowrap;
+}
+.wb-cant {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 8px;
+}
+.wb-cant-title { font-weight: 600; }
+.wb-cant ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
 }
 .wb-action-btn {
   padding: 3px 10px;

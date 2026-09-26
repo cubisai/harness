@@ -38,7 +38,7 @@ function source(opts: { providers?: Provider[]; choice?: CredentialChoice; secre
 
 describe("injectionFor (Claude)", () => {
   it("starts from a copy of our environment", () => {
-    const plan = injectionFor(source(), "claude");
+    const plan = injectionFor(source(), "claude", process.env, { injector: "claude" });
     expect(plan.env.PATH).toBeDefined();
     expect(plan.env.HOME).toBeDefined();
     expect(plan.env.PATH).toBe(process.env.PATH);
@@ -46,7 +46,7 @@ describe("injectionFor (Claude)", () => {
   });
 
   it("sends a gateway key as a Bearer token and warns about feature loss", () => {
-    const plan = injectionFor(source({ providers: [provider({ baseURL: "https://gateway.example.com" })] }), "claude");
+    const plan = injectionFor(source({ providers: [provider({ baseURL: "https://gateway.example.com" })] }), "claude", process.env, { injector: "claude" });
     expect(plan.env.ANTHROPIC_AUTH_TOKEN).toBe(KEY);
     expect(plan.env.ANTHROPIC_API_KEY).toBeUndefined();
     expect(plan.warning).toMatch(/Remote Control/);
@@ -54,7 +54,7 @@ describe("injectionFor (Claude)", () => {
   });
 
   it("sends a first-party key as X-Api-Key with no warning", () => {
-    const plan = injectionFor(source({ providers: [provider({ baseURL: "https://api.anthropic.com" })] }), "claude");
+    const plan = injectionFor(source({ providers: [provider({ baseURL: "https://api.anthropic.com" })] }), "claude", process.env, { injector: "claude" });
     expect(plan.env.ANTHROPIC_API_KEY).toBe(KEY);
     expect(plan.env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
     expect(plan.warning).toBeUndefined();
@@ -68,7 +68,7 @@ describe("injectionFor (Claude)", () => {
       ANTHROPIC_BASE_URL: "https://stale.example.com",
       DEEPSEEK_API_KEY: "stale-c",
     };
-    const plan = injectionFor(source({ choice: { kind: "subscription" }, secretEnvNames: ["DEEPSEEK_API_KEY"] }), "claude", env);
+    const plan = injectionFor(source({ choice: { kind: "subscription" }, secretEnvNames: ["DEEPSEEK_API_KEY"] }), "claude", env, { injector: "claude" });
     expect(plan.byok).toBe(false);
     expect(plan.env.ANTHROPIC_API_KEY).toBeUndefined();
     expect(plan.env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
@@ -78,17 +78,17 @@ describe("injectionFor (Claude)", () => {
   });
 
   it("errors when Claude gets a non-Anthropic provider", () => {
-    const plan = injectionFor(source({ providers: [provider({ wireProtocol: "openai-chat" })] }), "claude");
+    const plan = injectionFor(source({ providers: [provider({ wireProtocol: "openai-chat" })] }), "claude", process.env, { injector: "claude" });
     expect(plan.error).toBeTruthy();
   });
 
   it("errors when the provider has no key saved", () => {
-    const plan = injectionFor(source({ secret: null }), "claude");
+    const plan = injectionFor(source({ secret: null }), "claude", process.env, { injector: "claude" });
     expect(plan.error).toBeTruthy();
   });
 
   it("passes custom headers and strips experimental betas", () => {
-    const plan = injectionFor(source({ providers: [provider({ headers: { "X-A": "1", "X-B": "2" }, betaHeaders: "strip" })] }), "claude");
+    const plan = injectionFor(source({ providers: [provider({ headers: { "X-A": "1", "X-B": "2" }, betaHeaders: "strip" })] }), "claude", process.env, { injector: "claude" });
     expect(plan.env.ANTHROPIC_CUSTOM_HEADERS).toBe("X-A: 1\nX-B: 2");
     expect(plan.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS).toBe("1");
     expect(plan.warning).toMatch(/MCP tool search/);
@@ -103,12 +103,12 @@ describe("injectionFor (Claude)", () => {
       contextWindow: 1000,
       maxOutput: 100,
     };
-    const plan = injectionFor(source({ providers: [provider({ models: [model] })] }), "claude");
+    const plan = injectionFor(source({ providers: [provider({ models: [model] })] }), "claude", process.env, { injector: "claude" });
     expect(plan.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("vendor/s-1");
   });
 
   it("never puts the key into a serialized plan", () => {
-    const plan = injectionFor(source({ providers: [provider({ baseURL: "https://gateway.example.com" })] }), "claude");
+    const plan = injectionFor(source({ providers: [provider({ baseURL: "https://gateway.example.com" })] }), "claude", process.env, { injector: "claude" });
     const json = JSON.stringify(plan);
     expect(json).not.toContain(KEY);
     expect(json).toContain("«redacted»");

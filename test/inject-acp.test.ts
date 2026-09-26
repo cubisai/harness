@@ -34,7 +34,7 @@ function source(opts: { providers?: Provider[]; choice?: CredentialChoice; secre
 
 describe("injectAcp (generic ACP injector)", () => {
   it("passes a DeepSeek key under its documented variable, with no base URL or notice", () => {
-    const plan = injectionFor(source(), "deepseek", {}, { agentLabel: "DeepSeek" });
+    const plan = injectionFor(source(), "deepseek", {}, { agentLabel: "DeepSeek", keyVar: "DEEPSEEK_API_KEY" });
     expect(plan.env.DEEPSEEK_API_KEY).toBe(KEY);
     expect(plan.env.OPENAI_BASE_URL).toBeUndefined();
     expect(plan.warning).toBeUndefined();
@@ -54,7 +54,7 @@ describe("injectAcp (generic ACP injector)", () => {
 
   it("gives Antigravity only the provider's own env, with an S6 notice", () => {
     const p = provider({ id: "google", label: "Google", wireProtocol: "gemini", baseURL: "https://generativelanguage.example.com", env: { GOOGLE_CLOUD_PROJECT: "p" } });
-    const plan = injectionFor(source({ providers: [p] }), "antigravity", {}, { agentLabel: "Antigravity" });
+    const plan = injectionFor(source({ providers: [p] }), "antigravity", {}, { agentLabel: "Antigravity", providerEnvOnly: true });
     expect(plan.env.GEMINI_API_KEY).toBeUndefined();
     expect(plan.env.GOOGLE_CLOUD_PROJECT).toBe("p");
     expect(plan.warning).toMatch(/S6/);
@@ -62,14 +62,14 @@ describe("injectAcp (generic ACP injector)", () => {
 
   it("strips a planted key from a subscription ACP plan", () => {
     const env = { PATH: "/usr/bin", DEEPSEEK_API_KEY: "planted" };
-    const plan = injectionFor(source({ choice: { kind: "subscription" }, secretEnvNames: ["DEEPSEEK_API_KEY"] }), "deepseek", env);
+    const plan = injectionFor(source({ choice: { kind: "subscription" }, secretEnvNames: ["DEEPSEEK_API_KEY"] }), "deepseek", env, { keyVar: "DEEPSEEK_API_KEY" });
     expect(plan.byok).toBe(false);
     expect(plan.env.DEEPSEEK_API_KEY).toBeUndefined();
     expect(plan.env.PATH).toBe("/usr/bin");
   });
 
   it("errors when the provider has no key saved", () => {
-    const plan = injectionFor(source({ secret: null }), "deepseek", {}, { agentLabel: "DeepSeek" });
+    const plan = injectionFor(source({ secret: null }), "deepseek", {}, { agentLabel: "DeepSeek", keyVar: "DEEPSEEK_API_KEY" });
     expect(plan.error).toMatch(/no key saved/);
   });
 
@@ -78,7 +78,7 @@ describe("injectAcp (generic ACP injector)", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
-      const a = injectionFor(source(), "deepseek", {}, { agentLabel: "DeepSeek" });
+      const a = injectionFor(source(), "deepseek", {}, { agentLabel: "DeepSeek", keyVar: "DEEPSEEK_API_KEY" });
       const b = injectionFor(
         source({ providers: [provider({ id: "gateway", label: "Gateway", baseURL: "https://gateway.example.com" })] }),
         "cursor",
@@ -89,7 +89,7 @@ describe("injectAcp (generic ACP injector)", () => {
         source({ providers: [provider({ id: "google", label: "Google", wireProtocol: "gemini", env: { GOOGLE_CLOUD_PROJECT: "p" } })] }),
         "antigravity",
         {},
-        { agentLabel: "Antigravity" },
+        { agentLabel: "Antigravity", providerEnvOnly: true },
       );
       expect(a.env.DEEPSEEK_API_KEY).toBe(KEY);
       expect(b.env.OPENAI_API_KEY).toBe(KEY);

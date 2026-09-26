@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentDriver, TurnInput } from "../src/main/agents/types";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
 import { Store } from "../src/main/db";
-import { type InjectionSource, injectionFor } from "../src/main/inject";
+import { type InjectionSource, type InjectorKind, injectionFor } from "../src/main/inject";
 import { prepareCodexPlan } from "../src/main/inject/codex";
 import { Service } from "../src/main/service";
 import type { Provider, WireProtocol } from "../src/shared/types";
@@ -37,17 +37,17 @@ function source(p: Provider): InjectionSource {
   };
 }
 
-const AGENTS: { agent: string; protocol: WireProtocol }[] = [
-  { agent: "claude", protocol: "anthropic-messages" },
-  { agent: "codex", protocol: "openai-responses" },
-  { agent: "opencode", protocol: "openai-chat" },
+const AGENTS: { agent: string; protocol: WireProtocol; injector?: InjectorKind }[] = [
+  { agent: "claude", protocol: "anthropic-messages", injector: "claude" },
+  { agent: "codex", protocol: "openai-responses", injector: "codex" },
+  { agent: "opencode", protocol: "openai-chat", injector: "opencode" },
   { agent: "cursor", protocol: "openai-chat" }, // the generic ACP injector
 ];
 
 afterEach(() => vi.restoreAllMocks());
 
 describe("every injector", () => {
-  for (const { agent, protocol } of AGENTS) {
+  for (const { agent, protocol, injector } of AGENTS) {
     it(`${agent}: complete env, key never serialized, no file in the project`, () => {
       const cwd = tempDir();
       const logged: string[] = [];
@@ -55,6 +55,7 @@ describe("every injector", () => {
         vi.spyOn(console, level).mockImplementation((...args: unknown[]) => void logged.push(args.map(String).join(" ")));
       }
       const plan = injectionFor(source(provider("gw", protocol)), agent, process.env, {
+        injector,
         codexCatalogDir: tempDir(),
         codexInstructions: () => "test instructions",
         opencodeVersion: () => "1.18.32",
@@ -87,6 +88,7 @@ describe("redaction on failure paths", () => {
     writeFileSync(blocker, "");
     const plan = prepareCodexPlan(
       injectionFor(source(provider("gw", "openai-responses")), "codex", process.env, {
+        injector: "codex",
         codexCatalogDir: join(blocker, "catalogs"),
         codexInstructions: () => "x",
       }),

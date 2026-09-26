@@ -182,6 +182,8 @@ export interface AgentCatalogEntry {
   skills: string;
   /** How MCP servers (the app's and the browser tools) reach it. */
   mcp: string;
+  /** What it can do here; the Library shows it as chips and a can't-do list. */
+  capabilities?: AgentCapabilities;
 }
 
 /** One plan rate-limit window, e.g. Claude's 5-hour or Codex's weekly limit. */

@@ -12,6 +12,9 @@ import { injectOpenCode } from "./opencode";
 /** The variables a child process is handed. `Options.env` replaces, never merges. */
 export type InjectedEnv = Record<string, string>;
 
+/** Which credential injector a driver uses; data (a preset field), never the agent id. */
+export type InjectorKind = "claude" | "codex" | "opencode" | "acp";
+
 export interface InjectionPlan {
   /** The child's complete environment: a copy of ours with the key vars replaced. */
   env: InjectedEnv;
@@ -70,7 +73,15 @@ export function injectionFor(
   source: InjectionSource,
   agentId: string,
   env: NodeJS.ProcessEnv = process.env,
-  opts: { codexCatalogDir?: string; codexInstructions?: () => string; opencodeVersion?: () => string | null; agentLabel?: string } = {},
+  opts: {
+    injector?: InjectorKind;
+    codexCatalogDir?: string;
+    codexInstructions?: () => string;
+    opencodeVersion?: () => string | null;
+    agentLabel?: string;
+    keyVar?: string;
+    providerEnvOnly?: boolean;
+  } = {},
 ): InjectionPlan {
   const base = strippedBase(source, env);
   const choice = source.credential(agentId);
@@ -90,27 +101,27 @@ export function injectionFor(
       warning: `Provider injection for ${agentId} is off, so it uses its own login. Turn it on in Settings to use ${provider.label}.`,
     }, []);
   }
-  if (agentId === "claude") {
-    const secret = source.providerSecret(provider.id);
-    return sealed(injectClaude(provider, secret, base), secret ? [secret] : []);
-  }
-  if (agentId === "codex") {
-    const secret = source.providerSecret(provider.id);
-    if (!opts.codexCatalogDir) {
-      return sealed({ env: base, byok: true, error: "Codex BYOK needs the app data folder." }, secret ? [secret] : []);
-    }
-    return sealed(
-      injectCodex(provider, secret, base, {
-        catalogDir: opts.codexCatalogDir,
-        instructions: opts.codexInstructions?.() ?? FALLBACK_INSTRUCTIONS,
-      }),
-      secret ? [secret] : [],
-    );
-  }
-  if (agentId === "opencode") {
-    const secret = source.providerSecret(provider.id);
-    return sealed(injectOpenCode(provider, secret, base, { version: opts.opencodeVersion?.() ?? null }), secret ? [secret] : []);
-  }
   const secret = source.providerSecret(provider.id);
-  return sealed(injectAcp({ id: agentId, label: opts.agentLabel ?? agentId }, provider, secret, base), secret ? [secret] : []);
+  switch (opts.injector ?? "acp") {
+    case "claude":
+      return sealed(injectClaude(provider, secret, base), secret ? [secret] : []);
+    case "codex":
+      if (!opts.codexCatalogDir) {
+        return sealed({ env: base, byok: true, error: "Codex BYOK needs the app data folder." }, secret ? [secret] : []);
+      }
+      return sealed(
+        injectCodex(provider, secret, base, {
+          catalogDir: opts.codexCatalogDir,
+          instructions: opts.codexInstructions?.() ?? FALLBACK_INSTRUCTIONS,
+        }),
+        secret ? [secret] : [],
+      );
+    case "opencode":
+      return sealed(injectOpenCode(provider, secret, base, { version: opts.opencodeVersion?.() ?? null }), secret ? [secret] : []);
+    case "acp":
+      return sealed(
+        injectAcp({ label: opts.agentLabel ?? agentId, keyVar: opts.keyVar, providerEnvOnly: opts.providerEnvOnly }, provider, secret, base),
+        secret ? [secret] : [],
+      );
+  }
 }

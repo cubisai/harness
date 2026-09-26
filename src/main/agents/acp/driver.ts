@@ -34,6 +34,10 @@ export interface AcpAgentConfig {
   homepage?: string;
   /** Which credential injector this agent uses, when it isn't the generic ACP one. */
   injector?: "opencode";
+  /** The variable this agent documents for its provider key; unknown agents get their protocol's conventional one plus a notice. */
+  keyVar?: string;
+  /** Only the provider's own env reaches it: its provider setting isn't verified yet. */
+  providerEnvOnly?: boolean;
   /** A guard plugin this agent needs injected to enforce the git guardrail. */
   guardPlugin?: "opencode";
 }

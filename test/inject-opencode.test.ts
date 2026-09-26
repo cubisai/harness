@@ -44,7 +44,7 @@ function source(opts: { providers?: Provider[]; choice?: CredentialChoice; secre
   };
 }
 
-const opts = (version: string | null = VERSION) => ({ opencodeVersion: () => version });
+const opts = (version: string | null = VERSION) => ({ injector: "opencode" as const, opencodeVersion: () => version });
 
 /** The default plan the read-only assertions share. */
 function lead(version: string | null = VERSION) {

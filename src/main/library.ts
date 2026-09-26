@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { AgentCatalogEntry, SkillDetail, SkillsDelivery } from "../shared/types";
+import type { AgentCapabilities, AgentCatalogEntry, SkillDetail, SkillsDelivery } from "../shared/types";
 import type { AcpAgentConfig } from "./agents/acp/driver";
 import { acpCapabilities, CLAUDE_CAPABILITIES, CODEX_CAPABILITIES, skillDeliveryGap } from "./agents/capabilities";
 import { ACP_PRESETS, BUILT_IN_AGENT_IDS } from "./agents/registry";
@@ -38,6 +38,8 @@ export function skillDetail(catalog: Catalog, name: string, agents: AgentCatalog
 export function agentCatalog(opts: {
   installed: (command: string) => boolean;
   custom: AcpAgentConfig[];
+  /** A running driver's capabilities, authoritative over the preset's static set. */
+  liveCapabilities?: (id: string) => AgentCapabilities | undefined;
 }): AgentCatalogEntry[] {
   const acpMcp = "Stdio servers, and HTTP ones (with the browser tools) when the agent supports them";
   const out: AgentCatalogEntry[] = [
@@ -79,11 +81,19 @@ export function agentCatalog(opts: {
   for (const p of ACP_PRESETS) configById.set(p.id, p);
   for (const c of opts.custom) configById.set(c.id, c);
   return out.map((a) => {
-    if (a.kind === "agent-sdk") return { ...a, skills: skillRoute({ skillsDelivery: CLAUDE_CAPABILITIES.skillsDelivery }) };
-    if (a.kind === "app-server") return { ...a, skills: skillRoute({ skillsDelivery: CODEX_CAPABILITIES.skillsDelivery }) };
+    if (a.kind === "agent-sdk") {
+      return { ...a, skills: skillRoute({ skillsDelivery: CLAUDE_CAPABILITIES.skillsDelivery }), capabilities: opts.liveCapabilities?.(a.id) ?? CLAUDE_CAPABILITIES };
+    }
+    if (a.kind === "app-server") {
+      return { ...a, skills: skillRoute({ skillsDelivery: CODEX_CAPABILITIES.skillsDelivery }), capabilities: opts.liveCapabilities?.(a.id) ?? CODEX_CAPABILITIES };
+    }
     const c = configById.get(a.id);
     const caps = acpCapabilities(c ?? {});
-    return { ...a, skills: skillRoute({ skillsDelivery: caps.skillsDelivery, ...(c?.skillsDirEnv ? { skillsDirEnv: c.skillsDirEnv } : {}) }) };
+    return {
+      ...a,
+      skills: skillRoute({ skillsDelivery: caps.skillsDelivery, ...(c?.skillsDirEnv ? { skillsDirEnv: c.skillsDirEnv } : {}) }),
+      capabilities: opts.liveCapabilities?.(a.id) ?? caps,
+    };
   });
 }
 

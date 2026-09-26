@@ -47,7 +47,7 @@ function source(opts: { providers?: Provider[]; choice?: CredentialChoice; secre
   };
 }
 
-const opts = () => ({ codexCatalogDir: catalogDir, codexInstructions: () => INSTRUCTIONS });
+const opts = () => ({ injector: "codex" as const, codexCatalogDir: catalogDir, codexInstructions: () => INSTRUCTIONS });
 
 /** The default plan the read-only assertions share. */
 function lead() {

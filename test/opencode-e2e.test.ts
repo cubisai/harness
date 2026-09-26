@@ -119,7 +119,7 @@ describe.skipIf(!onPath("opencode"))("OpenCode BYOK end to end (real acp, fake m
     const injected = source(provider(fake.url));
     const driver = createAcpDriver(preset, {
       clientVersion: "test",
-      injection: () => injectionFor(injected, "opencode", process.env, { opencodeVersion: () => opencodeVersion(preset.command) }),
+      injection: () => injectionFor(injected, "opencode", process.env, { injector: "opencode", opencodeVersion: () => opencodeVersion(preset.command) }),
     });
     closeAfter(() => driver.dispose?.());
 
