@@ -460,6 +460,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
             if (notice) input.onEvent({ kind: "notice", text: notice });
             await conn.request("thread/unsubscribe", { threadId: input.sessionId }).catch(() => {});
             loaded.delete(input.sessionId);
+            input.onSessionRebuilt?.();
           }
           try {
             const res = await conn.request<{ thread: { id: string } }>("thread/resume", {

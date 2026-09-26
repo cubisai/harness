@@ -1,10 +1,11 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { LiveUpdate } from "../src/shared/types";
+import type { LiveUpdate, ThreadEvent } from "../src/shared/types";
 import type { AgentDriver, TurnInput } from "../src/main/agents/types";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
 import { Store } from "../src/main/db";
 import { Service, titleFrom } from "../src/main/service";
+import { normalizeUsage } from "../src/main/usage";
 import { catalog, closeAfter, tempDir } from "./helpers";
 
 function fakeDriver(script: (input: TurnInput) => Promise<void>): AgentDriver & { prompts: string[] } {
@@ -149,6 +150,33 @@ describe("Service.send", () => {
     expect(updates.filter((u) => u.type === "permission")).toHaveLength(2);
     service.interrupt(thread.id);
     await third;
+  });
+
+  it("records an expected session rebuild as a non-miss on the next turn", async () => {
+    let turns = 0;
+    const { store, service, thread } = setup(async (input) => {
+      turns++;
+      if (turns === 2) input.onSessionRebuilt?.();
+      input.onEvent({
+        kind: "turn-end",
+        costUsd: null,
+        inputTokens: 100,
+        outputTokens: 1,
+        durationMs: 1,
+        usage: normalizeUsage({ inputTokens: 100, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 50_000 }),
+      });
+    });
+    await service.send({ threadId: thread.id, text: "one" });
+    await service.send({ threadId: thread.id, text: "two" });
+
+    const ends = store
+      .listEvents(thread.id)
+      .map((e) => e.event)
+      .filter((e): e is Extract<ThreadEvent, { kind: "turn-end" }> => e.kind === "turn-end");
+    expect(ends).toHaveLength(2);
+    expect(ends[0]!.usage).toMatchObject({ miss: false });
+    expect(ends[0]!.usage?.missCause).toBeUndefined();
+    expect(ends[1]!.usage).toMatchObject({ miss: false, missCause: "session-rebuild" });
   });
 });
 

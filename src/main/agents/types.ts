@@ -53,6 +53,8 @@ export interface TurnInput {
   /** Estimated thinking tokens for the in-progress block. */
   onThinkingProgress?(p: { estimatedTokens: number }): void;
   onSession(sessionId: string): void;
+  /** The driver reopened the session this turn (an MCP server change), so the prompt cache starts over; an expected rebuild, not a miss. */
+  onSessionRebuilt?(): void;
   requestPermission(req: { toolName: string; summary: string; canAlwaysAllow: boolean }): Promise<PermissionDecision>;
   /** Harness-provided tools for this turn; empty when none apply. */
   tools: HarnessTool[];

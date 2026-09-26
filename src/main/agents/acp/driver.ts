@@ -396,6 +396,7 @@ export function createAcpDriver(
       await l.conn.request("session/close", { sessionId: l.sessionId }).catch(() => {});
       const res = await l.conn.request<{ configOptions?: ConfigOption[] }>("session/resume", { cwd: input.cwd, mcpServers, sessionId: l.sessionId });
       if (res?.configOptions) l.configOptions = res.configOptions;
+      input.onSessionRebuilt?.();
       return;
     }
     const params = { cwd: input.cwd, mcpServers };

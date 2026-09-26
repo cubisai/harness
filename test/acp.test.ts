@@ -200,16 +200,20 @@ describe("ACP driver", () => {
     const docs = { name: "docs", enabled: true, spec: { type: "stdio" as const, command: "docs-mcp", args: ["--stdio"] } };
     const remote = { name: "remote", enabled: true, spec: { type: "http" as const, url: "https://mcp.example.com/mcp" } };
     const lint = { name: "lint", enabled: true, spec: { type: "stdio" as const, command: "lint-mcp", args: [] } };
-    const first = turn("mcp", { mcpServers: [docs] });
+    let firstRebuilds = 0;
+    const first = turn("mcp", { mcpServers: [docs], onSessionRebuilt: () => { firstRebuilds++; } });
     await d.runTurn(first.input);
     // stdio servers have no type field in ACP.
     expect(first.deltas.join("")).toBe('[[null,"docs",null]]');
+    expect(firstRebuilds).toBe(0);
     // Two edits between turns still cost one reopen: the list is compared only at the next turn.
     const edited: McpServerEntry[] = [docs];
     edited.push(remote);
     edited.push(lint);
-    const second = turn("mcp", { sessionId: first.sessions[0]!, mcpServers: edited });
+    let secondRebuilds = 0;
+    const second = turn("mcp", { sessionId: first.sessions[0]!, mcpServers: edited, onSessionRebuilt: () => { secondRebuilds++; } });
     await d.runTurn(second.input);
+    expect(secondRebuilds).toBe(1);
     expect(second.deltas.join("")).toBe('[[null,"docs",null],["http","remote","https://mcp.example.com/mcp"],[null,"lint",null]]');
     const notices = second.events.filter((e) => e.kind === "notice").map((e) => (e as { text: string }).text);
     expect(notices.filter((t) => t.includes("reopened"))).toHaveLength(1);

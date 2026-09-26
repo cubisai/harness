@@ -13,8 +13,20 @@ import type {
   StoredEvent,
   Thread,
   ThreadEvent,
+  Usage,
 } from "../shared/types";
 import type { AgentDriver, HarnessTool, ModelSwitch } from "./agents/types";
+import {
+  annotateUsage,
+  drainConfigChanges,
+  fingerprint,
+  pinnedFingerprint,
+  pinnedSet,
+  pinToolSet,
+  queueConfigChange,
+  stableStringify,
+  toolSetOf,
+} from "./cache-policy";
 import { Approvals } from "./approvals";
 import type { Store } from "./db";
 import { workingTreeDiff } from "./git";
@@ -148,6 +160,21 @@ export class Service {
       if (!switched && current.sessionId === null && this.store.listEvents(thread.id).length > 1) {
         this.emit(thread.id, { kind: "notice", text: `Now talking to ${driver.label}. It starts without the earlier messages above.` });
       }
+      // Pin what shapes the prompt prefix. A tools change is a defect (the
+      // prefix changed under a session); a servers-only change is the
+      // drivers' expected session rebuild. The fingerprint only moves when a
+      // queued change drains, at this turn's boundary.
+      const set = toolSetOf(this.harnessTools(), this.mcpServers());
+      const previousSet = pinnedSet(thread.id);
+      const toolsChanged = previousSet !== null && stableStringify(previousSet.tools) !== stableStringify(set.tools);
+      if (pinnedFingerprint(thread.id) === null) {
+        pinToolSet(thread.id, set);
+      } else if (fingerprint(set) !== pinnedFingerprint(thread.id)) {
+        queueConfigChange(thread.id, { set });
+        drainConfigChanges(thread.id);
+      }
+      let rebuilt = false;
+      let compacted = false;
       const live = (delta: LiveDelta) => this.broadcast({ type: "delta", threadId: thread.id, delta });
       const scrub = (text: string) => redactSecrets(text, this.secrets());
       await driver.runTurn({
@@ -161,7 +188,25 @@ export class Service {
         tools: this.harnessTools(),
         mcpServers: this.mcpServers(),
         provenance,
-        onEvent: (event) => this.emit(thread.id, event, provenance),
+        onSessionRebuilt: () => {
+          rebuilt = true;
+        },
+        onEvent: (event) => {
+          if (event.kind === "compaction") compacted = true;
+          if (event.kind === "turn-end" && event.usage) {
+            // A fresh session starts with a cold cache: nothing to compare against.
+            const prev = current.sessionId === null ? null : this.previousTurnEnd(thread.id, thread.agent);
+            event = {
+              ...event,
+              usage: annotateUsage(event.usage, {
+                prev: prev?.usage ?? null,
+                idleMs: prev ? Date.now() - prev.createdAt : null,
+                signals: { toolFingerprintChanged: toolsChanged, modelChanged: switched, compacted, sessionRebuilt: rebuilt },
+              }),
+            };
+          }
+          this.emit(thread.id, event, provenance);
+        },
         // Live text is scrubbed like stored events. A key split across two deltas can
         // slip through here, but the turn's stored assistant-text event is redacted whole.
         onTextDelta: (text, itemId) => live({ kind: "text-delta", itemId: itemId ?? "", text: scrub(text) }),
@@ -238,6 +283,18 @@ export class Service {
     for (let i = events.length - 1; i >= 0; i--) {
       const event = events[i]!;
       if (event.provenance?.agent === agent) return event.provenance.model;
+    }
+    return null;
+  }
+
+  /** The newest stored turn-end for this thread and agent, to compare a cache write against. */
+  private previousTurnEnd(threadId: string, agent: string): { usage: Usage; createdAt: number } | null {
+    const events = this.store.listEvents(threadId);
+    for (let i = events.length - 1; i >= 0; i--) {
+      const stored = events[i]!;
+      if (stored.event.kind === "turn-end" && stored.event.usage && stored.provenance?.agent === agent) {
+        return { usage: stored.event.usage, createdAt: stored.createdAt };
+      }
     }
     return null;
   }
