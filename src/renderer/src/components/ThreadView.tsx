@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { StoredEvent, ThreadEvent } from "../../../shared/types";
 import { type FileRef, parseFileRef } from "../fileref";
-import { emptyLive, visibleItems } from "../live";
+import { emptyLive, liveReasoningMode, visibleItems } from "../live";
 import { Markdown } from "../markdown";
 import { useStore } from "../store";
 import { PermissionCard } from "./PermissionCard";
+import { ReasoningBlock } from "./ReasoningBlock";
 
 type ToolEvent = Extract<ThreadEvent, { kind: "tool-use" }>;
 type ResultEvent = Extract<ThreadEvent, { kind: "tool-result" }>;
@@ -18,8 +19,10 @@ export function ThreadView({ threadId }: { threadId: string }) {
   const allPermissions = useStore((s) => s.permissions);
   const permissions = useMemo(() => allPermissions.filter((p) => p.threadId === threadId), [allPermissions, threadId]);
   const scroller = useRef<HTMLDivElement>(null);
-  // Reasoning/tool-output items are not rendered yet (ReasoningBlock lands in a later step).
+  // Tool-output items are not rendered yet; reasoning uses ReasoningBlock below.
   const textItems = visibleItems(live, "text");
+  const reasoningItems = visibleItems(live, "reasoning").filter((it) => !it.opaque);
+  const reasoningMode = liveReasoningMode(live);
   const textLength = textItems.reduce((n, it) => n + it.text.length, 0);
 
   const results = useMemo(() => {
@@ -48,12 +51,17 @@ export function ThreadView({ threadId }: { threadId: string }) {
         {events.map((e) => (
           <EventRow key={e.seq} stored={e} results={results} running={running} />
         ))}
+        {reasoningMode === "text" &&
+          reasoningItems.map((item, i) => (
+            <ReasoningBlock key={item.key} text={item.text} opaque={false} live newest={i === reasoningItems.length - 1 && textItems.length === 0} tokens={null} />
+          ))}
+        {reasoningMode === "tokens" && <ReasoningBlock text="" opaque live newest tokens={live.thinkingTokens} />}
         {textItems.map((item) => (
           <div className="msg-assistant" key={item.key}>
             <Markdown text={item.text} streaming />
           </div>
         ))}
-        {running && textItems.length === 0 && permissions.length === 0 && <div className="notice"><span className="spinner" style={{ display: "inline-block", verticalAlign: -2, marginRight: 8 }} />Working…</div>}
+        {running && textItems.length === 0 && reasoningMode === "none" && permissions.length === 0 && <div className="notice"><span className="spinner" style={{ display: "inline-block", verticalAlign: -2, marginRight: 8 }} />Working…</div>}
         {permissions.map((p) => (
           <PermissionCard key={p.requestId} request={p} />
         ))}
@@ -64,7 +72,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
 
 const EMPTY: StoredEvent[] = [];
 
-function EventRow({ stored, results, running }: { stored: StoredEvent; results: Map<string, ResultEvent>; running: boolean }) {
+export function EventRow({ stored, results, running }: { stored: StoredEvent; results: Map<string, ResultEvent>; running: boolean }) {
   const e = stored.event;
   switch (e.kind) {
     case "user":
@@ -83,12 +91,8 @@ function EventRow({ stored, results, running }: { stored: StoredEvent; results: 
         </div>
       );
     case "thinking":
-      return (
-        <details className="thinking">
-          <summary>Thinking</summary>
-          <div className="body">{e.text}</div>
-        </details>
-      );
+      if (!e.text && !e.opaque) return null;
+      return <ReasoningBlock text={e.text} opaque={Boolean(e.opaque)} live={false} newest={false} tokens={null} />;
     case "tool-use":
       return <ToolRow tool={e} result={results.get(e.toolUseId)} running={running} />;
     case "tool-result":
@@ -106,10 +110,28 @@ function EventRow({ stored, results, running }: { stored: StoredEvent; results: 
       return <div className="error-card">{e.message}</div>;
     case "notice":
       return <div className="notice">{e.text}</div>;
-    case "turn-start":
     case "plan":
+      return (
+        <div className="plan-row">
+          <div className="plan-title">Plan</div>
+          <ul>
+            {e.entries.map((p, i) => (
+              <li key={i} className={`plan-item ${p.status}`}>
+                <span className="plan-mark">{p.status === "completed" ? "✓" : p.status === "in_progress" ? "▸" : "○"}</span>
+                {p.content}
+              </li>
+            ))}
+          </ul>
+        </div>
+      );
     case "compaction":
-      return null; // display lands in a later phase
+      return (
+        <div className="compaction-divider">
+          <span>Context compacted{e.preTokens !== null && e.postTokens !== null ? ` · ${formatTokens(e.preTokens)} → ${formatTokens(e.postTokens)} tokens` : ""}</span>
+        </div>
+      );
+    case "turn-start":
+      return null;
   }
 }
 

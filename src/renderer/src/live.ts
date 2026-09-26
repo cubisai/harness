@@ -73,6 +73,22 @@ export function visibleItems(state: LiveThread, channel: LiveItem["channel"]): L
   return state.items.filter((it) => it.channel === channel && it.text.length > 0);
 }
 
+/** Which half of a reasoning block to show: its text, or only a token count. */
+export function reasoningChannel(input: { opaque: boolean }): "text" | "tokens" {
+  return input.opaque ? "tokens" : "text";
+}
+
+/**
+ * How a turn's live reasoning is shown: streaming text once any non-opaque item
+ * has flushed, else the opaque token counter, else nothing. Text wins, so a turn
+ * that starts opaque and later produces text tears the counter down.
+ */
+export function liveReasoningMode(state: LiveThread): "text" | "tokens" | "none" {
+  if (visibleItems(state, "reasoning").some((it) => !it.opaque)) return "text";
+  if (state.thinkingTokens !== null) return "tokens";
+  return "none";
+}
+
 function appendItem(state: LiveThread, key: string, channel: LiveItem["channel"], text: string, opaque: boolean): LiveThread {
   if (state.done.includes(key)) return state;
   const items = state.items.slice();

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LiveDelta, StoredEvent, ThreadEvent } from "../src/shared/types";
-import { LIVE_ITEM_CAP, appendDelta, applyLiveEvent, emptyLive, flushPending, visibleItems } from "../src/renderer/src/live";
+import { LIVE_ITEM_CAP, appendDelta, applyLiveEvent, emptyLive, flushPending, liveReasoningMode, reasoningChannel, visibleItems } from "../src/renderer/src/live";
 
 const stored = (seq: number, event: ThreadEvent): StoredEvent => ({ seq, event, createdAt: 0 });
 
@@ -46,5 +46,25 @@ describe("live stream state", () => {
     const item = visibleItems(state, "text")[0]!;
     expect(item.text).toHaveLength(LIVE_ITEM_CAP);
     expect(item.text.endsWith("0123456789")).toBe(true);
+  });
+});
+
+describe("reasoning display", () => {
+  it("maps opacity onto exactly one channel", () => {
+    for (const opaque of [false, true]) {
+      const channel = reasoningChannel({ opaque });
+      expect(["text", "tokens"]).toContain(channel);
+      expect(channel).not.toBe("both");
+    }
+    expect(reasoningChannel({ opaque: false })).toBe("text");
+    expect(reasoningChannel({ opaque: true })).toBe("tokens");
+  });
+
+  it("shows nothing, then tokens, then text once a flush lands", () => {
+    expect(liveReasoningMode(emptyLive())).toBe("none");
+    expect(liveReasoningMode({ ...emptyLive(), thinkingTokens: 50 })).toBe("tokens");
+    const flushed = flushPending(appendDelta({ ...emptyLive(), thinkingTokens: 50 }, { kind: "reasoning-delta", itemId: "r", text: "why", opaque: false }));
+    expect(liveReasoningMode(flushed)).toBe("text");
+    expect(liveReasoningMode(flushed)).not.toBe("tokens");
   });
 });

@@ -109,6 +109,17 @@ export function installMock(): void {
         ].join("\n"),
       }),
       ev(18, { kind: "turn-end", costUsd: 0.184, inputTokens: 48_200, outputTokens: 2_150, durationMs: 41_300 }),
+      ev(19, { kind: "thinking", text: "The limiter needs the real client IP, so check how the route resolves req.ip before choosing the middleware seam." }),
+      ev(20, { kind: "thinking", text: "", signature: "sig", opaque: true }),
+      ev(21, {
+        kind: "plan",
+        entries: [
+          { content: "Read the auth routes", status: "completed" },
+          { content: "Add the limiter", status: "in_progress" },
+          { content: "Document trust proxy", status: "pending" },
+        ],
+      }),
+      ev(22, { kind: "compaction", trigger: "auto", preTokens: 12400, postTokens: 4100 }),
     ],
   };
 
