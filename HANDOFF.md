@@ -1,6 +1,6 @@
-# Handoff — after Phase 5 (cache discipline); Phase 6 planned
+# Handoff — after Phase 6 (context survival); Phase 7 next
 
-Updated 2026-09-26 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-delegation workflow), then `spec/README.md`, then `.ai/plans/phase-6-context-survival.md`.
+Updated 2026-09-26 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-delegation workflow), then `spec/README.md`, then `.ai/plans/phase-7-interaction.md`.
 
 ## Where things stand
 
@@ -12,6 +12,7 @@ Updated 2026-09-26 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-
 | 3 — Capability parity | **done**: typecheck, build and `electron . --smoke` green; tests green except the two known Windows-machine items below | A `67bdb46` (+`8b39214`), B `84ed108`, C `3a909dc`, D `3aacc63`, E `c2d10f2` |
 | 4 — Streaming + reasoning | **done**: typecheck, build, preview render green; tests green except the two known Windows-machine items | A `6d20cce`, B `8667748`, C `d6686ac`, D `a6ea827` |
 | 5 — Cache discipline | **done**: typecheck, build green; tests green except the two known Windows-machine items | A `80a9a31`, B `270c768`, C `793cfdc` |
+| 6 — Context survival | **done**: typecheck, build, smoke green; tests green except the two known Windows-machine items; real Codex→Claude handoff checked in the app | A `04c347e` `022bd44` (+ smoke fix `4f80d01`), B `95e616e` `a2da431`, C `5e3e7dd` `4d487ec`, D `ff414c5` `00dd3f9`, E `c3a845a` |
 | Windows portability | done | `ae0b0cc` |
 
 **Uncommitted on purpose (the user decides):** the pnpm → bun switch (`package.json`, `bun.lock`, `bunfig.toml`, deleted `pnpm-*`/`.npmrc`, `ci.yml`, README/`main.tsx`/`mock.ts` comments) and the `CLAUDE.md` Windows notes. `test/__snapshots__/providers.test.ts.snap` shows as modified: line endings only. Phase commits carry code + tests only, with no attribution trailer.
@@ -39,6 +40,14 @@ Updated 2026-09-26 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-
 - `src/main/cache-policy.ts`: `stableStringify`, pinned tool-set fingerprint (`toolSetOf`/`pinToolSet`/`queueConfigChange`/`drainConfigChanges`), `isMiss` (≥ 2000 and > 5%), `classifyMiss`, `annotateUsage`, `shouldCompact` + `claudeCompactEnv`/`codexCompactConfig` (built, **not wired** into agents). The Service annotates every `turn-end` usage: a fresh session has no baseline; `TurnInput.onSessionRebuilt?()` (Codex unsubscribe, ACP close+resume) marks an expected `session-rebuild`.
 - `src/shared/cache-stats.ts` + `CacheMeter` in the header (one number, detail in `title`, miss cause, warm/cold, live usage ticker); ACP shows `cache —`.
 
+## What Phase 6 shipped
+
+- `Thread.bindings` (`${agent}:default` → `SessionBinding`), migration step 11 backfills from `session_id`; `sessionId` is the current agent's projection and the column still mirrors it. Switching agents keeps every cursor.
+- `handoff.ts`: thread export/import (blobs inlined, all-or-nothing; palette *Export/Import Thread…*), `buildCheckpoint`/`renderCheckpoint` (tiers 0–2; no thinking, no CLAUDE.md/AGENTS.md/SKILL.md/Skill output), `fitCheckpoint` (cap min(25% window, 4k), estimate bytes/3, refuse if larger than what it replaces), injection ledger (`injectWithLedger`), `checkpointGit` (`refs/harness-handoff/<seq>`, dirty refusal), `bloatSignal`, `codexSeedItems`.
+- Drivers: `capabilities.seeding` (Codex `inject-items`, Claude/ACP `first-message`), `seedNoReply` (false everywhere), `AgentDriver.seed?()` (Codex: open/resume the thread, `thread/inject_items`, never `turn/start`), `countTokens?()` (no driver has one).
+- `Service.switchAgent(thread, agent, "handoff" | "fresh" | "back")`: trust reset (default permission mode; approvals are per agent), refusals before any change, git ref only for Hand off, first-message reply stored as a `handoff`/`reply` event, bloat signal on the first turn-end after any switch. `updateThread({ agent })` = back when a cursor exists, else fresh.
+- Renderer: `SwitchDialog` (carries / does not carry, Hand off / Start fresh / Switch back) from the agent select and the palette; `handoff` events render as divider rows.
+
 ## Windows portability (`src/main/winspawn.ts`)
 
 `spawnCommand`/`execCommandSync` resolve a bare name on PATH and run `.cmd` shims through cmd.exe with cross-spawn-style double escaping (Codex `-c` values survive); `killTree` uses a synchronous `taskkill /T /F` (a plain `kill()` left `opencode.exe` running). Non-Windows paths are unchanged.
@@ -46,28 +55,21 @@ Updated 2026-09-26 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-
 ## Open items
 
 - **This Windows PC:** Node 22.17 → `db.test` worker test fails (`Unknown file extension ".ts"`); needs Node ≥ 22.18. `codex-e2e` "offers the browser tools…" fails under full-suite load only: its first request goes out before the mock stdio `docs` MCP server is up (passes alone) — consider `startup_timeout_sec` for app MCP servers.
+- **Phase 6 carried forward:** T6.5 stale-cursor path (mark the binding `lost`, re-seed) and T6.11's lighter model-switch card; small threads can't be handed off (the checkpoint would exceed what it replaces — by design).
+- **This PC's accounts:** Codex returns 401 "workspace routing unauthorized" (sign in again); a Codex "retrying" status notice stays on screen after the turn ends (seen in the app, pre-existing) — Phase 7/8.
 - **Renderer id branches:** `ProviderSheet.tsx` still checks `agent.id === "claude"/"codex"/"antigravity"` — out of T3.8's `src/main` scope; fold into phase 8's Settings work.
 - Manual checks still pending: Claude on a BYOK provider in-app; `dsh` receiving its key; model-picker search/provider name (user request, unscheduled).
 - `CLAUDE_CODE_PROMPT_CACHE_TTL` / gateway model discovery have no Provider field; OpenCode BYOK is openai-chat only.
 
 ## Environment facts
 
-- **Windows PC:** bun 1.4.2, Node 22.17, codex-cli 0.157.1 (npm shim, ChatGPT login), opencode 1.18.32 (npm shim), no `python` in Git Bash, delegation proxy on `127.0.0.1:3900`. Use `timeout 900 opencode run …`.
+- **Windows PC:** bun 1.4.2, Node 22.17, codex-cli 0.157.1 (npm shim, ChatGPT login), opencode 1.18.32 (npm shim), no `python` in Git Bash, delegation proxy on `127.0.0.1:3900`.
 - Headless preview check without agent-browser (no `AGENT_BROWSER_EXECUTABLE_PATH` in Git Bash): `chrome --headless=new --enable-logging=stderr --v=0 --virtual-time-budget=6000 --dump-dom http://localhost:5199/?state=thread`.
 - **Mac:** Node 24, codex 0.157, delegation proxy on `127.0.0.1:4141`.
 - **Never** touch `~/.config/opencode/opencode.json` (powers the delegation workers) or `~/.codex` in tests. Use temp `XDG_*` / `CODEX_HOME`. Run `electron . --smoke --user-data-dir=<tmp>`.
-- opencode briefs: no key-like strings, "dispatch exactly once"; a long brief can stop mid-run with no final message — split it and send a continuation brief for what's left.
+- **Delegation:** dispatch with `node ~/.config/opencode/oc-run.mjs --worker <agent> --brief … --out … --log …` (walks the model chain itself — `opencode run` exits on the first model error, so the fallback plugin never fires headless). Write briefs with the Write tool (a bash heredoc with backticks broke once). No key-like strings, "dispatch exactly once". Routing and setup: `SETUP-OTHER-PC.md`.
+- **Driving the real app:** launch `electron . --user-data-dir=<tmp> --remote-debugging-port=9333 --inspect=9339`; drive the window over CDP (`Input.dispatchKeyEvent/MouseEvent`, `Page.captureScreenshot`; clicks are CSS px = screenshot px / 1.25 on this PC); patch `dialog.showOpenDialog/showSaveDialog` through the main-process inspector **every launch**, or a real file dialog opens off-screen. Native `<select>` popups can't be driven — use the palette.
 
-## Next — Phase 6 (context survival), ready to start
+## Next — Phase 7 (interaction mechanics)
 
-**The plan is written: `.ai/plans/phase-6-context-survival.md`** (read it after this file and `spec/phases/phase-6-context-survival.md`). It records the verified facts (S1/S4 passed; `thread/inject_items` exists in codex 0.157 with params `{ threadId, items }`), the design calls (bindings key and backfill, a new additive `handoff` event kind, `refs/harness-handoff/<seq>` git checkpoint only for Hand off, estimated budget, per-channel seeding, `Service.switchAgent`), and five steps:
-
-1. **A** — T6.2 export/import (the safety net) *before* T6.1's `bindings` migration.
-2. **B** — T6.3 checkpoint builder + `gitState`, T6.4 budget/tiers.
-3. **C** — T6.9 ledger methods, T6.5 `seed()`, T6.6 Codex `inject_items`, T6.8 Claude/ACP synthetic first message (T6.7 flag only).
-4. **D** — T6.12 trust reset + git checkpoint, `Service.switchAgent`, T6.10 bloat signal.
-5. **E** — T6.11 `SwitchDialog`, T6.13 invariant suite; build + preview + migration smoke on a copied DB.
-
-Workflow reminders: one implementer brief per step (keep briefs tight — long ones have stopped mid-run; send a continuation brief for what's left), then read the diff and run typecheck/tests/build yourself; commit only the step's files (no attribution trailer); keep the user's uncommitted bun-migration edits (`README.md`, `mock.ts`, `main.tsx`, `package.json`, CI, `CLAUDE.md`) out of phase commits — commit a file with only your hunk by temporarily restoring `HEAD`'s version plus your change, then put the working copy back. Delete temp files with guarded paths (`"${T:?}/name"`), not globs after `cd`. Run one opencode worker at a time (a background run was killed once for low memory).
-
-After Phase 6: Phase 7 (interaction mechanics), 8 (UI refinement), 9 (release hardening).
+Plan: `.ai/plans/phase-7-interaction.md` (written at the start of Phase 7). Then 8 (UI refinement), 9 (release hardening). The user asked for all remaining phases to run back to back without stopping, except for a big blocker.

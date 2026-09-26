@@ -108,12 +108,14 @@ Paths are relative to the repo root. Read the chapter that explains *why* before
 
 ## Exit criteria
 
-- [ ] `pnpm typecheck && pnpm test && pnpm build` green.
-- [ ] `sessionId` is a read-only projection; `bindings` survives a restart.
-- [ ] Export/import restores bindings and events (T6.2).
-- [ ] No checkpoint carries conventions, skill bodies, or reasoning (T6.3).
-- [ ] The ledger is idempotent and rolls forward (T6.9, T6.13 4–5).
-- [ ] The bloat signal is emitted in-band and surfaced (T6.10).
-- [ ] The switch card lists carries/does-not and offers Hand off / Start fresh / Switch back (T6.11).
-- [ ] A git checkpoint exists before a successful switch; a dirty worktree refuses (T6.12).
-- [ ] No side-effecting tool replayed, provenance complete, no binding dropped (T6.13 1–3).
+- [x] `pnpm typecheck && pnpm test && pnpm build` green (2026-09-26, bun; the two known Windows-PC failures only).
+- [x] `sessionId` is a read-only projection; `bindings` survives a restart (checked in the app on a migrated copy).
+- [x] Export/import restores bindings and events (T6.2).
+- [x] No checkpoint carries conventions, skill bodies, or reasoning (T6.3).
+- [x] The ledger is idempotent and rolls forward (T6.9, T6.13 4–5); Codex inject verified against the real 0.157 app-server.
+- [x] The bloat signal is emitted in-band and surfaced (T6.10).
+- [x] The switch card lists carries/does-not and offers Hand off / Start fresh / Switch back (T6.11); a real Codex→Claude handoff ran in the app.
+- [x] A git checkpoint exists before a successful handoff; a dirty worktree refuses (T6.12). Start fresh / Switch back don't touch git (plan design call 4).
+- [x] No side-effecting tool replayed, provenance complete, no binding dropped (T6.13 1–3).
+
+**Not done, carried forward:** T6.5's stale-cursor path (mark the binding `lost` and re-seed the new session) — drivers still say "couldn't resume" and open a fresh session, and the new cursor replaces the stale one. T6.11's lighter model-switch variant — a model change still goes through `applyModel()` and its notice. T6.7 is the capability flag only (no native OpenCode driver, as the spec says).
