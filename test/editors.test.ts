@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, win32 } from "node:path";
 import { describe, expect, it } from "vitest";
 import { EDITORS, editorArgs, Editors, type Host, launchDetached, quoteForCmd, resolveEditor } from "../src/main/editors";
@@ -111,7 +111,8 @@ describe("launchDetached", () => {
       writeFileSync(launcher, `#!/bin/sh\nprintf '%s|%s' "$1" "$2" > "${out}"\n`, { mode: 0o755 });
     }
     expect(await launchDetached(launcher, ["--goto", target], process.env)).toBe(true);
-    await new Promise((r) => setTimeout(r, 300));
+    // The launcher is detached, so wait for its output rather than a fixed delay (flaky under load).
+    for (let i = 0; i < 100 && !existsSync(out); i++) await new Promise((r) => setTimeout(r, 50));
     expect(readFileSync(out, "utf-8").trim().replace(/"/g, "")).toBe(`--goto|${target}`);
   });
 
