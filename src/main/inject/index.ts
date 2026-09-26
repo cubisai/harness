@@ -6,6 +6,7 @@ import type { CredentialChoice, Provider, Settings } from "../../shared/types";
 import { redactSecrets } from "./redact";
 import { CLAUDE_KEY_VARS, injectClaude } from "./claude";
 import { FALLBACK_INSTRUCTIONS, injectCodex } from "./codex";
+import { injectOpenCode } from "./opencode";
 
 /** The variables a child process is handed. `Options.env` replaces, never merges. */
 export type InjectedEnv = Record<string, string>;
@@ -80,7 +81,7 @@ export function injectionFor(
   source: InjectionSource,
   agentId: string,
   env: NodeJS.ProcessEnv = process.env,
-  opts: { codexCatalogDir?: string; codexInstructions?: () => string } = {},
+  opts: { codexCatalogDir?: string; codexInstructions?: () => string; opencodeVersion?: () => string | null } = {},
 ): InjectionPlan {
   const base = strippedBase(source, env);
   const choice = source.credential(agentId);
@@ -117,6 +118,10 @@ export function injectionFor(
       secret ? [secret] : [],
     );
   }
-  // TODO(phase 2 step C/D/E): the opencode and ACP injectors.
+  if (agentId === "opencode") {
+    const secret = source.providerSecret(provider.id);
+    return sealed(injectOpenCode(provider, secret, base, { version: opts.opencodeVersion?.() ?? null }), secret ? [secret] : []);
+  }
+  // TODO(phase 2 step E): the generic ACP injector.
   return sealed({ env: base, byok: true }, []);
 }

@@ -6,6 +6,7 @@ import type { AgentDriver, TurnInput } from "../types";
 import { forAcp } from "../../mcp/servers";
 import { RpcError, StdioRpc } from "../rpc";
 import { normalizeUsage } from "../../usage";
+import type { InjectionPlan } from "../../inject";
 
 /** An ACP agent the app can drive: deepseek-harness, Cursor, or any agent that speaks ACP over stdio. */
 export interface AcpAgentConfig {
@@ -131,10 +132,14 @@ export function createAcpDriver(
     clientVersion: string;
     /** The harness's tools over HTTP MCP, for agents that take MCP servers. */
     toolServer?: () => Promise<{ url: string; token: string }>;
+    /** The credential plan for the next agent process; absent = inherit process.env. */
+    injection?: () => InjectionPlan;
   },
 ): AgentDriver {
   const live = new Map<string, Live>();
   let knownModels: ModelOption[] = [];
+  // Once-per-driver, like Claude: the same feature-loss notice isn't repeated.
+  const shownNotices = new Set<string>();
 
   const flushText = (t: TurnState) => {
     if (t.thought.trim()) t.input.onEvent({ kind: "thinking", text: t.thought });
@@ -204,7 +209,13 @@ export function createAcpDriver(
     const existing = live.get(threadKey);
     if (existing?.conn.alive) return existing;
 
-    const env: NodeJS.ProcessEnv = { ...process.env, ...config.env };
+    const plan = deps.injection?.();
+    if (plan?.error) throw new Error(plan.error);
+    if (plan?.warning && !shownNotices.has(plan.warning)) {
+      shownNotices.add(plan.warning);
+      input.onEvent({ kind: "notice", text: plan.warning });
+    }
+    const env: NodeJS.ProcessEnv = { ...(plan?.env ?? process.env), ...config.env };
     if (config.skillsDirEnv && deps.skillsDir) {
       const dir = deps.skillsDir();
       if (dir) env[config.skillsDirEnv] = dir;
@@ -316,10 +327,14 @@ export function createAcpDriver(
   let refreshing: Promise<void> | null = null;
   const refreshModels = (): Promise<void> => {
     if (knownModels.length) return Promise.resolve();
+    // Checked outside the memoized refresh, so a fixed provider refreshes next time.
+    // The turn surfaces the error; there's no process to start.
+    const plan = deps.injection?.();
+    if (plan?.error) return Promise.resolve();
     refreshing ??= (async () => {
       // One throwaway process: initialize + session/new, read the model
       // config option, then exit. Real threads spawn their own later.
-      const env: NodeJS.ProcessEnv = { ...process.env, ...config.env };
+      const env: NodeJS.ProcessEnv = { ...(plan?.env ?? process.env), ...config.env };
       if (config.skillsDirEnv && deps.skillsDir) {
         const dir = deps.skillsDir();
         if (dir) env[config.skillsDirEnv] = dir;

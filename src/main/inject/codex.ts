@@ -8,11 +8,12 @@ import { dirname, join } from "node:path";
 import type { Provider } from "../../shared/types";
 import { codexCompatible } from "../../shared/provider-rules";
 import { catalogFor } from "../providers";
+import { providerKeyVar } from "./keys";
 import type { InjectedEnv, InjectionPlan } from ".";
 
 /** The env var a Codex provider's key is passed in. */
 export function codexKeyVar(providerId: string): string {
-  return `UNSKILLED_${providerId.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_KEY`;
+  return providerKeyVar(providerId);
 }
 
 /** A TOML basic string; JSON.stringify of a JS string is valid for our inputs. */

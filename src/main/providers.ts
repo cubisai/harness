@@ -312,10 +312,15 @@ export function catalogFor(provider: Provider): ProviderCatalog {
 
   const opencodeModels: Record<string, unknown> = {};
   for (const model of provider.models) {
+    // OpenCode v1: the map key is what the picker shows, `id` is the wire id
+    // (only when it differs), and the capability fields are flat booleans.
+    const wire = wireIdOf(model, model.id);
     opencodeModels[model.id] = {
-      id: wireIdOf(model, model.id),
+      ...(wire !== model.id ? { id: wire } : {}),
       name: model.name ?? model.id,
-      capabilities: { ...model.capabilities },
+      tool_call: model.capabilities.tools,
+      reasoning: model.capabilities.reasoning,
+      attachment: model.capabilities.vision,
       limit: { context: model.contextWindow, output: model.maxOutput },
     };
   }

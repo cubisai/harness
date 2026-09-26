@@ -99,30 +99,25 @@ exports[`catalogFor > compiles the catalog for anthropic-messages 1`] = `
   "opencode": {
     "models": {
       "picked": {
-        "capabilities": {
-          "reasoning": true,
-          "tools": true,
-          "vision": true,
-        },
+        "attachment": true,
         "id": "wire/picked",
         "limit": {
           "context": 200000,
           "output": 64000,
         },
         "name": "Picked",
+        "reasoning": true,
+        "tool_call": true,
       },
       "plain": {
-        "capabilities": {
-          "reasoning": false,
-          "tools": false,
-          "vision": false,
-        },
-        "id": "plain",
+        "attachment": false,
         "limit": {
           "context": 8000,
           "output": 1024,
         },
         "name": "plain",
+        "reasoning": false,
+        "tool_call": false,
       },
     },
   },
@@ -228,30 +223,25 @@ exports[`catalogFor > compiles the catalog for gemini 1`] = `
   "opencode": {
     "models": {
       "picked": {
-        "capabilities": {
-          "reasoning": true,
-          "tools": true,
-          "vision": true,
-        },
+        "attachment": true,
         "id": "wire/picked",
         "limit": {
           "context": 200000,
           "output": 64000,
         },
         "name": "Picked",
+        "reasoning": true,
+        "tool_call": true,
       },
       "plain": {
-        "capabilities": {
-          "reasoning": false,
-          "tools": false,
-          "vision": false,
-        },
-        "id": "plain",
+        "attachment": false,
         "limit": {
           "context": 8000,
           "output": 1024,
         },
         "name": "plain",
+        "reasoning": false,
+        "tool_call": false,
       },
     },
   },
@@ -357,30 +347,25 @@ exports[`catalogFor > compiles the catalog for openai-chat 1`] = `
   "opencode": {
     "models": {
       "picked": {
-        "capabilities": {
-          "reasoning": true,
-          "tools": true,
-          "vision": true,
-        },
+        "attachment": true,
         "id": "wire/picked",
         "limit": {
           "context": 200000,
           "output": 64000,
         },
         "name": "Picked",
+        "reasoning": true,
+        "tool_call": true,
       },
       "plain": {
-        "capabilities": {
-          "reasoning": false,
-          "tools": false,
-          "vision": false,
-        },
-        "id": "plain",
+        "attachment": false,
         "limit": {
           "context": 8000,
           "output": 1024,
         },
         "name": "plain",
+        "reasoning": false,
+        "tool_call": false,
       },
     },
   },
@@ -486,30 +471,25 @@ exports[`catalogFor > compiles the catalog for openai-responses 1`] = `
   "opencode": {
     "models": {
       "picked": {
-        "capabilities": {
-          "reasoning": true,
-          "tools": true,
-          "vision": true,
-        },
+        "attachment": true,
         "id": "wire/picked",
         "limit": {
           "context": 200000,
           "output": 64000,
         },
         "name": "Picked",
+        "reasoning": true,
+        "tool_call": true,
       },
       "plain": {
-        "capabilities": {
-          "reasoning": false,
-          "tools": false,
-          "vision": false,
-        },
-        "id": "plain",
+        "attachment": false,
         "limit": {
           "context": 8000,
           "output": 1024,
         },
         "name": "plain",
+        "reasoning": false,
+        "tool_call": false,
       },
     },
   },

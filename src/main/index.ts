@@ -19,6 +19,7 @@ import { Service } from "./service";
 import { LEGACY_ENV, catalogFor, testConnection } from "./providers";
 import { injectionFor } from "./inject";
 import { codexInstructions, prepareCodexPlan } from "./inject/codex";
+import { opencodeVersion } from "./inject/opencode";
 import { SettingsStore } from "./settings";
 import { agentCatalog, skillDetail } from "./library";
 import { Editors, realHost } from "./editors";
@@ -223,6 +224,10 @@ async function main(): Promise<void> {
         skillsDir: () => ensureModelSkillsDir(catalog, modelSkillsDir),
         clientVersion: app.getVersion(),
         toolServer: getToolServer,
+        // Step E: every ACP agent gets a plan; until then only OpenCode does, so dsh keeps its legacy key.
+        ...(config.id === "opencode"
+          ? { injection: () => injectionFor(settings, "opencode", process.env, { opencodeVersion: () => opencodeVersion(config.command) }) }
+          : {}),
       }),
     ),
   ];
