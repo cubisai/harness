@@ -1,6 +1,7 @@
 import type { McpServerEntry, ModelOption, PermissionDecision, PermissionMode, ThreadEvent } from "../../shared/types";
 import type { RunPayload, RunResult, ToolDiff } from "../../shared/tools";
 import { clipSummary } from "../../shared/tools";
+import { diffSummary } from "../../shared/diff";
 import { homedir } from "node:os";
 import { forCodex, mcpChangeNotice } from "../mcp/servers";
 import { normalizeUsage } from "../usage";
@@ -324,6 +325,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       else if (m.result) summary = summarizeToolResult(m.result.content) || summary;
     }
     const payload = resultPayloadFor(item);
+    const diff = !failed && item.type === "fileChange" ? (payload as { diff: ToolDiff[] }).diff : [];
+    if (diff.length) summary = diffSummary(diff);
     t.input.onEvent({ kind: "tool-result", toolUseId: item.id, isError: failed, summary, ...(payload !== null ? { payload } : {}) });
   };
 

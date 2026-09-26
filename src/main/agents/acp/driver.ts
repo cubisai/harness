@@ -2,8 +2,8 @@ import type { AgentCapabilities, ModelOption, PermissionDecision, PermissionMode
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { clipSummary } from "../../../shared/tools";
-import type { RunPayload, RunResult, ToolDiff } from "../../../shared/tools";
-import { unifiedDiff } from "../../../shared/diff";
+import type { EditResult, RunPayload, RunResult, ToolDiff } from "../../../shared/tools";
+import { diffSummary, unifiedDiff } from "../../../shared/diff";
 import { summarizeToolResult } from "../summarize";
 import type { AgentDriver, TurnInput } from "../types";
 import { acpCapabilities, withCapabilities } from "../capabilities";
@@ -54,6 +54,7 @@ interface ToolCallFields {
   status?: "pending" | "in_progress" | "completed" | "failed" | null;
   rawInput?: unknown;
   content?: { type: string; content?: { type: string; text?: string } }[] | null;
+  locations?: { path: string; line?: number | null }[] | null;
 }
 type SessionUpdate =
   | { sessionUpdate: "agent_message_chunk" | "agent_thought_chunk" | "user_message_chunk"; content: { type: string; text?: string } }
@@ -137,7 +138,7 @@ interface TurnState {
   input: TurnInput;
   text: string;
   thought: string;
-  tools: Map<string, { name: string; done: boolean; streamed?: string }>;
+  tools: Map<string, { name: string; kind?: ToolKind | null; done: boolean; streamed?: string }>;
   usage: { used: number; costUsd: number | null };
   /** Bumped when flushText emits an item, so the next run of chunks gets fresh keys. */
   run: number;
@@ -240,18 +241,18 @@ export function createAcpDriver(
         let tool = t.tools.get(u.toolCallId);
         if (!tool) {
           flushText(t);
-          tool = { name: u.title ?? u.kind ?? "tool", done: false };
+          tool = { name: u.title ?? u.kind ?? "tool", kind: u.kind, done: false };
           t.tools.set(u.toolCallId, tool);
           // An execute call's payload names the command even when rawInput
           // doesn't carry one (the title does), like the other adapters' Run.
           const raw = u.rawInput as { command?: unknown } | null | undefined;
-          const payload: RunPayload | undefined =
-            u.kind === "execute" ? { command: typeof raw?.command === "string" ? raw.command : u.title ?? "" } : undefined;
+          const command = typeof raw?.command === "string" ? raw.command : undefined;
+          const payload: RunPayload | undefined = u.kind === "execute" ? { command: command ?? u.title ?? "" } : undefined;
           t.input.onEvent({
             kind: "tool-use",
             toolUseId: u.toolCallId,
             name: kindLabel(u.kind),
-            summary: clipSummary(u.title ?? ""),
+            summary: toolSummary(u, command),
             ...(payload ? { payload } : {}),
           });
         }
@@ -266,12 +267,14 @@ export function createAcpDriver(
         }
         if (!tool.done && (u.status === "completed" || u.status === "failed")) {
           tool.done = true;
-          const payload = resultPayload(u, text);
+          // A terminal update may omit the kind its tool_call carried.
+          const payload = resultPayload({ ...u, kind: u.kind ?? tool.kind }, text);
+          const diff = u.status === "completed" && payload && typeof payload === "object" && "diff" in payload ? (payload as EditResult).diff : [];
           t.input.onEvent({
             kind: "tool-result",
             toolUseId: u.toolCallId,
             isError: u.status === "failed",
-            summary: summarizeToolResult(text) || (u.status === "failed" ? "Failed" : "Done"),
+            summary: diff.length ? diffSummary(diff) : summarizeToolResult(text) || (u.status === "failed" ? "Failed" : "Done"),
             ...(payload !== null ? { payload } : {}),
           });
         }
@@ -590,6 +593,20 @@ export function createAcpDriver(
       live.clear();
     },
   };
+}
+
+/**
+ * A tool call's one-line summary. OpenCode titles a call with its tool's name
+ * ("bash", "edit"), so a command or an edited file wins over the title.
+ */
+export function toolSummary(u: ToolCallFields, command: string | undefined): string {
+  if (u.kind === "execute" && command) return clipSummary(command);
+  if (u.kind === "edit") {
+    const raw = u.rawInput as { filePath?: unknown; file_path?: unknown; path?: unknown } | null | undefined;
+    const path = u.locations?.[0]?.path ?? [raw?.filePath, raw?.file_path, raw?.path].find((p): p is string => typeof p === "string");
+    if (path) return clipSummary(path);
+  }
+  return clipSummary(u.title ?? "");
 }
 
 export function kindLabel(kind: ToolKind | null | undefined): string {

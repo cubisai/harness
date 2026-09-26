@@ -13,6 +13,7 @@
 //   "compact" - sends a contextCompaction item, then the normal reply
 //   "cached" - the normal reply, but reports cached input tokens
 //   "reason" - streams reasoning text and summaries plus a command's output, then replies
+//   "canonical" - the render-parity event set: a message, a command, a file edit, a message
 //   other  - replies "Hi, <prompt>" in two deltas
 // Like Codex, a thread keeps the config it was loaded with until it is
 // unsubscribed (unloaded); resuming a loaded thread doesn't change it.
@@ -110,6 +111,23 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
         const reply = `injects=${injectCalls} ids=${(injected.get(threadId) ?? []).filter((i) => i.call_id && i.type === "function_call_output").map((i) => i.call_id).join(",")}`;
         notify("item/agentMessage/delta", { threadId, turnId: turn.id, itemId: "m2", delta: reply });
         notify("item/completed", { threadId, turnId: turn.id, item: { type: "agentMessage", id: "m2", text: reply } });
+        return done("completed");
+      }
+      if (text === "canonical") {
+        const say = (itemId, reply) => {
+          notify("item/agentMessage/delta", { threadId, turnId: turn.id, itemId, delta: reply });
+          notify("item/completed", { threadId, turnId: turn.id, item: { type: "agentMessage", id: itemId, text: reply } });
+        };
+        say("m1", "I'll run the tests.");
+        const cmd = { type: "commandExecution", id: "c1", command: "npm test", status: "inProgress", aggregatedOutput: null, exitCode: null };
+        notify("item/started", { threadId, turnId: turn.id, item: cmd });
+        notify("item/completed", { threadId, turnId: turn.id, item: { ...cmd, status: "completed", aggregatedOutput: "3 passed", exitCode: 0 } });
+        // Equal to unifiedDiff("a.txt", "one\n", "uno\n").
+        const diff = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1,1 +1,1 @@\n-one\n+uno\n";
+        const file = { type: "fileChange", id: "f1", changes: [{ path: "a.txt", kind: "update", diff }], status: "inProgress" };
+        notify("item/started", { threadId, turnId: turn.id, item: file });
+        notify("item/completed", { threadId, turnId: turn.id, item: { ...file, status: "completed" } });
+        say("m2", "Done.");
         return done("completed");
       }
       if (text === "slow") {

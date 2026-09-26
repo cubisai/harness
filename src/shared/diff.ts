@@ -1,4 +1,5 @@
 import type { DiffFile, DiffHunk } from "./types";
+import type { ToolDiff } from "./tools";
 
 /** Parse `git diff` unified output into files and hunks. */
 export function parseUnifiedDiff(text: string): DiffFile[] {
@@ -35,6 +36,19 @@ export function parseUnifiedDiff(text: string): DiffFile[] {
     }
   }
   return files;
+}
+
+/** One-line stat for a set of diffs: `+<adds> −<dels>` summed across every file. */
+export function diffSummary(diffs: ToolDiff[]): string {
+  let adds = 0;
+  let dels = 0;
+  for (const d of diffs) {
+    for (const file of parseUnifiedDiff(d.unified)) {
+      adds += file.additions;
+      dels += file.deletions;
+    }
+  }
+  return `+${adds} −${dels}`;
 }
 
 const MAX_LINES = 4000;

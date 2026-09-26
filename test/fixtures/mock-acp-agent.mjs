@@ -10,6 +10,8 @@
 //   "nousage" - answers with a prompt response that carries no usage object
 //   "env:NAME" - answers "NAME=present" when the env var is a non-empty string,
 //                else "NAME=absent"; never echoes the value
+//   "canonical" - the render-parity event set: a message, a command, a file edit, a message
+//   "canonical-opencode" - the same, titled the way OpenCode titles its calls ("bash", "edit")
 //   other     - answers "Hello, <prompt>"
 import { createInterface } from "node:readline";
 
@@ -92,7 +94,23 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
       // "reason" emits its own three thought chunks below; every other scenario
       // gets this one shared chunk.
       if (text !== "reason") update(sid, { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "thinking" } });
-      if (text === "tool") {
+      if (text === "canonical" || text === "canonical-opencode") {
+        // OpenCode titles a call with its tool's name and names the file in rawInput.
+        const opencode = text === "canonical-opencode";
+        const say = (t) => update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: t } });
+        say("I'll run the tests.");
+        update(sid, { sessionUpdate: "tool_call", toolCallId: "c1", kind: "execute", title: opencode ? "bash" : "npm test", rawInput: { command: "npm test" }, status: "pending" });
+        update(sid, { sessionUpdate: "tool_call_update", toolCallId: "c1", status: "completed", content: [{ type: "content", content: { type: "text", text: "3 passed" } }] });
+        update(sid, {
+          sessionUpdate: "tool_call",
+          toolCallId: "f1",
+          kind: "edit",
+          status: "pending",
+          ...(opencode ? { title: "edit", rawInput: { filePath: "a.txt" } } : { title: "a.txt", locations: [{ path: "a.txt" }] }),
+        });
+        update(sid, { sessionUpdate: "tool_call_update", toolCallId: "f1", status: "completed", content: [{ type: "diff", path: "a.txt", oldText: "one\n", newText: "uno\n" }] });
+        say("Done.");
+      } else if (text === "tool") {
         update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Running it." } });
         update(sid, { sessionUpdate: "tool_call", toolCallId: "t1", title: "npm test", kind: "execute", status: "pending" });
         const res = await ask("session/request_permission", {

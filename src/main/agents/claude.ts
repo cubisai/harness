@@ -4,8 +4,8 @@ import { createRequire } from "node:module";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
 import type { HookCallback, ModelInfo, Options, PermissionResult, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { McpServerEntry, ModelOption, PermissionMode, ThreadEvent } from "../../shared/types";
-import { canonicalTool, type EditResult, type RunPayload } from "../../shared/tools";
-import { unifiedDiff } from "../../shared/diff";
+import { canonicalTool, type EditResult, type RunPayload, type RunResult } from "../../shared/tools";
+import { diffSummary, unifiedDiff } from "../../shared/diff";
 import type { ToolDiff } from "../../shared/tools";
 import { forClaude } from "../mcp/servers";
 import { checkCommand } from "../guard";
@@ -292,6 +292,8 @@ export interface TurnState {
   blocksSeen: Map<string, number>;
   /** itemId → text streamed but not yet closed by a terminal event. */
   pending: Map<string, { kind: "text" | "thinking"; text: string }>;
+  /** tool_use id → that call's canonical payload, so its result can be shaped the same way. */
+  toolPayloads: Map<string, RunPayload | { diff: ToolDiff[] } | undefined>;
 }
 
 /** Fresh per-turn state for runTurn and for mapping a message stream in tests. */
@@ -304,6 +306,7 @@ export function newTurnState(): TurnState {
     signatures: new Map(),
     blocksSeen: new Map(),
     pending: new Map(),
+    toolPayloads: new Map(),
   };
 }
 
@@ -440,6 +443,7 @@ export function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnS
             itemId,
             ...(payload ? { payload } : {}),
           });
+          turn.toolPayloads.set(block.id, payload);
         }
       }
       turn.blocksSeen.set(id, k);
@@ -451,11 +455,25 @@ export function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnS
       if (!Array.isArray(content)) return;
       for (const block of content) {
         if (block.type === "tool_result") {
+          const isError = Boolean(block.is_error);
+          // Shape the result like the other adapters: a Run carries its output,
+          // an Edit carries the diff its call described (with a +/− stat).
+          const used = turn.toolPayloads.get(block.tool_use_id);
+          turn.toolPayloads.delete(block.tool_use_id);
+          let payload: RunResult | EditResult | undefined;
+          let summary = summarizeToolResult(block.content);
+          if (used && "command" in used) {
+            payload = { exitCode: null, output: resultText(block.content) };
+          } else if (used && "diff" in used && used.diff.length && !isError) {
+            payload = { diff: used.diff };
+            summary = diffSummary(used.diff);
+          }
           input.onEvent({
             kind: "tool-result",
             toolUseId: block.tool_use_id,
-            isError: Boolean(block.is_error),
-            summary: summarizeToolResult(block.content),
+            isError,
+            summary,
+            ...(payload ? { payload } : {}),
           });
         }
       }
@@ -471,6 +489,13 @@ export function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnS
     default:
       return;
   }
+}
+
+/** A tool_result's full text, joined the way summarizeToolResult joins it. */
+function resultText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.map((b) => (b && typeof b === "object" && "text" in b && typeof b.text === "string" ? b.text : "")).join(" ");
 }
 
 function describeError(code: string): string {
