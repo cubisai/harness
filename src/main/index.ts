@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { delimiter, isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { BrowserWindow, app, dialog, ipcMain, nativeTheme, safeStorage, shell } from "electron";
-import type { CredentialChoice, LiveUpdate, McpOverview, McpServerEntry, OpenResult, PermissionDecision, ProviderInput, SendRequest, Settings, SwitchMode, Thread } from "../shared/types";
+import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { BrowserWindow, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell } from "electron";
+import type { CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, OpenResult, PermissionDecision, ProviderInput, ScreenshotInfo, SendRequest, Settings, SwitchMode, Thread } from "../shared/types";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
 import { createClaudeDriver, resolvePackagedClaudeBinary } from "./agents/claude";
@@ -131,10 +131,22 @@ function createWindow(): BrowserWindow {
 }
 
 async function main(): Promise<void> {
+  // Registered before ready: unskilled-shot:// serves saved screenshots to the
+  // renderer's <img>. A standard scheme so the file name is the URL host.
+  protocol.registerSchemesAsPrivileged([{ scheme: "unskilled-shot", privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
   await app.whenReady();
 
   const userData = app.getPath("userData");
   mkdirSync(userData, { recursive: true });
+  const shotsDir = join(userData, "screenshots");
+  const shotInfo = (path: string): ScreenshotInfo => ({ path, url: `unskilled-shot://${basename(path).toLowerCase()}` });
+  // Only bare .png names inside the screenshots folder: nothing else is reachable.
+  protocol.handle("unskilled-shot", (req) => {
+    const u = new URL(req.url);
+    const name = decodeURIComponent(u.hostname || u.pathname.replace(/^\/+/, "")).toLowerCase();
+    if (!/^[\w.-]+\.png$/.test(name)) return new Response(null, { status: 404 });
+    return net.fetch(pathToFileURL(join(shotsDir, name)).toString());
+  });
   const store = new Store(join(userData, "unskilled.db"));
   const settings = new SettingsStore(join(userData, "settings.json"), {
     available: safeStorage.isEncryptionAvailable(),
@@ -177,8 +189,13 @@ async function main(): Promise<void> {
   });
   const browser = new BrowserController(
     (url) => broadcast({ type: "browser-open", url }),
-    join(userData, "screenshots"),
+    shotsDir,
     (text) => broadcast({ type: "browser-picked", text }),
+    {
+      onLog: (entry) => broadcast({ type: "browser-log", entry }),
+      onScreenshot: (path) => broadcast({ type: "browser-screenshot", shot: shotInfo(path) }),
+      onDevice: (device) => broadcast({ type: "browser-device", device }),
+    },
   );
   const tools = browserTools(browser);
   augmentPath();
@@ -457,6 +474,14 @@ async function main(): Promise<void> {
   ipcMain.handle("diff:get", (_e, projectId: string) => service.getDiff(projectId));
   ipcMain.handle("browser:attached", (_e, webContentsId: number) => browser.attach(webContentsId));
   ipcMain.handle("browser:pick", () => browser.startPick());
+  ipcMain.handle("browser:device", (_e, preset: DevicePreset) =>
+    browser.setDevice(["mobile", "tablet", "desktop"].includes(preset) ? preset : "desktop"),
+  );
+  ipcMain.handle("browser:state", () => ({
+    device: browser.device,
+    logs: browser.logsView(),
+    screenshots: browser.listScreenshots().map(shotInfo),
+  }));
   const terminals = new TerminalManager({
     data: (id, data) => broadcast({ type: "terminal-data", id, data }),
     exit: (id, code) => broadcast({ type: "terminal-exit", id, code }),
@@ -608,7 +633,18 @@ async function smokeBrowserWith(tools: ReturnType<typeof browserTools>, browser:
     await byName("browser_click").run({ ref: button });
     const pick = await Promise.race([picked, new Promise<null>((r) => setTimeout(() => r(null), 10_000))]);
     const pickOk = Boolean(pick?.includes("<button") && pick.includes("Element `"));
-    const ok = after.text.includes("Hello ada@example.com") && logs.text.includes("smoke-console-check") && pickOk;
+    // Device emulation round-trips; the console buffer survives a logsView read.
+    await browser.setDevice("mobile");
+    await browser.setDevice("desktop");
+    const deviceOk = browser.logsView().some((l) => l.text.includes("smoke-console-check"));
+    // The pane's sandbox posture, checked on the live page rather than trusted from will-attach-webview.
+    // Present at runtime; missing from this Electron version's type declarations.
+    const pane = (await browser.page()) as unknown as { getLastWebPreferences(): Electron.WebPreferences | null };
+    const prefs = pane.getLastWebPreferences();
+    const sandboxOk =
+      prefs?.sandbox === true && prefs.nodeIntegration !== true && prefs.contextIsolation === true && !prefs.preload && !isAllowedUrl("javascript:alert(1)");
+    console.log(`smoke: browser sandbox ${sandboxOk ? "ok" : `failed ${JSON.stringify({ sandbox: prefs?.sandbox, node: prefs?.nodeIntegration, iso: prefs?.contextIsolation, preload: prefs?.preload })}`}`);
+    const ok = after.text.includes("Hello ada@example.com") && logs.text.includes("smoke-console-check") && pickOk && deviceOk && sandboxOk;
     console.log(`smoke: browser ${ok ? "ok" : `failed\n${after.text}\n${logs.text}\npick: ${pick}`}`);
     return ok;
   } catch (err) {

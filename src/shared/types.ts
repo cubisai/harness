@@ -527,6 +527,28 @@ export interface SendRequest {
   skill?: string;
 }
 
+/** A viewport the browser pane can emulate; desktop means no emulation. */
+export type DevicePreset = "mobile" | "tablet" | "desktop";
+
+/** One console, exception, or failed-request line from the browser pane. */
+export interface BrowserLogEntry {
+  level: "error" | "warning" | "network";
+  text: string;
+}
+
+export interface ScreenshotInfo {
+  path: string;
+  /** An unskilled-shot:// URL the renderer can load. */
+  url: string;
+}
+
+/** The browser pane's in-band state, fetched once when the renderer mounts it. */
+export interface BrowserState {
+  device: DevicePreset;
+  logs: BrowserLogEntry[];
+  screenshots: ScreenshotInfo[];
+}
+
 /** Pushed from main to renderer while a turn runs. */
 export type LiveUpdate =
   | { type: "event"; threadId: string; stored: StoredEvent }
@@ -538,6 +560,12 @@ export type LiveUpdate =
   | { type: "browser-open"; url?: string }
   /** The user picked an element in the browser pane (null: cancelled). */
   | { type: "browser-picked"; text: string | null }
+  /** A new console line, or null when a page load cleared the log. */
+  | { type: "browser-log"; entry: BrowserLogEntry | null }
+  /** A screenshot was saved, with a URL the renderer can load. */
+  | { type: "browser-screenshot"; shot: ScreenshotInfo }
+  /** The emulated viewport changed. */
+  | { type: "browser-device"; device: DevicePreset }
   | { type: "terminal-data"; id: string; data: string }
   | { type: "terminal-exit"; id: string; code: number }
   | { type: "settings"; settings: SettingsView }
@@ -572,6 +600,10 @@ export interface UnskilledApi {
   browserAttached(webContentsId: number): Promise<void>;
   /** Start picking an element in the browser pane. */
   browserPick(): Promise<void>;
+  /** Emulate a viewport in the browser pane. */
+  browserDevice(preset: DevicePreset): Promise<void>;
+  /** The browser pane's current device, logs, and screenshots. */
+  browserState(): Promise<BrowserState>;
   /** Open (or reattach to) the terminal with this id, in `cwd` (home when null). */
   terminalOpen(id: string, cwd: string | null, cols: number, rows: number): Promise<void>;
   terminalWrite(id: string, data: string): void;

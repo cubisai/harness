@@ -463,6 +463,12 @@ export const useStore = create<State>((set, get) => ({
           composerInsert: update.text ? { text: update.text, nonce: (s.composerInsert?.nonce ?? 0) + 1 } : s.composerInsert,
         }));
         return;
+      // The browser console, screenshots, and device land in the UI in a later
+      // brief; handled here so the switch stays exhaustive.
+      case "browser-log":
+      case "browser-screenshot":
+      case "browser-device":
+        return;
       case "settings":
         applyTheme(update.settings.theme);
         // A broadcast during a drag would fight the pointer; keep the local layout then.

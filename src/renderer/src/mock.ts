@@ -228,6 +228,8 @@ export function installMock(): void {
       }
       return { ok: false, reason: "no thread" };
     },
+    browserDevice: async () => {},
+    browserState: async () => ({ device: "desktop", logs: [], screenshots: [] }),
     exportThread: async () => null,
     importThread: async () => null,
     listEvents: async (id) => events[id] ?? [],

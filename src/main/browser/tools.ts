@@ -32,11 +32,15 @@ export function browserTools(browser: BrowserController): HarnessTool[] {
     define({
       name: "browser_open",
       description:
-        "Open a URL in the browser pane the user can see (a local dev server like localhost:3000, or any http(s) page), wait for it to load, and return a snapshot of the page.",
-      input: { url: z.string().describe("URL to open, e.g. http://localhost:5173/login") },
+        "Open a URL in the browser pane the user can see (a local dev server like localhost:3000, or any http(s) page), wait for it to load, and return a snapshot of the page. Optionally emulate a mobile or tablet viewport first.",
+      input: {
+        url: z.string().describe("URL to open, e.g. http://localhost:5173/login"),
+        device: z.enum(["mobile", "tablet", "desktop"]).optional().describe("Emulate a viewport before loading: mobile (390px), tablet (768px), or desktop (no emulation)"),
+      },
       autoAllow: true,
-      run: ({ url }) =>
+      run: ({ url, device }) =>
         gated(browser, async () => {
+          if (device) await browser.setDevice(device);
           await browser.page(url);
           return { text: await browser.snapshot() };
         }),

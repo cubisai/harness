@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { WebContents } from "electron";
 import { webContents as allWebContents } from "electron";
+import type { BrowserLogEntry, DevicePreset } from "../../shared/types";
 import { PICK_BINDING, type PickedElement, describePick, startPicker } from "./picker";
 import { collectPage, formatSnapshot, type PageSnapshot } from "./snapshot";
 import { isAllowedUrl, normalizeUrl } from "./url";
@@ -10,10 +11,13 @@ export { isAllowedUrl } from "./url";
 
 const MAX_LOGS = 200;
 
-export interface LogEntry {
-  level: "error" | "warning" | "network";
-  text: string;
-}
+export type LogEntry = BrowserLogEntry;
+
+/** The non-desktop viewports browser_open can emulate. */
+export const DEVICE_PRESETS: Record<Exclude<DevicePreset, "desktop">, { width: number; height: number; deviceScaleFactor: number; mobile: boolean }> = {
+  mobile: { width: 390, height: 844, deviceScaleFactor: 3, mobile: true },
+  tablet: { width: 768, height: 1024, deviceScaleFactor: 2, mobile: true },
+};
 
 /**
  * Drives the browser pane's <webview> for the agent, through the Chrome
@@ -25,6 +29,10 @@ export class BrowserController {
   private logs: LogEntry[] = [];
   private requests = new Map<string, string>();
   private waiters: ((wc: WebContents) => void)[] = [];
+  /** Every screenshot saved this session, oldest first. */
+  private shots: string[] = [];
+  /** The emulated viewport. */
+  device: DevicePreset = "desktop";
   /** True once the user has opened the pane this session: only then do the agent's browser tools exist. */
   enabled = false;
 
@@ -33,6 +41,12 @@ export class BrowserController {
     private screenshotDir: string,
     /** A picked element, described for the message box (null when picking was cancelled). */
     private onPicked: (text: string | null) => void = () => {},
+    /** In-band notifications for the renderer: logs, screenshots, and the device. */
+    private events: {
+      onLog?(entry: LogEntry | null): void;
+      onScreenshot?(path: string): void;
+      onDevice?(device: DevicePreset): void;
+    } = {},
   ) {}
 
   attach(webContentsId: number): void {
@@ -42,6 +56,7 @@ export class BrowserController {
     this.wc = wc;
     this.enabled = true;
     this.logs = [];
+    this.events.onLog?.(null);
     try {
       wc.debugger.attach("1.3");
     } catch {
@@ -76,25 +91,28 @@ export class BrowserController {
     this.wc = null;
   }
 
+  /** Append a log line, cap the buffer, and tell the renderer. */
+  private push(entry: LogEntry): void {
+    this.logs.push(entry);
+    if (this.logs.length > MAX_LOGS) this.logs.shift();
+    this.events.onLog?.(entry);
+  }
+
   private onCdp(method: string, params: Record<string, unknown>): void {
     if (method === "Runtime.bindingCalled" && params.name === PICK_BINDING) {
       void this.finishPick(String(params.payload));
       return;
     }
-    const push = (entry: LogEntry) => {
-      this.logs.push(entry);
-      if (this.logs.length > MAX_LOGS) this.logs.shift();
-    };
     if (method === "Runtime.consoleAPICalled") {
       const type = String(params.type);
       if (type !== "error" && type !== "warning" && type !== "assert") return;
       const args = (params.args as { value?: unknown; description?: string }[] | undefined) ?? [];
       const text = args.map((a) => (a.value !== undefined ? String(a.value) : (a.description ?? ""))).join(" ");
       if (text.includes("Electron Security Warning")) return; // Electron's own dev-only notice, not the page's
-      push({ level: type === "warning" ? "warning" : "error", text: `console.${type}: ${text}` });
+      this.push({ level: type === "warning" ? "warning" : "error", text: `console.${type}: ${text}` });
     } else if (method === "Runtime.exceptionThrown") {
       const d = params.exceptionDetails as { text?: string; exception?: { description?: string } } | undefined;
-      push({ level: "error", text: `uncaught: ${d?.exception?.description ?? d?.text ?? "exception"}` });
+      this.push({ level: "error", text: `uncaught: ${d?.exception?.description ?? d?.text ?? "exception"}` });
     } else if (method === "Network.requestWillBeSent") {
       const req = params.request as { url?: string; method?: string } | undefined;
       this.requests.set(String(params.requestId), `${req?.method ?? "GET"} ${req?.url ?? ""}`);
@@ -102,12 +120,21 @@ export class BrowserController {
     } else if (method === "Network.responseReceived") {
       const res = params.response as { status?: number; url?: string } | undefined;
       if (res?.status && res.status >= 400) {
-        push({ level: "network", text: `${res.status} ${this.requests.get(String(params.requestId)) ?? res.url}` });
+        this.push({ level: "network", text: `${res.status} ${this.requests.get(String(params.requestId)) ?? res.url}` });
       }
     } else if (method === "Network.loadingFailed") {
       if (params.canceled) return;
-      push({ level: "network", text: `failed (${String(params.errorText)}) ${this.requests.get(String(params.requestId)) ?? ""}` });
+      this.push({ level: "network", text: `failed (${String(params.errorText)}) ${this.requests.get(String(params.requestId)) ?? ""}` });
     }
+  }
+
+  /** Emulate a viewport in the pane; "desktop" clears any override. */
+  async setDevice(preset: DevicePreset): Promise<void> {
+    const wc = await this.page();
+    if (preset === "desktop") await wc.debugger.sendCommand("Emulation.clearDeviceMetricsOverride");
+    else await wc.debugger.sendCommand("Emulation.setDeviceMetricsOverride", DEVICE_PRESETS[preset]);
+    this.device = preset;
+    this.events.onDevice?.(preset);
   }
 
   /** The pane's page, opening the pane first if needed. */
@@ -135,11 +162,12 @@ export class BrowserController {
     const wc = this.wc;
     if (!wc) throw new Error("The browser pane isn't open.");
     this.logs = [];
+    this.events.onLog?.(null);
     try {
       await wc.loadURL(url);
     } catch (err) {
       // A failed load still leaves an error page; report it rather than throw.
-      this.logs.push({ level: "network", text: `navigation failed: ${err instanceof Error ? err.message : String(err)}` });
+      this.push({ level: "network", text: `navigation failed: ${err instanceof Error ? err.message : String(err)}` });
     }
   }
 
@@ -252,8 +280,16 @@ export class BrowserController {
   async readLogs(clear: boolean): Promise<string> {
     await this.page();
     const lines = this.logs.map((l) => `[${l.level}] ${l.text}`);
-    if (clear) this.logs = [];
+    if (clear) {
+      this.logs = [];
+      this.events.onLog?.(null);
+    }
     return lines.length ? lines.join("\n") : "No console errors, warnings, or failed requests since the last page load.";
+  }
+
+  /** The console buffer for the user's console tab: a copy that never clears it. */
+  logsView(): LogEntry[] {
+    return [...this.logs];
   }
 
   /** Let the user click an element in the pane; the result arrives through onPicked. */
@@ -293,7 +329,7 @@ export class BrowserController {
           height: Math.ceil(r.height),
         });
         mkdirSync(this.screenshotDir, { recursive: true });
-        path = join(this.screenshotDir, `element-${new Date().toISOString().replace(/[:.]/g, "-")}.png`);
+        path = join(this.screenshotDir, `element-${new Date().toISOString().replace(/[:.]/g, "-")}.png`.toLowerCase());
         writeFileSync(path, image.toPNG());
       }
     } catch {
@@ -307,8 +343,15 @@ export class BrowserController {
     const image = await wc.capturePage();
     const png = image.toPNG();
     mkdirSync(this.screenshotDir, { recursive: true });
-    const path = join(this.screenshotDir, `browser-${new Date().toISOString().replace(/[:.]/g, "-")}.png`);
+    const path = join(this.screenshotDir, `browser-${new Date().toISOString().replace(/[:.]/g, "-")}.png`.toLowerCase());
     writeFileSync(path, png);
+    this.shots.push(path);
+    this.events.onScreenshot?.(path);
     return { path, png };
+  }
+
+  /** The screenshots saved this session, oldest first. */
+  listScreenshots(): string[] {
+    return [...this.shots];
   }
 }
