@@ -91,6 +91,46 @@ describe("Service.send", () => {
     release();
     await first;
   });
+
+  it("remembers allow-always per agent and re-asks after a switch", async () => {
+    const store = new Store(join(tempDir(), "t.db"));
+    closeAfter(() => store.close());
+    const updates: LiveUpdate[] = [];
+    const decisions: string[] = [];
+    const driver = (id: string): AgentDriver => ({
+      id,
+      label: id.toUpperCase(),
+      defaultModel: "m1",
+      capabilities: SAFE_DEFAULTS,
+      skillsDelivery: { mode: "none" },
+      skillCallPrefix: "",
+      models: () => [{ id: "m1", label: "M1" }],
+      async runTurn(input) {
+        decisions.push(await input.requestPermission({ toolName: "Run", summary: "npm test", canAlwaysAllow: true }));
+      },
+    });
+    const service = new Service(store, catalog(), [driver("a"), driver("b")], (u) => updates.push(u));
+    const project = store.addProject(tempDir());
+    const thread = service.createThread(project.id);
+
+    const first = service.send({ threadId: thread.id, text: "one" });
+    await new Promise((r) => setTimeout(r, 10));
+    const req = updates.find((u) => u.type === "permission") as Extract<LiveUpdate, { type: "permission" }>;
+    service.respondPermission(req.request.requestId, "allow-always");
+    await first;
+    expect(updates.filter((u) => u.type === "permission")).toHaveLength(1);
+
+    await service.send({ threadId: thread.id, text: "two" });
+    expect(updates.filter((u) => u.type === "permission")).toHaveLength(1);
+    expect(decisions[1]).toBe("allow-once");
+
+    service.updateThread(thread.id, { agent: "b" });
+    const third = service.send({ threadId: thread.id, text: "three" });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(updates.filter((u) => u.type === "permission")).toHaveLength(2);
+    service.interrupt(thread.id);
+    await third;
+  });
 });
 
 describe("titleFrom", () => {

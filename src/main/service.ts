@@ -13,7 +13,8 @@ import type {
   Thread,
   ThreadEvent,
 } from "../shared/types";
-import type { AgentDriver, HarnessTool } from "./agents/types";
+import type { AgentDriver, HarnessTool, ModelSwitch } from "./agents/types";
+import { Approvals } from "./approvals";
 import type { Store } from "./db";
 import { workingTreeDiff } from "./git";
 import type { Catalog } from "./skills/catalog";
@@ -30,6 +31,8 @@ export class Service {
   /** Projects already warned about loading the same conventions twice: said once, not every turn. */
   private scopeChecked = new Set<string>();
   private pendingPermissions = new Map<string, (d: PermissionDecision) => void>();
+  /** One Approvals per project, so an allow-always never leaks to another repo. */
+  private approvals = new Map<string, Approvals>();
 
   private drivers: Map<string, AgentDriver>;
 
@@ -55,6 +58,15 @@ export class Service {
     const d = this.drivers.get(agent);
     if (!d) throw new Error(`The agent "${agent}" isn't available. Install it or pick another agent for this thread.`);
     return d;
+  }
+
+  private approvalsFor(projectId: string): Approvals {
+    let approvals = this.approvals.get(projectId);
+    if (!approvals) {
+      approvals = new Approvals();
+      this.approvals.set(projectId, approvals);
+    }
+    return approvals;
   }
 
   listSkills(): SkillEntry[] {
@@ -123,14 +135,23 @@ export class Service {
         this.scopeChecked.add(project.id);
         for (const text of memoryScopeCheck(project.path)) this.emit(thread.id, { kind: "notice", text });
       }
-      if (thread.sessionId === null && this.store.listEvents(thread.id).length > 1) {
+      let switched = false;
+      if (thread.sessionId !== null) {
+        const last = this.lastModel(thread.id, thread.agent);
+        if (last !== null && last !== thread.model) {
+          await this.applyModel(thread.id, last, thread.model);
+          switched = true;
+        }
+      }
+      const current = this.store.getThread(thread.id);
+      if (!switched && current.sessionId === null && this.store.listEvents(thread.id).length > 1) {
         this.emit(thread.id, { kind: "notice", text: `Now talking to ${driver.label}. It starts without the earlier messages above.` });
       }
       await driver.runTurn({
         threadId: thread.id,
         cwd: project.path,
         prompt,
-        sessionId: thread.sessionId,
+        sessionId: current.sessionId,
         model: thread.model,
         permissionMode: thread.permissionMode,
         signal: controller.signal,
@@ -147,17 +168,24 @@ export class Service {
             this.broadcast({ type: "thread", thread: this.store.updateThread(thread.id, { sessionId }) });
           }
         },
-        requestPermission: (p) =>
-          new Promise<PermissionDecision>((resolve) => {
+        requestPermission: (p) => {
+          const approvals = this.approvalsFor(project.id);
+          // The drivers run the git guard before calling requestPermission, so
+          // a remembered approval never skips a guardrail block. Answer
+          // "allow-once" so Claude doesn't write the same settings rule again.
+          if (approvals.get(thread.agent, p.toolName, p.summary)) return Promise.resolve<PermissionDecision>("allow-once");
+          return new Promise<PermissionDecision>((resolve) => {
             const requestId = randomUUID();
             const done = (d: PermissionDecision) => {
               this.pendingPermissions.delete(requestId);
+              if (d === "allow-always" && p.canAlwaysAllow) approvals.remember(thread.agent, p.toolName, p.summary);
               resolve(d);
             };
             this.pendingPermissions.set(requestId, done);
             controller.signal.addEventListener("abort", () => done("deny"), { once: true });
             this.broadcast({ type: "permission", request: { requestId, threadId: thread.id, ...p } });
-          }),
+          });
+        },
       });
     } finally {
       this.running.delete(thread.id);
@@ -172,6 +200,38 @@ export class Service {
 
   respondPermission(requestId: string, decision: PermissionDecision): void {
     this.pendingPermissions.get(requestId)?.(decision);
+  }
+
+  /**
+   * Move an existing session to another model. Every switch starts the prompt
+   * cache over; a driver that can't do it in place gets a fresh session.
+   */
+  async applyModel(threadId: string, from: string, to: string): Promise<"in-place" | "new-session" | "unsupported"> {
+    const thread = this.store.getThread(threadId);
+    const driver = this.driverFor(thread.agent);
+    const result: ModelSwitch | "unsupported" = driver.setModel
+      ? await driver.setModel({ threadId, sessionId: thread.sessionId!, from, to })
+      : "unsupported";
+    if (result !== "in-place") {
+      this.broadcast({ type: "thread", thread: this.store.updateThread(threadId, { sessionId: null }) });
+    }
+    const models = driver.models();
+    const label = (id: string) => models.find((m) => m.id === id)?.label ?? id;
+    const text =
+      result === "in-place"
+        ? `Switched the model from ${label(from)} to ${label(to)}. ${driver.label} keeps the conversation, but the prompt cache starts over, so the next reply may be slower and cost more.`
+        : `Switched the model from ${label(from)} to ${label(to)}. ${driver.label} can't change models mid-conversation, so this is a new session without the earlier messages above.`;
+    this.emit(threadId, { kind: "notice", text });
+    return result;
+  }
+
+  private lastModel(threadId: string, agent: string): string | null {
+    const events = this.store.listEvents(threadId);
+    for (let i = events.length - 1; i >= 0; i--) {
+      const event = events[i]!;
+      if (event.provenance?.agent === agent) return event.provenance.model;
+    }
+    return null;
   }
 
   getDiff(projectId: string): Promise<DiffFile[]> {

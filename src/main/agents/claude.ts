@@ -69,7 +69,7 @@ function fromSdk(list: ModelInfo[]): ModelOption[] {
   });
 }
 
-const SDK_MODE: Record<PermissionMode, Options["permissionMode"]> = {
+export const SDK_MODE: Record<PermissionMode, Options["permissionMode"]> = {
   ask: "default",
   "auto-edit": "acceptEdits",
   full: "bypassPermissions",
@@ -182,6 +182,8 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
     skillCallPrefix: `${PLUGIN_NAME}:`,
     models: () => config.byokModels?.() ?? models,
     refreshModels,
+    // The next turn resumes the session with the new model (spike S1).
+    setModel: async () => "in-place",
     async runTurn(input: TurnInput): Promise<void> {
       const abortController = new AbortController();
       input.signal.addEventListener("abort", () => abortController.abort(), { once: true });

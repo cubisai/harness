@@ -39,7 +39,7 @@ export interface AcpAgentConfig {
 }
 
 // The slices of the ACP schema this driver reads (protocol version 1).
-type ToolKind = "read" | "edit" | "delete" | "move" | "search" | "execute" | "think" | "fetch" | "switch_mode" | "other";
+export type ToolKind = "read" | "edit" | "delete" | "move" | "search" | "execute" | "think" | "fetch" | "switch_mode" | "other";
 interface ToolCallFields {
   toolCallId: string;
   title?: string | null;
@@ -457,6 +457,9 @@ export function createAcpDriver(
     skillCallPrefix: "",
     models: () => [{ id: DEFAULT_MODEL, label: "Agent default" }, ...knownModels],
     refreshModels,
+    // session/set_config_option on the model option switches in place;
+    // applyModel skips the default, so going back to it needs a new session.
+    setModel: async ({ to }) => (to === DEFAULT_MODEL ? "new-session" : "in-place"),
     async runTurn(input) {
       const key = input.threadId;
       let l: Live;

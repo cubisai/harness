@@ -3,6 +3,9 @@ import type { AgentCapabilities, McpServerEntry, ModelOption, PermissionDecision
 
 export type { AgentCapabilities, SkillsDelivery } from "../../shared/types";
 
+/** How a driver takes a model change on an existing session. */
+export type ModelSwitch = "in-place" | "new-session";
+
 export interface ToolOutput {
   text: string;
   /** A PNG the model should see, base64. */
@@ -73,6 +76,11 @@ export interface AgentDriver {
    * leave the list as it was. Concurrent callers share one attempt.
    */
   refreshModels?(): Promise<void>;
+  /**
+   * How this agent takes a model change on an existing session. Every switch
+   * invalidates the prompt cache (each model has its own).
+   */
+  setModel?(req: { threadId: string; sessionId: string; from: string; to: string }): Promise<ModelSwitch>;
   runTurn(input: TurnInput): Promise<void>;
   /** Stop any agent processes the driver keeps alive. */
   dispose?(): void;

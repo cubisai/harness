@@ -404,6 +404,10 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       return byok ?? [{ id: CODEX_DEFAULT_MODEL, label: "Codex default" }, ...models];
     },
     refreshModels,
+    // turn/start carries the model and it sticks (spike S4); back to the
+    // default sends model null, which keeps the old model, so that needs a
+    // new thread.
+    setModel: async ({ to }) => (to === CODEX_DEFAULT_MODEL ? "new-session" : "in-place"),
     async runTurn(input) {
       const policy = codexPolicy(input.permissionMode);
       const model = input.model === CODEX_DEFAULT_MODEL ? null : input.model;
