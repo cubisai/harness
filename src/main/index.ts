@@ -18,6 +18,7 @@ import { TerminalManager } from "./terminal";
 import { Service } from "./service";
 import { LEGACY_ENV, catalogFor, testConnection } from "./providers";
 import { injectionFor } from "./inject";
+import { codexInstructions, prepareCodexPlan } from "./inject/codex";
 import { SettingsStore } from "./settings";
 import { agentCatalog, skillDetail } from "./library";
 import { Editors, realHost } from "./editors";
@@ -200,6 +201,20 @@ async function main(): Promise<void> {
             skillsDir: () => ensureModelSkillsDir(catalog, modelSkillsDir),
             toolServer: getToolServer,
             onLimits: limits.for("codex"),
+            injection: () =>
+              prepareCodexPlan(
+                injectionFor(settings, "codex", process.env, {
+                  codexCatalogDir: join(userData, "codex-catalogs"),
+                  codexInstructions: () => codexInstructions("codex"),
+                }),
+                "codex",
+              ),
+            byokModels: () => {
+              const c = settings.credential("codex");
+              if (c.kind !== "byok") return null;
+              const p = settings.providers().find((x) => x.id === c.providerId);
+              return p ? catalogFor(p).codex.models.map((m) => ({ id: String(m.slug), label: String(m.display_name) })) : null;
+            },
           }),
         ]
       : []),

@@ -2,6 +2,7 @@ import type { McpServerEntry, ModelOption, PermissionDecision, PermissionMode, T
 import { homedir } from "node:os";
 import { forCodex } from "../mcp/servers";
 import { normalizeUsage } from "../usage";
+import type { InjectionPlan } from "../inject";
 import { RpcError, StdioRpc } from "./rpc";
 import { codexLimitsPatch, type CodexRateLimits, type LimitsListener } from "./limits";
 import { summarizeToolInput, summarizeToolResult } from "./summarize";
@@ -50,6 +51,10 @@ export interface CodexConfig {
   toolServer?: () => Promise<{ url: string; token: string }>;
   /** Plan rate limits, from the notifications Codex sends with its responses. */
   onLimits?: LimitsListener;
+  /** The credential plan for the next app-server start; absent = inherit process.env (tests). */
+  injection?: () => InjectionPlan;
+  /** The BYOK provider's models, or null on subscription. */
+  byokModels?: () => ModelOption[] | null;
 }
 
 /** The MCP server name the harness's tools go by, in Codex's config and its tool calls. */
@@ -164,6 +169,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   const loaded = new Map<string, string>();
   /** MCP tools the user chose "always allow" for, by thread. */
   const alwaysAllowed = new Map<string, Set<string>>();
+  /** configWarning summaries from the current app-server, reset at each start. */
+  let startWarnings: string[] = [];
 
   const emitCompaction = (t: TurnState) => {
     if (t.compacted) return;
@@ -172,6 +179,11 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   };
 
   const onNotification = (method: string, params: unknown) => {
+    if (method === "configWarning") {
+      const w = params as { summary?: string; details?: string | null };
+      startWarnings.push(`${w.summary ?? "config warning"}${w.details ? ": " + w.details : ""}`);
+      return;
+    }
     if (method === "account/rateLimits/updated") {
       // Account-wide, sent as responses come in; never asked for with account/rateLimits/read.
       config.onLimits?.(codexLimitsPatch((params as { rateLimits: CodexRateLimits }).rateLimits));
@@ -308,7 +320,10 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
 
   const start = (cwd: string): Promise<void> => {
     if (rpc?.alive && ready) return ready;
-    rpc = StdioRpc.spawn(config.command, config.args, { cwd, env: process.env }, {
+    const plan = config.injection?.();
+    if (plan?.error) return Promise.reject(new Error(plan.error));
+    startWarnings = [];
+    rpc = StdioRpc.spawn(config.command, [...config.args, ...(plan?.args ?? [])], { cwd, env: plan?.env ?? process.env }, {
       onNotification,
       onRequest,
       onExit: () => {
@@ -331,6 +346,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       }
       const list = await conn.request<{ data: { id: string; displayName: string; hidden: boolean }[] }>("model/list", {}).catch(() => null);
       if (list) models = list.data.filter((m) => !m.hidden).map((m) => ({ id: m.id, label: m.displayName }));
+      if (plan?.byok && startWarnings.length) throw new Error(`Codex rejected the provider config: ${startWarnings.join("; ")}`);
     })();
     ready.catch(() => {
       rpc?.close();
@@ -355,7 +371,10 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     label: "Codex",
     defaultModel: CODEX_DEFAULT_MODEL,
     skillCallPrefix: "",
-    models: () => [{ id: CODEX_DEFAULT_MODEL, label: "Codex default" }, ...models],
+    models: () => {
+      const byok = config.byokModels?.();
+      return byok ?? [{ id: CODEX_DEFAULT_MODEL, label: "Codex default" }, ...models];
+    },
     refreshModels,
     async runTurn(input) {
       const policy = codexPolicy(input.permissionMode);

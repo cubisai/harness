@@ -5,6 +5,7 @@
 import type { CredentialChoice, Provider, Settings } from "../../shared/types";
 import { redactSecrets } from "./redact";
 import { CLAUDE_KEY_VARS, injectClaude } from "./claude";
+import { FALLBACK_INSTRUCTIONS, injectCodex } from "./codex";
 
 /** The variables a child process is handed. `Options.env` replaces, never merges. */
 export type InjectedEnv = Record<string, string>;
@@ -32,8 +33,8 @@ export interface InjectionSource {
   get(): Settings;
 }
 
-/** Drivers that write files outside the app data folder; BYOK for them is gated by Settings.providerInjection. */
-export const GATED_DRIVERS = new Set(["codex"]);
+/** Drivers that write files outside the app data folder (none today); BYOK for them is gated by Settings.providerInjection. */
+export const GATED_DRIVERS = new Set<string>();
 
 export { CLAUDE_KEY_VARS };
 
@@ -75,7 +76,12 @@ function strippedBase(source: InjectionSource, env: NodeJS.ProcessEnv): Injected
 }
 
 /** What one agent gets this turn: which provider (if any) and how to reach it. */
-export function injectionFor(source: InjectionSource, agentId: string, env: NodeJS.ProcessEnv = process.env): InjectionPlan {
+export function injectionFor(
+  source: InjectionSource,
+  agentId: string,
+  env: NodeJS.ProcessEnv = process.env,
+  opts: { codexCatalogDir?: string; codexInstructions?: () => string } = {},
+): InjectionPlan {
   const base = strippedBase(source, env);
   const choice = source.credential(agentId);
   // Subscription: the agent's own login, so no provider key — not even one the
@@ -98,6 +104,19 @@ export function injectionFor(source: InjectionSource, agentId: string, env: Node
     const secret = source.providerSecret(provider.id);
     return sealed(injectClaude(provider, secret, base), secret ? [secret] : []);
   }
-  // TODO(phase 2 step C/D/E): the codex, opencode and ACP injectors.
+  if (agentId === "codex") {
+    const secret = source.providerSecret(provider.id);
+    if (!opts.codexCatalogDir) {
+      return sealed({ env: base, byok: true, error: "Codex BYOK needs the app data folder." }, secret ? [secret] : []);
+    }
+    return sealed(
+      injectCodex(provider, secret, base, {
+        catalogDir: opts.codexCatalogDir,
+        instructions: opts.codexInstructions?.() ?? FALLBACK_INSTRUCTIONS,
+      }),
+      secret ? [secret] : [],
+    );
+  }
+  // TODO(phase 2 step C/D/E): the opencode and ACP injectors.
   return sealed({ env: base, byok: true }, []);
 }

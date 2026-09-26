@@ -41,21 +41,58 @@ exports[`catalogFor > compiles the catalog for anthropic-messages 1`] = `
     "models": [
       {
         "context_window": 200000,
+        "default_reasoning_level": "medium",
         "display_name": "Picked",
-        "max_output_tokens": 64000,
-        "slug": "wire/picked",
-        "supported_reasoning_levels": [
-          "low",
-          "medium",
-          "high",
+        "experimental_supported_tools": [],
+        "input_modalities": [
+          "text",
+          "image",
         ],
+        "max_output_tokens": 64000,
+        "priority": 0,
+        "shell_type": "unified_exec",
+        "slug": "wire/picked",
+        "support_verbosity": false,
+        "supported_in_api": true,
+        "supported_reasoning_levels": [
+          {
+            "description": "Low",
+            "effort": "low",
+          },
+          {
+            "description": "Medium",
+            "effort": "medium",
+          },
+          {
+            "description": "High",
+            "effort": "high",
+          },
+        ],
+        "truncation_policy": {
+          "limit": 10000,
+          "mode": "tokens",
+        },
+        "visibility": "list",
       },
       {
         "context_window": 8000,
         "display_name": "plain",
+        "experimental_supported_tools": [],
+        "input_modalities": [
+          "text",
+        ],
         "max_output_tokens": 1024,
+        "priority": 1,
+        "shell_type": "unified_exec",
         "slug": "plain",
+        "support_verbosity": false,
+        "supported_in_api": true,
         "supported_reasoning_levels": [],
+        "truncation_policy": {
+          "limit": 10000,
+          "mode": "tokens",
+        },
+        "visibility": "list",
       },
     ],
   },
@@ -133,21 +170,58 @@ exports[`catalogFor > compiles the catalog for gemini 1`] = `
     "models": [
       {
         "context_window": 200000,
+        "default_reasoning_level": "medium",
         "display_name": "Picked",
-        "max_output_tokens": 64000,
-        "slug": "wire/picked",
-        "supported_reasoning_levels": [
-          "low",
-          "medium",
-          "high",
+        "experimental_supported_tools": [],
+        "input_modalities": [
+          "text",
+          "image",
         ],
+        "max_output_tokens": 64000,
+        "priority": 0,
+        "shell_type": "unified_exec",
+        "slug": "wire/picked",
+        "support_verbosity": false,
+        "supported_in_api": true,
+        "supported_reasoning_levels": [
+          {
+            "description": "Low",
+            "effort": "low",
+          },
+          {
+            "description": "Medium",
+            "effort": "medium",
+          },
+          {
+            "description": "High",
+            "effort": "high",
+          },
+        ],
+        "truncation_policy": {
+          "limit": 10000,
+          "mode": "tokens",
+        },
+        "visibility": "list",
       },
       {
         "context_window": 8000,
         "display_name": "plain",
+        "experimental_supported_tools": [],
+        "input_modalities": [
+          "text",
+        ],
         "max_output_tokens": 1024,
+        "priority": 1,
+        "shell_type": "unified_exec",
         "slug": "plain",
+        "support_verbosity": false,
+        "supported_in_api": true,
         "supported_reasoning_levels": [],
+        "truncation_policy": {
+          "limit": 10000,
+          "mode": "tokens",
+        },
+        "visibility": "list",
       },
     ],
   },
@@ -225,21 +299,58 @@ exports[`catalogFor > compiles the catalog for openai-chat 1`] = `
     "models": [
       {
         "context_window": 200000,
+        "default_reasoning_level": "medium",
         "display_name": "Picked",
-        "max_output_tokens": 64000,
-        "slug": "wire/picked",
-        "supported_reasoning_levels": [
-          "low",
-          "medium",
-          "high",
+        "experimental_supported_tools": [],
+        "input_modalities": [
+          "text",
+          "image",
         ],
+        "max_output_tokens": 64000,
+        "priority": 0,
+        "shell_type": "unified_exec",
+        "slug": "wire/picked",
+        "support_verbosity": false,
+        "supported_in_api": true,
+        "supported_reasoning_levels": [
+          {
+            "description": "Low",
+            "effort": "low",
+          },
+          {
+            "description": "Medium",
+            "effort": "medium",
+          },
+          {
+            "description": "High",
+            "effort": "high",
+          },
+        ],
+        "truncation_policy": {
+          "limit": 10000,
+          "mode": "tokens",
+        },
+        "visibility": "list",
       },
       {
         "context_window": 8000,
         "display_name": "plain",
+        "experimental_supported_tools": [],
+        "input_modalities": [
+          "text",
+        ],
         "max_output_tokens": 1024,
+        "priority": 1,
+        "shell_type": "unified_exec",
         "slug": "plain",
+        "support_verbosity": false,
+        "supported_in_api": true,
         "supported_reasoning_levels": [],
+        "truncation_policy": {
+          "limit": 10000,
+          "mode": "tokens",
+        },
+        "visibility": "list",
       },
     ],
   },
@@ -317,21 +428,58 @@ exports[`catalogFor > compiles the catalog for openai-responses 1`] = `
     "models": [
       {
         "context_window": 200000,
+        "default_reasoning_level": "medium",
         "display_name": "Picked",
-        "max_output_tokens": 64000,
-        "slug": "wire/picked",
-        "supported_reasoning_levels": [
-          "low",
-          "medium",
-          "high",
+        "experimental_supported_tools": [],
+        "input_modalities": [
+          "text",
+          "image",
         ],
+        "max_output_tokens": 64000,
+        "priority": 0,
+        "shell_type": "unified_exec",
+        "slug": "wire/picked",
+        "support_verbosity": false,
+        "supported_in_api": true,
+        "supported_reasoning_levels": [
+          {
+            "description": "Low",
+            "effort": "low",
+          },
+          {
+            "description": "Medium",
+            "effort": "medium",
+          },
+          {
+            "description": "High",
+            "effort": "high",
+          },
+        ],
+        "truncation_policy": {
+          "limit": 10000,
+          "mode": "tokens",
+        },
+        "visibility": "list",
       },
       {
         "context_window": 8000,
         "display_name": "plain",
+        "experimental_supported_tools": [],
+        "input_modalities": [
+          "text",
+        ],
         "max_output_tokens": 1024,
+        "priority": 1,
+        "shell_type": "unified_exec",
         "slug": "plain",
+        "support_verbosity": false,
+        "supported_in_api": true,
         "supported_reasoning_levels": [],
+        "truncation_policy": {
+          "limit": 10000,
+          "mode": "tokens",
+        },
+        "visibility": "list",
       },
     ],
   },

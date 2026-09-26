@@ -9,6 +9,7 @@ export async function startFakeOpenAI(opts = {}) {
   const offered = [];
   const namespaces = [];
   const requests = [];
+  const authHeaders = [];
   let n = 0;
   const sse = (events) => events.map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join("");
   const server = createServer((req, res) => {
@@ -24,6 +25,7 @@ export async function startFakeOpenAI(opts = {}) {
         return void res.writeHead(400).end();
       }
       requests.push(request);
+      authHeaders.push(req.headers.authorization ?? null);
       const ns = request.tools?.find((t) => t.name === "mcp__unskilled");
       offered.push(ns?.tools?.map((t) => t.name) ?? []);
       namespaces.push((request.tools ?? []).filter((t) => t.tools).map((t) => `${t.name}: ${t.tools.map((x) => x.name).join(",")}`));
@@ -53,5 +55,5 @@ export async function startFakeOpenAI(opts = {}) {
     });
   });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
-  return { server, url: `http://127.0.0.1:${server.address().port}/v1`, offered, namespaces, requests };
+  return { server, url: `http://127.0.0.1:${server.address().port}/v1`, offered, namespaces, requests, authHeaders };
 }

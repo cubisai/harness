@@ -326,13 +326,28 @@ export function catalogFor(provider: Provider): ProviderCatalog {
       env: claudeEnv,
     },
     codex: {
-      models: provider.models.map((model) => ({
+      models: provider.models.map((model, index) => ({
         slug: wireIdOf(model, model.id),
         display_name: model.name ?? model.id,
         context_window: model.contextWindow,
         max_output_tokens: model.maxOutput,
-        // Shape must be validated against the installed Codex in Phase 2 — spike S3 found a strict schema.
-        supported_reasoning_levels: model.capabilities.reasoning ? ["low", "medium", "high"] : [],
+        // The full entry Codex's model_catalog_json requires; base_instructions is added at injection time.
+        supported_reasoning_levels: model.capabilities.reasoning
+          ? [
+              { effort: "low", description: "Low" },
+              { effort: "medium", description: "Medium" },
+              { effort: "high", description: "High" },
+            ]
+          : [],
+        shell_type: "unified_exec",
+        visibility: "list",
+        supported_in_api: true,
+        priority: index,
+        support_verbosity: false,
+        truncation_policy: { mode: "tokens", limit: 10000 },
+        experimental_supported_tools: [],
+        ...(model.capabilities.reasoning ? { default_reasoning_level: "medium" } : {}),
+        input_modalities: model.capabilities.vision ? ["text", "image"] : ["text"],
       })),
     },
     opencode: { models: opencodeModels },

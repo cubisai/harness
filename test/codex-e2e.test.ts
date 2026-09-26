@@ -1,13 +1,15 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import type { ThreadEvent } from "../src/shared/types";
-import { createCodexDriver } from "../src/main/agents/codex";
+import type { Provider, ThreadEvent } from "../src/shared/types";
+import { CODEX_DEFAULT_MODEL, createCodexDriver } from "../src/main/agents/codex";
 import type { LimitsPatch } from "../src/main/agents/limits";
 import { onPath } from "../src/main/agents/registry";
 import type { HarnessTool, TurnInput } from "../src/main/agents/types";
+import { type InjectionSource, injectionFor } from "../src/main/inject";
+import { codexInstructions, prepareCodexPlan, validateCodexCatalog } from "../src/main/inject/codex";
 import { startToolServer } from "../src/main/mcp-http";
 import { startFakeOpenAI } from "./fixtures/fake-openai.mjs";
 import { closeAfter } from "./helpers";
@@ -17,6 +19,30 @@ import { closeAfter } from "./helpers";
 // approval, the tool call, and its result going back to the model. Runs
 // when codex is on PATH, or at UNSKILLED_CODEX_BIN.
 const codex = process.env.UNSKILLED_CODEX_BIN ?? (onPath("codex") ? "codex" : null);
+
+const KEY = "test-codex-key";
+
+function provider(baseURL: string): Provider {
+  return {
+    id: "fake",
+    label: "Fake",
+    wireProtocol: "openai-responses",
+    baseURL,
+    secret: { kind: "safeStorage", ciphertext: "x" },
+    models: [{ id: "fake", modelID: "fake-model", capabilities: { tools: true, vision: false, reasoning: false }, contextWindow: 128_000, maxOutput: 16_000 }],
+  };
+}
+
+/** A fake settings surface for one BYOK provider. */
+function source(p: Provider): InjectionSource {
+  return {
+    credential: () => ({ kind: "byok", providerId: p.id }),
+    providers: () => [p],
+    providerSecret: () => KEY,
+    secretEnvNames: () => [],
+    get: () => ({ theme: "system", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: false, editor: null, providerInjection: {} }),
+  };
+}
 
 describe.skipIf(!codex)("Codex end to end (real app-server, fake model)", () => {
   it("adds the browser tools mid-thread and runs one with approval", async () => {
@@ -101,4 +127,79 @@ describe.skipIf(!codex)("Codex end to end (real app-server, fake model)", () => 
       { kind: "assistant-text", text: "Evaluated." },
     ]);
   }, 60_000);
+
+  it("runs a turn through an injected BYOK provider", async () => {
+    const model = await startFakeOpenAI({ requireAuth: true });
+    closeAfter(() => void model.server.close());
+
+    const home = mkdtempSync(join(tmpdir(), "unskilled-codex-home-"));
+    const configFile = join(home, "config.toml");
+    writeFileSync(configFile, '# user config\n[tui]\ntheme = "dark"\n');
+    const before = readFileSync(configFile);
+    const previousHome = process.env.CODEX_HOME;
+    process.env.CODEX_HOME = home;
+    closeAfter(() => (previousHome === undefined ? delete process.env.CODEX_HOME : (process.env.CODEX_HOME = previousHome)));
+
+    const catalogDir = mkdtempSync(join(tmpdir(), "unskilled-codex-catalogs-"));
+    const plan = prepareCodexPlan(
+      injectionFor(source(provider(model.url)), "codex", process.env, {
+        codexCatalogDir: catalogDir,
+        codexInstructions: () => codexInstructions(codex!),
+      }),
+      codex!,
+    );
+    expect(plan.error).toBeUndefined();
+
+    const driver = createCodexDriver({
+      command: codex!,
+      args: ["app-server"],
+      clientVersion: "test",
+      injection: () => plan,
+    });
+    closeAfter(() => driver.dispose?.());
+
+    const cwd = mkdtempSync(join(tmpdir(), "unskilled-codex-cwd-"));
+    const events: ThreadEvent[] = [];
+    await driver.runTurn({
+      threadId: "t",
+      cwd,
+      prompt: "hi",
+      sessionId: null,
+      model: CODEX_DEFAULT_MODEL,
+      permissionMode: "full",
+      signal: new AbortController().signal,
+      tools: [],
+      mcpServers: [],
+      onEvent: (e) => events.push(e),
+      onTextDelta: () => {},
+      onSession: () => {},
+      requestPermission: async () => "allow-once",
+    });
+
+    expect(events.find((e) => e.kind === "error")).toBeUndefined();
+    expect(model.requests.length).toBeGreaterThanOrEqual(1);
+    expect(model.authHeaders.length).toBeGreaterThanOrEqual(1);
+    for (const auth of model.authHeaders) expect(auth).toBe(`Bearer ${KEY}`);
+    expect(model.requests[0]!.model).toBe("fake-model");
+    // The injected plan never touches $CODEX_HOME.
+    expect(readFileSync(configFile).equals(before)).toBe(true);
+    expect(readdirSync(home).filter((f) => f.endsWith(".config.toml") && f !== "config.toml")).toEqual([]);
+  }, 90_000);
+
+  it("validates a generated catalog and rejects a broken one", () => {
+    const home = mkdtempSync(join(tmpdir(), "unskilled-codex-home-"));
+    const env = { ...process.env, CODEX_HOME: home };
+    const bad = join(mkdtempSync(join(tmpdir(), "unskilled-codex-bad-")), "bad.json");
+    writeFileSync(bad, JSON.stringify({ models: [{ slug: "x" }] }));
+    expect(validateCodexCatalog(codex!, bad, env)).toMatch(/rejected/);
+
+    const catalogDir = mkdtempSync(join(tmpdir(), "unskilled-codex-good-"));
+    const plan = injectionFor(source(provider("https://gw.example.com/v1")), "codex", env, {
+      codexCatalogDir: catalogDir,
+      codexInstructions: () => codexInstructions(codex!, env),
+    });
+    prepareCodexPlan(plan, codex!);
+    expect(plan.error).toBeUndefined();
+    expect(validateCodexCatalog(codex!, plan.files![0]!.path, env)).toBeNull();
+  }, 30_000);
 });

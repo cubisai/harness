@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { CredentialChoice, Provider, Settings } from "../src/shared/types";
-import { type InjectionSource, injectionFor } from "../src/main/inject";
+import { type InjectionSource, GATED_DRIVERS, injectionFor } from "../src/main/inject";
 import { staleKeyNotice, staleKeySources } from "../src/main/inject/claude";
 import { tempDir } from "./helpers";
 
@@ -122,16 +122,15 @@ describe("injectionFor (Claude)", () => {
 });
 
 describe("injectionFor (gated drivers)", () => {
-  it("runs codex without BYOK files until providerInjection turns it on", () => {
-    const off = injectionFor(source({ settings: { providerInjection: {} } }), "codex");
-    expect(off.files).toEqual([]);
-    expect(off.args).toBeUndefined();
-    expect(off.warning).toMatch(/off/);
-  });
-
-  it("drops the codex warning once providerInjection is on", () => {
-    const on = injectionFor(source({ settings: { providerInjection: { codex: true } } }), "codex");
-    expect(on.warning).toBeUndefined();
+  it("warns and skips injection for a gated driver", () => {
+    GATED_DRIVERS.add("test-gated");
+    try {
+      const plan = injectionFor(source({ settings: { providerInjection: {} } }), "test-gated");
+      expect(plan.files).toEqual([]);
+      expect(plan.warning).toMatch(/off/);
+    } finally {
+      GATED_DRIVERS.delete("test-gated");
+    }
   });
 });
 
