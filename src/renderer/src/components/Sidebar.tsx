@@ -14,7 +14,7 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" id="sidebar">
       <div className="sidebar-top drag">
         <span className="wordmark">UnSkilled</span>
         <button className="icon-button" title="New thread (⌘N)" onClick={() => void newThread()} disabled={!selectedProjectId}>

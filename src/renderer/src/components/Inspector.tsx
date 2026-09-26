@@ -17,7 +17,7 @@ export function Inspector({ projectId }: { projectId: string | null }) {
   const [refreshKey, setRefreshKey] = useState(0);
 
   return (
-    <aside className="inspector">
+    <aside className="inspector" id="inspector">
       <div className="inspector-head drag">
         <div className="segmented" role="tablist">
           <button role="tab" aria-selected={tab === "changes"} className={tab === "changes" ? "on" : ""} onClick={() => tab !== "changes" && showInspector("changes")}>

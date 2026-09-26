@@ -57,6 +57,7 @@ Updated 2026-09-26 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-
 - **This Windows PC:** Node 22.17 → `db.test` worker test fails (`Unknown file extension ".ts"`); needs Node ≥ 22.18. `codex-e2e` "offers the browser tools…" fails under full-suite load only: its first request goes out before the mock stdio `docs` MCP server is up (passes alone) — consider `startup_timeout_sec` for app MCP servers.
 - **Phase 6 carried forward:** T6.5 stale-cursor path (mark the binding `lost`, re-seed) and T6.11's lighter model-switch card; small threads can't be handed off (the checkpoint would exceed what it replaces — by design).
 - **This PC's accounts:** Codex returns 401 "workspace routing unauthorized" (sign in again); a Codex "retrying" status notice stays on screen after the turn ends (seen in the app, pre-existing) — Phase 7/8.
+- **Narrow main pane (Phase 8 header work):** with resizable panes the main column can be 420–500px; the header then clips the permission-mode control (only "Ask" visible) and hides the thread title. Needs a header that wraps or collapses meters at narrow widths.
 - **Renderer id branches:** `ProviderSheet.tsx` still checks `agent.id === "claude"/"codex"/"antigravity"` — out of T3.8's `src/main` scope; fold into phase 8's Settings work.
 - Manual checks still pending: Claude on a BYOK provider in-app; `dsh` receiving its key; model-picker search/provider name (user request, unscheduled).
 - `CLAUDE_CODE_PROMPT_CACHE_TTL` / gateway model discovery have no Provider field; OpenCode BYOK is openai-chat only.

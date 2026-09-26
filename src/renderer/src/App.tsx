@@ -7,9 +7,12 @@ import { CacheMeter } from "./components/CacheMeter";
 import { Inspector } from "./components/Inspector";
 import { SettingsSheet } from "./components/SettingsSheet";
 import { Sidebar } from "./components/Sidebar";
+import { Splitter } from "./components/Splitter";
 import { SwitchDialogHost } from "./components/SwitchDialog";
 import { ThreadView } from "./components/ThreadView";
 import { IconDiff, IconFolder, IconGlobe, IconSparkle, IconTerminal } from "./icons";
+import { usePaneLayout } from "./hooks/usePaneLayout";
+import { BOUNDS, DEFAULT_LAYOUT } from "./layout";
 import { useSelectedThread, useStore } from "./store";
 
 const MODES: { id: PermissionMode; label: string; title: string }[] = [
@@ -70,9 +73,12 @@ export function App() {
 
   // The browser works without a project; Changes needs one.
   const inspectorVisible = inspectorOpen && (project || inspectorTab !== "changes");
+  const layout = useStore((s) => s.paneLayout);
+  const pane = usePaneLayout(Boolean(inspectorVisible));
+  const setPaneLayout = useStore((s) => s.setPaneLayout);
 
   return (
-    <div className={`app${inspectorVisible ? " with-inspector" : ""}`}>
+    <div className={`app${inspectorVisible && pane.inspector !== null ? " with-inspector" : ""}`}>
       <Sidebar />
       <main className="main">
         <header className="main-header drag">
@@ -189,7 +195,36 @@ export function App() {
           </>
         )}
       </main>
-      {inspectorVisible && <Inspector projectId={project?.id ?? null} />}
+      <Splitter
+        orientation="vertical"
+        controls="sidebar"
+        label="Resize sidebar"
+        value={layout.sidebar}
+        min={BOUNDS.sidebar.min}
+        max={BOUNDS.sidebar.max}
+        defaultValue={DEFAULT_LAYOUT.sidebar}
+        collapsed={layout.sidebarCollapsed}
+        className="splitter-sidebar"
+        onChange={(v, c) => setPaneLayout({ sidebar: v || layout.sidebar, sidebarCollapsed: c }, false)}
+        onCommit={(v, c) => setPaneLayout({ sidebar: v || layout.sidebar, sidebarCollapsed: c }, true)}
+      />
+      {inspectorVisible && (
+        <Splitter
+          orientation="vertical"
+          controls="inspector"
+          label="Resize side panel"
+          value={layout.inspector}
+          min={BOUNDS.inspector.min}
+          max={BOUNDS.inspector.max}
+          defaultValue={DEFAULT_LAYOUT.inspector}
+          collapsed={layout.inspectorCollapsed}
+          invert
+          className="splitter-inspector"
+          onChange={(v, c) => setPaneLayout({ inspector: v || layout.inspector, inspectorCollapsed: c }, false)}
+          onCommit={(v, c) => setPaneLayout({ inspector: v || layout.inspector, inspectorCollapsed: c }, true)}
+        />
+      )}
+      {inspectorVisible && pane.inspector !== null && <Inspector projectId={project?.id ?? null} />}
       <SettingsSheet />
       <Notice />
       <Library />

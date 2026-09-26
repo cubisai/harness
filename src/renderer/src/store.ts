@@ -7,6 +7,7 @@ import type {
   SettingsView,
   AgentInfo,
   LiveUpdate,
+  PaneLayout,
   PermissionRequest,
   Project,
   SkillEntry,
@@ -17,6 +18,7 @@ import type {
 } from "../../shared/types";
 import { api } from "./api";
 import { appendDelta, applyLiveEvent, emptyLive, flushPending, type LiveThread } from "./live";
+import { DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
 
 export type LibraryTab = "experts" | "skills" | "connectors" | "mcp" | "agents";
 
@@ -57,6 +59,9 @@ interface State {
   live: Record<string, LiveThread>; // streaming state not yet stored
   running: Record<string, boolean>;
   permissions: PermissionRequest[];
+  /** Panel widths and collapse state; the raw setting, drawn through clampLayout. */
+  paneLayout: PaneLayout;
+  setPaneLayout(patch: Partial<PaneLayout>, persist: boolean): void;
   inspectorOpen: boolean;
   inspectorTab: "changes" | "browser" | "terminal";
   /** The browser pane has been shown this session, so its <webview> stays mounted. */
@@ -205,6 +210,7 @@ export const useStore = create<State>((set, get) => ({
   live: {},
   running: {},
   permissions: [],
+  paneLayout: { ...DEFAULT_LAYOUT },
   inspectorOpen: false,
   inspectorTab: "changes",
   browserMounted: false,
@@ -245,7 +251,7 @@ export const useStore = create<State>((set, get) => ({
     const threads: Record<string, Thread[]> = {};
     for (const p of projects) threads[p.id] = await api().listThreads(p.id);
     const limits = Object.fromEntries(limitList.map((l) => [l.agent, l]));
-    set((s) => ({ projects, skills, agents, threads, settings, appUpdate, limits: { ...limits, ...s.limits } }));
+    set((s) => ({ projects, skills, agents, threads, settings, paneLayout: sanitizeLayout(settings.paneLayout), appUpdate, limits: { ...limits, ...s.limits } }));
     const first = projects[0];
     if (first) {
       await get().selectProject(first.id);
@@ -352,11 +358,18 @@ export const useStore = create<State>((set, get) => ({
     await api().respondPermission(requestId, decision);
   },
 
+  setPaneLayout(patch, persist) {
+    const next = { ...get().paneLayout, ...patch };
+    set({ paneLayout: next });
+    if (persist) void api().updateSettings({ paneLayout: next });
+  },
+
   toggleInspector() {
     set((s) => ({ inspectorOpen: !s.inspectorOpen }));
   },
 
   showInspector(tab) {
+    const opens = !(get().inspectorOpen && get().inspectorTab === tab);
     set((s) => {
       // Clicking the open tab's button again closes the inspector.
       if (s.inspectorOpen && s.inspectorTab === tab) return { inspectorOpen: false };
@@ -368,6 +381,8 @@ export const useStore = create<State>((set, get) => ({
         terminals: tab === "terminal" && !s.terminals.includes(term) ? [...s.terminals, term] : s.terminals,
       };
     });
+    // Reopening restores a collapsed inspector at its stored width.
+    if (opens && get().paneLayout.inspectorCollapsed) get().setPaneLayout({ inspectorCollapsed: false }, true);
   },
 
   apply(update) {
@@ -425,7 +440,11 @@ export const useStore = create<State>((set, get) => ({
         return;
       case "settings":
         applyTheme(update.settings.theme);
-        set({ settings: update.settings });
+        // A broadcast during a drag would fight the pointer; keep the local layout then.
+        set((s) => ({
+          settings: update.settings,
+          paneLayout: typeof document !== "undefined" && document.body.classList.contains("resizing") ? s.paneLayout : sanitizeLayout(update.settings.paneLayout),
+        }));
         return;
       case "app-update":
         set({ appUpdate: update.status });

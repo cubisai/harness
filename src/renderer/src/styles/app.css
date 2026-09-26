@@ -116,6 +116,20 @@ button { cursor: default; }
 .drag { -webkit-app-region: drag; }
 .no-drag, .drag button, .drag select, .drag input { -webkit-app-region: no-drag; }
 
+/* ---------- splitters ---------- */
+
+.splitter { position: fixed; z-index: 20; outline: none; touch-action: none; }
+.splitter-vertical { top: 0; bottom: 0; width: 27px; cursor: col-resize; }
+.splitter-horizontal { left: 0; right: 0; height: 27px; cursor: row-resize; }
+.splitter-sidebar { left: calc(var(--sidebar-w) - 13px); }
+.splitter-inspector { right: calc(var(--inspector-w) - 14px); }
+.app:not(.with-inspector) .splitter-inspector { right: -13px; }
+.splitter::after { content: ""; position: absolute; background: transparent; transition: background 120ms var(--ease); }
+.splitter-vertical::after { top: 0; bottom: 0; left: 13px; width: 1px; }
+.splitter-horizontal::after { left: 0; right: 0; top: 13px; height: 1px; }
+.splitter:hover::after, .splitter:focus-visible::after { background: var(--accent); }
+body.resizing, body.resizing * { cursor: grabbing !important; user-select: none !important; transition: none !important; }
+
 /* ---------- sidebar ---------- */
 
 .sidebar {
@@ -950,7 +964,7 @@ button { cursor: default; }
 /* ---------- open in editor ---------- */
 
 .open-in { position: relative; display: inline-flex; align-items: center; -webkit-app-region: no-drag; }
-.open-in .open-main { border-top-right-radius: 0; border-bottom-right-radius: 0; padding-right: 8px; }
+.open-in .open-main { border-top-right-radius: 0; border-bottom-right-radius: 0; padding-right: 8px; white-space: nowrap; }
 .open-in .open-more { border-top-left-radius: 0; border-bottom-left-radius: 0; padding: 0 6px; }
 .open-in .open-more svg { transform: rotate(90deg); }
 .open-menu {
