@@ -5,6 +5,7 @@ import { summarizeToolResult } from "../summarize";
 import type { AgentDriver, TurnInput } from "../types";
 import { acpCapabilities, withCapabilities } from "../capabilities";
 import { forAcpWithReport, mcpChangeNotice } from "../../mcp/servers";
+import { checkCommand } from "../../guard";
 import { RpcError, StdioRpc } from "../rpc";
 import { normalizeUsage } from "../../usage";
 import type { InjectionPlan } from "../../inject";
@@ -31,6 +32,10 @@ export interface AcpAgentConfig {
   /** How to install the agent, shown in the Library when it isn't installed. */
   install?: string;
   homepage?: string;
+  /** Which credential injector this agent uses, when it isn't the generic ACP one. */
+  injector?: "opencode";
+  /** A guard plugin this agent needs injected to enforce the git guardrail. */
+  guardPlugin?: "opencode";
 }
 
 // The slices of the ACP schema this driver reads (protocol version 1).
@@ -145,6 +150,8 @@ export function createAcpDriver(
     toolServer?: () => Promise<{ url: string; token: string }>;
     /** The credential plan for the next agent process; absent = inherit process.env. */
     injection?: () => InjectionPlan;
+    /** The git-guardrails script: an execute permission call is vetoed in every mode. */
+    guardScript?: string;
   },
 ): AgentDriver {
   const live = new Map<string, Live>();
@@ -267,6 +274,18 @@ export function createAcpDriver(
         if (method !== "session/request_permission") throw new RpcError(-32601, `${method} is not supported by this client`);
         const p = params as { toolCall: ToolCallFields; options: PermissionOption[] };
         const t = l.turn;
+        // The git guardrail vetoes shell commands in every mode, even Full:
+        // before the user is asked (or not), the command is checked.
+        if (p.toolCall.kind === "execute" && deps.guardScript) {
+          const raw = p.toolCall.rawInput as { command?: unknown; cmd?: unknown } | null | undefined;
+          const command = typeof raw?.command === "string" ? raw.command : typeof raw?.cmd === "string" ? raw.cmd : `${p.toolCall.title ?? ""}`;
+          const verdict = await checkCommand(deps.guardScript, "Bash", command);
+          if (verdict.blocked) {
+            t?.input.onEvent({ kind: "notice", text: `Blocked by git guardrails: ${command}` });
+            const reject = p.options.find((o) => o.kind === "reject_once");
+            return reject ? { outcome: { outcome: "selected", optionId: reject.optionId } } : { outcome: { outcome: "cancelled" } };
+          }
+        }
         const choose = async (): Promise<PermissionDecision> => {
           if (!t) return "deny";
           if (pickPermission(t.input.permissionMode, p.toolCall.kind) === "allow") return "allow-once";

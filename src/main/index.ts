@@ -21,6 +21,8 @@ import { injectionFor } from "./inject";
 import { redactSecrets } from "./inject/redact";
 import { codexInstructions, prepareCodexPlan } from "./inject/codex";
 import { opencodeVersion } from "./inject/opencode";
+import { ensureOpenCodeGuard, withOpenCodeGuard } from "./inject/opencode-guard";
+import { findPython } from "./guard";
 import { SettingsStore } from "./settings";
 import { agentCatalog, skillDetail } from "./library";
 import { Editors, realHost } from "./editors";
@@ -197,6 +199,7 @@ async function main(): Promise<void> {
             command: "codex",
             args: ["app-server"],
             clientVersion: app.getVersion(),
+            guardScript,
             skillsDir: () => ensureModelSkillsDir(catalog, modelSkillsDir),
             toolServer: getToolServer,
             onLimits: limits.for("codex"),
@@ -217,18 +220,29 @@ async function main(): Promise<void> {
           }),
         ]
       : []),
-    ...acpAgents.map((config) =>
-      createAcpDriver(config, {
+    ...acpAgents.map((config) => {
+      // OpenCode can't ask before every shell command, so its guard is a plugin
+      // injected into its config; with one, the git guardrail blocks in every mode.
+      const python = config.guardPlugin === "opencode" && guardScript ? findPython() : null;
+      const driverConfig =
+        python && config.guardPlugin === "opencode"
+          ? { ...config, capabilities: { ...config.capabilities, preToolGuard: true, guardEnforcement: { ask: "block" as const, "auto-edit": "block" as const, full: "block" as const } } }
+          : config;
+      return createAcpDriver(driverConfig, {
         skillsDir: () => ensureModelSkillsDir(catalog, modelSkillsDir),
         clientVersion: app.getVersion(),
         toolServer: getToolServer,
-        injection: () =>
-          injectionFor(settings, config.id, process.env, {
+        guardScript,
+        injection: () => {
+          const plan = injectionFor(settings, config.id, process.env, {
             agentLabel: config.label,
-            ...(config.id === "opencode" ? { opencodeVersion: () => opencodeVersion(config.command) } : {}),
-          }),
-      }),
-    ),
+            ...(config.injector === "opencode" ? { opencodeVersion: () => opencodeVersion(config.command) } : {}),
+          });
+          if (!python || config.guardPlugin !== "opencode") return plan;
+          return withOpenCodeGuard(plan, { pluginUrl: ensureOpenCodeGuard(join(userData, "opencode")), script: guardScript, python });
+        },
+      });
+    }),
   ];
   // Model lists that only appear once an agent has run: ask for them now so
   // the picker isn't empty on first open. Each driver notifies when ready.

@@ -1,5 +1,9 @@
 // A tiny ACP agent over stdio for tests. The prompt text picks the scenario:
 //   "tool"    - asks permission to run a command, then reports the result
+//   "exec:<command>" - asks permission to execute <command> (toolCall kind
+//                "execute" with rawInput.command), then answers "ran" when an
+//                allow option was chosen, "rejected:<optionKind>" for a reject,
+//                or "cancelled" when no option was selected
 //   "slow"    - streams until session/cancel arrives
 //   "reason"  - emits three thought chunks, a tick apart, then answers
 //   "plan"    - emits a plan update with two entries, then answers
@@ -115,6 +119,26 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
           content: [{ type: "content", content: { type: "text", text: allowed ? `3 passed (${res.outcome.optionId})` : "rejected" } }],
         });
         update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "All done." } });
+      } else if (text.startsWith("exec:")) {
+        const command = text.slice("exec:".length);
+        const options = [
+          { optionId: "allow-once", name: "Allow", kind: "allow_once" },
+          { optionId: "allow-always", name: "Always", kind: "allow_always" },
+          { optionId: "reject-once", name: "Reject", kind: "reject_once" },
+          { optionId: "reject-always", name: "Always reject", kind: "reject_always" },
+        ];
+        const res = await ask("session/request_permission", {
+          sessionId: sid,
+          toolCall: { toolCallId: "e1", title: command, kind: "execute", rawInput: { command } },
+          options,
+        });
+        let answer;
+        if (res?.outcome?.outcome !== "selected") answer = "cancelled";
+        else {
+          const kind = options.find((o) => o.optionId === res.outcome.optionId)?.kind ?? res.outcome.optionId;
+          answer = kind === "allow_once" || kind === "allow_always" ? "ran" : `rejected:${kind}`;
+        }
+        update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: answer } });
       } else if (text === "mcp") {
         update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: JSON.stringify(lastMcp.map((m) => [m.type, m.name, m.url])) } });
       } else if (text === "reason") {

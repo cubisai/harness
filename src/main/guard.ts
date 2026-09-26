@@ -29,7 +29,36 @@ export interface GuardVerdict {
   reason: string;
 }
 
+/**
+ * The command a shell wrapper runs. Codex hands approvals over as
+ * `/bin/zsh -lc 'git push --force'`, and the guard script matches commands
+ * from their start, so it would wave the wrapped form through. Unwraps
+ * `sh|bash|zsh [-l] -c <quoted>` (nested up to three deep); anything else is
+ * returned as is.
+ */
+export function unwrapShell(command: string): string {
+  let current = command.trim();
+  for (let depth = 0; depth < 3; depth++) {
+    const m = /^(?:\S*\/)?(?:ba|z)?sh\s+(?:-[a-z]*c[a-z]*|-l\s+-c|-c)\s+([\s\S]+)$/.exec(current);
+    if (!m) break;
+    const arg = m[1]!.trim();
+    let inner: string | null = null;
+    if (arg.startsWith("'") && arg.endsWith("'") && arg.length >= 2) {
+      // POSIX single quotes: '\'' closes, escapes a quote, and reopens.
+      inner = arg.slice(1, -1).replace(/'\\''/g, "'");
+    } else if (arg.startsWith('"') && arg.endsWith('"') && arg.length >= 2) {
+      inner = arg.slice(1, -1).replace(/\\(["\\$`])/g, "$1");
+    } else if (!/[\s'"]/.test(arg)) {
+      inner = arg;
+    }
+    if (inner === null) break;
+    current = inner.trim();
+  }
+  return current;
+}
+
 export function checkCommand(script: string, toolName: string, command: string, timeoutMs = 5000): Promise<GuardVerdict> {
+  command = unwrapShell(command);
   const python = findPython();
   if (!python || !existsSync(script)) return Promise.resolve({ blocked: false, reason: "" });
   return new Promise((resolve) => {

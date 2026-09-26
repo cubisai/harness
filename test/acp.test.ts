@@ -153,6 +153,32 @@ describe("ACP driver", () => {
     expect(full.events.find((e) => e.kind === "tool-result")).toMatchObject({ isError: false });
   });
 
+  it("vetoes a guarded command with the guardrail notice, without asking, in Full mode", async () => {
+    const d = createAcpDriver(
+      { id: "mock", label: "Mock", command: process.execPath, args: [MOCK] },
+      { clientVersion: "test", guardScript: join(__dirname, "fixtures", "fake-guard.py") },
+    );
+    closeAfter(() => d.dispose?.());
+    const t = turn("exec:git push --force", { permissionMode: "full" });
+    await d.runTurn(t.input);
+    expect(t.deltas.join("")).toBe("rejected:reject_once");
+    expect(t.asked).toEqual([]);
+    const guardNotices = t.events.filter((e) => e.kind === "notice" && /Blocked by git guardrails/.test((e as { text: string }).text));
+    expect(guardNotices).toHaveLength(1);
+  });
+
+  it("lets an allowed command run in Full mode with a guard script", async () => {
+    const d = createAcpDriver(
+      { id: "mock", label: "Mock", command: process.execPath, args: [MOCK] },
+      { clientVersion: "test", guardScript: join(__dirname, "fixtures", "fake-guard.py") },
+    );
+    closeAfter(() => d.dispose?.());
+    const t = turn("exec:ls", { permissionMode: "full" });
+    await d.runTurn(t.input);
+    expect(t.deltas.join("")).toBe("ran");
+    expect(t.events.filter((e) => e.kind === "notice" && /Blocked by git guardrails/.test((e as { text: string }).text))).toEqual([]);
+  });
+
   it("attaches the harness's tool server when tools exist, even mid-conversation", async () => {
     const d = createAcpDriver(
       { id: "mock", label: "Mock", command: process.execPath, args: [MOCK] },

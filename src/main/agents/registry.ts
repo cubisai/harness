@@ -41,6 +41,8 @@ export const ACP_PRESETS: AcpAgentConfig[] = [
     command: "opencode",
     args: ["acp"],
     capabilities: { mcpStdio: true, interrupt: true, perMessageModel: true, permissionGranularity: "perTool", skillsDelivery: { mode: "projectWrite", prefix: "" } },
+    injector: "opencode",
+    guardPlugin: "opencode",
     install: "npm install -g opencode-ai",
     homepage: "https://opencode.ai/docs/acp/",
   },
@@ -101,8 +103,8 @@ export function loadAcpAgents(configFile: string, isInstalled: (cmd: string) => 
       });
       // agents.json declares no capabilities: a user entry gets SAFE_DEFAULTS
       // (and only skillsDirEnv upgrades it to envDir), so it can never claim
-      // support the driver hasn't verified.
-      custom = parsed.map(({ capabilities: _ignored, ...rest }) => rest);
+      // support the driver hasn't verified. Injector/guard metadata is preset-only.
+      custom = parsed.map(({ capabilities: _ignored, injector: _injector, guardPlugin: _guardPlugin, ...rest }) => rest);
     } catch (err) {
       problems.push(`agents.json is not valid JSON: ${err instanceof Error ? err.message : String(err)}`);
     }

@@ -1,5 +1,8 @@
 // A tiny stand-in for `codex app-server` for tests. The prompt picks the scenario:
 //   "tool" - asks approval for a command, then reports it
+//   "tool:<command>" - asks approval for <command>, then reports it
+//   "run:<command>" - runs <command> without asking (as Full mode does), then reports it
+//   "file" - asks approval for a file change, then reports it
 //   "slow" - streams until turn/interrupt
 //   "browser" - calls browser_eval on the thread's "unskilled" MCP server,
 //              asking first when its config says to, as Codex does
@@ -127,6 +130,27 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
         const res = await ask("item/commandExecution/requestApproval", { threadId, turnId: turn.id, itemId: "c1", command: "npm test", startedAtMs: 0 });
         const ok = res.decision === "accept" || res.decision === "acceptForSession";
         notify("item/completed", { threadId, turnId: turn.id, item: { ...item, status: ok ? "completed" : "declined", aggregatedOutput: ok ? `3 passed (${res.decision})` : null, exitCode: ok ? 0 : null } });
+      }
+      if (text.startsWith("tool:")) {
+        const command = text.slice("tool:".length);
+        const item = { type: "commandExecution", id: "c1", command, status: "inProgress", aggregatedOutput: null, exitCode: null };
+        notify("item/started", { threadId, turnId: turn.id, item });
+        const res = await ask("item/commandExecution/requestApproval", { threadId, turnId: turn.id, itemId: "c1", command, startedAtMs: 0 });
+        const ok = res.decision === "accept" || res.decision === "acceptForSession";
+        notify("item/completed", { threadId, turnId: turn.id, item: { ...item, status: ok ? "completed" : "declined", aggregatedOutput: ok ? `3 passed (${res.decision})` : null, exitCode: ok ? 0 : null } });
+      }
+      if (text.startsWith("run:")) {
+        const command = text.slice("run:".length);
+        const item = { type: "commandExecution", id: "c1", command, status: "inProgress", aggregatedOutput: null, exitCode: null };
+        notify("item/started", { threadId, turnId: turn.id, item });
+        notify("item/completed", { threadId, turnId: turn.id, item: { ...item, status: "completed", aggregatedOutput: "ok", exitCode: 0 } });
+      }
+      if (text === "file") {
+        const item = { type: "fileChange", id: "f1", changes: [{ path: "a.txt", kind: "update" }], status: "inProgress" };
+        notify("item/started", { threadId, turnId: turn.id, item });
+        const res = await ask("item/fileChange/requestApproval", { threadId, turnId: turn.id, itemId: "f1", reason: "edit a.txt" });
+        const ok = res.decision === "accept" || res.decision === "acceptForSession";
+        notify("item/completed", { threadId, turnId: turn.id, item: { ...item, status: ok ? "completed" : "declined" } });
       }
       if (text === "plan") {
         notify("turn/plan/updated", {

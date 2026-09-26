@@ -10,11 +10,24 @@ import { startToolServer } from "../src/main/mcp-http";
 import { closeAfter } from "./helpers";
 
 const MOCK = join(__dirname, "fixtures", "mock-codex-app-server.mjs");
+const GUARD = join(__dirname, "fixtures", "fake-guard.py");
 
 function driver() {
   const d = createCodexDriver({ command: process.execPath, args: [MOCK], clientVersion: "test", skillsDir: () => "/skills/here" });
   closeAfter(() => d.dispose?.());
   return d;
+}
+
+function guardedDriver() {
+  const d = createCodexDriver({ command: process.execPath, args: [MOCK], clientVersion: "test", guardScript: GUARD });
+  closeAfter(() => d.dispose?.());
+  return d;
+}
+
+/** Poll until `fn` is true (a guard check from a completed item settles out of band). */
+async function waitFor(fn: () => boolean, ms = 3000): Promise<void> {
+  const start = Date.now();
+  while (!fn() && Date.now() - start < ms) await new Promise((r) => setTimeout(r, 25));
 }
 
 function turn(prompt: string, over: Partial<TurnInput> = {}) {
@@ -115,6 +128,46 @@ describe("Codex driver", () => {
     ]);
   });
 
+  it("declines a guarded command without asking, and notices", async () => {
+    const d = guardedDriver();
+    const t = turn("tool:git push --force");
+    await d.runTurn(t.input);
+    expect(t.asked).toEqual([]);
+    const guardNotices = t.events.filter((e) => e.kind === "notice" && /Blocked by git guardrails/.test((e as { text: string }).text));
+    expect(guardNotices).toHaveLength(1);
+    expect(t.events.find((e) => e.kind === "tool-result")).toMatchObject({ isError: true, summary: "Failed" });
+  });
+
+  it("still asks for a command the guard allows", async () => {
+    const d = guardedDriver();
+    const t = turn("tool:npm test");
+    await d.runTurn(t.input);
+    expect(t.asked).toEqual(["npm test"]);
+  });
+
+  it("auto-approves file changes in Auto-edit mode without asking", async () => {
+    const d = guardedDriver();
+    const t = turn("file", { permissionMode: "auto-edit" });
+    await d.runTurn(t.input);
+    expect(t.asked).toEqual([]);
+    expect(t.events.find((e) => e.kind === "tool-result")).toMatchObject({ isError: false });
+  });
+
+  it("still asks for a file change in Ask mode", async () => {
+    const d = guardedDriver();
+    const t = turn("file");
+    await d.runTurn(t.input);
+    expect(t.asked).toEqual(["edit a.txt"]);
+  });
+
+  it("warns about a blocked command that ran in Full mode", async () => {
+    const d = guardedDriver();
+    const t = turn("run:git push --force", { permissionMode: "full" });
+    await d.runTurn(t.input);
+    await waitFor(() => t.events.some((e) => e.kind === "notice" && /Guardrail warning/.test((e as { text: string }).text)));
+    expect(t.events.find((e) => e.kind === "notice" && /Guardrail warning/.test((e as { text: string }).text))).toBeDefined();
+  });
+
   it("interrupts a running turn", async () => {
     const d = driver();
     const t = turn("slow");
@@ -193,7 +246,7 @@ describe("Codex policy mapping", () => {
     expect(codexPolicy("ask")).toEqual({ approvalPolicy: "untrusted", sandbox: "workspace-write" });
     expect(codexPolicy("ask").approvalPolicy).not.toBe("on-request");
     for (const mode of ["ask", "auto-edit", "full"] as const) expect(["read-only", "workspace-write", "danger-full-access"]).toContain(codexPolicy(mode).sandbox);
-    expect(codexPolicy("auto-edit")).toEqual({ approvalPolicy: "on-request", sandbox: "workspace-write" });
+    expect(codexPolicy("auto-edit")).toEqual({ approvalPolicy: "untrusted", sandbox: "workspace-write" });
     expect(codexPolicy("full")).toEqual({ approvalPolicy: "never", sandbox: "danger-full-access" });
     expect(codexDecision("allow-always")).toBe("acceptForSession");
     expect(codexDecision("deny")).toBe("decline");

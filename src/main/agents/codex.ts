@@ -6,6 +6,7 @@ import type { InjectionPlan } from "../inject";
 import { RpcError, StdioRpc } from "./rpc";
 import { CODEX_CAPABILITIES } from "./capabilities";
 import { codexLimitsPatch, type CodexRateLimits, type LimitsListener } from "./limits";
+import { checkCommand } from "../guard";
 import { summarizeToolInput, summarizeToolResult } from "./summarize";
 import type { AgentDriver, HarnessTool, TurnInput } from "./types";
 
@@ -56,6 +57,8 @@ export interface CodexConfig {
   injection?: () => InjectionPlan;
   /** The BYOK provider's models, or null on subscription. */
   byokModels?: () => ModelOption[] | null;
+  /** The git-guardrails script: command approvals are vetoed before the user is asked. */
+  guardScript?: string;
 }
 
 /** The MCP server name the harness's tools go by, in Codex's config and its tool calls. */
@@ -69,7 +72,7 @@ export function codexPolicy(mode: PermissionMode): { approvalPolicy: string; san
     case "full":
       return { approvalPolicy: "never", sandbox: "danger-full-access" };
     case "auto-edit":
-      return { approvalPolicy: "on-request", sandbox: "workspace-write" };
+      return { approvalPolicy: "untrusted", sandbox: "workspace-write" };
     default:
       return { approvalPolicy: "untrusted", sandbox: "workspace-write" };
   }
@@ -271,7 +274,18 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     const failed = status === "failed" || status === "declined";
     let summary = failed ? "Failed" : "Done";
     if (item.type === "commandExecution") {
-      const c = item as { aggregatedOutput: string | null; exitCode: number | null };
+      const c = item as { command: string; aggregatedOutput: string | null; exitCode: number | null };
+      // Full mode runs without an approval callback, so the guard can only warn.
+      if (t.input.permissionMode === "full" && config.guardScript) {
+        void checkCommand(config.guardScript, "Bash", c.command).then((verdict) => {
+          if (verdict.blocked) {
+            t.input.onEvent({
+              kind: "notice",
+              text: `Guardrail warning: this command would have been blocked in Ask or Auto-edit mode: ${c.command}`,
+            });
+          }
+        });
+      }
       summary = summarizeToolResult(c.aggregatedOutput ?? "") || (c.exitCode !== null ? `exit ${c.exitCode}` : summary);
     } else if (item.type === "mcpToolCall") {
       const m = item as { error?: { message: string } | null; result?: { content: unknown } | null };
@@ -287,6 +301,17 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     if (method === "item/commandExecution/requestApproval" || method === "item/fileChange/requestApproval") {
       if (!t) return { decision: "decline" };
       const isCommand = method === "item/commandExecution/requestApproval";
+      // The git guardrail comes first: a blocked command is declined without
+      // asking, and never reaches the model's approval prompt.
+      if (isCommand && config.guardScript && typeof p.command === "string") {
+        const verdict = await checkCommand(config.guardScript, "Bash", p.command);
+        if (verdict.blocked) {
+          t.input.onEvent({ kind: "notice", text: `Blocked by git guardrails: ${p.command}` });
+          return { decision: "decline" };
+        }
+      }
+      // Auto-edit auto-approves edits, like Claude's acceptEdits; commands still ask.
+      if (!isCommand && t.input.permissionMode === "auto-edit") return { decision: "accept" };
       const decision = await t.input.requestPermission({
         toolName: isCommand ? "Run" : "Edit",
         summary: (isCommand ? p.command : p.reason) ?? (isCommand ? "a command" : "file changes"),
