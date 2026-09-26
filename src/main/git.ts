@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type { DiffFile, DiffHunk } from "../shared/types";
+import type { DiffFile, DiffHunk, GitState } from "../shared/types";
 
 const run = promisify(execFile);
 
@@ -86,4 +86,39 @@ export async function workingTreeDiff(cwd: string): Promise<DiffFile[]> {
     });
   }
   return files;
+}
+
+/**
+ * The repository's head commit, branch and changed paths. Null when `cwd`
+ * isn't inside a work tree. `head` stays null before the first commit.
+ */
+export async function gitState(cwd: string): Promise<GitState | null> {
+  try {
+    await run("git", ["rev-parse", "--is-inside-work-tree"], { cwd });
+  } catch {
+    return null;
+  }
+  let head: string | null = null;
+  try {
+    head = (await run("git", ["rev-parse", "HEAD"], { cwd })).stdout.trim();
+  } catch {
+    // No commits yet.
+  }
+  let branch: string | null = null;
+  try {
+    const name = (await run("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd })).stdout.trim();
+    if (name && name !== "HEAD") branch = name;
+  } catch {
+    // Detached, unborn, or otherwise unreadable.
+  }
+  const entries = (await run("git", ["status", "--porcelain", "-z"], { cwd })).stdout.split("\0");
+  const dirty: string[] = [];
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i]!;
+    if (!entry) continue;
+    dirty.push(entry.slice(3));
+    // A rename/copy entry is followed by the old path in its own NUL entry.
+    if (entry[0] === "R" || entry[0] === "C") i++;
+  }
+  return { head, branch, dirty };
 }

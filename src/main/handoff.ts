@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import type { StoredEvent, Thread, ThreadExport } from "../shared/types";
+import type { HandoffCheckpoint, StoredEvent, Thread, ThreadEvent, ThreadExport } from "../shared/types";
 import { blobRefOf, type Store } from "./db";
+import { gitState, workingTreeDiff } from "./git";
 
 /**
  * Thread export/import: the rollback path for the bindings migration, and
@@ -65,4 +66,143 @@ function validateExport(data: unknown): ThreadExport {
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+const MAX_MESSAGE_CHARS = 2000;
+const MAX_OUTPUT_CHARS = 1000;
+
+/** Config the target agent loads itself, so a handoff never carries it. */
+const SELF_LOADED = ["CLAUDE.md", "AGENTS.md", "GEMINI.md", "SKILL.md"];
+const NOT_CARRIED = "(not carried: the agent loads this itself)";
+
+/** The payload of a tool event as text: strings as-is, anything else JSON. */
+function payloadText(payload: unknown): string {
+  if (typeof payload === "string") return payload;
+  const json = JSON.stringify(payload);
+  return json === undefined ? "" : json;
+}
+
+/**
+ * Build a structured handoff from a thread's stored events: thread state only,
+ * no reasoning, no skill or convention bodies. The target agent loads those.
+ */
+export async function buildCheckpoint(store: Store, threadId: string): Promise<HandoffCheckpoint> {
+  const thread = store.getThread(threadId);
+  const cwd = store.getProject(thread.projectId).path;
+  const allEvents = store.listEvents(threadId);
+  const events = allEvents.filter((e) => e.event.kind !== "thinking");
+
+  let from: HandoffCheckpoint["from"] = null;
+  for (const stored of events) {
+    if (stored.provenance) from = { agent: stored.provenance.agent, model: stored.provenance.model };
+  }
+
+  const messages: HandoffCheckpoint["messages"] = [];
+  let goal = "";
+  for (const { event } of events) {
+    if (event.kind === "user") {
+      if (goal === "") goal = event.text.slice(0, MAX_MESSAGE_CHARS);
+      messages.push({ role: "user", text: event.text.slice(0, MAX_MESSAGE_CHARS) });
+    } else if (event.kind === "assistant-text") {
+      messages.push({ role: "assistant", text: event.text.slice(0, MAX_MESSAGE_CHARS) });
+    }
+  }
+
+  const results = new Map<string, Extract<ThreadEvent, { kind: "tool-result" }>>();
+  for (const { event } of events) if (event.kind === "tool-result") results.set(event.toolUseId, event);
+
+  const commands: HandoffCheckpoint["commands"] = [];
+  for (const { event } of events) {
+    if (event.kind !== "tool-use") continue;
+    const result = results.get(event.toolUseId);
+    const payload = result?.payload;
+    const ref = result ? blobRefOf(result) : null;
+    let output: string;
+    let artifact: string | null = null;
+    if (ref) {
+      const preview = isObject(payload) && typeof payload.preview === "string" ? payload.preview : "";
+      output = preview.slice(0, MAX_OUTPUT_CHARS);
+      artifact = `blobs/${ref.sha256}`;
+    } else {
+      output = payloadText(payload).slice(0, MAX_OUTPUT_CHARS);
+    }
+    let exitCode: number | null = null;
+    if (isObject(payload)) {
+      const code = payload.exitCode ?? payload.exit_code;
+      if (typeof code === "number") exitCode = code;
+    }
+    const serialized = payloadText(event.payload);
+    const selfLoaded = event.name === "Skill" || SELF_LOADED.some((m) => event.summary.includes(m) || serialized.includes(m));
+    if (selfLoaded) {
+      output = NOT_CARRIED;
+      artifact = null;
+    }
+    commands.push({ toolUseId: event.toolUseId, name: event.name, summary: event.summary, isError: result?.isError ?? false, exitCode, output, artifact });
+  }
+
+  let lastSeq = 0;
+  for (const { seq } of allEvents) lastSeq = seq;
+
+  const lastAssistantText = events.filter((e) => e.event.kind === "assistant-text").at(-1)?.event as
+    | Extract<ThreadEvent, { kind: "assistant-text" }>
+    | undefined;
+  const openQuestions = lastAssistantText && lastAssistantText.text.trim().endsWith("?") ? [lastAssistantText.text] : [];
+
+  const files = (await workingTreeDiff(cwd)).map((f) => ({ path: f.path, status: f.status, additions: f.additions, deletions: f.deletions }));
+  const git = await gitState(cwd);
+
+  return { threadId, from, builtAt: Date.now(), lastSeq, goal, messages, files, commands, openQuestions, git };
+}
+
+/** Render a checkpoint as the prompt an incoming agent reads. Tier 0 is fullest, 2 is decisions only. */
+export function renderCheckpoint(cp: HandoffCheckpoint, tier: 0 | 1 | 2): string {
+  const sections: string[] = [];
+  const push = (heading: string, body: string[]) => {
+    if (body.length) sections.push([heading, ...body].join("\n"));
+  };
+
+  if (cp.goal) push("## Goal", [cp.goal]);
+
+  if (tier === 2) {
+    const users = cp.messages.filter((m) => m.role === "user").map((m) => `**User:** ${m.text}`);
+    push("## Decisions", users);
+  } else if (cp.messages.length) {
+    sections.push(["## Conversation", ...cp.messages.map((m) => `${m.role === "user" ? "**User:**" : "**Assistant:**"} ${m.text}`)].join("\n"));
+  }
+
+  if (tier !== 2 && cp.files.length) {
+    push("## Files changed", cp.files.map((f) => `- ${f.path} (${f.status}, +${f.additions} -${f.deletions})`));
+  }
+
+  if (tier === 0 && cp.commands.length) {
+    const lines = ["## Commands run"];
+    for (const c of cp.commands) {
+      const outcome = c.isError ? "error" : c.exitCode !== null ? `exit ${c.exitCode}` : "ok";
+      lines.push(`- ${c.name}: ${c.summary} → ${outcome}`);
+      if (c.output) lines.push("```", c.output, "```");
+    }
+    sections.push(lines.join("\n"));
+  } else if (tier === 1 && cp.commands.length) {
+    const lines = ["## Commands run"];
+    for (const c of cp.commands) {
+      const outcome = c.isError ? "error" : c.exitCode !== null ? `exit ${c.exitCode}` : "ok";
+      lines.push(`- ${c.name}: ${c.summary} → ${outcome}${c.artifact ? ` (output: ${c.artifact})` : ""}`);
+    }
+    sections.push(lines.join("\n"));
+  }
+
+  if (tier !== 2) push("## Open questions", cp.openQuestions);
+
+  const workspace = ["## Workspace"];
+  if (cp.git) {
+    workspace.push(`HEAD ${cp.git.head ?? "none"}`, `branch ${cp.git.branch ?? "none"}`);
+    workspace.push(cp.git.dirty.length ? `dirty: ${cp.git.dirty.join(", ")}` : "clean");
+  } else {
+    workspace.push("not a git repository");
+  }
+  sections.push(workspace.join("\n"));
+
+  const heading = `# Handoff from ${cp.from ? `${cp.from.agent} (${cp.from.model})` : "an earlier agent"}`;
+  const notice = "This is the recorded history of this thread, carried over by the harness. Commands below already ran; their results are recorded, do not run them again.";
+  return [heading, notice, ...sections].join("\n\n") + "\n";
 }

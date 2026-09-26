@@ -278,6 +278,31 @@ export interface ThreadExport {
   blobs: Record<string, string>;
 }
 
+/** The repository's head, branch, and changed paths at the moment a checkpoint was built. */
+export interface GitState {
+  head: string | null;
+  branch: string | null;
+  dirty: string[];
+}
+
+/** A structured handoff built from a thread's stored events; thread state only. */
+export interface HandoffCheckpoint {
+  threadId: string;
+  /** Provenance of the newest event that has any. */
+  from: { agent: string; model: string } | null;
+  builtAt: number;
+  lastSeq: number;
+  /** The first user event's text, or "". */
+  goal: string;
+  /** Every user and assistant-text event, in order, each cut to 2000 chars. */
+  messages: { role: "user" | "assistant"; text: string }[];
+  files: { path: string; status: string; additions: number; deletions: number }[];
+  commands: { toolUseId: string; name: string; summary: string; isError: boolean; exitCode: number | null; output: string; artifact: string | null }[];
+  /** The last assistant-text, when its trimmed text ends with "?". */
+  openQuestions: string[];
+  git: GitState | null;
+}
+
 /** Who produced an event: the agent, its model, and how it was reached. */
 export interface Provenance {
   agent: string;
@@ -345,6 +370,7 @@ export type ThreadEvent = (
   | { kind: "turn-start"; turnId: string; agent: string; model: string }
   | { kind: "plan"; entries: PlanEntry[] }
   | { kind: "compaction"; trigger: "manual" | "auto" | "unknown"; preTokens: number | null; postTokens: number | null }
+  | { kind: "handoff"; phase: "seeded" | "reply" | "signal"; text: string; from?: string; to?: string; tokens?: number; tier?: number }
 ) &
   EventIds;
 

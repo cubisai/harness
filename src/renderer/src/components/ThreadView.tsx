@@ -130,6 +130,12 @@ export function EventRow({ stored, results, running }: { stored: StoredEvent; re
           <span>Context compacted{e.preTokens !== null && e.postTokens !== null ? ` · ${formatTokens(e.preTokens)} → ${formatTokens(e.postTokens)} tokens` : ""}</span>
         </div>
       );
+    case "handoff":
+      return (
+        <div className="compaction-divider">
+          <span>{e.text}</span>
+        </div>
+      );
     case "turn-start":
       return null;
   }
