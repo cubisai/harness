@@ -40,9 +40,23 @@ describe("SettingsStore", () => {
   it("starts from defaults and persists updates", () => {
     const file = fresh();
     const s = new SettingsStore(file, box);
-    expect(s.get()).toEqual({ theme: "system", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null });
+    expect(s.get()).toEqual({ theme: "system", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {} });
     s.update({ theme: "dark", defaultAgent: "codex", defaultPermissionMode: "auto-edit", autoUpdate: false, editor: "zed" });
-    expect(new SettingsStore(file, box).get()).toEqual({ theme: "dark", defaultAgent: "codex", defaultPermissionMode: "auto-edit", autoUpdate: false, editor: "zed" });
+    expect(new SettingsStore(file, box).get()).toEqual({ theme: "dark", defaultAgent: "codex", defaultPermissionMode: "auto-edit", autoUpdate: false, editor: "zed", providerInjection: {} });
+  });
+
+  it("keeps only boolean per-agent injection flags", () => {
+    const file = fresh();
+    const s = new SettingsStore(file, box);
+    s.update({ providerInjection: { codex: true, bad: "x" } as never });
+    expect(s.get().providerInjection).toEqual({ codex: true });
+    expect(new SettingsStore(file, box).get().providerInjection).toEqual({ codex: true });
+  });
+
+  it("ignores a providerInjection that is not a plain object", () => {
+    const s = new SettingsStore(fresh(), box);
+    s.update({ providerInjection: ["codex"] as never });
+    expect(s.get().providerInjection).toEqual({});
   });
 
   it("ignores invalid values", () => {

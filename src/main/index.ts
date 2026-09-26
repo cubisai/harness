@@ -16,7 +16,8 @@ import { Store } from "./db";
 import { startToolServer, type ToolServer } from "./mcp-http";
 import { TerminalManager } from "./terminal";
 import { Service } from "./service";
-import { LEGACY_ENV, testConnection } from "./providers";
+import { LEGACY_ENV, catalogFor, testConnection } from "./providers";
+import { injectionFor } from "./inject";
 import { SettingsStore } from "./settings";
 import { agentCatalog, skillDetail } from "./library";
 import { Editors, realHost } from "./editors";
@@ -164,6 +165,13 @@ async function main(): Promise<void> {
     pluginDir: () => ensurePlugin(catalog, pluginDir),
     guardScript,
     onLimits: limits.for("claude"),
+    injection: () => injectionFor(settings, "claude"),
+    byokModels: () => {
+      const c = settings.credential("claude");
+      if (c.kind !== "byok") return null;
+      const p = settings.providers().find((x) => x.id === c.providerId);
+      return p ? catalogFor(p).claude.models : null;
+    },
   });
   const browser = new BrowserController(
     (url) => broadcast({ type: "browser-open", url }),

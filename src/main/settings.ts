@@ -20,7 +20,7 @@ export interface SecretBox {
   decrypt(b64: string): string;
 }
 
-const DEFAULTS: Settings = { theme: "system", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null };
+const DEFAULTS: Settings = { theme: "system", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {} };
 
 interface FileShape {
   schemaVersion?: number; // absent = the legacy v1 shape
@@ -129,6 +129,13 @@ export class SettingsStore {
     }
     if (typeof patch.autoUpdate === "boolean") next.autoUpdate = patch.autoUpdate;
     if (patch.editor !== undefined) next.editor = typeof patch.editor === "string" ? patch.editor : null;
+    if (patch.providerInjection && typeof patch.providerInjection === "object" && !Array.isArray(patch.providerInjection)) {
+      // Only agent ids mapped to booleans; the renderer chooses the keys, so
+      // anything else in the object is dropped rather than persisted.
+      const injection: Record<string, boolean> = {};
+      for (const [agentId, on] of Object.entries(patch.providerInjection)) if (typeof on === "boolean") injection[agentId] = on;
+      next.providerInjection = injection;
+    }
     this.data.settings = next;
     this.write();
     return next;

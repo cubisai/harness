@@ -97,6 +97,8 @@ export interface Settings {
   autoUpdate: boolean;
   /** The editor "Open in editor" uses; null = the first one found. */
   editor: string | null;
+  /** Per agent id: allow BYOK injection for drivers that write outside the app data folder. Absent = off. */
+  providerInjection: Record<string, boolean>;
 }
 
 export interface EditorInfo {

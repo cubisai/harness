@@ -6,6 +6,8 @@ import type { HookCallback, ModelInfo, Options, PermissionResult, SDKMessage, SD
 import type { McpServerEntry, ModelOption, PermissionMode, ThreadEvent } from "../../shared/types";
 import { forClaude } from "../mcp/servers";
 import { checkCommand } from "../guard";
+import type { InjectionPlan } from "../inject";
+import { staleKeyNotice } from "../inject/claude";
 import { normalizeUsage } from "../usage";
 import { PLUGIN_NAME } from "../skills/plugin";
 import { claudeLimitsPatch, type LimitsListener } from "./limits";
@@ -109,6 +111,10 @@ export interface ClaudeDriverConfig {
   guardScript?: string;
   /** Plan rate limits, as Claude reports them during turns (claude.ai logins only). */
   onLimits?: LimitsListener;
+  /** The credential plan for the next turn; absent = inherit process.env (tests). */
+  injection?: () => InjectionPlan;
+  /** The BYOK provider's models, or null on subscription. */
+  byokModels?: () => ModelOption[] | null;
 }
 
 /**
@@ -119,6 +125,10 @@ export interface ClaudeDriverConfig {
 export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
   let models: ModelOption[] = MODELS;
   let refreshing: Promise<void> | null = null;
+  // Both are once-per-driver, not once-per-turn: the same warning or the same
+  // project does not need saying again on the next message.
+  const shownWarnings = new Set<string>();
+  const checkedProjects = new Set<string>();
 
   const refreshModels = (): Promise<void> => {
     if (models !== MODELS) return Promise.resolve();
@@ -167,7 +177,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
     label: "Claude",
     defaultModel: "opus",
     skillCallPrefix: `${PLUGIN_NAME}:`,
-    models: () => models,
+    models: () => config.byokModels?.() ?? models,
     refreshModels,
     async runTurn(input: TurnInput): Promise<void> {
       const abortController = new AbortController();
@@ -193,6 +203,21 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
       const pluginPath = config.pluginDir?.();
       const plugins: { type: "local"; path: string }[] = pluginPath ? [{ type: "local", path: pluginPath }] : [];
 
+      const plan = config.injection?.();
+      if (plan?.error) {
+        input.onEvent({ kind: "error", message: plan.error });
+        return;
+      }
+      if (plan?.warning && !shownWarnings.has(plan.warning)) {
+        shownWarnings.add(plan.warning);
+        input.onEvent({ kind: "notice", text: plan.warning });
+      }
+      if (plan?.byok && !checkedProjects.has(input.cwd)) {
+        checkedProjects.add(input.cwd);
+        const stale = await staleKeyNotice(input.cwd);
+        if (stale) input.onEvent({ kind: "notice", text: stale });
+      }
+
       const options: Options = {
         cwd: input.cwd,
         abortController,
@@ -203,6 +228,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         allowDangerouslySkipPermissions: input.permissionMode === "full",
         includePartialMessages: true,
         plugins,
+        ...(plan ? { env: plan.env } : {}),
         ...withUserServers(harnessToolOptions(input.tools), input.mcpServers),
         hooks: { PreToolUse: [{ matcher: "Bash", hooks: [guard] }] },
         canUseTool: async (toolName, toolInput, { suggestions }): Promise<PermissionResult> => {
