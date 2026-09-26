@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { HandoffCheckpoint, StoredEvent, Thread, ThreadEvent, ThreadExport } from "../shared/types";
-import { blobRefOf, type Store } from "./db";
+import { stableStringify } from "./cache-policy";
+import { blobRefOf, type LedgerTarget, type Store } from "./db";
 import { gitState, workingTreeDiff } from "./git";
 
 /**
@@ -248,4 +249,47 @@ export async function fitCheckpoint(
     }
   }
   return { ok: false, reason: `Even the shortest handoff (${tokens} tokens) is over the ${cap}-token budget. Start fresh instead.`, tier: 2, tokens, estimated };
+}
+
+/** sha256 of the canonical item plus the protocol it is sent over, so the same item on another channel is a different injection. */
+export function itemFingerprint(item: unknown, protocolId: string): string {
+  return createHash("sha256").update(stableStringify(item) + "\n" + protocolId).digest("hex");
+}
+
+/** The items the ledger says this target has never received, in input order, deduplicated. */
+export function planInjection(store: Store, target: LedgerTarget, items: unknown[], protocolId: string): { item: unknown; fingerprint: string }[] {
+  const injected = store.injectedFingerprints(target);
+  const seen = new Set<string>();
+  const plan: { item: unknown; fingerprint: string }[] = [];
+  for (const item of items) {
+    const fingerprint = itemFingerprint(item, protocolId);
+    if (injected.has(fingerprint) || seen.has(fingerprint)) continue;
+    seen.add(fingerprint);
+    plan.push({ item, fingerprint });
+  }
+  return plan;
+}
+
+/**
+ * Send what the ledger says is still missing: intent rows first, the send, then injected.
+ * A throw from send marks the batch failed and rethrows; a crash leaves intent rows the next run rolls forward.
+ */
+export async function injectWithLedger(
+  store: Store,
+  target: LedgerTarget,
+  items: unknown[],
+  protocolId: string,
+  send: (items: unknown[]) => Promise<void>,
+): Promise<{ sent: number; skipped: number }> {
+  const plan = planInjection(store, target, items, protocolId);
+  if (plan.length === 0) return { sent: 0, skipped: items.length };
+  for (const { fingerprint } of plan) store.recordIntent(target, fingerprint);
+  try {
+    await send(plan.map((p) => p.item));
+  } catch (err) {
+    for (const { fingerprint } of plan) store.markFailed(target, fingerprint);
+    throw err;
+  }
+  for (const { fingerprint } of plan) store.markInjected(target, fingerprint);
+  return { sent: plan.length, skipped: items.length - plan.length };
 }

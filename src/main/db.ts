@@ -293,6 +293,60 @@ export class Store {
   }
 
   /**
+   * Injection ledger: seeding a target is not idempotent, so every item is
+   * recorded before it is sent and marked after. Intent and failed rows roll
+   * forward on the next run; injected rows are skipped.
+   */
+  recordIntent(t: LedgerTarget, fingerprint: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO injection_ledger (thread_id, target_provider, target_session_id, checkpoint_id, item_fingerprint, state, injected_at)
+         VALUES (?, ?, ?, ?, ?, 'intent', NULL)
+         ON CONFLICT(thread_id, target_provider, target_session_id, checkpoint_id, item_fingerprint) DO UPDATE SET state = 'intent' WHERE state = 'failed'`,
+      )
+      .run(t.threadId, t.provider, t.sessionId, t.checkpointId, fingerprint);
+  }
+
+  markInjected(t: LedgerTarget, fingerprint: string): void {
+    this.db
+      .prepare(
+        `UPDATE injection_ledger SET state = 'injected', injected_at = ?
+         WHERE thread_id = ? AND target_provider = ? AND target_session_id = ? AND checkpoint_id = ? AND item_fingerprint = ?`,
+      )
+      .run(Date.now(), t.threadId, t.provider, t.sessionId, t.checkpointId, fingerprint);
+  }
+
+  markFailed(t: LedgerTarget, fingerprint: string): void {
+    this.db
+      .prepare(
+        `UPDATE injection_ledger SET state = 'failed'
+         WHERE thread_id = ? AND target_provider = ? AND target_session_id = ? AND checkpoint_id = ? AND item_fingerprint = ? AND state != 'injected'`,
+      )
+      .run(t.threadId, t.provider, t.sessionId, t.checkpointId, fingerprint);
+  }
+
+  injectedFingerprints(t: { threadId: string; provider: string; sessionId: string }): Set<string> {
+    const rows = this.db
+      .prepare(
+        `SELECT item_fingerprint FROM injection_ledger
+         WHERE thread_id = ? AND target_provider = ? AND target_session_id = ? AND state = 'injected'`,
+      )
+      .all(t.threadId, t.provider, t.sessionId) as unknown as { item_fingerprint: string }[];
+    return new Set(rows.map((r) => r.item_fingerprint));
+  }
+
+  ledgerRows(t: LedgerTarget): { fingerprint: string; state: "intent" | "injected" | "failed" }[] {
+    const rows = this.db
+      .prepare(
+        `SELECT item_fingerprint, state FROM injection_ledger
+         WHERE thread_id = ? AND target_provider = ? AND target_session_id = ? AND checkpoint_id = ?
+         ORDER BY item_fingerprint`,
+      )
+      .all(t.threadId, t.provider, t.sessionId, t.checkpointId) as unknown as { item_fingerprint: string; state: "intent" | "injected" | "failed" }[];
+    return rows.map((r) => ({ fingerprint: r.item_fingerprint, state: r.state }));
+  }
+
+  /**
    * Insert an exported thread and its events as a new thread, all or nothing.
    * Events keep their seq, time, provenance and ids; blobs must already be written.
    */
@@ -362,6 +416,13 @@ export class Store {
 }
 
 const THREAD_COLS = "id, project_id, agent, title, session_id, bindings, model, permission_mode, created_at, updated_at";
+
+export interface LedgerTarget {
+  threadId: string;
+  provider: string;
+  sessionId: string;
+  checkpointId: string;
+}
 
 interface ProjectRow {
   id: string;

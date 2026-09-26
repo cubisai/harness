@@ -2,9 +2,9 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Store } from "../src/main/db";
-import { buildCheckpoint, checkpointCap, exportThread, fitCheckpoint, importThread, renderCheckpoint, THREAD_EXPORT_VERSION } from "../src/main/handoff";
+import { buildCheckpoint, checkpointCap, exportThread, fitCheckpoint, importThread, injectWithLedger, itemFingerprint, renderCheckpoint, THREAD_EXPORT_VERSION } from "../src/main/handoff";
 import { gitState, workingTreeDiff } from "../src/main/git";
 import type { HandoffCheckpoint } from "../src/shared/types";
 import { closeAfter, tempDir } from "./helpers";
@@ -192,5 +192,69 @@ describe("fitCheckpoint", () => {
     expect(checkpointCap(8000)).toBe(2000);
     expect(checkpointCap(null)).toBe(4000);
     expect(checkpointCap(1_000_000)).toBe(4000);
+  });
+});
+
+describe("injection ledger", () => {
+  const protocol = "codex/inject_items";
+  const target = { threadId: "t1", provider: "codex", sessionId: "thr-1", checkpointId: "cp-1" };
+  const items = [
+    { type: "message", role: "user", content: "a" },
+    { type: "function_call_output", call_id: "c1", output: "ok" },
+  ];
+
+  it("injects each item once and skips it on a second run", async () => {
+    const store = open();
+    const send = vi.fn(async () => {});
+    expect(await injectWithLedger(store, target, items, protocol, send)).toEqual({ sent: 2, skipped: 0 });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith(items);
+
+    expect(await injectWithLedger(store, target, items, protocol, send)).toEqual({ sent: 0, skipped: 2 });
+    expect(send).toHaveBeenCalledTimes(1);
+    const rows = store.ledgerRows(target);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.state)).toEqual(["injected", "injected"]);
+  });
+
+  it("rolls intent rows forward after a crash before injected", async () => {
+    const store = open();
+    for (const item of items) store.recordIntent(target, itemFingerprint(item, protocol));
+    const send = vi.fn(async () => {});
+    expect(await injectWithLedger(store, target, items, protocol, send)).toEqual({ sent: 2, skipped: 0 });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith(items);
+    const rows = store.ledgerRows(target);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.state)).toEqual(["injected", "injected"]);
+  });
+
+  it("retries failed rows", async () => {
+    const store = open();
+    const failing = vi.fn(async () => {
+      throw new Error("lost the connection");
+    });
+    await expect(injectWithLedger(store, target, items, protocol, failing)).rejects.toThrow("lost the connection");
+    expect(store.ledgerRows(target).map((r) => r.state)).toEqual(["failed", "failed"]);
+
+    const working = vi.fn(async () => {});
+    expect(await injectWithLedger(store, target, items, protocol, working)).toEqual({ sent: 2, skipped: 0 });
+    expect(working).toHaveBeenCalledTimes(1);
+    expect(store.ledgerRows(target).map((r) => r.state)).toEqual(["injected", "injected"]);
+  });
+
+  it("fingerprints by protocol id and ignores key order", () => {
+    const item = { a: 1, b: 2 };
+    expect(itemFingerprint(item, "codex/inject_items")).not.toBe(itemFingerprint(item, "claude/inject_items"));
+    expect(itemFingerprint({ a: 1, b: 2 }, protocol)).toBe(itemFingerprint({ b: 2, a: 1 }, protocol));
+  });
+
+  it("does not skip a different target session", async () => {
+    const store = open();
+    const send = vi.fn(async () => {});
+    await injectWithLedger(store, target, items, protocol, send);
+    const other = { ...target, sessionId: "thr-2" };
+    expect(await injectWithLedger(store, other, items, protocol, send)).toEqual({ sent: 2, skipped: 0 });
+    expect(send).toHaveBeenCalledTimes(2);
   });
 });
