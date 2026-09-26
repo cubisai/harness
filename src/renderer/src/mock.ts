@@ -221,6 +221,13 @@ export function installMock(): void {
       throw new Error("no thread");
     },
     deleteThread: async () => {},
+    switchAgent: async (id, agent, mode) => {
+      for (const list of Object.values(threads)) {
+        const i = list.findIndex((x) => x.id === id);
+        if (i >= 0) return { ok: true, mode, thread: (list[i] = { ...list[i]!, agent, updatedAt: Date.now() }) };
+      }
+      return { ok: false, reason: "no thread" };
+    },
     exportThread: async () => null,
     importThread: async () => null,
     listEvents: async (id) => events[id] ?? [],

@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BrowserWindow, app, dialog, ipcMain, nativeTheme, safeStorage, shell } from "electron";
-import type { CredentialChoice, LiveUpdate, McpOverview, McpServerEntry, OpenResult, PermissionDecision, ProviderInput, SendRequest, Settings, Thread } from "../shared/types";
+import type { CredentialChoice, LiveUpdate, McpOverview, McpServerEntry, OpenResult, PermissionDecision, ProviderInput, SendRequest, Settings, SwitchMode, Thread } from "../shared/types";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
 import { createClaudeDriver, resolvePackagedClaudeBinary } from "./agents/claude";
@@ -414,6 +414,7 @@ async function main(): Promise<void> {
     service.interrupt(id);
     store.deleteThread(id);
   });
+  ipcMain.handle("threads:switch", (_e, id: string, agent: string, mode: SwitchMode) => service.switchAgent(id, agent, mode));
   ipcMain.handle("threads:export", async (event, id: string) => {
     const owner = BrowserWindow.fromWebContents(event.sender);
     const title = store.getThread(id).title.replace(/[\\/:*?"<>|]+/g, " ").trim() || "thread";

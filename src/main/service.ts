@@ -11,6 +11,9 @@ import type {
   SendRequest,
   SkillEntry,
   StoredEvent,
+  HandoffCheckpoint,
+  SwitchMode,
+  SwitchResult,
   Thread,
   ThreadEvent,
   ThreadExport,
@@ -32,7 +35,17 @@ import {
 import { Approvals } from "./approvals";
 import type { Store } from "./db";
 import { workingTreeDiff } from "./git";
-import { exportThread, importThread } from "./handoff";
+import {
+  bloatSignal,
+  buildCheckpoint,
+  checkpointGit,
+  codexSeedItems,
+  exportThread,
+  fitCheckpoint,
+  importThread,
+  injectWithLedger,
+  replacedTokens,
+} from "./handoff";
 import type { Catalog } from "./skills/catalog";
 import { composePrompt } from "./skills/compose";
 import { memoryScopeCheck } from "./inject/memory-scope";
@@ -49,6 +62,8 @@ export class Service {
   private pendingPermissions = new Map<string, (d: PermissionDecision) => void>();
   /** One Approvals per project, so an allow-always never leaks to another repo. */
   private approvals = new Map<string, Approvals>();
+  /** Threads just switched to another agent, with the last usage before the switch, for the first turn's bloat signal. */
+  private pendingSignal = new Map<string, Usage | null>();
 
   private drivers: Map<string, AgentDriver>;
 
@@ -112,13 +127,165 @@ export class Service {
     const current = this.store.getThread(id);
     if (patch.agent && patch.agent !== current.agent) {
       if (this.running.has(id)) throw new Error("Stop the running turn before switching agents.");
-      const driver = this.driverFor(patch.agent);
-      const resumes = !!current.bindings[bindingKey(patch.agent)]?.resumeCursor;
-      const last = resumes ? this.lastModel(id, patch.agent) : null;
-      const model = patch.model ?? (last && driver.models().some((m) => m.id === last) ? last : driver.defaultModel);
-      return this.store.updateThread(id, { ...patch, model });
+      const { agent, ...rest } = patch;
+      return this.applySwitch(current, agent, current.bindings[bindingKey(agent)]?.resumeCursor ? "back" : "fresh", rest.model);
     }
     return this.store.updateThread(id, patch);
+  }
+
+  /**
+   * Move a thread to another agent. A handoff builds a checkpoint of the
+   * thread, fits it to the budget, drops a git ref to return to, and seeds a
+   * new session through the best channel the agent has; "fresh" starts it
+   * with nothing; "back" resumes the session it already had. Every switch
+   * resets trust: the default permission mode, and approvals are per agent.
+   * A refused switch changes nothing.
+   */
+  async switchAgent(threadId: string, agent: string, mode: SwitchMode): Promise<SwitchResult> {
+    if (this.running.has(threadId)) return { ok: false, reason: "Stop the running turn before switching agents." };
+    const thread = this.store.getThread(threadId);
+    if (agent === thread.agent) return { ok: false, reason: "This thread already runs that agent." };
+    const driver = this.drivers.get(agent);
+    if (!driver) return { ok: false, reason: `The agent "${agent}" isn't available.` };
+    if (mode === "back" && !thread.bindings[bindingKey(agent)]?.resumeCursor) {
+      return { ok: false, reason: `There's no earlier ${driver.label} conversation in this thread to go back to.` };
+    }
+    if (mode !== "handoff") return { ok: true, mode, thread: this.applySwitch(thread, agent, mode) };
+
+    const channel = driver.capabilities.seeding ?? "none";
+    if (channel === "none" || (channel === "inject-items" && !driver.seed)) {
+      return { ok: false, reason: `${driver.label} has no way to receive a handoff here. Start fresh instead.` };
+    }
+    // Everything that can refuse runs before anything changes.
+    const project = this.store.getProject(thread.projectId);
+    const events = this.store.listEvents(threadId);
+    const cp = await buildCheckpoint(this.store, threadId);
+    const count = driver.countTokens;
+    const fit = await fitCheckpoint(cp, {
+      countTokens: count ? (text) => count(text, driver.defaultModel) : undefined,
+      contextWindow: null,
+      replacedTokens: replacedTokens(events),
+    });
+    if (!fit.ok) return { ok: false, reason: fit.reason };
+    const git = await checkpointGit(project.path, cp.lastSeq);
+    if (!git.ok && git.kind === "dirty") return { ok: false, reason: git.reason };
+
+    const switched = this.applySwitch(thread, agent, "handoff");
+    if (!git.ok) this.emit(threadId, { kind: "notice", text: `${git.reason} The handoff goes ahead without one.` });
+    const seeded = { channel, tokens: fit.tokens, tier: fit.tier, estimated: fit.estimated };
+    const size = `${fit.estimated ? "about " : ""}${formatK(fit.tokens)} tokens`;
+    const detail = fit.tier === 0 ? "" : fit.tier === 1 ? ", tool output shortened" : ", decisions and git state only";
+    this.emit(threadId, { kind: "handoff", phase: "seeded", text: `Handed off to ${driver.label} (${size}${detail}).`, from: thread.agent, to: agent, tokens: fit.tokens, tier: fit.tier });
+    try {
+      const sent = await this.seedHandoff(switched, driver, cp, fit.text, project.path);
+      return { ok: true, mode, thread: this.store.getThread(threadId), seeded: { ...seeded, sent }, gitRef: git.ok ? git.ref : null };
+    } catch (err) {
+      const warning = `The handoff didn't reach ${driver.label}: ${err instanceof Error ? err.message : String(err)}. It starts without the earlier messages.`;
+      this.emit(threadId, { kind: "error", message: warning });
+      return { ok: true, mode, thread: this.store.getThread(threadId), gitRef: git.ok ? git.ref : null, warning };
+    }
+  }
+
+  /** The switch itself: agent, model, trust reset, and the marker the first turn's bloat signal reads. */
+  private applySwitch(thread: Thread, agent: string, mode: SwitchMode, model?: string): Thread {
+    const driver = this.driverFor(agent);
+    const resumes = mode === "back";
+    const last = resumes ? this.lastModel(thread.id, agent) : null;
+    const pick = model ?? (last && driver.models().some((m) => m.id === last) ? last : driver.defaultModel);
+    // Trust doesn't carry across agents: the default permission mode again, and
+    // approvals are kept per agent, so none of the old agent's apply.
+    const permissionMode = this.defaults().permissionMode;
+    this.pendingSignal.set(thread.id, this.previousTurnEnd(thread.id, thread.agent)?.usage ?? null);
+    this.store.updateThread(thread.id, { agent, model: pick, permissionMode });
+    // A handoff or a fresh start opens a new session even when the agent has one.
+    const updated = resumes ? this.store.getThread(thread.id) : this.store.updateThread(thread.id, { sessionId: null });
+    if (resumes) {
+      this.emit(thread.id, { kind: "notice", text: `Back to ${driver.label}. It resumes its own conversation and hasn't seen the messages since it last ran.` });
+    }
+    this.broadcast({ type: "thread", thread: updated });
+    return updated;
+  }
+
+  /**
+   * Seed the new session once, through the injection ledger. Codex takes the
+   * history as items without a turn; Claude and ACP agents get one synthetic
+   * first message, and their reply is stored as a handoff event, not a turn.
+   */
+  private async seedHandoff(thread: Thread, driver: AgentDriver, cp: HandoffCheckpoint, text: string, cwd: string): Promise<number> {
+    const checkpointId = `${thread.id}:${cp.lastSeq}:${driver.id}`;
+    const provenance: Provenance = { agent: driver.id, model: thread.model, provider: null, instanceId: null };
+    const onSession = (sessionId: string) => {
+      if (sessionId !== this.store.getThread(thread.id).sessionId) {
+        this.broadcast({ type: "thread", thread: this.store.updateThread(thread.id, { sessionId }) });
+      }
+    };
+    if (driver.capabilities.seeding === "inject-items") {
+      const items = codexSeedItems(cp, text);
+      const res = await driver.seed!({
+        threadId: thread.id,
+        sessionId: null,
+        cwd,
+        model: thread.model,
+        permissionMode: thread.permissionMode,
+        tools: this.harnessTools(),
+        mcpServers: this.mcpServers(),
+        items,
+        onSession,
+        inject: (sessionId, send) =>
+          injectWithLedger(this.store, { threadId: thread.id, provider: driver.id, sessionId, checkpointId }, items, `${driver.id}/inject_items`, send),
+      });
+      return res.sent ?? 0;
+    }
+    const prompt = `${text}\n---\nThat is context for continuing this thread. Reply with one short sentence saying you have it; don't run any tools yet.`;
+    const controller = new AbortController();
+    this.running.set(thread.id, controller);
+    this.broadcast({ type: "running", threadId: thread.id, running: true });
+    try {
+      // The session doesn't exist until the prompt goes out, so the ledger keys this checkpoint's new session.
+      const target = { threadId: thread.id, provider: driver.id, sessionId: `new:${checkpointId}`, checkpointId };
+      const { sent } = await injectWithLedger(this.store, target, [prompt], `${driver.id}/first-message`, async () => {
+        let failed: string | null = null;
+        await driver.runTurn({
+          threadId: thread.id,
+          cwd,
+          prompt,
+          sessionId: null,
+          model: thread.model,
+          permissionMode: thread.permissionMode,
+          signal: controller.signal,
+          tools: this.harnessTools(),
+          mcpServers: this.mcpServers(),
+          provenance,
+          onEvent: (event) => {
+            if (event.kind === "assistant-text") {
+              this.emit(thread.id, { kind: "handoff", phase: "reply", text: event.text, to: driver.id }, provenance);
+            } else if (event.kind === "error") {
+              failed = event.message;
+            } else if (event.kind === "turn-end") {
+              this.emit(thread.id, event, provenance);
+              this.emitSignal(thread.id, event.usage);
+            }
+          },
+          onTextDelta: () => {},
+          onSession,
+          requestPermission: async () => "deny",
+        });
+        if (failed) throw new Error(failed);
+      });
+      return sent;
+    } finally {
+      this.running.delete(thread.id);
+      this.broadcast({ type: "running", threadId: thread.id, running: false });
+    }
+  }
+
+  /** The first turn-end after a switch: did the new session reuse the cache or re-seed it (Ch. 10 §10.5)? */
+  private emitSignal(threadId: string, usage: Usage | undefined): void {
+    if (!usage || !this.pendingSignal.has(threadId)) return;
+    const pre = this.pendingSignal.get(threadId)!;
+    this.pendingSignal.delete(threadId);
+    const signal = bloatSignal(pre, usage);
+    this.emit(threadId, { kind: "handoff", phase: "signal", text: signal.text, tokens: signal.tokens ?? undefined });
   }
 
   exportThread(threadId: string): ThreadExport {
@@ -224,6 +391,7 @@ export class Service {
             };
           }
           this.emit(thread.id, event, provenance);
+          if (event.kind === "turn-end") this.emitSignal(thread.id, event.usage);
         },
         // Live text is scrubbed like stored events. A key split across two deltas can
         // slip through here, but the turn's stored assistant-text event is redacted whole.
@@ -320,6 +488,10 @@ export class Service {
   getDiff(projectId: string): Promise<DiffFile[]> {
     return workingTreeDiff(this.store.getProject(projectId).path);
   }
+}
+
+function formatK(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
 
 export function titleFrom(text: string, skill?: string): string {

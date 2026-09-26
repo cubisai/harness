@@ -9,6 +9,7 @@ const api: UnskilledApi = {
   createThread: (projectId, agent) => ipcRenderer.invoke("threads:create", projectId, agent),
   updateThread: (threadId, patch) => ipcRenderer.invoke("threads:update", threadId, patch),
   deleteThread: (threadId) => ipcRenderer.invoke("threads:delete", threadId),
+  switchAgent: (threadId, agent, mode) => ipcRenderer.invoke("threads:switch", threadId, agent, mode),
   exportThread: (threadId) => ipcRenderer.invoke("threads:export", threadId),
   importThread: (projectId) => ipcRenderer.invoke("threads:import", projectId),
   listEvents: (threadId) => ipcRenderer.invoke("events:list", threadId),

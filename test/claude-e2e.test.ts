@@ -21,6 +21,7 @@ function fakeAnthropic() {
   const requests: string[] = [];
   const toolNames: string[][] = [];
   const headers: { authorization?: string; "x-api-key"?: string }[] = [];
+  const bodies: { system: unknown; messages: unknown }[] = [];
   const server = createServer((req, res) => {
     let body = "";
     req.on("data", (c) => (body += c));
@@ -28,8 +29,9 @@ function fakeAnthropic() {
       requests.push(`${req.method} ${req.url?.split("?")[0]}`);
       if (!req.url?.startsWith("/v1/messages")) return void res.writeHead(404, { "content-type": "application/json" }).end("{}");
       headers.push({ authorization: req.headers.authorization, "x-api-key": req.headers["x-api-key"] as string | undefined });
-      const { model, stream, tools } = JSON.parse(body) as { model: string; stream?: boolean; tools?: { name: string }[] };
+      const { model, stream, tools, system, messages } = JSON.parse(body) as { model: string; stream?: boolean; tools?: { name: string }[]; system?: unknown; messages?: unknown };
       if (stream) toolNames.push((tools ?? []).map((t) => t.name));
+      if (stream) bodies.push({ system, messages });
       const usage = { input_tokens: 10, output_tokens: 3 };
       if (!stream) {
         res.writeHead(200, { "content-type": "application/json" });
@@ -57,7 +59,7 @@ function fakeAnthropic() {
       );
     });
   });
-  return { server, requests, toolNames, headers };
+  return { server, requests, toolNames, headers, bodies };
 }
 
 function setEnv(vars: Record<string, string | undefined>) {
@@ -126,6 +128,48 @@ describe("Claude end to end (real Claude Code, fake API)", () => {
     // The turn's model calls, and nothing that asks for usage or limits.
     expect(requests).toContain("POST /v1/messages");
     expect(requests.filter((r) => /usage|rate.?limit|quota/i.test(r))).toEqual([]);
+  }, 90_000);
+
+  // T6.8: a handoff reaches Claude as one message; the system prompt stays the
+  // preset (no custom string, no checkpoint), so tools and caching are untouched.
+  it("sends a handoff checkpoint in the messages, once, and never in the system prompt", async () => {
+    const { server, bodies } = fakeAnthropic();
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    closeAfter(() => void server.close());
+    const inherited = Object.keys(process.env).filter((k) => k.startsWith("CLAUDE") || k.startsWith("ANTHROPIC_"));
+    setEnv({
+      ...Object.fromEntries(inherited.map((k) => [k, undefined])),
+      ANTHROPIC_BASE_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+      ANTHROPIC_API_KEY: "sk-ant-test",
+      CLAUDE_CONFIG_DIR: mkdtempSync(join(tmpdir(), "unskilled-claude-config-")),
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+    });
+    const pluginRoot = mkdtempSync(join(tmpdir(), "unskilled-plugin-"));
+    const driver = createClaudeDriver({
+      pluginDir: () => ensurePlugin(catalog(), join(pluginRoot, "skilled-plugin")),
+      guardScript: join(__dirname, "missing-guard.py"),
+    });
+    const checkpoint = ["# Handoff from codex (gpt-x)", "", "## Goal", "CHECKPOINT-MARKER-7 fix the login bug"].join("\n");
+    await driver.runTurn({
+      threadId: "t",
+      cwd: mkdtempSync(join(tmpdir(), "unskilled-claude-cwd-")),
+      prompt: checkpoint,
+      sessionId: null,
+      model: "claude-sonnet-5",
+      permissionMode: "ask",
+      signal: new AbortController().signal,
+      tools: [],
+      mcpServers: [],
+      onEvent: () => {},
+      onTextDelta: () => {},
+      onSession: () => {},
+      requestPermission: async () => "deny",
+    });
+    expect(bodies.length).toBeGreaterThan(0);
+    const turn = bodies.find((b) => JSON.stringify(b.messages).includes("CHECKPOINT-MARKER-7"))!;
+    expect(turn).toBeDefined();
+    expect(JSON.stringify(turn.system ?? "")).not.toContain("CHECKPOINT-MARKER-7");
+    expect(JSON.stringify(turn.messages).split("CHECKPOINT-MARKER-7").length - 1).toBe(1);
   }, 90_000);
 
   // A whole turn driven by a plan instead of process.env: nothing in our own

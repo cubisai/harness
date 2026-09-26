@@ -303,6 +303,26 @@ export interface HandoffCheckpoint {
   git: GitState | null;
 }
 
+/**
+ * How a thread moves to another agent: hand off the thread state, start the
+ * agent fresh, or go back to the session it already has.
+ */
+export type SwitchMode = "handoff" | "fresh" | "back";
+
+export type SwitchResult =
+  | {
+      ok: true;
+      mode: SwitchMode;
+      thread: Thread;
+      /** What the new session received, for a handoff. */
+      seeded?: { channel: "inject-items" | "first-message"; sent: number; tokens: number; tier: number; estimated: boolean };
+      /** The git ref to return to, or null when there was no repository to checkpoint. */
+      gitRef?: string | null;
+      /** The switch happened but the handoff didn't reach the new session. */
+      warning?: string;
+    }
+  | { ok: false; reason: string };
+
 /** Who produced an event: the agent, its model, and how it was reached. */
 export interface Provenance {
   agent: string;
@@ -520,6 +540,8 @@ export interface UnskilledApi {
   createThread(projectId: string, agent?: string): Promise<Thread>;
   updateThread(threadId: string, patch: Partial<Pick<Thread, "title" | "model" | "permissionMode" | "agent">>): Promise<Thread>;
   deleteThread(threadId: string): Promise<void>;
+  /** Move a thread to another agent; a refused switch changes nothing. */
+  switchAgent(threadId: string, agent: string, mode: SwitchMode): Promise<SwitchResult>;
   /** Save a thread to a JSON file; null when the dialog was cancelled. */
   exportThread(threadId: string): Promise<string | null>;
   /** Restore a thread from a JSON file as a new thread; null when cancelled. */
