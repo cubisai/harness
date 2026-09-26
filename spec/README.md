@@ -115,7 +115,7 @@ Every phase file carries, in this order:
 - [x] Phase 0 — Substrate (2026-09-25; CI workflow not yet run on GitHub)
 - [x] Phase 1 — Provider registry (2026-09-26; T1.8 driver wiring moved to Phase 2; manual `dsh` key check pending)
 - [x] Phase 2 — Credential injection (2026-09-26; T2.3 redesigned per S10 — no writes to `$CODEX_HOME`; OpenCode env-only per S8; manual in-app Claude BYOK + `dsh` checks pending)
-- [ ] Phase 3 — Capability parity
+- [x] Phase 3 — Capability parity (2026-09-26; T3.3 inverted per spike — Ask/Auto-edit stay on `untrusted`; renderer `ProviderSheet.tsx` id branches deferred to phase 8)
 - [ ] Phase 4 — Streaming + reasoning
 - [ ] Phase 5 — Cache discipline
 - [ ] Phase 6 — Context survival

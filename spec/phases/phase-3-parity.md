@@ -117,11 +117,11 @@ Paths are relative to the repo root. Read the chapter that explains *why* before
 
 ## Exit criteria
 
-- [ ] `pnpm typecheck`, `pnpm test` and `pnpm build` are green.
-- [ ] Every driver exposes a `capabilities` object; an unknown `agents.json` entry degrades to `SAFE_DEFAULTS`.
-- [ ] No literal agent-id branch remains outside the registry/driver constructors (asserted by a test that reads `src/main/`); `library.ts` routes skills by `capabilities.skillsDelivery`.
-- [ ] `codexPolicy("ask").approvalPolicy` is `"on-request"`, never `"untrusted"`; the sandbox spelling is pinned by a test.
-- [ ] An ACP agent without HTTP MCP support produces a visible notice naming each dropped server, not a silent drop.
-- [ ] Guardrails block on Claude, on OpenCode once its plugin loads, on ACP commands that ask permission, and on Codex under `ask`/`auto-edit`; Codex under `full` and generic ACP are recorded as warn-only.
-- [ ] `applyModel()` returns `in-place | new-session | unsupported` with a per-driver branch, and approvals are keyed by `(agentId, toolName, canonicalPattern)` and never inherited across agents.
-- [ ] An MCP config change reopens the session at the turn boundary and says so in a `notice`.
+- [x] `pnpm typecheck`, `pnpm test` and `pnpm build` are green.
+- [x] Every driver exposes a `capabilities` object; an unknown `agents.json` entry degrades to `SAFE_DEFAULTS`.
+- [x] No literal agent-id branch remains outside the registry/driver constructors (asserted by a test that reads `src/main/`); `library.ts` routes skills by `capabilities.skillsDelivery`.
+- [x] ~~`codexPolicy("ask").approvalPolicy` is `"on-request"`, never `"untrusted"`~~ — **inverted by the 0.157 spike** (`untrusted` is the only policy that asks; approved decision A): Ask and Auto-edit are pinned to `untrusted` + `workspace-write` by tests. The sandbox spelling is pinned.
+- [x] An ACP agent without HTTP MCP support produces a visible notice naming each dropped server, not a silent drop.
+- [x] Guardrails block on Claude, on OpenCode once its plugin loads, on ACP commands that ask permission, and on Codex under `ask`/`auto-edit`; Codex under `full` and generic ACP are recorded as warn-only.
+- [x] `applyModel()` returns `in-place | new-session | unsupported` with a per-driver branch, and approvals are keyed by `(agentId, toolName, canonicalPattern)` and never inherited across agents.
+- [x] An MCP config change reopens the session at the turn boundary and says so in a `notice`.
