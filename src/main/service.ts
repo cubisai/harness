@@ -18,6 +18,7 @@ import type { Store } from "./db";
 import { workingTreeDiff } from "./git";
 import type { Catalog } from "./skills/catalog";
 import { composePrompt } from "./skills/compose";
+import { memoryScopeCheck } from "./inject/memory-scope";
 
 /**
  * Everything the UI can ask for, with no Electron in sight, so it runs
@@ -25,6 +26,8 @@ import { composePrompt } from "./skills/compose";
  */
 export class Service {
   private running = new Map<string, AbortController>();
+  /** Projects already warned about loading the same conventions twice: said once, not every turn. */
+  private scopeChecked = new Set<string>();
   private pendingPermissions = new Map<string, (d: PermissionDecision) => void>();
 
   private drivers: Map<string, AgentDriver>;
@@ -113,6 +116,10 @@ export class Service {
     this.running.set(thread.id, controller);
     this.broadcast({ type: "running", threadId: thread.id, running: true });
     try {
+      if (!this.scopeChecked.has(project.id)) {
+        this.scopeChecked.add(project.id);
+        for (const text of memoryScopeCheck(project.path)) this.emit(thread.id, { kind: "notice", text });
+      }
       if (thread.sessionId === null && this.store.listEvents(thread.id).length > 1) {
         this.emit(thread.id, { kind: "notice", text: `Now talking to ${driver.label}. It starts without the earlier messages above.` });
       }
