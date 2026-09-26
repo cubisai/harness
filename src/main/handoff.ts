@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import type { HandoffCheckpoint, StoredEvent, Thread, ThreadEvent, ThreadExport } from "../shared/types";
+import type { HandoffCheckpoint, StoredEvent, Thread, ThreadEvent, ThreadExport, Usage } from "../shared/types";
 import { stableStringify } from "./cache-policy";
 import { blobRefOf, type LedgerTarget, type Store } from "./db";
-import { gitState, workingTreeDiff } from "./git";
+import { createRef, gitState, workingTreeDiff } from "./git";
 
 /**
  * Thread export/import: the rollback path for the bindings migration, and
@@ -155,6 +155,27 @@ export async function buildCheckpoint(store: Store, threadId: string): Promise<H
   return { threadId, from, builtAt: Date.now(), lastSeq, goal, messages, files, commands, openQuestions, git };
 }
 
+export type GitCheckpoint = { ok: true; ref: string } | { ok: false; kind: "no-repo" | "no-commits" | "dirty"; reason: string };
+
+/** A ref to return to before handing off. Refuses a dirty worktree: the checkpoint must be the state the handoff describes. */
+export async function checkpointGit(cwd: string, seq: number): Promise<GitCheckpoint> {
+  const state = await gitState(cwd);
+  if (!state) return { ok: false, kind: "no-repo", reason: "This folder isn't a git repository, so there's no checkpoint to return to." };
+  if (!state.head) return { ok: false, kind: "no-commits", reason: "The repository has no commits yet, so there's no checkpoint to return to." };
+  if (state.dirty.length) {
+    const shown = state.dirty.slice(0, 5).join(", ");
+    const more = state.dirty.length > 5 ? ` and ${state.dirty.length - 5} more` : "";
+    return {
+      ok: false,
+      kind: "dirty",
+      reason: `Commit or stash your changes first, so the handoff starts from a clean checkpoint: ${shown}${more}.`,
+    };
+  }
+  const ref = `harness-handoff/${seq}`;
+  await createRef(cwd, ref, state.head);
+  return { ok: true, ref };
+}
+
 /** Render a checkpoint as the prompt an incoming agent reads. Tier 0 is fullest, 2 is decisions only. */
 export function renderCheckpoint(cp: HandoffCheckpoint, tier: 0 | 1 | 2): string {
   const sections: string[] = [];
@@ -218,6 +239,39 @@ export function checkpointCap(contextWindow: number | null): number {
 /** Conservative estimate when the target has no counter: bytes / 3. */
 export function estimateTokens(text: string): number {
   return Math.ceil(Buffer.byteLength(text, "utf8") / 3);
+}
+
+/** Tokens the handoff replaces: the last turn's whole processed input, else an estimate of the visible conversation. */
+export function replacedTokens(events: StoredEvent[]): number {
+  let usage: Usage | null = null;
+  for (const { event } of events) {
+    if (event.kind === "turn-end" && event.usage) usage = event.usage;
+  }
+  if (usage) return usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0);
+  const texts: string[] = [];
+  for (const { event } of events) {
+    if (event.kind === "user" || event.kind === "assistant-text") texts.push(event.text);
+  }
+  return estimateTokens(texts.join("\n"));
+}
+
+export type BloatSignal = { kind: "reused" | "reseeded" | "unavailable"; tokens: number | null; text: string };
+
+/** Read the first turn after a switch against the last one before it (Ch. 10 §10.5): reuse shows as cache reads, a re-seed as cache writes. */
+export function bloatSignal(pre: Usage | null, post: Usage): BloatSignal {
+  if (post.cacheReadTokens === null) {
+    return { kind: "unavailable", tokens: null, text: "This agent doesn't report cache use, so there's no reading on how much of the handoff was reused." };
+  }
+  const preTotal = pre ? pre.inputTokens + (pre.cacheReadTokens ?? 0) + (pre.cacheWriteTokens ?? 0) : 0;
+  if (pre && post.cacheReadTokens > 0 && post.cacheReadTokens >= 0.8 * preTotal) {
+    return { kind: "reused", tokens: post.cacheReadTokens, text: `Reused ${k(post.cacheReadTokens)} cached tokens from before the switch.` };
+  }
+  const tokens = post.cacheWriteTokens ?? post.inputTokens;
+  return { kind: "reseeded", tokens, text: `Re-seeded ${k(tokens)} tokens after the switch.` };
+}
+
+function k(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
 
 export type FitResult =

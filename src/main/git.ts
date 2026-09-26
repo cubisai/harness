@@ -88,6 +88,11 @@ export async function workingTreeDiff(cwd: string): Promise<DiffFile[]> {
   return files;
 }
 
+/** Point `refs/<name>` at `sha` (overwriting), so a checkpoint doesn't touch branches or tags. */
+export async function createRef(cwd: string, name: string, sha: string): Promise<void> {
+  await run("git", ["update-ref", `refs/${name}`, sha], { cwd });
+}
+
 /**
  * The repository's head commit, branch and changed paths. Null when `cwd`
  * isn't inside a work tree. `head` stays null before the first commit.

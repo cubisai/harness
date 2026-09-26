@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { Store } from "../src/main/db";
-import { buildCheckpoint, checkpointCap, codexSeedItems, exportThread, fitCheckpoint, importThread, injectWithLedger, itemFingerprint, renderCheckpoint, THREAD_EXPORT_VERSION } from "../src/main/handoff";
+import { buildCheckpoint, checkpointCap, checkpointGit, codexSeedItems, estimateTokens, exportThread, fitCheckpoint, importThread, injectWithLedger, itemFingerprint, bloatSignal, replacedTokens, renderCheckpoint, THREAD_EXPORT_VERSION } from "../src/main/handoff";
 import { gitState, workingTreeDiff } from "../src/main/git";
-import type { HandoffCheckpoint } from "../src/shared/types";
+import { normalizeUsage } from "../src/main/usage";
+import type { HandoffCheckpoint, StoredEvent } from "../src/shared/types";
 import { closeAfter, tempDir } from "./helpers";
 
 function open(dir = tempDir()): Store {
@@ -137,6 +138,85 @@ describe("buildCheckpoint", () => {
 
   it("reports no git state outside a repository", async () => {
     expect(await gitState(tempDir())).toBeNull();
+  });
+});
+
+describe("checkpointGit", () => {
+  const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" });
+
+  function repo(): { dir: string; file: string } {
+    const dir = tempDir();
+    git(dir, "init", "-q");
+    git(dir, "config", "user.email", "t@example.com");
+    git(dir, "config", "user.name", "t");
+    writeFileSync(join(dir, "app.ts"), "export const a = 1;\n");
+    git(dir, "add", ".");
+    git(dir, "commit", "-qm", "init");
+    return { dir, file: join(dir, "app.ts") };
+  }
+
+  it("points a nameless ref at HEAD when the worktree is clean", async () => {
+    const { dir } = repo();
+    expect(await checkpointGit(dir, 7)).toEqual({ ok: true, ref: "harness-handoff/7" });
+    expect(git(dir, "rev-parse", "harness-handoff/7").trim()).toBe(git(dir, "rev-parse", "HEAD").trim());
+  });
+
+  it("refuses a dirty worktree without creating a ref", async () => {
+    const { dir, file } = repo();
+    writeFileSync(file, "export const a = 2;\n");
+    const result = await checkpointGit(dir, 8);
+    expect(result.ok).toBe(false);
+    expect(result).toMatchObject({ kind: "dirty" });
+    expect(result.ok ? "" : result.reason).toContain("app.ts");
+    expect(result.ok ? "" : result.reason).toContain("Commit or stash");
+    const ref = spawnSync("git", ["rev-parse", "--verify", "--quiet", "refs/harness-handoff/8"], { cwd: dir });
+    expect(ref.status).not.toBe(0);
+  });
+
+  it("reports no-repo outside a repository", async () => {
+    const result = await checkpointGit(tempDir(), 1);
+    expect(result).toMatchObject({ ok: false, kind: "no-repo" });
+  });
+});
+
+describe("bloatSignal", () => {
+  it("reads cache reads against the last turn before the switch as reuse", () => {
+    const pre = normalizeUsage({ inputTokens: 100, outputTokens: 10, cacheReadTokens: 10_000 });
+    const post = normalizeUsage({ inputTokens: 100, outputTokens: 10, cacheReadTokens: 9800 });
+    expect(bloatSignal(pre, post)).toMatchObject({ kind: "reused", tokens: 9800 });
+  });
+
+  it("reads a cache write after the switch as a re-seed", () => {
+    const post = normalizeUsage({ inputTokens: 100, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 4000 });
+    const signal = bloatSignal(null, post);
+    expect(signal).toMatchObject({ kind: "reseeded", tokens: 4000 });
+    expect(signal.text).toContain("4.0k tokens");
+  });
+
+  it("reports unavailable when the agent doesn't report cache use", () => {
+    const post = normalizeUsage({ inputTokens: 100, outputTokens: 10 });
+    expect(bloatSignal(null, post)).toMatchObject({ kind: "unavailable", tokens: null });
+  });
+});
+
+describe("replacedTokens", () => {
+  function stored(seq: number, event: StoredEvent["event"]): StoredEvent {
+    return { seq, event, createdAt: 0 };
+  }
+
+  it("uses the newest turn-end's whole processed input", () => {
+    const events = [
+      stored(1, { kind: "user", text: "hi" }),
+      stored(2, { kind: "turn-end", costUsd: null, inputTokens: 100, outputTokens: 5, durationMs: 1, usage: normalizeUsage({ inputTokens: 100, outputTokens: 5, cacheReadTokens: 10, cacheWriteTokens: 20 }) }),
+      stored(3, { kind: "user", text: "again" }),
+      stored(4, { kind: "turn-end", costUsd: null, inputTokens: 200, outputTokens: 5, durationMs: 1, usage: normalizeUsage({ inputTokens: 200, outputTokens: 5, cacheReadTokens: 300, cacheWriteTokens: 40 }) }),
+    ];
+    expect(replacedTokens(events)).toBe(200 + 300 + 40);
+  });
+
+  it("estimates the visible conversation without a turn-end", () => {
+    const events = [stored(1, { kind: "user", text: "hello" }), stored(2, { kind: "assistant-text", text: "world" })];
+    expect(replacedTokens(events)).toBe(estimateTokens("hello\nworld"));
   });
 });
 
