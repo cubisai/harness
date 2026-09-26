@@ -350,6 +350,9 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .msg-assistant pre code { background: none; border: 0; padding: 0; font-size: 12px; line-height: 1.55; }
 .msg-assistant a { color: var(--accent); text-decoration: none; }
 .msg-assistant a:hover { text-decoration: underline; }
+.msg-assistant table { border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+.msg-assistant th, .msg-assistant td { border: 1px solid var(--hairline-strong); padding: 4px 8px; text-align: left; }
+.msg-assistant del { color: var(--text-tertiary); }
 .caret::after {
   content: "";
   display: inline-block;
@@ -394,6 +397,14 @@ details.tool[open]::details-content { height: auto; }
 .tool-label { font-size: 11px; font-weight: 600; color: var(--text-tertiary); margin-bottom: 4px; }
 .tool-pre { margin: 0; font: 11.5px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
 .tool-empty { color: var(--text-tertiary); font-size: 12px; }
+.tool-diff { font: 11.5px/1.5 var(--mono); }
+.tool-diff + .tool-diff { margin-top: 8px; }
+.tool-diff-path { font-weight: 600; margin-bottom: 4px; }
+.tool-diff-path .stat { font-weight: 400; color: var(--text-tertiary); margin-left: 6px; }
+.tool-diff .hunk-header { color: var(--text-tertiary); }
+.tool-diff .line { white-space: pre-wrap; word-break: break-word; padding: 0 6px; }
+.tool-diff .line.add { background: var(--add-bg); }
+.tool-diff .line.del { background: var(--del-bg); }
 
 .thinking {
   margin: 6px 0;

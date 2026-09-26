@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { StoredEvent, ThreadEvent } from "../../../shared/types";
+import { prettyTool, type RunResult } from "../../../shared/tools";
 import { type FileRef, parseFileRef } from "../fileref";
 import { emptyLive, liveReasoningMode, visibleItems } from "../live";
 import { Markdown } from "../markdown";
 import { useStore } from "../store";
+import { DiffView, diffsOf } from "./DiffView";
 import { PermissionCard } from "./PermissionCard";
 import { ReasoningBlock } from "./ReasoningBlock";
 
@@ -150,8 +152,11 @@ export function ToolRow({ tool, result, running, open, onToggle }: { tool: ToolE
   const state = result ? (result.isError ? "error" : "done") : running ? "pending" : "";
   // File tools name the file they touched; open it from the row.
   const fileRef = FILE_TOOLS.has(tool.name) ? parseFileRef(tool.summary.split(", ")[0] ?? "") : null;
-  const hasInput = tool.payload !== undefined;
-  const hasOutput = result?.payload !== undefined;
+  // One diff renderer for every agent's edits; the result payload wins.
+  const diffs = diffsOf(result?.payload) ?? diffsOf(tool.payload);
+  const run = runResultOf(result?.payload);
+  const hasInput = tool.payload !== undefined && diffs === null;
+  const hasOutput = result?.payload !== undefined && diffs === null && run === null;
   return (
     <details className="tool" open={open} onToggle={(e) => onToggle(e.currentTarget.open)}>
       <summary className="tool-row" title={result?.summary ?? tool.summary}>
@@ -175,6 +180,18 @@ export function ToolRow({ tool, result, running, open, onToggle }: { tool: ToolE
       </summary>
       {open && (
         <div className="tool-body">
+          {diffs && (
+            <div className="tool-section">
+              <div className="tool-label">Changes</div>
+              <DiffView diffs={diffs} />
+            </div>
+          )}
+          {run && (
+            <div className="tool-section">
+              <div className="tool-label">{typeof run.exitCode === "number" ? `Output (exit ${run.exitCode})` : "Output"}</div>
+              <pre className="tool-pre">{run.output}</pre>
+            </div>
+          )}
           {hasInput && (
             <div className="tool-section">
               <div className="tool-label">Input</div>
@@ -187,11 +204,18 @@ export function ToolRow({ tool, result, running, open, onToggle }: { tool: ToolE
               <pre className="tool-pre">{payloadText(result!.payload)}</pre>
             </div>
           )}
-          {!hasInput && !hasOutput && <div className="tool-empty">No details recorded.</div>}
+          {!diffs && !run && !hasInput && !hasOutput && <div className="tool-empty">No details recorded.</div>}
         </div>
       )}
     </details>
   );
+}
+
+/** A Run tool result's `{ exitCode, output }`, or null for any other payload. */
+function runResultOf(v: unknown): RunResult | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const p = v as { exitCode?: unknown; output?: unknown };
+  return (typeof p.exitCode === "number" || p.exitCode === null) && typeof p.output === "string" ? { exitCode: p.exitCode, output: p.output } : null;
 }
 
 function isBlobStub(v: unknown): v is { blobRef: string; preview: string; bytes?: number } {
@@ -214,12 +238,6 @@ const FILE_TOOLS = new Set(["Read", "Edit", "Write", "MultiEdit", "NotebookEdit"
 
 function openRef(ref: FileRef): void {
   void useStore.getState().openInEditor(ref);
-}
-
-function prettyTool(name: string): string {
-  if (name.startsWith("mcp__unskilled__")) return name.slice("mcp__unskilled__".length);
-  if (name.startsWith("mcp__")) return name.split("__").slice(1).join(" · ");
-  return name;
 }
 
 function formatTokens(n: number): string {

@@ -4,8 +4,9 @@ import { memoizeByHash, parseBlocks, splitStreamingTail } from "./streaming";
 
 /**
  * A small Markdown renderer for agent replies: fenced code, headings, lists,
- * paragraphs, and inline code / bold / italic / links. It builds React
- * elements (never raw HTML), so model output can't inject markup.
+ * GFM tables, paragraphs, and inline code / bold / italic / strikethrough /
+ * links. It builds React elements (never raw HTML), so model output can't
+ * inject markup.
  */
 /**
  * `onFile`, when given, turns inline code that names a file (`src/a.ts:42`)
@@ -40,6 +41,29 @@ export function Markdown({ text, streaming, onFile }: { text: string; streaming?
               </L>
             );
           }
+          case "table":
+            return (
+              <table key={i}>
+                <thead>
+                  <tr>
+                    {b.header.map((cell, j) => (
+                      <th key={j} style={b.align[j] ? { textAlign: b.align[j]! } : undefined}>
+                        {inline(cell, onFile)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {b.rows.map((row, j) => (
+                    <tr key={j}>
+                      {row.map((cell, k) => (
+                        <td key={k}>{inline(cell, onFile)}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            );
           default:
             return <p key={i}>{inline(b.text, onFile)}</p>;
         }
@@ -53,7 +77,7 @@ export function Markdown({ text, streaming, onFile }: { text: string; streaming?
   );
 }
 
-const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*|_[^_\s][^_]*_)|(\[[^\]]+\]\((https?:\/\/[^)\s]+)\))/g;
+const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*|_[^_\s][^_]*_)|(\[[^\]]+\]\((https?:\/\/[^)\s]+)\))|(~~[^~]+~~)/g;
 
 function inline(text: string, onFile?: (ref: FileRef) => void): ReactNode {
   const out: ReactNode[] = [];
@@ -86,6 +110,7 @@ function inline(text: string, onFile?: (ref: FileRef) => void): ReactNode {
         </a>,
       );
     }
+    else if (m[6]) out.push(<del key={key++}>{tok.slice(2, -2)}</del>);
     last = idx + tok.length;
   }
   if (last < text.length) out.push(text.slice(last));

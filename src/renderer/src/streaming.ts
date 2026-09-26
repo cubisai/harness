@@ -3,6 +3,7 @@ export type Block =
   | { type: "code"; text: string }
   | { type: "heading"; level: number; text: string }
   | { type: "list"; ordered: boolean; items: string[] }
+  | { type: "table"; header: string[]; align: ("left" | "center" | "right" | null)[]; rows: string[][] }
   | { type: "para"; text: string };
 
 export function parseBlocks(text: string): Block[] {
@@ -43,6 +44,13 @@ export function parseBlocks(text: string): Block[] {
       flush();
       continue;
     }
+    const table = tableAt(lines, i);
+    if (table) {
+      flush();
+      blocks.push({ type: "table", header: table.header, align: table.align, rows: table.rows });
+      i = table.end;
+      continue;
+    }
     const prev = blocks.at(-1);
     if (!para.length && prev?.type === "list" && /^\s{2,}\S/.test(line)) {
       prev.items[prev.items.length - 1] += ` ${line.trim()}`;
@@ -52,6 +60,48 @@ export function parseBlocks(text: string): Block[] {
   }
   flush();
   return blocks;
+}
+
+/**
+ * A GFM table starting at line `i`: a header row, a delimiter row of `-`
+ * cells (optional `:` for alignment) directly under it, then body rows.
+ * Leading/trailing pipes are optional; cells are trimmed. `end` is the index
+ * of the last line consumed.
+ */
+function tableAt(lines: string[], i: number): { header: string[]; align: ("left" | "center" | "right" | null)[]; rows: string[][]; end: number } | null {
+  const header = cells(lines[i]);
+  const delim = cells(lines[i + 1]);
+  if (!header || !delim || delim.length !== header.length || !delim.every(isDelimCell)) return null;
+  const align = delim.map(alignOf);
+  const rows: string[][] = [];
+  let end = i + 1;
+  for (let j = i + 2; j < lines.length; j++) {
+    const row = cells(lines[j]);
+    if (!row) break;
+    rows.push(row);
+    end = j;
+  }
+  return { header, align, rows, end };
+}
+
+/** One table row's cells: null unless the line carries a pipe separator. */
+function cells(line: string | undefined): string[] | null {
+  const t = (line ?? "").trim();
+  if (!t.includes("|")) return null;
+  return (t.startsWith("|") ? t.slice(1) : t)
+    .replace(/\|$/, "")
+    .split("|")
+    .map((c) => c.trim());
+}
+
+function isDelimCell(cell: string): boolean {
+  return /^:?-+:?$/.test(cell);
+}
+
+function alignOf(cell: string): "left" | "center" | "right" | null {
+  const left = cell.startsWith(":");
+  const right = cell.endsWith(":");
+  return left && right ? "center" : left ? "left" : right ? "right" : null;
 }
 
 const FENCE = /^\s*(```|~~~)/;
