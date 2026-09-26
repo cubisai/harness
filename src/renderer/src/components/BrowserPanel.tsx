@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import type { BrowserLogEntry, DevicePreset, ScreenshotInfo } from "../../../shared/types";
 import { api } from "../api";
 import { IconArrowLeft, IconArrowRight, IconGlobe, IconRefresh, IconTarget } from "../icons";
 import { useStore } from "../store";
+import { ScreenshotStrip, ScreenshotViewer } from "./ScreenshotStrip";
 
 /** The <webview> element's API, as far as this panel uses it. */
 interface WebviewElement extends HTMLElement {
@@ -26,6 +28,28 @@ function normalize(input: string): string {
   return `https://${s}`;
 }
 
+const DEVICES: { id: DevicePreset; label: string; title: string }[] = [
+  { id: "mobile", label: "Mobile", title: "Emulate a 390px phone" },
+  { id: "tablet", label: "Tablet", title: "Emulate a 768px tablet" },
+  { id: "desktop", label: "Desktop", title: "No emulation" },
+];
+
+/** What the page has thrown at us: console errors, warnings, failed requests. */
+export function ConsoleList({ logs }: { logs: BrowserLogEntry[] }) {
+  if (!logs.length) {
+    return <div>No console errors, warnings, or failed requests since the page loaded.</div>;
+  }
+  return (
+    <ul>
+      {logs.map((l, i) => (
+        <li key={i} className={`log ${l.level}`}>
+          <span className="log-level">{l.level}</span> <span className="log-text">{l.text}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /**
  * A real Chromium page beside the thread. The agent drives this same page
  * through its browser_* tools, so a UI check runs where you can watch it.
@@ -34,15 +58,28 @@ export function BrowserPanel() {
   const pendingUrl = useStore((s) => s.browserUrl);
   const picking = useStore((s) => s.picking);
   const startPick = useStore((s) => s.startPick);
-  const view = useRef<WebviewElement | null>(null);
+  const device = useStore((s) => s.browser.device);
+  const logs = useStore((s) => s.browser.logs);
+  const screenshots = useStore((s) => s.browser.screenshots);
+  const browserWide = useStore((s) => s.paneLayout.browserWide);
+  const setBrowserDevice = useStore((s) => s.setBrowserDevice);
+  const toggleBrowserWide = useStore((s) => s.toggleBrowserWide);
+  const webView = useRef<WebviewElement | null>(null);
   // <webview> methods throw until its first dom-ready.
   const ready = useRef(false);
   const [address, setAddress] = useState(pendingUrl ?? "");
   const [nav, setNav] = useState({ back: false, forward: false, loading: false });
   const [initial] = useState(() => (pendingUrl ? normalize(pendingUrl) : "about:blank"));
+  const [view, setView] = useState<"page" | "console">("page");
+  const [viewing, setViewing] = useState<ScreenshotInfo | null>(null);
+
+  // The in-band state is fetched once, when the panel mounts.
+  useEffect(() => {
+    void useStore.getState().loadBrowserState();
+  }, []);
 
   useEffect(() => {
-    const el = view.current;
+    const el = webView.current;
     if (!el) return;
     const sync = () => {
       if (!ready.current) return;
@@ -72,9 +109,9 @@ export function BrowserPanel() {
   // A URL requested later (by the agent or the store) while the panel is open.
   useEffect(() => {
     // Before dom-ready the initial src already carries the URL.
-    if (!pendingUrl || !view.current || !ready.current) return;
+    if (!pendingUrl || !webView.current || !ready.current) return;
     const url = normalize(pendingUrl);
-    if (view.current.getURL() !== url) void view.current.loadURL(url).catch(() => {});
+    if (webView.current.getURL() !== url) void webView.current.loadURL(url).catch(() => {});
   }, [pendingUrl]);
 
   return (
@@ -83,16 +120,16 @@ export function BrowserPanel() {
         className="browser-bar"
         onSubmit={(e) => {
           e.preventDefault();
-          if (ready.current) void view.current?.loadURL(normalize(address)).catch(() => {});
+          if (ready.current) void webView.current?.loadURL(normalize(address)).catch(() => {});
         }}
       >
-        <button type="button" className="icon-button" title="Back" disabled={!nav.back} onClick={() => view.current?.goBack()}>
+        <button type="button" className="icon-button" title="Back" disabled={!nav.back} onClick={() => webView.current?.goBack()}>
           <IconArrowLeft />
         </button>
-        <button type="button" className="icon-button" title="Forward" disabled={!nav.forward} onClick={() => view.current?.goForward()}>
+        <button type="button" className="icon-button" title="Forward" disabled={!nav.forward} onClick={() => webView.current?.goForward()}>
           <IconArrowRight />
         </button>
-        <button type="button" className="icon-button" title="Reload" onClick={() => view.current?.reload()}>
+        <button type="button" className="icon-button" title="Reload" onClick={() => webView.current?.reload()}>
           {nav.loading ? <span className="spinner" /> : <IconRefresh />}
         </button>
         <label className="address">
@@ -113,8 +150,54 @@ export function BrowserPanel() {
         >
           <IconTarget />
         </button>
+        <div className="segmented device-switch" role="group" aria-label="Viewport">
+          {DEVICES.map((d) => (
+            <button
+              key={d.id}
+              type="button"
+              aria-pressed={device === d.id}
+              className={device === d.id ? "on" : ""}
+              title={d.title}
+              onClick={() => void setBrowserDevice(d.id)}
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="icon-button"
+          title={browserWide ? "Back to the side panel" : "Move to main area"}
+          aria-pressed={browserWide}
+          onClick={toggleBrowserWide}
+        >
+          {browserWide ? <IconArrowRight /> : <IconArrowLeft />}
+        </button>
       </form>
-      <webview ref={view as unknown as React.Ref<HTMLWebViewElement>} className="browser-view" src={initial} partition="persist:unskilled-browser" />
+      <div className="segmented browser-views" role="tablist">
+        <button type="button" role="tab" aria-selected={view === "page"} aria-controls="browser-page" className={view === "page" ? "on" : ""} onClick={() => setView("page")}>
+          Page
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "console"}
+          aria-controls="browser-console"
+          className={view === "console" ? "on" : ""}
+          onClick={() => setView("console")}
+        >
+          {`Console${logs.length ? ` (${logs.length})` : ""}`}
+        </button>
+      </div>
+      {/* The page stays mounted in both views: unmounting it would lose it. */}
+      <div id="browser-page" role="tabpanel" className="browser-page" hidden={view !== "page"}>
+        <webview ref={webView as unknown as React.Ref<HTMLWebViewElement>} className="browser-view" src={initial} partition="persist:unskilled-browser" />
+      </div>
+      <div id="browser-console" role="tabpanel" className="browser-console" hidden={view !== "console"}>
+        <ConsoleList logs={logs} />
+      </div>
+      <ScreenshotStrip shots={screenshots} onOpen={setViewing} />
+      <ScreenshotViewer shot={viewing} onClose={() => setViewing(null)} />
     </div>
   );
 }

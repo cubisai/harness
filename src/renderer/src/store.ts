@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import type {
+  BrowserState,
+  DevicePreset,
   EditorInfo,
   AgentLimits,
   AppUpdateStatus,
@@ -73,6 +75,16 @@ interface State {
   browserUrl: string | null;
   /** The user is picking an element in the browser pane. */
   picking: boolean;
+  /** The browser pane's device, console lines and screenshots, pushed in-band. */
+  browser: BrowserState;
+  /** browserState() has been fetched; the panel only asks for it once. */
+  browserLoaded: boolean;
+  /** Fetch the browser pane's state, once. */
+  loadBrowserState(): Promise<void>;
+  /** Emulate a viewport in the browser pane; the store updates from the push. */
+  setBrowserDevice(device: DevicePreset): Promise<void>;
+  /** Give the browser the main area, with the conversation as a rail. */
+  toggleBrowserWide(): void;
   /** Text to add to the message box (a picked element), with a nonce so repeats still apply. */
   composerInsert: { text: string; nonce: number } | null;
   startPick(): Promise<void>;
@@ -224,7 +236,30 @@ export const useStore = create<State>((set, get) => ({
   terminals: [],
   browserUrl: null,
   picking: false,
+  browser: { device: "desktop", logs: [], screenshots: [] },
+  browserLoaded: false,
   composerInsert: null,
+
+  async loadBrowserState() {
+    // Called when the browser panel mounts, never on every render.
+    if (get().browserLoaded) return;
+    set({ browserLoaded: true });
+    set({ browser: await api().browserState() });
+  },
+
+  async setBrowserDevice(device) {
+    await api().browserDevice(device);
+    // The browser-device push carries the new device into the store.
+  },
+
+  toggleBrowserWide() {
+    const s = get();
+    const wide = !s.paneLayout.browserWide;
+    s.setPaneLayout({ browserWide: wide }, true);
+    // An emulated phone frame must never be measured as a desktop page.
+    if (wide && s.browser.device !== "desktop") void api().browserDevice("desktop");
+    if (wide && !(s.inspectorOpen && s.inspectorTab === "browser")) s.showInspector("browser");
+  },
 
   async startPick() {
     set({ picking: true });
@@ -463,11 +498,19 @@ export const useStore = create<State>((set, get) => ({
           composerInsert: update.text ? { text: update.text, nonce: (s.composerInsert?.nonce ?? 0) + 1 } : s.composerInsert,
         }));
         return;
-      // The browser console, screenshots, and device land in the UI in a later
-      // brief; handled here so the switch stays exhaustive.
       case "browser-log":
+        set((s) => ({
+          browser: {
+            ...s.browser,
+            logs: update.entry === null ? [] : [...s.browser.logs.slice(-199), update.entry],
+          },
+        }));
+        return;
       case "browser-screenshot":
+        set((s) => ({ browser: { ...s.browser, screenshots: [...s.browser.screenshots, update.shot] } }));
+        return;
       case "browser-device":
+        set((s) => ({ browser: { ...s.browser, device: update.device } }));
         return;
       case "settings":
         applyTheme(update.settings.theme);

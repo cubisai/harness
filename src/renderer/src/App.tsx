@@ -12,7 +12,7 @@ import { TerminalDrawer } from "./components/TerminalDrawer";
 import { Splitter } from "./components/Splitter";
 import { SwitchDialogHost } from "./components/SwitchDialog";
 import { ThreadView } from "./components/ThreadView";
-import { IconDiff, IconFolder, IconGlobe, IconSparkle, IconTerminal } from "./icons";
+import { IconArrowLeft, IconDiff, IconFolder, IconGlobe, IconSparkle, IconTerminal } from "./icons";
 import { usePaneLayout } from "./hooks/usePaneLayout";
 import { BOUNDS, DEFAULT_LAYOUT } from "./layout";
 import { useSelectedThread, useStore } from "./store";
@@ -78,130 +78,140 @@ export function App() {
   const layout = useStore((s) => s.paneLayout);
   const pane = usePaneLayout(Boolean(inspectorVisible));
   const setPaneLayout = useStore((s) => s.setPaneLayout);
+  const wide = layout.browserWide && inspectorVisible && inspectorTab === "browser" && pane.inspector !== null;
 
   return (
-    <div className={`app${inspectorVisible && pane.inspector !== null ? " with-inspector" : ""}`}>
+    <div className={`app${inspectorVisible && pane.inspector !== null ? " with-inspector" : ""}${wide ? " browser-wide" : ""}`}>
       {layout.sidebarCollapsed ? <PaneRail /> : <Sidebar />}
       <main className="main">
-        <header className="main-header drag">
-          <div className="main-title">
-            {thread ? thread.title : project ? project.name : "UnSkilled"}
-            {thread && project && <span className="sub">{project.name}</span>}
-          </div>
-          {thread && <LimitMeter agent={thread.agent} />}
-          {thread && <UsageMeter threadId={thread.id} />}
-          {thread && <CacheMeter threadId={thread.id} />}
-          {thread && (
-            <>
-              {agents.length > 1 && (
-                <select
-                  className="select"
-                  value={thread.agent}
-                  title="Agent"
-                  disabled={running}
-                  onChange={(e) => useStore.getState().openSwitch(e.target.value)}
-                >
-                  {agents.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.label}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <select
-                className="select"
-                value={thread.model}
-                title="Model"
-                disabled={running}
-                onChange={(e) => void updateThread({ model: e.target.value })}
-              >
-                {modelOptions(agents, thread.agent, thread.model).map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-              <div className="segmented" role="radiogroup" aria-label="Permissions">
-                {MODES.map((m) => (
-                  <button
-                    key={m.id}
-                    role="radio"
-                    aria-checked={thread.permissionMode === m.id}
-                    className={thread.permissionMode === m.id ? "on" : ""}
-                    title={m.title}
-                    disabled={running}
-                    onClick={() => void updateThread({ permissionMode: m.id })}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-          {project && (
-            <>
-              <button
-                className={`icon-button${inspectorOpen && inspectorTab === "changes" ? " active" : ""}`}
-                title="Changes (⌘⇧D)"
-                aria-expanded={inspectorOpen && inspectorTab === "changes"}
-                aria-controls="inspector"
-                onClick={() => showInspector("changes")}
-              >
-                <IconDiff />
-              </button>
-              <button
-                className={`icon-button${inspectorOpen && inspectorTab === "browser" ? " active" : ""}`}
-                title="Browser (⌘⇧B)"
-                aria-expanded={inspectorOpen && inspectorTab === "browser"}
-                aria-controls="inspector"
-                onClick={() => showInspector("browser")}
-              >
-                <IconGlobe />
-              </button>
-              <button
-                className={`icon-button${layout.terminalOpen ? " active" : ""}`}
-                title="Terminal (⌃`)"
-                aria-expanded={layout.terminalOpen}
-                aria-controls="terminal-drawer"
-                onClick={() => useStore.getState().toggleTerminal()}
-              >
-                <IconTerminal />
-              </button>
-            </>
-          )}
-        </header>
-
-        {!project ? (
-          <div className="empty">
-            <div>
-              <h1>Welcome to UnSkilled</h1>
-              <p>Open a project folder to start. Claude works inside it, with the skilled workflow built in.</p>
-              <button className="button primary" onClick={() => void addProject()}>
-                <IconFolder /> Open Project…
-              </button>
-            </div>
-          </div>
-        ) : !thread ? (
-          <div className="empty">
-            <div>
-              <h1>{project.name}</h1>
-              <p>Start a thread to work in this project.</p>
-              <button className="button primary" onClick={() => void newThread()}>
-                <IconSparkle /> New Thread
-              </button>
-              <div className="hints">
-                <Hint skill="skilled-setup" d="Set up the project docs and tracker, once per repo." />
-                <Hint skill="domain-interview" d="Get interviewed on an idea before any code." />
-                <Hint skill="implement" d="Build a ticket or a small change, test-first." />
-              </div>
-            </div>
-          </div>
+        {wide ? (
+          // The browser holds the main area; the conversation is just a rail.
+          // The Inspector stays mounted either way, so the page survives.
+          <ConversationRail />
         ) : (
           <>
-            <ThreadView threadId={thread.id} />
-            <Composer threadId={thread.id} />
+            <header className="main-header drag">
+              <div className="main-title">
+                {thread ? thread.title : project ? project.name : "UnSkilled"}
+                {thread && project && <span className="sub">{project.name}</span>}
+              </div>
+              {thread && <LimitMeter agent={thread.agent} />}
+              {thread && <UsageMeter threadId={thread.id} />}
+              {thread && <CacheMeter threadId={thread.id} />}
+              {thread && (
+                <>
+                  {agents.length > 1 && (
+                    <select
+                      className="select"
+                      value={thread.agent}
+                      title="Agent"
+                      disabled={running}
+                      onChange={(e) => useStore.getState().openSwitch(e.target.value)}
+                    >
+                      {agents.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <select
+                    className="select"
+                    value={thread.model}
+                    title="Model"
+                    disabled={running}
+                    onChange={(e) => void updateThread({ model: e.target.value })}
+                  >
+                    {modelOptions(agents, thread.agent, thread.model).map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="segmented" role="radiogroup" aria-label="Permissions">
+                    {MODES.map((m) => (
+                      <button
+                        key={m.id}
+                        role="radio"
+                        aria-checked={thread.permissionMode === m.id}
+                        className={thread.permissionMode === m.id ? "on" : ""}
+                        title={m.title}
+                        disabled={running}
+                        onClick={() => void updateThread({ permissionMode: m.id })}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              {project && (
+                <>
+                  <button
+                    className={`icon-button${inspectorOpen && inspectorTab === "changes" ? " active" : ""}`}
+                    title="Changes (⌘⇧D)"
+                    aria-expanded={inspectorOpen && inspectorTab === "changes"}
+                    aria-controls="inspector"
+                    onClick={() => showInspector("changes")}
+                  >
+                    <IconDiff />
+                  </button>
+                  <button
+                    className={`icon-button${inspectorOpen && inspectorTab === "browser" ? " active" : ""}`}
+                    title="Browser (⌘⇧B)"
+                    aria-expanded={inspectorOpen && inspectorTab === "browser"}
+                    aria-controls="inspector"
+                    onClick={() => showInspector("browser")}
+                  >
+                    <IconGlobe />
+                  </button>
+                  <button
+                    className={`icon-button${layout.terminalOpen ? " active" : ""}`}
+                    title="Terminal (⌃`)"
+                    aria-expanded={layout.terminalOpen}
+                    aria-controls="terminal-drawer"
+                    onClick={() => useStore.getState().toggleTerminal()}
+                  >
+                    <IconTerminal />
+                  </button>
+                </>
+              )}
+            </header>
+
+            {!project ? (
+              <div className="empty">
+                <div>
+                  <h1>Welcome to UnSkilled</h1>
+                  <p>Open a project folder to start. Claude works inside it, with the skilled workflow built in.</p>
+                  <button className="button primary" onClick={() => void addProject()}>
+                    <IconFolder /> Open Project…
+                  </button>
+                </div>
+              </div>
+            ) : !thread ? (
+              <div className="empty">
+                <div>
+                  <h1>{project.name}</h1>
+                  <p>Start a thread to work in this project.</p>
+                  <button className="button primary" onClick={() => void newThread()}>
+                    <IconSparkle /> New Thread
+                  </button>
+                  <div className="hints">
+                    <Hint skill="skilled-setup" d="Set up the project docs and tracker, once per repo." />
+                    <Hint skill="domain-interview" d="Get interviewed on an idea before any code." />
+                    <Hint skill="implement" d="Build a ticket or a small change, test-first." />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <ThreadView threadId={thread.id} />
+                <Composer threadId={thread.id} />
+              </>
+            )}
           </>
         )}
+        {/* Outside the wide branch: the shells stay mounted (hidden) while the browser has the main area. */}
         <TerminalDrawer />
       </main>
       <Splitter
@@ -217,7 +227,7 @@ export function App() {
         onChange={(v, c) => setPaneLayout({ sidebar: v || layout.sidebar, sidebarCollapsed: c }, false)}
         onCommit={(v, c) => setPaneLayout({ sidebar: v || layout.sidebar, sidebarCollapsed: c }, true)}
       />
-      {inspectorVisible && (
+      {!wide && inspectorVisible && (
         <Splitter
           orientation="vertical"
           controls="inspector"
@@ -239,6 +249,20 @@ export function App() {
       <Library />
       <CommandPalette />
       <SwitchDialogHost />
+    </div>
+  );
+}
+
+/** The conversation while the browser holds the main area: the way back, and a heartbeat. */
+function ConversationRail() {
+  const thread = useSelectedThread();
+  const running = useStore((s) => (thread ? Boolean(s.running[thread.id]) : false));
+  return (
+    <div className="conversation-rail">
+      <button className="icon-button" title="Back to the conversation" aria-controls="inspector" onClick={() => useStore.getState().toggleBrowserWide()}>
+        <IconArrowLeft />
+      </button>
+      {running && <span className="spinner" />}
     </div>
   );
 }

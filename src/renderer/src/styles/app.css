@@ -684,6 +684,29 @@ details.tool[open]::details-content { height: auto; }
 .browser-view { flex: 1; min-height: 0; width: 100%; background: #fff; display: flex; }
 .inspector-head .segmented { -webkit-app-region: no-drag; }
 
+/* ---------- browser wide: the page takes the main area ---------- */
+
+/* After .with-inspector above, so it wins when both classes are on. */
+.app.browser-wide { grid-template-columns: var(--sidebar-w) 56px 1fr; }
+.app.browser-wide .terminal-drawer { display: none; }
+.conversation-rail { display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: calc(var(--titlebar) - 10px); border-right: 1px solid var(--hairline); }
+.device-switch button { padding: 0 8px; }
+.browser-views { margin: 6px 10px 0; align-self: flex-start; }
+.browser-page { flex: 1; min-height: 0; display: flex; }
+.browser-page[hidden], .browser-console[hidden] { display: none; }
+.browser-console { flex: 1; min-height: 0; overflow: auto; padding: 8px 12px; font: 11.5px/1.5 var(--mono); }
+.browser-console ul { list-style: none; margin: 0; padding: 0; }
+.browser-console .log { padding: 3px 0; border-bottom: 1px solid var(--hairline); white-space: pre-wrap; word-break: break-word; }
+.browser-console .log-level { font-weight: 600; margin-right: 6px; }
+.browser-console .log.error .log-level { color: var(--danger); }
+.browser-console .log.warning .log-level { color: var(--warning, #b8860b); }
+.shot-strip { display: flex; gap: 6px; padding: 6px 10px; overflow-x: auto; border-top: 1px solid var(--hairline); }
+.shot-strip .shot { flex-shrink: 0; padding: 0; border: 1px solid var(--hairline-strong); border-radius: var(--radius-s); background: none; overflow: hidden; }
+.shot-strip img { display: block; height: 56px; width: auto; }
+.shot-viewer { margin: 0; max-width: min(1100px, calc(100vw - 48px)); background: var(--bg-elevated); border-radius: var(--radius-l); padding: 10px; box-shadow: var(--shadow-pop); }
+.shot-viewer img { display: block; max-width: 100%; max-height: calc(100vh - 180px); }
+.shot-viewer figcaption { font: 11px var(--mono); color: var(--text-secondary); margin-top: 6px; }
+
 /* ---------- terminal ---------- */
 
 .terminal-body { overflow: hidden; padding: 10px 0 0 12px; }
