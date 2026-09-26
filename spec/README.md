@@ -117,7 +117,7 @@ Every phase file carries, in this order:
 - [x] Phase 2 — Credential injection (2026-09-26; T2.3 redesigned per S10 — no writes to `$CODEX_HOME`; OpenCode env-only per S8; manual in-app Claude BYOK + `dsh` checks pending)
 - [x] Phase 3 — Capability parity (2026-09-26; T3.3 inverted per spike — Ask/Auto-edit stay on `untrusted`; renderer `ProviderSheet.tsx` id branches deferred to phase 8)
 - [x] Phase 4 — Streaming + reasoning (2026-09-26; broadcast reuses `LiveUpdate { type: "delta" }`; item ids stamped on terminal events; no fake-anthropic extraction — Claude mapping tested via the exported handler)
-- [ ] Phase 5 — Cache discipline
+- [x] Phase 5 — Cache discipline (2026-09-26; browser tools pinned from turn 1; compaction knobs built but not wired by default; eager `sessionId: null` on agent switch left to Phase 6 bindings; cache-write spend shown in tokens, no price table)
 - [ ] Phase 6 — Context survival
 - [ ] Phase 7 — Interaction mechanics
 - [ ] Phase 8 — UI refinement

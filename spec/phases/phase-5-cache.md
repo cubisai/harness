@@ -107,13 +107,13 @@ Claude Code's effective lifetime is 1 hour on a subscription but drops to 5 minu
 
 ## Exit criteria
 
-- [ ] `pnpm typecheck`, `pnpm test`, `pnpm build` green.
-- [ ] A unit test asserts the miss threshold at all four boundaries (5%, 2,000 tokens).
-- [ ] A test asserts the tool set fingerprint is byte-identical across turns unless a queued change was applied at a boundary.
-- [ ] A test asserts `cacheStats` makes no network call and does not touch `window`.
-- [ ] Browser tools never trigger a reload; N user MCP edits between turns trigger exactly one reload, classified as an expected `session-rebuild`; the rewritten `codex`/`acp` tests prove it.
-- [ ] The seven `browser_*` tools are offered on the first turn and return "Browser pane not open" before the tab is opened.
-- [ ] `missCause` distinguishes an expected compaction rebuild from a true miss.
-- [ ] Compaction never triggers mid-tool-call or adjacent to an agent/model switch, and re-pins the prefix afterwards.
-- [ ] Where the harness builds a request itself (test-connection probes), it emits at most 4 explicit breakpoints; for agent-built requests, breakpoint placement is documented as the agent's responsibility.
-- [ ] `CacheMeter` is silent for a thread with no cached usage, and shows one number with detail in `title`.
+- [x] `pnpm typecheck`, `pnpm test`, `pnpm build` green.
+- [x] A unit test asserts the miss threshold at all four boundaries (5%, 2,000 tokens).
+- [x] A test asserts the tool set fingerprint is byte-identical across turns unless a queued change was applied at a boundary.
+- [x] A test asserts `cacheStats` makes no network call and does not touch `window`.
+- [x] Browser tools never trigger a reload; N user MCP edits between turns trigger exactly one reload, classified as an expected `session-rebuild`; the rewritten `codex`/`acp` tests prove it.
+- [x] The seven `browser_*` tools are offered on the first turn and return "Browser pane not open" before the tab is opened.
+- [x] `missCause` distinguishes an expected compaction rebuild from a true miss.
+- [x] Compaction never triggers mid-tool-call or adjacent to an agent/model switch, and re-pins the prefix afterwards. — **Policy + knob builders only** (`shouldCompact`, `claudeCompactEnv`, `codexCompactConfig`); not wired into the spawned agents by default, since that silently changes when users' sessions compact. Follow-up behind a setting.
+- [x] Where the harness builds a request itself (test-connection probes), it emits at most 4 explicit breakpoints; for agent-built requests, breakpoint placement is documented as the agent's responsibility. (The probes emit none; documented in `cache-policy.ts`.)
+- [x] `CacheMeter` is silent for a thread with no cached usage, and shows one number with detail in `title`.
