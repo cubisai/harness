@@ -25,7 +25,68 @@ export interface Project {
 export type PermissionMode = "ask" | "auto-edit" | "full";
 
 export type Theme = "system" | "light" | "dark";
-export type SecretName = "anthropic" | "deepseek" | "openai";
+/** @deprecated a provider id; kept one release */
+export type SecretName = string;
+
+/** The wire protocol a provider speaks: it decides path suffixes, request bodies and probes. */
+export type WireProtocol = "anthropic-messages" | "openai-responses" | "openai-chat" | "gemini";
+
+export interface ModelCapabilities {
+  tools: boolean; // required: gate tool-calling
+  vision: boolean;
+  reasoning: boolean;
+  promptCaching?: boolean;
+}
+
+export interface ProviderModel {
+  id: string; // id shown in our picker
+  modelID?: string; // id actually sent on the wire, when it differs
+  name?: string;
+  capabilities: ModelCapabilities;
+  contextWindow: number;
+  maxOutput: number;
+  alias?: "opus" | "sonnet" | "haiku"; // pins Claude alias slots
+}
+
+export interface ProviderSecret {
+  kind: "safeStorage" | "envRef" | "command";
+  ciphertext?: string; // safeStorage blob, opaque
+  envVar?: string; // envRef: read from our own process env
+  command?: string[]; // command: token fetcher (Codex-style)
+}
+
+export interface Provider {
+  id: string; // stable slug; must avoid reserved ids
+  label: string;
+  wireProtocol: WireProtocol;
+  baseURL: string;
+  secret: ProviderSecret; // stored key OR env-var reference
+  models: ProviderModel[];
+  headers?: Record<string, string>;
+  env?: Record<string, string>; // extra vars injected into the agent process
+  queryParams?: Record<string, string>;
+  retries?: { request?: number; stream?: number; streamIdleTimeoutMs?: number };
+  contextWindowOverride?: number;
+  pathMode?: "auto" | "raw"; // escape hatch: send the URL exactly as typed
+  betaHeaders?: "default" | "strip";
+}
+
+/** A Provider as the renderer sees it; never carries key material. */
+export type ProviderView = Omit<Provider, "secret"> & { secretKind: ProviderSecret["kind"]; hasSecret: boolean };
+
+/** A Provider as the renderer sends it: the secret is a descriptor, never a value. */
+export type ProviderInput = Omit<Provider, "secret"> & { secret?: Omit<ProviderSecret, "ciphertext"> };
+
+/** The result of probing a provider: reachability, model listing, and tool-calling parity. */
+export interface ConnectionResult {
+  reachable: boolean;
+  listsModels: boolean | null;
+  supportsTools: boolean | null;
+  triage?: string;
+}
+
+/** The per-agent credential choice; subscription = the agent's own login/config. */
+export type CredentialChoice = { kind: "byok"; providerId: string } | { kind: "subscription" };
 
 export interface Settings {
   theme: Theme;
@@ -155,7 +216,11 @@ export interface AppUpdateStatus {
 
 /** Settings as the renderer sees them: API keys only as set / not set. */
 export interface SettingsView extends Settings {
-  secretsSet: Record<SecretName, boolean>;
+  providers: ProviderView[];
+  /** Stored per-agent credential choices only; an absent agent defaults to subscription. */
+  providerCredential: Record<string, CredentialChoice>;
+  /** Provider ids synthesized by the v2 migration, for the upgrade banner. */
+  migratedProviders: string[];
   /** False where the OS offers no keychain, so keys are stored obfuscated rather than encrypted. */
   secretsEncrypted: boolean;
 }
@@ -369,8 +434,14 @@ export interface UnskilledApi {
   terminalClose(id: string): Promise<void>;
   getSettings(): Promise<SettingsView>;
   updateSettings(patch: Partial<Settings>): Promise<SettingsView>;
-  /** Store an API key (encrypted), or remove it with null. Agents restart to pick it up. */
-  setSecret(name: SecretName, value: string | null): Promise<SettingsView>;
+  listProviders(): Promise<ProviderView[]>;
+  /** Create or replace a provider. The secret is write-only and never echoed back. */
+  saveProvider(input: ProviderInput, secret?: string | null): Promise<ProviderView>;
+  removeProvider(id: string): Promise<SettingsView>;
+  /** Store a provider's key (encrypted), or remove it with null. Agents restart to pick it up. */
+  setProviderSecret(id: string, value: string | null): Promise<SettingsView>;
+  testProvider(id: string, modelId: string): Promise<ConnectionResult>;
+  setCredential(agentId: string, choice: CredentialChoice): Promise<SettingsView>;
   /** Show the app's data folder (agents.json, the database) in the file manager. */
   openDataFolder(): Promise<void>;
   updateStatus(): Promise<AppUpdateStatus>;

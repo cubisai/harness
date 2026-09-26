@@ -1,0 +1,125 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import type { ProviderView } from "../src/shared/types";
+import { CredentialRows, ProviderList, hostOf, toProviderInput } from "../src/renderer/src/components/ProviderSheet";
+
+const caps = { tools: true, vision: false, reasoning: false };
+
+function providerView(patch: Partial<ProviderView> & { id: string }): ProviderView {
+  return {
+    label: patch.id,
+    wireProtocol: "openai-chat",
+    baseURL: "https://api.deepseek.com",
+    models: [{ id: "m", capabilities: caps, contextWindow: 4096, maxOutput: 1024 }],
+    secretKind: "safeStorage",
+    hasSecret: true,
+    ...patch,
+  };
+}
+
+describe("hostOf", () => {
+  it("keeps only the host and a non-default port", () => {
+    expect(hostOf("https://user:sk-leak-123@gw.example.com:8443/v1?key=sk-leak-456")).toBe("gw.example.com:8443");
+    expect(hostOf("https://api.deepseek.com")).toBe("api.deepseek.com");
+  });
+
+  it("returns 'invalid URL' for an unparseable value", () => {
+    expect(hostOf("not a url")).toBe("invalid URL");
+  });
+});
+
+describe("ProviderList", () => {
+  const providers = [
+    providerView({ id: "gateway", label: "Gateway", baseURL: "https://user:sk-leak-123@gw.example.com:8443/v1?key=sk-leak-456", models: [] }),
+    providerView({ id: "deepseek", label: "DeepSeek" }),
+  ];
+
+  it("renders hosts but never userinfo, path or query", () => {
+    const html = renderToStaticMarkup(<ProviderList providers={providers} migratedProviders={[]} />);
+    expect(html).toContain("gw.example.com:8443");
+    expect(html).toContain("api.deepseek.com");
+    expect(html).not.toContain("sk-leak");
+    expect(html).not.toContain("user:");
+    expect(html).not.toContain("/v1?");
+  });
+
+  it("shows the migration banner and labels migrated rows", () => {
+    const migrated = [
+      providerView({ id: "anthropic", label: "Anthropic" }),
+      providerView({ id: "openai", label: "OpenAI" }),
+    ];
+    const html = renderToStaticMarkup(<ProviderList providers={migrated} migratedProviders={["anthropic", "openai"]} />);
+    expect(html).toContain("Your saved keys now live in Providers. Nothing was deleted.");
+    expect(html.match(/from your saved key/g)).toHaveLength(2);
+  });
+
+  it("omits the banner when nothing migrated", () => {
+    const html = renderToStaticMarkup(<ProviderList providers={providers} migratedProviders={[]} />);
+    expect(html).not.toContain("Your saved keys now live in Providers. Nothing was deleted.");
+  });
+});
+
+describe("CredentialRows", () => {
+  const agents = [
+    { id: "claude", label: "Claude" },
+    { id: "codex", label: "Codex" },
+    { id: "opencode", label: "OpenCode" },
+    { id: "antigravity", label: "Antigravity" },
+  ];
+  const providers = [
+    providerView({ id: "openai-chat", label: "Chat Gateway" }),
+    providerView({ id: "openai-responses", label: "Responses Gateway", wireProtocol: "openai-responses" }),
+  ];
+
+  it("lists every agent except Antigravity, with the right subscription labels", () => {
+    const html = renderToStaticMarkup(<CredentialRows agents={agents} providers={providers} credentials={{}} onChange={() => {}} />);
+    expect(html).not.toContain("Antigravity");
+    expect(html).toContain("Subscription login");
+    expect(html).toMatch(/Agent(?:&#x27;|')s own config/);
+  });
+
+  it("disables a non-Responses provider for Codex and says why", () => {
+    const html = renderToStaticMarkup(<CredentialRows agents={agents} providers={providers} credentials={{}} onChange={() => {}} />);
+    const chatOptions = [...html.matchAll(/<option value="openai-chat"[^>]*>/g)].map((m) => m[0] ?? "");
+    expect(chatOptions.some((o) => o.includes("disabled") && o.includes("Responses"))).toBe(true);
+    const responsesOptions = [...html.matchAll(/<option value="openai-responses"[^>]*>/g)].map((m) => m[0] ?? "");
+    expect(responsesOptions.length).toBeGreaterThan(0);
+    expect(responsesOptions.every((o) => !o.includes("disabled"))).toBe(true);
+  });
+
+  it("warns when Claude is pointed at a non-first-party provider", () => {
+    const gateway = providerView({ id: "gateway", label: "Gateway", baseURL: "https://gateway.example.com" });
+    const html = renderToStaticMarkup(
+      <CredentialRows agents={agents} providers={[gateway]} credentials={{ claude: { kind: "byok", providerId: "gateway" } }} onChange={() => {}} />,
+    );
+    expect(html).toMatch(/Remote Control/);
+  });
+});
+
+describe("toProviderInput", () => {
+  it("keeps the fields the editor doesn't show when editing", () => {
+    const existing: ProviderView = {
+      id: "gw",
+      label: "My gateway",
+      wireProtocol: "openai-chat",
+      baseURL: "https://gw.example.com",
+      models: [],
+      headers: { "X-Team": "a" },
+      env: { EXTRA: "1" },
+      queryParams: { "api-version": "2" },
+      retries: { request: 3 },
+      contextWindowOverride: 1000,
+      secretKind: "safeStorage",
+      hasSecret: true,
+    };
+    const input = toProviderInput(existing, { id: "gw", wireProtocol: "openai-responses", baseURL: "https://gw2.example.com", models: [], pathMode: "raw", betaHeaders: "default" });
+    expect(input).toMatchObject({ label: "My gateway", headers: { "X-Team": "a" }, env: { EXTRA: "1" }, queryParams: { "api-version": "2" }, retries: { request: 3 }, contextWindowOverride: 1000 });
+    expect(input.wireProtocol).toBe("openai-responses");
+    expect(input.baseURL).toBe("https://gw2.example.com");
+    expect("hasSecret" in input || "secretKind" in input).toBe(false);
+  });
+
+  it("labels a new provider with its id", () => {
+    expect(toProviderInput(undefined, { id: "new", wireProtocol: "gemini", baseURL: "https://x", models: [], pathMode: "auto", betaHeaders: "default" }).label).toBe("new");
+  });
+});

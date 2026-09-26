@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BrowserWindow, app, dialog, ipcMain, nativeTheme, safeStorage, shell } from "electron";
-import type { LiveUpdate, McpOverview, McpServerEntry, OpenResult, PermissionDecision, SecretName, SendRequest, Settings, Thread } from "../shared/types";
+import type { CredentialChoice, LiveUpdate, McpOverview, McpServerEntry, OpenResult, PermissionDecision, ProviderInput, SendRequest, Settings, Thread } from "../shared/types";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
 import { createClaudeDriver, resolvePackagedClaudeBinary } from "./agents/claude";
@@ -16,7 +16,8 @@ import { Store } from "./db";
 import { startToolServer, type ToolServer } from "./mcp-http";
 import { TerminalManager } from "./terminal";
 import { Service } from "./service";
-import { SECRET_ENV, SettingsStore } from "./settings";
+import { LEGACY_ENV, testConnection } from "./providers";
+import { SettingsStore } from "./settings";
 import { agentCatalog, skillDetail } from "./library";
 import { Editors, realHost } from "./editors";
 import { readExternalMcp } from "./mcp/external";
@@ -134,12 +135,12 @@ async function main(): Promise<void> {
     encrypt: (s) => safeStorage.encryptString(s).toString("base64"),
     decrypt: (b) => safeStorage.decryptString(Buffer.from(b, "base64")),
   });
-  // API keys from settings become environment variables for every agent
-  // process started from now on; a removed key restores what the shell had.
-  const inheritedEnv = Object.fromEntries(Object.values(SECRET_ENV).map((k) => [k, process.env[k]]));
+  // Legacy keys from settings become environment variables for every agent process
+  // started from now on; a removed key restores what the shell had.
+  const inheritedEnv = Object.fromEntries(Object.values(LEGACY_ENV).map((k) => [k, process.env[k]]));
   const applySecretsToEnv = () => {
-    const fromSettings = settings.env();
-    for (const key of Object.values(SECRET_ENV)) {
+    const fromSettings = settings.legacyEnv();
+    for (const key of Object.values(LEGACY_ENV)) {
       const value = fromSettings[key] ?? inheritedEnv[key];
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -261,7 +262,7 @@ async function main(): Promise<void> {
     return entry ? testServer(entry.spec) : { ok: false, tools: [], error: "No such server." };
   });
   // Open in editor. The agents' API keys (set from Settings) stay out of the editor's environment.
-  const editors = new Editors(realHost(), () => Object.keys(settings.env()));
+  const editors = new Editors(realHost(), () => settings.secretEnvNames());
   ipcMain.handle("editors:list", () => editors.list());
   ipcMain.handle(
     "editors:open",
@@ -304,15 +305,37 @@ async function main(): Promise<void> {
     broadcast({ type: "settings", settings: view });
     return view;
   });
-  ipcMain.handle("settings:secret", (_e, name: SecretName, value: string | null) => {
-    if (!(name in SECRET_ENV)) throw new Error(`unknown key ${name}`);
-    settings.setSecret(name, value);
+  // A changed provider changes what the next agent process inherits; running
+  // processes keep the old environment, so stop them and re-broadcast settings.
+  const afterProviderChange = () => {
     applySecretsToEnv();
-    // Running agent processes keep the old environment; stop them so the next turn starts fresh.
     service.dispose();
     const view = settings.view();
     broadcast({ type: "settings", settings: view });
     return view;
+  };
+  ipcMain.handle("providers:list", () => settings.providers().map((p) => settings.providerView(p)));
+  ipcMain.handle("providers:save", (_e, input: ProviderInput, secret?: string | null) => {
+    const view = settings.saveProvider(input, secret);
+    afterProviderChange();
+    return view;
+  });
+  ipcMain.handle("providers:remove", (_e, id: string) => {
+    settings.removeProvider(id);
+    return afterProviderChange();
+  });
+  ipcMain.handle("providers:secret", (_e, id: string, value: string | null) => {
+    settings.setProviderSecret(id, value);
+    return afterProviderChange();
+  });
+  ipcMain.handle("providers:test", (_e, id: string, modelId: string) => {
+    const provider = settings.providers().find((p) => p.id === id);
+    if (!provider) throw new Error(`unknown provider ${id}`);
+    return testConnection(provider, modelId, settings.providerSecret(id));
+  });
+  ipcMain.handle("providers:setCredential", (_e, agentId: string, choice: CredentialChoice) => {
+    settings.setCredential(agentId, choice);
+    return afterProviderChange();
   });
   ipcMain.handle("app:open-data-folder", () => shell.openPath(userData));
   ipcMain.handle("app:update-status", () => updater.status());

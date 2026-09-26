@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import type { PermissionMode, SecretName, Theme } from "../../../shared/types";
+import { useEffect, useRef } from "react";
+import type { PermissionMode, Theme } from "../../../shared/types";
 import { api } from "../api";
+import { ProvidersSection } from "./ProviderSheet";
 import { useStore } from "../store";
 
 const THEMES: { id: Theme; label: string }[] = [
@@ -13,12 +14,6 @@ const MODES: { id: PermissionMode; label: string }[] = [
   { id: "ask", label: "Ask" },
   { id: "auto-edit", label: "Auto-edit" },
   { id: "full", label: "Full" },
-];
-
-const KEYS: { id: SecretName; label: string; hint: string; placeholder: string }[] = [
-  { id: "anthropic", label: "Anthropic", hint: "For Claude, if you don't use a Claude Code login.", placeholder: "sk-ant-…" },
-  { id: "deepseek", label: "DeepSeek", hint: "For DeepSeek (dsh).", placeholder: "sk-…" },
-  { id: "openai", label: "OpenAI", hint: "For Codex, if you don't use a Codex login.", placeholder: "sk-…" },
 ];
 
 /** Settings, as a sheet over the window (⌘, / Ctrl+,). */
@@ -122,18 +117,7 @@ export function SettingsSheet() {
           <p className="note">Used by Open in the Changes panel and by file links in the conversation. Picking another editor there makes it the default.</p>
         </section>
 
-        <section>
-          <h3>API keys</h3>
-          <p className="note">
-            {settings.secretsEncrypted
-              ? "Stored encrypted with your system keychain, and only ever passed to the agent they belong to."
-              : "This system has no keychain available, so keys are stored obfuscated, not encrypted."}{" "}
-            Saving or removing a key restarts running agents.
-          </p>
-          {KEYS.map((k) => (
-            <SecretRow key={k.id} {...k} isSet={settings.secretsSet[k.id]} />
-          ))}
-        </section>
+        <ProvidersSection />
 
         <section>
           <h3>Updates</h3>
@@ -180,66 +164,6 @@ export function SettingsSheet() {
           <p className="note">Add ACP agents in agents.json in the data folder, then restart the app.</p>
         </section>
       </div>
-    </div>
-  );
-}
-
-function SecretRow({ id, label, hint, placeholder, isSet }: { id: SecretName; label: string; hint: string; placeholder: string; isSet: boolean }) {
-  const [value, setValue] = useState("");
-  const [editing, setEditing] = useState(!isSet);
-  useEffect(() => setEditing(!isSet), [isSet]);
-  const save = (v: string | null) =>
-    void api()
-      .setSecret(id, v)
-      .then((s) => {
-        useStore.setState({ settings: s });
-        setValue("");
-      });
-
-  return (
-    <div className="row secret">
-      <span className="label" title={hint}>
-        {label}
-      </span>
-      {editing ? (
-        <form
-          className="secret-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (value.trim()) save(value);
-          }}
-        >
-          <input
-            className="text-input"
-            type="password"
-            autoComplete="off"
-            spellCheck={false}
-            placeholder={placeholder}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-          />
-          <button className="button" type="submit" disabled={!value.trim()}>
-            Save
-          </button>
-          {isSet && (
-            <button className="button ghost" type="button" onClick={() => setEditing(false)}>
-              Cancel
-            </button>
-          )}
-        </form>
-      ) : (
-        <div className="secret-form">
-          <span className="value">
-            <span className="dot-ok" /> Saved
-          </span>
-          <button className="button ghost" onClick={() => setEditing(true)}>
-            Replace
-          </button>
-          <button className="button ghost danger" onClick={() => save(null)}>
-            Remove
-          </button>
-        </div>
-      )}
     </div>
   );
 }

@@ -23,7 +23,19 @@ export function installMock(): void {
     defaultPermissionMode: "ask",
     autoUpdate: true,
     editor: null,
-    secretsSet: { anthropic: false, deepseek: true, openai: false },
+    providers: [
+      {
+        id: "deepseek",
+        label: "DeepSeek",
+        wireProtocol: "openai-chat",
+        baseURL: "https://api.deepseek.com",
+        models: [],
+        secretKind: "safeStorage",
+        hasSecret: true,
+      },
+    ],
+    providerCredential: {},
+    migratedProviders: [],
     secretsEncrypted: true,
   };
 
@@ -214,7 +226,38 @@ export function installMock(): void {
     terminalWrite: () => {},
     getSettings: async () => settings,
     updateSettings: async (patch) => (settings = { ...settings, ...patch }),
-    setSecret: async (name, value) => (settings = { ...settings, secretsSet: { ...settings.secretsSet, [name]: Boolean(value) } }),
+    listProviders: async () => settings.providers,
+    saveProvider: async (input, secret) => {
+      const { secret: descriptor, ...fields } = input;
+      const prev = settings.providers.find((p) => p.id === input.id);
+      const view: SettingsView["providers"][number] = {
+        ...fields,
+        secretKind: typeof secret === "string" ? "safeStorage" : descriptor?.kind ?? prev?.secretKind ?? "safeStorage",
+        hasSecret: secret === undefined ? prev?.hasSecret ?? false : secret !== null && secret.trim().length > 0,
+      };
+      settings = { ...settings, providers: [...settings.providers.filter((p) => p.id !== input.id), view] };
+      return view;
+    },
+    removeProvider: async (id) => {
+      const providerCredential: SettingsView["providerCredential"] = {};
+      for (const [agent, choice] of Object.entries(settings.providerCredential)) {
+        providerCredential[agent] = choice.kind === "byok" && choice.providerId === id ? { kind: "subscription" } : choice;
+      }
+      settings = { ...settings, providers: settings.providers.filter((p) => p.id !== id), providerCredential };
+      return settings;
+    },
+    setProviderSecret: async (id, value) => {
+      settings = {
+        ...settings,
+        providers: settings.providers.map((p) => (p.id === id ? { ...p, secretKind: value ? "safeStorage" : p.secretKind, hasSecret: value !== null && value.trim().length > 0 } : p)),
+      };
+      return settings;
+    },
+    testProvider: async () => {
+      await new Promise((r) => setTimeout(r, 400));
+      return { reachable: true, listsModels: true, supportsTools: true };
+    },
+    setCredential: async (agentId, choice) => (settings = { ...settings, providerCredential: { ...settings.providerCredential, [agentId]: choice } }),
     openDataFolder: async () => {},
     listLimits: async () =>
       scene === "limits"

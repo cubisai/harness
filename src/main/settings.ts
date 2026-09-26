@@ -1,6 +1,17 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { PermissionMode, SecretName, Settings, SettingsView } from "../shared/types";
+import type {
+  CredentialChoice,
+  PermissionMode,
+  Provider,
+  ProviderInput,
+  ProviderSecret,
+  ProviderView,
+  SecretName,
+  Settings,
+  SettingsView,
+} from "../shared/types";
+import { LEGACY_ENV, LEGACY_PROVIDERS, isProviderId, legacyEnv as legacyEnvFor, type LegacyProviderId } from "./providers";
 
 /** Encrypts secrets at rest. In the app this is Electron's safeStorage (the OS keychain). */
 export interface SecretBox {
@@ -9,18 +20,30 @@ export interface SecretBox {
   decrypt(b64: string): string;
 }
 
-/** Which environment variable each stored key becomes for agent processes. */
-export const SECRET_ENV: Record<SecretName, string> = {
-  anthropic: "ANTHROPIC_API_KEY",
-  deepseek: "DEEPSEEK_API_KEY",
-  openai: "OPENAI_API_KEY",
-};
-
 const DEFAULTS: Settings = { theme: "system", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null };
 
 interface FileShape {
+  schemaVersion?: number; // absent = the legacy v1 shape
   settings?: Partial<Settings>;
-  secrets?: Partial<Record<SecretName, string>>; // encrypted, base64
+  providers?: Provider[];
+  migratedProviders?: string[];
+  credentials?: Record<string, CredentialChoice>; // keyed by agent id
+  secrets?: Partial<Record<SecretName, string>>; // encrypted, base64 — legacy v1, never modified
+}
+
+/** The environment variable a provider's resolved key becomes when it isn't a migrated legacy id. */
+function envVarFor(provider: Provider): string | null {
+  if (provider.id in LEGACY_ENV) return LEGACY_ENV[provider.id as LegacyProviderId];
+  switch (provider.wireProtocol) {
+    case "anthropic-messages":
+      return "ANTHROPIC_API_KEY";
+    case "openai-chat":
+    case "openai-responses":
+      return "OPENAI_API_KEY";
+    case "gemini":
+      return "GEMINI_API_KEY";
+  }
+  return null;
 }
 
 /**
@@ -36,6 +59,7 @@ export class SettingsStore {
     private box: SecretBox,
   ) {
     this.data = this.read();
+    this.migrate();
   }
 
   private read(): FileShape {
@@ -54,15 +78,44 @@ export class SettingsStore {
     renameSync(tmp, this.file);
   }
 
+  /**
+   * One-shot v1 → v2 migration: a stored legacy key becomes a provider whose
+   * secret is the same ciphertext, byte for byte. `secrets.*` is left intact so
+   * downgrading still finds the keys; `schemaVersion` gates a re-run.
+   */
+  private migrate(): void {
+    if ((this.data.schemaVersion ?? 1) >= 2) return;
+    const existed = existsSync(this.file);
+    const secrets = this.data.secrets ?? {};
+    const migrated: string[] = [];
+    for (const id of Object.keys(LEGACY_ENV) as LegacyProviderId[]) {
+      const blob = secrets[id];
+      if (!blob || this.data.providers?.some((p) => p.id === id)) continue;
+      (this.data.providers ??= []).push({ id, ...LEGACY_PROVIDERS[id], secret: { kind: "safeStorage", ciphertext: blob } });
+      migrated.push(id);
+    }
+    this.data.migratedProviders = migrated;
+    // A saved anthropic key already overrides Claude's subscription through process.env,
+    // so the upgrade must keep Claude on BYOK for it.
+    if (secrets.anthropic && this.data.credentials?.claude === undefined) {
+      (this.data.credentials ??= {}).claude = { kind: "byok", providerId: "anthropic" };
+    }
+    this.data.schemaVersion = 2;
+    // Write only when a key actually moved: a brand-new install, a keyless file, or a corrupt
+    // file (read() fell back to {}) must not be rewritten at startup; the next update() persists v2.
+    if (existed && migrated.length > 0) this.write();
+  }
+
   get(): Settings {
     return { ...DEFAULTS, ...this.data.settings };
   }
 
   view(): SettingsView {
-    const secrets = this.data.secrets ?? {};
     return {
       ...this.get(),
-      secretsSet: { anthropic: Boolean(secrets.anthropic), deepseek: Boolean(secrets.deepseek), openai: Boolean(secrets.openai) },
+      providers: this.providers().map((p) => this.providerView(p)),
+      providerCredential: { ...(this.data.credentials ?? {}) },
+      migratedProviders: [...(this.data.migratedProviders ?? [])],
       secretsEncrypted: this.box.available,
     };
   }
@@ -81,35 +134,118 @@ export class SettingsStore {
     return next;
   }
 
-  setSecret(name: SecretName, value: string | null): void {
-    const secrets = { ...this.data.secrets };
-    const trimmed = value?.trim();
-    if (trimmed) secrets[name] = this.box.encrypt(trimmed);
-    else delete secrets[name];
-    this.data.secrets = secrets;
+  private findProvider(id: string): Provider | undefined {
+    return this.data.providers?.find((p) => p.id === id);
+  }
+
+  providers(): Provider[] {
+    return [...(this.data.providers ?? [])];
+  }
+
+  /** A Provider as the renderer sees it: the secret itself is replaced by its kind and whether it is set. */
+  providerView(p: Provider): ProviderView {
+    const { secret, ...rest } = p;
+    const hasSecret =
+      secret.kind === "safeStorage"
+        ? Boolean(secret.ciphertext)
+        : secret.kind === "envRef"
+          ? Boolean(secret.envVar)
+          : Boolean(secret.command?.length);
+    return { ...rest, secretKind: secret.kind, hasSecret };
+  }
+
+  /**
+   * Create or replace a provider. A duplicate id replaces every field including
+   * wireProtocol, but keeps the stored ciphertext unless secretValue is given:
+   * a string stores a new encrypted key, null clears it.
+   */
+  saveProvider(input: ProviderInput, secretValue?: string | null): ProviderView {
+    if (!isProviderId(input.id)) throw new Error(`invalid provider id ${input.id}`);
+    // A command secret runs a program; the renderer must never be able to choose one.
+    if (input.secret?.kind === "command") throw new Error("command secrets can't be set from the app");
+    const existing = this.findProvider(input.id);
+    let secret: ProviderSecret;
+    if (typeof secretValue === "string") {
+      secret = { kind: "safeStorage", ciphertext: this.box.encrypt(secretValue.trim()) };
+    } else {
+      secret = { ...(input.secret ?? { kind: existing?.secret.kind ?? "safeStorage" }) };
+      const ciphertext = secretValue === null ? undefined : existing?.secret.ciphertext;
+      if (ciphertext !== undefined) secret.ciphertext = ciphertext;
+    }
+    const provider: Provider = { ...input, secret };
+    const providers = this.data.providers ?? (this.data.providers = []);
+    const at = providers.findIndex((p) => p.id === input.id);
+    if (at >= 0) providers[at] = provider;
+    else providers.push(provider);
+    this.write();
+    return this.providerView(provider);
+  }
+
+  /** Remove a provider and point any credential at it back to subscription. `secrets.*` is untouched. */
+  removeProvider(id: string): void {
+    this.data.providers = (this.data.providers ?? []).filter((p) => p.id !== id);
+    const credentials = this.data.credentials;
+    if (credentials) {
+      for (const [agent, choice] of Object.entries(credentials)) {
+        if (choice.kind === "byok" && choice.providerId === id) credentials[agent] = { kind: "subscription" };
+      }
+    }
     this.write();
   }
 
-  secret(name: SecretName): string | null {
-    const stored = this.data.secrets?.[name];
-    if (!stored) return null;
+  setProviderSecret(id: string, value: string | null): void {
+    const provider = this.findProvider(id);
+    if (!provider) throw new Error(`unknown provider ${id}`);
+    const trimmed = value?.trim();
+    if (trimmed) provider.secret = { kind: "safeStorage", ciphertext: this.box.encrypt(trimmed) };
+    else delete provider.secret.ciphertext;
+    this.write();
+  }
+
+  /** The provider's plaintext key, or null. envRef reads our own env without touching the box. */
+  providerSecret(id: string): string | null {
+    const secret = this.findProvider(id)?.secret;
+    if (!secret) return null;
+    if (secret.kind === "envRef") return secret.envVar ? process.env[secret.envVar] ?? null : null;
+    if (secret.kind === "command") return null; // command secrets are Phase 2
+    if (!secret.ciphertext) return null;
     try {
-      return this.box.decrypt(stored);
+      return this.box.decrypt(secret.ciphertext);
     } catch {
       return null; // encrypted on another machine or user account
     }
   }
 
-  /**
-   * Stored keys as environment variables for agent processes. A key set in
-   * the app wins over the same variable inherited from the shell.
-   */
-  env(): Record<string, string> {
-    const out: Record<string, string> = {};
-    for (const [name, envVar] of Object.entries(SECRET_ENV) as [SecretName, string][]) {
-      const value = this.secret(name);
-      if (value) out[envVar] = value;
-    }
+  /** The provider's own env map plus its resolved key under the variable its protocol expects. */
+  providerEnv(id: string): Record<string, string> {
+    const provider = this.findProvider(id);
+    if (!provider) return {};
+    const out: Record<string, string> = { ...provider.env };
+    const envVar = envVarFor(provider);
+    const value = this.providerSecret(id);
+    if (envVar !== null && value !== null) out[envVar] = value;
     return out;
+  }
+
+  /** Stored legacy keys as environment variables, sourced from their migrated providers. */
+  legacyEnv(): Record<string, string> {
+    return legacyEnvFor((id) => (this.findProvider(id) ? this.providerSecret(id) : null));
+  }
+
+  /** Every env var name a provider key may occupy, so editors don't inherit one. */
+  secretEnvNames(): string[] {
+    const names = new Set<string>(Object.values(LEGACY_ENV));
+    for (const provider of this.providers()) for (const name of Object.keys(this.providerEnv(provider.id))) names.add(name);
+    return [...names];
+  }
+
+  credential(agentId: string): CredentialChoice {
+    return this.data.credentials?.[agentId] ?? { kind: "subscription" };
+  }
+
+  setCredential(agentId: string, choice: CredentialChoice): void {
+    if (choice.kind === "byok" && !this.findProvider(choice.providerId)) throw new Error(`unknown provider ${choice.providerId}`);
+    (this.data.credentials ??= {})[agentId] = choice;
+    this.write();
   }
 }
