@@ -251,7 +251,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         },
       };
 
-      const turn: TurnState = { started: false, turnId: randomUUID() };
+      const turn = newTurnState();
 
       try {
         for await (const message of query({ prompt: input.prompt, options })) {
@@ -260,6 +260,12 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         }
       } catch (err) {
         if (input.signal.aborted) {
+          // Close any item the stream opened but never got a terminal frame for,
+          // so its live text becomes stored history instead of dangling.
+          for (const [itemId, p] of turn.pending) {
+            if (p.kind === "text" && p.text.trim()) input.onEvent({ kind: "assistant-text", text: p.text, itemId });
+            else if (p.kind === "thinking" && p.text.trim()) input.onEvent({ kind: "thinking", text: p.text, opaque: false, itemId });
+          }
           input.onEvent({ kind: "notice", text: "Stopped." });
           return;
         }
@@ -270,9 +276,32 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
 }
 
 /** Per-turn state: turn-start fires once, on the turn's first main-thread frame. */
-interface TurnState {
+export interface TurnState {
   started: boolean;
   turnId: string;
+  /** The latest main-thread stream message id, so stream items key the same as their terminal frames. */
+  messageId: string | null;
+  /** Stream content index → the tool_use id of the block starting at it. */
+  toolIds: Map<number, string>;
+  /** Thinking itemId → the signature its stream delivered. */
+  signatures: Map<string, string>;
+  /** Assistant message id → content blocks already emitted as terminal events. */
+  blocksSeen: Map<string, number>;
+  /** itemId → text streamed but not yet closed by a terminal event. */
+  pending: Map<string, { kind: "text" | "thinking"; text: string }>;
+}
+
+/** Fresh per-turn state for runTurn and for mapping a message stream in tests. */
+export function newTurnState(): TurnState {
+  return {
+    started: false,
+    turnId: randomUUID(),
+    messageId: null,
+    toolIds: new Map(),
+    signatures: new Map(),
+    blocksSeen: new Map(),
+    pending: new Map(),
+  };
 }
 
 /**
@@ -302,7 +331,7 @@ function startTurn(turn: TurnState, input: TurnInput, model: string | undefined)
   input.onEvent({ kind: "turn-start", turnId: turn.turnId, agent: "claude", model: model || input.model });
 }
 
-function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnState): void {
+export function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnState): void {
   switch (message.type) {
     case "system": {
       if (message.subtype === "init") input.onSession(message.session_id);
@@ -314,14 +343,46 @@ function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnState): 
           preTokens: meta.pre_tokens ?? null,
           postTokens: meta.post_tokens ?? null,
         });
-      }
+      } else if (message.subtype === "thinking_tokens") input.onThinkingProgress?.({ estimatedTokens: message.estimated_tokens });
       return;
     }
     case "stream_event": {
       if (message.parent_tool_use_id) return; // subagent chatter stays out of the main thread
       const ev = message.event;
-      if (ev.type === "message_start") startTurn(turn, input, ev.message.model);
-      if (ev.type === "content_block_delta" && ev.delta.type === "text_delta") input.onTextDelta(ev.delta.text);
+      if (ev.type === "message_start") {
+        turn.messageId = ev.message.id;
+        startTurn(turn, input, ev.message.model);
+        return;
+      }
+      if (ev.type === "content_block_start" && ev.content_block.type === "tool_use") {
+        turn.toolIds.set(ev.index, ev.content_block.id);
+        return;
+      }
+      if (ev.type === "content_block_delta") {
+        const itemId = `${turn.messageId ?? "m"}:${ev.index}`;
+        switch (ev.delta.type) {
+          case "text_delta": {
+            input.onTextDelta(ev.delta.text, itemId);
+            const prev = turn.pending.get(itemId);
+            turn.pending.set(itemId, { kind: "text", text: (prev?.text ?? "") + ev.delta.text });
+            return;
+          }
+          case "thinking_delta": {
+            input.onReasoningDelta?.({ itemId, text: ev.delta.thinking, opaque: false });
+            const prev = turn.pending.get(itemId);
+            turn.pending.set(itemId, { kind: "thinking", text: (prev?.text ?? "") + ev.delta.thinking });
+            return;
+          }
+          case "signature_delta":
+            turn.signatures.set(itemId, ev.delta.signature);
+            return;
+          case "input_json_delta":
+            input.onToolInputDelta?.({ toolUseId: turn.toolIds.get(ev.index) ?? itemId, text: ev.delta.partial_json });
+            return;
+          default:
+            return;
+        }
+      }
       return;
     }
     case "assistant": {
@@ -330,21 +391,36 @@ function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnState): 
       if (message.error) {
         input.onEvent({ kind: "error", message: describeError(message.error) });
       }
+      const id = message.message.id;
+      let k = turn.blocksSeen.get(id) ?? 0;
       for (const block of message.message.content) {
+        const itemId = `${id}:${k}`;
+        k += 1;
         if (block.type === "text" && block.text.trim()) {
-          input.onEvent({ kind: "assistant-text", text: block.text });
-        } else if (block.type === "thinking" && block.thinking.trim()) {
-          const signature = block.signature;
-          input.onEvent({ kind: "thinking", text: block.thinking, opaque: false, ...(signature ? { signature } : {}) });
+          turn.pending.delete(itemId);
+          input.onEvent({ kind: "assistant-text", text: block.text, itemId });
+        } else if (block.type === "thinking") {
+          const signature = block.signature || turn.signatures.get(itemId);
+          if (block.thinking.trim()) {
+            turn.pending.delete(itemId);
+            input.onEvent({ kind: "thinking", text: block.thinking, opaque: false, itemId, ...(signature ? { signature } : {}) });
+          } else if (signature) {
+            // Opaque reasoning: the signature is the only thing keeping the block alive.
+            turn.pending.delete(itemId);
+            input.onEvent({ kind: "thinking", text: "", signature, opaque: true, itemId });
+          }
         } else if (block.type === "tool_use") {
+          turn.pending.delete(itemId);
           input.onEvent({
             kind: "tool-use",
             toolUseId: block.id,
             name: block.name,
             summary: summarizeToolInput(block.name, (block.input ?? {}) as Record<string, unknown>),
+            itemId,
           });
         }
       }
+      turn.blocksSeen.set(id, k);
       return;
     }
     case "user": {

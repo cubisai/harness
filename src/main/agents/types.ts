@@ -1,5 +1,5 @@
 import type { ZodRawShape, z } from "zod";
-import type { AgentCapabilities, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, Provenance, SkillsDelivery, ThreadEvent } from "../../shared/types";
+import type { AgentCapabilities, LiveDelta, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, Provenance, SkillsDelivery, ThreadEvent } from "../../shared/types";
 
 export type { AgentCapabilities, SkillsDelivery } from "../../shared/types";
 
@@ -38,7 +38,20 @@ export interface TurnInput {
   permissionMode: PermissionMode;
   signal: AbortSignal;
   onEvent(event: ThreadEvent): void;
-  onTextDelta(text: string): void;
+  /** Live assistant text; itemId keys the live item so the renderer clears it only when that item's terminal event lands. */
+  onTextDelta(text: string, itemId?: string): void;
+  /** Live reasoning text for one thinking item. */
+  onReasoningDelta?(d: { itemId: string; text: string; opaque: boolean }): void;
+  /** Latest summary for one reasoning item. */
+  onReasoningSummary?(d: { itemId: string; index: number; text: string }): void;
+  /** Tool input JSON as it streams. */
+  onToolInputDelta?(d: { toolUseId: string; text: string }): void;
+  /** Tool output as it streams. */
+  onToolOutputDelta?(d: { toolUseId: string; text: string }): void;
+  /** Rolling token usage for the turn. */
+  onUsageUpdate?(u: Omit<Extract<LiveDelta, { kind: "usage-update" }>, "kind">): void;
+  /** Estimated thinking tokens for the in-progress block. */
+  onThinkingProgress?(p: { estimatedTokens: number }): void;
   onSession(sessionId: string): void;
   requestPermission(req: { toolName: string; summary: string; canAlwaysAllow: boolean }): Promise<PermissionDecision>;
   /** Harness-provided tools for this turn; empty when none apply. */

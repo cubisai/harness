@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
-import { createClaudeDriver, resolvePackagedClaudeBinary, turnEndFromResult } from "../src/main/agents/claude";
+import type { SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
+import { createClaudeDriver, handleMessage, newTurnState, resolvePackagedClaudeBinary, turnEndFromResult } from "../src/main/agents/claude";
+import type { TurnInput } from "../src/main/agents/types";
 import type { ThreadEvent } from "../src/shared/types";
 
 describe("resolvePackagedClaudeBinary", () => {
@@ -42,6 +43,77 @@ describe("Claude driver models", () => {
       expect(opus.label).toMatch(/Opus/i);
     }
   }, 30_000);
+});
+
+describe("Claude stream mapping", () => {
+  const stream = (event: unknown, parentToolUseId: string | null = null) =>
+    ({ type: "stream_event", parent_tool_use_id: parentToolUseId, event }) as unknown as SDKMessage;
+
+  const recorder = () => {
+    const textDeltas: { text: string; itemId?: string }[] = [];
+    const reasoningDeltas: { itemId: string; text: string; opaque: boolean }[] = [];
+    const toolInputDeltas: { toolUseId: string; text: string }[] = [];
+    const thinkingProgress: { estimatedTokens: number }[] = [];
+    const events: ThreadEvent[] = [];
+    const input = {
+      onEvent: (e: ThreadEvent) => events.push(e),
+      onTextDelta: (text: string, itemId?: string) => textDeltas.push({ text, itemId }),
+      onReasoningDelta: (d: { itemId: string; text: string; opaque: boolean }) => reasoningDeltas.push(d),
+      onToolInputDelta: (d: { toolUseId: string; text: string }) => toolInputDeltas.push(d),
+      onThinkingProgress: (p: { estimatedTokens: number }) => thinkingProgress.push(p),
+    } as unknown as TurnInput;
+    return { input, textDeltas, reasoningDeltas, toolInputDeltas, thinkingProgress, events };
+  };
+
+  it("maps streamed text, reasoning, and an empty thinking block's signature", () => {
+    const { input, textDeltas, reasoningDeltas, events } = recorder();
+    const turn = newTurnState();
+    handleMessage(stream({ type: "message_start", message: { id: "m1", model: "claude-x" } }), input, turn);
+    handleMessage(stream({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Hi" } }), input, turn);
+    handleMessage(stream({ type: "content_block_delta", index: 1, delta: { type: "thinking_delta", thinking: "hmm" } }), input, turn);
+    handleMessage(stream({ type: "content_block_delta", index: 1, delta: { type: "signature_delta", signature: "sig1" } }), input, turn);
+    handleMessage(
+      {
+        type: "assistant",
+        parent_tool_use_id: null,
+        message: { id: "m1", model: "claude-x", content: [{ type: "text", text: "Hi" }, { type: "thinking", thinking: "", signature: "" }] },
+      } as unknown as SDKMessage,
+      input,
+      turn,
+    );
+
+    expect(textDeltas).toEqual([{ text: "Hi", itemId: "m1:0" }]);
+    expect(reasoningDeltas).toEqual([{ itemId: "m1:1", text: "hmm", opaque: false }]);
+    expect(events).toContainEqual({ kind: "assistant-text", text: "Hi", itemId: "m1:0" });
+    expect(events).toContainEqual({ kind: "thinking", text: "", opaque: true, signature: "sig1", itemId: "m1:1" });
+  });
+
+  it("keys streamed tool input to the tool_use id from content_block_start", () => {
+    const { input, toolInputDeltas } = recorder();
+    const turn = newTurnState();
+    handleMessage(stream({ type: "message_start", message: { id: "m1", model: "claude-x" } }), input, turn);
+    handleMessage(stream({ type: "content_block_start", index: 2, content_block: { type: "tool_use", id: "tu1", name: "Bash", input: {} } }), input, turn);
+    handleMessage(stream({ type: "content_block_delta", index: 2, delta: { type: "input_json_delta", partial_json: '{"a":' } }), input, turn);
+    expect(toolInputDeltas).toEqual([{ toolUseId: "tu1", text: '{"a":' }]);
+  });
+
+  it("reports thinking token progress", () => {
+    const { input, thinkingProgress } = recorder();
+    handleMessage(
+      { type: "system", subtype: "thinking_tokens", estimated_tokens: 42, estimated_tokens_delta: 42 } as unknown as SDKMessage,
+      input,
+      newTurnState(),
+    );
+    expect(thinkingProgress).toEqual([{ estimatedTokens: 42 }]);
+  });
+
+  it("keeps subagent stream frames out of the main thread", () => {
+    const { input, textDeltas, reasoningDeltas, events } = recorder();
+    handleMessage(stream({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "nope" } }, "x"), input, newTurnState());
+    expect(textDeltas).toEqual([]);
+    expect(reasoningDeltas).toEqual([]);
+    expect(events).toEqual([]);
+  });
 });
 
 describe("turnEndFromResult", () => {

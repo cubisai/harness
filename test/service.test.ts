@@ -50,6 +50,25 @@ describe("Service.send", () => {
     expect(service.isRunning(thread.id)).toBe(false);
   });
 
+  it("broadcasts live deltas without writing them to the store", async () => {
+    const { store, service, thread, updates } = setup(async (input) => {
+      input.onReasoningDelta?.({ itemId: "r1", text: "think", opaque: false });
+      input.onTextDelta("x", "i1");
+    });
+    await service.send({ threadId: thread.id, text: "go" });
+    expect(updates).toContainEqual({
+      type: "delta",
+      threadId: thread.id,
+      delta: { kind: "reasoning-delta", itemId: "r1", text: "think", opaque: false },
+    });
+    expect(updates).toContainEqual({
+      type: "delta",
+      threadId: thread.id,
+      delta: { kind: "text-delta", itemId: "i1", text: "x" },
+    });
+    expect(store.listEvents(thread.id).map((e) => e.event.kind)).toEqual(["user"]);
+  });
+
   it("expands a user-invoked skill into the prompt", async () => {
     const { service, thread, driver } = setup(async () => {});
     await service.send({ threadId: thread.id, text: "ticket 2", skill: "implement" });

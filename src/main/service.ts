@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type {
   AgentInfo,
   DiffFile,
+  LiveDelta,
   LiveUpdate,
   McpServerEntry,
   PermissionMode,
@@ -147,6 +148,8 @@ export class Service {
       if (!switched && current.sessionId === null && this.store.listEvents(thread.id).length > 1) {
         this.emit(thread.id, { kind: "notice", text: `Now talking to ${driver.label}. It starts without the earlier messages above.` });
       }
+      const live = (delta: LiveDelta) => this.broadcast({ type: "delta", threadId: thread.id, delta });
+      const scrub = (text: string) => redactSecrets(text, this.secrets());
       await driver.runTurn({
         threadId: thread.id,
         cwd: project.path,
@@ -161,8 +164,13 @@ export class Service {
         onEvent: (event) => this.emit(thread.id, event, provenance),
         // Live text is scrubbed like stored events. A key split across two deltas can
         // slip through here, but the turn's stored assistant-text event is redacted whole.
-        onTextDelta: (text) =>
-          this.broadcast({ type: "delta", threadId: thread.id, delta: { kind: "text-delta", itemId: "", text: redactSecrets(text, this.secrets()) } }),
+        onTextDelta: (text, itemId) => live({ kind: "text-delta", itemId: itemId ?? "", text: scrub(text) }),
+        onReasoningDelta: (d) => live({ kind: "reasoning-delta", itemId: d.itemId, text: scrub(d.text), opaque: d.opaque }),
+        onReasoningSummary: (d) => live({ kind: "reasoning-summary", ...d, text: scrub(d.text) }),
+        onToolInputDelta: (d) => live({ kind: "tool-input-delta", ...d, text: scrub(d.text) }),
+        onToolOutputDelta: (d) => live({ kind: "tool-output-delta", ...d, text: scrub(d.text) }),
+        onUsageUpdate: (u) => live({ kind: "usage-update", ...u }),
+        onThinkingProgress: (p) => live({ kind: "thinking-progress", ...p }),
         onSession: (sessionId) => {
           if (sessionId !== this.store.getThread(thread.id).sessionId) {
             this.broadcast({ type: "thread", thread: this.store.updateThread(thread.id, { sessionId }) });
