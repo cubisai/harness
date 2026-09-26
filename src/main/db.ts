@@ -2,7 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { PermissionMode, Project, Provenance, StoredEvent, Thread, ThreadEvent } from "../shared/types";
+import { bindingKey } from "../shared/bindings";
+import type { PermissionMode, Project, Provenance, SessionBinding, StoredEvent, Thread, ThreadEvent } from "../shared/types";
 
 /**
  * Plain rows in SQLite (node:sqlite, so no native module to rebuild per
@@ -102,6 +103,17 @@ export class Store {
           PRIMARY KEY (thread_id, target_provider, target_session_id, checkpoint_id, item_fingerprint)
         )`,
       },
+      // 11: per-agent session bindings, backfilled from session_id for the thread's agent.
+      // session_id stays, mirroring the current agent's cursor, so a rollback still resumes.
+      {
+        applied: () => this.hasColumn("threads", "bindings"),
+        sql: `ALTER TABLE threads ADD COLUMN bindings TEXT NOT NULL DEFAULT '{}';
+          UPDATE threads SET bindings = json_object(agent || ':default', json_object(
+            'agent', agent, 'instanceId', 'default', 'resumeCursor', session_id, 'status', 'active',
+            'cwd', (SELECT path FROM projects WHERE projects.id = threads.project_id), 'lastSeenAt', updated_at,
+            'lastSeq', (SELECT COALESCE(MAX(seq), 0) FROM events WHERE events.thread_id = threads.id)))
+          WHERE session_id IS NOT NULL`,
+      },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;
@@ -165,6 +177,7 @@ export class Store {
       agent,
       title: "New thread",
       sessionId: null,
+      bindings: {},
       model,
       permissionMode,
       createdAt: now,
@@ -184,12 +197,39 @@ export class Store {
     return toThread(row as unknown as ThreadRow);
   }
 
+  /**
+   * `sessionId` writes the cursor of the thread's agent (after any `agent` change in
+   * the same patch). Changing `agent` keeps every binding, so switching back resumes.
+   */
   updateThread(id: string, patch: Partial<Pick<Thread, "title" | "model" | "permissionMode" | "sessionId" | "agent">>): Thread {
-    const t = { ...this.getThread(id), ...patch, updatedAt: Date.now() };
+    const current = this.getThread(id);
+    const now = Date.now();
+    const { sessionId, ...rest } = patch;
+    const agent = patch.agent ?? current.agent;
+    const bindings = { ...current.bindings };
+    if (sessionId !== undefined) {
+      const key = bindingKey(agent);
+      bindings[key] = this.binding(current, agent, sessionId, bindings[key], now);
+    }
+    const t: Thread = { ...current, ...rest, agent, bindings, sessionId: bindings[bindingKey(agent)]?.resumeCursor ?? null, updatedAt: now };
     this.db
-      .prepare("UPDATE threads SET agent = ?, title = ?, session_id = ?, model = ?, permission_mode = ?, updated_at = ? WHERE id = ?")
-      .run(t.agent, t.title, t.sessionId, t.model, t.permissionMode, t.updatedAt, id);
+      .prepare("UPDATE threads SET agent = ?, title = ?, session_id = ?, bindings = ?, model = ?, permission_mode = ?, updated_at = ? WHERE id = ?")
+      .run(t.agent, t.title, t.sessionId, JSON.stringify(bindings), t.model, t.permissionMode, t.updatedAt, id);
     return t;
+  }
+
+  private binding(thread: Thread, agent: string, cursor: string | null, prior: SessionBinding | undefined, now: number): SessionBinding {
+    const last = this.db.prepare("SELECT MAX(seq) AS seq FROM events WHERE thread_id = ?").get(thread.id) as unknown as { seq: number | null };
+    return {
+      ...prior,
+      agent,
+      instanceId: prior?.instanceId ?? "default",
+      resumeCursor: cursor,
+      status: "active",
+      cwd: prior?.cwd ?? this.getProject(thread.projectId).path,
+      lastSeenAt: now,
+      lastSeq: last.seq ?? 0,
+    };
   }
 
   deleteThread(id: string): void {
@@ -263,9 +303,20 @@ export class Store {
     try {
       this.db
         .prepare(
-          "INSERT INTO threads (id, project_id, agent, title, session_id, model, permission_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO threads (id, project_id, agent, title, session_id, bindings, model, permission_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
-        .run(id, projectId, thread.agent, thread.title, thread.sessionId, thread.model, thread.permissionMode, thread.createdAt, Date.now());
+        .run(
+          id,
+          projectId,
+          thread.agent,
+          thread.title,
+          thread.sessionId,
+          JSON.stringify(thread.bindings ?? {}),
+          thread.model,
+          thread.permissionMode,
+          thread.createdAt,
+          Date.now(),
+        );
       const insert = this.db.prepare(
         `INSERT INTO events (thread_id, seq, payload, created_at, provenance, message_id, turn_id, item_id, parent_id, payload_ref, payload_bytes)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -310,7 +361,7 @@ export class Store {
   }
 }
 
-const THREAD_COLS = "id, project_id, agent, title, session_id, model, permission_mode, created_at, updated_at";
+const THREAD_COLS = "id, project_id, agent, title, session_id, bindings, model, permission_mode, created_at, updated_at";
 
 interface ProjectRow {
   id: string;
@@ -325,6 +376,7 @@ interface ThreadRow {
   agent: string;
   title: string;
   session_id: string | null;
+  bindings: string | null;
   model: string;
   permission_mode: string;
   created_at: number;
@@ -344,12 +396,15 @@ function toProject(r: ProjectRow): Project {
 }
 
 function toThread(r: ThreadRow): Thread {
+  const bindings = JSON.parse(r.bindings || "{}") as Record<string, SessionBinding>;
+  const current = bindings[bindingKey(r.agent)];
   return {
     id: r.id,
     projectId: r.project_id,
     agent: r.agent,
     title: r.title,
-    sessionId: r.session_id,
+    sessionId: current?.resumeCursor ?? null,
+    bindings,
     model: r.model,
     permissionMode: r.permission_mode as PermissionMode,
     createdAt: r.created_at,

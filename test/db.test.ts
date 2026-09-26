@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import { describe, expect, it } from "vitest";
 import { Store } from "../src/main/db";
-import { tempDir } from "./helpers";
+import { closeAfter, tempDir } from "./helpers";
 
 describe("Store", () => {
   it("keeps projects, threads, and ordered events", () => {
@@ -91,6 +91,62 @@ describe("Store migrations", () => {
     expect(tables).toContain("blobs");
     expect(tables).toContain("injection_ledger");
     raw.close();
+  });
+
+  it("adds bindings to a pre-bindings database, backfilling the current agent's session", () => {
+    const file = join(tempDir(), "prebind.db");
+    const old = new DatabaseSync(file);
+    old.exec(`
+      CREATE TABLE projects (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at INTEGER NOT NULL);
+      CREATE TABLE threads (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, agent TEXT NOT NULL DEFAULT 'claude', title TEXT NOT NULL,
+        session_id TEXT, model TEXT NOT NULL, permission_mode TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+      CREATE TABLE schema_version (version INTEGER NOT NULL);
+      INSERT INTO schema_version VALUES (10);
+      CREATE TABLE events (thread_id TEXT NOT NULL, seq INTEGER NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL,
+        provenance TEXT, message_id TEXT, turn_id TEXT, item_id TEXT, parent_id TEXT, payload_ref TEXT, payload_bytes INTEGER,
+        PRIMARY KEY (thread_id, seq));
+      INSERT INTO projects VALUES ('p', '/x', 'x', 1);
+      INSERT INTO threads VALUES ('fresh', 'p', 'claude', 'Fresh', NULL, 'm', 'ask', 1, 1);
+      INSERT INTO threads VALUES ('t', 'p', 'codex', 'Old', 'thr-1', 'm', 'ask', 1, 5);
+      INSERT INTO events VALUES ('t', 1, '{"kind":"user","text":"old"}', 2, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+      INSERT INTO events VALUES ('t', 2, '{"kind":"assistant-text","text":"hi"}', 3, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+    `);
+    old.close();
+
+    const store = new Store(file);
+    closeAfter(() => store.close());
+    expect(store.getThread("fresh")).toMatchObject({ bindings: {}, sessionId: null });
+    const t = store.getThread("t");
+    expect(t.sessionId).toBe("thr-1");
+    expect(t.bindings).toEqual({
+      "codex:default": { agent: "codex", instanceId: "default", resumeCursor: "thr-1", status: "active", cwd: "/x", lastSeenAt: 5, lastSeq: 2 },
+    });
+    const raw = new DatabaseSync(file);
+    closeAfter(() => raw.close());
+    expect((raw.prepare("SELECT session_id FROM threads WHERE id = 't'").get() as { session_id: string }).session_id).toBe("thr-1");
+  });
+
+  it("keeps each agent's cursor across a switch and back; sessionId is the current agent's", () => {
+    const store = new Store(join(tempDir(), "switch.db"));
+    closeAfter(() => store.close());
+    const p = store.addProject("/tmp/p");
+    const t = store.createThread(p.id, "codex", "m", "ask");
+    store.appendEvent(t.id, { kind: "user", text: "hi" });
+    store.updateThread(t.id, { sessionId: "thr-1" });
+    const codex = store.getThread(t.id).bindings["codex:default"]!;
+    expect(codex).toMatchObject({ resumeCursor: "thr-1", cwd: "/tmp/p", lastSeq: 1, status: "active" });
+
+    const onClaude = store.updateThread(t.id, { agent: "claude" });
+    expect(onClaude.sessionId).toBeNull();
+    store.updateThread(t.id, { sessionId: "claude-s" });
+    expect(store.getThread(t.id).sessionId).toBe("claude-s");
+
+    const back = store.updateThread(t.id, { agent: "codex" });
+    const reread = store.getThread(t.id);
+    expect(reread.bindings["codex:default"]!.resumeCursor).toBe("thr-1");
+    expect(reread.bindings["claude:default"]!.resumeCursor).toBe("claude-s");
+    expect(back.sessionId).toBe("thr-1");
+    expect(reread.sessionId).toBe(reread.bindings["codex:default"]!.resumeCursor);
   });
 
   it("opens a fresh database twice without throwing", () => {

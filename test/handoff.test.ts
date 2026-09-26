@@ -30,6 +30,8 @@ describe("thread export/import", () => {
 
     expect(restored.id).not.toBe(t.id);
     expect(restored).toMatchObject({ agent: "codex", title: "Fix the build", model: "gpt-x", permissionMode: "ask", sessionId: "s1" });
+    expect(restored.bindings).toEqual(exported.thread.bindings);
+    expect(restored.bindings["codex:default"]!.resumeCursor).toBe("s1");
     const after = store.listEvents(restored.id);
     expect(after.map((e) => [e.seq, e.event.kind])).toEqual(before.map((e) => [e.seq, e.event.kind]));
     expect(after.map((e) => e.event)).toEqual(before.map((e) => e.event));

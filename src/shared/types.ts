@@ -235,12 +235,37 @@ export interface Thread {
   /** Which agent runs this thread: "claude", or an ACP agent's id. */
   agent: string;
   title: string;
-  /** The agent's own session id, used to resume the conversation. */
+  /**
+   * Read-only: the current agent's resume cursor, `bindings[bindingKey(agent)]`,
+   * or the pre-bindings session id. Kept for one release so a rollback still resumes.
+   */
   sessionId: string | null;
+  /** Every agent session this thread has used, by `bindingKey()`. Switching agents keeps them all. */
+  bindings: Record<string, SessionBinding>;
   model: string;
   permissionMode: PermissionMode;
   createdAt: number;
   updatedAt: number;
+}
+
+/**
+ * One agent session a thread has used. The event log is the canonical
+ * history; a cursor is the agent's own and may be lost at any time.
+ */
+export interface SessionBinding {
+  agent: string;
+  instanceId: string;
+  /** The agent's own session id to resume, or null when it starts over. */
+  resumeCursor: string | null;
+  status: "active" | "stale" | "lost" | "rolled-back";
+  /** Cursors are scoped by folder: Claude keeps transcripts per cwd. */
+  cwd: string;
+  configDir?: string;
+  lastSeenAt: number;
+  /** The thread's newest event when the cursor was last written. */
+  lastSeq: number;
+  /** Driver-private state (model, effort, MCP roots). */
+  runtime?: unknown;
 }
 
 /** A thread exported to JSON: the only way back from the bindings migration. */

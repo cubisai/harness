@@ -53,6 +53,7 @@ export function installMock(): void {
     agent: "claude",
     title,
     sessionId: "s-" + id,
+    bindings: {},
     model: "opus",
     permissionMode: "ask",
     createdAt: now - ago,

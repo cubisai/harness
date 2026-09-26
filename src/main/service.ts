@@ -16,6 +16,7 @@ import type {
   ThreadExport,
   Usage,
 } from "../shared/types";
+import { bindingKey } from "../shared/bindings";
 import type { AgentDriver, HarnessTool, ModelSwitch } from "./agents/types";
 import {
   annotateUsage,
@@ -103,13 +104,19 @@ export class Service {
     return this.store.createThread(projectId, driver.id, driver.defaultModel, d.permissionMode);
   }
 
-  /** Switching agents starts a fresh conversation: sessions don't carry across agents. */
+  /**
+   * Switching agents keeps every agent's session: switching back resumes the
+   * one it had, on the model it last used. A new agent starts fresh.
+   */
   updateThread(id: string, patch: Partial<Pick<Thread, "title" | "model" | "permissionMode" | "agent">>): Thread {
     const current = this.store.getThread(id);
     if (patch.agent && patch.agent !== current.agent) {
       if (this.running.has(id)) throw new Error("Stop the running turn before switching agents.");
       const driver = this.driverFor(patch.agent);
-      return this.store.updateThread(id, { ...patch, model: patch.model ?? driver.defaultModel, sessionId: null });
+      const resumes = !!current.bindings[bindingKey(patch.agent)]?.resumeCursor;
+      const last = resumes ? this.lastModel(id, patch.agent) : null;
+      const model = patch.model ?? (last && driver.models().some((m) => m.id === last) ? last : driver.defaultModel);
+      return this.store.updateThread(id, { ...patch, model });
     }
     return this.store.updateThread(id, patch);
   }
