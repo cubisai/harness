@@ -108,3 +108,19 @@ describe("injectOpenCode", () => {
     expect(plan.env.OPENCODE_CONFIG_CONTENT).toBeUndefined();
   });
 });
+
+describe("opencodeVersion", () => {
+  it.skipIf(process.platform === "win32")("doesn't cache a failed lookup", async () => {
+    const { opencodeVersion } = await import("../src/main/inject/opencode");
+    const { mkdtempSync, writeFileSync, chmodSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "oc-ver-"));
+    const bin = join(dir, "fake-opencode");
+    writeFileSync(bin, "#!/bin/sh\nexit 1\n");
+    chmodSync(bin, 0o755);
+    expect(opencodeVersion(bin)).toBeNull();
+    writeFileSync(bin, "#!/bin/sh\necho 1.2.3\n");
+    expect(opencodeVersion(bin)).toBe("1.2.3");
+  });
+});

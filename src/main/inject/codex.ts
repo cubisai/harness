@@ -82,22 +82,24 @@ const instructionsCache = new Map<string, string>();
 
 /**
  * Codex's own base instructions, read from `codex debug models`; cached per
- * command, since it never changes for a given binary. Falls back on any error.
+ * command, since it never changes for a given binary. Falls back on any error,
+ * and only a real answer is cached, so a slow cold start is retried next time.
  */
 export function codexInstructions(command: string, env: NodeJS.ProcessEnv = process.env): string {
   const cached = instructionsCache.get(command);
   if (cached !== undefined) return cached;
-  let instructions = FALLBACK_INSTRUCTIONS;
   try {
-    const out = execFileSync(command, ["debug", "models"], { env, timeout: 20_000, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    const out = execFileSync(command, ["debug", "models"], { env, timeout: 30_000, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
     const parsed = JSON.parse(out) as { models?: { visibility?: string; base_instructions?: string }[] };
     const found = parsed.models?.find((m) => m.visibility === "list" && m.base_instructions);
-    if (found?.base_instructions) instructions = found.base_instructions;
+    if (found?.base_instructions) {
+      instructionsCache.set(command, found.base_instructions);
+      return found.base_instructions;
+    }
   } catch {
     // An installed Codex that won't answer: the fallback prompt is still valid.
   }
-  instructionsCache.set(command, instructions);
-  return instructions;
+  return FALLBACK_INSTRUCTIONS;
 }
 
 /** Whether Codex accepts the generated catalog; null on success, else the reason. */

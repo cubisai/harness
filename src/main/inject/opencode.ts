@@ -61,21 +61,22 @@ export function injectOpenCode(
   return { env, files: [], byok: true };
 }
 
-const versionCache = new Map<string, string | null>();
+const versionCache = new Map<string, string>();
 
 /**
  * `opencode --version`, cached per command since it never changes for a given
- * binary. Null on any error, so callers fall back to the version guard.
+ * binary. Only a successful answer is cached: a slow cold start (e.g. under
+ * load) returns null this once and is asked again next time, rather than
+ * disabling injection until the app restarts.
  */
 export function opencodeVersion(command: string): string | null {
   const cached = versionCache.get(command);
   if (cached !== undefined) return cached;
-  let version: string | null = null;
   try {
-    version = execFileSync(command, ["--version"], { timeout: 10_000, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+    const version = execFileSync(command, ["--version"], { timeout: 30_000, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+    if (version) versionCache.set(command, version);
+    return version || null;
   } catch {
-    // Not installed, not executable, or no --version: reported as unknown.
+    return null; // Not installed, not executable, too slow, or no --version: reported as unknown.
   }
-  versionCache.set(command, version);
-  return version;
 }
