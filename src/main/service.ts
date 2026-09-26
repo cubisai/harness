@@ -19,6 +19,7 @@ import { workingTreeDiff } from "./git";
 import type { Catalog } from "./skills/catalog";
 import { composePrompt } from "./skills/compose";
 import { memoryScopeCheck } from "./inject/memory-scope";
+import { redactDeep } from "./inject/redact";
 
 /**
  * Everything the UI can ask for, with no Electron in sight, so it runs
@@ -43,6 +44,8 @@ export class Service {
     private defaults: () => { agent: string | null; permissionMode: PermissionMode } = () => ({ agent: null, permissionMode: "ask" }),
     /** The user's enabled MCP servers, for every agent. */
     private mcpServers: () => McpServerEntry[] = () => [],
+    /** Every provider key the app holds, so no event (error, notice, tool output) can carry one. */
+    private secrets: () => string[] = () => [],
   ) {
     if (!drivers.length) throw new Error("no agent drivers");
     this.drivers = new Map(drivers.map((d) => [d.id, d]));
@@ -93,7 +96,7 @@ export class Service {
   }
 
   private emit(threadId: string, event: ThreadEvent, provenance: Provenance | null = null): StoredEvent {
-    const stored = this.store.appendEvent(threadId, event, provenance);
+    const stored = this.store.appendEvent(threadId, redactDeep(event, this.secrets()), provenance);
     this.broadcast({ type: "event", threadId, stored });
     return stored;
   }

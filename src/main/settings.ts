@@ -11,7 +11,7 @@ import type {
   Settings,
   SettingsView,
 } from "../shared/types";
-import { LEGACY_ENV, LEGACY_PROVIDERS, isProviderId, legacyEnv as legacyEnvFor, type LegacyProviderId } from "./providers";
+import { LEGACY_ENV, LEGACY_PROVIDERS, isProviderId, type LegacyProviderId } from "./providers";
 import { protocolKeyVar } from "./inject/keys";
 
 /** Encrypts secrets at rest. In the app this is Electron's safeStorage (the OS keychain). */
@@ -239,11 +239,6 @@ export class SettingsStore {
     const value = this.providerSecret(id);
     if (envVar !== null && value !== null) out[envVar] = value;
     return out;
-  }
-
-  /** Stored legacy keys as environment variables, sourced from their migrated providers. */
-  legacyEnv(): Record<string, string> {
-    return legacyEnvFor((id) => (this.findProvider(id) ? this.providerSecret(id) : null));
   }
 
   /** Every env var name a provider key may occupy, so editors don't inherit one. */

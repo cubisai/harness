@@ -16,8 +16,9 @@ import { Store } from "./db";
 import { startToolServer, type ToolServer } from "./mcp-http";
 import { TerminalManager } from "./terminal";
 import { Service } from "./service";
-import { LEGACY_ENV, catalogFor, testConnection } from "./providers";
+import { catalogFor, testConnection } from "./providers";
 import { injectionFor } from "./inject";
+import { redactSecrets } from "./inject/redact";
 import { codexInstructions, prepareCodexPlan } from "./inject/codex";
 import { opencodeVersion } from "./inject/opencode";
 import { SettingsStore } from "./settings";
@@ -138,18 +139,15 @@ async function main(): Promise<void> {
     encrypt: (s) => safeStorage.encryptString(s).toString("base64"),
     decrypt: (b) => safeStorage.decryptString(Buffer.from(b, "base64")),
   });
-  // Legacy keys from settings become environment variables for every agent process
-  // started from now on; a removed key restores what the shell had.
-  const inheritedEnv = Object.fromEntries(Object.values(LEGACY_ENV).map((k) => [k, process.env[k]]));
-  const applySecretsToEnv = () => {
-    const fromSettings = settings.legacyEnv();
-    for (const key of Object.values(LEGACY_ENV)) {
-      const value = fromSettings[key] ?? inheritedEnv[key];
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-  };
-  applySecretsToEnv();
+  // Provider keys reach an agent only through its own injection plan (src/main/inject);
+  // this is the list every stored or broadcast event is scrubbed of. Cached, and
+  // reset whenever a provider or credential changes.
+  let secretsCache: string[] | null = null;
+  const knownSecrets = () =>
+    (secretsCache ??= settings
+      .providers()
+      .map((p) => settings.providerSecret(p.id))
+      .filter((s): s is string => Boolean(s)));
   nativeTheme.themeSource = settings.get().theme;
   const root = findSkillsRoot(
     defaultSkillsCandidates({ resourcesPath: app.isPackaged ? process.resourcesPath : undefined, appPath: app.getAppPath() }),
@@ -249,6 +247,7 @@ async function main(): Promise<void> {
       return { agent: s.defaultAgent, permissionMode: s.defaultPermissionMode };
     },
     () => mcpStore.enabled(),
+    knownSecrets,
   );
 
   // The Library: skills, agents, and MCP servers, as the agents will see them.
@@ -337,7 +336,7 @@ async function main(): Promise<void> {
   // A changed provider changes what the next agent process inherits; running
   // processes keep the old environment, so stop them and re-broadcast settings.
   const afterProviderChange = () => {
-    applySecretsToEnv();
+    secretsCache = null;
     service.dispose();
     const view = settings.view();
     broadcast({ type: "settings", settings: view });
@@ -398,7 +397,7 @@ async function main(): Promise<void> {
     // Resolve once the turn has started; progress arrives as updates.
     service.send(req).catch((err: unknown) => {
       broadcast({ type: "running", threadId: req.threadId, running: false });
-      console.error(err);
+      console.error(redactSecrets(err instanceof Error ? (err.stack ?? err.message) : String(err), knownSecrets()));
     });
   });
   ipcMain.handle("turn:interrupt", (_e, threadId: string) => service.interrupt(threadId));

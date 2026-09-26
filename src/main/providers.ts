@@ -38,8 +38,9 @@ export function isProviderId(id: string): boolean {
 export { codexCompatible, providerWarning } from "../shared/provider-rules";
 
 /**
- * The environment variable each migrated legacy key becomes. Kept only so
- * today's process.env export keeps working until Phase 2's per-driver injection.
+ * The environment variable each migrated legacy key is conventionally read
+ * from: the settings v2 migration's ids, and the name an agent's injection
+ * plan uses (and strips) for them.
  */
 export const LEGACY_ENV = {
   anthropic: "ANTHROPIC_API_KEY",
@@ -48,16 +49,6 @@ export const LEGACY_ENV = {
 } as const;
 
 export type LegacyProviderId = keyof typeof LEGACY_ENV;
-
-/** The three legacy keys as environment variables, for the providers whose key resolves. */
-export function legacyEnv(resolve: (providerId: string) => string | null): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const id of Object.keys(LEGACY_ENV) as LegacyProviderId[]) {
-    const value = resolve(id);
-    if (value !== null) out[LEGACY_ENV[id]] = value;
-  }
-  return out;
-}
 
 /** The synthesized-provider defaults for settings.json v2's one-shot legacy-key migration. */
 export const LEGACY_PROVIDERS: Record<LegacyProviderId, Pick<Provider, "label" | "wireProtocol" | "baseURL" | "models">> = {

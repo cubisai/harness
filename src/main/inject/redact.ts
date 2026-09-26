@@ -17,3 +17,16 @@ export function redactSecrets(text: string, secrets: readonly string[]): string 
   for (const secret of ordered) out = out.split(secret).join(REPLACEMENT);
   return out;
 }
+
+/** A deep copy of `value` with every string redacted, for events and logged plans. */
+export function redactDeep<T>(value: T, secrets: readonly string[]): T {
+  if (!secrets.length) return value;
+  if (typeof value === "string") return redactSecrets(value, secrets) as T;
+  if (Array.isArray(value)) return value.map((v) => redactDeep(v, secrets)) as T;
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) out[k] = redactDeep(v, secrets);
+    return out as T;
+  }
+  return value;
+}

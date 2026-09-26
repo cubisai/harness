@@ -3,7 +3,7 @@
 // rules decide what every agent inherits and what it never sees.
 
 import type { CredentialChoice, Provider, Settings } from "../../shared/types";
-import { redactSecrets } from "./redact";
+import { redactDeep } from "./redact";
 import { injectAcp } from "./acp";
 import { CLAUDE_KEY_VARS, injectClaude } from "./claude";
 import { FALLBACK_INSTRUCTIONS, injectCodex } from "./codex";
@@ -49,18 +49,6 @@ export function baseEnv(stripNames: readonly string[], env: NodeJS.ProcessEnv = 
     out[name] = value;
   }
   return out;
-}
-
-/** A deep copy with every string redacted, so a plan can be logged safely. */
-function redactDeep(value: unknown, secrets: readonly string[]): unknown {
-  if (typeof value === "string") return redactSecrets(value, secrets);
-  if (Array.isArray(value)) return value.map((v) => redactDeep(v, secrets));
-  if (value && typeof value === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value)) out[k] = redactDeep(v, secrets);
-    return out;
-  }
-  return value;
 }
 
 /**

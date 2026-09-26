@@ -74,9 +74,9 @@ describe("SettingsStore", () => {
     const view = s.view();
     expect(view.providers.find((p) => p.id === "deepseek")?.hasSecret).toBe(true);
     expect(JSON.stringify(view)).not.toContain("sk-secret");
-    expect(new SettingsStore(file, box).legacyEnv()).toEqual({ DEEPSEEK_API_KEY: "sk-secret" });
+    expect(new SettingsStore(file, box).providerEnv("deepseek")).toEqual({ DEEPSEEK_API_KEY: "sk-secret" });
     s.setProviderSecret("deepseek", null);
-    expect(s.legacyEnv()).toEqual({});
+    expect(s.providerEnv("deepseek")).toEqual({});
     expect(s.view().providers.find((p) => p.id === "deepseek")?.hasSecret).toBe(false);
   });
 
@@ -93,7 +93,7 @@ describe("SettingsStore", () => {
     s.saveProvider(providerInput({ id: "openai", label: "OpenAI", baseURL: "https://api.openai.com/v1" }));
     s.setProviderSecret("openai", "sk-x");
     const broken: SecretBox = { ...box, decrypt: () => { throw new Error("other machine"); } };
-    expect(new SettingsStore(file, broken).legacyEnv()).toEqual({});
+    expect(new SettingsStore(file, broken).providerEnv("openai")).toEqual({});
     writeFileSync(file, "{not json");
     expect(new SettingsStore(file, box).get().theme).toBe("system");
   });
@@ -169,15 +169,15 @@ describe("SettingsStore", () => {
     expect(readFileSync(file).equals(before)).toBe(true);
   });
 
-  // T1.3 — SECRET_ENV is gone; legacyEnv keeps today's process.env export working.
+  // T1.3 — SECRET_ENV is gone; phase 2 removed the global export, and a key reaches an agent only through its injection plan.
   it("no longer exports SECRET_ENV", () => {
     expect("SECRET_ENV" in settingsModule).toBe(false);
   });
 
-  it("keeps a saved deepseek key reaching its env var through legacyEnv", () => {
+  it("keeps a saved deepseek key resolving to its env var through providerEnv", () => {
     const file = fresh();
     writeFileSync(file, JSON.stringify({ secrets: { deepseek: box.encrypt("sk-deep-legacy") } }));
-    expect(new SettingsStore(file, box).legacyEnv()).toEqual({ DEEPSEEK_API_KEY: "sk-deep-legacy" });
+    expect(new SettingsStore(file, box).providerEnv("deepseek")).toEqual({ DEEPSEEK_API_KEY: "sk-deep-legacy" });
   });
 
   it("rejects a secret for an unknown provider", () => {
