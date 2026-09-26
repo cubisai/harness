@@ -230,6 +230,7 @@ export function installMock(): void {
     },
     browserDevice: async () => {},
     browserState: async () => ({ device: "desktop", logs: [], screenshots: [] }),
+    browserTakeOver: async () => {},
     exportThread: async () => null,
     importThread: async () => null,
     listEvents: async (id) => events[id] ?? [],

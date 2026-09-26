@@ -35,6 +35,8 @@ export class BrowserController {
   device: DevicePreset = "desktop";
   /** True once the user has opened the pane this session: only then do the agent's browser tools exist. */
   enabled = false;
+  /** The user took the pointer: acting tools refuse until they resume. Reads (snapshot, logs, screenshot) stay allowed. */
+  paused = false;
 
   constructor(
     private requestOpen: (url?: string) => void,
@@ -46,8 +48,28 @@ export class BrowserController {
       onLog?(entry: LogEntry | null): void;
       onScreenshot?(path: string): void;
       onDevice?(device: DevicePreset): void;
+      /** The agent acted in the pane: who is driving, and on what. */
+      onAction?(action: "open" | "click" | "type" | "eval", ref: string | undefined, url: string): void;
     } = {},
   ) {}
+
+  setPaused(paused: boolean): void {
+    this.paused = paused;
+  }
+
+  private assertNotPaused(): void {
+    if (this.paused) throw new Error("The user took over the browser pane and paused you. Ask them to press Resume in the pane, or carry on without the browser.");
+  }
+
+  /** browser_open's path into page(url): the pause check, exposed for the tool layer. */
+  assertOpenAllowed(): void {
+    this.assertNotPaused();
+  }
+
+  /** Announce an agent action (from the tool layer, where the page load happened). */
+  announce(action: "open" | "click" | "type" | "eval", ref: string | undefined): void {
+    this.events.onAction?.(action, ref, this.wc?.getURL() ?? "");
+  }
 
   attach(webContentsId: number): void {
     const wc = allWebContents.fromId(webContentsId);
@@ -220,17 +242,43 @@ export class BrowserController {
     }
   }
 
+  /** A brief ring over the element's rect, so the user sees what the agent just acted on. Cosmetic: never fails an action. */
+  private async highlight(wc: WebContents, ref: string): Promise<void> {
+    try {
+      // The same lookup locate() uses: the ref is a data-unskilled-ref attribute.
+      await this.evaluate(
+        wc,
+        `(() => {
+          const el = document.querySelector('[data-unskilled-ref="${ref.replace(/[^a-z0-9]/gi, "")}"]');
+          if (!el) return;
+          const r = el.getBoundingClientRect();
+          const ring = document.createElement("div");
+          ring.style.cssText = "position:fixed;pointer-events:none;z-index:2147483647;border:2px solid #0a84ff;border-radius:4px;box-shadow:0 0 0 4px rgba(10,132,255,.25);transition:opacity .6s;"
+            + "left:" + (r.left - 2) + "px;top:" + (r.top - 2) + "px;width:" + r.width + "px;height:" + r.height + "px";
+          document.body.appendChild(ring);
+          setTimeout(() => { ring.style.opacity = "0"; setTimeout(() => ring.remove(), 600); }, 900);
+        })()`,
+      );
+    } catch {
+      // A highlight is cosmetic; the action already happened.
+    }
+  }
+
   async click(ref: string): Promise<string> {
+    this.assertNotPaused();
     const wc = await this.page();
     const { x, y, label } = await this.locate(wc, ref);
     for (const type of ["mouseMoved", "mousePressed", "mouseReleased"] as const) {
       await wc.debugger.sendCommand("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 });
     }
     await this.settle(wc);
+    void this.highlight(wc, ref);
+    this.events.onAction?.("click", ref, wc.getURL());
     return `Clicked ${ref} ("${label}"). Now at ${wc.getURL()}`;
   }
 
   async type(ref: string, text: string, submit: boolean): Promise<string> {
+    this.assertNotPaused();
     const wc = await this.page();
     await this.locate(wc, ref);
     const sel = `document.querySelector('[data-unskilled-ref="${ref.replace(/[^a-z0-9]/gi, "")}"]')`;
@@ -267,12 +315,16 @@ export class BrowserController {
       );
     }
     await this.settle(wc);
+    void this.highlight(wc, ref);
+    this.events.onAction?.("type", ref, wc.getURL());
     return `Typed into ${ref}${submit ? " and pressed Enter" : ""}. Now at ${wc.getURL()}`;
   }
 
   async evaluateForAgent(expression: string): Promise<string> {
+    this.assertNotPaused();
     const wc = await this.page();
     const value = await this.evaluate<unknown>(wc, expression);
+    this.events.onAction?.("eval", undefined, wc.getURL());
     const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
     return text === undefined ? "undefined" : text.length > 4000 ? `${text.slice(0, 4000)}… (truncated)` : text;
   }

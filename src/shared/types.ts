@@ -566,6 +566,8 @@ export type LiveUpdate =
   | { type: "browser-screenshot"; shot: ScreenshotInfo }
   /** The emulated viewport changed. */
   | { type: "browser-device"; device: DevicePreset }
+  /** The agent acted in the browser pane; the UI shows who is driving. */
+  | { type: "browser-action"; action: "open" | "click" | "type" | "eval"; ref?: string; url: string }
   | { type: "terminal-data"; id: string; data: string }
   | { type: "terminal-exit"; id: string; code: number }
   | { type: "settings"; settings: SettingsView }
@@ -604,6 +606,8 @@ export interface UnskilledApi {
   browserDevice(preset: DevicePreset): Promise<void>;
   /** The browser pane's current device, logs, and screenshots. */
   browserState(): Promise<BrowserState>;
+  /** The user grabbed the pane: pause (true) or resume (false) the agent's acting tools. */
+  browserTakeOver(paused: boolean): Promise<void>;
   /** Open (or reattach to) the terminal with this id, in `cwd` (home when null). */
   terminalOpen(id: string, cwd: string | null, cols: number, rows: number): Promise<void>;
   terminalWrite(id: string, data: string): void;

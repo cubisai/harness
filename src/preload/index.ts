@@ -23,6 +23,7 @@ const api: UnskilledApi = {
   browserPick: () => ipcRenderer.invoke("browser:pick"),
   browserDevice: (preset) => ipcRenderer.invoke("browser:device", preset),
   browserState: () => ipcRenderer.invoke("browser:state"),
+  browserTakeOver: (paused) => ipcRenderer.invoke("browser:takeover", paused),
   terminalOpen: (id, cwd, cols, rows) => ipcRenderer.invoke("terminal:open", id, cwd, cols, rows),
   terminalWrite: (id, data) => ipcRenderer.send("terminal:write", id, data),
   terminalResize: (id, cols, rows) => ipcRenderer.send("terminal:resize", id, cols, rows),

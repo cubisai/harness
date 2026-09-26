@@ -148,4 +148,31 @@ describe("BrowserController", () => {
     const tools = browserTools({ enabled: false } as unknown as BrowserController);
     expect(Object.keys(tools.find((t) => t.name === "browser_open")!.input)).toContain("device");
   });
+
+  it("refuses acting tools while the user has taken over", async () => {
+    const { controller } = make();
+    controller.setPaused(true);
+    await expect(controller.click("e1")).rejects.toThrow(/took over/);
+    expect(() => controller.assertOpenAllowed()).toThrow(/took over/);
+    controller.setPaused(false);
+    expect(() => controller.assertOpenAllowed()).not.toThrow();
+  });
+
+  it("browser_open reports the takeover instead of fighting the pointer", async () => {
+    const stub = {
+      enabled: true,
+      paused: true,
+      assertOpenAllowed() {
+        throw new Error("The user took over the browser pane and paused you.");
+      },
+      page: vi.fn(),
+      snapshot: vi.fn(),
+      announce: vi.fn(),
+    };
+    const open = browserTools(stub as unknown as BrowserController).find((t) => t.name === "browser_open")!;
+    const out = await open.run({ url: "http://x" });
+    expect(out.isError).toBe(true);
+    expect(out.text).toContain("took over");
+    expect(stub.page).not.toHaveBeenCalled();
+  });
 });

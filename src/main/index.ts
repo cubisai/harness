@@ -195,6 +195,7 @@ async function main(): Promise<void> {
       onLog: (entry) => broadcast({ type: "browser-log", entry }),
       onScreenshot: (path) => broadcast({ type: "browser-screenshot", shot: shotInfo(path) }),
       onDevice: (device) => broadcast({ type: "browser-device", device }),
+      onAction: (action, ref, url) => broadcast({ type: "browser-action", action, ref, url }),
     },
   );
   const tools = browserTools(browser);
@@ -474,6 +475,7 @@ async function main(): Promise<void> {
   ipcMain.handle("diff:get", (_e, projectId: string) => service.getDiff(projectId));
   ipcMain.handle("browser:attached", (_e, webContentsId: number) => browser.attach(webContentsId));
   ipcMain.handle("browser:pick", () => browser.startPick());
+  ipcMain.handle("browser:takeover", (_e, paused: boolean) => browser.setPaused(paused === true));
   ipcMain.handle("browser:device", (_e, preset: DevicePreset) =>
     browser.setDevice(["mobile", "tablet", "desktop"].includes(preset) ? preset : "desktop"),
   );

@@ -40,8 +40,10 @@ export function browserTools(browser: BrowserController): HarnessTool[] {
       autoAllow: true,
       run: ({ url, device }) =>
         gated(browser, async () => {
+          browser.assertOpenAllowed();
           if (device) await browser.setDevice(device);
           await browser.page(url);
+          browser.announce("open", undefined);
           return { text: await browser.snapshot() };
         }),
     }),

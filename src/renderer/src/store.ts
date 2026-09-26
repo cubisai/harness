@@ -512,6 +512,9 @@ export const useStore = create<State>((set, get) => ({
       case "browser-device":
         set((s) => ({ browser: { ...s.browser, device: update.device } }));
         return;
+      case "browser-action":
+        // The UI half comes in the next brief; nothing to store yet.
+        return;
       case "settings":
         applyTheme(update.settings.theme);
         // A broadcast during a drag would fight the pointer; keep the local layout then.
