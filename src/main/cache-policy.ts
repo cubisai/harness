@@ -13,6 +13,8 @@ import { createHash } from "node:crypto";
 import type { McpServerEntry, MissCause, Usage } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 
+export { cacheStats, MISS_WORDS, type CacheStats } from "../shared/cache-stats";
+
 /** JSON with object keys sorted recursively (arrays keep their order). */
 export function stableStringify(value: unknown): string {
   return JSON.stringify(sortKeys(value));

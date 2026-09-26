@@ -14,10 +14,12 @@ export interface LiveThread {
   items: LiveItem[];
   done: string[];
   thinkingTokens: number | null;
+  /** The running turn's latest usage numbers, merged from usage-update deltas. */
+  usage: Omit<Extract<LiveDelta, { kind: "usage-update" }>, "kind"> | null;
 }
 
 export function emptyLive(): LiveThread {
-  return { items: [], done: [], thinkingTokens: null };
+  return { items: [], done: [], thinkingTokens: null, usage: null };
 }
 
 /** Most characters kept per item; a longer item keeps its tail. */
@@ -32,6 +34,10 @@ export function appendDelta(state: LiveThread, delta: LiveDelta): LiveThread {
   if (delta.kind === "reasoning-delta") return appendItem(state, `reasoning:${delta.itemId}`, "reasoning", delta.text, delta.opaque ?? false);
   if (delta.kind === "tool-output-delta") return appendItem(state, `tool:${delta.toolUseId}`, "tool-output", delta.text, false);
   if (delta.kind === "thinking-progress") return { ...state, thinkingTokens: delta.estimatedTokens };
+  if (delta.kind === "usage-update") {
+    const { kind: _kind, ...fields } = delta;
+    return { ...state, usage: { ...(state.usage ?? {}), ...fields } };
+  }
   return state;
 }
 

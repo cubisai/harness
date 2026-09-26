@@ -47,6 +47,14 @@ describe("live stream state", () => {
     expect(item.text).toHaveLength(LIVE_ITEM_CAP);
     expect(item.text.endsWith("0123456789")).toBe(true);
   });
+
+  it("merges usage-update deltas into the live usage", () => {
+    let state = appendDelta(emptyLive(), { kind: "usage-update", cacheReadTokens: 100 });
+    expect(state.usage?.cacheReadTokens).toBe(100);
+    state = appendDelta(state, { kind: "usage-update", outputTokens: 5 });
+    expect(state.usage?.cacheReadTokens).toBe(100);
+    expect(state.usage?.outputTokens).toBe(5);
+  });
 });
 
 describe("reasoning display", () => {

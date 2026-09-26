@@ -3,6 +3,7 @@ import type { AgentInfo, PermissionMode } from "../../shared/types";
 import { CommandPalette } from "./components/CommandPalette";
 import { Library } from "./components/Library";
 import { Composer } from "./components/Composer";
+import { CacheMeter } from "./components/CacheMeter";
 import { Inspector } from "./components/Inspector";
 import { SettingsSheet } from "./components/SettingsSheet";
 import { Sidebar } from "./components/Sidebar";
@@ -80,6 +81,7 @@ export function App() {
           </div>
           {thread && <LimitMeter agent={thread.agent} />}
           {thread && <UsageMeter threadId={thread.id} />}
+          {thread && <CacheMeter threadId={thread.id} />}
           {thread && (
             <>
               {agents.length > 1 && (
