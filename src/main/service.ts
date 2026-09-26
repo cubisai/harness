@@ -19,7 +19,7 @@ import { workingTreeDiff } from "./git";
 import type { Catalog } from "./skills/catalog";
 import { composePrompt } from "./skills/compose";
 import { memoryScopeCheck } from "./inject/memory-scope";
-import { redactDeep } from "./inject/redact";
+import { redactDeep, redactSecrets } from "./inject/redact";
 
 /**
  * Everything the UI can ask for, with no Electron in sight, so it runs
@@ -138,7 +138,10 @@ export class Service {
         mcpServers: this.mcpServers(),
         provenance,
         onEvent: (event) => this.emit(thread.id, event, provenance),
-        onTextDelta: (text) => this.broadcast({ type: "delta", threadId: thread.id, delta: { kind: "text-delta", itemId: "", text } }),
+        // Live text is scrubbed like stored events. A key split across two deltas can
+        // slip through here, but the turn's stored assistant-text event is redacted whole.
+        onTextDelta: (text) =>
+          this.broadcast({ type: "delta", threadId: thread.id, delta: { kind: "text-delta", itemId: "", text: redactSecrets(text, this.secrets()) } }),
         onSession: (sessionId) => {
           if (sessionId !== this.store.getThread(thread.id).sessionId) {
             this.broadcast({ type: "thread", thread: this.store.updateThread(thread.id, { sessionId }) });

@@ -99,7 +99,7 @@ describe("redaction on failure paths", () => {
     }
   });
 
-  it("the Service scrubs a key out of every stored event", async () => {
+  it("the Service scrubs a key out of every stored event and live delta", async () => {
     const store = new Store(join(tempDir(), "t.db"));
     closeAfter(() => store.close());
     const driver: AgentDriver = {
@@ -109,16 +109,20 @@ describe("redaction on failure paths", () => {
       skillCallPrefix: "",
       models: () => [{ id: "m", label: "M" }],
       runTurn: async (input: TurnInput) => {
+        input.onTextDelta(`echo ${KEY}`);
         input.onEvent({ kind: "notice", text: `retrying with ${KEY}` });
         input.onEvent({ kind: "error", message: `401 for key ${KEY}` });
       },
     };
-    const service = new Service(store, catalog(), [driver], () => {}, undefined, undefined, undefined, () => [KEY]);
+    const broadcasts: unknown[] = [];
+    const service = new Service(store, catalog(), [driver], (u) => void broadcasts.push(u), undefined, undefined, undefined, () => [KEY]);
     const thread = service.createThread(store.addProject(tempDir()).id);
     await service.send({ threadId: thread.id, text: "hi" });
     const events = JSON.stringify(store.listEvents(thread.id));
     expect(events).not.toContain(KEY);
     expect(events).toContain("«redacted»");
+    expect(JSON.stringify(broadcasts)).not.toContain(KEY);
+    expect(JSON.stringify(broadcasts)).toContain("echo «redacted»");
   });
 
   it("no global key export remains", () => {
