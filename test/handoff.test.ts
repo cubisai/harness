@@ -4,8 +4,9 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { Store } from "../src/main/db";
-import { buildCheckpoint, exportThread, importThread, renderCheckpoint, THREAD_EXPORT_VERSION } from "../src/main/handoff";
+import { buildCheckpoint, checkpointCap, exportThread, fitCheckpoint, importThread, renderCheckpoint, THREAD_EXPORT_VERSION } from "../src/main/handoff";
 import { gitState, workingTreeDiff } from "../src/main/git";
+import type { HandoffCheckpoint } from "../src/shared/types";
 import { closeAfter, tempDir } from "./helpers";
 
 function open(dir = tempDir()): Store {
@@ -136,5 +137,60 @@ describe("buildCheckpoint", () => {
 
   it("reports no git state outside a repository", async () => {
     expect(await gitState(tempDir())).toBeNull();
+  });
+});
+
+describe("fitCheckpoint", () => {
+  const cp: HandoffCheckpoint = {
+    threadId: "t",
+    from: { agent: "codex", model: "gpt-x" },
+    builtAt: 0,
+    lastSeq: 3,
+    goal: "Fix it",
+    messages: [
+      { role: "user", text: "Fix it" },
+      { role: "assistant", text: "Done" },
+    ],
+    files: [{ path: "a.ts", status: "modified", additions: 1, deletions: 1 }],
+    commands: [{ toolUseId: "b1", name: "Bash", summary: "npm test", isError: false, exitCode: 0, output: "3 passed", artifact: null }],
+    openQuestions: [],
+    git: { head: "abc", branch: "main", dirty: [] },
+  };
+
+  it("degrades exactly one tier at a time", async () => {
+    const tiers: [number, number][] = [];
+    const r = await fitCheckpoint(cp, {
+      countTokens: (t) => (t.includes("```") ? 5000 : t.includes("## Conversation") ? 3000 : 100),
+      contextWindow: null,
+      replacedTokens: 10_000,
+      onTier: (tier, tokens) => tiers.push([tier, tokens]),
+    });
+    expect(r).toMatchObject({ ok: true, tier: 1, tokens: 3000, estimated: false });
+    expect(r.ok && r.text).toContain("## Conversation");
+    expect(tiers).toEqual([[0, 5000], [1, 3000]]);
+  });
+
+  it("refuses a checkpoint larger than what it replaces", async () => {
+    const r = await fitCheckpoint(cp, { countTokens: () => 500, contextWindow: null, replacedTokens: 100 });
+    expect(r).toMatchObject({ ok: false, tier: 0, tokens: 500, estimated: false });
+    expect(r.ok ? "" : r.reason).toContain("larger than the conversation");
+  });
+
+  it("refuses when tier 2 is still over the cap", async () => {
+    const r = await fitCheckpoint(cp, { countTokens: () => 9000, contextWindow: null, replacedTokens: 1e9 });
+    expect(r).toMatchObject({ ok: false, tier: 2, tokens: 9000, estimated: false });
+    expect(r.ok ? "" : r.reason).toContain("budget");
+  });
+
+  it("estimates without a counter", async () => {
+    const r = await fitCheckpoint(cp, { contextWindow: null, replacedTokens: 1e9 });
+    expect(r.estimated).toBe(true);
+    expect(r.tokens).toBe(Math.ceil(Buffer.byteLength(renderCheckpoint(cp, 0), "utf8") / 3));
+  });
+
+  it("caps by the destination window", () => {
+    expect(checkpointCap(8000)).toBe(2000);
+    expect(checkpointCap(null)).toBe(4000);
+    expect(checkpointCap(1_000_000)).toBe(4000);
   });
 });

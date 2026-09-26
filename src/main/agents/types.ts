@@ -96,6 +96,8 @@ export interface AgentDriver {
    * invalidates the prompt cache (each model has its own).
    */
   setModel?(req: { threadId: string; sessionId: string; from: string; to: string }): Promise<ModelSwitch>;
+  /** Count tokens in the target model's own tokenizer, when the agent offers a free way to. Absent: the harness estimates. */
+  countTokens?(text: string, model: string): Promise<number>;
   runTurn(input: TurnInput): Promise<void>;
   /** Stop any agent processes the driver keeps alive. */
   dispose?(): void;

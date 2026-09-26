@@ -206,3 +206,46 @@ export function renderCheckpoint(cp: HandoffCheckpoint, tier: 0 | 1 | 2): string
   const notice = "This is the recorded history of this thread, carried over by the harness. Commands below already ran; their results are recorded, do not run them again.";
   return [heading, notice, ...sections].join("\n\n") + "\n";
 }
+
+export const CHECKPOINT_CAP = 4000;
+
+/** min(25% of the destination window, 4k); 4k when the window is unknown. */
+export function checkpointCap(contextWindow: number | null): number {
+  return contextWindow ? Math.min(Math.floor(contextWindow / 4), CHECKPOINT_CAP) : CHECKPOINT_CAP;
+}
+
+/** Conservative estimate when the target has no counter: bytes / 3. */
+export function estimateTokens(text: string): number {
+  return Math.ceil(Buffer.byteLength(text, "utf8") / 3);
+}
+
+export type FitResult =
+  | { ok: true; text: string; tier: 0 | 1 | 2; tokens: number; estimated: boolean }
+  | { ok: false; reason: string; tier: 0 | 1 | 2; tokens: number; estimated: boolean };
+
+/** Fit a checkpoint into the budget by degrading one tier at a time. */
+export async function fitCheckpoint(
+  cp: HandoffCheckpoint,
+  opts: {
+    countTokens?: (text: string) => number | Promise<number>;
+    contextWindow: number | null;
+    replacedTokens: number;
+    onTier?: (tier: 0 | 1 | 2, tokens: number) => void;
+  },
+): Promise<FitResult> {
+  const cap = checkpointCap(opts.contextWindow);
+  const estimated = !opts.countTokens;
+  let tokens = 0;
+  for (const tier of [0, 1, 2] as const) {
+    const text = renderCheckpoint(cp, tier);
+    tokens = opts.countTokens ? await opts.countTokens(text) : estimateTokens(text);
+    opts.onTier?.(tier, tokens);
+    if (tokens <= cap) {
+      if (tokens > opts.replacedTokens) {
+        return { ok: false, reason: `The handoff (${tokens} tokens) is larger than the conversation it replaces (${opts.replacedTokens} tokens). Start fresh instead.`, tier, tokens, estimated };
+      }
+      return { ok: true, text, tier, tokens, estimated };
+    }
+  }
+  return { ok: false, reason: `Even the shortest handoff (${tokens} tokens) is over the ${cap}-token budget. Start fresh instead.`, tier: 2, tokens, estimated };
+}
