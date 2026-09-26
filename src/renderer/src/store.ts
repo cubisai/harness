@@ -3,6 +3,7 @@ import type {
   EditorInfo,
   AgentLimits,
   AppUpdateStatus,
+  LiveDelta,
   SettingsView,
   AgentInfo,
   LiveUpdate,
@@ -13,6 +14,7 @@ import type {
   Thread,
 } from "../../shared/types";
 import { api } from "./api";
+import { appendDelta, applyLiveEvent, emptyLive, flushPending, type LiveThread } from "./live";
 
 export type LibraryTab = "experts" | "skills" | "connectors" | "mcp" | "agents";
 
@@ -45,7 +47,7 @@ interface State {
   selectedProjectId: string | null;
   selectedThreadId: string | null;
   events: Record<string, StoredEvent[]>; // by thread id
-  liveText: Record<string, string>; // streaming text not yet stored
+  live: Record<string, LiveThread>; // streaming state not yet stored
   running: Record<string, boolean>;
   permissions: PermissionRequest[];
   inspectorOpen: boolean;
@@ -87,6 +89,24 @@ function upsertThread(list: Thread[] | undefined, thread: Thread): Thread[] {
 
 let initialized = false;
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+
+// Live deltas are batched: tokens accumulate in the queue and land in the
+// store at most once per frame, instead of one write per token.
+const queued: { threadId: string; delta: LiveDelta }[] = [];
+let timer: ReturnType<typeof setTimeout> | null = null;
+
+/** Apply every queued delta, flush each touched thread, and empty the queue. */
+function drainQueue(s: State): Record<string, LiveThread> {
+  const live = { ...s.live };
+  const touched = new Set<string>();
+  for (const { threadId, delta } of queued) {
+    live[threadId] = appendDelta(live[threadId] ?? emptyLive(), delta);
+    touched.add(threadId);
+  }
+  for (const threadId of touched) live[threadId] = flushPending(live[threadId]!);
+  queued.length = 0;
+  return live;
+}
 
 /** "system" follows the OS; "light"/"dark" pin the CSS tokens (styles/app.css). */
 export function applyTheme(theme: SettingsView["theme"]): void {
@@ -137,7 +157,7 @@ export const useStore = create<State>((set, get) => ({
   selectedProjectId: null,
   selectedThreadId: null,
   events: {},
-  liveText: {},
+  live: {},
   running: {},
   permissions: [],
   inspectorOpen: false,
@@ -287,24 +307,33 @@ export const useStore = create<State>((set, get) => ({
         set((s) => {
           const list = s.events[update.threadId] ?? [];
           if (list.some((e) => e.seq === update.stored.seq)) return {};
-          const clearLive = update.stored.event.kind !== "user";
+          // Deltas that arrived before this terminal event must land first.
+          const live = drainQueue(s);
+          live[update.threadId] = applyLiveEvent(live[update.threadId] ?? emptyLive(), update.stored);
           return {
             events: { ...s.events, [update.threadId]: [...list, update.stored] },
-            liveText: clearLive ? { ...s.liveText, [update.threadId]: "" } : s.liveText,
+            live,
           };
         });
         return;
       case "delta": {
-        const delta = update.delta;
-        if (delta.kind !== "text-delta") return;
-        set((s) => ({ liveText: { ...s.liveText, [update.threadId]: (s.liveText[update.threadId] ?? "") + delta.text } }));
+        queued.push({ threadId: update.threadId, delta: update.delta });
+        if (!timer) {
+          timer = setTimeout(() => {
+            timer = null;
+            set((s) => ({ live: drainQueue(s) }));
+          }, 16);
+        }
         return;
       }
       case "running":
         if (!update.running) void api().listAgents().then((agents) => set({ agents }));
+        if (!update.running) {
+          for (let i = queued.length - 1; i >= 0; i--) if (queued[i]!.threadId === update.threadId) queued.splice(i, 1);
+        }
         set((s) => ({
           running: { ...s.running, [update.threadId]: update.running },
-          liveText: update.running ? s.liveText : { ...s.liveText, [update.threadId]: "" },
+          live: update.running ? s.live : { ...s.live, [update.threadId]: emptyLive() },
           permissions: update.running ? s.permissions : s.permissions.filter((p) => p.threadId !== update.threadId),
           diffVersion: update.running ? s.diffVersion : s.diffVersion + 1,
         }));

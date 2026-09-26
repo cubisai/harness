@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode } from "react";
 import { type FileRef, parseFileRef } from "./fileref";
+import { memoizeByHash, parseBlocks, splitStreamingTail } from "./streaming";
 
 /**
  * A small Markdown renderer for agent replies: fenced code, headings, lists,
@@ -11,15 +12,17 @@ import { type FileRef, parseFileRef } from "./fileref";
  * into a link that opens it.
  */
 export function Markdown({ text, streaming, onFile }: { text: string; streaming?: boolean; onFile?: (ref: FileRef) => void }) {
-  const blocks = parseBlocks(text);
+  // While streaming, parse only the frozen prefix (memoized); the tail renders
+  // as plain text so an unterminated fence never becomes an open code block.
+  const { frozen, tail } = streaming ? splitStreamingTail(text) : { frozen: text, tail: "" };
+  const blocks = streaming ? memoizeByHash(frozen, parseBlocks) : parseBlocks(text);
   return (
     <>
       {blocks.map((b, i) => {
-        const last = streaming && i === blocks.length - 1;
         switch (b.type) {
           case "code":
             return (
-              <pre key={i} className={last ? "caret" : undefined}>
+              <pre key={i}>
                 <code>{b.text}</code>
               </pre>
             );
@@ -32,79 +35,22 @@ export function Markdown({ text, streaming, onFile }: { text: string; streaming?
             return (
               <L key={i}>
                 {b.items.map((it, j) => (
-                  <li key={j} className={last && j === b.items.length - 1 ? "caret" : undefined}>
-                    {inline(it, onFile)}
-                  </li>
+                  <li key={j}>{inline(it, onFile)}</li>
                 ))}
               </L>
             );
           }
           default:
-            return (
-              <p key={i} className={last ? "caret" : undefined}>
-                {inline(b.text, onFile)}
-              </p>
-            );
+            return <p key={i}>{inline(b.text, onFile)}</p>;
         }
       })}
-      {streaming && blocks.length === 0 ? <p className="caret" /> : null}
+      {streaming ? (
+        <p className="caret" style={{ whiteSpace: "pre-wrap" }}>
+          {tail}
+        </p>
+      ) : null}
     </>
   );
-}
-
-type Block =
-  | { type: "code"; text: string }
-  | { type: "heading"; level: number; text: string }
-  | { type: "list"; ordered: boolean; items: string[] }
-  | { type: "para"; text: string };
-
-export function parseBlocks(text: string): Block[] {
-  const lines = text.replace(/\r\n/g, "\n").split("\n");
-  const blocks: Block[] = [];
-  let para: string[] = [];
-  const flush = () => {
-    if (para.length) blocks.push({ type: "para", text: para.join("\n") });
-    para = [];
-  };
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? "";
-    const fence = /^\s*(```|~~~)/.exec(line);
-    if (fence) {
-      flush();
-      const body: string[] = [];
-      i++;
-      while (i < lines.length && !(lines[i] ?? "").trimStart().startsWith(fence[1]!)) body.push(lines[i++] ?? "");
-      blocks.push({ type: "code", text: body.join("\n") });
-      continue;
-    }
-    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
-    if (heading) {
-      flush();
-      blocks.push({ type: "heading", level: heading[1]!.length, text: heading[2]! });
-      continue;
-    }
-    const item = /^\s*([-*+]|\d+[.)])\s+(.*)$/.exec(line);
-    if (item) {
-      flush();
-      const ordered = /\d/.test(item[1]!);
-      const prev = blocks.at(-1);
-      if (prev?.type === "list" && prev.ordered === ordered) prev.items.push(item[2]!);
-      else blocks.push({ type: "list", ordered, items: [item[2]!] });
-      continue;
-    }
-    if (!line.trim()) {
-      flush();
-      continue;
-    }
-    const prev = blocks.at(-1);
-    if (!para.length && prev?.type === "list" && /^\s{2,}\S/.test(line)) {
-      prev.items[prev.items.length - 1] += ` ${line.trim()}`;
-      continue;
-    }
-    para.push(line);
-  }
-  flush();
-  return blocks;
 }
 
 const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*|_[^_\s][^_]*_)|(\[[^\]]+\]\((https?:\/\/[^)\s]+)\))/g;

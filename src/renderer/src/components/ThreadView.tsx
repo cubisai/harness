@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { StoredEvent, ThreadEvent } from "../../../shared/types";
 import { type FileRef, parseFileRef } from "../fileref";
+import { emptyLive, visibleItems } from "../live";
 import { Markdown } from "../markdown";
 import { useStore } from "../store";
 import { PermissionCard } from "./PermissionCard";
@@ -8,13 +9,18 @@ import { PermissionCard } from "./PermissionCard";
 type ToolEvent = Extract<ThreadEvent, { kind: "tool-use" }>;
 type ResultEvent = Extract<ThreadEvent, { kind: "tool-result" }>;
 
+const EMPTY_LIVE = emptyLive();
+
 export function ThreadView({ threadId }: { threadId: string }) {
   const events = useStore((s) => s.events[threadId]) ?? EMPTY;
-  const live = useStore((s) => s.liveText[threadId] ?? "");
+  const live = useStore((s) => s.live[threadId]) ?? EMPTY_LIVE;
   const running = useStore((s) => Boolean(s.running[threadId]));
   const allPermissions = useStore((s) => s.permissions);
   const permissions = useMemo(() => allPermissions.filter((p) => p.threadId === threadId), [allPermissions, threadId]);
   const scroller = useRef<HTMLDivElement>(null);
+  // Reasoning/tool-output items are not rendered yet (ReasoningBlock lands in a later step).
+  const textItems = visibleItems(live, "text");
+  const textLength = textItems.reduce((n, it) => n + it.text.length, 0);
 
   const results = useMemo(() => {
     const map = new Map<string, ResultEvent>();
@@ -27,7 +33,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
   useEffect(() => {
     const el = scroller.current;
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
-  }, [events.length, live, permissions.length]);
+  }, [events.length, textLength, permissions.length]);
 
   return (
     <div
@@ -42,12 +48,12 @@ export function ThreadView({ threadId }: { threadId: string }) {
         {events.map((e) => (
           <EventRow key={e.seq} stored={e} results={results} running={running} />
         ))}
-        {live && (
-          <div className="msg-assistant">
-            <Markdown text={live} streaming />
+        {textItems.map((item) => (
+          <div className="msg-assistant" key={item.key}>
+            <Markdown text={item.text} streaming />
           </div>
-        )}
-        {running && !live && permissions.length === 0 && <div className="notice"><span className="spinner" style={{ display: "inline-block", verticalAlign: -2, marginRight: 8 }} />Working…</div>}
+        ))}
+        {running && textItems.length === 0 && permissions.length === 0 && <div className="notice"><span className="spinner" style={{ display: "inline-block", verticalAlign: -2, marginRight: 8 }} />Working…</div>}
         {permissions.map((p) => (
           <PermissionCard key={p.requestId} request={p} />
         ))}
