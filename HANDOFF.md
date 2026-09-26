@@ -1,6 +1,6 @@
-# Handoff — after Phase 5 (cache discipline)
+# Handoff — after Phase 5 (cache discipline); Phase 6 planned
 
-Updated 2026-09-26 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-delegation workflow), then `spec/README.md`.
+Updated 2026-09-26 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-delegation workflow), then `spec/README.md`, then `.ai/plans/phase-6-context-survival.md`.
 
 ## Where things stand
 
@@ -58,6 +58,16 @@ Updated 2026-09-26 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-
 - **Never** touch `~/.config/opencode/opencode.json` (powers the delegation workers) or `~/.codex` in tests. Use temp `XDG_*` / `CODEX_HOME`. Run `electron . --smoke --user-data-dir=<tmp>`.
 - opencode briefs: no key-like strings, "dispatch exactly once"; a long brief can stop mid-run with no final message — split it and send a continuation brief for what's left.
 
-## Next
+## Next — Phase 6 (context survival), ready to start
 
-Phase 6 (context survival — critical path, high risk: one-way `bindings` migration and a non-idempotent Codex seeding channel). Plan in `.ai/plans/phase-6-context-survival.md` before any code; T6.2 export/import (the safety net) lands before T6.1 migrates. Then Phase 7 (interaction), 8 (UI), 9 (release).
+**The plan is written: `.ai/plans/phase-6-context-survival.md`** (read it after this file and `spec/phases/phase-6-context-survival.md`). It records the verified facts (S1/S4 passed; `thread/inject_items` exists in codex 0.157 with params `{ threadId, items }`), the design calls (bindings key and backfill, a new additive `handoff` event kind, `refs/harness-handoff/<seq>` git checkpoint only for Hand off, estimated budget, per-channel seeding, `Service.switchAgent`), and five steps:
+
+1. **A** — T6.2 export/import (the safety net) *before* T6.1's `bindings` migration.
+2. **B** — T6.3 checkpoint builder + `gitState`, T6.4 budget/tiers.
+3. **C** — T6.9 ledger methods, T6.5 `seed()`, T6.6 Codex `inject_items`, T6.8 Claude/ACP synthetic first message (T6.7 flag only).
+4. **D** — T6.12 trust reset + git checkpoint, `Service.switchAgent`, T6.10 bloat signal.
+5. **E** — T6.11 `SwitchDialog`, T6.13 invariant suite; build + preview + migration smoke on a copied DB.
+
+Workflow reminders: one implementer brief per step (keep briefs tight — long ones have stopped mid-run; send a continuation brief for what's left), then read the diff and run typecheck/tests/build yourself; commit only the step's files (no attribution trailer); keep the user's uncommitted bun-migration edits (`README.md`, `mock.ts`, `main.tsx`, `package.json`, CI, `CLAUDE.md`) out of phase commits — commit a file with only your hunk by temporarily restoring `HEAD`'s version plus your change, then put the working copy back. Delete temp files with guarded paths (`"${T:?}/name"`), not globs after `cd`. Run one opencode worker at a time (a background run was killed once for low memory).
+
+After Phase 6: Phase 7 (interaction mechanics), 8 (UI refinement), 9 (release hardening).
