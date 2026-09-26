@@ -1,0 +1,81 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import { describePick, type PickedElement } from "../src/main/browser/picker";
+import { chipLabel, composeMessage } from "../src/renderer/src/composer";
+import { useStore } from "../src/renderer/src/store";
+import type { SendRequest } from "../src/shared/types";
+
+const element: PickedElement = { selector: "button.primary", tag: "button", text: "Save", html: "<button class=\"primary\">Save</button>", rect: { x: 0, y: 0, width: 1, height: 1 } };
+const picked = describePick(element, "http://localhost:3000/");
+
+describe("chipLabel", () => {
+  it("names a picked element by its selector", () => {
+    expect(chipLabel(picked)).toBe("button.primary");
+  });
+
+  it("falls back to the first line, clipped", () => {
+    expect(chipLabel("\nsome long context line that keeps going and going", 20)).toBe("some long context l…");
+  });
+});
+
+describe("composeMessage", () => {
+  it("sends what was typed, then each chip's full text", () => {
+    expect(composeMessage("  make it blue ", [picked])).toBe(`make it blue\n\n${picked}`);
+  });
+
+  it("sends a chip alone", () => {
+    expect(composeMessage("", [picked])).toBe(picked);
+  });
+});
+
+describe("queued send", () => {
+  const sent: SendRequest[] = [];
+  const interrupted: string[] = [];
+  (globalThis as { window?: unknown }).window = {
+    unskilled: new Proxy(
+      {
+        send: async (r: SendRequest) => void sent.push(r),
+        interrupt: async (id: string) => void interrupted.push(id),
+      } as Record<string, unknown>,
+      { get: (target, key: string) => target[key] ?? (async () => null) },
+    ),
+  };
+
+  beforeEach(() => {
+    sent.length = 0;
+    interrupted.length = 0;
+    useStore.setState({ selectedThreadId: "t", running: { t: true }, outbox: {}, finished: [], turnStartedAt: {} });
+  });
+
+  it("delivers a message queued mid-turn exactly once, as the next turn", () => {
+    const s = useStore.getState();
+    s.enqueue("t", "and add a test", "tdd");
+    expect(useStore.getState().outbox.t).toEqual([{ text: "and add a test", skill: "tdd" }]);
+    s.apply({ type: "running", threadId: "t", running: false });
+    expect(sent).toEqual([{ threadId: "t", text: "and add a test", skill: "tdd" }]);
+    expect(useStore.getState().outbox.t).toEqual([]);
+    s.apply({ type: "running", threadId: "t", running: true });
+    s.apply({ type: "running", threadId: "t", running: false });
+    expect(sent).toHaveLength(1);
+  });
+
+  it("sends queued messages one turn at a time, in order", () => {
+    const s = useStore.getState();
+    s.enqueue("t", "first");
+    s.enqueue("t", "second");
+    s.apply({ type: "running", threadId: "t", running: false });
+    expect(sent.map((r) => r.text)).toEqual(["first"]);
+    s.apply({ type: "running", threadId: "t", running: true });
+    s.apply({ type: "running", threadId: "t", running: false });
+    expect(sent.map((r) => r.text)).toEqual(["first", "second"]);
+  });
+
+  it("clears the queue on Stop, before the turn's end could deliver it", async () => {
+    const s = useStore.getState();
+    s.enqueue("t", "never mind");
+    await s.interrupt();
+    expect(interrupted).toEqual(["t"]);
+    s.apply({ type: "running", threadId: "t", running: false });
+    expect(sent).toEqual([]);
+    expect(useStore.getState().outbox.t).toBeUndefined();
+  });
+});

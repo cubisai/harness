@@ -129,7 +129,11 @@ interface State {
   /** Restore a thread export into the selected project and open it. */
   importThread(): Promise<void>;
   updateThread(patch: Partial<Pick<Thread, "title" | "model" | "permissionMode" | "agent">>): Promise<void>;
-  send(text: string, skill?: string): Promise<void>;
+  /** Start a turn on the open thread (or `threadId`); a no-op while that thread is running. */
+  send(text: string, skill?: string, threadId?: string): Promise<void>;
+  /** Messages sent while a turn ran, by thread: each goes out as the next turn, in order. Stop clears them; never persisted. */
+  outbox: Record<string, { text: string; skill?: string }[]>;
+  enqueue(threadId: string, text: string, skill?: string): void;
   interrupt(): Promise<void>;
   respond(requestId: string, decision: "allow-once" | "allow-always" | "deny"): Promise<void>;
   toggleInspector(): void;
@@ -464,8 +468,13 @@ export const useStore = create<State>((set, get) => ({
     if (patch.agent) set({ agents: await api().listAgents() });
   },
 
-  async send(text, skill) {
-    const id = get().selectedThreadId;
+  outbox: {},
+  enqueue(threadId, text, skill) {
+    set((s) => ({ outbox: { ...s.outbox, [threadId]: [...(s.outbox[threadId] ?? []), skill ? { text, skill } : { text }] } }));
+  },
+
+  async send(text, skill, threadId) {
+    const id = threadId ?? get().selectedThreadId;
     if (!id || get().running[id]) return;
     set((s) => ({ running: { ...s.running, [id]: true } }));
     await api().send({ threadId: id, text, skill });
@@ -473,7 +482,13 @@ export const useStore = create<State>((set, get) => ({
 
   async interrupt() {
     const id = get().selectedThreadId;
-    if (id) await api().interrupt(id);
+    if (!id) return;
+    // Stop means stop: queued messages go too, before the turn's end could deliver one.
+    set((s) => {
+      const { [id]: _dropped, ...outbox } = s.outbox;
+      return { outbox };
+    });
+    await api().interrupt(id);
   },
 
   async respond(requestId, decision) {
@@ -567,6 +582,14 @@ export const useStore = create<State>((set, get) => ({
           permissions: update.running ? s.permissions : s.permissions.filter((p) => p.threadId !== update.threadId),
           diffVersion: update.running ? s.diffVersion : s.diffVersion + 1,
         }));
+        // The next queued message goes out as the next turn, exactly once.
+        if (!update.running) {
+          const next = get().outbox[update.threadId]?.[0];
+          if (next) {
+            set((s) => ({ outbox: { ...s.outbox, [update.threadId]: s.outbox[update.threadId]!.slice(1) } }));
+            void get().send(next.text, next.skill, update.threadId);
+          }
+        }
         if (!update.running && get().takeOver.mode !== "idle") {
           // The pause must never outlive the turn.
           set((s) => ({ takeOver: takeOverReducer(s.takeOver, { type: "turn-ended" }) }));

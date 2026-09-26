@@ -13,11 +13,13 @@ type ToolEvent = Extract<ThreadEvent, { kind: "tool-use" }>;
 type ResultEvent = Extract<ThreadEvent, { kind: "tool-result" }>;
 
 const EMPTY_LIVE = emptyLive();
+const NO_QUEUE: { text: string; skill?: string }[] = [];
 
 export function ThreadView({ threadId }: { threadId: string }) {
   const events = useStore((s) => s.events[threadId]) ?? EMPTY;
   const live = useStore((s) => s.live[threadId]) ?? EMPTY_LIVE;
   const running = useStore((s) => Boolean(s.running[threadId]));
+  const outbox = useStore((s) => s.outbox[threadId]) ?? NO_QUEUE;
   const allPermissions = useStore((s) => s.permissions);
   const permissions = useMemo(() => allPermissions.filter((p) => p.threadId === threadId), [allPermissions, threadId]);
   const scroller = useRef<HTMLDivElement>(null);
@@ -66,6 +68,14 @@ export function ThreadView({ threadId }: { threadId: string }) {
         {running && textItems.length === 0 && reasoningMode === "none" && permissions.length === 0 && <div className="notice"><span className="spinner" style={{ display: "inline-block", verticalAlign: -2, marginRight: 8 }} />Working…</div>}
         {permissions.map((p) => (
           <PermissionCard key={p.requestId} request={p} />
+        ))}
+        {outbox.map((m, i) => (
+          <div className="msg-user" key={`queued-${i}`}>
+            <div className="bubble queued" title="Queued: sends when this turn ends">
+              {m.skill && <span className="skill-chip">/{m.skill}</span>}
+              {m.text}
+            </div>
+          </div>
         ))}
       </div>
     </div>

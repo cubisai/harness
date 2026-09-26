@@ -1,19 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SkillEntry } from "../../../shared/types";
 import { IconArrowUp, IconStop } from "../icons";
+import { chipLabel, composeMessage } from "../composer";
 import { useStore } from "../store";
 
 /**
  * The message box. Typing `/` at the start opens the menu of skilled's
  * user-invoked skills; picking one turns it into a chip, and whatever is
- * typed after it goes to the skill as its arguments.
+ * typed after it goes to the skill as its arguments. A picked browser
+ * element becomes a context chip whose text rides along with the message.
+ * Sending while a turn runs queues the message for the next turn.
  */
 export function Composer({ threadId }: { threadId: string }) {
   const skills = useStore((s) => s.skills);
   const running = useStore((s) => Boolean(s.running[threadId]));
   const insert = useStore((s) => s.composerInsert);
-  const { send, interrupt } = useStore.getState();
+  const { send, interrupt, enqueue } = useStore.getState();
   const [text, setText] = useState("");
+  const [chips, setChips] = useState<string[]>([]);
   const [skill, setSkill] = useState<SkillEntry | null>(null);
   const [menuIndex, setMenuIndex] = useState(0);
   const area = useRef<HTMLTextAreaElement>(null);
@@ -38,6 +42,7 @@ export function Composer({ threadId }: { threadId: string }) {
   useEffect(() => {
     area.current?.focus();
     setText("");
+    setChips([]);
     const pending = useStore.getState().takePendingSkill();
     setSkill(pending ? (useStore.getState().skills.find((s) => s.name === pending) ?? null) : null);
   }, [threadId]);
@@ -53,10 +58,10 @@ export function Composer({ threadId }: { threadId: string }) {
     area.current?.focus();
   }, [pendingSkill]);
 
-  // A picked element lands at the end of whatever is being written.
+  // A picked element becomes a chip; its full text goes out with the message.
   useEffect(() => {
     if (!insert) return;
-    setText((t) => (t.trim() ? `${t.trimEnd()}\n\n${insert.text}\n` : `${insert.text}\n`));
+    setChips((c) => [...c, insert.text]);
     useStore.setState({ composerInsert: null }); // consumed: don't re-apply on the next mount
     area.current?.focus();
   }, [insert]);
@@ -76,11 +81,12 @@ export function Composer({ threadId }: { threadId: string }) {
   };
 
   const submit = () => {
-    if (running) return;
-    const body = text.trim();
+    const body = composeMessage(text, chips);
     if (!body && !skill) return;
-    void send(body, skill?.name);
+    if (running) enqueue(threadId, body, skill?.name);
+    else void send(body, skill?.name);
     setText("");
+    setChips([]);
     setSkill(null);
   };
 
@@ -107,8 +113,10 @@ export function Composer({ threadId }: { threadId: string }) {
       setText("");
       return;
     }
-    if (e.key === "Backspace" && skill && !text) {
-      setSkill(null);
+    if (e.key === "Backspace" && !text && (chips.length || skill)) {
+      // The last chip first, then the skill.
+      if (chips.length) setChips((c) => c.slice(0, -1));
+      else setSkill(null);
       return;
     }
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -159,14 +167,20 @@ export function Composer({ threadId }: { threadId: string }) {
               /{skill.name}
             </span>
           )}
+          {chips.map((c, i) => (
+            <span key={i} className="skill-chip context-chip" title={c}>
+              {chipLabel(c)}
+            </span>
+          ))}
           <span className="grow" />
-          <span className="hint">{running ? "Esc to stop" : "Return to send · Shift-Return for a new line"}</span>
-          {running ? (
-            <button className="send stop" title="Stop" onClick={() => void interrupt()}>
+          <span className="hint">{running ? "Return to queue for the next turn · Esc to stop" : "Return to send · Shift-Return for a new line"}</span>
+          {running && (
+            <button className="send stop" title="Stop (clears queued messages)" onClick={() => void interrupt()}>
               <IconStop />
             </button>
-          ) : (
-            <button className="send" title="Send" disabled={!text.trim() && !skill} onClick={submit}>
+          )}
+          {(!running || text.trim() || chips.length > 0) && (
+            <button className="send" title={running ? "Queue for the next turn" : "Send"} disabled={!text.trim() && !skill && !chips.length} onClick={submit}>
               <IconArrowUp />
             </button>
           )}
