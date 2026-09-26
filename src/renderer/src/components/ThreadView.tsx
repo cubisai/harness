@@ -49,7 +49,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
     >
       <div className="thread-inner">
         {events.map((e) => (
-          <EventRow key={e.seq} stored={e} results={results} running={running} />
+          <EventRow key={e.seq} stored={e} results={results} running={running} threadId={threadId} />
         ))}
         {reasoningMode === "text" &&
           reasoningItems.map((item, i) => (
@@ -72,7 +72,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
 
 const EMPTY: StoredEvent[] = [];
 
-export function EventRow({ stored, results, running }: { stored: StoredEvent; results: Map<string, ResultEvent>; running: boolean }) {
+export function EventRow({ stored, results, running, threadId }: { stored: StoredEvent; results: Map<string, ResultEvent>; running: boolean; threadId?: string }) {
   const e = stored.event;
   switch (e.kind) {
     case "user":
@@ -94,7 +94,7 @@ export function EventRow({ stored, results, running }: { stored: StoredEvent; re
       if (!e.text && !e.opaque) return null;
       return <ReasoningBlock text={e.text} opaque={Boolean(e.opaque)} live={false} newest={false} tokens={null} />;
     case "tool-use":
-      return <ToolRow tool={e} result={results.get(e.toolUseId)} running={running} />;
+      return <ToolEventRow tool={e} result={results.get(e.toolUseId)} running={running} threadId={threadId} />;
     case "tool-result":
       return null; // shown on its tool row
     case "turn-end":
@@ -141,24 +141,73 @@ export function EventRow({ stored, results, running }: { stored: StoredEvent; re
   }
 }
 
-function ToolRow({ tool, result, running }: { tool: ToolEvent; result?: ResultEvent; running: boolean }) {
+function ToolEventRow({ tool, result, running, threadId }: { tool: ToolEvent; result?: ResultEvent; running: boolean; threadId?: string }) {
+  const open = useStore((s) => (threadId ? Boolean(s.disclosures[threadId]?.[tool.toolUseId]) : false));
+  return <ToolRow tool={tool} result={result} running={running} open={open} onToggle={(o) => threadId && useStore.getState().setDisclosure(threadId, tool.toolUseId, o)} />;
+}
+
+export function ToolRow({ tool, result, running, open, onToggle }: { tool: ToolEvent; result?: ResultEvent; running: boolean; open: boolean; onToggle(open: boolean): void }) {
   const state = result ? (result.isError ? "error" : "done") : running ? "pending" : "";
   // File tools name the file they touched; open it from the row.
   const fileRef = FILE_TOOLS.has(tool.name) ? parseFileRef(tool.summary.split(", ")[0] ?? "") : null;
+  const hasInput = tool.payload !== undefined;
+  const hasOutput = result?.payload !== undefined;
   return (
-    <div className="tool-row" title={result?.summary ?? tool.summary}>
-      <span className={`dot ${state}`} />
-      <span className="name">{prettyTool(tool.name)}</span>
-      {fileRef ? (
-        <button className="summary file-link" title="Open in the editor" onClick={() => openRef(fileRef)}>
-          {tool.summary}
-        </button>
-      ) : (
-        <span className="summary">{tool.summary}</span>
+    <details className="tool" open={open} onToggle={(e) => onToggle(e.currentTarget.open)}>
+      <summary className="tool-row" title={result?.summary ?? tool.summary}>
+        <span className={`dot ${state}`} />
+        <span className="name">{prettyTool(tool.name)}</span>
+        {fileRef ? (
+          <button
+            className="summary file-link"
+            title="Open in the editor"
+            onClick={(e) => {
+              e.preventDefault();
+              openRef(fileRef);
+            }}
+          >
+            {tool.summary}
+          </button>
+        ) : (
+          <span className="summary">{tool.summary}</span>
+        )}
+        {result?.summary && <span className="result">{result.summary}</span>}
+      </summary>
+      {open && (
+        <div className="tool-body">
+          {hasInput && (
+            <div className="tool-section">
+              <div className="tool-label">Input</div>
+              <pre className="tool-pre">{payloadText(tool.payload)}</pre>
+            </div>
+          )}
+          {hasOutput && (
+            <div className="tool-section">
+              <div className="tool-label">{result!.isError ? "Error" : "Output"}</div>
+              <pre className="tool-pre">{payloadText(result!.payload)}</pre>
+            </div>
+          )}
+          {!hasInput && !hasOutput && <div className="tool-empty">No details recorded.</div>}
+        </div>
       )}
-      {result?.summary && <span className="result">{result.summary}</span>}
-    </div>
+    </details>
   );
+}
+
+function isBlobStub(v: unknown): v is { blobRef: string; preview: string; bytes?: number } {
+  if (!v || typeof v !== "object") return false;
+  const p = v as Record<string, unknown>;
+  return typeof p.blobRef === "string" && typeof p.preview === "string";
+}
+
+/** A tool payload as display text: stubs show their preview, everything else its JSON. */
+export function payloadText(v: unknown): string {
+  let text: string;
+  if (typeof v === "string") text = v;
+  else if (isBlobStub(v)) text = `${v.preview}\n... (${v.bytes ?? 0} bytes, truncated)`;
+  else text = JSON.stringify(v, null, 2) ?? "";
+  if (text.length > 4000) return `${text.slice(0, 4000)}\n... (cut)`;
+  return text;
 }
 
 const FILE_TOOLS = new Set(["Read", "Edit", "Write", "MultiEdit", "NotebookEdit"]);

@@ -384,6 +384,17 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .tool-row .summary { font-family: var(--mono); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tool-row .result { margin-left: auto; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
 
+details.tool { interpolate-size: allow-keywords; }
+details.tool > summary { list-style: none; cursor: default; }
+details.tool > summary::-webkit-details-marker { display: none; }
+details.tool::details-content { height: 0; overflow: clip; transition: height 180ms var(--ease), content-visibility 180ms var(--ease) allow-discrete; }
+details.tool[open]::details-content { height: auto; }
+.tool-body { margin: 2px 0 8px 18px; padding: 8px 10px; border-left: 2px solid var(--hairline); content-visibility: auto; contain-intrinsic-size: auto 120px; }
+.tool-section + .tool-section { margin-top: 8px; }
+.tool-label { font-size: 11px; font-weight: 600; color: var(--text-tertiary); margin-bottom: 4px; }
+.tool-pre { margin: 0; font: 11.5px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
+.tool-empty { color: var(--text-tertiary); font-size: 12px; }
+
 .thinking {
   margin: 6px 0;
   color: var(--text-tertiary);

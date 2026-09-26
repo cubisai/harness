@@ -58,6 +58,9 @@ interface State {
   events: Record<string, StoredEvent[]>; // by thread id
   live: Record<string, LiveThread>; // streaming state not yet stored
   running: Record<string, boolean>;
+  /** Which tool disclosures are open, by thread id and disclosure id; never persisted. */
+  disclosures: Record<string, Record<string, boolean>>;
+  setDisclosure(threadId: string, id: string, open: boolean): void;
   permissions: PermissionRequest[];
   /** Panel widths and collapse state; the raw setting, drawn through clampLayout. */
   paneLayout: PaneLayout;
@@ -212,6 +215,7 @@ export const useStore = create<State>((set, get) => ({
   events: {},
   live: {},
   running: {},
+  disclosures: {},
   permissions: [],
   paneLayout: { ...DEFAULT_LAYOUT },
   inspectorOpen: false,
@@ -359,6 +363,15 @@ export const useStore = create<State>((set, get) => ({
   async respond(requestId, decision) {
     set((s) => ({ permissions: s.permissions.filter((p) => p.requestId !== requestId) }));
     await api().respondPermission(requestId, decision);
+  },
+
+  setDisclosure(threadId, id, open) {
+    set((s) => {
+      const thread = { ...(s.disclosures[threadId] ?? {}) };
+      if (open) thread[id] = true;
+      else delete thread[id];
+      return { disclosures: { ...s.disclosures, [threadId]: thread } };
+    });
   },
 
   setPaneLayout(patch, persist) {
