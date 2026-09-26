@@ -13,6 +13,8 @@ import { codexInstructions, prepareCodexPlan, validateCodexCatalog } from "../sr
 import { startToolServer } from "../src/main/mcp-http";
 import { startFakeOpenAI } from "./fixtures/fake-openai.mjs";
 import { closeAfter } from "./helpers";
+import { Store } from "../src/main/db";
+import { injectWithLedger } from "../src/main/handoff";
 
 // The real `codex app-server` against a fake Responses API model, so the
 // whole path runs without an account: thread config, MCP tool listing,
@@ -126,6 +128,75 @@ describe.skipIf(!codex)("Codex end to end (real app-server, fake model)", () => 
     expect(second.events.filter((e) => e.kind !== "turn-start" && e.kind !== "turn-end")).toEqual([
       { kind: "assistant-text", text: "Evaluated.", itemId: expect.any(String) },
     ]);
+  }, 60_000);
+
+  it("seeds a thread with thread/inject_items once, and the next turn sends the injected history", async () => {
+    const model = await startFakeOpenAI();
+    closeAfter(() => void model.server.close());
+    const home = mkdtempSync(join(tmpdir(), "unskilled-codex-home-"));
+    const driver = createCodexDriver({
+      command: codex!,
+      args: [
+        "app-server",
+        "-c", 'model_provider="fake"',
+        "-c", 'model="fake-model"',
+        "-c", `model_providers.fake={ name="fake", base_url="${model.url}", wire_api="responses", requires_openai_auth=false }`,
+      ],
+      clientVersion: "test",
+    });
+    closeAfter(() => driver.dispose?.());
+    const previousHome = process.env.CODEX_HOME;
+    process.env.CODEX_HOME = home;
+    closeAfter(() => (previousHome === undefined ? delete process.env.CODEX_HOME : (process.env.CODEX_HOME = previousHome)));
+    const store = new Store(join(mkdtempSync(join(tmpdir(), "unskilled-ledger-")), "t.db"));
+    closeAfter(() => store.close());
+
+    const cwd = mkdtempSync(join(tmpdir(), "unskilled-codex-cwd-"));
+    const items = [
+      { type: "message", role: "user", content: [{ type: "input_text", text: "HANDOFF-MARKER from claude" }] },
+      { type: "function_call", call_id: "call_handoff_1", name: "shell", arguments: JSON.stringify({ command: ["npm", "test"] }) },
+      { type: "function_call_output", call_id: "call_handoff_1", output: "3 passed" },
+    ];
+    let sessionId: string | null = null;
+    const seed = () =>
+      driver.seed!({
+        threadId: "t",
+        sessionId,
+        cwd,
+        model: "default",
+        permissionMode: "ask",
+        tools: [],
+        mcpServers: [],
+        items,
+        onSession: () => {},
+        inject: (sid, send) => injectWithLedger(store, { threadId: "t", provider: "codex", sessionId: sid, checkpointId: "cp" }, items, "codex/inject_items", send),
+      });
+
+    const first = await seed();
+    expect(first).toMatchObject({ mode: "seeded", sent: 3 });
+    sessionId = first.sessionId!;
+    expect(model.requests).toHaveLength(0); // injecting never runs the model
+    expect((await seed()).sent).toBe(0);
+
+    const events: ThreadEvent[] = [];
+    await driver.runTurn({
+      threadId: "t",
+      cwd,
+      prompt: "continue",
+      sessionId,
+      model: "default",
+      permissionMode: "ask",
+      signal: new AbortController().signal,
+      tools: [],
+      mcpServers: [],
+      onEvent: (e) => events.push(e),
+      onTextDelta: () => {},
+      onSession: () => {},
+      requestPermission: async () => "deny",
+    });
+    const sent = JSON.stringify(model.requests.at(-1)!.input);
+    expect(sent).toContain("HANDOFF-MARKER from claude");
+    expect(sent.split("call_handoff_1").length - 1).toBe(2); // the call and its output, once each
   }, 60_000);
 
   it("runs a turn through an injected BYOK provider", async () => {

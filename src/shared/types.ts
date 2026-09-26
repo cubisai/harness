@@ -466,6 +466,10 @@ export interface AgentCapabilities {
   interrupt: boolean;
   /** Reasoning arrives as it's produced; when false the UI says it shows up at the end. */
   liveReasoning?: boolean;
+  /** How a new session gets the handoff: injected history items, one synthetic first message, or not at all. */
+  seeding?: "inject-items" | "first-message" | "none";
+  /** A native no-reply prompt channel (OpenCode's session.prompt noReply). No driver has one yet. */
+  seedNoReply?: boolean;
   skillsDelivery: SkillsDelivery;
   permissionGranularity: "perTool" | "perCommand" | "modeOnly";
   /** Per permission mode: whether the git guardrail can veto a command before it runs. */

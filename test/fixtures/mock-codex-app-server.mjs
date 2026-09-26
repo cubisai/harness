@@ -8,6 +8,7 @@
 //              asking first when its config says to, as Codex does
 //   "roots" - reports the extra skills roots the app set
 //   "unsubs" - reports how many thread/unsubscribe requests the mock has seen
+//   "injects" - replies with how many thread/inject_items calls the mock saw and the call ids injected into this thread
 //   "plan" - sends turn/plan/updated, then the normal reply
 //   "compact" - sends a contextCompaction item, then the normal reply
 //   "cached" - the normal reply, but reports cached input tokens
@@ -33,6 +34,8 @@ const threads = new Set(["known-thread"]);
 let interrupted = false;
 let extraRoots = [];
 let unsubscribes = 0;
+let injectCalls = 0;
+const injected = new Map(); // thread id -> items injected into it
 const configs = new Map(); // loaded thread id -> its config
 
 async function callTool(server, name, args) {
@@ -77,6 +80,13 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
       unsubscribes++;
       configs.delete(params.threadId);
       return send({ id, result: { status: "unsubscribed" } });
+    case "thread/inject_items": {
+      if (!threads.has(params.threadId)) return send({ id, error: { code: -32600, message: "no such thread" } });
+      if (!injected.has(params.threadId)) injected.set(params.threadId, []);
+      injected.get(params.threadId).push(...params.items);
+      injectCalls++;
+      return send({ id, result: {} });
+    }
     case "turn/interrupt":
       interrupted = true;
       return send({ id, result: {} });
@@ -94,6 +104,12 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
       }
       if (text === "unsubs") {
         notify("item/completed", { threadId, turnId: turn.id, item: { type: "agentMessage", id: "m", text: String(unsubscribes) } });
+        return done("completed");
+      }
+      if (text === "injects") {
+        const reply = `injects=${injectCalls} ids=${(injected.get(threadId) ?? []).filter((i) => i.call_id && i.type === "function_call_output").map((i) => i.call_id).join(",")}`;
+        notify("item/agentMessage/delta", { threadId, turnId: turn.id, itemId: "m2", delta: reply });
+        notify("item/completed", { threadId, turnId: turn.id, item: { type: "agentMessage", id: "m2", text: reply } });
         return done("completed");
       }
       if (text === "slow") {

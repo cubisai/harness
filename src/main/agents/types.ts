@@ -64,6 +64,25 @@ export interface TurnInput {
   provenance?: Provenance;
 }
 
+/** What a driver needs to seed a new session with a handoff, without starting a turn. */
+export interface SeedRequest {
+  threadId: string;
+  /** The target's existing cursor, resumed when it still works; null opens a new session. */
+  sessionId: string | null;
+  cwd: string;
+  model: string;
+  permissionMode: PermissionMode;
+  tools: HarnessTool[];
+  mcpServers: McpServerEntry[];
+  /** Responses-shaped history items for inject-items channels. */
+  items: unknown[];
+  onSession(sessionId: string): void;
+  /** Sends through the injection ledger for this target session; returns what was actually sent. */
+  inject(sessionId: string, send: (items: unknown[]) => Promise<void>): Promise<{ sent: number; skipped: number }>;
+}
+
+export interface SeedResult { mode: "resume" | "seeded" | "unsupported"; reason?: string; sessionId?: string; sent?: number }
+
 /**
  * One agent backend. Milestone 1 ships Claude (Agent SDK); Codex
  * (app-server) and ACP agents (deepseek-harness, Antigravity, Cursor)
@@ -98,6 +117,8 @@ export interface AgentDriver {
   setModel?(req: { threadId: string; sessionId: string; from: string; to: string }): Promise<ModelSwitch>;
   /** Count tokens in the target model's own tokenizer, when the agent offers a free way to. Absent: the harness estimates. */
   countTokens?(text: string, model: string): Promise<number>;
+  /** Seed a session with a handoff without starting a turn (inject-items channels only). */
+  seed?(req: SeedRequest): Promise<SeedResult>;
   runTurn(input: TurnInput): Promise<void>;
   /** Stop any agent processes the driver keeps alive. */
   dispose?(): void;

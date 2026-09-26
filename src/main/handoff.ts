@@ -251,6 +251,20 @@ export async function fitCheckpoint(
   return { ok: false, reason: `Even the shortest handoff (${tokens} tokens) is over the ${cap}-token budget. Start fresh instead.`, tier: 2, tokens, estimated };
 }
 
+/**
+ * Codex history items for a checkpoint: the rendered text as one user message, then each recorded
+ * command as a function_call + function_call_output pair under its original call id. Never reasoning.
+ */
+export function codexSeedItems(cp: HandoffCheckpoint, text: string): unknown[] {
+  return [
+    { type: "message", role: "user", content: [{ type: "input_text", text }] },
+    ...cp.commands.flatMap((c) => [
+      { type: "function_call", call_id: c.toolUseId, name: c.name, arguments: JSON.stringify({ summary: c.summary }) },
+      { type: "function_call_output", call_id: c.toolUseId, output: c.output },
+    ]),
+  ];
+}
+
 /** sha256 of the canonical item plus the protocol it is sent over, so the same item on another channel is a different injection. */
 export function itemFingerprint(item: unknown, protocolId: string): string {
   return createHash("sha256").update(stableStringify(item) + "\n" + protocolId).digest("hex");

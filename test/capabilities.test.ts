@@ -28,6 +28,8 @@ const EXACT_DEFAULTS = {
   planMode: false,
   interrupt: false,
   liveReasoning: false,
+  seeding: "first-message",
+  seedNoReply: false,
   skillsDelivery: { mode: "none" },
   permissionGranularity: "modeOnly",
   guardEnforcement: { ask: "warnOnly", "auto-edit": "warnOnly", full: "warnOnly" },

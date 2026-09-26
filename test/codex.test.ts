@@ -5,9 +5,11 @@ import type { PermissionDecision, ThreadEvent } from "../src/shared/types";
 import { z } from "zod";
 import { codexDecision, codexPolicy, codexToolConfig, createCodexDriver, turnEndFromUsage } from "../src/main/agents/codex";
 import type { LimitsPatch } from "../src/main/agents/limits";
-import type { HarnessTool, TurnInput } from "../src/main/agents/types";
+import type { HarnessTool, SeedRequest, TurnInput } from "../src/main/agents/types";
+import { Store } from "../src/main/db";
+import { injectWithLedger } from "../src/main/handoff";
 import { startToolServer } from "../src/main/mcp-http";
-import { closeAfter } from "./helpers";
+import { closeAfter, tempDir } from "./helpers";
 
 const MOCK = join(__dirname, "fixtures", "mock-codex-app-server.mjs");
 const GUARD = join(__dirname, "fixtures", "fake-guard.py");
@@ -284,6 +286,49 @@ describe("Codex driver", () => {
     const end = t.events.at(-1);
     expect(end).toMatchObject({ kind: "turn-end", inputTokens: 1000, outputTokens: 12 });
     expect(end?.kind === "turn-end" ? end.usage?.cacheReadTokens : undefined).toBe(8000);
+  });
+});
+
+describe("Codex seeding", () => {
+  it("seeds through the ledger, resumes without re-sending, and never starts a turn", async () => {
+    const d = driver();
+    const store = new Store(join(tempDir(), "t.db"));
+    closeAfter(() => store.close());
+    const items = [
+      { type: "message", role: "user", content: [{ type: "input_text", text: "handoff" }] },
+      { type: "function_call", call_id: "call-9", name: "Bash", arguments: "{}" },
+      { type: "function_call_output", call_id: "call-9", output: "3 passed" },
+    ];
+    let sessionId: string | null = null;
+    const sessions: string[] = [];
+    const seedReq = (): SeedRequest => ({
+      threadId: "t",
+      sessionId,
+      cwd: tmpdir(),
+      model: "default",
+      permissionMode: "ask",
+      tools: [],
+      mcpServers: [],
+      items,
+      onSession: (s) => sessions.push(s),
+      inject: (sid, send) =>
+        injectWithLedger(store, { threadId: "t", provider: "codex", sessionId: sid, checkpointId: "cp-1" }, items, "codex/inject_items", send),
+    });
+
+    const first = await d.seed!(seedReq());
+    expect(first).toMatchObject({ mode: "seeded", sent: 3 });
+    expect(sessions).toHaveLength(1);
+    sessionId = first.sessionId!;
+
+    // Same target session: the ledger skips everything already injected.
+    const second = await d.seed!(seedReq());
+    expect(second).toMatchObject({ mode: "seeded", sent: 0 });
+
+    // Events are collected only by turn(), which runs after both seeds: the
+    // seeds opened and injected without starting a turn.
+    const t = turn("injects", { sessionId });
+    await d.runTurn(t.input);
+    expect(t.events.find((e) => e.kind === "assistant-text")).toMatchObject({ text: "injects=1 ids=call-9" });
   });
 });
 

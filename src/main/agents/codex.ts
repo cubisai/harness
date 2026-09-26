@@ -422,6 +422,53 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     return refreshing;
   };
 
+  const openThread = async (
+    input: Pick<TurnInput, "cwd" | "model" | "permissionMode" | "sessionId" | "tools" | "mcpServers" | "onEvent" | "onSession" | "onSessionRebuilt">,
+  ): Promise<string> => {
+    const policy = codexPolicy(input.permissionMode);
+    const model = input.model === CODEX_DEFAULT_MODEL ? null : input.model;
+    await start(input.cwd);
+    const conn = rpc!;
+    const withTools = input.tools.length > 0 && Boolean(config.toolServer);
+    const threadConfig = codexToolConfig(withTools ? await config.toolServer!() : null, input.tools, input.permissionMode, input.mcpServers);
+    const signature = JSON.stringify(threadConfig ?? null);
+    let threadId = "";
+    if (input.sessionId) {
+      // The MCP servers changed mid-conversation (the user opened the
+      // browser, or edited their servers): unload the thread so the
+      // resume below loads it again with the new config.
+      const was = loaded.get(input.sessionId);
+      if (was !== undefined && was !== signature) {
+        const servers = (json: string) => ((JSON.parse(json) as { mcp_servers?: Record<string, unknown> } | null)?.mcp_servers ?? {});
+        const notice = mcpChangeNotice(servers(was), servers(signature), true, "Codex");
+        if (notice) input.onEvent({ kind: "notice", text: notice });
+        await conn.request("thread/unsubscribe", { threadId: input.sessionId }).catch(() => {});
+        loaded.delete(input.sessionId);
+        input.onSessionRebuilt?.();
+      }
+      try {
+        const res = await conn.request<{ thread: { id: string } }>("thread/resume", {
+          threadId: input.sessionId,
+          cwd: input.cwd,
+          model,
+          ...policy,
+          config: threadConfig,
+        });
+        threadId = res.thread.id;
+      } catch {
+        input.onEvent({ kind: "notice", text: "Codex couldn't resume the earlier conversation; this is a fresh thread." });
+      }
+    }
+    if (!threadId) {
+      const res = await conn.request<{ thread: { id: string } }>("thread/start", { cwd: input.cwd, model, ...policy, config: threadConfig });
+      threadId = res.thread.id;
+    }
+    // A resume of a thread that's already loaded keeps its config, so only a first load decides.
+    if (!loaded.has(threadId)) loaded.set(threadId, signature);
+    input.onSession(threadId);
+    return threadId;
+  };
+
   return {
     id: "codex",
     label: "Codex",
@@ -438,50 +485,19 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     // default sends model null, which keeps the old model, so that needs a
     // new thread.
     setModel: async ({ to }) => (to === CODEX_DEFAULT_MODEL ? "new-session" : "in-place"),
+    async seed(req) {
+      const events: ThreadEvent[] = []; // notices from opening the thread are dropped here; the Service reports the seed itself
+      const threadId = await openThread({ cwd: req.cwd, model: req.model, permissionMode: req.permissionMode, sessionId: req.sessionId, tools: req.tools, mcpServers: req.mcpServers, onEvent: (e) => events.push(e), onSession: req.onSession });
+      const conn = rpc!;
+      const { sent } = await req.inject(threadId, (items) => conn.request("thread/inject_items", { threadId, items }).then(() => undefined));
+      return { mode: "seeded", sessionId: threadId, sent };
+    },
     async runTurn(input) {
       const policy = codexPolicy(input.permissionMode);
       const model = input.model === CODEX_DEFAULT_MODEL ? null : input.model;
       let threadId: string;
       try {
-        await start(input.cwd);
-        const conn = rpc!;
-        const withTools = input.tools.length > 0 && Boolean(config.toolServer);
-        const threadConfig = codexToolConfig(withTools ? await config.toolServer!() : null, input.tools, input.permissionMode, input.mcpServers);
-        const signature = JSON.stringify(threadConfig ?? null);
-        threadId = "";
-        if (input.sessionId) {
-          // The MCP servers changed mid-conversation (the user opened the
-          // browser, or edited their servers): unload the thread so the
-          // resume below loads it again with the new config.
-          const was = loaded.get(input.sessionId);
-          if (was !== undefined && was !== signature) {
-            const servers = (json: string) => ((JSON.parse(json) as { mcp_servers?: Record<string, unknown> } | null)?.mcp_servers ?? {});
-            const notice = mcpChangeNotice(servers(was), servers(signature), true, "Codex");
-            if (notice) input.onEvent({ kind: "notice", text: notice });
-            await conn.request("thread/unsubscribe", { threadId: input.sessionId }).catch(() => {});
-            loaded.delete(input.sessionId);
-            input.onSessionRebuilt?.();
-          }
-          try {
-            const res = await conn.request<{ thread: { id: string } }>("thread/resume", {
-              threadId: input.sessionId,
-              cwd: input.cwd,
-              model,
-              ...policy,
-              config: threadConfig,
-            });
-            threadId = res.thread.id;
-          } catch {
-            input.onEvent({ kind: "notice", text: "Codex couldn't resume the earlier conversation; this is a fresh thread." });
-          }
-        }
-        if (!threadId) {
-          const res = await conn.request<{ thread: { id: string } }>("thread/start", { cwd: input.cwd, model, ...policy, config: threadConfig });
-          threadId = res.thread.id;
-        }
-        // A resume of a thread that's already loaded keeps its config, so only a first load decides.
-        if (!loaded.has(threadId)) loaded.set(threadId, signature);
-        input.onSession(threadId);
+        threadId = await openThread(input);
       } catch (err) {
         input.onEvent({ kind: "error", message: `Codex failed to start: ${err instanceof Error ? err.message : String(err)}` });
         return;

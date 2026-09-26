@@ -4,7 +4,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { Store } from "../src/main/db";
-import { buildCheckpoint, checkpointCap, exportThread, fitCheckpoint, importThread, injectWithLedger, itemFingerprint, renderCheckpoint, THREAD_EXPORT_VERSION } from "../src/main/handoff";
+import { buildCheckpoint, checkpointCap, codexSeedItems, exportThread, fitCheckpoint, importThread, injectWithLedger, itemFingerprint, renderCheckpoint, THREAD_EXPORT_VERSION } from "../src/main/handoff";
 import { gitState, workingTreeDiff } from "../src/main/git";
 import type { HandoffCheckpoint } from "../src/shared/types";
 import { closeAfter, tempDir } from "./helpers";
@@ -192,6 +192,28 @@ describe("fitCheckpoint", () => {
     expect(checkpointCap(8000)).toBe(2000);
     expect(checkpointCap(null)).toBe(4000);
     expect(checkpointCap(1_000_000)).toBe(4000);
+  });
+});
+
+describe("codexSeedItems", () => {
+  it("carries the rendered text and each command's call id, never reasoning", () => {
+    const cp: HandoffCheckpoint = {
+      threadId: "t",
+      from: null,
+      builtAt: 0,
+      lastSeq: 3,
+      goal: "",
+      messages: [],
+      files: [],
+      commands: [{ toolUseId: "b1", name: "Bash", summary: "npm test", isError: false, exitCode: 0, output: "3 passed", artifact: null }],
+      openQuestions: [],
+      git: null,
+    };
+    const items = codexSeedItems(cp, "# Handoff") as { type: string; call_id?: string }[];
+    expect(items[0]).toEqual({ type: "message", role: "user", content: [{ type: "input_text", text: "# Handoff" }] });
+    expect(items[1]).toMatchObject({ type: "function_call", call_id: "b1", name: "Bash" });
+    expect(items[2]).toMatchObject({ type: "function_call_output", call_id: "b1", output: "3 passed" });
+    expect(items.some((i) => i.type === "reasoning")).toBe(false);
   });
 });
 
