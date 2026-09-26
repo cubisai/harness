@@ -103,13 +103,13 @@ Paths are relative to the repo root. Read the chapter that explains *why* before
 
 ## Exit criteria
 
-- [ ] `pnpm typecheck`, `pnpm test`, `pnpm build` green.
-- [ ] A test asserts delta ordering and that N deltas coalesce into one visible update.
-- [ ] A test asserts a partial/unterminated fenced code block never renders as a `code` block.
-- [ ] A test asserts a mid-turn `tool-use` for one item does not clear another item's streaming buffer.
-- [ ] A test asserts a `reasoning-delta` broadcast writes no `events` row.
-- [ ] Claude `thinking_delta`/`signature_delta`/`input_json_delta` and Codex reasoning/output deltas are each covered by a driver test.
-- [ ] ACP thought chunks are broadcast before the terminal `thinking`, and tool output is broadcast before the `tool-result`.
-- [ ] Aborting mid-stream leaves every observed delta present in the terminal text.
-- [ ] `ReasoningBlock` never drives one element from both `thinking-progress` and `reasoning-delta`.
-- [ ] `pnpm preview:ui` renders a `plan` row and a `compaction` divider with no console error.
+- [x] `pnpm typecheck`, `pnpm test`, `pnpm build` green.
+- [x] A test asserts delta ordering and that N deltas coalesce into one visible update.
+- [x] A test asserts a partial/unterminated fenced code block never renders as a `code` block.
+- [x] A test asserts a mid-turn `tool-use` for one item does not clear another item's streaming buffer.
+- [x] A test asserts a `reasoning-delta` broadcast writes no `events` row.
+- [x] Claude `thinking_delta`/`signature_delta`/`input_json_delta` and Codex reasoning/output deltas are each covered by a driver test.
+- [x] ACP thought chunks are broadcast before the terminal `thinking`, and tool output is broadcast before the `tool-result`.
+- [x] Aborting mid-stream leaves every observed delta present in the terminal text.
+- [x] `ReasoningBlock` never drives one element from both `thinking-progress` and `reasoning-delta`.
+- [x] `pnpm preview:ui` renders a `plan` row and a `compaction` divider with no console error.

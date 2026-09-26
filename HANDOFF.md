@@ -1,4 +1,4 @@
-# Handoff — after Phase 3 (capability parity)
+# Handoff — after Phase 4 (streaming + reasoning)
 
 Updated 2026-09-26 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-delegation workflow), then `spec/README.md`.
 
@@ -10,6 +10,7 @@ Updated 2026-09-26 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-
 | 1 — Provider registry | done | `8b68753` |
 | 2 — Credential injection | done | `f95ceaa` … `f09a2d7` (+ `5ce511c`) |
 | 3 — Capability parity | **done**: typecheck, build and `electron . --smoke` green; tests green except the two known Windows-machine items below | A `67bdb46` (+`8b39214`), B `84ed108`, C `3a909dc`, D `3aacc63`, E `c2d10f2` |
+| 4 — Streaming + reasoning | **done**: typecheck, build, preview render green; tests green except the two known Windows-machine items | A `6d20cce`, B `8667748`, C `d6686ac`, D `a6ea827` |
 | Windows portability | done | `ae0b0cc` |
 
 **Uncommitted on purpose (the user decides):** the pnpm → bun switch (`package.json`, `bun.lock`, `bunfig.toml`, deleted `pnpm-*`/`.npmrc`, `ci.yml`, README/`main.tsx`/`mock.ts` comments) and the `CLAUDE.md` Windows notes. `test/__snapshots__/providers.test.ts.snap` shows as modified: line endings only. Phase commits carry code + tests only, with no attribution trailer.
@@ -25,6 +26,12 @@ Updated 2026-09-26 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-
 - Library capability chips + "What this agent can't do here"; `PermissionCard` shows the guard variant from `capabilities.guardEnforcement[mode]`.
 - Credential injector chosen by data (`injectionFor(..., { injector, keyVar, providerEnvOnly })`, preset fields), and `test/no-agent-id-branches.test.ts` scans `src/main`.
 
+## What Phase 4 shipped
+
+- Live-only channel: `TurnInput.onTextDelta(text, itemId?)` plus optional `onReasoningDelta/onReasoningSummary/onToolInputDelta/onToolOutputDelta/onUsageUpdate/onThinkingProgress`; the Service broadcasts each as `LiveUpdate { type: "delta" }` (redacted, never stored).
+- Claude keys stream items `${messageId}:${blockIndex}` (blocks counted per message id), keeps opaque reasoning as `{ text: "", signature, opaque: true }`, flushes streamed text before "Stopped.". Codex: reasoning text/summary/command-output deltas (reasoning kept out of `t.deltas`). ACP: live thoughts, tool output as suffix diffs of content snapshots, usage updates; per-run synthetic item ids. `AgentCapabilities.liveReasoning?`.
+- Renderer: `live.ts` per-item state (cleared only by its terminal event; items without ids clear their channel), 16 ms batched store writes; `streaming.ts` (`parseBlocks` moved here, `splitStreamingTail`, `memoizeByHash`); `ReasoningBlock`, plan row, compaction divider; preview mock shows them.
+
 ## Windows portability (`src/main/winspawn.ts`)
 
 `spawnCommand`/`execCommandSync` resolve a bare name on PATH and run `.cmd` shims through cmd.exe with cross-spawn-style double escaping (Codex `-c` values survive); `killTree` uses a synchronous `taskkill /T /F` (a plain `kill()` left `opencode.exe` running). Non-Windows paths are unchanged.
@@ -39,10 +46,11 @@ Updated 2026-09-26 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-
 ## Environment facts
 
 - **Windows PC:** bun 1.4.2, Node 22.17, codex-cli 0.157.1 (npm shim, ChatGPT login), opencode 1.18.32 (npm shim), no `python` in Git Bash, delegation proxy on `127.0.0.1:3900`. Use `timeout 900 opencode run …`.
+- Headless preview check without agent-browser (no `AGENT_BROWSER_EXECUTABLE_PATH` in Git Bash): `chrome --headless=new --enable-logging=stderr --v=0 --virtual-time-budget=6000 --dump-dom http://localhost:5199/?state=thread`.
 - **Mac:** Node 24, codex 0.157, delegation proxy on `127.0.0.1:4141`.
 - **Never** touch `~/.config/opencode/opencode.json` (powers the delegation workers) or `~/.codex` in tests. Use temp `XDG_*` / `CODEX_HOME`. Run `electron . --smoke --user-data-dir=<tmp>`.
 - opencode briefs: no key-like strings, "dispatch exactly once"; a long brief can stop mid-run with no final message — split it and send a continuation brief for what's left.
 
 ## Next
 
-Phase 4 (streaming + reasoning display), in four steps: A — `TurnInput`/`LiveUpdate` delta channel + Claude deltas (T4.1, T4.2, Claude part of T4.8); B — Codex + ACP deltas and abort flush (T4.3, T4.4, T4.8); C — renderer `live.ts` store + `streaming.ts` tail (T4.5, T4.6); D — `ReasoningBlock`, plan row, compaction divider (T4.7). Then Phase 5 (cache), then Phase 6 (context survival, critical path).
+Phase 5 (cache discipline + observability): T5.3 first (browser tools pinned from turn 1 — also fixes the flaky codex-e2e browser test), then T5.1/T5.4/T5.5 `cache-policy.ts`, T5.2 batched MCP reloads, T5.6 `CacheMeter`. Then Phase 6 (context survival, critical path).
