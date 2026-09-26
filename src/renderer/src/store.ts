@@ -21,6 +21,7 @@ import type {
 import { api } from "./api";
 import { appendDelta, applyLiveEvent, emptyLive, flushPending, type LiveThread } from "./live";
 import { DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
+import { IDLE, takeOverReducer, type TakeOverState } from "./takeover";
 
 export type LibraryTab = "experts" | "skills" | "connectors" | "mcp" | "agents";
 
@@ -75,6 +76,15 @@ interface State {
   browserUrl: string | null;
   /** The user is picking an element in the browser pane. */
   picking: boolean;
+  /** Who holds the browser pane's pointer: the agent, the user, or nobody. */
+  takeOver: TakeOverState;
+  /** A click or key in the browser pane: the user takes the pointer and pauses the agent. */
+  browserInput(): void;
+  /** Hand the pointer back to the agent and resume its acting tools. */
+  resumeAgent(): void;
+  /** The user ends the turn: pause lifted, agent interrupted. */
+  stopAgent(): Promise<void>;
+  setWatch(on: boolean): void;
   /** The browser pane's device, console lines and screenshots, pushed in-band. */
   browser: BrowserState;
   /** browserState() has been fetched; the panel only asks for it once. */
@@ -236,6 +246,7 @@ export const useStore = create<State>((set, get) => ({
   terminals: [],
   browserUrl: null,
   picking: false,
+  takeOver: IDLE,
   browser: { device: "desktop", logs: [], screenshots: [] },
   browserLoaded: false,
   composerInsert: null,
@@ -268,6 +279,32 @@ export const useStore = create<State>((set, get) => ({
     } catch {
       set({ picking: false });
     }
+  },
+
+  browserInput() {
+    const cur = get().takeOver;
+    const next = takeOverReducer(cur, { type: "human-input" });
+    if (next === cur) return;
+    set({ takeOver: next });
+    if (next.mode === "human-driving") void api().browserTakeOver(true);
+  },
+
+  resumeAgent() {
+    const cur = get().takeOver;
+    const next = takeOverReducer(cur, { type: "resume" });
+    if (next === cur) return;
+    set({ takeOver: next });
+    void api().browserTakeOver(false);
+  },
+
+  async stopAgent() {
+    set((s) => ({ takeOver: takeOverReducer(s.takeOver, { type: "stop" }) }));
+    void api().browserTakeOver(false);
+    await get().interrupt();
+  },
+
+  setWatch(on) {
+    set((s) => ({ takeOver: takeOverReducer(s.takeOver, { type: "watch", on }) }));
   },
   pendingSkill: null,
   diffVersion: 0,
@@ -481,6 +518,11 @@ export const useStore = create<State>((set, get) => ({
           permissions: update.running ? s.permissions : s.permissions.filter((p) => p.threadId !== update.threadId),
           diffVersion: update.running ? s.diffVersion : s.diffVersion + 1,
         }));
+        if (!update.running && get().takeOver.mode !== "idle") {
+          // The pause must never outlive the turn.
+          set((s) => ({ takeOver: takeOverReducer(s.takeOver, { type: "turn-ended" }) }));
+          void api().browserTakeOver(false);
+        }
         return;
       case "permission":
         set((s) =>
@@ -513,7 +555,7 @@ export const useStore = create<State>((set, get) => ({
         set((s) => ({ browser: { ...s.browser, device: update.device } }));
         return;
       case "browser-action":
-        // The UI half comes in the next brief; nothing to store yet.
+        set((s) => ({ takeOver: takeOverReducer(s.takeOver, { type: "agent-action" }) }));
         return;
       case "settings":
         applyTheme(update.settings.theme);

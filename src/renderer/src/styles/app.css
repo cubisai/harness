@@ -707,6 +707,19 @@ details.tool[open]::details-content { height: auto; }
 .shot-viewer img { display: block; max-width: 100%; max-height: calc(100vh - 180px); }
 .shot-viewer figcaption { font: 11px var(--mono); color: var(--text-secondary); margin-top: 6px; }
 
+/* ---------- browser take-over ---------- */
+
+.takeover-banner { display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: 12px; border-bottom: 1px solid var(--hairline); background: var(--accent-soft); }
+.takeover-banner.human { background: rgb(255 159 10 / 0.16); }
+.takeover-banner .grow { flex: 1; }
+.takeover-banner label { display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); }
+.takeover-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+.browser-page { position: relative; }
+.takeover-overlay { position: absolute; inset: 0; cursor: pointer; background: transparent; outline: none; }
+.takeover-overlay.watch { cursor: not-allowed; }
+.browser.agent-driving .browser-page { box-shadow: inset 0 0 0 2px var(--accent); animation: drive-outline 1.6s ease-in-out infinite; }
+@keyframes drive-outline { 50% { box-shadow: inset 0 0 0 2px rgb(10 132 255 / 0.35); } }
+
 /* ---------- terminal ---------- */
 
 .terminal-body { overflow: hidden; padding: 10px 0 0 12px; }

@@ -4,6 +4,7 @@ import { api } from "../api";
 import { IconArrowLeft, IconArrowRight, IconGlobe, IconRefresh, IconTarget } from "../icons";
 import { useStore } from "../store";
 import { ScreenshotStrip, ScreenshotViewer } from "./ScreenshotStrip";
+import { TakeOverBanner } from "./TakeOverBanner";
 
 /** The <webview> element's API, as far as this panel uses it. */
 interface WebviewElement extends HTMLElement {
@@ -58,6 +59,16 @@ export function BrowserPanel() {
   const pendingUrl = useStore((s) => s.browserUrl);
   const picking = useStore((s) => s.picking);
   const startPick = useStore((s) => s.startPick);
+  const takeOver = useStore((s) => s.takeOver);
+  const browserInput = useStore((s) => s.browserInput);
+  const stopAgent = useStore((s) => s.stopAgent);
+  const resumeAgent = useStore((s) => s.resumeAgent);
+  const setWatch = useStore((s) => s.setWatch);
+  /** The running agent's name, for the take-over banner. */
+  const agentLabel = useStore((s) => {
+    const thread = s.threads[s.selectedProjectId ?? ""]?.find((t) => t.id === s.selectedThreadId);
+    return s.agents.find((a) => a.id === thread?.agent)?.label ?? "this agent";
+  });
   const device = useStore((s) => s.browser.device);
   const logs = useStore((s) => s.browser.logs);
   const screenshots = useStore((s) => s.browser.screenshots);
@@ -115,7 +126,7 @@ export function BrowserPanel() {
   }, [pendingUrl]);
 
   return (
-    <div className="browser">
+    <div className={`browser${takeOver.mode === "agent-driving" ? " agent-driving" : ""}`} onKeyDown={(e) => { if (e.key === "Escape") browserInput(); }}>
       <form
         className="browser-bar"
         onSubmit={(e) => {
@@ -139,7 +150,11 @@ export function BrowserPanel() {
             placeholder="localhost:3000"
             spellCheck={false}
             onChange={(e) => setAddress(e.target.value)}
-            onFocus={(e) => e.currentTarget.select()}
+            onFocus={(e) => {
+              e.currentTarget.select();
+              // Typing a URL pauses the agent rather than fighting it for the pointer.
+              useStore.getState().browserInput();
+            }}
           />
         </label>
         <button
@@ -174,6 +189,14 @@ export function BrowserPanel() {
           {browserWide ? <IconArrowRight /> : <IconArrowLeft />}
         </button>
       </form>
+      <TakeOverBanner
+        state={takeOver}
+        agentLabel={agentLabel}
+        picking={picking}
+        onStop={() => void stopAgent()}
+        onResume={resumeAgent}
+        onWatch={setWatch}
+      />
       <div className="segmented browser-views" role="tablist">
         <button type="button" role="tab" aria-selected={view === "page"} aria-controls="browser-page" className={view === "page" ? "on" : ""} onClick={() => setView("page")}>
           Page
@@ -192,6 +215,22 @@ export function BrowserPanel() {
       {/* The page stays mounted in both views: unmounting it would lose it. */}
       <div id="browser-page" role="tabpanel" className="browser-page" hidden={view !== "page"}>
         <webview ref={webView as unknown as React.Ref<HTMLWebViewElement>} className="browser-view" src={initial} partition="persist:unskilled-browser" />
+        {/* A <webview>'s own input never reaches this document, so this overlay is how a click in the pane is seen; in watch mode it swallows input and the reducer keeps agent-driving. */}
+        {takeOver.mode === "agent-driving" && (
+          <div
+            className={`takeover-overlay${takeOver.watch ? " watch" : ""}`}
+            tabIndex={0}
+            aria-label="The agent is driving; click or type to take over"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              useStore.getState().browserInput();
+            }}
+            onKeyDown={(e) => {
+              e.preventDefault();
+              useStore.getState().browserInput();
+            }}
+          />
+        )}
       </div>
       <div id="browser-console" role="tabpanel" className="browser-console" hidden={view !== "console"}>
         <ConsoleList logs={logs} />
