@@ -6,6 +6,7 @@ import { Composer } from "./components/Composer";
 import { CacheMeter } from "./components/CacheMeter";
 import { Inspector } from "./components/Inspector";
 import { SettingsSheet } from "./components/SettingsSheet";
+import { MessageCenter } from "./components/MessageCenter";
 import { Sidebar } from "./components/Sidebar";
 import { PaneRail, toggleSidebar } from "./components/PaneRail";
 import { TerminalDrawer } from "./components/TerminalDrawer";
@@ -88,8 +89,8 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [newThread, showInspector, interrupt, running]);
 
-  // The browser works without a project; Changes needs one.
-  const inspectorVisible = inspectorOpen && (project || inspectorTab !== "changes");
+  // The browser works without a project; Changes and Files need one.
+  const inspectorVisible = inspectorOpen && (project || inspectorTab === "browser");
   const layout = useStore((s) => s.paneLayout);
   const pane = usePaneLayout(Boolean(inspectorVisible));
   const setPaneLayout = useStore((s) => s.setPaneLayout);
@@ -260,6 +261,7 @@ export function App() {
       )}
       {inspectorVisible && pane.inspector !== null && <Inspector projectId={project?.id ?? null} />}
       <SettingsSheet />
+      <MessageCenter />
       <Notice />
       <Library />
       <CommandPalette />

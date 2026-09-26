@@ -919,6 +919,42 @@ details.tool[open]::details-content { height: auto; }
 
 /* The upgrade banner is an in-sheet notice, not the transient toast. */
 .sheet .notice { position: static; transform: none; max-width: none; padding: 6px 10px; border-radius: var(--radius-s); box-shadow: none; margin: 4px 0 8px; }
+
+/* ---------- message center ---------- */
+
+.inbox-bell { position: relative; }
+.inbox-bell .badge {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--text-tertiary);
+  color: var(--bg);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  text-align: center;
+}
+.inbox-bell.urgent .badge { background: var(--accent); color: #fff; }
+.inbox-list { list-style: none; margin: 0; padding: 0; }
+.inbox-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: var(--radius-s);
+}
+.inbox-row:hover { background: var(--bg-hover); }
+.inbox-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inbox-meta { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .provider-editor { border: 1px solid var(--hairline-strong); border-radius: var(--radius-m); padding: 6px 12px 10px; margin-top: 10px; }
 .provider-editor .row.end { justify-content: flex-end; }
 .provider-models-row { align-items: flex-start; }

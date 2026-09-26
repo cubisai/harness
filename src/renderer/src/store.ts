@@ -22,6 +22,10 @@ import { api } from "./api";
 import { appendDelta, applyLiveEvent, emptyLive, flushPending, type LiveThread } from "./live";
 import { DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
 import { IDLE, takeOverReducer, type TakeOverState } from "./takeover";
+import { threadSeen, turnEnded, type FinishedTurn } from "./inbox";
+
+/** The right panel's tabs. Changes and Files need a project; Browser works without one. */
+export type InspectorTab = "changes" | "browser" | "files";
 
 export type LibraryTab = "experts" | "skills" | "connectors" | "mcp" | "agents";
 
@@ -71,11 +75,17 @@ interface State {
   disclosures: Record<string, Record<string, boolean>>;
   setDisclosure(threadId: string, id: string, open: boolean): void;
   permissions: PermissionRequest[];
+  /** Turns that ended on a thread that wasn't open, for the Message Center. */
+  finished: FinishedTurn[];
+  /** When each running turn started (renderer clock), for a Finished row's duration. */
+  turnStartedAt: Record<string, number>;
+  inboxOpen: boolean;
+  setInboxOpen(open: boolean): void;
   /** Panel widths and collapse state; the raw setting, drawn through clampLayout. */
   paneLayout: PaneLayout;
   setPaneLayout(patch: Partial<PaneLayout>, persist: boolean): void;
   inspectorOpen: boolean;
-  inspectorTab: "changes" | "browser";
+  inspectorTab: InspectorTab;
   /** The browser pane has been shown this session, so its <webview> stays mounted. */
   browserMounted: boolean;
   /** A URL for the browser pane to load. */
@@ -123,7 +133,7 @@ interface State {
   interrupt(): Promise<void>;
   respond(requestId: string, decision: "allow-once" | "allow-always" | "deny"): Promise<void>;
   toggleInspector(): void;
-  showInspector(tab: "changes" | "browser"): void;
+  showInspector(tab: InspectorTab): void;
   toggleTerminal(): void;
   /** Add the current terminal to `terminals` if missing, so its shell is mounted. */
   ensureTerminal(): void;
@@ -264,6 +274,12 @@ export const useStore = create<State>((set, get) => ({
   },
   disclosures: {},
   permissions: [],
+  finished: [],
+  turnStartedAt: {},
+  inboxOpen: false,
+  setInboxOpen(open) {
+    set({ inboxOpen: open });
+  },
   paneLayout: { ...DEFAULT_LAYOUT },
   inspectorOpen: false,
   inspectorTab: "changes",
@@ -389,7 +405,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async selectThread(id) {
-    set({ selectedThreadId: id });
+    set((s) => ({ selectedThreadId: id, finished: threadSeen(s.finished, id) }));
     if (id && !get().events[id]) {
       const events = await api().listEvents(id);
       set((s) => ({ events: { ...s.events, [id]: events } }));
@@ -544,6 +560,9 @@ export const useStore = create<State>((set, get) => ({
         }
         set((s) => ({
           running: { ...s.running, [update.threadId]: update.running },
+          turnStartedAt: update.running ? { ...s.turnStartedAt, [update.threadId]: Date.now() } : s.turnStartedAt,
+          // Only a turn this window saw start ends in a Finished row.
+          finished: update.running || !s.running[update.threadId] ? s.finished : turnEnded(s.finished, update.threadId, s.turnStartedAt[update.threadId], Date.now(), s.selectedThreadId),
           live: update.running ? s.live : { ...s.live, [update.threadId]: emptyLive() },
           permissions: update.running ? s.permissions : s.permissions.filter((p) => p.threadId !== update.threadId),
           diffVersion: update.running ? s.diffVersion : s.diffVersion + 1,

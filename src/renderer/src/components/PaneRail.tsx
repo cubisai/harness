@@ -1,5 +1,6 @@
 import { IconArrowLeft, IconArrowRight, IconCompose, IconFolder, IconGear, IconLibrary, IconRefresh } from "../icons";
 import { api } from "../api";
+import { InboxBell } from "./MessageCenter";
 import { useStore } from "../store";
 
 /** Collapse or restore the sidebar (⌘\ / Ctrl+\). Points the way the sidebar will move. */
@@ -46,6 +47,7 @@ export function PaneRail() {
         <button className="icon-button" title="Add Project…" onClick={() => void addProject()}>
           <IconFolder />
         </button>
+        <InboxBell />
         <button className="icon-button" title="Library: skills, MCP servers, agents (⌘⇧L)" onClick={() => useStore.setState({ libraryTab: "skills" })}>
           <IconLibrary />
         </button>

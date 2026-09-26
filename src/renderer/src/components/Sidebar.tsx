@@ -3,6 +3,7 @@ import { IconChevron, IconCompose, IconFolder, IconGear, IconLibrary, IconPin } 
 import { api } from "../api";
 import { sectionThreads } from "../sections";
 import { useStore } from "../store";
+import { InboxBell } from "./MessageCenter";
 import { SidebarToggle } from "./PaneRail";
 
 export function Sidebar() {
@@ -112,6 +113,7 @@ export function Sidebar() {
         <button className="button ghost block" onClick={() => void addProject()}>
           <IconFolder /> Add Project…
         </button>
+        <InboxBell />
         <button className="icon-button" title="Library: skills, MCP servers, agents (⌘⇧L)" onClick={() => useStore.setState({ libraryTab: "skills" })}>
           <IconLibrary />
         </button>
