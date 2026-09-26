@@ -2,8 +2,9 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { PermissionDecision, PermissionMode, ThreadEvent } from "../src/shared/types";
+import type { CredentialChoice, PermissionDecision, PermissionMode, Provider, Settings, ThreadEvent } from "../src/shared/types";
 import { createAcpDriver, optionFor, pickPermission } from "../src/main/agents/acp/driver";
+import { type InjectionSource, injectionFor } from "../src/main/inject";
 import { loadAcpAgents, onPath } from "../src/main/agents/registry";
 import type { TurnInput } from "../src/main/agents/types";
 import { closeAfter, tempDir } from "./helpers";
@@ -224,6 +225,65 @@ describe("permission mapping", () => {
     expect(optionFor(opts, "allow-once")).toBe("a");
     expect(optionFor(opts, "allow-always")).toBe("a"); // falls back
     expect(optionFor(opts, "deny")).toBe("r");
+  });
+});
+
+describe("ACP driver credential injection", () => {
+  const KEY = "test-acp-key";
+
+  function source(choice: CredentialChoice, secretEnvNames: string[] = []): InjectionSource {
+    const provider: Provider = {
+      id: "test-gateway",
+      label: "Test Gateway",
+      wireProtocol: "openai-chat",
+      baseURL: "https://gateway.example.test",
+      secret: { kind: "safeStorage", ciphertext: "x" },
+      models: [],
+    };
+    return {
+      credential: () => choice,
+      providers: () => [provider],
+      providerSecret: () => KEY,
+      secretEnvNames: () => secretEnvNames,
+      get: (): Settings => ({ theme: "system", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {} }),
+    };
+  }
+
+  function injectedDriver(src: InjectionSource) {
+    const d = createAcpDriver(
+      { id: "custom-mock", label: "Mock", command: process.execPath, args: [MOCK] },
+      { clientVersion: "test", injection: () => injectionFor(src, "custom-mock", process.env, { agentLabel: "Mock" }) },
+    );
+    closeAfter(() => d.dispose?.());
+    return d;
+  }
+
+  it("spawns a BYOK ACP agent with the key, and shows its guess notice once", async () => {
+    const d = injectedDriver(source({ kind: "byok", providerId: "test-gateway" }));
+    const first = turn("env:OPENAI_API_KEY");
+    await d.runTurn(first.input);
+    expect(first.deltas.join("")).toContain("OPENAI_API_KEY=present");
+    const second = turn("env:OPENAI_API_KEY");
+    await d.runTurn(second.input);
+    expect(second.deltas.join("")).toContain("OPENAI_API_KEY=present");
+    const notices = [...first.events, ...second.events].filter(
+      (e): e is { kind: "notice"; text: string } => e.kind === "notice" && /may not reach it/.test(e.text),
+    );
+    expect(notices).toHaveLength(1);
+  });
+
+  it("keeps a planted key out of a subscription ACP agent", async () => {
+    const d = injectedDriver(source({ kind: "subscription" }, ["OPENAI_API_KEY"]));
+    const previous = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "planted";
+    try {
+      const t = turn("env:OPENAI_API_KEY");
+      await d.runTurn(t.input);
+      expect(t.deltas.join("")).toContain("OPENAI_API_KEY=absent");
+    } finally {
+      if (previous === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = previous;
+    }
   });
 });
 

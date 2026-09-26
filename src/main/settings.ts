@@ -12,6 +12,7 @@ import type {
   SettingsView,
 } from "../shared/types";
 import { LEGACY_ENV, LEGACY_PROVIDERS, isProviderId, legacyEnv as legacyEnvFor, type LegacyProviderId } from "./providers";
+import { protocolKeyVar } from "./inject/keys";
 
 /** Encrypts secrets at rest. In the app this is Electron's safeStorage (the OS keychain). */
 export interface SecretBox {
@@ -31,21 +32,6 @@ interface FileShape {
   secrets?: Partial<Record<SecretName, string>>; // encrypted, base64 — legacy v1, never modified
 }
 
-/** The environment variable a provider's resolved key becomes when it isn't a migrated legacy id. */
-function envVarFor(provider: Provider): string | null {
-  if (provider.id in LEGACY_ENV) return LEGACY_ENV[provider.id as LegacyProviderId];
-  switch (provider.wireProtocol) {
-    case "anthropic-messages":
-      return "ANTHROPIC_API_KEY";
-    case "openai-chat":
-    case "openai-responses":
-      return "OPENAI_API_KEY";
-    case "gemini":
-      return "GEMINI_API_KEY";
-  }
-  return null;
-}
-
 /**
  * The app's settings, in one JSON file in its data folder. API keys are
  * stored encrypted and never leave the main process: the renderer only
@@ -60,6 +46,7 @@ export class SettingsStore {
   ) {
     this.data = this.read();
     this.migrate();
+    this.migrateDeepseekDefault();
   }
 
   private read(): FileShape {
@@ -104,6 +91,26 @@ export class SettingsStore {
     // Write only when a key actually moved: a brand-new install, a keyless file, or a corrupt
     // file (read() fell back to {}) must not be rewritten at startup; the next update() persists v2.
     if (existed && migrated.length > 0) this.write();
+  }
+
+  /**
+   * One-shot v2 → v3 migration: until now every saved key reached every agent
+   * through the global env, so dsh had its DeepSeek key. Keep that behaviour
+   * once the global export goes: a stored DeepSeek provider with no explicit
+   * choice for dsh becomes that provider's BYOK. Runs after `migrate()`, so a
+   * v1 file falls through both steps in one construction. `schemaVersion` gates
+   * a re-run, and the file is written only when a credential actually changed.
+   */
+  private migrateDeepseekDefault(): void {
+    if ((this.data.schemaVersion ?? 1) >= 3) return;
+    const existed = existsSync(this.file);
+    let added = false;
+    if (this.findProvider("deepseek") && this.data.credentials?.deepseek === undefined) {
+      (this.data.credentials ??= {}).deepseek = { kind: "byok", providerId: "deepseek" };
+      added = true;
+    }
+    this.data.schemaVersion = 3;
+    if (existed && added) this.write();
   }
 
   get(): Settings {
@@ -228,7 +235,7 @@ export class SettingsStore {
     const provider = this.findProvider(id);
     if (!provider) return {};
     const out: Record<string, string> = { ...provider.env };
-    const envVar = envVarFor(provider);
+    const envVar = protocolKeyVar(provider);
     const value = this.providerSecret(id);
     if (envVar !== null && value !== null) out[envVar] = value;
     return out;

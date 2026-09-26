@@ -123,6 +123,52 @@ describe("SettingsStore", () => {
     expect(JSON.parse(readFileSync(file, "utf-8")).schemaVersion).toBe(2);
   });
 
+  // T2.x — the v2 → v3 migration that keeps dsh's DeepSeek key once the global export goes.
+  const deepseekProvider = () => ({
+    id: "deepseek",
+    label: "DeepSeek",
+    wireProtocol: "openai-chat",
+    baseURL: "https://api.deepseek.com",
+    models: [],
+    secret: { kind: "safeStorage", ciphertext: box.encrypt("sk-deep") },
+  });
+
+  it("carries a v1 DeepSeek key through both migrations to dsh in one start", () => {
+    const file = fresh();
+    writeFileSync(file, JSON.stringify({ secrets: { deepseek: box.encrypt("test-deepseek-key") } }));
+    const s = new SettingsStore(file, box);
+    expect(s.credential("deepseek")).toEqual({ kind: "byok", providerId: "deepseek" });
+    expect(s.providerSecret("deepseek")).toBe("test-deepseek-key");
+    const disk = JSON.parse(readFileSync(file, "utf-8"));
+    expect(disk.schemaVersion).toBe(3);
+    expect(disk.credentials.deepseek).toEqual({ kind: "byok", providerId: "deepseek" });
+  });
+
+  it("points dsh at its DeepSeek provider in a v2 file with no choice", () => {
+    const file = fresh();
+    writeFileSync(file, JSON.stringify({ schemaVersion: 2, providers: [deepseekProvider()] }));
+    const s = new SettingsStore(file, box);
+    expect(s.credential("deepseek")).toEqual({ kind: "byok", providerId: "deepseek" });
+    expect(s.view().providerCredential.deepseek).toEqual({ kind: "byok", providerId: "deepseek" });
+    expect(JSON.parse(readFileSync(file, "utf-8")).schemaVersion).toBe(3);
+  });
+
+  it("keeps an explicit deepseek subscription in a v2 file", () => {
+    const file = fresh();
+    writeFileSync(file, JSON.stringify({ schemaVersion: 2, providers: [deepseekProvider()], credentials: { deepseek: { kind: "subscription" } } }));
+    const s = new SettingsStore(file, box);
+    expect(s.credential("deepseek")).toEqual({ kind: "subscription" });
+  });
+
+  it("does not rewrite a v2 file with no deepseek provider", () => {
+    const file = fresh();
+    writeFileSync(file, JSON.stringify({ schemaVersion: 2, providers: [] }));
+    const before = readFileSync(file);
+    const s = new SettingsStore(file, box);
+    expect(s.credential("deepseek")).toEqual({ kind: "subscription" });
+    expect(readFileSync(file).equals(before)).toBe(true);
+  });
+
   // T1.3 — SECRET_ENV is gone; legacyEnv keeps today's process.env export working.
   it("no longer exports SECRET_ENV", () => {
     expect("SECRET_ENV" in settingsModule).toBe(false);

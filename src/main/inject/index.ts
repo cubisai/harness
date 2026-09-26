@@ -4,6 +4,7 @@
 
 import type { CredentialChoice, Provider, Settings } from "../../shared/types";
 import { redactSecrets } from "./redact";
+import { injectAcp } from "./acp";
 import { CLAUDE_KEY_VARS, injectClaude } from "./claude";
 import { FALLBACK_INSTRUCTIONS, injectCodex } from "./codex";
 import { injectOpenCode } from "./opencode";
@@ -81,7 +82,7 @@ export function injectionFor(
   source: InjectionSource,
   agentId: string,
   env: NodeJS.ProcessEnv = process.env,
-  opts: { codexCatalogDir?: string; codexInstructions?: () => string; opencodeVersion?: () => string | null } = {},
+  opts: { codexCatalogDir?: string; codexInstructions?: () => string; opencodeVersion?: () => string | null; agentLabel?: string } = {},
 ): InjectionPlan {
   const base = strippedBase(source, env);
   const choice = source.credential(agentId);
@@ -122,6 +123,6 @@ export function injectionFor(
     const secret = source.providerSecret(provider.id);
     return sealed(injectOpenCode(provider, secret, base, { version: opts.opencodeVersion?.() ?? null }), secret ? [secret] : []);
   }
-  // TODO(phase 2 step E): the generic ACP injector.
-  return sealed({ env: base, byok: true }, []);
+  const secret = source.providerSecret(provider.id);
+  return sealed(injectAcp({ id: agentId, label: opts.agentLabel ?? agentId }, provider, secret, base), secret ? [secret] : []);
 }

@@ -224,10 +224,11 @@ async function main(): Promise<void> {
         skillsDir: () => ensureModelSkillsDir(catalog, modelSkillsDir),
         clientVersion: app.getVersion(),
         toolServer: getToolServer,
-        // Step E: every ACP agent gets a plan; until then only OpenCode does, so dsh keeps its legacy key.
-        ...(config.id === "opencode"
-          ? { injection: () => injectionFor(settings, "opencode", process.env, { opencodeVersion: () => opencodeVersion(config.command) }) }
-          : {}),
+        injection: () =>
+          injectionFor(settings, config.id, process.env, {
+            agentLabel: config.label,
+            ...(config.id === "opencode" ? { opencodeVersion: () => opencodeVersion(config.command) } : {}),
+          }),
       }),
     ),
   ];

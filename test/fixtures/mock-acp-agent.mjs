@@ -4,6 +4,8 @@
 //   "reason"  - emits three thought chunks, a tick apart, then answers
 //   "plan"    - emits a plan update with two entries, then answers
 //   "nousage" - answers with a prompt response that carries no usage object
+//   "env:NAME" - answers "NAME=present" when the env var is a non-empty string,
+//                else "NAME=absent"; never echoes the value
 //   other     - answers "Hello, <prompt>"
 import { createInterface } from "node:readline";
 
@@ -123,6 +125,10 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
           await new Promise((r) => setTimeout(r, 20));
         }
         return send({ id, result: { stopReason: "cancelled" } });
+      } else if (text.startsWith("env:")) {
+        const name = text.slice(4);
+        const value = process.env[name];
+        update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `${name}=${typeof value === "string" && value.length > 0 ? "present" : "absent"}` } });
       } else {
         if (text === "plan") {
           update(sid, {
