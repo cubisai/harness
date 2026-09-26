@@ -53,7 +53,12 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
         id,
         result: {
           protocolVersion: 1,
-          agentCapabilities: { sessionCapabilities: { resume: {}, close: {} }, mcpCapabilities: { http: true } },
+          // MOCK_ACP_NO_HTTP=1 simulates an agent release that dropped HTTP MCP,
+          // so a test can watch initialize turn the capability back off.
+          agentCapabilities: {
+            sessionCapabilities: { resume: {}, close: {} },
+            ...(process.env.MOCK_ACP_NO_HTTP === "1" ? {} : { mcpCapabilities: { http: true } }),
+          },
           agentInfo: { name: "mock", version: "1" },
           authMethods: [],
         },

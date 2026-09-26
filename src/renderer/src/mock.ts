@@ -171,6 +171,26 @@ export function installMock(): void {
     file: "~/Library/Application Support/UnSkilled/mcp.json",
   };
 
+  // Mock agents get the declared-safe shape; the real capability matrix is main-side.
+  const mockCapabilities = {
+    mcpStdio: false,
+    mcpHttp: false,
+    preToolGuard: false,
+    resume: false,
+    fork: false,
+    revert: false,
+    compaction: false,
+    perMessageModel: false,
+    vision: false,
+    webSearch: false,
+    planMode: false,
+    interrupt: false,
+    skillsDelivery: { mode: "none" },
+    permissionGranularity: "modeOnly",
+    guardEnforcement: { ask: "warnOnly", "auto-edit": "warnOnly", full: "warnOnly" },
+    sandbox: "none",
+  } as const;
+
   const api: UnskilledApi = {
     platform: params.get("platform") ?? "darwin",
     listProjects: async () => projects,
@@ -196,6 +216,7 @@ export function installMock(): void {
         id: "claude",
         label: "Claude",
         defaultModel: "opus",
+        capabilities: mockCapabilities,
         models: [
           { id: "opus", label: "Opus 5.5" },
           { id: "sonnet", label: "Sonnet 5" },
@@ -206,6 +227,7 @@ export function installMock(): void {
         id: "deepseek",
         label: "DeepSeek",
         defaultModel: "default",
+        capabilities: mockCapabilities,
         models: [
           { id: "default", label: "Agent default" },
           { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },

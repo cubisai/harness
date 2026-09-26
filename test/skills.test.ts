@@ -91,4 +91,20 @@ describe("composePrompt", () => {
     expect(() => composePrompt(catalog(), "", "tdd")).toThrow(/model-invoked/);
     expect(() => composePrompt(catalog(), "", "nope")).toThrow(/unknown/);
   });
+
+  it("qualifies calls with the delivery prefix", () => {
+    const prompt = composePrompt(catalog(), "ticket 3", "implement", { mode: "plugin", prefix: "harness-skills:" });
+    expect(prompt).toContain('"harness-skills:tdd"');
+  });
+
+  it("leaves calls unqualified with no delivery", () => {
+    const prompt = composePrompt(catalog(), "ticket 3", "implement", { mode: "none" });
+    expect(prompt).toContain('"tdd"');
+    expect(prompt).not.toContain("harness-skills:");
+  });
+
+  it("still accepts a plain string prefix", () => {
+    const prompt = composePrompt(catalog(), "ticket 3", "implement", "skilled:");
+    expect(prompt).toContain('"skilled:tdd"');
+  });
 });

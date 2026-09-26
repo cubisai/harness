@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { LiveUpdate } from "../src/shared/types";
 import type { AgentDriver, TurnInput } from "../src/main/agents/types";
+import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
 import { Store } from "../src/main/db";
 import { Service, titleFrom } from "../src/main/service";
 import { catalog, closeAfter, tempDir } from "./helpers";
@@ -12,6 +13,8 @@ function fakeDriver(script: (input: TurnInput) => Promise<void>): AgentDriver & 
     id: "fake",
     label: "Fake",
     defaultModel: "fake-1",
+    capabilities: SAFE_DEFAULTS,
+    skillsDelivery: { mode: "none" },
     skillCallPrefix: "skilled:",
     models: () => [{ id: "fake-1", label: "Fake 1" }],
     prompts,

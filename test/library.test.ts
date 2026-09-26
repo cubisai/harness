@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { agentCatalog, skillDetail } from "../src/main/library";
+import { agentCatalog, skillDetail, skillRoute } from "../src/main/library";
 import { catalog } from "./helpers";
+
+describe("skillRoute", () => {
+  it("words each delivery mode, and names the gap otherwise", () => {
+    expect(skillRoute({ skillsDelivery: { mode: "plugin", prefix: "harness-skills:" } })).toMatch(/plugin/);
+    expect(skillRoute({ skillsDelivery: { mode: "extraRoots", prefix: "" } })).toMatch(/extra skills folder/);
+    expect(skillRoute({ skillsDelivery: { mode: "envDir", prefix: "" }, skillsDirEnv: "DSH_BUNDLED_SKILL_DIR" })).toMatch(/DSH_BUNDLED_SKILL_DIR/);
+    expect(skillRoute({ skillsDelivery: { mode: "projectWrite", prefix: "" } })).toMatch(/^Not automatic: .*install/);
+    expect(skillRoute({ skillsDelivery: { mode: "none" } })).toMatch(/^Not automatic: /);
+  });
+});
 
 describe("agentCatalog", () => {
   it("lists every known agent, installed or not, with how skills and MCP reach it", () => {

@@ -2,6 +2,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AgentDriver, TurnInput } from "../src/main/agents/types";
+import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
 import { Store } from "../src/main/db";
 import { memoryScopeCheck } from "../src/main/inject/memory-scope";
 import { Service } from "../src/main/service";
@@ -33,6 +34,8 @@ describe("memoryScopeCheck", () => {
       id: "fake",
       label: "Fake",
       defaultModel: "m",
+      capabilities: SAFE_DEFAULTS,
+      skillsDelivery: { mode: "none" },
       skillCallPrefix: "",
       models: () => [{ id: "m", label: "M" }],
       runTurn: async (input: TurnInput) => input.onEvent({ kind: "assistant-text", text: "ok" }),

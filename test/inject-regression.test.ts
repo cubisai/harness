@@ -5,6 +5,7 @@ import { chmodSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentDriver, TurnInput } from "../src/main/agents/types";
+import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
 import { Store } from "../src/main/db";
 import { type InjectionSource, injectionFor } from "../src/main/inject";
 import { prepareCodexPlan } from "../src/main/inject/codex";
@@ -106,6 +107,8 @@ describe("redaction on failure paths", () => {
       id: "fake",
       label: "Fake",
       defaultModel: "m",
+      capabilities: SAFE_DEFAULTS,
+      skillsDelivery: { mode: "none" },
       skillCallPrefix: "",
       models: () => [{ id: "m", label: "M" }],
       runTurn: async (input: TurnInput) => {

@@ -10,6 +10,7 @@ import type { InjectionPlan } from "../inject";
 import { staleKeyNotice } from "../inject/claude";
 import { normalizeUsage } from "../usage";
 import { PLUGIN_NAME } from "../skills/plugin";
+import { CLAUDE_CAPABILITIES } from "./capabilities";
 import { claudeLimitsPatch, type LimitsListener } from "./limits";
 import { summarizeToolInput, summarizeToolResult } from "./summarize";
 import type { AgentDriver, HarnessTool, ToolOutput, TurnInput } from "./types";
@@ -176,6 +177,8 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
     id: "claude",
     label: "Claude",
     defaultModel: "opus",
+    capabilities: CLAUDE_CAPABILITIES,
+    skillsDelivery: CLAUDE_CAPABILITIES.skillsDelivery,
     skillCallPrefix: `${PLUGIN_NAME}:`,
     models: () => config.byokModels?.() ?? models,
     refreshModels,

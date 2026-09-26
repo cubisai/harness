@@ -64,7 +64,7 @@ export class Service {
   }
 
   listAgents(): AgentInfo[] {
-    return [...this.drivers.values()].map((d) => ({ id: d.id, label: d.label, models: d.models(), defaultModel: d.defaultModel }));
+    return [...this.drivers.values()].map((d) => ({ id: d.id, label: d.label, models: d.models(), defaultModel: d.defaultModel, capabilities: d.capabilities }));
   }
 
   createThread(projectId: string, agent?: string): Thread {
@@ -107,7 +107,7 @@ export class Service {
     const project = this.store.getProject(thread.projectId);
     const driver = this.driverFor(thread.agent);
     const provenance: Provenance = { agent: thread.agent, model: thread.model, provider: null, instanceId: null };
-    const prompt = composePrompt(this.catalog, req.text, req.skill, driver.skillCallPrefix);
+    const prompt = composePrompt(this.catalog, req.text, req.skill, driver.skillsDelivery);
 
     this.emit(thread.id, { kind: "user", text: req.text, skill: req.skill });
     if (thread.title === "New thread") {

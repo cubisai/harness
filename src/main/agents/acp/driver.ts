@@ -1,8 +1,9 @@
-import type { ModelOption, PermissionDecision, PermissionMode, PlanEntry } from "../../../shared/types";
+import type { AgentCapabilities, ModelOption, PermissionDecision, PermissionMode, PlanEntry } from "../../../shared/types";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { summarizeToolResult } from "../summarize";
 import type { AgentDriver, TurnInput } from "../types";
+import { acpCapabilities, withCapabilities } from "../capabilities";
 import { forAcp } from "../../mcp/servers";
 import { RpcError, StdioRpc } from "../rpc";
 import { normalizeUsage } from "../../usage";
@@ -21,6 +22,12 @@ export interface AcpAgentConfig {
    * load them without anything written into the project.
    */
   skillsDirEnv?: string;
+  /**
+   * Declared capabilities the ACP protocol can't report (guard enforcement,
+   * skills delivery, permission granularity). Protocol bits in here are
+   * overridden by `initialize`, which is authoritative in both directions.
+   */
+  capabilities?: Partial<AgentCapabilities>;
   /** How to install the agent, shown in the Library when it isn't installed. */
   install?: string;
   homepage?: string;
@@ -138,8 +145,34 @@ export function createAcpDriver(
 ): AgentDriver {
   const live = new Map<string, Live>();
   let knownModels: ModelOption[] = [];
+  // Preset metadata, then the first initialize's protocol facts (below).
+  let capabilities = acpCapabilities(config);
   // Once-per-driver, like Claude: the same feature-loss notice isn't repeated.
   const shownNotices = new Set<string>();
+
+  /** Protocol capabilities the agent reports; initialize wins over preset metadata. */
+  const PROTOCOL_LABELS: Record<"mcpHttp" | "resume", string> = { mcpHttp: "MCP over HTTP", resume: "session resume" };
+
+  /**
+   * Fold an `initialize` result into the driver's capabilities. Protocol
+   * capabilities are authoritative in both directions, so a capability the
+   * preset claimed but the agent no longer reports is turned off and, during
+   * a turn, said out loud.
+   */
+  const applyInitialize = (init: InitializeResult, input?: TurnInput) => {
+    const next = withCapabilities(capabilities, {
+      mcpHttp: Boolean(init.agentCapabilities?.mcpCapabilities?.http),
+      resume: Boolean(init.agentCapabilities?.sessionCapabilities?.resume) || Boolean(init.agentCapabilities?.loadSession),
+    });
+    if (input) {
+      for (const key of ["mcpHttp", "resume"] as const) {
+        if (capabilities[key] && !next[key]) {
+          input.onEvent({ kind: "notice", text: `${config.label} no longer reports ${PROTOCOL_LABELS[key]}; it's off for this agent now.` });
+        }
+      }
+    }
+    capabilities = next;
+  };
 
   const flushText = (t: TurnState) => {
     if (t.thought.trim()) t.input.onEvent({ kind: "thinking", text: t.thought });
@@ -254,6 +287,7 @@ export function createAcpDriver(
       clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
       clientInfo: { name: "unskilled", version: deps.clientVersion },
     });
+    applyInitialize(init, input);
     l = { conn, init, sessionId: null, configOptions: [], mcpSignature: "[]", turn: null };
     const auth = init.authMethods?.[0];
     if (auth) await conn.request("authenticate", { methodId: auth.id }).catch(() => {});
@@ -352,6 +386,7 @@ export function createAcpDriver(
           clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
           clientInfo: { name: "unskilled", version: deps.clientVersion },
         });
+        applyInitialize(init);
         const auth = init.authMethods?.[0];
         if (auth) await conn.request("authenticate", { methodId: auth.id }).catch(() => {});
         const res = await conn.request<{ configOptions?: ConfigOption[] }>("session/new", { cwd, mcpServers: [] });
@@ -370,6 +405,12 @@ export function createAcpDriver(
     id: config.id,
     label: config.label,
     defaultModel: DEFAULT_MODEL,
+    get capabilities() {
+      return capabilities;
+    },
+    get skillsDelivery() {
+      return capabilities.skillsDelivery;
+    },
     skillCallPrefix: "",
     models: () => [{ id: DEFAULT_MODEL, label: "Agent default" }, ...knownModels],
     refreshModels,

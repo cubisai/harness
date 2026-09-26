@@ -4,6 +4,7 @@ import { forCodex } from "../mcp/servers";
 import { normalizeUsage } from "../usage";
 import type { InjectionPlan } from "../inject";
 import { RpcError, StdioRpc } from "./rpc";
+import { CODEX_CAPABILITIES } from "./capabilities";
 import { codexLimitsPatch, type CodexRateLimits, type LimitsListener } from "./limits";
 import { summarizeToolInput, summarizeToolResult } from "./summarize";
 import type { AgentDriver, HarnessTool, TurnInput } from "./types";
@@ -370,6 +371,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     id: "codex",
     label: "Codex",
     defaultModel: CODEX_DEFAULT_MODEL,
+    capabilities: CODEX_CAPABILITIES,
+    skillsDelivery: CODEX_CAPABILITIES.skillsDelivery,
     skillCallPrefix: "",
     models: () => {
       const byok = config.byokModels?.();

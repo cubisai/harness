@@ -1,5 +1,7 @@
 import type { ZodRawShape, z } from "zod";
-import type { McpServerEntry, ModelOption, PermissionDecision, PermissionMode, Provenance, ThreadEvent } from "../../shared/types";
+import type { AgentCapabilities, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, Provenance, SkillsDelivery, ThreadEvent } from "../../shared/types";
+
+export type { AgentCapabilities, SkillsDelivery } from "../../shared/types";
 
 export interface ToolOutput {
   text: string;
@@ -54,10 +56,15 @@ export interface AgentDriver {
   label: string;
   models(): ModelOption[];
   defaultModel: string;
+  /** What this agent can do here, so callers branch on capability, not id. */
+  capabilities: AgentCapabilities;
+  /** How this agent's model-invoked skills reach it (and the Skill-call prefix). */
+  skillsDelivery: SkillsDelivery;
   /**
    * How this agent names skilled's skills in a Skill-tool call: "skilled:"
    * for Claude, which loads them as a plugin; "" for agents that load them
    * by bare name.
+   * @deprecated use `skillsDelivery.prefix ?? ""`.
    */
   skillCallPrefix: string;
   /**

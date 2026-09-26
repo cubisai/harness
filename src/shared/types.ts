@@ -376,11 +376,44 @@ export interface ModelOption {
   label: string;
 }
 
+export type GuardEnforcement = "block" | "warnOnly";
+
+/** How an agent's model-invoked skills reach it, and the prefix its Skill-tool names carry. */
+export interface SkillsDelivery {
+  mode: "plugin" | "extraRoots" | "envDir" | "projectWrite" | "none";
+  prefix?: string;
+}
+
+/**
+ * What a driver's agent can actually do here. Code branches on these instead
+ * of on agent ids, so a new agent only has to declare itself.
+ */
+export interface AgentCapabilities {
+  mcpStdio: boolean;
+  mcpHttp: boolean;
+  preToolGuard: boolean;
+  resume: boolean;
+  fork: boolean;
+  revert: boolean;
+  compaction: boolean;
+  perMessageModel: boolean;
+  vision: boolean;
+  webSearch: boolean;
+  planMode: boolean;
+  interrupt: boolean;
+  skillsDelivery: SkillsDelivery;
+  permissionGranularity: "perTool" | "perCommand" | "modeOnly";
+  /** Per permission mode: whether the git guardrail can veto a command before it runs. */
+  guardEnforcement: Record<PermissionMode, GuardEnforcement>;
+  sandbox: "none" | "workspace" | "full";
+}
+
 export interface AgentInfo {
   id: string;
   label: string;
   models: ModelOption[];
   defaultModel: string;
+  capabilities: AgentCapabilities;
 }
 
 export interface SendRequest {

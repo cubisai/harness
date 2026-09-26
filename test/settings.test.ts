@@ -7,6 +7,7 @@ import { SettingsStore, type SecretBox } from "../src/main/settings";
 import * as settingsModule from "../src/main/settings";
 import type { ProviderInput } from "../src/shared/types";
 import type { AgentDriver } from "../src/main/agents/types";
+import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
 import { catalog, closeAfter, fixturesDir, tempDir } from "./helpers";
 
 /** Reversible, and visibly not plaintext, so the tests can tell a stored key was encoded. */
@@ -258,6 +259,8 @@ describe("Service defaults for new threads", () => {
     id,
     label: id,
     defaultModel: `${id}-1`,
+    capabilities: SAFE_DEFAULTS,
+    skillsDelivery: { mode: "none" },
     skillCallPrefix: "",
     models: () => [{ id: `${id}-1`, label: id }],
     async runTurn() {},

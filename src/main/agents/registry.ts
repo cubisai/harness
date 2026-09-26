@@ -2,6 +2,9 @@ import { accessSync, constants, existsSync, readFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import type { AcpAgentConfig } from "./acp/driver";
 
+/** The drivers the app ships: agents.json can't replace them. */
+export const BUILT_IN_AGENT_IDS = new Set(["claude", "codex"]);
+
 /**
  * ACP agents the app knows how to start. A preset shows up only when its
  * command is installed; anything in agents.json always shows up.
@@ -15,6 +18,7 @@ export const ACP_PRESETS: AcpAgentConfig[] = [
     // deepseek-harness loads extra skills from this directory
     // (packages/skill/skill-filesystem: DSH_BUNDLED_SKILL_DIR).
     skillsDirEnv: "DSH_BUNDLED_SKILL_DIR",
+    capabilities: { mcpStdio: true, interrupt: true, perMessageModel: true },
     install: "npm install -g @deepseek-ai/dsh",
     homepage: "https://github.com/deepseek-ai/deepseek-harness",
   },
@@ -26,6 +30,7 @@ export const ACP_PRESETS: AcpAgentConfig[] = [
     label: "Antigravity",
     command: "agy-acp",
     args: [],
+    capabilities: { mcpStdio: true, interrupt: true, perMessageModel: false, skillsDelivery: { mode: "projectWrite", prefix: "" } },
     install: "npm install -g agy-acp",
     homepage: "https://github.com/shindgew/agy-acp",
   },
@@ -35,6 +40,7 @@ export const ACP_PRESETS: AcpAgentConfig[] = [
     label: "OpenCode",
     command: "opencode",
     args: ["acp"],
+    capabilities: { mcpStdio: true, interrupt: true, perMessageModel: true, permissionGranularity: "perTool", skillsDelivery: { mode: "projectWrite", prefix: "" } },
     install: "npm install -g opencode-ai",
     homepage: "https://opencode.ai/docs/acp/",
   },
@@ -43,6 +49,7 @@ export const ACP_PRESETS: AcpAgentConfig[] = [
     label: "Cursor",
     command: "cursor-agent",
     args: ["acp"],
+    capabilities: { mcpStdio: true, interrupt: true, perMessageModel: true, skillsDelivery: { mode: "projectWrite", prefix: "" } },
     install: "curl https://cursor.com/install -fsS | bash",
     homepage: "https://cursor.com/cli",
   },
@@ -87,16 +94,20 @@ export function loadAcpAgents(configFile: string, isInstalled: (cmd: string) => 
   if (existsSync(configFile)) {
     try {
       const raw = JSON.parse(readFileSync(configFile, "utf-8")) as { agents?: unknown[] };
-      custom = (raw.agents ?? []).filter((a): a is AcpAgentConfig => {
+      const parsed = (raw.agents ?? []).filter((a): a is AcpAgentConfig => {
         if (isConfig(a)) return true;
         problems.push(`agents.json: skipped an entry without id, label, command, and args`);
         return false;
       });
+      // agents.json declares no capabilities: a user entry gets SAFE_DEFAULTS
+      // (and only skillsDirEnv upgrades it to envDir), so it can never claim
+      // support the driver hasn't verified.
+      custom = parsed.map(({ capabilities: _ignored, ...rest }) => rest);
     } catch (err) {
       problems.push(`agents.json is not valid JSON: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
   const customIds = new Set(custom.map((a) => a.id));
   const presets = ACP_PRESETS.filter((p) => !customIds.has(p.id) && isInstalled(p.command));
-  return { agents: [...presets, ...custom.filter((a) => a.id !== "claude")], custom, problems };
+  return { agents: [...presets, ...custom.filter((a) => !BUILT_IN_AGENT_IDS.has(a.id))], custom, problems };
 }
