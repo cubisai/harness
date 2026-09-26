@@ -181,6 +181,37 @@ describe("ACP driver", () => {
     expect(second.deltas.join("")).toBe('[[null,"docs",null],["http","remote","https://mcp.example.com/mcp"]]');
   });
 
+  it("names the HTTP servers an agent without MCP-over-HTTP can't take, once", async () => {
+    const d = createAcpDriver({ id: "mock", label: "Mock", command: process.execPath, args: [MOCK], env: { MOCK_ACP_NO_HTTP: "1" } }, { clientVersion: "test" });
+    closeAfter(() => d.dispose?.());
+    const docs = { name: "docs", enabled: true, spec: { type: "stdio" as const, command: "docs-mcp", args: [] } };
+    const remote = { name: "remote", enabled: true, spec: { type: "http" as const, url: "https://mcp.example.com/mcp" } };
+    const first = turn("mcp", { mcpServers: [docs, remote] });
+    await d.runTurn(first.input);
+    // The stdio server still arrives; the HTTP one is dropped, and said so.
+    expect(first.deltas.join("")).toBe('[[null,"docs",null]]');
+    const notices = first.events.filter((e) => e.kind === "notice").map((e) => (e as { text: string }).text);
+    expect(notices.filter((t) => t.includes("remote") && /MCP over HTTP/.test(t))).toHaveLength(1);
+    const second = turn("mcp", { sessionId: first.sessions[0]!, mcpServers: [docs, remote] });
+    await d.runTurn(second.input);
+    expect(second.events.filter((e) => e.kind === "notice" && (e as { text: string }).text.includes("remote"))).toEqual([]);
+  });
+
+  it("says the session was reopened when the MCP servers change", async () => {
+    const d = driver();
+    const docs = { name: "docs", enabled: true, spec: { type: "stdio" as const, command: "docs-mcp", args: [] } };
+    const remote = { name: "remote", enabled: true, spec: { type: "http" as const, url: "https://mcp.example.com/mcp" } };
+    const first = turn("mcp", { mcpServers: [docs] });
+    await d.runTurn(first.input);
+    expect(first.events.filter((e) => e.kind === "notice")).toEqual([]);
+    const second = turn("mcp", { sessionId: first.sessions[0]!, mcpServers: [docs, remote] });
+    await d.runTurn(second.input);
+    const notices = second.events.filter((e) => e.kind === "notice").map((e) => (e as { text: string }).text);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatch(/remote/);
+    expect(notices[0]).toMatch(/reopened/);
+  });
+
   it("cancels a running turn", async () => {
     const d = driver();
     const t = turn("slow");

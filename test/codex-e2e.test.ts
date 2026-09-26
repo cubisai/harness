@@ -122,6 +122,8 @@ describe.skipIf(!codex)("Codex end to end (real app-server, fake model)", () => 
     expect(second.asked).toEqual(["browser_eval: expression: 1+1"]);
     expect(ran).toEqual(["1+1"]);
     expect(second.events.filter((e) => e.kind !== "turn-start" && e.kind !== "turn-end")).toEqual([
+      // Attaching the browser tools reopens the thread, which restarts its prompt cache: said, not silent.
+      { kind: "notice", text: expect.stringMatching(/added the app's browser tools.*reopened/) },
       { kind: "tool-use", toolUseId: expect.any(String), name: "browser_eval", summary: '{"expression":"1+1"}' },
       { kind: "tool-result", toolUseId: expect.any(String), isError: false, summary: "2" },
       { kind: "assistant-text", text: "Evaluated." },

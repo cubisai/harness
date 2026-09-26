@@ -79,6 +79,20 @@ describe("Codex driver", () => {
     expect(t.events[1]).toMatchObject({ kind: "assistant-text", text: '["/skills/here"]' });
   });
 
+  it("says the thread was reopened when the MCP servers change", async () => {
+    const d = driver();
+    const docs = { name: "docs", enabled: true, spec: { type: "stdio" as const, command: "docs-mcp", args: [] } };
+    const remote = { name: "remote", enabled: true, spec: { type: "http" as const, url: "https://mcp.example.com/mcp" } };
+    const first = turn("a", { mcpServers: [docs] });
+    await d.runTurn(first.input);
+    const second = turn("b", { sessionId: first.sessions[0]!, mcpServers: [docs, remote] });
+    await d.runTurn(second.input);
+    const notices = second.events.filter((e) => e.kind === "notice").map((e) => (e as { text: string }).text);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatch(/remote/);
+    expect(notices[0]).toMatch(/reopened/);
+  });
+
   it("resumes a known thread and starts fresh for an unknown one", async () => {
     const d = driver();
     const known = turn("a", { sessionId: "known-thread" });
@@ -174,7 +188,11 @@ describe("turnEndFromUsage", () => {
 
 describe("Codex policy mapping", () => {
   it("maps permission modes and decisions", () => {
+    // Pinned by spikes (spec/open-questions.md): codex 0.157 still honours "untrusted" and it is the only
+    // policy that asks before every command; the request's sandbox spelling is kebab-case (camelCase is rejected).
     expect(codexPolicy("ask")).toEqual({ approvalPolicy: "untrusted", sandbox: "workspace-write" });
+    expect(codexPolicy("ask").approvalPolicy).not.toBe("on-request");
+    for (const mode of ["ask", "auto-edit", "full"] as const) expect(["read-only", "workspace-write", "danger-full-access"]).toContain(codexPolicy(mode).sandbox);
     expect(codexPolicy("auto-edit")).toEqual({ approvalPolicy: "on-request", sandbox: "workspace-write" });
     expect(codexPolicy("full")).toEqual({ approvalPolicy: "never", sandbox: "danger-full-access" });
     expect(codexDecision("allow-always")).toBe("acceptForSession");
@@ -228,7 +246,9 @@ describe("Codex with the harness's tools", () => {
     const second = turn("browser", { sessionId: first.sessions[0]!, tools: [evalTool], permissionMode: "full" });
     await d.runTurn(second.input);
     expect(second.sessions).toEqual(first.sessions);
-    expect(second.events[2]).toMatchObject({ kind: "tool-result", summary: "evaluated 1+1" });
+    // Attaching the tools reopens the thread, and that's said (it restarts the prompt cache).
+    expect(second.events[0]).toMatchObject({ kind: "notice", text: expect.stringMatching(/browser tools.*reopened/) });
+    expect(second.events.filter((e) => e.kind !== "notice")[2]).toMatchObject({ kind: "tool-result", summary: "evaluated 1+1" });
   });
 });
 

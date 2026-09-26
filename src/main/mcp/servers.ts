@@ -164,6 +164,33 @@ export function forAcp(servers: McpServerEntry[], http: boolean): AcpMcpServer[]
   });
 }
 
+/**
+ * forAcp, plus the names of the HTTP servers it had to leave out. ACP's
+ * `mcpCapabilities.http` defaults to false, so an agent that doesn't report it
+ * gets only stdio servers, and the user has to be told which ones went missing.
+ */
+export function forAcpWithReport(servers: McpServerEntry[], http: boolean): { servers: AcpMcpServer[]; dropped: string[] } {
+  return { servers: forAcp(servers, http), dropped: http ? [] : servers.filter((s) => s.spec.type !== "stdio").map((s) => s.name) };
+}
+
+/**
+ * What changed between two MCP server sets, keyed by server name, as the
+ * notice a turn shows when the session is reopened with them; null when
+ * nothing changed. Reopening discards the agent's prompt cache, so it's said.
+ */
+export function mcpChangeNotice(before: Record<string, unknown>, after: Record<string, unknown>, reopened: boolean, agent: string): string | null {
+  const added = Object.keys(after).filter((n) => !(n in before));
+  const removed = Object.keys(before).filter((n) => !(n in after));
+  const changed = Object.keys(after).filter((n) => n in before && JSON.stringify(before[n]) !== JSON.stringify(after[n]));
+  if (!added.length && !removed.length && !changed.length) return null;
+  // The harness's own tool server goes by "unskilled" on the wire; users know it as the browser tools.
+  const label = (names: string[]) => names.map((n) => (n === "unskilled" ? "the app's browser tools" : n)).join(", ");
+  const parts = [added.length && `added ${label(added)}`, removed.length && `removed ${label(removed)}`, changed.length && `changed ${label(changed)}`].filter(Boolean);
+  return reopened
+    ? `MCP servers changed (${parts.join("; ")}), so ${agent}'s session was reopened with them (its prompt cache starts over).`
+    : `MCP servers changed (${parts.join("; ")}), but ${agent} can't reopen a session, so the change applies from the next new thread.`;
+}
+
 /** Connect, list the server's tools, disconnect. */
 export async function testServer(spec: McpServerSpec, timeoutMs = 20_000): Promise<McpTestResult> {
   const client = new Client({ name: "unskilled", version: "1.0.0" });

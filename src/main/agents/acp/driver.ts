@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { summarizeToolResult } from "../summarize";
 import type { AgentDriver, TurnInput } from "../types";
 import { acpCapabilities, withCapabilities } from "../capabilities";
-import { forAcp } from "../../mcp/servers";
+import { forAcpWithReport, mcpChangeNotice } from "../../mcp/servers";
 import { RpcError, StdioRpc } from "../rpc";
 import { normalizeUsage } from "../../usage";
 import type { InjectionPlan } from "../../inject";
@@ -112,6 +112,10 @@ interface Live {
   /** Whether this session was opened with the harness's tool server attached. */
   /** The MCP servers the session was opened with, to notice when they change. */
   mcpSignature: string;
+  /** The same servers by name, to say which ones changed. */
+  mcpByName: Record<string, unknown>;
+  /** HTTP servers already reported as dropped on this connection, so each is said once. */
+  droppedNotified: Set<string>;
   /** The turn currently receiving this connection's updates. */
   turn: TurnState | null;
   idleTimer?: NodeJS.Timeout;
@@ -288,7 +292,7 @@ export function createAcpDriver(
       clientInfo: { name: "unskilled", version: deps.clientVersion },
     });
     applyInitialize(init, input);
-    l = { conn, init, sessionId: null, configOptions: [], mcpSignature: "[]", turn: null };
+    l = { conn, init, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, droppedNotified: new Set(), turn: null };
     const auth = init.authMethods?.[0];
     if (auth) await conn.request("authenticate", { methodId: auth.id }).catch(() => {});
     live.set(threadKey, l);
@@ -297,10 +301,23 @@ export function createAcpDriver(
 
   const mcpServersFor = async (l: Live, input: TurnInput) => {
     const http = Boolean(l.init.agentCapabilities?.mcpCapabilities?.http);
-    const servers: unknown[] = forAcp(input.mcpServers, http);
-    if (input.tools.length && deps.toolServer && http) {
-      const { url, token } = await deps.toolServer();
-      servers.push({ type: "http", name: "unskilled", url, headers: [{ name: "Authorization", value: `Bearer ${token}` }] });
+    const report = forAcpWithReport(input.mcpServers, http);
+    const servers: { name: string }[] = report.servers;
+    const dropped = [...report.dropped];
+    if (input.tools.length && deps.toolServer) {
+      if (http) {
+        const { url, token } = await deps.toolServer();
+        servers.push({ type: "http", name: "unskilled", url, headers: [{ name: "Authorization", value: `Bearer ${token}` }] } as { name: string });
+      } else dropped.push("the app's browser tools");
+    }
+    // Never a silent drop (invariant 7): name each server the agent can't take, once per connection.
+    const fresh = dropped.filter((n) => !l.droppedNotified.has(n));
+    if (fresh.length) {
+      for (const n of fresh) l.droppedNotified.add(n);
+      input.onEvent({
+        kind: "notice",
+        text: `${config.label} doesn't support MCP over HTTP, so these servers were left out: ${fresh.join(", ")}.`,
+      });
     }
     return servers;
   };
@@ -309,18 +326,25 @@ export function createAcpDriver(
     const caps = l.init.agentCapabilities;
     const mcpServers = await mcpServersFor(l, input);
     const signature = JSON.stringify(mcpServers);
+    const byName = Object.fromEntries(mcpServers.map((m) => [m.name, m]));
     if (l.sessionId) {
       // The MCP servers changed mid-conversation (the user opened the
       // browser, or edited their servers): reopen the same session with them.
-      if (signature === l.mcpSignature || !caps?.sessionCapabilities?.resume || !caps.sessionCapabilities.close) return;
+      if (signature === l.mcpSignature) return;
+      const canReopen = Boolean(caps?.sessionCapabilities?.resume && caps.sessionCapabilities.close);
+      const notice = mcpChangeNotice(l.mcpByName, byName, canReopen, config.label);
+      if (notice) input.onEvent({ kind: "notice", text: notice });
+      l.mcpSignature = signature;
+      l.mcpByName = byName;
+      if (!canReopen) return;
       await l.conn.request("session/close", { sessionId: l.sessionId }).catch(() => {});
       const res = await l.conn.request<{ configOptions?: ConfigOption[] }>("session/resume", { cwd: input.cwd, mcpServers, sessionId: l.sessionId });
       if (res?.configOptions) l.configOptions = res.configOptions;
-      l.mcpSignature = signature;
       return;
     }
     const params = { cwd: input.cwd, mcpServers };
     l.mcpSignature = signature;
+    l.mcpByName = byName;
     if (input.sessionId && caps?.sessionCapabilities?.resume) {
       try {
         const res = await l.conn.request<{ configOptions?: ConfigOption[] }>("session/resume", { ...params, sessionId: input.sessionId });

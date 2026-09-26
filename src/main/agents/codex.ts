@@ -1,6 +1,6 @@
 import type { McpServerEntry, ModelOption, PermissionDecision, PermissionMode, ThreadEvent } from "../../shared/types";
 import { homedir } from "node:os";
-import { forCodex } from "../mcp/servers";
+import { forCodex, mcpChangeNotice } from "../mcp/servers";
 import { normalizeUsage } from "../usage";
 import type { InjectionPlan } from "../inject";
 import { RpcError, StdioRpc } from "./rpc";
@@ -396,6 +396,9 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
           // resume below loads it again with the new config.
           const was = loaded.get(input.sessionId);
           if (was !== undefined && was !== signature) {
+            const servers = (json: string) => ((JSON.parse(json) as { mcp_servers?: Record<string, unknown> } | null)?.mcp_servers ?? {});
+            const notice = mcpChangeNotice(servers(was), servers(signature), true, "Codex");
+            if (notice) input.onEvent({ kind: "notice", text: notice });
             await conn.request("thread/unsubscribe", { threadId: input.sessionId }).catch(() => {});
             loaded.delete(input.sessionId);
           }

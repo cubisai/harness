@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { codexServers, readExternalMcp } from "../src/main/mcp/external";
-import { forAcp, forClaude, McpServerStore, testServer, viewOf } from "../src/main/mcp/servers";
+import { forAcp, forAcpWithReport, forClaude, mcpChangeNotice, McpServerStore, testServer, viewOf } from "../src/main/mcp/servers";
 import { startToolServer } from "../src/main/mcp-http";
 import { closeAfter, tempDir } from "./helpers";
 
@@ -119,5 +119,27 @@ describe("readExternalMcp", () => {
   it("copes with no config at all", () => {
     expect(readExternalMcp({ home: tempDir(), projectPath: null, env: {} })).toEqual([]);
     expect(codexServers("[mcp_servers.x]\nenabled = true")).toEqual([{ name: "x", type: "unknown", target: "" }]);
+  });
+});
+
+describe("MCP loss and change reporting", () => {
+  const docs = { name: "docs", enabled: true, spec: { type: "stdio" as const, command: "d", args: [] } };
+  const web = { name: "web", enabled: true, spec: { type: "http" as const, url: "https://x/mcp" } };
+
+  it("reports the HTTP servers an agent without MCP-over-HTTP drops", () => {
+    const off = forAcpWithReport([docs, web], false);
+    expect(off.servers.map((s) => s.name)).toEqual(["docs"]);
+    expect(off.dropped).toEqual(["web"]);
+    expect(forAcpWithReport([docs, web], true).dropped).toEqual([]);
+  });
+
+  it("describes what changed, and whether the session was reopened", () => {
+    expect(mcpChangeNotice({ a: 1 }, { a: 1 }, true, "X")).toBeNull();
+    const text = mcpChangeNotice({ a: 1, b: 2 }, { a: 9, c: 3 }, true, "X")!;
+    expect(text).toMatch(/added c/);
+    expect(text).toMatch(/removed b/);
+    expect(text).toMatch(/changed a/);
+    expect(text).toMatch(/reopened/);
+    expect(mcpChangeNotice({}, { c: 3 }, false, "X")).toMatch(/can't reopen/);
   });
 });
