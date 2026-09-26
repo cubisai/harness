@@ -125,8 +125,8 @@ describe("Codex driver", () => {
     await d.runTurn(t.input);
     expect(t.asked).toEqual(["npm test"]);
     expect(t.events.slice(1, 3)).toEqual([
-      { kind: "tool-use", toolUseId: "c1", name: "Run", summary: "npm test" },
-      { kind: "tool-result", toolUseId: "c1", isError: false, summary: "3 passed (accept)" },
+      { kind: "tool-use", toolUseId: "c1", name: "Run", summary: "npm test", payload: { command: "npm test" } },
+      { kind: "tool-result", toolUseId: "c1", isError: false, summary: "3 passed (accept)", payload: { exitCode: 0, output: "3 passed (accept)" } },
     ]);
   });
 
@@ -389,7 +389,13 @@ describe("Codex with the harness's tools", () => {
     expect(t.asked).toEqual(["expression: 1+1"]);
     expect(t.events.slice(1, 3)).toEqual([
       { kind: "tool-use", toolUseId: "t1", name: "browser_eval", summary: '{"expression":"1+1"}' },
-      { kind: "tool-result", toolUseId: "t1", isError: false, summary: "evaluated 1+1" },
+      {
+        kind: "tool-result",
+        toolUseId: "t1",
+        isError: false,
+        summary: "evaluated 1+1",
+        payload: { content: [{ type: "text", text: "evaluated 1+1" }] },
+      },
     ]);
   });
 

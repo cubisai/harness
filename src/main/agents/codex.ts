@@ -1,4 +1,6 @@
 import type { McpServerEntry, ModelOption, PermissionDecision, PermissionMode, ThreadEvent } from "../../shared/types";
+import type { RunPayload, RunResult, ToolDiff } from "../../shared/tools";
+import { clipSummary } from "../../shared/tools";
 import { homedir } from "node:os";
 import { forCodex, mcpChangeNotice } from "../mcp/servers";
 import { normalizeUsage } from "../usage";
@@ -280,7 +282,6 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     const tool = toolFor(item);
     if (tool) t.input.onEvent({ kind: "tool-use", toolUseId: item.id, ...tool });
   };
-
   const onItemCompleted = (t: TurnState, item: ThreadItem) => {
     if (item.type === "contextCompaction") {
       emitCompaction(t);
@@ -322,7 +323,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       if (m.error) summary = m.error.message;
       else if (m.result) summary = summarizeToolResult(m.result.content) || summary;
     }
-    t.input.onEvent({ kind: "tool-result", toolUseId: item.id, isError: failed, summary });
+    const payload = resultPayloadFor(item);
+    t.input.onEvent({ kind: "tool-result", toolUseId: item.id, isError: failed, summary, ...(payload !== null ? { payload } : {}) });
   };
 
   const onRequest = async (method: string, params: unknown): Promise<unknown> => {
@@ -546,21 +548,53 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   };
 }
 
-function toolFor(item: ThreadItem): { name: string; summary: string } | null {
+/** The name, summary, and canonical payload of one tool item, for tool-use events. */
+export function toolFor(item: ThreadItem): { name: string; summary: string; payload?: unknown } | null {
   switch (item.type) {
-    case "commandExecution":
-      return { name: "Run", summary: (item as { command: string }).command };
-    case "fileChange":
-      return { name: "Edit", summary: (item as { changes: { path: string }[] }).changes.map((c) => c.path).join(", ") };
+    case "commandExecution": {
+      const c = item as { command: string };
+      return { name: "Run", summary: clipSummary(c.command), payload: { command: c.command } satisfies RunPayload };
+    }
+    case "fileChange": {
+      const f = item as { changes: { path: string }[] };
+      return { name: "Edit", summary: clipSummary(f.changes.map((c) => c.path).join(", ")), payload: { changes: f.changes } };
+    }
     case "mcpToolCall": {
       const m = item as { server: string; tool: string; arguments?: unknown };
       const args = m.arguments && typeof m.arguments === "object" ? (m.arguments as Record<string, unknown>) : {};
       // The harness's own tools read as themselves, like Claude's browser_* calls.
-      return { name: m.server === CODEX_TOOL_SERVER ? m.tool : `${m.server} · ${m.tool}`, summary: summarizeToolInput(m.tool, args) };
+      return {
+        name: m.server === CODEX_TOOL_SERVER ? m.tool : `${m.server} · ${m.tool}`,
+        summary: summarizeToolInput(m.tool, args),
+      };
     }
     case "webSearch":
-      return { name: "Search", summary: (item as { query?: string }).query ?? "" };
+      return { name: "Search", summary: clipSummary((item as { query?: string }).query ?? "") };
     default:
       return null;
   }
+}
+
+/** The canonical tool-result payload for a completed item, or null when the item has none. */
+export function resultPayloadFor(item: ThreadItem): unknown | null {
+  if (item.type === "commandExecution") {
+    const c = item as { aggregatedOutput: string | null; exitCode: number | null };
+    return { exitCode: c.exitCode, output: c.aggregatedOutput ?? "" } satisfies RunResult;
+  }
+  if (item.type === "fileChange") {
+    const f = item as { changes: { path: string; diff?: unknown; unified_diff?: unknown; kind?: { unified_diff?: unknown } }[] };
+    const diff: ToolDiff[] = f.changes
+      .map((c) => {
+        const unified =
+          typeof c.diff === "string" ? c.diff : typeof c.unified_diff === "string" ? c.unified_diff : typeof c.kind?.unified_diff === "string" ? c.kind.unified_diff : "";
+        return { path: c.path, unified };
+      })
+      .filter((d) => d.unified);
+    return { diff };
+  }
+  if (item.type === "mcpToolCall") {
+    const m = item as { result?: { content: unknown } | null; error?: { message: string } | null };
+    return m.error ?? m.result ?? null;
+  }
+  return null;
 }

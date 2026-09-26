@@ -1,6 +1,9 @@
 import type { AgentCapabilities, ModelOption, PermissionDecision, PermissionMode, PlanEntry } from "../../../shared/types";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
+import { clipSummary } from "../../../shared/tools";
+import type { RunPayload, RunResult, ToolDiff } from "../../../shared/tools";
+import { unifiedDiff } from "../../../shared/diff";
 import { summarizeToolResult } from "../summarize";
 import type { AgentDriver, TurnInput } from "../types";
 import { acpCapabilities, withCapabilities } from "../capabilities";
@@ -239,7 +242,18 @@ export function createAcpDriver(
           flushText(t);
           tool = { name: u.title ?? u.kind ?? "tool", done: false };
           t.tools.set(u.toolCallId, tool);
-          t.input.onEvent({ kind: "tool-use", toolUseId: u.toolCallId, name: kindLabel(u.kind), summary: u.title ?? "" });
+          // An execute call's payload names the command even when rawInput
+          // doesn't carry one (the title does), like the other adapters' Run.
+          const raw = u.rawInput as { command?: unknown } | null | undefined;
+          const payload: RunPayload | undefined =
+            u.kind === "execute" ? { command: typeof raw?.command === "string" ? raw.command : u.title ?? "" } : undefined;
+          t.input.onEvent({
+            kind: "tool-use",
+            toolUseId: u.toolCallId,
+            name: kindLabel(u.kind),
+            summary: clipSummary(u.title ?? ""),
+            ...(payload ? { payload } : {}),
+          });
         }
         const text = (u.content ?? []).map((c) => c.content?.text ?? "").join(" ");
         // An update's content replaces the previous one (a snapshot, not an
@@ -252,11 +266,13 @@ export function createAcpDriver(
         }
         if (!tool.done && (u.status === "completed" || u.status === "failed")) {
           tool.done = true;
+          const payload = resultPayload(u, text);
           t.input.onEvent({
             kind: "tool-result",
             toolUseId: u.toolCallId,
             isError: u.status === "failed",
             summary: summarizeToolResult(text) || (u.status === "failed" ? "Failed" : "Done"),
+            ...(payload !== null ? { payload } : {}),
           });
         }
         return;
@@ -576,7 +592,7 @@ export function createAcpDriver(
   };
 }
 
-function kindLabel(kind: ToolKind | null | undefined): string {
+export function kindLabel(kind: ToolKind | null | undefined): string {
   switch (kind) {
     case "read":
       return "Read";
@@ -597,4 +613,24 @@ function kindLabel(kind: ToolKind | null | undefined): string {
     default:
       return "Tool";
   }
+}
+
+/** Diff items in a tool call's content, as canonical ToolDiffs. */
+export function diffContent(content: ToolCallFields["content"] | null | undefined): { diff: ToolDiff[] } | null {
+  const diffs: ToolDiff[] = [];
+  for (const item of content ?? []) {
+    if (item.type !== "diff") continue;
+    const d = item as { type: "diff"; path?: string; oldText?: string | null; newText?: string | null };
+    if (typeof d.path !== "string") continue;
+    diffs.push({ path: d.path, unified: unifiedDiff(d.path, d.oldText ?? "", d.newText ?? "") });
+  }
+  return diffs.length ? { diff: diffs } : null;
+}
+
+/** The canonical tool-result payload for a terminal tool_call update, or null when there is none. */
+export function resultPayload(u: ToolCallFields, text: string): unknown | null {
+  const diffs = diffContent(u.content);
+  if (diffs) return diffs;
+  if (u.kind === "execute") return { exitCode: null, output: text } satisfies RunResult;
+  return null;
 }

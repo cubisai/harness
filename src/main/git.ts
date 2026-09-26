@@ -2,46 +2,14 @@ import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type { DiffFile, DiffHunk, GitState } from "../shared/types";
+import { parseUnifiedDiff } from "../shared/diff";
+import type { DiffFile, GitState } from "../shared/types";
+
+// The diff parser lives in shared (the renderer and adapters read it too);
+// re-exported so existing imports of src/main/git keep working.
+export { parseUnifiedDiff };
 
 const run = promisify(execFile);
-
-/** Parse `git diff` unified output into files and hunks. */
-export function parseUnifiedDiff(text: string): DiffFile[] {
-  const files: DiffFile[] = [];
-  let file: DiffFile | null = null;
-  let hunk: DiffHunk | null = null;
-
-  for (const line of text.split("\n")) {
-    if (line.startsWith("diff --git ")) {
-      const m = /^diff --git a\/(.*) b\/(.*)$/.exec(line);
-      file = { path: m?.[2] ?? line.slice(11), status: "modified", additions: 0, deletions: 0, hunks: [] };
-      hunk = null;
-      files.push(file);
-    } else if (!file) {
-      continue;
-    } else if (line.startsWith("new file mode")) {
-      file.status = "added";
-    } else if (line.startsWith("deleted file mode")) {
-      file.status = "deleted";
-    } else if (line.startsWith("rename to ")) {
-      file.status = "renamed";
-      file.path = line.slice("rename to ".length);
-    } else if (line.startsWith("@@")) {
-      hunk = { header: line, lines: [] };
-      file.hunks.push(hunk);
-    } else if (hunk && line.startsWith("+") && !line.startsWith("+++")) {
-      hunk.lines.push({ kind: "add", text: line.slice(1) });
-      file.additions++;
-    } else if (hunk && line.startsWith("-") && !line.startsWith("---")) {
-      hunk.lines.push({ kind: "del", text: line.slice(1) });
-      file.deletions++;
-    } else if (hunk && line.startsWith(" ")) {
-      hunk.lines.push({ kind: "context", text: line.slice(1) });
-    }
-  }
-  return files;
-}
 
 const MAX_UNTRACKED_BYTES = 200_000;
 

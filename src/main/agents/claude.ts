@@ -4,6 +4,9 @@ import { createRequire } from "node:module";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
 import type { HookCallback, ModelInfo, Options, PermissionResult, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { McpServerEntry, ModelOption, PermissionMode, ThreadEvent } from "../../shared/types";
+import { canonicalTool, type EditResult, type RunPayload } from "../../shared/tools";
+import { unifiedDiff } from "../../shared/diff";
+import type { ToolDiff } from "../../shared/tools";
 import { forClaude } from "../mcp/servers";
 import { checkCommand } from "../guard";
 import type { InjectionPlan } from "../inject";
@@ -411,12 +414,31 @@ export function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnS
           }
         } else if (block.type === "tool_use") {
           turn.pending.delete(itemId);
+          const toolInput = (block.input ?? {}) as Record<string, unknown>;
+          // The canonical name plus, for commands and file edits, a payload
+          // every adapter emits the same way.
+          const name = canonicalTool(block.name);
+          let payload: RunPayload | { diff: ToolDiff[] } | undefined;
+          if (block.name === "Bash" && typeof toolInput.command === "string") {
+            payload = { command: toolInput.command };
+          } else if (block.name === "Edit" && typeof toolInput.file_path === "string" && typeof toolInput.old_string === "string" && typeof toolInput.new_string === "string") {
+            payload = {
+              ...toolInput,
+              diff: [{ path: toolInput.file_path, unified: unifiedDiff(toolInput.file_path, toolInput.old_string, toolInput.new_string) }],
+            };
+          } else if (block.name === "Write" && typeof toolInput.file_path === "string" && typeof toolInput.content === "string") {
+            payload = {
+              ...toolInput,
+              diff: [{ path: toolInput.file_path, unified: unifiedDiff(toolInput.file_path, "", toolInput.content) }],
+            };
+          }
           input.onEvent({
             kind: "tool-use",
             toolUseId: block.id,
-            name: block.name,
-            summary: summarizeToolInput(block.name, (block.input ?? {}) as Record<string, unknown>),
+            name,
+            summary: summarizeToolInput(block.name, toolInput),
             itemId,
+            ...(payload ? { payload } : {}),
           });
         }
       }

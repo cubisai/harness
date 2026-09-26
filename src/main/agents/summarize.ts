@@ -1,11 +1,6 @@
 /** One-line, human-readable summaries of tool calls and results. */
 
-const MAX = 160;
-
-function clip(text: string, max = MAX): string {
-  const one = text.replace(/\s+/g, " ").trim();
-  return one.length > max ? `${one.slice(0, max - 1)}…` : one;
-}
+import { clipSummary as clip, SUMMARY_MAX as MAX } from "../../shared/tools";
 
 function str(v: unknown): string | undefined {
   return typeof v === "string" && v ? v : undefined;
