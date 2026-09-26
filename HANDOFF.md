@@ -1,6 +1,6 @@
-# Handoff — Phase 7 almost done (F2 + close-out left)
+# Handoff — Phase 7 done; Phase 8 next
 
-Updated 2026-09-26 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-delegation workflow), then `spec/README.md`, then `.ai/plans/phase-7-interaction.md`.
+Updated 2026-09-27 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-delegation workflow), then `spec/README.md`, then `spec/phases/phase-8-ui-refinement.md`.
 
 ## Where things stand
 
@@ -13,7 +13,7 @@ Updated 2026-09-26 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-
 | 4 — Streaming + reasoning | **done**: typecheck, build, preview render green; tests green except the two known Windows-machine items | A `6d20cce`, B `8667748`, C `d6686ac`, D `a6ea827` |
 | 5 — Cache discipline | **done**: typecheck, build green; tests green except the two known Windows-machine items | A `80a9a31`, B `270c768`, C `793cfdc` |
 | 6 — Context survival | **done**: typecheck, build, smoke green; tests green except the two known Windows-machine items; real Codex→Claude handoff checked in the app | A `04c347e` `022bd44` (+ smoke fix `4f80d01`), B `95e616e` `a2da431`, C `5e3e7dd` `4d487ec`, D `ff414c5` `00dd3f9`, E `c3a845a` |
-| 7 — Interaction mechanics | **in progress**: A–F1b done and checked in the real app; **F2 (T7.12) and close-out left** | A `d6ecd8e` `9011c87`, B `a535b69`, C `a7340fe`, D `1b94312` `da46d67`, E `8b4c4e7` `50ad9d1`, F1a `59328c9`, F1b `d7b749e` |
+| 7 — Interaction mechanics | **done**: typecheck, build, smoke green; tests green except the two known Windows-machine items; splitters/drawer/collapse checked in the real app | A `d6ecd8e` `9011c87`, B `a535b69`, C `a7340fe`, D `1b94312` `da46d67`, E `8b4c4e7` `50ad9d1`, F1a `59328c9`, F1b `d7b749e`, F2 `d02e49c` |
 | Windows portability | done | `ae0b0cc` |
 
 **Uncommitted on purpose (the user decides):** the pnpm → bun switch (`package.json`, `bun.lock`, `bunfig.toml`, deleted `pnpm-*`/`.npmrc`, `ci.yml`, README/`main.tsx`/`mock.ts` comments) and the `CLAUDE.md` Windows notes. `test/__snapshots__/providers.test.ts.snap` shows as modified: line endings only. Phase commits carry code + tests only, with no attribution trailer.
@@ -49,20 +49,20 @@ Updated 2026-09-26 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-
 - `Service.switchAgent(thread, agent, "handoff" | "fresh" | "back")`: trust reset (default permission mode; approvals are per agent), refusals before any change, git ref only for Hand off, first-message reply stored as a `handoff`/`reply` event, bloat signal on the first turn-end after any switch. `updateThread({ agent })` = back when a cursor exists, else fresh.
 - Renderer: `SwitchDialog` (carries / does not carry, Hand off / Start fresh / Switch back) from the agent select and the palette; `handoff` events render as divider rows.
 
-## What Phase 7 shipped so far
+## What Phase 7 shipped
 
 - Pane geometry is a setting (`Settings.paneLayout`, optional; `src/shared/layout.ts` sanitises/clamps): APG `Splitter` for sidebar/inspector/terminal (keys, drag persisted on release, dblclick reset), `clampLayout` auto-collapses the inspector below a 420px main pane and restores on grow; sidebar rail (`PaneRail`) with aria-expanded toggles.
 - Terminal is a bottom drawer (⌃`), shells stay mounted (also while the browser is wide); the inspector is Changes + Browser only.
 - Tool rows are `<details>` (no name; body only while open; per-thread disclosure state in the store, never persisted); Run output with exit code; one `DiffView` for every agent's edits.
 - Browser: device emulation (`browser_open` `device`, toolbar switch), Page/Console view fed in-band, screenshot strip + viewer via a narrow `unskilled-shot://` scheme (screenshots folder, .png only; CSP img-src allows it), "Move to main area" (conversation becomes a rail, emulation cleared). Smoke asserts the pane's sandbox posture.
 - Take-over: `takeOverReducer` (exclusive lock), banner (Stop/Resume/Watch only), transparent overlay over the webview turns a click/key into "you took over"; the main process refuses the agent's acting browser tools while paused.
+- Four-driver render parity (F2): `diffSummary` ("+a −d") on every adapter's edit result; Claude results carry Run `{exitCode:null, output}` / Edit `{diff}`; ACP execute/edit rows are summarised from `rawInput.command` / the edited path (OpenCode titles calls "bash"/"edit"), and a terminal update recovers its call's kind; `canonical`/`canonical-opencode` mock scenarios, `test/fixtures/canonical-events.ts`.
 - One rendering contract: `src/shared/tools.ts` (`canonicalTool`, `clipSummary` 160 + "…"), `src/shared/diff.ts` (`parseUnifiedDiff` moved here, `unifiedDiff`); canonical Run/Edit payloads from Claude, Codex and ACP; Markdown renderer kept (element-building, no raw HTML — asserted by a test) and pinned by `test/markdown-dialect.test.tsx`, plus GFM tables and strikethrough.
 
-## Resume here: Phase 7 step F2 (T7.12), then close-out
+## Resume here: Phase 8 (UI refinement)
 
-- Brief: `.ai/tmp/f2.brief.txt` (kept on purpose). It covers `diffSummary` ("+a −d" for every adapter's edit results), Claude result payloads (Run `{exitCode:null, output}`, Edit `{diff}` via a per-turn `toolPayloads` map), ACP execute summary from `rawInput.command` (OpenCode titles commands "bash"), `canonical`/`canonical-opencode` scenarios in both mocks, `test/fixtures/canonical-events.ts`, and four-driver render equality in `test/render-parity.test.tsx`.
-- **Uncommitted partial work from the stopped worker** (typecheck clean): `src/shared/diff.ts` has `diffSummary`; `src/main/agents/claude.ts` has the `toolPayloads` map (set on tool_use, not yet used on tool_result). Finish from there — re-dispatch the brief or do it directly; the free models were failing on it (see Environment facts).
-- Then close Phase 7: tick `spec/phases/phase-7-interaction.md` exit criteria (the drag/keyboard/restore/drawer/collapse/sandbox checks were all done in the real app — see the commit messages), status board in `spec/README.md`, this file, clear `.ai/tmp`, then Phase 8 (`spec/phases/phase-8-ui-refinement.md`; it owns the narrow-header fix below).
+- Spec: `spec/phases/phase-8-ui-refinement.md`; write `.ai/plans/phase-8-ui-refinement.md` first. It owns the narrow-header fix and the `ProviderSheet.tsx` id branches (Open items).
+- Carried from Phase 7: check a real OpenCode run for `rawInput`/`locations` arriving only on a later `tool_call_update` (the tool row's summary would then read "bash"/"edit").
 
 ## Windows portability (`src/main/winspawn.ts`)
 

@@ -106,12 +106,14 @@ Paths are relative to the repo root. Read the chapter that explains *why* before
 
 ## Exit criteria
 
-- [ ] `pnpm typecheck && pnpm test && pnpm build` green.
-- [ ] The divider is keyboard-operable with correct `aria-value*`; Enter collapses/restores; double-click resets (T7.1).
-- [ ] Window shrink below the sum of minimums auto-collapses the inspector and restores on grow (T7.2).
-- [ ] Geometry survives restart; disclosure state does not (T7.2, T7.5).
-- [ ] Collapsed tool output is not rendered (T7.5).
-- [ ] Terminal is a bottom drawer; the inspector tabs are Changes and Browser only (T7.4).
-- [ ] The browser keeps its sandbox posture — no Node, no preload, http(s)/file/data only (`index.ts:103-109`, `README.md:99`) — asserted in the smoke test, not just documented (T7.6).
-- [ ] The per-adapter render snapshots are identical (T7.12).
-- [ ] Take-over lock transitions are enforced by tests (T7.10).
+- [x] `pnpm typecheck && pnpm test && pnpm build` green (2026-09-27, bun; the two known Windows-PC failures only; `electron . --smoke` green).
+- [x] The divider is keyboard-operable with correct `aria-value*`; Enter collapses/restores; double-click resets (T7.1). Checked in the app.
+- [x] Window shrink below the sum of minimums auto-collapses the inspector and restores on grow (T7.2). Checked in the app.
+- [x] Geometry survives restart; disclosure state does not (T7.2, T7.5).
+- [x] Collapsed tool output is not rendered (T7.5).
+- [x] Terminal is a bottom drawer; the inspector tabs are Changes and Browser only (T7.4).
+- [x] The browser keeps its sandbox posture — no Node, no preload, http(s)/file/data only (`index.ts:103-109`, `README.md:99`) — asserted in the smoke test, not just documented (T7.6). `smoke: browser sandbox ok`.
+- [x] The per-adapter render snapshots are identical (T7.12): `test/render-parity.test.tsx` renders one canonical set from Claude, Codex, ACP and OpenCode-flavoured ACP and asserts string equality.
+- [x] Take-over lock transitions are enforced by tests (T7.10).
+
+**Carried forward:** OpenCode's real ACP stream may send `rawInput`/`locations` only on a later `tool_call_update`, after the tool-use row was emitted from the bare `tool_call` (title "bash"/"edit"); the mock sends them up front. Check against a real OpenCode run in Phase 8 and, if so, update the row's summary from the first update that carries them.
