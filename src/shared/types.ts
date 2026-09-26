@@ -88,6 +88,19 @@ export interface ConnectionResult {
 /** The per-agent credential choice; subscription = the agent's own login/config. */
 export type CredentialChoice = { kind: "byok"; providerId: string } | { kind: "subscription" };
 
+/** Panel geometry: a setting, so it survives a restart. Disclosure state is not part of it. */
+export interface PaneLayout {
+  sidebar: number;
+  sidebarCollapsed: boolean;
+  inspector: number;
+  inspectorCollapsed: boolean;
+  /** Height of the bottom terminal drawer. */
+  terminal: number;
+  terminalOpen: boolean;
+  /** The browser takes the main area and the conversation becomes a rail. */
+  browserWide: boolean;
+}
+
 export interface Settings {
   theme: Theme;
   /** The agent new threads start with; null = the first available (Claude). */
@@ -99,6 +112,8 @@ export interface Settings {
   editor: string | null;
   /** Per agent id: allow BYOK injection for drivers that write outside the app data folder. Absent = off. */
   providerInjection: Record<string, boolean>;
+  /** Panel sizes and which panels are collapsed; SettingsStore.get() always fills it in. */
+  paneLayout?: PaneLayout;
 }
 
 export interface EditorInfo {

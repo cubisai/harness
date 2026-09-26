@@ -6,6 +6,7 @@ import { Service } from "../src/main/service";
 import { SettingsStore, type SecretBox } from "../src/main/settings";
 import * as settingsModule from "../src/main/settings";
 import type { ProviderInput } from "../src/shared/types";
+import { DEFAULT_LAYOUT } from "../src/shared/layout";
 import type { AgentDriver } from "../src/main/agents/types";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
 import { catalog, closeAfter, fixturesDir, tempDir } from "./helpers";
@@ -41,9 +42,9 @@ describe("SettingsStore", () => {
   it("starts from defaults and persists updates", () => {
     const file = fresh();
     const s = new SettingsStore(file, box);
-    expect(s.get()).toEqual({ theme: "system", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {} });
+    expect(s.get()).toEqual({ theme: "system", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {}, paneLayout: DEFAULT_LAYOUT });
     s.update({ theme: "dark", defaultAgent: "codex", defaultPermissionMode: "auto-edit", autoUpdate: false, editor: "zed" });
-    expect(new SettingsStore(file, box).get()).toEqual({ theme: "dark", defaultAgent: "codex", defaultPermissionMode: "auto-edit", autoUpdate: false, editor: "zed", providerInjection: {} });
+    expect(new SettingsStore(file, box).get()).toEqual({ theme: "dark", defaultAgent: "codex", defaultPermissionMode: "auto-edit", autoUpdate: false, editor: "zed", providerInjection: {}, paneLayout: DEFAULT_LAYOUT });
   });
 
   it("keeps only boolean per-agent injection flags", () => {

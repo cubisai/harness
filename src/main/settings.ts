@@ -8,9 +8,11 @@ import type {
   ProviderSecret,
   ProviderView,
   SecretName,
+  PaneLayout,
   Settings,
   SettingsView,
 } from "../shared/types";
+import { DEFAULT_LAYOUT, sanitizeLayout } from "../shared/layout";
 import { LEGACY_ENV, LEGACY_PROVIDERS, isProviderId, type LegacyProviderId } from "./providers";
 import { protocolKeyVar } from "./inject/keys";
 
@@ -21,7 +23,7 @@ export interface SecretBox {
   decrypt(b64: string): string;
 }
 
-const DEFAULTS: Settings = { theme: "system", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {} };
+const DEFAULTS: Settings = { theme: "system", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {}, paneLayout: { ...DEFAULT_LAYOUT } };
 
 interface FileShape {
   schemaVersion?: number; // absent = the legacy v1 shape
@@ -113,8 +115,9 @@ export class SettingsStore {
     if (existed && added) this.write();
   }
 
-  get(): Settings {
-    return { ...DEFAULTS, ...this.data.settings };
+  get(): Settings & { paneLayout: PaneLayout } {
+    const stored = this.data.settings;
+    return { ...DEFAULTS, ...stored, paneLayout: sanitizeLayout({ ...DEFAULT_LAYOUT, ...stored?.paneLayout }) };
   }
 
   view(): SettingsView {
@@ -143,6 +146,7 @@ export class SettingsStore {
       for (const [agentId, on] of Object.entries(patch.providerInjection)) if (typeof on === "boolean") injection[agentId] = on;
       next.providerInjection = injection;
     }
+    if (patch.paneLayout !== undefined) next.paneLayout = sanitizeLayout(patch.paneLayout);
     this.data.settings = next;
     this.write();
     return next;
