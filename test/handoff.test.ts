@@ -7,8 +7,11 @@ import { Store } from "../src/main/db";
 import { buildCheckpoint, checkpointCap, checkpointGit, codexSeedItems, estimateTokens, exportThread, fitCheckpoint, importThread, injectWithLedger, itemFingerprint, bloatSignal, replacedTokens, renderCheckpoint, THREAD_EXPORT_VERSION } from "../src/main/handoff";
 import { gitState, workingTreeDiff } from "../src/main/git";
 import { normalizeUsage } from "../src/main/usage";
-import type { HandoffCheckpoint, StoredEvent } from "../src/shared/types";
-import { closeAfter, tempDir } from "./helpers";
+import type { AgentCapabilities, HandoffCheckpoint, StoredEvent } from "../src/shared/types";
+import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
+import type { AgentDriver, TurnInput } from "../src/main/agents/types";
+import { Service } from "../src/main/service";
+import { catalog, closeAfter, tempDir } from "./helpers";
 
 function open(dir = tempDir()): Store {
   const store = new Store(join(dir, "t.db"));
@@ -358,5 +361,150 @@ describe("injection ledger", () => {
     const other = { ...target, sessionId: "thr-2" };
     expect(await injectWithLedger(store, other, items, protocol, send)).toEqual({ sent: 2, skipped: 0 });
     expect(send).toHaveBeenCalledTimes(2);
+  });
+});
+
+// T6.13: the cross-phase invariants a handoff must keep, end to end through the Service.
+describe("handoff invariants", () => {
+  type Script = (input: TurnInput) => Promise<void>;
+  const fakeAgent = (id: string, script: Script, caps: Partial<AgentCapabilities> = {}, seed?: AgentDriver["seed"]): AgentDriver => ({
+    id,
+    label: id,
+    defaultModel: `${id}-1`,
+    capabilities: { ...SAFE_DEFAULTS, ...caps },
+    skillsDelivery: { mode: "none" },
+    skillCallPrefix: "",
+    models: () => [{ id: `${id}-1`, label: id }],
+    runTurn: script,
+    seed,
+  });
+  const cleanRepo = () => {
+    const dir = tempDir();
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: dir });
+    git("init", "-q");
+    git("config", "user.email", "t@example.com");
+    git("config", "user.name", "t");
+    writeFileSync(join(dir, "a.ts"), "1\n");
+    git("add", ".");
+    git("commit", "-qm", "init");
+    return dir;
+  };
+  const big = normalizeUsage({ inputTokens: 50_000, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 });
+
+  /** Codex ran a side-effecting command; the thread is then handed to an inject-items target. */
+  async function handedOff() {
+    const ran: string[] = [];
+    const injected: unknown[][] = [];
+    const codex = fakeAgent("codex", async (input) => {
+      input.onSession("thr-1");
+      input.onEvent({ kind: "tool-use", toolUseId: "call-rm", name: "Run", summary: "rm -rf build", payload: { command: "rm -rf build" } });
+      input.onEvent({ kind: "tool-result", toolUseId: "call-rm", isError: false, summary: "removed", payload: { exitCode: 0, output: "removed build/" } });
+      input.onEvent({ kind: "assistant-text", text: "Cleaned the build folder." });
+      input.onEvent({ kind: "turn-end", costUsd: null, inputTokens: 50_000, outputTokens: 5, durationMs: 1, usage: big });
+    });
+    const target = fakeAgent(
+      "target",
+      async (input) => {
+        ran.push(input.prompt);
+      },
+      { seeding: "inject-items" },
+      async (req) => {
+        req.onSession("tgt-1");
+        const { sent } = await req.inject("tgt-1", async (items) => {
+          injected.push(items);
+        });
+        return { mode: "seeded", sessionId: "tgt-1", sent };
+      },
+    );
+    const store = open();
+    const service = new Service(store, catalog(), [codex, target], () => {});
+    const project = store.addProject(cleanRepo());
+    const thread = service.createThread(project.id, "codex");
+    await service.send({ threadId: thread.id, text: "Clean the build" });
+    const res = await service.switchAgent(thread.id, "target", "handoff");
+    return { store, service, thread, res, ran, injected };
+  }
+
+  it("1: carries a side-effecting command as its recorded result and never runs it again", async () => {
+    const { res, ran, injected } = await handedOff();
+    expect(res.ok).toBe(true);
+    expect(ran).toEqual([]); // the target ran no turn, so nothing could re-invoke the tool
+    const items = injected.flat() as { type: string; call_id?: string; output?: string }[];
+    const call = items.find((i) => i.type === "function_call" && i.call_id === "call-rm");
+    const output = items.find((i) => i.type === "function_call_output" && i.call_id === "call-rm");
+    expect(call).toBeDefined();
+    expect(output?.output).toContain("removed build/"); // a completed call: nothing pending to execute
+    expect(JSON.stringify(items)).toContain("do not run them again");
+  });
+
+  it("2: every handoff event and the injected history name the agent they came from", async () => {
+    const { store, thread, injected } = await handedOff();
+    const handoffs = store.listEvents(thread.id).filter((e) => e.event.kind === "handoff");
+    expect(handoffs.length).toBeGreaterThan(0);
+    for (const e of handoffs) expect(e.provenance?.agent).toBeTruthy();
+    const message = (injected.flat() as { type: string; content?: { text: string }[] }[]).find((i) => i.type === "message");
+    expect(message?.content?.[0]?.text).toMatch(/^# Handoff from codex \(codex-1\)/);
+  });
+
+  it("3: Codex, then another agent, then Codex keeps the Codex cursor", async () => {
+    const { service, store, thread } = await handedOff();
+    expect(store.getThread(thread.id).bindings["codex:default"]!.resumeCursor).toBe("thr-1");
+    const back = await service.switchAgent(thread.id, "codex", "back");
+    expect(back).toMatchObject({ ok: true, thread: { agent: "codex", sessionId: "thr-1" } });
+    expect(store.getThread(thread.id).bindings["target:default"]!.resumeCursor).toBe("tgt-1");
+  });
+
+  it("4 and 5: the same checkpoint injects once, and a mid-injection throw rolls forward without duplicating", async () => {
+    const store = open();
+    const cp: HandoffCheckpoint = {
+      threadId: "t",
+      from: { agent: "codex", model: "gpt-x" },
+      builtAt: 0,
+      lastSeq: 9,
+      goal: "g",
+      messages: [],
+      files: [],
+      commands: [{ toolUseId: "c1", name: "Run", summary: "npm test", isError: false, exitCode: 0, output: "ok", artifact: null }],
+      openQuestions: [],
+      git: null,
+    };
+    const items = codexSeedItems(cp, renderCheckpoint(cp, 0));
+    const target = { threadId: "t", provider: "codex", sessionId: "thr-2", checkpointId: "cp-9" };
+    const delivered: unknown[] = [];
+    let fail = true;
+    const send = async (xs: unknown[]) => {
+      if (fail) {
+        fail = false;
+        throw new Error("socket closed");
+      }
+      delivered.push(...xs);
+    };
+    await expect(injectWithLedger(store, target, items, "codex/inject_items", send)).rejects.toThrow("socket closed");
+    expect(await injectWithLedger(store, target, items, "codex/inject_items", send)).toEqual({ sent: items.length, skipped: 0 });
+    expect(await injectWithLedger(store, target, items, "codex/inject_items", send)).toEqual({ sent: 0, skipped: items.length });
+    expect(delivered).toEqual(items); // each item exactly once
+    expect(store.ledgerRows(target).map((r) => r.state)).toEqual(items.map(() => "injected"));
+  });
+
+  it("6: export then import restores the bindings and the events", async () => {
+    const { store, thread } = await handedOff();
+    const before = store.getThread(thread.id);
+    const events = store.listEvents(thread.id);
+    const restored = importThread(store, before.projectId, JSON.parse(JSON.stringify(exportThread(store, thread.id))));
+    expect(restored.bindings).toEqual(before.bindings);
+    expect(store.listEvents(restored.id).map((e) => [e.seq, e.event.kind, e.provenance?.agent ?? null])).toEqual(
+      events.map((e) => [e.seq, e.event.kind, e.provenance?.agent ?? null]),
+    );
+  });
+});
+
+describe("replacedTokens with failed turns", () => {
+  it("ignores a turn-end that reported zero usage", () => {
+    const zero = normalizeUsage({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 });
+    const events: StoredEvent[] = [
+      { seq: 1, createdAt: 0, event: { kind: "user", text: "Reply with exactly OK" } },
+      { seq: 2, createdAt: 0, event: { kind: "turn-end", costUsd: null, inputTokens: 0, outputTokens: 0, durationMs: 1, usage: zero } },
+    ];
+    expect(replacedTokens(events)).toBe(estimateTokens("Reply with exactly OK"));
   });
 });

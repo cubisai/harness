@@ -243,11 +243,14 @@ export function estimateTokens(text: string): number {
 
 /** Tokens the handoff replaces: the last turn's whole processed input, else an estimate of the visible conversation. */
 export function replacedTokens(events: StoredEvent[]): number {
-  let usage: Usage | null = null;
+  // A failed turn reports no usage at all (zeros); it says nothing about the conversation's size.
+  let total = 0;
   for (const { event } of events) {
-    if (event.kind === "turn-end" && event.usage) usage = event.usage;
+    if (event.kind !== "turn-end" || !event.usage) continue;
+    const t = event.usage.inputTokens + (event.usage.cacheReadTokens ?? 0) + (event.usage.cacheWriteTokens ?? 0);
+    if (t > 0) total = t;
   }
-  if (usage) return usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0);
+  if (total > 0) return total;
   const texts: string[] = [];
   for (const { event } of events) {
     if (event.kind === "user" || event.kind === "assistant-text") texts.push(event.text);
@@ -267,7 +270,7 @@ export function bloatSignal(pre: Usage | null, post: Usage): BloatSignal {
     return { kind: "reused", tokens: post.cacheReadTokens, text: `Reused ${k(post.cacheReadTokens)} cached tokens from before the switch.` };
   }
   const tokens = post.cacheWriteTokens ?? post.inputTokens;
-  return { kind: "reseeded", tokens, text: `Re-seeded ${k(tokens)} tokens after the switch.` };
+  return { kind: "reseeded", tokens, text: `Re-seeded ${k(tokens)} tokens after the switch: the agent's own setup plus the handoff.` };
 }
 
 function k(n: number): string {

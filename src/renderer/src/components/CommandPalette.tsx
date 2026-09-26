@@ -73,7 +73,7 @@ function Palette() {
         if (m.id !== thread.permissionMode) action(`mode:${m.id}`, `Permissions: ${m.label}`, () => void s.updateThread({ permissionMode: m.id }), { keywords: "mode" });
       }
       for (const a of agents) {
-        if (a.id !== thread.agent) action(`agent:${a.id}`, `Switch Agent to ${a.label}`, () => void s.updateThread({ agent: a.id }), { detail: "Starts a fresh conversation" });
+        if (a.id !== thread.agent) action(`agent:${a.id}`, `Switch Agent to ${a.label}`, () => s.openSwitch(a.id), { detail: "Hand off or start fresh" });
       }
       for (const m of agents.find((a) => a.id === thread.agent)?.models ?? []) {
         if (m.id !== thread.model) action(`model:${m.id}`, `Model: ${m.label}`, () => void s.updateThread({ model: m.id }));

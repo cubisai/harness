@@ -11,6 +11,8 @@ import type {
   Project,
   SkillEntry,
   StoredEvent,
+  SwitchMode,
+  SwitchResult,
   Thread,
 } from "../../shared/types";
 import { api } from "./api";
@@ -31,6 +33,11 @@ interface State {
   limits: Record<string, AgentLimits>;
   paletteOpen: boolean;
   setPaletteOpen(open: boolean): void;
+  /** The agent a pending Switch dialog would move the thread to. */
+  pendingSwitch: string | null;
+  openSwitch(agent: string | null): void;
+  /** Move the open thread to another agent; returns an error message, or null when done. */
+  switchAgent(agent: string, mode: SwitchMode): Promise<string | null>;
   /** Installed editors, for "Open in". */
   editors: EditorInfo[];
   /** A short message at the bottom of the window (an editor that didn't open). */
@@ -142,6 +149,7 @@ export const useStore = create<State>((set, get) => ({
   appUpdate: null,
   limits: {},
   paletteOpen: false,
+  pendingSwitch: null,
   libraryTab: null,
   librarySkill: null,
   editors: [],
@@ -161,6 +169,34 @@ export const useStore = create<State>((set, get) => ({
   },
   setPaletteOpen(open) {
     set({ paletteOpen: open });
+  },
+  openSwitch(agent) {
+    set({ pendingSwitch: agent });
+  },
+  async switchAgent(agent, mode) {
+    const id = get().selectedThreadId;
+    if (!id) return "No thread is open.";
+    let res: SwitchResult;
+    try {
+      if (mode === "back") {
+        // updateThread already resumes the kept session for that agent.
+        await get().updateThread({ agent });
+        return null;
+      }
+      res = await api().switchAgent(id, agent, mode);
+    } catch (err) {
+      return ipcErrorText(err);
+    }
+    if (!res.ok) return res.reason;
+    set({ lastAgent: agent });
+    get().apply({ type: "thread", thread: res.thread });
+    // A new agent may report its models only once it has run; refresh the list.
+    set({ agents: await api().listAgents() });
+    const events = await api().listEvents(id);
+    set((s) => ({ events: { ...s.events, [id]: events } }));
+    // The switch happened even when the handoff didn't land; say so outside the dialog.
+    if (res.warning) get().showNotice(res.warning);
+    return null;
   },
   lastAgent: null,
   selectedProjectId: null,

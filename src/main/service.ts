@@ -175,7 +175,12 @@ export class Service {
     const seeded = { channel, tokens: fit.tokens, tier: fit.tier, estimated: fit.estimated };
     const size = `${fit.estimated ? "about " : ""}${formatK(fit.tokens)} tokens`;
     const detail = fit.tier === 0 ? "" : fit.tier === 1 ? ", tool output shortened" : ", decisions and git state only";
-    this.emit(threadId, { kind: "handoff", phase: "seeded", text: `Handed off to ${driver.label} (${size}${detail}).`, from: thread.agent, to: agent, tokens: fit.tokens, tier: fit.tier });
+    this.emit(threadId, { kind: "handoff", phase: "seeded", text: `Handed off to ${driver.label} (${size}${detail}).`, from: thread.agent, to: agent, tokens: fit.tokens, tier: fit.tier }, {
+      agent: thread.agent,
+      model: thread.model,
+      provider: null,
+      instanceId: null,
+    });
     try {
       const sent = await this.seedHandoff(switched, driver, cp, fit.text, project.path);
       return { ok: true, mode, thread: this.store.getThread(threadId), seeded: { ...seeded, sent }, gitRef: git.ok ? git.ref : null };
@@ -285,7 +290,9 @@ export class Service {
     const pre = this.pendingSignal.get(threadId)!;
     this.pendingSignal.delete(threadId);
     const signal = bloatSignal(pre, usage);
-    this.emit(threadId, { kind: "handoff", phase: "signal", text: signal.text, tokens: signal.tokens ?? undefined });
+    const thread = this.store.getThread(threadId);
+    const provenance: Provenance = { agent: thread.agent, model: thread.model, provider: null, instanceId: null };
+    this.emit(threadId, { kind: "handoff", phase: "signal", text: signal.text, tokens: signal.tokens ?? undefined }, provenance);
   }
 
   exportThread(threadId: string): ThreadExport {

@@ -7,6 +7,7 @@ import { CacheMeter } from "./components/CacheMeter";
 import { Inspector } from "./components/Inspector";
 import { SettingsSheet } from "./components/SettingsSheet";
 import { Sidebar } from "./components/Sidebar";
+import { SwitchDialogHost } from "./components/SwitchDialog";
 import { ThreadView } from "./components/ThreadView";
 import { IconDiff, IconFolder, IconGlobe, IconSparkle, IconTerminal } from "./icons";
 import { useSelectedThread, useStore } from "./store";
@@ -90,7 +91,7 @@ export function App() {
                   value={thread.agent}
                   title="Agent"
                   disabled={running}
-                  onChange={(e) => void updateThread({ agent: e.target.value })}
+                  onChange={(e) => useStore.getState().openSwitch(e.target.value)}
                 >
                   {agents.map((a) => (
                     <option key={a.id} value={a.id}>
@@ -193,6 +194,7 @@ export function App() {
       <Notice />
       <Library />
       <CommandPalette />
+      <SwitchDialogHost />
     </div>
   );
 }
