@@ -4,8 +4,8 @@
 // the child process environment (and on Linux is readable via /proc/<pid>/environ
 // by processes that may read it); never log the env object.
 
-import { execFileSync } from "node:child_process";
 import type { Provider } from "../../shared/types";
+import { execCommandSync } from "../winspawn";
 import { catalogFor } from "../providers";
 import { providerKeyVar } from "./keys";
 import type { InjectedEnv, InjectionPlan } from ".";
@@ -73,7 +73,7 @@ export function opencodeVersion(command: string): string | null {
   const cached = versionCache.get(command);
   if (cached !== undefined) return cached;
   try {
-    const version = execFileSync(command, ["--version"], { timeout: 30_000, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+    const version = execCommandSync(command, ["--version"], { timeout: 30_000, stdio: ["ignore", "pipe", "pipe"] }).trim();
     if (version) versionCache.set(command, version);
     return version || null;
   } catch {

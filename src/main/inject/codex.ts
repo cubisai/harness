@@ -2,10 +2,10 @@
 // config overrides and a generated model catalog, so nothing is written to
 // $CODEX_HOME. The key travels only in the spawn env, never in argv.
 
-import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Provider } from "../../shared/types";
+import { execCommandSync } from "../winspawn";
 import { codexCompatible } from "../../shared/provider-rules";
 import { catalogFor } from "../providers";
 import { providerKeyVar } from "./keys";
@@ -89,7 +89,7 @@ export function codexInstructions(command: string, env: NodeJS.ProcessEnv = proc
   const cached = instructionsCache.get(command);
   if (cached !== undefined) return cached;
   try {
-    const out = execFileSync(command, ["debug", "models"], { env, timeout: 30_000, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    const out = execCommandSync(command, ["debug", "models"], { env, timeout: 30_000, stdio: ["ignore", "pipe", "pipe"] });
     const parsed = JSON.parse(out) as { models?: { visibility?: string; base_instructions?: string }[] };
     const found = parsed.models?.find((m) => m.visibility === "list" && m.base_instructions);
     if (found?.base_instructions) {
@@ -105,10 +105,9 @@ export function codexInstructions(command: string, env: NodeJS.ProcessEnv = proc
 /** Whether Codex accepts the generated catalog; null on success, else the reason. */
 export function validateCodexCatalog(command: string, catalogPath: string, env: NodeJS.ProcessEnv): string | null {
   try {
-    execFileSync(command, ["debug", "models", "-c", `model_catalog_json=${JSON.stringify(catalogPath)}`], {
+    execCommandSync(command, ["debug", "models", "-c", `model_catalog_json=${JSON.stringify(catalogPath)}`], {
       env,
       timeout: 20_000,
-      encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
     return null;

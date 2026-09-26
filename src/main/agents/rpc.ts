@@ -1,4 +1,5 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
+import { killTree, spawnCommand } from "../winspawn";
 
 /**
  * JSON-RPC 2.0 over an agent's stdio, one JSON message per line: the
@@ -50,16 +51,8 @@ export class StdioRpc {
   }
 
   static spawn(command: string, args: string[], opts: { cwd: string; env: NodeJS.ProcessEnv }, handlers: RpcHandlers): StdioRpc {
-    const child = spawn(command, args, {
-      cwd: opts.cwd,
-      env: opts.env,
-      stdio: ["pipe", "pipe", "pipe"],
-      // On Windows a bare name like "dsh" or "npx" is usually a .cmd shim,
-      // which only the shell resolves; a full path runs directly (and may
-      // contain spaces the shell would split).
-      shell: process.platform === "win32" && !/[\\/]/.test(command),
-      windowsHide: true,
-    });
+    // On Windows a bare name like "dsh" or "npx" is usually a .cmd shim; spawnCommand runs it with its arguments intact.
+    const child = spawnCommand(command, args, { cwd: opts.cwd, env: opts.env, stdio: ["pipe", "pipe", "pipe"] });
     return new StdioRpc(child, handlers);
   }
 
@@ -83,7 +76,7 @@ export class StdioRpc {
   close(): void {
     if (this.exited) return;
     this.child.stdin?.end();
-    this.child.kill();
+    killTree(this.child);
   }
 
   private send(message: Record<string, Json | undefined>): void {

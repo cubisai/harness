@@ -1,7 +1,7 @@
 // T2.8 — the phase's invariants for every injector in one place: a complete
 // environment (PATH/HOME), no key in anything serialized or logged, and no file
 // inside the project. Plus T2.7's redaction of the event and error paths.
-import { chmodSync, mkdirSync, readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentDriver, TurnInput } from "../src/main/agents/types";
@@ -82,13 +82,12 @@ describe("redaction on failure paths", () => {
     for (const level of ["log", "warn", "error"] as const) {
       vi.spyOn(console, level).mockImplementation((...args: unknown[]) => void logged.push(args.map(String).join(" ")));
     }
-    const locked = tempDir();
-    mkdirSync(join(locked, "ro"));
-    chmodSync(join(locked, "ro"), 0o500);
-    closeAfter(() => chmodSync(join(locked, "ro"), 0o700));
+    // A file where the folder's parent should be: unwritable on every OS (chmod doesn't stop writes on Windows).
+    const blocker = join(tempDir(), "not-a-dir");
+    writeFileSync(blocker, "");
     const plan = prepareCodexPlan(
       injectionFor(source(provider("gw", "openai-responses")), "codex", process.env, {
-        codexCatalogDir: join(locked, "ro", "catalogs"),
+        codexCatalogDir: join(blocker, "catalogs"),
         codexInstructions: () => "x",
       }),
       "codex",
