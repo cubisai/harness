@@ -273,7 +273,10 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
           input.onEvent({ kind: "notice", text: "Stopped." });
           return;
         }
-        input.onEvent({ kind: "error", message: err instanceof Error ? err.message : String(err) });
+        const text = err instanceof Error ? err.message : String(err);
+        // The SDK closes a failed turn by throwing the message it already sent.
+        if (turn.reportedError && text.includes(turn.reportedError.slice(0, 60))) return;
+        input.onEvent({ kind: "error", message: text });
       }
     },
   };
@@ -295,6 +298,8 @@ export interface TurnState {
   pending: Map<string, { kind: "text" | "thinking"; text: string }>;
   /** tool_use id → that call's canonical payload, so its result can be shaped the same way. */
   toolPayloads: Map<string, RunPayload | { diff: ToolDiff[] } | undefined>;
+  /** The error text already shown this turn, so the SDK's closing error doesn't repeat it. */
+  reportedError: string | null;
 }
 
 /** Fresh per-turn state for runTurn and for mapping a message stream in tests. */
@@ -308,6 +313,7 @@ export function newTurnState(): TurnState {
     blocksSeen: new Map(),
     pending: new Map(),
     toolPayloads: new Map(),
+    reportedError: null,
   };
 }
 
@@ -396,7 +402,16 @@ export function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnS
       if (message.parent_tool_use_id) return;
       startTurn(turn, input, message.message.model);
       if (message.error) {
-        input.onEvent({ kind: "error", message: describeError(message.error) });
+        // Claude Code explains account limits (a spend cap, a plan limit) in a synthetic
+        // assistant message: show that text as the error, not as a reply and not as a
+        // generic code. "rate_limit" also covers a spend cap, so the text is the truth.
+        const said = message.message.content
+          .map((b) => (b.type === "text" ? b.text : ""))
+          .join(" ")
+          .trim();
+        turn.reportedError = said || describeError(message.error);
+        input.onEvent({ kind: "error", message: turn.reportedError });
+        if (said) return;
       }
       const id = message.message.id;
       let k = turn.blocksSeen.get(id) ?? 0;

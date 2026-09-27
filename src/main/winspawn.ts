@@ -91,3 +91,38 @@ export function killTree(child: ChildProcess): void {
   const tk = spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true, timeout: 10_000 });
   if (tk.error || tk.status !== 0) child.kill();
 }
+
+/**
+ * `reg query HKCU\Environment` output as name → value, with REG_EXPAND_SZ
+ * `%NAME%` references expanded against `env`.
+ */
+export function parseUserEnvironment(output: string, env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of output.split(/\r?\n/)) {
+    const m = /^\s{2,}(\S+)\s+(REG_SZ|REG_EXPAND_SZ)\s+(.*)$/.exec(line);
+    if (!m) continue;
+    const [, name, type, raw] = m;
+    out[name!] = type === "REG_EXPAND_SZ" ? raw!.replace(/%([^%]+)%/g, (all, v: string) => env[v] ?? out[v] ?? all) : raw!;
+  }
+  return out;
+}
+
+/**
+ * Windows only: add the user's environment variables this process started
+ * without. An app launched from a terminal opened before a variable was set
+ * (say, a provider key an agent's own config reads) otherwise never sees it,
+ * while the same app from the Start menu does. Never overrides a variable
+ * that is set, and leaves Path to the PATH handling.
+ */
+export function fillUserEnvironment(env: NodeJS.ProcessEnv = process.env): string[] {
+  if (process.platform !== "win32") return [];
+  const res = spawnSync("reg", ["query", "HKCU\\Environment"], { encoding: "utf8", timeout: 5000, windowsHide: true });
+  if (res.status !== 0 || !res.stdout) return [];
+  const added: string[] = [];
+  for (const [name, value] of Object.entries(parseUserEnvironment(res.stdout, env))) {
+    if (name.toLowerCase() === "path" || env[name] !== undefined) continue;
+    env[name] = value;
+    added.push(name);
+  }
+  return added;
+}

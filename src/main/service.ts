@@ -375,6 +375,7 @@ export class Service {
       }
       let rebuilt = false;
       let compacted = false;
+      let answered = false;
       const live = (delta: LiveDelta) => this.broadcast({ type: "delta", threadId: thread.id, delta });
       const scrub = (text: string) => redactSecrets(text, this.secrets());
       await driver.runTurn({
@@ -393,6 +394,11 @@ export class Service {
         },
         onEvent: (event) => {
           if (event.kind === "compaction") compacted = true;
+          if (event.kind === "assistant-text" || event.kind === "tool-use" || event.kind === "thinking" || event.kind === "error" || event.kind === "plan") answered = true;
+          // A model that returns nothing at all would otherwise leave the thread silent.
+          if (event.kind === "turn-end" && !answered && !controller.signal.aborted) {
+            this.emit(thread.id, { kind: "notice", text: `${driver.label} ended the turn without a reply from ${thread.model === "default" ? "its default model" : thread.model}. The model may be unavailable right now; try again or pick another.` }, provenance);
+          }
           if (event.kind === "turn-end" && event.usage) {
             // A fresh session starts with a cold cache: nothing to compare against.
             const prev = current.sessionId === null ? null : this.previousTurnEnd(thread.id, thread.agent);

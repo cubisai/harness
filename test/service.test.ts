@@ -51,6 +51,22 @@ describe("Service.send", () => {
     expect(service.isRunning(thread.id)).toBe(false);
   });
 
+  it("says so when a model ends the turn without any reply", async () => {
+    const turnEnd = { kind: "turn-end" as const, costUsd: null, inputTokens: 10, outputTokens: 0, durationMs: 5 };
+    const silent = setup(async (input) => input.onEvent(turnEnd));
+    await silent.service.send({ threadId: silent.thread.id, text: "hi" });
+    const events = silent.store.listEvents(silent.thread.id).map((e) => e.event);
+    expect(events.map((e) => e.kind)).toEqual(["user", "notice", "turn-end"]);
+    expect(events[1]).toMatchObject({ kind: "notice", text: expect.stringMatching(/without a reply from fake-1/) });
+
+    const replied = setup(async (input) => {
+      input.onEvent({ kind: "assistant-text", text: "OK" });
+      input.onEvent(turnEnd);
+    });
+    await replied.service.send({ threadId: replied.thread.id, text: "hi" });
+    expect(replied.store.listEvents(replied.thread.id).map((e) => e.event.kind)).toEqual(["user", "assistant-text", "turn-end"]);
+  });
+
   it("broadcasts live deltas without writing them to the store", async () => {
     const { store, service, thread, updates } = setup(async (input) => {
       input.onReasoningDelta?.({ itemId: "r1", text: "think", opaque: false });

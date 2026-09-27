@@ -88,6 +88,23 @@ describe("Claude stream mapping", () => {
     expect(events).toContainEqual({ kind: "thinking", text: "", opaque: true, signature: "sig1", itemId: "m1:1" });
   });
 
+  it("shows an account limit's own text as the one error, not a generic code or a reply", () => {
+    const { input, events } = recorder();
+    const limit = "You've hit your monthly spend limit. Switch to another model, or manage usage credits at claude.ai/settings/usage.";
+    handleMessage(
+      {
+        type: "assistant",
+        parent_tool_use_id: null,
+        error: "rate_limit",
+        message: { id: "m9", model: "<synthetic>", content: [{ type: "text", text: limit }] },
+      } as unknown as SDKMessage,
+      input,
+      newTurnState(),
+    );
+    expect(events.filter((e) => e.kind === "error")).toEqual([{ kind: "error", message: limit }]);
+    expect(events.some((e) => e.kind === "assistant-text")).toBe(false);
+  });
+
   it("keys streamed tool input to the tool_use id from content_block_start", () => {
     const { input, toolInputDeltas } = recorder();
     const turn = newTurnState();

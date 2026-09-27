@@ -25,6 +25,7 @@ import { ensureOpenCodeGuard, withOpenCodeGuard } from "./inject/opencode-guard"
 import { findPython } from "./guard";
 import { SettingsStore } from "./settings";
 import { agentCatalog, skillDetail } from "./library";
+import { fillUserEnvironment } from "./winspawn";
 import { referenceEvents } from "./canonical-events";
 import { smokeCanonicalEvents, smokeHandoff, smokeMigration, smokeProviders } from "./smoke-checks";
 import { Editors, realHost } from "./editors";
@@ -206,6 +207,8 @@ async function main(): Promise<void> {
     },
   );
   const tools = browserTools(browser);
+  // Launched from an older terminal, the app would miss user variables agents read (a provider key in OpenCode's config).
+  fillUserEnvironment();
   augmentPath();
   // Claude first (the default for new threads), then any installed ACP agents.
   // Opt-in agents (Antigravity) start only after Settings recorded the acknowledgement; a change applies on restart.

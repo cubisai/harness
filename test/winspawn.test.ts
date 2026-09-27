@@ -1,7 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { execCommandSync, findOnPath, killTree, launchSpec, spawnCommand } from "../src/main/winspawn";
+import { execCommandSync, findOnPath, killTree, launchSpec, parseUserEnvironment, spawnCommand } from "../src/main/winspawn";
 import { tempDir } from "./helpers";
 
 const win = process.platform === "win32";
@@ -63,5 +63,24 @@ describe.runIf(win)("winspawn on Windows", () => {
 describe.skipIf(win)("winspawn elsewhere", () => {
   it("leaves the command and arguments alone", () => {
     expect(launchSpec("codex", ['-c', 'a="b c"'])).toEqual({ command: "codex", args: ["-c", 'a="b c"'], viaCmd: false });
+  });
+});
+
+describe("parseUserEnvironment", () => {
+  it("reads REG_SZ values and expands REG_EXPAND_SZ references", () => {
+    const out = [
+      "",
+      "HKEY_CURRENT_USER\\Environment",
+      "    TOKEN_KEY    REG_SZ    abc 123",
+      "    TEMP    REG_EXPAND_SZ    %USERPROFILE%\\AppData\\Local\\Temp",
+      "    UNKNOWN_REF    REG_EXPAND_SZ    %NOPE%\\x",
+      "    Weird    REG_DWORD    0x1",
+      "",
+    ].join("\r\n");
+    expect(parseUserEnvironment(out, { USERPROFILE: "C:\\Users\\me" })).toEqual({
+      TOKEN_KEY: "abc 123",
+      TEMP: "C:\\Users\\me\\AppData\\Local\\Temp",
+      UNKNOWN_REF: "%NOPE%\\x",
+    });
   });
 });
