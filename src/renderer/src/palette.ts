@@ -12,6 +12,28 @@ export interface Command {
   run(): void;
 }
 
+/**
+ * The New Thread actions: a plain thread, and one that gets its own git
+ * worktree on a new branch. Kept here so the palette and its tests share them.
+ */
+export function newThreadCommands(opts: {
+  enabled: boolean;
+  shortcut: string;
+  newThread(skill?: string, opts?: { worktree?: boolean }): void;
+}): Command[] {
+  if (!opts.enabled) return [];
+  return [
+    { id: "action:new-thread", section: "Actions", title: "New Thread", shortcut: opts.shortcut, run: () => opts.newThread() },
+    {
+      id: "action:new-worktree-thread",
+      section: "Actions",
+      title: "New Thread in Worktree",
+      keywords: "worktree branch isolate git",
+      run: () => opts.newThread(undefined, { worktree: true }),
+    },
+  ];
+}
+
 const SECTION_ORDER: Command["section"][] = ["Actions", "Skills", "Threads", "Projects"];
 
 /**

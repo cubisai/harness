@@ -301,6 +301,10 @@ export interface Thread {
   pinned?: boolean;
   /** Out of the sidebar's lists (in an Archived group), kept with its history. */
   archived?: boolean;
+  /** The branch of the thread's own worktree; null when it runs in the project folder. */
+  branch?: string | null;
+  /** Where the thread's tools run when it has its own worktree. */
+  worktreePath?: string | null;
 }
 
 /**
@@ -647,7 +651,7 @@ export interface UnskilledApi {
   listProjects(): Promise<Project[]>;
   addProject(): Promise<Project | null>;
   listThreads(projectId: string): Promise<Thread[]>;
-  createThread(projectId: string, agent?: string): Promise<Thread>;
+  createThread(projectId: string, agent?: string, opts?: { worktree?: boolean }): Promise<Thread>;
   updateThread(threadId: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "permissionMode" | "agent" | "pinned" | "archived">>): Promise<Thread>;
   deleteThread(threadId: string): Promise<void>;
   /** Move a thread to another agent; a refused switch changes nothing. */
@@ -666,9 +670,10 @@ export interface UnskilledApi {
   send(request: SendRequest): Promise<void>;
   interrupt(threadId: string): Promise<void>;
   respondPermission(requestId: string, decision: PermissionDecision): Promise<void>;
-  getDiff(projectId: string): Promise<DiffFile[]>;
+  /** The working-tree diff of the project, or of `threadId`'s worktree when it has one. */
+  getDiff(projectId: string, threadId?: string | null): Promise<DiffFile[]>;
   /** The project's files (git-tracked plus untracked-not-ignored), for the Files tab. */
-  listFiles(projectId: string): Promise<{ files: string[]; truncated: boolean }>;
+  listFiles(projectId: string, threadId?: string | null): Promise<{ files: string[]; truncated: boolean }>;
   /** The project's current branch; null on its default branch, detached, or outside git. */
   projectBranch(projectId: string): Promise<string | null>;
   /** The browser pane's <webview> is ready; main takes control of it. */

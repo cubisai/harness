@@ -7,12 +7,14 @@ import { useStore } from "../store";
 /** The working tree's changes against HEAD, refreshed after every turn. */
 export function DiffPanel({ projectId, refreshKey }: { projectId: string; refreshKey: number }) {
   const diffVersion = useStore((s) => s.diffVersion);
+  // A worktree thread has its own changes: follow the open thread.
+  const threadId = useStore((s) => s.selectedThreadId);
   const [files, setFiles] = useState<DiffFile[] | null>(null);
   const [closed, setClosed] = useState<Record<string, boolean>>({});
 
   const load = useCallback(() => {
-    void api().getDiff(projectId).then(setFiles);
-  }, [projectId]);
+    void api().getDiff(projectId, threadId).then(setFiles);
+  }, [projectId, threadId]);
   useEffect(load, [load, diffVersion, refreshKey]);
 
   const adds = files?.reduce((n, f) => n + f.additions, 0) ?? 0;

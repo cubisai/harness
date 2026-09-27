@@ -125,6 +125,12 @@ export class Store {
         applied: () => this.hasColumn("threads", "effort"),
         sql: "ALTER TABLE threads ADD COLUMN effort TEXT",
       },
+      // 14: a thread's own git worktree (T8.13): the branch, and the folder its tools run in.
+      {
+        applied: () => this.hasColumn("threads", "worktree_path"),
+        sql: `ALTER TABLE threads ADD COLUMN branch TEXT;
+          ALTER TABLE threads ADD COLUMN worktree_path TEXT;`,
+      },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;
@@ -232,6 +238,12 @@ export class Store {
     return t;
   }
 
+  /** Record the worktree and branch a thread runs in (set once, when it is created). */
+  setWorktree(id: string, branch: string, worktreePath: string): Thread {
+    this.db.prepare("UPDATE threads SET branch = ?, worktree_path = ? WHERE id = ?").run(branch, worktreePath, id);
+    return this.getThread(id);
+  }
+
   private binding(thread: Thread, agent: string, cursor: string | null, prior: SessionBinding | undefined, now: number): SessionBinding {
     const last = this.db.prepare("SELECT MAX(seq) AS seq FROM events WHERE thread_id = ?").get(thread.id) as unknown as { seq: number | null };
     return {
@@ -240,7 +252,7 @@ export class Store {
       instanceId: prior?.instanceId ?? "default",
       resumeCursor: cursor,
       status: "active",
-      cwd: prior?.cwd ?? this.getProject(thread.projectId).path,
+      cwd: prior?.cwd ?? thread.worktreePath ?? this.getProject(thread.projectId).path,
       lastSeenAt: now,
       lastSeq: last.seq ?? 0,
     };
@@ -448,7 +460,7 @@ export class Store {
 }
 
 const THREAD_COLS =
-  "id, project_id, agent, title, session_id, bindings, model, effort, permission_mode, created_at, updated_at, pinned, archived, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
+  "id, project_id, agent, title, session_id, bindings, model, effort, permission_mode, created_at, updated_at, pinned, archived, branch, worktree_path, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
 
 export interface LedgerTarget {
   threadId: string;
@@ -478,6 +490,8 @@ interface ThreadRow {
   updated_at: number;
   pinned: number;
   archived: number;
+  branch: string | null;
+  worktree_path: string | null;
   project_path: string | null;
 }
 
@@ -506,7 +520,7 @@ function toThread(r: ThreadRow): Thread {
       instanceId: prior?.instanceId ?? "default",
       resumeCursor: r.session_id,
       status: "active",
-      cwd: prior?.cwd ?? r.project_path ?? "",
+      cwd: prior?.cwd ?? r.worktree_path ?? r.project_path ?? "",
       lastSeenAt: r.updated_at,
       lastSeq: prior?.lastSeq ?? 0,
     };
@@ -526,5 +540,7 @@ function toThread(r: ThreadRow): Thread {
     updatedAt: r.updated_at,
     pinned: r.pinned === 1,
     archived: r.archived === 1,
+    branch: r.branch,
+    worktreePath: r.worktree_path,
   };
 }

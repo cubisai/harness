@@ -28,7 +28,7 @@ export function Sidebar() {
       key={t.id}
       thread={t}
       agent={agents.find((a) => a.id === t.agent)}
-      branch={branches[projectId]}
+      branch={t.branch ?? branches[projectId]}
       selected={t.id === selectedThreadId}
       running={Boolean(running[t.id])}
       onOpen={() => {

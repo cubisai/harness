@@ -45,12 +45,14 @@ export function buildTree(files: string[]): TreeNode[] {
 /** The project's files; clicking one opens it at line 1 in the configured editor. */
 export function FilesPanel({ projectId, refreshKey }: { projectId: string; refreshKey: number }) {
   const [result, setResult] = useState<{ files: string[]; truncated: boolean } | null>(null);
+  // A worktree thread has its own files: follow the open thread.
+  const threadId = useStore((s) => s.selectedThreadId);
   useEffect(() => {
     void api()
-      .listFiles(projectId)
+      .listFiles(projectId, threadId)
       .then(setResult)
       .catch(() => setResult({ files: [], truncated: false }));
-  }, [projectId, refreshKey]);
+  }, [projectId, threadId, refreshKey]);
 
   if (result === null) return <div className="files-panel">Loading…</div>;
   if (result.files.length === 0) return <div className="files-panel">No files.</div>;

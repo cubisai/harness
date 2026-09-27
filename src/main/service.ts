@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import type {
   AgentInfo,
   DiffFile,
@@ -34,7 +35,7 @@ import {
 } from "./cache-policy";
 import { Approvals } from "./approvals";
 import type { Store } from "./db";
-import { branchLabel, listProjectFiles, workingTreeDiff } from "./git";
+import { branchLabel, createWorktree, listProjectFiles, removeWorktree, workingTreeDiff, worktreeBranch } from "./git";
 import {
   bloatSignal,
   buildCheckpoint,
@@ -81,6 +82,8 @@ export class Service {
     private mcpServers: (projectId: string | null) => McpServerEntry[] = () => [],
     /** Every provider key the app holds, so no event (error, notice, tool output) can carry one. */
     private secrets: () => string[] = () => [],
+    /** Where threads' own worktrees go (the app's data folder); null turns worktree threads off. */
+    private worktreesDir: string | null = null,
   ) {
     if (!drivers.length) throw new Error("no agent drivers");
     this.drivers = new Map(drivers.map((d) => [d.id, d]));
@@ -139,6 +142,38 @@ export class Service {
   }
 
   /**
+   * A thread with its own git worktree on a new branch, so its edits stay off
+   * the project's checkout. Nothing is left behind when the worktree can't be made.
+   */
+  async createWorktreeThread(projectId: string, agent?: string): Promise<Thread> {
+    if (!this.worktreesDir) throw new Error("Worktree threads aren't available here.");
+    const project = this.store.getProject(projectId);
+    const thread = this.createThread(projectId, agent);
+    const branch = worktreeBranch(project.name, thread.id);
+    const dir = join(this.worktreesDir, thread.id);
+    try {
+      await createWorktree(project.path, dir, branch);
+    } catch (err) {
+      this.store.deleteThread(thread.id);
+      throw err;
+    }
+    return this.store.setWorktree(thread.id, branch, dir);
+  }
+
+  /** Delete a thread; its worktree goes too when it has nothing uncommitted (the branch always stays). */
+  async deleteThread(id: string): Promise<void> {
+    this.interrupt(id);
+    const thread = this.store.getThread(id);
+    if (thread.worktreePath) await removeWorktree(this.store.getProject(thread.projectId).path, thread.worktreePath);
+    this.store.deleteThread(id);
+  }
+
+  /** Where a thread's tools run: its own worktree, or the project folder. */
+  cwdOf(thread: Thread): string {
+    return thread.worktreePath ?? this.store.getProject(thread.projectId).path;
+  }
+
+  /**
    * Switching agents keeps every agent's session: switching back resumes the
    * one it had, on the model it last used. A new agent starts fresh.
    */
@@ -183,7 +218,6 @@ export class Service {
       return { ok: false, reason: `${driver.label} has no way to receive a handoff here. Start fresh instead.` };
     }
     // Everything that can refuse runs before anything changes.
-    const project = this.store.getProject(thread.projectId);
     const events = this.store.listEvents(threadId);
     const cp = await buildCheckpoint(this.store, threadId);
     const count = driver.countTokens;
@@ -193,7 +227,7 @@ export class Service {
       replacedTokens: replacedTokens(events),
     });
     if (!fit.ok) return { ok: false, reason: fit.reason };
-    const git = await checkpointGit(project.path, cp.lastSeq);
+    const git = await checkpointGit(this.cwdOf(thread), cp.lastSeq);
     if (!git.ok && git.kind === "dirty") return { ok: false, reason: git.reason };
 
     const switched = this.applySwitch(thread, agent, "handoff");
@@ -208,7 +242,7 @@ export class Service {
       instanceId: null,
     });
     try {
-      const sent = await this.seedHandoff(switched, driver, cp, fit.text, project.path);
+      const sent = await this.seedHandoff(switched, driver, cp, fit.text, this.cwdOf(thread));
       return { ok: true, mode, thread: this.store.getThread(threadId), seeded: { ...seeded, sent }, gitRef: git.ok ? git.ref : null };
     } catch (err) {
       const warning = `The handoff didn't reach ${driver.label}: ${err instanceof Error ? err.message : String(err)}. It starts without the earlier messages.`;
@@ -352,9 +386,10 @@ export class Service {
     if (this.running.has(req.threadId)) throw new Error("This thread is already running.");
     const thread = this.store.getThread(req.threadId);
     const project = this.store.getProject(thread.projectId);
+    const cwd = this.cwdOf(thread);
     const driver = this.driverFor(thread.agent);
     const provenance: Provenance = { agent: thread.agent, model: thread.model, provider: null, instanceId: null };
-    const prompt = composePrompt(this.catalogFor(project.path), req.text, req.skill, driver.skillsDelivery) + mentionNote(project.path, req.mentions);
+    const prompt = composePrompt(this.catalogFor(cwd), req.text, req.skill, driver.skillsDelivery) + mentionNote(cwd, req.mentions);
 
     this.emit(thread.id, { kind: "user", text: req.text, skill: req.skill });
     if (thread.title === "New thread") {
@@ -368,7 +403,7 @@ export class Service {
     try {
       if (!this.scopeChecked.has(project.id)) {
         this.scopeChecked.add(project.id);
-        for (const text of memoryScopeCheck(project.path)) this.emit(thread.id, { kind: "notice", text });
+        for (const text of memoryScopeCheck(cwd)) this.emit(thread.id, { kind: "notice", text });
       }
       let switched = false;
       if (thread.sessionId !== null) {
@@ -402,7 +437,7 @@ export class Service {
       const scrub = (text: string) => redactSecrets(text, this.secrets());
       await driver.runTurn({
         threadId: thread.id,
-        cwd: project.path,
+        cwd,
         prompt,
         sessionId: current.sessionId,
         model: thread.model,
@@ -529,12 +564,21 @@ export class Service {
     return null;
   }
 
-  getDiff(projectId: string): Promise<DiffFile[]> {
-    return workingTreeDiff(this.store.getProject(projectId).path);
+  getDiff(projectId: string, threadId?: string | null): Promise<DiffFile[]> {
+    return workingTreeDiff(this.folderOf(projectId, threadId));
   }
 
-  listFiles(projectId: string): Promise<{ files: string[]; truncated: boolean }> {
-    return listProjectFiles(this.store.getProject(projectId).path);
+  listFiles(projectId: string, threadId?: string | null): Promise<{ files: string[]; truncated: boolean }> {
+    return listProjectFiles(this.folderOf(projectId, threadId));
+  }
+
+  /** The folder the Changes and Files tabs show: the open thread's worktree, else the project. */
+  private folderOf(projectId: string, threadId?: string | null): string {
+    if (threadId) {
+      const thread = this.store.getThread(threadId);
+      if (thread.projectId === projectId && thread.worktreePath) return thread.worktreePath;
+    }
+    return this.store.getProject(projectId).path;
   }
 
   projectBranch(projectId: string): Promise<string | null> {

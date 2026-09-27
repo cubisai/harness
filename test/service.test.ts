@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { LiveUpdate, ThreadEvent } from "../src/shared/types";
@@ -240,5 +242,63 @@ describe("titleFrom", () => {
     expect(titleFrom("ticket 3", "implement")).toBe("/implement ticket 3");
     expect(titleFrom("", "skilled-setup")).toBe("/skilled-setup");
     expect(titleFrom("x".repeat(80)).length).toBe(60);
+  });
+});
+
+describe("worktree threads", () => {
+  const repo = () => {
+    const dir = tempDir();
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: dir });
+    git("init", "-q", "-b", "main");
+    git("config", "user.email", "t@example.com");
+    git("config", "user.name", "t");
+    writeFileSync(join(dir, "a.txt"), "one\n");
+    git("add", ".");
+    git("commit", "-qm", "init");
+    return dir;
+  };
+
+  const setupWorktrees = (worktreesDir: string, driver: AgentDriver) => {
+    const store = new Store(join(tempDir(), "t.db"));
+    closeAfter(() => store.close());
+    const service = new Service(store, () => catalog(), [driver], () => {}, undefined, undefined, undefined, undefined, worktreesDir);
+    return { store, service };
+  };
+
+  it("gives a thread its own worktree and runs its turns there", async () => {
+    const cwds: string[] = [];
+    const driver = fakeDriver(async (input) => {
+      cwds.push(input.cwd);
+    });
+    const { store, service } = setupWorktrees(tempDir(), driver);
+    const project = store.addProject(repo());
+
+    const thread = await service.createWorktreeThread(project.id);
+    expect(thread.branch).toMatch(/^harness\//);
+    expect(thread.worktreePath).toBeTruthy();
+    expect(existsSync(thread.worktreePath!)).toBe(true);
+    expect(store.getThread(thread.id)).toMatchObject({ branch: thread.branch, worktreePath: thread.worktreePath });
+
+    await service.send({ threadId: thread.id, text: "hi" });
+    expect(cwds).toEqual([thread.worktreePath]);
+  });
+
+  it("leaves no thread behind when the worktree can't be made", async () => {
+    const { store, service } = setupWorktrees(tempDir(), fakeDriver(async () => {}));
+    const project = store.addProject(tempDir()); // not a git repository
+
+    await expect(service.createWorktreeThread(project.id)).rejects.toThrow(/git repository/);
+    expect(store.listThreads(project.id)).toEqual([]);
+  });
+
+  it("removes a clean worktree when its thread is deleted", async () => {
+    const { store, service } = setupWorktrees(tempDir(), fakeDriver(async () => {}));
+    const project = store.addProject(repo());
+
+    const thread = await service.createWorktreeThread(project.id);
+    expect(existsSync(thread.worktreePath!)).toBe(true);
+    await service.deleteThread(thread.id);
+    expect(existsSync(thread.worktreePath!)).toBe(false);
+    expect(store.listThreads(project.id)).toEqual([]);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rankCommands, type Command } from "../src/renderer/src/palette";
+import { newThreadCommands, rankCommands, type Command } from "../src/renderer/src/palette";
 
 const cmd = (section: Command["section"], title: string, extra: Partial<Command> = {}): Command => ({
   id: `${section}:${title}`,
@@ -55,5 +55,23 @@ describe("rankCommands", () => {
     expect(rankCommands(commands, ">impl")).toEqual([]);
     expect(titles(rankCommands(commands, "new"))).toContain("New Thread");
     expect(titles(rankCommands(commands, "impl"))).toEqual(["/implement", "/implement-spec"]);
+  });
+});
+
+describe("newThreadCommands", () => {
+  it("lists New Thread and New Thread in Worktree, which asks for a worktree", () => {
+    const calls: [string | undefined, { worktree?: boolean } | undefined][] = [];
+    const list = newThreadCommands({ enabled: true, shortcut: "⌘N", newThread: (skill, opts) => calls.push([skill, opts]) });
+    expect(list.map((c) => c.title)).toEqual(["New Thread", "New Thread in Worktree"]);
+    list[0]!.run();
+    list[1]!.run();
+    expect(calls).toEqual([
+      [undefined, undefined],
+      [undefined, { worktree: true }],
+    ]);
+  });
+
+  it("offers nothing with no project open", () => {
+    expect(newThreadCommands({ enabled: false, shortcut: "⌘N", newThread: () => {} })).toEqual([]);
   });
 });

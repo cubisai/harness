@@ -35,6 +35,20 @@ describe("queued send", () => {
       {
         send: async (r: SendRequest) => void sent.push(r),
         interrupt: async (id: string) => void interrupted.push(id),
+        createThread: async (pid: string, _agent?: string, opts?: { worktree?: boolean }) => ({
+          id: "t-bg",
+          projectId: pid,
+          agent: "claude",
+          title: "New thread",
+          sessionId: null,
+          bindings: {},
+          model: "opus",
+          effort: null,
+          permissionMode: "ask",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          ...(opts?.worktree ? { branch: "harness/bg", worktreePath: "/wt/bg" } : {}),
+        }),
       } as Record<string, unknown>,
       { get: (target, key: string) => target[key] ?? (async () => null) },
     ),
@@ -77,5 +91,15 @@ describe("queued send", () => {
     s.apply({ type: "running", threadId: "t", running: false });
     expect(sent).toEqual([]);
     expect(useStore.getState().outbox.t).toBeUndefined();
+  });
+
+  describe("sendInBackground", () => {
+    it("starts the message in its own thread and leaves the current one selected", async () => {
+      useStore.setState({ selectedProjectId: "p", selectedThreadId: "keep", running: {}, threads: {}, events: {} });
+      await useStore.getState().sendInBackground("do it", "tdd", undefined, ["src/a.ts"]);
+      expect(sent).toEqual([{ threadId: "t-bg", text: "do it", skill: "tdd", mentions: ["src/a.ts"] }]);
+      expect(useStore.getState().selectedThreadId).toBe("keep");
+      expect(useStore.getState().threads.p!.map((t) => t.id)).toEqual(["t-bg"]);
+    });
   });
 });

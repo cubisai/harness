@@ -89,7 +89,7 @@ function payloadText(payload: unknown): string {
  */
 export async function buildCheckpoint(store: Store, threadId: string): Promise<HandoffCheckpoint> {
   const thread = store.getThread(threadId);
-  const cwd = store.getProject(thread.projectId).path;
+  const cwd = thread.worktreePath ?? store.getProject(thread.projectId).path;
   const allEvents = store.listEvents(threadId);
   const events = allEvents.filter((e) => e.event.kind !== "thinking");
 

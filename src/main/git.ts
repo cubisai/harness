@@ -155,3 +155,39 @@ export async function branchLabel(cwd: string): Promise<string | null> {
   }
   return defaults.includes(branch) ? null : branch;
 }
+
+/** A branch name for a thread's worktree: `harness/<title words>-<id>`, safe for git refs. */
+export function worktreeBranch(title: string, threadId: string): string {
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40)
+    .replace(/-+$/g, "");
+  return `harness/${slug || "thread"}-${threadId.replace(/[^a-z0-9]/gi, "").slice(0, 6)}`;
+}
+
+/**
+ * Give a thread its own worktree: a new branch from the repository's HEAD,
+ * checked out at `dir`. Refuses (throws) outside a git repository or before
+ * the first commit, since there is nothing to branch from.
+ */
+export async function createWorktree(repo: string, dir: string, branch: string): Promise<void> {
+  const state = await gitState(repo);
+  if (!state) throw new Error("This project isn't a git repository, so a thread can't get its own worktree.");
+  if (!state.head) throw new Error("This repository has no commits yet, so there is nothing to branch a worktree from.");
+  await run("git", ["worktree", "add", "-b", branch, dir, "HEAD"], { cwd: repo });
+}
+
+/**
+ * Remove a thread's worktree when it has nothing uncommitted; its branch stays.
+ * Returns false (and leaves everything in place) when it has changes or git refuses.
+ */
+export async function removeWorktree(repo: string, dir: string): Promise<boolean> {
+  try {
+    await run("git", ["worktree", "remove", dir], { cwd: repo });
+    return true;
+  } catch {
+    return false;
+  }
+}

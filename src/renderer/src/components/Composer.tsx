@@ -14,14 +14,15 @@ import { originLabel } from "./Library";
  * typed after it goes to the skill as its arguments. A picked browser
  * element becomes a context chip whose text rides along with the message.
  * Sending while a turn runs queues the message for the next turn. With no
- * thread yet (`threadId` null), sending starts one. The thread's controls
- * (agent, model, permissions) and meters sit in its bar.
+ * thread yet (`threadId` null), sending starts one. Alt+Return starts the
+ * message in a new thread in the background instead, leaving this one open.
+ * The thread's controls (agent, model, permissions) and meters sit in its bar.
  */
 export function Composer({ threadId, controls, meters }: { threadId: string | null; controls?: ReactNode; meters?: ReactNode }) {
   const skills = useStore((s) => s.skills);
   const running = useStore((s) => (threadId ? Boolean(s.running[threadId]) : false));
   const insert = useStore((s) => s.composerInsert);
-  const { send, interrupt, enqueue, startThread } = useStore.getState();
+  const { send, interrupt, enqueue, startThread, sendInBackground } = useStore.getState();
   const projectId = useStore((s) => s.selectedProjectId);
   const [text, setText] = useState("");
   const [chips, setChips] = useState<string[]>([]);
@@ -170,7 +171,24 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
     setCaret(0);
   };
 
+  // Alt+Return starts the message as its own thread in the background and leaves this one open.
+  const submitInBackground = () => {
+    const body = composeMessage(text, chips);
+    if (!body && !skill) return;
+    const mentions = mentionsIn(text, knownSet);
+    void sendInBackground(body, skill?.name, undefined, mentions);
+    setText("");
+    setChips([]);
+    setSkill(null);
+    setCaret(0);
+  };
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && e.altKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      submitInBackground();
+      return;
+    }
     if (menuOpen && matches.length) {
       if (e.key === "ArrowDown") {
         e.preventDefault();

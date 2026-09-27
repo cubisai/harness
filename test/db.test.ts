@@ -177,6 +177,45 @@ describe("Store migrations", () => {
     expect(store.getThread("t").effort).toBeNull();
   });
 
+  it("adds worktrees to a database at version 13, keeping existing threads on the project folder", () => {
+    const file = join(tempDir(), "pre14.db");
+    const old = new DatabaseSync(file);
+    old.exec(`
+      CREATE TABLE projects (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at INTEGER NOT NULL);
+      CREATE TABLE threads (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, agent TEXT NOT NULL DEFAULT 'claude', title TEXT NOT NULL,
+        session_id TEXT, bindings TEXT NOT NULL DEFAULT '{}', model TEXT NOT NULL, effort TEXT, permission_mode TEXT NOT NULL,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0, archived INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE schema_version (version INTEGER NOT NULL);
+      INSERT INTO schema_version VALUES (13);
+      INSERT INTO projects VALUES ('p', '/x', 'x', 1);
+      INSERT INTO threads (id, project_id, agent, title, model, permission_mode, created_at, updated_at)
+        VALUES ('t', 'p', 'claude', 'Old', 'opus', 'ask', 1, 1);
+    `);
+    old.close();
+
+    const store = new Store(file);
+    closeAfter(() => store.close());
+    expect(store.getThread("t")).toMatchObject({ branch: null, worktreePath: null });
+
+    const updated = store.setWorktree("t", "harness/keep-abc123", "/worktrees/t");
+    expect(updated).toMatchObject({ branch: "harness/keep-abc123", worktreePath: "/worktrees/t" });
+    expect(store.getThread("t")).toMatchObject({ branch: "harness/keep-abc123", worktreePath: "/worktrees/t" });
+    expect(store.listThreads("p")[0]).toMatchObject({ branch: "harness/keep-abc123", worktreePath: "/worktrees/t" });
+  });
+
+  it("round-trips a thread's worktree on a fresh database", () => {
+    const store = new Store(join(tempDir(), "worktree.db"));
+    closeAfter(() => store.close());
+    const p = store.addProject("/tmp/p");
+    const t = store.createThread(p.id, "claude", "opus", "ask");
+    expect(store.getThread(t.id).branch ?? null).toBeNull();
+    expect(store.getThread(t.id).worktreePath ?? null).toBeNull();
+
+    const set = store.setWorktree(t.id, "harness/fresh-abc123", "/wt/fresh");
+    expect(set).toMatchObject({ branch: "harness/fresh-abc123", worktreePath: "/wt/fresh" });
+    expect(store.getThread(t.id)).toMatchObject({ branch: "harness/fresh-abc123", worktreePath: "/wt/fresh" });
+  });
+
   it("opens a fresh database twice without throwing", () => {
     const file = join(tempDir(), "fresh.db");
     new Store(file).close();

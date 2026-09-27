@@ -341,6 +341,7 @@ async function main(): Promise<void> {
     },
     (projectId) => mcpScopes.effective(projectId),
     knownSecrets,
+    join(userData, "worktrees"),
   );
 
   // The Library: skills, agents, and MCP servers, as the agents will see them.
@@ -521,14 +522,13 @@ async function main(): Promise<void> {
     return res.canceled || !path ? null : store.addProject(path);
   });
   ipcMain.handle("threads:list", (_e, projectId: string) => store.listThreads(projectId));
-  ipcMain.handle("threads:create", (_e, projectId: string, agent?: string) => service.createThread(projectId, agent));
+  ipcMain.handle("threads:create", (_e, projectId: string, agent?: string, opts?: { worktree?: boolean }) =>
+    opts?.worktree ? service.createWorktreeThread(projectId, agent) : service.createThread(projectId, agent),
+  );
   ipcMain.handle("threads:update", (_e, id: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "permissionMode" | "agent" | "pinned" | "archived">>) =>
     service.updateThread(id, pick(patch, ["title", "model", "effort", "permissionMode", "agent", "pinned", "archived"])),
   );
-  ipcMain.handle("threads:delete", (_e, id: string) => {
-    service.interrupt(id);
-    store.deleteThread(id);
-  });
+  ipcMain.handle("threads:delete", (_e, id: string) => service.deleteThread(id));
   ipcMain.handle("threads:switch", (_e, id: string, agent: string, mode: SwitchMode) => service.switchAgent(id, agent, mode));
   ipcMain.handle("threads:export", async (event, id: string) => {
     const owner = BrowserWindow.fromWebContents(event.sender);
@@ -595,8 +595,8 @@ async function main(): Promise<void> {
   ipcMain.handle("permission:respond", (_e, requestId: string, decision: PermissionDecision) =>
     service.respondPermission(requestId, decision),
   );
-  ipcMain.handle("diff:get", (_e, projectId: string) => service.getDiff(projectId));
-  ipcMain.handle("files:list", (_e, projectId: string) => service.listFiles(projectId));
+  ipcMain.handle("diff:get", (_e, projectId: string, threadId?: string | null) => service.getDiff(projectId, threadId));
+  ipcMain.handle("files:list", (_e, projectId: string, threadId?: string | null) => service.listFiles(projectId, threadId));
   ipcMain.handle("project:branch", (_e, projectId: string) => service.projectBranch(projectId));
   ipcMain.handle("browser:attached", (_e, webContentsId: number) => browser.attach(webContentsId));
   ipcMain.handle("browser:pick", () => browser.startPick());

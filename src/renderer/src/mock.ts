@@ -208,8 +208,12 @@ export function installMock(): void {
       return project;
     },
     listThreads: async (pid) => threads[pid] ?? [],
-    createThread: async (pid) => {
-      const th = t(`t${Math.random()}`, pid, "New thread", 0);
+    createThread: async (pid, agent, opts) => {
+      const th = t(`t${Math.random()}`, pid, "New thread", 0, agent ?? "claude");
+      if (opts?.worktree) {
+        th.branch = `harness/${pid}-${th.id.slice(0, 6)}`;
+        th.worktreePath = `/Users/you/Library/Application Support/UnSkilled/worktrees/${th.id}`;
+      }
       threads[pid] = [th, ...(threads[pid] ?? [])];
       return th;
     },
@@ -409,8 +413,8 @@ export function installMock(): void {
     terminalResize: () => {},
     terminalClose: async () => {},
     projectBranch: async () => (scene === "thread" ? "feat/rate-limit" : null),
-    listFiles: async () => ({ files: ["README.md", "package.json", "src/app.ts", "src/middleware/rateLimit.ts", "src/middleware/rateLimit.test.ts", "src/routes/login.ts"], truncated: false }),
-    getDiff: async () => [
+    listFiles: async (_projectId, _threadId) => ({ files: ["README.md", "package.json", "src/app.ts", "src/middleware/rateLimit.ts", "src/middleware/rateLimit.test.ts", "src/routes/login.ts"], truncated: false }),
+    getDiff: async (_projectId, _threadId) => [
       {
         path: "src/middleware/rateLimit.ts",
         status: "untracked",

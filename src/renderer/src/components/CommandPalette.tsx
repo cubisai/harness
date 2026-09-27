@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PermissionMode, Theme } from "../../../shared/types";
 import { api } from "../api";
-import { rankCommands, type Command } from "../palette";
+import { newThreadCommands, rankCommands, type Command } from "../palette";
 import { fileManagerName } from "./OpenIn";
 import { useSelectedThread, useStore } from "../store";
 
@@ -48,7 +48,7 @@ function Palette() {
     const action = (id: string, title: string, run: () => void, extra: Partial<Command> = {}) =>
       out.push({ id: `action:${id}`, section: "Actions", title, run, ...extra });
 
-    if (selectedProjectId) action("new-thread", "New Thread", () => void s.newThread(), { shortcut: key("N") });
+    out.push(...newThreadCommands({ enabled: Boolean(selectedProjectId), shortcut: key("N"), newThread: (skill, o) => void s.newThread(skill, o) }));
     action("add-project", "Add Project…", () => void s.addProject(), { keywords: "open folder" });
     action("library-skills", "Library: Skills", () => useStore.setState({ libraryTab: "skills" }), { shortcut: mac ? "⌘⇧L" : "Ctrl+Shift+L", keywords: "plugins browse skills" });
     action("library-mcp", "Library: MCP Servers", () => useStore.setState({ libraryTab: "mcp" }), { keywords: "mcp tools add server" });

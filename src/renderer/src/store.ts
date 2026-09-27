@@ -126,7 +126,10 @@ interface State {
   addProject(): Promise<void>;
   selectProject(id: string): Promise<void>;
   selectThread(id: string | null): Promise<void>;
-  newThread(skill?: string): Promise<void>;
+  /** Open a new thread; `worktree` gives it its own git worktree on a new branch. */
+  newThread(skill?: string, opts?: { worktree?: boolean }): Promise<void>;
+  /** Start `text` as a new thread in the open project without leaving the current one; it reports through the Message Center. */
+  sendInBackground(text: string, skill?: string, opts?: { worktree?: boolean }, mentions?: string[]): Promise<void>;
   /** From the project's start screen: open a new thread and send `text` in it. */
   startThread(text: string, skill?: string, mentions?: string[]): Promise<void>;
   takePendingSkill(): string | null;
@@ -464,16 +467,40 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
-  async newThread(skill) {
+  async newThread(skill, opts) {
     const projectId = get().selectedProjectId;
     if (!projectId) return;
-    const thread = await api().createThread(projectId, get().lastAgent ?? undefined);
+    let thread: Thread;
+    try {
+      thread = await api().createThread(projectId, get().lastAgent ?? undefined, opts);
+    } catch (err) {
+      get().showNotice(ipcErrorText(err));
+      return;
+    }
     set((s) => ({
       pendingSkill: skill ?? null,
       threads: { ...s.threads, [projectId]: upsertThread(s.threads[projectId], thread) },
       events: { ...s.events, [thread.id]: [] },
       selectedThreadId: thread.id,
     }));
+  },
+
+  async sendInBackground(text, skill, opts, mentions) {
+    const projectId = get().selectedProjectId;
+    if (!projectId) return;
+    let thread: Thread;
+    try {
+      thread = await api().createThread(projectId, get().lastAgent ?? undefined, opts);
+    } catch (err) {
+      get().showNotice(ipcErrorText(err));
+      return;
+    }
+    set((s) => ({
+      threads: { ...s.threads, [projectId]: upsertThread(s.threads[projectId], thread) },
+      events: { ...s.events, [thread.id]: [] },
+    }));
+    await get().send(text, skill, thread.id, mentions);
+    get().showNotice("Started in the background. The Message Center says when it's done.");
   },
 
   async startThread(text, skill, mentions) {
