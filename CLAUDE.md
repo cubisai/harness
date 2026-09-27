@@ -1,26 +1,24 @@
 ## opencode delegation (custom, project-local — not the generic "skilled" template)
 
-Active when `"opencodeDelegation": true` in `.claude/settings.json`.
+Active when `"opencodeDelegation": true` in `.claude/settings.json`. *(opencode workers read this file too: this section is for Claude Code — as a worker, never run `opencode` or delegate.)*
 
 Claude Code is the orchestrator. `/oc <task>` is a manual trigger, but this policy is not gated behind it — apply it automatically whenever a task involves non-trivial codebase exploration or an implementation/edit loop, the same way you'd reach for any other skill without being asked to name it. Delegate that heavy exploration/edit-loop token cost off Claude's own context, but Claude Code always performs the final correctness check itself. A worker's own "done" / "tests pass" claim is never the answer; Claude's own read of the diff and Claude's own run of the project's real checks is.
 
-**Trust boundary**: opencode agents run on `deepseek-v4-flash` (or, transparently, whatever the fallback plugin substitutes on a transient failure — you won't always know which one actually answered). Either way it's a smaller/cheaper model than Claude, picked for cost and speed. Treat everything it returns — research findings, file:line citations, "bug confirmed" claims, not just an implementer's "done" — as an unverified claim, not as fact. Spot-check the load-bearing ones yourself (open the cited file, re-run the cited command) before writing them into a plan, a brief, or anything you tell the user, especially when a finding is surprising or about to drive a code change.
+**Trust boundary**: opencode agents run on small, cheap models (DeepSeek v4 Flash via AgentRouter first, see Worker team), and a fallback may silently swap in another. Treat everything they return — findings, file:line citations, "bug confirmed", an implementer's "done" — as an unverified claim. Spot-check the load-bearing ones yourself (open the cited file, re-run the cited command) before they go into a plan, a brief, or anything you tell the user.
 
-**Two separate fallback layers, don't confuse them**: (1) *model-level*, inside opencode itself — `deepseek-v4-flash` → `space-bunny-free` on 429/500/502/503/504 or a matching pattern, automatic, invisible from the CLI output, see `~/.config/opencode/opencode-fallback.json`. (2) *task-level*, this is yours to enforce — if a delegated call fails 3 times in a row for the same task (CLI/auth error, timeout, malformed or empty output, anything that isn't a normal task result), stop delegating for that task and finish it yourself directly. Don't keep retrying opencode past that; say so to the user in one line and proceed solo.
+**Two separate fallback layers**: (1) *model-level* — `oc-run.mjs` walks the worker's `[model, ...fallback_models]` from `opencode.json` (AgentRouter DeepSeek v4 Flash → Token Harbor paid DeepSeek v4.1 Flash → Qwen3.7 Flash, set 2026-09-27), one `opencode run` per model, on an error, empty output, `DISPATCH FAILED` or timeout. The runtime-fallback plugin can't do this headless: `opencode run` exits on the first error (verified 2026-09-26). (2) *task-level*, yours — if a dispatch fails 3 times for the same task (every model failed, or output unusable), finish that task yourself and say so in one line.
 
 ### Worker team
 
-Workers run on `agentrouter/deepseek-v4-flash` as primary, auto-falling back to `opencode/space-bunny-free` (free tier) via the `opencode-runtime-fallback` plugin on 429/500/502/503/504 or a matching retryable pattern (see `~/.config/opencode/opencode-fallback.json`). This is set at `~/.config/opencode/opencode.json`'s top-level `model`, inherited by every agent — none of the per-agent `.md` files in `~/.config/opencode/agent/` pin a model. If a raw `curl` to the agentrouter proxy (`127.0.0.1:4141`) 401s, that's expected — the proxy gates on the real opencode client, not arbitrary HTTP clients; it is not evidence the route is broken. Subagents cannot be invoked directly via `--agent <name>` — confirmed empirically, it silently falls back to the default agent. Always dispatch through the `orchestrator` primary agent:
+Routing: `~/.config/opencode/opencode.json`, per-agent `model` + `fallback_models`; full setup in `SETUP-OTHER-PC.md`. AgentRouter goes through the local proxy on `127.0.0.1:3900` (Windows: start `~/.config/opencode/start-proxy.bat` if nothing listens; a raw `curl` to it 401s by design). Subagents can't be invoked via `--agent <name>`; the brief goes to `orchestrator`, which `oc-run.mjs` calls:
 
 ```bash
-# brief text in .ai/tmp/<name>.brief.txt: "Delegate to the <agent> subagent: <brief>. Relay only that subagent's raw output."
-perl -e 'alarm shift; exec @ARGV' 900 \
-  opencode run --agent orchestrator "$(cat .ai/tmp/<name>.brief.txt)" \
-  --format json --print-logs --log-level INFO \
-  < /dev/null > .ai/tmp/<name>.out.jsonl 2> .ai/tmp/<name>.log
+# brief in .ai/tmp/<name>.brief.txt: "Delegate to the <agent> subagent: <brief>. Relay only that subagent's raw output."
+node ~/.config/opencode/oc-run.mjs --worker <agent> --brief .ai/tmp/<name>.brief.txt \
+  --out .ai/tmp/<name>.out.jsonl --log .ai/tmp/<name>.log --timeout 900
 ```
 
-**`< /dev/null` is mandatory.** `opencode run` appends piped stdin to the prompt whenever stdin is not a TTY, so it blocks forever right after the `message=init` log line if the shell hands it an open, never-closed stdin (background Bash sometimes does). Reproduced 2026-09-25: closed stdin → answers in seconds; open pipe → stuck at `init`, no session created. The `perl alarm` wrapper (macOS has no `timeout`) hard-kills any run after 900 s, so a hang surfaces as exit 142 instead of silence. A log that ends at `message=init` with no `created id=ses_` line = this hang, not a model/provider problem.
+`oc-run` closes stdin (an open one makes `opencode run` hang at `message=init`), drops a model that shows no activity for `--idle` seconds (default 480) or passes `--timeout`, kills the process tree, loads `TOKENHARBOR_API_KEY` from the Windows user env when the shell predates it, and prints which model answered (exit 0) or that all failed (exit 1). The `.log` has one `=== attempt n ===` block per model.
 
 | Agent | Scope |
 |---|---|
@@ -31,7 +29,9 @@ perl -e 'alarm shift; exec @ARGV' 900 \
 | `architect` | Visible design reasoning (pure text, no tools) |
 | `orchestrator` | Dispatch agent — the only one directly invocable |
 
-`verifier` exists globally (`~/.config/opencode/agent/verifier.md`) but is **deliberately not dispatched from this project** — see Verification below.
+`verifier` exists globally on the Mac (`~/.config/opencode/agent/verifier.md`; not installed on the Windows PC) but is **deliberately not dispatched from this project** — see Verification below. The orchestrator's `task` permission only allows the five workers above.
+
+**Browser work**: `agent-browser` (Vercel) is installed globally with its skill in both Claude Code (`~/.claude/skills/agent-browser`) and opencode (`~/.agents/skills/agent-browser`). `researcher` and `implementer` may run `agent-browser …` via bash, so a brief can ask them to check a page or the `preview:ui` build. Start any such brief with "first run `agent-browser skills get core`". On Windows it drives the installed Chrome via `AGENT_BROWSER_EXECUTABLE_PATH`.
 
 ### Workflow
 
