@@ -8,11 +8,29 @@ import { useStore } from "../store";
 import { DiffView, diffsOf } from "./DiffView";
 import { PermissionCard } from "./PermissionCard";
 import { ReasoningBlock } from "./ReasoningBlock";
+import { WaitingLine } from "./WaitingLine";
+import { useSmoothText } from "../hooks/useSmoothText";
 
 type ToolEvent = Extract<ThreadEvent, { kind: "tool-use" }>;
 type ResultEvent = Extract<ThreadEvent, { kind: "tool-result" }>;
 
 const EMPTY_LIVE = emptyLive();
+
+/** A reply still streaming, shown at a steady pace (see smooth.ts). */
+function LiveText({ text }: { text: string }) {
+  const shown = useSmoothText(text, true);
+  return (
+    <div className="msg-assistant">
+      <Markdown text={shown} streaming />
+    </div>
+  );
+}
+
+/** Reasoning still streaming, at the same pace. */
+function LiveReasoning({ text, newest }: { text: string; newest: boolean }) {
+  const shown = useSmoothText(text, true);
+  return <ReasoningBlock text={shown} opaque={false} live newest={newest} tokens={null} />;
+}
 const NO_QUEUE: { text: string; skill?: string }[] = [];
 
 export function ThreadView({ threadId }: { threadId: string }) {
@@ -20,6 +38,8 @@ export function ThreadView({ threadId }: { threadId: string }) {
   const live = useStore((s) => s.live[threadId]) ?? EMPTY_LIVE;
   const running = useStore((s) => Boolean(s.running[threadId]));
   const outbox = useStore((s) => s.outbox[threadId]) ?? NO_QUEUE;
+  const startedAt = useStore((s) => s.turnStartedAt[threadId]);
+  const inner = useRef<HTMLDivElement>(null);
   const allPermissions = useStore((s) => s.permissions);
   const permissions = useMemo(() => allPermissions.filter((p) => p.threadId === threadId), [allPermissions, threadId]);
   const scroller = useRef<HTMLDivElement>(null);
@@ -41,6 +61,17 @@ export function ThreadView({ threadId }: { threadId: string }) {
     const el = scroller.current;
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
   }, [events.length, textLength, permissions.length]);
+  // Smoothed text keeps growing after the store stops changing: follow the content's size.
+  useEffect(() => {
+    const el = scroller.current;
+    const body = inner.current;
+    if (!el || !body || typeof ResizeObserver === "undefined") return;
+    const follow = new ResizeObserver(() => {
+      if (pinned.current) el.scrollTop = el.scrollHeight;
+    });
+    follow.observe(body);
+    return () => follow.disconnect();
+  }, []);
 
   return (
     <div
@@ -51,21 +82,21 @@ export function ThreadView({ threadId }: { threadId: string }) {
         pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
       }}
     >
-      <div className="thread-inner">
+      <div className="thread-inner" ref={inner}>
         {events.map((e) => (
           <EventRow key={e.seq} stored={e} results={results} running={running} threadId={threadId} />
         ))}
         {reasoningMode === "text" &&
           reasoningItems.map((item, i) => (
-            <ReasoningBlock key={item.key} text={item.text} opaque={false} live newest={i === reasoningItems.length - 1 && textItems.length === 0} tokens={null} />
+            <LiveReasoning key={item.key} text={item.text} newest={i === reasoningItems.length - 1 && textItems.length === 0} />
           ))}
         {reasoningMode === "tokens" && <ReasoningBlock text="" opaque live newest tokens={live.thinkingTokens} />}
         {textItems.map((item) => (
-          <div className="msg-assistant" key={item.key}>
-            <Markdown text={item.text} streaming />
-          </div>
+          <LiveText key={item.key} text={item.text} />
         ))}
-        {running && textItems.length === 0 && reasoningMode === "none" && permissions.length === 0 && <div className="notice"><span className="spinner" style={{ display: "inline-block", verticalAlign: -2, marginRight: 8 }} />Working…</div>}
+        {running && permissions.length === 0 && (
+          <WaitingLine startedAt={startedAt ?? Date.now()} outputTokens={live.usage?.outputTokens ?? live.thinkingTokens ?? null} />
+        )}
         {permissions.map((p) => (
           <PermissionCard key={p.requestId} request={p} />
         ))}

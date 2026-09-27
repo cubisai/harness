@@ -546,6 +546,11 @@ details.tool[open]::details-content { height: auto; }
   font-variant-numeric: tabular-nums;
 }
 .notice { color: var(--text-secondary); font-size: 12px; margin: 8px 0; }
+/* The running turn's line, in Claude Code's style. */
+.waiting-line { display: flex; align-items: baseline; gap: 6px; margin: 12px 0 4px; font-size: 12.5px; color: var(--text-secondary); }
+.waiting-glyph { width: 12px; text-align: center; color: #d97757; font-size: 13px; }
+.waiting-verb { color: #d97757; font-weight: 500; }
+.waiting-facts { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .error-card {
   border: 1px solid rgb(255 59 48 / 0.3);
   background: rgb(255 59 48 / 0.07);
