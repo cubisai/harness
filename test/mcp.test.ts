@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { codexServers, readExternalMcp } from "../src/main/mcp/external";
-import { forAcp, forAcpWithReport, forClaude, mcpChangeNotice, McpServerStore, testServer, viewOf } from "../src/main/mcp/servers";
+import { forAcp, forAcpWithReport, forClaude, mcpChangeNotice, McpScopes, McpServerStore, testServer, viewOf } from "../src/main/mcp/servers";
 import { startToolServer } from "../src/main/mcp-http";
 import { closeAfter, tempDir } from "./helpers";
 
@@ -48,6 +48,58 @@ describe("McpServerStore", () => {
       ["web", "http", true],
       ["off", "stdio", false],
     ]);
+  });
+});
+
+describe("McpScopes", () => {
+  const setup = () => {
+    const root = tempDir();
+    const global = new McpServerStore(join(root, "mcp.json"));
+    const scopes = new McpScopes(global, (id) => join(root, "projects", id));
+    return { global, scopes };
+  };
+  const stdio = (command: string) => ({ type: "stdio" as const, command });
+
+  it("effective(null) is the global store's enabled servers", () => {
+    const { global, scopes } = setup();
+    global.save({ name: "a", enabled: true, spec: stdio("a") });
+    global.save({ name: "b", enabled: false, spec: stdio("b") });
+    expect(scopes.effective(null).map((s) => s.name)).toEqual(["a"]);
+  });
+
+  it("lets a project server replace a global one by name, whole", () => {
+    const { global, scopes } = setup();
+    global.save({ name: "docs", enabled: true, spec: stdio("global-docs") });
+    global.save({ name: "web", enabled: true, spec: stdio("global-web") });
+    scopes.project("p1").save({ name: "docs", enabled: true, spec: stdio("project-docs") });
+    expect(scopes.effective("p1").map((s) => [s.name, s.spec.type === "stdio" ? s.spec.command : ""])).toEqual([
+      ["docs", "project-docs"],
+      ["web", "global-web"],
+    ]);
+  });
+
+  it("switches individual global servers off per project, and keeps that choice across edits", () => {
+    const { global, scopes } = setup();
+    global.save({ name: "a", enabled: true, spec: stdio("a") });
+    global.save({ name: "b", enabled: true, spec: stdio("b") });
+    const project = scopes.project("p1");
+    project.setGlobalOff("a", true);
+    expect(scopes.effective("p1").map((s) => s.name)).toEqual(["b"]);
+    project.save({ name: "c", enabled: true, spec: stdio("c") });
+    project.remove("c");
+    expect(project.offGlobal()).toEqual(["a"]);
+    expect(scopes.effective("p1").map((s) => s.name)).toEqual(["b"]);
+    project.setGlobalOff("a", false);
+    expect(scopes.effective("p1").map((s) => s.name)).toEqual(["a", "b"]);
+  });
+
+  it("keeps one store per project id, independent of the others", () => {
+    const { global, scopes } = setup();
+    global.save({ name: "a", enabled: true, spec: stdio("a") });
+    expect(scopes.project("p1")).toBe(scopes.project("p1"));
+    scopes.project("p2").setGlobalOff("a", true);
+    expect(scopes.effective("p1").map((s) => s.name)).toEqual(["a"]);
+    expect(scopes.effective("p2")).toEqual([]);
   });
 });
 

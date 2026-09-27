@@ -33,7 +33,7 @@ import { referenceEvents } from "./canonical-events";
 import { smokeCanonicalEvents, smokeHandoff, smokeMigration, smokeProviders } from "./smoke-checks";
 import { Editors, realHost } from "./editors";
 import { readExternalMcp } from "./mcp/external";
-import { BUILT_IN_SERVER, McpServerStore, testServer, viewOf } from "./mcp/servers";
+import { BUILT_IN_SERVER, McpScopes, McpServerStore, testServer, viewOf } from "./mcp/servers";
 import { Updater, type UpdaterBackend } from "./updater";
 import { defaultSkillsCandidates, findSkillsRoot } from "./skills/catalog";
 import { ensureModelSkillsDir, ensurePlugin } from "./skills/plugin";
@@ -317,6 +317,8 @@ async function main(): Promise<void> {
     void (d.refreshModels?.() ?? Promise.resolve()).finally(() => broadcast({ type: "agents" }));
   }
   const mcpStore = new McpServerStore(join(userData, "mcp.json"));
+  const mcpProjectDir = (projectId: string) => join(userData, "projects", projectId);
+  const mcpScopes = new McpScopes(mcpStore, mcpProjectDir);
   const service = new Service(
     store,
     (cwd: string | null) => skills.forProject(cwd),
@@ -327,7 +329,7 @@ async function main(): Promise<void> {
       const s = settings.get();
       return { agent: s.defaultAgent, permissionMode: s.defaultPermissionMode };
     },
-    () => mcpStore.enabled(),
+    (projectId) => mcpScopes.effective(projectId),
     knownSecrets,
   );
 
@@ -345,16 +347,22 @@ async function main(): Promise<void> {
       return null;
     }
   };
-  const mcpOverview = (projectId: string | null): McpOverview => ({
-    builtIn: {
-      name: BUILT_IN_SERVER,
-      active: browser.enabled,
-      tools: tools.map((t) => ({ name: t.name, description: t.description, autoAllow: t.autoAllow })),
-    },
-    servers: mcpStore.list().map(viewOf),
-    external: readExternalMcp({ projectPath: projectPathOf(projectId) }),
-    file: join(userData, "mcp.json"),
-  });
+  const mcpOverview = (projectId: string | null): McpOverview => {
+    const projectScope = projectId ? mcpScopes.project(projectId) : null;
+    return {
+      builtIn: {
+        name: BUILT_IN_SERVER,
+        active: browser.enabled,
+        tools: tools.map((t) => ({ name: t.name, description: t.description, autoAllow: t.autoAllow })),
+      },
+      servers: mcpStore.list().map(viewOf),
+      project: projectScope
+        ? { servers: projectScope.list().map(viewOf), offGlobal: projectScope.offGlobal(), file: join(mcpProjectDir(projectId!), "mcp.json") }
+        : null,
+      external: readExternalMcp({ projectPath: projectPathOf(projectId) }),
+      file: join(userData, "mcp.json"),
+    };
+  };
   ipcMain.handle("library:skills", (_e, projectId?: string) => skills.forProject(projectPathOf(projectId ?? null)).all);
   ipcMain.handle("library:skill", (_e, name: string, projectId?: string) => {
     const cwd = projectPathOf(projectId ?? null);
@@ -388,21 +396,27 @@ async function main(): Promise<void> {
   });
   ipcMain.handle("library:agents", () => catalogOfAgents());
   ipcMain.handle("mcp:get", (_e, projectId: string | null) => mcpOverview(projectId));
-  ipcMain.handle("mcp:save", (_e, entry: McpServerEntry, previousName?: string) => {
-    mcpStore.save(entry, previousName);
-    return mcpOverview(null);
+  ipcMain.handle("mcp:save", (_e, entry: McpServerEntry, previousName?: string, projectId?: string | null) => {
+    (projectId ? mcpScopes.project(projectId) : mcpStore).save(entry, previousName);
+    return mcpOverview(projectId ?? null);
   });
-  ipcMain.handle("mcp:remove", (_e, name: string) => {
-    mcpStore.remove(name);
-    return mcpOverview(null);
+  ipcMain.handle("mcp:remove", (_e, name: string, projectId?: string | null) => {
+    (projectId ? mcpScopes.project(projectId) : mcpStore).remove(name);
+    return mcpOverview(projectId ?? null);
   });
-  ipcMain.handle("mcp:enable", (_e, name: string, enabled: boolean) => {
-    mcpStore.setEnabled(name, enabled);
-    return mcpOverview(null);
+  ipcMain.handle("mcp:enable", (_e, name: string, enabled: boolean, projectId?: string | null) => {
+    (projectId ? mcpScopes.project(projectId) : mcpStore).setEnabled(name, enabled);
+    return mcpOverview(projectId ?? null);
   });
-  ipcMain.handle("mcp:test", async (_e, name: string) => {
-    const entry = mcpStore.list().find((s) => s.name === name);
+  ipcMain.handle("mcp:test", async (_e, name: string, projectId?: string | null) => {
+    const store = projectId ? mcpScopes.project(projectId) : mcpStore;
+    const entry = store.list().find((s) => s.name === name);
     return entry ? testServer(entry.spec) : { ok: false, tools: [], error: "No such server." };
+  });
+  // A project can switch off an individual global server without editing either file.
+  ipcMain.handle("mcp:global-off", (_e, projectId: string, name: string, off: boolean) => {
+    mcpScopes.project(projectId).setGlobalOff(name, off);
+    return mcpOverview(projectId);
   });
   // Open in editor. The agents' API keys (set from Settings) stay out of the editor's environment.
   const editors = new Editors(realHost(), () => settings.secretEnvNames());

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { AgentCatalogEntry, McpOverview, McpServerEntry, McpServerSpec, McpServerView, McpTestResult, SkillDetail, SkillEntry, SkillOrigin } from "../../../shared/types";
+import type { AgentCatalogEntry, ExternalMcpServer, McpOverview, McpServerEntry, McpServerSpec, McpServerView, McpTestResult, SkillDetail, SkillEntry, SkillOrigin } from "../../../shared/types";
 import { api } from "../api";
 import { joinCommandLine, splitCommandLine } from "../cmdline";
 import { IconCopy } from "../icons";
@@ -686,10 +686,14 @@ function ConnectorsTab() {
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tests, setTests] = useState<Record<string, McpTestResult | "running">>({});
-  const projectId = useStore((s) => s.selectedProjectId);
+  const [scope, setScope] = useState<"all" | "project">("all");
+  const selectedProjectId = useStore((s) => s.selectedProjectId);
+  // "This project" needs a selected project; without one the switch is disabled and the list is global.
+  const inProject = scope === "project" && selectedProjectId !== null;
+  const scopeProjectId: string | null = inProject ? selectedProjectId : null;
 
-  const refresh = () => void api().getMcp(projectId).then(setData);
-  useEffect(refresh, [projectId]);
+  const refresh = () => void api().getMcp(scopeProjectId).then(setData);
+  useEffect(refresh, [scopeProjectId]);
 
   const quickConnect = (fc: FeaturedConnector) => {
     if (fc.defaultCommand === "built-in") return;
@@ -724,7 +728,7 @@ function ConnectorsTab() {
       spec = { type: "http", url, headers: Object.keys(headers).length ? headers : undefined };
     }
     try {
-      const updated = await api().saveMcpServer({ name, spec, enabled: true }, draft.previous ?? undefined);
+      const updated = await api().saveMcpServer({ name, spec, enabled: true }, draft.previous ?? undefined, scopeProjectId);
       setData(updated);
       setDraft(null);
     } catch (err) {
@@ -734,16 +738,34 @@ function ConnectorsTab() {
 
   const test = async (name: string) => {
     setTests((t) => ({ ...t, [name]: "running" }));
-    const res = await api().testMcpServer(name);
+    const res = await api().testMcpServer(name, scopeProjectId);
     setTests((t) => ({ ...t, [name]: res }));
   };
 
   if (!data) return <div className="library-pad" />;
 
-  const installedNames = new Set(data.servers.map((s) => s.name.toLowerCase()));
+  const project = data.project;
+  const scopeServers = inProject && project ? project.servers : data.servers;
+  const offGlobal = new Set(project?.offGlobal ?? []);
+  const installedNames = new Set(scopeServers.map((s) => s.name.toLowerCase()));
+  const externalByAgent = new Map<string, ExternalMcpServer[]>();
+  for (const s of data.external) {
+    const list = externalByAgent.get(s.agent) ?? [];
+    list.push(s);
+    externalByAgent.set(s.agent, list);
+  }
 
   return (
     <div className="wb-content-pad">
+      <div className="segmented" style={{ marginBottom: 16 }}>
+        <button className={scope === "all" ? "on" : ""} onClick={() => setScope("all")}>
+          All projects
+        </button>
+        <button className={inProject ? "on" : ""} disabled={!selectedProjectId} onClick={() => setScope("project")}>
+          This project
+        </button>
+      </div>
+
       <div style={{ marginBottom: 20 }}>
         <h3 style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", margin: "0 0 6px" }}>Featured Connectors (1-Click Connect)</h3>
         <p className="note" style={{ margin: "0 0 12px" }}>Popular Model Context Protocol (MCP) integrations for tools, tasks, and external services.</p>
@@ -801,15 +823,15 @@ function ConnectorsTab() {
           </div>
         )}
 
-        {data.servers.length === 0 && !draft ? (
+        {scopeServers.length === 0 && !draft ? (
           <p className="note">No custom servers configured yet. Pick one from Featured Connectors above or click &quot;+ Add Custom Server&quot;.</p>
         ) : (
-          data.servers.map((s) => {
+          scopeServers.map((s) => {
             const t = tests[s.name];
             return (
               <div key={s.name} className={`mcp-row${s.enabled ? "" : " off"}`}>
                 <label className="switch" title={s.enabled ? "On" : "Off"}>
-                  <input type="checkbox" checked={s.enabled} onChange={(e) => void api().setMcpServerEnabled(s.name, e.target.checked).then(refresh)} />
+                  <input type="checkbox" checked={s.enabled} onChange={(e) => void api().setMcpServerEnabled(s.name, e.target.checked, scopeProjectId).then(refresh)} />
                   <span />
                 </label>
                 <div className="mcp-main">
@@ -827,7 +849,7 @@ function ConnectorsTab() {
                 <button className="button ghost" disabled={t === "running"} onClick={() => void test(s.name)}>
                   {t === "running" ? "Testing…" : "Test"}
                 </button>
-                <button className="button ghost danger" onClick={() => void api().removeMcpServer(s.name).then(refresh)}>
+                <button className="button ghost danger" onClick={() => void api().removeMcpServer(s.name, scopeProjectId).then(refresh)}>
                   Remove
                 </button>
               </div>
@@ -835,6 +857,61 @@ function ConnectorsTab() {
           })
         )}
       </section>
+
+      {inProject && project && (
+        <section style={{ borderTop: "1px solid var(--hairline)", paddingTop: 16, marginTop: 16 }}>
+          <h3>From All projects</h3>
+          <p className="note" style={{ margin: "0 0 10px" }}>Global servers apply here unless you switch them off for this project.</p>
+          {data.servers.length === 0 ? (
+            <p className="note">No global servers configured yet.</p>
+          ) : (
+            data.servers.map((s) => {
+              const off = offGlobal.has(s.name);
+              return (
+                <div key={s.name} className={`mcp-row${off ? " off" : ""}`}>
+                  <div className="mcp-main">
+                    <div className="mcp-name">
+                      {s.name} <span className="tag">{s.type === "http" ? "URL" : "Command"}</span>
+                    </div>
+                    <code className="mcp-target">{s.target}</code>
+                  </div>
+                  <label className="mcp-file-label" title="Use in this project">
+                    <input
+                      type="checkbox"
+                      checked={!off}
+                      onChange={(e) => void api().setGlobalMcpOff(selectedProjectId!, s.name, !e.target.checked).then(setData)}
+                    />
+                    Use in this project
+                  </label>
+                </div>
+              );
+            })
+          )}
+        </section>
+      )}
+
+      {data.external.length > 0 && (
+        <section style={{ borderTop: "1px solid var(--hairline)", paddingTop: 16, marginTop: 16 }}>
+          <h3>Also loaded by the agents themselves</h3>
+          <p className="note" style={{ margin: "0 0 10px" }}>The harness doesn&apos;t change these; they come from each agent&apos;s own config.</p>
+          {[...externalByAgent].map(([agent, servers]) => (
+            <div key={agent}>
+              <div className="mcp-source" style={{ marginTop: 8 }}>{agent}</div>
+              {servers.map((s) => (
+                <div key={`${agent}:${s.name}`} className="mcp-row">
+                  <div className="mcp-main">
+                    <div className="mcp-name">
+                      {s.name} <span className="tag">{s.type === "http" || s.type === "sse" ? "URL" : s.type === "stdio" ? "Command" : "Unknown"}</span>
+                    </div>
+                    {s.target && <code className="mcp-target">{s.target}</code>}
+                  </div>
+                  <span className="mcp-source">{s.source}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </section>
+      )}
 
       <section style={{ borderTop: "1px solid var(--hairline)", paddingTop: 16, marginTop: 16 }}>
         <h3>Built in</h3>

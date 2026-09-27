@@ -186,7 +186,10 @@ export interface ExternalMcpServer {
 export interface McpOverview {
   /** The app's own tools (the browser pane's), served to agents as the "unskilled" server. */
   builtIn: { name: string; active: boolean; tools: { name: string; description: string; autoAllow: boolean }[] };
+  /** The global servers, for all projects. */
   servers: McpServerView[];
+  /** The selected project's own servers and the global ones it switches off; null for the global scope. */
+  project: { servers: McpServerView[]; offGlobal: string[]; file: string } | null;
   external: ExternalMcpServer[];
   file: string;
 }
@@ -702,10 +705,12 @@ export interface UnskilledApi {
   listAgentCatalog(): Promise<AgentCatalogEntry[]>;
   getMcp(projectId: string | null): Promise<McpOverview>;
   /** Add or replace a server. Env or header values left empty keep what was stored. */
-  saveMcpServer(entry: McpServerEntry, previousName?: string): Promise<McpOverview>;
-  removeMcpServer(name: string): Promise<McpOverview>;
-  setMcpServerEnabled(name: string, enabled: boolean): Promise<McpOverview>;
-  testMcpServer(name: string): Promise<McpTestResult>;
+  saveMcpServer(entry: McpServerEntry, previousName?: string, projectId?: string | null): Promise<McpOverview>;
+  removeMcpServer(name: string, projectId?: string | null): Promise<McpOverview>;
+  setMcpServerEnabled(name: string, enabled: boolean, projectId?: string | null): Promise<McpOverview>;
+  testMcpServer(name: string, projectId?: string | null): Promise<McpTestResult>;
+  /** Use (or stop using) a global server in one project. */
+  setGlobalMcpOff(projectId: string, name: string, off: boolean): Promise<McpOverview>;
   revealPath(path: string): Promise<void>;
   /** Installed editors, in the picker's order. */
   listEditors(): Promise<EditorInfo[]>;

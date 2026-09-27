@@ -159,6 +159,14 @@ export function installMock(): void {
       { name: "github", enabled: true, type: "stdio", target: "npx -y @modelcontextprotocol/server-github", envKeys: ["GITHUB_TOKEN"], headerKeys: [] },
       { name: "linear", enabled: false, type: "http", target: "https://mcp.linear.app/mcp", envKeys: [], headerKeys: ["Authorization"] },
     ],
+    project: {
+      servers: [
+        { name: "postgres-local", enabled: true, type: "stdio", target: "npx -y @modelcontextprotocol/server-postgres", envKeys: ["DATABASE_URL"], headerKeys: [] },
+        { name: "linear", enabled: true, type: "http", target: "https://mcp.linear.app/mcp", envKeys: [], headerKeys: ["Authorization"] },
+      ],
+      offGlobal: ["github"],
+      file: "~/Library/Application Support/UnSkilled/projects/p1/mcp.json",
+    },
     external: [
       { name: "sentry", type: "http", target: "https://mcp.sentry.dev/mcp", agent: "Claude", source: "~/.claude.json" },
       { name: "postgres", type: "stdio", target: "uvx postgres-mcp --readonly", agent: "Claude", source: ".mcp.json" },
@@ -344,8 +352,8 @@ export function installMock(): void {
       return `${dir}/${input.name}/SKILL.md`;
     },
     listAgentCatalog: async () => agentCatalog,
-    getMcp: async () => mcp,
-    saveMcpServer: async (entry, previous) => {
+    getMcp: async (projectId) => (projectId ? mcp : { ...mcp, project: null }),
+    saveMcpServer: async (entry, previous, projectId) => {
       const view = {
         name: entry.name,
         enabled: entry.enabled,
@@ -354,16 +362,35 @@ export function installMock(): void {
         envKeys: entry.spec.type === "stdio" ? Object.keys(entry.spec.env ?? {}) : [],
         headerKeys: entry.spec.type === "http" ? Object.keys(entry.spec.headers ?? {}) : [],
       };
-      mcp = { ...mcp, servers: [...mcp.servers.filter((x) => x.name !== (previous ?? entry.name)), view] };
+      const kept = (projectId ? mcp.project?.servers ?? [] : mcp.servers).filter((x) => x.name !== (previous ?? entry.name));
+      mcp = projectId
+        ? { ...mcp, project: { ...mcp.project!, servers: [...kept, view] } }
+        : { ...mcp, servers: [...kept, view] };
       return mcp;
     },
-    removeMcpServer: async (name) => (mcp = { ...mcp, servers: mcp.servers.filter((x) => x.name !== name) }),
-    setMcpServerEnabled: async (name, enabled) => (mcp = { ...mcp, servers: mcp.servers.map((x) => (x.name === name ? { ...x, enabled } : x)) }),
+    removeMcpServer: async (name, projectId) => {
+      mcp = projectId
+        ? { ...mcp, project: { ...mcp.project!, servers: (mcp.project?.servers ?? []).filter((x) => x.name !== name) } }
+        : { ...mcp, servers: mcp.servers.filter((x) => x.name !== name) };
+      return mcp;
+    },
+    setMcpServerEnabled: async (name, enabled, projectId) => {
+      const set = (x: McpOverview["servers"][number]) => (x.name === name ? { ...x, enabled } : x);
+      mcp = projectId
+        ? { ...mcp, project: { ...mcp.project!, servers: (mcp.project?.servers ?? []).map(set) } }
+        : { ...mcp, servers: mcp.servers.map(set) };
+      return mcp;
+    },
     testMcpServer: async (name) => {
       await new Promise((r) => setTimeout(r, 400));
       return name === "github"
         ? { ok: true, tools: ["search_issues", "create_issue", "get_pull_request"].map((n) => ({ name: n, description: "" })) }
         : { ok: false, tools: [], error: "401 Unauthorized" };
+    },
+    setGlobalMcpOff: async (projectId, name, off) => {
+      const offGlobal = off ? [...new Set([...(mcp.project?.offGlobal ?? []), name])] : (mcp.project?.offGlobal ?? []).filter((n) => n !== name);
+      mcp = { ...mcp, project: { ...mcp.project!, offGlobal } };
+      return mcp;
     },
     revealPath: async () => {},
     listEditors: async () => [

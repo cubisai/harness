@@ -1587,3 +1587,7 @@ button.hunk:hover { color: var(--accent); }
 .skill-origin { font-size: 11px; color: var(--text-tertiary); margin-left: 6px; }
 .form-error { color: var(--danger, #d33); font-size: 12px; }
 
+/* Connectors: the per-project "Use in this project" toggle for a global server. */
+.mcp-file-label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); white-space: nowrap; padding-top: 2px; }
+.mcp-file-label input { margin: 0; }
+

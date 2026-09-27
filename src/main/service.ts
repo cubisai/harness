@@ -76,8 +76,8 @@ export class Service {
     private harnessTools: () => HarnessTool[] = () => [],
     /** Defaults for new threads, from the user's settings. */
     private defaults: () => { agent: string | null; permissionMode: PermissionMode } = () => ({ agent: null, permissionMode: "ask" }),
-    /** The user's enabled MCP servers, for every agent. */
-    private mcpServers: () => McpServerEntry[] = () => [],
+    /** The MCP servers the thread's project gets, for every agent. */
+    private mcpServers: (projectId: string | null) => McpServerEntry[] = () => [],
     /** Every provider key the app holds, so no event (error, notice, tool output) can carry one. */
     private secrets: () => string[] = () => [],
   ) {
@@ -251,7 +251,7 @@ export class Service {
         model: thread.model,
         permissionMode: thread.permissionMode,
         tools: this.harnessTools(),
-        mcpServers: this.mcpServers(),
+        mcpServers: this.mcpServers(thread.projectId),
         items,
         onSession,
         inject: (sessionId, send) =>
@@ -277,7 +277,7 @@ export class Service {
           permissionMode: thread.permissionMode,
           signal: controller.signal,
           tools: this.harnessTools(),
-          mcpServers: this.mcpServers(),
+          mcpServers: this.mcpServers(thread.projectId),
           provenance,
           onEvent: (event) => {
             if (event.kind === "assistant-text") {
@@ -374,7 +374,7 @@ export class Service {
       // prefix changed under a session); a servers-only change is the
       // drivers' expected session rebuild. The fingerprint only moves when a
       // queued change drains, at this turn's boundary.
-      const set = toolSetOf(this.harnessTools(), this.mcpServers());
+      const set = toolSetOf(this.harnessTools(), this.mcpServers(thread.projectId));
       const previousSet = pinnedSet(thread.id);
       const toolsChanged = previousSet !== null && stableStringify(previousSet.tools) !== stableStringify(set.tools);
       if (pinnedFingerprint(thread.id) === null) {
@@ -397,7 +397,7 @@ export class Service {
         permissionMode: thread.permissionMode,
         signal: controller.signal,
         tools: this.harnessTools(),
-        mcpServers: this.mcpServers(),
+        mcpServers: this.mcpServers(thread.projectId),
         provenance,
         onSessionRebuilt: () => {
           rebuilt = true;

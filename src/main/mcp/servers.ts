@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { getDefaultEnvironment, StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -12,6 +12,8 @@ const NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/;
 interface FileShape {
   /** Claude Code's .mcp.json shape, plus `disabled`. */
   mcpServers?: Record<string, (McpServerSpec | { command: string; args?: string[]; env?: Record<string, string> }) & { disabled?: boolean }>;
+  /** Global servers this file's project switches off; names only. */
+  offGlobal?: string[];
 }
 
 function specOf(raw: Record<string, unknown>): McpServerSpec | null {
@@ -58,14 +60,17 @@ export function viewOf(entry: McpServerEntry): McpServerView {
 export class McpServerStore {
   constructor(private file: string) {}
 
-  list(): McpServerEntry[] {
-    if (!existsSync(this.file)) return [];
-    let raw: FileShape;
+  private read(): FileShape {
+    if (!existsSync(this.file)) return {};
     try {
-      raw = JSON.parse(readFileSync(this.file, "utf-8")) as FileShape;
+      return JSON.parse(readFileSync(this.file, "utf-8")) as FileShape;
     } catch {
-      return [];
+      return {};
     }
+  }
+
+  list(): McpServerEntry[] {
+    const raw = this.read();
     const out: McpServerEntry[] = [];
     for (const [name, value] of Object.entries(raw.mcpServers ?? {})) {
       const spec = value && typeof value === "object" ? specOf(value as Record<string, unknown>) : null;
@@ -76,6 +81,19 @@ export class McpServerStore {
 
   enabled(): McpServerEntry[] {
     return this.list().filter((s) => s.enabled);
+  }
+
+  /** Global servers this project switches off, as stored in the file. */
+  offGlobal(): string[] {
+    const off = this.read().offGlobal;
+    return Array.isArray(off) ? off.filter((n): n is string => typeof n === "string") : [];
+  }
+
+  /** Switch one global server off (or back on) for this project. */
+  setGlobalOff(name: string, off: boolean): void {
+    const current = this.offGlobal();
+    const next = off ? (current.includes(name) ? current : [...current, name]) : current.filter((n) => n !== name);
+    this.write(this.list(), next);
   }
 
   /** Add or replace. Empty env/header values keep the stored ones, so the window can edit without seeing them. */
@@ -99,13 +117,46 @@ export class McpServerStore {
     this.write(this.list().map((s) => (s.name === name ? { ...s, enabled } : s)));
   }
 
-  private write(list: McpServerEntry[]): void {
+  private write(list: McpServerEntry[], offGlobal?: string[]): void {
     const mcpServers: FileShape["mcpServers"] = {};
     for (const s of list) mcpServers[s.name] = { ...s.spec, ...(s.enabled ? {} : { disabled: true }) };
+    const off = offGlobal ?? this.offGlobal();
     mkdirSync(dirname(this.file), { recursive: true });
     const tmp = `${this.file}.tmp`;
-    writeFileSync(tmp, JSON.stringify({ mcpServers }, null, 2), { mode: 0o600 });
+    writeFileSync(tmp, JSON.stringify({ mcpServers, ...(off.length ? { offGlobal: off } : {}) }, null, 2), { mode: 0o600 });
     renameSync(tmp, this.file);
+  }
+}
+
+/**
+ * The MCP servers the app gives every agent, at two scopes: one global store
+ * for all projects, and one file per project. A project's servers replace a
+ * same-named global one whole (no field merge); the rest of the globals apply
+ * unless the project switches them off.
+ */
+export class McpScopes {
+  private projects = new Map<string, McpServerStore>();
+
+  constructor(private global: McpServerStore, private dir: (projectId: string) => string) {}
+
+  /** This project's own mcp.json, cached per project id. */
+  project(projectId: string): McpServerStore {
+    let store = this.projects.get(projectId);
+    if (!store) {
+      store = new McpServerStore(join(this.dir(projectId), "mcp.json"));
+      this.projects.set(projectId, store);
+    }
+    return store;
+  }
+
+  /** The servers the thread's project actually gets; null project = the global list. */
+  effective(projectId: string | null): McpServerEntry[] {
+    if (!projectId) return this.global.enabled();
+    const project = this.project(projectId);
+    const ownNames = new Set(project.list().map((s) => s.name));
+    const off = new Set(project.offGlobal());
+    const fromGlobal = this.global.enabled().filter((s) => !ownNames.has(s.name) && !off.has(s.name));
+    return [...project.enabled(), ...fromGlobal];
   }
 }
 
