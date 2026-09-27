@@ -19,29 +19,31 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: pnpm build
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run test
+      - run: bun run build
 
   codex-e2e:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: npm i -g @openai/codex
+      - run: bun install --frozen-lockfile
+      - run: bun add -g @openai/codex
       - run: echo "UNSKILLED_CODEX_BIN=$(which codex)" >> "$GITHUB_ENV"
-      - run: pnpm test codex-e2e
+      - run: bun run test codex-e2e
 
   smoke:
     # The packaged app, after the test matrix: window, preload bridge, browser,
@@ -50,12 +52,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - run: pnpm exec electron-builder --dir --publish never
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - run: bunx electron-builder --dir --publish never
       - run: xvfb-run -a node scripts/smoke.mjs

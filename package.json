@@ -3,7 +3,7 @@
   "productName": "AI Harness",
   "version": "0.1.2",
   "private": true,
-  "packageManager": "pnpm@11.24.0",
+  "packageManager": "bun@1.4.2",
   "description": "A minimal desktop coding-agent harness.",
   "license": "MIT",
   "author": "AI Harness contributors",
@@ -17,14 +17,14 @@
   "scripts": {
     "dev": "electron-vite dev",
     "fix:node-pty": "node scripts/fix-node-pty.mjs",
-    "postinstall": "pnpm run fix:node-pty",
-    "predev": "pnpm run fix:node-pty",
-    "prebuild": "pnpm run fix:node-pty",
+    "postinstall": "bun run fix:node-pty",
+    "predev": "bun run fix:node-pty",
+    "prebuild": "bun run fix:node-pty",
     "build": "electron-vite build",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "vitest run",
     "smoke": "electron . --smoke",
-    "dist": "pnpm run build && electron-builder --publish never",
+    "dist": "bun run build && electron-builder --publish never",
     "preview:ui": "vite --config vite.preview.config.ts"
   },
   "dependencies": {
@@ -51,5 +51,11 @@
     "vite": "7.3.6",
     "vitest": "4.1.11",
     "zustand": "5.0.15"
-  }
+  },
+  "trustedDependencies": [
+    "electron",
+    "electron-winstaller",
+    "esbuild",
+    "node-pty"
+  ]
 }

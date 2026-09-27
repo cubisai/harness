@@ -1,7 +1,7 @@
 import type { AgentCatalogEntry, LiveUpdate, McpOverview, Project, SettingsView, SkillEntry, StoredEvent, Thread, ThreadEvent, UnskilledApi } from "../../shared/types";
 
 /**
- * A fake backend for `npm run preview:ui`: the real renderer in a plain
+ * A fake backend for `bun run preview:ui`: the real renderer in a plain
  * browser, with canned data, so the UI can be looked at and screenshotted
  * without Electron or an agent. `?state=` picks a scene.
  */

@@ -115,21 +115,21 @@ The Browser tab (⌘⇧B) is a real Chromium page beside the thread: open your d
 From the repo root:
 
 ```bash
-pnpm install
-pnpm dev          # Electron with hot reload
-pnpm test         # unit tests
-pnpm typecheck
+bun install
+bun run dev       # Electron with hot reload
+bun run test      # unit tests
+bun run typecheck
 ```
 
 Claude uses your existing Claude Code login (run `claude` once in a terminal), or `ANTHROPIC_API_KEY`. It reads your usual Claude Code settings and `CLAUDE.md`.
 
-To look at the UI without Electron or an agent: `pnpm --filter unskilled preview:ui`, then open `http://localhost:5199/?state=thread`. Other states: `permission`, `running`, `project`, `welcome`, `settings`, `update`, `palette`, `limits`, `library`, `library-mcp`, `library-agents`. This uses canned data from `src/renderer/src/mock.ts`.
+To look at the UI without Electron or an agent: `bun run preview:ui`, then open `http://localhost:5199/?state=thread`. Other states: `permission`, `running`, `project`, `welcome`, `settings`, `update`, `palette`, `limits`, `library`, `library-mcp`, `library-agents`. This uses canned data from `src/renderer/src/mock.ts`.
 
 ## Building installers
 
-`pnpm --filter unskilled dist` builds for the OS you're on: a `.dmg`/`.zip` on macOS, an NSIS `.exe` on Windows, an `.AppImage` on Linux. The icon is `build/icon.png`, rendered from `build/icon.svg`.
+`bun run dist` builds for the OS you're on: a `.dmg`/`.zip` on macOS, an NSIS `.exe` on Windows, an `.AppImage` on Linux. The icon is `build/icon.png`, rendered from `build/icon.svg`.
 
-To release, bump `version` in `apps/unskilled/package.json` on main, then either:
+To release, bump `version` in `package.json` on main, then either:
 
 - push a tag `unskilled-v<version>`, or
 - on GitHub, open Actions → release-unskilled → Run workflow, pick `main`, and tick **publish**. That tags the commit for you, and works from a phone.
