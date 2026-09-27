@@ -11,6 +11,11 @@ extraResources:
   # The window icon on Linux (build/ holds the icon electron-builder bundles for each OS).
   - from: build/icon.png
     to: icon.png
+  # Built-in skills (browser, docx, pdf, xlsx, pptx, skill-creator) and the agent guide.
+  - from: resources/skills
+    to: skills
+  - from: resources/HARNESS.md
+    to: HARNESS.md
 # The Agent SDK spawns its bundled Claude Code binary; binaries can't run
 # from inside an asar archive.
 asarUnpack:
