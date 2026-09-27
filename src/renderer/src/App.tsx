@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import type { AgentInfo, PermissionMode } from "../../shared/types";
 import { CommandPalette } from "./components/CommandPalette";
 import { Library } from "./components/Library";
+import { ModelPicker } from "./components/ModelPicker";
 import { Composer } from "./components/Composer";
 import { CacheMeter } from "./components/CacheMeter";
 import { Inspector } from "./components/Inspector";
@@ -135,19 +136,12 @@ export function App() {
                       ))}
                     </select>
                   )}
-                  <select
-                    className="select"
-                    value={thread.model}
-                    title="Model"
+                  <ModelPicker
+                    models={modelOptions(agents, thread.agent, thread.model)}
+                    current={thread.model}
                     disabled={running}
-                    onChange={(e) => void updateThread({ model: e.target.value })}
-                  >
-                    {modelOptions(agents, thread.agent, thread.model).map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </select>
+                    onPick={(model) => void updateThread({ model })}
+                  />
                   <div className="segmented" role="radiogroup" aria-label="Permissions">
                     {MODES.map((m) => (
                       <button
