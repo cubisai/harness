@@ -374,6 +374,7 @@ export function installMock(): void {
     terminalResize: () => {},
     terminalClose: async () => {},
     projectBranch: async () => (scene === "thread" ? "feat/rate-limit" : null),
+    listFiles: async () => ({ files: ["README.md", "package.json", "src/app.ts", "src/middleware/rateLimit.ts", "src/middleware/rateLimit.test.ts", "src/routes/login.ts"], truncated: false }),
     getDiff: async () => [
       {
         path: "src/middleware/rateLimit.ts",

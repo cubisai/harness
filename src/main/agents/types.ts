@@ -1,5 +1,5 @@
 import type { ZodRawShape, z } from "zod";
-import type { AgentCapabilities, LiveDelta, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, Provenance, SkillsDelivery, ThreadEvent } from "../../shared/types";
+import type { AgentCapabilities, AgentCredentials, LiveDelta, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, Provenance, SkillsDelivery, ThreadEvent } from "../../shared/types";
 
 export type { AgentCapabilities, SkillsDelivery } from "../../shared/types";
 
@@ -95,6 +95,8 @@ export interface AgentDriver {
   defaultModel: string;
   /** What this agent can do here, so callers branch on capability, not id. */
   capabilities: AgentCapabilities;
+  /** How Settings offers providers for it. */
+  credentials?: AgentCredentials;
   /** How this agent's model-invoked skills reach it (and the Skill-call prefix). */
   skillsDelivery: SkillsDelivery;
   /**

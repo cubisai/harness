@@ -20,6 +20,7 @@ const api: UnskilledApi = {
   interrupt: (threadId) => ipcRenderer.invoke("turn:interrupt", threadId),
   respondPermission: (requestId, decision) => ipcRenderer.invoke("permission:respond", requestId, decision),
   getDiff: (projectId) => ipcRenderer.invoke("diff:get", projectId),
+  listFiles: (projectId) => ipcRenderer.invoke("files:list", projectId),
   projectBranch: (projectId) => ipcRenderer.invoke("project:branch", projectId),
   browserAttached: (webContentsId) => ipcRenderer.invoke("browser:attached", webContentsId),
   browserPick: () => ipcRenderer.invoke("browser:pick"),

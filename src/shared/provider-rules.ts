@@ -8,8 +8,8 @@ import type { Provider } from "./types";
  * ANTHROPIC_BASE_URL disables Remote Control and MCP tool search by default.
  * An unparseable URL is treated as non-first-party.
  */
-export function providerWarning(provider: Pick<Provider, "baseURL">, agentId: string): string | null {
-  if (agentId !== "claude") return null;
+export function providerWarning(provider: Pick<Provider, "baseURL">, injector: string): string | null {
+  if (injector !== "claude") return null;
   let host: string | null = null;
   try {
     host = new URL(provider.baseURL).hostname;

@@ -57,6 +57,7 @@ function Palette() {
     if (thread) action("export-thread", "Export Thread…", () => void s.exportThread(), { keywords: "save json backup" });
     if (selectedProjectId) action("import-thread", "Import Thread…", () => void s.importThread(), { keywords: "open json restore" });
     if (selectedProjectId) action("changes", "Show Changes", () => s.showInspector("changes"), { shortcut: mac ? "⌘⇧D" : "Ctrl+Shift+D", keywords: "diff git" });
+    if (selectedProjectId) action("files", "Show Files", () => s.showInspector("files"), { keywords: "tree explorer open file" });
     action("browser", "Show Browser", () => s.showInspector("browser"), { shortcut: mac ? "⌘⇧B" : "Ctrl+Shift+B", keywords: "web page preview" });
     action("terminal", "Toggle Terminal", () => s.toggleTerminal(), { shortcut: "⌃`", keywords: "shell console" });
     if (selectedProjectId) {

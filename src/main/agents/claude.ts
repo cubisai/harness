@@ -181,6 +181,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
     label: "Claude",
     defaultModel: "opus",
     capabilities: CLAUDE_CAPABILITIES,
+    credentials: { byok: true, own: "login", injector: "claude" },
     skillsDelivery: CLAUDE_CAPABILITIES.skillsDelivery,
     skillCallPrefix: `${PLUGIN_NAME}:`,
     models: () => config.byokModels?.() ?? models,

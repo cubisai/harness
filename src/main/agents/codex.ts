@@ -479,6 +479,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     label: "Codex",
     defaultModel: CODEX_DEFAULT_MODEL,
     capabilities: CODEX_CAPABILITIES,
+    credentials: { byok: true, own: "login", injector: "codex" },
     skillsDelivery: CODEX_CAPABILITIES.skillsDelivery,
     skillCallPrefix: "",
     models: () => {

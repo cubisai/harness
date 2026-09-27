@@ -34,7 +34,7 @@ import {
 } from "./cache-policy";
 import { Approvals } from "./approvals";
 import type { Store } from "./db";
-import { branchLabel, workingTreeDiff } from "./git";
+import { branchLabel, listProjectFiles, workingTreeDiff } from "./git";
 import {
   bloatSignal,
   buildCheckpoint,
@@ -107,7 +107,14 @@ export class Service {
   }
 
   listAgents(): AgentInfo[] {
-    return [...this.drivers.values()].map((d) => ({ id: d.id, label: d.label, models: d.models(), defaultModel: d.defaultModel, capabilities: d.capabilities }));
+    return [...this.drivers.values()].map((d) => ({
+      id: d.id,
+      label: d.label,
+      models: d.models(),
+      defaultModel: d.defaultModel,
+      capabilities: d.capabilities,
+      ...(d.credentials ? { credentials: d.credentials } : {}),
+    }));
   }
 
   createThread(projectId: string, agent?: string): Thread {
@@ -494,6 +501,10 @@ export class Service {
 
   getDiff(projectId: string): Promise<DiffFile[]> {
     return workingTreeDiff(this.store.getProject(projectId).path);
+  }
+
+  listFiles(projectId: string): Promise<{ files: string[]; truncated: boolean }> {
+    return listProjectFiles(this.store.getProject(projectId).path);
   }
 
   projectBranch(projectId: string): Promise<string | null> {

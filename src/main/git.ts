@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { parseUnifiedDiff } from "../shared/diff";
@@ -54,6 +54,43 @@ export async function workingTreeDiff(cwd: string): Promise<DiffFile[]> {
     });
   }
   return files;
+}
+
+/**
+ * The project's files for the Files tab: inside a git work tree the tracked
+ * ones plus the untracked-but-not-ignored (so .gitignore'd paths like
+ * node_modules never appear); outside git, every real file. Project-relative
+ * "/" paths, sorted and deduplicated, at most `limit` (truncated when cut).
+ */
+export async function listProjectFiles(cwd: string, limit = 5000): Promise<{ files: string[]; truncated: boolean }> {
+  let out: string[];
+  try {
+    await run("git", ["rev-parse", "--is-inside-work-tree"], { cwd });
+    out = (await run("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { cwd })).stdout
+      .split("\0")
+      .filter(Boolean);
+  } catch {
+    // One past the limit is enough to know it was cut; a huge folder isn't walked to the end.
+    out = await walkFiles(cwd, "", [], limit + 1);
+  }
+  const paths = [...new Set(out)].sort();
+  const truncated = paths.length > limit;
+  return { files: truncated ? paths.slice(0, limit) : paths, truncated };
+}
+
+/** Files under `dir` into `found` (project-relative, "/" separators, skipping .git and node_modules), stopping at `max`. */
+async function walkFiles(dir: string, prefix: string, found: string[], max: number): Promise<string[]> {
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    if (found.length >= max) break;
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      if (entry.name === ".git" || entry.name === "node_modules") continue;
+      await walkFiles(join(dir, entry.name), rel, found, max);
+    } else {
+      found.push(rel);
+    }
+  }
+  return found;
 }
 
 /** Point `refs/<name>` at `sha` (overwriting), so a checkpoint doesn't touch branches or tags. */

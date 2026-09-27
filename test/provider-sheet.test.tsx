@@ -60,18 +60,19 @@ describe("ProviderList", () => {
 });
 
 describe("CredentialRows", () => {
+  // As Service.listAgents describes them; rows read these, never the ids.
   const agents = [
-    { id: "claude", label: "Claude" },
-    { id: "codex", label: "Codex" },
-    { id: "opencode", label: "OpenCode" },
-    { id: "antigravity", label: "Antigravity" },
+    { id: "claude", label: "Claude", credentials: { byok: true, own: "login", injector: "claude" } as const },
+    { id: "codex", label: "Codex", credentials: { byok: true, own: "login", injector: "codex" } as const },
+    { id: "opencode", label: "OpenCode", credentials: { byok: true, own: "config", injector: "opencode" } as const },
+    { id: "antigravity", label: "Antigravity", credentials: { byok: false, own: "config", injector: "acp" } as const },
   ];
   const providers = [
     providerView({ id: "openai-chat", label: "Chat Gateway" }),
     providerView({ id: "openai-responses", label: "Responses Gateway", wireProtocol: "openai-responses" }),
   ];
 
-  it("lists every agent except Antigravity, with the right subscription labels", () => {
+  it("lists every agent whose provider injection is verified, with the right subscription labels", () => {
     const html = renderToStaticMarkup(<CredentialRows agents={agents} providers={providers} credentials={{}} onChange={() => {}} />);
     expect(html).not.toContain("Antigravity");
     expect(html).toContain("Subscription login");

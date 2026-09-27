@@ -111,14 +111,18 @@ export function App() {
                 {thread ? thread.title : project ? project.name : "UnSkilled"}
                 {thread && project && <span className="sub">{project.name}</span>}
               </div>
-              {thread && <LimitMeter agent={thread.agent} />}
-              {thread && <UsageMeter threadId={thread.id} />}
-              {thread && <CacheMeter threadId={thread.id} />}
+              {thread && (
+                <div className="header-meters">
+                  <LimitMeter agent={thread.agent} />
+                  <UsageMeter threadId={thread.id} />
+                  <CacheMeter threadId={thread.id} />
+                </div>
+              )}
               {thread && (
                 <>
                   {agents.length > 1 && (
                     <select
-                      className="select"
+                      className="select agent-select"
                       value={thread.agent}
                       title="Agent"
                       disabled={running}
@@ -349,7 +353,7 @@ function LimitMeter({ agent }: { agent: string }) {
 function Notice() {
   const text = useStore((s) => s.notice);
   return text ? (
-    <div className="notice" role="status">
+    <div className="toast" role="status">
       {text}
     </div>
   ) : null;

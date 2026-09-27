@@ -477,6 +477,7 @@ async function main(): Promise<void> {
     service.respondPermission(requestId, decision),
   );
   ipcMain.handle("diff:get", (_e, projectId: string) => service.getDiff(projectId));
+  ipcMain.handle("files:list", (_e, projectId: string) => service.listFiles(projectId));
   ipcMain.handle("project:branch", (_e, projectId: string) => service.projectBranch(projectId));
   ipcMain.handle("browser:attached", (_e, webContentsId: number) => browser.attach(webContentsId));
   ipcMain.handle("browser:pick", () => browser.startPick());

@@ -1,8 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { branchLabel, parseUnifiedDiff, workingTreeDiff } from "../src/main/git";
+import { branchLabel, listProjectFiles, parseUnifiedDiff, workingTreeDiff } from "../src/main/git";
 import { tempDir } from "./helpers";
 
 describe("parseUnifiedDiff", () => {
@@ -54,6 +54,55 @@ describe("workingTreeDiff", () => {
 
   it("is empty outside a git repository", async () => {
     expect(await workingTreeDiff(tempDir())).toEqual([]);
+  });
+});
+
+describe("listProjectFiles", () => {
+  const repo = () => {
+    const dir = tempDir();
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: dir });
+    git("init", "-q");
+    git("config", "user.email", "t@example.com");
+    git("config", "user.name", "t");
+    writeFileSync(join(dir, "a.txt"), "one\n");
+    git("add", ".");
+    git("commit", "-qm", "init");
+    mkdirSync(join(dir, "src"));
+    writeFileSync(join(dir, "src", "b.ts"), "x\n");
+    writeFileSync(join(dir, ".gitignore"), "node_modules/\n");
+    mkdirSync(join(dir, "node_modules", "x"), { recursive: true });
+    writeFileSync(join(dir, "node_modules", "x", "index.js"), "junk\n");
+    return dir;
+  };
+
+  it("lists tracked and untracked-not-ignored files, never .gitignore'd ones", async () => {
+    const { files, truncated } = await listProjectFiles(repo());
+    expect(files).toEqual([".gitignore", "a.txt", "src/b.ts"]);
+    expect(truncated).toBe(false);
+  });
+
+  it("walks the tree outside a git repository, skipping .git and node_modules", async () => {
+    const dir = tempDir();
+    writeFileSync(join(dir, "a.txt"), "one\n");
+    mkdirSync(join(dir, "sub"));
+    writeFileSync(join(dir, "sub", "c.txt"), "x\n");
+    mkdirSync(join(dir, "node_modules"), { recursive: true });
+    writeFileSync(join(dir, "node_modules", "y.js"), "junk\n");
+    expect(await listProjectFiles(dir)).toEqual({ files: ["a.txt", "sub/c.txt"], truncated: false });
+  });
+
+  it("cuts at the limit and reports truncation", async () => {
+    const { files, truncated } = await listProjectFiles(repo(), 1);
+    expect(files).toEqual([".gitignore"]);
+    expect(truncated).toBe(true);
+  });
+
+  it("stops walking a non-git folder at the limit", async () => {
+    const dir = tempDir();
+    for (const name of ["a.txt", "b.txt", "c.txt"]) writeFileSync(join(dir, name), "x\n");
+    const { files, truncated } = await listProjectFiles(dir, 1);
+    expect(files).toHaveLength(1);
+    expect(truncated).toBe(true);
   });
 });
 

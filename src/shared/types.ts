@@ -516,12 +516,23 @@ export interface AgentCapabilities {
   sandbox: "none" | "workspace" | "full";
 }
 
+/** How an agent's credential row behaves in Settings: data from its driver, never its id. */
+export interface AgentCredentials {
+  /** Providers from the list can drive it; false hides the row until its injector is verified. */
+  byok: boolean;
+  /** What "no provider" means: the agent's own sign-in, or its own config. */
+  own: "login" | "config";
+  /** Whose provider rules apply: Claude's base-URL warning, Codex's Responses-only check. */
+  injector: "claude" | "codex" | "opencode" | "acp";
+}
+
 export interface AgentInfo {
   id: string;
   label: string;
   models: ModelOption[];
   defaultModel: string;
   capabilities: AgentCapabilities;
+  credentials?: AgentCredentials;
 }
 
 export interface SendRequest {
@@ -604,6 +615,8 @@ export interface UnskilledApi {
   interrupt(threadId: string): Promise<void>;
   respondPermission(requestId: string, decision: PermissionDecision): Promise<void>;
   getDiff(projectId: string): Promise<DiffFile[]>;
+  /** The project's files (git-tracked plus untracked-not-ignored), for the Files tab. */
+  listFiles(projectId: string): Promise<{ files: string[]; truncated: boolean }>;
   /** The project's current branch; null on its default branch, detached, or outside git. */
   projectBranch(projectId: string): Promise<string | null>;
   /** The browser pane's <webview> is ready; main takes control of it. */

@@ -1,8 +1,8 @@
-import { useEffect, useRef } from "react";
-import type { Motion, PermissionMode, Theme } from "../../../shared/types";
+import { useEffect, useRef, useState } from "react";
+import type { Motion, PermissionMode, SettingsView, Theme } from "../../../shared/types";
 import { api } from "../api";
 import { ProvidersSection } from "./ProviderSheet";
-import { useStore } from "../store";
+import { useStore, type LibraryTab } from "../store";
 
 const THEMES: { id: Theme; label: string }[] = [
   { id: "system", label: "System" },
@@ -22,15 +22,38 @@ const MODES: { id: PermissionMode; label: string }[] = [
   { id: "full", label: "Full" },
 ];
 
-/** Settings, as a sheet over the window (⌘, / Ctrl+,). */
+/** The left-nav groups, in order, and the sections each shows. */
+export const SETTINGS_GROUPS = [
+  { id: "appearance", label: "Appearance", sections: ["Appearance"] },
+  { id: "threads", label: "Threads", sections: ["New threads", "Editor"] },
+  { id: "agents", label: "Agents & Providers", sections: ["Providers", "Agents"] },
+  { id: "skills", label: "Skills & MCP", sections: ["Skills", "MCP servers"] },
+  { id: "data", label: "Data & Security", sections: ["Data"] },
+  { id: "updates", label: "Updates", sections: ["Updates"] },
+] as const;
+
+export type SettingsGroup = (typeof SETTINGS_GROUPS)[number]["id"];
+
+/**
+ * Where each section of the single scrolling sheet went. "Skills and agents"
+ * lands in Skills & MCP; its agent list moved to Agents & Providers and its
+ * data-folder button to Data & Security.
+ */
+export const FORMER_SECTIONS: Record<string, SettingsGroup> = {
+  Appearance: "appearance",
+  "New threads": "threads",
+  Editor: "threads",
+  Providers: "agents",
+  Updates: "updates",
+  "Skills and agents": "skills",
+};
+
+/** Settings, as a sheet over the window (⌘, / Ctrl+,): a left nav of groups, one group's sections at a time. */
 export function SettingsSheet() {
   const open = useStore((s) => s.settingsOpen);
   const settings = useStore((s) => s.settings);
-  const agents = useStore((s) => s.agents);
-  const skills = useStore((s) => s.skills);
-  const appUpdate = useStore((s) => s.appUpdate);
-  const editors = useStore((s) => s.editors);
   const setOpen = useStore((s) => s.setSettingsOpen);
+  const [group, setGroup] = useState<SettingsGroup>("appearance");
   const panel = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -47,19 +70,54 @@ export function SettingsSheet() {
   }, [open, setOpen]);
 
   if (!open || !settings) return null;
-  const update = (patch: Parameters<ReturnType<typeof api>["updateSettings"]>[0]) =>
-    void api().updateSettings(patch).then((s) => useStore.setState({ settings: s }));
 
   return (
     <div className="sheet-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}>
-      <div className="sheet" role="dialog" aria-modal="true" aria-label="Settings" tabIndex={-1} ref={panel}>
+      <div className="sheet settings-sheet" role="dialog" aria-modal="true" aria-label="Settings" tabIndex={-1} ref={panel}>
         <div className="sheet-head">
           <h2>Settings</h2>
           <button className="button ghost" onClick={() => setOpen(false)}>
             Done
           </button>
         </div>
+        <div className="settings-body">
+          <nav className="settings-nav" role="tablist" aria-orientation="vertical" aria-label="Settings groups">
+            {SETTINGS_GROUPS.map((g) => (
+              <button
+                key={g.id}
+                role="tab"
+                id={`settings-tab-${g.id}`}
+                aria-selected={group === g.id}
+                aria-controls="settings-panel"
+                className={group === g.id ? "on" : ""}
+                onClick={() => setGroup(g.id)}
+              >
+                {g.label}
+              </button>
+            ))}
+          </nav>
+          <div className="settings-content" id="settings-panel" role="tabpanel" aria-labelledby={`settings-tab-${group}`}>
+            <SettingsGroupContent group={group} settings={settings} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
+/** One group's sections. */
+export function SettingsGroupContent({ group, settings }: { group: SettingsGroup; settings: SettingsView }) {
+  const agents = useStore((s) => s.agents);
+  const skills = useStore((s) => s.skills);
+  const appUpdate = useStore((s) => s.appUpdate);
+  const editors = useStore((s) => s.editors);
+  const update = (patch: Parameters<ReturnType<typeof api>["updateSettings"]>[0]) =>
+    void api().updateSettings(patch).then((s) => useStore.setState({ settings: s }));
+  const openLibrary = (tab: LibraryTab) => useStore.setState({ settingsOpen: false, libraryTab: tab });
+
+  switch (group) {
+    case "appearance":
+      return (
         <section>
           <h3>Appearance</h3>
           <div className="row">
@@ -83,58 +141,118 @@ export function SettingsSheet() {
             </div>
           </div>
         </section>
-
-        <section>
-          <h3>New threads</h3>
-          <div className="row">
-            <span className="label">Agent</span>
-            <select
-              className="select"
-              value={settings.defaultAgent ?? ""}
-              onChange={(e) => update({ defaultAgent: e.target.value || null })}
-            >
-              <option value="">{agents[0]?.label ?? "Claude"} (default)</option>
-              {agents.slice(1).map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="row">
-            <span className="label">Permissions</span>
-            <div className="segmented">
-              {MODES.map((m) => (
-                <button key={m.id} className={settings.defaultPermissionMode === m.id ? "on" : ""} onClick={() => update({ defaultPermissionMode: m.id })}>
-                  {m.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section>
-          <h3>Editor</h3>
-          <div className="row">
-            <span className="label">Open files in</span>
-            {editors.length ? (
-              <select className="select" value={settings.editor ?? ""} onChange={(e) => update({ editor: e.target.value || null })}>
-                <option value="">{editors[0]!.label} (first found)</option>
-                {editors.slice(1).map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.label}
+      );
+    case "threads":
+      return (
+        <>
+          <section>
+            <h3>New threads</h3>
+            <div className="row">
+              <span className="label">Agent</span>
+              <select className="select" value={settings.defaultAgent ?? ""} onChange={(e) => update({ defaultAgent: e.target.value || null })}>
+                <option value="">{agents[0]?.label ?? "Claude"} (default)</option>
+                {agents.slice(1).map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.label}
                   </option>
                 ))}
               </select>
-            ) : (
-              <span className="value">No editors found</span>
-            )}
+            </div>
+            <div className="row">
+              <span className="label">Permissions</span>
+              <div className="segmented">
+                {MODES.map((m) => (
+                  <button key={m.id} className={settings.defaultPermissionMode === m.id ? "on" : ""} onClick={() => update({ defaultPermissionMode: m.id })}>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </section>
+          <section>
+            <h3>Editor</h3>
+            <div className="row">
+              <span className="label">Open files in</span>
+              {editors.length ? (
+                <select className="select" value={settings.editor ?? ""} onChange={(e) => update({ editor: e.target.value || null })}>
+                  <option value="">{editors[0]!.label} (first found)</option>
+                  {editors.slice(1).map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="value">No editors found</span>
+              )}
+            </div>
+            <p className="note">Used by Open in the Changes panel, the Files tab and file links in the conversation. Picking another editor there makes it the default.</p>
+          </section>
+        </>
+      );
+    case "agents":
+      return (
+        <>
+          <ProvidersSection />
+          <section>
+            <h3>Agents</h3>
+            <div className="row">
+              <span className="label">Installed</span>
+              <span className="value">{agents.map((a) => a.label).join(", ")}</span>
+            </div>
+            <p className="note">Add ACP agents in agents.json in the data folder (Data &amp; Security), then restart the app. The Library lists every agent it knows.</p>
+          </section>
+        </>
+      );
+    case "skills":
+      return (
+        <>
+          <section>
+            <h3>Skills</h3>
+            <div className="row">
+              <span className="label">Skills</span>
+              <span className="value">
+                {skills.length > 0 ? `${skills.length} workflow skills in the / menu, and the rest loaded by the agent as needed` : "No skills installed"}
+              </span>
+            </div>
+            <div className="row">
+              <span className="label" />
+              <button className="button" onClick={() => openLibrary("skills")}>
+                Browse Skills…
+              </button>
+            </div>
+          </section>
+          <section>
+            <h3>MCP servers</h3>
+            <p className="note">Servers every agent gets, and the ones each agent brings from its own config, are in the Library.</p>
+            <div className="row">
+              <span className="label" />
+              <button className="button" onClick={() => openLibrary("mcp")}>
+                Open MCP Servers…
+              </button>
+            </div>
+          </section>
+        </>
+      );
+    case "data":
+      return (
+        <section>
+          <h3>Data</h3>
+          <div className="row">
+            <span className="label">Keys</span>
+            <span className="value">{settings.secretsEncrypted ? "Encrypted with your system keychain" : "Obfuscated: this system has no keychain"}</span>
           </div>
-          <p className="note">Used by Open in the Changes panel and by file links in the conversation. Picking another editor there makes it the default.</p>
+          <div className="row">
+            <span className="label">Data folder</span>
+            <button className="button" onClick={() => void api().openDataFolder()}>
+              Open Data Folder
+            </button>
+          </div>
+          <p className="note">Threads, settings, agents.json and mcp.json live here. Export a thread from the command palette to keep or move it.</p>
         </section>
-
-        <ProvidersSection />
-
+      );
+    case "updates":
+      return (
         <section>
           <h3>Updates</h3>
           <div className="row">
@@ -156,30 +274,6 @@ export function SettingsSheet() {
           </div>
           {appUpdate && !appUpdate.supported && <p className="note">This build doesn't update itself. Installed releases do.</p>}
         </section>
-
-        <section>
-          <h3>Skills and agents</h3>
-          <div className="row">
-            <span className="label">Skills</span>
-            <span className="value">
-              {skills.length > 0
-                ? `${skills.length} workflow skills in the / menu, and the rest loaded by the agent as needed`
-                : "No skills installed"}
-            </span>
-          </div>
-          <div className="row">
-            <span className="label">Agents</span>
-            <span className="value">{agents.map((a) => a.label).join(", ")}</span>
-          </div>
-          <div className="row">
-            <span className="label" />
-            <button className="button" onClick={() => void api().openDataFolder()}>
-              Open Data Folder
-            </button>
-          </div>
-          <p className="note">Add ACP agents in agents.json in the data folder, then restart the app.</p>
-        </section>
-      </div>
-    </div>
-  );
+      );
+  }
 }

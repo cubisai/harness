@@ -511,6 +511,8 @@ export function createAcpDriver(
     get skillsDelivery() {
       return capabilities.skillsDelivery;
     },
+    // An env-only provider setting is unverified, so its row stays hidden.
+    credentials: { byok: !config.providerEnvOnly, own: "config", injector: config.injector ?? "acp" },
     skillCallPrefix: "",
     models: () => [{ id: DEFAULT_MODEL, label: "Agent default" }, ...knownModels],
     refreshModels,

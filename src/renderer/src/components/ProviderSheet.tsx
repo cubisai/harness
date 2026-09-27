@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type {
+  AgentCredentials,
   ConnectionResult,
   CredentialChoice,
   ProviderInput,
@@ -68,9 +69,13 @@ export function ProviderList({
   );
 }
 
+/** An agent that doesn't describe its credentials: an ACP agent with its own config. */
+const ACP_CREDENTIALS: AgentCredentials = { byok: true, own: "config", injector: "acp" };
+
 /**
  * One credential row per agent above the provider list. Subscription stays a
- * first-class peer; Antigravity is excluded (its gate is phase 9).
+ * first-class peer; an agent whose provider injection is unverified has no row.
+ * Everything here reads the agent's credentials descriptor, never its id.
  */
 export function CredentialRows({
   agents,
@@ -78,7 +83,7 @@ export function CredentialRows({
   credentials,
   onChange,
 }: {
-  agents: { id: string; label: string }[];
+  agents: { id: string; label: string; credentials?: AgentCredentials }[];
   providers: ProviderView[];
   credentials: Record<string, CredentialChoice>;
   onChange: (agentId: string, choice: CredentialChoice) => void;
@@ -86,13 +91,13 @@ export function CredentialRows({
   return (
     <>
       {agents
-        .filter((agent) => agent.id !== "antigravity")
+        .filter((agent) => (agent.credentials ?? ACP_CREDENTIALS).byok)
         .map((agent) => {
+          const creds = agent.credentials ?? ACP_CREDENTIALS;
           const choice = credentials[agent.id] ?? { kind: "subscription" as const };
-          const builtIn = agent.id === "claude" || agent.id === "codex";
           const selected = choice.kind === "byok" ? choice.providerId : "subscription";
           const provider = choice.kind === "byok" ? providers.find((p) => p.id === choice.providerId) : undefined;
-          const warning = agent.id === "claude" && provider ? providerWarning(provider, "claude") : null;
+          const warning = provider ? providerWarning(provider, creds.injector) : null;
           return (
             <div key={agent.id}>
               <div className="row">
@@ -104,9 +109,9 @@ export function CredentialRows({
                     onChange(agent.id, e.target.value === "subscription" ? { kind: "subscription" } : { kind: "byok", providerId: e.target.value })
                   }
                 >
-                  <option value="subscription">{builtIn ? "Subscription login" : "Agent's own config"}</option>
+                  <option value="subscription">{creds.own === "login" ? "Subscription login" : "Agent's own config"}</option>
                   {providers.map((p) => {
-                    const compat = agent.id === "codex" ? codexCompatible(p) : ({ ok: true } as const);
+                    const compat = creds.injector === "codex" ? codexCompatible(p) : ({ ok: true } as const);
                     return (
                       <option key={p.id} value={p.id} disabled={!compat.ok} title={compat.ok ? undefined : compat.reason}>
                         {p.label}

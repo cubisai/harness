@@ -47,11 +47,17 @@ describe("app.css motion gating", () => {
   /** The declarations of the first top-level rule for `selector`. */
   const rule = (selector: string) => css.match(new RegExp(`\\n${selector.replace(/[.]/g, "\\.")} \\{([^}]*)\\}`))?.[1] ?? "";
 
-  it("gives the inspector, permission card and skill menu no animation by default", () => {
-    for (const selector of [".inspector", ".permission-card", ".skill-menu"]) {
+  it("gives panels, sheets, menus and notices no entrance animation by default", () => {
+    for (const selector of [".inspector", ".permission-card", ".skill-menu", ".sheet-backdrop", ".palette", ".sheet", ".library", ".open-menu", ".toast"]) {
       expect(rule(selector), selector).not.toBe("");
       expect(rule(selector), selector).not.toContain("animation");
     }
+  });
+
+  it("keeps in-thread notices inline; only the toast floats", () => {
+    expect(css.match(/\n\.notice \{/g)).toHaveLength(1);
+    expect(rule(".notice")).not.toContain("position");
+    expect(rule(".toast")).toContain("position: fixed");
   });
 
   it("plays the inspector slide only for subtle/full motion, inside prefers-reduced-motion: no-preference", () => {
