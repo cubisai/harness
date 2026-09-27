@@ -96,7 +96,7 @@ describe("Claude end to end (real Claude Code, fake API)", () => {
     const limits: LimitsPatch[] = [];
     const pluginRoot = mkdtempSync(join(tmpdir(), "unskilled-plugin-"));
     const driver = createClaudeDriver({
-      pluginDir: () => ensurePlugin(catalog(), join(pluginRoot, "skilled-plugin")),
+      pluginDir: () => ensurePlugin(catalog().modelSkills, join(pluginRoot, "skilled-plugin")),
       guardScript: join(__dirname, "missing-guard.py"), // Bash never runs in this turn
       onLimits: (p) => limits.push(p),
     });
@@ -146,7 +146,7 @@ describe("Claude end to end (real Claude Code, fake API)", () => {
     });
     const pluginRoot = mkdtempSync(join(tmpdir(), "unskilled-plugin-"));
     const driver = createClaudeDriver({
-      pluginDir: () => ensurePlugin(catalog(), join(pluginRoot, "skilled-plugin")),
+      pluginDir: () => ensurePlugin(catalog().modelSkills, join(pluginRoot, "skilled-plugin")),
       guardScript: join(__dirname, "missing-guard.py"),
     });
     const checkpoint = ["# Handoff from codex (gpt-x)", "", "## Goal", "CHECKPOINT-MARKER-7 fix the login bug"].join("\n");
@@ -214,7 +214,7 @@ describe("Claude end to end (real Claude Code, fake API)", () => {
 
     const pluginRoot = mkdtempSync(join(tmpdir(), "unskilled-plugin-"));
     const driver = createClaudeDriver({
-      pluginDir: () => ensurePlugin(catalog(), join(pluginRoot, "skilled-plugin")),
+      pluginDir: () => ensurePlugin(catalog().modelSkills, join(pluginRoot, "skilled-plugin")),
       guardScript: join(__dirname, "missing-guard.py"), // Bash never runs in this turn
       injection: () => injectionFor(planSource, "claude", process.env, { injector: "claude" }),
     });

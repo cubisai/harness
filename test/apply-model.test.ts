@@ -53,7 +53,7 @@ function setup(driver: FakeDriver) {
   const store = new Store(join(tempDir(), "t.db"));
   closeAfter(() => store.close());
   const updates: LiveUpdate[] = [];
-  const service = new Service(store, catalog(), [driver], (u) => updates.push(u));
+  const service = new Service(store, () => catalog(), [driver], (u) => updates.push(u));
   const project = store.addProject(tempDir());
   const thread = service.createThread(project.id);
   return { store, service, driver, updates, thread };

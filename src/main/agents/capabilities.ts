@@ -1,4 +1,4 @@
-import type { AgentCapabilities, SkillsDelivery } from "../../shared/types";
+import type { AgentCapabilities, SkillOrigin, SkillsDelivery } from "../../shared/types";
 import { PLUGIN_NAME } from "../skills/plugin";
 
 /**
@@ -41,9 +41,6 @@ export function withCapabilities(base: AgentCapabilities, patch: Partial<AgentCa
 
 /** Why a skills delivery mode can't reach an agent automatically, or null when it can. */
 export function skillDeliveryGap(d: SkillsDelivery): string | null {
-  if (d.mode === "projectWrite") {
-    return "This agent only reads skills from .agents/skills inside the project, so model-invoked skills reach it only if you install them there.";
-  }
   if (d.mode === "none") return "This agent has no way to load the app's model-invoked skills.";
   return null;
 }
@@ -55,7 +52,7 @@ export function skillDeliveryGap(d: SkillsDelivery): string | null {
  */
 export function acpCapabilities(config: { skillsDirEnv?: string; capabilities?: Partial<AgentCapabilities> }): AgentCapabilities {
   return withCapabilities(SAFE_DEFAULTS, {
-    ...(config.skillsDirEnv ? { skillsDelivery: { mode: "envDir" as const, prefix: "" } } : {}),
+    ...(config.skillsDirEnv ? { skillsDelivery: { mode: "envDir" as const, prefix: "", reads: ["project", "shared"] } } : {}),
     ...config.capabilities,
   });
 }
@@ -81,7 +78,7 @@ export const CLAUDE_CAPABILITIES: AgentCapabilities = Object.freeze({
   liveReasoning: true,
   seeding: "first-message" as const,
   seedNoReply: false,
-  skillsDelivery: Object.freeze({ mode: "plugin" as const, prefix: `${PLUGIN_NAME}:` }),
+  skillsDelivery: Object.freeze({ mode: "plugin" as const, prefix: `${PLUGIN_NAME}:`, reads: [] }),
   permissionGranularity: "perCommand" as const,
   guardEnforcement: Object.freeze({ ask: "block" as const, "auto-edit": "block" as const, full: "block" as const }),
   sandbox: "none" as const,
@@ -109,7 +106,7 @@ export const CODEX_CAPABILITIES: AgentCapabilities = Object.freeze({
   liveReasoning: true,
   seeding: "inject-items" as const,
   seedNoReply: false,
-  skillsDelivery: Object.freeze({ mode: "extraRoots" as const, prefix: "" }),
+  skillsDelivery: Object.freeze({ mode: "extraRoots" as const, prefix: "", reads: ["project", "shared"] as SkillOrigin[] }),
   permissionGranularity: "perCommand" as const,
   guardEnforcement: Object.freeze({ ask: "block" as const, "auto-edit": "block" as const, full: "warnOnly" as const }),
   sandbox: "workspace" as const,

@@ -272,7 +272,7 @@ describe("Service defaults for new threads", () => {
     closeAfter(() => store.close());
     const project = store.addProject(tempDir());
     let agent: string | null = "b";
-    const service = new Service(store, catalog(), [driver("a"), driver("b")], () => {}, () => [], () => ({ agent, permissionMode: "full" }));
+    const service = new Service(store, () => catalog(), [driver("a"), driver("b")], () => {}, () => [], () => ({ agent, permissionMode: "full" }));
     expect(service.createThread(project.id)).toMatchObject({ agent: "b", model: "b-1", permissionMode: "full" });
     agent = "uninstalled";
     expect(service.createThread(project.id)).toMatchObject({ agent: "a" });

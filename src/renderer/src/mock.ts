@@ -344,6 +344,9 @@ export function installMock(): void {
         body: `# ${name}\n\n${skill.description}\n\n## Steps\n\n1. Read the ticket and the code it touches.\n2. Agree the seam to test at, then write **one** failing test.\n3. Make it pass with the smallest change, then refactor.\n\n\`\`\`bash\nnpm test -- --watch\n\`\`\`\n\n- Stop and ask when the spec and the code disagree.\n- Never weaken a test to make it pass.`,
       };
     },
+    setSkillEnabled: async () => allSkills,
+    getSkillFolders: async () => ({ project: "", harness: "", shared: "", bundled: "" }),
+    createSkill: async () => "",
     listAgentCatalog: async () => agentCatalog,
     getMcp: async () => mcp,
     saveMcpServer: async (entry, previous) => {

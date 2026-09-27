@@ -31,7 +31,7 @@ function setup(script: (input: TurnInput) => Promise<void>) {
   closeAfter(() => store.close());
   const updates: LiveUpdate[] = [];
   const driver = fakeDriver(script);
-  const service = new Service(store, catalog(), [driver], (u) => updates.push(u));
+  const service = new Service(store, () => catalog(), [driver], (u) => updates.push(u));
   const project = store.addProject(tempDir());
   const thread = service.createThread(project.id);
   return { store, service, driver, updates, thread };
@@ -145,7 +145,7 @@ describe("Service.send", () => {
         decisions.push(await input.requestPermission({ toolName: "Run", summary: "npm test", canAlwaysAllow: true }));
       },
     });
-    const service = new Service(store, catalog(), [driver("a"), driver("b")], (u) => updates.push(u));
+    const service = new Service(store, () => catalog(), [driver("a"), driver("b")], (u) => updates.push(u));
     const project = store.addProject(tempDir());
     const thread = service.createThread(project.id);
 

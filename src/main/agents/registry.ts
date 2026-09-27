@@ -31,7 +31,7 @@ export const ACP_PRESETS: AcpAgentConfig[] = [
     label: "Antigravity",
     command: "agy-acp",
     args: [],
-    capabilities: { mcpStdio: true, interrupt: true, perMessageModel: false, skillsDelivery: { mode: "projectWrite", prefix: "" } },
+    capabilities: { mcpStdio: true, interrupt: true, perMessageModel: false, skillsDelivery: { mode: "tool", prefix: "", reads: ["project", "shared"] } },
     // Its provider setting is unverified (spike S6).
     providerEnvOnly: true,
     // Third-party access breaches Antigravity's terms (ToS section 6): hidden until
@@ -47,7 +47,7 @@ export const ACP_PRESETS: AcpAgentConfig[] = [
     label: "OpenCode",
     command: "opencode",
     args: ["acp"],
-    capabilities: { mcpStdio: true, interrupt: true, perMessageModel: true, permissionGranularity: "perTool", skillsDelivery: { mode: "projectWrite", prefix: "" } },
+    capabilities: { mcpStdio: true, interrupt: true, perMessageModel: true, permissionGranularity: "perTool", skillsDelivery: { mode: "tool", prefix: "", reads: ["project", "shared"] } },
     injector: "opencode",
     guardPlugin: "opencode",
     install: "npm install -g opencode-ai",
@@ -58,7 +58,7 @@ export const ACP_PRESETS: AcpAgentConfig[] = [
     label: "Cursor",
     command: "cursor-agent",
     args: ["acp"],
-    capabilities: { mcpStdio: true, interrupt: true, perMessageModel: true, skillsDelivery: { mode: "projectWrite", prefix: "" } },
+    capabilities: { mcpStdio: true, interrupt: true, perMessageModel: true, skillsDelivery: { mode: "tool", prefix: "", reads: ["project", "shared"] } },
     install: "curl https://cursor.com/install -fsS | bash",
     homepage: "https://cursor.com/cli",
   },

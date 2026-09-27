@@ -166,7 +166,7 @@ export function createAcpDriver(
     skillsDir?: () => string | null;
     clientVersion: string;
     /** The harness's tools over HTTP MCP, for agents that take MCP servers. */
-    toolServer?: () => Promise<{ url: string; token: string }>;
+    toolServer?: () => Promise<{ url: string; token: string; skillsUrl?: string }>;
     /** The credential plan for the next agent process; absent = inherit process.env. */
     injection?: () => InjectionPlan;
     /** The git-guardrails script: an execute permission call is vetoed in every mode. */
@@ -385,8 +385,10 @@ export function createAcpDriver(
     const dropped = [...report.dropped];
     if (input.tools.length && deps.toolServer) {
       if (http) {
-        const { url, token } = await deps.toolServer();
-        servers.push({ type: "http", name: "unskilled", url, headers: [{ name: "Authorization", value: `Bearer ${token}` }] } as { name: string });
+        const { url, token, skillsUrl } = await deps.toolServer();
+        // In tool mode the skill tool rides on /mcp-skills, alongside the browser tools.
+        const target = capabilities.skillsDelivery.mode === "tool" ? (skillsUrl ?? url) : url;
+        servers.push({ type: "http", name: "unskilled", url: target, headers: [{ name: "Authorization", value: `Bearer ${token}` }] } as { name: string });
       } else dropped.push("the app's browser tools");
     }
     // Never a silent drop (invariant 7): name each server the agent can't take, once per connection.

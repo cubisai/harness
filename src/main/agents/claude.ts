@@ -109,8 +109,8 @@ export function resolvePackagedClaudeBinary(
 }
 
 export interface ClaudeDriverConfig {
-  /** The generated plugin carrying model-invoked skills, or null if none. */
-  pluginDir?: () => string | null;
+  /** The generated plugin carrying model-invoked skills for this turn's cwd, or null if none. */
+  pluginDir?: (cwd: string) => string | null;
   /** Git guardrails script, if installed. */
   guardScript?: string;
   /** Plan rate limits, as Claude reports them during turns (claude.ai logins only). */
@@ -209,7 +209,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         };
       };
 
-      const pluginPath = config.pluginDir?.();
+      const pluginPath = config.pluginDir?.(input.cwd);
       const plugins: { type: "local"; path: string }[] = pluginPath ? [{ type: "local", path: pluginPath }] : [];
 
       const plan = config.injection?.();

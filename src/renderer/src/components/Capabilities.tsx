@@ -31,7 +31,7 @@ function skillsChip(c: AgentCapabilities): string {
   const d = c.skillsDelivery;
   if (d.mode === "plugin") return "Skills: plugin";
   if (d.mode === "extraRoots" || d.mode === "envDir") return "Skills: extra folder";
-  if (d.mode === "projectWrite") return "Skills: project folder";
+  if (d.mode === "tool") return "Skills: skill tool";
   return "Skills: none";
 }
 

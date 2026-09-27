@@ -417,7 +417,7 @@ describe("handoff invariants", () => {
       },
     );
     const store = open();
-    const service = new Service(store, catalog(), [codex, target], () => {});
+    const service = new Service(store, () => catalog(), [codex, target], () => {});
     const project = store.addProject(cleanRepo());
     const thread = service.createThread(project.id, "codex");
     await service.send({ threadId: thread.id, text: "Clean the build" });

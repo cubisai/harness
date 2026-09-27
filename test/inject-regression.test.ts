@@ -119,7 +119,7 @@ describe("redaction on failure paths", () => {
       },
     };
     const broadcasts: unknown[] = [];
-    const service = new Service(store, catalog(), [driver], (u) => void broadcasts.push(u), undefined, undefined, undefined, () => [KEY]);
+    const service = new Service(store, () => catalog(), [driver], (u) => void broadcasts.push(u), undefined, undefined, undefined, () => [KEY]);
     const thread = service.createThread(store.addProject(tempDir()).id);
     await service.send({ threadId: thread.id, text: "hi" });
     const events = JSON.stringify(store.listEvents(thread.id));

@@ -9,6 +9,8 @@ export const TOOL_SERVER_NAME = "unskilled";
 
 export interface ToolServer {
   url: string;
+  /** The same tools plus the extra set (the skill tool), on `/mcp-skills`. */
+  skillsUrl: string;
   /** Sent as `Authorization: Bearer <token>`; requests without it are refused. */
   token: string;
   close(): Promise<void>;
@@ -31,14 +33,20 @@ function authorized(req: IncomingMessage, token: string): boolean {
 /**
  * The harness's own tools (the browser pane's) as a Streamable HTTP MCP
  * server on 127.0.0.1, for agents that take tools over MCP rather than
- * in-process (ACP agents such as deepseek-harness). Stateless: every request
- * gets a fresh server over the current tool list.
+ * in-process (ACP agents such as deepseek-harness). `/mcp` serves `tools`;
+ * `/mcp-skills` serves those plus `extra` (the skill tool). Stateless: every
+ * request gets a fresh server over the current tool list.
  */
-export async function startToolServer(tools: () => HarnessTool[]): Promise<ToolServer> {
+export async function startToolServer(tools: () => HarnessTool[], extra?: () => HarnessTool[]): Promise<ToolServer> {
   const token = randomBytes(24).toString("hex");
   const http = createServer((req, res) => {
     if (!authorized(req, token)) {
       res.writeHead(401).end();
+      return;
+    }
+    const path = (req.url ?? "").split("?")[0];
+    if (path !== "/mcp" && path !== "/mcp-skills") {
+      res.writeHead(404).end();
       return;
     }
     if (req.method !== "POST") {
@@ -47,7 +55,8 @@ export async function startToolServer(tools: () => HarnessTool[]): Promise<ToolS
       return;
     }
     const server = new McpServer({ name: TOOL_SERVER_NAME, version: "1.0.0" });
-    for (const t of tools()) {
+    const list = path === "/mcp-skills" ? [...tools(), ...(extra?.() ?? [])] : tools();
+    for (const t of list) {
       server.registerTool(t.name, { description: t.description, inputSchema: t.input }, async (args: unknown) =>
         toResult(await t.run(args as never)),
       );
@@ -68,6 +77,7 @@ export async function startToolServer(tools: () => HarnessTool[]): Promise<ToolS
   const { port } = http.address() as AddressInfo;
   return {
     url: `http://127.0.0.1:${port}/mcp`,
+    skillsUrl: `http://127.0.0.1:${port}/mcp-skills`,
     token,
     close: () => new Promise<void>((resolve) => http.close(() => resolve())),
   };

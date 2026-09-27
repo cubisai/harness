@@ -1,13 +1,15 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { homedir, release, tmpdir } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell } from "electron";
-import type { CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, OpenResult, PermissionDecision, ProviderInput, ScreenshotInfo, SendRequest, Settings, SwitchMode, Thread } from "../shared/types";
+import type { CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, OpenResult, PermissionDecision, ProviderInput, ScreenshotInfo, SendRequest, Settings, SkillOrigin, SwitchMode, Thread } from "../shared/types";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
 import { createClaudeDriver, resolvePackagedClaudeBinary } from "./agents/claude";
 import { createCodexDriver } from "./agents/codex";
+import { acpCapabilities, CLAUDE_CAPABILITIES, CODEX_CAPABILITIES } from "./agents/capabilities";
 import { LimitsTracker } from "./agents/limits";
 import { loadAcpAgents, onPath } from "./agents/registry";
 import { BrowserController, isAllowedUrl } from "./browser/controller";
@@ -32,8 +34,10 @@ import { Editors, realHost } from "./editors";
 import { readExternalMcp } from "./mcp/external";
 import { BUILT_IN_SERVER, McpServerStore, testServer, viewOf } from "./mcp/servers";
 import { Updater, type UpdaterBackend } from "./updater";
-import { defaultSkillsCandidates, findSkillsRoot, loadCatalog } from "./skills/catalog";
+import { defaultSkillsCandidates, findSkillsRoot } from "./skills/catalog";
 import { ensureModelSkillsDir, ensurePlugin } from "./skills/plugin";
+import { SkillCatalogs, forAgent } from "./skills/sources";
+import { skillTool } from "./skills/tool";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const smoke = process.argv.includes("--smoke");
@@ -174,8 +178,15 @@ async function main(): Promise<void> {
   const root = findSkillsRoot(
     defaultSkillsCandidates({ resourcesPath: app.isPackaged ? process.resourcesPath : undefined, appPath: app.getAppPath() }),
   );
-  const catalog = loadCatalog(root);
-  const pluginDir = join(userData, "harness-plugin");
+  const harnessDir = join(userData, "skills");
+  mkdirSync(harnessDir, { recursive: true });
+  const skills = new SkillCatalogs({
+    legacyRoot: root,
+    bundledDir: app.isPackaged ? join(process.resourcesPath, "skills") : join(app.getAppPath(), "resources", "skills"),
+    harnessDir,
+    sharedDir: join(homedir(), ".agents", "skills"),
+    disabled: () => settings.get().skills?.disabled ?? [],
+  });
   const windows = new Set<BrowserWindow>();
   const broadcast = (update: LiveUpdate) => {
     for (const w of windows) if (!w.isDestroyed()) w.webContents.send("unskilled:update", update);
@@ -184,7 +195,16 @@ async function main(): Promise<void> {
   const limits = new LimitsTracker((l) => broadcast({ type: "limits", limits: l }));
   const guardScript = root?.skillsDir ? join(root.skillsDir, "git-guardrails", "scripts", "block-dangerous-git.py") : "";
   const driver = createClaudeDriver({
-    pluginDir: () => ensurePlugin(catalog, pluginDir),
+    pluginDir: (cwd) =>
+      ensurePlugin(
+        forAgent(
+          skills.forProject(cwd),
+          CLAUDE_CAPABILITIES.skillsDelivery,
+          // Claude Code loads these itself; the plugin would list them twice.
+          skills.namesIn([join(homedir(), ".claude", "skills"), join(cwd, ".claude", "skills")]),
+        ),
+        join(userData, "harness-plugin", createHash("sha256").update(cwd).digest("hex").slice(0, 12)),
+      ),
     guardScript,
     onLimits: limits.for("claude"),
     injection: () => injectionFor(settings, "claude", process.env, { injector: "claude" }),
@@ -221,7 +241,9 @@ async function main(): Promise<void> {
   const harnessTools = () => tools;
   // Started on first use, for Codex and ACP agents, which take tools over MCP.
   let toolServer: Promise<ToolServer> | null = null;
-  const getToolServer = () => (toolServer ??= startToolServer(harnessTools));
+  // `/mcp-skills` adds the skill tool for agents in "tool" delivery mode.
+  const getToolServer = () =>
+    (toolServer ??= startToolServer(harnessTools, () => [skillTool(() => forAgent(skills.global(), { mode: "tool", reads: ["project", "shared"] }))]));
   const drivers = [
     driver,
     // Codex when it's installed: the same model-invoked skills as an extra skills root, and the browser tools over MCP.
@@ -232,7 +254,7 @@ async function main(): Promise<void> {
             args: ["app-server"],
             clientVersion: app.getVersion(),
             guardScript,
-            skillsDir: () => ensureModelSkillsDir(catalog, modelSkillsDir),
+            skillsDir: () => ensureModelSkillsDir(forAgent(skills.global(), CODEX_CAPABILITIES.skillsDelivery), modelSkillsDir),
             toolServer: getToolServer,
             onLimits: limits.for("codex"),
             injection: () =>
@@ -262,7 +284,7 @@ async function main(): Promise<void> {
           ? { ...config, capabilities: { ...config.capabilities, preToolGuard: true, guardEnforcement: { ask: "block" as const, "auto-edit": "block" as const, full: "block" as const } } }
           : config;
       return createAcpDriver(driverConfig, {
-        skillsDir: () => ensureModelSkillsDir(catalog, modelSkillsDir),
+        skillsDir: () => ensureModelSkillsDir(forAgent(skills.global(), acpCapabilities(config).skillsDelivery), modelSkillsDir),
         clientVersion: app.getVersion(),
         toolServer: getToolServer,
         guardScript,
@@ -288,7 +310,7 @@ async function main(): Promise<void> {
   const mcpStore = new McpServerStore(join(userData, "mcp.json"));
   const service = new Service(
     store,
-    catalog,
+    (cwd: string | null) => skills.forProject(cwd),
     drivers,
     broadcast,
     harnessTools,
@@ -324,8 +346,32 @@ async function main(): Promise<void> {
     external: readExternalMcp({ projectPath: projectPathOf(projectId) }),
     file: join(userData, "mcp.json"),
   });
-  ipcMain.handle("library:skills", () => catalog.skills);
-  ipcMain.handle("library:skill", (_e, name: string) => skillDetail(catalog, name, catalogOfAgents()));
+  ipcMain.handle("library:skills", (_e, projectId?: string) => skills.forProject(projectPathOf(projectId ?? null)).all);
+  ipcMain.handle("library:skill", (_e, name: string, projectId?: string) => skillDetail(skills.forProject(projectPathOf(projectId ?? null)), name, catalogOfAgents()));
+  ipcMain.handle("skills:set-enabled", (_e, origin: SkillOrigin, name: string, enabled: boolean) => {
+    const key = `${origin}:${name}`;
+    const current = settings.get().skills?.disabled ?? [];
+    const disabled = enabled ? current.filter((k) => k !== key) : [...new Set([...current, key])];
+    settings.update({ skills: { disabled } });
+    skills.invalidate();
+    return skills.forProject(null).all;
+  });
+  ipcMain.handle("skills:folders", (_e, projectId?: string) => skills.dirs(projectPathOf(projectId ?? null)));
+  ipcMain.handle("skills:create", (_e, input: { scope: "harness" | "project"; projectId?: string | null; name: string; description: string }) => {
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(input.name)) throw new Error("A skill name is lowercase letters, digits and dashes, up to 64 characters.");
+    const dirs = skills.dirs(projectPathOf(input.projectId ?? null));
+    const base = input.scope === "project" ? dirs.project : dirs.harness;
+    if (!base) throw new Error("Pick a project before creating a project skill.");
+    const folder = join(base, input.name);
+    if (existsSync(folder)) throw new Error(`A skill named ${input.name} already exists.`);
+    mkdirSync(folder, { recursive: true });
+    const file = join(folder, "SKILL.md");
+    // JSON string syntax is valid YAML, so a description with ": " or quotes can't break the frontmatter.
+    const description = JSON.stringify(input.description.replace(/\s+/g, " ").trim());
+    writeFileSync(file, `---\nname: ${input.name}\ndescription: ${description}\n---\n\n# ${input.name}\n\nDescribe what the agent should do.\n`);
+    skills.invalidate();
+    return file;
+  });
   ipcMain.handle("library:agents", () => catalogOfAgents());
   ipcMain.handle("mcp:get", (_e, projectId: string | null) => mcpOverview(projectId));
   ipcMain.handle("mcp:save", (_e, entry: McpServerEntry, previousName?: string) => {
@@ -498,7 +544,7 @@ async function main(): Promise<void> {
     return service.importThread(projectId, JSON.parse(readFileSync(path, "utf8")));
   });
   ipcMain.handle("events:list", (_e, threadId: string) => store.listEvents(threadId));
-  ipcMain.handle("skills:list", () => service.listSkills());
+  ipcMain.handle("skills:list", (_e, projectId?: string) => service.listSkills(projectId));
   ipcMain.handle("agents:list", () => service.listAgents());
   ipcMain.handle("turn:send", (_e, req: SendRequest) => {
     // Resolve once the turn has started; progress arrives as updates.

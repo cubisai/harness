@@ -3,7 +3,10 @@
 
 export type Invocation = "model" | "user";
 
-/** One entry of skilled's skills.json (see plan/docs/HARNESS.md). */
+/** Where a skill was found: the standard folders, or the legacy skills.json root. */
+export type SkillOrigin = "project" | "harness" | "shared" | "bundled" | "legacy";
+
+/** One skill: a folder with a SKILL.md (see plan/docs/HARNESS.md). */
 export interface SkillEntry {
   name: string;
   description: string;
@@ -13,6 +16,16 @@ export interface SkillEntry {
   calls: string[];
   files: string[];
   sha256: string;
+  /** Which search root it came from; absent on entries built before discovery. */
+  origin?: SkillOrigin;
+  /** The skill's folder, so links resolve and copies have a source. */
+  dir?: string;
+  /** False when the frontmatter says `user-invocable: false`. */
+  userInvocable?: boolean;
+  /** False when the user turned it off in Settings. */
+  enabled?: boolean;
+  /** The origin of the higher-precedence same-name skill that won. */
+  shadowedBy?: SkillOrigin;
 }
 
 export interface Project {
@@ -126,6 +139,8 @@ export interface Settings {
   providerInjection: Record<string, boolean>;
   /** Panel sizes and which panels are collapsed; SettingsStore.get() always fills it in. */
   paneLayout?: PaneLayout;
+  /** Skills the user turned off, as `${origin}:${name}`. */
+  skills?: { disabled: string[] };
 }
 
 export interface EditorInfo {
@@ -498,8 +513,10 @@ export type GuardEnforcement = "block" | "warnOnly";
 
 /** How an agent's model-invoked skills reach it, and the prefix its Skill-tool names carry. */
 export interface SkillsDelivery {
-  mode: "plugin" | "extraRoots" | "envDir" | "projectWrite" | "none";
+  mode: "plugin" | "extraRoots" | "envDir" | "tool" | "none";
   prefix?: string;
+  /** Origins the agent already loads natively, so the harness doesn't deliver them again. */
+  reads?: SkillOrigin[];
 }
 
 /**
@@ -633,7 +650,7 @@ export interface UnskilledApi {
   /** Replace them from an export; null when cancelled. */
   importSettings(): Promise<SettingsView | null>;
   listEvents(threadId: string): Promise<StoredEvent[]>;
-  listSkills(): Promise<SkillEntry[]>;
+  listSkills(projectId?: string): Promise<SkillEntry[]>;
   listAgents(): Promise<AgentInfo[]>;
   send(request: SendRequest): Promise<void>;
   interrupt(threadId: string): Promise<void>;
@@ -673,9 +690,15 @@ export interface UnskilledApi {
   updateStatus(): Promise<AppUpdateStatus>;
   /** Rate limits reported so far, by agent. */
   listLimits(): Promise<AgentLimits[]>;
-  /** Every skill in the catalog, both halves. */
-  listAllSkills(): Promise<SkillEntry[]>;
-  getSkillDetail(name: string): Promise<SkillDetail>;
+  /** Every skill discovered for the project (or globally): the whole list, shadowed and disabled included. */
+  listAllSkills(projectId?: string): Promise<SkillEntry[]>;
+  getSkillDetail(name: string, projectId?: string): Promise<SkillDetail>;
+  /** Turn one skill on or off; returns the refreshed all-skills list. */
+  setSkillEnabled(origin: SkillOrigin, name: string, enabled: boolean): Promise<SkillEntry[]>;
+  /** The standard skill folders, for the Settings/Library UI. `project` is "" without one. */
+  getSkillFolders(projectId?: string): Promise<{ project: string; harness: string; shared: string; bundled: string }>;
+  /** Create a skill stub under the harness or the project; returns the SKILL.md path. */
+  createSkill(input: { scope: "harness" | "project"; projectId?: string | null; name: string; description: string }): Promise<string>;
   listAgentCatalog(): Promise<AgentCatalogEntry[]>;
   getMcp(projectId: string | null): Promise<McpOverview>;
   /** Add or replace a server. Env or header values left empty keep what was stored. */

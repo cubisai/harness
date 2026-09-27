@@ -14,19 +14,55 @@ const echo: HarnessTool = {
   run: async (args) => ({ text: `echo: ${(args as { text: string }).text}` }),
 };
 
+const skill: HarnessTool = {
+  name: "skill",
+  description: "Load a skill",
+  input: { name: z.string() },
+  autoAllow: true,
+  run: async () => ({ text: "skill body" }),
+};
+
+async function connect(url: string, token: string): Promise<Client> {
+  const client = new Client({ name: "test", version: "1" });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }),
+  );
+  return client;
+}
+
 describe("tool server", () => {
   it("serves harness tools over Streamable HTTP MCP", async () => {
     const server = await startToolServer(() => [echo]);
     closeAfter(() => void server.close());
-    const client = new Client({ name: "test", version: "1" });
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL(server.url), { requestInit: { headers: { Authorization: `Bearer ${server.token}` } } }),
-    );
+    const client = await connect(server.url, server.token);
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name)).toEqual(["echo"]);
     const res = await client.callTool({ name: "echo", arguments: { text: "hi" } });
     expect(res.content).toEqual([{ type: "text", text: "echo: hi" }]);
     await client.close();
+  });
+
+  it("adds the extra tools on /mcp-skills only", async () => {
+    const server = await startToolServer(() => [echo], () => [skill]);
+    closeAfter(() => void server.close());
+    const base = await connect(server.url, server.token);
+    expect((await base.listTools()).tools.map((t) => t.name)).toEqual(["echo"]);
+    await base.close();
+    expect(server.skillsUrl.endsWith("/mcp-skills")).toBe(true);
+    const skills = await connect(server.skillsUrl, server.token);
+    expect((await skills.listTools()).tools.map((t) => t.name)).toEqual(["echo", "skill"]);
+    await skills.close();
+  });
+
+  it("404s any other path", async () => {
+    const server = await startToolServer(() => [echo]);
+    closeAfter(() => void server.close());
+    const res = await fetch(`http://127.0.0.1:${new URL(server.url).port}/other`, {
+      method: "POST",
+      body: "{}",
+      headers: { "content-type": "application/json", authorization: `Bearer ${server.token}` },
+    });
+    expect(res.status).toBe(404);
   });
 
   it("refuses requests without the token", async () => {

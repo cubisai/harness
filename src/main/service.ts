@@ -69,7 +69,7 @@ export class Service {
 
   constructor(
     private store: Store,
-    private catalog: Catalog,
+    private catalogFor: (cwd: string | null) => Catalog,
     drivers: AgentDriver[],
     private broadcast: (update: LiveUpdate) => void,
     /** Tools the harness offers the agent this turn (the browser pane's, once it's open). */
@@ -100,10 +100,20 @@ export class Service {
     return approvals;
   }
 
-  listSkills(): SkillEntry[] {
-    // Only user-invoked skills belong in the / menu; the agent finds the
-    // model-invoked ones on its own.
-    return this.catalog.userSkills;
+  private projectPath(projectId: string | null): string | null {
+    if (!projectId) return null;
+    try {
+      return this.store.getProject(projectId).path;
+    } catch {
+      return null;
+    }
+  }
+
+  listSkills(projectId?: string): SkillEntry[] {
+    // Every enabled winner belongs in the / menu, model-invoked ones included:
+    // the user can always start one explicitly. The agent finds the model ones
+    // on its own.
+    return this.catalogFor(this.projectPath(projectId ?? null)).userSkills;
   }
 
   listAgents(): AgentInfo[] {
@@ -332,7 +342,7 @@ export class Service {
     const project = this.store.getProject(thread.projectId);
     const driver = this.driverFor(thread.agent);
     const provenance: Provenance = { agent: thread.agent, model: thread.model, provider: null, instanceId: null };
-    const prompt = composePrompt(this.catalog, req.text, req.skill, driver.skillsDelivery);
+    const prompt = composePrompt(this.catalogFor(project.path), req.text, req.skill, driver.skillsDelivery);
 
     this.emit(thread.id, { kind: "user", text: req.text, skill: req.skill });
     if (thread.title === "New thread") {

@@ -73,8 +73,8 @@ describe("SAFE_DEFAULTS", () => {
   });
 
   it("withCapabilities returns a fresh, independent copy", () => {
-    const patched = withCapabilities(SAFE_DEFAULTS, { mcpHttp: true, skillsDelivery: { mode: "projectWrite", prefix: "" } });
-    expect(patched).toMatchObject({ mcpHttp: true, skillsDelivery: { mode: "projectWrite", prefix: "" } });
+    const patched = withCapabilities(SAFE_DEFAULTS, { mcpHttp: true, skillsDelivery: { mode: "tool", prefix: "", reads: ["project", "shared"] } });
+    expect(patched).toMatchObject({ mcpHttp: true, skillsDelivery: { mode: "tool", prefix: "", reads: ["project", "shared"] } });
     expect(patched).not.toBe(SAFE_DEFAULTS);
     expect(patched.skillsDelivery).not.toBe(SAFE_DEFAULTS.skillsDelivery);
     expect(SAFE_DEFAULTS.mcpHttp).toBe(false);
@@ -113,7 +113,7 @@ describe("agents.json capabilities", () => {
     const { agents } = loadAcpAgents(file, (cmd) => cmd === process.execPath);
     const d = createAcpDriver(agents.find((a) => a.id === "mystery3")!, { clientVersion: "t" });
     closeAfter(() => d.dispose?.());
-    expect(d.capabilities).toEqual(withCapabilities(SAFE_DEFAULTS, { skillsDelivery: { mode: "envDir", prefix: "" } }));
+    expect(d.capabilities).toEqual(withCapabilities(SAFE_DEFAULTS, { skillsDelivery: { mode: "envDir", prefix: "", reads: ["project", "shared"] } }));
   });
 });
 
@@ -129,7 +129,7 @@ describe("Service.listAgents capabilities", () => {
       codex.dispose?.();
       acp.dispose?.();
     });
-    const service = new Service(store, catalog(), [claude, codex, acp], () => {});
+    const service = new Service(store, () => catalog(), [claude, codex, acp], () => {});
     const infos = service.listAgents();
     expect(infos.map((a) => a.id)).toEqual(["claude", "codex", "acp-test"]);
     for (const info of infos) {
@@ -146,8 +146,8 @@ describe("Codex capabilities", () => {
 });
 
 describe("skillDeliveryGap", () => {
-  it("names the gap for projectWrite and none, and is null otherwise", () => {
-    expect(skillDeliveryGap({ mode: "projectWrite" })).toBeTruthy();
+  it("names the gap for none, and is null otherwise", () => {
+    expect(skillDeliveryGap({ mode: "tool" })).toBeNull();
     expect(skillDeliveryGap({ mode: "none" })).toBeTruthy();
     expect(skillDeliveryGap({ mode: "plugin" })).toBeNull();
     expect(skillDeliveryGap({ mode: "extraRoots" })).toBeNull();

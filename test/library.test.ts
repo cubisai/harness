@@ -8,7 +8,7 @@ describe("skillRoute", () => {
     expect(skillRoute({ skillsDelivery: { mode: "plugin", prefix: "harness-skills:" } })).toMatch(/plugin/);
     expect(skillRoute({ skillsDelivery: { mode: "extraRoots", prefix: "" } })).toMatch(/extra skills folder/);
     expect(skillRoute({ skillsDelivery: { mode: "envDir", prefix: "" }, skillsDirEnv: "DSH_BUNDLED_SKILL_DIR" })).toMatch(/DSH_BUNDLED_SKILL_DIR/);
-    expect(skillRoute({ skillsDelivery: { mode: "projectWrite", prefix: "" } })).toMatch(/^Not automatic: .*install/);
+    expect(skillRoute({ skillsDelivery: { mode: "tool", prefix: "" } })).toMatch(/skill tool/);
     expect(skillRoute({ skillsDelivery: { mode: "none" } })).toMatch(/^Not automatic: /);
   });
 });
@@ -29,7 +29,7 @@ describe("agentCatalog", () => {
     expect(byId.claude!.skills).toMatch(/plugin/);
     expect(byId.deepseek!.skills).toMatch(/DSH_BUNDLED_SKILL_DIR/);
     expect(byId.antigravity!).toMatchObject({ command: "agy-acp", install: "npm install -g agy-acp" });
-    expect(byId.antigravity!.skills).toMatch(/install/);
+    expect(byId.antigravity!.skills).toMatch(/skill tool/);
   });
 
   it("gives every entry capabilities, and prefers a live patched set", () => {

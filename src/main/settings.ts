@@ -171,6 +171,10 @@ export class SettingsStore {
       next.providerInjection = injection;
     }
     if (patch.paneLayout !== undefined) next.paneLayout = sanitizeLayout(patch.paneLayout);
+    if (patch.skills && typeof patch.skills === "object" && Array.isArray(patch.skills.disabled)) {
+      // Only `${origin}:${name}` strings; a wild renderer payload can't grow this unbounded.
+      next.skills = { disabled: patch.skills.disabled.filter((s): s is string => typeof s === "string").slice(0, 500) };
+    }
     // The Antigravity opt-in: the acknowledgement is stamped here, never trusted from
     // the caller, and the flag turns on only with a current one.
     if (patch.antigravityAck === null) next.antigravityAck = null;

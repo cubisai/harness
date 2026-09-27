@@ -40,7 +40,7 @@ describe("memoryScopeCheck", () => {
       models: () => [{ id: "m", label: "M" }],
       runTurn: async (input: TurnInput) => input.onEvent({ kind: "assistant-text", text: "ok" }),
     };
-    const service = new Service(store, catalog(), [driver], () => {});
+    const service = new Service(store, () => catalog(), [driver], () => {});
     const p = store.addProject(project(["CLAUDE.md", "AGENTS.md"]));
     const thread = service.createThread(p.id);
     await service.send({ threadId: thread.id, text: "one" });
@@ -50,11 +50,11 @@ describe("memoryScopeCheck", () => {
   });
 });
 
-describe("never injecting a skill body the agent loads itself", () => {
-  it("refuses to compose a model-invoked skill into the prompt", () => {
+describe("composing a skill the agent would also load itself", () => {
+  it("still composes it when the user runs it explicitly", () => {
     const cat = catalog();
     const modelSkill = cat.modelSkills[0];
     expect(modelSkill).toBeDefined();
-    expect(() => composePrompt(cat, "x", modelSkill!.name)).toThrow(/model-invoked/);
+    expect(composePrompt(cat, "x", modelSkill!.name)).toContain(`<skill name="${modelSkill!.name}"`);
   });
 });

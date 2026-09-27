@@ -3,7 +3,7 @@ import type { AgentCapabilities, AgentCatalogEntry, SkillDetail, SkillsDelivery 
 import type { AcpAgentConfig } from "./agents/acp/driver";
 import { acpCapabilities, CLAUDE_CAPABILITIES, CODEX_CAPABILITIES, skillDeliveryGap } from "./agents/capabilities";
 import { ACP_PRESETS, BUILT_IN_AGENT_IDS } from "./agents/registry";
-import { type Catalog, readSkillBody } from "./skills/catalog";
+import { bodyOf, readSkillBodyAt, type Catalog } from "./skills/catalog";
 
 /** How model-invoked skills reach an agent, worded from its delivery mode. */
 export function skillRoute(agent: { skillsDelivery: SkillsDelivery; skillsDirEnv?: string }): string {
@@ -11,18 +11,20 @@ export function skillRoute(agent: { skillsDelivery: SkillsDelivery; skillsDirEnv
   if (d.mode === "plugin") return "As a plugin, loaded when the task calls for it";
   if (d.mode === "extraRoots") return "As an extra skills folder, loaded when the task calls for it";
   if (d.mode === "envDir") return `Through ${agent.skillsDirEnv}, loaded when the task calls for it`;
+  if (d.mode === "tool") return "Through the app's skill tool, loaded when the task calls for it";
   return `Not automatic: ${skillDeliveryGap(d)}`;
 }
 
 /** Everything the Library shows for one skill, and how it reaches each available agent. */
 export function skillDetail(catalog: Catalog, name: string, agents: AgentCatalogEntry[]): SkillDetail {
-  const skill = catalog.byName.get(name);
+  // Disabled and shadowed entries live in `all` only, but the Library still lists them.
+  const skill = catalog.byName.get(name) ?? catalog.all.find((s) => s.name === name);
   if (!skill) throw new Error(`No skill named ${name}`);
   const available = agents.filter((a) => a.installed);
   return {
     skill,
-    body: readSkillBody(catalog.root, name),
-    dir: catalog.root.skillsDir ? join(catalog.root.skillsDir, name) : "",
+    body: skill.dir ? readSkillBodyAt(skill.dir) : bodyOf(catalog, name),
+    dir: skill.dir ?? (catalog.root.skillsDir ? join(catalog.root.skillsDir, name) : ""),
     calledBy: catalog.skills.filter((s) => s.calls.includes(name)).map((s) => s.name),
     routes: available.map((a) => ({
       agent: a.label,
