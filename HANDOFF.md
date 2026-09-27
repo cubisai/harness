@@ -1,6 +1,6 @@
-# Handoff — Phases 0–9 done; T8.13 and the human release checks left
+# Handoff — Phases 0–9 done, plus a round of fixes from the user's own testing
 
-Updated 2026-09-27 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-delegation workflow), then `spec/README.md`, then `.ai/plans/phase-9-release.md`.
+Updated 2026-09-27 (end of session) on the Windows PC, branch `m4`, last commit on it is this file. Read **Resume here** first, then "After Phase 9" below, then `CLAUDE.md` (the opencode-delegation workflow). Memories that apply: `autonomous-phase-loop` (don't ask, keep going), `commit-only-own-paths` (the user's bun switch stays uncommitted; commit with explicit paths), `two-machines` (every fix must work on Windows and macOS).
 
 ## Where things stand
 
@@ -94,9 +94,16 @@ All checked in the real app on Windows; code paths are cross-platform unless not
 - **Antigravity**: `agy` is at `%LOCALAPPDATA%\agy\bin`, but the app drives it through `agy-acp` (not installed; the user installs it) and it stays off until the Settings opt-in.
 - Still to confirm on the Mac: the same smoke/model checks there.
 
-## Resume here: T8.13, then the human release checks
+## Resume here
 
-- T8.13 (worktree-per-thread, background start, Pinned column): `spec/phases/phase-8-ui-refinement.md`; its gate (T9.7) is met. Write `.ai/plans/t8-13-worktrees.md` first.
+State of the tree: everything of ours is committed. Uncommitted **on purpose** (the user's): the pnpm → bun switch (`package.json`, `bun.lock`, `bunfig.toml`, staged deletions of `.npmrc`/`pnpm-*`, `ci.yml`, README/`main.tsx`/`mock.ts` comments), `CLAUDE.md` notes, `SETUP-OTHER-PC.md`, and a line-ending-only snapshot. Before any commit: `git diff --cached --stat` must show only your files.
+
+In order:
+1. **Lucide icons** (user request): once the user has committed the bun switch, `bun add lucide-react` and replace `src/renderer/src/icons.tsx` with Lucide icons (keep the exported names so call sites don't change). If the switch is still uncommitted, ask the user to commit it first — don't mix it into a commit.
+2. **Keep polishing the UI toward T3 Code / WorkBuddy** (user request, ongoing): the header/composer restructure is done; next candidates are a prominent "New thread" button at the top of the sidebar, quieter sidebar section labels, and checking every screen in both themes (the user saw light mode and found it plain).
+3. **T8.13 from the stash**: `git stash list` → "T8.13 WIP: worktree threads, background start, persisted pins". Apply it, renumber its migration to **step 13**, drop its `pinned` parts (step 12 already has `pinned` + `archived`), and finish `sendInBackground` (Alt+Enter) and the "New Thread in Worktree" palette action. Spec: `spec/phases/phase-8-ui-refinement.md` T8.13.
+4. **On the Mac**: run `electron . --smoke`, the packaged smoke, and one turn per model per agent (scratchpad-style CDP script: create thread → set model → "Reply with just the word OK." → read events). The Windows-only env/PATH fill does nothing there by design.
+5. **Antigravity**: `agy` is installed at `%LOCALAPPDATA%\agy\bin`; the app needs the `agy-acp` adapter (`npm i -g agy-acp`, the user installs it) and the Settings opt-in. Once both are there, test a turn.
 - Needs a person: run `plan/docs/rollback.md` steps 1–7 on a test machine per platform; push the branch so CI runs (the `smoke` job is unverified on GitHub). Both are outward-facing or human steps, not for the autonomous loop.
 - Carried from Phase 7: check a real OpenCode run for `rawInput`/`locations` arriving only on a later `tool_call_update` (the tool row's summary would then read "bash"/"edit").
 
@@ -126,4 +133,4 @@ All checked in the real app on Windows; code paths are cross-platform unless not
 
 ## Next
 
-T8.13, then hand the release checks above to the user. Run them back to back without stopping, except for a big blocker (memory `autonomous-phase-loop`).
+The Resume list above, top to bottom; then hand the human release checks (rollback drill, first CI run) to the user. Run them back to back without stopping, except for a big blocker (memory `autonomous-phase-loop`).
