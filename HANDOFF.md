@@ -1,6 +1,6 @@
-# Handoff — Phases 0–9 done, plus a round of fixes from the user's own testing
+# Handoff — Phases 0–10 done (10 = skills, MCP scopes, guide, effort, sidebar)
 
-Updated 2026-09-27 (end of session) on the Windows PC, branch `m4`, last commit on it is this file. Read **Resume here** first, then "After Phase 9" below, then `CLAUDE.md` (the opencode-delegation workflow). Memories that apply: `autonomous-phase-loop` (don't ask, keep going), `commit-only-own-paths` (the user's bun switch stays uncommitted; commit with explicit paths), `two-machines` (every fix must work on Windows and macOS).
+Updated 2026-09-27 (evening) on the Windows PC, branch `m4`, last commit on it is this file. Phase 10 plan and status: `.ai/plans/phase-10-skills-ui.md`. Read **Resume here** first, then "After Phase 9" below, then `CLAUDE.md` (the opencode-delegation workflow). Memories that apply: `autonomous-phase-loop` (don't ask, keep going), `commit-only-own-paths` (the user's bun switch stays uncommitted; commit with explicit paths), `two-machines` (every fix must work on Windows and macOS).
 
 ## Where things stand
 
@@ -17,8 +17,10 @@ Updated 2026-09-27 (end of session) on the Windows PC, branch `m4`, last commit 
 | 8 — UI refinement | **done** (T8.13 worktrees deferred behind Phase 9 T9.7; T8.15 = T7.12): typecheck, build, smoke green; tests green except the known Windows-machine items; every step checked in the real app | A `d04d0a7`, B `b9466a8`, C `ab804df`, D+F `95b97b7`, E `3153964`, G `89ba506` |
 | 9 — Release hardening | **done** except the human rollback drill and a first CI run on GitHub; typecheck, build, dev and packaged smoke green (all four new checks); tests green except the known Windows-machine items | A `1b3a739`, C `839106a`, B+D `b6e76cc`, E `1d4a8e8`, F `9283407` |
 | Windows portability | done | `ae0b0cc` |
+| bun switch (user's, committed at their request) | done | `ab42bb9` |
+| 10 — Skills, MCP scopes, guide, effort, sidebar | **done** except the OpenCode variants spike; typecheck, build, smoke green; tests green except the known Windows-machine items; every step checked in the real app (OpenCode + Codex turns; one Claude turn at the end) | 10A `0489835`, 10B `a46d5e0`, 10C `92ca50d`, 10E `a00acf0`, 10B2 `cbcc2aa`, schema fix `f937edc`, 10D `3f48d8d`, 10G `6e8f916`, guard `ad338c6`, UI `8848788`, ACP rows `f893297` |
 
-**Uncommitted on purpose (the user decides):** the pnpm → bun switch (`package.json`, `bun.lock`, `bunfig.toml`, deleted `pnpm-*`/`.npmrc`, `ci.yml`, README/`main.tsx`/`mock.ts` comments) and the `CLAUDE.md` Windows notes. `test/__snapshots__/providers.test.ts.snap` shows as modified: line endings only. Phase commits carry code + tests only, with no attribution trailer.
+**Uncommitted on purpose (the user decides):** the `CLAUDE.md` notes (Windows notes + the new worker model order) and `SETUP-OTHER-PC.md`. The bun switch is committed (`ab42bb9`). `test/__snapshots__/providers.test.ts.snap` shows as modified: line endings only. Phase commits carry code + tests only, with no attribution trailer.
 
 ## What Phase 3 shipped
 
@@ -75,6 +77,19 @@ Updated 2026-09-27 (end of session) on the Windows PC, branch `m4`, last commit 
 - Rollback: `cumulativeHitRate` / `hitRateRegression` / `prefixStability` + `Store.turnUsage`, `scripts/rollback-check.mjs`, `plan/docs/rollback.md`; frozen M3 `Store` fixture proves the downgrade; `toThread` lets a disagreeing `session_id` win (fixes pre-bindings export imports and post-downgrade cursors).
 - Smoke: `src/main/smoke-checks.ts` (providers, migration, handoff, render parity via `window.__unskilledSmokeRender` in `--unskilled-smoke` mode); `scripts/smoke.mjs` finds `AI Harness`; CI env allowlist + Linux packaged-smoke job; `manual/**` excluded from vitest.
 
+## What Phase 10 shipped (2026-09-27)
+
+- **Sidebar**: toggle beside the wordmark; full-width New thread (Ctrl/⌘N); a + on each project row (hover) for a thread in that project; one label style; chevrons for projects and Archived; the splitter no longer covers rail buttons. **Lucide** icons (`icons.tsx`, same export names). Browser pane: "Nothing open yet" and "Can't reach <url> · Retry" instead of a white page; "Main area" labelled. Add Project errors now toast (it worked in the real app; the user's "nothing happened" was not reproduced).
+- **Skills** (`src/main/skills/discover.ts`, `sources.ts`, `tool.ts`): Agent Skills SKILL.md frontmatter; sources by precedence project `.agents/skills` > app `<userData>/skills` > `~/.agents/skills` > bundled `resources/skills` > legacy `AIHARNESS_SKILLS_DIR`; per-skill on/off (`Settings.skills.disabled`). Delivery without duplicates (`SkillsDelivery.reads`): Claude plugin (per cwd; skips names in `~/.claude/skills` and `<cwd>/.claude/skills`), Codex extraRoots, dsh envDir, OpenCode/Cursor/Antigravity the `skill` tool on `/mcp-skills`. The `/` menu lists every user-invocable skill (model ones too). Library → Skills: groups by origin, switches, New skill, Folders.
+- **Built-in skills** (`resources/skills`, packaged via `extraResources`): browser, docx, pdf, xlsx, pptx, skill-creator — our own text; the Node libraries they name were exercised for real. Anthropic's docx/pdf/pptx/xlsx are source-available, never bundled.
+- **Guide**: `resources/HARNESS.md` (+ `<userData>/HARNESS.md`, `<project>/.agents/HARNESS.md`) → Claude `systemPrompt.append`, Codex `developerInstructions`, ACP once in the first prompt of a new session. Confirmed by Claude, OpenCode and Codex in real turns.
+- **MCP** (`McpScopes`): global `<userData>/mcp.json` + per project `<userData>/projects/<id>/mcp.json` with `offGlobal`; Connectors tab scope switch, "From All projects" toggles, agents' own servers listed read-only.
+- **Tool server**: every schema carries `required: []` (OpenCode + AgentRouter rejected `browser_logs` without it, so every OpenCode turn failed while the browser tools were offered).
+- **Effort** (10G): `Thread.effort` (migration **13**), `ModelOption.efforts/defaultEffort`; Claude `options.effort` + `thinking: adaptive/summarized` when supported; Codex `turn/start.effort` + `summary: "auto"`; ACP `thought_level` via `session/set_config_option`. Brain-icon picker after the model; Ctrl/⌘+Alt+, / . cycle. OpenCode 1.18.32's ACP has no thought_level, so no picker there (variants spike in the plan).
+- **Reasoning** stays expanded (only the user collapses it). The agent picker is a themed menu (Windows drew the native select popup light in dark mode); native `<option>`s are themed.
+- **Git guard always on**: `guard-rules.ts` ports the skilled git-guardrails script (all `git push`, `reset --hard`, forced `clean`, `branch -D`, `checkout/restore .`, DB/infra destroyers); used when there is no script or no Python. `unwrapShell` handles `powershell -Command '…'` and `cmd /c` (Codex on Windows wrapped commands the guard never saw). OpenCode's plugin guard still needs Python + the script.
+- **ACP tool rows**: harness tools named like Claude's (`browser_open`, `skill`) with their argument; a call is announced once its arguments arrive (OpenCode sends them on a later update), at the latest at its first output or its end. Closes the Phase 7 carried item.
+
 ## After Phase 9: fixes from the user's own testing (2026-09-27)
 
 All checked in the real app on Windows; code paths are cross-platform unless noted.
@@ -96,16 +111,19 @@ All checked in the real app on Windows; code paths are cross-platform unless not
 
 ## Resume here
 
-State of the tree: everything of ours is committed. Uncommitted **on purpose** (the user's): the pnpm → bun switch (`package.json`, `bun.lock`, `bunfig.toml`, staged deletions of `.npmrc`/`pnpm-*`, `ci.yml`, README/`main.tsx`/`mock.ts` comments), `CLAUDE.md` notes, `SETUP-OTHER-PC.md`, and a line-ending-only snapshot. Before any commit: `git diff --cached --stat` must show only your files.
+State of the tree: everything of ours is committed. Uncommitted on purpose (the user's): `CLAUDE.md` notes, `SETUP-OTHER-PC.md`, and a line-ending-only snapshot. Before any commit: `git diff --cached --stat` must show only your files.
 
 In order:
-1. **Lucide icons** (user request): once the user has committed the bun switch, `bun add lucide-react` and replace `src/renderer/src/icons.tsx` with Lucide icons (keep the exported names so call sites don't change). If the switch is still uncommitted, ask the user to commit it first — don't mix it into a commit.
-2. **Keep polishing the UI toward T3 Code / WorkBuddy** (user request, ongoing): the header/composer restructure is done; next candidates are a prominent "New thread" button at the top of the sidebar, quieter sidebar section labels, and checking every screen in both themes (the user saw light mode and found it plain).
-3. **T8.13 from the stash**: `git stash list` → "T8.13 WIP: worktree threads, background start, persisted pins". Apply it, renumber its migration to **step 13**, drop its `pinned` parts (step 12 already has `pinned` + `archived`), and finish `sendInBackground` (Alt+Enter) and the "New Thread in Worktree" palette action. Spec: `spec/phases/phase-8-ui-refinement.md` T8.13.
-4. **On the Mac**: run `electron . --smoke`, the packaged smoke, and one turn per model per agent (scratchpad-style CDP script: create thread → set model → "Reply with just the word OK." → read events). The Windows-only env/PATH fill does nothing there by design.
-5. **Antigravity**: `agy` is installed at `%LOCALAPPDATA%\agy\bin`; the app needs the `agy-acp` adapter (`npm i -g agy-acp`, the user installs it) and the Settings opt-in. Once both are there, test a turn.
-- Needs a person: run `plan/docs/rollback.md` steps 1–7 on a test machine per platform; push the branch so CI runs (the `smoke` job is unverified on GitHub). Both are outward-facing or human steps, not for the autonomous loop.
-- Carried from Phase 7: check a real OpenCode run for `rawInput`/`locations` arriving only on a later `tool_call_update` (the tool row's summary would then read "bash"/"edit").
+1. **OpenCode reasoning variants** (user note: levels depend on the model and provider): the spike in `.ai/plans/phase-10-skills-ui.md` (10G follow-up) — read `variants` from `opencode models --verbose`, apply via `OPENCODE_CONFIG_CONTENT` agent options + ACP respawn + `session/load`; only then wire the picker.
+2. **T8.13 from the stash**: `git stash list` → "T8.13 WIP: worktree threads, background start, persisted pins". Its migration must now be **step 14** (13 = effort); drop its `pinned` parts; finish `sendInBackground` (Alt+Enter) and "New Thread in Worktree". Spec: `spec/phases/phase-8-ui-refinement.md` T8.13.
+3. **Keep polishing the UI toward T3 Code** (ongoing user request): check every screen in both themes; Settings/ProviderSheet still use native selects (their options are themed now).
+4. **On the Mac**: `electron . --smoke`, packaged smoke, one turn per agent (Python is there, so the script guard path runs; also check the built-in path).
+5. **Antigravity**: needs `agy-acp` + the Settings opt-in (unchanged).
+- Needs a person: rollback drill (`plan/docs/rollback.md`), first CI run on GitHub.
+
+**Testing note (user, 2026-09-27):** the user's Claude limit is low — do live checks with OpenCode (DeepSeek via AgentRouter) and Codex (Luna/Terra; Sol is not on their ChatGPT plan), and keep Claude to one short confirming turn. Everything must still work with Claude.
+
+**Worker routing (user, 2026-09-27):** every opencode worker: AgentRouter DeepSeek v4 Flash → Token Harbor paid DeepSeek v4.1 Flash → Qwen3.7 Flash (backup of the old config: `~/.config/opencode/opencode.json.bak-2026-09-27`). The AgentRouter proxy must listen on 127.0.0.1:3900 (`~/.config/opencode/start-proxy.bat`). DeepSeek via AgentRouter answered every brief on the first try (10B, 10E, 10B2, 10D, 10G), 10–30 min each.
 
 ## Windows portability (`src/main/winspawn.ts`)
 
@@ -113,6 +131,7 @@ In order:
 
 ## Open items
 
+- **Flaky under full-suite load (passes alone):** `switch.test` "handoff to an ACP agent" (seen once, 2026-09-27), besides `codex-e2e` below.
 - **This Windows PC:** Node 22.17 → `db.test` worker test fails (`Unknown file extension ".ts"`); needs Node ≥ 22.18. `codex-e2e` "offers the browser tools…" fails under full-suite load only: its first request goes out before the mock stdio `docs` MCP server is up (passes alone) — consider `startup_timeout_sec` for app MCP servers.
 - **Phase 6 carried forward:** T6.5 stale-cursor path (mark the binding `lost`, re-seed) and T6.11's lighter model-switch card; small threads can't be handed off (the checkpoint would exceed what it replaces — by design).
 - **This PC's accounts:** Codex returns 401 "workspace routing unauthorized" (sign in again); a Codex "retrying" status notice stays on screen after the turn ends (seen in the app, pre-existing) — Phase 7/8.
