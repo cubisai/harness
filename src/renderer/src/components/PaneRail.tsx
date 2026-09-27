@@ -1,4 +1,4 @@
-import { IconArrowLeft, IconArrowRight, IconCompose, IconFolder, IconGear, IconLibrary, IconRefresh } from "../icons";
+import { IconCompose, IconFolder, IconGear, IconLibrary, IconRefresh, IconSidebarClose, IconSidebarOpen } from "../icons";
 import { api } from "../api";
 import { InboxBell } from "./MessageCenter";
 import { useStore } from "../store";
@@ -13,7 +13,7 @@ export function SidebarToggle({ collapsed }: { collapsed: boolean }) {
       title={collapsed ? "Show sidebar (⌘\\)" : "Hide sidebar (⌘\\)"}
       onClick={() => toggleSidebar()}
     >
-      {collapsed ? <IconArrowRight /> : <IconArrowLeft />}
+      {collapsed ? <IconSidebarOpen /> : <IconSidebarClose />}
     </button>
   );
 }

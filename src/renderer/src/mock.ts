@@ -208,7 +208,13 @@ export function installMock(): void {
     platform: params.get("platform") ?? "darwin",
     opaqueSidebar: params.has("opaque"),
     listProjects: async () => projects,
-    addProject: async () => null,
+    addProject: async () => {
+      const n = projects.length + 1;
+      const project: Project = { id: `p${n}`, path: `/Users/you/code/new-project-${n}`, name: `new-project-${n}`, createdAt: Date.now() };
+      projects.push(project);
+      threads[project.id] = [];
+      return project;
+    },
     listThreads: async (pid) => threads[pid] ?? [],
     createThread: async (pid) => {
       const th = t(`t${Math.random()}`, pid, "New thread", 0);

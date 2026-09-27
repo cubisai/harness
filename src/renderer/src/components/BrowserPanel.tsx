@@ -83,6 +83,10 @@ export function BrowserPanel() {
   const [initial] = useState(() => (pendingUrl ? normalize(pendingUrl) : "about:blank"));
   const [view, setView] = useState<"page" | "console">("page");
   const [viewing, setViewing] = useState<ScreenshotInfo | null>(null);
+  /** The last main-frame load that failed (nothing listening, DNS, TLS), shown instead of a blank page. */
+  const [failed, setFailed] = useState<{ url: string; reason: string } | null>(null);
+  /** What the page actually shows ("" = nothing yet); the address box can differ while the user types. */
+  const [current, setCurrent] = useState("");
 
   // The in-band state is fetched once, when the panel mounts.
   useEffect(() => {
@@ -96,6 +100,7 @@ export function BrowserPanel() {
       if (!ready.current) return;
       const url = el.getURL();
       setAddress(url === "about:blank" ? "" : url);
+      setCurrent(url === "about:blank" ? "" : url);
       setNav({ back: el.canGoBack(), forward: el.canGoForward(), loading: false });
     };
     const onReady = () => {
@@ -103,13 +108,29 @@ export function BrowserPanel() {
       void api().browserAttached(el.getWebContentsId());
       sync();
     };
-    const onStart = () => setNav((n) => ({ ...n, loading: true }));
+    const onStart = () => {
+      setFailed(null);
+      setNav((n) => ({ ...n, loading: true }));
+    };
+    const onFail = (e: Event) => {
+      const { errorCode, errorDescription, validatedURL, isMainFrame } = e as Event & {
+        errorCode: number;
+        errorDescription: string;
+        validatedURL: string;
+        isMainFrame: boolean;
+      };
+      // -3 is an aborted load: a newer navigation replaced it.
+      if (!isMainFrame || errorCode === -3) return;
+      setFailed({ url: validatedURL, reason: errorDescription });
+    };
     el.addEventListener("dom-ready", onReady, { once: true });
     el.addEventListener("did-navigate", sync);
     el.addEventListener("did-navigate-in-page", sync);
     el.addEventListener("did-start-loading", onStart);
     el.addEventListener("did-stop-loading", sync);
+    el.addEventListener("did-fail-load", onFail);
     return () => {
+      el.removeEventListener("did-fail-load", onFail);
       el.removeEventListener("did-navigate", sync);
       el.removeEventListener("did-navigate-in-page", sync);
       el.removeEventListener("did-start-loading", onStart);
@@ -181,12 +202,13 @@ export function BrowserPanel() {
         </div>
         <button
           type="button"
-          className="icon-button"
+          className="button ghost browser-move"
           title={browserWide ? "Back to the side panel" : "Move to main area"}
           aria-pressed={browserWide}
           onClick={toggleBrowserWide}
         >
-          {browserWide ? <IconArrowRight /> : <IconArrowLeft />}
+          {browserWide ? <IconArrowRight size={14} /> : <IconArrowLeft size={14} />}
+          {browserWide ? "Side panel" : "Main area"}
         </button>
       </form>
       <TakeOverBanner
@@ -215,6 +237,23 @@ export function BrowserPanel() {
       {/* The page stays mounted in both views: unmounting it would lose it. */}
       <div id="browser-page" role="tabpanel" className="browser-page" hidden={view !== "page"}>
         <webview ref={webView as unknown as React.Ref<HTMLWebViewElement>} className="browser-view" src={initial} partition="persist:unskilled-browser" />
+        {failed ? (
+          <div className="browser-empty" role="status">
+            <h3>Can't reach {failed.url}</h3>
+            <p>Nothing answered there ({failed.reason}). Start your dev server, or ask the agent to.</p>
+            <button type="button" className="button" onClick={() => webView.current?.reload()}>
+              Retry
+            </button>
+          </div>
+        ) : (
+          !current &&
+          !nav.loading && (
+            <div className="browser-empty" role="status">
+              <h3>Nothing open yet</h3>
+              <p>Type a URL above, or ask the agent to open your app. It drives this pane with the browser tools.</p>
+            </div>
+          )
+        )}
         {/* A <webview>'s own input never reaches this document, so this overlay is how a click in the pane is seen; in watch mode it swallows input and the reducer keeps agent-driving. */}
         {takeOver.mode === "agent-driving" && (
           <div

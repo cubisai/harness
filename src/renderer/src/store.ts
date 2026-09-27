@@ -425,7 +425,14 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async addProject() {
-    const project = await api().addProject();
+    let project: Project | null;
+    try {
+      project = await api().addProject();
+    } catch (err) {
+      // A failed dialog or database write used to vanish into `void`: say so.
+      get().showNotice(`Couldn't add the project: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
     if (!project) return;
     const threads = await api().listThreads(project.id);
     set((s) => ({
