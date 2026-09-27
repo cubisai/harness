@@ -1,8 +1,48 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import { createClaudeDriver, handleMessage, newTurnState, resolvePackagedClaudeBinary, turnEndFromResult } from "../src/main/agents/claude";
 import type { TurnInput } from "../src/main/agents/types";
 import type { ThreadEvent } from "../src/shared/types";
+
+// The SDK's `query` is faked so the per-turn `options` (where the guide lands)
+// can be read without launching Claude Code. Everything else is the real SDK.
+const sdk = vi.hoisted(() => ({ calls: [] as { prompt: unknown; options: Record<string, unknown> }[] }));
+vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@anthropic-ai/claude-agent-sdk")>();
+  return {
+    ...actual,
+    query: (args: { prompt: unknown; options: Record<string, unknown> }) => {
+      sdk.calls.push(args);
+      return {
+        supportedModels: async () => [],
+        [Symbol.asyncIterator]: async function* () {
+          // No messages: runTurn has nothing to map.
+        },
+      };
+    },
+  };
+});
+
+/** A TurnInput that records nothing; just enough for runTurn to build its options. */
+function turnInput(guideCwd = "/tmp/project"): { input: TurnInput; events: ThreadEvent[] } {
+  const events: ThreadEvent[] = [];
+  const input: TurnInput = {
+    threadId: "t",
+    cwd: guideCwd,
+    prompt: "hi",
+    sessionId: null,
+    model: "opus",
+    permissionMode: "ask",
+    signal: new AbortController().signal,
+    tools: [],
+    mcpServers: [],
+    onEvent: (e) => events.push(e),
+    onTextDelta: () => {},
+    onSession: () => {},
+    requestPermission: async () => "allow-once",
+  };
+  return { input, events };
+}
 
 describe("resolvePackagedClaudeBinary", () => {
   it("leaves development installs to the SDK", () => {
@@ -43,6 +83,26 @@ describe("Claude driver models", () => {
       expect(opus.label).toMatch(/Opus/i);
     }
   }, 30_000);
+});
+
+describe("Claude driver guide", () => {
+  it("appends the harness guide to the claude_code system prompt", async () => {
+    sdk.calls.length = 0;
+    const d = createClaudeDriver({ pluginDir: () => null, guide: () => "GUIDE" });
+    const { input } = turnInput();
+    await d.runTurn(input);
+    expect(sdk.calls).toHaveLength(1);
+    expect(sdk.calls[0]?.options.systemPrompt).toEqual({ type: "preset", preset: "claude_code", append: "GUIDE" });
+  });
+
+  it("leaves systemPrompt out when there's no guide", async () => {
+    sdk.calls.length = 0;
+    const d = createClaudeDriver({ pluginDir: () => null });
+    const { input } = turnInput();
+    await d.runTurn(input);
+    expect(sdk.calls).toHaveLength(1);
+    expect(sdk.calls[0]?.options).not.toHaveProperty("systemPrompt");
+  });
 });
 
 describe("Claude stream mapping", () => {

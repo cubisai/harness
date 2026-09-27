@@ -25,6 +25,7 @@ import { codexInstructions, prepareCodexPlan } from "./inject/codex";
 import { opencodeVersion } from "./inject/opencode";
 import { ensureOpenCodeGuard, withOpenCodeGuard } from "./inject/opencode-guard";
 import { findPython } from "./guard";
+import { createGuide } from "./guide";
 import { SettingsStore } from "./settings";
 import { agentCatalog, skillDetail } from "./library";
 import { fillUserEnvironment } from "./winspawn";
@@ -194,7 +195,13 @@ async function main(): Promise<void> {
   // Plan rate limits, fed only by what agents report during turns: no polling.
   const limits = new LimitsTracker((l) => broadcast({ type: "limits", limits: l }));
   const guardScript = root?.skillsDir ? join(root.skillsDir, "git-guardrails", "scripts", "block-dangerous-git.py") : "";
+  // One guide for every agent: the app's, the user's, then the project's, stable for the session.
+  const guide = createGuide({
+    bundled: app.isPackaged ? join(process.resourcesPath, "HARNESS.md") : join(app.getAppPath(), "resources", "HARNESS.md"),
+    global: join(userData, "HARNESS.md"),
+  });
   const driver = createClaudeDriver({
+    guide: (cwd) => guide.forCwd(cwd),
     pluginDir: (cwd) =>
       ensurePlugin(
         forAgent(
@@ -254,6 +261,7 @@ async function main(): Promise<void> {
             args: ["app-server"],
             clientVersion: app.getVersion(),
             guardScript,
+            guide: (cwd) => guide.forCwd(cwd),
             skillsDir: () => ensureModelSkillsDir(forAgent(skills.global(), CODEX_CAPABILITIES.skillsDelivery), modelSkillsDir),
             toolServer: getToolServer,
             onLimits: limits.for("codex"),
@@ -288,6 +296,7 @@ async function main(): Promise<void> {
         clientVersion: app.getVersion(),
         toolServer: getToolServer,
         guardScript,
+        guide: (cwd) => guide.forCwd(cwd),
         injection: () => {
           const plan = injectionFor(settings, config.id, process.env, {
             injector: config.injector ?? "acp",
@@ -347,7 +356,12 @@ async function main(): Promise<void> {
     file: join(userData, "mcp.json"),
   });
   ipcMain.handle("library:skills", (_e, projectId?: string) => skills.forProject(projectPathOf(projectId ?? null)).all);
-  ipcMain.handle("library:skill", (_e, name: string, projectId?: string) => skillDetail(skills.forProject(projectPathOf(projectId ?? null)), name, catalogOfAgents()));
+  ipcMain.handle("library:skill", (_e, name: string, projectId?: string) => {
+    const cwd = projectPathOf(projectId ?? null);
+    // Claude Code's own skill folders, the same ones its plugin skips (see pluginDir above); plugin delivery = Claude Code.
+    const claudeOwn = skills.namesIn([join(homedir(), ".claude", "skills"), ...(cwd ? [join(cwd, ".claude", "skills")] : [])]);
+    return skillDetail(skills.forProject(cwd), name, catalogOfAgents(), (a) => (a.capabilities?.skillsDelivery.mode === "plugin" ? claudeOwn : new Set()));
+  });
   ipcMain.handle("skills:set-enabled", (_e, origin: SkillOrigin, name: string, enabled: boolean) => {
     const key = `${origin}:${name}`;
     const current = settings.get().skills?.disabled ?? [];

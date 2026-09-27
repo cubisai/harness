@@ -64,6 +64,8 @@ export interface CodexConfig {
   byokModels?: () => ModelOption[] | null;
   /** The git-guardrails script: command approvals are vetoed before the user is asked. */
   guardScript?: string;
+  /** The harness guide for this turn's cwd, sent as developer instructions to Codex. */
+  guide?: (cwd: string) => string;
 }
 
 /** The MCP server name the harness's tools go by, in Codex's config and its tool calls. */
@@ -461,6 +463,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     const conn = rpc!;
     const withTools = input.tools.length > 0 && Boolean(config.toolServer);
     const threadConfig = codexToolConfig(withTools ? await config.toolServer!() : null, input.tools, input.permissionMode, input.mcpServers);
+    const guideText = config.guide?.(input.cwd) ?? "";
     const signature = JSON.stringify(threadConfig ?? null);
     let threadId = "";
     if (input.sessionId) {
@@ -483,6 +486,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
           model,
           ...policy,
           config: threadConfig,
+          ...(guideText ? { developerInstructions: guideText } : {}),
         });
         threadId = res.thread.id;
       } catch {
@@ -490,7 +494,13 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       }
     }
     if (!threadId) {
-      const res = await conn.request<{ thread: { id: string } }>("thread/start", { cwd: input.cwd, model, ...policy, config: threadConfig });
+      const res = await conn.request<{ thread: { id: string } }>("thread/start", {
+        cwd: input.cwd,
+        model,
+        ...policy,
+        config: threadConfig,
+        ...(guideText ? { developerInstructions: guideText } : {}),
+      });
       threadId = res.thread.id;
     }
     // A resume of a thread that's already loaded keeps its config, so only a first load decides.

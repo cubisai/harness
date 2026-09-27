@@ -133,6 +133,8 @@ interface Live {
   mcpByName: Record<string, unknown>;
   /** HTTP servers already reported as dropped on this connection, so each is said once. */
   droppedNotified: Set<string>;
+  /** A freshly created session still owes its first prompt the harness guide. */
+  guidePending: boolean;
   /** The turn currently receiving this connection's updates. */
   turn: TurnState | null;
   idleTimer?: NodeJS.Timeout;
@@ -171,6 +173,8 @@ export function createAcpDriver(
     injection?: () => InjectionPlan;
     /** The git-guardrails script: an execute permission call is vetoed in every mode. */
     guardScript?: string;
+    /** The harness guide for this turn's cwd, sent once, ahead of a new session's first prompt. */
+    guide?: (cwd: string) => string;
   },
 ): AgentDriver {
   const live = new Map<string, Live>();
@@ -371,7 +375,7 @@ export function createAcpDriver(
       clientInfo: { name: "unskilled", version: deps.clientVersion },
     });
     applyInitialize(init, input);
-    l = { conn, init, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, droppedNotified: new Set(), turn: null };
+    l = { conn, init, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, droppedNotified: new Set(), guidePending: false, turn: null };
     const auth = init.authMethods?.[0];
     if (auth) await conn.request("authenticate", { methodId: auth.id }).catch(() => {});
     live.set(threadKey, l);
@@ -450,6 +454,7 @@ export function createAcpDriver(
     const res = await l.conn.request<{ sessionId: string; configOptions?: ConfigOption[] }>("session/new", params);
     l.sessionId = res.sessionId;
     l.configOptions = res.configOptions ?? [];
+    l.guidePending = true;
   };
 
   const applyModel = async (l: Live, model: string) => {
@@ -555,10 +560,21 @@ export function createAcpDriver(
           return;
         }
         input.onEvent({ kind: "turn-start", turnId: randomUUID(), agent: config.id, model: input.model });
+        // A new session's first prompt carries the harness guide; only then is it dropped.
+        const g = l.guidePending ? deps.guide?.(input.cwd) ?? "" : "";
+        if (g) l.guidePending = false;
         const res = await l.conn.request<{
           stopReason: string;
           usage?: { inputTokens?: number; outputTokens?: number; cachedReadTokens?: number; cachedWriteTokens?: number } | null;
-        }>("session/prompt", { sessionId: l.sessionId, prompt: [{ type: "text", text: input.prompt }] });
+        }>("session/prompt", {
+          sessionId: l.sessionId,
+          prompt: g
+            ? [
+                { type: "text", text: `<harness-guide>\n${g}\n</harness-guide>` },
+                { type: "text", text: input.prompt },
+              ]
+            : [{ type: "text", text: input.prompt }],
+        });
         flushText(turn);
         if (res.stopReason === "cancelled") input.onEvent({ kind: "notice", text: "Stopped." });
         else if (res.stopReason === "refusal") input.onEvent({ kind: "error", message: `${config.label} declined this request.` });

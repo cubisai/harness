@@ -71,6 +71,20 @@ describe("ACP driver", () => {
     expect(t.events.at(-1)).toMatchObject({ usage: { provenance: "reported", inputTokens: 1200, cacheReadTokens: null } });
   });
 
+  it("sends the harness guide once, ahead of a new session's first prompt", async () => {
+    const d = createAcpDriver(
+      { id: "mock", label: "Mock", command: process.execPath, args: [MOCK] },
+      { clientVersion: "test", guide: () => "GUIDE" },
+    );
+    closeAfter(() => d.dispose?.());
+    const first = turn("hello");
+    await d.runTurn(first.input);
+    expect(first.deltas.join("")).toContain("<harness-guide>\nGUIDE\n</harness-guide>");
+    const second = turn("hello", { sessionId: first.sessions[0]! });
+    await d.runTurn(second.input);
+    expect(second.deltas.join("")).not.toContain("<harness-guide>");
+  });
+
   it("ignores context-window usage when the prompt response has no usage", async () => {
     const d = driver();
     const t = turn("nousage");

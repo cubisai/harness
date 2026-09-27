@@ -16,7 +16,13 @@ export function skillRoute(agent: { skillsDelivery: SkillsDelivery; skillsDirEnv
 }
 
 /** Everything the Library shows for one skill, and how it reaches each available agent. */
-export function skillDetail(catalog: Catalog, name: string, agents: AgentCatalogEntry[]): SkillDetail {
+export function skillDetail(
+  catalog: Catalog,
+  name: string,
+  agents: AgentCatalogEntry[],
+  /** Skill names an agent already has from its own folders (Claude's ~/.claude/skills), so the app skips them. */
+  nativeNames: (agent: AgentCatalogEntry) => Set<string> = () => new Set(),
+): SkillDetail {
   // Disabled and shadowed entries live in `all` only, but the Library still lists them.
   const skill = catalog.byName.get(name) ?? catalog.all.find((s) => s.name === name);
   if (!skill) throw new Error(`No skill named ${name}`);
@@ -26,10 +32,19 @@ export function skillDetail(catalog: Catalog, name: string, agents: AgentCatalog
     body: skill.dir ? readSkillBodyAt(skill.dir) : bodyOf(catalog, name),
     dir: skill.dir ?? (catalog.root.skillsDir ? join(catalog.root.skillsDir, name) : ""),
     calledBy: catalog.skills.filter((s) => s.calls.includes(name)).map((s) => s.name),
-    routes: available.map((a) => ({
-      agent: a.label,
-      how: skill.invocation === "user" ? "From the / menu: the app puts the skill's text into your message" : a.skills,
-    })),
+    routes: available.map((a) => {
+      // Same rules forAgent() delivers by: an origin the agent reads, or a name it already has, isn't sent again.
+      const reads = a.capabilities?.skillsDelivery.reads ?? [];
+      const how =
+        skill.invocation === "user"
+          ? "From the / menu: the app puts the skill's text into your message"
+          : skill.origin && reads.includes(skill.origin)
+            ? "Loads it itself from this folder, when the task calls for it"
+            : nativeNames(a).has(skill.name)
+              ? "Has its own copy of a skill with this name, so the app doesn't add this one"
+              : a.skills;
+      return { agent: a.label, how };
+    }),
   };
 }
 

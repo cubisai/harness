@@ -1,4 +1,4 @@
-import { utimesSync, writeFileSync } from "node:fs";
+import { readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -14,6 +14,36 @@ import { closeAfter, tempDir } from "./helpers";
 
 const MOCK = join(__dirname, "fixtures", "mock-codex-app-server.mjs");
 const GUARD = join(__dirname, "fixtures", "fake-guard.py");
+
+/**
+ * A one-off app-server that records the thread/start params the driver sends,
+ * so the guide's developerInstructions can be read back. The shared mock can't
+ * report it, and editing a fixture is outside this change's file list.
+ */
+const PROBE_SERVER = `
+const fs = require("node:fs");
+const readline = require("node:readline");
+const send = (m) => process.stdout.write(JSON.stringify(m) + "\\n");
+readline.createInterface({ input: process.stdin }).on("line", (line) => {
+  const msg = JSON.parse(line);
+  if (msg.id === undefined) return;
+  const { id, method, params } = msg;
+  if (method === "initialize") return send({ id, result: { userAgent: "probe" } });
+  if (method === "model/list") return send({ id, result: { data: [] } });
+  if (method === "thread/start" || method === "thread/resume") {
+    fs.writeFileSync(process.env.GUIDE_PROBE, JSON.stringify({ method, params }));
+    return send({ id, result: { thread: { id: "probe-thread" } } });
+  }
+  if (method === "turn/start") {
+    const turn = { id: "turn-1", status: "inProgress", error: null, durationMs: null };
+    send({ id, result: { turn } });
+    send({ method: "turn/started", params: { threadId: params.threadId, turn } });
+    send({ method: "turn/completed", params: { threadId: params.threadId, turn: { ...turn, status: "completed", durationMs: 1 } } });
+    return;
+  }
+  send({ id, result: {} });
+});
+`;
 
 function driver() {
   const d = createCodexDriver({ command: process.execPath, args: [MOCK], clientVersion: "test", skillsDir: () => "/skills/here" });
@@ -120,6 +150,21 @@ describe("Codex driver", () => {
     const t = turn("roots");
     await d.runTurn(t.input);
     expect(t.events[1]).toMatchObject({ kind: "assistant-text", text: '["/skills/here"]' });
+  });
+
+  it("sends the harness guide as developer instructions on thread/start", async () => {
+    const probe = join(tempDir(), "thread-start.json");
+    process.env.GUIDE_PROBE = probe;
+    const d = createCodexDriver({ command: process.execPath, args: ["-e", PROBE_SERVER], clientVersion: "test", guide: () => "GUIDE" });
+    closeAfter(() => d.dispose?.());
+    try {
+      await d.runTurn(turn("hi").input);
+    } finally {
+      delete process.env.GUIDE_PROBE;
+    }
+    const sent = JSON.parse(readFileSync(probe, "utf8")) as { method: string; params: { developerInstructions?: string } };
+    expect(sent.method).toBe("thread/start");
+    expect(sent.params.developerInstructions).toBe("GUIDE");
   });
 
   it("says the thread was reopened when the MCP servers change", async () => {

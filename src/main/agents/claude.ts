@@ -119,6 +119,8 @@ export interface ClaudeDriverConfig {
   injection?: () => InjectionPlan;
   /** The BYOK provider's models, or null on subscription. */
   byokModels?: () => ModelOption[] | null;
+  /** The harness guide for this turn's cwd, appended to Claude Code's own system prompt. */
+  guide?: (cwd: string) => string;
 }
 
 /**
@@ -227,6 +229,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         if (stale) input.onEvent({ kind: "notice", text: stale });
       }
 
+      const guideText = config.guide?.(input.cwd) ?? "";
       const options: Options = {
         cwd: input.cwd,
         abortController,
@@ -237,6 +240,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         allowDangerouslySkipPermissions: input.permissionMode === "full",
         includePartialMessages: true,
         plugins,
+        ...(guideText ? { systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: guideText } } : {}),
         ...(plan ? { env: plan.env } : {}),
         ...withUserServers(harnessToolOptions(input.tools), input.mcpServers),
         hooks: { PreToolUse: [{ matcher: "Bash", hooks: [guard] }] },
