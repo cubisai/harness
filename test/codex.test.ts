@@ -1,3 +1,4 @@
+import { utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -59,6 +60,33 @@ function turn(prompt: string, over: Partial<TurnInput> = {}) {
   };
   return { input, events, deltas, sessions, asked, controller };
 }
+
+describe("Codex login changes", () => {
+  it("starts a fresh app-server when auth.json changed, and keeps the running one otherwise", async () => {
+    const home = tempDir();
+    const auth = join(home, "auth.json");
+    writeFileSync(auth, "{}");
+    const saved = process.env.CODEX_HOME;
+    process.env.CODEX_HOME = home;
+    try {
+      const d = driver();
+      const first = turn("hi");
+      await d.runTurn(first.input);
+      const same = turn("hi");
+      await d.runTurn(same.input);
+      // Same process: the mock numbers threads on, so the second is thread-2.
+      expect([first.sessions[0], same.sessions[0]]).toEqual(["thread-1", "thread-2"]);
+      utimesSync(auth, new Date(), new Date(Date.now() + 60_000)); // `codex login` rewrote it
+      const after = turn("hi");
+      await d.runTurn(after.input);
+      // A fresh process starts numbering again.
+      expect(after.sessions[0]).toBe("thread-1");
+    } finally {
+      if (saved === undefined) delete process.env.CODEX_HOME;
+      else process.env.CODEX_HOME = saved;
+    }
+  }, 30_000);
+});
 
 describe("Codex driver", () => {
   it("runs a turn: reasoning, streamed reply, usage", async () => {

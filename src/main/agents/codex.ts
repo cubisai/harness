@@ -2,7 +2,9 @@ import type { McpServerEntry, ModelOption, PermissionDecision, PermissionMode, T
 import type { RunPayload, RunResult, ToolDiff } from "../../shared/tools";
 import { clipSummary } from "../../shared/tools";
 import { diffSummary } from "../../shared/diff";
+import { statSync } from "node:fs";
 import { homedir } from "node:os";
+import { join } from "node:path";
 import { forCodex, mcpChangeNotice } from "../mcp/servers";
 import { normalizeUsage } from "../usage";
 import type { InjectionPlan } from "../inject";
@@ -78,6 +80,15 @@ export function codexPolicy(mode: PermissionMode): { approvalPolicy: string; san
       return { approvalPolicy: "untrusted", sandbox: "workspace-write" };
     default:
       return { approvalPolicy: "untrusted", sandbox: "workspace-write" };
+  }
+}
+
+/** When Codex's login file (`$CODEX_HOME/auth.json`, default ~/.codex) last changed, or null without one. */
+export function codexAuthStamp(env: NodeJS.ProcessEnv = process.env): number | null {
+  try {
+    return statSync(join(env.CODEX_HOME || join(homedir(), ".codex"), "auth.json")).mtimeMs;
+  } catch {
+    return null;
   }
 }
 
@@ -172,6 +183,8 @@ interface TurnState {
 export function createCodexDriver(config: CodexConfig): AgentDriver {
   let rpc: StdioRpc | null = null;
   let ready: Promise<void> | null = null;
+  /** Codex's login file as it was when the running app-server started. */
+  let authStamp: number | null = null;
   let models: ModelOption[] = [];
   const turns = new Map<string, TurnState>(); // by Codex thread id
   /** Threads loaded in the running app-server, and the MCP config they were loaded with. */
@@ -380,21 +393,32 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   };
 
   const start = (cwd: string): Promise<void> => {
-    if (rpc?.alive && ready) return ready;
     const plan = config.injection?.();
+    if (rpc?.alive && ready) {
+      // app-server reads the login once. After `codex login` (or a logout) it keeps
+      // using the old one and answers 401, so start a fresh one when nothing is running.
+      if (codexAuthStamp(plan?.env ?? process.env) === authStamp || turns.size > 0) return ready;
+      rpc.close();
+      rpc = null;
+      ready = null;
+      loaded.clear();
+    }
     if (plan?.error) return Promise.reject(new Error(plan.error));
+    authStamp = codexAuthStamp(plan?.env ?? process.env);
     startWarnings = [];
-    rpc = StdioRpc.spawn(config.command, [...config.args, ...(plan?.args ?? [])], { cwd, env: plan?.env ?? process.env }, {
+    const conn: StdioRpc = StdioRpc.spawn(config.command, [...config.args, ...(plan?.args ?? [])], { cwd, env: plan?.env ?? process.env }, {
       onNotification,
       onRequest,
       onExit: () => {
+        // A process replaced after a login change exits later: leave its successor alone.
+        if (rpc !== conn) return;
         for (const t of turns.values()) t.done({ id: t.turnId ?? "", status: "failed", error: { message: "Codex exited." }, durationMs: null });
         rpc = null;
         ready = null;
         loaded.clear();
       },
     });
-    const conn = rpc;
+    rpc = conn;
     ready = (async () => {
       await conn.request("initialize", {
         clientInfo: { name: "unskilled", title: "UnSkilled", version: config.clientVersion },
