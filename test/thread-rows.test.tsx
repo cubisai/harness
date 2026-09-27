@@ -41,3 +41,16 @@ describe("thread rows", () => {
     expect(html).toContain("1.5k tokens");
   });
 });
+
+describe("ReasoningBlock stays open", () => {
+  it("is open for text reasoning, live or finished, and closed for encrypted reasoning", async () => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { createElement } = await import("react");
+    const { ReasoningBlock } = await import("../src/renderer/src/components/ReasoningBlock");
+    const html = (props: { text: string; opaque: boolean; live: boolean }) =>
+      renderToStaticMarkup(createElement(ReasoningBlock, { ...props, newest: false, tokens: null }));
+    expect(html({ text: "step one", opaque: false, live: false })).toMatch(/<details[^>]*open/);
+    expect(html({ text: "step one", opaque: false, live: true })).toMatch(/<details[^>]*open/);
+    expect(html({ text: "", opaque: true, live: false })).not.toMatch(/<details[^>]*open/);
+  });
+});

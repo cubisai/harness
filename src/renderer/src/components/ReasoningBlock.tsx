@@ -3,18 +3,20 @@ import { reasoningChannel } from "../live";
 
 /**
  * One reasoning disclosure: streamed text, or — when the model keeps its
- * reasoning encrypted — only the token count. Auto-opens while streaming the
- * newest item, until the user toggles it by hand.
+ * reasoning encrypted — only the token count. Text reasoning is open, while
+ * it streams and after, and never collapses on its own; only the user closes
+ * it. Encrypted reasoning has nothing to show, so it starts closed.
  */
-export function ReasoningBlock({ text, opaque, live, newest, tokens }: { text: string; opaque: boolean; live: boolean; newest: boolean; tokens: number | null }) {
+export function ReasoningBlock({ text, opaque, live, tokens }: { text: string; opaque: boolean; live: boolean; newest?: boolean; tokens: number | null }) {
   // A block with no text is treated as opaque only when it says it is.
   const channel = reasoningChannel({ opaque: opaque && !text });
-  const [open, setOpen] = useState(live && newest);
+  const [open, setOpen] = useState(channel === "text");
   const userToggled = useRef(false);
 
   useEffect(() => {
-    if (!userToggled.current) setOpen(live && newest);
-  }, [live, newest]);
+    // Text arriving for a block that started empty opens it, unless the user already chose.
+    if (!userToggled.current && channel === "text") setOpen(true);
+  }, [channel]);
 
   const label =
     channel === "text"

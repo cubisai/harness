@@ -1,5 +1,6 @@
 import type { AgentInfo, ModelOption, PermissionMode, Thread } from "../../../shared/types";
 import { useStore } from "../store";
+import { AgentPicker } from "./AgentPicker";
 import { EffortPicker } from "./EffortPicker";
 import { ModelPicker } from "./ModelPicker";
 
@@ -24,13 +25,7 @@ export function ThreadControls({ thread, running }: { thread: Thread; running: b
   return (
     <div className="thread-controls">
       {agents.length > 1 && (
-        <select className="select ghost-select" value={thread.agent} title="Agent" disabled={running} onChange={(e) => openSwitch(e.target.value)}>
-          {agents.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.label}
-            </option>
-          ))}
-        </select>
+        <AgentPicker agents={agents} current={thread.agent} disabled={running} onPick={openSwitch} />
       )}
       <ModelPicker models={models} current={thread.model} disabled={running} placement="up" onPick={(m) => void updateThread({ model: m })} />
       <EffortPicker

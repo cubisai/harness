@@ -1597,3 +1597,6 @@ button.hunk:hover { color: var(--accent); }
 .effort-default { color: var(--text-tertiary); }
 /* The menu is kept in the DOM but hidden while closed, so its rows stay testable. */
 .model-menu[hidden] { display: none; }
+
+/* Native <select> popups: on Windows Chromium draws them light unless the options are coloured. */
+select option, select optgroup { background-color: var(--bg-elevated); color: var(--text); }
