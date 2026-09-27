@@ -19,8 +19,8 @@ describe("agentCatalog", () => {
     expect(list.map((a) => [a.id, a.installed, a.source])).toEqual([
       ["claude", true, "built-in"],
       ["codex", false, "built-in"],
-      ["deepseek", true, "built-in"],
       ["antigravity", false, "built-in"],
+      ["deepseek", true, "built-in"],
       ["opencode", false, "built-in"],
       ["cursor", false, "built-in"],
       ["qwen", false, "agents.json"],
@@ -28,8 +28,8 @@ describe("agentCatalog", () => {
     const byId = Object.fromEntries(list.map((a) => [a.id, a]));
     expect(byId.claude!.skills).toMatch(/plugin/);
     expect(byId.deepseek!.skills).toMatch(/DSH_BUNDLED_SKILL_DIR/);
-    expect(byId.antigravity!).toMatchObject({ command: "agy-acp", install: "npm install -g agy-acp" });
-    expect(byId.antigravity!.skills).toMatch(/skill tool/);
+    expect(byId.antigravity!).toMatchObject({ kind: "cli", command: "agy", optIn: true, install: "https://antigravity.google/download" });
+    expect(byId.antigravity!.skills).toMatch(/own skills/);
   });
 
   it("gives every entry capabilities, and prefers a live patched set", () => {

@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { CredentialChoice, McpServerEntry, PermissionDecision, PermissionMode, Provider, Settings, ThreadEvent } from "../src/shared/types";
 import { createAcpDriver, optionFor, pickPermission } from "../src/main/agents/acp/driver";
 import { type InjectionSource, injectionFor } from "../src/main/inject";
+import { withOpenCodeVariant } from "../src/main/inject/opencode";
 import { loadAcpAgents, onPath } from "../src/main/agents/registry";
 import type { TurnInput } from "../src/main/agents/types";
 import { closeAfter, tempDir } from "./helpers";
@@ -148,6 +149,96 @@ describe("ACP driver", () => {
     const t = turn("hello", { effort: "high" });
     await d.runTurn(t.input);
     expect(t.deltas.join("")).toBe("Hello, hello (mock-small)");
+  });
+
+  it("exposes per-model variants as efforts, and spawns with the picked one", async () => {
+    const spawns: (string | null)[] = [];
+    const d = createAcpDriver(
+      { id: "mock", label: "Mock", command: process.execPath, args: [MOCK], env: { MOCK_ACP_OPENCODE: "1" }, effortVia: "opencode-variants" },
+      {
+        clientVersion: "test",
+        variants: async () => ({ "mock-small": ["low", "medium", "high"], "mock-large": ["low", "high"] }),
+        injection: (ctx) => {
+          spawns.push(ctx?.effort ? JSON.stringify(ctx.effort) : null);
+          return ctx?.effort ? withOpenCodeVariant(undefined, ctx.effort, {}) : { env: {}, byok: false };
+        },
+      },
+    );
+    closeAfter(() => d.dispose?.());
+
+    const first = turn("config", { model: "mock-small", effort: "high" });
+    await d.runTurn(first.input);
+    // The process was spawned with agent.build carrying the picked variant.
+    expect(JSON.parse(first.deltas.join(""))).toEqual({ build: { model: "mock-small", variant: "high" } });
+    expect(spawns).toHaveLength(1);
+    // Every variant model carries its own levels; the default option takes the current model's.
+    expect(d.models()).toEqual([
+      { id: "default", label: "Agent default", efforts: ["low", "medium", "high"] },
+      { id: "mock-small", label: "Mock Small", efforts: ["low", "medium", "high"] },
+      { id: "mock-large", label: "Mock Large", efforts: ["low", "high"] },
+    ]);
+  });
+
+  it("respawns on a changed variant, resumes the session, and says so once", async () => {
+    let spawns = 0;
+    const d = createAcpDriver(
+      { id: "mock", label: "Mock", command: process.execPath, args: [MOCK], env: { MOCK_ACP_OPENCODE: "1" }, effortVia: "opencode-variants" },
+      {
+        clientVersion: "test",
+        variants: async () => ({ "mock-small": ["low", "medium", "high"] }),
+        injection: (ctx) => {
+          spawns++;
+          return ctx?.effort ? withOpenCodeVariant(undefined, ctx.effort, {}) : { env: {}, byok: false };
+        },
+      },
+    );
+    closeAfter(() => d.dispose?.());
+
+    const high = turn("config", { model: "mock-small", effort: "high" });
+    await d.runTurn(high.input);
+    expect(JSON.parse(high.deltas.join(""))).toEqual({ build: { model: "mock-small", variant: "high" } });
+
+    const low = turn("config", { sessionId: high.sessions[0]!, model: "mock-small", effort: "low" });
+    await d.runTurn(low.input);
+    expect(spawns).toBe(2);
+    // The session is resumed, not restarted.
+    expect(low.sessions).toEqual(["s-1"]);
+    expect(JSON.parse(low.deltas.join(""))).toEqual({ build: { model: "mock-small", variant: "low" } });
+    const notices = low.events.filter((e) => e.kind === "notice").map((e) => (e as { text: string }).text);
+    expect(notices).toEqual(["OpenCode restarted to apply reasoning effort low; the conversation continues."]);
+
+    // A null effort goes back to no variant; the notice isn't repeated.
+    const off = turn("config", { sessionId: high.sessions[0]!, model: "mock-small", effort: null });
+    await d.runTurn(off.input);
+    expect(spawns).toBe(3);
+    expect(off.deltas.join("")).toBe("none");
+    expect(off.events.filter((e) => e.kind === "notice")).toEqual([]);
+  });
+
+  it("changes nothing for an effort the model doesn't list", async () => {
+    let spawns = 0;
+    const d = createAcpDriver(
+      { id: "mock", label: "Mock", command: process.execPath, args: [MOCK], env: { MOCK_ACP_OPENCODE: "1" }, effortVia: "opencode-variants" },
+      {
+        clientVersion: "test",
+        variants: async () => ({ "mock-small": ["low", "medium", "high"] }),
+        injection: (ctx) => {
+          spawns++;
+          return ctx?.effort ? withOpenCodeVariant(undefined, ctx.effort, {}) : { env: {}, byok: false };
+        },
+      },
+    );
+    closeAfter(() => d.dispose?.());
+
+    const first = turn("config", { model: "mock-small" });
+    await d.runTurn(first.input);
+    expect(first.deltas.join("")).toBe("none");
+
+    const second = turn("config", { sessionId: first.sessions[0]!, model: "mock-small", effort: "max" });
+    await d.runTurn(second.input);
+    expect(spawns).toBe(1);
+    expect(second.deltas.join("")).toBe("none");
+    expect(second.events.filter((e) => e.kind === "notice")).toEqual([]);
   });
 
   it("resumes a stored session in a new agent process", async () => {
@@ -485,16 +576,12 @@ describe("agent registry", () => {
     expect(problems).toHaveLength(1);
   });
 
-  it("starts Antigravity through agy-acp once opted in, and lets agents.json replace a preset", () => {
+  it("no longer starts Antigravity over ACP: its own CLI driver (agents/agy.ts) wins, even over an agents.json entry", () => {
     const dir = tempDir();
     const file = join(dir, "agents.json");
-    expect(loadAcpAgents(file, (cmd) => cmd === "agy-acp", { optedIn: true }).agents).toEqual([
-      expect.objectContaining({ id: "antigravity", command: "agy-acp", args: [] }),
-    ]);
+    expect(loadAcpAgents(file, (cmd) => cmd === "agy-acp" || cmd === "agy", { optedIn: true }).agents).toEqual([]);
     writeFileSync(file, JSON.stringify({ agents: [{ id: "antigravity", label: "Antigravity (old)", command: "agy-acp", args: ["--experimental"] }] }));
-    expect(loadAcpAgents(file, (cmd) => cmd === "agy-acp", { optedIn: true }).agents).toEqual([
-      expect.objectContaining({ label: "Antigravity (old)", args: ["--experimental"] }),
-    ]);
+    expect(loadAcpAgents(file, (cmd) => cmd === "agy-acp", { optedIn: true }).agents).toEqual([]);
   });
 
   it("finds commands on PATH", () => {

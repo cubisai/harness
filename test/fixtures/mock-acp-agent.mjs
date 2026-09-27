@@ -10,6 +10,7 @@
 //   "nousage" - answers with a prompt response that carries no usage object
 //   "env:NAME" - answers "NAME=present" when the env var is a non-empty string,
 //                else "NAME=absent"; never echoes the value
+//   "config"  - answers with the "agent" section of OPENCODE_CONFIG_CONTENT, or "none"
 //   "canonical" - the render-parity event set: a message, a command, a file edit, a message
 //   "canonical-opencode" - the same, titled the way OpenCode titles its calls ("bash", "edit")
 //   other     - answers "Hello, <prompt>"
@@ -43,6 +44,23 @@ const configOptions = () => [
       { value: "mock-large", name: "Mock Large" },
     ],
   },
+  // MOCK_ACP_OPENCODE=1 reports a mode select like OpenCode's, so a test can
+  // watch reasoning variants be written under agent.<mode>.
+  ...(process.env.MOCK_ACP_OPENCODE === "1"
+    ? [
+        {
+          id: "mode",
+          name: "Mode",
+          type: "select",
+          category: "mode",
+          currentValue: "build",
+          options: [
+            { value: "build", name: "Build" },
+            { value: "plan", name: "Plan" },
+          ],
+        },
+      ]
+    : []),
   // MOCK_ACP_EFFORT=1 adds the thought-level select so a test can watch effort
   // be set through session/set_config_option.
   ...(process.env.MOCK_ACP_EFFORT === "1"
@@ -98,7 +116,11 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
     case "session/close":
       return send({ id, result: {} });
     case "session/resume":
-      if (!sessions.has(params.sessionId)) return send({ id, error: { code: -32002, message: "unknown session" } });
+      // OpenCode persists its sessions, so in OpenCode mode a session this mock
+      // created is resumable even in a fresh process (a respawn after a variant change).
+      if (!sessions.has(params.sessionId) && !(process.env.MOCK_ACP_OPENCODE === "1" && /^s-\d+$/.test(params.sessionId))) {
+        return send({ id, error: { code: -32002, message: "unknown session" } });
+      }
       lastMcp = params.mcpServers ?? [];
       return send({ id, result: { configOptions: configOptions() } });
     case "session/set_config_option":
@@ -200,6 +222,19 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
         update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `(${model})` } });
       } else if (text === "effort") {
         update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `sets=${configSets}` } });
+      } else if (text === "config") {
+        // Reports only the "agent" section, so a test never sees a provider key.
+        let answer = "none";
+        const raw = process.env.OPENCODE_CONFIG_CONTENT;
+        if (raw) {
+          try {
+            const config = JSON.parse(raw);
+            if (config && config.agent) answer = JSON.stringify(config.agent);
+          } catch {
+            answer = "none";
+          }
+        }
+        update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: answer } });
       } else if (text === "slow") {
         while (!cancelled) {
           update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "." } });

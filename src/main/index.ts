@@ -7,6 +7,7 @@ import { BrowserWindow, app, dialog, ipcMain, nativeTheme, net, protocol, safeSt
 import type { CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, OpenResult, PermissionDecision, ProviderInput, ScreenshotInfo, SendRequest, Settings, SkillOrigin, SwitchMode, Thread } from "../shared/types";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
+import { createAgyDriver } from "./agents/agy";
 import { createClaudeDriver, resolvePackagedClaudeBinary } from "./agents/claude";
 import { createCodexDriver } from "./agents/codex";
 import { acpCapabilities, CLAUDE_CAPABILITIES, CODEX_CAPABILITIES } from "./agents/capabilities";
@@ -22,7 +23,7 @@ import { catalogFor, testConnection } from "./providers";
 import { injectionFor } from "./inject";
 import { redactSecrets } from "./inject/redact";
 import { codexInstructions, prepareCodexPlan } from "./inject/codex";
-import { opencodeVersion } from "./inject/opencode";
+import { opencodeVariants, opencodeVersion, withOpenCodeVariant } from "./inject/opencode";
 import { ensureOpenCodeGuard, withOpenCodeGuard } from "./inject/opencode-guard";
 import { BUILT_IN_GUARD, findPython } from "./guard";
 import { createGuide } from "./guide";
@@ -284,6 +285,8 @@ async function main(): Promise<void> {
           }),
         ]
       : []),
+    // Antigravity through its own CLI, once Settings has the user's acknowledgement.
+    ...(settings.antigravityEnabled() && onPath("agy") ? [createAgyDriver({ command: "agy", clientVersion: app.getVersion(), guide: (cwd) => guide.forCwd(cwd) })] : []),
     ...acpAgents.map((config) => {
       // OpenCode can't ask before every shell command, so its guard is a plugin
       // injected into its config; with one, the git guardrail blocks in every mode.
@@ -299,16 +302,21 @@ async function main(): Promise<void> {
         toolServer: getToolServer,
         guardScript,
         guide: (cwd) => guide.forCwd(cwd),
-        injection: () => {
-          const plan = injectionFor(settings, config.id, process.env, {
+        ...(config.effortVia === "opencode-variants" ? { variants: () => opencodeVariants(config.command) } : {}),
+        injection: (ctx) => {
+          let plan = injectionFor(settings, config.id, process.env, {
             injector: config.injector ?? "acp",
             keyVar: config.keyVar,
             providerEnvOnly: config.providerEnvOnly,
             agentLabel: config.label,
             ...(config.injector === "opencode" ? { opencodeVersion: () => opencodeVersion(config.command) } : {}),
           });
-          if (!python || config.guardPlugin !== "opencode") return plan;
-          return withOpenCodeGuard(plan, { pluginUrl: ensureOpenCodeGuard(join(userData, "opencode")), script: guardScript, python });
+          if (python && config.guardPlugin === "opencode") {
+            plan = withOpenCodeGuard(plan, { pluginUrl: ensureOpenCodeGuard(join(userData, "opencode")), script: guardScript, python });
+          }
+          // After the guard, so both the plugin and the variant survive.
+          if (ctx?.effort) plan = withOpenCodeVariant(plan, ctx.effort);
+          return plan;
         },
       });
     }),

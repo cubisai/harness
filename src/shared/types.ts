@@ -216,7 +216,7 @@ export interface SkillDetail {
 export interface AgentCatalogEntry {
   id: string;
   label: string;
-  kind: "agent-sdk" | "app-server" | "acp";
+  kind: "agent-sdk" | "app-server" | "acp" | "cli";
   /** The command line the app runs, or null for the in-process SDK. */
   command: string | null;
   installed: boolean;

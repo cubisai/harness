@@ -43,6 +43,8 @@ export interface AcpAgentConfig {
   providerEnvOnly?: boolean;
   /** A guard plugin this agent needs injected to enforce the git guardrail. */
   guardPlugin?: "opencode";
+  /** Reasoning levels come per-model as OpenCode config variants, not a session thought_level option. */
+  effortVia?: "opencode-variants";
   /** Hidden until the user opts in and acknowledges the risk in Settings (preset-only). */
   optIn?: boolean;
   /** Shown as "Unsupported · <this>" wherever the agent appears (preset-only). */
@@ -131,6 +133,8 @@ function effortsFrom(options: ConfigOption[] | null | undefined): string[] | nul
 interface Live {
   conn: StdioRpc;
   init: InitializeResult;
+  /** The thread this process belongs to, so its config options are remembered per thread. */
+  threadKey: string;
   sessionId: string | null;
   configOptions: ConfigOption[];
   /** Whether this session was opened with the harness's tool server attached. */
@@ -138,6 +142,12 @@ interface Live {
   mcpSignature: string;
   /** The same servers by name, to say which ones changed. */
   mcpByName: Record<string, unknown>;
+  /**
+   * The reasoning variant this process was spawned with, as a flat key (or
+   * null). OpenCode fixes the variant at startup, so a changed pick needs a
+   * new process and the session resumed.
+   */
+  variantKey: string | null;
   /** HTTP servers already reported as dropped on this connection, so each is said once. */
   droppedNotified: Set<string>;
   /** A freshly created session still owes its first prompt the harness guide. */
@@ -190,7 +200,9 @@ export function createAcpDriver(
     /** The harness's tools over HTTP MCP, for agents that take MCP servers. */
     toolServer?: () => Promise<{ url: string; token: string; skillsUrl?: string }>;
     /** The credential plan for the next agent process; absent = inherit process.env. */
-    injection?: () => InjectionPlan;
+    injection?: (ctx?: { effort?: { agent: string; model: string; variant: string } }) => InjectionPlan;
+    /** Per-model reasoning variants, for agents that carry them outside a thought_level option. */
+    variants?: () => Promise<Record<string, string[]>>;
     /** The git-guardrails script: an execute permission call is vetoed in every mode. */
     guardScript?: string;
     /** The harness guide for this turn's cwd, sent once, ahead of a new session's first prompt. */
@@ -200,16 +212,71 @@ export function createAcpDriver(
   const live = new Map<string, Live>();
   let knownModels: ModelOption[] = [];
   let knownEfforts: string[] = [];
+  /** Model id → its variant names, for the effortVia agents. */
+  let knownVariants: Record<string, string[]> = {};
+  /** The last session's config options, so the default option can name its model. */
+  let lastConfigOptions: ConfigOption[] = [];
+  /** Each thread's config options from its last session, for a respawn before one exists. */
+  const threadConfigs = new Map<string, ConfigOption[]>();
+  let variantsPromise: Promise<void> | null = null;
   // Preset metadata, then the first initialize's protocol facts (below).
   let capabilities = acpCapabilities(config);
   // Once-per-driver, like Claude: the same feature-loss notice isn't repeated.
   const shownNotices = new Set<string>();
+  // Threads already told that a variant change restarted OpenCode.
+  const variantNotified = new Set<string>();
+  const effortViaVariants = config.effortVia === "opencode-variants";
 
   /** Remember the model and thought-level lists a session's config options carry. */
-  const rememberConfig = (options: ConfigOption[] | null | undefined) => {
+  const rememberConfig = (options: ConfigOption[] | null | undefined, threadKey?: string) => {
+    if (!options) return;
     knownModels = modelsFrom(options) ?? knownModels;
     knownEfforts = effortsFrom(options) ?? knownEfforts;
+    lastConfigOptions = options;
+    if (threadKey) threadConfigs.set(threadKey, options);
   };
+
+  /** Load the variant map once, for the effortVia agents. */
+  const ensureVariants = (): Promise<void> => {
+    if (!effortViaVariants) return Promise.resolve();
+    variantsPromise ??= (async () => {
+      try {
+        knownVariants = (await deps.variants?.()) ?? {};
+      } catch {
+        knownVariants = {};
+      }
+    })();
+    return variantsPromise;
+  };
+
+  const modelFrom = (options: ConfigOption[] | null | undefined): string | null => {
+    const opt = options?.find((o) => o.category === "model" && o.type === "select");
+    return typeof opt?.currentValue === "string" ? opt.currentValue : null;
+  };
+  const modeFrom = (options: ConfigOption[] | null | undefined): string => {
+    const opt = options?.find((o) => o.category === "mode" && o.type === "select");
+    return typeof opt?.currentValue === "string" ? opt.currentValue : "build";
+  };
+
+  /**
+   * The variant this turn wants, or null when none applies: effort set, and the
+   * turn's model (or the session's current model for DEFAULT_MODEL) lists it.
+   * The agent name is the session's current mode, defaulting to "build".
+   */
+  const wantedVariant = (
+    threadKey: string,
+    input: TurnInput,
+    l?: Live,
+  ): { agent: string; model: string; variant: string } | null => {
+    if (!effortViaVariants || !input.effort) return null;
+    const options = l?.configOptions ?? threadConfigs.get(threadKey) ?? lastConfigOptions;
+    const model = input.model === DEFAULT_MODEL ? modelFrom(options) : input.model;
+    if (!model || !knownVariants[model]?.includes(input.effort)) return null;
+    return { agent: modeFrom(options), model, variant: input.effort };
+  };
+
+  const variantKeyOf = (pick: { agent: string; model: string; variant: string } | null): string | null =>
+    pick ? `${pick.agent}:${pick.model}:${pick.variant}` : null;
 
   /** Protocol capabilities the agent reports; initialize wins over preset metadata. */
   const PROTOCOL_LABELS: Record<"mcpHttp" | "resume", string> = { mcpHttp: "MCP over HTTP", resume: "session resume" };
@@ -352,7 +419,7 @@ export function createAcpDriver(
         return;
       case "config_option_update":
         l.configOptions = (update as { configOptions: ConfigOption[] }).configOptions;
-        rememberConfig(l.configOptions);
+        rememberConfig(l.configOptions, l.threadKey);
         return;
       default:
         return;
@@ -360,10 +427,24 @@ export function createAcpDriver(
   };
 
   const connect = async (threadKey: string, input: TurnInput): Promise<Live> => {
+    await ensureVariants();
     const existing = live.get(threadKey);
-    if (existing?.conn.alive) return existing;
+    // A live process has a pick already; a new one resolves from the turn's model.
+    const wanted = wantedVariant(threadKey, input, existing);
+    const wantedKey = variantKeyOf(wanted);
+    if (existing?.conn.alive && wantedKey === existing.variantKey) return existing;
+    if (existing?.conn.alive) {
+      // The variant is fixed when OpenCode starts, so a changed pick (or a
+      // reset to default) needs a new process, resumed with the same session.
+      existing.conn.close();
+      live.delete(threadKey);
+      if (effortViaVariants && !variantNotified.has(threadKey)) {
+        variantNotified.add(threadKey);
+        input.onEvent({ kind: "notice", text: `OpenCode restarted to apply reasoning effort ${wanted?.variant ?? "default"}; the conversation continues.` });
+      }
+    }
 
-    const plan = deps.injection?.();
+    const plan = deps.injection?.(wanted ? { effort: wanted } : undefined);
     if (plan?.error) throw new Error(plan.error);
     if (plan?.warning && !shownNotices.has(plan.warning)) {
       shownNotices.add(plan.warning);
@@ -421,7 +502,7 @@ export function createAcpDriver(
       clientInfo: { name: "unskilled", version: deps.clientVersion },
     });
     applyInitialize(init, input);
-    l = { conn, init, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, droppedNotified: new Set(), guidePending: false, turn: null };
+    l = { conn, init, threadKey, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, variantKey: wantedKey, droppedNotified: new Set(), guidePending: false, turn: null };
     const auth = init.authMethods?.[0];
     if (auth) await conn.request("authenticate", { methodId: auth.id }).catch(() => {});
     live.set(threadKey, l);
@@ -472,7 +553,7 @@ export function createAcpDriver(
       const res = await l.conn.request<{ configOptions?: ConfigOption[] }>("session/resume", { cwd: input.cwd, mcpServers, sessionId: l.sessionId });
       if (res?.configOptions) {
         l.configOptions = res.configOptions;
-        rememberConfig(l.configOptions);
+        rememberConfig(l.configOptions, l.threadKey);
       }
       input.onSessionRebuilt?.();
       return;
@@ -485,7 +566,7 @@ export function createAcpDriver(
         const res = await l.conn.request<{ configOptions?: ConfigOption[] }>("session/resume", { ...params, sessionId: input.sessionId });
         l.sessionId = input.sessionId;
         l.configOptions = res?.configOptions ?? [];
-        rememberConfig(l.configOptions);
+        rememberConfig(l.configOptions, l.threadKey);
         return;
       } catch {
         // fall through to a new session
@@ -495,7 +576,7 @@ export function createAcpDriver(
         const res = await l.conn.request<{ configOptions?: ConfigOption[] }>("session/load", { ...params, sessionId: input.sessionId });
         l.sessionId = input.sessionId;
         l.configOptions = res?.configOptions ?? [];
-        rememberConfig(l.configOptions);
+        rememberConfig(l.configOptions, l.threadKey);
         return;
       } catch {
         // fall through
@@ -505,7 +586,7 @@ export function createAcpDriver(
     const res = await l.conn.request<{ sessionId: string; configOptions?: ConfigOption[] }>("session/new", params);
     l.sessionId = res.sessionId;
     l.configOptions = res.configOptions ?? [];
-    rememberConfig(l.configOptions);
+    rememberConfig(l.configOptions, l.threadKey);
     l.guidePending = true;
   };
 
@@ -520,7 +601,7 @@ export function createAcpDriver(
     });
     if (res?.configOptions) {
       l.configOptions = res.configOptions;
-      rememberConfig(l.configOptions);
+      rememberConfig(l.configOptions, l.threadKey);
     }
   };
 
@@ -535,20 +616,22 @@ export function createAcpDriver(
     });
     if (res?.configOptions) {
       l.configOptions = res.configOptions;
-      rememberConfig(l.configOptions);
+      rememberConfig(l.configOptions, l.threadKey);
     }
   };
 
   let refreshing: Promise<void> | null = null;
   const refreshModels = (): Promise<void> => {
-    if (knownModels.length) return Promise.resolve();
+    const ready = ensureVariants();
+    if (knownModels.length) return ready;
     // Checked outside the memoized refresh, so a fixed provider refreshes next time.
     // The turn surfaces the error; there's no process to start.
     const plan = deps.injection?.();
-    if (plan?.error) return Promise.resolve();
+    if (plan?.error) return ready;
     refreshing ??= (async () => {
       // One throwaway process: initialize + session/new, read the model
       // config option, then exit. Real threads spawn their own later.
+      await ready;
       const env: NodeJS.ProcessEnv = { ...(plan?.env ?? process.env), ...config.env };
       if (config.skillsDirEnv && deps.skillsDir) {
         const dir = deps.skillsDir();
@@ -597,6 +680,14 @@ export function createAcpDriver(
     ...(config.unsupported ? { unsupported: config.unsupported } : {}),
     skillCallPrefix: "",
     models: () => {
+      // OpenCode's levels are per-model variants, not a session thought_level option.
+      if (effortViaVariants) {
+        const withVariants = (m: ModelOption): ModelOption => (knownVariants[m.id]?.length ? { ...m, efforts: knownVariants[m.id] } : m);
+        const current = modelFrom(lastConfigOptions);
+        const defaultOption: ModelOption = { id: DEFAULT_MODEL, label: "Agent default" };
+        if (current && knownVariants[current]?.length) defaultOption.efforts = knownVariants[current];
+        return [defaultOption, ...knownModels.map(withVariants)];
+      }
       // One thought-level list per session: every model of the agent carries it.
       const withEfforts = (m: ModelOption): ModelOption => (knownEfforts.length ? { ...m, efforts: knownEfforts } : m);
       return [withEfforts({ id: DEFAULT_MODEL, label: "Agent default" }), ...knownModels.map(withEfforts)];
@@ -611,7 +702,7 @@ export function createAcpDriver(
       try {
         l = await connect(key, input);
         await openSession(l, input);
-        rememberConfig(l.configOptions);
+        rememberConfig(l.configOptions, l.threadKey);
         input.onSession(l.sessionId!);
         await applyModel(l, input.model);
         if (input.effort) await applyEffort(l, input.effort);

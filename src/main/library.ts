@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import type { AgentCapabilities, AgentCatalogEntry, SkillDetail, SkillsDelivery } from "../shared/types";
 import type { AcpAgentConfig } from "./agents/acp/driver";
-import { acpCapabilities, CLAUDE_CAPABILITIES, CODEX_CAPABILITIES, skillDeliveryGap } from "./agents/capabilities";
+import { acpCapabilities, AGY_CAPABILITIES, CLAUDE_CAPABILITIES, CODEX_CAPABILITIES, skillDeliveryGap } from "./agents/capabilities";
 import { ACP_PRESETS, BUILT_IN_AGENT_IDS } from "./agents/registry";
 import { bodyOf, readSkillBodyAt, type Catalog } from "./skills/catalog";
 
@@ -83,6 +83,20 @@ export function agentCatalog(opts: {
       skills: "",
       mcp: "Stdio and HTTP servers, the browser tools, plus ~/.codex/config.toml",
     },
+    {
+      // Google's own CLI in print mode (agents/agy.ts); behind the Settings opt-in.
+      id: "antigravity",
+      label: "Antigravity",
+      kind: "cli",
+      command: "agy",
+      installed: opts.installed("agy"),
+      source: "built-in",
+      install: "https://antigravity.google/download",
+      homepage: "https://antigravity.google",
+      optIn: true,
+      skills: "",
+      mcp: "Its own MCP servers (agy mcp) and its own browser; the app's servers and browser tools don't reach it",
+    },
   ];
   const customIds = new Set(opts.custom.map((a) => a.id));
   for (const p of ACP_PRESETS) {
@@ -100,6 +114,9 @@ export function agentCatalog(opts: {
   return out.map((a) => {
     if (a.kind === "agent-sdk") {
       return { ...a, skills: skillRoute({ skillsDelivery: CLAUDE_CAPABILITIES.skillsDelivery }), capabilities: opts.liveCapabilities?.(a.id) ?? CLAUDE_CAPABILITIES };
+    }
+    if (a.kind === "cli") {
+      return { ...a, skills: "Its own skills setup; the app's skills don't reach it", capabilities: opts.liveCapabilities?.(a.id) ?? AGY_CAPABILITIES };
     }
     if (a.kind === "app-server") {
       return { ...a, skills: skillRoute({ skillsDelivery: CODEX_CAPABILITIES.skillsDelivery }), capabilities: opts.liveCapabilities?.(a.id) ?? CODEX_CAPABILITIES };

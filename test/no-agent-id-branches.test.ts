@@ -5,7 +5,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ACP_PRESETS } from "../src/main/agents/registry";
+import { ACP_PRESETS, BUILT_IN_AGENT_IDS } from "../src/main/agents/registry";
 
 const MAIN = join(__dirname, "..", "src", "main");
 const RENDERER = join(__dirname, "..", "src", "renderer", "src");
@@ -21,7 +21,7 @@ function sourceFiles(dir: string): string[] {
   return out;
 }
 
-const ids = ["claude", "codex", ...ACP_PRESETS.map((p) => p.id)];
+const ids = [...new Set([...BUILT_IN_AGENT_IDS, ...ACP_PRESETS.map((p) => p.id)])];
 const alt = ids.join("|");
 const forward = new RegExp(`(?<![\\w$])(?:id|agentId|agent)\\s*(?:===|!==|==|!=)\\s*["'\`](?:${alt})["'\`]`);
 const reverse = new RegExp(`["'\`](?:${alt})["'\`]\\s*(?:===|!==|==|!=)\\s*(?:[\\w$]+\\.)*(?:id|agentId|agent)(?![\\w$])`);

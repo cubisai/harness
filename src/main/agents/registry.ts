@@ -3,7 +3,14 @@ import { delimiter, join } from "node:path";
 import type { AcpAgentConfig } from "./acp/driver";
 
 /** The drivers the app ships: agents.json can't replace them. */
-export const BUILT_IN_AGENT_IDS = new Set(["claude", "codex"]);
+export const BUILT_IN_AGENT_IDS = new Set(["claude", "codex", "antigravity"]);
+
+/**
+ * Agents that stay out until Settings records the user's acknowledgement:
+ * Antigravity (its own CLI, agents/agy.ts, since 2026-09-27; an agents.json
+ * entry with its id is ignored, the native driver wins).
+ */
+export const OPT_IN_AGENT_IDS = new Set(["antigravity"]);
 
 /**
  * ACP agents the app knows how to start. A preset shows up only when its
@@ -24,24 +31,6 @@ export const ACP_PRESETS: AcpAgentConfig[] = [
     homepage: "https://github.com/deepseek-ai/deepseek-harness",
   },
   {
-    // Antigravity (agy) has no native ACP mode; agy-acp adapts it. The
-    // adapter finds an installed agy binary (AGY_BIN overrides). Skills
-    // come from .agents/skills like the other non-DeepSeek ACP agents.
-    id: "antigravity",
-    label: "Antigravity",
-    command: "agy-acp",
-    args: [],
-    capabilities: { mcpStdio: true, interrupt: true, perMessageModel: false, skillsDelivery: { mode: "tool", prefix: "", reads: ["project", "shared"] } },
-    // Its provider setting is unverified (spike S6).
-    providerEnvOnly: true,
-    // Third-party access breaches Antigravity's terms (ToS section 6): hidden until
-    // Settings records an acknowledgement, and never offered a BYOK provider.
-    optIn: true,
-    unsupported: "Gemini-compatible endpoints only",
-    install: "npm install -g agy-acp",
-    homepage: "https://github.com/shindgew/agy-acp",
-  },
-  {
     // Reads skills from .opencode/skills, .claude/skills, and .agents/skills.
     id: "opencode",
     label: "OpenCode",
@@ -50,6 +39,7 @@ export const ACP_PRESETS: AcpAgentConfig[] = [
     capabilities: { mcpStdio: true, interrupt: true, perMessageModel: true, permissionGranularity: "perTool", skillsDelivery: { mode: "tool", prefix: "", reads: ["project", "shared"] } },
     injector: "opencode",
     guardPlugin: "opencode",
+    effortVia: "opencode-variants",
     install: "npm install -g opencode-ai",
     homepage: "https://opencode.ai/docs/acp/",
   },
@@ -125,7 +115,7 @@ export function loadAcpAgents(
     }
   }
   const customIds = new Set(custom.map((a) => a.id));
-  const gated = new Set(optedIn ? [] : ACP_PRESETS.filter((p) => p.optIn).map((p) => p.id));
+  const gated = new Set(optedIn ? [] : [...OPT_IN_AGENT_IDS, ...ACP_PRESETS.filter((p) => p.optIn).map((p) => p.id)]);
   const presets = ACP_PRESETS.filter((p) => !customIds.has(p.id) && !gated.has(p.id) && isInstalled(p.command));
   return { agents: [...presets, ...custom.filter((a) => !BUILT_IN_AGENT_IDS.has(a.id) && !gated.has(a.id))], custom, problems };
 }

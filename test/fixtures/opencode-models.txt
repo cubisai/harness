@@ -1,0 +1,29 @@
+INFO 2026-09-27T10:00:00.000Z service=models fetched provider catalog
+opencode/space-bunny-free
+{
+  "id": "opencode/space-bunny-free",
+  "providerID": "opencode",
+  "name": "Space Bunny Free",
+  "variants": {
+    "low": {},
+    "medium": {},
+    "high": {},
+    "xhigh": {},
+    "max": {}
+  }
+}
+opencode/big-pickle
+{
+  "id": "opencode/big-pickle",
+  "providerID": "opencode",
+  "name": "Big Pickle",
+  "variants": {}
+}
+not a model line at all
+custom/bare-model
+{
+  "id": "custom/bare-model",
+  "providerID": "custom",
+  "name": "Bare Model",
+  "variants": {}
+}

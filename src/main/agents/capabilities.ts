@@ -111,3 +111,17 @@ export const CODEX_CAPABILITIES: AgentCapabilities = Object.freeze({
   guardEnforcement: Object.freeze({ ask: "block" as const, "auto-edit": "block" as const, full: "warnOnly" as const }),
   sandbox: "workspace" as const,
 });
+
+/**
+ * Antigravity through its own CLI (agents/agy.ts), print mode with stream-json:
+ * it resumes conversations and takes a model and effort per turn, but headless
+ * it can't ask for approval and has no pre-tool hook, so there is no git guard
+ * and permissions are mode-only. It uses its own MCP servers, skills and browser.
+ */
+export const AGY_CAPABILITIES: AgentCapabilities = withCapabilities(SAFE_DEFAULTS, {
+  resume: true,
+  perMessageModel: true,
+  webSearch: true,
+  planMode: true,
+  interrupt: true,
+});

@@ -331,8 +331,8 @@ export function AntigravityOptIn({ settings, update }: { settings: SettingsView;
       <h3>Antigravity</h3>
       <UnsupportedChip note="Gemini-compatible endpoints only" />
       <p className="note">
-        Google offers no way for other apps to drive Antigravity. UnSkilled reaches it only through the community agy-acp adapter, and the Antigravity Terms of
-        Service (section 6) treat third-party access as a breach that can get your account suspended. It can't use your OpenAI or Anthropic providers.
+        UnSkilled runs your installed Antigravity CLI (agy) with your own sign-in. The Antigravity Terms of Service (section 6) restrict third-party access,
+        and it isn't clear that driving the CLI from another app is allowed, so it could put your account at risk. It can't use your OpenAI or Anthropic providers.
       </p>
       {on ? (
         <div className="row">
@@ -358,7 +358,7 @@ export function AntigravityOptIn({ settings, update }: { settings: SettingsView;
               Turn On Antigravity
             </button>
           </div>
-          <p className="note">Off by default. Turning it on adds Antigravity when the app restarts, if agy-acp is installed.</p>
+          <p className="note">Off by default. Turning it on adds Antigravity when the app restarts, if the agy CLI is installed.</p>
         </>
       )}
     </section>
