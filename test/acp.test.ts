@@ -166,6 +166,20 @@ describe("ACP driver", () => {
     expect(t.events[0]).toMatchObject({ kind: "notice" });
   });
 
+  it("waits for arguments that arrive on a later update before announcing a tool call (OpenCode)", async () => {
+    const d = driver();
+    const t = turn("late-input", { permissionMode: "full" as PermissionMode });
+    await d.runTurn(t.input);
+    const uses = t.events.filter((e) => e.kind === "tool-use");
+    expect(uses).toEqual([
+      expect.objectContaining({ toolUseId: "l1", name: "Run", summary: "npm test", payload: { command: "npm test" } }),
+      expect.objectContaining({ toolUseId: "l2", name: "browser_open", summary: "https://example.com" }),
+    ]);
+    // Each row is announced before its result.
+    const order = t.events.filter((e) => e.kind === "tool-use" || e.kind === "tool-result").map((e) => `${e.kind}:${(e as { toolUseId: string }).toolUseId}`);
+    expect(order).toEqual(["tool-use:l1", "tool-result:l1", "tool-use:l2", "tool-result:l2"]);
+  });
+
   it("routes tool permission to the user in Ask mode", async () => {
     const d = driver();
     const t = turn("tool");

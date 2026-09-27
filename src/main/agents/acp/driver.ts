@@ -151,7 +151,20 @@ interface TurnState {
   input: TurnInput;
   text: string;
   thought: string;
-  tools: Map<string, { name: string; kind?: ToolKind | null; done: boolean; streamed?: string }>;
+  tools: Map<
+    string,
+    {
+      name: string;
+      kind?: ToolKind | null;
+      done: boolean;
+      streamed?: string;
+      /** Whether its tool-use event went out (held until the arguments arrive). */
+      announced: boolean;
+      title?: string | null;
+      rawInput?: unknown;
+      locations?: ToolCallFields["locations"];
+    }
+  >;
   usage: { used: number; costUsd: number | null };
   /** Bumped when flushText emits an item, so the next run of chunks gets fresh keys. */
   run: number;
@@ -263,22 +276,41 @@ export function createAcpDriver(
         let tool = t.tools.get(u.toolCallId);
         if (!tool) {
           flushText(t);
-          tool = { name: u.title ?? u.kind ?? "tool", kind: u.kind, done: false };
+          tool = { name: u.title ?? u.kind ?? "tool", kind: u.kind, done: false, announced: false };
           t.tools.set(u.toolCallId, tool);
-          // An execute call's payload names the command even when rawInput
-          // doesn't carry one (the title does), like the other adapters' Run.
-          const raw = u.rawInput as { command?: unknown } | null | undefined;
-          const command = typeof raw?.command === "string" ? raw.command : undefined;
-          const payload: RunPayload | undefined = u.kind === "execute" ? { command: command ?? u.title ?? "" } : undefined;
-          t.input.onEvent({
-            kind: "tool-use",
-            toolUseId: u.toolCallId,
-            name: kindLabel(u.kind),
-            summary: toolSummary(u, command),
-            ...(payload ? { payload } : {}),
-          });
         }
+        // Keep what earlier updates said: a later one may carry only the part that changed.
+        tool.title = u.title ?? tool.title;
+        tool.kind = u.kind ?? tool.kind;
+        tool.rawInput = hasInput(u.rawInput) ? u.rawInput : tool.rawInput;
+        tool.locations = u.locations?.length ? u.locations : tool.locations;
         const text = (u.content ?? []).map((c) => c.content?.text ?? "").join(" ");
+        const terminal = u.status === "completed" || u.status === "failed";
+        if (!tool.announced) {
+          // OpenCode sends a call's arguments only on a later tool_call_update, so a
+          // row announced from the first message would say just "bash" or nothing.
+          // Wait for the arguments, but never past the call's first output or its end.
+          const merged = { ...u, title: tool.title, kind: tool.kind, rawInput: tool.rawInput, locations: tool.locations };
+          const raw = merged.rawInput as { command?: unknown } | null | undefined;
+          const command = typeof raw?.command === "string" ? raw.command : undefined;
+          const own = harnessTool(merged);
+          const summary = own?.summary ?? toolSummary(merged, command);
+          // Vague: nothing to show, or only the tool's bare name ("bash", "edit").
+          const vague = summary === "" || (/^[a-z_]+$/.test(summary) && summary === merged.title);
+          if (!vague || text || terminal) {
+            tool.announced = true;
+            // An execute call's payload names the command even when rawInput
+            // doesn't carry one (the title does), like the other adapters' Run.
+            const payload: RunPayload | undefined = merged.kind === "execute" ? { command: command ?? merged.title ?? "" } : undefined;
+            t.input.onEvent({
+              kind: "tool-use",
+              toolUseId: u.toolCallId,
+              name: own?.name ?? kindLabel(merged.kind),
+              summary,
+              ...(payload ? { payload } : {}),
+            });
+          }
+        }
         // An update's content replaces the previous one (a snapshot, not an
         // increment): stream only what it adds when it extends what was sent.
         if (!tool.done && text && u.status !== "completed" && u.status !== "failed") {
@@ -675,6 +707,24 @@ export function toolSummary(u: ToolCallFields, command: string | undefined): str
     if (path) return clipSummary(path);
   }
   return clipSummary(u.title ?? "");
+}
+
+/**
+ * A call to the harness's own MCP server (`unskilled`), which ACP agents title
+ * with the server prefix and no kind (OpenCode: "unskilled_browser_open"):
+ * named like Claude's rows (browser_open, skill), summarised by its main argument.
+ */
+/** A rawInput worth waiting for: anything but null or an empty object. */
+function hasInput(raw: unknown): boolean {
+  return raw !== null && raw !== undefined && !(typeof raw === "object" && Object.keys(raw as object).length === 0);
+}
+
+export function harnessTool(u: Pick<ToolCallFields, "title" | "kind" | "rawInput">): { name: string; summary: string } | null {
+  const m = /^(?:mcp__)?unskilled(?:__|[_:.])([a-z][a-z0-9_]*)$/i.exec(u.title ?? "");
+  if (!m || (u.kind && u.kind !== "other")) return null;
+  const raw = (u.rawInput ?? {}) as Record<string, unknown>;
+  const arg = ["url", "ref", "text", "expression", "name"].map((k) => raw[k]).find((v): v is string => typeof v === "string");
+  return { name: m[1]!, summary: arg ? clipSummary(arg) : "" };
 }
 
 export function kindLabel(kind: ToolKind | null | undefined): string {

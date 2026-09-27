@@ -4,7 +4,7 @@ import { canonicalTool, clipSummary } from "../src/shared/tools";
 import { parseUnifiedDiff, unifiedDiff } from "../src/shared/diff";
 import { handleMessage, newTurnState } from "../src/main/agents/claude";
 import { toolFor } from "../src/main/agents/codex";
-import { kindLabel } from "../src/main/agents/acp/driver";
+import { harnessTool, kindLabel } from "../src/main/agents/acp/driver";
 import type { TurnInput } from "../src/main/agents/types";
 import type { ThreadEvent } from "../src/shared/types";
 
@@ -93,5 +93,15 @@ describe("clipSummary", () => {
     expect(clipped.endsWith("…")).toBe(true);
 
     expect(clipSummary("one\n  two\tthree")).toBe("one two three");
+  });
+});
+
+describe("ACP rows for the harness's own tools", () => {
+  it("names them like Claude's rows and summarises the main argument", () => {
+    expect(harnessTool({ title: "unskilled_browser_open", kind: "other", rawInput: { url: "https://example.com" } })).toEqual({ name: "browser_open", summary: "https://example.com" });
+    expect(harnessTool({ title: "unskilled_browser_logs", kind: null, rawInput: {} })).toEqual({ name: "browser_logs", summary: "" });
+    expect(harnessTool({ title: "mcp__unskilled__skill", rawInput: { name: "docx" } })).toEqual({ name: "skill", summary: "docx" });
+    expect(harnessTool({ title: "github_create_issue", kind: "other", rawInput: {} })).toBeNull();
+    expect(harnessTool({ title: "unskilled_browser_open", kind: "execute", rawInput: {} })).toBeNull();
   });
 });
