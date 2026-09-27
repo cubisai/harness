@@ -1,6 +1,6 @@
-# Handoff — Phase 7 done; Phase 8 next
+# Handoff — Phase 8 done; Phase 9 next
 
-Updated 2026-09-27 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-delegation workflow), then `spec/README.md`, then `spec/phases/phase-8-ui-refinement.md`.
+Updated 2026-09-27 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-delegation workflow), then `spec/README.md`, then `spec/phases/phase-9-release.md`.
 
 ## Where things stand
 
@@ -14,6 +14,7 @@ Updated 2026-09-27 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-
 | 5 — Cache discipline | **done**: typecheck, build green; tests green except the two known Windows-machine items | A `80a9a31`, B `270c768`, C `793cfdc` |
 | 6 — Context survival | **done**: typecheck, build, smoke green; tests green except the two known Windows-machine items; real Codex→Claude handoff checked in the app | A `04c347e` `022bd44` (+ smoke fix `4f80d01`), B `95e616e` `a2da431`, C `5e3e7dd` `4d487ec`, D `ff414c5` `00dd3f9`, E `c3a845a` |
 | 7 — Interaction mechanics | **done**: typecheck, build, smoke green; tests green except the two known Windows-machine items; splitters/drawer/collapse checked in the real app | A `d6ecd8e` `9011c87`, B `a535b69`, C `a7340fe`, D `1b94312` `da46d67`, E `8b4c4e7` `50ad9d1`, F1a `59328c9`, F1b `d7b749e`, F2 `d02e49c` |
+| 8 — UI refinement | **done** (T8.13 worktrees deferred behind Phase 9 T9.7; T8.15 = T7.12): typecheck, build, smoke green; tests green except the known Windows-machine items; every step checked in the real app | A `d04d0a7`, B `b9466a8`, C `ab804df`, D+F `95b97b7`, E `3153964`, G `89ba506` |
 | Windows portability | done | `ae0b0cc` |
 
 **Uncommitted on purpose (the user decides):** the pnpm → bun switch (`package.json`, `bun.lock`, `bunfig.toml`, deleted `pnpm-*`/`.npmrc`, `ci.yml`, README/`main.tsx`/`mock.ts` comments) and the `CLAUDE.md` Windows notes. `test/__snapshots__/providers.test.ts.snap` shows as modified: line endings only. Phase commits carry code + tests only, with no attribution trailer.
@@ -59,9 +60,17 @@ Updated 2026-09-27 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-
 - Four-driver render parity (F2): `diffSummary` ("+a −d") on every adapter's edit result; Claude results carry Run `{exitCode:null, output}` / Edit `{diff}`; ACP execute/edit rows are summarised from `rawInput.command` / the edited path (OpenCode titles calls "bash"/"edit"), and a terminal update recovers its call's kind; `canonical`/`canonical-opencode` mock scenarios, `test/fixtures/canonical-events.ts`.
 - One rendering contract: `src/shared/tools.ts` (`canonicalTool`, `clipSummary` 160 + "…"), `src/shared/diff.ts` (`parseUnifiedDiff` moved here, `unifiedDiff`); canonical Run/Edit payloads from Claude, Codex and ACP; Markdown renderer kept (element-building, no raw HTML — asserted by a test) and pinned by `test/markdown-dialect.test.tsx`, plus GFM tables and strikethrough.
 
-## Resume here: Phase 8 (UI refinement)
+## What Phase 8 shipped
 
-- Spec: `spec/phases/phase-8-ui-refinement.md`; write `.ai/plans/phase-8-ui-refinement.md` first. It owns the narrow-header fix and the `ProviderSheet.tsx` id branches (Open items).
+- Sidebar: Pinned (session-local) / Active / Settled sections (`src/renderer/src/sections.ts`), agent label and non-default branch on each row (`branchLabel()` in `git.ts`, IPC `project:branch`), Ctrl/⌘1–9 jumps, Ctrl/⌘\ rail toggle; the rail keeps every footer control.
+- Palette `>` = actions only. Message Center (`inbox.ts`, `MessageCenter.tsx`): permissions on other threads + turns that finished unseen. Files tab (`FilesPanel.tsx`, `listProjectFiles()`: `git ls-files` or a bounded walk). Context chips for picked elements; mid-turn sends queue (`store.outbox`, delivered once on the turn's end, Stop clears).
+- Settings: left-nav groups (`SETTINGS_GROUPS`), `motion` (default instant; gates every entrance animation, reduce-motion wins) and `density` settings. `AgentInfo.credentials` (byok / own / injector) replaces the renderer's agent-id checks; `test/no-agent-id-branches.test.ts` scans the renderer too.
+- Windows 10: no Mica there, so main passes `--opaque-sidebar` and the sidebar is painted opaque (it was grey and unreadable). Narrow main pane: the header drops meters, then wraps (title row; agent picker left to the palette); the browser bar wraps. In-thread `.notice` rows no longer float (the toast is `.toast`).
+
+## Resume here: Phase 9 (release hardening)
+
+- Spec: `spec/phases/phase-9-release.md`; write `.ai/plans/phase-9-release.md` first.
+- After Phase 9's T9.7 migration net: T8.13 (worktree-per-thread, background start) and the Pinned column.
 - Carried from Phase 7: check a real OpenCode run for `rawInput`/`locations` arriving only on a later `tool_call_update` (the tool row's summary would then read "bash"/"edit").
 
 ## Windows portability (`src/main/winspawn.ts`)
@@ -73,8 +82,6 @@ Updated 2026-09-27 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-
 - **This Windows PC:** Node 22.17 → `db.test` worker test fails (`Unknown file extension ".ts"`); needs Node ≥ 22.18. `codex-e2e` "offers the browser tools…" fails under full-suite load only: its first request goes out before the mock stdio `docs` MCP server is up (passes alone) — consider `startup_timeout_sec` for app MCP servers.
 - **Phase 6 carried forward:** T6.5 stale-cursor path (mark the binding `lost`, re-seed) and T6.11's lighter model-switch card; small threads can't be handed off (the checkpoint would exceed what it replaces — by design).
 - **This PC's accounts:** Codex returns 401 "workspace routing unauthorized" (sign in again); a Codex "retrying" status notice stays on screen after the turn ends (seen in the app, pre-existing) — Phase 7/8.
-- **Narrow main pane (Phase 8 header work):** with resizable panes the main column can be 420–500px; the header then clips the permission-mode control (only "Ask" visible) and hides the thread title. Needs a header that wraps or collapses meters at narrow widths.
-- **Renderer id branches:** `ProviderSheet.tsx` still checks `agent.id === "claude"/"codex"/"antigravity"` — out of T3.8's `src/main` scope; fold into phase 8's Settings work.
 - Manual checks still pending: Claude on a BYOK provider in-app; `dsh` receiving its key; model-picker search/provider name (user request, unscheduled).
 - `CLAUDE_CODE_PROMPT_CACHE_TTL` / gateway model discovery have no Provider field; OpenCode BYOK is openai-chat only.
 
@@ -84,10 +91,11 @@ Updated 2026-09-27 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-
 - Headless preview check without agent-browser (no `AGENT_BROWSER_EXECUTABLE_PATH` in Git Bash): `chrome --headless=new --enable-logging=stderr --v=0 --virtual-time-budget=6000 --dump-dom http://localhost:5199/?state=thread`.
 - **Mac:** Node 24, codex 0.157, delegation proxy on `127.0.0.1:4141`.
 - **Never** touch `~/.config/opencode/opencode.json` (powers the delegation workers) or `~/.codex` in tests. Use temp `XDG_*` / `CODEX_HOME`. Run `electron . --smoke --user-data-dir=<tmp>`.
-- **Delegation status (2026-09-27 morning):** the Token Harbor free models started failing on long briefs (empty output, 40-min timeouts); `oc-run` fell back to Qwen3.8 Flash / GLM 5.3 Flash (Agent Pass). `oc-run` now also drops a model after `--idle` seconds with no activity (default 480; tested with a fake opencode), so a hung model no longer holds the chain for the whole `--timeout` — dispatch F2 with e.g. `--timeout 1800 --idle 300`. If models keep failing, write the brief shorter or do the step directly. A capabilities test ("turns off a preset's claimed capability…") flaked once under full-suite load; passes alone.
+- **Delegation status (2026-09-27, Phase 8):** two implementer dispatches (T8.3, T8.9) both landed on Token Harbor's qwen3.8-flash after deepseek-v4.1-flash and mimo-v2.6-flash returned empty output; T8.9 took ~40 min. Parallel dispatch works when the brief lists files the worker must not touch and the orchestrator edits only others. **Earlier (morning):** the Token Harbor free models started failing on long briefs (empty output, 40-min timeouts); `oc-run` fell back to Qwen3.8 Flash / GLM 5.3 Flash (Agent Pass). `oc-run` now also drops a model after `--idle` seconds with no activity (default 480; tested with a fake opencode), so a hung model no longer holds the chain for the whole `--timeout` — dispatch F2 with e.g. `--timeout 1800 --idle 300`. If models keep failing, write the brief shorter or do the step directly. A capabilities test ("turns off a preset's claimed capability…") flaked once under full-suite load; passes alone.
 - **Delegation:** dispatch with `node ~/.config/opencode/oc-run.mjs --worker <agent> --brief … --out … --log …` (walks the model chain itself — `opencode run` exits on the first model error, so the fallback plugin never fires headless). Write briefs with the Write tool (a bash heredoc with backticks broke once). No key-like strings, "dispatch exactly once". Routing and setup: `SETUP-OTHER-PC.md`.
+- **Git Bash heredocs collapse `\\` to `\`**, so JSON or regex with backslashes written that way breaks; use the Write tool for such files. Stage only your hunks of a file that also carries the user's uncommitted edits by writing HEAD + your replacements to the index (`git hash-object -w` + `git update-index --cacheinfo`); `git add -p` isn't available.
 - **Driving the real app:** launch `electron . --user-data-dir=<tmp> --remote-debugging-port=9333 --inspect=9339`; drive the window over CDP (`Input.dispatchKeyEvent/MouseEvent`, `Page.captureScreenshot`; clicks are CSS px = screenshot px / 1.25 on this PC); patch `dialog.showOpenDialog/showSaveDialog` through the main-process inspector **every launch**, or a real file dialog opens off-screen. Native `<select>` popups can't be driven — use the palette.
 
 ## Next
 
-Finish Phase 7 (above), then Phase 8 (UI refinement), then Phase 9 (release hardening). Run them back to back without stopping, except for a big blocker (memory `autonomous-phase-loop`).
+Phase 9 (release hardening), then T8.13 behind it. Run them back to back without stopping, except for a big blocker (memory `autonomous-phase-loop`).

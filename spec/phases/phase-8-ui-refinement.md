@@ -150,8 +150,16 @@ Paths are relative to the repo root. Read the chapter that explains *why* before
 
 ## Exit criteria
 
-- [ ] Pass 1 shipped: sections, agent/branch labels, `>` palette mode, ⌘1–9, motion default instant; sidebar rail and terminal drawer verified from Phase 7 (T7.3, T7.4) plus the rail shortcut; `?state=thread` shows sections; typecheck/test/build green.
-- [ ] Pass 2 shipped: Message Center, Files tab, context chips, queued bubble, Settings IA; a background permission produces an inbox row.
-- [ ] Pass 3 shipped or explicitly deferred with a note: worktree/background, density, render-parity.
-- [ ] No "Avoid" row is implemented: no Full-access default, no office tabs, no theme import.
-- [ ] Every acceptance criterion above passes; this checklist is copied into the PR description.
+- [x] Pass 1 shipped: sections, agent/branch labels, `>` palette mode, ⌘1–9, motion default instant; sidebar rail and terminal drawer verified from Phase 7 (T7.3, T7.4) plus the rail shortcut (⌘\); `?state=thread` shows sections; typecheck/test/build green (2026-09-27, bun; the known Node 22.17 `db.test` failure and the load-sensitive `codex-e2e` case only). Checked in the app.
+- [x] Pass 2 shipped: Message Center, Files tab, context chips, queued bubble, Settings IA; a background permission produces an inbox row (checked with a real Claude permission on a background thread, a Finished row, a real queued turn and a real browser pick).
+- [x] Pass 3 shipped or explicitly deferred with a note: density shipped (T8.14); render parity shipped as Phase 7 T7.12 (T8.15 skipped, see below); worktree/background deferred (T8.13, see below).
+- [x] No "Avoid" row is implemented: no Full-access default, no office tabs, no theme import.
+- [x] Every acceptance criterion above passes; this checklist is copied into the PR description.
+
+**Deferred:** T8.13 (worktree-per-thread, background start) and the Pinned column it would bring: the spec gates it on Phase 9 T9.7's migration net, so it lands after Phase 9. Pins stay session-local, and the UI says so ("Pinned · this session").
+
+**Skipped:** T8.15, since Phase 7 T7.12 shipped `test/render-parity.test.tsx` (Claude, Codex, generic ACP and OpenCode-flavoured ACP rendered string-equal). A DeepSeek-flavoured ACP fixture is not added: how `dsh` titles its calls is unverified.
+
+**Also shipped here:** an opaque sidebar when the window has no vibrancy or Mica (Windows 10 showed a grey, unreadable one); `AgentInfo.credentials` replaces the Settings sheet's agent-id checks, and the id-branch scan now covers the renderer; every entrance animation follows Motion; the narrow header wraps (title row, agent picker left to the palette) and the browser bar wraps; in-thread notices no longer float as toasts.
+
+**Not an inbox row:** handoff confirmations. The switch dialog is modal on the open thread, so there is no cross-thread confirmation to list.

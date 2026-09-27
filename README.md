@@ -46,16 +46,26 @@ The last editor you pick becomes the default; Settings → Editor changes it. Ho
 
 ## Command palette
 
-⌘K (Ctrl+K on Windows and Linux) opens one search box over everything: actions (new thread, the side panel's tabs, permission mode, agent, model, theme), skilled's workflow skills, every thread in every project, and the projects themselves. Arrow keys move, Return runs, Esc closes. With nothing typed it shows the actions and your five most recent threads. Picking a skill puts it in the current thread's message box, or starts a thread with it when none is open.
+⌘K (Ctrl+K on Windows and Linux) opens one search box over everything: actions (new thread, the side panel's tabs, permission mode, agent, model, theme), skilled's workflow skills, every thread in every project, and the projects themselves. Arrow keys move, Return runs, Esc closes. With nothing typed it shows the actions and your five most recent threads. Start with `>` to list actions only. Picking a skill puts it in the current thread's message box, or starts a thread with it when none is open.
+
+## Threads, the Message Center and the message box
+
+- **Sidebar sections:** each project's threads are grouped **Pinned**, **Active**, and **Settled** (idle for more than three days and not running), newest first. The pin on a row's hover pins it until the app restarts. Each row names its agent, and the branch when the project isn't on its default one.
+- **Shortcuts:** ⌘1–⌘9 (Ctrl on Windows and Linux) open the nth thread in the sidebar's order; ⌘\ collapses the sidebar to a rail that keeps every footer button.
+- **Message Center** (the bell in the sidebar footer): permissions waiting on threads other than the open one, and turns that finished while you were elsewhere, with their agent and duration. Clicking a row opens the thread and clears it.
+- **Queued messages:** sending while a turn runs queues the message as a dashed bubble; it goes out once, as the next turn, when the current one ends. Stop clears the queue.
+- **Context chips:** an element picked in the browser pane becomes a chip in the message box instead of pasted text; its full description goes out with the message. Backspace in an empty box removes the last chip.
+- **Files tab:** the side panel's third tab lists the project's files (what git tracks plus untracked files it doesn't ignore); clicking one opens it in your editor.
 
 ## Settings
 
-Settings (⌘, or the gear in the sidebar) is one sheet:
+Settings (⌘, or the gear in the sidebar) is one sheet with a list of groups on the left:
 
-- **Appearance:** System, Light, or Dark.
-- **New threads:** the agent and permission mode a new thread starts with.
-- **API keys** for Anthropic, DeepSeek, and OpenAI. They're encrypted with the OS keychain (Electron `safeStorage`), never sent to the window, and passed only as `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, or `OPENAI_API_KEY` to agent processes. A key saved here wins over the same variable from your shell. Saving or removing one restarts running agents.
-
+- **Appearance:** System, Light, or Dark; Motion (Instant by default, Subtle, or Full; your system's reduce-motion setting always wins); Density (Comfortable or Compact rows).
+- **Threads:** the agent and permission mode a new thread starts with, and the editor files open in.
+- **Agents & Providers:** each agent's credentials and the provider list, and the installed agents. Keys are encrypted with the OS keychain (Electron `safeStorage`), never sent to the window, and passed only to the agent they belong to; saving or removing one restarts running agents.
+- **Skills & MCP:** the skill count, with shortcuts into the Library.
+- **Data & Security:** where keys are kept, and the data folder.
 - **Updates:** the version, and whether new ones download by themselves (on by default).
 
 The thread header shows one quiet meter: the thread's tokens and cost so far, summed from each finished turn.
