@@ -2,6 +2,7 @@ import { useState } from "react";
 import { IconChevron, IconCompose, IconFolder, IconGear, IconLibrary, IconPin } from "../icons";
 import { api } from "../api";
 import { sectionThreads } from "../sections";
+import { UnsupportedChip } from "./UnsupportedChip";
 import { useStore } from "../store";
 import { InboxBell } from "./MessageCenter";
 import { SidebarToggle } from "./PaneRail";
@@ -55,7 +56,8 @@ export function Sidebar() {
                   <div className="thread-section" key={section.name}>
                     <div className="thread-section-label">{section.name === "Pinned" ? "Pinned · this session" : section.name}</div>
                     {section.threads.map((t) => {
-                      const agent = agents.find((a) => a.id === t.agent)?.label ?? t.agent;
+                      const info = agents.find((a) => a.id === t.agent);
+                      const agent = info?.label ?? t.agent;
                       const branch = branches[p.id];
                       return (
                         <div key={t.id} className={`thread-row${t.id === selectedThreadId ? " selected" : ""}`}>
@@ -70,6 +72,7 @@ export function Sidebar() {
                               <span className="title">{t.title}</span>
                               <span className="thread-meta">
                                 <span>{agent}</span>
+                                {info?.unsupported && <UnsupportedChip note={info.unsupported} compact />}
                                 {branch && (
                                   <span className="branch-chip" title={`Branch ${branch}`}>
                                     {branch}

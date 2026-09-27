@@ -43,6 +43,10 @@ export interface AcpAgentConfig {
   providerEnvOnly?: boolean;
   /** A guard plugin this agent needs injected to enforce the git guardrail. */
   guardPlugin?: "opencode";
+  /** Hidden until the user opts in and acknowledges the risk in Settings (preset-only). */
+  optIn?: boolean;
+  /** Shown as "Unsupported · <this>" wherever the agent appears (preset-only). */
+  unsupported?: string;
 }
 
 // The slices of the ACP schema this driver reads (protocol version 1).
@@ -513,6 +517,7 @@ export function createAcpDriver(
     },
     // An env-only provider setting is unverified, so its row stays hidden.
     credentials: { byok: !config.providerEnvOnly, own: "config", injector: config.injector ?? "acp" },
+    ...(config.unsupported ? { unsupported: config.unsupported } : {}),
     skillCallPrefix: "",
     models: () => [{ id: DEFAULT_MODEL, label: "Agent default" }, ...knownModels],
     refreshModels,

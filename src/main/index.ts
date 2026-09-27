@@ -205,7 +205,10 @@ async function main(): Promise<void> {
   const tools = browserTools(browser);
   augmentPath();
   // Claude first (the default for new threads), then any installed ACP agents.
-  const { agents: acpAgents, custom: customAgents, problems } = loadAcpAgents(join(userData, "agents.json"));
+  // Opt-in agents (Antigravity) start only after Settings recorded the acknowledgement; a change applies on restart.
+  const { agents: acpAgents, custom: customAgents, problems } = loadAcpAgents(join(userData, "agents.json"), undefined, {
+    optedIn: settings.antigravityEnabled(),
+  });
   for (const p of problems) console.warn(p);
   const modelSkillsDir = join(userData, "harness-skills");
   // Always offered: adding them when the tab opens would rewrite the prompt prefix and reload the session.

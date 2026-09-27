@@ -34,6 +34,10 @@ export const ACP_PRESETS: AcpAgentConfig[] = [
     capabilities: { mcpStdio: true, interrupt: true, perMessageModel: false, skillsDelivery: { mode: "projectWrite", prefix: "" } },
     // Its provider setting is unverified (spike S6).
     providerEnvOnly: true,
+    // Third-party access breaches Antigravity's terms (ToS section 6): hidden until
+    // Settings records an acknowledgement, and never offered a BYOK provider.
+    optIn: true,
+    unsupported: "Gemini-compatible endpoints only",
     install: "npm install -g agy-acp",
     homepage: "https://github.com/shindgew/agy-acp",
   },
@@ -86,9 +90,14 @@ function isConfig(v: unknown): v is AcpAgentConfig {
 /**
  * Installed presets, then the user's own agents from agents.json:
  *   { "agents": [{ "id": "qwen", "label": "Qwen Code", "command": "qwen", "args": ["--acp"] }] }
- * A user entry with a preset's id replaces the preset.
+ * A user entry with a preset's id replaces the preset. An opt-in preset, and
+ * any user entry replacing it, stays out until `optedIn`.
  */
-export function loadAcpAgents(configFile: string, isInstalled: (cmd: string) => boolean = (c) => onPath(c)): {
+export function loadAcpAgents(
+  configFile: string,
+  isInstalled: (cmd: string) => boolean = (c) => onPath(c),
+  { optedIn = false }: { optedIn?: boolean } = {},
+): {
   agents: AcpAgentConfig[];
   /** agents.json's valid entries, installed or not. */
   custom: AcpAgentConfig[];
@@ -107,12 +116,16 @@ export function loadAcpAgents(configFile: string, isInstalled: (cmd: string) => 
       // agents.json declares no capabilities: a user entry gets SAFE_DEFAULTS
       // (and only skillsDirEnv upgrades it to envDir), so it can never claim
       // support the driver hasn't verified. Injector/guard metadata is preset-only.
-      custom = parsed.map(({ capabilities: _ignored, injector: _injector, guardPlugin: _guardPlugin, keyVar: _keyVar, providerEnvOnly: _providerEnvOnly, ...rest }) => rest);
+      custom = parsed.map(
+        ({ capabilities: _ignored, injector: _injector, guardPlugin: _guardPlugin, keyVar: _keyVar, providerEnvOnly: _providerEnvOnly, optIn: _optIn, unsupported: _unsupported, ...rest }) =>
+          rest,
+      );
     } catch (err) {
       problems.push(`agents.json is not valid JSON: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
   const customIds = new Set(custom.map((a) => a.id));
-  const presets = ACP_PRESETS.filter((p) => !customIds.has(p.id) && isInstalled(p.command));
-  return { agents: [...presets, ...custom.filter((a) => !BUILT_IN_AGENT_IDS.has(a.id))], custom, problems };
+  const gated = new Set(optedIn ? [] : ACP_PRESETS.filter((p) => p.optIn).map((p) => p.id));
+  const presets = ACP_PRESETS.filter((p) => !customIds.has(p.id) && !gated.has(p.id) && isInstalled(p.command));
+  return { agents: [...presets, ...custom.filter((a) => !BUILT_IN_AGENT_IDS.has(a.id) && !gated.has(a.id))], custom, problems };
 }

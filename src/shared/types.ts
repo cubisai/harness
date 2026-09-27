@@ -111,6 +111,10 @@ export interface Settings {
   motion?: Motion;
   /** Thread, tool and turn-meta row spacing; SettingsStore.get() always fills it in (default comfortable). */
   density?: Density;
+  /** The Antigravity opt-in; on only with a current `antigravityAck`. Default off. */
+  antigravity?: boolean;
+  /** When the user accepted the Antigravity terms risk, and which disclosure version they saw. */
+  antigravityAck?: { version: number; at: number } | null;
   /** The agent new threads start with; null = the first available (Claude). */
   defaultAgent: string | null;
   defaultPermissionMode: PermissionMode;
@@ -207,6 +211,10 @@ export interface AgentCatalogEntry {
   mcp: string;
   /** What it can do here; the Library shows it as chips and a can't-do list. */
   capabilities?: AgentCapabilities;
+  /** Reached only unofficially: shown as "Unsupported · <this>". */
+  unsupported?: string;
+  /** Hidden until Settings records the opt-in acknowledgement. */
+  optIn?: boolean;
 }
 
 /** One plan rate-limit window, e.g. Claude's 5-hour or Codex's weekly limit. */
@@ -537,6 +545,8 @@ export interface AgentInfo {
   defaultModel: string;
   capabilities: AgentCapabilities;
   credentials?: AgentCredentials;
+  /** Set for an agent the app reaches only unofficially: shown as "Unsupported · <this>". */
+  unsupported?: string;
 }
 
 export interface SendRequest {

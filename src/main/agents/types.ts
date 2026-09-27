@@ -97,6 +97,8 @@ export interface AgentDriver {
   capabilities: AgentCapabilities;
   /** How Settings offers providers for it. */
   credentials?: AgentCredentials;
+  /** Reached only unofficially: shown as "Unsupported · <this>". */
+  unsupported?: string;
   /** How this agent's model-invoked skills reach it (and the Skill-call prefix). */
   skillsDelivery: SkillsDelivery;
   /**

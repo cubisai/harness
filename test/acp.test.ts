@@ -436,14 +436,14 @@ describe("agent registry", () => {
     expect(problems).toHaveLength(1);
   });
 
-  it("starts Antigravity through agy-acp, and lets agents.json replace a preset", () => {
+  it("starts Antigravity through agy-acp once opted in, and lets agents.json replace a preset", () => {
     const dir = tempDir();
     const file = join(dir, "agents.json");
-    expect(loadAcpAgents(file, (cmd) => cmd === "agy-acp").agents).toEqual([
+    expect(loadAcpAgents(file, (cmd) => cmd === "agy-acp", { optedIn: true }).agents).toEqual([
       expect.objectContaining({ id: "antigravity", command: "agy-acp", args: [] }),
     ]);
     writeFileSync(file, JSON.stringify({ agents: [{ id: "antigravity", label: "Antigravity (old)", command: "agy-acp", args: ["--experimental"] }] }));
-    expect(loadAcpAgents(file, (cmd) => cmd === "agy-acp").agents).toEqual([
+    expect(loadAcpAgents(file, (cmd) => cmd === "agy-acp", { optedIn: true }).agents).toEqual([
       expect.objectContaining({ label: "Antigravity (old)", args: ["--experimental"] }),
     ]);
   });

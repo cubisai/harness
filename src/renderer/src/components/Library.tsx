@@ -6,6 +6,7 @@ import { IconCopy } from "../icons";
 import { Markdown } from "../markdown";
 import { useStore, type LibraryTab } from "../store";
 import { CantDoList, CapabilityChips } from "./Capabilities";
+import { UnsupportedChip } from "./UnsupportedChip";
 
 const TABS: { id: "experts" | "skills" | "connectors"; label: string; icon: string }[] = [
   { id: "experts", label: "Experts", icon: "🧑‍💼" },
@@ -228,6 +229,7 @@ function ExpertsTab() {
   const [search, setSearch] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
   const hasProject = useStore((s) => Boolean(s.selectedProjectId));
+  const running = useStore((s) => s.agents);
 
   useEffect(() => {
     void api().listAgentCatalog().then(setAgents);
@@ -323,6 +325,7 @@ function ExpertsTab() {
                   <div className="wb-card-sub">Base Engine · {a.kind}</div>
                 </div>
               </div>
+              {a.unsupported && <UnsupportedChip note={a.unsupported} />}
               <p className="wb-card-desc">{a.skills || a.mcp || "AI Coding Agent"}</p>
               {a.capabilities && (
                 <>
@@ -333,6 +336,11 @@ function ExpertsTab() {
               <div className="wb-card-footer">
                 <div className="wb-tags">
                   <span className="wb-tag">{a.installed ? "Installed" : "Not Installed"}</span>
+                  {a.optIn && !running.some((r) => r.id === a.id) && (
+                    <span className="wb-tag" title="Settings → Agents & Providers">
+                      Off until you opt in
+                    </span>
+                  )}
                 </div>
                 {!a.installed && a.install ? (
                   <button className="button ghost wb-action-btn" onClick={() => copy(a.install!)}>

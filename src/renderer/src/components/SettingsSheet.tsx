@@ -3,6 +3,8 @@ import type { Density, Motion, PermissionMode, SettingsView, Theme } from "../..
 import { api } from "../api";
 import { ProvidersSection } from "./ProviderSheet";
 import { useStore, type LibraryTab } from "../store";
+import { ANTIGRAVITY_ACK_VERSION } from "../../../shared/provider-rules";
+import { UnsupportedChip } from "./UnsupportedChip";
 
 const THEMES: { id: Theme; label: string }[] = [
   { id: "system", label: "System" },
@@ -31,7 +33,7 @@ const MODES: { id: PermissionMode; label: string }[] = [
 export const SETTINGS_GROUPS = [
   { id: "appearance", label: "Appearance", sections: ["Appearance"] },
   { id: "threads", label: "Threads", sections: ["New threads", "Editor"] },
-  { id: "agents", label: "Agents & Providers", sections: ["Providers", "Agents"] },
+  { id: "agents", label: "Agents & Providers", sections: ["Providers", "Agents", "Antigravity"] },
   { id: "skills", label: "Skills & MCP", sections: ["Skills", "MCP servers"] },
   { id: "data", label: "Data & Security", sections: ["Data"] },
   { id: "updates", label: "Updates", sections: ["Updates"] },
@@ -217,6 +219,7 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
             </div>
             <p className="note">Add ACP agents in agents.json in the data folder (Data &amp; Security), then restart the app. The Library lists every agent it knows.</p>
           </section>
+          <AntigravityOptIn settings={settings} update={update} />
         </>
       );
     case "skills":
@@ -291,4 +294,52 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
         </section>
       );
   }
+}
+
+/**
+ * Antigravity is reachable only through a community adapter, and its terms
+ * treat third-party access as a breach: off by default, on only after the user
+ * acknowledges that, and the acknowledgement is kept (with its disclosure version).
+ */
+export function AntigravityOptIn({ settings, update }: { settings: SettingsView; update(patch: Partial<SettingsView>): void }) {
+  const [understood, setUnderstood] = useState(false);
+  const acked = settings.antigravityAck?.version === ANTIGRAVITY_ACK_VERSION;
+  const on = settings.antigravity === true && acked;
+  return (
+    <section>
+      <h3>Antigravity</h3>
+      <UnsupportedChip note="Gemini-compatible endpoints only" />
+      <p className="note">
+        Google offers no way for other apps to drive Antigravity. UnSkilled reaches it only through the community agy-acp adapter, and the Antigravity Terms of
+        Service (section 6) treat third-party access as a breach that can get your account suspended. It can't use your OpenAI or Anthropic providers.
+      </p>
+      {on ? (
+        <div className="row">
+          <span className="label">Status</span>
+          <span className="value">On{settings.antigravityAck ? ` since you accepted the risk on ${new Date(settings.antigravityAck.at).toLocaleDateString()}` : ""}. Restart to apply a change.</span>
+          <button className="button" onClick={() => update({ antigravity: false })}>
+            Turn Off
+          </button>
+        </div>
+      ) : (
+        <>
+          <label className="row checkbox-row">
+            <input type="checkbox" checked={understood} onChange={(e) => setUnderstood(e.target.checked)} />
+            <span>I understand that using Antigravity here may breach its terms and put my account at risk.</span>
+          </label>
+          <div className="row">
+            <span className="label" />
+            <button
+              className="button"
+              disabled={!understood}
+              onClick={() => update({ antigravityAck: { version: ANTIGRAVITY_ACK_VERSION, at: 0 }, antigravity: true })}
+            >
+              Turn On Antigravity
+            </button>
+          </div>
+          <p className="note">Off by default. Turning it on adds Antigravity when the app restarts, if agy-acp is installed.</p>
+        </>
+      )}
+    </section>
+  );
 }

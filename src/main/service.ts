@@ -114,6 +114,7 @@ export class Service {
       defaultModel: d.defaultModel,
       capabilities: d.capabilities,
       ...(d.credentials ? { credentials: d.credentials } : {}),
+      ...(d.unsupported ? { unsupported: d.unsupported } : {}),
     }));
   }
 

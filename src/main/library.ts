@@ -106,6 +106,8 @@ function acpEntry(c: AcpAgentConfig, source: AgentCatalogEntry["source"]): Omit<
     source,
     ...(c.install && { install: c.install }),
     ...(c.homepage && { homepage: c.homepage }),
+    ...(c.unsupported && { unsupported: c.unsupported }),
+    ...(c.optIn && { optIn: true }),
     skills: "",
   };
 }

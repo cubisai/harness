@@ -970,6 +970,27 @@ details.tool[open]::details-content { height: auto; }
 .settings-nav button:hover { background: var(--bg-hover); color: var(--text); }
 .settings-nav button.on { background: var(--bg-selected); color: var(--text); font-weight: 500; }
 .settings-content { flex: 1; min-width: 0; }
+.sheet .checkbox-row { align-items: flex-start; gap: 8px; cursor: pointer; }
+.sheet .row .button { flex-shrink: 0; white-space: nowrap; }
+.sheet .checkbox-row input { margin-top: 3px; }
+
+/* An agent reached only unofficially (Antigravity): amber, never styled like a provider. */
+.unsupported-chip {
+  display: inline-block;
+  max-width: 100%;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid rgb(255 159 10 / 0.45);
+  background: rgb(255 159 10 / 0.12);
+  color: var(--warning);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.thread-meta .unsupported-chip { padding: 0 6px; font-size: 10px; line-height: 14px; }
 @media (max-width: 640px) {
   .settings-body { flex-direction: column; }
   .settings-nav { flex-direction: row; flex-wrap: wrap; width: auto; position: static; }

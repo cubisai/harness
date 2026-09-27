@@ -15,6 +15,11 @@ import type {
 import { DEFAULT_LAYOUT, sanitizeLayout } from "../shared/layout";
 import { LEGACY_ENV, LEGACY_PROVIDERS, isProviderId, type LegacyProviderId } from "./providers";
 import { protocolKeyVar } from "./inject/keys";
+import { ANTIGRAVITY_ACK_VERSION } from "../shared/provider-rules";
+
+function ackIsCurrent(ack: Settings["antigravityAck"]): boolean {
+  return ack?.version === ANTIGRAVITY_ACK_VERSION && typeof ack.at === "number";
+}
 
 /** Encrypts secrets at rest. In the app this is Electron's safeStorage (the OS keychain). */
 export interface SecretBox {
@@ -23,7 +28,7 @@ export interface SecretBox {
   decrypt(b64: string): string;
 }
 
-const DEFAULTS: Settings = { theme: "system", motion: "instant", density: "comfortable", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {}, paneLayout: { ...DEFAULT_LAYOUT } };
+const DEFAULTS: Settings = { theme: "system", motion: "instant", density: "comfortable", antigravity: false, antigravityAck: null, defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {}, paneLayout: { ...DEFAULT_LAYOUT } };
 
 interface FileShape {
   schemaVersion?: number; // absent = the legacy v1 shape
@@ -149,9 +154,21 @@ export class SettingsStore {
       next.providerInjection = injection;
     }
     if (patch.paneLayout !== undefined) next.paneLayout = sanitizeLayout(patch.paneLayout);
+    // The Antigravity opt-in: the acknowledgement is stamped here, never trusted from
+    // the caller, and the flag turns on only with a current one.
+    if (patch.antigravityAck === null) next.antigravityAck = null;
+    else if (patch.antigravityAck?.version === ANTIGRAVITY_ACK_VERSION) next.antigravityAck = { version: ANTIGRAVITY_ACK_VERSION, at: Date.now() };
+    if (patch.antigravity === false || !ackIsCurrent(next.antigravityAck)) next.antigravity = false;
+    else if (patch.antigravity === true) next.antigravity = true;
     this.data.settings = next;
     this.write();
     return next;
+  }
+
+  /** Antigravity is on: the flag and an acknowledgement of the current disclosure. */
+  antigravityEnabled(): boolean {
+    const s = this.get();
+    return s.antigravity === true && ackIsCurrent(s.antigravityAck);
   }
 
   private findProvider(id: string): Provider | undefined {
