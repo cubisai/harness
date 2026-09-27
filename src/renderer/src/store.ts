@@ -127,6 +127,8 @@ interface State {
   selectProject(id: string): Promise<void>;
   selectThread(id: string | null): Promise<void>;
   newThread(skill?: string): Promise<void>;
+  /** From the project's start screen: open a new thread and send `text` in it. */
+  startThread(text: string, skill?: string): Promise<void>;
   takePendingSkill(): string | null;
   /** Save the open thread to a JSON file. */
   exportThread(): Promise<void>;
@@ -462,6 +464,12 @@ export const useStore = create<State>((set, get) => ({
       events: { ...s.events, [thread.id]: [] },
       selectedThreadId: thread.id,
     }));
+  },
+
+  async startThread(text, skill) {
+    await get().newThread();
+    const id = get().selectedThreadId;
+    if (id) await get().send(text, skill, id);
   },
 
   takePendingSkill() {

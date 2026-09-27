@@ -1,10 +1,9 @@
 import { useEffect } from "react";
-import type { AgentInfo, PermissionMode } from "../../shared/types";
 import { CommandPalette } from "./components/CommandPalette";
 import { Library } from "./components/Library";
-import { ModelPicker } from "./components/ModelPicker";
 import { Composer } from "./components/Composer";
-import { CacheMeter } from "./components/CacheMeter";
+import { ThreadMeters } from "./components/Meters";
+import { ThreadControls } from "./components/ThreadControls";
 import { Inspector } from "./components/Inspector";
 import { SettingsSheet } from "./components/SettingsSheet";
 import { MessageCenter } from "./components/MessageCenter";
@@ -20,11 +19,6 @@ import { BOUNDS, DEFAULT_LAYOUT } from "./layout";
 import { nthVisibleThread } from "./sections";
 import { useSelectedThread, useStore } from "./store";
 
-const MODES: { id: PermissionMode; label: string; title: string }[] = [
-  { id: "ask", label: "Ask", title: "Ask before edits and commands" },
-  { id: "auto-edit", label: "Auto-edit", title: "Edit files freely, ask before commands" },
-  { id: "full", label: "Full", title: "Run everything without asking" },
-];
 
 export function App() {
   const projects = useStore((s) => s.projects);
@@ -112,53 +106,6 @@ export function App() {
                 {thread ? thread.title : project ? project.name : "UnSkilled"}
                 {thread && project && <span className="sub">{project.name}</span>}
               </div>
-              {thread && (
-                <div className="header-meters">
-                  <LimitMeter agent={thread.agent} />
-                  <UsageMeter threadId={thread.id} />
-                  <CacheMeter threadId={thread.id} />
-                </div>
-              )}
-              {thread && (
-                <>
-                  {agents.length > 1 && (
-                    <select
-                      className="select agent-select"
-                      value={thread.agent}
-                      title="Agent"
-                      disabled={running}
-                      onChange={(e) => useStore.getState().openSwitch(e.target.value)}
-                    >
-                      {agents.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.label}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  <ModelPicker
-                    models={modelOptions(agents, thread.agent, thread.model)}
-                    current={thread.model}
-                    disabled={running}
-                    onPick={(model) => void updateThread({ model })}
-                  />
-                  <div className="segmented" role="radiogroup" aria-label="Permissions">
-                    {MODES.map((m) => (
-                      <button
-                        key={m.id}
-                        role="radio"
-                        aria-checked={thread.permissionMode === m.id}
-                        className={thread.permissionMode === m.id ? "on" : ""}
-                        title={m.title}
-                        disabled={running}
-                        onClick={() => void updateThread({ permissionMode: m.id })}
-                      >
-                        {m.label}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
               {project && (
                 <>
                   <button
@@ -203,24 +150,21 @@ export function App() {
                 </div>
               </div>
             ) : !thread ? (
-              <div className="empty">
-                <div>
-                  <h1>{project.name}</h1>
-                  <p>Start a thread to work in this project.</p>
-                  <button className="button primary" onClick={() => void newThread()}>
-                    <IconSparkle /> New Thread
-                  </button>
-                  <div className="hints">
-                    <Hint skill="skilled-setup" d="Set up the project docs and tracker, once per repo." />
-                    <Hint skill="domain-interview" d="Get interviewed on an idea before any code." />
-                    <Hint skill="implement" d="Build a ticket or a small change, test-first." />
-                  </div>
+              <>
+                <div className="start-thread">
+                  <h1>What should we build in {project.name}?</h1>
+                  <p>Describe a change, ask about the code, or type / for a skill.</p>
                 </div>
-              </div>
+                <Composer threadId={null} />
+              </>
             ) : (
               <>
                 <ThreadView threadId={thread.id} />
-                <Composer threadId={thread.id} />
+                <Composer
+                  threadId={thread.id}
+                  controls={<ThreadControls thread={thread} running={running} />}
+                  meters={<ThreadMeters agent={thread.agent} threadId={thread.id} />}
+                />
               </>
             )}
           </>
@@ -282,67 +226,8 @@ function ConversationRail() {
   );
 }
 
-/** The thread's agent's models, keeping the current one listed even if the agent no longer reports it. */
-function modelOptions(agents: AgentInfo[], agent: string, current: string): { id: string; label: string }[] {
-  const list = agents.find((a) => a.id === agent)?.models ?? [];
-  return list.some((m) => m.id === current) ? list : [{ id: current, label: current }, ...list];
-}
 
-/** What this thread has cost so far, summed over its turns. Quiet until there's something to show. */
-function UsageMeter({ threadId }: { threadId: string }) {
-  const events = useStore((s) => s.events[threadId]);
-  let input = 0;
-  let output = 0;
-  let cost = 0;
-  let turns = 0;
-  for (const e of events ?? []) {
-    if (e.event.kind !== "turn-end") continue;
-    turns++;
-    input += e.event.inputTokens;
-    output += e.event.outputTokens;
-    cost += e.event.costUsd ?? 0;
-  }
-  if (!turns) return null;
-  const k = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 100_000 ? 0 : 1)}k` : String(n));
-  return (
-    <span className="usage" title={`${turns} turn${turns === 1 ? "" : "s"} · ${input.toLocaleString()} input and ${output.toLocaleString()} output tokens`}>
-      {k(input + output)} tokens{cost > 0 ? ` · $${cost.toFixed(2)}` : ""}
-    </span>
-  );
-}
 
-/**
- * How close the thread's agent is to its plan's rate limits: the fullest
- * window, as the agent last reported it. Hidden until the agent reports
- * any (API-key logins never do), and quiet below half.
- */
-function LimitMeter({ agent }: { agent: string }) {
-  const limits = useStore((s) => s.limits[agent]);
-  if (!limits) return null;
-  const known = limits.windows.filter((w) => w.usedPercent !== null);
-  const top = known.reduce<(typeof known)[number] | null>((a, w) => (!a || w.usedPercent! > a.usedPercent! ? w : a), null);
-  if (!top && limits.state === "ok") return null;
-  const pct = top?.usedPercent ?? 0;
-  if (limits.state === "ok" && pct < 50) return null;
-  const when = (ms: number | null) =>
-    ms ? new Date(ms).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" }) : "unknown";
-  const title = [
-    ...limits.windows.map((w) => `${w.label} limit: ${w.usedPercent === null ? "in use" : `${w.usedPercent}% used`}, resets ${when(w.resetsAt)}`),
-    `As of ${new Date(limits.updatedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`,
-  ].join("\n");
-  const text =
-    limits.state === "limited"
-      ? `Limit reached${top?.resetsAt ? ` · resets ${when(top.resetsAt)}` : ""}`
-      : `${top!.label} limit ${pct}%`;
-  return (
-    <span className={`limit-meter ${limits.state}`} title={title}>
-      <span className="bar">
-        <i style={{ width: `${limits.state === "limited" ? 100 : pct}%` }} />
-      </span>
-      {text}
-    </span>
-  );
-}
 
 function Notice() {
   const text = useStore((s) => s.notice);
@@ -353,11 +238,3 @@ function Notice() {
   ) : null;
 }
 
-function Hint({ skill, d }: { skill: string; d: string }) {
-  return (
-    <button className="hint-card" onClick={() => void useStore.getState().newThread(skill)}>
-      <div className="t">/{skill}</div>
-      <div className="d">{d}</div>
-    </button>
-  );
-}

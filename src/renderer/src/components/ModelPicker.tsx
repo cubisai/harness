@@ -6,7 +6,20 @@ import { filterModels } from "../models";
  * The header's model picker: a button that opens a searchable list, grouped
  * by provider. Arrow keys move, Return picks, Esc closes.
  */
-export function ModelPicker({ models, current, disabled, onPick }: { models: ModelOption[]; current: string; disabled?: boolean; onPick(id: string): void }) {
+export function ModelPicker({
+  models,
+  current,
+  disabled,
+  placement = "down",
+  onPick,
+}: {
+  models: ModelOption[];
+  current: string;
+  disabled?: boolean;
+  /** Open below the button, or above it (from the message box). */
+  placement?: "down" | "up";
+  onPick(id: string): void;
+}) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
@@ -38,11 +51,11 @@ export function ModelPicker({ models, current, disabled, onPick }: { models: Mod
   let row = -1;
   return (
     <div className="model-picker" ref={box}>
-      <button className="select model-picker-button" title={`Model: ${currentLabel}`} disabled={disabled} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+      <button className="select ghost-select model-picker-button" title={`Model: ${currentLabel}`} disabled={disabled} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         {currentLabel.includes("/") ? currentLabel.slice(currentLabel.indexOf("/") + 1) : currentLabel}
       </button>
       {open && (
-        <div className="model-menu">
+        <div className={`model-menu ${placement}`}>
           <input
             className="model-search"
             autoFocus

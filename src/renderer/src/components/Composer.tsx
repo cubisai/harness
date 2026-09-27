@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { SkillEntry } from "../../../shared/types";
 import { IconArrowUp, IconStop } from "../icons";
 import { chipLabel, composeMessage } from "../composer";
@@ -9,13 +9,15 @@ import { useStore } from "../store";
  * user-invoked skills; picking one turns it into a chip, and whatever is
  * typed after it goes to the skill as its arguments. A picked browser
  * element becomes a context chip whose text rides along with the message.
- * Sending while a turn runs queues the message for the next turn.
+ * Sending while a turn runs queues the message for the next turn. With no
+ * thread yet (`threadId` null), sending starts one. The thread's controls
+ * (agent, model, permissions) and meters sit in its bar.
  */
-export function Composer({ threadId }: { threadId: string }) {
+export function Composer({ threadId, controls, meters }: { threadId: string | null; controls?: ReactNode; meters?: ReactNode }) {
   const skills = useStore((s) => s.skills);
-  const running = useStore((s) => Boolean(s.running[threadId]));
+  const running = useStore((s) => (threadId ? Boolean(s.running[threadId]) : false));
   const insert = useStore((s) => s.composerInsert);
-  const { send, interrupt, enqueue } = useStore.getState();
+  const { send, interrupt, enqueue, startThread } = useStore.getState();
   const [text, setText] = useState("");
   const [chips, setChips] = useState<string[]>([]);
   const [skill, setSkill] = useState<SkillEntry | null>(null);
@@ -83,7 +85,8 @@ export function Composer({ threadId }: { threadId: string }) {
   const submit = () => {
     const body = composeMessage(text, chips);
     if (!body && !skill) return;
-    if (running) enqueue(threadId, body, skill?.name);
+    if (!threadId) void startThread(body, skill?.name);
+    else if (running) enqueue(threadId, body, skill?.name);
     else void send(body, skill?.name);
     setText("");
     setChips([]);
@@ -162,6 +165,7 @@ export function Composer({ threadId }: { threadId: string }) {
           onKeyDown={onKeyDown}
         />
         <div className="composer-bar">
+          {controls}
           {skill && (
             <span className="skill-chip" title={skill.description}>
               /{skill.name}
@@ -173,7 +177,8 @@ export function Composer({ threadId }: { threadId: string }) {
             </span>
           ))}
           <span className="grow" />
-          <span className="hint">{running ? "Return to queue for the next turn · Esc to stop" : "Return to send · Shift-Return for a new line"}</span>
+          {running && <span className="hint">Return queues for the next turn</span>}
+          {meters}
           {running && (
             <button className="send stop" title="Stop (clears queued messages)" onClick={() => void interrupt()}>
               <IconStop />
