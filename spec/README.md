@@ -121,7 +121,7 @@ Every phase file carries, in this order:
 - [x] Phase 6 — Context survival (2026-09-26; bindings backfilled from `session_id`; handoff = Codex `thread/inject_items` or one synthetic first message, through the ledger; git ref only for Hand off; stale-cursor re-seed and the model-switch card variant carried forward)
 - [x] Phase 7 — Interaction mechanics (2026-09-27; APG splitters with geometry as a setting, terminal drawer, `<details>` tool rows, browser device emulation + screenshots + move-to-main, take-over lock, one tool/diff/Markdown contract with four-driver render parity; OpenCode's late `rawInput` unverified)
 - [x] Phase 8 — UI refinement (2026-09-27; Passes 1–2 and density shipped; T8.13 worktrees deferred behind Phase 9 T9.7; T8.15 covered by T7.12; pins session-local)
-- [ ] Phase 9 — Release hardening
+- [x] Phase 9 — Release hardening (2026-09-27; everything but the human rollback drill and a first CI run on GitHub; Codex keeps `untrusted`, see the phase file)
 
 ---
 

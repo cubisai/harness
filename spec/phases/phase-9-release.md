@@ -120,11 +120,11 @@ Paths are relative to the repo root. Read the chapter that explains *why* before
 
 ## Exit criteria
 
-- [ ] Antigravity is absent from the provider picker by default (test).
-- [ ] Enabling Antigravity requires a persisted acknowledgement (test).
-- [ ] A legacy settings file migrates to the current `schemaVersion` with no data loss (test).
-- [ ] `Thread.sessionId` remains a working read-only projection after the bindings migration (test).
-- [ ] README Settings/Agents sections match the shipped UI; HARNESS.md is updated or provably unchanged.
-- [ ] `pnpm smoke` covers provider registry, migration, handoff invariants and render parity.
-- [ ] CI has no Antigravity/Gemini secret and no Antigravity test in the default glob.
-- [ ] The rollback drill is documented and a reviewer has run it.
+- [x] Antigravity is absent from the provider picker by default (test): `test/flags.test.ts`, `test/antigravity-ui.test.tsx`; it has no BYOK row enabled or not.
+- [x] Enabling Antigravity requires a persisted acknowledgement (test): versioned and stamped by main, survives a restart; checked in the app.
+- [x] A legacy settings file migrates to the current `schemaVersion` with no data loss (test): `test/settings-migration.test.ts`, plus export/import and the corrupt-file copy.
+- [x] `Thread.sessionId` remains a working read-only projection after the bindings migration (test): `test/bindings-rollback.test.ts`, including a frozen M3 `Store` reading M4's database. The test found two defects, both fixed: a pre-bindings export imported without its cursor, and a cursor written by M3 after a downgrade was ignored on upgrade (the column now wins when it disagrees).
+- [x] README Settings/Agents sections match the shipped UI; HARNESS.md is updated or provably unchanged. HARNESS.md is unchanged: it is skilled's contract with a harness, and Phases 2–3 changed how each agent meets it (declared as capabilities), not the contract. **Deliberate deviation:** the Codex bullet still names `untrusted`: Phase 3's spike found `on-request` runs commands without asking, so Ask and Auto-edit keep `untrusted` and the README says why.
+- [x] `pnpm smoke` covers provider registry, migration, handoff invariants and render parity: `electron . --smoke` and the packaged `node scripts/smoke.mjs` both print all four ok (2026-09-27, Windows 10; the packaged build needed `-c.npmRebuild=false` on this PC because node-gyp can't rebuild node-pty under a path with a space). Also exits 0 with the legacy `settings.json` in the data folder.
+- [x] CI has no Antigravity/Gemini secret and no Antigravity test in the default glob: `test/ci-workflow.test.ts`. The workflow has not run on GitHub yet (nothing pushed).
+- [ ] The rollback drill is documented (`plan/docs/rollback.md`, `scripts/rollback-check.mjs`) and a reviewer has run it. **Open:** the automated parts pass (M3 `Store` on M4's database, export/import, the check script on a fixture database); a human still has to run steps 1–7 on a test machine per platform.

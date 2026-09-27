@@ -1,6 +1,6 @@
-# Handoff — Phase 8 done; Phase 9 next
+# Handoff — Phases 0–9 done; T8.13 and the human release checks left
 
-Updated 2026-09-27 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-delegation workflow), then `spec/README.md`, then `spec/phases/phase-9-release.md`.
+Updated 2026-09-27 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-delegation workflow), then `spec/README.md`, then `.ai/plans/phase-9-release.md`.
 
 ## Where things stand
 
@@ -15,6 +15,7 @@ Updated 2026-09-27 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-
 | 6 — Context survival | **done**: typecheck, build, smoke green; tests green except the two known Windows-machine items; real Codex→Claude handoff checked in the app | A `04c347e` `022bd44` (+ smoke fix `4f80d01`), B `95e616e` `a2da431`, C `5e3e7dd` `4d487ec`, D `ff414c5` `00dd3f9`, E `c3a845a` |
 | 7 — Interaction mechanics | **done**: typecheck, build, smoke green; tests green except the two known Windows-machine items; splitters/drawer/collapse checked in the real app | A `d6ecd8e` `9011c87`, B `a535b69`, C `a7340fe`, D `1b94312` `da46d67`, E `8b4c4e7` `50ad9d1`, F1a `59328c9`, F1b `d7b749e`, F2 `d02e49c` |
 | 8 — UI refinement | **done** (T8.13 worktrees deferred behind Phase 9 T9.7; T8.15 = T7.12): typecheck, build, smoke green; tests green except the known Windows-machine items; every step checked in the real app | A `d04d0a7`, B `b9466a8`, C `ab804df`, D+F `95b97b7`, E `3153964`, G `89ba506` |
+| 9 — Release hardening | **done** except the human rollback drill and a first CI run on GitHub; typecheck, build, dev and packaged smoke green (all four new checks); tests green except the known Windows-machine items | A `1b3a739`, C `839106a`, B+D `b6e76cc`, E `1d4a8e8`, F `9283407` |
 | Windows portability | done | `ae0b0cc` |
 
 **Uncommitted on purpose (the user decides):** the pnpm → bun switch (`package.json`, `bun.lock`, `bunfig.toml`, deleted `pnpm-*`/`.npmrc`, `ci.yml`, README/`main.tsx`/`mock.ts` comments) and the `CLAUDE.md` Windows notes. `test/__snapshots__/providers.test.ts.snap` shows as modified: line endings only. Phase commits carry code + tests only, with no attribution trailer.
@@ -67,10 +68,17 @@ Updated 2026-09-27 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-
 - Settings: left-nav groups (`SETTINGS_GROUPS`), `motion` (default instant; gates every entrance animation, reduce-motion wins) and `density` settings. `AgentInfo.credentials` (byok / own / injector) replaces the renderer's agent-id checks; `test/no-agent-id-branches.test.ts` scans the renderer too.
 - Windows 10: no Mica there, so main passes `--opaque-sidebar` and the sidebar is painted opaque (it was grey and unreadable). Narrow main pane: the header drops meters, then wraps (title row; agent picker left to the palette); the browser bar wraps. In-thread `.notice` rows no longer float (the toast is `.toast`).
 
-## Resume here: Phase 9 (release hardening)
+## What Phase 9 shipped
 
-- Spec: `spec/phases/phase-9-release.md`; write `.ai/plans/phase-9-release.md` first.
-- After Phase 9's T9.7 migration net: T8.13 (worktree-per-thread, background start) and the Pinned column.
+- Antigravity: preset fields `optIn` + `unsupported`; `loadAcpAgents(..., { optedIn })` (also gates an agents.json override); `Settings.antigravity` + `antigravityAck` (versioned, stamped by main, `SettingsStore.antigravityEnabled()`); Settings → Agents & Providers opt-in with the ToS disclosure; amber `UnsupportedChip` in the Library, sidebar rows and Settings; never a BYOK row.
+- Settings export/import (Data & Security; keys stay machine-bound ciphertext; opt-in never carried), corrupt settings.json copied to `.corrupt-<ts>`, Linux `basic_text` no longer counts as encryption.
+- Rollback: `cumulativeHitRate` / `hitRateRegression` / `prefixStability` + `Store.turnUsage`, `scripts/rollback-check.mjs`, `plan/docs/rollback.md`; frozen M3 `Store` fixture proves the downgrade; `toThread` lets a disagreeing `session_id` win (fixes pre-bindings export imports and post-downgrade cursors).
+- Smoke: `src/main/smoke-checks.ts` (providers, migration, handoff, render parity via `window.__unskilledSmokeRender` in `--unskilled-smoke` mode); `scripts/smoke.mjs` finds `AI Harness`; CI env allowlist + Linux packaged-smoke job; `manual/**` excluded from vitest.
+
+## Resume here: T8.13, then the human release checks
+
+- T8.13 (worktree-per-thread, background start, Pinned column): `spec/phases/phase-8-ui-refinement.md`; its gate (T9.7) is met. Write `.ai/plans/t8-13-worktrees.md` first.
+- Needs a person: run `plan/docs/rollback.md` steps 1–7 on a test machine per platform; push the branch so CI runs (the `smoke` job is unverified on GitHub). Both are outward-facing or human steps, not for the autonomous loop.
 - Carried from Phase 7: check a real OpenCode run for `rawInput`/`locations` arriving only on a later `tool_call_update` (the tool row's summary would then read "bash"/"edit").
 
 ## Windows portability (`src/main/winspawn.ts`)
@@ -94,8 +102,9 @@ Updated 2026-09-27 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-
 - **Delegation status (2026-09-27, Phase 8):** two implementer dispatches (T8.3, T8.9) both landed on Token Harbor's qwen3.8-flash after deepseek-v4.1-flash and mimo-v2.6-flash returned empty output; T8.9 took ~40 min. Parallel dispatch works when the brief lists files the worker must not touch and the orchestrator edits only others. **Earlier (morning):** the Token Harbor free models started failing on long briefs (empty output, 40-min timeouts); `oc-run` fell back to Qwen3.8 Flash / GLM 5.3 Flash (Agent Pass). `oc-run` now also drops a model after `--idle` seconds with no activity (default 480; tested with a fake opencode), so a hung model no longer holds the chain for the whole `--timeout` — dispatch F2 with e.g. `--timeout 1800 --idle 300`. If models keep failing, write the brief shorter or do the step directly. A capabilities test ("turns off a preset's claimed capability…") flaked once under full-suite load; passes alone.
 - **Delegation:** dispatch with `node ~/.config/opencode/oc-run.mjs --worker <agent> --brief … --out … --log …` (walks the model chain itself — `opencode run` exits on the first model error, so the fallback plugin never fires headless). Write briefs with the Write tool (a bash heredoc with backticks broke once). No key-like strings, "dispatch exactly once". Routing and setup: `SETUP-OTHER-PC.md`.
 - **Git Bash heredocs collapse `\\` to `\`**, so JSON or regex with backslashes written that way breaks; use the Write tool for such files. Stage only your hunks of a file that also carries the user's uncommitted edits by writing HEAD + your replacements to the index (`git hash-object -w` + `git update-index --cacheinfo`); `git add -p` isn't available.
+- **Packaging on this PC:** the repo path has a space, so node-gyp can't rebuild node-pty; package with `bunx electron-builder --dir --publish never -c.npmRebuild=false` (the dev `node-pty` binary already targets Electron). The packaged app is `dist/win-unpacked/AI Harness.exe` and uses the real `%APPDATA%/AI Harness` data folder.
 - **Driving the real app:** launch `electron . --user-data-dir=<tmp> --remote-debugging-port=9333 --inspect=9339`; drive the window over CDP (`Input.dispatchKeyEvent/MouseEvent`, `Page.captureScreenshot`; clicks are CSS px = screenshot px / 1.25 on this PC); patch `dialog.showOpenDialog/showSaveDialog` through the main-process inspector **every launch**, or a real file dialog opens off-screen. Native `<select>` popups can't be driven — use the palette.
 
 ## Next
 
-Phase 9 (release hardening), then T8.13 behind it. Run them back to back without stopping, except for a big blocker (memory `autonomous-phase-loop`).
+T8.13, then hand the release checks above to the user. Run them back to back without stopping, except for a big blocker (memory `autonomous-phase-loop`).
