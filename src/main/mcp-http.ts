@@ -24,6 +24,30 @@ function toResult(out: ToolOutput) {
   return { content, isError: out.isError };
 }
 
+type ListHandler = (request: unknown, extra: unknown) => Promise<{ tools: { inputSchema?: Record<string, unknown> }[] }>;
+
+/**
+ * A tool whose parameters are all optional gets an input schema with no
+ * `required` key. That is valid JSON Schema, but OpenCode forwards it as
+ * `required: null`, and OpenAI-compatible gateways (AgentRouter's DeepSeek)
+ * then reject the whole request: "Invalid schema for function
+ * 'unskilled_browser_logs': null is not of type 'array'". Wrap the SDK's
+ * tools/list handler so every schema carries an array. The handler map is
+ * private to the pinned SDK; mcp-http.test.ts fails if that ever changes.
+ */
+function withRequiredArrays(server: McpServer): void {
+  const handlers = (server.server as unknown as { _requestHandlers: Map<string, ListHandler> })._requestHandlers;
+  const list = handlers.get("tools/list");
+  if (!list) return;
+  handlers.set("tools/list", async (request, extra) => {
+    const result = await list(request, extra);
+    for (const tool of result.tools) {
+      if (tool.inputSchema && !Array.isArray(tool.inputSchema.required)) tool.inputSchema.required = [];
+    }
+    return result;
+  });
+}
+
 function authorized(req: IncomingMessage, token: string): boolean {
   const got = Buffer.from(req.headers.authorization ?? "");
   const want = Buffer.from(`Bearer ${token}`);
@@ -61,6 +85,7 @@ export async function startToolServer(tools: () => HarnessTool[], extra?: () => 
         toResult(await t.run(args as never)),
       );
     }
+    withRequiredArrays(server);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     res.on("close", () => {
       void transport.close();

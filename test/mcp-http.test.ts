@@ -42,6 +42,19 @@ describe("tool server", () => {
     await client.close();
   });
 
+  it("gives every tool schema a required array, even when all its parameters are optional", async () => {
+    // OpenCode turns a missing `required` into null, which OpenAI-compatible gateways reject.
+    const logs: HarnessTool = { ...echo, name: "logs", input: { clear: z.boolean().optional() } };
+    const server = await startToolServer(() => [echo, logs]);
+    closeAfter(() => void server.close());
+    const client = await connect(server.url, server.token);
+    const { tools } = await client.listTools();
+    expect(Object.fromEntries(tools.map((t) => [t.name, t.inputSchema.required]))).toEqual({ echo: ["text"], logs: [] });
+    const res = await client.callTool({ name: "logs", arguments: {} });
+    expect(res.content).toEqual([{ type: "text", text: "echo: undefined" }]);
+    await client.close();
+  });
+
   it("adds the extra tools on /mcp-skills only", async () => {
     const server = await startToolServer(() => [echo], () => [skill]);
     closeAfter(() => void server.close());
