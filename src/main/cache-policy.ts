@@ -160,6 +160,58 @@ export function annotateUsage(
   return ctx.signals.sessionRebuilt ? { ...usage, miss: false, missCause: "session-rebuild" } : { ...usage };
 }
 
+/**
+ * A window's hit rate: Σcache reads over Σ(read + write + net-new input),
+ * counting only the turns that reported cache reads (an agent that doesn't
+ * report them would otherwise look like a 0% turn). Deliberately NOT the mean
+ * of the per-turn rates — a 500-token turn would then weigh as much as a
+ * 50,000-token one. Null when no turn reported or nothing was processed.
+ */
+export function cumulativeHitRate(usages: Usage[]): number | null {
+  let read = 0;
+  let total = 0;
+  for (const u of usages) {
+    if (u.cacheReadTokens === null) continue;
+    read += u.cacheReadTokens;
+    total += u.cacheReadTokens + (u.cacheWriteTokens ?? 0) + u.inputTokens;
+  }
+  return total === 0 ? null : read / total;
+}
+
+/** Roll the config back when a window's cumulative hit rate fell by more. */
+export const HIT_RATE_TRIGGER = -0.05;
+/** Roll the config back when more than this share of turns unexpectedly missed. */
+export const PREFIX_TRIGGER = 0.01;
+
+/**
+ * The hit-rate rollback trigger: the current window's cumulative rate over
+ * the baseline's. The delta is negative for a regression, so pass is false
+ * once it drops past HIT_RATE_TRIGGER. Delta and pass are null when either
+ * window has no reported turns — no data, no verdict.
+ */
+export function hitRateRegression(
+  baseline: Usage[],
+  current: Usage[],
+): { baseline: number | null; current: number | null; delta: number | null; pass: boolean | null } {
+  const b = cumulativeHitRate(baseline);
+  const c = cumulativeHitRate(current);
+  if (b === null || c === null) return { baseline: b, current: c, delta: null, pass: null };
+  const delta = c - b;
+  return { baseline: b, current: c, delta, pass: delta > HIT_RATE_TRIGGER };
+}
+
+/**
+ * The prefix-stability rollback trigger: the share of turns carrying an
+ * unexpected miss. `annotateUsage` sets `miss` only there — expected
+ * compactions, TTL expiry and rebuilds aren't instability. pass means the
+ * window stayed within PREFIX_TRIGGER; an empty window is trivially stable.
+ */
+export function prefixStability(usages: Usage[]): { turns: number; unstable: number; rate: number; pass: boolean } {
+  const unstable = usages.filter((u) => u.miss).length;
+  const rate = usages.length === 0 ? 0 : unstable / usages.length;
+  return { turns: usages.length, unstable, rate, pass: rate <= PREFIX_TRIGGER };
+}
+
 /** Compact when the context is down to this fraction of its window. */
 export const COMPACT_AT = 0.2;
 

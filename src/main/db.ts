@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { bindingKey } from "../shared/bindings";
-import type { PermissionMode, Project, Provenance, SessionBinding, StoredEvent, Thread, ThreadEvent } from "../shared/types";
+import type { PermissionMode, Project, Provenance, SessionBinding, StoredEvent, Thread, ThreadEvent, Usage } from "../shared/types";
 
 /**
  * Plain rows in SQLite (node:sqlite, so no native module to rebuild per
@@ -413,9 +413,27 @@ export class Store {
         };
       });
   }
+
+  /**
+   * Every turn-end usage across all threads with created_at in [from, to), in
+   * time order — the raw material for a rollback window's cache figures. A
+   * turn-end that carried no usage object isn't a data point, so it's skipped.
+   */
+  turnUsage(from: number, to: number): { threadId: string; createdAt: number; usage: Usage }[] {
+    return this.db
+      .prepare("SELECT thread_id, payload, created_at FROM events WHERE created_at >= ? AND created_at < ? ORDER BY created_at")
+      .all(from, to)
+      .map((r) => r as unknown as { thread_id: string; payload: string; created_at: number })
+      .flatMap((row) => {
+        const event = JSON.parse(row.payload) as ThreadEvent;
+        if (event.kind !== "turn-end" || !event.usage) return [];
+        return [{ threadId: row.thread_id, createdAt: row.created_at, usage: event.usage }];
+      });
+  }
 }
 
-const THREAD_COLS = "id, project_id, agent, title, session_id, bindings, model, permission_mode, created_at, updated_at";
+const THREAD_COLS =
+  "id, project_id, agent, title, session_id, bindings, model, permission_mode, created_at, updated_at, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
 
 export interface LedgerTarget {
   threadId: string;
@@ -442,6 +460,7 @@ interface ThreadRow {
   permission_mode: string;
   created_at: number;
   updated_at: number;
+  project_path: string | null;
 }
 
 /** The blob a tool event's payload was offloaded to, or null when it's inline. */
@@ -458,7 +477,23 @@ function toProject(r: ProjectRow): Project {
 
 function toThread(r: ThreadRow): Thread {
   const bindings = JSON.parse(r.bindings || "{}") as Record<string, SessionBinding>;
-  const current = bindings[bindingKey(r.agent)];
+  const key = bindingKey(r.agent);
+  // This build writes session_id only as a mirror of the binding, so a column
+  // that disagrees was written by an older build after a rollback: it wins.
+  if (r.session_id !== null && r.session_id !== bindings[key]?.resumeCursor) {
+    const prior = bindings[key];
+    bindings[key] = {
+      ...prior,
+      agent: r.agent,
+      instanceId: prior?.instanceId ?? "default",
+      resumeCursor: r.session_id,
+      status: "active",
+      cwd: prior?.cwd ?? r.project_path ?? "",
+      lastSeenAt: r.updated_at,
+      lastSeq: prior?.lastSeq ?? 0,
+    };
+  }
+  const current = bindings[key];
   return {
     id: r.id,
     projectId: r.project_id,
