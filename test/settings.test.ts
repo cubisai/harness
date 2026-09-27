@@ -42,9 +42,9 @@ describe("SettingsStore", () => {
   it("starts from defaults and persists updates", () => {
     const file = fresh();
     const s = new SettingsStore(file, box);
-    expect(s.get()).toEqual({ theme: "system", motion: "instant", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {}, paneLayout: DEFAULT_LAYOUT });
+    expect(s.get()).toEqual({ theme: "system", motion: "instant", density: "comfortable", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {}, paneLayout: DEFAULT_LAYOUT });
     s.update({ theme: "dark", defaultAgent: "codex", defaultPermissionMode: "auto-edit", autoUpdate: false, editor: "zed" });
-    expect(new SettingsStore(file, box).get()).toEqual({ theme: "dark", motion: "instant", defaultAgent: "codex", defaultPermissionMode: "auto-edit", autoUpdate: false, editor: "zed", providerInjection: {}, paneLayout: DEFAULT_LAYOUT });
+    expect(new SettingsStore(file, box).get()).toEqual({ theme: "dark", motion: "instant", density: "comfortable", defaultAgent: "codex", defaultPermissionMode: "auto-edit", autoUpdate: false, editor: "zed", providerInjection: {}, paneLayout: DEFAULT_LAYOUT });
   });
 
   it("keeps only boolean per-agent injection flags", () => {

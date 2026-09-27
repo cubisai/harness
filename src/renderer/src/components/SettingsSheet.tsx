@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Motion, PermissionMode, SettingsView, Theme } from "../../../shared/types";
+import type { Density, Motion, PermissionMode, SettingsView, Theme } from "../../../shared/types";
 import { api } from "../api";
 import { ProvidersSection } from "./ProviderSheet";
 import { useStore, type LibraryTab } from "../store";
@@ -14,6 +14,11 @@ const MOTIONS: { id: Motion; label: string }[] = [
   { id: "instant", label: "Instant" },
   { id: "subtle", label: "Subtle" },
   { id: "full", label: "Full" },
+];
+
+const DENSITIES: { id: Density; label: string }[] = [
+  { id: "comfortable", label: "Comfortable" },
+  { id: "compact", label: "Compact" },
 ];
 
 const MODES: { id: PermissionMode; label: string }[] = [
@@ -136,6 +141,16 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
               {MOTIONS.map((m) => (
                 <button key={m.id} className={(settings.motion ?? "instant") === m.id ? "on" : ""} onClick={() => update({ motion: m.id })}>
                   {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="row">
+            <span className="label">Density</span>
+            <div className="segmented">
+              {DENSITIES.map((d) => (
+                <button key={d.id} className={(settings.density ?? "comfortable") === d.id ? "on" : ""} onClick={() => update({ density: d.id })}>
+                  {d.label}
                 </button>
               ))}
             </div>

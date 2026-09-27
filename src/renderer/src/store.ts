@@ -189,6 +189,11 @@ export function applyMotion(motion: SettingsView["motion"]): void {
   document.documentElement.dataset.motion = motion ?? "instant";
 }
 
+/** The density preference on <html data-density>; app.css tightens rows for compact. */
+export function applyDensity(density: SettingsView["density"]): void {
+  document.documentElement.dataset.density = density ?? "comfortable";
+}
+
 export function isDark(): boolean {
   const forced = document.documentElement.dataset.theme;
   return forced ? forced === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
@@ -373,6 +378,7 @@ export const useStore = create<State>((set, get) => ({
       .then((editors) => set({ editors }));
     applyTheme(settings.theme);
     applyMotion(settings.motion);
+    applyDensity(settings.density);
     const threads: Record<string, Thread[]> = {};
     for (const p of projects) threads[p.id] = await api().listThreads(p.id);
     for (const p of projects) void get().loadBranch(p.id);
@@ -632,6 +638,7 @@ export const useStore = create<State>((set, get) => ({
       case "settings":
         applyTheme(update.settings.theme);
         applyMotion(update.settings.motion);
+        applyDensity(update.settings.density);
         // A broadcast during a drag would fight the pointer; keep the local layout then.
         set((s) => ({
           settings: update.settings,

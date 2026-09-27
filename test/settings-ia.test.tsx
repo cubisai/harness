@@ -7,6 +7,7 @@ import { DEFAULT_LAYOUT } from "../src/shared/layout";
 const settings: SettingsView = {
   theme: "system",
   motion: "instant",
+  density: "comfortable",
   defaultAgent: null,
   defaultPermissionMode: "ask",
   autoUpdate: true,
@@ -41,7 +42,7 @@ describe("Settings IA", () => {
 
   it("puts each control in exactly one group", () => {
     // Providers render only with the store's settings; their group is pinned above.
-    const controls = ["Theme", "Motion", "Agent", "Permissions", "Open files in", "Installed", "Skills", "Keys", "Data folder", "Version", "Auto-update"];
+    const controls = ["Theme", "Motion", "Density", "Agent", "Permissions", "Open files in", "Installed", "Skills", "Keys", "Data folder", "Version", "Auto-update"];
     for (const label of controls) {
       const where = groupIds.filter((id) => html[id]!.includes(`class="label"`) && new RegExp(`class="label"[^>]*>${label}<`).test(html[id]!));
       expect(where, label).toHaveLength(1);

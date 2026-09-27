@@ -27,6 +27,8 @@ export type PermissionMode = "ask" | "auto-edit" | "full";
 export type Theme = "system" | "light" | "dark";
 /** How much the UI animates. `prefers-reduced-motion: reduce` always wins and means instant. */
 export type Motion = "instant" | "subtle" | "full";
+/** Row spacing in the sidebar and transcript. */
+export type Density = "comfortable" | "compact";
 /** @deprecated a provider id; kept one release */
 export type SecretName = string;
 
@@ -107,6 +109,8 @@ export interface Settings {
   theme: Theme;
   /** Panel and thread-switch animation; SettingsStore.get() always fills it in (default instant). */
   motion?: Motion;
+  /** Thread, tool and turn-meta row spacing; SettingsStore.get() always fills it in (default comfortable). */
+  density?: Density;
   /** The agent new threads start with; null = the first available (Claude). */
   defaultAgent: string | null;
   defaultPermissionMode: PermissionMode;
