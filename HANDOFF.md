@@ -75,6 +75,25 @@ Updated 2026-09-27 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-
 - Rollback: `cumulativeHitRate` / `hitRateRegression` / `prefixStability` + `Store.turnUsage`, `scripts/rollback-check.mjs`, `plan/docs/rollback.md`; frozen M3 `Store` fixture proves the downgrade; `toThread` lets a disagreeing `session_id` win (fixes pre-bindings export imports and post-downgrade cursors).
 - Smoke: `src/main/smoke-checks.ts` (providers, migration, handoff, render parity via `window.__unskilledSmokeRender` in `--unskilled-smoke` mode); `scripts/smoke.mjs` finds `AI Harness`; CI env allowlist + Linux packaged-smoke job; `manual/**` excluded from vitest.
 
+## After Phase 9: fixes from the user's own testing (2026-09-27)
+
+All checked in the real app on Windows; code paths are cross-platform unless noted.
+- **Layout** `03fbe3f`: the app grid row sizes to the window (a long thread list pushed the header away and nothing scrolled).
+- **Windows env** `7e572d3` (+ the commit before `8cbf5fa`): at startup the app fills user env vars and PATH folders it lacks (from `HKCU\Environment`), so an app started from an old terminal still gets `TOKENHARBOR_API_KEY` (OpenCode's config) and finds CLIs installed since (`agy`). Windows-only by design.
+- **Empty replies / Claude limits**: a turn that ends with nothing says so; Claude's own account-limit text is the error (it was "Rate limited" plus the text posing as a reply).
+- **Codex** `8cbf5fa` `d020826`: the long-lived `codex app-server` kept a stale login (401 "workspace routing discovery" on every model); it restarts when `$CODEX_HOME/auth.json` changes, and the model list (Codex's own `model/list`, which is per plan: a free account gets 4) is re-read on login change and on window focus.
+- **Threads**: rename / pin / archive / delete from a ⋯ row menu; pins and archive persist (migration 12: `pinned`, `archived`).
+- **Model picker** `dc03777`: searchable, grouped by provider (OpenCode lists 87).
+- **Streaming** `ad051ea`: replies and reasoning revealed at a steady pace (`smooth.ts`, `useSmoothText`); Claude Code-style waiting line.
+- **UI**: header = title + panel toggles; agent / model / permissions and meters live in the message box; the project start screen asks "What should we build in <project>?" (no skill cards); Settings icon is a cog.
+- Verified per model: Claude Opus/Sonnet/Haiku/Opus 1M ok (Fable 5.1 = the account's spend limit); OpenCode + 6 of 8 Token Harbor models ok (the two `:free` DeepSeek/MiMo return empty, provider-side); Codex Luna/Terra ok after the login fix.
+
+**Open from this round:**
+- **T8.13 WIP is stashed**: `git stash list` → "T8.13 WIP: worktree threads, background start, persisted pins". Its migration must become **step 13** and drop its `pinned` parts (step 12 now owns pins); `sendInBackground` and the worktree service code are in it.
+- **Lucide icons**: the user asked for `lucide-react`. Adding a dependency touches `package.json` + the lockfile, which are in the user's uncommitted bun switch; do it (`bun add lucide-react`, replace `icons.tsx`) right after that switch is committed.
+- **Antigravity**: `agy` is at `%LOCALAPPDATA%\agy\bin`, but the app drives it through `agy-acp` (not installed; the user installs it) and it stays off until the Settings opt-in.
+- Still to confirm on the Mac: the same smoke/model checks there.
+
 ## Resume here: T8.13, then the human release checks
 
 - T8.13 (worktree-per-thread, background start, Pinned column): `spec/phases/phase-8-ui-refinement.md`; its gate (T9.7) is met. Write `.ai/plans/t8-13-worktrees.md` first.
