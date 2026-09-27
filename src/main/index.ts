@@ -24,7 +24,7 @@ import { redactSecrets } from "./inject/redact";
 import { codexInstructions, prepareCodexPlan } from "./inject/codex";
 import { opencodeVersion } from "./inject/opencode";
 import { ensureOpenCodeGuard, withOpenCodeGuard } from "./inject/opencode-guard";
-import { findPython } from "./guard";
+import { BUILT_IN_GUARD, findPython } from "./guard";
 import { createGuide } from "./guide";
 import { SettingsStore } from "./settings";
 import { agentCatalog, skillDetail } from "./library";
@@ -194,7 +194,8 @@ async function main(): Promise<void> {
   };
   // Plan rate limits, fed only by what agents report during turns: no polling.
   const limits = new LimitsTracker((l) => broadcast({ type: "limits", limits: l }));
-  const guardScript = root?.skillsDir ? join(root.skillsDir, "git-guardrails", "scripts", "block-dangerous-git.py") : "";
+  // The skills library's Python script when there is one; otherwise the same rules built in (guard-rules.ts), so the guard is always on.
+  const guardScript = root?.skillsDir ? join(root.skillsDir, "git-guardrails", "scripts", "block-dangerous-git.py") : BUILT_IN_GUARD;
   // One guide for every agent: the app's, the user's, then the project's, stable for the session.
   const guide = createGuide({
     bundled: app.isPackaged ? join(process.resourcesPath, "HARNESS.md") : join(app.getAppPath(), "resources", "HARNESS.md"),
@@ -286,7 +287,8 @@ async function main(): Promise<void> {
     ...acpAgents.map((config) => {
       // OpenCode can't ask before every shell command, so its guard is a plugin
       // injected into its config; with one, the git guardrail blocks in every mode.
-      const python = config.guardPlugin === "opencode" && guardScript ? findPython() : null;
+      // OpenCode's guard is a plugin that runs the Python script itself, so it needs a real script file.
+      const python = config.guardPlugin === "opencode" && guardScript !== BUILT_IN_GUARD ? findPython() : null;
       const driverConfig =
         python && config.guardPlugin === "opencode"
           ? { ...config, capabilities: { ...config.capabilities, preToolGuard: true, guardEnforcement: { ask: "block" as const, "auto-edit": "block" as const, full: "block" as const } } }
