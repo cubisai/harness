@@ -29,6 +29,8 @@ let model = "mock-small";
 const sessions = new Set(["resumable-session"]);
 let cancelled = false;
 let lastMcp = [];
+let thoughtLevel = "medium";
+let configSets = 0;
 const configOptions = () => [
   {
     id: "model",
@@ -41,6 +43,24 @@ const configOptions = () => [
       { value: "mock-large", name: "Mock Large" },
     ],
   },
+  // MOCK_ACP_EFFORT=1 adds the thought-level select so a test can watch effort
+  // be set through session/set_config_option.
+  ...(process.env.MOCK_ACP_EFFORT === "1"
+    ? [
+        {
+          id: "thought_level",
+          name: "Thinking",
+          type: "select",
+          category: "thought_level",
+          currentValue: thoughtLevel,
+          options: [
+            { value: "low", name: "Low" },
+            { value: "medium", name: "Medium" },
+            { value: "high", name: "High" },
+          ],
+        },
+      ]
+    : []),
 ];
 
 console.log("not json: agents sometimes log to stdout");
@@ -82,7 +102,11 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
       lastMcp = params.mcpServers ?? [];
       return send({ id, result: { configOptions: configOptions() } });
     case "session/set_config_option":
-      model = params.value;
+      if (params.configId === "model") model = params.value;
+      else if (params.configId === "thought_level") {
+        thoughtLevel = params.value;
+        configSets++;
+      }
       return send({ id, result: { configOptions: configOptions() } });
     case "session/cancel":
       cancelled = true;
@@ -166,6 +190,8 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
         }
         update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `Hello, ${text} ` } });
         update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `(${model})` } });
+      } else if (text === "effort") {
+        update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `sets=${configSets}` } });
       } else if (text === "slow") {
         while (!cancelled) {
           update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "." } });

@@ -194,6 +194,44 @@ describe("Service.send", () => {
     expect(ends[0]!.usage?.missCause).toBeUndefined();
     expect(ends[1]!.usage).toMatchObject({ miss: false, missCause: "session-rebuild" });
   });
+
+  it("passes the chosen effort and clears an unsupported one on a model switch", async () => {
+    const store = new Store(join(tempDir(), "t.db"));
+    closeAfter(() => store.close());
+    const seen: (string | null | undefined)[] = [];
+    const driver: AgentDriver = {
+      id: "fake",
+      label: "Fake",
+      defaultModel: "m1",
+      capabilities: SAFE_DEFAULTS,
+      skillsDelivery: { mode: "none" },
+      skillCallPrefix: "",
+      models: () => [
+        { id: "m1", label: "M1", efforts: ["low", "high"] },
+        { id: "m2", label: "M2", efforts: ["low"] },
+      ],
+      async runTurn(input) {
+        seen.push(input.effort);
+      },
+    };
+    const service = new Service(store, () => catalog(), [driver], () => {});
+    const project = store.addProject(tempDir());
+    const thread = service.createThread(project.id);
+
+    service.updateThread(thread.id, { effort: "high" });
+    expect(store.getThread(thread.id).effort).toBe("high");
+    await service.send({ threadId: thread.id, text: "one" });
+    expect(seen).toEqual(["high"]);
+
+    // The new model doesn't offer "high": the effort goes back to the default.
+    service.updateThread(thread.id, { model: "m2" });
+    expect(store.getThread(thread.id).effort).toBeNull();
+
+    // A supported effort survives the switch.
+    service.updateThread(thread.id, { effort: "low" });
+    service.updateThread(thread.id, { model: "m1" });
+    expect(store.getThread(thread.id).effort).toBe("low");
+  });
 });
 
 describe("titleFrom", () => {

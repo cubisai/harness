@@ -13,6 +13,7 @@ const thread = (id: string, ago: number): Thread => ({
   sessionId: null,
   bindings: {},
   model: "default",
+  effort: null,
   permissionMode: "ask",
   createdAt: NOW - ago,
   updatedAt: NOW - ago,

@@ -55,6 +55,7 @@ export function installMock(): void {
     sessionId: "s-" + id,
     bindings: {},
     model: "opus",
+    effort: null,
     permissionMode: "ask",
     createdAt: now - ago,
     updatedAt: now - ago,
@@ -243,8 +244,8 @@ export function installMock(): void {
         defaultModel: "opus",
         capabilities: mockCapabilities,
         models: [
-          { id: "opus", label: "Opus 5.5" },
-          { id: "sonnet", label: "Sonnet 5" },
+          { id: "opus", label: "Opus 5.5", efforts: ["low", "medium", "high", "xhigh", "max"], defaultEffort: "high" },
+          { id: "sonnet", label: "Sonnet 5", efforts: ["low", "medium", "high", "xhigh", "max"], defaultEffort: "high" },
           { id: "haiku", label: "Haiku 4.5" },
         ],
       },

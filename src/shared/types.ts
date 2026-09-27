@@ -292,6 +292,8 @@ export interface Thread {
   /** Every agent session this thread has used, by `bindingKey()`. Switching agents keeps them all. */
   bindings: Record<string, SessionBinding>;
   model: string;
+  /** Reasoning effort for the current model; null = the model's own default. */
+  effort: string | null;
   permissionMode: PermissionMode;
   createdAt: number;
   updatedAt: number;
@@ -510,6 +512,10 @@ export interface DiffFile {
 export interface ModelOption {
   id: string;
   label: string;
+  /** Reasoning effort levels the model supports, in the agent's own order. */
+  efforts?: string[];
+  /** The model's default effort, when the agent reports one. */
+  defaultEffort?: string;
 }
 
 export type GuardEnforcement = "block" | "warnOnly";
@@ -640,7 +646,7 @@ export interface UnskilledApi {
   addProject(): Promise<Project | null>;
   listThreads(projectId: string): Promise<Thread[]>;
   createThread(projectId: string, agent?: string): Promise<Thread>;
-  updateThread(threadId: string, patch: Partial<Pick<Thread, "title" | "model" | "permissionMode" | "agent" | "pinned" | "archived">>): Promise<Thread>;
+  updateThread(threadId: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "permissionMode" | "agent" | "pinned" | "archived">>): Promise<Thread>;
   deleteThread(threadId: string): Promise<void>;
   /** Move a thread to another agent; a refused switch changes nothing. */
   switchAgent(threadId: string, agent: string, mode: SwitchMode): Promise<SwitchResult>;

@@ -47,6 +47,13 @@ export function App() {
         e.preventDefault();
         const s = useStore.getState();
         useStore.setState({ libraryTab: s.libraryTab ? null : "skills" });
+      } else if (mod && e.altKey && e.key === ",") {
+        // Ctrl/Cmd+Alt+, steps reasoning effort down, wrapping to Default.
+        e.preventDefault();
+        useStore.getState().cycleEffort(-1);
+      } else if (mod && e.altKey && e.key === ".") {
+        e.preventDefault();
+        useStore.getState().cycleEffort(1);
       } else if (mod && e.key === ",") {
         e.preventDefault();
         useStore.getState().setSettingsOpen(true);

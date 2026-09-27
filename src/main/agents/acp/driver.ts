@@ -121,6 +121,13 @@ function modelsFrom(options: ConfigOption[] | null | undefined): ModelOption[] |
   return flat.map((o) => ({ id: o.value, label: o.name }));
 }
 
+/** The `thought_level` select's option values; ACP carries one list per session, not per model. */
+function effortsFrom(options: ConfigOption[] | null | undefined): string[] | null {
+  const opt = options?.find((o) => o.category === "thought_level" && o.type === "select");
+  if (!opt?.options) return null;
+  return opt.options.flatMap((o) => ("options" in o ? o.options : [o])).map((o) => o.value);
+}
+
 interface Live {
   conn: StdioRpc;
   init: InitializeResult;
@@ -179,10 +186,17 @@ export function createAcpDriver(
 ): AgentDriver {
   const live = new Map<string, Live>();
   let knownModels: ModelOption[] = [];
+  let knownEfforts: string[] = [];
   // Preset metadata, then the first initialize's protocol facts (below).
   let capabilities = acpCapabilities(config);
   // Once-per-driver, like Claude: the same feature-loss notice isn't repeated.
   const shownNotices = new Set<string>();
+
+  /** Remember the model and thought-level lists a session's config options carry. */
+  const rememberConfig = (options: ConfigOption[] | null | undefined) => {
+    knownModels = modelsFrom(options) ?? knownModels;
+    knownEfforts = effortsFrom(options) ?? knownEfforts;
+  };
 
   /** Protocol capabilities the agent reports; initialize wins over preset metadata. */
   const PROTOCOL_LABELS: Record<"mcpHttp" | "resume", string> = { mcpHttp: "MCP over HTTP", resume: "session resume" };
@@ -306,7 +320,7 @@ export function createAcpDriver(
         return;
       case "config_option_update":
         l.configOptions = (update as { configOptions: ConfigOption[] }).configOptions;
-        knownModels = modelsFrom(l.configOptions) ?? knownModels;
+        rememberConfig(l.configOptions);
         return;
       default:
         return;
@@ -424,7 +438,10 @@ export function createAcpDriver(
       if (!canReopen) return;
       await l.conn.request("session/close", { sessionId: l.sessionId }).catch(() => {});
       const res = await l.conn.request<{ configOptions?: ConfigOption[] }>("session/resume", { cwd: input.cwd, mcpServers, sessionId: l.sessionId });
-      if (res?.configOptions) l.configOptions = res.configOptions;
+      if (res?.configOptions) {
+        l.configOptions = res.configOptions;
+        rememberConfig(l.configOptions);
+      }
       input.onSessionRebuilt?.();
       return;
     }
@@ -436,6 +453,7 @@ export function createAcpDriver(
         const res = await l.conn.request<{ configOptions?: ConfigOption[] }>("session/resume", { ...params, sessionId: input.sessionId });
         l.sessionId = input.sessionId;
         l.configOptions = res?.configOptions ?? [];
+        rememberConfig(l.configOptions);
         return;
       } catch {
         // fall through to a new session
@@ -445,6 +463,7 @@ export function createAcpDriver(
         const res = await l.conn.request<{ configOptions?: ConfigOption[] }>("session/load", { ...params, sessionId: input.sessionId });
         l.sessionId = input.sessionId;
         l.configOptions = res?.configOptions ?? [];
+        rememberConfig(l.configOptions);
         return;
       } catch {
         // fall through
@@ -454,6 +473,7 @@ export function createAcpDriver(
     const res = await l.conn.request<{ sessionId: string; configOptions?: ConfigOption[] }>("session/new", params);
     l.sessionId = res.sessionId;
     l.configOptions = res.configOptions ?? [];
+    rememberConfig(l.configOptions);
     l.guidePending = true;
   };
 
@@ -466,7 +486,25 @@ export function createAcpDriver(
       configId: opt.id,
       value: model,
     });
-    if (res?.configOptions) l.configOptions = res.configOptions;
+    if (res?.configOptions) {
+      l.configOptions = res.configOptions;
+      rememberConfig(l.configOptions);
+    }
+  };
+
+  /** Set the session's thought level, when the agent has one and it differs. */
+  const applyEffort = async (l: Live, effort: string) => {
+    const opt = l.configOptions.find((o) => o.category === "thought_level" && o.type === "select");
+    if (!opt || opt.currentValue === effort) return;
+    const res = await l.conn.request<{ configOptions?: ConfigOption[] }>("session/set_config_option", {
+      sessionId: l.sessionId,
+      configId: opt.id,
+      value: effort,
+    });
+    if (res?.configOptions) {
+      l.configOptions = res.configOptions;
+      rememberConfig(l.configOptions);
+    }
   };
 
   let refreshing: Promise<void> | null = null;
@@ -501,7 +539,7 @@ export function createAcpDriver(
         const auth = init.authMethods?.[0];
         if (auth) await conn.request("authenticate", { methodId: auth.id }).catch(() => {});
         const res = await conn.request<{ configOptions?: ConfigOption[] }>("session/new", { cwd, mcpServers: [] });
-        knownModels = modelsFrom(res.configOptions) ?? knownModels;
+        rememberConfig(res.configOptions);
       } catch {
         // Leave the list alone; the first turn will fill it in.
       } finally {
@@ -526,7 +564,11 @@ export function createAcpDriver(
     credentials: { byok: !config.providerEnvOnly, own: "config", injector: config.injector ?? "acp" },
     ...(config.unsupported ? { unsupported: config.unsupported } : {}),
     skillCallPrefix: "",
-    models: () => [{ id: DEFAULT_MODEL, label: "Agent default" }, ...knownModels],
+    models: () => {
+      // One thought-level list per session: every model of the agent carries it.
+      const withEfforts = (m: ModelOption): ModelOption => (knownEfforts.length ? { ...m, efforts: knownEfforts } : m);
+      return [withEfforts({ id: DEFAULT_MODEL, label: "Agent default" }), ...knownModels.map(withEfforts)];
+    },
     refreshModels,
     // session/set_config_option on the model option switches in place;
     // applyModel skips the default, so going back to it needs a new session.
@@ -537,9 +579,10 @@ export function createAcpDriver(
       try {
         l = await connect(key, input);
         await openSession(l, input);
-        knownModels = modelsFrom(l.configOptions) ?? knownModels;
+        rememberConfig(l.configOptions);
         input.onSession(l.sessionId!);
         await applyModel(l, input.model);
+        if (input.effort) await applyEffort(l, input.effort);
       } catch (err) {
         input.onEvent({ kind: "error", message: `${config.label} failed to start: ${err instanceof Error ? err.message : String(err)}` });
         live.get(key)?.conn.close();

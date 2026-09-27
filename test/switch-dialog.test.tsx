@@ -77,6 +77,7 @@ describe("store switchAgent", () => {
       sessionId: null,
       bindings: {},
       model: "m",
+      effort: null,
       permissionMode: "ask",
       createdAt: 0,
       updatedAt: 0,

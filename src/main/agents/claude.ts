@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
-import type { HookCallback, ModelInfo, Options, PermissionResult, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { EffortLevel, HookCallback, ModelInfo, Options, PermissionResult, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { McpServerEntry, ModelOption, PermissionMode, ThreadEvent } from "../../shared/types";
 import { canonicalTool, type EditResult, type RunPayload, type RunResult } from "../../shared/tools";
 import { diffSummary, unifiedDiff } from "../../shared/diff";
@@ -68,7 +68,11 @@ function fromSdk(list: ModelInfo[]): ModelOption[] {
       : head.startsWith(m.displayName)
         ? head
         : m.displayName;
-    return { id: m.value, label };
+    return {
+      id: m.value,
+      label,
+      ...(m.supportsEffort && m.supportedEffortLevels?.length ? { efforts: m.supportedEffortLevels } : {}),
+    };
   });
 }
 
@@ -131,6 +135,8 @@ export interface ClaudeDriverConfig {
 export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
   let models: ModelOption[] = MODELS;
   let refreshing: Promise<void> | null = null;
+  /** Model value → whether it supports adaptive thinking, from the SDK's model list. */
+  const adaptiveThinking = new Map<string, boolean>();
   // Both are once-per-driver, not once-per-turn: the same warning or the same
   // project does not need saying again on the next message.
   const shownWarnings = new Set<string>();
@@ -167,7 +173,11 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
           }),
         ]);
         const next = fromSdk(list);
-        if (next.length) models = next;
+        if (next.length) {
+          models = next;
+          adaptiveThinking.clear();
+          for (const m of list) if (m.value) adaptiveThinking.set(m.value, Boolean(m.supportsAdaptiveThinking));
+        }
       } catch {
         // Keep the static fallback list.
       } finally {
@@ -239,6 +249,10 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         permissionMode: SDK_MODE[input.permissionMode],
         allowDangerouslySkipPermissions: input.permissionMode === "full",
         includePartialMessages: true,
+        // Effort guides how deep the model thinks; summarized adaptive thinking
+        // returns the reasoning text instead of omitting it.
+        ...(input.effort ? { effort: input.effort as EffortLevel } : {}),
+        ...(adaptiveThinking.get(input.model) === true ? { thinking: { type: "adaptive" as const, display: "summarized" as const } } : {}),
         plugins,
         ...(guideText ? { systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: guideText } } : {}),
         ...(plan ? { env: plan.env } : {}),

@@ -431,8 +431,24 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         const dir = config.skillsDir();
         if (dir) await conn.request("skills/extraRoots/set", { extraRoots: [dir] }).catch(() => {});
       }
-      const list = await conn.request<{ data: { id: string; displayName: string; hidden: boolean }[] }>("model/list", {}).catch(() => null);
-      if (list) models = list.data.filter((m) => !m.hidden).map((m) => ({ id: m.id, label: m.displayName }));
+      const list = await conn
+        .request<{
+          data: {
+            id: string;
+            displayName: string;
+            hidden: boolean;
+            supportedReasoningEfforts?: { reasoningEffort: string; description: string }[];
+            defaultReasoningEffort?: string;
+          }[];
+        }>("model/list", {})
+        .catch(() => null);
+      if (list)
+        models = list.data.filter((m) => !m.hidden).map((m) => ({
+          id: m.id,
+          label: m.displayName,
+          ...(m.supportedReasoningEfforts?.length ? { efforts: m.supportedReasoningEfforts.map((e) => e.reasoningEffort) } : {}),
+          ...(m.defaultReasoningEffort ? { defaultEffort: m.defaultReasoningEffort } : {}),
+        }));
       if (plan?.byok && startWarnings.length) throw new Error(`Codex rejected the provider config: ${startWarnings.join("; ")}`);
     })();
     ready.catch(() => {
@@ -560,6 +576,9 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
           input: [{ type: "text", text: input.prompt, text_elements: [] }],
           model,
           approvalPolicy: policy.approvalPolicy,
+          // Summarized reasoning streams back as `summary: "auto"`.
+          summary: "auto",
+          ...(input.effort ? { effort: input.effort } : {}),
         });
         state.turnId ??= res.turn.id;
         if (input.signal.aborted) onAbort();

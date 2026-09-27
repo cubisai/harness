@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { EffortPicker } from "../src/renderer/src/components/EffortPicker";
 import { ModelPicker } from "../src/renderer/src/components/ModelPicker";
 import { filterModels } from "../src/renderer/src/models";
 
@@ -35,5 +36,19 @@ describe("ModelPicker", () => {
     const html = renderToStaticMarkup(<ModelPicker models={opencode} current="tokenharbor/glm-5.3-flash" onPick={() => {}} />);
     expect(html).toContain(">GLM 5.3 Flash</button>");
     expect(html).toContain('aria-expanded="false"');
+  });
+});
+
+describe("EffortPicker", () => {
+  it("renders nothing when the model offers no efforts", () => {
+    expect(renderToStaticMarkup(<EffortPicker options={[]} current={null} onPick={() => {}} />)).toBe("");
+  });
+
+  it("lists Default first, then the levels, noting the model's default", () => {
+    const html = renderToStaticMarkup(<EffortPicker options={["low", "high"]} current={null} defaultEffort="high" onPick={() => {}} />);
+    expect(html).toContain(">Default");
+    expect(html).toContain("(high)");
+    expect(html).toContain(">low</button>");
+    expect(html).toContain(">high</button>");
   });
 });

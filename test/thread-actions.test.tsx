@@ -16,6 +16,7 @@ const thread = (id: string, patch: Partial<Thread> = {}): Thread => ({
   sessionId: null,
   bindings: {},
   model: "default",
+  effort: null,
   permissionMode: "ask",
   createdAt: 1,
   updatedAt: 1,

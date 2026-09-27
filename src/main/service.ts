@@ -141,14 +141,21 @@ export class Service {
    * Switching agents keeps every agent's session: switching back resumes the
    * one it had, on the model it last used. A new agent starts fresh.
    */
-  updateThread(id: string, patch: Partial<Pick<Thread, "title" | "model" | "permissionMode" | "agent" | "pinned" | "archived">>): Thread {
+  updateThread(id: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "permissionMode" | "agent" | "pinned" | "archived">>): Thread {
     const current = this.store.getThread(id);
     if (patch.agent && patch.agent !== current.agent) {
       if (this.running.has(id)) throw new Error("Stop the running turn before switching agents.");
       const { agent, ...rest } = patch;
       return this.applySwitch(current, agent, current.bindings[bindingKey(agent)]?.resumeCursor ? "back" : "fresh", rest.model);
     }
-    return this.store.updateThread(id, patch);
+    // A model change drops an effort the new model doesn't offer; null is the model's default.
+    const next = { ...patch };
+    const effort = patch.effort !== undefined ? patch.effort : current.effort;
+    if (patch.model !== undefined && effort !== null) {
+      const efforts = this.driverFor(current.agent).models().find((m) => m.id === (patch.model ?? current.model))?.efforts;
+      if (!efforts || !efforts.includes(effort)) next.effort = null;
+    }
+    return this.store.updateThread(id, next);
   }
 
   /**
@@ -218,8 +225,11 @@ export class Service {
     // Trust doesn't carry across agents: the default permission mode again, and
     // approvals are kept per agent, so none of the old agent's apply.
     const permissionMode = this.defaults().permissionMode;
+    // An effort the new agent's model doesn't offer goes back to the model's default.
+    const efforts = driver.models().find((m) => m.id === pick)?.efforts;
+    const effort = thread.effort && efforts?.includes(thread.effort) ? thread.effort : null;
     this.pendingSignal.set(thread.id, this.previousTurnEnd(thread.id, thread.agent)?.usage ?? null);
-    this.store.updateThread(thread.id, { agent, model: pick, permissionMode });
+    this.store.updateThread(thread.id, { agent, model: pick, permissionMode, effort });
     // A handoff or a fresh start opens a new session even when the agent has one.
     const updated = resumes ? this.store.getThread(thread.id) : this.store.updateThread(thread.id, { sessionId: null });
     if (resumes) {
@@ -274,6 +284,7 @@ export class Service {
           prompt,
           sessionId: null,
           model: thread.model,
+          effort: thread.effort,
           permissionMode: thread.permissionMode,
           signal: controller.signal,
           tools: this.harnessTools(),
@@ -394,6 +405,7 @@ export class Service {
         prompt,
         sessionId: current.sessionId,
         model: thread.model,
+        effort: thread.effort,
         permissionMode: thread.permissionMode,
         signal: controller.signal,
         tools: this.harnessTools(),

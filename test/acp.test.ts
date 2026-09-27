@@ -129,6 +129,27 @@ describe("ACP driver", () => {
     expect(second.deltas.join("")).toBe("Hello, two (mock-large)");
   });
 
+  it("sets the thought level before a prompt only when the effort differs", async () => {
+    const d = createAcpDriver({ id: "mock", label: "Mock", command: process.execPath, args: [MOCK], env: { MOCK_ACP_EFFORT: "1" } }, { clientVersion: "test" });
+    closeAfter(() => d.dispose?.());
+    const first = turn("effort", { effort: "high" });
+    await d.runTurn(first.input);
+    expect(first.deltas.join("")).toBe("sets=1");
+    // The one thought list is exposed on every model of the agent.
+    expect(d.models().find((m) => m.id === "mock-small")?.efforts).toEqual(["low", "medium", "high"]);
+    // Already high: no second set_config_option.
+    const second = turn("effort", { sessionId: first.sessions[0]!, effort: "high" });
+    await d.runTurn(second.input);
+    expect(second.deltas.join("")).toBe("sets=1");
+  });
+
+  it("ignores effort when the agent has no thought-level option", async () => {
+    const d = driver();
+    const t = turn("hello", { effort: "high" });
+    await d.runTurn(t.input);
+    expect(t.deltas.join("")).toBe("Hello, hello (mock-small)");
+  });
+
   it("resumes a stored session in a new agent process", async () => {
     const d = driver();
     const t = turn("again", { sessionId: "resumable-session" });

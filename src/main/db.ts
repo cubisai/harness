@@ -120,6 +120,11 @@ export class Store {
         sql: `ALTER TABLE threads ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
           ALTER TABLE threads ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;`,
       },
+      // 13: per-thread reasoning effort; null keeps the model's own default.
+      {
+        applied: () => this.hasColumn("threads", "effort"),
+        sql: "ALTER TABLE threads ADD COLUMN effort TEXT",
+      },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;
@@ -185,15 +190,16 @@ export class Store {
       sessionId: null,
       bindings: {},
       model,
+      effort: null,
       permissionMode,
       createdAt: now,
       updatedAt: now,
     };
     this.db
       .prepare(
-        "INSERT INTO threads (id, project_id, agent, title, session_id, model, permission_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO threads (id, project_id, agent, title, session_id, model, effort, permission_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
-      .run(thread.id, projectId, agent, thread.title, null, model, permissionMode, now, now);
+      .run(thread.id, projectId, agent, thread.title, null, model, null, permissionMode, now, now);
     return thread;
   }
 
@@ -207,7 +213,7 @@ export class Store {
    * `sessionId` writes the cursor of the thread's agent (after any `agent` change in
    * the same patch). Changing `agent` keeps every binding, so switching back resumes.
    */
-  updateThread(id: string, patch: Partial<Pick<Thread, "title" | "model" | "permissionMode" | "sessionId" | "agent" | "pinned" | "archived">>): Thread {
+  updateThread(id: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "permissionMode" | "sessionId" | "agent" | "pinned" | "archived">>): Thread {
     const current = this.getThread(id);
     const now = Date.now();
     const { sessionId, ...rest } = patch;
@@ -221,8 +227,8 @@ export class Store {
     const activity = Object.keys(patch).some((k) => k !== "pinned" && k !== "archived" && k !== "title");
     const t: Thread = { ...current, ...rest, agent, bindings, sessionId: bindings[bindingKey(agent)]?.resumeCursor ?? null, updatedAt: activity ? now : current.updatedAt };
     this.db
-      .prepare("UPDATE threads SET agent = ?, title = ?, session_id = ?, bindings = ?, model = ?, permission_mode = ?, pinned = ?, archived = ?, updated_at = ? WHERE id = ?")
-      .run(t.agent, t.title, t.sessionId, JSON.stringify(bindings), t.model, t.permissionMode, t.pinned ? 1 : 0, t.archived ? 1 : 0, t.updatedAt, id);
+      .prepare("UPDATE threads SET agent = ?, title = ?, session_id = ?, bindings = ?, model = ?, effort = ?, permission_mode = ?, pinned = ?, archived = ?, updated_at = ? WHERE id = ?")
+      .run(t.agent, t.title, t.sessionId, JSON.stringify(bindings), t.model, t.effort, t.permissionMode, t.pinned ? 1 : 0, t.archived ? 1 : 0, t.updatedAt, id);
     return t;
   }
 
@@ -365,7 +371,7 @@ export class Store {
     try {
       this.db
         .prepare(
-          "INSERT INTO threads (id, project_id, agent, title, session_id, bindings, model, permission_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO threads (id, project_id, agent, title, session_id, bindings, model, effort, permission_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .run(
           id,
@@ -375,6 +381,7 @@ export class Store {
           thread.sessionId,
           JSON.stringify(thread.bindings ?? {}),
           thread.model,
+          thread.effort ?? null,
           thread.permissionMode,
           thread.createdAt,
           Date.now(),
@@ -441,7 +448,7 @@ export class Store {
 }
 
 const THREAD_COLS =
-  "id, project_id, agent, title, session_id, bindings, model, permission_mode, created_at, updated_at, pinned, archived, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
+  "id, project_id, agent, title, session_id, bindings, model, effort, permission_mode, created_at, updated_at, pinned, archived, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
 
 export interface LedgerTarget {
   threadId: string;
@@ -465,6 +472,7 @@ interface ThreadRow {
   session_id: string | null;
   bindings: string | null;
   model: string;
+  effort: string | null;
   permission_mode: string;
   created_at: number;
   updated_at: number;
@@ -512,6 +520,7 @@ function toThread(r: ThreadRow): Thread {
     sessionId: current?.resumeCursor ?? null,
     bindings,
     model: r.model,
+    effort: r.effort ?? null,
     permissionMode: r.permission_mode as PermissionMode,
     createdAt: r.created_at,
     updatedAt: r.updated_at,

@@ -35,6 +35,8 @@ export interface TurnInput {
   /** The agent's session to resume, or null for a new conversation. */
   sessionId: string | null;
   model: string;
+  /** Reasoning effort for this turn; null or absent keeps the model's default. */
+  effort?: string | null;
   permissionMode: PermissionMode;
   signal: AbortSignal;
   onEvent(event: ThreadEvent): void;

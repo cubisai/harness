@@ -134,7 +134,9 @@ interface State {
   exportThread(): Promise<void>;
   /** Restore a thread export into the selected project and open it. */
   importThread(): Promise<void>;
-  updateThread(patch: Partial<Pick<Thread, "title" | "model" | "permissionMode" | "agent">>): Promise<void>;
+  updateThread(patch: Partial<Pick<Thread, "title" | "model" | "effort" | "permissionMode" | "agent">>): Promise<void>;
+  /** Step the open thread's reasoning effort down (-1) or up (+1), wrapping through Default. */
+  cycleEffort(dir: 1 | -1): void;
   /** Start a turn on the open thread (or `threadId`); a no-op while that thread is running. */
   send(text: string, skill?: string, threadId?: string): Promise<void>;
   /** Messages sent while a turn ran, by thread: each goes out as the next turn, in order. Stop clears them; never persisted. */
@@ -518,6 +520,20 @@ export const useStore = create<State>((set, get) => ({
     get().apply({ type: "thread", thread });
     // A new agent may report its models only once it has run; refresh the list.
     if (patch.agent) set({ agents: await api().listAgents() });
+  },
+
+  cycleEffort(dir) {
+    const s = get();
+    const id = s.selectedThreadId;
+    if (!id) return;
+    const thread = findThread(s.threads, id);
+    if (!thread) return;
+    const efforts = s.agents.find((a) => a.id === thread.agent)?.models.find((m) => m.id === thread.model)?.efforts ?? [];
+    if (!efforts.length) return;
+    // Default is its own stop, first in the ring.
+    const levels: (string | null)[] = [null, ...efforts];
+    const at = Math.max(0, levels.indexOf(thread.effort));
+    void get().updateThread({ effort: levels[(at + dir + levels.length) % levels.length]! });
   },
 
   outbox: {},

@@ -45,6 +45,32 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 });
 `;
 
+/** Records the turn/start params and reports reasoning efforts on model/list. */
+const EFFORT_PROBE = `
+const fs = require("node:fs");
+const readline = require("node:readline");
+const send = (m) => process.stdout.write(JSON.stringify(m) + "\\n");
+readline.createInterface({ input: process.stdin }).on("line", (line) => {
+  const msg = JSON.parse(line);
+  if (msg.id === undefined) return;
+  const { id, method, params } = msg;
+  if (method === "initialize") return send({ id, result: { userAgent: "probe" } });
+  if (method === "model/list") return send({ id, result: { data: [{ id: "gpt-5", displayName: "GPT-5", hidden: false,
+    supportedReasoningEfforts: [{ reasoningEffort: "low", description: "Low" }, { reasoningEffort: "high", description: "High" }],
+    defaultReasoningEffort: "high" }] } });
+  if (method === "thread/start" || method === "thread/resume") return send({ id, result: { thread: { id: "probe-thread" } } });
+  if (method === "turn/start") {
+    fs.writeFileSync(process.env.EFFORT_PROBE, JSON.stringify(params));
+    const turn = { id: "turn-1", status: "inProgress", error: null, durationMs: null };
+    send({ id, result: { turn } });
+    send({ method: "turn/started", params: { threadId: params.threadId, turn } });
+    send({ method: "turn/completed", params: { threadId: params.threadId, turn: { ...turn, status: "completed", durationMs: 1 } } });
+    return;
+  }
+  send({ id, result: {} });
+});
+`;
+
 function driver() {
   const d = createCodexDriver({ command: process.execPath, args: [MOCK], clientVersion: "test", skillsDir: () => "/skills/here" });
   closeAfter(() => d.dispose?.());
@@ -135,6 +161,23 @@ describe("Codex driver", () => {
     expect(d.models().map((m) => m.id)).toEqual(["default"]);
     await d.refreshModels!();
     expect(d.models().map((m) => m.id)).toEqual(["default", "gpt-mock"]);
+  });
+
+  it("maps reasoning efforts and sends effort plus an auto summary on turn/start", async () => {
+    const probe = join(tempDir(), "effort.json");
+    process.env.EFFORT_PROBE = probe;
+    const d = createCodexDriver({ command: process.execPath, args: ["-e", EFFORT_PROBE], clientVersion: "test" });
+    closeAfter(() => d.dispose?.());
+    try {
+      await d.refreshModels!();
+      expect(d.models().find((m) => m.id === "gpt-5")).toMatchObject({ efforts: ["low", "high"], defaultEffort: "high" });
+      await d.runTurn(turn("hi", { model: "gpt-5", effort: "high" }).input);
+      const sent = JSON.parse(readFileSync(probe, "utf8")) as { effort?: string; summary?: string };
+      expect(sent.effort).toBe("high");
+      expect(sent.summary).toBe("auto");
+    } finally {
+      delete process.env.EFFORT_PROBE;
+    }
   });
 
   it("passes on the rate limits Codex reports during a turn", async () => {

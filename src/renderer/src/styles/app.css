@@ -1591,3 +1591,9 @@ button.hunk:hover { color: var(--accent); }
 .mcp-file-label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); white-space: nowrap; padding-top: 2px; }
 .mcp-file-label input { margin: 0; }
 
+/* ---------- reasoning effort picker ---------- */
+
+.effort-picker { display: inline-flex; align-items: center; gap: 5px; max-width: 140px; }
+.effort-default { color: var(--text-tertiary); }
+/* The menu is kept in the DOM but hidden while closed, so its rows stay testable. */
+.model-menu[hidden] { display: none; }

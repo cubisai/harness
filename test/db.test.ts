@@ -15,6 +15,9 @@ describe("Store", () => {
     expect(p.name).toBe("project");
 
     const t = store.createThread(p.id, "claude", "claude-opus-5", "ask");
+    expect(t.effort).toBeNull();
+    expect(store.updateThread(t.id, { effort: "high" }).effort).toBe("high");
+    expect(store.getThread(t.id).effort).toBe("high");
     expect(store.listThreads(p.id).map((x) => x.id)).toEqual([t.id]);
 
     store.appendEvent(t.id, { kind: "user", text: "hi" });
@@ -147,6 +150,31 @@ describe("Store migrations", () => {
     expect(reread.bindings["claude:default"]!.resumeCursor).toBe("claude-s");
     expect(back.sessionId).toBe("thr-1");
     expect(reread.sessionId).toBe(reread.bindings["codex:default"]!.resumeCursor);
+  });
+
+  it("adds effort to a database at version 12, keeping existing threads on the model default", () => {
+    const file = join(tempDir(), "pre13.db");
+    const old = new DatabaseSync(file);
+    old.exec(`
+      CREATE TABLE projects (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at INTEGER NOT NULL);
+      CREATE TABLE threads (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, agent TEXT NOT NULL DEFAULT 'claude', title TEXT NOT NULL,
+        session_id TEXT, bindings TEXT NOT NULL DEFAULT '{}', model TEXT NOT NULL, permission_mode TEXT NOT NULL,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0, archived INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE schema_version (version INTEGER NOT NULL);
+      INSERT INTO schema_version VALUES (12);
+      INSERT INTO projects VALUES ('p', '/x', 'x', 1);
+      INSERT INTO threads (id, project_id, agent, title, model, permission_mode, created_at, updated_at)
+        VALUES ('t', 'p', 'claude', 'Old', 'opus', 'ask', 1, 1);
+    `);
+    old.close();
+
+    const store = new Store(file);
+    closeAfter(() => store.close());
+    expect(store.getThread("t").effort).toBeNull();
+    expect(store.updateThread("t", { effort: "high" }).effort).toBe("high");
+    expect(store.getThread("t").effort).toBe("high");
+    expect(store.updateThread("t", { effort: null }).effort).toBeNull();
+    expect(store.getThread("t").effort).toBeNull();
   });
 
   it("opens a fresh database twice without throwing", () => {
