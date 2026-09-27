@@ -18,7 +18,8 @@ Updated 2026-09-27 (evening) on the Windows PC, branch `m4`, last commit on it i
 | 9 — Release hardening | **done** except the human rollback drill and a first CI run on GitHub; typecheck, build, dev and packaged smoke green (all four new checks); tests green except the known Windows-machine items | A `1b3a739`, C `839106a`, B+D `b6e76cc`, E `1d4a8e8`, F `9283407` |
 | Windows portability | done | `ae0b0cc` |
 | bun switch (user's, committed at their request) | done | `ab42bb9` |
-| 10 — Skills, MCP scopes, guide, effort, sidebar | **done** except the OpenCode variants spike; typecheck, build, smoke green; tests green except the known Windows-machine items; every step checked in the real app (OpenCode + Codex turns; one Claude turn at the end) | 10A `0489835`, 10B `a46d5e0`, 10C `92ca50d`, 10E `a00acf0`, 10B2 `cbcc2aa`, schema fix `f937edc`, 10D `3f48d8d`, 10G `6e8f916`, guard `ad338c6`, UI `8848788`, ACP rows `f893297` |
+| 10 — Skills, MCP scopes, guide, effort, sidebar | **done**; typecheck, build, smoke green; tests green except the known Windows-machine items; every step checked in the real app (OpenCode + Codex turns; one Claude turn at the end) | 10A `0489835`, 10B `a46d5e0`, 10C `92ca50d`, 10E `a00acf0`, 10B2 `cbcc2aa`, schema fix `f937edc`, 10D `3f48d8d`, 10G `6e8f916`, guard `ad338c6`, UI `8848788`, ACP rows `f893297`; then @ mentions `98dced6`, Antigravity CLI + OpenCode variants `4fb54cf`, file:// links `77cb734` |
+| T8.13 worktrees (from the stash) | **done**; checked in the app on a throwaway repo | `4638000` |
 
 **Uncommitted on purpose (the user decides):** the `CLAUDE.md` notes (Windows notes + the new worker model order) and `SETUP-OTHER-PC.md`. The bun switch is committed (`ab42bb9`). `test/__snapshots__/providers.test.ts.snap` shows as modified: line endings only. Phase commits carry code + tests only, with no attribution trailer.
 
@@ -90,6 +91,14 @@ Updated 2026-09-27 (evening) on the Windows PC, branch `m4`, last commit on it i
 - **Git guard always on**: `guard-rules.ts` ports the skilled git-guardrails script (all `git push`, `reset --hard`, forced `clean`, `branch -D`, `checkout/restore .`, DB/infra destroyers); used when there is no script or no Python. `unwrapShell` handles `powershell -Command '…'` and `cmd /c` (Codex on Windows wrapped commands the guard never saw). OpenCode's plugin guard still needs Python + the script.
 - **ACP tool rows**: harness tools named like Claude's (`browser_open`, `skill`) with their argument; a call is announced once its arguments arrive (OpenCode sends them on a later update), at the latest at its first output or its end. Closes the Phase 7 carried item.
 
+### Phase 10, second round (2026-09-27, evening)
+
+- **@ mentions** (`98dced6`): `@` in the message box picks project files and folders (`mentions.ts` in renderer and main); the agent gets a checked note listing them (inside the project, existing, ≤ 50); the stored message stays as typed. Checked with OpenCode.
+- **Antigravity through its own CLI** (`4fb54cf`, `agents/agy.ts`): `agy --input-format stream-json --output-format stream-json -p=` + stdin `{"event":"user","message":{"content":…}}`; `--conversation` resumes, `--model`, `--effort`; Ask → `--mode plan` (+ one notice), Auto-edit → accept-edits, Full → skip-permissions (headless agy can't prompt); denied actions → a notice; no git guard (no hook). Replaces the agy-acp preset; still behind the Settings opt-in (`OPT_IN_AGENT_IDS`); an agents.json "antigravity" entry is ignored. Checked in the app: tool row, answer, resume.
+- **OpenCode effort** (`4fb54cf`): per-model variants from `opencode models --verbose` become `efforts`; a pick sets `agent.<mode>.{model,variant}` in `OPENCODE_CONFIG_CONTENT` and restarts the ACP process with the session resumed (notice once). Spike: a fake endpoint saw `reasoning_effort` via run and acp. Checked in the app on free `opencode/space-bunny-free` (high → low, conversation kept). Custom providers (AgentRouter, Token Harbor) define no variants → no picker.
+- **file:// links** (`77cb734`): Antigravity writes `[a.ts](file:///D:/…#L2)`; they render as open-in-editor buttons, never file:// anchors.
+- **T8.13** (`4638000`): migration **14** (`branch`, `worktree_path`); `createWorktreeThread` (branch `harness/<project>-<id6>`, folder `<userData>/worktrees/<threadId>`), turns/handoff/checkpoint/@-mentions/skills/terminal/Changes/Files use the thread's worktree; delete removes a clean worktree (branch kept); palette "New Thread in Worktree"; Alt+Enter starts the message as a new thread in the background. Checked in the app on a throwaway repo: file landed only in the worktree. The old stash (`stash@{0}`) is fully ported; the user can drop it.
+
 ## After Phase 9: fixes from the user's own testing (2026-09-27)
 
 All checked in the real app on Windows; code paths are cross-platform unless noted.
@@ -114,16 +123,14 @@ All checked in the real app on Windows; code paths are cross-platform unless not
 State of the tree: everything of ours is committed. Uncommitted on purpose (the user's): `CLAUDE.md` notes, `SETUP-OTHER-PC.md`, and a line-ending-only snapshot. Before any commit: `git diff --cached --stat` must show only your files.
 
 In order:
-1. **OpenCode reasoning variants** (user note: levels depend on the model and provider): the spike in `.ai/plans/phase-10-skills-ui.md` (10G follow-up) — read `variants` from `opencode models --verbose`, apply via `OPENCODE_CONFIG_CONTENT` agent options + ACP respawn + `session/load`; only then wire the picker.
-2. **T8.13 from the stash**: `git stash list` → "T8.13 WIP: worktree threads, background start, persisted pins". Its migration must now be **step 14** (13 = effort); drop its `pinned` parts; finish `sendInBackground` (Alt+Enter) and "New Thread in Worktree". Spec: `spec/phases/phase-8-ui-refinement.md` T8.13.
-3. **Keep polishing the UI toward T3 Code** (ongoing user request): check every screen in both themes; Settings/ProviderSheet still use native selects (their options are themed now).
-4. **On the Mac**: `electron . --smoke`, packaged smoke, one turn per agent (Python is there, so the script guard path runs; also check the built-in path).
-5. **Antigravity**: needs `agy-acp` + the Settings opt-in (unchanged).
-- Needs a person: rollback drill (`plan/docs/rollback.md`), first CI run on GitHub.
+1. **Keep polishing the UI toward T3 Code** (ongoing user request): check every screen in both themes; Settings/ProviderSheet still use native selects (their options are themed).
+2. **On the Mac**: `electron . --smoke`, packaged smoke, one turn per agent (Python is there, so the script guard path runs; also check the built-in path), an agy turn if Antigravity is installed there.
+3. **Ideas not started**: an "Open in worktree" choice on the per-project + button; a toggle to stop the per-thread Antigravity "only plans" notice once the user knows; per-agent default agent for Alt+Enter background threads (today it uses the last agent picked).
+- Needs a person: rollback drill (`plan/docs/rollback.md`), first CI run on GitHub, dropping `stash@{0}` (superseded by `4638000`).
 
 **Testing note (user, 2026-09-27):** the user's Claude limit is low — do live checks with OpenCode (DeepSeek via AgentRouter) and Codex (Luna/Terra; Sol is not on their ChatGPT plan), and keep Claude to one short confirming turn. Everything must still work with Claude.
 
-**Worker routing (user, 2026-09-27):** every opencode worker: AgentRouter DeepSeek v4 Flash → Token Harbor paid DeepSeek v4.1 Flash → Qwen3.7 Flash (backup of the old config: `~/.config/opencode/opencode.json.bak-2026-09-27`). The AgentRouter proxy must listen on 127.0.0.1:3900 (`~/.config/opencode/start-proxy.bat`). DeepSeek via AgentRouter answered every brief on the first try (10B, 10E, 10B2, 10D, 10G), 10–30 min each.
+**Worker routing (user, 2026-09-27):** every opencode worker: AgentRouter DeepSeek v4 Flash → Token Harbor paid DeepSeek v4.1 Flash → Qwen3.7 Flash (backup of the old config: `~/.config/opencode/opencode.json.bak-2026-09-27`). The AgentRouter proxy must listen on 127.0.0.1:3900 (`~/.config/opencode/start-proxy.bat`). DeepSeek via AgentRouter answered most briefs first try (10B, 10E, 10B2, 10D, 10G, T8.13); in the evening it also failed with "socket hang up" and "content[].thinking must be passed back" (the Antigravity brief failed twice, so Claude wrote that driver), and Token Harbor paid v4.1 picked up 10H and 10K. oc-run counts a bare "Task cancelled" reply as success: read the output before trusting exit 0. Headless workers get auto-rejected on anything outside the repo (external_directory), so say "stay inside the repository" in every brief.
 
 ## Windows portability (`src/main/winspawn.ts`)
 
@@ -131,7 +138,7 @@ In order:
 
 ## Open items
 
-- **Flaky under full-suite load (passes alone):** `switch.test` "handoff to an ACP agent" (seen once, 2026-09-27), besides `codex-e2e` below.
+- **Flaky under full-suite load (passes alone):** `switch.test` "handoff to an ACP agent" (seen twice, 2026-09-27), besides `codex-e2e` below.
 - **This Windows PC:** Node 22.17 → `db.test` worker test fails (`Unknown file extension ".ts"`); needs Node ≥ 22.18. `codex-e2e` "offers the browser tools…" fails under full-suite load only: its first request goes out before the mock stdio `docs` MCP server is up (passes alone) — consider `startup_timeout_sec` for app MCP servers.
 - **Phase 6 carried forward:** T6.5 stale-cursor path (mark the binding `lost`, re-seed) and T6.11's lighter model-switch card; small threads can't be handed off (the checkpoint would exceed what it replaces — by design).
 - **This PC's accounts:** Codex returns 401 "workspace routing unauthorized" (sign in again); a Codex "retrying" status notice stays on screen after the turn ends (seen in the app, pre-existing) — Phase 7/8.
