@@ -79,7 +79,7 @@ Updated 2026-09-27 on the Windows PC. Read this, then `CLAUDE.md` (the opencode-
 
 All checked in the real app on Windows; code paths are cross-platform unless noted.
 - **Layout** `03fbe3f`: the app grid row sizes to the window (a long thread list pushed the header away and nothing scrolled).
-- **Windows env** `7e572d3` (+ the commit before `8cbf5fa`): at startup the app fills user env vars and PATH folders it lacks (from `HKCU\Environment`), so an app started from an old terminal still gets `TOKENHARBOR_API_KEY` (OpenCode's config) and finds CLIs installed since (`agy`). Windows-only by design.
+- **Windows env** `47b249a` `7e572d3`: at startup the app fills user env vars and PATH folders it lacks (from `HKCU\Environment`), so an app started from an old terminal still gets `TOKENHARBOR_API_KEY` (OpenCode's config) and finds CLIs installed since (`agy`). Windows-only by design.
 - **Empty replies / Claude limits**: a turn that ends with nothing says so; Claude's own account-limit text is the error (it was "Rate limited" plus the text posing as a reply).
 - **Codex** `8cbf5fa` `d020826`: the long-lived `codex app-server` kept a stale login (401 "workspace routing discovery" on every model); it restarts when `$CODEX_HOME/auth.json` changes, and the model list (Codex's own `model/list`, which is per plan: a free account gets 4) is re-read on login change and on window focus.
 - **Threads**: rename / pin / archive / delete from a ⋯ row menu; pins and archive persist (migration 12: `pinned`, `archived`).
