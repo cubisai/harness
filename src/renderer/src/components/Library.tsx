@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { AgentCatalogEntry, McpOverview, McpServerEntry, McpServerSpec, McpServerView, McpTestResult, SkillDetail, SkillEntry } from "../../../shared/types";
+import type { AgentCatalogEntry, McpOverview, McpServerEntry, McpServerSpec, McpServerView, McpTestResult, SkillDetail, SkillEntry, SkillOrigin } from "../../../shared/types";
 import { api } from "../api";
 import { joinCommandLine, splitCommandLine } from "../cmdline";
 import { IconCopy } from "../icons";
@@ -364,50 +364,165 @@ function ExpertsTab() {
 
 // ---------- 2. SKILLS TAB ----------
 
+/** Where a skill came from, as the Library and the / menu label it. */
+export function originLabel(origin?: SkillOrigin): string {
+  switch (origin) {
+    case "project":
+      return "Project";
+    case "harness":
+      return "Yours";
+    case "shared":
+      return "Shared (~/.agents)";
+    case "bundled":
+      return "Built-in";
+    default:
+      return "Library";
+  }
+}
+
+/** A skill's selection key; names can repeat across origins. */
+function skillKey(s: SkillEntry): string {
+  return `${s.origin ?? "legacy"}:${s.name}`;
+}
+
+const SKILL_ORIGINS: SkillOrigin[] = ["project", "harness", "shared", "bundled", "legacy"];
+
 function SkillsTab() {
+  const projectId = useStore((s) => s.selectedProjectId);
   const [all, setAll] = useState<SkillEntry[]>([]);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(useStore.getState().librarySkill);
   const [detail, setDetail] = useState<SkillDetail | null>(null);
+  const [form, setForm] = useState<{ name: string; description: string; scope: "harness" | "project" } | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [folders, setFolders] = useState<{ project: string; harness: string; shared: string; bundled: string } | null>(null);
+  const [creating, setCreating] = useState(false);
 
-  useEffect(() => {
-    void api().listAllSkills().then(setAll);
-  }, []);
+  const reload = () => void api().listAllSkills(projectId ?? undefined).then(setAll);
+  useEffect(reload, [projectId]);
 
+  // A bare name (from the store) resolves to the first matching origin's key.
   useEffect(() => {
-    if (!selected && all[0]) setSelected(all[0].name);
-  }, [all, selected]);
+    if (!all.length) return;
+    setSelected((cur) => {
+      if (cur && all.some((s) => skillKey(s) === cur)) return cur;
+      const match = cur ? all.find((s) => s.name === cur) : undefined;
+      return skillKey(match ?? all[0]!);
+    });
+  }, [all]);
 
+  const picked = selected ? all.find((s) => skillKey(s) === selected) : undefined;
   useEffect(() => {
-    if (!selected) return;
+    if (!picked) {
+      setDetail(null);
+      return;
+    }
     let live = true;
     void api()
-      .getSkillDetail(selected)
+      .getSkillDetail(picked.name, projectId ?? undefined)
       .then((d) => live && setDetail(d));
     return () => {
       live = false;
     };
-  }, [selected]);
+  }, [picked?.name, projectId]);
 
   const q = query.trim().toLowerCase();
-  const shown = all.filter((s) => !q || s.name.includes(q) || s.description.toLowerCase().includes(q));
-  const groups: [string, SkillEntry[]][] = [
-    ["Workflow · you start these with /", shown.filter((s) => s.invocation === "user")],
-    ["Loaded by the agent when the task calls for it", shown.filter((s) => s.invocation === "model")],
-  ];
+  const shown = all.filter((s) => !q || s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q));
+  const groups = SKILL_ORIGINS.map((origin) => [origin, shown.filter((s) => (s.origin ?? "legacy") === origin)] as const);
+
+  const open = (name: string) => {
+    const entry = all.find((s) => s.name === name);
+    if (entry) setSelected(skillKey(entry));
+  };
+
+  const toggleForm = () => {
+    setForm((f) => (f ? null : { name: "", description: "", scope: "harness" }));
+    setFormError(null);
+  };
+
+  const toggleFolders = () => {
+    if (folders) return setFolders(null);
+    void api().getSkillFolders(projectId ?? undefined).then(setFolders);
+  };
+
+  const create = async () => {
+    if (!form) return;
+    setFormError(null);
+    setCreating(true);
+    try {
+      const name = form.name.trim();
+      const origin: SkillOrigin = form.scope;
+      const path = await api().createSkill({ scope: form.scope, projectId, name, description: form.description.trim() });
+      setForm(null);
+      setSelected(`${origin}:${name}`);
+      reload();
+      await api().revealPath(path);
+    } catch (err) {
+      setFormError(errorText(err));
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const newForm = form ? (
+    <form
+      className="skill-new-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void create();
+      }}
+    >
+      <input className="text-input" autoFocus value={form.name} placeholder="release-notes" spellCheck={false} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+      <textarea className="text-input" rows={2} value={form.description} placeholder="What it does, then: Use when …" onChange={(e) => setForm({ ...form, description: e.target.value })} />
+      <select className="text-input" value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value as "harness" | "project" })}>
+        <option value="harness">All projects</option>
+        <option value="project" disabled={!projectId}>
+          This project
+        </option>
+      </select>
+      {formError && <p className="form-error">{formError}</p>}
+      <div className="skill-new-actions">
+        <button type="button" className="button ghost" onClick={toggleForm}>
+          Cancel
+        </button>
+        <button type="submit" className="button primary" disabled={creating}>
+          Create
+        </button>
+      </div>
+    </form>
+  ) : null;
+
+  const folderList = folders ? (
+    <div className="skill-folders">
+      {(
+        [
+          ["project", folders.project],
+          ["harness", folders.harness],
+          ["shared", folders.shared],
+          ["bundled", folders.bundled],
+        ] as [SkillOrigin, string][]
+      )
+        .filter(([, path]) => path)
+        .map(([origin, path]) => (
+          <button key={origin} className="file-link" onClick={() => void api().revealPath(path)}>
+            {originLabel(origin)} <code>{path}</code>
+          </button>
+        ))}
+    </div>
+  ) : null;
 
   if (all.length === 0) {
     return (
       <div className="wb-content-pad" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", paddingTop: 60 }}>
         <div style={{ fontSize: 48, marginBottom: 12 }}>🧩</div>
-        <h3 style={{ margin: "0 0 8px", fontSize: 18, color: "var(--text)" }}>Clean Default State: 0 Skills Installed</h3>
+        <h3 style={{ margin: "0 0 8px", fontSize: 18, color: "var(--text)" }}>No skills yet</h3>
         <p style={{ maxWidth: 460, color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.6, margin: "0 0 20px" }}>
-          AI Harness starts clean with zero bundled skills. You can install the <strong>skilled</strong> plugin or any custom plugin into your projects.
+          Add a skill folder with a SKILL.md, or create one here.
         </p>
-        <div style={{ background: "var(--bg-surface)", border: "1px solid var(--hairline)", borderRadius: 8, padding: "12px 18px", textAlign: "left", maxWidth: 500 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 4 }}>To load skills via environment:</div>
-          <code style={{ fontSize: 11, color: "var(--accent)" }}>export AIHARNESS_SKILLS_DIR=/path/to/ai-plugin/plugins/skilled</code>
-        </div>
+        <button className="button" onClick={toggleForm}>
+          New skill
+        </button>
+        <div style={{ width: "100%", maxWidth: 460, textAlign: "left", marginTop: 12 }}>{newForm}</div>
       </div>
     );
   }
@@ -415,22 +530,60 @@ function SkillsTab() {
   return (
     <div className="library-split">
       <div className="library-list">
+        <div className="skill-toolbar">
+          <button className="button" onClick={toggleForm}>
+            New skill
+          </button>
+          <button className="button" onClick={toggleFolders}>
+            Folders
+          </button>
+        </div>
+        {newForm}
+        {folderList}
         <input className="text-input" placeholder="Search skills" value={query} onChange={(e) => setQuery(e.target.value)} spellCheck={false} />
-        {groups.map(([title, list]) =>
+        {groups.map(([origin, list]) =>
           list.length ? (
-            <div key={title}>
-              <div className="library-group">{title}</div>
-              {list.map((s) => (
-                <button key={s.name} className={`library-item${s.name === selected ? " selected" : ""}`} onClick={() => setSelected(s.name)}>
-                  <span className="n">{s.invocation === "user" ? `/${s.name}` : s.name}</span>
-                  <span className="d">{s.description}</span>
-                </button>
-              ))}
+            <div key={origin}>
+              <div className="library-group">{originLabel(origin)}</div>
+              {list.map((s) => {
+                const key = skillKey(s);
+                const off = s.enabled === false;
+                const shadowed = Boolean(s.shadowedBy);
+                return (
+                  <div
+                    key={key}
+                    role="button"
+                    tabIndex={0}
+                    className={`library-item with-switch${key === selected ? " selected" : ""}${off ? " off" : ""}${shadowed ? " shadowed" : ""}`}
+                    onClick={() => setSelected(key)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setSelected(key);
+                      }
+                    }}
+                  >
+                    <span className="library-item-text">
+                      <span className="n">{s.invocation === "user" ? `/${s.name}` : s.name}</span>
+                      <span className="d">{s.description}</span>
+                      {shadowed && <span className="shadow-note">Overridden by {originLabel(s.shadowedBy)}</span>}
+                    </span>
+                    <input
+                      type="checkbox"
+                      className="skill-switch"
+                      checked={s.enabled !== false}
+                      onChange={() => void api().setSkillEnabled(s.origin ?? "legacy", s.name, s.enabled === false).then(() => reload())}
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label={`Use ${s.name}`}
+                    />
+                  </div>
+                );
+              })}
             </div>
           ) : null,
         )}
       </div>
-      <div className="library-detail">{detail ? <SkillView detail={detail} onOpen={setSelected} /> : null}</div>
+      <div className="library-detail">{detail ? <SkillView detail={detail} onOpen={open} /> : null}</div>
     </div>
   );
 }
@@ -448,9 +601,12 @@ function SkillView({ detail, onOpen }: { detail: SkillDetail; onOpen: (name: str
     <div className="skill-view">
       <div className="skill-title">
         <h3>{skill.invocation === "user" ? `/${skill.name}` : skill.name}</h3>
-        <span className={`tag ${skill.invocation}`}>{skill.invocation === "user" ? "You start it" : "Agent loads it"}</span>
+        <span className={`tag ${skill.invocation}`}>
+          {skill.invocation === "user" ? "You start it with /" : "The agent loads it when the task matches (you can also start it with /)"}
+        </span>
+        <span className="tag">{originLabel(skill.origin)}</span>
         <span className="grow" />
-        {skill.invocation === "user" && hasProject && (
+        {hasProject && (
           <button className="button primary" onClick={use}>
             Use in Thread
           </button>

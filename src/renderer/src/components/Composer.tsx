@@ -3,6 +3,7 @@ import type { SkillEntry } from "../../../shared/types";
 import { IconArrowUp, IconStop } from "../icons";
 import { chipLabel, composeMessage } from "../composer";
 import { useStore } from "../store";
+import { originLabel } from "./Library";
 
 /**
  * The message box. Typing `/` at the start opens the menu of skilled's
@@ -151,6 +152,7 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
                 }}
               >
                 <span className="n">/{s.name}</span>
+                <span className="skill-origin">{originLabel(s.origin)}</span>
                 <span className="d">{s.description}</span>
               </div>
             ))}

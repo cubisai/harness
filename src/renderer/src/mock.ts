@@ -1,4 +1,4 @@
-import type { AgentCatalogEntry, LiveUpdate, McpOverview, Project, SettingsView, SkillEntry, StoredEvent, Thread, ThreadEvent, UnskilledApi } from "../../shared/types";
+import type { AgentCatalogEntry, LiveUpdate, McpOverview, Project, SettingsView, SkillEntry, SkillOrigin, StoredEvent, Thread, ThreadEvent, UnskilledApi } from "../../shared/types";
 
 /**
  * A fake backend for `bun run preview:ui`: the real renderer in a plain
@@ -125,35 +125,18 @@ export function installMock(): void {
     ],
   };
 
-  const skills: SkillEntry[] = [
-    ["skilled", "Which skill fits your situation. A router over everything in the skilled set."],
-    ["skilled-setup", "Configure a repo: issue tracker, triage labels, domain docs. Once per repo."],
-    ["domain-interview", "A relentless interview to sharpen a plan or design, which also creates docs."],
-    ["clarify-requirements", "A relentless interview to sharpen a plan or design before any code is written."],
-    ["design-doc", "Research and write a pre-spec architecture doc, for work big enough to need one."],
-    ["write-spec", "Turn the current conversation into a spec and publish it to the issue tracker."],
-    ["write-tickets", "Break a plan, spec, or the conversation into tracer-bullet tickets."],
-    ["implement", "Build the work described by a spec or tickets, test-first at agreed seams."],
-    ["implement-spec", "Implement a whole spec on one branch, one PR."],
-    ["triage", "Move issues through the triage state machine."],
-    ["handoff", "Compact this conversation into a handoff document."],
-    ["retro", "Review a finished session and propose fixes to the agent environment."],
-  ].map(([name, description]) => ({
-    name: name!,
-    description: description!,
-    invocation: "user" as const,
-    calls: [],
-    files: ["SKILL.md"],
-    sha256: "",
-  }));
-
-  const modelSkills: SkillEntry[] = [
-    ["tdd", "Test-driven development at agreed seams: one failing test, the smallest change that passes, then refactor."],
-    ["review-diff", "Review a diff for bugs, missing tests, and risky changes before it ships."],
-    ["verify-in-browser", "Check a UI change in a real browser, with a snapshot and a screenshot per criterion."],
-    ["git-guardrails", "Blocks destructive git commands before they run."],
-  ].map(([name, description]) => ({ name: name!, description: description!, invocation: "model" as const, calls: [], files: ["SKILL.md"], sha256: "" }));
-  const allSkills = [...skills.map((s) => (s.name === "implement" ? { ...s, calls: ["tdd", "review-diff"], argumentHint: "[ticket or spec]", files: ["SKILL.md", "references/seams.md"] } : s)), ...modelSkills];
+  // Sample skills across every origin, so the Library tab and the / menu show
+  // project, harness, shared, bundled and legacy rows (and a shadowed one).
+  let allSkills: SkillEntry[] = [
+    { name: "browser", description: "Open pages, click, type, and read a snapshot in the browser pane.", invocation: "model", calls: [], files: ["SKILL.md"], sha256: "", origin: "bundled" },
+    { name: "docx", description: "Create and edit .docx documents, with tracked changes and comments.", invocation: "model", calls: [], files: ["SKILL.md"], sha256: "", origin: "bundled" },
+    { name: "release-notes", description: "Turn the merged PRs since the last tag into a changelog. Use when cutting a release.", invocation: "user", argumentHint: "<version>", calls: [], files: ["SKILL.md"], sha256: "", origin: "harness" },
+    { name: "deploy-check", description: "Verify staging is green before a production deploy. Use when shipping.", invocation: "model", calls: [], files: ["SKILL.md"], sha256: "", origin: "project" },
+    // Same name as the bundled docx, shadowed by it.
+    { name: "docx", description: "Create and edit .docx documents, with tracked changes and comments.", invocation: "model", calls: [], files: ["SKILL.md"], sha256: "", origin: "shared", shadowedBy: "bundled" },
+    { name: "pdf", description: "Read, split, merge, and fill PDF forms.", invocation: "model", calls: [], files: ["SKILL.md"], sha256: "", origin: "bundled", enabled: false },
+    { name: "implement", description: "Build the work described by a spec or tickets, test-first at agreed seams.", invocation: "user", argumentHint: "[ticket or spec]", calls: ["browser"], files: ["SKILL.md"], sha256: "", origin: "legacy" },
+  ];
   const agentCatalog: AgentCatalogEntry[] = [
     { id: "claude", label: "Claude", kind: "agent-sdk", command: null, installed: true, source: "built-in", skills: "As a plugin, named skilled:<name>, loaded when the task calls for it", mcp: "Stdio and HTTP servers, the browser tools in-process, plus Claude Code's own config" },
     { id: "deepseek", label: "DeepSeek", kind: "acp", command: "dsh --profile acp", installed: true, source: "built-in", skills: "Through DSH_BUNDLED_SKILL_DIR, loaded when the task calls for it", mcp: "Stdio servers, and HTTP ones (with the browser tools) when the agent supports them" },
@@ -244,7 +227,7 @@ export function installMock(): void {
     exportSettings: async () => null,
     importSettings: async () => null,
     listEvents: async (id) => events[id] ?? [],
-    listSkills: async () => skills,
+    listSkills: async () => allSkills.filter((s) => s.enabled !== false && !s.shadowedBy),
     listAgents: async () => [
       {
         id: "claude",
@@ -344,9 +327,22 @@ export function installMock(): void {
         body: `# ${name}\n\n${skill.description}\n\n## Steps\n\n1. Read the ticket and the code it touches.\n2. Agree the seam to test at, then write **one** failing test.\n3. Make it pass with the smallest change, then refactor.\n\n\`\`\`bash\nnpm test -- --watch\n\`\`\`\n\n- Stop and ask when the spec and the code disagree.\n- Never weaken a test to make it pass.`,
       };
     },
-    setSkillEnabled: async () => allSkills,
-    getSkillFolders: async () => ({ project: "", harness: "", shared: "", bundled: "" }),
-    createSkill: async () => "",
+    setSkillEnabled: async (origin, name, enabled) => {
+      allSkills = allSkills.map((s) => (s.origin === origin && s.name === name ? { ...s, enabled } : s));
+      return allSkills;
+    },
+    getSkillFolders: async () => ({
+      project: projects.length ? "/Users/you/code/acme-web/.agents/skills" : "",
+      harness: "/Users/you/Library/Application Support/Unskilled/skills",
+      shared: "/Users/you/.agents/skills",
+      bundled: "/Applications/UnSkilled.app/Contents/Resources/skilled/skills",
+    }),
+    createSkill: async (input) => {
+      const origin: SkillOrigin = input.scope === "project" ? "project" : "harness";
+      allSkills.push({ name: input.name, description: input.description, invocation: "user", calls: [], files: ["SKILL.md"], sha256: "", origin });
+      const dir = origin === "project" ? "/Users/you/code/acme-web/.agents/skills" : "/Users/you/Library/Application Support/Unskilled/skills";
+      return `${dir}/${input.name}/SKILL.md`;
+    },
     listAgentCatalog: async () => agentCatalog,
     getMcp: async () => mcp,
     saveMcpServer: async (entry, previous) => {

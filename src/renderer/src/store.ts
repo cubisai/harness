@@ -451,6 +451,7 @@ export const useStore = create<State>((set, get) => ({
       const list = await api().listThreads(id);
       set((s) => ({ threads: { ...s.threads, [id]: list } }));
     }
+    void api().listSkills(id).then((skills) => set({ skills }));
   },
 
   async selectThread(id) {

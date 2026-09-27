@@ -1561,3 +1561,29 @@ button.hunk:hover { color: var(--accent); }
   padding: 6px;
 }
 
+/* ---------- Skills tab: origins, per-skill switches, new-skill form ---------- */
+
+.skill-toolbar { display: flex; gap: 8px; margin: 0 4px 8px; }
+.skill-new-form {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-m);
+  margin-bottom: 8px;
+}
+.skill-new-form .form-error { margin: 0; }
+.skill-new-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.skill-folders { display: grid; gap: 4px; margin: 0 4px 8px; }
+.skill-folders .file-link { font-size: 12px; }
+.skill-folders code { font-size: 11px; overflow-wrap: anywhere; }
+.skill-switch { accent-color: var(--accent); margin-left: auto; flex-shrink: 0; }
+.library-item.with-switch { display: flex; flex-direction: row; align-items: flex-start; gap: 8px; }
+.library-item-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.library-item .shadow-note { font-size: 11px; color: var(--text-tertiary); }
+.library-item.selected .shadow-note { color: rgb(255 255 255 / 0.75); }
+.library-item.off,
+.library-item.shadowed { opacity: 0.55; }
+.skill-origin { font-size: 11px; color: var(--text-tertiary); margin-left: 6px; }
+.form-error { color: var(--danger, #d33); font-size: 12px; }
+
