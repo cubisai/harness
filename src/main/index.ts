@@ -438,8 +438,8 @@ async function main(): Promise<void> {
   });
   ipcMain.handle("threads:list", (_e, projectId: string) => store.listThreads(projectId));
   ipcMain.handle("threads:create", (_e, projectId: string, agent?: string) => service.createThread(projectId, agent));
-  ipcMain.handle("threads:update", (_e, id: string, patch: Partial<Pick<Thread, "title" | "model" | "permissionMode" | "agent">>) =>
-    service.updateThread(id, pick(patch, ["title", "model", "permissionMode", "agent"])),
+  ipcMain.handle("threads:update", (_e, id: string, patch: Partial<Pick<Thread, "title" | "model" | "permissionMode" | "agent" | "pinned" | "archived">>) =>
+    service.updateThread(id, pick(patch, ["title", "model", "permissionMode", "agent", "pinned", "archived"])),
   );
   ipcMain.handle("threads:delete", (_e, id: string) => {
     service.interrupt(id);

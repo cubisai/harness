@@ -114,6 +114,12 @@ export class Store {
             'lastSeq', (SELECT COALESCE(MAX(seq), 0) FROM events WHERE events.thread_id = threads.id)))
           WHERE session_id IS NOT NULL`,
       },
+      // 12: pins that survive a restart, and archived threads (kept, just out of the list).
+      {
+        applied: () => this.hasColumn("threads", "archived"),
+        sql: `ALTER TABLE threads ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+          ALTER TABLE threads ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;`,
+      },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;
@@ -201,7 +207,7 @@ export class Store {
    * `sessionId` writes the cursor of the thread's agent (after any `agent` change in
    * the same patch). Changing `agent` keeps every binding, so switching back resumes.
    */
-  updateThread(id: string, patch: Partial<Pick<Thread, "title" | "model" | "permissionMode" | "sessionId" | "agent">>): Thread {
+  updateThread(id: string, patch: Partial<Pick<Thread, "title" | "model" | "permissionMode" | "sessionId" | "agent" | "pinned" | "archived">>): Thread {
     const current = this.getThread(id);
     const now = Date.now();
     const { sessionId, ...rest } = patch;
@@ -211,10 +217,12 @@ export class Store {
       const key = bindingKey(agent);
       bindings[key] = this.binding(current, agent, sessionId, bindings[key], now);
     }
-    const t: Thread = { ...current, ...rest, agent, bindings, sessionId: bindings[bindingKey(agent)]?.resumeCursor ?? null, updatedAt: now };
+    // Pinning, archiving or renaming isn't activity: the thread keeps its place (and its Settled state).
+    const activity = Object.keys(patch).some((k) => k !== "pinned" && k !== "archived" && k !== "title");
+    const t: Thread = { ...current, ...rest, agent, bindings, sessionId: bindings[bindingKey(agent)]?.resumeCursor ?? null, updatedAt: activity ? now : current.updatedAt };
     this.db
-      .prepare("UPDATE threads SET agent = ?, title = ?, session_id = ?, bindings = ?, model = ?, permission_mode = ?, updated_at = ? WHERE id = ?")
-      .run(t.agent, t.title, t.sessionId, JSON.stringify(bindings), t.model, t.permissionMode, t.updatedAt, id);
+      .prepare("UPDATE threads SET agent = ?, title = ?, session_id = ?, bindings = ?, model = ?, permission_mode = ?, pinned = ?, archived = ?, updated_at = ? WHERE id = ?")
+      .run(t.agent, t.title, t.sessionId, JSON.stringify(bindings), t.model, t.permissionMode, t.pinned ? 1 : 0, t.archived ? 1 : 0, t.updatedAt, id);
     return t;
   }
 
@@ -433,7 +441,7 @@ export class Store {
 }
 
 const THREAD_COLS =
-  "id, project_id, agent, title, session_id, bindings, model, permission_mode, created_at, updated_at, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
+  "id, project_id, agent, title, session_id, bindings, model, permission_mode, created_at, updated_at, pinned, archived, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
 
 export interface LedgerTarget {
   threadId: string;
@@ -460,6 +468,8 @@ interface ThreadRow {
   permission_mode: string;
   created_at: number;
   updated_at: number;
+  pinned: number;
+  archived: number;
   project_path: string | null;
 }
 
@@ -505,5 +515,7 @@ function toThread(r: ThreadRow): Thread {
     permissionMode: r.permission_mode as PermissionMode,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    pinned: r.pinned === 1,
+    archived: r.archived === 1,
   };
 }

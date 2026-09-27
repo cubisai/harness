@@ -76,7 +76,7 @@ export function App() {
         if (document.querySelector(".palette, .sheet, .library") || document.activeElement?.tagName === "WEBVIEW") return;
         const s = useStore.getState();
         const list = s.selectedProjectId ? (s.threads[s.selectedProjectId] ?? []) : [];
-        const target = nthVisibleThread(list, Number(e.key), { running: s.running, pinned: s.pinned, now: Date.now() });
+        const target = nthVisibleThread(list, Number(e.key), { running: s.running, now: Date.now() });
         if (target) {
           e.preventDefault();
           void s.selectThread(target.id);

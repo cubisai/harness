@@ -131,7 +131,7 @@ export class Service {
    * Switching agents keeps every agent's session: switching back resumes the
    * one it had, on the model it last used. A new agent starts fresh.
    */
-  updateThread(id: string, patch: Partial<Pick<Thread, "title" | "model" | "permissionMode" | "agent">>): Thread {
+  updateThread(id: string, patch: Partial<Pick<Thread, "title" | "model" | "permissionMode" | "agent" | "pinned" | "archived">>): Thread {
     const current = this.store.getThread(id);
     if (patch.agent && patch.agent !== current.agent) {
       if (this.running.has(id)) throw new Error("Stop the running turn before switching agents.");

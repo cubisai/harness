@@ -12,7 +12,8 @@ export interface ThreadSection {
 
 export interface SectionInput {
   running: Record<string, boolean>;
-  pinned: Record<string, boolean>;
+  /** Overrides each thread's own `pinned` (previews and tests). */
+  pinned?: Record<string, boolean>;
   now: number;
 }
 
@@ -24,11 +25,17 @@ export interface SectionInput {
 export function sectionThreads(threads: Thread[], { running, pinned, now }: SectionInput): ThreadSection[] {
   const byName: Record<SectionName, Thread[]> = { Pinned: [], Active: [], Settled: [] };
   for (const t of [...threads].sort((a, b) => b.updatedAt - a.updatedAt)) {
-    if (pinned[t.id]) byName.Pinned.push(t);
+    if (t.archived) continue;
+    if (pinned?.[t.id] ?? t.pinned) byName.Pinned.push(t);
     else if (!running[t.id] && now - t.updatedAt > SETTLE_AFTER_MS) byName.Settled.push(t);
     else byName.Active.push(t);
   }
   return (["Pinned", "Active", "Settled"] as const).filter((name) => byName[name].length).map((name) => ({ name, threads: byName[name] }));
+}
+
+/** A project's archived threads, newest first; shown in a closed Archived group. */
+export function archivedThreads(threads: Thread[]): Thread[] {
+  return threads.filter((t) => t.archived).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 /** The nth (1-based) thread in the sidebar's visible order, or null when there are fewer. */

@@ -65,9 +65,13 @@ interface State {
   events: Record<string, StoredEvent[]>; // by thread id
   live: Record<string, LiveThread>; // streaming state not yet stored
   running: Record<string, boolean>;
-  /** Pinned threads; session-local until pins get a column (Phase 8 Pass 3). */
-  pinned: Record<string, boolean>;
-  togglePin(threadId: string): void;
+  /** Pin or unpin a thread; pins are stored with the thread. */
+  togglePin(threadId: string): Promise<void>;
+  renameThread(threadId: string, title: string): Promise<void>;
+  /** Move a thread into (or out of) its project's Archived group; its history stays. */
+  setArchived(threadId: string, archived: boolean): Promise<void>;
+  /** Delete a thread and its history for good. */
+  deleteThread(threadId: string): Promise<void>;
   /** Each project's current branch, or null on its default branch, detached, or outside git. */
   projectBranches: Record<string, string | null>;
   loadBranch(projectId: string): Promise<void>;
@@ -149,6 +153,12 @@ interface State {
 function upsertThread(list: Thread[] | undefined, thread: Thread): Thread[] {
   const rest = (list ?? []).filter((t) => t.id !== thread.id);
   return [thread, ...rest].sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+function findThread(threads: Record<string, Thread[]>, id: string): Thread | undefined {
+  return Object.values(threads)
+    .flat()
+    .find((t) => t.id === id);
 }
 
 function ipcErrorText(err: unknown): string {
@@ -267,11 +277,31 @@ export const useStore = create<State>((set, get) => ({
   events: {},
   live: {},
   running: {},
-  pinned: {},
-  togglePin(threadId) {
+  async togglePin(threadId) {
+    const thread = findThread(get().threads, threadId);
+    if (thread) get().apply({ type: "thread", thread: await api().updateThread(threadId, { pinned: !thread.pinned }) });
+  },
+  async renameThread(threadId, title) {
+    const clean = title.trim();
+    if (clean) get().apply({ type: "thread", thread: await api().updateThread(threadId, { title: clean }) });
+  },
+  async setArchived(threadId, archived) {
+    // Archiving a pin unpins it: an archived thread sits only in Archived.
+    get().apply({ type: "thread", thread: await api().updateThread(threadId, archived ? { archived, pinned: false } : { archived }) });
+    if (archived && get().selectedThreadId === threadId) await get().selectThread(null);
+  },
+  async deleteThread(threadId) {
+    const thread = findThread(get().threads, threadId);
+    if (!thread) return;
+    await api().deleteThread(threadId);
     set((s) => {
-      const { [threadId]: was, ...rest } = s.pinned;
-      return { pinned: was ? rest : { ...rest, [threadId]: true } };
+      const { [threadId]: _events, ...events } = s.events;
+      return {
+        threads: { ...s.threads, [thread.projectId]: (s.threads[thread.projectId] ?? []).filter((t) => t.id !== threadId) },
+        events,
+        finished: s.finished.filter((f) => f.threadId !== threadId),
+        selectedThreadId: s.selectedThreadId === threadId ? null : s.selectedThreadId,
+      };
     });
   },
   projectBranches: {},

@@ -277,6 +277,10 @@ export interface Thread {
   permissionMode: PermissionMode;
   createdAt: number;
   updatedAt: number;
+  /** Pinned to the top of its project in the sidebar. */
+  pinned?: boolean;
+  /** Out of the sidebar's lists (in an Archived group), kept with its history. */
+  archived?: boolean;
 }
 
 /**
@@ -616,7 +620,7 @@ export interface UnskilledApi {
   addProject(): Promise<Project | null>;
   listThreads(projectId: string): Promise<Thread[]>;
   createThread(projectId: string, agent?: string): Promise<Thread>;
-  updateThread(threadId: string, patch: Partial<Pick<Thread, "title" | "model" | "permissionMode" | "agent">>): Promise<Thread>;
+  updateThread(threadId: string, patch: Partial<Pick<Thread, "title" | "model" | "permissionMode" | "agent" | "pinned" | "archived">>): Promise<Thread>;
   deleteThread(threadId: string): Promise<void>;
   /** Move a thread to another agent; a refused switch changes nothing. */
   switchAgent(threadId: string, agent: string, mode: SwitchMode): Promise<SwitchResult>;
