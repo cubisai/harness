@@ -1,5 +1,5 @@
 import { Fragment, type ReactNode } from "react";
-import { type FileRef, parseFileRef } from "./fileref";
+import { type FileRef, fileUrlRef, parseFileRef } from "./fileref";
 import { memoizeByHash, parseBlocks, splitStreamingTail } from "./streaming";
 
 /**
@@ -77,7 +77,7 @@ export function Markdown({ text, streaming, onFile }: { text: string; streaming?
   );
 }
 
-const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*|_[^_\s][^_]*_)|(\[[^\]]+\]\((https?:\/\/[^)\s]+)\))|(~~[^~]+~~)/g;
+const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*|_[^_\s][^_]*_)|(\[[^\]]+\]\(((?:https?|file):\/\/[^)\s]+)\))|(~~[^~]+~~)/g;
 
 function inline(text: string, onFile?: (ref: FileRef) => void): ReactNode {
   const out: ReactNode[] = [];
@@ -104,6 +104,21 @@ function inline(text: string, onFile?: (ref: FileRef) => void): ReactNode {
     else if (m[3]) out.push(<em key={key++}>{tok.slice(1, -1)}</em>);
     else if (m[4]) {
       const label = /^\[([^\]]+)\]/.exec(tok)?.[1] ?? tok;
+      if (m[5]!.startsWith("file:")) {
+        // A local file (Antigravity links them this way): open it in the editor, never navigate to it.
+        const ref = fileUrlRef(m[5]!);
+        out.push(
+          ref && onFile ? (
+            <button key={key++} className="file-link" title={`Open ${ref.path} in the editor`} onClick={() => onFile(ref)}>
+              <code>{label}</code>
+            </button>
+          ) : (
+            <code key={key++}>{label}</code>
+          ),
+        );
+        last = idx + tok.length;
+        continue;
+      }
       out.push(
         <a key={key++} href={m[5]} target="_blank" rel="noreferrer">
           {label}
