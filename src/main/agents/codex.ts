@@ -443,8 +443,9 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
 
   let refreshing: Promise<void> | null = null;
   const refreshModels = (): Promise<void> => {
-    if (models.length) return Promise.resolve();
-    // start() already runs model/list and keeps the process for later turns.
+    // model/list is per account (a free plan lists fewer models): after a new login, ask again.
+    if (models.length && codexAuthStamp(config.injection?.()?.env ?? process.env) === authStamp) return Promise.resolve();
+    // start() already runs model/list (restarting a stale app-server first) and keeps the process for later turns.
     refreshing ??= start(homedir()).catch(() => {}).finally(() => {
       refreshing = null;
     });

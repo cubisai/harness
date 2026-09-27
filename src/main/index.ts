@@ -534,10 +534,19 @@ async function main(): Promise<void> {
   ipcMain.on("terminal:resize", (_e, id: string, cols: number, rows: number) => terminals.resize(id, cols, rows));
   ipcMain.handle("terminal:close", (_e, id: string) => terminals.close(id));
 
+  // Coming back to the window (after `codex login`, say) re-checks the model lists,
+  // which follow the account's plan; at most once every 10 seconds.
+  let lastRefresh = 0;
+  const refreshAgents = () => {
+    if (Date.now() - lastRefresh < 10_000) return;
+    lastRefresh = Date.now();
+    for (const d of drivers) void (d.refreshModels?.() ?? Promise.resolve()).finally(() => broadcast({ type: "agents" }));
+  };
   const open = () => {
     const win = createWindow();
     windows.add(win);
     win.on("closed", () => windows.delete(win));
+    win.on("focus", refreshAgents);
     return win;
   };
   const first = open();
