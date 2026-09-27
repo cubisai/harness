@@ -1,0 +1,44 @@
+// T9.11: Antigravity/Gemini never run in CI, enforced by configuration.
+import { readFileSync } from "node:fs";
+import { join, matchesGlob } from "node:path";
+import { describe, expect, it } from "vitest";
+import config from "../vitest.config";
+
+const root = join(__dirname, "..");
+const workflow = readFileSync(join(root, ".github", "workflows", "ci.yml"), "utf-8");
+const code = workflow
+  .split(/\r?\n/)
+  .filter((l) => !l.trim().startsWith("#"))
+  .join("\n");
+const ALLOWED = ["UNSKILLED_NO_UPDATE", "UNSKILLED_CODEX_BIN"];
+
+describe("CI workflow", () => {
+  it("uses no secrets, and nothing Gemini or Antigravity", () => {
+    expect(code).not.toMatch(/secrets\./);
+    expect(code).not.toMatch(/gemini|antigravity|agy-acp|GOOGLE_API_KEY/i);
+  });
+
+  it("sets only allowlisted variables", () => {
+    const declared = [...code.matchAll(/^\s+([A-Z][A-Z0-9_]*):/gm)].map((m) => m[1]);
+    const exported = [...code.matchAll(/echo "([A-Z][A-Z0-9_]*)=/g)].map((m) => m[1]);
+    for (const name of [...declared, ...exported]) expect(ALLOWED, name).toContain(name);
+    expect(exported).toEqual(["UNSKILLED_CODEX_BIN"]);
+  });
+
+  it("runs the packaged smoke after the test matrix", () => {
+    expect(workflow).toMatch(/\n {2}smoke:\n[\s\S]*needs: test[\s\S]*node scripts\/smoke\.mjs/);
+  });
+});
+
+describe("default test glob", () => {
+  const include = config.test?.include ?? [];
+
+  it("collects only test/ and never manual/", () => {
+    expect(include.length).toBeGreaterThan(0);
+    for (const pattern of include) {
+      expect(pattern.startsWith("test/"), pattern).toBe(true);
+      expect(matchesGlob("manual/antigravity.test.ts", pattern), pattern).toBe(false);
+    }
+    expect(config.test?.exclude).toContain("manual/**");
+  });
+});

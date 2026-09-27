@@ -12,6 +12,10 @@ async function boot(): Promise<void> {
   }
   document.documentElement.classList.add(`platform-${window.unskilled.platform}`);
   if (window.unskilled.opaqueSidebar) document.documentElement.classList.add("opaque-sidebar");
+  if (window.unskilled.smoke) {
+    const { renderEventsForSmoke } = await import("./smoke");
+    (window as unknown as { __unskilledSmokeRender: typeof renderEventsForSmoke }).__unskilledSmokeRender = renderEventsForSmoke;
+  }
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <App />

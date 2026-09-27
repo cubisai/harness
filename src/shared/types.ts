@@ -610,6 +610,8 @@ export interface UnskilledApi {
   platform: string;
   /** The window has no vibrancy or Mica behind it (Linux, Windows 10): paint the sidebar opaque. */
   opaqueSidebar: boolean;
+  /** Started with --smoke: the renderer exposes its smoke hooks. */
+  smoke?: boolean;
   listProjects(): Promise<Project[]>;
   addProject(): Promise<Project | null>;
   listThreads(projectId: string): Promise<Thread[]>;

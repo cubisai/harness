@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir, release } from "node:os";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, release, tmpdir } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell } from "electron";
@@ -25,6 +25,8 @@ import { ensureOpenCodeGuard, withOpenCodeGuard } from "./inject/opencode-guard"
 import { findPython } from "./guard";
 import { SettingsStore } from "./settings";
 import { agentCatalog, skillDetail } from "./library";
+import { referenceEvents } from "./canonical-events";
+import { smokeCanonicalEvents, smokeHandoff, smokeMigration, smokeProviders } from "./smoke-checks";
 import { Editors, realHost } from "./editors";
 import { readExternalMcp } from "./mcp/external";
 import { BUILT_IN_SERVER, McpServerStore, testServer, viewOf } from "./mcp/servers";
@@ -107,7 +109,7 @@ function createWindow(): BrowserWindow {
       nodeIntegration: false,
       webviewTag: true, // the browser pane
       // No vibrancy or Mica behind the window: the renderer paints the sidebar opaque.
-      additionalArguments: isMac || mica ? [] : ["--opaque-sidebar"],
+      additionalArguments: [...(isMac || mica ? [] : ["--opaque-sidebar"]), ...(smoke ? ["--unskilled-smoke"] : [])],
     },
   });
   // The browser pane's <webview> gets no preload, no Node, and only web URLs.
@@ -605,6 +607,7 @@ async function main(): Promise<void> {
         }
         const browserOk = await smokeBrowser();
         const terminalOk = await smokeTerminal();
+        const releaseOk = await smokeRelease(first.webContents);
         const shot = process.env.UNSKILLED_SMOKE_SCREENSHOT;
         if (shot) {
           first.showInactive();
@@ -612,7 +615,7 @@ async function main(): Promise<void> {
           writeFileSync(shot, (await first.webContents.capturePage()).toPNG());
           console.log(`smoke: screenshot ${shot}`);
         }
-        const all = ok && binaryOk && browserOk && terminalOk;
+        const all = ok && binaryOk && browserOk && terminalOk && releaseOk;
         console.log(`smoke: ${all ? "ok" : "failed"}`);
         app.exit(all ? 0 : 1);
       } catch (err) {
@@ -636,6 +639,38 @@ async function main(): Promise<void> {
     void toolServer?.then((s) => s.close());
     store.close();
   });
+}
+
+/**
+ * The release checks (Phase 9 T9.10), each in a scratch folder: provider
+ * registry, legacy migration, handoff invariants, and render parity (Claude's
+ * adapter output renders exactly like the canonical reference rows).
+ */
+async function smokeRelease(web: Electron.WebContents): Promise<boolean> {
+  const dir = mkdtempSync(join(tmpdir(), "unskilled-smoke-"));
+  const report = (name: string, r: { ok: boolean; detail?: string }) => {
+    console.log(`smoke: ${name} ${r.ok ? "ok" : `failed ${r.detail ?? ""}`}`);
+    return r.ok;
+  };
+  try {
+    const providersOk = report("providers", smokeProviders(join(dir, "providers")));
+    const migrationOk = report("migration", smokeMigration(join(dir, "migration")));
+    const handoffOk = report("handoff", await smokeHandoff(join(dir, "handoff")));
+    const canon = smokeCanonicalEvents();
+    const render = (events: unknown) =>
+      web.executeJavaScript(
+        `(async () => { for (let i = 0; i < 100 && !window.__unskilledSmokeRender; i++) await new Promise((r) => setTimeout(r, 50)); return window.__unskilledSmokeRender(${JSON.stringify(events)}); })()`,
+      ) as Promise<string>;
+    const [got, want] = [await render(canon.events), await render(referenceEvents())];
+    const parity = canon.ok && got === want && got.includes("npm test") && got.includes("+1 −1");
+    const renderOk = report("render-parity", parity ? { ok: true } : { ok: false, detail: canon.detail ?? `\n${got}\n${want}` });
+    return providersOk && migrationOk && handoffOk && renderOk;
+  } catch (err) {
+    console.error("smoke: release checks failed", err);
+    return false;
+  } finally {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+  }
 }
 
 /**

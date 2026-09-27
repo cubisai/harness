@@ -4,6 +4,7 @@ import type { LiveUpdate, UnskilledApi } from "../shared/types";
 const api: UnskilledApi = {
   platform: process.platform,
   opaqueSidebar: process.argv.includes("--opaque-sidebar"),
+  smoke: process.argv.includes("--unskilled-smoke"),
   listProjects: () => ipcRenderer.invoke("projects:list"),
   addProject: () => ipcRenderer.invoke("projects:add"),
   listThreads: (projectId) => ipcRenderer.invoke("threads:list", projectId),
