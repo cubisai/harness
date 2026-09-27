@@ -108,9 +108,14 @@ button { cursor: default; }
 .app {
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr;
+  /* One row exactly the window's height: a long thread list or transcript
+     scrolls inside its own pane instead of stretching the row (which pushed
+     the header out of view and left nothing to scroll). */
+  grid-template-rows: minmax(0, 1fr);
   height: 100%;
   overflow: hidden;
 }
+.app > * { min-height: 0; }
 .app.with-inspector { grid-template-columns: var(--sidebar-w) 1fr var(--inspector-w); }
 
 .drag { -webkit-app-region: drag; }
