@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type {
   CredentialChoice,
@@ -29,6 +29,16 @@ export interface SecretBox {
 }
 
 const DEFAULTS: Settings = { theme: "system", motion: "instant", density: "comfortable", antigravity: false, antigravityAck: null, defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {}, paneLayout: { ...DEFAULT_LAYOUT } };
+
+/** A settings export file. */
+export interface SettingsExport {
+  kind: "unskilled-settings";
+  version: 1;
+  exportedAt: number;
+  settings: Omit<Settings, "antigravity" | "antigravityAck">;
+  providers: Provider[];
+  credentials: Record<string, CredentialChoice>;
+}
 
 interface FileShape {
   schemaVersion?: number; // absent = the legacy v1 shape
@@ -61,7 +71,14 @@ export class SettingsStore {
     try {
       return JSON.parse(readFileSync(this.file, "utf-8")) as FileShape;
     } catch {
-      return {}; // a corrupt file resets to defaults rather than blocking startup
+      // A corrupt file resets to defaults rather than blocking startup; keep a
+      // copy first, since the next write would otherwise lose its secrets.* for good.
+      try {
+        copyFileSync(this.file, `${this.file}.corrupt-${Date.now()}`);
+      } catch {
+        // unreadable too: nothing to keep
+      }
+      return {};
     }
   }
 
@@ -173,6 +190,47 @@ export class SettingsStore {
 
   private findProvider(id: string): Provider | undefined {
     return this.data.providers?.find((p) => p.id === id);
+  }
+
+  /**
+   * Providers, credential choices and preferences, for a settings export. Keys
+   * stay the ciphertext they are, which only this machine and user account can
+   * decrypt. The Antigravity opt-in isn't carried: it is acknowledged per install.
+   */
+  exportData(): SettingsExport {
+    const { antigravity: _on, antigravityAck: _ack, ...settings } = this.get();
+    return {
+      kind: "unskilled-settings",
+      version: 1,
+      exportedAt: Date.now(),
+      settings,
+      providers: this.providers(),
+      credentials: { ...(this.data.credentials ?? {}) },
+    };
+  }
+
+  /**
+   * Restore an export: its providers and credential choices replace ours, and
+   * its preferences go through update()'s validation. A choice naming a
+   * provider the export lacks falls back to the agent's own login. Legacy
+   * secrets.* are left alone, so a downgrade still finds them.
+   */
+  importData(data: unknown): SettingsView {
+    const x = data as Partial<SettingsExport> | null;
+    if (!x || x.kind !== "unskilled-settings" || x.version !== 1) throw new Error("Not an UnSkilled settings export.");
+    const providers = (Array.isArray(x.providers) ? x.providers : []).filter(
+      (p): p is Provider => Boolean(p && typeof p.id === "string" && typeof p.label === "string" && typeof p.baseURL === "string" && typeof p.wireProtocol === "string"),
+    );
+    const ids = new Set(providers.map((p) => p.id));
+    const credentials: Record<string, CredentialChoice> = {};
+    for (const [agentId, choice] of Object.entries(x.credentials ?? {})) {
+      credentials[agentId] = choice?.kind === "byok" && ids.has(choice.providerId) ? { kind: "byok", providerId: choice.providerId } : { kind: "subscription" };
+    }
+    this.data.providers = providers;
+    this.data.credentials = credentials;
+    const { antigravity: _on, antigravityAck: _ack, ...prefs } = (x.settings ?? {}) as Partial<Settings>;
+    this.update(prefs);
+    return this.view();
   }
 
   providers(): Provider[] {

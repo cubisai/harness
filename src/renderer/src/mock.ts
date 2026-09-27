@@ -235,6 +235,8 @@ export function installMock(): void {
     browserTakeOver: async () => {},
     exportThread: async () => null,
     importThread: async () => null,
+    exportSettings: async () => null,
+    importSettings: async () => null,
     listEvents: async (id) => events[id] ?? [],
     listSkills: async () => skills,
     listAgents: async () => [

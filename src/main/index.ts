@@ -153,7 +153,8 @@ async function main(): Promise<void> {
   });
   const store = new Store(join(userData, "unskilled.db"));
   const settings = new SettingsStore(join(userData, "settings.json"), {
-    available: safeStorage.isEncryptionAvailable(),
+    // On Linux, isEncryptionAvailable() is true even with the plain-text fallback backend.
+    available: safeStorage.isEncryptionAvailable() && (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text"),
     encrypt: (s) => safeStorage.encryptString(s).toString("base64"),
     decrypt: (b) => safeStorage.decryptString(Buffer.from(b, "base64")),
   });
@@ -452,6 +453,32 @@ async function main(): Promise<void> {
     if (res.canceled || !res.filePath) return null;
     writeFileSync(res.filePath, JSON.stringify(service.exportThread(id), null, 2), "utf8");
     return res.filePath;
+  });
+  ipcMain.handle("settings:export", async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    const options: Electron.SaveDialogOptions = {
+      title: "Export settings",
+      defaultPath: "unskilled-settings.json",
+      filters: [{ name: "Settings export", extensions: ["json"] }],
+    };
+    const res = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options);
+    if (res.canceled || !res.filePath) return null;
+    writeFileSync(res.filePath, JSON.stringify(settings.exportData(), null, 2), { encoding: "utf8", mode: 0o600 });
+    return res.filePath;
+  });
+  ipcMain.handle("settings:import", async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    const options: Electron.OpenDialogOptions = {
+      title: "Import settings",
+      properties: ["openFile"],
+      filters: [{ name: "Settings export", extensions: ["json"] }],
+    };
+    const res = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+    const path = res.filePaths[0];
+    if (res.canceled || !path) return null;
+    const view = settings.importData(JSON.parse(readFileSync(path, "utf8")));
+    broadcast({ type: "settings", settings: view });
+    return view;
   });
   ipcMain.handle("threads:import", async (event, projectId: string) => {
     const owner = BrowserWindow.fromWebContents(event.sender);

@@ -622,6 +622,10 @@ export interface UnskilledApi {
   exportThread(threadId: string): Promise<string | null>;
   /** Restore a thread from a JSON file as a new thread; null when cancelled. */
   importThread(projectId: string): Promise<Thread | null>;
+  /** Save providers, credential choices and preferences to a JSON file; null when cancelled. */
+  exportSettings(): Promise<string | null>;
+  /** Replace them from an export; null when cancelled. */
+  importSettings(): Promise<SettingsView | null>;
   listEvents(threadId: string): Promise<StoredEvent[]>;
   listSkills(): Promise<SkillEntry[]>;
   listAgents(): Promise<AgentInfo[]>;

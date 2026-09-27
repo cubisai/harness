@@ -266,6 +266,27 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
               Open Data Folder
             </button>
           </div>
+          <div className="row">
+            <span className="label">Settings file</span>
+            <button className="button" onClick={() => void api().exportSettings()}>
+              Export Settings…
+            </button>
+            <button
+              className="button"
+              onClick={() =>
+                void api()
+                  .importSettings()
+                  .then((s) => s && useStore.setState({ settings: s }))
+                  .catch((err: unknown) => useStore.getState().showNotice(err instanceof Error ? err.message : String(err)))
+              }
+            >
+              Import…
+            </button>
+          </div>
+          <p className="note">
+            An export holds your providers, which agent uses which, and these preferences. Keys go in it encrypted for this computer and user account only: on
+            another machine, enter them again. Importing replaces your providers.
+          </p>
           <p className="note">Threads, settings, agents.json and mcp.json live here. Export a thread from the command palette to keep or move it.</p>
         </section>
       );
