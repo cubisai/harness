@@ -48,6 +48,7 @@ import {
 } from "./handoff";
 import type { Catalog } from "./skills/catalog";
 import { composePrompt } from "./skills/compose";
+import { mentionNote } from "./mentions";
 import { memoryScopeCheck } from "./inject/memory-scope";
 import { redactDeep, redactSecrets } from "./inject/redact";
 
@@ -353,7 +354,7 @@ export class Service {
     const project = this.store.getProject(thread.projectId);
     const driver = this.driverFor(thread.agent);
     const provenance: Provenance = { agent: thread.agent, model: thread.model, provider: null, instanceId: null };
-    const prompt = composePrompt(this.catalogFor(project.path), req.text, req.skill, driver.skillsDelivery);
+    const prompt = composePrompt(this.catalogFor(project.path), req.text, req.skill, driver.skillsDelivery) + mentionNote(project.path, req.mentions);
 
     this.emit(thread.id, { kind: "user", text: req.text, skill: req.skill });
     if (thread.title === "New thread") {

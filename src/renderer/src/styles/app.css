@@ -1600,3 +1600,8 @@ button.hunk:hover { color: var(--accent); }
 
 /* Native <select> popups: on Windows Chromium draws them light unless the options are coloured. */
 select option, select optgroup { background-color: var(--bg-elevated); color: var(--text); }
+
+/* ---------- @ mention picker ---------- */
+
+.skill-menu .item .mention-icon { display: inline-flex; align-items: center; align-self: center; color: var(--text-secondary); flex-shrink: 0; }
+.skill-menu .item.active .mention-icon { color: rgb(255 255 255 / 0.85); }

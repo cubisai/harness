@@ -128,7 +128,7 @@ interface State {
   selectThread(id: string | null): Promise<void>;
   newThread(skill?: string): Promise<void>;
   /** From the project's start screen: open a new thread and send `text` in it. */
-  startThread(text: string, skill?: string): Promise<void>;
+  startThread(text: string, skill?: string, mentions?: string[]): Promise<void>;
   takePendingSkill(): string | null;
   /** Save the open thread to a JSON file. */
   exportThread(): Promise<void>;
@@ -138,10 +138,10 @@ interface State {
   /** Step the open thread's reasoning effort down (-1) or up (+1), wrapping through Default. */
   cycleEffort(dir: 1 | -1): void;
   /** Start a turn on the open thread (or `threadId`); a no-op while that thread is running. */
-  send(text: string, skill?: string, threadId?: string): Promise<void>;
+  send(text: string, skill?: string, threadId?: string, mentions?: string[]): Promise<void>;
   /** Messages sent while a turn ran, by thread: each goes out as the next turn, in order. Stop clears them; never persisted. */
-  outbox: Record<string, { text: string; skill?: string }[]>;
-  enqueue(threadId: string, text: string, skill?: string): void;
+  outbox: Record<string, { text: string; skill?: string; mentions?: string[] }[]>;
+  enqueue(threadId: string, text: string, skill?: string, mentions?: string[]): void;
   interrupt(): Promise<void>;
   respond(requestId: string, decision: "allow-once" | "allow-always" | "deny"): Promise<void>;
   toggleInspector(): void;
@@ -476,10 +476,10 @@ export const useStore = create<State>((set, get) => ({
     }));
   },
 
-  async startThread(text, skill) {
+  async startThread(text, skill, mentions) {
     await get().newThread();
     const id = get().selectedThreadId;
-    if (id) await get().send(text, skill, id);
+    if (id) await get().send(text, skill, id, mentions);
   },
 
   takePendingSkill() {
@@ -537,15 +537,20 @@ export const useStore = create<State>((set, get) => ({
   },
 
   outbox: {},
-  enqueue(threadId, text, skill) {
-    set((s) => ({ outbox: { ...s.outbox, [threadId]: [...(s.outbox[threadId] ?? []), skill ? { text, skill } : { text }] } }));
+  enqueue(threadId, text, skill, mentions) {
+    set((s) => ({
+      outbox: {
+        ...s.outbox,
+        [threadId]: [...(s.outbox[threadId] ?? []), { text, ...(skill ? { skill } : {}), ...(mentions?.length ? { mentions } : {}) }],
+      },
+    }));
   },
 
-  async send(text, skill, threadId) {
+  async send(text, skill, threadId, mentions) {
     const id = threadId ?? get().selectedThreadId;
     if (!id || get().running[id]) return;
     set((s) => ({ running: { ...s.running, [id]: true } }));
-    await api().send({ threadId: id, text, skill });
+    await api().send({ threadId: id, text, skill, ...(mentions?.length ? { mentions } : {}) });
   },
 
   async interrupt() {
@@ -655,7 +660,7 @@ export const useStore = create<State>((set, get) => ({
           const next = get().outbox[update.threadId]?.[0];
           if (next) {
             set((s) => ({ outbox: { ...s.outbox, [update.threadId]: s.outbox[update.threadId]!.slice(1) } }));
-            void get().send(next.text, next.skill, update.threadId);
+            void get().send(next.text, next.skill, update.threadId, next.mentions);
           }
         }
         if (!update.running && get().takeOver.mode !== "idle") {

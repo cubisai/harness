@@ -584,6 +584,8 @@ export interface SendRequest {
   text: string;
   /** A user-invoked skill picked from the / menu. */
   skill?: string;
+  /** Project-relative files and folders the user @-mentioned. */
+  mentions?: string[];
 }
 
 /** A viewport the browser pane can emulate; desktop means no emulation. */

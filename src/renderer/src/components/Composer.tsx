@@ -1,7 +1,10 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { File, Folder } from "lucide-react";
 import type { SkillEntry } from "../../../shared/types";
 import { IconArrowUp, IconStop } from "../icons";
+import { api } from "../api";
 import { chipLabel, composeMessage } from "../composer";
+import { folderPaths, mentionQueryAt, mentionsIn, rankMentions } from "../mentions";
 import { useStore } from "../store";
 import { originLabel } from "./Library";
 
@@ -19,11 +22,18 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
   const running = useStore((s) => (threadId ? Boolean(s.running[threadId]) : false));
   const insert = useStore((s) => s.composerInsert);
   const { send, interrupt, enqueue, startThread } = useStore.getState();
+  const projectId = useStore((s) => s.selectedProjectId);
   const [text, setText] = useState("");
   const [chips, setChips] = useState<string[]>([]);
   const [skill, setSkill] = useState<SkillEntry | null>(null);
   const [menuIndex, setMenuIndex] = useState(0);
+  const [caret, setCaret] = useState(0);
+  const [knownFiles, setKnownFiles] = useState<string[]>([]);
+  const [mentionDismissed, setMentionDismissed] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
+  const pendingCaret = useRef<number | null>(null);
+  /** listFiles results by project id, with when they were fetched, so the picker doesn't refetch per keystroke. */
+  const filesCache = useRef(new Map<string, { at: number; files: string[] }>());
 
   const query = !skill && text.startsWith("/") && !/\s/.test(text) ? text.slice(1).toLowerCase() : null;
   const matches = useMemo(
@@ -41,10 +51,57 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
   );
   const menuOpen = query !== null;
 
+  const mentionQuery = mentionQueryAt(text, caret);
+  const mentionOpen = mentionQuery !== null && !menuOpen && !mentionDismissed;
+  const knownPaths = useMemo(() => [...knownFiles, ...folderPaths(knownFiles)], [knownFiles]);
+  const knownSet = useMemo(() => new Set(knownPaths), [knownPaths]);
+  const mentionMatches = useMemo(
+    () => (mentionOpen ? rankMentions(knownPaths, mentionQuery?.query ?? "", 50) : []),
+    [mentionOpen, knownPaths, mentionQuery?.query],
+  );
+
+  const loadFiles = useCallback(async (id: string) => {
+    const { files } = await api().listFiles(id);
+    filesCache.current.set(id, { at: Date.now(), files });
+    return files;
+  }, []);
+
+  // Fetch the project's files once per project; the menu refetches them when its cached copy goes stale.
+  useEffect(() => {
+    if (!projectId) {
+      setKnownFiles([]);
+      return;
+    }
+    const cached = filesCache.current.get(projectId);
+    if (cached) {
+      setKnownFiles(cached.files);
+      return;
+    }
+    let cancelled = false;
+    void loadFiles(projectId).then((files) => {
+      if (!cancelled) setKnownFiles(files);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, loadFiles]);
+
+  useEffect(() => {
+    if (!mentionOpen || !projectId) return;
+    const cached = filesCache.current.get(projectId);
+    if (cached && Date.now() - cached.at < 30_000) return;
+    void loadFiles(projectId).then((files) => {
+      if (useStore.getState().selectedProjectId === projectId) setKnownFiles(files);
+    });
+  }, [mentionOpen, projectId, loadFiles]);
+
   useEffect(() => setMenuIndex(0), [query]);
+  useEffect(() => setMenuIndex(0), [mentionQuery?.start, mentionQuery?.query]);
+  useEffect(() => setMentionDismissed(false), [mentionQuery?.start, mentionQuery?.query]);
   useEffect(() => {
     area.current?.focus();
     setText("");
+    setCaret(0);
     setChips([]);
     const pending = useStore.getState().takePendingSkill();
     setSkill(pending ? (useStore.getState().skills.find((s) => s.name === pending) ?? null) : null);
@@ -69,29 +126,48 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
     area.current?.focus();
   }, [insert]);
 
-  // Grow with the content, up to the CSS max-height.
+  // Grow with the content, up to the CSS max-height; a picked mention moves the caret after its insertion.
   useEffect(() => {
     const el = area.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
+    const pending = pendingCaret.current;
+    if (pending !== null) {
+      pendingCaret.current = null;
+      el.focus();
+      el.setSelectionRange(pending, pending);
+      setCaret(pending);
+    }
   }, [text]);
 
   const pick = (s: SkillEntry) => {
     setSkill(s);
     setText("");
+    setCaret(0);
+    area.current?.focus();
+  };
+
+  // Replace the `@query` before the caret with `@path ` and put the caret after it.
+  const pickMention = (path: string) => {
+    if (!mentionQuery) return;
+    const next = `${text.slice(0, mentionQuery.start)}@${path} ${text.slice(caret)}`;
+    pendingCaret.current = mentionQuery.start + path.length + 2;
+    setText(next);
     area.current?.focus();
   };
 
   const submit = () => {
     const body = composeMessage(text, chips);
     if (!body && !skill) return;
-    if (!threadId) void startThread(body, skill?.name);
-    else if (running) enqueue(threadId, body, skill?.name);
-    else void send(body, skill?.name);
+    const mentions = mentionsIn(text, knownSet);
+    if (!threadId) void startThread(body, skill?.name, mentions);
+    else if (running) enqueue(threadId, body, skill?.name, mentions);
+    else void send(body, skill?.name, undefined, mentions);
     setText("");
     setChips([]);
     setSkill(null);
+    setCaret(0);
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -113,8 +189,30 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
         return;
       }
     }
+    if (mentionOpen && mentionMatches.length) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMenuIndex((i) => (i + 1) % mentionMatches.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMenuIndex((i) => (i - 1 + mentionMatches.length) % mentionMatches.length);
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        const m = mentionMatches[menuIndex];
+        if (m) pickMention(m);
+        return;
+      }
+    }
     if (e.key === "Escape" && menuOpen) {
       setText("");
+      return;
+    }
+    if (e.key === "Escape" && mentionOpen) {
+      setMentionDismissed(true);
       return;
     }
     if (e.key === "Backspace" && !text && (chips.length || skill)) {
@@ -158,12 +256,37 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
             ))}
           </div>
         )}
+        {mentionOpen && (
+          <div className="skill-menu" role="listbox">
+            {mentionMatches.length === 0 && <div className="empty-line">No files match “{mentionQuery?.query}”</div>}
+            {mentionMatches.map((path, i) => (
+              <div
+                key={path}
+                role="option"
+                aria-selected={i === menuIndex}
+                className={`item${i === menuIndex ? " active" : ""}`}
+                onMouseEnter={() => setMenuIndex(i)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  pickMention(path);
+                }}
+              >
+                <span className="mention-icon">{path.endsWith("/") ? <Folder size={14} /> : <File size={14} />}</span>
+                <span className="n">{path}</span>
+              </div>
+            ))}
+          </div>
+        )}
         <textarea
           ref={area}
           rows={1}
           value={text}
           placeholder={placeholder}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            setCaret(e.target.selectionStart ?? e.target.value.length);
+          }}
+          onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
           onKeyDown={onKeyDown}
         />
         <div className="composer-bar">
