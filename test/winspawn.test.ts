@@ -1,7 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { execCommandSync, findOnPath, killTree, launchSpec, parseUserEnvironment, spawnCommand } from "../src/main/winspawn";
+import { execCommandSync, findOnPath, killTree, launchSpec, mergePath, parseUserEnvironment, spawnCommand } from "../src/main/winspawn";
 import { tempDir } from "./helpers";
 
 const win = process.platform === "win32";
@@ -63,6 +63,16 @@ describe.runIf(win)("winspawn on Windows", () => {
 describe.skipIf(win)("winspawn elsewhere", () => {
   it("leaves the command and arguments alone", () => {
     expect(launchSpec("codex", ['-c', 'a="b c"'])).toEqual({ command: "codex", args: ["-c", 'a="b c"'], viaCmd: false });
+  });
+});
+
+describe("mergePath", () => {
+  it("appends only the folders the current PATH lacks, ignoring case and trailing slashes", () => {
+    expect(mergePath("C:\\Windows;C:\\Tools\\", "c:\\tools;C:\\Users\\me\\AppData\\Local\\agy\\bin;C:\\Windows")).toBe(
+      "C:\\Windows;C:\\Tools\\;C:\\Users\\me\\AppData\\Local\\agy\\bin",
+    );
+    expect(mergePath("C:\\A", "C:\\A")).toBe("C:\\A");
+    expect(mergePath("", "C:\\B;C:\\B")).toBe("C:\\B");
   });
 });
 

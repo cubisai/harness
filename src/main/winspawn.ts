@@ -112,7 +112,8 @@ export function parseUserEnvironment(output: string, env: NodeJS.ProcessEnv = pr
  * without. An app launched from a terminal opened before a variable was set
  * (say, a provider key an agent's own config reads) otherwise never sees it,
  * while the same app from the Start menu does. Never overrides a variable
- * that is set, and leaves Path to the PATH handling.
+ * that is set; the user's Path folders the process lacks (a CLI installed
+ * since, like agy) are appended after the ones it has.
  */
 export function fillUserEnvironment(env: NodeJS.ProcessEnv = process.env): string[] {
   if (process.platform !== "win32") return [];
@@ -120,9 +121,25 @@ export function fillUserEnvironment(env: NodeJS.ProcessEnv = process.env): strin
   if (res.status !== 0 || !res.stdout) return [];
   const added: string[] = [];
   for (const [name, value] of Object.entries(parseUserEnvironment(res.stdout, env))) {
-    if (name.toLowerCase() === "path" || env[name] !== undefined) continue;
+    if (name.toLowerCase() === "path") {
+      const merged = mergePath(env.PATH ?? env.Path ?? "", value);
+      if (merged !== (env.PATH ?? env.Path ?? "")) {
+        env.PATH = merged;
+        added.push("PATH");
+      }
+      continue;
+    }
+    if (env[name] !== undefined) continue;
     env[name] = value;
     added.push(name);
   }
   return added;
+}
+
+/** `current` followed by the folders of `extra` it doesn't already list (compared case- and slash-insensitively). */
+export function mergePath(current: string, extra: string): string {
+  const key = (d: string) => d.trim().replace(/[\\/]+$/, "").toLowerCase();
+  const have = new Set(current.split(";").filter(Boolean).map(key));
+  const missing = extra.split(";").filter((d) => d.trim() && !have.has(key(d)) && (have.add(key(d)), true));
+  return missing.length ? [current, ...missing].filter(Boolean).join(";") : current;
 }
