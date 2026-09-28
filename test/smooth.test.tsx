@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { elapsed, verbFor, WaitingLine } from "../src/renderer/src/components/WaitingLine";
+import type { StoredEvent } from "../src/shared/types";
+import { activityOf, elapsed, verbFor, WaitingLine } from "../src/renderer/src/components/WaitingLine";
 import { CATCH_UP_MS, commonPrefix, MIN_CPS, nextReveal } from "../src/renderer/src/smooth";
 
 describe("nextReveal", () => {
@@ -39,5 +40,48 @@ describe("WaitingLine", () => {
   it("leaves tokens out until there are some", () => {
     expect(renderToStaticMarkup(<WaitingLine startedAt={0} now={5_000} outputTokens={null} />)).toContain("(5s · esc to interrupt)");
     expect(elapsed(-10)).toBe("0s");
+  });
+
+  it("shows the activity's verb and a thinking orb", () => {
+    const html = renderToStaticMarkup(<WaitingLine startedAt={0} now={0} outputTokens={null} activity="editing" />);
+    expect(html).toContain("Editing…");
+    expect(html).toContain("<canvas");
+  });
+});
+
+describe("activityOf", () => {
+  const stored = (seq: number, event: StoredEvent["event"]): StoredEvent => ({ seq, event, createdAt: 0 });
+  const turnStart = stored(0, { kind: "turn-start", turnId: "t", agent: "claude", model: "m" });
+  const idle = { textStreaming: false, reasoningStreaming: false };
+
+  it("reads a pending Edit as editing", () => {
+    const events = [turnStart, stored(1, { kind: "tool-use", toolUseId: "a", name: "Edit", summary: "x" })];
+    expect(activityOf(events, idle)).toBe("editing");
+  });
+
+  it("reads a pending WebSearch as searching", () => {
+    const events = [turnStart, stored(1, { kind: "tool-use", toolUseId: "a", name: "WebSearch", summary: "x" })];
+    expect(activityOf(events, idle)).toBe("searching");
+  });
+
+  it("falls past an answered tool call to streaming text", () => {
+    const events = [
+      turnStart,
+      stored(1, { kind: "tool-use", toolUseId: "a", name: "Edit", summary: "x" }),
+      stored(2, { kind: "tool-result", toolUseId: "a", isError: false, summary: "ok" }),
+    ];
+    expect(activityOf(events, { textStreaming: true, reasoningStreaming: false })).toBe("writing");
+  });
+
+  it("reads reasoning with no tool call as thinking", () => {
+    expect(activityOf([turnStart], { textStreaming: false, reasoningStreaming: true })).toBe("thinking");
+  });
+
+  it("reads a turn that never started as connecting", () => {
+    expect(activityOf([], idle)).toBe("connecting");
+  });
+
+  it("reads a started turn with nothing else as idle", () => {
+    expect(activityOf([turnStart], idle)).toBe("idle");
   });
 });

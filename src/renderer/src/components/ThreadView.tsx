@@ -8,7 +8,7 @@ import { useStore } from "../store";
 import { DiffView, diffsOf } from "./DiffView";
 import { PermissionCard } from "./PermissionCard";
 import { ReasoningBlock } from "./ReasoningBlock";
-import { WaitingLine } from "./WaitingLine";
+import { activityOf, WaitingLine } from "./WaitingLine";
 import { useSmoothText } from "../hooks/useSmoothText";
 
 type ToolEvent = Extract<ThreadEvent, { kind: "tool-use" }>;
@@ -79,6 +79,18 @@ export function ThreadView({ threadId }: { threadId: string }) {
     }
     return stale;
   }, [events]);
+  // The current turn: everything after the last top-level user message.
+  const turnEvents = useMemo(() => {
+    let start = 0;
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i]!;
+      if (e.event.kind === "user" && !e.event.parentId) {
+        start = i + 1;
+        break;
+      }
+    }
+    return events.slice(start);
+  }, [events]);
 
   // Stay pinned to the bottom while the user hasn't scrolled away.
   const pinned = useRef(true);
@@ -122,7 +134,11 @@ export function ThreadView({ threadId }: { threadId: string }) {
           <LiveText key={item.key} text={item.text} />
         ))}
         {running && permissions.length === 0 && (
-          <WaitingLine startedAt={startedAt ?? Date.now()} outputTokens={live.usage?.outputTokens ?? live.thinkingTokens ?? null} />
+          <WaitingLine
+            startedAt={startedAt ?? Date.now()}
+            outputTokens={live.usage?.outputTokens ?? live.thinkingTokens ?? null}
+            activity={activityOf(turnEvents, { textStreaming: textItems.length > 0, reasoningStreaming: reasoningItems.length > 0 || live.thinkingTokens !== null })}
+          />
         )}
         {permissions.map((p) => (
           <PermissionCard key={p.requestId} request={p} />
