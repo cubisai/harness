@@ -556,7 +556,7 @@ describe("Codex with the harness's tools", () => {
 
 describe("toolFor payloads", () => {
   it("carries an MCP call's arguments and a web search's query", () => {
-    expect(toolFor({ type: "mcpToolCall", id: "m1", server: "unskilled", tool: "browser_eval", status: "inProgress", arguments: { expression: "1+1" } })).toMatchObject({
+    expect(toolFor({ type: "mcpToolCall", id: "m1", server: "cubiq", tool: "browser_eval", status: "inProgress", arguments: { expression: "1+1" } })).toMatchObject({
       payload: { expression: "1+1" },
     });
     expect(toolFor({ type: "mcpToolCall", id: "m2", server: "docs", tool: "whoami", status: "inProgress", arguments: {} })).not.toHaveProperty("payload");
@@ -572,7 +572,7 @@ describe("codexToolConfig", () => {
     const server = { url: "http://127.0.0.1:1/mcp", token: "tok" };
     expect(codexToolConfig(server, [safe, risky], "ask")).toEqual({
       mcp_servers: {
-        unskilled: {
+        cubiq: {
           url: server.url,
           http_headers: { Authorization: "Bearer tok" },
           default_tools_approval_mode: "approve",
@@ -580,7 +580,7 @@ describe("codexToolConfig", () => {
         },
       },
     });
-    expect((codexToolConfig(server, [safe, risky], "full")!.mcp_servers as Record<string, { tools: object }>).unskilled!.tools).toEqual({});
+    expect((codexToolConfig(server, [safe, risky], "full")!.mcp_servers as Record<string, { tools: object }>).cubiq!.tools).toEqual({});
   });
 
   it("adds the user's servers, and is empty with nothing to attach", () => {

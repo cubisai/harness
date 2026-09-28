@@ -6,7 +6,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { McpServerEntry, McpServerSpec, McpServerView, McpTestResult } from "../../shared/types";
 
 /** The name the app's own tools use; a user server can't take it. */
-export const BUILT_IN_SERVER = "unskilled";
+export const BUILT_IN_SERVER = "cubiq";
 const NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/;
 
 interface FileShape {
@@ -234,8 +234,8 @@ export function mcpChangeNotice(before: Record<string, unknown>, after: Record<s
   const removed = Object.keys(before).filter((n) => !(n in after));
   const changed = Object.keys(after).filter((n) => n in before && JSON.stringify(before[n]) !== JSON.stringify(after[n]));
   if (!added.length && !removed.length && !changed.length) return null;
-  // The harness's own tool server goes by "unskilled" on the wire; users know it as the browser tools.
-  const label = (names: string[]) => names.map((n) => (n === "unskilled" ? "the app's browser tools" : n)).join(", ");
+  // The harness's own tool server goes by "cubiq" on the wire; users know it as the browser tools.
+  const label = (names: string[]) => names.map((n) => (n === "cubiq" || n === "unskilled" ? "the app's browser tools" : n)).join(", ");
   const parts = [added.length && `added ${label(added)}`, removed.length && `removed ${label(removed)}`, changed.length && `changed ${label(changed)}`].filter(Boolean);
   return reopened
     ? `MCP servers changed (${parts.join("; ")}), so ${agent}'s session was reopened with them (its prompt cache starts over).`
@@ -244,7 +244,7 @@ export function mcpChangeNotice(before: Record<string, unknown>, after: Record<s
 
 /** Connect, list the server's tools, disconnect. */
 export async function testServer(spec: McpServerSpec, timeoutMs = 20_000): Promise<McpTestResult> {
-  const client = new Client({ name: "unskilled", version: "1.0.0" });
+  const client = new Client({ name: "cubiq", version: "1.0.0" });
   const transport =
     spec.type === "http"
       ? new StreamableHTTPClientTransport(new URL(spec.url), { requestInit: { headers: spec.headers } })

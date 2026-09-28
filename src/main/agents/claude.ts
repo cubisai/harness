@@ -14,12 +14,12 @@ import { staleKeyNotice } from "../inject/claude";
 import { normalizeUsage } from "../usage";
 import { PLUGIN_NAME } from "../skills/plugin";
 import { CLAUDE_CAPABILITIES } from "./capabilities";
-import { claudeLimitsPatch, type LimitsListener } from "./limits";
+import { claudeLimitsPatch, claudeUsagePatch, type ClaudeUsage, type LimitsListener, type LimitsPatch } from "./limits";
 import { summarizeToolInput, summarizeToolResult } from "./summarize";
 import type { AgentDriver, HarnessTool, ToolOutput, TurnInput } from "./types";
 
-/** MCP server name for harness tools: they reach Claude as mcp__unskilled__<tool>. */
-export const TOOL_SERVER = "unskilled";
+/** MCP server name for harness tools: they reach Claude as mcp__cubiq__<tool>. */
+export const TOOL_SERVER = "cubiq";
 
 function toCallToolResult(out: ToolOutput) {
   const content: ({ type: "text"; text: string } | { type: "image"; data: string; mimeType: string })[] = [
@@ -198,6 +198,49 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
     skillCallPrefix: `${PLUGIN_NAME}:`,
     models: () => config.byokModels?.() ?? models,
     refreshModels,
+    // Read plan limits on demand, the same control-plane probe as refreshModels:
+    // a query with a prompt that never yields, aborted once the answer lands.
+    readLimits: async (): Promise<LimitsPatch | "unsupported" | null> => {
+      const controller = new AbortController();
+      try {
+        const q = query({
+          prompt: (async function* () {
+            await new Promise<never>(() => {});
+          })(),
+          options: {
+            abortController: controller,
+            pathToClaudeCodeExecutable: resolvePackagedClaudeBinary(),
+          },
+        });
+        const usage = (
+          q as unknown as {
+            usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET?: (o: { skipBehaviors: boolean }) => Promise<ClaudeUsage>;
+          }
+        ).usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET;
+        if (typeof usage !== "function") return null; // a CLI that predates the probe
+        const res = await Promise.race([
+          usage.call(q, { skipBehaviors: true }),
+          new Promise<never>((_resolve, reject) => {
+            const t = setTimeout(() => reject(new Error("timed out reading Claude limits")), 10_000);
+            controller.signal.addEventListener(
+              "abort",
+              () => {
+                clearTimeout(t);
+                reject(new Error("aborted"));
+              },
+              { once: true },
+            );
+          }),
+        ]);
+        if (res.rate_limits_available === false) return "unsupported";
+        const patch = claudeUsagePatch(res);
+        // No windows means the CLI couldn't fetch them this time: a failure, so the refresher backs off.
+        if (!patch.windows) throw new Error("Claude reported no plan limits this time");
+        return patch;
+      } finally {
+        controller.abort();
+      }
+    },
     // The next turn resumes the session with the new model (spike S1).
     setModel: async () => "in-place",
     async runTurn(input: TurnInput): Promise<void> {

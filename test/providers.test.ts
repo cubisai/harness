@@ -48,6 +48,7 @@ describe("isProviderId", () => {
 
   it("rejects reserved ids", () => {
     expect(isProviderId("claude")).toBe(false);
+    expect(isProviderId("cubiq")).toBe(false);
     expect(isProviderId("unskilled")).toBe(false);
   });
 

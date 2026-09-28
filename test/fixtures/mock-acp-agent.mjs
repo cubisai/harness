@@ -180,7 +180,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
         update(sid, { sessionUpdate: "tool_call", toolCallId: "l1", title: "bash", kind: "execute", rawInput: {}, status: "pending" });
         update(sid, { sessionUpdate: "tool_call_update", toolCallId: "l1", rawInput: { command: "npm test" }, status: "in_progress" });
         update(sid, { sessionUpdate: "tool_call_update", toolCallId: "l1", status: "completed", content: [{ type: "content", content: { type: "text", text: "3 passed" } }] });
-        update(sid, { sessionUpdate: "tool_call", toolCallId: "l2", title: "unskilled_browser_open", kind: "other", rawInput: {}, status: "pending" });
+        update(sid, { sessionUpdate: "tool_call", toolCallId: "l2", title: "cubiq_browser_open", kind: "other", rawInput: {}, status: "pending" });
         update(sid, { sessionUpdate: "tool_call_update", toolCallId: "l2", rawInput: { url: "https://example.com" }, status: "in_progress" });
         update(sid, { sessionUpdate: "tool_call_update", toolCallId: "l2", status: "completed", content: [{ type: "content", content: { type: "text", text: "Page: Example Domain" } }] });
       } else if (text === "phantom-permission") {

@@ -15,6 +15,7 @@ describe("canonicalTool", () => {
       ["Write", "Edit"],
       ["MultiEdit", "Edit"],
       ["Grep", "Search"],
+      ["mcp__cubiq__browser_click", "browser_click"],
       ["mcp__unskilled__browser_click", "browser_click"],
       ["mcp__docs__whoami", "docs · whoami"],
       ["Unknown", "Unknown"],
@@ -98,10 +99,13 @@ describe("clipSummary", () => {
 
 describe("ACP rows for the harness's own tools", () => {
   it("names them like Claude's rows and summarises the main argument", () => {
+    expect(harnessTool({ title: "cubiq_browser_open", kind: "other", rawInput: { url: "https://example.com" } })).toEqual({ name: "browser_open", summary: "https://example.com" });
+    expect(harnessTool({ title: "mcp__cubiq__skill", rawInput: { name: "docx" } })).toEqual({ name: "skill", summary: "docx" });
+    // Stored threads carry the old "unskilled" titles; they read the same.
     expect(harnessTool({ title: "unskilled_browser_open", kind: "other", rawInput: { url: "https://example.com" } })).toEqual({ name: "browser_open", summary: "https://example.com" });
     expect(harnessTool({ title: "unskilled_browser_logs", kind: null, rawInput: {} })).toEqual({ name: "browser_logs", summary: "" });
     expect(harnessTool({ title: "mcp__unskilled__skill", rawInput: { name: "docx" } })).toEqual({ name: "skill", summary: "docx" });
     expect(harnessTool({ title: "github_create_issue", kind: "other", rawInput: {} })).toBeNull();
-    expect(harnessTool({ title: "unskilled_browser_open", kind: "execute", rawInput: {} })).toBeNull();
+    expect(harnessTool({ title: "cubiq_browser_open", kind: "execute", rawInput: {} })).toBeNull();
   });
 });

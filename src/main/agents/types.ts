@@ -1,5 +1,6 @@
 import type { ZodRawShape, z } from "zod";
 import type { AgentCapabilities, AgentCredentials, LiveDelta, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, Provenance, SkillsDelivery, ThreadEvent } from "../../shared/types";
+import type { LimitsPatch } from "./limits";
 
 export type { AgentCapabilities, SkillsDelivery } from "../../shared/types";
 
@@ -116,6 +117,13 @@ export interface AgentDriver {
    * leave the list as it was. Concurrent callers share one attempt.
    */
   refreshModels?(): Promise<void>;
+  /**
+   * Ask the agent for its plan rate limits without running a turn. Resolves
+   * with a patch, with "unsupported" when this login has no plan limits, or
+   * with null when there's nothing to ask right now (e.g. no running
+   * process); a rejection is a failure the caller may retry with back-off.
+   */
+  readLimits?(): Promise<LimitsPatch | "unsupported" | null>;
   /**
    * How this agent takes a model change on an existing session. Every switch
    * invalidates the prompt cache (each model has its own).

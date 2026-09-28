@@ -147,7 +147,7 @@ export function installMock(): void {
   ];
   let mcp: McpOverview = {
     builtIn: {
-      name: "unskilled",
+      name: "cubiq",
       active: false,
       tools: [
         { name: "browser_open", description: "Open a URL in the browser pane", autoAllow: true },
@@ -351,8 +351,8 @@ export function installMock(): void {
     },
     getSkillFolders: async () => ({
       project: projects.length ? "/Users/you/code/acme-web/.agents/skills" : "",
+      projectClaude: projects.length ? "/Users/you/code/acme-web/.claude/skills" : "",
       harness: "/Users/you/Library/Application Support/CubiQ/skills",
-      shared: "/Users/you/.agents/skills",
       bundled: "/Applications/CubiQ.app/Contents/Resources/skilled/skills",
     }),
     createSkill: async (input) => {

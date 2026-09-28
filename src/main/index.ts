@@ -4,13 +4,14 @@ import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell } from "electron";
-import type { AboutInfo, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, OpenResult, PermissionDecision, ProviderInput, ScreenshotInfo, SendRequest, Settings, SkillOrigin, SwitchMode, Thread } from "../shared/types";
+import type { AboutInfo, AgentLimits, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, OpenResult, PermissionDecision, ProviderInput, ScreenshotInfo, SendRequest, Settings, SkillOrigin, SwitchMode, Thread } from "../shared/types";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
 import { createClaudeDriver, resolvePackagedClaudeBinary } from "./agents/claude";
 import { createCodexDriver } from "./agents/codex";
 import { acpCapabilities, CLAUDE_CAPABILITIES, CODEX_CAPABILITIES } from "./agents/capabilities";
 import { LimitsTracker } from "./agents/limits";
+import { LimitsRefresher } from "./limits-refresher";
 import { loadAcpAgents, onPath } from "./agents/registry";
 import { BrowserController, isAllowedUrl } from "./browser/controller";
 import { browserTools } from "./browser/tools";
@@ -201,7 +202,6 @@ async function main(): Promise<void> {
     legacyRoot: root,
     bundledDir: app.isPackaged ? join(process.resourcesPath, "skills") : join(app.getAppPath(), "resources", "skills"),
     harnessDir,
-    sharedDir: join(homedir(), ".agents", "skills"),
     disabled: () => settings.get().skills?.disabled ?? [],
   });
   const windows = new Set<BrowserWindow>();
@@ -234,8 +234,29 @@ async function main(): Promise<void> {
       ]),
     );
   }
-  // Plan rate limits, fed only by what agents report during turns: no polling.
-  const limits = new LimitsTracker((l) => broadcast({ type: "limits", limits: l }));
+  // Plan rate limits: pushed by agents during turns and read on demand by the
+  // refresher (launch, window focus, and a slow interval) so they survive
+  // restarts, stay fresh while idle, and clear once a window resets.
+  const limits = new LimitsTracker(
+    (l) => broadcast({ type: "limits", limits: l }),
+    {
+      load: () => {
+        try {
+          const raw: unknown = JSON.parse(readFileSync(join(userData, "limits.json"), "utf8"));
+          return Array.isArray(raw) ? (raw as AgentLimits[]) : [];
+        } catch {
+          return [];
+        }
+      },
+      save: (all) => {
+        try {
+          writeFileSync(join(userData, "limits.json"), JSON.stringify(all));
+        } catch {
+          // A missing folder or full disk isn't worth failing a turn over.
+        }
+      },
+    },
+  );
   // The skills library's Python script when there is one; otherwise the same rules built in (guard-rules.ts), so the guard is always on.
   const guardScript = root?.skillsDir ? join(root.skillsDir, "git-guardrails", "scripts", "block-dangerous-git.py") : BUILT_IN_GUARD;
   // One guide for every agent: the app's, the user's, then the project's, stable for the session.
@@ -360,6 +381,24 @@ async function main(): Promise<void> {
       });
     }),
   ];
+  // Read limits on demand for whichever drivers can be asked (they expose
+  // readLimits; the rest are skipped). The tracker seeds from disk and the
+  // first check runs shortly after launch.
+  const refresher = new LimitsRefresher({
+    drivers: drivers.map((d) => ({ agent: d.id, readLimits: d.readLimits?.bind(d) })),
+    tracker: limits,
+  });
+  const limitsTimer = setInterval(() => void refresher.tick(), 60_000);
+  limitsTimer.unref?.();
+  const firstLimitsCheck = setTimeout(() => void refresher.tick(), 10_000);
+  firstLimitsCheck.unref?.();
+  app.on("browser-window-focus", () => {
+    refresher.setActive(true);
+    void refresher.onFocus();
+  });
+  app.on("browser-window-blur", () => {
+    if (!BrowserWindow.getFocusedWindow()) refresher.setActive(false);
+  });
   // Model lists that only appear once an agent has run: ask for them now so
   // the picker isn't empty on first open. Each driver notifies when ready.
   for (const d of drivers) {

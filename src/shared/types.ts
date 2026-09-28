@@ -4,7 +4,8 @@
 export type Invocation = "model" | "user";
 
 /** Where a skill was found: the standard folders, or the legacy skills.json root. */
-export type SkillOrigin = "project" | "harness" | "shared" | "bundled" | "legacy";
+/** "projectClaude" is the project's .claude/skills: listed as Project, read natively only by Claude. */
+export type SkillOrigin = "project" | "projectClaude" | "harness" | "shared" | "bundled" | "legacy";
 
 /** One skill: a folder with a SKILL.md (see plan/docs/HARNESS.md). */
 export interface SkillEntry {
@@ -184,7 +185,7 @@ export interface ExternalMcpServer {
 }
 
 export interface McpOverview {
-  /** The app's own tools (the browser pane's), served to agents as the "unskilled" server. */
+  /** The app's own tools (the browser pane's), served to agents as the "cubiq" server. */
   builtIn: { name: string; active: boolean; tools: { name: string; description: string; autoAllow: boolean }[] };
   /** The global servers, for all projects. */
   servers: McpServerView[];
@@ -246,9 +247,10 @@ export interface LimitWindow {
 }
 
 /**
- * An agent's subscription rate limits, as the agent last reported them. They
+ * An agent's subscription rate limits, as the agent last reported them. Most
  * arrive with its normal responses (Claude's rate-limit events, Codex's
- * rate-limit notifications); the app never asks for them separately.
+ * rate-limit notifications); the limits refresher also asks the agent
+ * directly when a snapshot is stale, so they survive restarts and idle time.
  */
 export interface AgentLimits {
   agent: string;
@@ -720,8 +722,8 @@ export interface UnskilledApi {
   getSkillDetail(name: string, projectId?: string): Promise<SkillDetail>;
   /** Turn one skill on or off; returns the refreshed all-skills list. */
   setSkillEnabled(origin: SkillOrigin, name: string, enabled: boolean): Promise<SkillEntry[]>;
-  /** The standard skill folders, for the Settings/Library UI. `project` is "" without one. */
-  getSkillFolders(projectId?: string): Promise<{ project: string; harness: string; shared: string; bundled: string }>;
+  /** The standard skill folders, for the Settings/Library UI. `project` and `projectClaude` are "" without one. */
+  getSkillFolders(projectId?: string): Promise<{ project: string; projectClaude: string; harness: string; bundled: string }>;
   /** Create a skill stub under the harness or the project; returns the SKILL.md path. */
   createSkill(input: { scope: "harness" | "project"; projectId?: string | null; name: string; description: string }): Promise<string>;
   listAgentCatalog(): Promise<AgentCatalogEntry[]>;

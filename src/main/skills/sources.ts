@@ -9,7 +9,6 @@ export interface SkillCatalogOptions {
   legacyRoot: SkillsRoot | null;
   bundledDir: string;
   harnessDir: string;
-  sharedDir: string;
   disabled: () => string[];
 }
 
@@ -36,9 +35,10 @@ function stamp(dir: string): string {
 
 /**
  * The standard Agent Skills folders, merged by precedence: the project's
- * `.agents/skills`, the app's own, the shared `~/.agents/skills`, the bundled
- * set, and finally the legacy skills.json root. Discovered layers are cached
- * by their folders' mtimes, so repeated lookups are cheap and an edit shows up.
+ * `.agents/skills` then `.claude/skills`, the app's own (global) folder, the
+ * bundled set, and finally the legacy skills.json root. Discovered layers are
+ * cached by their folders' mtimes, so repeated lookups are cheap and an edit
+ * shows up.
  */
 export class SkillCatalogs {
   private cache = new Map<string, { stamp: string; entries: SkillEntry[] }>();
@@ -59,12 +59,12 @@ export class SkillCatalogs {
     return loadCatalog(this.opts.legacyRoot).skills;
   }
 
-  /** The folders this app reads, for the UI. `project` is "" without a cwd. */
-  dirs(cwd: string | null): { project: string; harness: string; shared: string; bundled: string } {
+  /** The folders this app reads, for the UI. `project` and `projectClaude` are "" without a cwd. */
+  dirs(cwd: string | null): { project: string; projectClaude: string; harness: string; bundled: string } {
     return {
       project: cwd ? join(cwd, ".agents", "skills") : "",
+      projectClaude: cwd ? join(cwd, ".claude", "skills") : "",
       harness: this.opts.harnessDir,
-      shared: this.opts.sharedDir,
       bundled: this.opts.bundledDir,
     };
   }
@@ -72,12 +72,7 @@ export class SkillCatalogs {
   global(): Catalog {
     const disabled = new Set(this.opts.disabled());
     return mergeCatalog(
-      [
-        this.discovered("harness", this.opts.harnessDir),
-        this.discovered("shared", this.opts.sharedDir),
-        this.discovered("bundled", this.opts.bundledDir),
-        this.legacy(),
-      ],
+      [this.discovered("harness", this.opts.harnessDir), this.discovered("bundled", this.opts.bundledDir), this.legacy()],
       disabled,
       this.opts.legacyRoot,
     );
@@ -86,8 +81,10 @@ export class SkillCatalogs {
   forProject(cwd: string | null): Catalog {
     const disabled = new Set(this.opts.disabled());
     const layers: SkillEntry[][] = [];
-    if (cwd) layers.push(this.discovered("project", join(cwd, ".agents", "skills")));
-    layers.push(this.discovered("harness", this.opts.harnessDir), this.discovered("shared", this.opts.sharedDir), this.discovered("bundled", this.opts.bundledDir), this.legacy());
+    // .agents comes first so it wins a name in both. The .claude folder has its own origin:
+    // Claude reads it natively, but Codex and OpenCode only read .agents, so the app delivers it to them.
+    if (cwd) layers.push(this.discovered("project", join(cwd, ".agents", "skills")), this.discovered("projectClaude", join(cwd, ".claude", "skills")));
+    layers.push(this.discovered("harness", this.opts.harnessDir), this.discovered("bundled", this.opts.bundledDir), this.legacy());
     return mergeCatalog(layers, disabled, this.opts.legacyRoot);
   }
 

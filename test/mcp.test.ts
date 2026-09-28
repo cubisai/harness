@@ -34,7 +34,7 @@ describe("McpServerStore", () => {
     expect(store.enabled().map((s) => s.name)).toEqual(["b"]);
     store.remove("b");
     expect(store.list().map((s) => [s.name, s.enabled])).toEqual([["a", false]]);
-    expect(() => store.save({ name: "unskilled", enabled: true, spec: { type: "stdio", command: "x" } })).toThrow(/app's own/);
+    expect(() => store.save({ name: "cubiq", enabled: true, spec: { type: "stdio", command: "x" } })).toThrow(/app's own/);
     expect(() => store.save({ name: "a b", enabled: true, spec: { type: "stdio", command: "x" } })).toThrow(/letters/);
     expect(() => store.save({ name: "a", enabled: true, spec: { type: "stdio", command: "x" } })).toThrow(/already/);
     expect(() => store.save({ name: "c", enabled: true, spec: { type: "http", url: "ftp://x" } })).toThrow(/http/);

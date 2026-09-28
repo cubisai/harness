@@ -5,7 +5,7 @@ description: Check a web page or the app you are building in the harness's brows
 
 # Browser
 
-The harness has a browser pane the user can see. You drive it with these tools (an MCP prefix such as `mcp__unskilled__` may be in front of the names):
+The harness has a browser pane the user can see. You drive it with these tools (an MCP prefix such as `mcp__cubiq__` may be in front of the names):
 
 | Tool | Use |
 | :--- | :--- |

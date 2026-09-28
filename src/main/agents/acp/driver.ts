@@ -8,6 +8,7 @@ import { summarizeToolResult } from "../summarize";
 import type { AgentDriver, TurnInput } from "../types";
 import { acpCapabilities, withCapabilities } from "../capabilities";
 import { forAcpWithReport, mcpChangeNotice } from "../../mcp/servers";
+import { TOOL_SERVER_NAME } from "../../mcp-http";
 import { checkCommand } from "../../guard";
 import { RpcError, StdioRpc } from "../rpc";
 import { normalizeUsage } from "../../usage";
@@ -574,7 +575,7 @@ export function createAcpDriver(
     const init = await conn.request<InitializeResult>("initialize", {
       protocolVersion: 1,
       clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
-      clientInfo: { name: "unskilled", version: deps.clientVersion },
+      clientInfo: { name: "cubiq", version: deps.clientVersion },
     });
     applyInitialize(init, input);
     l = { conn, init, threadKey, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, variantKey: wantedKey, droppedNotified: new Set(), guidePending: false, turn: null, authUrl: null };
@@ -596,7 +597,7 @@ export function createAcpDriver(
         const { url, token, skillsUrl } = await deps.toolServer();
         // In tool mode the skill tool rides on /mcp-skills, alongside the browser tools.
         const target = capabilities.skillsDelivery.mode === "tool" ? (skillsUrl ?? url) : url;
-        servers.push({ type: "http", name: "unskilled", url: target, headers: [{ name: "Authorization", value: `Bearer ${token}` }] } as { name: string });
+        servers.push({ type: "http", name: TOOL_SERVER_NAME, url: target, headers: [{ name: "Authorization", value: `Bearer ${token}` }] } as { name: string });
       } else dropped.push("the app's browser tools");
     }
     // Never a silent drop (invariant 7): name each server the agent can't take, once per connection.
@@ -781,7 +782,7 @@ export function createAcpDriver(
         const init = await conn.request<InitializeResult>("initialize", {
           protocolVersion: 1,
           clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
-          clientInfo: { name: "unskilled", version: deps.clientVersion },
+          clientInfo: { name: "cubiq", version: deps.clientVersion },
         });
         applyInitialize(init);
         // No proactive authenticate here either: a valid profile's session/new
@@ -939,9 +940,10 @@ export function toolSummary(u: ToolCallFields, command: string | undefined): str
 }
 
 /**
- * A call to the harness's own MCP server (`unskilled`), which ACP agents title
- * with the server prefix and no kind (OpenCode: "unskilled_browser_open"):
- * named like Claude's rows (browser_open, skill), summarised by its main argument.
+ * A call to the harness's own MCP server (`cubiq`), which ACP agents title
+ * with the server prefix and no kind (OpenCode: "cubiq_browser_open"): named
+ * like Claude's rows (browser_open, skill), summarised by its main argument.
+ * Stored threads still carry the old "unskilled" titles, accepted too.
  */
 /** A rawInput worth waiting for: anything but null or an empty object. */
 function hasInput(raw: unknown): boolean {
@@ -949,7 +951,7 @@ function hasInput(raw: unknown): boolean {
 }
 
 export function harnessTool(u: Pick<ToolCallFields, "title" | "kind" | "rawInput">): { name: string; summary: string } | null {
-  const m = /^(?:mcp__)?unskilled(?:__|[_:.])([a-z][a-z0-9_]*)$/i.exec(u.title ?? "");
+  const m = /^(?:mcp__)?(?:cubiq|unskilled)(?:__|[_:.])([a-z][a-z0-9_]*)$/i.exec(u.title ?? "");
   if (!m || (u.kind && u.kind !== "other")) return null;
   const raw = (u.rawInput ?? {}) as Record<string, unknown>;
   const arg = ["url", "ref", "text", "expression", "name"].map((k) => raw[k]).find((v): v is string => typeof v === "string");

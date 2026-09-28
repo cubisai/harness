@@ -7,7 +7,7 @@ import { z } from "zod";
 import type { SkillEntry } from "../src/shared/types";
 import { mergeCatalog, type Catalog } from "../src/main/skills/catalog";
 import { discoverSkills, parseSkillMd } from "../src/main/skills/discover";
-import { forAgent } from "../src/main/skills/sources";
+import { forAgent, SkillCatalogs } from "../src/main/skills/sources";
 import { skillTool } from "../src/main/skills/tool";
 import { startToolServer } from "../src/main/mcp-http";
 import type { HarnessTool } from "../src/main/agents/types";
@@ -129,6 +129,67 @@ describe("forAgent", () => {
     expect(forAgent(catalog, { mode: "tool", reads: ["project", "shared"] }).map((s) => s.name).sort()).toEqual(["h", "l"]);
     expect(forAgent(catalog, { mode: "extraRoots", reads: [] }).map((s) => s.name).sort()).toEqual(["h", "l", "p", "s"]);
     expect(forAgent(catalog, { mode: "none" }).map((s) => s.name).sort()).toEqual(["h", "l", "p", "s"]);
+  });
+});
+
+describe("SkillCatalogs", () => {
+  function catalogs(): SkillCatalogs {
+    return new SkillCatalogs({
+      legacyRoot: null,
+      bundledDir: join(tempDir(), "bundled"),
+      harnessDir: join(tempDir(), "harness"),
+      disabled: () => [],
+    });
+  }
+
+  it("reads the project's .claude/skills under its own origin", () => {
+    const cwd = tempDir();
+    writeSkill(join(cwd, ".claude", "skills"), "from-claude", "---\nname: from-claude\ndescription: Claude project skill\n---\nbody");
+    const cat = catalogs().forProject(cwd);
+    expect(cat.byName.get("from-claude")?.origin).toBe("projectClaude");
+    expect(cat.skills.map((s) => s.name)).toContain("from-claude");
+  });
+
+  it("delivers a .claude project skill to agents that only read .agents, not to Claude, which has it", () => {
+    const cwd = tempDir();
+    writeSkill(join(cwd, ".agents", "skills"), "from-agents", "---\nname: from-agents\ndescription: Agents project skill\n---\nbody");
+    writeSkill(join(cwd, ".claude", "skills"), "from-claude", "---\nname: from-claude\ndescription: Claude project skill\n---\nbody");
+    const cat = catalogs().forProject(cwd);
+    // Codex/OpenCode read .agents natively ("project"), so only the .claude one needs delivering.
+    const codex = forAgent(cat, { mode: "extraRoots", prefix: "", reads: ["project", "shared"] }).map((s) => s.name);
+    expect(codex).toContain("from-claude");
+    expect(codex).not.toContain("from-agents");
+    // Claude loads its own .claude/skills: the native set keeps it from getting a second copy.
+    const claude = forAgent(cat, { mode: "plugin", prefix: "p:", reads: [] }, new Set(["from-claude"])).map((s) => s.name);
+    expect(claude).not.toContain("from-claude");
+  });
+
+  it("prefers .agents over .claude for a name in both", () => {
+    const cwd = tempDir();
+    writeSkill(join(cwd, ".agents", "skills"), "dup", "---\nname: dup\ndescription: From agents\n---\nbody");
+    writeSkill(join(cwd, ".claude", "skills"), "dup", "---\nname: dup\ndescription: From claude\n---\nbody");
+    const cat = catalogs().forProject(cwd);
+    expect(cat.byName.get("dup")?.description).toBe("From agents");
+    expect(cat.byName.get("dup")?.dir).toBe(join(cwd, ".agents", "skills", "dup"));
+  });
+
+  it("no longer lists a skill that only lives in the old shared folder", () => {
+    const cwd = tempDir();
+    const shared = join(tempDir(), "shared-skills");
+    writeSkill(shared, "shared-only", "---\nname: shared-only\ndescription: Old shared\n---\nbody");
+    const cats = catalogs();
+    expect(cats.forProject(cwd).byName.has("shared-only")).toBe(false);
+    expect(cats.global().byName.has("shared-only")).toBe(false);
+  });
+
+  it("reports the project, projectClaude, harness and bundled folders", () => {
+    const cwd = "/tmp/proj";
+    const dirs = catalogs().dirs(cwd);
+    expect(dirs.project).toBe(join(cwd, ".agents", "skills"));
+    expect(dirs.projectClaude).toBe(join(cwd, ".claude", "skills"));
+    const none = catalogs().dirs(null);
+    expect(none.project).toBe("");
+    expect(none.projectClaude).toBe("");
   });
 });
 

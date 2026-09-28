@@ -25,7 +25,7 @@ export type {
 };
 
 /** Ids the harness itself uses as names; a provider may not shadow them. */
-export const RESERVED_PROVIDER_IDS = new Set(["claude", "codex", "unskilled", "default"]);
+export const RESERVED_PROVIDER_IDS = new Set(["claude", "codex", "cubiq", "unskilled", "default"]);
 
 const PROVIDER_ID_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 

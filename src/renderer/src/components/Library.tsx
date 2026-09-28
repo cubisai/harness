@@ -368,10 +368,12 @@ function ExpertsTab() {
 export function originLabel(origin?: SkillOrigin): string {
   switch (origin) {
     case "project":
+    case "projectClaude":
       return "Project";
     case "harness":
-      return "Yours";
+      return "Global (CubiQ)";
     case "shared":
+      // Kept for old data: the shared layer is no longer a catalog source.
       return "Shared (~/.agents)";
     case "bundled":
       return "Built-in";
@@ -385,7 +387,7 @@ function skillKey(s: SkillEntry): string {
   return `${s.origin ?? "legacy"}:${s.name}`;
 }
 
-const SKILL_ORIGINS: SkillOrigin[] = ["project", "harness", "shared", "bundled", "legacy"];
+const SKILL_ORIGINS: SkillOrigin[] = ["project", "harness", "bundled", "legacy"];
 
 function SkillsTab() {
   const projectId = useStore((s) => s.selectedProjectId);
@@ -395,7 +397,7 @@ function SkillsTab() {
   const [detail, setDetail] = useState<SkillDetail | null>(null);
   const [form, setForm] = useState<{ name: string; description: string; scope: "harness" | "project" } | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const [folders, setFolders] = useState<{ project: string; harness: string; shared: string; bundled: string } | null>(null);
+  const [folders, setFolders] = useState<{ project: string; projectClaude: string; harness: string; bundled: string } | null>(null);
   const [creating, setCreating] = useState(false);
 
   const reload = () => void api().listAllSkills(projectId ?? undefined).then(setAll);
@@ -428,7 +430,9 @@ function SkillsTab() {
 
   const q = query.trim().toLowerCase();
   const shown = all.filter((s) => !q || s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q));
-  const groups = SKILL_ORIGINS.map((origin) => [origin, shown.filter((s) => (s.origin ?? "legacy") === origin)] as const);
+  // Both project folders list together under Project.
+  const groupOf = (s: SkillEntry) => (s.origin === "projectClaude" ? "project" : (s.origin ?? "legacy"));
+  const groups = SKILL_ORIGINS.map((origin) => [origin, shown.filter((s) => groupOf(s) === origin)] as const);
 
   const open = (name: string) => {
     const entry = all.find((s) => s.name === name);
@@ -475,7 +479,7 @@ function SkillsTab() {
       <input className="text-input" autoFocus value={form.name} placeholder="release-notes" spellCheck={false} onChange={(e) => setForm({ ...form, name: e.target.value })} />
       <textarea className="text-input" rows={2} value={form.description} placeholder="What it does, then: Use when …" onChange={(e) => setForm({ ...form, description: e.target.value })} />
       <select className="text-input" value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value as "harness" | "project" })}>
-        <option value="harness">All projects</option>
+        <option value="harness">Global (CubiQ)</option>
         <option value="project" disabled={!projectId}>
           This project
         </option>
@@ -497,14 +501,14 @@ function SkillsTab() {
       {(
         [
           ["project", folders.project],
+          ["project", folders.projectClaude],
           ["harness", folders.harness],
-          ["shared", folders.shared],
           ["bundled", folders.bundled],
         ] as [SkillOrigin, string][]
       )
         .filter(([, path]) => path)
         .map(([origin, path]) => (
-          <button key={origin} className="file-link" onClick={() => void api().revealPath(path)}>
+          <button key={path} className="file-link" onClick={() => void api().revealPath(path)}>
             {originLabel(origin)} <code>{path}</code>
           </button>
         ))}

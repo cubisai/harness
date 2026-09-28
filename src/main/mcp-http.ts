@@ -5,7 +5,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { HarnessTool, ToolOutput } from "./agents/types";
 
-export const TOOL_SERVER_NAME = "unskilled";
+export const TOOL_SERVER_NAME = "cubiq";
 
 export interface ToolServer {
   url: string;
@@ -31,7 +31,7 @@ type ListHandler = (request: unknown, extra: unknown) => Promise<{ tools: { inpu
  * `required` key. That is valid JSON Schema, but OpenCode forwards it as
  * `required: null`, and OpenAI-compatible gateways (AgentRouter's DeepSeek)
  * then reject the whole request: "Invalid schema for function
- * 'unskilled_browser_logs': null is not of type 'array'". Wrap the SDK's
+ * 'cubiq_browser_logs': null is not of type 'array'". Wrap the SDK's
  * tools/list handler so every schema carries an array. The handler map is
  * private to the pinned SDK; mcp-http.test.ts fails if that ever changes.
  */

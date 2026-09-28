@@ -29,7 +29,7 @@ describe("fake-openai fixture", () => {
   });
 
   it("calls browser_eval when offered, then answers once the result comes back", async () => {
-    const tools = [{ name: "mcp__unskilled", tools: [{ name: "browser_eval" }] }];
+    const tools = [{ name: "mcp__cubiq", tools: [{ name: "browser_eval" }] }];
     const first = await (await post(fake.url, JSON.stringify({ tools, input: [] }))).text();
     expect(first).toContain('"type":"function_call"');
     expect(first).toContain('"name":"browser_eval"');

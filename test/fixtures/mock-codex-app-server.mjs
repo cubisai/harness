@@ -4,7 +4,7 @@
 //   "run:<command>" - runs <command> without asking (as Full mode does), then reports it
 //   "file" - asks approval for a file change, then reports it
 //   "slow" - streams until turn/interrupt
-//   "browser" - calls browser_eval on the thread's "unskilled" MCP server,
+//   "browser" - calls browser_eval on the thread's "cubiq" MCP server,
 //              asking first when its config says to, as Codex does
 //   "roots" - reports the extra skills roots the app set
 //   "unsubs" - reports how many thread/unsubscribe requests the mock has seen
@@ -138,23 +138,23 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
         return done("interrupted");
       }
       if (text === "browser") {
-        const server = configs.get(threadId)?.mcp_servers?.unskilled;
+        const server = configs.get(threadId)?.mcp_servers?.cubiq;
         if (!server) {
           notify("item/completed", { threadId, turnId: turn.id, item: { type: "agentMessage", id: "m", text: "no tools" } });
           return done("completed");
         }
         const args = { expression: "1+1" };
-        const item = { type: "mcpToolCall", id: "t1", server: "unskilled", tool: "browser_eval", status: "inProgress", arguments: args, result: null, error: null };
+        const item = { type: "mcpToolCall", id: "t1", server: "cubiq", tool: "browser_eval", status: "inProgress", arguments: args, result: null, error: null };
         notify("item/started", { threadId, turnId: turn.id, item });
         let allowed = true;
         if (server.tools?.browser_eval?.approval_mode === "prompt") {
           const res = await ask("mcpServer/elicitation/request", {
             threadId,
             turnId: turn.id,
-            serverName: "unskilled",
+            serverName: "cubiq",
             mode: "form",
             _meta: { codex_approval_kind: "mcp_tool_call", tool_params_display: [{ name: "expression", value: "1+1", display_name: "expression" }] },
-            message: 'Allow the unskilled MCP server to run tool "browser_eval"?',
+            message: 'Allow the cubiq MCP server to run tool "browser_eval"?',
             requestedSchema: { type: "object", properties: {} },
           });
           allowed = res.action === "accept";

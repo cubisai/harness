@@ -8,7 +8,7 @@
 export function canonicalTool(name: string): string {
   if (name.startsWith("mcp__")) {
     const parts = name.slice("mcp__".length).split("__");
-    if (parts[0] === "unskilled") return parts.slice(1).join("__");
+    if (parts[0] === "cubiq" || parts[0] === "unskilled") return parts.slice(1).join("__");
     return parts.join(" · ");
   }
   switch (name) {

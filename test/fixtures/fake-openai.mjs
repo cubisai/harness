@@ -1,5 +1,5 @@
 // A fake OpenAI Responses API for tests. It calls
-// mcp__unskilled.browser_eval whenever that namespace is offered and the turn
+// mcp__cubiq.browser_eval whenever that namespace is offered and the turn
 // hasn't called it yet, then answers with a message once the tool result comes
 // back. Extracted from test/codex-e2e.test.ts so both the Codex e2e and the
 // fixture's own test can drive it.
@@ -26,14 +26,14 @@ export async function startFakeOpenAI(opts = {}) {
       }
       requests.push(request);
       authHeaders.push(req.headers.authorization ?? null);
-      const ns = request.tools?.find((t) => t.name === "mcp__unskilled");
+      const ns = request.tools?.find((t) => t.name === "mcp__cubiq");
       offered.push(ns?.tools?.map((t) => t.name) ?? []);
       namespaces.push((request.tools ?? []).filter((t) => t.tools).map((t) => `${t.name}: ${t.tools.map((x) => x.name).join(",")}`));
       const id = `r${++n}`;
       const called = JSON.stringify(request.input).includes("function_call_output");
       const item =
         ns && !called
-          ? { type: "function_call", call_id: `c${n}`, namespace: "mcp__unskilled", name: "browser_eval", arguments: '{"expression":"1+1"}' }
+          ? { type: "function_call", call_id: `c${n}`, namespace: "mcp__cubiq", name: "browser_eval", arguments: '{"expression":"1+1"}' }
           : { type: "message", role: "assistant", id: `m${n}`, content: [{ type: "output_text", text: called ? "Evaluated." : "Hello." }] };
       const usage = { input_tokens: 10, input_tokens_details: null, output_tokens: 5, output_tokens_details: null, total_tokens: 15 };
       res.writeHead(200, {

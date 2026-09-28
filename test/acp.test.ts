@@ -419,10 +419,10 @@ describe("ACP driver", () => {
     const tool = { name: "browser_snapshot", description: "", input: {}, autoAllow: true, run: async () => ({ text: "" }) };
     const first = turn("mcp", { tools: [tool] });
     await d.runTurn(first.input);
-    expect(first.deltas.join("")).toBe('[["http","unskilled","http://127.0.0.1:9/mcp"]]');
+    expect(first.deltas.join("")).toBe('[["http","cubiq","http://127.0.0.1:9/mcp"]]');
     const second = turn("mcp", { sessionId: first.sessions[0]!, tools: [tool] });
     await d.runTurn(second.input);
-    expect(second.deltas.join("")).toBe('[["http","unskilled","http://127.0.0.1:9/mcp"]]');
+    expect(second.deltas.join("")).toBe('[["http","cubiq","http://127.0.0.1:9/mcp"]]');
     expect(second.events.some((e) => e.kind === "notice" && (e as { text: string }).text.includes("reopened"))).toBe(false);
   });
 

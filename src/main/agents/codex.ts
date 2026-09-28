@@ -10,7 +10,7 @@ import { normalizeUsage } from "../usage";
 import type { InjectionPlan } from "../inject";
 import { RpcError, StdioRpc } from "./rpc";
 import { CODEX_CAPABILITIES } from "./capabilities";
-import { codexLimitsPatch, type CodexRateLimits, type LimitsListener } from "./limits";
+import { codexLimitsPatch, codexReadPatch, type CodexRateLimits, type CodexRateLimitsRead, type LimitsListener, type LimitsPatch } from "./limits";
 import { checkCommand } from "../guard";
 import { summarizeToolInput, summarizeToolResult } from "./summarize";
 import type { AgentDriver, HarnessTool, TurnInput } from "./types";
@@ -69,7 +69,10 @@ export interface CodexConfig {
 }
 
 /** The MCP server name the harness's tools go by, in Codex's config and its tool calls. */
-export const CODEX_TOOL_SERVER = "unskilled";
+export const CODEX_TOOL_SERVER = "cubiq";
+
+/** Stored threads and agents that predate the rename still call the server "unskilled". */
+const TOOL_SERVERS = new Set([CODEX_TOOL_SERVER, "unskilled"]);
 
 export const CODEX_DEFAULT_MODEL = "default";
 
@@ -399,7 +402,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     const allowed = alwaysAllowed.get(p.threadId);
     if (allowed?.has(`${p.serverName}/${tool}`)) return { action: "accept", content: null };
     const decision = await t.input.requestPermission({
-      toolName: p.serverName === CODEX_TOOL_SERVER ? tool : `${p.serverName} · ${tool}`,
+      toolName: TOOL_SERVERS.has(p.serverName) ? tool : `${p.serverName} · ${tool}`,
       summary: (p._meta.tool_params_display ?? []).map((d) => `${d.display_name ?? d.name}: ${String(d.value)}`).join(", ") || tool,
       canAlwaysAllow: true,
     });
@@ -439,7 +442,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     rpc = conn;
     ready = (async () => {
       await conn.request("initialize", {
-        clientInfo: { name: "unskilled", title: "CubiQ", version: config.clientVersion },
+        clientInfo: { name: "cubiq", title: "CubiQ", version: config.clientVersion },
         capabilities: null,
       });
       conn.notify("initialized");
@@ -554,6 +557,24 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       return byok ?? [{ id: CODEX_DEFAULT_MODEL, label: "Codex default" }, ...models];
     },
     refreshModels,
+    // Read account limits on demand. Never starts the app-server just to
+    // probe: with none running there is nothing to ask, so return null.
+    readLimits: async (): Promise<LimitsPatch | "unsupported" | null> => {
+      if (!rpc?.alive) return null;
+      const conn = rpc;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const res = await Promise.race([
+          conn.request<CodexRateLimitsRead>("account/rateLimits/read", null),
+          new Promise<never>((_resolve, reject) => {
+            timer = setTimeout(() => reject(new Error("timed out reading Codex rate limits")), 3_000);
+          }),
+        ]);
+        return codexReadPatch(res ?? {});
+      } finally {
+        clearTimeout(timer);
+      }
+    },
     // turn/start carries the model and it sticks (spike S4); back to the
     // default sends model null, which keeps the old model, so that needs a
     // new thread.
@@ -638,7 +659,7 @@ export function toolFor(item: ThreadItem): { name: string; summary: string; payl
       const args = m.arguments && typeof m.arguments === "object" ? (m.arguments as Record<string, unknown>) : {};
       // The harness's own tools read as themselves, like Claude's browser_* calls.
       return {
-        name: m.server === CODEX_TOOL_SERVER ? m.tool : `${m.server} · ${m.tool}`,
+        name: TOOL_SERVERS.has(m.server) ? m.tool : `${m.server} · ${m.tool}`,
         summary: summarizeToolInput(m.tool, args),
         ...(Object.keys(args).length ? { payload: args } : {}),
       };
