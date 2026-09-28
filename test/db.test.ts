@@ -34,6 +34,17 @@ describe("Store", () => {
     store.deleteThread(t.id);
     expect(store.listThreads(p.id)).toEqual([]);
     expect(store.listEvents(t.id)).toEqual([]);
+
+    const p2 = store.addProject("/tmp/some/other-project");
+    const t2 = store.createThread(p2.id, "claude", "claude-opus-5", "ask");
+    store.appendEvent(t2.id, { kind: "user", text: "test" });
+    expect(store.listProjects().map((x) => x.id)).toContain(p2.id);
+    expect(store.listThreads(p2.id)).toHaveLength(1);
+    store.deleteProject(p2.id);
+    expect(store.listProjects().map((x) => x.id)).not.toContain(p2.id);
+    expect(store.listThreads(p2.id)).toEqual([]);
+    expect(store.listEvents(t2.id)).toEqual([]);
+
     store.close();
   });
 });

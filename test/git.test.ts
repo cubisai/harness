@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { branchLabel, createWorktree, listProjectFiles, parseUnifiedDiff, removeWorktree, workingTreeDiff, worktreeBranch } from "../src/main/git";
@@ -103,6 +103,12 @@ describe("listProjectFiles", () => {
     const { files, truncated } = await listProjectFiles(dir, 1);
     expect(files).toHaveLength(1);
     expect(truncated).toBe(true);
+  });
+
+  it("returns an empty list when the directory no longer exists", async () => {
+    const dir = tempDir();
+    rmSync(dir, { recursive: true, force: true });
+    expect(await listProjectFiles(dir)).toEqual({ files: [], truncated: false });
   });
 });
 

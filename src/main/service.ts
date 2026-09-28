@@ -168,6 +168,30 @@ export class Service {
     this.store.deleteThread(id);
   }
 
+  /** Delete a project, stopping its running threads and removing any associated worktrees. */
+  async deleteProject(id: string): Promise<void> {
+    let projectPath: string | null = null;
+    try {
+      projectPath = this.store.getProject(id).path;
+    } catch {
+      // already gone
+    }
+    const threads = this.store.listThreads(id);
+    for (const thread of threads) {
+      this.interrupt(thread.id);
+      if (thread.worktreePath && projectPath) {
+        try {
+          await removeWorktree(projectPath, thread.worktreePath);
+        } catch {
+          // worktree removal failure shouldn't block project deletion
+        }
+      }
+    }
+    this.approvals.delete(id);
+    this.scopeChecked.delete(id);
+    this.store.deleteProject(id);
+  }
+
   /** Where a thread's tools run: its own worktree, or the project folder. */
   cwdOf(thread: Thread): string {
     return thread.worktreePath ?? this.store.getProject(thread.projectId).path;

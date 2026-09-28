@@ -1,12 +1,136 @@
-import { useState } from "react";
-import type { Thread } from "../../../shared/types";
-import { IconChevron, IconCompose, IconFolder, IconGear, IconLibrary, IconPlus } from "../icons";
+import { useEffect, useRef, useState } from "react";
+import type { Project, Thread } from "../../../shared/types";
+import { IconChevron, IconCompose, IconFolder, IconGear, IconLibrary, IconMore, IconPlus } from "../icons";
 import { api } from "../api";
 import { archivedThreads, sectionThreads } from "../sections";
 import { ThreadRow } from "./ThreadRow";
 import { useStore } from "../store";
 import { InboxBell } from "./MessageCenter";
 import { SidebarToggle } from "./PaneRail";
+
+function ProjectRow({
+  project,
+  open,
+  count,
+  onToggle,
+}: {
+  project: Project;
+  open: boolean;
+  count: number;
+  onToggle: () => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const { deleteProject, selectProject, newThread, openInEditor } = useStore.getState();
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e: MouseEvent | KeyboardEvent) => {
+      if (e instanceof KeyboardEvent ? e.key === "Escape" : !boxRef.current?.contains(e.target as Node)) {
+        setMenuOpen(false);
+        setConfirming(false);
+      }
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [menuOpen]);
+
+  const act = (fn: () => Promise<void> | void) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMenuOpen(false);
+    setConfirming(false);
+    void fn();
+  };
+
+  return (
+    <div
+      ref={boxRef}
+      className={`project-row${menuOpen ? " menu-open" : ""}`}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setMenuOpen(true);
+        setConfirming(false);
+      }}
+    >
+      <button
+        className="project-toggle"
+        title={project.path}
+        aria-expanded={open}
+        onClick={onToggle}
+      >
+        <IconChevron open={open} />
+        <span className="project-name">{project.name}</span>
+        <span className="count">{count || ""}</span>
+      </button>
+      <span className="project-actions">
+        <button
+          className="icon-button project-action"
+          title={`New thread in ${project.name}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            void selectProject(project.id).then(() => newThread());
+          }}
+        >
+          <IconPlus size={14} />
+        </button>
+        <button
+          className="icon-button project-action"
+          title="Project options"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuOpen((m) => !m);
+            setConfirming(false);
+          }}
+        >
+          <IconMore size={14} />
+        </button>
+      </span>
+      {menuOpen && (
+        <div className="thread-menu" role="menu" onClick={(e) => e.stopPropagation()}>
+          {confirming ? (
+            <>
+              <p className="thread-menu-note">
+                Remove “{project.name}” from AI Harness?
+                <br />
+                <span style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>
+                  Project files on disk will not be deleted.
+                </span>
+              </p>
+              <button role="menuitem" className="danger" onClick={act(() => deleteProject(project.id))}>
+                Remove for Good
+              </button>
+              <button role="menuitem" onClick={() => setConfirming(false)}>
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <button role="menuitem" onClick={act(() => selectProject(project.id).then(() => newThread()))}>
+                New thread
+              </button>
+              <button role="menuitem" onClick={act(() => openInEditor({ path: project.path }))}>
+                Open in editor
+              </button>
+              <button role="menuitem" onClick={act(() => navigator.clipboard.writeText(project.path))}>
+                Copy path
+              </button>
+              <button role="menuitem" className="danger" onClick={() => setConfirming(true)}>
+                Remove from Harness…
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function Sidebar() {
   const projects = useStore((s) => s.projects);
@@ -60,30 +184,15 @@ export function Sidebar() {
           const open = !collapsed[p.id];
           return (
             <div className="project" key={p.id}>
-              <div className="project-row">
-                <button
-                  className="project-toggle"
-                  title={p.path}
-                  aria-expanded={open}
-                  onClick={() => {
-                    void selectProject(p.id);
-                    setCollapsed((c) => ({ ...c, [p.id]: selectedProjectId === p.id ? open : false }));
-                  }}
-                >
-                  <IconChevron open={open} />
-                  <span className="project-name">{p.name}</span>
-                  <span className="count">{list.filter((t) => !t.archived).length || ""}</span>
-                </button>
-                <span className="project-actions">
-                  <button
-                    className="icon-button project-action"
-                    title={`New thread in ${p.name}`}
-                    onClick={() => void selectProject(p.id).then(() => newThread())}
-                  >
-                    <IconPlus size={14} />
-                  </button>
-                </span>
-              </div>
+              <ProjectRow
+                project={p}
+                open={open}
+                count={list.filter((t) => !t.archived).length}
+                onToggle={() => {
+                  void selectProject(p.id);
+                  setCollapsed((c) => ({ ...c, [p.id]: selectedProjectId === p.id ? open : false }));
+                }}
+              />
               {open &&
                 sectionThreads(list, { running, now }).map((section) => (
                   <div className="thread-section" key={section.name}>

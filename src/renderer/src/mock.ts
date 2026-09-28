@@ -142,7 +142,7 @@ export function installMock(): void {
     { id: "claude", label: "Claude", kind: "agent-sdk", command: null, installed: true, source: "built-in", skills: "As a plugin, named skilled:<name>, loaded when the task calls for it", mcp: "Stdio and HTTP servers, the browser tools in-process, plus Claude Code's own config" },
     { id: "deepseek", label: "DeepSeek", kind: "acp", command: "dsh --profile acp", installed: true, source: "built-in", skills: "Through DSH_BUNDLED_SKILL_DIR, loaded when the task calls for it", mcp: "Stdio servers, and HTTP ones (with the browser tools) when the agent supports them" },
     { id: "codex", label: "Codex", kind: "app-server", command: "codex app-server", installed: false, source: "built-in", install: "npm install -g @openai/codex", skills: "As an extra skills folder, loaded when the task calls for it", mcp: "Stdio and HTTP servers, the browser tools, plus ~/.codex/config.toml" },
-    { id: "antigravity", label: "Antigravity", kind: "cli", command: "agy", installed: false, source: "built-in", install: "https://antigravity.google/download", homepage: "https://antigravity.google", optIn: true, skills: "Its own skills setup; the app's skills don't reach it", mcp: "Its own MCP servers (agy mcp) and its own browser; the app's servers and browser tools don't reach it" },
+    { id: "antigravity", label: "Antigravity", kind: "acp", command: "agy_acp_server.par", installed: false, source: "built-in", install: "Google's ACP server (ACP registry: antigravity-acp): unzip it and put agy_acp_server.par on your PATH", homepage: "https://antigravity.google", optIn: true, skills: "", mcp: "HTTP servers only (the browser tools); it has no stdio MCP" },
     { id: "opencode", label: "OpenCode", kind: "acp", command: "opencode acp", installed: false, source: "built-in", install: "npm install -g opencode-ai", skills: "Not automatic: run `python3 install.py --model-only` from skilled in the project (it reads .agents/skills)", mcp: "Stdio servers, and HTTP ones (with the browser tools) when the agent supports them" },
   ];
   let mcp: McpOverview = {
@@ -206,6 +206,11 @@ export function installMock(): void {
       projects.push(project);
       threads[project.id] = [];
       return project;
+    },
+    deleteProject: async (pid) => {
+      const idx = projects.findIndex((p) => p.id === pid);
+      if (idx >= 0) projects.splice(idx, 1);
+      delete threads[pid];
     },
     listThreads: async (pid) => threads[pid] ?? [],
     createThread: async (pid, agent, opts) => {

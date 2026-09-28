@@ -650,6 +650,7 @@ export interface UnskilledApi {
   smoke?: boolean;
   listProjects(): Promise<Project[]>;
   addProject(): Promise<Project | null>;
+  deleteProject(projectId: string): Promise<void>;
   listThreads(projectId: string): Promise<Thread[]>;
   createThread(projectId: string, agent?: string, opts?: { worktree?: boolean }): Promise<Thread>;
   updateThread(threadId: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "permissionMode" | "agent" | "pinned" | "archived">>): Promise<Thread>;

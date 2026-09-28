@@ -13,6 +13,12 @@
 //   "config"  - answers with the "agent" section of OPENCODE_CONFIG_CONTENT, or "none"
 //   "canonical" - the render-parity event set: a message, a command, a file edit, a message
 //   "canonical-opencode" - the same, titled the way OpenCode titles its calls ("bash", "edit")
+//   "phantom-permission" - Antigravity's two-id tool flow: permission under "perm-hash-1",
+//                the real call under "<sid>:1" (completed), then a phantom "failed"
+//                update under "perm-hash-1" after it succeeded
+//   "needs-auth" (with MOCK_ACP_NEEDS_AUTH=1) - initialize advertises a Google sign-in
+//                method, session/new fails -32000 until authenticate is received (its
+//                link printed on stderr), and the retried session/new then succeeds
 //   other     - answers "Hello, <prompt>"
 import { createInterface } from "node:readline";
 
@@ -32,6 +38,10 @@ let cancelled = false;
 let lastMcp = [];
 let thoughtLevel = "medium";
 let configSets = 0;
+// MOCK_ACP_NEEDS_AUTH=1: a signed-out profile. initialize advertises the sign-in
+// method and session/new answers -32000 until authenticate has been received.
+const needsAuth = process.env.MOCK_ACP_NEEDS_AUTH === "1";
+let authed = false;
 const configOptions = () => [
   {
     id: "model",
@@ -104,10 +114,19 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
             ...(process.env.MOCK_ACP_NO_HTTP === "1" ? {} : { mcpCapabilities: { http: true } }),
           },
           agentInfo: { name: "mock", version: "1" },
-          authMethods: [],
+          authMethods: needsAuth ? [{ id: "oauth-personal", name: "Log in with Google" }] : [],
         },
       });
+    case "authenticate":
+      // The sign-in link goes to stderr, the way Google's server prints it. The
+      // small pause lets the parent read that line before this response lands, so
+      // the driver's onStderrLine has recorded it by the time authenticate returns.
+      process.stderr.write("Open the following link to authenticate the ACP server: https://example.com/sign-in?x=1\n");
+      await new Promise((r) => setTimeout(r, 50));
+      authed = true;
+      return send({ id, result: {} });
     case "session/new": {
+      if (needsAuth && !authed) return send({ id, error: { code: -32000, message: "Authentication required" } });
       const sessionId = `s-${sessions.size}`;
       sessions.add(sessionId);
       lastMcp = params.mcpServers;
@@ -164,6 +183,30 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
         update(sid, { sessionUpdate: "tool_call", toolCallId: "l2", title: "unskilled_browser_open", kind: "other", rawInput: {}, status: "pending" });
         update(sid, { sessionUpdate: "tool_call_update", toolCallId: "l2", rawInput: { url: "https://example.com" }, status: "in_progress" });
         update(sid, { sessionUpdate: "tool_call_update", toolCallId: "l2", status: "completed", content: [{ type: "content", content: { type: "text", text: "Page: Example Domain" } }] });
+      } else if (text === "phantom-permission") {
+        // Antigravity asks permission under one id and runs the call under another,
+        // then sends a terminal "failed" update under the permission id even though
+        // the call succeeded. The driver must ignore that second one.
+        update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Editing." } });
+        await ask("session/request_permission", {
+          sessionId: sid,
+          toolCall: { toolCallId: "perm-hash-1", kind: "edit", title: "create a.txt" },
+          options: [{ optionId: "allow", name: "Allow", kind: "allow_once" }],
+        });
+        update(sid, { sessionUpdate: "tool_call", toolCallId: `${sid}:1`, kind: "edit", status: "pending" });
+        update(sid, {
+          sessionUpdate: "tool_call_update",
+          toolCallId: `${sid}:1`,
+          status: "completed",
+          content: [{ type: "diff", path: "a.txt", oldText: "", newText: "hello\n" }],
+        });
+        update(sid, {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "perm-hash-1",
+          status: "failed",
+          rawOutput: "Tool call was approved but never executed.",
+        });
+        update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Done." } });
       } else if (text === "tool") {
         update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Running it." } });
         update(sid, { sessionUpdate: "tool_call", toolCallId: "t1", title: "npm test", kind: "execute", status: "pending" });

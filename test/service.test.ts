@@ -301,4 +301,16 @@ describe("worktree threads", () => {
     expect(existsSync(thread.worktreePath!)).toBe(false);
     expect(store.listThreads(project.id)).toEqual([]);
   });
+
+  it("deletes a project, stopping threads and cleaning up worktrees", async () => {
+    const { store, service } = setupWorktrees(tempDir(), fakeDriver(async () => {}));
+    const project = store.addProject(repo());
+
+    const thread = await service.createWorktreeThread(project.id);
+    expect(existsSync(thread.worktreePath!)).toBe(true);
+    await service.deleteProject(project.id);
+    expect(existsSync(thread.worktreePath!)).toBe(false);
+    expect(store.listProjects().find((p) => p.id === project.id)).toBeUndefined();
+    expect(store.listThreads(project.id)).toEqual([]);
+  });
 });

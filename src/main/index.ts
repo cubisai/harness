@@ -7,7 +7,6 @@ import { BrowserWindow, app, dialog, ipcMain, nativeTheme, net, protocol, safeSt
 import type { CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, OpenResult, PermissionDecision, ProviderInput, ScreenshotInfo, SendRequest, Settings, SkillOrigin, SwitchMode, Thread } from "../shared/types";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
-import { createAgyDriver } from "./agents/agy";
 import { createClaudeDriver, resolvePackagedClaudeBinary } from "./agents/claude";
 import { createCodexDriver } from "./agents/codex";
 import { acpCapabilities, CLAUDE_CAPABILITIES, CODEX_CAPABILITIES } from "./agents/capabilities";
@@ -46,7 +45,7 @@ const smoke = process.argv.includes("--smoke");
 
 /**
  * Apps launched from the Dock get launchd's PATH, not the shell's, so
- * `npm -g` tools (codex, agy-acp, opencode) never resolve. Prepend the
+ * `npm -g` tools (codex, opencode) never resolve. Prepend the
  * usual user bin dirs before any agent detection or spawn.
  */
 function augmentPath(env: NodeJS.ProcessEnv = process.env): void {
@@ -285,8 +284,6 @@ async function main(): Promise<void> {
           }),
         ]
       : []),
-    // Antigravity through its own CLI, once Settings has the user's acknowledgement.
-    ...(settings.antigravityEnabled() && onPath("agy") ? [createAgyDriver({ command: "agy", clientVersion: app.getVersion(), guide: (cwd) => guide.forCwd(cwd) })] : []),
     ...acpAgents.map((config) => {
       // OpenCode can't ask before every shell command, so its guard is a plugin
       // injected into its config; with one, the git guardrail blocks in every mode.
@@ -521,6 +518,7 @@ async function main(): Promise<void> {
     const path = res.filePaths[0];
     return res.canceled || !path ? null : store.addProject(path);
   });
+  ipcMain.handle("projects:delete", (_e, id: string) => service.deleteProject(id));
   ipcMain.handle("threads:list", (_e, projectId: string) => store.listThreads(projectId));
   ipcMain.handle("threads:create", (_e, projectId: string, agent?: string, opts?: { worktree?: boolean }) =>
     opts?.worktree ? service.createWorktreeThread(projectId, agent) : service.createThread(projectId, agent),

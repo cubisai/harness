@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
+import { antigravityAcpCommand } from "../src/main/agents/registry";
 import { agentCatalog, skillDetail, skillRoute } from "../src/main/library";
 import { catalog } from "./helpers";
 
@@ -19,17 +20,22 @@ describe("agentCatalog", () => {
     expect(list.map((a) => [a.id, a.installed, a.source])).toEqual([
       ["claude", true, "built-in"],
       ["codex", false, "built-in"],
-      ["antigravity", false, "built-in"],
       ["deepseek", true, "built-in"],
       ["opencode", false, "built-in"],
       ["cursor", false, "built-in"],
+      ["antigravity", false, "built-in"],
       ["qwen", false, "agents.json"],
     ]);
     const byId = Object.fromEntries(list.map((a) => [a.id, a]));
     expect(byId.claude!.skills).toMatch(/plugin/);
     expect(byId.deepseek!.skills).toMatch(/DSH_BUNDLED_SKILL_DIR/);
-    expect(byId.antigravity!).toMatchObject({ kind: "cli", command: "agy", optIn: true, install: "https://antigravity.google/download" });
-    expect(byId.antigravity!.skills).toMatch(/own skills/);
+    expect(byId.antigravity!).toMatchObject({
+      kind: "acp",
+      command: antigravityAcpCommand(),
+      optIn: true,
+      install: "Google's ACP server (ACP registry: antigravity-acp): unzip it and put agy_acp_server.par (macOS/Linux) or agy_acp_server.exe (Windows), next to its localharness_external sibling, on your PATH",
+    });
+    expect(byId.antigravity!.skills).toMatch(/^Not automatic: /);
   });
 
   it("gives every entry capabilities, and prefers a live patched set", () => {

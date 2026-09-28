@@ -35,6 +35,8 @@ export interface AcpAgentConfig {
   /** How to install the agent, shown in the Library when it isn't installed. */
   install?: string;
   homepage?: string;
+  /** The Library's MCP text, when the preset differs from the generic ACP wording. */
+  mcp?: string;
   /** Which credential injector this agent uses, when it isn't the generic ACP one. */
   injector?: "opencode";
   /** The variable this agent documents for its provider key; unknown agents get their protocol's conventional one plus a notice. */
@@ -154,7 +156,17 @@ interface Live {
   guidePending: boolean;
   /** The turn currently receiving this connection's updates. */
   turn: TurnState | null;
+  /** The sign-in URL the agent last printed on stderr, or null. */
+  authUrl: string | null;
   idleTimer?: NodeJS.Timeout;
+}
+
+export const ACP_AUTH_TIMEOUT_MS = 180_000;
+
+/** The browser sign-in link Google's ACP server prints on stderr, or null. */
+export function authUrlFrom(line: string): string | null {
+  const m = /Open the following link to authenticate[^:]*:\s*(\S+)/i.exec(line);
+  return m ? m[1]! : null;
 }
 
 interface TurnState {
@@ -175,6 +187,8 @@ interface TurnState {
       locations?: ToolCallFields["locations"];
     }
   >;
+  /** Permission toolCallIds seen this turn, to spot a mismatch from the real call. */
+  permissionIds: Set<string>;
   usage: { used: number; costUsd: number | null };
   /** Bumped when flushText emits an item, so the next run of chunks gets fresh keys. */
   run: number;
@@ -340,6 +354,19 @@ export function createAcpDriver(
       case "tool_call_update": {
         if (!t) return;
         const u = update as ToolCallFields & { sessionUpdate: string };
+        // Some agents ask permission under one id and execute under another, then
+        // send bookkeeping updates under the permission id - including a "failed"
+        // one after a call that in fact succeeded (Google's Antigravity: permission
+        // "27060ac9…" vs the real "<sessionId>:1"). An update for a permission id
+        // that never announced a tool_call is that bookkeeping, not a result.
+        if (
+          update.sessionUpdate === "tool_call_update" &&
+          (u.status === "completed" || u.status === "failed") &&
+          !t.tools.has(u.toolCallId) &&
+          t.permissionIds.has(u.toolCallId)
+        ) {
+          return;
+        }
         let tool = t.tools.get(u.toolCallId);
         if (!tool) {
           flushText(t);
@@ -465,6 +492,9 @@ export function createAcpDriver(
         if (method !== "session/request_permission") throw new RpcError(-32601, `${method} is not supported by this client`);
         const p = params as { toolCall: ToolCallFields; options: PermissionOption[] };
         const t = l.turn;
+        // Remember the id the agent asks under: it may differ from the id it
+        // later executes under, and can arrive again as a spurious terminal update.
+        t?.permissionIds.add(p.toolCall.toolCallId);
         // The git guardrail vetoes shell commands in every mode, even Full:
         // before the user is asked (or not), the command is checked.
         if (p.toolCall.kind === "execute" && deps.guardScript) {
@@ -492,6 +522,12 @@ export function createAcpDriver(
         const optionId = optionFor(p.options, await choose());
         return optionId ? { outcome: { outcome: "selected", optionId } } : { outcome: { outcome: "cancelled" } };
       },
+      onStderrLine: (line) => {
+        // The sign-in link is printed on stderr; keep the first one we see.
+        if (!l) return;
+        const url = authUrlFrom(line);
+        if (url && !l.authUrl) l.authUrl = url;
+      },
       onExit: () => {
         if (live.get(threadKey) === l) live.delete(threadKey);
       },
@@ -502,9 +538,11 @@ export function createAcpDriver(
       clientInfo: { name: "unskilled", version: deps.clientVersion },
     });
     applyInitialize(init, input);
-    l = { conn, init, threadKey, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, variantKey: wantedKey, droppedNotified: new Set(), guidePending: false, turn: null };
-    const auth = init.authMethods?.[0];
-    if (auth) await conn.request("authenticate", { methodId: auth.id }).catch(() => {});
+    l = { conn, init, threadKey, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, variantKey: wantedKey, droppedNotified: new Set(), guidePending: false, turn: null, authUrl: null };
+    // No proactive authenticate: the server infers the method from its own
+    // settings and refreshes the token itself, so calling it here only ever
+    // launched a browser (including during the startup model probe). A signed-out
+    // profile is signed in on demand, when session/new first needs it.
     live.set(threadKey, l);
     return l;
   };
@@ -532,6 +570,53 @@ export function createAcpDriver(
       });
     }
     return servers;
+  };
+
+  /**
+   * The agent's own sign-in: opens a browser flow and blocks until the callback
+   * lands. The URL arrives on stderr, so it is relayed to the user as a notice the
+   * moment it appears; a timeout and the turn's abort both end the wait.
+   */
+  const signIn = async (l: Live, input: TurnInput): Promise<boolean> => {
+    const auth = l.init.authMethods?.[0];
+    if (!auth) return false;
+    l.authUrl = null;
+    let announced = false;
+    const announce = () => {
+      if (announced || !l.authUrl) return;
+      announced = true;
+      input.onEvent({ kind: "notice", text: `Sign in to ${config.label}: open this link and approve access.\n${l.authUrl}` });
+    };
+    const timer = setInterval(announce, 200);
+    let cleanup = () => {};
+    const timedOut = new Promise<boolean>((resolve) => {
+      const to = setTimeout(() => resolve(false), ACP_AUTH_TIMEOUT_MS);
+      const onAbort = () => resolve(false);
+      input.signal.addEventListener("abort", onAbort, { once: true });
+      // Removed whichever way the race ends, so a turn never leaks a listener.
+      cleanup = () => {
+        clearTimeout(to);
+        input.signal.removeEventListener("abort", onAbort);
+      };
+    });
+    const authenticated = l.conn
+      .request("authenticate", { methodId: auth.id })
+      .then(() => true)
+      .catch(() => false);
+    const finish = await Promise.race([authenticated, timedOut]);
+    cleanup();
+    clearInterval(timer);
+    // The link can land just before authenticate returns: flush it once more.
+    announce();
+    if (!finish) {
+      input.onEvent({
+        kind: "error",
+        message: l.authUrl
+          ? `${config.label} isn't signed in. Open this link to sign in, then send again:\n${l.authUrl}`
+          : `${config.label} isn't signed in, and no sign-in link arrived. Run "${config.command}" once in a terminal to sign in.`,
+      });
+    }
+    return finish;
   };
 
   const openSession = async (l: Live, input: TurnInput) => {
@@ -583,7 +668,16 @@ export function createAcpDriver(
       }
     }
     if (input.sessionId) input.onEvent({ kind: "notice", text: `${config.label} couldn't resume the earlier conversation; this is a fresh session.` });
-    const res = await l.conn.request<{ sessionId: string; configOptions?: ConfigOption[] }>("session/new", params);
+    let res: { sessionId: string; configOptions?: ConfigOption[] };
+    try {
+      res = await l.conn.request<{ sessionId: string; configOptions?: ConfigOption[] }>("session/new", params);
+    } catch (err) {
+      // A profile that is signed out answers -32000. Signing in is a browser
+      // flow, so it happens only here, never proactively.
+      const needsAuth = err instanceof RpcError && (err.code === -32000 || /auth/i.test(err.message));
+      if (!needsAuth || !(await signIn(l, input))) throw err;
+      res = await l.conn.request<{ sessionId: string; configOptions?: ConfigOption[] }>("session/new", params);
+    }
     l.sessionId = res.sessionId;
     l.configOptions = res.configOptions ?? [];
     rememberConfig(l.configOptions, l.threadKey);
@@ -651,8 +745,9 @@ export function createAcpDriver(
           clientInfo: { name: "unskilled", version: deps.clientVersion },
         });
         applyInitialize(init);
-        const auth = init.authMethods?.[0];
-        if (auth) await conn.request("authenticate", { methodId: auth.id }).catch(() => {});
+        // No proactive authenticate here either: a valid profile's session/new
+        // refreshes the token silently, and a signed-out one just fails below,
+        // leaving the list empty until the first real turn signs in.
         const res = await conn.request<{ configOptions?: ConfigOption[] }>("session/new", { cwd, mcpServers: [] });
         rememberConfig(res.configOptions);
       } catch {
@@ -713,7 +808,7 @@ export function createAcpDriver(
         return;
       }
       clearTimeout(l.idleTimer);
-      const turn: TurnState = { input, text: "", thought: "", tools: new Map(), usage: { used: 0, costUsd: null }, run: 0 };
+      const turn: TurnState = { input, text: "", thought: "", tools: new Map(), permissionIds: new Set(), usage: { used: 0, costUsd: null }, run: 0 };
       l.turn = turn;
       const started = Date.now();
       const onAbort = () => l.conn.notify("session/cancel", { sessionId: l.sessionId });

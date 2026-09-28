@@ -23,6 +23,8 @@ export class RpcError extends Error {
 export interface RpcHandlers {
   onRequest(method: string, params: unknown): Promise<unknown>;
   onNotification(method: string, params: unknown): void;
+  /** Each complete line the agent writes to stderr, as it arrives. */
+  onStderrLine?(line: string): void;
   onExit?(code: number | null, stderrTail: string): void;
 }
 
@@ -31,6 +33,7 @@ export class StdioRpc {
   private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   private buffer = "";
   private stderrTail = "";
+  private stderrBuffer = "";
   private exited = false;
 
   private constructor(
@@ -42,6 +45,16 @@ export class StdioRpc {
     child.stderr!.setEncoding("utf-8");
     child.stderr!.on("data", (chunk: string) => {
       this.stderrTail = (this.stderrTail + chunk).slice(-4000);
+      // Keep the 4 KB tail above exactly as before; additionally surface whole
+      // lines so a caller can watch for something the agent only logs.
+      if (!this.handlers.onStderrLine) return;
+      this.stderrBuffer += chunk;
+      let nl: number;
+      while ((nl = this.stderrBuffer.indexOf("\n")) >= 0) {
+        const line = this.stderrBuffer.slice(0, nl).trim();
+        this.stderrBuffer = this.stderrBuffer.slice(nl + 1);
+        if (line) this.handlers.onStderrLine(line);
+      }
     });
     child.on("exit", (code) => this.onExit(code));
     child.on("error", (err) => {

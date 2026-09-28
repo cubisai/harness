@@ -46,3 +46,50 @@ exports[`permissionTable > maps every mode to every driver 1`] = `
   },
 }
 `;
+
+exports[`permissionTable maps every mode to every driver 1`] = `
+{
+  "ask": {
+    "acp": [],
+    "claude": "default",
+    "codex": {
+      "approvalPolicy": "untrusted",
+      "sandbox": "workspace-write",
+    },
+  },
+  "auto-edit": {
+    "acp": [
+      "edit",
+      "fetch",
+      "move",
+      "read",
+      "search",
+      "think",
+    ],
+    "claude": "acceptEdits",
+    "codex": {
+      "approvalPolicy": "untrusted",
+      "sandbox": "workspace-write",
+    },
+  },
+  "full": {
+    "acp": [
+      "delete",
+      "edit",
+      "execute",
+      "fetch",
+      "move",
+      "other",
+      "read",
+      "search",
+      "switch_mode",
+      "think",
+    ],
+    "claude": "bypassPermissions",
+    "codex": {
+      "approvalPolicy": "never",
+      "sandbox": "danger-full-access",
+    },
+  },
+}
+`;

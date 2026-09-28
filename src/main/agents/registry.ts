@@ -7,10 +7,19 @@ export const BUILT_IN_AGENT_IDS = new Set(["claude", "codex", "antigravity"]);
 
 /**
  * Agents that stay out until Settings records the user's acknowledgement:
- * Antigravity (its own CLI, agents/agy.ts, since 2026-09-27; an agents.json
- * entry with its id is ignored, the native driver wins).
+ * Antigravity (Google's own ACP server, agy_acp_server.par, since 2026-09-28;
+ * an agents.json entry can't replace it).
  */
 export const OPT_IN_AGENT_IDS = new Set(["antigravity"]);
+
+/**
+ * Google's Antigravity ACP server, per the ACP registry: a PyInstaller `.par` on
+ * macOS and Linux, a `.exe` on Windows. The archive's sibling helper file must
+ * sit next to it.
+ */
+export function antigravityAcpCommand(platform: NodeJS.Platform = process.platform): string {
+  return platform === "win32" ? "agy_acp_server.exe" : "agy_acp_server.par";
+}
 
 /**
  * ACP agents the app knows how to start. A preset shows up only when its
@@ -52,15 +61,40 @@ export const ACP_PRESETS: AcpAgentConfig[] = [
     install: "curl https://cursor.com/install -fsS | bash",
     homepage: "https://cursor.com/cli",
   },
+  {
+    id: "antigravity",
+    label: "Antigravity",
+    command: antigravityAcpCommand(),
+    args: [],
+    capabilities: {
+      mcpStdio: false,
+      mcpHttp: true,
+      interrupt: true,
+      perMessageModel: true,
+      planMode: true,
+      resume: true,
+      permissionGranularity: "perTool",
+      skillsDelivery: { mode: "none" as const },
+    },
+    optIn: true,
+    unsupported: "Google's own ACP server; its Terms of Service restrict third-party access",
+    install: "Google's ACP server (ACP registry: antigravity-acp): unzip it and put agy_acp_server.par (macOS/Linux) or agy_acp_server.exe (Windows), next to its localharness_external sibling, on your PATH",
+    homepage: "https://antigravity.google",
+    mcp: "HTTP servers only (the browser tools); it has no stdio MCP, and agy's own MCP servers don't reach it",
+  },
 ];
 
 /** True when `command` resolves on PATH (with PATHEXT on Windows), or is an existing path. */
 export function onPath(command: string, env: NodeJS.ProcessEnv = process.env, platform = process.platform): boolean {
   if (command.includes("/") || command.includes("\\")) return existsSync(command);
-  const exts = platform === "win32" ? (env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";").map((e) => e.toLowerCase()) : [""];
+  const exts = platform === "win32" ? (env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";").map((e) => e.toLowerCase()).filter(Boolean) : [""];
+  // A command that already names its extension (agy_acp_server.exe) is checked
+  // verbatim; appending PATHEXT would look for ".exe.exe".
+  const named = exts.some((ext) => ext !== "" && command.toLowerCase().endsWith(ext));
+  const tries = platform === "win32" && !named ? exts : [""];
   for (const dir of (env.PATH ?? env.Path ?? "").split(delimiter)) {
     if (!dir) continue;
-    for (const ext of exts) {
+    for (const ext of tries) {
       try {
         accessSync(join(dir, command + ext), platform === "win32" ? constants.F_OK : constants.X_OK);
         return true;
@@ -107,7 +141,7 @@ export function loadAcpAgents(
       // (and only skillsDirEnv upgrades it to envDir), so it can never claim
       // support the driver hasn't verified. Injector/guard metadata is preset-only.
       custom = parsed.map(
-        ({ capabilities: _ignored, injector: _injector, guardPlugin: _guardPlugin, keyVar: _keyVar, providerEnvOnly: _providerEnvOnly, optIn: _optIn, unsupported: _unsupported, ...rest }) =>
+        ({ capabilities: _ignored, injector: _injector, guardPlugin: _guardPlugin, keyVar: _keyVar, providerEnvOnly: _providerEnvOnly, optIn: _optIn, unsupported: _unsupported, mcp: _mcp, ...rest }) =>
           rest,
       );
     } catch (err) {

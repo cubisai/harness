@@ -24,7 +24,7 @@ export function providerWarning(provider: Pick<Provider, "baseURL">, injector: s
  * The Antigravity disclosure's version. Bumping it (when the text changes in
  * substance) turns the opt-in off until the user acknowledges the new text.
  */
-export const ANTIGRAVITY_ACK_VERSION = 1;
+export const ANTIGRAVITY_ACK_VERSION = 2;
 
 /**
  * Codex 0.157+ rejects `wire_api = "chat"` and supports only Responses-API

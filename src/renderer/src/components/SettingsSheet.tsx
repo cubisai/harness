@@ -318,9 +318,9 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
 }
 
 /**
- * Antigravity is reachable only through a community adapter, and its terms
- * treat third-party access as a breach: off by default, on only after the user
- * acknowledges that, and the acknowledgement is kept (with its disclosure version).
+ * Antigravity runs Google's own ACP server, and its terms treat third-party
+ * access as a breach: off by default, on only after the user acknowledges
+ * that, and the acknowledgement is kept (with its disclosure version).
  */
 export function AntigravityOptIn({ settings, update }: { settings: SettingsView; update(patch: Partial<SettingsView>): void }) {
   const [understood, setUnderstood] = useState(false);
@@ -331,8 +331,9 @@ export function AntigravityOptIn({ settings, update }: { settings: SettingsView;
       <h3>Antigravity</h3>
       <UnsupportedChip note="Gemini-compatible endpoints only" />
       <p className="note">
-        UnSkilled runs your installed Antigravity CLI (agy) with your own sign-in. The Antigravity Terms of Service (section 6) restrict third-party access,
-        and it isn't clear that driving the CLI from another app is allowed, so it could put your account at risk. It can't use your OpenAI or Anthropic providers.
+        UnSkilled runs Google's own Antigravity ACP server (agy_acp_server.par) with your own Google sign-in. The binary is Google's, but driving it from another
+        app is still third-party access: the Antigravity Terms of Service (section 6) restrict that, and it isn't clear it's allowed, so it could put your account
+        at risk. It can't use your OpenAI or Anthropic providers.
       </p>
       {on ? (
         <div className="row">
@@ -358,7 +359,7 @@ export function AntigravityOptIn({ settings, update }: { settings: SettingsView;
               Turn On Antigravity
             </button>
           </div>
-          <p className="note">Off by default. Turning it on adds Antigravity when the app restarts, if the agy CLI is installed.</p>
+          <p className="note">Off by default. Turning it on adds Antigravity when the app restarts, if the ACP server (agy_acp_server.par) is on your PATH.</p>
         </>
       )}
     </section>

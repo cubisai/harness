@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -80,7 +81,14 @@ export async function listProjectFiles(cwd: string, limit = 5000): Promise<{ fil
 
 /** Files under `dir` into `found` (project-relative, "/" separators, skipping .git and node_modules), stopping at `max`. */
 async function walkFiles(dir: string, prefix: string, found: string[], max: number): Promise<string[]> {
-  for (const entry of await readdir(dir, { withFileTypes: true })) {
+  let entries: Dirent[];
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    // Directory vanished or is unreadable: skip it rather than failing the whole listing.
+    return found;
+  }
+  for (const entry of entries) {
     if (found.length >= max) break;
     const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
     if (entry.isDirectory()) {

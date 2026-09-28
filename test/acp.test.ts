@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { CredentialChoice, McpServerEntry, PermissionDecision, PermissionMode, Provider, Settings, ThreadEvent } from "../src/shared/types";
-import { createAcpDriver, optionFor, pickPermission } from "../src/main/agents/acp/driver";
+import { authUrlFrom, createAcpDriver, optionFor, pickPermission } from "../src/main/agents/acp/driver";
 import { type InjectionSource, injectionFor } from "../src/main/inject";
 import { withOpenCodeVariant } from "../src/main/inject/opencode";
-import { loadAcpAgents, onPath } from "../src/main/agents/registry";
+import { antigravityAcpCommand, loadAcpAgents, onPath } from "../src/main/agents/registry";
 import type { TurnInput } from "../src/main/agents/types";
 import { closeAfter, tempDir } from "./helpers";
 
@@ -293,6 +293,36 @@ describe("ACP driver", () => {
     expect(full.events.find((e) => e.kind === "tool-result")).toMatchObject({ isError: false });
   });
 
+  it("suppresses a terminal update under a permission id that never announced a tool_call (Antigravity phantom row)", async () => {
+    const d = driver();
+    const t = turn("phantom-permission");
+    await d.runTurn(t.input);
+    // The real call still announces and reports.
+    expect(t.events.filter((e) => e.kind === "tool-use")).toEqual([expect.objectContaining({ toolUseId: "s-1:1", name: "Edit" })]);
+    const results = t.events.filter((e) => e.kind === "tool-result");
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ toolUseId: "s-1:1", isError: false });
+    // The phantom "failed" update under "perm-hash-1" never became a row.
+    expect(t.events.some((e) => e.kind === "tool-result" && (e as { toolUseId: string }).toolUseId === "perm-hash-1")).toBe(false);
+    expect(t.events.some((e) => e.kind === "tool-use" && (e as { toolUseId: string }).toolUseId === "perm-hash-1")).toBe(false);
+  });
+
+  it("signs in on demand when session/new needs auth, relaying the link, and retries once", async () => {
+    const d = createAcpDriver(
+      { id: "mock", label: "Mock", command: process.execPath, args: [MOCK], env: { MOCK_ACP_NEEDS_AUTH: "1" } },
+      { clientVersion: "test" },
+    );
+    closeAfter(() => d.dispose?.());
+    const t = turn("needs-auth");
+    await d.runTurn(t.input);
+    const notices = t.events.filter((e) => e.kind === "notice").map((e) => (e as { text: string }).text);
+    expect(notices.some((n) => n.includes("https://example.com/sign-in?x=1"))).toBe(true);
+    // The retried session/new worked and the turn answered normally.
+    expect(t.sessions).toEqual(["s-1"]);
+    expect(t.deltas.join("")).toContain("Hello, needs-auth");
+    expect(t.events.some((e) => e.kind === "error")).toBe(false);
+  });
+
   it("vetoes a guarded command with the guardrail notice, without asking, in Full mode", async () => {
     const d = createAcpDriver(
       { id: "mock", label: "Mock", command: process.execPath, args: [MOCK] },
@@ -576,12 +606,14 @@ describe("agent registry", () => {
     expect(problems).toHaveLength(1);
   });
 
-  it("no longer starts Antigravity over ACP: its own CLI driver (agents/agy.ts) wins, even over an agents.json entry", () => {
+  it("offers Antigravity over ACP only once opted in: the preset is gated, and an agents.json entry still doesn't replace it", () => {
     const dir = tempDir();
     const file = join(dir, "agents.json");
-    expect(loadAcpAgents(file, (cmd) => cmd === "agy-acp" || cmd === "agy", { optedIn: true }).agents).toEqual([]);
-    writeFileSync(file, JSON.stringify({ agents: [{ id: "antigravity", label: "Antigravity (old)", command: "agy-acp", args: ["--experimental"] }] }));
-    expect(loadAcpAgents(file, (cmd) => cmd === "agy-acp", { optedIn: true }).agents).toEqual([]);
+    const installed = (cmd: string) => cmd === antigravityAcpCommand();
+    expect(loadAcpAgents(file, installed, { optedIn: true }).agents.map((a) => a.id)).toEqual(["antigravity"]);
+    expect(loadAcpAgents(file, installed).agents).toEqual([]);
+    writeFileSync(file, JSON.stringify({ agents: [{ id: "antigravity", label: "Antigravity (old)", command: antigravityAcpCommand(), args: ["--experimental"] }] }));
+    expect(loadAcpAgents(file, installed, { optedIn: true }).agents).toEqual([]);
   });
 
   it("finds commands on PATH", () => {
@@ -592,5 +624,33 @@ describe("agent registry", () => {
     writeFileSync(join(bin, name), "", { mode: 0o755 });
     expect(onPath("fake-agent", { PATH: bin, PATHEXT: ".CMD" })).toBe(true);
     expect(onPath("missing-agent", { PATH: bin, PATHEXT: ".CMD" })).toBe(false);
+  });
+
+  it("names the Antigravity ACP server per platform", () => {
+    expect(antigravityAcpCommand("win32")).toBe("agy_acp_server.exe");
+    expect(antigravityAcpCommand("darwin")).toBe("agy_acp_server.par");
+    expect(antigravityAcpCommand("linux")).toBe("agy_acp_server.par");
+  });
+
+  it("finds a Windows command that already names its extension, without doubling PATHEXT", () => {
+    const dir = tempDir();
+    const bin = join(dir, "bin");
+    mkdirSync(bin);
+    // The ACP server's .exe already carries the extension; appending PATHEXT
+    // would look for "agy_acp_server.exe.exe" and never find it.
+    writeFileSync(join(bin, "agy_acp_server.exe"), "", { mode: 0o644 });
+    expect(onPath("agy_acp_server.exe", { PATH: bin, PATHEXT: ".EXE;.CMD" }, "win32")).toBe(true);
+    expect(onPath("missing.exe", { PATH: bin, PATHEXT: ".EXE;.CMD" }, "win32")).toBe(false);
+    // A bare command still gets PATHEXT appended, as before.
+    writeFileSync(join(bin, "tool.cmd"), "", { mode: 0o644 });
+    expect(onPath("tool", { PATH: bin, PATHEXT: ".EXE;.CMD" }, "win32")).toBe(true);
+  });
+});
+
+describe("antigravity sign-in link", () => {
+  it("extracts the URL from the server's stderr line, and null otherwise", () => {
+    expect(authUrlFrom("Open the following link to authenticate the ACP server: https://example.com/sign-in?x=1")).toBe("https://example.com/sign-in?x=1");
+    expect(authUrlFrom("Open the following link to authenticate: https://example.com/x")).toBe("https://example.com/x");
+    expect(authUrlFrom("some unrelated log line")).toBeNull();
   });
 });

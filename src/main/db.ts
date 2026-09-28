@@ -179,6 +179,19 @@ export class Store {
     return toProject(row as unknown as ProjectRow);
   }
 
+  deleteProject(id: string): void {
+    const threadIds = (
+      this.db.prepare("SELECT id FROM threads WHERE project_id = ?").all(id) as unknown as { id: string }[]
+    ).map((r) => r.id);
+    if (threadIds.length > 0) {
+      const placeholders = threadIds.map(() => "?").join(", ");
+      this.db.prepare(`DELETE FROM injection_ledger WHERE thread_id IN (${placeholders})`).run(...threadIds);
+      this.db.prepare(`DELETE FROM events WHERE thread_id IN (${placeholders})`).run(...threadIds);
+      this.db.prepare(`DELETE FROM threads WHERE id IN (${placeholders})`).run(...threadIds);
+    }
+    this.db.prepare("DELETE FROM projects WHERE id = ?").run(id);
+  }
+
   listThreads(projectId: string): Thread[] {
     return this.db
       .prepare(`SELECT ${THREAD_COLS} FROM threads WHERE project_id = ? ORDER BY updated_at DESC`)

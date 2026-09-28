@@ -124,6 +124,7 @@ interface State {
 
   init(): Promise<void>;
   addProject(): Promise<void>;
+  deleteProject(id: string): Promise<void>;
   selectProject(id: string): Promise<void>;
   selectThread(id: string | null): Promise<void>;
   /** Open a new thread; `worktree` gives it its own git worktree on a new branch. */
@@ -447,6 +448,47 @@ export const useStore = create<State>((set, get) => ({
       threads: { ...s.threads, [project.id]: threads },
     }));
     await get().selectProject(project.id);
+  },
+
+  async deleteProject(id) {
+    const project = get().projects.find((p) => p.id === id);
+    if (!project) return;
+    try {
+      await api().deleteProject(id);
+    } catch (err) {
+      get().showNotice(`Couldn't delete project: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+    const currentSelected = get().selectedProjectId === id;
+    const remainingProjects = get().projects.filter((p) => p.id !== id);
+    const nextProjectId = currentSelected ? (remainingProjects[0]?.id ?? null) : get().selectedProjectId;
+    const threadIdsToRemove = new Set((get().threads[id] ?? []).map((t) => t.id));
+
+    set((s) => {
+      const { [id]: _removedThreads, ...threads } = s.threads;
+      const { [id]: _removedBranch, ...projectBranches } = s.projectBranches;
+      const events = Object.fromEntries(Object.entries(s.events).filter(([tid]) => !threadIdsToRemove.has(tid)));
+      const finished = s.finished.filter((f) => !threadIdsToRemove.has(f.threadId));
+      const selectedThreadId = threadIdsToRemove.has(s.selectedThreadId ?? "") ? null : s.selectedThreadId;
+
+      return {
+        projects: remainingProjects,
+        threads,
+        projectBranches,
+        events,
+        finished,
+        selectedProjectId: nextProjectId,
+        selectedThreadId,
+      };
+    });
+
+    if (currentSelected && nextProjectId) {
+      await get().selectProject(nextProjectId);
+      const recent = get().threads[nextProjectId]?.[0];
+      if (recent) await get().selectThread(recent.id);
+    } else if (!nextProjectId) {
+      set({ selectedThreadId: null, skills: [] });
+    }
   },
 
   async selectProject(id) {

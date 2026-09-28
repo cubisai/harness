@@ -5,7 +5,6 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createAgyDriver } from "../src/main/agents/agy";
 import { ACP_PRESETS, loadAcpAgents, OPT_IN_AGENT_IDS } from "../src/main/agents/registry";
 import { type InjectionSource, GATED_DRIVERS, injectionFor } from "../src/main/inject";
 import { SettingsStore, type SecretBox } from "../src/main/settings";
@@ -15,7 +14,7 @@ import { tempDir } from "./helpers";
 
 const box: SecretBox = { available: false, encrypt: (s) => s, decrypt: (s) => s };
 const fresh = () => new SettingsStore(join(tempDir(), "settings.json"), box);
-const optInIds = [...OPT_IN_AGENT_IDS, ...ACP_PRESETS.filter((p) => p.optIn).map((p) => p.id)];
+const optInIds = [...new Set([...OPT_IN_AGENT_IDS, ...ACP_PRESETS.filter((p) => p.optIn).map((p) => p.id)])];
 
 describe("release flags", () => {
   it("starts with every provider-injection flag and the Antigravity opt-in off", () => {
@@ -25,9 +24,8 @@ describe("release flags", () => {
     expect(s.antigravityAck).toBeNull();
   });
 
-  it("gates exactly one agent behind the opt-in: Antigravity, which has no BYOK path", () => {
+  it("gates exactly one agent behind the opt-in: Antigravity, whose ACP server uses its own Google sign-in", () => {
     expect(optInIds).toEqual(["antigravity"]);
-    expect(createAgyDriver({ command: "agy" }).credentials).toMatchObject({ byok: false });
   });
 
   it("flipping one driver's injection flag changes only that driver's plan", () => {
@@ -67,9 +65,9 @@ describe("Antigravity opt-in", () => {
 
   it("keeps an agents.json entry that replaces the gated preset out too", () => {
     const file = join(tempDir(), "agents.json");
-    writeFileSync(file, JSON.stringify({ agents: [{ id: "antigravity", label: "Mine", command: "agy-acp", args: [] }] }));
+    writeFileSync(file, JSON.stringify({ agents: [{ id: "antigravity", label: "Mine", command: "agy_acp_server.par", args: [] }] }));
     expect(loadAcpAgents(file, all).agents.map((a) => a.id)).not.toContain("antigravity");
-    // Opted in, the native agy driver takes the id; an agents.json entry never replaces it.
+    // Opted in, the preset owns the id; an agents.json entry never becomes it.
     expect(loadAcpAgents(file, all, { optedIn: true }).agents.map((a) => a.id)).not.toContain("antigravity");
   });
 
@@ -87,9 +85,9 @@ describe("Antigravity opt-in", () => {
     const reopened = new SettingsStore(file, box);
     expect(reopened.antigravityEnabled()).toBe(true);
     expect(reopened.get().antigravityAck!.at).toBeGreaterThanOrEqual(before);
-    // index.ts adds the native agy driver exactly when this is true (and agy is installed).
+    // index.ts passes this to loadAcpAgents, which offers the preset once opted in.
     const { agents } = loadAcpAgents(join(tempDir(), "agents.json"), all, { optedIn: reopened.antigravityEnabled() });
-    expect(agents.map((a) => a.id)).not.toContain("antigravity");
+    expect(agents.map((a) => a.id)).toContain("antigravity");
   });
 
   it("ignores an acknowledgement of another disclosure version", () => {
