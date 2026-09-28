@@ -15,6 +15,7 @@ import { loadAcpAgents, onPath } from "./agents/registry";
 import { BrowserController, isAllowedUrl } from "./browser/controller";
 import { browserTools } from "./browser/tools";
 import { Store } from "./db";
+import { migrateLegacyData } from "./migrate-data";
 import { startToolServer, type ToolServer } from "./mcp-http";
 import { TerminalManager } from "./terminal";
 import { Service } from "./service";
@@ -94,7 +95,7 @@ function createWindow(): BrowserWindow {
     minWidth: 880,
     minHeight: 560,
     show: false,
-    title: "UnSkilled",
+    title: "CubiQ",
     // macOS and Windows take the icon from the app bundle; Linux window managers read it from here.
     icon: process.platform === "linux" ? appIcon() : undefined,
     // A frameless-looking window on every OS: traffic lights inset on macOS,
@@ -143,10 +144,25 @@ function createWindow(): BrowserWindow {
 }
 
 async function main(): Promise<void> {
+  // The app was renamed: adopt a pre-rename data folder (threads, settings,
+  // keys, skills) before anything reads userData, and before ready, while
+  // Chromium hasn't opened its own files in the new folder. Not for an
+  // explicit --user-data-dir (the caller chose the folder) or a smoke run.
+  if (!smoke && !app.commandLine.hasSwitch("user-data-dir")) {
+    try {
+      const migrated = migrateLegacyData({ appData: app.getPath("appData"), target: app.getPath("userData"), legacyNames: ["AI Harness", "UnSkilled"] });
+      if (migrated) console.log(`migrated data folder from ${migrated}`);
+    } catch (err) {
+      console.warn("data folder migration failed", err);
+    }
+  }
+
   // Registered before ready: unskilled-shot:// serves saved screenshots to the
   // renderer's <img>. A standard scheme so the file name is the URL host.
   protocol.registerSchemesAsPrivileged([{ scheme: "unskilled-shot", privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
   await app.whenReady();
+  // A dev run is the stock Electron binary: give its Dock tile the app's own icon.
+  if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(appIcon());
 
   const userData = app.getPath("userData");
   mkdirSync(userData, { recursive: true });
@@ -828,6 +844,6 @@ function pick<T extends object, K extends keyof T>(obj: T, keys: K[]): Pick<T, K
 
 main().catch((err: unknown) => {
   console.error(err);
-  dialog.showErrorBox("UnSkilled could not start", err instanceof Error ? err.message : String(err));
+  dialog.showErrorBox("CubiQ could not start", err instanceof Error ? err.message : String(err));
   app.exit(1);
 });

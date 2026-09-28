@@ -100,6 +100,22 @@ describe("SettingsStore", () => {
     expect(new SettingsStore(file, box).get().theme).toBe("system");
   });
 
+  // The app rename scopes safeStorage keys to the new name: a stored ciphertext
+  // no longer opens, so listing and the settings view must read it as unset.
+  it("lists a provider whose key it can't decrypt with the key absent", () => {
+    const file = fresh();
+    const s = new SettingsStore(file, box);
+    s.saveProvider(providerInput({ id: "openai", label: "OpenAI", baseURL: "https://api.openai.com/v1" }));
+    s.setProviderSecret("openai", "sk-x");
+    const renamed: SecretBox = { ...box, decrypt: () => { throw new Error("decrypted under the old app name"); } };
+    const reopened = new SettingsStore(file, renamed);
+    const view = reopened.view();
+    expect(view.providers.map((p) => p.id)).toEqual(["openai"]);
+    expect(view.providers[0]!.hasSecret).toBe(false);
+    expect(reopened.providerSecret("openai")).toBeNull();
+    expect(reopened.providerEnv("openai")).toEqual({});
+  });
+
   // T1.2 — versioned settings.json and the one-shot legacy-key migration.
   it("migrates the legacy secrets to providers without touching secrets.*", () => {
     const file = legacyFixture();

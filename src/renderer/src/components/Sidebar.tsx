@@ -97,7 +97,7 @@ function ProjectRow({
           {confirming ? (
             <>
               <p className="thread-menu-note">
-                Remove “{project.name}” from AI Harness?
+                Remove “{project.name}” from CubiQ?
                 <br />
                 <span style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>
                   Project files on disk will not be deleted.
@@ -166,7 +166,7 @@ export function Sidebar() {
     <aside className="sidebar" id="sidebar">
       <div className="sidebar-top drag">
         <div className="sidebar-brand">
-          <span className="wordmark">UnSkilled</span>
+          <span className="wordmark">CubiQ</span>
           <SidebarToggle collapsed={false} />
         </div>
       </div>

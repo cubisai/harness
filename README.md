@@ -1,4 +1,4 @@
-# UnSkilled
+# CubiQ
 
 A minimal desktop coding-agent harness for Windows, macOS, and Linux, with modular plugin and skill support.
 
@@ -181,7 +181,3 @@ CI runs typecheck, tests and a build on all three OSes, then packages the app on
 
 Electron 44 (the same Chromium on every OS, which the built-in browser needs), React 19, Vite via electron-vite, Zustand, `node:sqlite`, the Claude Agent SDK, and xterm.js with node-pty, the app's one native module. node-pty uses Node-API, so the same build works in Node and Electron. The UI uses no component library: system fonts, macOS vibrancy and Windows Mica, light and dark themes from CSS tokens.
 
-## Roadmap
-
-- **Milestone 2:** ~~the built-in browser pane~~, ~~the generic ACP driver~~, ~~browser tools for ACP agents and Codex~~, ~~the element picker~~, ~~Codex~~, and ~~the terminal tab~~ (done).
-- **Milestone 3:** ~~settings~~, ~~a per-thread view of token usage~~, ~~an app icon~~, ~~auto-update~~, ~~signing and notarization~~, ~~the ⌘K command palette~~ (done).

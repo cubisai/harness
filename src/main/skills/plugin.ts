@@ -57,7 +57,7 @@ export function ensurePlugin(skills: SkillEntry[], targetDir: string): string | 
     JSON.stringify(
       {
         name: PLUGIN_NAME,
-        description: "Model-invoked skills loaded by AI Harness.",
+        description: "Model-invoked skills loaded by CubiQ.",
         version: "1.0.0",
       },
       null,

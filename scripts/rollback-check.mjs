@@ -50,7 +50,7 @@ export function verdict(db, since) {
 }
 
 function defaultDb() {
-  const name = "AI Harness";
+  const name = "CubiQ";
   if (process.platform === "win32") return join(process.env.APPDATA ?? join(homedir(), "AppData", "Roaming"), name, "unskilled.db");
   if (process.platform === "darwin") return join(homedir(), "Library", "Application Support", name, "unskilled.db");
   return join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), name, "unskilled.db");

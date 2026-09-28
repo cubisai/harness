@@ -132,4 +132,15 @@ describe("composer actions row", () => {
       expect(html).toMatch(/<div class="composer-actions"><button class="send"/);
     });
   });
+
+  it("keeps composer-actions a direct child of composer-bar, outside composer-left", () => {
+    withRunning({ t: true }, () => {
+      const html = renderToStaticMarkup(<Composer threadId="t" />);
+      // The wrapping lives in composer-left; the actions row is its sibling in the bar.
+      expect(html).toMatch(/<div class="composer-bar"><div class="composer-left">/);
+      expect(html).toMatch(/<\/div><div class="composer-actions">/);
+      const left = /<div class="composer-left">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "";
+      expect(left).not.toContain("composer-actions");
+    });
+  });
 });

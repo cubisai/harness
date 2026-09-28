@@ -423,7 +423,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     rpc = conn;
     ready = (async () => {
       await conn.request("initialize", {
-        clientInfo: { name: "unskilled", title: "UnSkilled", version: config.clientVersion },
+        clientInfo: { name: "unskilled", title: "CubiQ", version: config.clientVersion },
         capabilities: null,
       });
       conn.notify("initialized");

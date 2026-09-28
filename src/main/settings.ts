@@ -221,7 +221,7 @@ export class SettingsStore {
    */
   importData(data: unknown): SettingsView {
     const x = data as Partial<SettingsExport> | null;
-    if (!x || x.kind !== "unskilled-settings" || x.version !== 1) throw new Error("Not an UnSkilled settings export.");
+    if (!x || x.kind !== "unskilled-settings" || x.version !== 1) throw new Error("Not a CubiQ settings export.");
     const providers = (Array.isArray(x.providers) ? x.providers : []).filter(
       (p): p is Provider => Boolean(p && typeof p.id === "string" && typeof p.label === "string" && typeof p.baseURL === "string" && typeof p.wireProtocol === "string"),
     );
@@ -241,16 +241,28 @@ export class SettingsStore {
     return [...(this.data.providers ?? [])];
   }
 
-  /** A Provider as the renderer sees it: the secret itself is replaced by its kind and whether it is set. */
+  /** A Provider as the renderer sees it: the secret itself is replaced by its kind and whether it is usable. */
   providerView(p: Provider): ProviderView {
     const { secret, ...rest } = p;
-    const hasSecret =
-      secret.kind === "safeStorage"
-        ? Boolean(secret.ciphertext)
-        : secret.kind === "envRef"
-          ? Boolean(secret.envVar)
-          : Boolean(secret.command?.length);
-    return { ...rest, secretKind: secret.kind, hasSecret };
+    return { ...rest, secretKind: secret.kind, hasSecret: this.secretIsUsable(secret) };
+  }
+
+  /**
+   * Whether the secret still opens on this machine. safeStorage keys are scoped
+   * to the app name and user account (renaming the app or a different account
+   * makes decrypt throw), so a blob that can't be read reads as unset: listing
+   * and the settings view must never fail over one.
+   */
+  private secretIsUsable(secret: ProviderSecret): boolean {
+    if (secret.kind === "envRef") return Boolean(secret.envVar);
+    if (secret.kind === "command") return Boolean(secret.command?.length);
+    if (!secret.ciphertext) return false;
+    try {
+      this.box.decrypt(secret.ciphertext);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**

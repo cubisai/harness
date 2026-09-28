@@ -308,20 +308,22 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
           onKeyDown={onKeyDown}
         />
         <div className="composer-bar">
-          {controls}
-          {skill && (
-            <span className="skill-chip" title={skill.description}>
-              /{skill.name}
-            </span>
-          )}
-          {chips.map((c, i) => (
-            <span key={i} className="skill-chip context-chip" title={c}>
-              {chipLabel(c)}
-            </span>
-          ))}
-          <span className="grow" />
-          {running && <span className="hint">Return queues for the next turn</span>}
-          {meters}
+          <div className="composer-left">
+            {controls}
+            {skill && (
+              <span className="skill-chip" title={skill.description}>
+                /{skill.name}
+              </span>
+            )}
+            {chips.map((c, i) => (
+              <span key={i} className="skill-chip context-chip" title={c}>
+                {chipLabel(c)}
+              </span>
+            ))}
+            <span className="grow" />
+            {running && <span className="hint">Return queues for the next turn</span>}
+            {meters}
+          </div>
           <div className="composer-actions">
             {running && (
               <button className="send stop" title="Stop (clears queued messages)" onClick={() => void interrupt()}>

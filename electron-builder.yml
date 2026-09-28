@@ -1,6 +1,6 @@
 appId: dev.aiharness.app
-productName: AI Harness
-copyright: Copyright © 2026 AI Harness contributors
+productName: CubiQ
+copyright: Copyright © 2026 CubiQ contributors
 directories:
   output: dist
   buildResources: build

@@ -166,14 +166,14 @@ export function installMock(): void {
         { name: "linear", enabled: true, type: "http", target: "https://mcp.linear.app/mcp", envKeys: [], headerKeys: ["Authorization"] },
       ],
       offGlobal: ["github"],
-      file: "~/Library/Application Support/UnSkilled/projects/p1/mcp.json",
+      file: "~/Library/Application Support/CubiQ/projects/p1/mcp.json",
     },
     external: [
       { name: "sentry", type: "http", target: "https://mcp.sentry.dev/mcp", agent: "Claude", source: "~/.claude.json" },
       { name: "postgres", type: "stdio", target: "uvx postgres-mcp --readonly", agent: "Claude", source: ".mcp.json" },
       { name: "fs", type: "stdio", target: "npx -y @modelcontextprotocol/server-filesystem ~/code", agent: "Codex", source: "~/.codex/config.toml" },
     ],
-    file: "~/Library/Application Support/UnSkilled/mcp.json",
+    file: "~/Library/Application Support/CubiQ/mcp.json",
   };
 
   // Mock agents get the declared-safe shape; the real capability matrix is main-side.
@@ -217,7 +217,7 @@ export function installMock(): void {
       const th = t(`t${Math.random()}`, pid, "New thread", 0, agent ?? "claude");
       if (opts?.worktree) {
         th.branch = `harness/${pid}-${th.id.slice(0, 6)}`;
-        th.worktreePath = `/Users/you/Library/Application Support/UnSkilled/worktrees/${th.id}`;
+        th.worktreePath = `/Users/you/Library/Application Support/CubiQ/worktrees/${th.id}`;
       }
       threads[pid] = [th, ...(threads[pid] ?? [])];
       return th;
@@ -337,7 +337,7 @@ export function installMock(): void {
       const skill = allSkills.find((x) => x.name === name)!;
       return {
         skill,
-        dir: `/Applications/UnSkilled.app/Contents/Resources/skilled/skills/${name}`,
+        dir: `/Applications/CubiQ.app/Contents/Resources/skilled/skills/${name}`,
         calledBy: allSkills.filter((x) => x.calls.includes(name)).map((x) => x.name),
         routes: agentCatalog
           .filter((a) => a.installed)
@@ -351,14 +351,14 @@ export function installMock(): void {
     },
     getSkillFolders: async () => ({
       project: projects.length ? "/Users/you/code/acme-web/.agents/skills" : "",
-      harness: "/Users/you/Library/Application Support/Unskilled/skills",
+      harness: "/Users/you/Library/Application Support/CubiQ/skills",
       shared: "/Users/you/.agents/skills",
-      bundled: "/Applications/UnSkilled.app/Contents/Resources/skilled/skills",
+      bundled: "/Applications/CubiQ.app/Contents/Resources/skilled/skills",
     }),
     createSkill: async (input) => {
       const origin: SkillOrigin = input.scope === "project" ? "project" : "harness";
       allSkills.push({ name: input.name, description: input.description, invocation: "user", calls: [], files: ["SKILL.md"], sha256: "", origin });
-      const dir = origin === "project" ? "/Users/you/code/acme-web/.agents/skills" : "/Users/you/Library/Application Support/Unskilled/skills";
+      const dir = origin === "project" ? "/Users/you/code/acme-web/.agents/skills" : "/Users/you/Library/Application Support/CubiQ/skills";
       return `${dir}/${input.name}/SKILL.md`;
     },
     listAgentCatalog: async () => agentCatalog,

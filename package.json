@@ -1,12 +1,12 @@
 {
   "name": "aiharness",
-  "productName": "AI Harness",
+  "productName": "CubiQ",
   "version": "0.1.2",
   "private": true,
   "packageManager": "bun@1.4.2",
   "description": "A minimal desktop coding-agent harness.",
   "license": "MIT",
-  "author": "AI Harness contributors",
+  "author": "CubiQ contributors",
   "repository": {
     "type": "git",
     "url": "https://github.com/cubisai/harness.git"

@@ -99,7 +99,7 @@ export function App() {
   const wide = layout.browserWide && inspectorVisible && inspectorTab === "browser" && pane.inspector !== null;
 
   return (
-    <div className={`app${inspectorVisible && pane.inspector !== null ? " with-inspector" : ""}${wide ? " browser-wide" : ""}`}>
+    <div className={`app${inspectorVisible && pane.inspector !== null ? " with-inspector" : ""}${wide ? " browser-wide" : ""}${layout.sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
       {layout.sidebarCollapsed ? <PaneRail /> : <Sidebar />}
       <main className="main">
         {wide ? (
@@ -110,7 +110,7 @@ export function App() {
           <>
             <header className="main-header drag">
               <div className="main-title">
-                {thread ? thread.title : project ? project.name : "UnSkilled"}
+                {thread ? thread.title : project ? project.name : "CubiQ"}
                 {thread && project && <span className="sub">{project.name}</span>}
               </div>
               {project && (
@@ -149,7 +149,7 @@ export function App() {
             {!project ? (
               <div className="empty">
                 <div>
-                  <h1>Welcome to UnSkilled</h1>
+                  <h1>Welcome to CubiQ</h1>
                   <p>Open a project folder to start. Claude works inside it, with the skilled workflow built in.</p>
                   <button className="button primary" onClick={() => void addProject()}>
                     <IconFolder /> Open Project…

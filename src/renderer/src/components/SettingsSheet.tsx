@@ -297,7 +297,7 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
           <div className="row">
             <span className="label">Version</span>
             <span className="value">
-              {appUpdate ? `UnSkilled ${appUpdate.current}` : "UnSkilled"}
+              {appUpdate ? `CubiQ ${appUpdate.current}` : "CubiQ"}
               {appUpdate?.ready && ` · ${appUpdate.ready} is ready, and installs when you quit`}
             </span>
           </div>
@@ -331,7 +331,7 @@ export function AntigravityOptIn({ settings, update }: { settings: SettingsView;
       <h3>Antigravity</h3>
       <UnsupportedChip note="Gemini-compatible endpoints only" />
       <p className="note">
-        UnSkilled runs Google's own Antigravity ACP server (agy_acp_server.par) with your own Google sign-in. The binary is Google's, but driving it from another
+        CubiQ runs Google's own Antigravity ACP server (agy_acp_server.par) with your own Google sign-in. The binary is Google's, but driving it from another
         app is still third-party access: the Antigravity Terms of Service (section 6) restrict that, and it isn't clear it's allowed, so it could put your account
         at risk. It can't use your OpenAI or Anthropic providers.
       </p>

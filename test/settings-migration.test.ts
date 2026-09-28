@@ -69,7 +69,7 @@ describe("settings.json release gate", () => {
     const s = new SettingsStore(join(tempDir(), "settings.json"), box);
     s.importData({ kind: "unskilled-settings", version: 1, exportedAt: 0, settings: {}, providers: [], credentials: { claude: { kind: "byok", providerId: "gone" } } });
     expect(s.credential("claude")).toEqual({ kind: "subscription" });
-    expect(() => s.importData({ theme: "dark" })).toThrow(/Not an UnSkilled settings export/);
+    expect(() => s.importData({ theme: "dark" })).toThrow(/Not a CubiQ settings export/);
   });
 
   it("leaves secrets.* for an older build after an import (downgrade)", () => {
