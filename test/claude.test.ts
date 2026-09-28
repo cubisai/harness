@@ -238,6 +238,120 @@ describe("Claude stream mapping", () => {
     expect(reasoningDeltas).toEqual([]);
     expect(events).toEqual([]);
   });
+
+  const feed = (input: TurnInput, turn: ReturnType<typeof newTurnState>, message: unknown) => handleMessage(message as SDKMessage, input, turn);
+
+  it("folds TodoWrite into a plan and skips its tool row and result", () => {
+    const { input, events } = recorder();
+    const turn = newTurnState();
+    feed(input, turn, {
+      type: "assistant",
+      parent_tool_use_id: null,
+      message: {
+        id: "m1",
+        model: "claude-x",
+        content: [
+          {
+            type: "tool_use",
+            id: "td1",
+            name: "TodoWrite",
+            input: {
+              todos: [
+                { content: "one", status: "completed", activeForm: "Doing one" },
+                { content: "two", status: "pending" },
+                { content: "drop", status: "cancelled" },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    feed(input, turn, { type: "user", parent_tool_use_id: null, message: { role: "user", content: [{ type: "tool_result", tool_use_id: "td1", content: "ok" }] } });
+    expect(events.filter((e) => e.kind === "plan")).toEqual([
+      { kind: "plan", entries: [{ content: "one", status: "completed" }, { content: "two", status: "pending" }] },
+    ]);
+    expect(events.some((e) => e.kind === "tool-use" || e.kind === "tool-result")).toBe(false);
+  });
+
+  it("keeps a generic tool's input as its payload and its result text", () => {
+    const { input, events } = recorder();
+    const turn = newTurnState();
+    feed(input, turn, {
+      type: "assistant",
+      parent_tool_use_id: null,
+      message: { id: "m1", model: "claude-x", content: [{ type: "tool_use", id: "g1", name: "Grep", input: { pattern: "foo", path: "src" } }] },
+    });
+    feed(input, turn, { type: "user", parent_tool_use_id: null, message: { role: "user", content: [{ type: "tool_result", tool_use_id: "g1", content: "src/a.ts:1:foo" }] } });
+    expect(events.find((e) => e.kind === "tool-use")).toMatchObject({ kind: "tool-use", toolUseId: "g1", name: "Search", payload: { pattern: "foo", path: "src" } });
+    expect(events.find((e) => e.kind === "tool-result")).toMatchObject({ kind: "tool-result", toolUseId: "g1", payload: "src/a.ts:1:foo" });
+  });
+
+  it("names a Task call Agent and summarises description · subagent", () => {
+    const { input, events } = recorder();
+    feed(input, newTurnState(), {
+      type: "assistant",
+      parent_tool_use_id: null,
+      message: { id: "m1", model: "claude-x", content: [{ type: "tool_use", id: "a1", name: "Task", input: { description: "Find the bug", subagent_type: "Explore", prompt: "go" } }] },
+    });
+    expect(events.find((e) => e.kind === "tool-use")).toMatchObject({ kind: "tool-use", name: "Agent", summary: "Find the bug · Explore" });
+  });
+
+  it("keeps a background Agent's row open until its task_notification", () => {
+    const { input, events } = recorder();
+    const turn = newTurnState();
+    feed(input, turn, {
+      type: "assistant",
+      parent_tool_use_id: null,
+      message: { id: "m1", model: "claude-x", content: [{ type: "tool_use", id: "a1", name: "Agent", input: { description: "Look", subagent_type: "general-purpose", prompt: "go" } }] },
+    });
+    feed(input, turn, { type: "system", subtype: "task_started", task_id: "t1", tool_use_id: "a1", description: "Look", is_backgrounded: true });
+    feed(input, turn, { type: "user", parent_tool_use_id: null, message: { role: "user", content: [{ type: "tool_result", tool_use_id: "a1", content: "Async agent launched successfully. agentId: x" }] } });
+    expect(events.some((e) => e.kind === "tool-result")).toBe(false);
+    feed(input, turn, { type: "system", subtype: "task_notification", task_id: "t1", tool_use_id: "a1", status: "completed", output_file: "", summary: "Found add and sub" });
+    expect(events.filter((e) => e.kind === "tool-result")).toEqual([{ kind: "tool-result", toolUseId: "a1", isError: false, summary: "Found add and sub", payload: "Found add and sub" }]);
+  });
+
+  it("nests a subagent's text and tool-use under its parent Agent, with no turn side effects", () => {
+    const { input, events } = recorder();
+    feed(input, newTurnState(), {
+      type: "assistant",
+      parent_tool_use_id: "tu-agent",
+      message: {
+        id: "m2",
+        model: "claude-x",
+        content: [
+          { type: "text", text: "Looking around" },
+          { type: "tool_use", id: "g1", name: "Grep", input: { pattern: "foo", path: "src" } },
+        ],
+      },
+    });
+    expect(events).toContainEqual({ kind: "assistant-text", text: "Looking around", itemId: "m2:0", parentId: "tu-agent" });
+    expect(events.find((e) => e.kind === "tool-use")).toMatchObject({ kind: "tool-use", toolUseId: "g1", name: "Search", parentId: "tu-agent" });
+    expect(events.some((e) => e.kind === "turn-start")).toBe(false);
+  });
+
+  it("nests a subagent's tool result under its parent Agent", () => {
+    const { input, events } = recorder();
+    const turn = newTurnState();
+    feed(input, turn, {
+      type: "assistant",
+      parent_tool_use_id: "tu-agent",
+      message: { id: "m2", model: "claude-x", content: [{ type: "tool_use", id: "g1", name: "Grep", input: { pattern: "foo" } }] },
+    });
+    feed(input, turn, { type: "user", parent_tool_use_id: "tu-agent", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "g1", content: "src/a.ts:1:foo" }] } });
+    expect(events.find((e) => e.kind === "tool-result")).toMatchObject({ kind: "tool-result", toolUseId: "g1", parentId: "tu-agent" });
+  });
+
+  it("keeps a top-level tool-use without a parentId", () => {
+    const { input, events } = recorder();
+    feed(input, newTurnState(), {
+      type: "assistant",
+      parent_tool_use_id: null,
+      message: { id: "m1", model: "claude-x", content: [{ type: "tool_use", id: "g1", name: "Grep", input: { pattern: "foo" } }] },
+    });
+    expect(events.find((e) => e.kind === "tool-use")).not.toHaveProperty("parentId");
+    expect(events.some((e) => e.kind === "turn-start")).toBe(true);
+  });
 });
 
 describe("turnEndFromResult", () => {

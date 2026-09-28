@@ -322,16 +322,18 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
           <span className="grow" />
           {running && <span className="hint">Return queues for the next turn</span>}
           {meters}
-          {running && (
-            <button className="send stop" title="Stop (clears queued messages)" onClick={() => void interrupt()}>
-              <IconStop />
-            </button>
-          )}
-          {(!running || text.trim() || chips.length > 0) && (
-            <button className="send" title={running ? "Queue for the next turn" : "Send"} disabled={!text.trim() && !skill && !chips.length} onClick={submit}>
-              <IconArrowUp />
-            </button>
-          )}
+          <div className="composer-actions">
+            {running && (
+              <button className="send stop" title="Stop (clears queued messages)" onClick={() => void interrupt()}>
+                <IconStop />
+              </button>
+            )}
+            {(!running || text.trim() || chips.length > 0) && (
+              <button className="send" title={running ? "Queue for the next turn" : "Send"} disabled={!text.trim() && !skill && !chips.length} onClick={submit}>
+                <IconArrowUp />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -8,6 +8,8 @@ export function switchCounts(events: StoredEvent[]): { messages: number; command
   let messages = 0;
   let commands = 0;
   for (const { event } of events) {
+    // A subagent's inner steps do not carry over with the thread.
+    if (event.parentId) continue;
     if (event.kind === "user" || event.kind === "assistant-text") messages++;
     else if (event.kind === "tool-use") commands++;
   }

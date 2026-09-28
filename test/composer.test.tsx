@@ -1,6 +1,8 @@
+import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
 import { describePick, type PickedElement } from "../src/main/browser/picker";
 import { chipLabel, composeMessage } from "../src/renderer/src/composer";
+import { Composer } from "../src/renderer/src/components/Composer";
 import { useStore } from "../src/renderer/src/store";
 import type { SendRequest } from "../src/shared/types";
 
@@ -100,6 +102,34 @@ describe("queued send", () => {
       expect(sent).toEqual([{ threadId: "t-bg", text: "do it", skill: "tdd", mentions: ["src/a.ts"] }]);
       expect(useStore.getState().selectedThreadId).toBe("keep");
       expect(useStore.getState().threads.p!.map((t) => t.id)).toEqual(["t-bg"]);
+    });
+  });
+});
+
+describe("composer actions row", () => {
+  // Server rendering reads zustand's initial state; seed it, then restore.
+  const withRunning = (running: Record<string, boolean>, fn: () => void) => {
+    const state = useStore.getInitialState();
+    const saved = state.running;
+    try {
+      state.running = running;
+      fn();
+    } finally {
+      state.running = saved;
+    }
+  };
+
+  it("keeps Stop inside composer-actions while running", () => {
+    withRunning({ t: true }, () => {
+      const html = renderToStaticMarkup(<Composer threadId="t" />);
+      expect(html).toMatch(/<div class="composer-actions"><button class="send stop"/);
+    });
+  });
+
+  it("keeps Send inside composer-actions when idle", () => {
+    withRunning({}, () => {
+      const html = renderToStaticMarkup(<Composer threadId="t" />);
+      expect(html).toMatch(/<div class="composer-actions"><button class="send"/);
     });
   });
 });

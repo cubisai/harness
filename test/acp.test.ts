@@ -12,6 +12,53 @@ import { closeAfter, tempDir } from "./helpers";
 
 const MOCK = join(__dirname, "fixtures", "mock-acp-agent.mjs");
 
+// A minimal ACP agent run inline (`-e`), for the tool-payload scenarios the
+// shared fixture doesn't cover. The prompt picks the scenario.
+const TASK_OUTPUT = `<task id="x" state="completed"><task_result>Found it\nmore</task_result></task>`;
+const INLINE_ACP = `
+const readline = require("node:readline");
+const send = (m) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...m }) + "\\n");
+const update = (sessionId, u) => send({ method: "session/update", params: { sessionId, update: u } });
+readline.createInterface({ input: process.stdin }).on("line", (line) => {
+  const msg = JSON.parse(line);
+  const { id, method, params } = msg;
+  if (method === "initialize") return send({ id, result: { protocolVersion: 1, agentCapabilities: { sessionCapabilities: { resume: {}, close: {} } }, authMethods: [] } });
+  if (method === "session/new" || method === "session/resume") return send({ id, result: { sessionId: "s-1", configOptions: [] } });
+  if (method === "session/close") return send({ id, result: {} });
+  if (method === "session/set_config_option") return send({ id, result: { configOptions: [] } });
+  if (method === "session/cancel") return;
+  if (method === "session/prompt") {
+    const sid = params.sessionId;
+    const text = params.prompt.map((b) => b.text ?? "").join("") || "write";
+    if (text === "write") {
+      update(sid, { sessionUpdate: "tool_call", toolCallId: "w1", title: "write", kind: "edit", rawInput: { filePath: "a.txt", content: "hi\\n" }, status: "pending" });
+      update(sid, { sessionUpdate: "tool_call_update", toolCallId: "w1", status: "completed", content: [{ type: "content", content: { type: "text", text: "Wrote a.txt" } }] });
+    } else if (text === "generic") {
+      update(sid, { sessionUpdate: "tool_call", toolCallId: "g1", title: "websearch", kind: "other", rawInput: { query: "cats" }, status: "pending" });
+      update(sid, { sessionUpdate: "tool_call_update", toolCallId: "g1", status: "completed", rawOutput: { output: "results for cats" } });
+    } else if (text === "task") {
+      update(sid, { sessionUpdate: "tool_call", toolCallId: "a1", title: "task", kind: "think", rawInput: { description: "research", prompt: "find it", subagent_type: "explore" }, status: "pending" });
+      update(sid, { sessionUpdate: "tool_call_update", toolCallId: "a1", status: "completed", rawOutput: { output: ${JSON.stringify(TASK_OUTPUT)} } });
+    } else if (text === "todo") {
+      update(sid, { sessionUpdate: "tool_call", toolCallId: "p1", title: "todowrite", kind: "other", rawInput: { todos: [
+        { content: "one", status: "completed", priority: "high" },
+        { content: "two", status: "in_progress" },
+        { content: "skip", status: "cancelled" }
+      ] }, status: "pending" });
+      update(sid, { sessionUpdate: "tool_call_update", toolCallId: "p1", status: "completed" });
+    }
+    return send({ id, result: { stopReason: "end_turn", usage: { inputTokens: 1, outputTokens: 1 } } });
+  }
+  send({ id, error: { code: -32601, message: method } });
+});
+`;
+
+function inlineDriver() {
+  const d = createAcpDriver({ id: "inline", label: "Inline", command: process.execPath, args: ["-e", INLINE_ACP] }, { clientVersion: "test" });
+  closeAfter(() => d.dispose?.());
+  return d;
+}
+
 /** Fail rather than hang if a turn never settles. */
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -513,6 +560,56 @@ describe("ACP driver", () => {
     await d.runTurn(t.input);
     expect(t.events[0]).toMatchObject({ kind: "error" });
     expect((t.events[0] as { message: string }).message).toMatch(/Nope failed to start/);
+  });
+});
+
+describe("ACP tool payloads", () => {
+  it("gives an OpenCode write a diff payload and repeats it on the result", async () => {
+    const d = inlineDriver();
+    const t = turn("write");
+    await d.runTurn(t.input);
+    const use = t.events.find((e) => e.kind === "tool-use");
+    expect(use).toMatchObject({ kind: "tool-use", toolUseId: "w1", payload: { filePath: "a.txt", diff: [{ path: "a.txt" }] } });
+    const result = t.events.find((e) => e.kind === "tool-result");
+    expect(result).toMatchObject({ kind: "tool-result", toolUseId: "w1", isError: false });
+    const payload = (result as { payload: { diff: { path: string }[] } }).payload;
+    expect(payload.diff.map((x) => x.path)).toEqual(["a.txt"]);
+    expect((result as { summary: string }).summary).toMatch(/^\+\d+/);
+  });
+
+  it("keeps a generic tool's raw input and its output as payloads", async () => {
+    const d = inlineDriver();
+    const t = turn("generic");
+    await d.runTurn(t.input);
+    expect(t.events.find((e) => e.kind === "tool-use")).toMatchObject({ kind: "tool-use", toolUseId: "g1", payload: { query: "cats" } });
+    expect(t.events.find((e) => e.kind === "tool-result")).toMatchObject({ kind: "tool-result", toolUseId: "g1", payload: "results for cats" });
+  });
+
+  it("names a subagent call Agent and unwraps its task result", async () => {
+    const d = inlineDriver();
+    const t = turn("task");
+    await d.runTurn(t.input);
+    const use = t.events.find((e) => e.kind === "tool-use");
+    expect(use).toMatchObject({ kind: "tool-use", toolUseId: "a1", name: "Agent", summary: "research · explore" });
+    const result = t.events.find((e) => e.kind === "tool-result");
+    expect((result as { payload: unknown }).payload).toBe("Found it\nmore");
+    expect((result as { summary: string }).summary.startsWith("Found it")).toBe(true);
+  });
+
+  it("folds an OpenCode todowrite into one plan event with no tool row", async () => {
+    const d = inlineDriver();
+    const t = turn("todo");
+    await d.runTurn(t.input);
+    expect(t.events.filter((e) => e.kind === "plan")).toEqual([
+      {
+        kind: "plan",
+        entries: [
+          { content: "one", status: "completed", priority: "high" },
+          { content: "two", status: "in_progress" },
+        ],
+      },
+    ]);
+    expect(t.events.some((e) => e.kind === "tool-use" || e.kind === "tool-result")).toBe(false);
   });
 });
 

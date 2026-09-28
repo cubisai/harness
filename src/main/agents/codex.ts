@@ -624,10 +624,17 @@ export function toolFor(item: ThreadItem): { name: string; summary: string; payl
       return {
         name: m.server === CODEX_TOOL_SERVER ? m.tool : `${m.server} · ${m.tool}`,
         summary: summarizeToolInput(m.tool, args),
+        ...(Object.keys(args).length ? { payload: args } : {}),
       };
     }
-    case "webSearch":
-      return { name: "Search", summary: clipSummary((item as { query?: string }).query ?? "") };
+    case "webSearch": {
+      const query = (item as { query?: string }).query;
+      return {
+        name: "Search",
+        summary: clipSummary(query ?? ""),
+        ...(typeof query === "string" && query ? { payload: { query } } : {}),
+      };
+    }
     default:
       return null;
   }

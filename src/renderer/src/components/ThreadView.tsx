@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { StoredEvent, ThreadEvent } from "../../../shared/types";
 import { prettyTool, type RunResult } from "../../../shared/tools";
 import { type FileRef, parseFileRef } from "../fileref";
@@ -54,6 +54,31 @@ export function ThreadView({ threadId }: { threadId: string }) {
     for (const e of events) if (e.event.kind === "tool-result") map.set(e.event.toolUseId, e.event);
     return map;
   }, [events]);
+  // A subagent's steps belong to the Agent call that spawned them, not the top level.
+  const children = useMemo(() => {
+    const map = new Map<string, StoredEvent[]>();
+    for (const e of events) {
+      const parentId = e.event.parentId;
+      if (!parentId) continue;
+      const list = map.get(parentId);
+      if (list) list.push(e);
+      else map.set(parentId, [e]);
+    }
+    return map;
+  }, [events]);
+  // Agents resend the whole todo list on every update: show only a turn's latest plan.
+  const stalePlans = useMemo(() => {
+    const stale = new Set<number>();
+    let last: number | null = null;
+    for (const e of events) {
+      if (e.event.kind === "user" || e.event.kind === "turn-end") last = null;
+      else if (e.event.kind === "plan") {
+        if (last !== null) stale.add(last);
+        last = e.seq;
+      }
+    }
+    return stale;
+  }, [events]);
 
   // Stay pinned to the bottom while the user hasn't scrolled away.
   const pinned = useRef(true);
@@ -83,9 +108,11 @@ export function ThreadView({ threadId }: { threadId: string }) {
       }}
     >
       <div className="thread-inner" ref={inner}>
-        {events.map((e) => (
-          <EventRow key={e.seq} stored={e} results={results} running={running} threadId={threadId} />
-        ))}
+        {events.map((e) =>
+          stalePlans.has(e.seq) || e.event.parentId ? null : (
+            <EventRow key={e.seq} stored={e} results={results} children={children} running={running} threadId={threadId} />
+          ),
+        )}
         {reasoningMode === "text" &&
           reasoningItems.map((item, i) => (
             <LiveReasoning key={item.key} text={item.text} newest={i === reasoningItems.length - 1 && textItems.length === 0} />
@@ -115,7 +142,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
 
 const EMPTY: StoredEvent[] = [];
 
-export function EventRow({ stored, results, running, threadId }: { stored: StoredEvent; results: Map<string, ResultEvent>; running: boolean; threadId?: string }) {
+export function EventRow({ stored, results, children, running, threadId }: { stored: StoredEvent; results: Map<string, ResultEvent>; children?: Map<string, StoredEvent[]>; running: boolean; threadId?: string }) {
   const e = stored.event;
   switch (e.kind) {
     case "user":
@@ -137,7 +164,17 @@ export function EventRow({ stored, results, running, threadId }: { stored: Store
       if (!e.text && !e.opaque) return null;
       return <ReasoningBlock text={e.text} opaque={Boolean(e.opaque)} live={false} newest={false} tokens={null} />;
     case "tool-use":
-      return <ToolEventRow tool={e} result={results.get(e.toolUseId)} running={running} threadId={threadId} />;
+      return (
+        <ToolEventRow
+          tool={e}
+          result={results.get(e.toolUseId)}
+          children={children?.get(e.toolUseId)}
+          results={results}
+          running={running}
+          threadId={threadId}
+          startedAt={stored.createdAt}
+        />
+      );
     case "tool-result":
       return null; // shown on its tool row
     case "turn-end":
@@ -184,12 +221,72 @@ export function EventRow({ stored, results, running, threadId }: { stored: Store
   }
 }
 
-function ToolEventRow({ tool, result, running, threadId }: { tool: ToolEvent; result?: ResultEvent; running: boolean; threadId?: string }) {
+function ToolEventRow({
+  tool,
+  result,
+  children,
+  results,
+  running,
+  threadId,
+  startedAt,
+}: {
+  tool: ToolEvent;
+  result?: ResultEvent;
+  children?: StoredEvent[];
+  results?: Map<string, ResultEvent>;
+  running: boolean;
+  threadId?: string;
+  startedAt?: number;
+}) {
   const open = useStore((s) => (threadId ? Boolean(s.disclosures[threadId]?.[tool.toolUseId]) : false));
-  return <ToolRow tool={tool} result={result} running={running} open={open} onToggle={(o) => threadId && useStore.getState().setDisclosure(threadId, tool.toolUseId, o)} />;
+  return (
+    <ToolRow
+      tool={tool}
+      result={result}
+      children={children}
+      results={results}
+      running={running}
+      open={open}
+      startedAt={startedAt}
+      threadId={threadId}
+      onToggle={(o) => threadId && useStore.getState().setDisclosure(threadId, tool.toolUseId, o)}
+    />
+  );
 }
 
-export function ToolRow({ tool, result, running, open, onToggle }: { tool: ToolEvent; result?: ResultEvent; running: boolean; open: boolean; onToggle(open: boolean): void }) {
+/** Seconds since `startedAt`, ticking once a second while `active`; null when inactive. */
+function useRunningTimer(startedAt: number | undefined, active: boolean): number | null {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active || startedAt === undefined) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [active, startedAt]);
+  return active && startedAt !== undefined ? Math.max(0, Math.floor((now - startedAt) / 1000)) : null;
+}
+
+export function ToolRow({
+  tool,
+  result,
+  children,
+  results,
+  running,
+  open,
+  startedAt,
+  threadId,
+  onToggle,
+}: {
+  tool: ToolEvent;
+  result?: ResultEvent;
+  children?: StoredEvent[];
+  results?: Map<string, ResultEvent>;
+  running: boolean;
+  open: boolean;
+  startedAt?: number;
+  threadId?: string;
+  onToggle(open: boolean): void;
+}) {
   const state = result ? (result.isError ? "error" : "done") : running ? "pending" : "";
   // File tools name the file they touched; open it from the row.
   const fileRef = FILE_TOOLS.has(tool.name) ? parseFileRef(tool.summary.split(", ")[0] ?? "") : null;
@@ -198,6 +295,19 @@ export function ToolRow({ tool, result, running, open, onToggle }: { tool: ToolE
   const run = runResultOf(result?.payload);
   const hasInput = tool.payload !== undefined && diffs === null;
   const hasOutput = result?.payload !== undefined && diffs === null && run === null;
+  // A Run's input is its command, an Agent's is its prompt: show those as text, not JSON.
+  const command = runPayloadOf(tool.payload);
+  const agent = command === null ? agentPromptOf(tool.payload) : null;
+  // While an Agent runs, its newest child step stands in for a result summary.
+  // Count tool calls only: each step's result and the subagent's text are children too.
+  const toolSteps = children?.filter((c) => c.event.kind === "tool-use") ?? [];
+  const lastStep = !result ? toolSteps[toolSteps.length - 1]?.event : undefined;
+  const steps =
+    lastStep && lastStep.kind === "tool-use"
+      ? `${toolSteps.length} ${toolSteps.length === 1 ? "step" : "steps"} · ${prettyTool(lastStep.name)} ${lastStep.summary}`
+      : "";
+  const elapsed = useRunningTimer(startedAt, prettyTool(tool.name) === "Agent" && !result && running);
+  const resultNote = result?.summary ?? [steps, elapsed !== null ? `running ${elapsed}s` : ""].filter(Boolean).join(" · ");
   return (
     <details className="tool" open={open} onToggle={(e) => onToggle(e.currentTarget.open)}>
       <summary className="tool-row" title={result?.summary ?? tool.summary}>
@@ -217,26 +327,60 @@ export function ToolRow({ tool, result, running, open, onToggle }: { tool: ToolE
         ) : (
           <span className="summary">{tool.summary}</span>
         )}
-        {result?.summary && <span className="result">{result.summary}</span>}
+        {resultNote && <span className="result">{resultNote}</span>}
       </summary>
       {open && (
         <div className="tool-body">
+          {children && children.length > 0 && (
+            <div className="tool-section">
+              <div className="tool-label">Steps</div>
+              <div className="tool-steps">
+                {children.map((child) => {
+                  const ce = child.event;
+                  if (ce.kind === "tool-use") {
+                    return (
+                      <ToolEventRow
+                        key={child.seq}
+                        tool={ce}
+                        result={results?.get(ce.toolUseId)}
+                        results={results}
+                        running={running}
+                        threadId={threadId}
+                        startedAt={child.createdAt}
+                      />
+                    );
+                  }
+                  // The subagent's closing text is usually its result: the Output section already shows it.
+                  if (ce.kind === "assistant-text" && ce.text.trim() !== (typeof result?.payload === "string" ? result.payload.trim() : null)) {
+                    return (
+                      <div className="tool-step-text" key={child.seq}>
+                        <Markdown text={ce.text} onFile={openRef} />
+                      </div>
+                    );
+                  }
+                  return null;
+                })}
+              </div>
+            </div>
+          )}
           {diffs && (
             <div className="tool-section">
               <div className="tool-label">Changes</div>
               <DiffView diffs={diffs} />
             </div>
           )}
+          {hasInput && (
+            <div className="tool-section">
+              <div className="tool-label">{command !== null ? "Command" : agent !== null ? "Prompt" : "Input"}</div>
+              <pre className="tool-pre">
+                {command !== null ? `$ ${command}` : agent !== null ? (agent.subagent ? `subagent: ${agent.subagent}\n${agent.prompt}` : agent.prompt) : payloadText(tool.payload)}
+              </pre>
+            </div>
+          )}
           {run && (
             <div className="tool-section">
               <div className="tool-label">{typeof run.exitCode === "number" ? `Output (exit ${run.exitCode})` : "Output"}</div>
               <pre className="tool-pre">{run.output}</pre>
-            </div>
-          )}
-          {hasInput && (
-            <div className="tool-section">
-              <div className="tool-label">Input</div>
-              <pre className="tool-pre">{payloadText(tool.payload)}</pre>
             </div>
           )}
           {hasOutput && (
@@ -257,6 +401,22 @@ function runResultOf(v: unknown): RunResult | null {
   if (!v || typeof v !== "object" || Array.isArray(v)) return null;
   const p = v as { exitCode?: unknown; output?: unknown };
   return (typeof p.exitCode === "number" || p.exitCode === null) && typeof p.output === "string" ? { exitCode: p.exitCode, output: p.output } : null;
+}
+
+/** A Run tool input's command, or null for any other payload. */
+function runPayloadOf(v: unknown): string | null {
+  // Every adapter's Run payload is exactly `{ command }`; other tools with a command argument keep their JSON.
+  if (!v || typeof v !== "object" || Array.isArray(v) || Object.keys(v).length !== 1) return null;
+  const command = (v as { command?: unknown }).command;
+  return typeof command === "string" ? command : null;
+}
+
+/** An Agent tool input's prompt (and subagent kind), or null for any other payload. */
+function agentPromptOf(v: unknown): { prompt: string; subagent?: string } | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const p = v as { prompt?: unknown; subagent_type?: unknown };
+  if (typeof p.prompt !== "string") return null;
+  return { prompt: p.prompt, ...(typeof p.subagent_type === "string" ? { subagent: p.subagent_type } : {}) };
 }
 
 function isBlobStub(v: unknown): v is { blobRef: string; preview: string; bytes?: number } {
