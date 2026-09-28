@@ -17,9 +17,10 @@
   "scripts": {
     "dev": "electron-vite dev",
     "fix:node-pty": "node scripts/fix-node-pty.mjs",
-    "postinstall": "bun run fix:node-pty",
+    "postinstall": "bun run fix:node-pty && bun run brand:electron",
     "ensure:electron": "node node_modules/electron/install.js",
-    "predev": "bun run fix:node-pty && bun run ensure:electron",
+    "brand:electron": "node scripts/brand-dev-electron.mjs",
+    "predev": "bun run fix:node-pty && bun run ensure:electron && bun run brand:electron",
     "prebuild": "bun run fix:node-pty",
     "build": "electron-vite build",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.test.json --noEmit",

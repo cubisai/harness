@@ -134,7 +134,8 @@ button { cursor: default; }
 .splitter::after { content: ""; position: absolute; background: transparent; transition: background 120ms var(--ease); }
 .splitter-vertical::after { top: 0; bottom: 0; left: 13px; width: 1px; }
 .splitter-horizontal::after { left: 0; right: 0; top: 13px; height: 1px; }
-.splitter:hover::after, .splitter:focus-visible::after { background: var(--accent); }
+/* No line on hover (the cursor says it resizes); the accent shows only while dragging or keyboard-focused. */
+.splitter:focus-visible::after, body.resizing .splitter:active::after { background: var(--accent); }
 body.resizing, body.resizing * { cursor: grabbing !important; user-select: none !important; transition: none !important; }
 
 /* ---------- sidebar ---------- */

@@ -77,21 +77,20 @@ export function contextMeterText(used: number | null | undefined, size: number |
 export function ContextMeter({ threadId }: { threadId: string }) {
   const live = useStore((s) => s.live[threadId]);
   const events = useStore((s) => s.events[threadId]);
+  // The last stored turn's figures; a live turn's usage overrides what it reports.
   let used: number | null = null;
   let size: number | null = null;
-  if (typeof live?.usage?.contextUsed === "number") {
-    used = live.usage.contextUsed;
-    size = typeof live.usage.contextSize === "number" ? live.usage.contextSize : null;
-  } else {
-    for (let i = (events?.length ?? 0) - 1; i >= 0; i--) {
-      const e = events![i]!.event;
-      if (e.kind !== "turn-end") continue;
-      if (typeof e.usage?.contextUsed !== "number") continue;
-      used = e.usage.contextUsed;
-      size = typeof e.usage.contextSize === "number" ? e.usage.contextSize : null;
-      break;
-    }
+  for (let i = (events?.length ?? 0) - 1; i >= 0; i--) {
+    const e = events![i]!.event;
+    if (e.kind !== "turn-end" || typeof e.usage?.contextUsed !== "number") continue;
+    used = e.usage.contextUsed;
+    size = typeof e.usage.contextSize === "number" ? e.usage.contextSize : null;
+    break;
   }
+  // Mid-turn, Claude reports the context used but not the window (that comes
+  // with the result): keep the stored window so the meter doesn't flicker.
+  if (typeof live?.usage?.contextUsed === "number") used = live.usage.contextUsed;
+  if (typeof live?.usage?.contextSize === "number") size = live.usage.contextSize;
   const text = contextMeterText(used, size);
   if (text === null) return null;
   const pct = typeof size === "number" && size > 0 ? Math.round((used! / size) * 100) : null;
