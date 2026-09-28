@@ -7,9 +7,9 @@ import { Store } from "../src/main/db";
 import { buildCheckpoint, checkpointCap, checkpointGit, codexSeedItems, estimateTokens, exportThread, fitCheckpoint, importThread, injectWithLedger, itemFingerprint, bloatSignal, replacedTokens, renderCheckpoint, THREAD_EXPORT_VERSION } from "../src/main/handoff";
 import { gitState, workingTreeDiff } from "../src/main/git";
 import { normalizeUsage } from "../src/main/usage";
-import type { AgentCapabilities, HandoffCheckpoint, StoredEvent } from "../src/shared/types";
+import type { AgentCapabilities, HandoffCheckpoint, StoredEvent, ThreadEvent } from "../src/shared/types";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
-import type { AgentDriver, TurnInput } from "../src/main/agents/types";
+import type { AgentDriver, SessionSeed, TurnInput } from "../src/main/agents/types";
 import { Service } from "../src/main/service";
 import { catalog, closeAfter, tempDir } from "./helpers";
 
@@ -576,6 +576,117 @@ describe("handoff invariants", () => {
     expect(store.listEvents(restored.id).map((e) => [e.seq, e.event.kind, e.provenance?.agent ?? null])).toEqual(
       events.map((e) => [e.seq, e.event.kind, e.provenance?.agent ?? null]),
     );
+  });
+
+  describe("rehydrate a lost session", () => {
+    const lost = "No conversation found with session ID: s-1";
+    const noticeTexts = (store: Store, threadId: string) =>
+      store.listEvents(threadId).filter((e) => e.event.kind === "notice").map((e) => (e.event as Extract<ThreadEvent, { kind: "notice" }>).text);
+    /** A first turn that remembers a secret word, then a second turn the script drives. */
+    const remembered = async (input: TurnInput) => {
+      input.onSession("s-1");
+      input.onEvent({ kind: "assistant-text", text: "Remembered: the secret word is kiwi." });
+      input.onEvent({ kind: "turn-end", costUsd: null, inputTokens: 50_000, outputTokens: 5, durationMs: 1, usage: big });
+    };
+
+    it("seeds a first-message agent from the thread's own log", async () => {
+      const store = open();
+      let turn = 0;
+      let seed: SessionSeed | null = null;
+      let clearedDuring: string | null | undefined;
+      const agent = fakeAgent("claude", async (input) => {
+        turn++;
+        if (turn === 1) return remembered(input);
+        if (input.sessionId === "s-1") {
+          seed = await input.onSessionLost!(lost);
+          clearedDuring = store.getThread(input.threadId).sessionId;
+        }
+      });
+      const service = new Service(store, () => catalog(), [agent], () => {});
+      const project = store.addProject(cleanRepo());
+      const thread = service.createThread(project.id, "claude");
+      await service.send({ threadId: thread.id, text: "Remember the secret word is kiwi." });
+      await service.send({ threadId: thread.id, text: "What was the secret word?" });
+
+      expect(seed).toMatchObject({ promptPrefix: expect.stringContaining("Remember the secret word is kiwi.") });
+      expect(seed).toMatchObject({ promptPrefix: expect.stringContaining("kiwi") });
+      expect(seed).not.toMatchObject({ promptPrefix: expect.stringContaining("What was the secret word?") });
+      expect(clearedDuring).toBeNull();
+      const texts = noticeTexts(store, thread.id);
+      expect(texts.some((t) => t.includes("couldn't reopen its earlier session (No conversation found"))).toBe(true);
+      expect(texts.some((t) => t.includes("Continued in a new one"))).toBe(true);
+    });
+
+    it("returns null the second time in the same turn (the ledger never sends it twice)", async () => {
+      const store = open();
+      let turn = 0;
+      const seeds: (SessionSeed | null)[] = [];
+      const agent = fakeAgent("claude", async (input) => {
+        turn++;
+        if (turn === 1) return remembered(input);
+        seeds.push(await input.onSessionLost!(lost));
+        seeds.push(await input.onSessionLost!(lost));
+      });
+      const service = new Service(store, () => catalog(), [agent], () => {});
+      const project = store.addProject(cleanRepo());
+      const thread = service.createThread(project.id, "claude");
+      await service.send({ threadId: thread.id, text: "Remember the secret word is kiwi." });
+      await service.send({ threadId: thread.id, text: "What was the secret word?" });
+
+      expect(seeds).toHaveLength(2);
+      expect(seeds[0]).not.toBeNull();
+      expect(seeds[1]).toBeNull();
+    });
+
+    it("hands an inject-items agent the history items", async () => {
+      const store = open();
+      const injected: unknown[][] = [];
+      let turn = 0;
+      const agent = fakeAgent(
+        "codex",
+        async (input) => {
+          turn++;
+          if (turn === 1) return remembered(input);
+          if (input.sessionId === "s-1") {
+            const seed = await input.onSessionLost!(lost);
+            if (seed && "inject" in seed) await seed.inject("thr-new", async (items) => { injected.push(items); });
+          }
+        },
+        { seeding: "inject-items" },
+        async (req) => {
+          req.onSession("tgt-1");
+          return { mode: "seeded", sessionId: "tgt-1", sent: 0 };
+        },
+      );
+      const service = new Service(store, () => catalog(), [agent], () => {});
+      const project = store.addProject(cleanRepo());
+      const thread = service.createThread(project.id, "codex");
+      await service.send({ threadId: thread.id, text: "Remember the secret word is kiwi." });
+      await service.send({ threadId: thread.id, text: "What was the secret word?" });
+
+      expect(injected).toHaveLength(1);
+      const items = injected[0] as { type: string; content?: { text: string }[] }[];
+      const message = items.find((i) => i.type === "message");
+      expect(message?.content?.[0]?.text).toContain("Remembered: the secret word is kiwi.");
+    });
+
+    it("starts with nothing when the thread has no earlier messages", async () => {
+      const store = open();
+      let called = false;
+      let seed: SessionSeed | null = { promptPrefix: "sentinel" };
+      const agent = fakeAgent("claude", async (input) => {
+        called = true;
+        seed = await input.onSessionLost!("gone");
+      });
+      const service = new Service(store, () => catalog(), [agent], () => {});
+      const project = store.addProject(cleanRepo());
+      const thread = service.createThread(project.id, "claude");
+      await service.send({ threadId: thread.id, text: "first" });
+
+      expect(called).toBe(true);
+      expect(seed).toBeNull();
+      expect(noticeTexts(store, thread.id).some((t) => t.includes("This is a new one."))).toBe(true);
+    });
   });
 });
 

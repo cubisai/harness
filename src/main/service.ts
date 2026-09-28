@@ -21,7 +21,7 @@ import type {
   Usage,
 } from "../shared/types";
 import { bindingKey } from "../shared/bindings";
-import type { AgentDriver, HarnessTool, ModelSwitch } from "./agents/types";
+import type { AgentDriver, HarnessTool, ModelSwitch, SessionSeed } from "./agents/types";
 import {
   annotateUsage,
   drainConfigChanges,
@@ -386,6 +386,63 @@ export class Service {
     this.emit(threadId, { kind: "handoff", phase: "signal", text: signal.text, tokens: signal.tokens ?? undefined }, provenance);
   }
 
+  /** The agent couldn't reopen its stored session: seed a new one from this thread's own log, inside the checkpoint budget, through the ledger so it's never sent twice. */
+  private async rehydrate(threadId: string, driver: AgentDriver, reason: string, beforeSeq: number): Promise<SessionSeed | null> {
+    this.broadcast({ type: "thread", thread: this.store.updateThread(threadId, { sessionId: null }) });
+    const why = reason.trim().replace(/\s+/g, " ").slice(0, 160);
+    const lead = `${driver.label} couldn't reopen its earlier session (${why}).`;
+    const cp = await buildCheckpoint(this.store, threadId, { beforeSeq });
+    const channel = driver.capabilities.seeding ?? "none";
+    if (cp.messages.length === 0) {
+      this.emit(threadId, { kind: "notice", text: `${lead} This is a new one.` });
+      return null;
+    }
+    if (channel === "none") {
+      this.emit(threadId, { kind: "notice", text: `${lead} This is a new one, without the earlier messages above.` });
+      return null;
+    }
+    const events = this.store.listEvents(threadId).filter((e) => e.seq < beforeSeq);
+    const count = driver.countTokens;
+    const fit = await fitCheckpoint(cp, {
+      countTokens: count ? (text) => count(text, driver.defaultModel) : undefined,
+      contextWindow: null,
+      replacedTokens: replacedTokens(events),
+      commandsAsItems: channel === "inject-items",
+    });
+    if (!fit.ok) {
+      this.emit(threadId, { kind: "notice", text: `${lead} This is a new one, without the earlier messages above: ${fit.reason}` });
+      return null;
+    }
+    const checkpointId = `${threadId}:${cp.lastSeq}:${driver.id}:rehydrate`;
+    const size = `${fit.estimated ? "about " : ""}${formatK(fit.tokens)} tokens`;
+    const handedOver = `${lead} Continued in a new one with this thread's history handed over (${size}).`;
+    if (channel === "inject-items") {
+      this.emit(threadId, { kind: "notice", text: handedOver });
+      return {
+        inject: async (sessionId, send) => {
+          await injectWithLedger(
+            this.store,
+            { threadId, provider: driver.id, sessionId, checkpointId },
+            codexSeedItems(cp, fit.text, fit.tier),
+            `${driver.id}/inject_items`,
+            send,
+          );
+        },
+      };
+    }
+    // The session doesn't exist until the prompt goes out, so the ledger keys this checkpoint's new session.
+    const { sent } = await injectWithLedger(
+      this.store,
+      { threadId, provider: driver.id, sessionId: `new:${checkpointId}`, checkpointId },
+      [fit.text],
+      `${driver.id}/first-message`,
+      async () => {},
+    );
+    if (sent === 0) return null;
+    this.emit(threadId, { kind: "notice", text: handedOver });
+    return { promptPrefix: fit.text };
+  }
+
   exportThread(threadId: string): ThreadExport {
     return exportThread(this.store, threadId);
   }
@@ -418,7 +475,7 @@ export class Service {
     const provenance: Provenance = { agent: thread.agent, model: thread.model, provider: null, instanceId: null };
     const prompt = composePrompt(this.catalogFor(cwd), req.text, req.skill, driver.skillsDelivery) + mentionNote(cwd, req.mentions);
 
-    this.emit(thread.id, { kind: "user", text: req.text, skill: req.skill });
+    const userEvent = this.emit(thread.id, { kind: "user", text: req.text, skill: req.skill });
     if (thread.title === "New thread") {
       const title = titleFrom(req.text, req.skill);
       this.broadcast({ type: "thread", thread: this.store.updateThread(thread.id, { title }) });
@@ -477,6 +534,7 @@ export class Service {
         onSessionRebuilt: () => {
           rebuilt = true;
         },
+        onSessionLost: (reason) => this.rehydrate(thread.id, driver, reason, userEvent.seq),
         onEvent: (event) => {
           if (event.kind === "compaction") compacted = true;
           if (event.kind === "assistant-text" || event.kind === "tool-use" || event.kind === "thinking" || event.kind === "error" || event.kind === "plan") answered = true;

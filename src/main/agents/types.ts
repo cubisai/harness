@@ -28,6 +28,9 @@ export interface HarnessTool<Shape extends ZodRawShape = ZodRawShape> {
   run(args: z.infer<z.ZodObject<Shape>>): Promise<ToolOutput>;
 }
 
+/** How a new session catches up when the stored one is gone: Codex takes history items, first-message agents a prompt prefix. */
+export type SessionSeed = { inject: (sessionId: string, send: (items: unknown[]) => Promise<void>) => Promise<void> } | { promptPrefix: string };
+
 /** What a driver needs for one turn. */
 export interface TurnInput {
   threadId: string;
@@ -58,6 +61,8 @@ export interface TurnInput {
   onSession(sessionId: string): void;
   /** The driver reopened the session this turn (an MCP server change), so the prompt cache starts over; an expected rebuild, not a miss. */
   onSessionRebuilt?(): void;
+  /** The stored session couldn't be reopened (reason is the agent's own error). The driver starts a new session and applies the returned seed; null means start without history. */
+  onSessionLost?(reason: string): Promise<SessionSeed | null>;
   requestPermission(req: { toolName: string; summary: string; canAlwaysAllow: boolean }): Promise<PermissionDecision>;
   /** Harness-provided tools for this turn; empty when none apply. */
   tools: HarnessTool[];
