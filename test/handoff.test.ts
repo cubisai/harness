@@ -221,8 +221,23 @@ describe("bloatSignal", () => {
   it("reads a cache write after the switch as a re-seed", () => {
     const post = normalizeUsage({ inputTokens: 100, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 4000 });
     const signal = bloatSignal(null, post);
-    expect(signal).toMatchObject({ kind: "reseeded", tokens: 4000 });
-    expect(signal.text).toContain("4.0k tokens");
+    expect(signal).toMatchObject({ kind: "reseeded", tokens: 4100 });
+    expect(signal?.text).toContain("4.1k tokens");
+  });
+
+  it("reads a reported input as a re-seed when nothing was cached", () => {
+    const post = normalizeUsage({ inputTokens: 7100, outputTokens: 14, cacheReadTokens: 0, cacheWriteTokens: 0 });
+    expect(bloatSignal(null, post)).toMatchObject({ kind: "reseeded", tokens: 7100 });
+  });
+
+  it("reports nothing when the turn used no tokens at all", () => {
+    const post = normalizeUsage({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 });
+    expect(bloatSignal(null, post)).toBeNull();
+  });
+
+  it("names switching back when the switch was a return", () => {
+    const post = normalizeUsage({ inputTokens: 100, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 });
+    expect(bloatSignal(null, post, "back")?.text).toContain("switching back");
   });
 
   it("reports unavailable when the agent doesn't report cache use", () => {
@@ -305,6 +320,13 @@ describe("fitCheckpoint", () => {
     expect(checkpointCap(null)).toBe(4000);
     expect(checkpointCap(1_000_000)).toBe(4000);
   });
+
+  it("measures the command items against the budget when they travel as items", async () => {
+    const big: HandoffCheckpoint = { ...cp, commands: [{ toolUseId: "b1", name: "Bash", summary: "npm test", isError: false, exitCode: 0, output: "x".repeat(20_000), artifact: null }] };
+    const r = await fitCheckpoint(big, { contextWindow: null, replacedTokens: 1_000_000, commandsAsItems: true });
+    expect(r.ok).toBe(true);
+    expect(r.tier).toBeGreaterThanOrEqual(1);
+  });
 });
 
 describe("codexSeedItems", () => {
@@ -326,6 +348,36 @@ describe("codexSeedItems", () => {
     expect(items[1]).toMatchObject({ type: "function_call", call_id: "b1", name: "Bash" });
     expect(items[2]).toMatchObject({ type: "function_call_output", call_id: "b1", output: "3 passed" });
     expect(items.some((i) => i.type === "reasoning")).toBe(false);
+  });
+
+  const cp: HandoffCheckpoint = {
+    threadId: "t",
+    from: null,
+    builtAt: 0,
+    lastSeq: 3,
+    goal: "",
+    messages: [],
+    files: [],
+    commands: [{ toolUseId: "b1", name: "Bash", summary: "npm test", isError: false, exitCode: 0, output: "3 passed", artifact: null }],
+    openQuestions: [],
+    git: null,
+  };
+
+  it("shortens each pair to the outcome line at tier 1", () => {
+    const items = codexSeedItems(cp, "# Handoff", 1) as { type: string; call_id?: string; output?: string }[];
+    expect(items[2]).toMatchObject({ type: "function_call_output", call_id: "b1", output: "exit 0" });
+    expect(items[2]!.output).not.toContain("3 passed");
+  });
+
+  it("carries only the text message at tier 2", () => {
+    const items = codexSeedItems(cp, "# Handoff", 2);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toEqual({ type: "message", role: "user", content: [{ type: "input_text", text: "# Handoff" }] });
+  });
+
+  it("omits the rendered Commands run section when the commands travel as items", () => {
+    expect(renderCheckpoint(cp, 0)).toContain("## Commands run");
+    expect(renderCheckpoint(cp, 0, { commandsAsItems: true })).not.toContain("## Commands run");
   });
 });
 

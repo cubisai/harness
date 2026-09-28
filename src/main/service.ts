@@ -64,8 +64,8 @@ export class Service {
   private pendingPermissions = new Map<string, (d: PermissionDecision) => void>();
   /** One Approvals per project, so an allow-always never leaks to another repo. */
   private approvals = new Map<string, Approvals>();
-  /** Threads just switched to another agent, with the last usage before the switch, for the first turn's bloat signal. */
-  private pendingSignal = new Map<string, Usage | null>();
+  /** Threads just switched to another agent, with the last usage before the switch and how it switched, for the first turn's bloat signal. */
+  private pendingSignal = new Map<string, { usage: Usage | null; mode: "handoff" | "back" }>();
 
   private drivers: Map<string, AgentDriver>;
 
@@ -249,6 +249,7 @@ export class Service {
       countTokens: count ? (text) => count(text, driver.defaultModel) : undefined,
       contextWindow: null,
       replacedTokens: replacedTokens(events),
+      commandsAsItems: channel === "inject-items",
     });
     if (!fit.ok) return { ok: false, reason: fit.reason };
     const git = await checkpointGit(this.cwdOf(thread), cp.lastSeq);
@@ -266,7 +267,7 @@ export class Service {
       instanceId: null,
     });
     try {
-      const sent = await this.seedHandoff(switched, driver, cp, fit.text, this.cwdOf(thread));
+      const sent = await this.seedHandoff(switched, driver, cp, fit.text, fit.tier, this.cwdOf(thread));
       return { ok: true, mode, thread: this.store.getThread(threadId), seeded: { ...seeded, sent }, gitRef: git.ok ? git.ref : null };
     } catch (err) {
       const warning = `The handoff didn't reach ${driver.label}: ${err instanceof Error ? err.message : String(err)}. It starts without the earlier messages.`;
@@ -287,7 +288,8 @@ export class Service {
     // An effort the new agent's model doesn't offer goes back to the model's default.
     const efforts = driver.models().find((m) => m.id === pick)?.efforts;
     const effort = thread.effort && efforts?.includes(thread.effort) ? thread.effort : null;
-    this.pendingSignal.set(thread.id, this.previousTurnEnd(thread.id, thread.agent)?.usage ?? null);
+    if (mode === "fresh") this.pendingSignal.delete(thread.id);
+    else this.pendingSignal.set(thread.id, { usage: this.previousTurnEnd(thread.id, thread.agent)?.usage ?? null, mode });
     this.store.updateThread(thread.id, { agent, model: pick, permissionMode, effort });
     // A handoff or a fresh start opens a new session even when the agent has one.
     const updated = resumes ? this.store.getThread(thread.id) : this.store.updateThread(thread.id, { sessionId: null });
@@ -303,7 +305,7 @@ export class Service {
    * history as items without a turn; Claude and ACP agents get one synthetic
    * first message, and their reply is stored as a handoff event, not a turn.
    */
-  private async seedHandoff(thread: Thread, driver: AgentDriver, cp: HandoffCheckpoint, text: string, cwd: string): Promise<number> {
+  private async seedHandoff(thread: Thread, driver: AgentDriver, cp: HandoffCheckpoint, text: string, tier: 0 | 1 | 2, cwd: string): Promise<number> {
     const checkpointId = `${thread.id}:${cp.lastSeq}:${driver.id}`;
     const provenance: Provenance = { agent: driver.id, model: thread.model, provider: null, instanceId: null };
     const onSession = (sessionId: string) => {
@@ -312,7 +314,7 @@ export class Service {
       }
     };
     if (driver.capabilities.seeding === "inject-items") {
-      const items = codexSeedItems(cp, text);
+      const items = codexSeedItems(cp, text, tier);
       const res = await driver.seed!({
         threadId: thread.id,
         sessionId: null,
@@ -375,9 +377,10 @@ export class Service {
   /** The first turn-end after a switch: did the new session reuse the cache or re-seed it (Ch. 10 §10.5)? */
   private emitSignal(threadId: string, usage: Usage | undefined): void {
     if (!usage || !this.pendingSignal.has(threadId)) return;
-    const pre = this.pendingSignal.get(threadId)!;
+    const { usage: pre, mode } = this.pendingSignal.get(threadId)!;
     this.pendingSignal.delete(threadId);
-    const signal = bloatSignal(pre, usage);
+    const signal = bloatSignal(pre, usage, mode);
+    if (!signal) return;
     const thread = this.store.getThread(threadId);
     const provenance: Provenance = { agent: thread.agent, model: thread.model, provider: null, instanceId: null };
     this.emit(threadId, { kind: "handoff", phase: "signal", text: signal.text, tokens: signal.tokens ?? undefined }, provenance);

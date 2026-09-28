@@ -180,8 +180,13 @@ export async function checkpointGit(cwd: string, seq: number): Promise<GitCheckp
   return { ok: true, ref };
 }
 
+/** The short outcome line both the rendered checkpoint and the Codex items report. */
+function outcomeOf(c: HandoffCheckpoint["commands"][number]): string {
+  return c.isError ? "error" : c.exitCode !== null ? `exit ${c.exitCode}` : "ok";
+}
+
 /** Render a checkpoint as the prompt an incoming agent reads. Tier 0 is fullest, 2 is decisions only. */
-export function renderCheckpoint(cp: HandoffCheckpoint, tier: 0 | 1 | 2): string {
+export function renderCheckpoint(cp: HandoffCheckpoint, tier: 0 | 1 | 2, opts?: { commandsAsItems?: boolean }): string {
   const sections: string[] = [];
   const push = (heading: string, body: string[]) => {
     if (body.length) sections.push([heading, ...body].join("\n"));
@@ -200,19 +205,17 @@ export function renderCheckpoint(cp: HandoffCheckpoint, tier: 0 | 1 | 2): string
     push("## Files changed", cp.files.map((f) => `- ${f.path} (${f.status}, +${f.additions} -${f.deletions})`));
   }
 
-  if (tier === 0 && cp.commands.length) {
+  if (!opts?.commandsAsItems && tier === 0 && cp.commands.length) {
     const lines = ["## Commands run"];
     for (const c of cp.commands) {
-      const outcome = c.isError ? "error" : c.exitCode !== null ? `exit ${c.exitCode}` : "ok";
-      lines.push(`- ${c.name}: ${c.summary} → ${outcome}`);
+      lines.push(`- ${c.name}: ${c.summary} → ${outcomeOf(c)}`);
       if (c.output) lines.push("```", c.output, "```");
     }
     sections.push(lines.join("\n"));
-  } else if (tier === 1 && cp.commands.length) {
+  } else if (!opts?.commandsAsItems && tier === 1 && cp.commands.length) {
     const lines = ["## Commands run"];
     for (const c of cp.commands) {
-      const outcome = c.isError ? "error" : c.exitCode !== null ? `exit ${c.exitCode}` : "ok";
-      lines.push(`- ${c.name}: ${c.summary} → ${outcome}${c.artifact ? ` (output: ${c.artifact})` : ""}`);
+      lines.push(`- ${c.name}: ${c.summary} → ${outcomeOf(c)}${c.artifact ? ` (output: ${c.artifact})` : ""}`);
     }
     sections.push(lines.join("\n"));
   }
@@ -265,7 +268,7 @@ export function replacedTokens(events: StoredEvent[]): number {
 export type BloatSignal = { kind: "reused" | "reseeded" | "unavailable"; tokens: number | null; text: string };
 
 /** Read the first turn after a switch against the last one before it (Ch. 10 §10.5): reuse shows as cache reads, a re-seed as cache writes. */
-export function bloatSignal(pre: Usage | null, post: Usage): BloatSignal {
+export function bloatSignal(pre: Usage | null, post: Usage, mode: "handoff" | "back" = "handoff"): BloatSignal | null {
   if (post.cacheReadTokens === null) {
     return { kind: "unavailable", tokens: null, text: "This agent doesn't report cache use, so there's no reading on how much of the handoff was reused." };
   }
@@ -273,8 +276,13 @@ export function bloatSignal(pre: Usage | null, post: Usage): BloatSignal {
   if (pre && post.cacheReadTokens > 0 && post.cacheReadTokens >= 0.8 * preTotal) {
     return { kind: "reused", tokens: post.cacheReadTokens, text: `Reused ${k(post.cacheReadTokens)} cached tokens from before the switch.` };
   }
-  const tokens = post.cacheWriteTokens ?? post.inputTokens;
-  return { kind: "reseeded", tokens, text: `Re-seeded ${k(tokens)} tokens after the switch: the agent's own setup plus the handoff.` };
+  const tokens = post.inputTokens + (post.cacheWriteTokens ?? 0);
+  if (tokens === 0) return null;
+  const text =
+    mode === "back"
+      ? `Re-seeded ${k(tokens)} tokens after switching back: the earlier session's cache had expired.`
+      : `Re-seeded ${k(tokens)} tokens after the switch: the agent's own setup plus the handoff.`;
+  return { kind: "reseeded", tokens, text };
 }
 
 function k(n: number): string {
@@ -293,14 +301,16 @@ export async function fitCheckpoint(
     contextWindow: number | null;
     replacedTokens: number;
     onTier?: (tier: 0 | 1 | 2, tokens: number) => void;
+    commandsAsItems?: boolean;
   },
 ): Promise<FitResult> {
   const cap = checkpointCap(opts.contextWindow);
   const estimated = !opts.countTokens;
   let tokens = 0;
   for (const tier of [0, 1, 2] as const) {
-    const text = renderCheckpoint(cp, tier);
-    tokens = opts.countTokens ? await opts.countTokens(text) : estimateTokens(text);
+    const text = opts.commandsAsItems ? renderCheckpoint(cp, tier, { commandsAsItems: true }) : renderCheckpoint(cp, tier);
+    const counted = opts.commandsAsItems ? text + "\n" + JSON.stringify(codexSeedItems(cp, text, tier).slice(1)) : text;
+    tokens = opts.countTokens ? await opts.countTokens(counted) : estimateTokens(counted);
     opts.onTier?.(tier, tokens);
     if (tokens <= cap) {
       if (tokens > opts.replacedTokens) {
@@ -315,13 +325,16 @@ export async function fitCheckpoint(
 /**
  * Codex history items for a checkpoint: the rendered text as one user message, then each recorded
  * command as a function_call + function_call_output pair under its original call id. Never reasoning.
+ * Tier 0 carries full outputs, tier 1 the outcome line only, tier 2 just the text message.
  */
-export function codexSeedItems(cp: HandoffCheckpoint, text: string): unknown[] {
+export function codexSeedItems(cp: HandoffCheckpoint, text: string, tier: 0 | 1 | 2 = 0): unknown[] {
+  const message = { type: "message", role: "user", content: [{ type: "input_text", text }] };
+  if (tier === 2) return [message];
   return [
-    { type: "message", role: "user", content: [{ type: "input_text", text }] },
+    message,
     ...cp.commands.flatMap((c) => [
       { type: "function_call", call_id: c.toolUseId, name: c.name, arguments: JSON.stringify({ summary: c.summary }) },
-      { type: "function_call_output", call_id: c.toolUseId, output: c.output },
+      { type: "function_call_output", call_id: c.toolUseId, output: tier === 0 ? c.output : `${outcomeOf(c)}${c.artifact ? ` (output: ${c.artifact})` : ""}` },
     ]),
   ];
 }
