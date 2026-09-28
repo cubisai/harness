@@ -447,11 +447,15 @@ export function createAcpDriver(
           const payload = resultPayload({ ...u, kind: u.kind ?? tool.kind }, text, tool);
           const diff = u.status === "completed" && payload && typeof payload === "object" && "diff" in payload ? (payload as EditResult).diff : [];
           const agentText = isSubagent(tool) ? taskResultText(outputText(tool.rawOutput)) : "";
+          // An execute call's output can come from rawOutput when the agent sent
+          // no content (Antigravity); resultPayload resolved it, so the summary
+          // reads the same output rather than the empty content text.
+          const resultOutput = payload && typeof payload === "object" && "output" in payload ? String((payload as RunResult).output) : text;
           t.input.onEvent({
             kind: "tool-result",
             toolUseId: u.toolCallId,
             isError: u.status === "failed",
-            summary: diff.length ? diffSummary(diff) : summarizeToolResult(agentText) || summarizeToolResult(text) || (u.status === "failed" ? "Failed" : "Done"),
+            summary: diff.length ? diffSummary(diff) : summarizeToolResult(agentText) || summarizeToolResult(resultOutput) || (u.status === "failed" ? "Failed" : "Done"),
             ...(payload !== null ? { payload } : {}),
           });
         }
@@ -1023,8 +1027,26 @@ export function taskResultText(output: string): string {
 }
 
 /** A tool call's rawOutput object, as far as this driver reads it. */
-function rawOutputOf(v: unknown): { output?: unknown; error?: unknown } | null {
-  return v && typeof v === "object" ? (v as { output?: unknown; error?: unknown }) : null;
+function rawOutputOf(v: unknown): Record<string, unknown> | null {
+  return v && typeof v === "object" ? (v as Record<string, unknown>) : null;
+}
+
+/** The first non-empty string among a rawOutput object's fields, or "". */
+function firstString(raw: Record<string, unknown> | null, keys: string[]): string {
+  for (const key of keys) {
+    const v = raw?.[key];
+    if (typeof v === "string" && v) return v;
+  }
+  return "";
+}
+
+/** The first number among a rawOutput object's fields, or null. */
+function firstNumber(raw: Record<string, unknown> | null, keys: string[]): number | null {
+  for (const key of keys) {
+    const v = raw?.[key];
+    if (typeof v === "number") return v;
+  }
+  return null;
 }
 
 /** A rawOutput's `output` text, or "" when it isn't a non-empty string. */
@@ -1048,7 +1070,14 @@ export function resultPayload(
 ): unknown | null {
   const diffs = diffContent(u.content);
   if (diffs) return diffs;
-  if (u.kind === "execute") return { exitCode: null, output: text } satisfies RunResult;
+  // Google's Antigravity sends no content for a command: the output and exit
+  // code ride on rawOutput instead (combinedOutput/formatted_output/output).
+  if (u.kind === "execute") {
+    const raw = rawOutputOf(u.rawOutput ?? tool?.rawOutput);
+    const output = text || firstString(raw, ["combinedOutput", "formatted_output", "output"]);
+    const exitCode = firstNumber(raw, ["exitCode", "exit_code"]);
+    return { exitCode, output } satisfies RunResult;
+  }
   // A write's tool-use payload carried its diff; the completed result repeats it.
   const carried = tool?.payload && typeof tool.payload === "object" && "diff" in (tool.payload as object) ? (tool.payload as EditResult).diff : null;
   if (carried && u.status === "completed") return { diff: carried };

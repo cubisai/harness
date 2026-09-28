@@ -33,6 +33,10 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     if (text === "write") {
       update(sid, { sessionUpdate: "tool_call", toolCallId: "w1", title: "write", kind: "edit", rawInput: { filePath: "a.txt", content: "hi\\n" }, status: "pending" });
       update(sid, { sessionUpdate: "tool_call_update", toolCallId: "w1", status: "completed", content: [{ type: "content", content: { type: "text", text: "Wrote a.txt" } }] });
+    } else if (text === "antigravity-exec") {
+      update(sid, { sessionUpdate: "tool_call", toolCallId: "5c51", title: "echo HI", kind: "execute", rawInput: { commandLine: "echo HI" }, status: "pending" });
+      // Antigravity sends no content for a command: output and exit code ride on rawOutput.
+      update(sid, { sessionUpdate: "tool_call_update", toolCallId: "5c51", status: "completed", rawOutput: { commandLine: "echo HI", workingDir: "/x", exitCode: 0, exit_code: 0, combinedOutput: "HI\\n", formatted_output: "HI\\n" } });
     } else if (text === "generic") {
       update(sid, { sessionUpdate: "tool_call", toolCallId: "g1", title: "websearch", kind: "other", rawInput: { query: "cats" }, status: "pending" });
       update(sid, { sessionUpdate: "tool_call_update", toolCallId: "g1", status: "completed", rawOutput: { output: "results for cats" } });
@@ -575,6 +579,15 @@ describe("ACP tool payloads", () => {
     const payload = (result as { payload: { diff: { path: string }[] } }).payload;
     expect(payload.diff.map((x) => x.path)).toEqual(["a.txt"]);
     expect((result as { summary: string }).summary).toMatch(/^\+\d+/);
+  });
+
+  it("takes an Antigravity command's output and exit code from rawOutput when content is empty", async () => {
+    const d = inlineDriver();
+    const t = turn("antigravity-exec");
+    await d.runTurn(t.input);
+    const result = t.events.find((e) => e.kind === "tool-result");
+    expect(result).toMatchObject({ kind: "tool-result", toolUseId: "5c51", isError: false, payload: { exitCode: 0, output: "HI\n" } });
+    expect((result as { summary: string }).summary.startsWith("HI")).toBe(true);
   });
 
   it("keeps a generic tool's raw input and its output as payloads", async () => {
