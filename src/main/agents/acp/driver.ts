@@ -5,7 +5,7 @@ import { clipSummary } from "../../../shared/tools";
 import type { EditResult, RunPayload, RunResult, ToolDiff } from "../../../shared/tools";
 import { diffSummary, unifiedDiff } from "../../../shared/diff";
 import { summarizeToolResult } from "../summarize";
-import type { AgentDriver, TurnInput } from "../types";
+import type { AgentDriver, SessionSeed, TurnInput } from "../types";
 import { acpCapabilities, withCapabilities } from "../capabilities";
 import { forAcpWithReport, mcpChangeNotice } from "../../mcp/servers";
 import { TOOL_SERVER_NAME } from "../../mcp-http";
@@ -156,6 +156,8 @@ interface Live {
   droppedNotified: Set<string>;
   /** A freshly created session still owes its first prompt the harness guide. */
   guidePending: boolean;
+  /** A freshly created session still owes its first prompt the seed's history prefix. */
+  historyPending: string | null;
   /** The turn currently receiving this connection's updates. */
   turn: TurnState | null;
   /** The sign-in URL the agent last printed on stderr, or null. */
@@ -578,7 +580,7 @@ export function createAcpDriver(
       clientInfo: { name: "cubiq", version: deps.clientVersion },
     });
     applyInitialize(init, input);
-    l = { conn, init, threadKey, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, variantKey: wantedKey, droppedNotified: new Set(), guidePending: false, turn: null, authUrl: null };
+    l = { conn, init, threadKey, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, variantKey: wantedKey, droppedNotified: new Set(), guidePending: false, historyPending: null, turn: null, authUrl: null };
     // No proactive authenticate: the server infers the method from its own
     // settings and refreshes the token itself, so calling it here only ever
     // launched a browser (including during the startup model probe). A signed-out
@@ -686,6 +688,7 @@ export function createAcpDriver(
     const params = { cwd: input.cwd, mcpServers };
     l.mcpSignature = signature;
     l.mcpByName = byName;
+    let reason: string | null = null;
     if (input.sessionId && caps?.sessionCapabilities?.resume) {
       try {
         const res = await l.conn.request<{ configOptions?: ConfigOption[] }>("session/resume", { ...params, sessionId: input.sessionId });
@@ -693,8 +696,9 @@ export function createAcpDriver(
         l.configOptions = res?.configOptions ?? [];
         rememberConfig(l.configOptions, l.threadKey);
         return;
-      } catch {
+      } catch (err) {
         // fall through to a new session
+        reason = err instanceof Error ? err.message : String(err);
       }
     } else if (input.sessionId && caps?.loadSession) {
       try {
@@ -703,11 +707,17 @@ export function createAcpDriver(
         l.configOptions = res?.configOptions ?? [];
         rememberConfig(l.configOptions, l.threadKey);
         return;
-      } catch {
+      } catch (err) {
         // fall through
+        reason = err instanceof Error ? err.message : String(err);
       }
     }
-    if (input.sessionId) input.onEvent({ kind: "notice", text: `${config.label} couldn't resume the earlier conversation; this is a fresh session.` });
+    let seed: SessionSeed | null = null;
+    if (input.sessionId) {
+      if (!reason) reason = "this agent can't reopen saved sessions";
+      if (input.onSessionLost) seed = await input.onSessionLost(reason);
+      else input.onEvent({ kind: "notice", text: `${config.label} couldn't resume the earlier conversation (${reason}); this is a fresh session.` });
+    }
     let res: { sessionId: string; configOptions?: ConfigOption[] };
     try {
       res = await l.conn.request<{ sessionId: string; configOptions?: ConfigOption[] }>("session/new", params);
@@ -722,6 +732,7 @@ export function createAcpDriver(
     l.configOptions = res.configOptions ?? [];
     rememberConfig(l.configOptions, l.threadKey);
     l.guidePending = true;
+    l.historyPending = seed && "promptPrefix" in seed ? seed.promptPrefix : null;
   };
 
   const applyModel = async (l: Live, model: string) => {
@@ -861,20 +872,22 @@ export function createAcpDriver(
           return;
         }
         input.onEvent({ kind: "turn-start", turnId: randomUUID(), agent: config.id, model: input.model });
-        // A new session's first prompt carries the harness guide; only then is it dropped.
+        // A new session's first prompt carries the harness guide and, when the
+        // earlier session was lost, the seed's history prefix; only then are they dropped.
         const g = l.guidePending ? deps.guide?.(input.cwd) ?? "" : "";
         if (g) l.guidePending = false;
+        const h = l.historyPending;
+        l.historyPending = null;
         const res = await l.conn.request<{
           stopReason: string;
           usage?: { inputTokens?: number; outputTokens?: number; cachedReadTokens?: number; cachedWriteTokens?: number } | null;
         }>("session/prompt", {
           sessionId: l.sessionId,
-          prompt: g
-            ? [
-                { type: "text", text: `<harness-guide>\n${g}\n</harness-guide>` },
-                { type: "text", text: input.prompt },
-              ]
-            : [{ type: "text", text: input.prompt }],
+          prompt: [
+            ...(g ? [{ type: "text", text: `<harness-guide>\n${g}\n</harness-guide>` }] : []),
+            ...(h ? [{ type: "text", text: `${h}\n---` }] : []),
+            { type: "text", text: input.prompt },
+          ],
         });
         flushText(turn);
         if (res.stopReason === "cancelled") input.onEvent({ kind: "notice", text: "Stopped." });

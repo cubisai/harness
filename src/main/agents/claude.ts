@@ -318,26 +318,56 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
 
       const turn = newTurnState();
 
-      try {
-        for await (const message of query({ prompt: input.prompt, options })) {
-          if (message.type === "rate_limit_event") config.onLimits?.(claudeLimitsPatch(message.rate_limit_info));
-          else handleMessage(message, input, turn);
-        }
-      } catch (err) {
-        if (input.signal.aborted) {
-          // Close any item the stream opened but never got a terminal frame for,
-          // so its live text becomes stored history instead of dangling.
-          for (const [itemId, p] of turn.pending) {
-            if (p.kind === "text" && p.text.trim()) input.onEvent({ kind: "assistant-text", text: p.text, itemId });
-            else if (p.kind === "thinking" && p.text.trim()) input.onEvent({ kind: "thinking", text: p.text, opaque: false, itemId });
+      // One query() attempt. "aborted" means the turn was stopped (the caller returns);
+      // "lost" means the stored session couldn't be reopened and the caller should seed a new one.
+      let lost: string | null = null;
+      const attempt = async (opts: Options, prompt: string): Promise<"done" | "lost" | "aborted"> => {
+        try {
+          for await (const message of query({ prompt, options: opts })) {
+            if (message.type === "rate_limit_event") config.onLimits?.(claudeLimitsPatch(message.rate_limit_info));
+            else if (
+              input.sessionId &&
+              message.type === "result" &&
+              message.subtype !== "success" &&
+              message.errors?.some((e) => /No conversation found with session ID/.test(e))
+            ) {
+              // The stored session is gone: skip this result and let the caller seed a new one.
+              lost = message.errors.find((e) => /No conversation found with session ID/.test(e)) ?? "unknown error";
+              break;
+            } else handleMessage(message, input, turn);
           }
-          input.onEvent({ kind: "notice", text: "Stopped." });
-          return;
+        } catch (err) {
+          if (input.signal.aborted) {
+            // Close any item the stream opened but never got a terminal frame for,
+            // so its live text becomes stored history instead of dangling.
+            for (const [itemId, p] of turn.pending) {
+              if (p.kind === "text" && p.text.trim()) input.onEvent({ kind: "assistant-text", text: p.text, itemId });
+              else if (p.kind === "thinking" && p.text.trim()) input.onEvent({ kind: "thinking", text: p.text, opaque: false, itemId });
+            }
+            input.onEvent({ kind: "notice", text: "Stopped." });
+            return "aborted";
+          }
+          // The SDK throws after the error result we already identified; swallow that one.
+          if (lost) return "lost";
+          const text = err instanceof Error ? err.message : String(err);
+          // The SDK closes a failed turn by throwing the message it already sent.
+          if (turn.reportedError && text.includes(turn.reportedError.slice(0, 60))) return "done";
+          input.onEvent({ kind: "error", message: text });
+          return "done";
         }
-        const text = err instanceof Error ? err.message : String(err);
-        // The SDK closes a failed turn by throwing the message it already sent.
-        if (turn.reportedError && text.includes(turn.reportedError.slice(0, 60))) return;
-        input.onEvent({ kind: "error", message: text });
+        return lost ? "lost" : "done";
+      };
+
+      if ((await attempt(options, input.prompt)) === "aborted") return;
+      if (lost) {
+        // Cleared first, so a real error in the retry isn't swallowed as the lost session's throw.
+        const reason: string = lost;
+        lost = null;
+        const seed = input.onSessionLost ? await input.onSessionLost(reason) : null;
+        if (!input.onSessionLost) input.onEvent({ kind: "notice", text: `Claude couldn't reopen its earlier session (${reason}); this is a new one.` });
+        // One retry only: a fresh session, with the seed's prefix ahead of the prompt.
+        const prompt = seed && "promptPrefix" in seed ? `${seed.promptPrefix}\n---\n${input.prompt}` : input.prompt;
+        await attempt({ ...options, resume: undefined }, prompt);
       }
     },
   };

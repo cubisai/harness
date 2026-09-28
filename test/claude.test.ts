@@ -6,17 +6,26 @@ import type { ThreadEvent } from "../src/shared/types";
 
 // The SDK's `query` is faked so the per-turn `options` (where the guide lands)
 // can be read without launching Claude Code. Everything else is the real SDK.
-const sdk = vi.hoisted(() => ({ calls: [] as { prompt: unknown; options: Record<string, unknown> }[], models: [] as ModelInfo[] }));
+const sdk = vi.hoisted(() => ({
+  calls: [] as { prompt: unknown; options: Record<string, unknown> }[],
+  models: [] as ModelInfo[],
+  // Each queued attempt is a stream of messages, optionally ending in a throw
+  // (the SDK's shape when a query fails after emitting its result).
+  attempts: [] as { messages: unknown[]; error?: string }[],
+}));
 vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@anthropic-ai/claude-agent-sdk")>();
   return {
     ...actual,
     query: (args: { prompt: unknown; options: Record<string, unknown> }) => {
       sdk.calls.push(args);
+      const attempt = sdk.attempts.shift();
       return {
         supportedModels: async () => sdk.models,
         [Symbol.asyncIterator]: async function* () {
-          // No messages: runTurn has nothing to map.
+          if (!attempt) return;
+          for (const message of attempt.messages) yield message as SDKMessage;
+          if (attempt.error) throw new Error(attempt.error);
         },
       };
     },
@@ -149,6 +158,32 @@ describe("Claude driver effort", () => {
     } finally {
       sdk.models = [];
     }
+  });
+});
+
+describe("Claude lost sessions", () => {
+  it("calls onSessionLost, emits no error, and retries once without resume", async () => {
+    sdk.calls.length = 0;
+    sdk.attempts.length = 0;
+    const text = "No conversation found with session ID: abc";
+    sdk.attempts.push({
+      messages: [{ type: "result", subtype: "error_during_execution", errors: [text], duration_ms: 1, total_cost_usd: 0, usage: { input_tokens: 0, output_tokens: 0 } }],
+      error: `Claude Code returned an error result: ${text}`,
+    });
+    const d = createClaudeDriver({ pluginDir: () => null });
+    const { input, events } = turnInput();
+    input.sessionId = "abc";
+    const reasons: string[] = [];
+    input.onSessionLost = async (reason) => {
+      reasons.push(reason);
+      return { promptPrefix: "SEED" };
+    };
+    await d.runTurn(input);
+    expect(reasons).toEqual([expect.stringContaining("No conversation found")]);
+    expect(events.some((e) => e.kind === "error")).toBe(false);
+    expect(sdk.calls).toHaveLength(2);
+    expect(sdk.calls[1]?.options.resume).toBeUndefined();
+    expect(sdk.calls[1]?.prompt).toBe("SEED\n---\nhi");
   });
 });
 

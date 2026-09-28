@@ -97,7 +97,7 @@ describe("Service.switchAgent", () => {
     expect(handoffs[1]!.text).toBe("Got it.");
     // The synthetic prompt's reply is not an assistant turn.
     expect(kinds.filter((e) => e.kind === "assistant-text")).toHaveLength(1);
-    expect(handoffs[2]!.text).toContain("Re-seeded 4.0k tokens");
+    expect(handoffs[2]!.text).toContain("Re-seeded 4.1k tokens");
   });
 
   it("refuses a dirty worktree and changes nothing", async () => {
@@ -175,7 +175,8 @@ describe("Service.switchAgent", () => {
       .map((e) => e.event)
       .filter((e): e is Extract<ThreadEvent, { kind: "handoff" }> => e.kind === "handoff" && e.phase === "signal")
       .map((e) => e.text);
-    expect(signals).toEqual([expect.stringContaining("doesn't report cache use"), expect.stringContaining("Reused 10.0k cached tokens")]);
+    // A fresh switch hands nothing off, so only going back gets a reading.
+    expect(signals).toEqual([expect.stringContaining("Reused 10.0k cached tokens")]);
     expect(store.listEvents(thread.id).some((e) => e.event.kind === "notice" && e.event.text.startsWith("Back to A"))).toBe(true);
   });
 

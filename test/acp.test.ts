@@ -63,6 +63,33 @@ function inlineDriver() {
   return d;
 }
 
+// An agent that advertises loadSession but fails session/load, echoing each
+// session/prompt's blocks as JSON so a test can read the history prefix back.
+const INLINE_ACP_LOST = `
+const readline = require("node:readline");
+const send = (m) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...m }) + "\\n");
+const update = (sessionId, u) => send({ method: "session/update", params: { sessionId, update: u } });
+readline.createInterface({ input: process.stdin }).on("line", (line) => {
+  const msg = JSON.parse(line);
+  const { id, method, params } = msg;
+  if (method === "initialize") return send({ id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true }, authMethods: [] } });
+  if (method === "session/load") return send({ id, error: { code: -32002, message: "session not found: " + params.sessionId } });
+  if (method === "session/new") return send({ id, result: { sessionId: "s-lost", configOptions: [] } });
+  if (method === "session/cancel") return;
+  if (method === "session/prompt") {
+    update(params.sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: JSON.stringify(params.prompt) } });
+    return send({ id, result: { stopReason: "end_turn", usage: { inputTokens: 1, outputTokens: 1 } } });
+  }
+  send({ id, error: { code: -32601, message: method } });
+});
+`;
+
+function lostDriver() {
+  const d = createAcpDriver({ id: "lossy", label: "Lossy", command: process.execPath, args: ["-e", INLINE_ACP_LOST] }, { clientVersion: "test" });
+  closeAfter(() => d.dispose?.());
+  return d;
+}
+
 /** Fail rather than hang if a turn never settles. */
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -317,6 +344,29 @@ describe("ACP driver", () => {
     expect(t.sessions).toEqual(["s-1"]);
     expect(t.events[0]).toMatchObject({ kind: "notice" });
   });
+
+  it("seeds a new session with a prompt prefix when the stored one can't be reopened", async () => {
+    const d = lostDriver();
+    const reasons: string[] = [];
+    const first = turn("hello", {
+      sessionId: "gone",
+      onSessionLost: async (reason) => {
+        reasons.push(reason);
+        return { promptPrefix: "HISTORY" };
+      },
+    });
+    await d.runTurn(first.input);
+    expect(reasons).toEqual([expect.stringContaining("session not found")]);
+    expect(first.sessions).toEqual(["s-lost"]);
+    expect(JSON.parse(first.deltas.join(""))).toEqual([
+      { type: "text", text: "HISTORY\n---" },
+      { type: "text", text: "hello" },
+    ]);
+    // The prefix is a first-prompt-only catch-up: the next turn drops it.
+    const second = turn("hello", { sessionId: first.sessions[0]!, onSessionLost: async () => null });
+    await d.runTurn(second.input);
+    expect(JSON.parse(second.deltas.join(""))).toEqual([{ type: "text", text: "hello" }]);
+  }, 30_000);
 
   it("waits for arguments that arrive on a later update before announcing a tool call (OpenCode)", async () => {
     const d = driver();

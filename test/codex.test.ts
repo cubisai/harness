@@ -71,6 +71,42 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 });
 `;
 
+/** Rejects thread/resume and logs every request, for the session-loss path. */
+const LOST_PROBE = `
+const fs = require("node:fs");
+const readline = require("node:readline");
+const send = (m) => process.stdout.write(JSON.stringify(m) + "\\n");
+const log = (o) => fs.appendFileSync(process.env.LOST_PROBE, JSON.stringify(o) + "\\n");
+readline.createInterface({ input: process.stdin }).on("line", (line) => {
+  const msg = JSON.parse(line);
+  if (msg.id === undefined) return;
+  const { id, method, params } = msg;
+  if (method === "initialize") return send({ id, result: { userAgent: "probe" } });
+  if (method === "model/list") return send({ id, result: { data: [] } });
+  if (method === "thread/resume") {
+    log({ method, threadId: params.threadId });
+    return send({ id, error: { code: -32600, message: "no rollout found for thread id " + params.threadId } });
+  }
+  if (method === "thread/start") {
+    log({ method });
+    return send({ id, result: { thread: { id: "new-thread" } } });
+  }
+  if (method === "thread/inject_items") {
+    log({ method, threadId: params.threadId, items: params.items });
+    return send({ id, result: {} });
+  }
+  if (method === "turn/start") {
+    log({ method, threadId: params.threadId });
+    const turn = { id: "turn-1", status: "inProgress", error: null, durationMs: null };
+    send({ id, result: { turn } });
+    send({ method: "turn/started", params: { threadId: params.threadId, turn } });
+    send({ method: "turn/completed", params: { threadId: params.threadId, turn: { ...turn, status: "completed", durationMs: 1 } } });
+    return;
+  }
+  send({ id, result: {} });
+});
+`;
+
 function driver() {
   const d = createCodexDriver({ command: process.execPath, args: [MOCK], clientVersion: "test", skillsDir: () => "/skills/here" });
   closeAfter(() => d.dispose?.());
@@ -403,6 +439,57 @@ describe("Codex driver", () => {
     expect(end).toMatchObject({ kind: "turn-end", inputTokens: 1000, outputTokens: 12 });
     expect(end?.kind === "turn-end" ? end.usage?.cacheReadTokens : undefined).toBe(8000);
   });
+});
+
+describe("Codex session loss", () => {
+  function lostDriver() {
+    const d = createCodexDriver({ command: process.execPath, args: ["-e", LOST_PROBE], clientVersion: "test" });
+    closeAfter(() => d.dispose?.());
+    return d;
+  }
+
+  it("calls onSessionLost, starts a new thread, and injects the seed before the turn", async () => {
+    const probe = join(tempDir(), "lost.jsonl");
+    process.env.LOST_PROBE = probe;
+    try {
+      const reasons: string[] = [];
+      const t = turn("hi", {
+        sessionId: "gone",
+        onSessionLost: async (reason) => {
+          reasons.push(reason);
+          return { inject: (_sessionId, send) => send([{ type: "message", role: "user", content: "handoff" }]) };
+        },
+      });
+      await lostDriver().runTurn(t.input);
+      expect(reasons).toHaveLength(1);
+      expect(reasons[0]).toMatch(/no rollout found/);
+      expect(t.sessions).toEqual(["new-thread"]);
+      const calls = readFileSync(probe, "utf8").trim().split("\n").map((l) => JSON.parse(l) as { method: string; threadId?: string; items?: unknown[] });
+      const methods = calls.map((c) => c.method);
+      expect(methods).toContain("thread/start");
+      expect(calls.find((c) => c.method === "thread/inject_items")).toMatchObject({
+        threadId: "new-thread",
+        items: [{ type: "message", role: "user", content: "handoff" }],
+      });
+      expect(methods.indexOf("thread/inject_items")).toBeLessThan(methods.indexOf("turn/start"));
+    } finally {
+      delete process.env.LOST_PROBE;
+    }
+  }, 30_000);
+
+  it("notices with the agent's reason when onSessionLost is absent", async () => {
+    const probe = join(tempDir(), "lost.jsonl");
+    process.env.LOST_PROBE = probe;
+    try {
+      const t = turn("hi", { sessionId: "gone" });
+      await lostDriver().runTurn(t.input);
+      const notice = t.events.find((e) => e.kind === "notice") as { text: string } | undefined;
+      expect(notice?.text).toMatch(/no rollout found/);
+      expect(t.sessions).toEqual(["new-thread"]);
+    } finally {
+      delete process.env.LOST_PROBE;
+    }
+  }, 30_000);
 });
 
 describe("Codex seeding", () => {

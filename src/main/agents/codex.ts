@@ -13,7 +13,7 @@ import { CODEX_CAPABILITIES } from "./capabilities";
 import { codexLimitsPatch, codexReadPatch, type CodexRateLimits, type CodexRateLimitsRead, type LimitsListener, type LimitsPatch } from "./limits";
 import { checkCommand } from "../guard";
 import { summarizeToolInput, summarizeToolResult } from "./summarize";
-import type { AgentDriver, HarnessTool, TurnInput } from "./types";
+import type { AgentDriver, HarnessTool, SessionSeed, TurnInput } from "./types";
 
 // The slices of Codex's app-server protocol (`codex app-server generate-ts`) this driver uses.
 type ThreadItem =
@@ -490,7 +490,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   };
 
   const openThread = async (
-    input: Pick<TurnInput, "cwd" | "model" | "permissionMode" | "sessionId" | "tools" | "mcpServers" | "onEvent" | "onSession" | "onSessionRebuilt">,
+    input: Pick<TurnInput, "cwd" | "model" | "permissionMode" | "sessionId" | "tools" | "mcpServers" | "onEvent" | "onSession" | "onSessionRebuilt" | "onSessionLost">,
   ): Promise<string> => {
     const policy = codexPolicy(input.permissionMode);
     const model = input.model === CODEX_DEFAULT_MODEL ? null : input.model;
@@ -501,6 +501,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     const guideText = config.guide?.(input.cwd) ?? "";
     const signature = JSON.stringify(threadConfig ?? null);
     let threadId = "";
+    let seed: SessionSeed | null = null;
     if (input.sessionId) {
       // The MCP servers changed mid-conversation (the user opened the
       // browser, or edited their servers): unload the thread so the
@@ -524,8 +525,10 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
           ...(guideText ? { developerInstructions: guideText } : {}),
         });
         threadId = res.thread.id;
-      } catch {
-        input.onEvent({ kind: "notice", text: "Codex couldn't resume the earlier conversation; this is a fresh thread." });
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        if (input.onSessionLost) seed = await input.onSessionLost(reason);
+        else input.onEvent({ kind: "notice", text: `Codex couldn't resume the earlier conversation (${reason}); this is a fresh thread.` });
       }
     }
     if (!threadId) {
@@ -537,6 +540,10 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         ...(guideText ? { developerInstructions: guideText } : {}),
       });
       threadId = res.thread.id;
+      // A new thread catches up with the seed's history items; Codex only ever gets the inject shape.
+      if (seed && "inject" in seed) {
+        await seed.inject(threadId, (items) => conn.request("thread/inject_items", { threadId, items }).then(() => undefined));
+      }
     }
     // A resume of a thread that's already loaded keeps its config, so only a first load decides.
     if (!loaded.has(threadId)) loaded.set(threadId, signature);
