@@ -1,7 +1,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ReasoningBlock } from "../src/renderer/src/components/ReasoningBlock";
-import { EventRow } from "../src/renderer/src/components/ThreadView";
+import { EventRow, ThreadView } from "../src/renderer/src/components/ThreadView";
+import { useStore } from "../src/renderer/src/store";
+import type { StoredEvent } from "../src/shared/types";
 
 describe("thread rows", () => {
   it("renders a compaction divider with formatted token counts", () => {
@@ -52,5 +54,38 @@ describe("ReasoningBlock stays open", () => {
     expect(html({ text: "step one", opaque: false, live: false })).toMatch(/<details[^>]*open/);
     expect(html({ text: "step one", opaque: false, live: true })).toMatch(/<details[^>]*open/);
     expect(html({ text: "", opaque: true, live: false })).not.toMatch(/<details[^>]*open/);
+  });
+});
+
+describe("subagent steps", () => {
+  const agent: StoredEvent = { seq: 1, createdAt: 0, event: { kind: "tool-use", toolUseId: "tu-agent", name: "Agent", summary: "Find the bug · Explore", payload: { prompt: "go", subagent_type: "Explore" } } };
+  const childTool: StoredEvent = { seq: 2, createdAt: 0, event: { kind: "tool-use", toolUseId: "tu-child", name: "Read", summary: "calc.py", parentId: "tu-agent" } };
+  const childText: StoredEvent = { seq: 3, createdAt: 0, event: { kind: "assistant-text", text: "Found the bug", parentId: "tu-agent" } };
+
+  it("keeps a subagent's steps off the top level and nests them under its Agent row", () => {
+    // Server rendering reads zustand's initial-state snapshot; seed that object
+    // so the components see the thread.
+    const state = useStore.getInitialState();
+    const savedEvents = state.events;
+    const savedDisclosures = state.disclosures;
+    try {
+      state.events = { t1: [agent, childTool, childText] };
+      state.disclosures = {};
+      const closed = renderToStaticMarkup(<ThreadView threadId="t1" />);
+      expect(closed).toContain("Agent");
+      // The child's own text row is not at the top level; the collapsed Agent
+      // row summarises the latest step instead.
+      expect(closed).not.toContain("Found the bug");
+      expect(closed).toContain("1 step · Read calc.py");
+
+      state.disclosures = { t1: { "tu-agent": true } };
+      const open = renderToStaticMarkup(<ThreadView threadId="t1" />);
+      expect(open).toContain("Steps");
+      expect(open).toContain("Found the bug");
+      expect(open).toContain("calc.py");
+    } finally {
+      state.events = savedEvents;
+      state.disclosures = savedDisclosures;
+    }
   });
 });

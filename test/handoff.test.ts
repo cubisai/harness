@@ -142,6 +142,35 @@ describe("buildCheckpoint", () => {
   it("reports no git state outside a repository", async () => {
     expect(await gitState(tempDir())).toBeNull();
   });
+
+  it("keeps a subagent's inner events out of the messages and commands", async () => {
+    const dir = tempDir();
+    git(dir, "init", "-q");
+    git(dir, "config", "user.email", "t@example.com");
+    git(dir, "config", "user.name", "t");
+    writeFileSync(join(dir, "a.ts"), "export const a = 1;\n");
+    git(dir, "add", ".");
+    git(dir, "commit", "-qm", "init");
+
+    const store = open();
+    const project = store.addProject(dir);
+    const t = store.createThread(project.id, "claude", "m", "ask");
+    const provenance = { agent: "claude", model: "m", provider: null, instanceId: null };
+    store.appendEvent(t.id, { kind: "user", text: "find the bug" });
+    store.appendEvent(t.id, { kind: "tool-use", toolUseId: "a1", name: "Agent", summary: "Explore" }, provenance);
+    store.appendEvent(t.id, { kind: "assistant-text", text: "SUBAGENT-REASONING", parentId: "a1" }, provenance);
+    store.appendEvent(t.id, { kind: "tool-use", toolUseId: "g1", name: "Search", summary: "foo", parentId: "a1" }, provenance);
+    store.appendEvent(t.id, { kind: "tool-result", toolUseId: "g1", isError: false, summary: "ok", payload: "SUBAGENT-OUTPUT", parentId: "a1" }, provenance);
+    store.appendEvent(t.id, { kind: "assistant-text", text: "Top-level answer" }, provenance);
+
+    const cp = await buildCheckpoint(store, t.id);
+    expect(cp.messages).toEqual([
+      { role: "user", text: "find the bug" },
+      { role: "assistant", text: "Top-level answer" },
+    ]);
+    expect(cp.commands.map((c) => c.toolUseId)).toEqual(["a1"]);
+    expect(JSON.stringify(cp.commands)).not.toContain("SUBAGENT-OUTPUT");
+  }, 20_000);
 });
 
 describe("checkpointGit", () => {

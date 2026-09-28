@@ -101,6 +101,8 @@ export async function buildCheckpoint(store: Store, threadId: string): Promise<H
   const messages: HandoffCheckpoint["messages"] = [];
   let goal = "";
   for (const { event } of events) {
+    // A subagent's inner messages are not the thread's own history.
+    if (event.parentId) continue;
     if (event.kind === "user") {
       if (goal === "") goal = event.text.slice(0, MAX_MESSAGE_CHARS);
       messages.push({ role: "user", text: event.text.slice(0, MAX_MESSAGE_CHARS) });
@@ -115,6 +117,8 @@ export async function buildCheckpoint(store: Store, threadId: string): Promise<H
   const commands: HandoffCheckpoint["commands"] = [];
   for (const { event } of events) {
     if (event.kind !== "tool-use") continue;
+    // A subagent's inner tool calls are not commands the thread ran.
+    if (event.parentId) continue;
     const result = results.get(event.toolUseId);
     const payload = result?.payload;
     const ref = result ? blobRefOf(result) : null;

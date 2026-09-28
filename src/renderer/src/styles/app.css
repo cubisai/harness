@@ -515,6 +515,8 @@ details.tool[open]::details-content { height: auto; }
 .tool-label { font-size: 11px; font-weight: 600; color: var(--text-tertiary); margin-bottom: 4px; }
 .tool-pre { margin: 0; font: 11.5px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
 .tool-empty { color: var(--text-tertiary); font-size: 12px; }
+.tool-steps { display: flex; flex-direction: column; gap: 2px; }
+.tool-step-text { color: var(--text-secondary); font-size: 12px; margin: 2px 0; }
 .tool-diff { font: 11.5px/1.5 var(--mono); }
 .tool-diff + .tool-diff { margin-top: 8px; }
 .tool-diff-path { font-weight: 600; margin-bottom: 4px; }

@@ -318,6 +318,10 @@ export interface TurnState {
   toolPayloads: Map<string, RunPayload | { diff: ToolDiff[] } | undefined>;
   /** tool_use ids of TodoWrite calls, whose plan replaced their tool rows; their results are skipped too. */
   planToolIds: Set<string>;
+  /** tool_use ids of Agent (Task) calls, so a background launch can be told apart from a result. */
+  agentIds: Set<string>;
+  /** Agent calls running in the background: their row waits for the task_notification, not the placeholder result. */
+  backgroundAgents: Set<string>;
   /** The error text already shown this turn, so the SDK's closing error doesn't repeat it. */
   reportedError: string | null;
 }
@@ -334,6 +338,8 @@ export function newTurnState(): TurnState {
     pending: new Map(),
     toolPayloads: new Map(),
     planToolIds: new Set(),
+    agentIds: new Set(),
+    backgroundAgents: new Set(),
     reportedError: null,
   };
 }
@@ -378,6 +384,22 @@ export function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnS
           postTokens: meta.post_tokens ?? null,
         });
       } else if (message.subtype === "thinking_tokens") input.onThinkingProgress?.({ estimatedTokens: message.estimated_tokens });
+      else if (message.subtype === "task_started") {
+        if (message.tool_use_id && message.is_backgrounded) turn.backgroundAgents.add(message.tool_use_id);
+      } else if (message.subtype === "task_notification") {
+        // A background Agent's real result: close its row with the subagent's summary.
+        const id = message.tool_use_id;
+        if (id && turn.backgroundAgents.delete(id)) {
+          const failed = message.status !== "completed";
+          input.onEvent({
+            kind: "tool-result",
+            toolUseId: id,
+            isError: failed,
+            summary: summarizeToolResult(message.summary) || (message.status === "stopped" ? "Stopped" : failed ? "Failed" : "Done"),
+            ...(message.summary ? { payload: message.summary } : {}),
+          });
+        }
+      }
       return;
     }
     case "stream_event": {
@@ -420,99 +442,36 @@ export function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnS
       return;
     }
     case "assistant": {
-      if (message.parent_tool_use_id) return;
-      startTurn(turn, input, message.message.model);
-      if (message.error) {
-        // Claude Code explains account limits (a spend cap, a plan limit) in a synthetic
-        // assistant message: show that text as the error, not as a reply and not as a
-        // generic code. "rate_limit" also covers a spend cap, so the text is the truth.
-        const said = message.message.content
-          .map((b) => (b.type === "text" ? b.text : ""))
-          .join(" ")
-          .trim();
-        turn.reportedError = said || describeError(message.error);
-        input.onEvent({ kind: "error", message: turn.reportedError });
-        if (said) return;
+      const parentId = message.parent_tool_use_id ?? undefined;
+      // A subagent's message carries no turn-start or account error: those belong
+      // to the main thread, and usage/turn bookkeeping is not ours to touch here.
+      if (!parentId) {
+        startTurn(turn, input, message.message.model);
+        if (message.error) {
+          // Claude Code explains account limits (a spend cap, a plan limit) in a synthetic
+          // assistant message: show that text as the error, not as a reply and not as a
+          // generic code. "rate_limit" also covers a spend cap, so the text is the truth.
+          const said = message.message.content
+            .map((b) => (b.type === "text" ? b.text : ""))
+            .join(" ")
+            .trim();
+          turn.reportedError = said || describeError(message.error);
+          input.onEvent({ kind: "error", message: turn.reportedError });
+          if (said) return;
+        }
       }
       const id = message.message.id;
       let k = turn.blocksSeen.get(id) ?? 0;
       for (const block of message.message.content) {
         const itemId = `${id}:${k}`;
         k += 1;
-        if (block.type === "text" && block.text.trim()) {
-          turn.pending.delete(itemId);
-          input.onEvent({ kind: "assistant-text", text: block.text, itemId });
-        } else if (block.type === "thinking") {
-          const signature = block.signature || turn.signatures.get(itemId);
-          if (block.thinking.trim()) {
-            turn.pending.delete(itemId);
-            input.onEvent({ kind: "thinking", text: block.thinking, opaque: false, itemId, ...(signature ? { signature } : {}) });
-          } else if (signature) {
-            // Opaque reasoning: the signature is the only thing keeping the block alive.
-            turn.pending.delete(itemId);
-            input.onEvent({ kind: "thinking", text: "", signature, opaque: true, itemId });
-          }
-        } else if (block.type === "tool_use") {
-          turn.pending.delete(itemId);
-          const toolInput = (block.input ?? {}) as Record<string, unknown>;
-          // TodoWrite is a plan, not a tool: emit plan entries and skip both its
-          // row and (below) its tool_result.
-          if (block.name === "TodoWrite" && Array.isArray(toolInput.todos)) {
-            const entries = todoPlanEntries(toolInput.todos);
-            if (entries) {
-              turn.planToolIds.add(block.id);
-              input.onEvent({ kind: "plan", entries });
-              continue;
-            }
-          }
-          // The canonical name plus, for commands and file edits, a payload
-          // every adapter emits the same way.
-          const isAgent = block.name === "Task" || block.name === "Agent";
-          const name = isAgent ? "Agent" : canonicalTool(block.name);
-          let payload: RunPayload | { diff: ToolDiff[] } | undefined;
-          let eventPayload: unknown;
-          if (block.name === "Bash" && typeof toolInput.command === "string") {
-            payload = { command: toolInput.command };
-            eventPayload = payload;
-          } else if (block.name === "Edit" && typeof toolInput.file_path === "string" && typeof toolInput.old_string === "string" && typeof toolInput.new_string === "string") {
-            payload = {
-              ...toolInput,
-              diff: [{ path: toolInput.file_path, unified: unifiedDiff(toolInput.file_path, toolInput.old_string, toolInput.new_string) }],
-            };
-            eventPayload = payload;
-          } else if (block.name === "Write" && typeof toolInput.file_path === "string" && typeof toolInput.content === "string") {
-            payload = {
-              ...toolInput,
-              diff: [{ path: toolInput.file_path, unified: unifiedDiff(toolInput.file_path, "", toolInput.content) }],
-            };
-            eventPayload = payload;
-          } else if (Object.keys(toolInput).length) {
-            // Any other tool keeps its input as the payload, so its row shows
-            // the arguments instead of "No details recorded."
-            eventPayload = toolInput;
-          }
-          const summary =
-            isAgent && typeof toolInput.description === "string" && typeof toolInput.subagent_type === "string"
-              ? clipSummary(`${toolInput.description} · ${toolInput.subagent_type}`)
-              : summarizeToolInput(block.name, toolInput);
-          input.onEvent({
-            kind: "tool-use",
-            toolUseId: block.id,
-            name,
-            summary,
-            itemId,
-            ...(eventPayload !== undefined ? { payload: eventPayload } : {}),
-          });
-          // Only shaped payloads drive the result shape below; a generic input
-          // must not be mistaken for a Run command or an Edit diff.
-          turn.toolPayloads.set(block.id, payload);
-        }
+        emitAssistantBlock(block, itemId, input, turn, parentId);
       }
       turn.blocksSeen.set(id, k);
       return;
     }
     case "user": {
-      if (message.parent_tool_use_id) return;
+      const parentId = message.parent_tool_use_id ?? undefined;
       const content = message.message.content;
       if (!Array.isArray(content)) return;
       for (const block of content) {
@@ -523,6 +482,12 @@ export function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnS
             continue;
           }
           const isError = Boolean(block.is_error);
+          // A background Agent's immediate result is launch metadata, not its answer:
+          // keep the row open for the task_notification instead of showing it.
+          if (turn.agentIds.has(block.tool_use_id) && !isError && (turn.backgroundAgents.has(block.tool_use_id) || resultText(block.content).startsWith("Async agent launched"))) {
+            turn.backgroundAgents.add(block.tool_use_id);
+            continue;
+          }
           // Shape the result like the other adapters: a Run carries its output,
           // an Edit carries the diff its call described (with a +/− stat).
           const used = turn.toolPayloads.get(block.tool_use_id);
@@ -544,6 +509,7 @@ export function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnS
             toolUseId: block.tool_use_id,
             isError,
             summary,
+            ...(parentId ? { parentId } : {}),
             ...(payload ? { payload } : {}),
           });
         }
@@ -560,6 +526,91 @@ export function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnS
     default:
       return;
   }
+}
+
+/** One assistant content block, as the SDK types it. */
+type AssistantBlock = Extract<SDKMessage, { type: "assistant" }>["message"]["content"][number];
+
+/**
+ * Emit one assistant content block. A subagent's block carries its parent
+ * tool-use id and skips reasoning and plans, which belong to the main thread.
+ */
+function emitAssistantBlock(block: AssistantBlock, itemId: string, input: TurnInput, turn: TurnState, parentId: string | undefined): void {
+  if (block.type === "text" && block.text.trim()) {
+    turn.pending.delete(itemId);
+    input.onEvent({ kind: "assistant-text", text: block.text, itemId, ...(parentId ? { parentId } : {}) });
+    return;
+  }
+  if (block.type === "thinking") {
+    // A subagent's reasoning is not the thread's history; its tool rows are.
+    if (parentId) return;
+    const signature = block.signature || turn.signatures.get(itemId);
+    if (block.thinking.trim()) {
+      turn.pending.delete(itemId);
+      input.onEvent({ kind: "thinking", text: block.thinking, opaque: false, itemId, ...(signature ? { signature } : {}) });
+    } else if (signature) {
+      // Opaque reasoning: the signature is the only thing keeping the block alive.
+      turn.pending.delete(itemId);
+      input.onEvent({ kind: "thinking", text: "", signature, opaque: true, itemId });
+    }
+    return;
+  }
+  if (block.type !== "tool_use") return;
+  turn.pending.delete(itemId);
+  const toolInput = (block.input ?? {}) as Record<string, unknown>;
+  // TodoWrite is a plan, not a tool: emit plan entries and skip both its row and
+  // (below) its tool_result. A subagent's todo list is not the thread's plan.
+  if (block.name === "TodoWrite" && Array.isArray(toolInput.todos)) {
+    const entries = todoPlanEntries(toolInput.todos);
+    if (entries) {
+      turn.planToolIds.add(block.id);
+      if (!parentId) input.onEvent({ kind: "plan", entries });
+      return;
+    }
+  }
+  // The canonical name plus, for commands and file edits, a payload
+  // every adapter emits the same way.
+  const isAgent = block.name === "Task" || block.name === "Agent";
+  if (isAgent) turn.agentIds.add(block.id);
+  const name = isAgent ? "Agent" : canonicalTool(block.name);
+  let payload: RunPayload | { diff: ToolDiff[] } | undefined;
+  let eventPayload: unknown;
+  if (block.name === "Bash" && typeof toolInput.command === "string") {
+    payload = { command: toolInput.command };
+    eventPayload = payload;
+  } else if (block.name === "Edit" && typeof toolInput.file_path === "string" && typeof toolInput.old_string === "string" && typeof toolInput.new_string === "string") {
+    payload = {
+      ...toolInput,
+      diff: [{ path: toolInput.file_path, unified: unifiedDiff(toolInput.file_path, toolInput.old_string, toolInput.new_string) }],
+    };
+    eventPayload = payload;
+  } else if (block.name === "Write" && typeof toolInput.file_path === "string" && typeof toolInput.content === "string") {
+    payload = {
+      ...toolInput,
+      diff: [{ path: toolInput.file_path, unified: unifiedDiff(toolInput.file_path, "", toolInput.content) }],
+    };
+    eventPayload = payload;
+  } else if (Object.keys(toolInput).length) {
+    // Any other tool keeps its input as the payload, so its row shows
+    // the arguments instead of "No details recorded."
+    eventPayload = toolInput;
+  }
+  const summary =
+    isAgent && typeof toolInput.description === "string" && typeof toolInput.subagent_type === "string"
+      ? clipSummary(`${toolInput.description} · ${toolInput.subagent_type}`)
+      : summarizeToolInput(block.name, toolInput);
+  input.onEvent({
+    kind: "tool-use",
+    toolUseId: block.id,
+    name,
+    summary,
+    itemId,
+    ...(parentId ? { parentId } : {}),
+    ...(eventPayload !== undefined ? { payload: eventPayload } : {}),
+  });
+  // Only shaped payloads drive the result shape below; a generic input
+  // must not be mistaken for a Run command or an Edit diff.
+  turn.toolPayloads.set(block.id, payload);
 }
 
 /** A tool_result's full text, joined the way summarizeToolResult joins it. */
