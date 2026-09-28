@@ -6,7 +6,7 @@ Claude Code is the orchestrator. `/oc <task>` is a manual trigger, but this poli
 
 **Trust boundary**: opencode agents run on small, cheap models (DeepSeek v4 Flash via AgentRouter first, see Worker team), and a fallback may silently swap in another. Treat everything they return — findings, file:line citations, "bug confirmed", an implementer's "done" — as an unverified claim. Spot-check the load-bearing ones yourself (open the cited file, re-run the cited command) before they go into a plan, a brief, or anything you tell the user.
 
-**Two separate fallback layers**: (1) *model-level* — `oc-run.mjs` walks the worker's `[model, ...fallback_models]` from `opencode.json` (AgentRouter DeepSeek v4 Flash → Token Harbor paid DeepSeek v4.1 Flash → Qwen3.7 Flash, set 2026-09-27), one `opencode run` per model, on an error, empty output, `DISPATCH FAILED` or timeout. The runtime-fallback plugin can't do this headless: `opencode run` exits on the first error (verified 2026-09-26). (2) *task-level*, yours — if a dispatch fails 3 times for the same task (every model failed, or output unusable), finish that task yourself and say so in one line.
+**Two separate fallback layers**: (1) *model-level* — `oc-run.mjs` walks the worker's `[model, ...fallback_models]` from `opencode.json` (AgentRouter DeepSeek v4 Flash → Qwen3.7 Flash, set 2026-09-27), one `opencode run` per model, on an error, empty output, `DISPATCH FAILED` or timeout. The runtime-fallback plugin can't do this headless: `opencode run` exits on the first error (verified 2026-09-26). (2) *task-level*, yours — if a dispatch fails 3 times for the same task (every model failed, or output unusable), finish that task yourself and say so in one line.
 
 ### Worker team
 
@@ -17,8 +17,6 @@ Routing: `~/.config/opencode/opencode.json`, per-agent `model` + `fallback_model
 node ~/.config/opencode/oc-run.mjs --worker <agent> --brief .ai/tmp/<name>.brief.txt \
   --out .ai/tmp/<name>.out.jsonl --log .ai/tmp/<name>.log --timeout 900
 ```
-
-`oc-run` closes stdin (an open one makes `opencode run` hang at `message=init`), drops a model that shows no activity for `--idle` seconds (default 480) or passes `--timeout`, kills the process tree, loads `TOKENHARBOR_API_KEY` from the Windows user env when the shell predates it, and prints which model answered (exit 0) or that all failed (exit 1). The `.log` has one `=== attempt n ===` block per model.
 
 | Agent | Scope |
 |---|---|
