@@ -57,12 +57,62 @@ export function UsageMeter({ threadId }: { threadId: string }) {
   );
 }
 
+/** A compact token count: 950, 8.2k, 40k, 200k, 1.5M. */
+export function fmt(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return n < 10_000 ? `${(n / 1000).toFixed(1)}k` : `${Math.round(n / 1000)}k`;
+  return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+}
+
+/** The context meter's label, or null when no context input has been seen. */
+export function contextMeterText(used: number | null | undefined, size: number | null | undefined): string | null {
+  if (typeof used !== "number") return null;
+  return typeof size === "number" ? `${fmt(used)} / ${fmt(size)}` : `${fmt(used)} context`;
+}
+
+/**
+ * How full the model's context window is: the latest live figure, else the last
+ * stored turn's. Quiet until an agent reports a context input.
+ */
+export function ContextMeter({ threadId }: { threadId: string }) {
+  const live = useStore((s) => s.live[threadId]);
+  const events = useStore((s) => s.events[threadId]);
+  let used: number | null = null;
+  let size: number | null = null;
+  if (typeof live?.usage?.contextUsed === "number") {
+    used = live.usage.contextUsed;
+    size = typeof live.usage.contextSize === "number" ? live.usage.contextSize : null;
+  } else {
+    for (let i = (events?.length ?? 0) - 1; i >= 0; i--) {
+      const e = events![i]!.event;
+      if (e.kind !== "turn-end") continue;
+      if (typeof e.usage?.contextUsed !== "number") continue;
+      used = e.usage.contextUsed;
+      size = typeof e.usage.contextSize === "number" ? e.usage.contextSize : null;
+      break;
+    }
+  }
+  const text = contextMeterText(used, size);
+  if (text === null) return null;
+  const pct = typeof size === "number" && size > 0 ? Math.round((used! / size) * 100) : null;
+  const title =
+    typeof size === "number"
+      ? `${used!.toLocaleString()} of ${size.toLocaleString()} tokens in context (${pct}%)`
+      : `${used!.toLocaleString()} tokens in context`;
+  return (
+    <span className={`usage context-meter${pct !== null && pct >= 80 ? " warn" : ""}`} title={title}>
+      {text}
+    </span>
+  );
+}
+
 /** The thread's plan limit, usage and cache figures: quiet, beside the send button. */
 export function ThreadMeters({ agent, threadId }: { agent: string; threadId: string }) {
   return (
     <div className="thread-meters">
       <LimitMeter agent={agent} />
       <UsageMeter threadId={threadId} />
+      <ContextMeter threadId={threadId} />
       <CacheMeter threadId={threadId} />
     </div>
   );

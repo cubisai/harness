@@ -459,11 +459,23 @@ describe("turnEndFromUsage", () => {
     expect(e.usage).toMatchObject({ inputTokens: 750, cacheReadTokens: 8000, cacheWriteTokens: 100, reasoningTokens: 3, provenance: "reported" });
   });
 
+  it("puts the raw context input and the window on the usage", () => {
+    const e = turnEndFromUsage(
+      { inputTokens: 9000, cachedInputTokens: 8000, outputTokens: 12, netNewInputTokens: 750, cacheWriteInputTokens: 100, reasoningOutputTokens: 3 },
+      42,
+      1000000,
+    );
+    expect(e).toMatchObject({ kind: "turn-end", inputTokens: 750 });
+    if (e.kind !== "turn-end") return;
+    // contextUsed is the RAW input (cached included), not the net-new 750.
+    expect(e.usage).toMatchObject({ contextUsed: 9000, contextSize: 1000000 });
+  });
+
   it("reports unavailable usage when none was seen", () => {
     const e = turnEndFromUsage(undefined, 7);
     expect(e).toMatchObject({ kind: "turn-end", inputTokens: 0, outputTokens: 0, durationMs: 7 });
     if (e.kind !== "turn-end") return;
-    expect(e.usage).toMatchObject({ inputTokens: 0, outputTokens: 0, provenance: "unavailable" });
+    expect(e.usage).toMatchObject({ inputTokens: 0, outputTokens: 0, provenance: "unavailable", contextUsed: null, contextSize: null });
   });
 });
 

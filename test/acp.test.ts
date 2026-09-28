@@ -150,6 +150,16 @@ describe("ACP driver", () => {
     });
   });
 
+  it("carries the reported context window onto the turn-end usage", async () => {
+    const d = driver();
+    const t = turn("world");
+    await d.runTurn(t.input);
+    expect(t.events.at(-1)).toMatchObject({
+      kind: "turn-end",
+      usage: { contextUsed: 1234, contextSize: 100000 },
+    });
+  });
+
   it("maps an ACP plan update", async () => {
     const d = driver();
     const t = turn("plan");

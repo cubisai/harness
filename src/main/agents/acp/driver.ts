@@ -195,7 +195,11 @@ interface TurnState {
   >;
   /** Permission toolCallIds seen this turn, to spot a mismatch from the real call. */
   permissionIds: Set<string>;
-  usage: { used: number; costUsd: number | null };
+  /**
+   * The turn's usage: `used`/`costUsd` fold the latest usage_update. `contextUsed`
+   * stays null until one arrives, so a usage-free turn isn't read as a real 0.
+   */
+  usage: { used: number; costUsd: number | null; contextUsed: number | null; size: number | null };
   /** Bumped when flushText emits an item, so the next run of chunks gets fresh keys. */
   run: number;
 }
@@ -465,6 +469,8 @@ export function createAcpDriver(
         const u = update as { used: number; size: number; cost?: { amount: number; currency: string } | null };
         if (t) {
           t.usage.used = u.used;
+          t.usage.contextUsed = u.used;
+          t.usage.size = u.size;
           if (u.cost?.currency === "USD") t.usage.costUsd = u.cost.amount;
           t.input.onUsageUpdate?.({
             contextUsed: u.used,
@@ -841,7 +847,7 @@ export function createAcpDriver(
         return;
       }
       clearTimeout(l.idleTimer);
-      const turn: TurnState = { input, text: "", thought: "", tools: new Map(), permissionIds: new Set(), usage: { used: 0, costUsd: null }, run: 0 };
+      const turn: TurnState = { input, text: "", thought: "", tools: new Map(), permissionIds: new Set(), usage: { used: 0, costUsd: null, contextUsed: null, size: null }, run: 0 };
       l.turn = turn;
       const started = Date.now();
       const onAbort = () => l.conn.notify("session/cancel", { sessionId: l.sessionId });
@@ -877,15 +883,19 @@ export function createAcpDriver(
         }
         // `usage_update.used` is context-window occupancy, not per-turn input:
         // only the prompt response's usage is a real input count.
-        const usage = res.usage
-          ? normalizeUsage({
-              inputTokens: res.usage.inputTokens ?? 0,
-              outputTokens: res.usage.outputTokens ?? 0,
-              cacheReadTokens: res.usage.cachedReadTokens ?? null,
-              cacheWriteTokens: res.usage.cachedWriteTokens ?? null,
-              provenance: "reported",
-            })
-          : normalizeUsage({ inputTokens: 0, outputTokens: 0, provenance: "unavailable" });
+        const usage = {
+          ...(res.usage
+            ? normalizeUsage({
+                inputTokens: res.usage.inputTokens ?? 0,
+                outputTokens: res.usage.outputTokens ?? 0,
+                cacheReadTokens: res.usage.cachedReadTokens ?? null,
+                cacheWriteTokens: res.usage.cachedWriteTokens ?? null,
+                provenance: "reported",
+              })
+            : normalizeUsage({ inputTokens: 0, outputTokens: 0, provenance: "unavailable" })),
+          contextUsed: turn.usage.contextUsed,
+          contextSize: turn.usage.size,
+        };
         input.onEvent({
           kind: "turn-end",
           costUsd: turn.usage.costUsd,

@@ -103,7 +103,7 @@ export function codexDecision(d: PermissionDecision): "accept" | "acceptForSessi
  * top-level `inputTokens` is net-new only. `netNewInputTokens`, when the
  * server sends it, is authoritative over the subtraction.
  */
-export function turnEndFromUsage(usage: TokenBreakdown | undefined, durationMs: number): ThreadEvent {
+export function turnEndFromUsage(usage: TokenBreakdown | undefined, durationMs: number, contextSize?: number | null): ThreadEvent {
   if (!usage) {
     return {
       kind: "turn-end",
@@ -111,7 +111,7 @@ export function turnEndFromUsage(usage: TokenBreakdown | undefined, durationMs: 
       inputTokens: 0,
       outputTokens: 0,
       durationMs,
-      usage: normalizeUsage({ inputTokens: 0, outputTokens: 0, provenance: "unavailable" }),
+      usage: { ...normalizeUsage({ inputTokens: 0, outputTokens: 0, provenance: "unavailable" }), contextUsed: null, contextSize: null },
     };
   }
   const netNew = usage.netNewInputTokens ?? Math.max(0, usage.inputTokens - usage.cachedInputTokens);
@@ -121,13 +121,18 @@ export function turnEndFromUsage(usage: TokenBreakdown | undefined, durationMs: 
     inputTokens: netNew,
     outputTokens: usage.outputTokens,
     durationMs,
-    usage: normalizeUsage({
-      inputTokens: netNew,
-      outputTokens: usage.outputTokens,
-      reasoningTokens: usage.reasoningOutputTokens ?? null,
-      cacheReadTokens: usage.cachedInputTokens ?? null,
-      cacheWriteTokens: usage.cacheWriteInputTokens ?? null,
-    }),
+    usage: {
+      ...normalizeUsage({
+        inputTokens: netNew,
+        outputTokens: usage.outputTokens,
+        reasoningTokens: usage.reasoningOutputTokens ?? null,
+        cacheReadTokens: usage.cachedInputTokens ?? null,
+        cacheWriteTokens: usage.cacheWriteInputTokens ?? null,
+      }),
+      // The raw input (cached included) is what occupies the context window.
+      contextUsed: usage.inputTokens,
+      contextSize: contextSize ?? null,
+    },
   };
 }
 
@@ -171,6 +176,8 @@ interface TurnState {
   /** Verbatim reasoning text per itemId; never mixed into `deltas` (that flushes as assistant text). */
   reasoning: Map<string, string>;
   usage: TokenBreakdown | null;
+  /** The model's context window from thread/tokenUsage/updated, or null. */
+  contextSize: number | null;
   /** Retrying errors already shown this turn, so each shows once. */
   retrying: Set<string>;
   /** A compaction was already emitted this turn (both notification paths can fire). */
@@ -254,9 +261,18 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         if (p.item) onItemCompleted(t, p.item);
         return;
       case "thread/tokenUsage/updated": {
-        const last = (params as { tokenUsage: { last: TokenBreakdown } }).tokenUsage.last;
+        const tokenUsage = (params as { tokenUsage: { last: TokenBreakdown; modelContextWindow?: number | null } }).tokenUsage;
+        const last = tokenUsage.last;
+        const contextSize = typeof tokenUsage.modelContextWindow === "number" ? tokenUsage.modelContextWindow : null;
         t.usage = last;
-        t.input.onUsageUpdate?.({ inputTokens: last.inputTokens, outputTokens: last.outputTokens, cacheReadTokens: last.cachedInputTokens ?? null });
+        t.contextSize = contextSize;
+        t.input.onUsageUpdate?.({
+          inputTokens: last.inputTokens,
+          outputTokens: last.outputTokens,
+          cacheReadTokens: last.cachedInputTokens ?? null,
+          contextUsed: last.inputTokens,
+          ...(contextSize !== null ? { contextSize } : {}),
+        });
         return;
       }
       case "turn/plan/updated": {
@@ -564,7 +580,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       const started = Date.now();
       let resolveTurn!: (t: Turn) => void;
       const finished = new Promise<Turn>((r) => (resolveTurn = r));
-      const state: TurnState = { input, threadId, turnId: null, deltas: new Map(), reasoning: new Map(), usage: null, retrying: new Set(), compacted: false, done: resolveTurn };
+      const state: TurnState = { input, threadId, turnId: null, deltas: new Map(), reasoning: new Map(), usage: null, contextSize: null, retrying: new Set(), compacted: false, done: resolveTurn };
       turns.set(threadId, state);
       const onAbort = () => {
         if (state.turnId) void conn.request("turn/interrupt", { threadId, turnId: state.turnId }).catch(() => {});
@@ -589,7 +605,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         for (const [itemId, text] of state.deltas) if (text.trim()) input.onEvent({ kind: "assistant-text", text, itemId });
         if (turn.status === "interrupted") input.onEvent({ kind: "notice", text: "Stopped." });
         else if (turn.status === "failed") input.onEvent({ kind: "error", message: `Codex: ${turn.error?.message ?? "the turn failed."}` });
-        input.onEvent(turnEndFromUsage(state.usage ?? undefined, turn.durationMs ?? Date.now() - started));
+        input.onEvent(turnEndFromUsage(state.usage ?? undefined, turn.durationMs ?? Date.now() - started, state.contextSize));
       } catch (err) {
         input.onEvent({ kind: "error", message: err instanceof Error ? err.message : String(err) });
       } finally {

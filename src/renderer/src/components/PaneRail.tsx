@@ -23,6 +23,20 @@ export function toggleSidebar(): void {
   s.setPaneLayout({ sidebarCollapsed: !s.paneLayout.sidebarCollapsed }, true);
 }
 
+/** With the sidebar collapsed: its toggle and New thread, at the start of the title bar. */
+export function CollapsedHeaderControls() {
+  const selectedProjectId = useStore((s) => s.selectedProjectId);
+  const newThread = useStore((s) => s.newThread);
+  return (
+    <div className="header-rail-controls">
+      <SidebarToggle collapsed />
+      <button className="icon-button" title="New thread (⌘N)" onClick={() => void newThread()} disabled={!selectedProjectId}>
+        <IconCompose />
+      </button>
+    </div>
+  );
+}
+
 /** The collapsed sidebar: a narrow rail with every sidebar-footer control, each titled. */
 export function PaneRail() {
   const selectedProjectId = useStore((s) => s.selectedProjectId);
@@ -32,12 +46,8 @@ export function PaneRail() {
 
   return (
     <nav className="pane-rail" id="sidebar" aria-label="Sidebar">
-      <div className="rail-top drag">
-        <SidebarToggle collapsed />
-      </div>
-      <button className="icon-button" title="New thread (⌘N)" onClick={() => void newThread()} disabled={!selectedProjectId}>
-        <IconCompose />
-      </button>
+      {/* The title bar's share of the rail: the toggle and New thread sit in the header. */}
+      <div className="rail-top drag" />
       <div className="rail-foot">
         {readyVersion && (
           <button className="icon-button active" title={`Update ready: restart to install version ${readyVersion}`} onClick={() => void api().installUpdate()}>

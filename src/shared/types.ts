@@ -415,6 +415,10 @@ export interface Usage {
   miss: boolean;
   missCause?: MissCause;
   provenance: UsageProvenance;
+  /** Tokens currently in the model's context: the latest request's input, cached tokens included. */
+  contextUsed?: number | null;
+  /** The model's context window, when the agent reports one. */
+  contextSize?: number | null;
 }
 
 /** One entry of a plan the agent is working through. */
@@ -639,7 +643,9 @@ export type LiveUpdate =
   | { type: "app-update"; status: AppUpdateStatus }
   | { type: "limits"; limits: AgentLimits }
   /** A driver finished loading its model list; refetch agents. */
-  | { type: "agents" };
+  | { type: "agents" }
+  /** The app menu asked for the About sheet. */
+  | { type: "open-about" };
 
 /** The API the preload script exposes as `window.unskilled`. */
 export interface UnskilledApi {
@@ -705,6 +711,8 @@ export interface UnskilledApi {
   /** Show the app's data folder (agents.json, the database) in the file manager. */
   openDataFolder(): Promise<void>;
   updateStatus(): Promise<AppUpdateStatus>;
+  /** Version, runtime versions and the git build stamp for the About sheet. */
+  aboutInfo(): Promise<AboutInfo>;
   /** Rate limits reported so far, by agent. */
   listLimits(): Promise<AgentLimits[]>;
   /** Every skill discovered for the project (or globally): the whole list, shadowed and disabled included. */
@@ -737,4 +745,17 @@ export interface UnskilledApi {
   /** Quit and install the downloaded update. */
   installUpdate(): Promise<void>;
   onUpdate(listener: (update: LiveUpdate) => void): () => void;
+}
+
+/** What the About sheet shows: the app, its runtime, and the git build stamp. */
+export interface AboutInfo {
+  name: string;
+  version: string;
+  commit: string | null;
+  commitDate: string | null;
+  electron: string;
+  chrome: string;
+  node: string;
+  os: string;
+  changelog: { hash: string; date: string; subject: string }[];
 }

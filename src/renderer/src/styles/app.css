@@ -291,10 +291,12 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 
 /* ---------- collapsed sidebar rail ---------- */
 
-.pane-rail { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0; background: var(--bg-sidebar); border-right: 1px solid var(--hairline); min-width: 0; }
-.pane-rail .rail-top { height: calc(var(--titlebar) - 10px); display: flex; align-items: flex-end; }
-/* macOS traffic lights sit at y:18; the first rail button drops below them. */
-.platform-darwin .pane-rail .rail-top { height: calc(var(--titlebar) + 10px); }
+/* The rail's top strip belongs to the title bar: header colour, header hairline,
+   no divider through it, so the window buttons and header controls read as one bar. */
+.pane-rail { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 0 0 10px; background: linear-gradient(var(--bg) var(--titlebar), var(--bg-sidebar) var(--titlebar)); min-width: 0; }
+.pane-rail::before { content: ""; position: absolute; left: 0; right: 0; top: calc(var(--titlebar) - 1px); height: 1px; background: var(--hairline); }
+.pane-rail::after { content: ""; position: absolute; top: var(--titlebar); bottom: 0; right: 0; width: 1px; background: var(--hairline); }
+.pane-rail .rail-top { height: var(--titlebar); align-self: stretch; flex-shrink: 0; }
 .pane-rail .rail-foot { margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 6px; }
 
 /* ---------- buttons ---------- */
@@ -357,8 +359,10 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .platform-win32 .main-header, .platform-linux .main-header { padding-right: 150px; } /* caption buttons */
 /* With the inspector open, the caption buttons sit over it, not over the header. */
 .platform-win32 .app.with-inspector .main-header, .platform-linux .app.with-inspector .main-header { padding-right: 14px; }
-/* No sidebar: the title clears the macOS traffic lights, which the collapsed rail leaves over it. */
-.platform-darwin .app.sidebar-collapsed .main-header { padding-left: 44px; }
+/* Sidebar collapsed: its toggle and New thread lead the header, just past the macOS traffic lights. */
+.header-rail-controls { display: flex; align-items: center; gap: 2px; -webkit-app-region: no-drag; }
+.app.sidebar-collapsed .main-header { padding-left: 4px; }
+.platform-darwin .app.sidebar-collapsed .main-header { padding-left: 30px; }
 /* The header holds only the title and the panel toggles; the thread's controls live in the message box. */
 .main { container: main / inline-size; }
 @container main (max-width: 560px) {
@@ -671,10 +675,13 @@ details.tool[open]::details-content { height: auto; }
   user-select: text;
 }
 .composer textarea::placeholder { color: var(--text-tertiary); }
-.composer-bar { display: flex; align-items: flex-end; flex-wrap: nowrap; gap: 8px; padding: 4px 8px 8px 8px; }
+.composer-bar { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; padding: 4px 8px 8px 8px; }
 /* Controls, chips and meters wrap among themselves; the actions row stays put. */
 .composer-left { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; flex: 1; min-width: 0; }
 .composer-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+/* The thread's meters, on their own quiet row below the bar. */
+.composer-meters { display: flex; align-items: center; gap: 10px; padding: 0 12px 8px; font-size: 11px; color: var(--text-tertiary); }
+.composer-meters:empty, .composer-meters:has(> .thread-meters:empty) { display: none; }
 .thread-controls { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; min-width: 0; }
 .thread-meters { display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--text-tertiary); }
 .model-menu.up { top: auto; bottom: calc(100% + 6px); }
@@ -964,6 +971,7 @@ details.tool[open]::details-content { height: auto; }
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+.context-meter.warn { color: var(--warning); }
 
 .sheet-backdrop {
   position: fixed;

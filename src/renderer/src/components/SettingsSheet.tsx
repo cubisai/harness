@@ -311,6 +311,18 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
               ))}
             </div>
           </div>
+          <div className="row">
+            <span className="label">About</span>
+            <button
+              className="button"
+              onClick={() => {
+                useStore.getState().setSettingsOpen(false);
+                useStore.getState().setAboutOpen(true);
+              }}
+            >
+              About CubiQ…
+            </button>
+          </div>
           {appUpdate && !appUpdate.supported && <p className="note">This build doesn't update itself. Installed releases do.</p>}
         </section>
       );

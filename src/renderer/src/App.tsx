@@ -8,10 +8,11 @@ import { Inspector } from "./components/Inspector";
 import { SettingsSheet } from "./components/SettingsSheet";
 import { MessageCenter } from "./components/MessageCenter";
 import { Sidebar } from "./components/Sidebar";
-import { PaneRail, toggleSidebar } from "./components/PaneRail";
+import { CollapsedHeaderControls, PaneRail, toggleSidebar } from "./components/PaneRail";
 import { TerminalDrawer } from "./components/TerminalDrawer";
 import { Splitter } from "./components/Splitter";
 import { SwitchDialogHost } from "./components/SwitchDialog";
+import { AboutSheet } from "./components/AboutSheet";
 import { ThreadView } from "./components/ThreadView";
 import { IconArrowLeft, IconDiff, IconFolder, IconGlobe, IconSparkle, IconTerminal } from "./icons";
 import { usePaneLayout } from "./hooks/usePaneLayout";
@@ -109,6 +110,7 @@ export function App() {
         ) : (
           <>
             <header className="main-header drag">
+              {layout.sidebarCollapsed && <CollapsedHeaderControls />}
               <div className="main-title">
                 {thread ? thread.title : project ? project.name : "CubiQ"}
                 {thread && project && <span className="sub">{project.name}</span>}
@@ -215,6 +217,7 @@ export function App() {
       <Library />
       <CommandPalette />
       <SwitchDialogHost />
+      <AboutSheet />
     </div>
   );
 }

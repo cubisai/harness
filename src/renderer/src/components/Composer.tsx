@@ -322,7 +322,6 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
             ))}
             <span className="grow" />
             {running && <span className="hint">Return queues for the next turn</span>}
-            {meters}
           </div>
           <div className="composer-actions">
             {running && (
@@ -337,6 +336,7 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
             )}
           </div>
         </div>
+        {meters && <div className="composer-meters">{meters}</div>}
       </div>
     </div>
   );

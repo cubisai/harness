@@ -141,6 +141,20 @@ describe("composer actions row", () => {
       expect(html).toMatch(/<\/div><div class="composer-actions">/);
       const left = /<div class="composer-left">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "";
       expect(left).not.toContain("composer-actions");
+      // No meters prop: no wrapper is rendered at all.
+      expect(html).not.toContain("composer-meters");
+    });
+  });
+
+  it("renders meters in composer-meters, after composer-bar and outside it", () => {
+    withRunning({ t: true }, () => {
+      const html = renderToStaticMarkup(<Composer threadId="t" meters={<span className="x">M</span>} />);
+      // The wrapper is a sibling immediately after the bar.
+      expect(html).toMatch(/<\/div><div class="composer-meters"><span class="x">M<\/span><\/div>/);
+      // The bar itself (up to its closing tag before composer-meters) never contains it.
+      const bar = /<div class="composer-bar">([\s\S]*?)<\/div><div class="composer-meters">/.exec(html)?.[1] ?? "";
+      expect(bar).toContain("composer-actions");
+      expect(bar).not.toContain("composer-meters");
     });
   });
 });

@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { homedir, release, tmpdir } from "node:os";
+import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { BrowserWindow, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell } from "electron";
-import type { CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, OpenResult, PermissionDecision, ProviderInput, ScreenshotInfo, SendRequest, Settings, SkillOrigin, SwitchMode, Thread } from "../shared/types";
+import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell } from "electron";
+import type { AboutInfo, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, OpenResult, PermissionDecision, ProviderInput, ScreenshotInfo, SendRequest, Settings, SkillOrigin, SwitchMode, Thread } from "../shared/types";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
 import { createClaudeDriver, resolvePackagedClaudeBinary } from "./agents/claude";
@@ -163,8 +163,6 @@ async function main(): Promise<void> {
   await app.whenReady();
   // A dev run is the stock Electron binary: give its Dock tile the app's own icon.
   if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(appIcon());
-  // The About panel names the running binary, which in a dev run is "Electron".
-  app.setAboutPanelOptions({ applicationName: "CubiQ", applicationVersion: app.getVersion(), copyright: "Copyright © 2026 CubiQ contributors" });
 
   const userData = app.getPath("userData");
   mkdirSync(userData, { recursive: true });
@@ -210,6 +208,32 @@ async function main(): Promise<void> {
   const broadcast = (update: LiveUpdate) => {
     for (const w of windows) if (!w.isDestroyed()) w.webContents.send("unskilled:update", update);
   };
+  // macOS needs its own app menu for "About CubiQ" to reach the in-app sheet;
+  // elsewhere the default menu stands. Built after `broadcast`, which it uses.
+  if (process.platform === "darwin") {
+    Menu.setApplicationMenu(
+      Menu.buildFromTemplate([
+        {
+          label: "CubiQ",
+          submenu: [
+            { label: "About CubiQ", click: () => broadcast({ type: "open-about" }) },
+            { type: "separator" },
+            { role: "services" },
+            { type: "separator" },
+            { role: "hide" },
+            { role: "hideOthers" },
+            { role: "unhide" },
+            { type: "separator" },
+            { role: "quit" },
+          ],
+        },
+        { role: "fileMenu" },
+        { role: "editMenu" },
+        { role: "viewMenu" },
+        { role: "windowMenu" },
+      ]),
+    );
+  }
   // Plan rate limits, fed only by what agents report during turns: no polling.
   const limits = new LimitsTracker((l) => broadcast({ type: "limits", limits: l }));
   // The skills library's Python script when there is one; otherwise the same rules built in (guard-rules.ts), so the guard is always on.
@@ -521,6 +545,21 @@ async function main(): Promise<void> {
     return afterProviderChange();
   });
   ipcMain.handle("app:open-data-folder", () => shell.openPath(userData));
+  ipcMain.handle("app:about", (): AboutInfo => {
+    // Read lazily: vitest runs this module without electron-vite's define.
+    const build = typeof __CUBIQ_BUILD__ !== "undefined" ? __CUBIQ_BUILD__ : { commit: null, date: null, changelog: [] };
+    return {
+      name: "CubiQ",
+      version: app.getVersion(),
+      commit: build.commit,
+      commitDate: build.date,
+      electron: process.versions.electron,
+      chrome: process.versions.chrome,
+      node: process.versions.node,
+      os: process.platform === "darwin" ? `macOS ${process.getSystemVersion()}` : `${osType()} ${release()}`,
+      changelog: build.changelog,
+    };
+  });
   ipcMain.handle("app:update-status", () => updater.status());
   ipcMain.handle("limits:list", () => limits.all());
   ipcMain.handle("app:install-update", () => updater.install());

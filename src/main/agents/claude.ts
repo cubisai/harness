@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
-import type { EffortLevel, HookCallback, ModelInfo, Options, PermissionResult, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { EffortLevel, HookCallback, ModelInfo, ModelUsage, Options, PermissionResult, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { McpServerEntry, ModelOption, PermissionMode, PlanEntry, ThreadEvent } from "../../shared/types";
 import { canonicalTool, clipSummary, type EditResult, type RunPayload, type RunResult } from "../../shared/tools";
 import { diffSummary, unifiedDiff } from "../../shared/diff";
@@ -324,6 +324,10 @@ export interface TurnState {
   backgroundAgents: Set<string>;
   /** The error text already shown this turn, so the SDK's closing error doesn't repeat it. */
   reportedError: string | null;
+  /** The last main-thread assistant call's context input (uncached + cached), or null. */
+  contextInputTokens: number | null;
+  /** The model the turn's main thread last reported, for the context window lookup. */
+  model: string | null;
 }
 
 /** Fresh per-turn state for runTurn and for mapping a message stream in tests. */
@@ -341,27 +345,46 @@ export function newTurnState(): TurnState {
     agentIds: new Set(),
     backgroundAgents: new Set(),
     reportedError: null,
+    contextInputTokens: null,
+    model: null,
   };
 }
 
 /**
  * The turn-end event for a `result` message. inputTokens is uncached (net-new)
  * only — folding cache reads in would make the hit-rate denominator unknowable.
+ * `contextUsed` is the last main-thread assistant call's full input (cached
+ * included), and `contextSize` the model's window.
  */
-export function turnEndFromResult(message: SDKResultMessage): ThreadEvent {
+export function turnEndFromResult(message: SDKResultMessage, contextUsed?: number | null, model?: string | null): ThreadEvent {
   return {
     kind: "turn-end",
     costUsd: typeof message.total_cost_usd === "number" ? message.total_cost_usd : null,
     inputTokens: message.usage.input_tokens,
     outputTokens: message.usage.output_tokens,
     durationMs: message.duration_ms,
-    usage: normalizeUsage({
-      inputTokens: message.usage.input_tokens,
-      outputTokens: message.usage.output_tokens,
-      cacheReadTokens: message.usage.cache_read_input_tokens ?? null,
-      cacheWriteTokens: message.usage.cache_creation_input_tokens ?? null,
-    }),
+    usage: {
+      ...normalizeUsage({
+        inputTokens: message.usage.input_tokens,
+        outputTokens: message.usage.output_tokens,
+        cacheReadTokens: message.usage.cache_read_input_tokens ?? null,
+        cacheWriteTokens: message.usage.cache_creation_input_tokens ?? null,
+      }),
+      contextUsed: contextUsed ?? null,
+      contextSize: contextWindowFor(message.modelUsage, model ?? null),
+    },
   };
+}
+
+/** The window for the turn's model in the result's per-model usage; the max when unmatched, else null. */
+function contextWindowFor(modelUsage: Record<string, ModelUsage> | undefined, model: string | null): number | null {
+  if (!modelUsage) return null;
+  const exact = model ? modelUsage[model] : undefined;
+  if (typeof exact?.contextWindow === "number") return exact.contextWindow;
+  const windows = Object.values(modelUsage)
+    .map((m) => m.contextWindow)
+    .filter((n): n is number => typeof n === "number");
+  return windows.length ? Math.max(...windows) : null;
 }
 
 /** Emit the once-per-turn turn-start, stamped with the model that arrived. */
@@ -447,6 +470,15 @@ export function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnS
       // to the main thread, and usage/turn bookkeeping is not ours to touch here.
       if (!parentId) {
         startTurn(turn, input, message.message.model);
+        // Remember the last main-thread API call's full context input (cached
+        // included) and its model, for the turn-end event's context figures.
+        const usage = message.message.usage;
+        turn.model = message.message.model;
+        if (usage) {
+          turn.contextInputTokens =
+            (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
+          input.onUsageUpdate?.({ contextUsed: turn.contextInputTokens });
+        }
         if (message.error) {
           // Claude Code explains account limits (a spend cap, a plan limit) in a synthetic
           // assistant message: show that text as the error, not as a reply and not as a
@@ -517,7 +549,7 @@ export function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnS
       return;
     }
     case "result": {
-      input.onEvent(turnEndFromResult(message));
+      input.onEvent(turnEndFromResult(message, turn.contextInputTokens, turn.model));
       if (message.subtype !== "success") {
         input.onEvent({ kind: "error", message: `The turn ended early (${message.subtype}).` });
       }

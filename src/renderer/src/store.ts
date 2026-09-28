@@ -46,6 +46,9 @@ interface State {
   settings: SettingsView | null;
   settingsOpen: boolean;
   setSettingsOpen(open: boolean): void;
+  /** The About sheet is open (macOS app menu, or Settings → Updates). */
+  aboutOpen: boolean;
+  setAboutOpen(open: boolean): void;
   appUpdate: AppUpdateStatus | null;
   /** Plan rate limits by agent id, as the agents last reported them. */
   limits: Record<string, AgentLimits>;
@@ -247,6 +250,10 @@ export const useStore = create<State>((set, get) => ({
   settingsOpen: false,
   setSettingsOpen(open) {
     set({ settingsOpen: open });
+  },
+  aboutOpen: false,
+  setAboutOpen(open) {
+    set({ aboutOpen: open });
   },
   appUpdate: null,
   limits: {},
@@ -842,6 +849,9 @@ export const useStore = create<State>((set, get) => ({
       case "agents":
         void api().listAgents().then((agents) => set({ agents }));
         return;
+      case "open-about":
+        set({ aboutOpen: true });
+        break;
       case "thread":
         set((s) => ({
           threads: { ...s.threads, [update.thread.projectId]: upsertThread(s.threads[update.thread.projectId], update.thread) },

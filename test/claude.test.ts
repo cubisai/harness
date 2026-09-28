@@ -161,6 +161,7 @@ describe("Claude stream mapping", () => {
     const reasoningDeltas: { itemId: string; text: string; opaque: boolean }[] = [];
     const toolInputDeltas: { toolUseId: string; text: string }[] = [];
     const thinkingProgress: { estimatedTokens: number }[] = [];
+    const usageUpdates: { contextUsed?: number; contextSize?: number }[] = [];
     const events: ThreadEvent[] = [];
     const input = {
       onEvent: (e: ThreadEvent) => events.push(e),
@@ -168,8 +169,9 @@ describe("Claude stream mapping", () => {
       onReasoningDelta: (d: { itemId: string; text: string; opaque: boolean }) => reasoningDeltas.push(d),
       onToolInputDelta: (d: { toolUseId: string; text: string }) => toolInputDeltas.push(d),
       onThinkingProgress: (p: { estimatedTokens: number }) => thinkingProgress.push(p),
+      onUsageUpdate: (u: { contextUsed?: number; contextSize?: number }) => usageUpdates.push(u),
     } as unknown as TurnInput;
-    return { input, textDeltas, reasoningDeltas, toolInputDeltas, thinkingProgress, events };
+    return { input, textDeltas, reasoningDeltas, toolInputDeltas, thinkingProgress, events, usageUpdates };
   };
 
   it("maps streamed text, reasoning, and an empty thinking block's signature", () => {
@@ -352,6 +354,60 @@ describe("Claude stream mapping", () => {
     expect(events.find((e) => e.kind === "tool-use")).not.toHaveProperty("parentId");
     expect(events.some((e) => e.kind === "turn-start")).toBe(true);
   });
+
+  it("records the last main-thread call's context input and fires onUsageUpdate", () => {
+    const { input, usageUpdates } = recorder();
+    const turn = newTurnState();
+    feed(input, turn, {
+      type: "assistant",
+      parent_tool_use_id: null,
+      message: {
+        id: "m1",
+        model: "claude-opus-4",
+        content: [{ type: "text", text: "hi" }],
+        usage: { input_tokens: 100, output_tokens: 5, cache_read_input_tokens: 8000, cache_creation_input_tokens: 2000 },
+      },
+    });
+    expect(turn.contextInputTokens).toBe(10100);
+    expect(turn.model).toBe("claude-opus-4");
+    expect(usageUpdates).toEqual([{ contextUsed: 10100 }]);
+    // A subagent's message leaves the main thread's context bookkeeping alone.
+    feed(input, turn, {
+      type: "assistant",
+      parent_tool_use_id: "tu-agent",
+      message: { id: "m2", model: "claude-haiku", content: [], usage: { input_tokens: 50, output_tokens: 1 } },
+    });
+    expect(turn.contextInputTokens).toBe(10100);
+    expect(turn.model).toBe("claude-opus-4");
+    expect(usageUpdates).toHaveLength(1);
+  });
+
+  it("passes the recorded context onto the turn-end event", () => {
+    const { input, events } = recorder();
+    const turn = newTurnState();
+    feed(input, turn, {
+      type: "assistant",
+      parent_tool_use_id: null,
+      message: {
+        id: "m1",
+        model: "claude-opus-4",
+        content: [],
+        usage: { input_tokens: 100, output_tokens: 5, cache_read_input_tokens: 8000, cache_creation_input_tokens: 2000 },
+      },
+    });
+    feed(input, turn, {
+      type: "result",
+      subtype: "success",
+      duration_ms: 5,
+      total_cost_usd: null,
+      usage: { input_tokens: 100, output_tokens: 5 },
+      modelUsage: { "claude-opus-4": { contextWindow: 200000 } },
+    });
+    expect(events.find((e) => e.kind === "turn-end")).toMatchObject({
+      kind: "turn-end",
+      usage: { contextUsed: 10100, contextSize: 200000 },
+    });
+  });
 });
 
 describe("turnEndFromResult", () => {
@@ -385,5 +441,38 @@ describe("turnEndFromResult", () => {
     expect(event.usage?.cacheReadTokens).toBeNull();
     expect(event.usage?.hitRate).toBeNull();
     expect(event.usage?.provenance).toBe("unavailable");
+  });
+
+  it("reports the turn's context input and the model's window", () => {
+    const message = {
+      type: "result",
+      subtype: "success",
+      duration_ms: 1200,
+      total_cost_usd: 0.42,
+      usage: { input_tokens: 100, output_tokens: 50 },
+      modelUsage: { "claude-opus-4": { contextWindow: 200000 } },
+    } as unknown as SDKResultMessage;
+    const event = turnEnd(turnEndFromResult(message, 42000, "claude-opus-4"));
+    expect(event.usage?.contextUsed).toBe(42000);
+    expect(event.usage?.contextSize).toBe(200000);
+  });
+
+  it("falls back to the widest window when the model key doesn't match", () => {
+    const message = {
+      type: "result",
+      subtype: "success",
+      duration_ms: 1200,
+      total_cost_usd: 0.42,
+      usage: { input_tokens: 100, output_tokens: 50 },
+      modelUsage: { "claude-haiku": { contextWindow: 100000 }, "claude-opus-4": { contextWindow: 500000 } },
+    } as unknown as SDKResultMessage;
+    const event = turnEnd(turnEndFromResult(message, 42000, "claude-unknown"));
+    expect(event.usage?.contextSize).toBe(500000);
+  });
+
+  it("reports no context figures without a reported window", () => {
+    const event = turnEnd(turnEndFromResult(result({ input_tokens: 1000, output_tokens: 50 }), null, null));
+    expect(event.usage?.contextUsed).toBeNull();
+    expect(event.usage?.contextSize).toBeNull();
   });
 });

@@ -45,6 +45,7 @@ const api: UnskilledApi = {
   setCredential: (agentId, choice) => ipcRenderer.invoke("providers:setCredential", agentId, choice),
   openDataFolder: () => ipcRenderer.invoke("app:open-data-folder"),
   updateStatus: () => ipcRenderer.invoke("app:update-status"),
+  aboutInfo: () => ipcRenderer.invoke("app:about"),
   listLimits: () => ipcRenderer.invoke("limits:list"),
   listAllSkills: (projectId) => ipcRenderer.invoke("library:skills", projectId),
   getSkillDetail: (name, projectId) => ipcRenderer.invoke("library:skill", name, projectId),

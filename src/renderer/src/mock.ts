@@ -414,6 +414,21 @@ export function installMock(): void {
       return target.path.includes("missing") ? { ok: false, error: `${target.path} doesn't exist.` } : { ok: true, editor: editor ?? "cursor" };
     },
     updateStatus: async () => ({ current: "0.1.0", ready: scene === "update" ? "0.2.0" : null, supported: true }),
+    aboutInfo: async () => ({
+      name: "CubiQ",
+      version: "0.1.2",
+      commit: "abc1234",
+      commitDate: "2026-09-27",
+      electron: "44.4.5",
+      chrome: "140.0.0.0",
+      node: "22.19.0",
+      os: "macOS 15.0",
+      changelog: [
+        { hash: "abc1234", date: "2026-09-27", subject: "Add the About sheet with a git build stamp" },
+        { hash: "def5678", date: "2026-09-26", subject: "Keep the composer focused after a permission prompt" },
+        { hash: "9a0b1c2", date: "2026-09-25", subject: "Show rate limits in the Message Center" },
+      ],
+    }),
     installUpdate: async () => {},
     terminalResize: () => {},
     terminalClose: async () => {},
