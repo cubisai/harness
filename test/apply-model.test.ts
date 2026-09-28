@@ -6,18 +6,21 @@ import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
 import { CODEX_DEFAULT_MODEL, createCodexDriver } from "../src/main/agents/codex";
 import { Store } from "../src/main/db";
 import { Service } from "../src/main/service";
+import { normalizeUsage } from "../src/main/usage";
 import { catalog, closeAfter, tempDir } from "./helpers";
 
 interface FakeDriver extends AgentDriver {
   log: string[];
   switches: ModelSwitch[];
   sessions: (string | null)[];
+  prompts: string[];
 }
 
-function fakeDriver(result?: ModelSwitch): FakeDriver {
+function fakeDriver(result?: ModelSwitch, run?: (input: TurnInput) => void): FakeDriver {
   const log: string[] = [];
   const switches: ModelSwitch[] = [];
   const sessions: (string | null)[] = [];
+  const prompts: string[] = [];
   const driver: FakeDriver = {
     id: "fake",
     label: "Fake",
@@ -32,11 +35,14 @@ function fakeDriver(result?: ModelSwitch): FakeDriver {
     log,
     switches,
     sessions,
+    prompts,
     async runTurn(input: TurnInput) {
       log.push("runTurn");
       sessions.push(input.sessionId);
+      prompts.push(input.prompt);
       input.onSession("s1");
       input.onEvent({ kind: "assistant-text", text: "ok" });
+      run?.(input);
     },
   };
   if (result) {
@@ -98,6 +104,22 @@ describe("Service.applyModel in send", () => {
 
     expect(driver.sessions).toEqual([null, null]);
     expect(driver.switches).toEqual(["new-session"]);
+  });
+
+  it("hands the conversation over when the new session can't take it in place", async () => {
+    const big = normalizeUsage({ inputTokens: 50_000, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 });
+    const driver = fakeDriver("new-session", (input) =>
+      input.onEvent({ kind: "turn-end", costUsd: null, inputTokens: 50_000, outputTokens: 5, durationMs: 1, usage: big }),
+    );
+    const { service, thread, store } = setup(driver);
+    await service.send({ threadId: thread.id, text: "one" });
+    service.updateThread(thread.id, { model: "m2" });
+    await service.send({ threadId: thread.id, text: "two" });
+
+    // The earlier message arrives as the catch-up, then the new prompt after the separator.
+    expect(driver.prompts[1]).toContain("one");
+    expect(driver.prompts[1]).toContain("\n---\ntwo");
+    expect(store.listEvents(thread.id).some((e) => e.event.kind === "notice" && e.event.text.startsWith("Handed this thread's history to"))).toBe(true);
   });
 
   it("doesn't switch when the model hasn't changed", async () => {

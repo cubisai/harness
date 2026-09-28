@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AgentCapabilities, LiveUpdate, ThreadEvent, Usage } from "../src/shared/types";
 import { createAcpDriver } from "../src/main/agents/acp/driver";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
@@ -142,8 +142,8 @@ describe("Service.switchAgent", () => {
 
     expect((await service.switchAgent(thread.id, "b", "fresh")).ok).toBe(true);
     const second = service.send({ threadId: thread.id, text: "two" });
-    await new Promise((r) => setTimeout(r, 10));
-    expect(updates.filter((u) => u.type === "permission")).toHaveLength(2);
+    // The turn runs the catch-up (a git-backed checkpoint) first, so wait for the request itself.
+    await vi.waitFor(() => expect(updates.filter((u) => u.type === "permission")).toHaveLength(2), { timeout: 5000 });
     service.interrupt(thread.id);
     await second;
   });
@@ -183,6 +183,83 @@ describe("Service.switchAgent", () => {
   it("refuses to go back when the agent has no earlier session", async () => {
     const { service, thread } = setup([fake("a", aScript), fake("b", async () => {})]);
     expect(await service.switchAgent(thread.id, "b", "back")).toMatchObject({ ok: false, reason: expect.stringContaining("no earlier B conversation") });
+  });
+
+  it("hands a returning agent only what it missed, once", async () => {
+    const a = fake("a", async (input) => {
+      input.onSession("a-1");
+      input.onEvent({ kind: "assistant-text", text: "A's first answer." });
+      input.onEvent(endWith(usage({ inputTokens: 50_000, cacheReadTokens: 10_000 })));
+    });
+    const b = fake("b", async (input) => {
+      input.onSession("b-1");
+      input.onEvent({ kind: "assistant-text", text: "B's take on it." });
+      input.onEvent(endWith(usage({ inputTokens: 50_000, cacheReadTokens: 0 })));
+    });
+    const { store, service, thread } = setup([a, b]);
+    await service.send({ threadId: thread.id, text: "one" });
+    expect((await service.switchAgent(thread.id, "b", "fresh")).ok).toBe(true);
+    await service.send({ threadId: thread.id, text: "two" });
+    expect((await service.switchAgent(thread.id, "a", "back")).ok).toBe(true);
+
+    const before = a.prompts.length;
+    await service.send({ threadId: thread.id, text: "three" });
+    const prompt = a.prompts[before]!;
+    expect(prompt.startsWith("# Handoff from")).toBe(true);
+    expect(prompt).toContain("B's take on it.");
+    expect(prompt).not.toContain("A's first answer.");
+    expect(store.listEvents(thread.id).some((e) => e.event.kind === "notice" && e.event.text.startsWith("Handed what it missed to"))).toBe(true);
+
+    const beforeSecond = a.prompts.length;
+    await service.send({ threadId: thread.id, text: "four" });
+    expect(a.prompts[beforeSecond]).toBe("four");
+  });
+
+  it("carries nothing over when the user picks Start fresh", async () => {
+    const a = fake("a", async (input) => {
+      input.onSession("a-1");
+      input.onEvent({ kind: "assistant-text", text: "Set up the project." });
+      input.onEvent(endWith(usage({ inputTokens: 50_000, cacheReadTokens: 0 })));
+    });
+    const b = fake("b", async (input) => {
+      input.onSession("b-1");
+    });
+    const { store, service, thread } = setup([a, b]);
+    await service.send({ threadId: thread.id, text: "start" });
+    expect((await service.switchAgent(thread.id, "b", "fresh")).ok).toBe(true);
+    await service.send({ threadId: thread.id, text: "continue" });
+    expect(b.prompts[0]).toBe("continue");
+    expect(store.listEvents(thread.id).some((e) => e.event.kind === "notice" && e.event.text.startsWith("Now talking to B"))).toBe(true);
+  });
+
+  it("catches a new agent up on a thread with history, and not on an empty one", async () => {
+    const a = fake("a", async (input) => {
+      input.onSession("a-1");
+      input.onEvent({ kind: "assistant-text", text: "Set up the project." });
+      input.onEvent(endWith(usage({ inputTokens: 50_000, cacheReadTokens: 0 })));
+    });
+    const b = fake("b", async (input) => {
+      input.onSession("b-1");
+      input.onEvent({ kind: "assistant-text", text: "On it." });
+    });
+    const { store, service, thread } = setup([a, b]);
+    await service.send({ threadId: thread.id, text: "start" });
+    service.updateThread(thread.id, { agent: "b" });
+    await service.send({ threadId: thread.id, text: "continue" });
+
+    expect(b.prompts[0]!.startsWith("# Handoff from")).toBe(true);
+    expect(b.prompts[0]).toContain("start");
+    expect(store.listEvents(thread.id).some((e) => e.event.kind === "notice" && e.event.text.startsWith("Handed this thread's history to"))).toBe(true);
+
+    const b2 = fake("b", async (input) => {
+      input.onSession("b-1");
+      input.onEvent({ kind: "assistant-text", text: "On it." });
+    });
+    const empty = setup([fake("a", async () => {}), b2]);
+    empty.service.updateThread(empty.thread.id, { agent: "b" });
+    await empty.service.send({ threadId: empty.thread.id, text: "first" });
+    expect(b2.prompts[0]).toBe("first");
+    expect(empty.store.listEvents(empty.thread.id).some((e) => e.event.kind === "notice" && e.event.text.includes("Handed"))).toBe(false);
   });
 });
 

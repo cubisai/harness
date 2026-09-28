@@ -66,6 +66,8 @@ export class Service {
   private approvals = new Map<string, Approvals>();
   /** Threads just switched to another agent, with the last usage before the switch and how it switched, for the first turn's bloat signal. */
   private pendingSignal = new Map<string, { usage: Usage | null; mode: "handoff" | "back" }>();
+  /** Threads whose next turn goes to an agent that hasn't seen the thread since afterSeq (0 = never). */
+  private pendingCatchUp = new Map<string, { afterSeq: number }>();
 
   private drivers: Map<string, AgentDriver>;
 
@@ -235,7 +237,12 @@ export class Service {
     if (mode === "back" && !thread.bindings[bindingKey(agent)]?.resumeCursor) {
       return { ok: false, reason: `There's no earlier ${driver.label} conversation in this thread to go back to.` };
     }
-    if (mode !== "handoff") return { ok: true, mode, thread: this.applySwitch(thread, agent, mode) };
+    if (mode !== "handoff") {
+      const switched = this.applySwitch(thread, agent, mode);
+      // "Start fresh" is the user's explicit choice: nothing is carried over.
+      if (mode === "fresh") this.pendingCatchUp.delete(threadId);
+      return { ok: true, mode, thread: switched };
+    }
 
     const channel = driver.capabilities.seeding ?? "none";
     if (channel === "none" || (channel === "inject-items" && !driver.seed)) {
@@ -290,11 +297,30 @@ export class Service {
     const effort = thread.effort && efforts?.includes(thread.effort) ? thread.effort : null;
     if (mode === "fresh") this.pendingSignal.delete(thread.id);
     else this.pendingSignal.set(thread.id, { usage: this.previousTurnEnd(thread.id, thread.agent)?.usage ?? null, mode });
+    if (mode === "handoff") {
+      // The explicit handoff already seeded the new session.
+      this.pendingCatchUp.delete(thread.id);
+    } else if (mode === "back") {
+      let afterSeq: number | null = null;
+      const events = this.store.listEvents(thread.id);
+      for (let i = events.length - 1; i >= 0; i--) {
+        if (events[i]!.provenance?.agent === agent) {
+          afterSeq = events[i]!.seq;
+          break;
+        }
+      }
+      if (afterSeq === null) this.pendingCatchUp.delete(thread.id);
+      else this.pendingCatchUp.set(thread.id, { afterSeq });
+    } else {
+      const hasUser = this.store.listEvents(thread.id).some((e) => e.event.kind === "user" && !e.event.parentId);
+      if (hasUser) this.pendingCatchUp.set(thread.id, { afterSeq: 0 });
+      else this.pendingCatchUp.delete(thread.id);
+    }
     this.store.updateThread(thread.id, { agent, model: pick, permissionMode, effort });
     // A handoff or a fresh start opens a new session even when the agent has one.
     const updated = resumes ? this.store.getThread(thread.id) : this.store.updateThread(thread.id, { sessionId: null });
     if (resumes) {
-      this.emit(thread.id, { kind: "notice", text: `Back to ${driver.label}. It resumes its own conversation and hasn't seen the messages since it last ran.` });
+      this.emit(thread.id, { kind: "notice", text: `Back to ${driver.label}. It resumes its own conversation; what it missed is handed over with your next message.` });
     }
     this.broadcast({ type: "thread", thread: updated });
     return updated;
@@ -418,6 +444,7 @@ export class Service {
     const handedOver = `${lead} Continued in a new one with this thread's history handed over (${size}).`;
     if (channel === "inject-items") {
       this.emit(threadId, { kind: "notice", text: handedOver });
+      this.pendingCatchUp.delete(threadId);
       return {
         inject: async (sessionId, send) => {
           await injectWithLedger(
@@ -440,7 +467,34 @@ export class Service {
     );
     if (sent === 0) return null;
     this.emit(threadId, { kind: "notice", text: handedOver });
+    this.pendingCatchUp.delete(threadId);
     return { promptPrefix: fit.text };
+  }
+
+  /** A catch-up for an agent that missed part of this thread: prefixed to the turn, inside the checkpoint budget, through the ledger so it's never sent twice. */
+  private async catchUp(threadId: string, driver: AgentDriver, beforeSeq: number): Promise<string | null> {
+    const pending = this.pendingCatchUp.get(threadId);
+    if (!pending) return null;
+    this.pendingCatchUp.delete(threadId);
+    const cp = await buildCheckpoint(this.store, threadId, { afterSeq: pending.afterSeq, beforeSeq });
+    if (cp.messages.length === 0 && cp.commands.length === 0) return null;
+    const events = this.store.listEvents(threadId).filter((e) => e.seq < beforeSeq);
+    const count = driver.countTokens;
+    const fit = await fitCheckpoint(cp, {
+      countTokens: count ? (t) => count(t, driver.defaultModel) : undefined,
+      contextWindow: null,
+      replacedTokens: replacedTokens(events),
+    });
+    if (!fit.ok) {
+      this.emit(threadId, { kind: "notice", text: `${driver.label} starts without the earlier messages above: ${fit.reason}` });
+      return null;
+    }
+    const checkpointId = `${threadId}:${pending.afterSeq}-${cp.lastSeq}:${driver.id}:catch-up`;
+    const { sent } = await injectWithLedger(this.store, { threadId, provider: driver.id, sessionId: `new:${checkpointId}`, checkpointId }, [fit.text], `${driver.id}/first-message`, async () => {});
+    if (sent === 0) return null;
+    const size = `${fit.estimated ? "about " : ""}${formatK(fit.tokens)} tokens`;
+    this.emit(threadId, { kind: "notice", text: `Handed ${pending.afterSeq === 0 ? "this thread's history" : "what it missed"} to ${driver.label} (${size}).` });
+    return fit.text;
   }
 
   exportThread(threadId: string): ThreadExport {
@@ -498,9 +552,6 @@ export class Service {
         }
       }
       const current = this.store.getThread(thread.id);
-      if (!switched && current.sessionId === null && this.store.listEvents(thread.id).length > 1) {
-        this.emit(thread.id, { kind: "notice", text: `Now talking to ${driver.label}. It starts without the earlier messages above.` });
-      }
       // Pin what shapes the prompt prefix. A tools change is a defect (the
       // prefix changed under a session); a servers-only change is the
       // drivers' expected session rebuild. The fingerprint only moves when a
@@ -519,10 +570,15 @@ export class Service {
       let answered = false;
       const live = (delta: LiveDelta) => this.broadcast({ type: "delta", threadId: thread.id, delta });
       const scrub = (text: string) => redactSecrets(text, this.secrets());
+      const catchUp = await this.catchUp(thread.id, driver, userEvent.seq);
+      const turnPrompt = catchUp ? `${catchUp}\n---\n${prompt}` : prompt;
+      if (!catchUp && !switched && current.sessionId === null && this.store.listEvents(thread.id).length > 1) {
+        this.emit(thread.id, { kind: "notice", text: `Now talking to ${driver.label}. It starts without the earlier messages above.` });
+      }
       await driver.runTurn({
         threadId: thread.id,
         cwd,
-        prompt,
+        prompt: turnPrompt,
         sessionId: current.sessionId,
         model: thread.model,
         effort: thread.effort,
@@ -617,13 +673,14 @@ export class Service {
       : "unsupported";
     if (result !== "in-place") {
       this.broadcast({ type: "thread", thread: this.store.updateThread(threadId, { sessionId: null }) });
+      this.pendingCatchUp.set(threadId, { afterSeq: 0 });
     }
     const models = driver.models();
     const label = (id: string) => models.find((m) => m.id === id)?.label ?? id;
     const text =
       result === "in-place"
         ? `Switched the model from ${label(from)} to ${label(to)}. ${driver.label} keeps the conversation, but the prompt cache starts over, so the next reply may be slower and cost more.`
-        : `Switched the model from ${label(from)} to ${label(to)}. ${driver.label} can't change models mid-conversation, so this is a new session without the earlier messages above.`;
+        : `Switched the model from ${label(from)} to ${label(to)}. ${driver.label} can't change models mid-conversation, so this is a new session; the conversation so far is handed over with your next message.`;
     this.emit(threadId, { kind: "notice", text });
     return result;
   }

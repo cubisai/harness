@@ -87,11 +87,11 @@ function payloadText(payload: unknown): string {
  * Build a structured handoff from a thread's stored events: thread state only,
  * no reasoning, no skill or convention bodies. The target agent loads those.
  */
-export async function buildCheckpoint(store: Store, threadId: string, opts?: { beforeSeq?: number }): Promise<HandoffCheckpoint> {
+export async function buildCheckpoint(store: Store, threadId: string, opts?: { beforeSeq?: number; afterSeq?: number }): Promise<HandoffCheckpoint> {
   const thread = store.getThread(threadId);
   const cwd = thread.worktreePath ?? store.getProject(thread.projectId).path;
   const all = store.listEvents(threadId);
-  const allEvents = opts?.beforeSeq === undefined ? all : all.filter((e) => e.seq < opts.beforeSeq!);
+  const allEvents = all.filter((e) => (opts?.beforeSeq === undefined || e.seq < opts.beforeSeq) && (opts?.afterSeq === undefined || e.seq > opts.afterSeq));
   const events = allEvents.filter((e) => e.event.kind !== "thinking");
 
   let from: HandoffCheckpoint["from"] = null;

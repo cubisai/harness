@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { LiveUpdate, ThreadEvent } from "../src/shared/types";
 import type { AgentDriver, TurnInput } from "../src/main/agents/types";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
@@ -164,8 +164,8 @@ describe("Service.send", () => {
 
     service.updateThread(thread.id, { agent: "b" });
     const third = service.send({ threadId: thread.id, text: "three" });
-    await new Promise((r) => setTimeout(r, 10));
-    expect(updates.filter((u) => u.type === "permission")).toHaveLength(2);
+    // The new agent's first turn builds a catch-up (git reads) before it runs.
+    await vi.waitFor(() => expect(updates.filter((u) => u.type === "permission")).toHaveLength(2), { timeout: 5000 });
     service.interrupt(thread.id);
     await third;
   });
