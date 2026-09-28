@@ -16,6 +16,58 @@ function modelOptions(agents: AgentInfo[], agent: string, current: string): Mode
   return list.some((m) => m.id === current) ? list : [{ id: current, label: current }, ...list];
 }
 
+/** Agent, model, effort and permission mode buttons: the message box's bar, for a thread or a draft. */
+function Controls({
+  agents,
+  agent,
+  model,
+  models,
+  effort,
+  defaultEffort,
+  permissionMode,
+  disabled,
+  onAgent,
+  onModel,
+  onEffort,
+  onPermission,
+}: {
+  agents: AgentInfo[];
+  agent: string;
+  model: string;
+  models: ModelOption[];
+  effort: string | null;
+  defaultEffort?: string;
+  permissionMode: PermissionMode;
+  disabled?: boolean;
+  onAgent(id: string): void;
+  onModel(id: string): void;
+  onEffort(effort: string | null): void;
+  onPermission(mode: PermissionMode): void;
+}) {
+  return (
+    <div className="thread-controls">
+      {agents.length > 1 && <AgentPicker agents={agents} current={agent} disabled={disabled} onPick={onAgent} />}
+      <ModelPicker models={models} current={model} disabled={disabled} placement="up" onPick={onModel} />
+      <EffortPicker options={models.find((m) => m.id === model)?.efforts ?? []} current={effort} defaultEffort={defaultEffort} disabled={disabled} onPick={onEffort} />
+      <div className="segmented compact" role="radiogroup" aria-label="Permissions">
+        {MODES.map((m) => (
+          <button
+            key={m.id}
+            role="radio"
+            aria-checked={permissionMode === m.id}
+            className={permissionMode === m.id ? "on" : ""}
+            title={m.title}
+            disabled={disabled}
+            onClick={() => onPermission(m.id)}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** Agent, model, reasoning effort and permission mode for the open thread, in the message box's bar. */
 export function ThreadControls({ thread, running }: { thread: Thread; running: boolean }) {
   const agents = useStore((s) => s.agents);
@@ -23,33 +75,47 @@ export function ThreadControls({ thread, running }: { thread: Thread; running: b
   const models = modelOptions(agents, thread.agent, thread.model);
   const model = models.find((m) => m.id === thread.model);
   return (
-    <div className="thread-controls">
-      {agents.length > 1 && (
-        <AgentPicker agents={agents} current={thread.agent} disabled={running} onPick={openSwitch} />
-      )}
-      <ModelPicker models={models} current={thread.model} disabled={running} placement="up" onPick={(m) => void updateThread({ model: m })} />
-      <EffortPicker
-        options={model?.efforts ?? []}
-        current={thread.effort}
-        defaultEffort={model?.defaultEffort}
-        disabled={running}
-        onPick={(effort) => void updateThread({ effort })}
-      />
-      <div className="segmented compact" role="radiogroup" aria-label="Permissions">
-        {MODES.map((m) => (
-          <button
-            key={m.id}
-            role="radio"
-            aria-checked={thread.permissionMode === m.id}
-            className={thread.permissionMode === m.id ? "on" : ""}
-            title={m.title}
-            disabled={running}
-            onClick={() => void updateThread({ permissionMode: m.id })}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
-    </div>
+    <Controls
+      agents={agents}
+      agent={thread.agent}
+      model={thread.model}
+      models={models}
+      effort={thread.effort}
+      defaultEffort={model?.defaultEffort}
+      permissionMode={thread.permissionMode}
+      disabled={running}
+      onAgent={openSwitch}
+      onModel={(m) => void updateThread({ model: m })}
+      onEffort={(effort) => void updateThread({ effort })}
+      onPermission={(permissionMode) => void updateThread({ permissionMode })}
+    />
+  );
+}
+
+/** The same controls before a thread exists: picks land in the store's draft, for the thread about to start. */
+export function DraftControls() {
+  const agents = useStore((s) => s.agents);
+  const lastAgent = useStore((s) => s.lastAgent);
+  const settings = useStore((s) => s.settings);
+  const draft = useStore((s) => s.draft);
+  const setDraft = useStore((s) => s.setDraft);
+  if (!agents.length) return null;
+  const agent = draft.agent ?? lastAgent ?? settings?.defaultAgent ?? agents[0]!.id;
+  const model = draft.model ?? agents.find((a) => a.id === agent)?.defaultModel ?? "";
+  const models = modelOptions(agents, agent, model);
+  return (
+    <Controls
+      agents={agents}
+      agent={agent}
+      model={model}
+      models={models}
+      effort={draft.effort ?? null}
+      defaultEffort={models.find((m) => m.id === model)?.defaultEffort}
+      permissionMode={draft.permissionMode ?? settings?.defaultPermissionMode ?? "ask"}
+      onAgent={(id) => setDraft({ agent: id })}
+      onModel={(m) => setDraft({ model: m })}
+      onEffort={(effort) => setDraft({ effort })}
+      onPermission={(permissionMode) => setDraft({ permissionMode })}
+    />
   );
 }

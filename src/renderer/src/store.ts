@@ -10,6 +10,7 @@ import type {
   AgentInfo,
   LiveUpdate,
   PaneLayout,
+  PermissionMode,
   PermissionRequest,
   Project,
   SkillEntry,
@@ -28,6 +29,14 @@ import { threadSeen, turnEnded, type FinishedTurn } from "./inbox";
 export type InspectorTab = "changes" | "browser" | "files";
 
 export type LibraryTab = "experts" | "skills" | "connectors" | "mcp" | "agents";
+
+/** A new thread's pickers before it exists; reset once the thread is created. */
+interface Draft {
+  agent?: string;
+  model?: string;
+  effort?: string | null;
+  permissionMode?: PermissionMode;
+}
 
 interface State {
   projects: Project[];
@@ -60,6 +69,9 @@ interface State {
   librarySkill: string | null;
   /** The agent new threads start with: the last one picked. */
   lastAgent: string | null;
+  /** The pickers for a thread that hasn't been created yet. */
+  draft: Draft;
+  setDraft(patch: Partial<Draft>): void;
   selectedProjectId: string | null;
   selectedThreadId: string | null;
   events: Record<string, StoredEvent[]>; // by thread id
@@ -168,6 +180,15 @@ function findThread(threads: Record<string, Thread[]>, id: string): Thread | und
     .find((t) => t.id === id);
 }
 
+/** The updates a freshly created thread needs to match the user's draft picks. */
+function draftPatch(draft: Draft, thread: Thread): Partial<Pick<Thread, "model" | "effort" | "permissionMode">> {
+  const patch: Partial<Pick<Thread, "model" | "effort" | "permissionMode">> = {};
+  if (draft.model !== undefined && draft.model !== thread.model) patch.model = draft.model;
+  if (draft.effort !== undefined && draft.effort !== thread.effort) patch.effort = draft.effort;
+  if (draft.permissionMode !== undefined && draft.permissionMode !== thread.permissionMode) patch.permissionMode = draft.permissionMode;
+  return patch;
+}
+
 function ipcErrorText(err: unknown): string {
   const text = err instanceof Error ? err.message : String(err);
   return text.replace(/^Error invoking remote method '[^']+': (Error: )?/, "");
@@ -251,6 +272,15 @@ export const useStore = create<State>((set, get) => ({
     set({ paletteOpen: open });
   },
   openSwitch(agent) {
+    const id = get().selectedThreadId;
+    const events = id ? get().events[id] : undefined;
+    // A thread with its (empty) history loaded has nothing to carry over: switch it without the dialog.
+    if (agent && events && !events.some((e) => e.event.kind === "user")) {
+      void get().switchAgent(agent, "fresh").then((err) => {
+        if (err !== null) get().showNotice(err);
+      });
+      return;
+    }
     set({ pendingSwitch: agent });
   },
   async switchAgent(agent, mode) {
@@ -279,6 +309,18 @@ export const useStore = create<State>((set, get) => ({
     return null;
   },
   lastAgent: null,
+  draft: {},
+  setDraft(patch) {
+    set((s) => {
+      const draft = { ...s.draft, ...patch };
+      // A new agent brings its own model and effort; drop the old picks.
+      if (patch.agent !== undefined && patch.agent !== s.draft.agent) {
+        delete draft.model;
+        delete draft.effort;
+      }
+      return { draft };
+    });
+  },
   selectedProjectId: null,
   selectedThreadId: null,
   events: {},
@@ -471,8 +513,11 @@ export const useStore = create<State>((set, get) => ({
     const projectId = get().selectedProjectId;
     if (!projectId) return;
     let thread: Thread;
+    const draft = get().draft;
     try {
-      thread = await api().createThread(projectId, get().lastAgent ?? undefined, opts);
+      thread = await api().createThread(projectId, draft.agent ?? get().lastAgent ?? undefined, opts);
+      const patch = draftPatch(draft, thread);
+      if (Object.keys(patch).length) thread = await api().updateThread(thread.id, patch);
     } catch (err) {
       get().showNotice(ipcErrorText(err));
       return;
@@ -482,6 +527,8 @@ export const useStore = create<State>((set, get) => ({
       threads: { ...s.threads, [projectId]: upsertThread(s.threads[projectId], thread) },
       events: { ...s.events, [thread.id]: [] },
       selectedThreadId: thread.id,
+      draft: {},
+      lastAgent: thread.agent,
     }));
   },
 
@@ -489,8 +536,11 @@ export const useStore = create<State>((set, get) => ({
     const projectId = get().selectedProjectId;
     if (!projectId) return;
     let thread: Thread;
+    const draft = get().draft;
     try {
-      thread = await api().createThread(projectId, get().lastAgent ?? undefined, opts);
+      thread = await api().createThread(projectId, draft.agent ?? get().lastAgent ?? undefined, opts);
+      const patch = draftPatch(draft, thread);
+      if (Object.keys(patch).length) thread = await api().updateThread(thread.id, patch);
     } catch (err) {
       get().showNotice(ipcErrorText(err));
       return;
@@ -498,6 +548,8 @@ export const useStore = create<State>((set, get) => ({
     set((s) => ({
       threads: { ...s.threads, [projectId]: upsertThread(s.threads[projectId], thread) },
       events: { ...s.events, [thread.id]: [] },
+      draft: {},
+      lastAgent: thread.agent,
     }));
     await get().send(text, skill, thread.id, mentions);
     get().showNotice("Started in the background. The Message Center says when it's done.");
