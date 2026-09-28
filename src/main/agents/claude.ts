@@ -3,8 +3,8 @@ import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
 import type { EffortLevel, HookCallback, ModelInfo, Options, PermissionResult, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
-import type { McpServerEntry, ModelOption, PermissionMode, ThreadEvent } from "../../shared/types";
-import { canonicalTool, type EditResult, type RunPayload, type RunResult } from "../../shared/tools";
+import type { McpServerEntry, ModelOption, PermissionMode, PlanEntry, ThreadEvent } from "../../shared/types";
+import { canonicalTool, clipSummary, type EditResult, type RunPayload, type RunResult } from "../../shared/tools";
 import { diffSummary, unifiedDiff } from "../../shared/diff";
 import type { ToolDiff } from "../../shared/tools";
 import { forClaude } from "../mcp/servers";
@@ -316,6 +316,8 @@ export interface TurnState {
   pending: Map<string, { kind: "text" | "thinking"; text: string }>;
   /** tool_use id → that call's canonical payload, so its result can be shaped the same way. */
   toolPayloads: Map<string, RunPayload | { diff: ToolDiff[] } | undefined>;
+  /** tool_use ids of TodoWrite calls, whose plan replaced their tool rows; their results are skipped too. */
+  planToolIds: Set<string>;
   /** The error text already shown this turn, so the SDK's closing error doesn't repeat it. */
   reportedError: string | null;
 }
@@ -331,6 +333,7 @@ export function newTurnState(): TurnState {
     blocksSeen: new Map(),
     pending: new Map(),
     toolPayloads: new Map(),
+    planToolIds: new Set(),
     reportedError: null,
   };
 }
@@ -452,31 +455,56 @@ export function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnS
         } else if (block.type === "tool_use") {
           turn.pending.delete(itemId);
           const toolInput = (block.input ?? {}) as Record<string, unknown>;
+          // TodoWrite is a plan, not a tool: emit plan entries and skip both its
+          // row and (below) its tool_result.
+          if (block.name === "TodoWrite" && Array.isArray(toolInput.todos)) {
+            const entries = todoPlanEntries(toolInput.todos);
+            if (entries) {
+              turn.planToolIds.add(block.id);
+              input.onEvent({ kind: "plan", entries });
+              continue;
+            }
+          }
           // The canonical name plus, for commands and file edits, a payload
           // every adapter emits the same way.
-          const name = canonicalTool(block.name);
+          const isAgent = block.name === "Task" || block.name === "Agent";
+          const name = isAgent ? "Agent" : canonicalTool(block.name);
           let payload: RunPayload | { diff: ToolDiff[] } | undefined;
+          let eventPayload: unknown;
           if (block.name === "Bash" && typeof toolInput.command === "string") {
             payload = { command: toolInput.command };
+            eventPayload = payload;
           } else if (block.name === "Edit" && typeof toolInput.file_path === "string" && typeof toolInput.old_string === "string" && typeof toolInput.new_string === "string") {
             payload = {
               ...toolInput,
               diff: [{ path: toolInput.file_path, unified: unifiedDiff(toolInput.file_path, toolInput.old_string, toolInput.new_string) }],
             };
+            eventPayload = payload;
           } else if (block.name === "Write" && typeof toolInput.file_path === "string" && typeof toolInput.content === "string") {
             payload = {
               ...toolInput,
               diff: [{ path: toolInput.file_path, unified: unifiedDiff(toolInput.file_path, "", toolInput.content) }],
             };
+            eventPayload = payload;
+          } else if (Object.keys(toolInput).length) {
+            // Any other tool keeps its input as the payload, so its row shows
+            // the arguments instead of "No details recorded."
+            eventPayload = toolInput;
           }
+          const summary =
+            isAgent && typeof toolInput.description === "string" && typeof toolInput.subagent_type === "string"
+              ? clipSummary(`${toolInput.description} · ${toolInput.subagent_type}`)
+              : summarizeToolInput(block.name, toolInput);
           input.onEvent({
             kind: "tool-use",
             toolUseId: block.id,
             name,
-            summary: summarizeToolInput(block.name, toolInput),
+            summary,
             itemId,
-            ...(payload ? { payload } : {}),
+            ...(eventPayload !== undefined ? { payload: eventPayload } : {}),
           });
+          // Only shaped payloads drive the result shape below; a generic input
+          // must not be mistaken for a Run command or an Edit diff.
           turn.toolPayloads.set(block.id, payload);
         }
       }
@@ -489,18 +517,27 @@ export function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnS
       if (!Array.isArray(content)) return;
       for (const block of content) {
         if (block.type === "tool_result") {
+          // A TodoWrite call already showed up as a plan event; its result is not a tool row.
+          if (turn.planToolIds.has(block.tool_use_id)) {
+            turn.planToolIds.delete(block.tool_use_id);
+            continue;
+          }
           const isError = Boolean(block.is_error);
           // Shape the result like the other adapters: a Run carries its output,
           // an Edit carries the diff its call described (with a +/− stat).
           const used = turn.toolPayloads.get(block.tool_use_id);
           turn.toolPayloads.delete(block.tool_use_id);
-          let payload: RunResult | EditResult | undefined;
+          let payload: RunResult | EditResult | string | undefined;
           let summary = summarizeToolResult(block.content);
           if (used && "command" in used) {
             payload = { exitCode: null, output: resultText(block.content) };
           } else if (used && "diff" in used && used.diff.length && !isError) {
             payload = { diff: used.diff };
             summary = diffSummary(used.diff);
+          } else {
+            // Any other tool's result keeps its text, so the row's Output has it.
+            const text = resultText(block.content);
+            if (text) payload = text;
           }
           input.onEvent({
             kind: "tool-result",
@@ -530,6 +567,19 @@ function resultText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content.map((b) => (b && typeof b === "object" && "text" in b && typeof b.text === "string" ? b.text : "")).join(" ");
+}
+
+/** A TodoWrite's todos as canonical plan entries, or null when the list isn't one. */
+function todoPlanEntries(todos: unknown[]): PlanEntry[] | null {
+  const entries: PlanEntry[] = [];
+  for (const item of todos) {
+    if (!item || typeof item !== "object") return null;
+    const { content, status } = item as { content?: unknown; status?: unknown };
+    if (typeof content !== "string" || typeof status !== "string") return null;
+    if (status !== "pending" && status !== "in_progress" && status !== "completed") continue;
+    entries.push({ content, status });
+  }
+  return entries;
 }
 
 function describeError(code: string): string {

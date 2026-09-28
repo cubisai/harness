@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { PermissionDecision, ThreadEvent } from "../src/shared/types";
 import { z } from "zod";
-import { codexDecision, codexPolicy, codexToolConfig, createCodexDriver, turnEndFromUsage } from "../src/main/agents/codex";
+import { codexDecision, codexPolicy, codexToolConfig, createCodexDriver, toolFor, turnEndFromUsage } from "../src/main/agents/codex";
 import type { LimitsPatch } from "../src/main/agents/limits";
 import type { HarnessTool, SeedRequest, TurnInput } from "../src/main/agents/types";
 import { Store } from "../src/main/db";
@@ -504,7 +504,7 @@ describe("Codex with the harness's tools", () => {
     await d.runTurn(t.input);
     expect(t.asked).toEqual(["expression: 1+1"]);
     expect(t.events.slice(1, 3)).toEqual([
-      { kind: "tool-use", toolUseId: "t1", name: "browser_eval", summary: '{"expression":"1+1"}' },
+      { kind: "tool-use", toolUseId: "t1", name: "browser_eval", summary: '{"expression":"1+1"}', payload: { expression: "1+1" } },
       {
         kind: "tool-result",
         toolUseId: "t1",
@@ -539,6 +539,17 @@ describe("Codex with the harness's tools", () => {
     const probe = turn("unsubs", { sessionId: first.sessions[0]!, tools: [evalTool], permissionMode: "full" });
     await d.runTurn(probe.input);
     expect(probe.events.find((e) => e.kind === "assistant-text")).toMatchObject({ text: "0" });
+  });
+});
+
+describe("toolFor payloads", () => {
+  it("carries an MCP call's arguments and a web search's query", () => {
+    expect(toolFor({ type: "mcpToolCall", id: "m1", server: "unskilled", tool: "browser_eval", status: "inProgress", arguments: { expression: "1+1" } })).toMatchObject({
+      payload: { expression: "1+1" },
+    });
+    expect(toolFor({ type: "mcpToolCall", id: "m2", server: "docs", tool: "whoami", status: "inProgress", arguments: {} })).not.toHaveProperty("payload");
+    expect(toolFor({ type: "webSearch", id: "w1", query: "cats" })).toMatchObject({ name: "Search", payload: { query: "cats" } });
+    expect(toolFor({ type: "webSearch", id: "w2" })).not.toHaveProperty("payload");
   });
 });
 

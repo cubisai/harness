@@ -54,6 +54,19 @@ export function ThreadView({ threadId }: { threadId: string }) {
     for (const e of events) if (e.event.kind === "tool-result") map.set(e.event.toolUseId, e.event);
     return map;
   }, [events]);
+  // Agents resend the whole todo list on every update: show only a turn's latest plan.
+  const stalePlans = useMemo(() => {
+    const stale = new Set<number>();
+    let last: number | null = null;
+    for (const e of events) {
+      if (e.event.kind === "user" || e.event.kind === "turn-end") last = null;
+      else if (e.event.kind === "plan") {
+        if (last !== null) stale.add(last);
+        last = e.seq;
+      }
+    }
+    return stale;
+  }, [events]);
 
   // Stay pinned to the bottom while the user hasn't scrolled away.
   const pinned = useRef(true);
@@ -83,9 +96,9 @@ export function ThreadView({ threadId }: { threadId: string }) {
       }}
     >
       <div className="thread-inner" ref={inner}>
-        {events.map((e) => (
-          <EventRow key={e.seq} stored={e} results={results} running={running} threadId={threadId} />
-        ))}
+        {events.map((e) =>
+          stalePlans.has(e.seq) ? null : <EventRow key={e.seq} stored={e} results={results} running={running} threadId={threadId} />,
+        )}
         {reasoningMode === "text" &&
           reasoningItems.map((item, i) => (
             <LiveReasoning key={item.key} text={item.text} newest={i === reasoningItems.length - 1 && textItems.length === 0} />
@@ -198,6 +211,9 @@ export function ToolRow({ tool, result, running, open, onToggle }: { tool: ToolE
   const run = runResultOf(result?.payload);
   const hasInput = tool.payload !== undefined && diffs === null;
   const hasOutput = result?.payload !== undefined && diffs === null && run === null;
+  // A Run's input is its command, an Agent's is its prompt: show those as text, not JSON.
+  const command = runPayloadOf(tool.payload);
+  const agent = command === null ? agentPromptOf(tool.payload) : null;
   return (
     <details className="tool" open={open} onToggle={(e) => onToggle(e.currentTarget.open)}>
       <summary className="tool-row" title={result?.summary ?? tool.summary}>
@@ -227,16 +243,18 @@ export function ToolRow({ tool, result, running, open, onToggle }: { tool: ToolE
               <DiffView diffs={diffs} />
             </div>
           )}
+          {hasInput && (
+            <div className="tool-section">
+              <div className="tool-label">{command !== null ? "Command" : agent !== null ? "Prompt" : "Input"}</div>
+              <pre className="tool-pre">
+                {command !== null ? `$ ${command}` : agent !== null ? (agent.subagent ? `subagent: ${agent.subagent}\n${agent.prompt}` : agent.prompt) : payloadText(tool.payload)}
+              </pre>
+            </div>
+          )}
           {run && (
             <div className="tool-section">
               <div className="tool-label">{typeof run.exitCode === "number" ? `Output (exit ${run.exitCode})` : "Output"}</div>
               <pre className="tool-pre">{run.output}</pre>
-            </div>
-          )}
-          {hasInput && (
-            <div className="tool-section">
-              <div className="tool-label">Input</div>
-              <pre className="tool-pre">{payloadText(tool.payload)}</pre>
             </div>
           )}
           {hasOutput && (
@@ -257,6 +275,22 @@ function runResultOf(v: unknown): RunResult | null {
   if (!v || typeof v !== "object" || Array.isArray(v)) return null;
   const p = v as { exitCode?: unknown; output?: unknown };
   return (typeof p.exitCode === "number" || p.exitCode === null) && typeof p.output === "string" ? { exitCode: p.exitCode, output: p.output } : null;
+}
+
+/** A Run tool input's command, or null for any other payload. */
+function runPayloadOf(v: unknown): string | null {
+  // Every adapter's Run payload is exactly `{ command }`; other tools with a command argument keep their JSON.
+  if (!v || typeof v !== "object" || Array.isArray(v) || Object.keys(v).length !== 1) return null;
+  const command = (v as { command?: unknown }).command;
+  return typeof command === "string" ? command : null;
+}
+
+/** An Agent tool input's prompt (and subagent kind), or null for any other payload. */
+function agentPromptOf(v: unknown): { prompt: string; subagent?: string } | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const p = v as { prompt?: unknown; subagent_type?: unknown };
+  if (typeof p.prompt !== "string") return null;
+  return { prompt: p.prompt, ...(typeof p.subagent_type === "string" ? { subagent: p.subagent_type } : {}) };
 }
 
 function isBlobStub(v: unknown): v is { blobRef: string; preview: string; bytes?: number } {

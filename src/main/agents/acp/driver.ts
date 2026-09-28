@@ -59,6 +59,7 @@ interface ToolCallFields {
   kind?: ToolKind | null;
   status?: "pending" | "in_progress" | "completed" | "failed" | null;
   rawInput?: unknown;
+  rawOutput?: unknown;
   content?: { type: string; content?: { type: string; text?: string } }[] | null;
   locations?: { path: string; line?: number | null }[] | null;
 }
@@ -172,6 +173,11 @@ interface TurnState {
       announced: boolean;
       title?: string | null;
       rawInput?: unknown;
+      rawOutput?: unknown;
+      /** The tool-use payload, so a write's result can repeat its diff. */
+      payload?: unknown;
+      /** The last plan emitted for a todowrite call, so a repeat isn't re-sent. */
+      planKey?: string;
       locations?: ToolCallFields["locations"];
     }
   >;
@@ -341,6 +347,25 @@ export function createAcpDriver(
         if (!t) return;
         const u = update as ToolCallFields & { sessionUpdate: string };
         let tool = t.tools.get(u.toolCallId);
+        const incoming = hasInput(u.rawInput) ? u.rawInput : undefined;
+        // OpenCode's todowrite is a tool call carrying a plan, not a tool: fold
+        // each distinct list into a plan event and show no row for it.
+        const todoEntries = planEntriesFromTodos(incoming ?? tool?.rawInput);
+        if (todoEntries) {
+          if (!tool) {
+            flushText(t);
+            tool = { name: "plan", done: true, announced: true };
+            t.tools.set(u.toolCallId, tool);
+          }
+          tool.rawInput = incoming ?? tool.rawInput;
+          tool.rawOutput = u.rawOutput ?? tool.rawOutput;
+          const key = JSON.stringify(todoEntries);
+          if (tool.planKey !== key) {
+            tool.planKey = key;
+            t.input.onEvent({ kind: "plan", entries: todoEntries });
+          }
+          return;
+        }
         if (!tool) {
           flushText(t);
           tool = { name: u.title ?? u.kind ?? "tool", kind: u.kind, done: false, announced: false };
@@ -349,8 +374,9 @@ export function createAcpDriver(
         // Keep what earlier updates said: a later one may carry only the part that changed.
         tool.title = u.title ?? tool.title;
         tool.kind = u.kind ?? tool.kind;
-        tool.rawInput = hasInput(u.rawInput) ? u.rawInput : tool.rawInput;
+        tool.rawInput = incoming ?? tool.rawInput;
         tool.locations = u.locations?.length ? u.locations : tool.locations;
+        tool.rawOutput = u.rawOutput ?? tool.rawOutput;
         const text = (u.content ?? []).map((c) => c.content?.text ?? "").join(" ");
         const terminal = u.status === "completed" || u.status === "failed";
         if (!tool.announced) {
@@ -358,23 +384,25 @@ export function createAcpDriver(
           // row announced from the first message would say just "bash" or nothing.
           // Wait for the arguments, but never past the call's first output or its end.
           const merged = { ...u, title: tool.title, kind: tool.kind, rawInput: tool.rawInput, locations: tool.locations };
-          const raw = merged.rawInput as { command?: unknown } | null | undefined;
+          const raw = merged.rawInput as Record<string, unknown> | null | undefined;
           const command = typeof raw?.command === "string" ? raw.command : undefined;
           const own = harnessTool(merged);
-          const summary = own?.summary ?? toolSummary(merged, command);
+          const subagent = merged.kind === "think" && typeof raw?.subagent_type === "string";
+          const summary = own?.summary ?? (subagent ? subagentSummary(raw!, merged.title) : toolSummary(merged, command));
           // Vague: nothing to show, or only the tool's bare name ("bash", "edit").
           const vague = summary === "" || (/^[a-z_]+$/.test(summary) && summary === merged.title);
           if (!vague || text || terminal) {
             tool.announced = true;
             // An execute call's payload names the command even when rawInput
             // doesn't carry one (the title does), like the other adapters' Run.
-            const payload: RunPayload | undefined = merged.kind === "execute" ? { command: command ?? merged.title ?? "" } : undefined;
+            const payload = toolUsePayload(merged.kind, merged.rawInput, command ?? merged.title ?? "");
+            tool.payload = payload;
             t.input.onEvent({
               kind: "tool-use",
               toolUseId: u.toolCallId,
-              name: own?.name ?? kindLabel(merged.kind),
+              name: own?.name ?? (subagent ? "Agent" : kindLabel(merged.kind)),
               summary,
-              ...(payload ? { payload } : {}),
+              ...(payload !== undefined ? { payload } : {}),
             });
           }
         }
@@ -389,13 +417,14 @@ export function createAcpDriver(
         if (!tool.done && (u.status === "completed" || u.status === "failed")) {
           tool.done = true;
           // A terminal update may omit the kind its tool_call carried.
-          const payload = resultPayload({ ...u, kind: u.kind ?? tool.kind }, text);
+          const payload = resultPayload({ ...u, kind: u.kind ?? tool.kind }, text, tool);
           const diff = u.status === "completed" && payload && typeof payload === "object" && "diff" in payload ? (payload as EditResult).diff : [];
+          const agentText = isSubagent(tool) ? taskResultText(outputText(tool.rawOutput)) : "";
           t.input.onEvent({
             kind: "tool-result",
             toolUseId: u.toolCallId,
             isError: u.status === "failed",
-            summary: diff.length ? diffSummary(diff) : summarizeToolResult(text) || (u.status === "failed" ? "Failed" : "Done"),
+            summary: diff.length ? diffSummary(diff) : summarizeToolResult(agentText) || summarizeToolResult(text) || (u.status === "failed" ? "Failed" : "Done"),
             ...(payload !== null ? { payload } : {}),
           });
         }
@@ -853,10 +882,90 @@ export function diffContent(content: ToolCallFields["content"] | null | undefine
   return diffs.length ? { diff: diffs } : null;
 }
 
+/**
+ * The tool-use payload for a call: the Run command for an execute, the write's
+ * diff for an OpenCode write (filePath + content, no oldString), and otherwise
+ * the remembered raw input when there is any. Undefined keeps the event bare.
+ */
+export function toolUsePayload(kind: ToolKind | null | undefined, rawInput: unknown, command: string): unknown | undefined {
+  if (kind === "execute") return { command } satisfies RunPayload;
+  const raw = rawInput as Record<string, unknown> | null | undefined;
+  if (kind === "edit" && typeof raw?.filePath === "string" && typeof raw.content === "string" && typeof raw.oldString !== "string") {
+    return { ...raw, diff: [{ path: raw.filePath, unified: unifiedDiff(raw.filePath, "", raw.content) }] };
+  }
+  return hasInput(rawInput) ? rawInput : undefined;
+}
+
+/** A subagent call's summary: what it was asked to find, and by which agent kind. */
+function subagentSummary(raw: Record<string, unknown>, title: string | null | undefined): string {
+  const description = typeof raw.description === "string" ? raw.description : title ?? "";
+  return clipSummary(`${description} · ${raw.subagent_type as string}`);
+}
+
+/**
+ * A todowrite's `todos` as canonical plan entries, or null when the input is
+ * not one. Cancelled items are dropped; a priority rides along only when known.
+ */
+export function planEntriesFromTodos(raw: unknown): PlanEntry[] | null {
+  if (!raw || typeof raw !== "object") return null;
+  const todos = (raw as { todos?: unknown }).todos;
+  if (!Array.isArray(todos)) return null;
+  const entries: PlanEntry[] = [];
+  for (const item of todos) {
+    if (!item || typeof item !== "object") return null;
+    const { content, status, priority } = item as { content?: unknown; status?: unknown; priority?: unknown };
+    if (typeof content !== "string" || typeof status !== "string") return null;
+    if (status !== "pending" && status !== "in_progress" && status !== "completed") continue;
+    entries.push({ content, status, ...(priority === "high" || priority === "medium" || priority === "low" ? { priority } : {}) });
+  }
+  return entries;
+}
+
+/** The text inside a `<task_result>…</task_result>` wrapper, or the whole output when there is none. */
+export function taskResultText(output: string): string {
+  const m = /<task_result>([\s\S]*?)<\/task_result>/.exec(output);
+  return (m ? m[1]! : output).trim();
+}
+
+/** A tool call's rawOutput object, as far as this driver reads it. */
+function rawOutputOf(v: unknown): { output?: unknown; error?: unknown } | null {
+  return v && typeof v === "object" ? (v as { output?: unknown; error?: unknown }) : null;
+}
+
+/** A rawOutput's `output` text, or "" when it isn't a non-empty string. */
+function outputText(v: unknown): string {
+  const o = rawOutputOf(v);
+  return typeof o?.output === "string" ? o.output : "";
+}
+
+/** Whether a remembered call is a subagent (OpenCode's think task). */
+function isSubagent(tool: { kind?: ToolKind | null; rawInput?: unknown } | null | undefined): boolean {
+  if (!tool || tool.kind !== "think") return false;
+  const raw = tool.rawInput as { subagent_type?: unknown } | null | undefined;
+  return typeof raw?.subagent_type === "string";
+}
+
 /** The canonical tool-result payload for a terminal tool_call update, or null when there is none. */
-export function resultPayload(u: ToolCallFields, text: string): unknown | null {
+export function resultPayload(
+  u: ToolCallFields,
+  text: string,
+  tool?: { kind?: ToolKind | null; rawInput?: unknown; payload?: unknown; rawOutput?: unknown },
+): unknown | null {
   const diffs = diffContent(u.content);
   if (diffs) return diffs;
   if (u.kind === "execute") return { exitCode: null, output: text } satisfies RunResult;
-  return null;
+  // A write's tool-use payload carried its diff; the completed result repeats it.
+  const carried = tool?.payload && typeof tool.payload === "object" && "diff" in (tool.payload as object) ? (tool.payload as EditResult).diff : null;
+  if (carried && u.status === "completed") return { diff: carried };
+  const rawOutput = rawOutputOf(u.rawOutput ?? tool?.rawOutput);
+  const output = typeof rawOutput?.output === "string" ? rawOutput.output : "";
+  // A subagent's output is the task envelope; its payload is the text inside it.
+  if (isSubagent({ kind: u.kind ?? tool?.kind, rawInput: tool?.rawInput })) {
+    const inner = taskResultText(output);
+    if (inner) return inner;
+  }
+  if (output) return output;
+  const error = typeof rawOutput?.error === "string" ? rawOutput.error : "";
+  if (error) return error;
+  return text || null;
 }
