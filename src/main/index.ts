@@ -163,6 +163,8 @@ async function main(): Promise<void> {
   await app.whenReady();
   // A dev run is the stock Electron binary: give its Dock tile the app's own icon.
   if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(appIcon());
+  // The About panel names the running binary, which in a dev run is "Electron".
+  app.setAboutPanelOptions({ applicationName: "CubiQ", applicationVersion: app.getVersion(), copyright: "Copyright © 2026 CubiQ contributors" });
 
   const userData = app.getPath("userData");
   mkdirSync(userData, { recursive: true });
@@ -561,7 +563,7 @@ async function main(): Promise<void> {
     const owner = BrowserWindow.fromWebContents(event.sender);
     const options: Electron.SaveDialogOptions = {
       title: "Export settings",
-      defaultPath: "unskilled-settings.json",
+      defaultPath: "cubiq-settings.json",
       filters: [{ name: "Settings export", extensions: ["json"] }],
     };
     const res = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options);
