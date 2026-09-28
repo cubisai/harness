@@ -1,10 +1,10 @@
-import { readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { PermissionDecision, ThreadEvent } from "../src/shared/types";
 import { z } from "zod";
-import { codexDecision, codexPolicy, codexToolConfig, createCodexDriver, toolFor, turnEndFromUsage } from "../src/main/agents/codex";
+import { codexAuthStamp, codexDecision, codexPolicy, codexToolConfig, createCodexDriver, toolFor, turnEndFromUsage } from "../src/main/agents/codex";
 import type { LimitsPatch } from "../src/main/agents/limits";
 import type { HarnessTool, SeedRequest, TurnInput } from "../src/main/agents/types";
 import { Store } from "../src/main/db";
@@ -107,6 +107,42 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 });
 `;
 
+/** Records spawn/exit order across app-server processes, for the login-change restart. */
+const ORDER_PROBE = `
+const fs = require("node:fs");
+const readline = require("node:readline");
+const send = (m) => process.stdout.write(JSON.stringify(m) + "\\n");
+const log = (e) => fs.appendFileSync(process.env.ORDER_PROBE, JSON.stringify(e) + "\\n");
+log({ e: "spawn", pid: process.pid });
+let logged = false;
+const bye = () => {
+  if (!logged) {
+    logged = true;
+    log({ e: "exit", pid: process.pid });
+  }
+  process.exit(0);
+};
+process.once("exit", bye);
+process.once("SIGTERM", bye);
+process.once("SIGINT", bye);
+readline.createInterface({ input: process.stdin }).on("line", (line) => {
+  const msg = JSON.parse(line);
+  if (msg.id === undefined) return;
+  const { id, method, params } = msg;
+  if (method === "initialize") return send({ id, result: { userAgent: "probe" } });
+  if (method === "model/list") return send({ id, result: { data: [] } });
+  if (method === "thread/start" || method === "thread/resume") return send({ id, result: { thread: { id: "probe-thread" } } });
+  if (method === "turn/start") {
+    const turn = { id: "turn-1", status: "inProgress", error: null, durationMs: null };
+    send({ id, result: { turn } });
+    send({ method: "turn/started", params: { threadId: params.threadId, turn } });
+    send({ method: "turn/completed", params: { threadId: params.threadId, turn: { ...turn, status: "completed", durationMs: 1 } } });
+    return;
+  }
+  send({ id, result: {} });
+});
+`;
+
 function driver() {
   const d = createCodexDriver({ command: process.execPath, args: [MOCK], clientVersion: "test", skillsDir: () => "/skills/here" });
   closeAfter(() => d.dispose?.());
@@ -154,10 +190,10 @@ function turn(prompt: string, over: Partial<TurnInput> = {}) {
 }
 
 describe("Codex login changes", () => {
-  it("starts a fresh app-server when auth.json changed, and keeps the running one otherwise", async () => {
+  it("starts a fresh app-server when the login changed, and keeps the running one otherwise", async () => {
     const home = tempDir();
     const auth = join(home, "auth.json");
-    writeFileSync(auth, "{}");
+    writeFileSync(auth, JSON.stringify({ auth_mode: "chatgpt", tokens: { account_id: "acct-1", access_token: "a" } }));
     const saved = process.env.CODEX_HOME;
     process.env.CODEX_HOME = home;
     try {
@@ -168,16 +204,63 @@ describe("Codex login changes", () => {
       await d.runTurn(same.input);
       // Same process: the mock numbers threads on, so the second is thread-2.
       expect([first.sessions[0], same.sessions[0]]).toEqual(["thread-1", "thread-2"]);
-      utimesSync(auth, new Date(), new Date(Date.now() + 60_000)); // `codex login` rewrote it
+      // A token refresh rewrote the file, but the login is the same: the running app-server stays.
+      writeFileSync(auth, JSON.stringify({ auth_mode: "chatgpt", tokens: { account_id: "acct-1", access_token: "b" }, last_refresh: "2026-01-01T00:00:00Z" }));
+      const refreshed = turn("hi");
+      await d.runTurn(refreshed.input);
+      expect(refreshed.sessions[0]).toBe("thread-3");
+      // A different account is a new login: a fresh process starts numbering again.
+      writeFileSync(auth, JSON.stringify({ auth_mode: "chatgpt", tokens: { account_id: "acct-2", access_token: "c" } }));
       const after = turn("hi");
       await d.runTurn(after.input);
-      // A fresh process starts numbering again.
       expect(after.sessions[0]).toBe("thread-1");
     } finally {
       if (saved === undefined) delete process.env.CODEX_HOME;
       else process.env.CODEX_HOME = saved;
     }
   }, 30_000);
+
+  it("waits for the replaced app-server to exit before spawning its successor", async () => {
+    const probe = join(tempDir(), "order.jsonl");
+    const home = tempDir();
+    const auth = join(home, "auth.json");
+    writeFileSync(auth, JSON.stringify({ auth_mode: "chatgpt", tokens: { account_id: "acct-1", access_token: "a" } }));
+    const saved = process.env.CODEX_HOME;
+    process.env.CODEX_HOME = home;
+    process.env.ORDER_PROBE = probe;
+    try {
+      const d = createCodexDriver({ command: process.execPath, args: ["-e", ORDER_PROBE], clientVersion: "test" });
+      closeAfter(() => d.dispose?.());
+      await d.runTurn(turn("one").input);
+      writeFileSync(auth, JSON.stringify({ auth_mode: "chatgpt", tokens: { account_id: "acct-2", access_token: "b" } }));
+      await d.runTurn(turn("two").input);
+      const entries = readFileSync(probe, "utf8").trim().split("\n").map((l) => JSON.parse(l) as { e: string; pid: number });
+      const spawns = entries.filter((x) => x.e === "spawn").map((x) => x.pid);
+      expect(spawns).toHaveLength(2);
+      const exitIndex = entries.findIndex((x) => x.e === "exit" && x.pid === spawns[0]);
+      const successorIndex = entries.findIndex((x) => x.e === "spawn" && x.pid === spawns[1]);
+      expect(exitIndex).toBeGreaterThanOrEqual(0);
+      expect(exitIndex).toBeLessThan(successorIndex);
+    } finally {
+      delete process.env.ORDER_PROBE;
+      if (saved === undefined) delete process.env.CODEX_HOME;
+      else process.env.CODEX_HOME = saved;
+    }
+  }, 30_000);
+
+  it("stamps the login's identity, not the file time", () => {
+    const home = tempDir();
+    const auth = join(home, "auth.json");
+    const env = { CODEX_HOME: home };
+    const write = (body: object) => writeFileSync(auth, JSON.stringify(body));
+    write({ auth_mode: "chatgpt", tokens: { account_id: "acct-1", access_token: "a" }, last_refresh: "2026-01-01T00:00:00Z" });
+    const first = codexAuthStamp(env);
+    write({ auth_mode: "chatgpt", tokens: { account_id: "acct-1", access_token: "b" }, last_refresh: "2026-02-02T00:00:00Z" });
+    expect(codexAuthStamp(env)).toBe(first);
+    write({ auth_mode: "apikey", OPENAI_API_KEY: "sk-secret", tokens: { account_id: "acct-2", access_token: "c" } });
+    expect(codexAuthStamp(env)).not.toBe(first);
+    expect(codexAuthStamp({ CODEX_HOME: tempDir() })).toBeNull();
+  });
 });
 
 describe("Codex driver", () => {

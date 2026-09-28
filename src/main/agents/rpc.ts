@@ -35,6 +35,8 @@ export class StdioRpc {
   private stderrTail = "";
   private stderrBuffer = "";
   private exited = false;
+  private closedResolve!: () => void;
+  private readonly closedPromise = new Promise<void>((r) => (this.closedResolve = r));
 
   private constructor(
     private child: ChildProcess,
@@ -71,6 +73,11 @@ export class StdioRpc {
 
   get alive(): boolean {
     return !this.exited;
+  }
+
+  /** Resolves once the process has exited. */
+  closed(): Promise<void> {
+    return this.exited ? Promise.resolve() : this.closedPromise;
   }
 
   request<T = unknown>(method: string, params?: unknown): Promise<T> {
@@ -145,5 +152,6 @@ export class StdioRpc {
     for (const p of this.pending.values()) p.reject(err);
     this.pending.clear();
     this.handlers.onExit?.(code, this.stderrTail);
+    this.closedResolve();
   }
 }

@@ -2,7 +2,8 @@ import type { McpServerEntry, ModelOption, PermissionDecision, PermissionMode, T
 import type { RunPayload, RunResult, ToolDiff } from "../../shared/tools";
 import { clipSummary } from "../../shared/tools";
 import { diffSummary } from "../../shared/diff";
-import { statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { forCodex, mcpChangeNotice } from "../mcp/servers";
@@ -88,12 +89,20 @@ export function codexPolicy(mode: PermissionMode): { approvalPolicy: string; san
   }
 }
 
-/** When Codex's login file (`$CODEX_HOME/auth.json`, default ~/.codex) last changed, or null without one. */
-export function codexAuthStamp(env: NodeJS.ProcessEnv = process.env): number | null {
+/** Who is logged in to Codex (mode, account, key hash), so a token refresh — which rewrites auth.json — is not mistaken for a new login. */
+export function codexAuthStamp(env: NodeJS.ProcessEnv = process.env): string | null {
+  const file = join(env.CODEX_HOME || join(homedir(), ".codex"), "auth.json");
   try {
-    return statSync(join(env.CODEX_HOME || join(homedir(), ".codex"), "auth.json")).mtimeMs;
+    const auth = JSON.parse(readFileSync(file, "utf8")) as { auth_mode?: string; OPENAI_API_KEY?: string; tokens?: { account_id?: string } };
+    const key = auth.OPENAI_API_KEY ? createHash("sha256").update(auth.OPENAI_API_KEY).digest("hex").slice(0, 12) : "";
+    return `${auth.auth_mode ?? ""}|${auth.tokens?.account_id ?? ""}|${key}`;
   } catch {
-    return null;
+    // Missing file is null; an unreadable/unparsable one falls back to its mtime so a change still counts.
+    try {
+      return String(statSync(file).mtimeMs);
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -196,7 +205,9 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   let rpc: StdioRpc | null = null;
   let ready: Promise<void> | null = null;
   /** Codex's login file as it was when the running app-server started. */
-  let authStamp: number | null = null;
+  let authStamp: string | null = null;
+  /** A replaced app-server's exit, while it's still under way. */
+  let exiting: Promise<unknown> | null = null;
   let models: ModelOption[] = [];
   const turns = new Map<string, TurnState>(); // by Codex thread id
   /** Threads loaded in the running app-server, and the MCP config they were loaded with. */
@@ -413,16 +424,30 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     return { action: decision === "deny" ? "decline" : "accept", content: null };
   };
 
-  const start = (cwd: string): Promise<void> => {
-    const plan = config.injection?.();
+  const liveReady = (): Promise<void> | null => (rpc?.alive && ready ? ready : null);
+
+  const start = async (cwd: string): Promise<void> => {
+    // A caller arriving while a replaced app-server exits waits for it too, so only one successor spawns.
+    if (exiting) await exiting;
+    let plan = config.injection?.();
     if (rpc?.alive && ready) {
       // app-server reads the login once. After `codex login` (or a logout) it keeps
       // using the old one and answers 401, so start a fresh one when nothing is running.
       if (codexAuthStamp(plan?.env ?? process.env) === authStamp || turns.size > 0) return ready;
-      rpc.close();
+      const old = rpc;
       rpc = null;
       ready = null;
       loaded.clear();
+      old.close();
+      // Codex allows one writer per thread: let the old app-server exit before the new one resumes anything.
+      exiting = Promise.race([old.closed(), new Promise((r) => setTimeout(r, 5000))]).finally(() => {
+        exiting = null;
+      });
+      await exiting;
+      // Another waiter may have spawned the successor already (read through a call: the await can change it).
+      const successor = liveReady();
+      if (successor) return successor;
+      plan = config.injection?.();
     }
     if (plan?.error) return Promise.reject(new Error(plan.error));
     authStamp = codexAuthStamp(plan?.env ?? process.env);
