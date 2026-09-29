@@ -26,6 +26,7 @@ const DENSITIES: { id: Density; label: string }[] = [
 const MODES: { id: PermissionMode; label: string }[] = [
   { id: "ask", label: "Ask" },
   { id: "auto-edit", label: "Auto-edit" },
+  { id: "plan", label: "Plan" },
   { id: "full", label: "Full" },
 ];
 

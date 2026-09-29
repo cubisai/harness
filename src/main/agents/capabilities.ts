@@ -18,14 +18,14 @@ export const SAFE_DEFAULTS: AgentCapabilities = Object.freeze({
   perMessageModel: false,
   vision: false,
   webSearch: false,
-  planMode: false,
+  planMode: "emulated" as const,
   interrupt: false,
   liveReasoning: false,
   seeding: "first-message" as const,
   seedNoReply: false,
   skillsDelivery: Object.freeze({ mode: "none" as const }),
   permissionGranularity: "modeOnly" as const,
-  guardEnforcement: Object.freeze({ ask: "warnOnly" as const, "auto-edit": "warnOnly" as const, full: "warnOnly" as const }),
+  guardEnforcement: Object.freeze({ ask: "warnOnly" as const, "auto-edit": "warnOnly" as const, plan: "warnOnly" as const, full: "warnOnly" as const }),
   sandbox: "none" as const,
 });
 
@@ -73,21 +73,20 @@ export const CLAUDE_CAPABILITIES: AgentCapabilities = Object.freeze({
   perMessageModel: true,
   vision: true,
   webSearch: true,
-  planMode: true,
+  planMode: "native" as const,
   interrupt: true,
   liveReasoning: true,
   seeding: "first-message" as const,
   seedNoReply: false,
   skillsDelivery: Object.freeze({ mode: "plugin" as const, prefix: `${PLUGIN_NAME}:`, reads: [] }),
   permissionGranularity: "perCommand" as const,
-  guardEnforcement: Object.freeze({ ask: "block" as const, "auto-edit": "block" as const, full: "block" as const }),
+  guardEnforcement: Object.freeze({ ask: "block" as const, "auto-edit": "block" as const, plan: "block" as const, full: "block" as const }),
   sandbox: "none" as const,
 });
 
 /**
- * Codex through `codex app-server`. No plan mode or session fork; its
- * workspace-write sandbox is on except in Full mode, where the guard can
- * only warn (approvalPolicy "never" bypasses it). perMessageModel:
+ * Codex through `codex app-server`. No session fork; its workspace-write
+ * sandbox is on except in Full mode, where the guard can only warn (approvalPolicy "never" bypasses it). perMessageModel:
  * turn/start model switches in place (spike S4).
  */
 export const CODEX_CAPABILITIES: AgentCapabilities = Object.freeze({
@@ -101,13 +100,13 @@ export const CODEX_CAPABILITIES: AgentCapabilities = Object.freeze({
   perMessageModel: true,
   vision: true,
   webSearch: true,
-  planMode: false,
+  planMode: "native" as const,
   interrupt: true,
   liveReasoning: true,
   seeding: "inject-items" as const,
   seedNoReply: false,
   skillsDelivery: Object.freeze({ mode: "extraRoots" as const, prefix: "", reads: ["project", "shared"] as SkillOrigin[] }),
   permissionGranularity: "perCommand" as const,
-  guardEnforcement: Object.freeze({ ask: "block" as const, "auto-edit": "block" as const, full: "warnOnly" as const }),
+  guardEnforcement: Object.freeze({ ask: "block" as const, "auto-edit": "block" as const, plan: "block" as const, full: "warnOnly" as const }),
   sandbox: "workspace" as const,
 });

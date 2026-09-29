@@ -107,7 +107,7 @@ export async function buildCheckpoint(store: Store, threadId: string, opts?: { b
     if (event.kind === "user") {
       if (goal === "") goal = event.text.slice(0, MAX_MESSAGE_CHARS);
       messages.push({ role: "user", text: event.text.slice(0, MAX_MESSAGE_CHARS) });
-    } else if (event.kind === "assistant-text") {
+    } else if (event.kind === "assistant-text" || event.kind === "plan-proposal") {
       messages.push({ role: "assistant", text: event.text.slice(0, MAX_MESSAGE_CHARS) });
     }
   }

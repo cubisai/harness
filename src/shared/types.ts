@@ -36,7 +36,7 @@ export interface Project {
   createdAt: number;
 }
 
-export type PermissionMode = "ask" | "auto-edit" | "full";
+export type PermissionMode = "ask" | "auto-edit" | "plan" | "full";
 
 export type Theme = "system" | "light" | "dark";
 /** How much the UI animates. `prefers-reduced-motion: reduce` always wins and means instant. */
@@ -456,6 +456,10 @@ export type ThreadEvent = (
   | { kind: "notice"; text: string }
   | { kind: "turn-start"; turnId: string; agent: string; model: string }
   | { kind: "plan"; entries: PlanEntry[] }
+  /** The agent presented a plan and waits for the user's decision. */
+  | { kind: "plan-proposal"; text: string }
+  /** The user's answer to a plan proposal, kept in history. */
+  | { kind: "plan-decision"; choice: "auto" | "manual" | "keep"; feedback?: string }
   | { kind: "compaction"; trigger: "manual" | "auto" | "unknown"; preTokens: number | null; postTokens: number | null }
   | { kind: "handoff"; phase: "seeded" | "reply" | "signal"; text: string; from?: string; to?: string; tokens?: number; tier?: number }
 ) &
@@ -502,6 +506,16 @@ export interface PermissionRequest {
 }
 
 export type PermissionDecision = "allow-once" | "allow-always" | "deny";
+
+/** The user's answer to a plan proposal: accept automatically, accept by hand, or keep planning with feedback. */
+export type PlanDecision = "auto" | "manual" | { keep: string };
+
+/** A plan waiting on the user in "plan" mode. */
+export interface PlanRequest {
+  requestId: string;
+  threadId: string;
+  plan: string;
+}
 
 export interface DiffLine {
   kind: "context" | "add" | "del";
@@ -555,7 +569,7 @@ export interface AgentCapabilities {
   perMessageModel: boolean;
   vision: boolean;
   webSearch: boolean;
-  planMode: boolean;
+  planMode: "native" | "emulated";
   interrupt: boolean;
   /** Reasoning arrives as it's produced; when false the UI says it shows up at the end. */
   liveReasoning?: boolean;
@@ -628,6 +642,8 @@ export type LiveUpdate =
   | { type: "delta"; threadId: string; delta: LiveDelta }
   | { type: "running"; threadId: string; running: boolean }
   | { type: "permission"; request: PermissionRequest }
+  | { type: "plan-approval"; request: PlanRequest }
+  | { type: "plan-approval-done"; requestId: string }
   | { type: "thread"; thread: Thread }
   /** The agent needs the browser pane: show it, optionally at a URL. */
   | { type: "browser-open"; url?: string }
@@ -681,6 +697,7 @@ export interface UnskilledApi {
   send(request: SendRequest): Promise<void>;
   interrupt(threadId: string): Promise<void>;
   respondPermission(requestId: string, decision: PermissionDecision): Promise<void>;
+  respondPlan(requestId: string, decision: PlanDecision): Promise<void>;
   /** The working-tree diff of the project, or of `threadId`'s worktree when it has one. */
   getDiff(projectId: string, threadId?: string | null): Promise<DiffFile[]>;
   /** The project's files (git-tracked plus untracked-not-ignored), for the Files tab. */

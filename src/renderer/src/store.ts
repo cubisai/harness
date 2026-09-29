@@ -12,6 +12,8 @@ import type {
   PaneLayout,
   PermissionMode,
   PermissionRequest,
+  PlanDecision,
+  PlanRequest,
   Project,
   SkillEntry,
   StoredEvent,
@@ -94,6 +96,8 @@ interface State {
   disclosures: Record<string, Record<string, boolean>>;
   setDisclosure(threadId: string, id: string, open: boolean): void;
   permissions: PermissionRequest[];
+  /** Plan proposals waiting on the user, like permissions. */
+  plans: PlanRequest[];
   /** Turns that ended on a thread that wasn't open, for the Message Center. */
   finished: FinishedTurn[];
   /** When each running turn started (renderer clock), for a Finished row's duration. */
@@ -163,6 +167,7 @@ interface State {
   enqueue(threadId: string, text: string, skill?: string, mentions?: string[]): void;
   interrupt(): Promise<void>;
   respond(requestId: string, decision: "allow-once" | "allow-always" | "deny"): Promise<void>;
+  respondPlan(requestId: string, decision: PlanDecision): Promise<void>;
   toggleInspector(): void;
   showInspector(tab: InspectorTab): void;
   toggleTerminal(): void;
@@ -370,6 +375,7 @@ export const useStore = create<State>((set, get) => ({
   },
   disclosures: {},
   permissions: [],
+  plans: [],
   finished: [],
   turnStartedAt: {},
   inboxOpen: false,
@@ -697,6 +703,11 @@ export const useStore = create<State>((set, get) => ({
     await api().respondPermission(requestId, decision);
   },
 
+  async respondPlan(requestId, decision) {
+    set((s) => ({ plans: s.plans.filter((p) => p.requestId !== requestId) }));
+    await api().respondPlan(requestId, decision);
+  },
+
   setDisclosure(threadId, id, open) {
     set((s) => {
       const thread = { ...(s.disclosures[threadId] ?? {}) };
@@ -781,6 +792,7 @@ export const useStore = create<State>((set, get) => ({
           finished: update.running || !s.running[update.threadId] ? s.finished : turnEnded(s.finished, update.threadId, s.turnStartedAt[update.threadId], Date.now(), s.selectedThreadId),
           live: update.running ? s.live : { ...s.live, [update.threadId]: emptyLive() },
           permissions: update.running ? s.permissions : s.permissions.filter((p) => p.threadId !== update.threadId),
+          plans: update.running ? s.plans : s.plans.filter((p) => p.threadId !== update.threadId),
           diffVersion: update.running ? s.diffVersion : s.diffVersion + 1,
         }));
         // The next queued message goes out as the next turn, exactly once.
@@ -803,6 +815,14 @@ export const useStore = create<State>((set, get) => ({
             ? {}
             : { permissions: [...s.permissions, update.request] },
         );
+        return;
+      case "plan-approval":
+        set((s) =>
+          s.plans.some((p) => p.requestId === update.request.requestId) ? {} : { plans: [...s.plans, update.request] },
+        );
+        return;
+      case "plan-approval-done":
+        set((s) => ({ plans: s.plans.filter((p) => p.requestId !== update.requestId) }));
         return;
       case "browser-open":
         set({ inspectorOpen: true, inspectorTab: "browser", browserMounted: true, browserUrl: update.url ?? null });

@@ -1,14 +1,16 @@
 import type { AgentInfo, ModelOption, PermissionMode, Thread } from "../../../shared/types";
+import { MODE_ORDER } from "../modes";
 import { useStore } from "../store";
 import { AgentPicker } from "./AgentPicker";
 import { EffortPicker } from "./EffortPicker";
 import { ModelPicker } from "./ModelPicker";
 
-const MODES: { id: PermissionMode; label: string; title: string }[] = [
-  { id: "ask", label: "Ask", title: "Ask before edits and commands" },
-  { id: "auto-edit", label: "Auto-edit", title: "Edit files freely, ask before commands" },
-  { id: "full", label: "Full", title: "Run everything without asking" },
-];
+const MODES: Record<PermissionMode, { label: string; title: string }> = {
+  ask: { label: "Ask", title: "Ask before edits and commands" },
+  "auto-edit": { label: "Auto-edit", title: "Edit files freely, ask before commands" },
+  plan: { label: "Plan", title: "Investigate read-only, then present a plan to approve" },
+  full: { label: "Full", title: "Run everything without asking" },
+};
 
 /** The thread's agent's models, keeping the current one listed even if the agent no longer reports it. */
 function modelOptions(agents: AgentInfo[], agent: string, current: string): ModelOption[] {
@@ -50,19 +52,22 @@ function Controls({
       <ModelPicker models={models} current={model} disabled={disabled} placement="up" onPick={onModel} />
       <EffortPicker options={models.find((m) => m.id === model)?.efforts ?? []} current={effort} defaultEffort={defaultEffort} disabled={disabled} onPick={onEffort} />
       <div className="segmented compact" role="radiogroup" aria-label="Permissions">
-        {MODES.map((m) => (
-          <button
-            key={m.id}
-            role="radio"
-            aria-checked={permissionMode === m.id}
-            className={permissionMode === m.id ? "on" : ""}
-            title={m.title}
-            disabled={disabled}
-            onClick={() => onPermission(m.id)}
-          >
-            {m.label}
-          </button>
-        ))}
+        {MODE_ORDER.map((id) => {
+          const m = MODES[id];
+          return (
+            <button
+              key={id}
+              role="radio"
+              aria-checked={permissionMode === id}
+              className={permissionMode === id ? "on" : ""}
+              title={m.title}
+              disabled={disabled}
+              onClick={() => onPermission(id)}
+            >
+              {m.label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
 import type { EffortLevel, HookCallback, ModelInfo, ModelUsage, Options, PermissionResult, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
@@ -79,6 +79,7 @@ function fromSdk(list: ModelInfo[]): ModelOption[] {
 export const SDK_MODE: Record<PermissionMode, Options["permissionMode"]> = {
   ask: "default",
   "auto-edit": "acceptEdits",
+  plan: "plan",
   full: "bypassPermissions",
 };
 
@@ -302,6 +303,30 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         ...withUserServers(harnessToolOptions(input.tools), input.mcpServers),
         hooks: { PreToolUse: [{ matcher: "Bash", hooks: [guard] }] },
         canUseTool: async (toolName, toolInput, { suggestions }): Promise<PermissionResult> => {
+          // Plan mode's own gate: Claude presents its plan, the user decides how
+          // to proceed, and the answer sets the mode for the accepted edits.
+          if (toolName === "ExitPlanMode") {
+            let plan = typeof toolInput.plan === "string" ? toolInput.plan : "";
+            if (!plan && typeof toolInput.planFilePath === "string") {
+              try {
+                plan = readFileSync(toolInput.planFilePath, "utf8");
+              } catch {
+                plan = "";
+              }
+            }
+            const d = await input.requestPlanDecision({ plan });
+            if (d === "auto" || d === "manual") {
+              return {
+                behavior: "allow",
+                updatedInput: toolInput,
+                updatedPermissions: [{ type: "setMode", mode: d === "auto" ? "acceptEdits" : "default", destination: "session" }],
+              };
+            }
+            return {
+              behavior: "deny",
+              message: d.keep.trim() ? `The user wants to keep planning: ${d.keep}` : "The user wants to keep planning. Refine the plan.",
+            };
+          }
           const decision = await input.requestPermission({
             toolName,
             summary: summarizeToolInput(toolName, toolInput),

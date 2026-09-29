@@ -6,7 +6,7 @@ import { pickPermission, type ToolKind } from "./agents/acp/driver";
 /** Every ACP tool kind, so the permission table can list which ones run without asking. */
 const ACP_KINDS: ToolKind[] = ["read", "edit", "delete", "move", "search", "execute", "think", "fetch", "switch_mode", "other"];
 
-const MODES: PermissionMode[] = ["ask", "auto-edit", "full"];
+const MODES: PermissionMode[] = ["ask", "auto-edit", "plan", "full"];
 
 /**
  * A pattern as it is compared: trimmed, with typographic quotes straightened
@@ -52,7 +52,7 @@ export function permissionTable(): Record<PermissionMode, { claude: string; code
   const table = {} as Record<PermissionMode, { claude: string; codex: { approvalPolicy: string; sandbox: string }; acp: ToolKind[] }>;
   for (const mode of MODES) {
     table[mode] = {
-      claude: SDK_MODE[mode]!,
+      claude: mode === "plan" ? "Read-only; edits wait for your plan approval" : SDK_MODE[mode]!,
       codex: codexPolicy(mode),
       acp: ACP_KINDS.filter((kind) => pickPermission(mode, kind) === "allow").sort(),
     };

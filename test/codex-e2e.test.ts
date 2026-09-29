@@ -105,6 +105,7 @@ describe.skipIf(!codex)("Codex end to end (real app-server, fake model)", () => 
           asked.push(`${r.toolName}: ${r.summary}`);
           return "allow-once";
         },
+        requestPlanDecision: async () => ({ keep: "" }),
         ...over,
       });
       return { events, asked, session };
@@ -193,6 +194,7 @@ describe.skipIf(!codex)("Codex end to end (real app-server, fake model)", () => 
       onTextDelta: () => {},
       onSession: () => {},
       requestPermission: async () => "deny",
+      requestPlanDecision: async () => ({ keep: "" }),
     });
     const sent = JSON.stringify(model.requests.at(-1)!.input);
     expect(sent).toContain("HANDOFF-MARKER from claude");
@@ -246,6 +248,7 @@ describe.skipIf(!codex)("Codex end to end (real app-server, fake model)", () => 
       onTextDelta: () => {},
       onSession: () => {},
       requestPermission: async () => "allow-once",
+      requestPlanDecision: async () => ({ keep: "" }),
     });
 
     expect(events.find((e) => e.kind === "error")).toBeUndefined();

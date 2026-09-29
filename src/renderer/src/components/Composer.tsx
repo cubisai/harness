@@ -5,6 +5,7 @@ import { IconArrowUp, IconStop } from "../icons";
 import { api } from "../api";
 import { chipLabel, composeMessage } from "../composer";
 import { folderPaths, mentionQueryAt, mentionsIn, rankMentions } from "../mentions";
+import { nextMode } from "../modes";
 import { useStore } from "../store";
 import { originLabel } from "./Library";
 
@@ -184,6 +185,18 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Tab" && e.shiftKey && !e.nativeEvent.isComposing) {
+      // Shift+Tab cycles the permission mode: the open thread's, or the draft's.
+      e.preventDefault();
+      const s = useStore.getState();
+      const current = threadId
+        ? (Object.values(s.threads).flat().find((t) => t.id === threadId)?.permissionMode ?? "ask")
+        : (s.draft.permissionMode ?? s.settings?.defaultPermissionMode ?? "ask");
+      const next = nextMode(current);
+      if (threadId) void s.updateThread({ permissionMode: next });
+      else s.setDraft({ permissionMode: next });
+      return;
+    }
     if (e.key === "Enter" && e.altKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       submitInBackground();

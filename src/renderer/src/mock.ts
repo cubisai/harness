@@ -188,11 +188,11 @@ export function installMock(): void {
     perMessageModel: false,
     vision: false,
     webSearch: false,
-    planMode: false,
+    planMode: "emulated",
     interrupt: false,
     skillsDelivery: { mode: "none" },
     permissionGranularity: "modeOnly",
-    guardEnforcement: { ask: "warnOnly", "auto-edit": "warnOnly", full: "warnOnly" },
+    guardEnforcement: { ask: "warnOnly", "auto-edit": "warnOnly", plan: "warnOnly", full: "warnOnly" },
     sandbox: "none",
   } as const;
 
@@ -273,6 +273,7 @@ export function installMock(): void {
     send: async () => {},
     interrupt: async () => {},
     respondPermission: async () => {},
+    respondPlan: async () => {},
     browserAttached: async () => {},
     browserPick: async () => {},
     terminalOpen: async (id) => {

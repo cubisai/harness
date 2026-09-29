@@ -132,6 +132,7 @@ function turn(prompt: string, over: Partial<TurnInput> = {}) {
       asked.push(r.summary);
       return "allow-once" as PermissionDecision;
     },
+    requestPlanDecision: async () => ({ keep: "" }),
     ...over,
   };
   return { input, events, deltas, sessions, asked, controller };

@@ -52,6 +52,7 @@ function collector(prompt: string): Collected & { input: TurnInput } {
     onTextDelta: (t) => deltas.push(t),
     onSession: () => {},
     requestPermission: async () => "allow-once" as PermissionDecision,
+    requestPlanDecision: async () => ({ keep: "" }),
   };
   return { input, events, deltas };
 }

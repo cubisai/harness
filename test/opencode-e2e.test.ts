@@ -139,6 +139,7 @@ describe.skipIf(!onPath("opencode"))("OpenCode BYOK end to end (real acp, fake m
       onTextDelta: (t) => deltas.push(t),
       onSession: () => {},
       requestPermission: async () => "deny",
+      requestPlanDecision: async () => ({ keep: "" }),
     });
 
     expect(events.find((e) => e.kind === "error")).toBeUndefined();

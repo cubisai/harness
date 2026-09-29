@@ -7,6 +7,7 @@ import { Markdown } from "../markdown";
 import { useStore } from "../store";
 import { DiffView, diffsOf } from "./DiffView";
 import { PermissionCard } from "./PermissionCard";
+import { PlanApprovalCard } from "./PlanApprovalCard";
 import { ReasoningBlock } from "./ReasoningBlock";
 import { activityOf, WaitingLine } from "./WaitingLine";
 import { useSmoothText } from "../hooks/useSmoothText";
@@ -42,6 +43,8 @@ export function ThreadView({ threadId }: { threadId: string }) {
   const inner = useRef<HTMLDivElement>(null);
   const allPermissions = useStore((s) => s.permissions);
   const permissions = useMemo(() => allPermissions.filter((p) => p.threadId === threadId), [allPermissions, threadId]);
+  const allPlans = useStore((s) => s.plans);
+  const plans = useMemo(() => allPlans.filter((p) => p.threadId === threadId), [allPlans, threadId]);
   const scroller = useRef<HTMLDivElement>(null);
   // Tool-output items are not rendered yet; reasoning uses ReasoningBlock below.
   const textItems = visibleItems(live, "text");
@@ -97,7 +100,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
   useEffect(() => {
     const el = scroller.current;
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
-  }, [events.length, textLength, permissions.length]);
+  }, [events.length, textLength, permissions.length, plans.length]);
   // Smoothed text keeps growing after the store stops changing: follow the content's size.
   useEffect(() => {
     const el = scroller.current;
@@ -133,7 +136,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
         {textItems.map((item) => (
           <LiveText key={item.key} text={item.text} />
         ))}
-        {running && permissions.length === 0 && (
+        {running && permissions.length === 0 && plans.length === 0 && (
           <WaitingLine
             startedAt={startedAt ?? Date.now()}
             outputTokens={live.usage?.outputTokens ?? live.thinkingTokens ?? null}
@@ -142,6 +145,9 @@ export function ThreadView({ threadId }: { threadId: string }) {
         )}
         {permissions.map((p) => (
           <PermissionCard key={p.requestId} request={p} />
+        ))}
+        {plans.map((p) => (
+          <PlanApprovalCard key={p.requestId} request={p} />
         ))}
         {outbox.map((m, i) => (
           <div className="msg-user" key={`queued-${i}`}>
@@ -218,6 +224,23 @@ export function EventRow({ stored, results, children, running, threadId }: { sto
               </li>
             ))}
           </ul>
+        </div>
+      );
+    case "plan-proposal":
+      return (
+        <details className="tool plan-proposal">
+          <summary className="tool-row">
+            <span className="name">Plan</span>
+          </summary>
+          <div className="tool-body">
+            <Markdown text={e.text} onFile={openRef} />
+          </div>
+        </details>
+      );
+    case "plan-decision":
+      return (
+        <div className="notice">
+          {e.choice === "auto" ? "Plan approved — auto-accept edits" : e.choice === "manual" ? "Plan approved — manual approval" : "Kept planning"}
         </div>
       );
     case "compaction":

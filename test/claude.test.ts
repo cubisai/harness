@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { ModelInfo, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import { createClaudeDriver, handleMessage, newTurnState, resolvePackagedClaudeBinary, turnEndFromResult } from "../src/main/agents/claude";
 import type { TurnInput } from "../src/main/agents/types";
 import type { ThreadEvent } from "../src/shared/types";
+import { tempDir } from "./helpers";
 
 // The SDK's `query` is faked so the per-turn `options` (where the guide lands)
 // can be read without launching Claude Code. Everything else is the real SDK.
@@ -61,6 +64,7 @@ function turnInput(guideCwd = "/tmp/project"): { input: TurnInput; events: Threa
     onTextDelta: () => {},
     onSession: () => {},
     requestPermission: async () => "allow-once",
+    requestPlanDecision: async () => ({ keep: "" }),
   };
   return { input, events };
 }
@@ -584,5 +588,75 @@ describe("turnEndFromResult", () => {
     const event = turnEnd(turnEndFromResult(result({ input_tokens: 1000, output_tokens: 50 }), null, null));
     expect(event.usage?.contextUsed).toBeNull();
     expect(event.usage?.contextSize).toBeNull();
+  });
+});
+
+describe("Claude plan mode", () => {
+  type CanUseTool = (
+    name: string,
+    toolInput: Record<string, unknown>,
+    opts: { suggestions: unknown[] },
+  ) => Promise<{ behavior: string; updatedPermissions?: { type: string; mode?: string; destination?: string }[]; message?: string }>;
+
+  async function gate(input: TurnInput): Promise<CanUseTool> {
+    sdk.calls.length = 0;
+    sdk.attempts.length = 0;
+    const d = createClaudeDriver({ pluginDir: () => null });
+    await d.runTurn(input);
+    return sdk.calls[0]!.options.canUseTool as CanUseTool;
+  }
+
+  it("auto answers the plan by allowing edits for the session", async () => {
+    const { input } = turnInput();
+    input.permissionMode = "plan";
+    input.requestPlanDecision = async () => "auto";
+    const canUseTool = await gate(input);
+    const res = await canUseTool("ExitPlanMode", { plan: "Do the thing" }, { suggestions: [] });
+    expect(res.behavior).toBe("allow");
+    expect(res.updatedPermissions).toEqual([{ type: "setMode", mode: "acceptEdits", destination: "session" }]);
+  });
+
+  it("manual answers the plan by allowing edits under the default mode", async () => {
+    const { input } = turnInput();
+    input.permissionMode = "plan";
+    input.requestPlanDecision = async () => "manual";
+    const canUseTool = await gate(input);
+    const res = await canUseTool("ExitPlanMode", { plan: "Do the thing" }, { suggestions: [] });
+    expect(res.behavior).toBe("allow");
+    expect(res.updatedPermissions).toEqual([{ type: "setMode", mode: "default", destination: "session" }]);
+  });
+
+  it("keep denies with the user's feedback", async () => {
+    const { input } = turnInput();
+    input.permissionMode = "plan";
+    input.requestPlanDecision = async () => ({ keep: "Cover the tests too" });
+    const canUseTool = await gate(input);
+    const res = await canUseTool("ExitPlanMode", { plan: "Do the thing" }, { suggestions: [] });
+    expect(res.behavior).toBe("deny");
+    expect(res.message).toContain("Cover the tests too");
+  });
+
+  it("keep without feedback asks for a refined plan", async () => {
+    const { input } = turnInput();
+    input.permissionMode = "plan";
+    const canUseTool = await gate(input);
+    const res = await canUseTool("ExitPlanMode", { plan: "Do the thing" }, { suggestions: [] });
+    expect(res.behavior).toBe("deny");
+    expect(res.message).toMatch(/Refine the plan/);
+  });
+
+  it("reads the plan from planFilePath when no inline plan was sent", async () => {
+    const file = join(tempDir(), "plan.md");
+    writeFileSync(file, "# The plan");
+    const { input } = turnInput();
+    input.permissionMode = "plan";
+    let seen = "";
+    input.requestPlanDecision = async (p) => {
+      seen = p.plan;
+      return "auto";
+    };
+    const canUseTool = await gate(input);
+    await canUseTool("ExitPlanMode", { planFilePath: file }, { suggestions: [] });
+    expect(seen).toBe("# The plan");
   });
 });

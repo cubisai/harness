@@ -71,7 +71,7 @@ export const ACP_PRESETS: AcpAgentConfig[] = [
       mcpHttp: true,
       interrupt: true,
       perMessageModel: true,
-      planMode: true,
+      planMode: "emulated",
       resume: true,
       permissionGranularity: "perTool",
       skillsDelivery: { mode: "none" as const },

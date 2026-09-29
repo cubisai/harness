@@ -101,12 +101,18 @@ export const DEFAULT_MODEL = "default";
 /** Tool kinds that only read, or edit files: allowed without asking in Auto-edit. */
 const AUTO_EDIT_KINDS = new Set<ToolKind>(["read", "search", "think", "fetch", "edit", "move"]);
 
+/** Plan mode's fallback: investigation only, everything that writes or runs waits for approval. */
+const PLAN_KINDS = new Set<ToolKind>(["read", "search", "think", "fetch"]);
+
 export function pickPermission(
   mode: PermissionMode,
   kind: ToolKind | null | undefined,
-): "allow" | "ask" {
+): "allow" | "ask" | "deny" {
   if (mode === "full") return "allow";
   if (mode === "auto-edit" && kind && AUTO_EDIT_KINDS.has(kind)) return "allow";
+  // Plan mode's fallback is read-only: investigation runs, anything that writes
+  // or executes is refused until the mode changes (proposals land in a later task).
+  if (mode === "plan") return kind && PLAN_KINDS.has(kind) ? "allow" : "deny";
   return "ask";
 }
 
@@ -551,10 +557,12 @@ export function createAcpDriver(
         }
         const choose = async (): Promise<PermissionDecision> => {
           if (!t) return "deny";
-          if (pickPermission(t.input.permissionMode, p.toolCall.kind) === "allow") return "allow-once";
+          const picked = pickPermission(t.input.permissionMode, p.toolCall.kind);
+          if (picked === "allow") return "allow-once";
           // The harness's own safe tools (browser snapshot, click, ...) run without asking.
           const title = `${p.toolCall.title ?? ""}`;
           if (t.input.tools.some((tool) => tool.autoAllow && title.includes(tool.name))) return "allow-once";
+          if (picked === "deny") return "deny";
           return t.input.requestPermission({
             toolName: kindLabel(p.toolCall.kind),
             summary: p.toolCall.title ?? JSON.stringify(p.toolCall.rawInput ?? {}),

@@ -8,6 +8,7 @@ import type {
   McpServerEntry,
   PermissionMode,
   PermissionDecision,
+  PlanDecision,
   Provenance,
   SendRequest,
   SkillEntry,
@@ -62,6 +63,8 @@ export class Service {
   /** Projects already warned about loading the same conventions twice: said once, not every turn. */
   private scopeChecked = new Set<string>();
   private pendingPermissions = new Map<string, (d: PermissionDecision) => void>();
+  /** Plans waiting on the user, by request id, with the thread each belongs to. */
+  private pendingPlans = new Map<string, { threadId: string; resolve: (d: PlanDecision) => void }>();
   /** One Approvals per project, so an allow-always never leaks to another repo. */
   private approvals = new Map<string, Approvals>();
   /** Threads just switched to another agent, with the last usage before the switch and how it switched, for the first turn's bloat signal. */
@@ -390,6 +393,7 @@ export class Service {
           onTextDelta: () => {},
           onSession,
           requestPermission: async () => "deny",
+          requestPlanDecision: async () => ({ keep: "" }),
         });
         if (failed) throw new Error(failed);
       });
@@ -645,6 +649,21 @@ export class Service {
             this.broadcast({ type: "permission", request: { requestId, threadId: thread.id, ...p } });
           });
         },
+        requestPlanDecision: (p) =>
+          new Promise<PlanDecision>((resolve) => {
+            const requestId = randomUUID();
+            this.pendingPlans.set(requestId, { threadId: thread.id, resolve });
+            controller.signal.addEventListener(
+              "abort",
+              () => {
+                if (this.pendingPlans.delete(requestId)) resolve({ keep: "" });
+              },
+              { once: true },
+            );
+            // The proposal is history, not a live row: it takes the same path as driver events.
+            this.emit(thread.id, { kind: "plan-proposal", text: p.plan });
+            this.broadcast({ type: "plan-approval", request: { requestId, threadId: thread.id, plan: p.plan } });
+          }),
       });
     } finally {
       this.running.delete(thread.id);
@@ -659,6 +678,22 @@ export class Service {
 
   respondPermission(requestId: string, decision: PermissionDecision): void {
     this.pendingPermissions.get(requestId)?.(decision);
+  }
+
+  /** The user answered a plan proposal: record it, tell the UI, and follow the chosen mode. */
+  respondPlan(requestId: string, decision: PlanDecision): void {
+    const pending = this.pendingPlans.get(requestId);
+    if (!pending) return;
+    this.pendingPlans.delete(requestId);
+    const choice = decision === "auto" ? "auto" : decision === "manual" ? "manual" : "keep";
+    const feedback = typeof decision === "object" ? decision.keep.trim() : "";
+    this.emit(pending.threadId, { kind: "plan-decision", choice, ...(choice === "keep" && feedback ? { feedback } : {}) });
+    this.broadcast({ type: "plan-approval-done", requestId });
+    if (decision === "auto" || decision === "manual") {
+      const permissionMode: PermissionMode = decision === "auto" ? "auto-edit" : "ask";
+      this.broadcast({ type: "thread", thread: this.store.updateThread(pending.threadId, { permissionMode }) });
+    }
+    pending.resolve(decision);
   }
 
   /**

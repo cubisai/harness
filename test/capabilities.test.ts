@@ -25,14 +25,14 @@ const EXACT_DEFAULTS = {
   perMessageModel: false,
   vision: false,
   webSearch: false,
-  planMode: false,
+  planMode: "emulated",
   interrupt: false,
   liveReasoning: false,
   seeding: "first-message",
   seedNoReply: false,
   skillsDelivery: { mode: "none" },
   permissionGranularity: "modeOnly",
-  guardEnforcement: { ask: "warnOnly", "auto-edit": "warnOnly", full: "warnOnly" },
+  guardEnforcement: { ask: "warnOnly", "auto-edit": "warnOnly", plan: "warnOnly", full: "warnOnly" },
   sandbox: "none",
 };
 
@@ -54,6 +54,7 @@ function turn(prompt: string): { input: TurnInput; events: ThreadEvent[] } {
       onTextDelta: () => {},
       onSession: () => {},
       requestPermission: async (): Promise<PermissionDecision> => "allow-once",
+      requestPlanDecision: async () => ({ keep: "" }),
     },
   };
 }
@@ -141,7 +142,7 @@ describe("Service.listAgents capabilities", () => {
 
 describe("Codex capabilities", () => {
   it("blocks under ask/auto-edit and warns under full", () => {
-    expect(CODEX_CAPABILITIES.guardEnforcement).toEqual({ ask: "block", "auto-edit": "block", full: "warnOnly" });
+    expect(CODEX_CAPABILITIES.guardEnforcement).toEqual({ ask: "block", "auto-edit": "block", plan: "block", full: "warnOnly" });
   });
 });
 

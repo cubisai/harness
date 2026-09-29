@@ -117,6 +117,7 @@ describe("Claude end to end (real Claude Code, fake API)", () => {
       onTextDelta: (d) => (text += d),
       onSession: () => {},
       requestPermission: async () => "deny",
+      requestPlanDecision: async () => ({ keep: "" }),
     });
 
     expect(events.filter((e) => e.kind === "error")).toEqual([]);
@@ -164,6 +165,7 @@ describe("Claude end to end (real Claude Code, fake API)", () => {
       onTextDelta: () => {},
       onSession: () => {},
       requestPermission: async () => "deny",
+      requestPlanDecision: async () => ({ keep: "" }),
     });
     expect(bodies.length).toBeGreaterThan(0);
     const turn = bodies.find((b) => JSON.stringify(b.messages).includes("CHECKPOINT-MARKER-7"))!;
@@ -234,6 +236,7 @@ describe("Claude end to end (real Claude Code, fake API)", () => {
       onTextDelta: (d) => (text += d),
       onSession: () => {},
       requestPermission: async () => "deny",
+      requestPlanDecision: async () => ({ keep: "" }),
     });
 
     expect(events.filter((e) => e.kind === "error")).toEqual([]);

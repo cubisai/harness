@@ -212,6 +212,7 @@ describe.skipIf(!onPath("opencode") || !findPython())("OpenCode guard plugin end
       onTextDelta: () => {},
       onSession: () => {},
       requestPermission: async () => "deny",
+      requestPlanDecision: async () => ({ keep: "" }),
     });
 
     const seen = fake.bodies.map((b) => JSON.stringify(b)).join("\n");

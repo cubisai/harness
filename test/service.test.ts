@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { LiveUpdate, ThreadEvent } from "../src/shared/types";
+import type { LiveUpdate, PlanDecision, ThreadEvent } from "../src/shared/types";
 import type { AgentDriver, TurnInput } from "../src/main/agents/types";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
 import { Store } from "../src/main/db";
@@ -118,6 +118,38 @@ describe("Service.send", () => {
     service.interrupt(thread.id);
     await sending;
     expect(decision).toBe("deny");
+  });
+
+  it("routes plan proposals to the UI and back, recording the decision and the mode", async () => {
+    let decision: PlanDecision | null = null;
+    const { service, thread, store, updates } = setup(async (input) => {
+      decision = await input.requestPlanDecision({ plan: "# The plan" });
+    });
+    const sending = service.send({ threadId: thread.id, text: "go" });
+    await new Promise((r) => setTimeout(r, 10));
+    const req = updates.find((u) => u.type === "plan-approval") as Extract<LiveUpdate, { type: "plan-approval" }>;
+    expect(req).toBeDefined();
+    expect(req.request.plan).toBe("# The plan");
+    service.respondPlan(req.request.requestId, "auto");
+    await sending;
+    expect(decision).toBe("auto");
+    expect(store.getThread(thread.id).permissionMode).toBe("auto-edit");
+    const kinds = store.listEvents(thread.id).map((e) => e.event.kind);
+    expect(kinds).toContain("plan-proposal");
+    expect(kinds).toContain("plan-decision");
+    expect(updates.some((u) => u.type === "plan-approval-done")).toBe(true);
+  });
+
+  it("resolves a pending plan with keep-on-empty when interrupted", async () => {
+    let decision: PlanDecision | null = null;
+    const { service, thread } = setup(async (input) => {
+      decision = await input.requestPlanDecision({ plan: "# The plan" });
+    });
+    const sending = service.send({ threadId: thread.id, text: "go" });
+    await new Promise((r) => setTimeout(r, 10));
+    service.interrupt(thread.id);
+    await sending;
+    expect(decision).toEqual({ keep: "" });
   });
 
   it("refuses a second send while a turn runs", async () => {

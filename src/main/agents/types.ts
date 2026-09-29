@@ -1,5 +1,5 @@
 import type { ZodRawShape, z } from "zod";
-import type { AgentCapabilities, AgentCredentials, LiveDelta, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, Provenance, SkillsDelivery, ThreadEvent } from "../../shared/types";
+import type { AgentCapabilities, AgentCredentials, LiveDelta, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, PlanDecision, Provenance, SkillsDelivery, ThreadEvent } from "../../shared/types";
 import type { LimitsPatch } from "./limits";
 
 export type { AgentCapabilities, SkillsDelivery } from "../../shared/types";
@@ -64,6 +64,8 @@ export interface TurnInput {
   /** The stored session couldn't be reopened (reason is the agent's own error). The driver starts a new session and applies the returned seed; null means start without history. */
   onSessionLost?(reason: string): Promise<SessionSeed | null>;
   requestPermission(req: { toolName: string; summary: string; canAlwaysAllow: boolean }): Promise<PermissionDecision>;
+  /** Plan mode: the agent presented a plan and waits for the user's decision. */
+  requestPlanDecision(p: { plan: string }): Promise<PlanDecision>;
   /** Harness-provided tools for this turn; empty when none apply. */
   tools: HarnessTool[];
   /** The user's MCP servers (mcp.json), passed to the agent alongside its own. */

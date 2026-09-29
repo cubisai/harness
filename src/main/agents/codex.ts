@@ -84,6 +84,9 @@ export function codexPolicy(mode: PermissionMode): { approvalPolicy: string; san
       return { approvalPolicy: "never", sandbox: "danger-full-access" };
     case "auto-edit":
       return { approvalPolicy: "untrusted", sandbox: "workspace-write" };
+    case "plan":
+      // Safe fallback until Codex's own plan mode lands: read-only, nothing to approve.
+      return { approvalPolicy: "untrusted", sandbox: "read-only" };
     default:
       return { approvalPolicy: "untrusted", sandbox: "workspace-write" };
   }

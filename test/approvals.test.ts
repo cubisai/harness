@@ -26,11 +26,14 @@ describe("Approvals", () => {
 });
 
 describe("permissionTable", () => {
-  it("maps every mode to every driver", () => {
+  it("maps every mode to every driver, plan included", () => {
     expect(permissionTable()).toMatchSnapshot();
-    expect(Object.keys(permissionTable())).toHaveLength(3);
+    expect(Object.keys(permissionTable())).toHaveLength(4);
     const entries = Object.values(permissionTable()).reduce((n, row) => n + Object.keys(row).length, 0);
-    expect(entries).toBe(9);
+    expect(entries).toBe(12);
     expect(permissionTable().ask.codex).toEqual({ approvalPolicy: "untrusted", sandbox: "workspace-write" });
+    expect(permissionTable().plan.claude).toBe("Read-only; edits wait for your plan approval");
+    expect(permissionTable().plan.codex).toEqual({ approvalPolicy: "untrusted", sandbox: "read-only" });
+    expect(permissionTable().plan.acp).toEqual(["fetch", "read", "search", "think"]);
   });
 });

@@ -1,7 +1,7 @@
 import type { AgentCapabilities, PermissionMode } from "../../../shared/types";
 
-const MODES: PermissionMode[] = ["ask", "auto-edit", "full"];
-const MODE_LABELS: Record<PermissionMode, string> = { ask: "Ask", "auto-edit": "Auto-edit", full: "Full" };
+const MODES: PermissionMode[] = ["ask", "auto-edit", "plan", "full"];
+const MODE_LABELS: Record<PermissionMode, string> = { ask: "Ask", "auto-edit": "Auto-edit", plan: "Plan", full: "Full" };
 
 /** The labels of the modes where the guardrail can't veto a command before it runs. */
 function warnOnlyModes(c: AgentCapabilities): string[] {

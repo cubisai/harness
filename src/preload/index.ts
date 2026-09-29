@@ -23,6 +23,7 @@ const api: UnskilledApi = {
   send: (request) => ipcRenderer.invoke("turn:send", request),
   interrupt: (threadId) => ipcRenderer.invoke("turn:interrupt", threadId),
   respondPermission: (requestId, decision) => ipcRenderer.invoke("permission:respond", requestId, decision),
+  respondPlan: (requestId, decision) => ipcRenderer.invoke("plan:respond", requestId, decision),
   getDiff: (projectId, threadId) => ipcRenderer.invoke("diff:get", projectId, threadId),
   listFiles: (projectId, threadId) => ipcRenderer.invoke("files:list", projectId, threadId),
   projectBranch: (projectId) => ipcRenderer.invoke("project:branch", projectId),

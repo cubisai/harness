@@ -619,6 +619,15 @@ details.tool[open]::details-content { height: auto; }
 .permission-card .actions { display: flex; gap: 8px; justify-content: flex-end; }
 .permission-guard { font-size: 11px; color: var(--text-secondary); margin-top: 8px; }
 .permission-guard.warn { color: var(--warning); }
+
+/* The plan-approval card renders the plan as markdown inside the same frame. */
+.plan-card .plan-body { font-size: 13px; color: var(--text); margin-bottom: 12px; }
+.plan-card .plan-body > :first-child { margin-top: 0; }
+.plan-card .plan-body > :last-child { margin-bottom: 0; }
+.plan-card .plan-body code { display: inline; padding: 1px 4px; word-break: normal; }
+.plan-card .plan-body pre { margin: 0 0 10px; }
+.plan-card .plan-body pre code { display: block; padding: 0; background: transparent; }
+.plan-card .plan-feedback { display: block; width: 100%; height: auto; min-height: 56px; padding: 8px 10px; font: 12px var(--mono); resize: vertical; margin-bottom: 10px; }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
 
 /* ---------- empty states ---------- */

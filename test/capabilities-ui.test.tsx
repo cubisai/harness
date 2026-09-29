@@ -7,19 +7,19 @@ import { PermissionCardView } from "../src/renderer/src/components/PermissionCar
 
 const warn: AgentCapabilities = {
   ...SAFE_DEFAULTS,
-  guardEnforcement: { ask: "warnOnly", "auto-edit": "warnOnly", full: "warnOnly" },
+  guardEnforcement: { ask: "warnOnly", "auto-edit": "warnOnly", plan: "warnOnly", full: "warnOnly" },
   mcpHttp: false,
 };
 
 const blocked: AgentCapabilities = {
   ...SAFE_DEFAULTS,
-  guardEnforcement: { ask: "block", "auto-edit": "block", full: "block" },
+  guardEnforcement: { ask: "block", "auto-edit": "block", plan: "block", full: "block" },
   mcpHttp: true,
 };
 
 const mixed: AgentCapabilities = {
   ...SAFE_DEFAULTS,
-  guardEnforcement: { ask: "block", "auto-edit": "block", full: "warnOnly" },
+  guardEnforcement: { ask: "block", "auto-edit": "block", plan: "block", full: "warnOnly" },
 };
 
 const request: PermissionRequest = { requestId: "r1", threadId: "t1", toolName: "Bash", summary: "git push --force", canAlwaysAllow: true };
