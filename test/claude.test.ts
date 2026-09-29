@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ModelInfo, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
-import { createClaudeDriver, handleMessage, newTurnState, resolvePackagedClaudeBinary, turnEndFromResult } from "../src/main/agents/claude";
+import { bundledClaudeVersion, createClaudeDriver, FIRST_RELIST_MS, fromSdk, handleMessage, newestClaude, newTurnState, pickClaudeExecutable, resolvePackagedClaudeBinary, turnEndFromResult } from "../src/main/agents/claude";
+import { MODEL_TTL_MS } from "../src/main/agents/model-ttl";
 import type { TurnInput } from "../src/main/agents/types";
 import type { ThreadEvent } from "../src/shared/types";
 import { tempDir } from "./helpers";
@@ -88,6 +89,86 @@ describe("resolvePackagedClaudeBinary", () => {
   });
 });
 
+describe("pickClaudeExecutable", () => {
+  it("prefers a newer installed CLI over the SDK's bundled binary", () => {
+    const installed = { path: "/usr/local/bin/claude", version: "2.1.284" };
+    expect(pickClaudeExecutable({ bundledVersion: "2.1.281", installed, packaged: undefined })).toBe(installed.path);
+  });
+
+  it("prefers the packaged binary when the installed CLI is older", () => {
+    const installed = { path: "/usr/local/bin/claude", version: "2.1.200" };
+    expect(pickClaudeExecutable({ bundledVersion: "2.1.281", installed, packaged: "/app/claude" })).toBe("/app/claude");
+  });
+
+  it("falls back to the packaged binary when no CLI is installed", () => {
+    expect(pickClaudeExecutable({ bundledVersion: "2.1.281", installed: null, packaged: "/app/claude" })).toBe("/app/claude");
+  });
+
+  it("prefers the installed CLI when the SDK reports no bundled version", () => {
+    const installed = { path: "/usr/local/bin/claude", version: "2.1.284" };
+    expect(pickClaudeExecutable({ bundledVersion: null, installed, packaged: "/app/claude" })).toBe(installed.path);
+  });
+
+  it("treats an equal version as current, and an unreadable one as not", () => {
+    expect(pickClaudeExecutable({ bundledVersion: "2.1.281", installed: { path: "/c", version: "2.1.281" }, packaged: "/app/claude" })).toBe("/c");
+    expect(pickClaudeExecutable({ bundledVersion: "2.1.281", installed: { path: "/c", version: "unknown" }, packaged: "/app/claude" })).toBe("/app/claude");
+  });
+});
+
+describe("newestClaude", () => {
+  it("picks the highest version, not the first on PATH", () => {
+    expect(
+      newestClaude([
+        { path: "/usr/local/bin/claude", version: "2.0.56" },
+        { path: "/fnm/claude", version: "2.1.222" },
+        { path: "/home/u/.local/bin/claude", version: "2.1.284" },
+      ]),
+    ).toEqual({ path: "/home/u/.local/bin/claude", version: "2.1.284" });
+  });
+
+  it("compares major before minor", () => {
+    expect(newestClaude([{ path: "/a", version: "3.0.0" }, { path: "/b", version: "2.9.9" }])).toEqual({ path: "/a", version: "3.0.0" });
+  });
+
+  it("returns null for an empty list", () => {
+    expect(newestClaude([])).toBeNull();
+  });
+
+  it("skips candidates whose version isn't parseable", () => {
+    expect(newestClaude([{ path: "/a", version: "unknown" }, { path: "/b", version: "1.0.0" }])).toEqual({ path: "/b", version: "1.0.0" });
+  });
+});
+
+describe("bundledClaudeVersion", () => {
+  it("reads the SDK's bundled claudeCodeVersion from this repo's node_modules", () => {
+    expect(bundledClaudeVersion()).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+});
+
+describe("fromSdk", () => {
+  it("reads the newer format's versioned displayName", () => {
+    const list: ModelInfo[] = [{ value: "sonnet", displayName: "Sonnet 5.5", description: "Most efficient for simpler tasks" }];
+    expect(fromSdk(list)).toEqual([{ id: "sonnet", label: "Sonnet 5.5" }]);
+  });
+
+  it("keeps the older format's versioned description head", () => {
+    const list: ModelInfo[] = [{ value: "opus", displayName: "Opus", description: "Opus 5.5 · Best for everyday work" }];
+    expect(fromSdk(list)).toEqual([{ id: "opus", label: "Opus 5.5" }]);
+  });
+
+  it("keeps the Default (…) handling for the older format", () => {
+    const list: ModelInfo[] = [{ value: "sonnet", displayName: "Default", description: "Sonnet 5.5 · Best for everyday work" }];
+    expect(fromSdk(list)).toEqual([{ id: "sonnet", label: "Default (Sonnet 5.5)" }]);
+  });
+
+  it("keeps the efforts mapping", () => {
+    const list: ModelInfo[] = [
+      { value: "opus", displayName: "Opus 5.5", description: "Best for everyday work", supportsEffort: true, supportedEffortLevels: ["low", "high"] },
+    ];
+    expect(fromSdk(list)).toEqual([{ id: "opus", label: "Opus 5.5", efforts: ["low", "high"] }]);
+  });
+});
+
 describe("Claude driver models", () => {
   it("starts with the static fallback list", () => {
     const d = createClaudeDriver({ pluginDir: () => "/tmp/plugin", guardScript: "/tmp/guard.py" });
@@ -108,6 +189,40 @@ describe("Claude driver models", () => {
       expect(opus.label).toMatch(/Opus/i);
     }
   }, 30_000);
+
+  it("re-lists quickly once after the first listing, then only on the model TTL", async () => {
+    let clock = 1_000_000_000;
+    const now = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    sdk.calls.length = 0;
+    sdk.models = [{ value: "sonnet", displayName: "Sonnet 5.5", description: "Most efficient for simpler tasks" }];
+    try {
+      const d = createClaudeDriver({ pluginDir: () => null });
+      await d.refreshModels!();
+      expect(sdk.calls).toHaveLength(1);
+      expect(d.models().find((m) => m.id === "sonnet")?.label).toBe("Sonnet 5.5");
+      // Within the quick re-list window the list is trusted: no second listing.
+      await d.refreshModels!();
+      expect(sdk.calls).toHaveLength(1);
+      // The CLI can serve a stale cached list first, so one quick re-list is
+      // allowed after FIRST_RELIST_MS.
+      clock += FIRST_RELIST_MS;
+      sdk.models = [{ value: "sonnet", displayName: "Sonnet 6", description: "Newest" }];
+      await d.refreshModels!();
+      expect(sdk.calls).toHaveLength(2);
+      expect(d.models().find((m) => m.id === "sonnet")?.label).toBe("Sonnet 6");
+      // That was the one quick re-list; now only the full TTL asks again.
+      await d.refreshModels!();
+      expect(sdk.calls).toHaveLength(2);
+      clock += MODEL_TTL_MS;
+      sdk.models = [{ value: "sonnet", displayName: "Sonnet 7", description: "Newest" }];
+      await d.refreshModels!();
+      expect(sdk.calls).toHaveLength(3);
+      expect(d.models().find((m) => m.id === "sonnet")?.label).toBe("Sonnet 7");
+    } finally {
+      now.mockRestore();
+      sdk.models = [];
+    }
+  });
 });
 
 describe("Claude driver guide", () => {

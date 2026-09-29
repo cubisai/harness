@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
 import type { EffortLevel, HookCallback, ModelInfo, ModelUsage, Options, PermissionResult, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { McpServerEntry, ModelOption, PermissionMode, PlanEntry, ThreadEvent } from "../../shared/types";
@@ -16,10 +19,17 @@ import { PLUGIN_NAME } from "../skills/plugin";
 import { CLAUDE_CAPABILITIES } from "./capabilities";
 import { claudeLimitsPatch, claudeUsagePatch, type ClaudeUsage, type LimitsListener, type LimitsPatch } from "./limits";
 import { summarizeToolInput, summarizeToolResult } from "./summarize";
+import { MODEL_TTL_MS } from "./model-ttl";
 import type { AgentDriver, HarnessTool, ToolOutput, TurnInput } from "./types";
 
 /** MCP server name for harness tools: they reach Claude as mcp__cubiq__<tool>. */
 export const TOOL_SERVER = "cubiq";
+
+/**
+ * After the first model listing, Claude Code's cached server config can still be
+ * stale, so one quick re-list is allowed this soon; MODEL_TTL_MS applies after.
+ */
+export const FIRST_RELIST_MS = 60_000;
 
 function toCallToolResult(out: ToolOutput) {
   const content: ({ type: "text"; text: string } | { type: "image"; data: string; mimeType: string })[] = [
@@ -52,22 +62,26 @@ function withUserServers(opts: Pick<Options, "mcpServers" | "allowedTools">, ser
 // Aliases the SDK accepts; labels match the versioned names in each model's description.
 const MODELS: ModelOption[] = [
   { id: "opus", label: "Opus 5.5" },
-  { id: "sonnet", label: "Sonnet 5" },
+  { id: "sonnet", label: "Sonnet 5.5" },
   { id: "haiku", label: "Haiku 4.5" },
   { id: "claude-fable-5-1[1m]", label: "Fable 5.1" },
 ];
 
-function fromSdk(list: ModelInfo[]): ModelOption[] {
+export function fromSdk(list: ModelInfo[]): ModelOption[] {
   return list.filter((m) => m.value).map((m) => {
-    // description: "Opus 5.5 · Best for everyday…" — displayName alone drops the version.
+    // Two formats: the newer displayName carries the version ("Sonnet 5.5")
+    // with a plain description, while the older one drops it from displayName
+    // and opens the description with it ("Opus 5.5 · Best for everyday…").
     const head = m.description.split(" · ")[0]?.trim() || m.displayName;
-    const label = m.displayName.startsWith("Default")
-      ? head === m.displayName
-        ? m.displayName
-        : `Default (${head})`
-      : head.startsWith(m.displayName)
-        ? head
-        : m.displayName;
+    const label = /\d/.test(m.displayName)
+      ? m.displayName
+      : m.displayName.startsWith("Default")
+        ? head === m.displayName
+          ? m.displayName
+          : `Default (${head})`
+        : head.startsWith(m.displayName)
+          ? head
+          : m.displayName;
     return {
       id: m.value,
       label,
@@ -113,6 +127,140 @@ export function resolvePackagedClaudeBinary(
   return undefined;
 }
 
+/** Major.minor.patch as numbers, or null when the string isn't one. */
+function semverParts(version: string): [number, number, number] | null {
+  const m = /(\d+)\.(\d+)\.(\d+)/.exec(version);
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+/**
+ * Which Claude Code binary to run. The user's installed CLI self-updates, so
+ * its model list is fresher than the SDK's bundled one: prefer it when it's at
+ * least as new (bundledVersion is the SDK's `claudeCodeVersion`; null means the
+ * SDK reports none, so anything installed wins). Otherwise fall back to
+ * `packaged` (the app's unpacked copy in production, undefined = SDK default).
+ */
+export function pickClaudeExecutable(opts: {
+  bundledVersion: string | null;
+  installed: { path: string; version: string } | null;
+  packaged: string | undefined;
+}): string | undefined {
+  const { bundledVersion, installed, packaged } = opts;
+  if (!installed) return packaged;
+  if (bundledVersion === null) return installed.path;
+  const a = semverParts(installed.version);
+  const b = semverParts(bundledVersion);
+  if (!a || !b) return packaged;
+  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i]! >= b[i]! ? installed.path : packaged;
+  return installed.path;
+}
+
+/**
+ * The `claudeCodeVersion` the SDK bundles, or null when it can't be read.
+ * The package's exports map hides package.json, so resolve the entry point and
+ * walk up to the package root (its package.json) instead.
+ */
+export function bundledClaudeVersion(): string | null {
+  try {
+    let dir = dirname(createRequire(import.meta.url).resolve("@anthropic-ai/claude-agent-sdk"));
+    for (let i = 0; i < 6; i++) {
+      const file = join(dir, "package.json");
+      if (existsSync(file)) {
+        const pkg = JSON.parse(readFileSync(file, "utf8")) as { name?: string; claudeCodeVersion?: string };
+        if (pkg.name === "@anthropic-ai/claude-agent-sdk") return pkg.claudeCodeVersion ?? null;
+      }
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** The candidate with the highest semver among installed CLIs, or null when none parses. */
+export function newestClaude(candidates: { path: string; version: string }[]): { path: string; version: string } | null {
+  let best: { path: string; version: string } | null = null;
+  let bestParts: [number, number, number] | null = null;
+  for (const candidate of candidates) {
+    const parts = semverParts(candidate.version);
+    if (!parts) continue;
+    if (!bestParts) {
+      best = candidate;
+      bestParts = parts;
+      continue;
+    }
+    for (let i = 0; i < 3; i++) {
+      if (parts[i] === bestParts[i]) continue;
+      if (parts[i]! > bestParts[i]!) {
+        best = candidate;
+        bestParts = parts;
+      }
+      break;
+    }
+  }
+  return best;
+}
+
+/** Every `claude` on PATH (plus Claude Code's native installer path) that answers --version. */
+function claudeCandidates(): { path: string; version: string }[] {
+  const found: string[] = [];
+  try {
+    const args = process.platform === "win32" ? ["claude"] : ["-a", "claude"];
+    const cmd = process.platform === "win32" ? "where" : "which";
+    found.push(
+      ...execFileSync(cmd, args, { encoding: "utf8" })
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean),
+    );
+  } catch {
+    // `which -a` exits non-zero when nothing is found; the native path below may still exist.
+  }
+  if (process.platform !== "win32") {
+    const native = join(homedir(), ".local", "bin", "claude");
+    if (existsSync(native)) found.push(native);
+  }
+  const candidates: { path: string; version: string }[] = [];
+  const seen = new Set<string>();
+  for (const candidate of found) {
+    let path: string;
+    try {
+      path = realpathSync(candidate);
+    } catch {
+      continue;
+    }
+    if (seen.has(path)) continue;
+    seen.add(path);
+    try {
+      const version = /\d+\.\d+\.\d+/.exec(execFileSync(path, ["--version"], { encoding: "utf8", timeout: 5000 }))?.[0];
+      if (version) candidates.push({ path, version });
+    } catch {
+      // A candidate that can't run --version is skipped.
+    }
+  }
+  return candidates;
+}
+
+/** The newest user-installed CLI, resolved through PATH symlinks, or null when absent. */
+function installedClaude(): { path: string; version: string } | null {
+  return newestClaude(claudeCandidates());
+}
+
+let executable: { value: string | undefined; at: number } | null = null;
+
+/**
+ * The Claude Code binary every query in this app should use, memoized for
+ * MODEL_TTL_MS so a CLI that self-updated mid-session is picked up.
+ */
+export function claudeExecutable(now: number = Date.now()): string | undefined {
+  if (executable && now - executable.at < MODEL_TTL_MS) return executable.value;
+  const value = pickClaudeExecutable({ bundledVersion: bundledClaudeVersion(), installed: installedClaude(), packaged: resolvePackagedClaudeBinary() });
+  executable = { value, at: now };
+  return value;
+}
+
 export interface ClaudeDriverConfig {
   /** The generated plugin carrying model-invoked skills for this turn's cwd, or null if none. */
   pluginDir?: (cwd: string) => string | null;
@@ -126,6 +274,8 @@ export interface ClaudeDriverConfig {
   byokModels?: () => ModelOption[] | null;
   /** The harness guide for this turn's cwd, appended to Claude Code's own system prompt. */
   guide?: (cwd: string) => string;
+  /** Prefer the user's installed, self-updating Claude Code CLI over the SDK's bundled binary (default true). */
+  useInstalledCli?: boolean;
 }
 
 /**
@@ -136,6 +286,10 @@ export interface ClaudeDriverConfig {
 export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
   let models: ModelOption[] = MODELS;
   let refreshing: Promise<void> | null = null;
+  /** When the current non-fallback list was last fetched; 0 = never. */
+  let listedAt = 0;
+  /** Whether the one quick re-list after the first listing has happened (see refreshModels). */
+  let relisted = false;
   /** Model value → whether it supports adaptive thinking, from the SDK's model list. */
   const adaptiveThinking = new Map<string, boolean>();
   // Both are once-per-driver, not once-per-turn: the same warning or the same
@@ -143,8 +297,15 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
   const shownWarnings = new Set<string>();
   const checkedProjects = new Set<string>();
 
+  /** The binary for this query() attempt: the installed CLI unless the driver opted out. */
+  const claudePath = (): string | undefined => (config.useInstalledCli === false ? resolvePackagedClaudeBinary() : claudeExecutable());
+
   const refreshModels = (): Promise<void> => {
-    if (models !== MODELS) return Promise.resolve();
+    // Claude Code caches the server's model config, so the first listing after a
+    // while can come back stale. Re-list once shortly after (FIRST_RELIST_MS),
+    // then fall back to the normal TTL so a model released while the app stays
+    // open shows up without a restart.
+    if (Date.now() - listedAt < (relisted ? MODEL_TTL_MS : FIRST_RELIST_MS)) return Promise.resolve();
     refreshing ??= (async () => {
       const controller = new AbortController();
       try {
@@ -156,7 +317,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
           })(),
           options: {
             abortController: controller,
-            pathToClaudeCodeExecutable: resolvePackagedClaudeBinary(),
+            pathToClaudeCodeExecutable: claudePath(),
           },
         });
         const list = await Promise.race([
@@ -178,6 +339,9 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
           models = next;
           adaptiveThinking.clear();
           for (const m of list) if (m.value) adaptiveThinking.set(m.value, Boolean(m.supportsAdaptiveThinking));
+          // listedAt was already set, so this listing is the quick re-list.
+          if (listedAt) relisted = true;
+          listedAt = Date.now();
         }
       } catch {
         // Keep the static fallback list.
@@ -210,7 +374,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
           })(),
           options: {
             abortController: controller,
-            pathToClaudeCodeExecutable: resolvePackagedClaudeBinary(),
+            pathToClaudeCodeExecutable: claudePath(),
           },
         });
         const usage = (
@@ -287,7 +451,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
       const options: Options = {
         cwd: input.cwd,
         abortController,
-        pathToClaudeCodeExecutable: resolvePackagedClaudeBinary(),
+        pathToClaudeCodeExecutable: claudePath(),
         model: input.model,
         resume: input.sessionId ?? undefined,
         permissionMode: SDK_MODE[input.permissionMode],

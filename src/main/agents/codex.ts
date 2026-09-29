@@ -14,6 +14,7 @@ import { CODEX_CAPABILITIES } from "./capabilities";
 import { codexLimitsPatch, codexReadPatch, type CodexRateLimits, type CodexRateLimitsRead, type LimitsListener, type LimitsPatch } from "./limits";
 import { checkCommand } from "../guard";
 import { summarizeToolInput, summarizeToolResult } from "./summarize";
+import { MODEL_TTL_MS } from "./model-ttl";
 import type { AgentDriver, HarnessTool, SessionSeed, TurnInput } from "./types";
 
 // The slices of Codex's app-server protocol (`codex app-server generate-ts`) this driver uses.
@@ -212,6 +213,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   /** A replaced app-server's exit, while it's still under way. */
   let exiting: Promise<unknown> | null = null;
   let models: ModelOption[] = [];
+  /** When the current model list was last fetched; 0 = never. */
+  let listedAt = 0;
   const turns = new Map<string, TurnState>(); // by Codex thread id
   /** Threads loaded in the running app-server, and the MCP config they were loaded with. */
   const loaded = new Map<string, string>();
@@ -429,6 +432,29 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
 
   const liveReady = (): Promise<void> | null => (rpc?.alive && ready ? ready : null);
 
+  /** Ask the running app-server for its model list; keep the last one on failure. */
+  const listModels = async (conn: StdioRpc): Promise<void> => {
+    const list = await conn
+      .request<{
+        data: {
+          id: string;
+          displayName: string;
+          hidden: boolean;
+          supportedReasoningEfforts?: { reasoningEffort: string; description: string }[];
+          defaultReasoningEffort?: string;
+        }[];
+      }>("model/list", {})
+      .catch(() => null);
+    if (!list) return;
+    models = list.data.filter((m) => !m.hidden).map((m) => ({
+      id: m.id,
+      label: m.displayName,
+      ...(m.supportedReasoningEfforts?.length ? { efforts: m.supportedReasoningEfforts.map((e) => e.reasoningEffort) } : {}),
+      ...(m.defaultReasoningEffort ? { defaultEffort: m.defaultReasoningEffort } : {}),
+    }));
+    listedAt = Date.now();
+  };
+
   const start = async (cwd: string): Promise<void> => {
     // A caller arriving while a replaced app-server exits waits for it too, so only one successor spawns.
     if (exiting) await exiting;
@@ -478,24 +504,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         const dir = config.skillsDir();
         if (dir) await conn.request("skills/extraRoots/set", { extraRoots: [dir] }).catch(() => {});
       }
-      const list = await conn
-        .request<{
-          data: {
-            id: string;
-            displayName: string;
-            hidden: boolean;
-            supportedReasoningEfforts?: { reasoningEffort: string; description: string }[];
-            defaultReasoningEffort?: string;
-          }[];
-        }>("model/list", {})
-        .catch(() => null);
-      if (list)
-        models = list.data.filter((m) => !m.hidden).map((m) => ({
-          id: m.id,
-          label: m.displayName,
-          ...(m.supportedReasoningEfforts?.length ? { efforts: m.supportedReasoningEfforts.map((e) => e.reasoningEffort) } : {}),
-          ...(m.defaultReasoningEffort ? { defaultEffort: m.defaultReasoningEffort } : {}),
-        }));
+      await listModels(conn);
       if (plan?.byok && startWarnings.length) throw new Error(`Codex rejected the provider config: ${startWarnings.join("; ")}`);
     })();
     ready.catch(() => {
@@ -509,11 +518,22 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   let refreshing: Promise<void> | null = null;
   const refreshModels = (): Promise<void> => {
     // model/list is per account (a free plan lists fewer models): after a new login, ask again.
-    if (models.length && codexAuthStamp(config.injection?.()?.env ?? process.env) === authStamp) return Promise.resolve();
-    // start() already runs model/list (restarting a stale app-server first) and keeps the process for later turns.
-    refreshing ??= start(homedir()).catch(() => {}).finally(() => {
-      refreshing = null;
-    });
+    const loginChanged = models.length > 0 && codexAuthStamp(config.injection?.()?.env ?? process.env) !== authStamp;
+    // A list within the TTL is trusted; a stale one is re-asked.
+    if (models.length && !loginChanged && Date.now() - listedAt < MODEL_TTL_MS) return Promise.resolve();
+    refreshing ??= (async () => {
+      // A running app-server answers a fresh model/list in place, no restart.
+      if (models.length && !loginChanged && rpc?.alive) {
+        await listModels(rpc);
+        return;
+      }
+      // start() already runs model/list (restarting a stale app-server first) and keeps the process for later turns.
+      await start(homedir());
+    })()
+      .catch(() => {})
+      .finally(() => {
+        refreshing = null;
+      });
     return refreshing;
   };
 

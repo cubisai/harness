@@ -5,6 +5,7 @@ import { clipSummary } from "../../../shared/tools";
 import type { EditResult, RunPayload, RunResult, ToolDiff } from "../../../shared/tools";
 import { diffSummary, unifiedDiff } from "../../../shared/diff";
 import { summarizeToolResult } from "../summarize";
+import { MODEL_TTL_MS } from "../model-ttl";
 import type { AgentDriver, SessionSeed, TurnInput } from "../types";
 import { acpCapabilities, withCapabilities } from "../capabilities";
 import { forAcpWithReport, mcpChangeNotice } from "../../mcp/servers";
@@ -245,6 +246,8 @@ export function createAcpDriver(
   const live = new Map<string, Live>();
   let knownModels: ModelOption[] = [];
   let knownEfforts: string[] = [];
+  /** When the current model list was last fetched; 0 = never. */
+  let listedAt = 0;
   /** Model id → its variant names, for the effortVia agents. */
   let knownVariants: Record<string, string[]> = {};
   /** The last session's config options, so the default option can name its model. */
@@ -776,7 +779,9 @@ export function createAcpDriver(
   let refreshing: Promise<void> | null = null;
   const refreshModels = (): Promise<void> => {
     const ready = ensureVariants();
-    if (knownModels.length) return ready;
+    // Re-list once the current list is stale, so a model released while the
+    // app stays open shows up without a restart.
+    if (knownModels.length && Date.now() - listedAt < MODEL_TTL_MS) return ready;
     // Checked outside the memoized refresh, so a fixed provider refreshes next time.
     // The turn surfaces the error; there's no process to start.
     const plan = deps.injection?.();
@@ -809,6 +814,7 @@ export function createAcpDriver(
         // leaving the list empty until the first real turn signs in.
         const res = await conn.request<{ configOptions?: ConfigOption[] }>("session/new", { cwd, mcpServers: [] });
         rememberConfig(res.configOptions);
+        if (knownModels.length) listedAt = Date.now();
       } catch {
         // Leave the list alone; the first turn will fill it in.
       } finally {
