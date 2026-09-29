@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
 import type { EffortLevel, HookCallback, ModelInfo, ModelUsage, Options, PermissionResult, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
@@ -20,6 +18,8 @@ import { CLAUDE_CAPABILITIES } from "./capabilities";
 import { claudeLimitsPatch, claudeUsagePatch, type ClaudeUsage, type LimitsListener, type LimitsPatch } from "./limits";
 import { summarizeToolInput, summarizeToolResult } from "./summarize";
 import { MODEL_TTL_MS } from "./model-ttl";
+import { newestInstallAsync, PREFERRED } from "./binaries";
+import type { BinaryResolution } from "./binaries";
 import type { AgentDriver, HarnessTool, ToolOutput, TurnInput } from "./types";
 
 /** MCP server name for harness tools: they reach Claude as mcp__cubiq__<tool>. */
@@ -179,86 +179,39 @@ export function bundledClaudeVersion(): string | null {
   }
 }
 
-/** The candidate with the highest semver among installed CLIs, or null when none parses. */
-export function newestClaude(candidates: { path: string; version: string }[]): { path: string; version: string } | null {
-  let best: { path: string; version: string } | null = null;
-  let bestParts: [number, number, number] | null = null;
-  for (const candidate of candidates) {
-    const parts = semverParts(candidate.version);
-    if (!parts) continue;
-    if (!bestParts) {
-      best = candidate;
-      bestParts = parts;
-      continue;
-    }
-    for (let i = 0; i < 3; i++) {
-      if (parts[i] === bestParts[i]) continue;
-      if (parts[i]! > bestParts[i]!) {
-        best = candidate;
-        bestParts = parts;
-      }
-      break;
-    }
-  }
-  return best;
-}
-
-/** Every `claude` on PATH (plus Claude Code's native installer path) that answers --version. */
-function claudeCandidates(): { path: string; version: string }[] {
-  const found: string[] = [];
-  try {
-    const args = process.platform === "win32" ? ["claude"] : ["-a", "claude"];
-    const cmd = process.platform === "win32" ? "where" : "which";
-    found.push(
-      ...execFileSync(cmd, args, { encoding: "utf8" })
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean),
-    );
-  } catch {
-    // `which -a` exits non-zero when nothing is found; the native path below may still exist.
-  }
-  if (process.platform !== "win32") {
-    const native = join(homedir(), ".local", "bin", "claude");
-    if (existsSync(native)) found.push(native);
-  }
-  const candidates: { path: string; version: string }[] = [];
-  const seen = new Set<string>();
-  for (const candidate of found) {
-    let path: string;
-    try {
-      path = realpathSync(candidate);
-    } catch {
-      continue;
-    }
-    if (seen.has(path)) continue;
-    seen.add(path);
-    try {
-      const version = /\d+\.\d+\.\d+/.exec(execFileSync(path, ["--version"], { encoding: "utf8", timeout: 5000 }))?.[0];
-      if (version) candidates.push({ path, version });
-    } catch {
-      // A candidate that can't run --version is skipped.
-    }
-  }
-  return candidates;
-}
-
-/** The newest user-installed CLI, resolved through PATH symlinks, or null when absent. */
-function installedClaude(): { path: string; version: string } | null {
-  return newestClaude(claudeCandidates());
-}
-
-let executable: { value: string | undefined; at: number } | null = null;
+let executable: { value: string | undefined; at: number; found: BinaryResolution | null } | null = null;
+/** The in-flight probe, so concurrent callers share one `--version` sweep. */
+let resolving: Promise<void> | null = null;
 
 /**
  * The Claude Code binary every query in this app should use, memoized for
- * MODEL_TTL_MS so a CLI that self-updated mid-session is picked up.
+ * MODEL_TTL_MS so a CLI that self-updated mid-session is picked up. The same
+ * resolution's install list is cached alongside it, so callers (binary())
+ * report the binary that actually runs without re-probing. Async: the version
+ * probes must never block the main process.
  */
-export function claudeExecutable(now: number = Date.now()): string | undefined {
-  if (executable && now - executable.at < MODEL_TTL_MS) return executable.value;
-  const value = pickClaudeExecutable({ bundledVersion: bundledClaudeVersion(), installed: installedClaude(), packaged: resolvePackagedClaudeBinary() });
-  executable = { value, at: now };
-  return value;
+export function claudeExecutableAsync(now: number = Date.now()): Promise<string | undefined> {
+  if (executable && now - executable.at < MODEL_TTL_MS) return Promise.resolve(executable.value);
+  resolving ??= (async () => {
+    let found: BinaryResolution | null = null;
+    try {
+      found = await newestInstallAsync("claude", { preferred: PREFERRED.claude });
+    } catch {
+      // A probe that fails falls back to the SDK's bundled binary.
+      found = null;
+    }
+    const installed = found ? { path: found.path, version: found.version } : null;
+    const value = pickClaudeExecutable({ bundledVersion: bundledClaudeVersion(), installed, packaged: resolvePackagedClaudeBinary() });
+    executable = { value, at: Date.now(), found };
+  })().finally(() => {
+    resolving = null;
+  });
+  return resolving.then(() => executable?.value);
+}
+
+/** The newest install resolution cached by the last `claudeExecutableAsync` refresh. */
+function claudeInstall(): BinaryResolution | null {
+  return executable?.found ?? null;
 }
 
 export interface ClaudeDriverConfig {
@@ -298,7 +251,8 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
   const checkedProjects = new Set<string>();
 
   /** The binary for this query() attempt: the installed CLI unless the driver opted out. */
-  const claudePath = (): string | undefined => (config.useInstalledCli === false ? resolvePackagedClaudeBinary() : claudeExecutable());
+  const claudePath = async (): Promise<string | undefined> =>
+    config.useInstalledCli === false ? resolvePackagedClaudeBinary() : await claudeExecutableAsync();
 
   const refreshModels = (): Promise<void> => {
     // Claude Code caches the server's model config, so the first listing after a
@@ -317,7 +271,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
           })(),
           options: {
             abortController: controller,
-            pathToClaudeCodeExecutable: claudePath(),
+            pathToClaudeCodeExecutable: await claudePath(),
           },
         });
         const list = await Promise.race([
@@ -363,6 +317,15 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
     skillCallPrefix: `${PLUGIN_NAME}:`,
     models: () => config.byokModels?.() ?? models,
     refreshModels,
+    /** Which Claude Code binary actually runs, and the other installs found. Cached only: undefined until warmed. */
+    binary: () => {
+      if (!executable) return undefined;
+      const found = claudeInstall();
+      const chosen = executable.value;
+      if (found && chosen === found.path) return { path: found.path, version: found.version, others: found.others };
+      const others = found ? [{ path: found.path, version: found.version }, ...found.others] : [];
+      return { path: "bundled with the app", version: bundledClaudeVersion() ?? found?.version ?? "unknown", others };
+    },
     // Read plan limits on demand, the same control-plane probe as refreshModels:
     // a query with a prompt that never yields, aborted once the answer lands.
     readLimits: async (): Promise<LimitsPatch | "unsupported" | null> => {
@@ -374,7 +337,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
           })(),
           options: {
             abortController: controller,
-            pathToClaudeCodeExecutable: claudePath(),
+            pathToClaudeCodeExecutable: await claudePath(),
           },
         });
         const usage = (
@@ -451,7 +414,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
       const options: Options = {
         cwd: input.cwd,
         abortController,
-        pathToClaudeCodeExecutable: claudePath(),
+        pathToClaudeCodeExecutable: await claudePath(),
         model: input.model,
         resume: input.sessionId ?? undefined,
         permissionMode: SDK_MODE[input.permissionMode],

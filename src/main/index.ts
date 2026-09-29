@@ -7,6 +7,7 @@ import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, 
 import type { AboutInfo, AgentLimits, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, OpenResult, PermissionDecision, PlanDecision, ProviderInput, ScreenshotInfo, SendRequest, Settings, SkillOrigin, SwitchMode, Thread } from "../shared/types";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
+import { warmBinaries } from "./agents/binaries";
 import { createClaudeDriver, resolvePackagedClaudeBinary } from "./agents/claude";
 import { createCodexDriver } from "./agents/codex";
 import { acpCapabilities, CLAUDE_CAPABILITIES, CODEX_CAPABILITIES } from "./agents/capabilities";
@@ -381,6 +382,17 @@ async function main(): Promise<void> {
       });
     }),
   ];
+  // Resolve each installed CLI once in the background: the `--version` probes
+  // are slow for some installs, so the Library's binary rows fill in without
+  // blocking startup. Best-effort: a missing CLI just isn't warmed.
+  const warmCommands = [
+    "claude",
+    "codex",
+    ...acpAgents.filter((a) => !a.command.includes("/") && !a.command.includes("\\") && onPath(a.command)).map((a) => a.command),
+  ];
+  void warmBinaries(warmCommands)
+    .then(() => broadcast({ type: "agents" }))
+    .catch(() => {});
   // Read limits on demand for whichever drivers can be asked (they expose
   // readLimits; the rest are skipped). The tracker seeds from disk and the
   // first check runs shortly after launch.

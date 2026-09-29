@@ -1,4 +1,4 @@
-import type { AgentCapabilities, PermissionMode } from "../../../shared/types";
+import type { AgentCapabilities, AgentInfo, PermissionMode } from "../../../shared/types";
 
 const MODES: PermissionMode[] = ["ask", "auto-edit", "plan", "full"];
 const MODE_LABELS: Record<PermissionMode, string> = { ask: "Ask", "auto-edit": "Auto-edit", plan: "Plan", full: "Full" };
@@ -71,6 +71,27 @@ export function CantDoList({ capabilities }: { capabilities: AgentCapabilities }
           <li key={item}>{item}</li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/** A home-directory path with the prefix shown as ~, for display only. */
+function tildePath(path: string): string {
+  return path.replace(/^\/(?:Users|home)\/[^/]+\//, "~/").replace(/^[A-Za-z]:[\\/]Users[\\/][^\\/]+[\\/]/, "~/");
+}
+
+/** Which copy of this agent's CLI runs, and the other installs found. */
+export function BinaryLine({ binary }: { binary: NonNullable<AgentInfo["binary"]> }) {
+  return (
+    <div className="wb-cant">
+      <div>
+        {binary.version} · {tildePath(binary.path)}
+      </div>
+      {binary.others.length > 0 && (
+        <div>
+          also installed: {binary.others.map((o) => `${o.version} (${tildePath(o.path)})`).join(", ")} — CubiQ uses the newest
+        </div>
+      )}
     </div>
   );
 }

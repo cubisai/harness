@@ -126,15 +126,19 @@ export class Service {
   }
 
   listAgents(): AgentInfo[] {
-    return [...this.drivers.values()].map((d) => ({
-      id: d.id,
-      label: d.label,
-      models: d.models(),
-      defaultModel: d.defaultModel,
-      capabilities: d.capabilities,
-      ...(d.credentials ? { credentials: d.credentials } : {}),
-      ...(d.unsupported ? { unsupported: d.unsupported } : {}),
-    }));
+    return [...this.drivers.values()].map((d) => {
+      const binary = d.binary?.();
+      return {
+        id: d.id,
+        label: d.label,
+        models: d.models(),
+        defaultModel: d.defaultModel,
+        capabilities: d.capabilities,
+        ...(d.credentials ? { credentials: d.credentials } : {}),
+        ...(d.unsupported ? { unsupported: d.unsupported } : {}),
+        ...(binary ? { binary } : {}),
+      };
+    });
   }
 
   createThread(projectId: string, agent?: string): Thread {

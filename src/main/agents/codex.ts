@@ -15,6 +15,7 @@ import { codexLimitsPatch, codexReadPatch, type CodexRateLimits, type CodexRateL
 import { checkCommand } from "../guard";
 import { summarizeToolInput, summarizeToolResult } from "./summarize";
 import { MODEL_TTL_MS } from "./model-ttl";
+import { binaryInfo, resolvedCommandAsync } from "./binaries";
 import type { AgentDriver, HarnessTool, SessionSeed, TurnInput } from "./types";
 
 // The slices of Codex's app-server protocol (`codex app-server generate-ts`) this driver uses.
@@ -481,7 +482,9 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     if (plan?.error) return Promise.reject(new Error(plan.error));
     authStamp = codexAuthStamp(plan?.env ?? process.env);
     startWarnings = [];
-    const conn: StdioRpc = StdioRpc.spawn(config.command, [...config.args, ...(plan?.args ?? [])], { cwd, env: plan?.env ?? process.env }, {
+    // A bare command is resolved to its newest installed copy at spawn time.
+    const command = config.command.includes("/") || config.command.includes("\\") ? config.command : await resolvedCommandAsync(config.command);
+    const conn: StdioRpc = StdioRpc.spawn(command, [...config.args, ...(plan?.args ?? [])], { cwd, env: plan?.env ?? process.env }, {
       onNotification,
       onRequest,
       onExit: () => {
@@ -607,6 +610,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     credentials: { byok: true, own: "login", injector: "codex" },
     skillsDelivery: CODEX_CAPABILITIES.skillsDelivery,
     skillCallPrefix: "",
+    /** The Codex copy a bare command resolves to at spawn time, and the others found. */
+    binary: () => (config.command.includes("/") || config.command.includes("\\") ? undefined : (binaryInfo(config.command) ?? undefined)),
     models: () => {
       const byok = config.byokModels?.();
       return byok ?? [{ id: CODEX_DEFAULT_MODEL, label: "Codex default" }, ...models];

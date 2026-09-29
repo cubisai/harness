@@ -5,7 +5,7 @@ import { joinCommandLine, splitCommandLine } from "../cmdline";
 import { IconCopy } from "../icons";
 import { Markdown } from "../markdown";
 import { useStore, type LibraryTab } from "../store";
-import { CantDoList, CapabilityChips } from "./Capabilities";
+import { CantDoList, CapabilityChips, BinaryLine } from "./Capabilities";
 import { UnsupportedChip } from "./UnsupportedChip";
 
 const TABS: { id: "experts" | "skills" | "connectors"; label: string; icon: string }[] = [
@@ -314,7 +314,9 @@ function ExpertsTab() {
             </div>
           ))}
 
-          {filteredEngines.map((a) => (
+          {filteredEngines.map((a) => {
+            const binary = running.find((r) => r.id === a.id)?.binary;
+            return (
             <div key={a.id} className={`wb-card${a.installed ? "" : " missing"}`}>
               <div className="wb-card-header">
                 <div className="wb-avatar" style={{ background: a.installed ? "#4f46e5" : "#64748b" }}>
@@ -333,6 +335,7 @@ function ExpertsTab() {
                   <CantDoList capabilities={a.capabilities} />
                 </>
               )}
+              {binary && <BinaryLine binary={binary} />}
               <div className="wb-card-footer">
                 <div className="wb-tags">
                   <span className="wb-tag">{a.installed ? "Installed" : "Not Installed"}</span>
@@ -355,7 +358,8 @@ function ExpertsTab() {
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

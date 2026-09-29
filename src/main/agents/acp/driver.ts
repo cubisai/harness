@@ -6,6 +6,7 @@ import type { EditResult, RunPayload, RunResult, ToolDiff } from "../../../share
 import { diffSummary, unifiedDiff } from "../../../shared/diff";
 import { summarizeToolResult } from "../summarize";
 import { MODEL_TTL_MS } from "../model-ttl";
+import { binaryInfo, resolvedCommandAsync } from "../binaries";
 import type { AgentDriver, SessionSeed, TurnInput } from "../types";
 import { acpCapabilities, withCapabilities } from "../capabilities";
 import { forAcpWithReport, mcpChangeNotice } from "../../mcp/servers";
@@ -244,6 +245,8 @@ export function createAcpDriver(
   },
 ): AgentDriver {
   const live = new Map<string, Live>();
+  /** A bare command is resolved to its newest installed copy at spawn time. */
+  const bare = !config.command.includes("/") && !config.command.includes("\\");
   let knownModels: ModelOption[] = [];
   let knownEfforts: string[] = [];
   /** When the current model list was last fetched; 0 = never. */
@@ -535,7 +538,7 @@ export function createAcpDriver(
     }
     // eslint-disable-next-line prefer-const
     let l: Live;
-    const conn = StdioRpc.spawn(config.command, config.args, { cwd: input.cwd, env }, {
+    const conn = StdioRpc.spawn(bare ? await resolvedCommandAsync(config.command) : config.command, config.args, { cwd: input.cwd, env }, {
       onNotification: (method, params) => {
         if (method === "session/update") onUpdate(l, (params as { update: SessionUpdate }).update);
       },
@@ -796,7 +799,7 @@ export function createAcpDriver(
         if (dir) env[config.skillsDirEnv] = dir;
       }
       const cwd = homedir();
-      const conn = StdioRpc.spawn(config.command, config.args, { cwd, env }, {
+      const conn = StdioRpc.spawn(bare ? await resolvedCommandAsync(config.command) : config.command, config.args, { cwd, env }, {
         onNotification: () => {},
         onRequest: async (method) => {
           throw new RpcError(-32601, `${method} is not supported during model refresh`);
@@ -839,6 +842,8 @@ export function createAcpDriver(
     credentials: { byok: !config.providerEnvOnly, own: "config", injector: config.injector ?? "acp" },
     ...(config.unsupported ? { unsupported: config.unsupported } : {}),
     skillCallPrefix: "",
+    /** The CLI copy a bare command resolves to at spawn time, and the others found. */
+    ...(bare ? { binary: () => binaryInfo(config.command) ?? undefined } : {}),
     models: () => {
       // OpenCode's levels are per-model variants, not a session thought_level option.
       if (effortViaVariants) {

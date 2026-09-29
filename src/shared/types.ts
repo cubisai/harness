@@ -603,6 +603,8 @@ export interface AgentInfo {
   credentials?: AgentCredentials;
   /** Set for an agent the app reaches only unofficially: shown as "Unsupported · <this>". */
   unsupported?: string;
+  /** Which CLI copy this agent actually runs, and the others found; drivers that don't know omit it. */
+  binary?: { path: string; version: string; others: { path: string; version: string }[] };
 }
 
 export interface SendRequest {

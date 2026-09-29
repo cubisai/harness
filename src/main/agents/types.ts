@@ -1,5 +1,5 @@
 import type { ZodRawShape, z } from "zod";
-import type { AgentCapabilities, AgentCredentials, LiveDelta, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, PlanDecision, Provenance, SkillsDelivery, ThreadEvent } from "../../shared/types";
+import type { AgentCapabilities, AgentCredentials, AgentInfo, LiveDelta, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, PlanDecision, Provenance, SkillsDelivery, ThreadEvent } from "../../shared/types";
 import type { LimitsPatch } from "./limits";
 
 export type { AgentCapabilities, SkillsDelivery } from "../../shared/types";
@@ -138,6 +138,8 @@ export interface AgentDriver {
   setModel?(req: { threadId: string; sessionId: string; from: string; to: string }): Promise<ModelSwitch>;
   /** Count tokens in the target model's own tokenizer, when the agent offers a free way to. Absent: the harness estimates. */
   countTokens?(text: string, model: string): Promise<number>;
+  /** The CLI copy this agent actually runs, and the other copies found, when the driver knows. */
+  binary?(): AgentInfo["binary"];
   /** Seed a session with a handoff without starting a turn (inject-items channels only). */
   seed?(req: SeedRequest): Promise<SeedResult>;
   runTurn(input: TurnInput): Promise<void>;

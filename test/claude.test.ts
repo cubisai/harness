@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ModelInfo, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
-import { bundledClaudeVersion, createClaudeDriver, FIRST_RELIST_MS, fromSdk, handleMessage, newestClaude, newTurnState, pickClaudeExecutable, resolvePackagedClaudeBinary, turnEndFromResult } from "../src/main/agents/claude";
+import { bundledClaudeVersion, createClaudeDriver, FIRST_RELIST_MS, fromSdk, handleMessage, newTurnState, pickClaudeExecutable, resolvePackagedClaudeBinary, turnEndFromResult } from "../src/main/agents/claude";
 import { MODEL_TTL_MS } from "../src/main/agents/model-ttl";
 import type { TurnInput } from "../src/main/agents/types";
 import type { ThreadEvent } from "../src/shared/types";
@@ -112,30 +112,6 @@ describe("pickClaudeExecutable", () => {
   it("treats an equal version as current, and an unreadable one as not", () => {
     expect(pickClaudeExecutable({ bundledVersion: "2.1.281", installed: { path: "/c", version: "2.1.281" }, packaged: "/app/claude" })).toBe("/c");
     expect(pickClaudeExecutable({ bundledVersion: "2.1.281", installed: { path: "/c", version: "unknown" }, packaged: "/app/claude" })).toBe("/app/claude");
-  });
-});
-
-describe("newestClaude", () => {
-  it("picks the highest version, not the first on PATH", () => {
-    expect(
-      newestClaude([
-        { path: "/usr/local/bin/claude", version: "2.0.56" },
-        { path: "/fnm/claude", version: "2.1.222" },
-        { path: "/home/u/.local/bin/claude", version: "2.1.284" },
-      ]),
-    ).toEqual({ path: "/home/u/.local/bin/claude", version: "2.1.284" });
-  });
-
-  it("compares major before minor", () => {
-    expect(newestClaude([{ path: "/a", version: "3.0.0" }, { path: "/b", version: "2.9.9" }])).toEqual({ path: "/a", version: "3.0.0" });
-  });
-
-  it("returns null for an empty list", () => {
-    expect(newestClaude([])).toBeNull();
-  });
-
-  it("skips candidates whose version isn't parseable", () => {
-    expect(newestClaude([{ path: "/a", version: "unknown" }, { path: "/b", version: "1.0.0" }])).toEqual({ path: "/b", version: "1.0.0" });
   });
 });
 
