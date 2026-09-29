@@ -107,12 +107,15 @@ describe("newestInstallAsync", () => {
     });
   });
 
-  it("skips copies whose version can't be read", async () => {
+  it("keeps the baseline when the copies after it can't be read", async () => {
     const run = source({ "/a/opencode": null, "/b/opencode": "garbage", "/c/opencode": "2.0.0" });
     expect(await newestInstallAsync("opencode", { preferred: [], list: () => ["/a/opencode", "/b/opencode", "/c/opencode"], run })).toEqual({
-      path: "/c/opencode",
-      version: "2.0.0",
-      others: [],
+      path: "/a/opencode",
+      version: "unknown",
+      others: [
+        { path: "/c/opencode", version: "2.0.0" },
+        { path: "/b/opencode", version: "unknown" },
+      ],
     });
   });
 
@@ -124,15 +127,74 @@ describe("newestInstallAsync", () => {
     expect(res).toEqual({ path: real, version: "1.18.33", others: [] });
   });
 
-  it("returns null when nothing answers", async () => {
+  it("returns null only when there are no candidates at all", async () => {
     expect(await newestInstallAsync("opencode", { preferred: [], list: () => [], run: () => null })).toBeNull();
-    expect(await newestInstallAsync("opencode", { preferred: [], list: () => ["/a/opencode"], run: () => "garbage" })).toBeNull();
+    // A candidate that exists is kept even when its probe yields no version.
+    expect(await newestInstallAsync("opencode", { preferred: [], list: () => ["/a/opencode"], run: () => "garbage" })).toEqual({
+      path: "/a/opencode",
+      version: "unknown",
+      others: [],
+    });
   });
 
   it("accepts async run and list injections", async () => {
     const run = async (path: string) => (path === "/d/opencode" ? "1.2.3" : null);
     const list = async () => ["/d/opencode"];
     expect(await newestInstallAsync("opencode", { preferred: [], list, run })).toEqual({ path: "/d/opencode", version: "1.2.3", others: [] });
+  });
+
+  // (a) The regression: the newest copies' probes fail while the oldest answers.
+  // The first PATH entry (what a shell would run) must win, never the 0.0.55.
+  it("never downgrades to a lower copy when the baseline's probe fails", async () => {
+    const paths = ["/home/u/.local/share/fnm/aliases/default/bin/opencode", "/usr/local/bin/opencode", "/opt/homebrew/bin/opencode"];
+    const run = (path: string): string | null => {
+      if (path === "/opt/homebrew/bin/opencode") return "0.0.55";
+      throw new Error(`probe failed: ${path}`);
+    };
+    const res = await newestInstallAsync("opencode", { preferred: [], list: () => paths, run });
+    expect(res?.path).toBe(paths[0]);
+    expect(res?.version).toBe("unknown");
+    expect(res?.path).not.toBe("/opt/homebrew/bin/opencode");
+  });
+
+  // (b) A strictly newer copy that answers replaces the baseline.
+  it("upgrades to a strictly newer candidate that answers", async () => {
+    const paths = ["/a/opencode", "/b/opencode"];
+    const run = source({ "/a/opencode": "1.0.126", "/b/opencode": "1.18.33" });
+    expect(await newestInstallAsync("opencode", { preferred: [], list: () => paths, run })).toEqual({
+      path: "/b/opencode",
+      version: "1.18.33",
+      others: [{ path: "/a/opencode", version: "1.0.126" }],
+    });
+  });
+
+  // (c) An older copy never displaces the baseline.
+  it("keeps the baseline when the other candidate is older", async () => {
+    const paths = ["/a/opencode", "/b/opencode"];
+    const run = source({ "/a/opencode": "1.18.33", "/b/opencode": "0.0.55" });
+    expect(await newestInstallAsync("opencode", { preferred: [], list: () => paths, run })).toEqual({
+      path: "/a/opencode",
+      version: "1.18.33",
+      others: [{ path: "/b/opencode", version: "0.0.55" }],
+    });
+  });
+
+  // (d) Probes for one command run one at a time.
+  it("probes candidates sequentially", async () => {
+    const paths = ["/a/opencode", "/b/opencode", "/c/opencode"];
+    const versions: Record<string, string> = { "/a/opencode": "1.0.0", "/b/opencode": "1.1.0", "/c/opencode": "1.2.0" };
+    let inflight = 0;
+    let maxInflight = 0;
+    const run = async (path: string): Promise<string | null> => {
+      inflight += 1;
+      maxInflight = Math.max(maxInflight, inflight);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      inflight -= 1;
+      return versions[path] ?? null;
+    };
+    const res = await newestInstallAsync("opencode", { preferred: [], list: () => paths, run });
+    expect(maxInflight).toBe(1);
+    expect(res?.path).toBe("/c/opencode");
   });
 });
 

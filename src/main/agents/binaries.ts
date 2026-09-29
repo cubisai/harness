@@ -94,7 +94,7 @@ async function defaultList(command: string): Promise<string[]> {
 /** `<path> --version`'s stdout+stderr, or null when it can't be run. */
 async function defaultRun(path: string, env?: NodeJS.ProcessEnv): Promise<string | null> {
   try {
-    const { stdout, stderr } = await execFileAsync(path, ["--version"], { encoding: "utf8", timeout: 5000, env });
+    const { stdout, stderr } = await execFileAsync(path, ["--version"], { encoding: "utf8", timeout: 15000, env });
     return `${stdout}${stderr}`;
   } catch (err) {
     // A non-zero exit can still carry a version on stdout/stderr; a spawn
@@ -106,13 +106,21 @@ async function defaultRun(path: string, env?: NodeJS.ProcessEnv): Promise<string
 }
 
 /**
- * The newest installed copy of `command`. Candidates are the preferred
- * official paths (first) then everything on PATH, each kept at the path it was
- * found under (so a Windows .cmd shim or npm symlink spawns as usual) and
- * deduped by real path. Copies whose `--version` can't be read are skipped.
+ * The install `command` resolves to. Candidates are the preferred official
+ * paths (first) then everything on PATH, each kept at the path it was found
+ * under (so a Windows .cmd shim or npm symlink spawns as usual) and deduped by
+ * real path.
  *
- * The PATH lookup and every `--version` probe run asynchronously, in parallel,
- * so this never blocks the caller.
+ * The first candidate is the baseline: what a shell would run. Resolution may
+ * only upgrade, never downgrade — another candidate wins only when its probe
+ * succeeds and reports a strictly newer version than the baseline. A baseline
+ * whose own probe fails stays put (version "unknown"), and candidates whose
+ * probes fail are still listed in `others` with version "unknown" so the
+ * Library shows them, but they can never win.
+ *
+ * Probes for one command run one at a time: several copies of the same CLI
+ * starting at once contend during app boot, which is what made the newest copy
+ * look failed and let the oldest answer first.
  */
 export async function newestInstallAsync(command: string, opts: NewestInstallOptions = {}): Promise<BinaryResolution | null> {
   const list = opts.list ?? defaultList;
@@ -133,21 +141,31 @@ export async function newestInstallAsync(command: string, opts: NewestInstallOpt
   };
   for (const path of preferred) if (existsSync(path)) add(path);
   for (const path of await list(command)) add(path);
+  if (!candidates.length) return null;
 
-  // Probe every candidate at once: the slow part is the process spawn, not the
-  // ordering, which is restored below from the candidate list.
-  const probed = await Promise.all(candidates.map(async (path) => ({ path, output: await run(path) })));
-  const parsed: BinaryInstall[] = [];
-  for (const { path, output } of probed) {
-    if (output === null) continue;
-    const version = parseVersion(output);
-    if (version) parsed.push({ path, version });
+  const probe = async (path: string): Promise<string | null> => {
+    try {
+      const output = await run(path);
+      return output === null ? null : parseVersion(output);
+    } catch {
+      return null;
+    }
+  };
+
+  const baseline = candidates[0]!;
+  const baselineVersion = await probe(baseline);
+  let best: BinaryInstall = { path: baseline, version: baselineVersion ?? "unknown" };
+  const installs: BinaryInstall[] = [best];
+  // Sequential, not Promise.all: one probe at a time.
+  for (const path of candidates.slice(1)) {
+    const version = await probe(path);
+    const install: BinaryInstall = { path, version: version ?? "unknown" };
+    installs.push(install);
+    // Only a copy that both answered and is strictly newer than the baseline
+    // replaces it; a failed baseline probe can never be beaten.
+    if (version !== null && baselineVersion !== null && compareVersions(version, best.version) > 0) best = install;
   }
-  if (!parsed.length) return null;
-  // Ties keep the earlier candidate: preferred paths, then PATH order.
-  let best = parsed[0]!;
-  for (const candidate of parsed) if (compareVersions(candidate.version, best.version) > 0) best = candidate;
-  return { ...best, others: parsed.filter((c) => c !== best).sort((a, b) => compareVersions(b.version, a.version)) };
+  return { ...best, others: installs.filter((c) => c.path !== best.path).sort((a, b) => compareVersions(b.version, a.version)) };
 }
 
 interface CachedResolution {
