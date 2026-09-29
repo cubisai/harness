@@ -144,7 +144,7 @@ describe("ACP driver", () => {
     await d.runTurn(t.input);
     expect(t.sessions).toEqual(["s-1"]);
     expect(t.deltas.join("")).toBe("Hello, world (mock-small)");
-    expect(t.events.map((e) => e.kind)).toEqual(["turn-start", "thinking", "assistant-text", "turn-end"]);
+    expect(t.events.map((e) => e.kind)).toEqual(["turn-start", "thinking", "assistant-text", "context-breakdown", "turn-end"]);
     expect(t.events[0]).toMatchObject({ kind: "turn-start", agent: "mock", model: "default" });
     expect(t.events.at(-1)).toMatchObject({ kind: "turn-end", costUsd: 0.01, inputTokens: 1200, outputTokens: 34 });
     expect(t.events.at(-1)).toMatchObject({ usage: { provenance: "reported", inputTokens: 1200, cacheReadTokens: null } });
@@ -388,7 +388,7 @@ describe("ACP driver", () => {
     await d.runTurn(t.input);
     expect(t.asked).toEqual(["npm test"]);
     const kinds = t.events.map((e) => e.kind);
-    expect(kinds).toEqual(["turn-start", "thinking", "assistant-text", "tool-use", "tool-result", "assistant-text", "turn-end"]);
+    expect(kinds).toEqual(["turn-start", "thinking", "assistant-text", "tool-use", "tool-result", "assistant-text", "context-breakdown", "turn-end"]);
     expect(t.events[4]).toMatchObject({ kind: "tool-result", isError: false, summary: "3 passed (yes)" });
   });
 

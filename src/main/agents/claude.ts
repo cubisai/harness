@@ -321,9 +321,15 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
       // One query() attempt. "aborted" means the turn was stopped (the caller returns);
       // "lost" means the stored session couldn't be reopened and the caller should seed a new one.
       let lost: string | null = null;
+      // A brand-new session's first result explains what the turn's context is made of, once.
+      let brokeDown = false;
       const attempt = async (opts: Options, prompt: string): Promise<"done" | "lost" | "aborted"> => {
+        // Started at init, awaited at result: the SDK closes the query at result,
+        // so a breakdown requested there would always reject.
+        let breakdown: Promise<{ rows: { label: string; tokens: number }[]; total: number } | null> | null = null;
         try {
-          for await (const message of query({ prompt, options: opts })) {
+          const q = query({ prompt, options: opts });
+          for await (const message of q) {
             if (message.type === "rate_limit_event") config.onLimits?.(claudeLimitsPatch(message.rate_limit_info));
             else if (
               input.sessionId &&
@@ -334,7 +340,28 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
               // The stored session is gone: skip this result and let the caller seed a new one.
               lost = message.errors.find((e) => /No conversation found with session ID/.test(e)) ?? "unknown error";
               break;
-            } else handleMessage(message, input, turn);
+            } else {
+              if (message.type === "system" && message.subtype === "init" && !input.sessionId && !brokeDown) {
+                brokeDown = true;
+                breakdown = q
+                  .getContextUsage()
+                  .then((usage) => {
+                    const rows = usage.categories
+                      .filter((c) => c.kind === "used")
+                      .map((c) => ({ label: c.name, tokens: c.tokens }))
+                      .sort((a, b) => b.tokens - a.tokens);
+                    return { rows, total: usage.totalTokens };
+                  })
+                  .catch(() => null);
+              }
+              // Before turn-end: the breakdown is a tooltip detail on the first turn's cost.
+              if (message.type === "result" && breakdown) {
+                const b = await breakdown;
+                breakdown = null;
+                if (b) input.onEvent({ kind: "context-breakdown", ...b, estimated: false });
+              }
+              handleMessage(message, input, turn);
+            }
           }
         } catch (err) {
           if (input.signal.aborted) {

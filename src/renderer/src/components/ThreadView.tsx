@@ -232,6 +232,8 @@ export function EventRow({ stored, results, children, running, threadId }: { sto
           <span>{e.text}</span>
         </div>
       );
+    case "context-breakdown":
+      return null; // a tooltip detail on the first turn, not a conversation row
     case "turn-start":
       return null;
   }

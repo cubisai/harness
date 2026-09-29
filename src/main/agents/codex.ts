@@ -621,6 +621,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     async runTurn(input) {
       const policy = codexPolicy(input.permissionMode);
       const model = input.model === CODEX_DEFAULT_MODEL ? null : input.model;
+      // A brand-new session's first turn pays to write the guide and tool schemas into the prompt cache.
+      const fresh = !input.sessionId;
       let threadId: string;
       try {
         threadId = await openThread(input);
@@ -658,6 +660,23 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         for (const [itemId, text] of state.deltas) if (text.trim()) input.onEvent({ kind: "assistant-text", text, itemId });
         if (turn.status === "interrupted") input.onEvent({ kind: "notice", text: "Stopped." });
         else if (turn.status === "failed") input.onEvent({ kind: "error", message: `Codex: ${turn.error?.message ?? "the turn failed."}` });
+        if (fresh) {
+          const serializedTools = (() => {
+            try {
+              return JSON.stringify(input.tools.map((t) => ({ name: t.name, description: t.description, schema: t.input })));
+            } catch {
+              // A schema that won't stringify is rare; the names and descriptions still explain the cost.
+              return JSON.stringify(input.tools.map((t) => ({ name: t.name, description: t.description })));
+            }
+          })();
+          const rows = [
+            { label: "Harness tools", tokens: Math.ceil(serializedTools.length / 4) },
+            { label: "Harness guide", tokens: Math.ceil((config.guide?.(input.cwd) ?? "").length / 4) },
+          ]
+            .filter((r) => r.tokens > 0)
+            .sort((a, b) => b.tokens - a.tokens);
+          if (rows.length) input.onEvent({ kind: "context-breakdown", rows, total: state.usage?.inputTokens ?? null, estimated: true });
+        }
         input.onEvent(turnEndFromUsage(state.usage ?? undefined, turn.durationMs ?? Date.now() - started, state.contextSize));
       } catch (err) {
         input.onEvent({ kind: "error", message: err instanceof Error ? err.message : String(err) });

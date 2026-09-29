@@ -450,6 +450,8 @@ export type ThreadEvent = (
   | { kind: "tool-use"; toolUseId: string; name: string; summary: string; payload?: unknown }
   | { kind: "tool-result"; toolUseId: string; isError: boolean; summary: string; payload?: unknown }
   | { kind: "turn-end"; costUsd: number | null; inputTokens: number; outputTokens: number; durationMs: number; usage?: Usage }
+  /** One-line-per-category token breakdown of a brand-new session's first turn. */
+  | { kind: "context-breakdown"; rows: { label: string; tokens: number }[]; total: number | null; estimated: boolean }
   | { kind: "error"; message: string }
   | { kind: "notice"; text: string }
   | { kind: "turn-start"; turnId: string; agent: string; model: string }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { AgentLimits, LimitWindow } from "../../../shared/types";
+import type { AgentLimits, LimitWindow, ThreadEvent } from "../../../shared/types";
 import { useStore } from "../store";
 import { CacheMeter } from "./CacheMeter";
 
@@ -154,6 +154,23 @@ export function contextMeterText(used: number | null | undefined, size: number |
 }
 
 /**
+ * The extra tooltip lines a first-turn breakdown adds: a header, the biggest
+ * categories, and the cache caveat. The blank first line separates them from
+ * the meter's own text.
+ */
+export function breakdownLines(e: { kind: "context-breakdown"; rows: { label: string; tokens: number }[]; total: number | null; estimated: boolean }): string[] {
+  return [
+    "",
+    "First turn breakdown" + (e.estimated ? " (estimated)" : ""),
+    ...[...e.rows]
+      .sort((a, b) => b.tokens - a.tokens)
+      .slice(0, 6)
+      .map((r) => `  ${r.label}: ${fmt(r.tokens)}`),
+    "The first message writes the prompt cache; switching model or agent pays it again.",
+  ];
+}
+
+/**
  * How full the model's context window is: the latest live figure, else the last
  * stored turn's. Quiet until an agent reports a context input.
  */
@@ -177,10 +194,19 @@ export function ContextMeter({ threadId }: { threadId: string }) {
   const text = contextMeterText(used, size);
   if (text === null) return null;
   const pct = typeof size === "number" && size > 0 ? Math.round((used! / size) * 100) : null;
-  const title =
+  // The first stored turn can carry a breakdown; it rides the same tooltip.
+  let breakdown: Extract<ThreadEvent, { kind: "context-breakdown" }> | null = null;
+  for (let i = (events?.length ?? 0) - 1; i >= 0; i--) {
+    const e = events![i]!.event;
+    if (e.kind !== "context-breakdown") continue;
+    breakdown = e;
+    break;
+  }
+  let title =
     typeof size === "number"
       ? `${used!.toLocaleString()} of ${size.toLocaleString()} tokens in context (${pct}%)`
       : `${used!.toLocaleString()} tokens in context`;
+  if (breakdown) title = title + "\n" + breakdownLines(breakdown).join("\n");
   return (
     <span className={`usage context-meter${pct !== null && pct >= 80 ? " warn" : ""}`} title={title}>
       {text}

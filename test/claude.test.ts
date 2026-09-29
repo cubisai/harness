@@ -9,6 +9,8 @@ import type { ThreadEvent } from "../src/shared/types";
 const sdk = vi.hoisted(() => ({
   calls: [] as { prompt: unknown; options: Record<string, unknown> }[],
   models: [] as ModelInfo[],
+  // The shape getContextUsage() resolves with; set per test that reads it.
+  contextUsage: null as unknown,
   // Each queued attempt is a stream of messages, optionally ending in a throw
   // (the SDK's shape when a query fails after emitting its result).
   attempts: [] as { messages: unknown[]; error?: string }[],
@@ -20,11 +22,21 @@ vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => {
     query: (args: { prompt: unknown; options: Record<string, unknown> }) => {
       sdk.calls.push(args);
       const attempt = sdk.attempts.shift();
+      // Mirrors the real SDK: the query is closed once its result is yielded,
+      // so getContextUsage() after that rejects.
+      let closed = false;
       return {
         supportedModels: async () => sdk.models,
+        getContextUsage: async () => {
+          if (closed) throw new Error("Query closed before response received");
+          return sdk.contextUsage;
+        },
         [Symbol.asyncIterator]: async function* () {
           if (!attempt) return;
-          for (const message of attempt.messages) yield message as SDKMessage;
+          for (const message of attempt.messages) {
+            if ((message as { type?: string }).type === "result") closed = true;
+            yield message as SDKMessage;
+          }
           if (attempt.error) throw new Error(attempt.error);
         },
       };
@@ -184,6 +196,69 @@ describe("Claude lost sessions", () => {
     expect(sdk.calls).toHaveLength(2);
     expect(sdk.calls[1]?.options.resume).toBeUndefined();
     expect(sdk.calls[1]?.prompt).toBe("SEED\n---\nhi");
+  });
+});
+
+describe("Claude context breakdown", () => {
+  /** A getContextUsage() response with two used rows (one out of order) and a free row. */
+  function usageResponse(): unknown {
+    return {
+      categories: [
+        { name: "System prompt", tokens: 500, color: "#c1", kind: "used" },
+        { name: "Tools", tokens: 2000, color: "#c2", kind: "used" },
+        { name: "Free space", tokens: 197500, color: "#c3", kind: "free" },
+      ],
+      totalTokens: 2500,
+      maxTokens: 200000,
+      rawMaxTokens: 200000,
+      percentage: 1.25,
+      gridRows: [],
+      model: "claude-x",
+      memoryFiles: [],
+      mcpTools: [],
+      agents: [],
+      isAutoCompactEnabled: false,
+    };
+  }
+
+  const successResult = { type: "result", subtype: "success", duration_ms: 1, total_cost_usd: null, usage: { input_tokens: 10, output_tokens: 5 } };
+  // The query's first frame; getContextUsage() is only valid before the result.
+  const initMessage = { type: "system", subtype: "init", session_id: "s1" };
+
+  it("emits one breakdown before turn-end for a new session's first result", async () => {
+    sdk.calls.length = 0;
+    sdk.attempts.length = 0;
+    sdk.contextUsage = usageResponse();
+    sdk.attempts.push({ messages: [initMessage, successResult] });
+    const d = createClaudeDriver({ pluginDir: () => null });
+    const { input, events } = turnInput();
+    await d.runTurn(input);
+    const breakdowns = events.filter((e) => e.kind === "context-breakdown");
+    expect(breakdowns).toEqual([
+      {
+        kind: "context-breakdown",
+        rows: [
+          { label: "Tools", tokens: 2000 },
+          { label: "System prompt", tokens: 500 },
+        ],
+        total: 2500,
+        estimated: false,
+      },
+    ]);
+    // The breakdown must land before the turn's summary.
+    expect(events.findIndex((e) => e.kind === "context-breakdown")).toBeLessThan(events.findIndex((e) => e.kind === "turn-end"));
+  });
+
+  it("emits no breakdown for a resumed session", async () => {
+    sdk.calls.length = 0;
+    sdk.attempts.length = 0;
+    sdk.contextUsage = usageResponse();
+    sdk.attempts.push({ messages: [initMessage, successResult] });
+    const d = createClaudeDriver({ pluginDir: () => null });
+    const { input, events } = turnInput();
+    input.sessionId = "abc";
+    await d.runTurn(input);
+    expect(events.some((e) => e.kind === "context-breakdown")).toBe(false);
   });
 });
 

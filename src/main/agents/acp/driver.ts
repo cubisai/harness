@@ -875,6 +875,7 @@ export function createAcpDriver(
         // A new session's first prompt carries the harness guide and, when the
         // earlier session was lost, the seed's history prefix; only then are they dropped.
         const g = l.guidePending ? deps.guide?.(input.cwd) ?? "" : "";
+        const fresh = l.guidePending;
         if (g) l.guidePending = false;
         const h = l.historyPending;
         l.historyPending = null;
@@ -910,6 +911,23 @@ export function createAcpDriver(
           contextUsed: turn.usage.contextUsed,
           contextSize: turn.usage.size,
         };
+        if (fresh) {
+          const serializedTools = (() => {
+            try {
+              return JSON.stringify(input.tools.map((t) => ({ name: t.name, description: t.description, schema: t.input })));
+            } catch {
+              // A schema that won't stringify is rare; the names and descriptions still explain the cost.
+              return JSON.stringify(input.tools.map((t) => ({ name: t.name, description: t.description })));
+            }
+          })();
+          const rows = [
+            { label: "Harness tools", tokens: Math.ceil(serializedTools.length / 4) },
+            { label: "Harness guide", tokens: Math.ceil(g.length / 4) },
+          ]
+            .filter((r) => r.tokens > 0)
+            .sort((a, b) => b.tokens - a.tokens);
+          if (rows.length) input.onEvent({ kind: "context-breakdown", rows, total: turn.usage.contextUsed, estimated: true });
+        }
         input.onEvent({
           kind: "turn-end",
           costUsd: turn.usage.costUsd,

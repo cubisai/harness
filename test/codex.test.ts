@@ -270,7 +270,7 @@ describe("Codex driver", () => {
     await d.runTurn(t.input);
     expect(t.sessions).toEqual(["thread-1"]);
     expect(t.deltas.join("")).toBe("Hi, there");
-    expect(t.events.map((e) => e.kind)).toEqual(["turn-start", "thinking", "assistant-text", "turn-end"]);
+    expect(t.events.map((e) => e.kind)).toEqual(["turn-start", "thinking", "assistant-text", "context-breakdown", "turn-end"]);
     expect(t.events.at(-1)).toMatchObject({ inputTokens: 900, outputTokens: 12, durationMs: 42 });
     expect(d.models().map((m) => m.id)).toEqual(["default", "gpt-mock"]);
   });

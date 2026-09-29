@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contextMeterText, fmt } from "../src/renderer/src/components/Meters";
+import { breakdownLines, contextMeterText, fmt } from "../src/renderer/src/components/Meters";
 
 describe("fmt", () => {
   it("formats small counts and keeps one decimal below ten thousand", () => {
@@ -29,5 +29,36 @@ describe("contextMeterText", () => {
   it("renders nothing without a context input", () => {
     expect(contextMeterText(null, 1000000)).toBeNull();
     expect(contextMeterText(undefined, null)).toBeNull();
+  });
+});
+
+describe("breakdownLines", () => {
+  const breakdown = (rows: { label: string; tokens: number }[], estimated: boolean) =>
+    breakdownLines({ kind: "context-breakdown", rows, total: null, estimated });
+
+  it("names the header, marking an estimated breakdown", () => {
+    const rows = [{ label: "System prompt", tokens: 4000 }];
+    expect(breakdown(rows, false)[1]).toBe("First turn breakdown");
+    expect(breakdown(rows, true)[1]).toBe("First turn breakdown (estimated)");
+  });
+
+  it("keeps at most six rows between the header and the cache caveat", () => {
+    const rows = Array.from({ length: 8 }, (_, i) => ({ label: `Cat ${i}`, tokens: (i + 1) * 100 }));
+    const lines = breakdown(rows, false);
+    expect(lines[0]).toBe("");
+    // blank + header + six rows + caveat.
+    expect(lines).toHaveLength(9);
+    expect(lines[2]).toBe("  Cat 7: 800");
+    expect(lines[7]).toBe("  Cat 2: 300");
+    expect(lines.at(-1)).toBe("The first message writes the prompt cache; switching model or agent pays it again.");
+  });
+
+  it("sorts rows by tokens descending", () => {
+    const rows = [
+      { label: "Small", tokens: 10 },
+      { label: "Big", tokens: 9000 },
+      { label: "Mid", tokens: 500 },
+    ];
+    expect(breakdown(rows, false).slice(2, 5)).toEqual(["  Big: 9.0k", "  Mid: 500", "  Small: 10"]);
   });
 });
