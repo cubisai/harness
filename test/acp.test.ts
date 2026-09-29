@@ -204,6 +204,36 @@ describe("ACP driver", () => {
     expect(second.deltas.join("")).not.toContain("<harness-guide>");
   });
 
+  it("sends the memory block once, right after the guide, on a new session's first prompt", async () => {
+    const d = createAcpDriver(
+      { id: "mock", label: "Mock", command: process.execPath, args: [MOCK] },
+      { clientVersion: "test", guide: () => "GUIDE", memory: () => "<harness-memory>MEM</harness-memory>" },
+    );
+    closeAfter(() => d.dispose?.());
+    const first = turn("hello", { projectId: "p1" });
+    await d.runTurn(first.input);
+    const firstText = first.deltas.join("");
+    expect(firstText).toContain("<harness-guide>\nGUIDE\n</harness-guide>");
+    expect(firstText).toContain("<harness-memory>MEM</harness-memory>");
+    expect(firstText.indexOf("<harness-guide>")).toBeLessThan(firstText.indexOf("<harness-memory>"));
+    const second = turn("hello", { sessionId: first.sessions[0]!, projectId: "p1" });
+    await d.runTurn(second.input);
+    expect(second.deltas.join("")).not.toContain("<harness-memory>");
+  });
+
+  it("sends no memory block when memory is off", async () => {
+    const d = createAcpDriver(
+      { id: "mock", label: "Mock", command: process.execPath, args: [MOCK] },
+      { clientVersion: "test", guide: () => "GUIDE", memory: () => null },
+    );
+    closeAfter(() => d.dispose?.());
+    const first = turn("hello", { projectId: "p1" });
+    await d.runTurn(first.input);
+    const firstText = first.deltas.join("");
+    expect(firstText).toContain("<harness-guide>\nGUIDE\n</harness-guide>");
+    expect(firstText).not.toContain("<harness-memory>");
+  });
+
   it("ignores context-window usage when the prompt response has no usage", async () => {
     const d = driver();
     const t = turn("nousage");

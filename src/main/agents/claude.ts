@@ -12,6 +12,7 @@ import { forClaude } from "../mcp/servers";
 import { checkCommand } from "../guard";
 import type { InjectionPlan } from "../inject";
 import { staleKeyNotice } from "../inject/claude";
+import { MEMORY_READ_TOOL } from "../memory/tool";
 import { normalizeUsage } from "../usage";
 import { PLUGIN_NAME } from "../skills/plugin";
 import { CLAUDE_CAPABILITIES } from "./capabilities";
@@ -39,17 +40,18 @@ function toCallToolResult(out: ToolOutput) {
   return { content, isError: out.isError };
 }
 
-/** Harness tools as an in-process MCP server, plus the names to auto-allow. */
+/** Harness tools as an in-process MCP server, plus the names to auto-allow. Claude reads the shared memory natively, so memory_read is dropped. */
 export function harnessToolOptions(tools: HarnessTool[]): Pick<Options, "mcpServers" | "allowedTools"> {
-  if (!tools.length) return {};
+  const offered = tools.filter((t) => t.name !== MEMORY_READ_TOOL);
+  if (!offered.length) return {};
   const server = createSdkMcpServer({
     name: TOOL_SERVER,
     version: "1.0.0",
-    tools: tools.map((t) => tool(t.name, t.description, t.input, async (args) => toCallToolResult(await t.run(args)))),
+    tools: offered.map((t) => tool(t.name, t.description, t.input, async (args) => toCallToolResult(await t.run(args)))),
   });
   return {
     mcpServers: { [TOOL_SERVER]: server },
-    allowedTools: tools.filter((t) => t.autoAllow).map((t) => `mcp__${TOOL_SERVER}__${t.name}`),
+    allowedTools: offered.filter((t) => t.autoAllow).map((t) => `mcp__${TOOL_SERVER}__${t.name}`),
   };
 }
 

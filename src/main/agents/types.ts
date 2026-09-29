@@ -14,6 +14,11 @@ export interface ToolOutput {
   isError?: boolean;
 }
 
+/** Who is calling a harness tool, when the transport knows (the HTTP tool server does). */
+export interface ToolContext {
+  projectId?: string;
+}
+
 /**
  * A tool the harness itself provides to the agent (the browser pane's tools,
  * for one). Drivers expose these however their agent takes tools: an
@@ -25,7 +30,7 @@ export interface HarnessTool<Shape extends ZodRawShape = ZodRawShape> {
   input: Shape;
   /** Safe to run without asking in "ask" mode. */
   autoAllow: boolean;
-  run(args: z.infer<z.ZodObject<Shape>>): Promise<ToolOutput>;
+  run(args: z.infer<z.ZodObject<Shape>>, ctx?: ToolContext): Promise<ToolOutput>;
 }
 
 /** How a new session catches up when the stored one is gone: Codex takes history items, first-message agents a prompt prefix. */
@@ -82,6 +87,8 @@ export interface SeedRequest {
   /** The target's existing cursor, resumed when it still works; null opens a new session. */
   sessionId: string | null;
   cwd: string;
+  /** The thread's project, for per-project features (shared memory); absent in some tests. */
+  projectId?: string;
   model: string;
   permissionMode: PermissionMode;
   tools: HarnessTool[];

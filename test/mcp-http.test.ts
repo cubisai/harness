@@ -2,8 +2,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import type { HarnessTool } from "../src/main/agents/types";
-import { startToolServer } from "../src/main/mcp-http";
+import type { HarnessTool, ToolContext } from "../src/main/agents/types";
+import { startToolServer, withProject } from "../src/main/mcp-http";
 import { closeAfter } from "./helpers";
 
 const echo: HarnessTool = {
@@ -83,5 +83,34 @@ describe("tool server", () => {
     closeAfter(() => void server.close());
     const res = await fetch(server.url, { method: "POST", body: "{}", headers: { "content-type": "application/json" } });
     expect(res.status).toBe(401);
+  });
+
+  it("withProject adds ?p= only when there is a project", () => {
+    const url = "http://127.0.0.1:5/mcp";
+    expect(withProject(url, undefined)).toBe(url);
+    expect(new URL(withProject(url, "p1")).searchParams.get("p")).toBe("p1");
+  });
+
+  it("tells a tool which project is calling, from the URL's ?p=", async () => {
+    const seen: (ToolContext | undefined)[] = [];
+    const ctxTool: HarnessTool = {
+      name: "ctx",
+      description: "Records the caller context",
+      input: {},
+      autoAllow: true,
+      run: async (_args, ctx) => {
+        seen.push(ctx);
+        return { text: "ok" };
+      },
+    };
+    const server = await startToolServer(() => [ctxTool]);
+    closeAfter(() => void server.close());
+    const withP = await connect(withProject(server.url, "p1"), server.token);
+    await withP.callTool({ name: "ctx", arguments: {} });
+    await withP.close();
+    const plain = await connect(server.url, server.token);
+    await plain.callTool({ name: "ctx", arguments: {} });
+    await plain.close();
+    expect(seen).toEqual([{ projectId: "p1" }, undefined]);
   });
 });

@@ -7,6 +7,12 @@ export function memoryOn(settings: Settings, projectId: string): boolean {
   return (settings.memory?.enabled ?? true) && !(settings.memory?.disabledProjects ?? []).includes(projectId);
 }
 
+/** The index as a prompt block for agents without native memory, or "" when there are no facts yet. */
+export function memoryPrompt(indexText: string): string {
+  if (!indexText.trim()) return "";
+  return `<harness-memory>\nProject memory shared across agents (CubiQ). Titles only: call the memory_read tool with a file name for the full note, or with no file to list all notes. Check it before asking the user something they may have told you before.\n${indexText}\n</harness-memory>`;
+}
+
 export function createMemory(opts: { root: string; home: string; codexHome?: string }): {
   store: MemoryStore;
   /** The project's memory folder, creating it and running the one-time import on first use. */

@@ -10,7 +10,7 @@ import { binaryInfo, resolvedCommandAsync } from "../binaries";
 import type { AgentDriver, SessionSeed, TurnInput } from "../types";
 import { acpCapabilities, withCapabilities } from "../capabilities";
 import { forAcpWithReport, mcpChangeNotice } from "../../mcp/servers";
-import { TOOL_SERVER_NAME } from "../../mcp-http";
+import { TOOL_SERVER_NAME, withProject } from "../../mcp-http";
 import { checkCommand } from "../../guard";
 import { RpcError, StdioRpc } from "../rpc";
 import { normalizeUsage } from "../../usage";
@@ -260,6 +260,8 @@ export function createAcpDriver(
     guardScript?: string;
     /** The harness guide for this turn's cwd, sent once, ahead of a new session's first prompt. */
     guide?: (cwd: string) => string;
+    /** The memory block for this project's new sessions (may be ""), or null when memory is off; sent once with the guide. */
+    memory?: (projectId: string) => string | null;
   },
 ): AgentDriver {
   const live = new Map<string, Live>();
@@ -689,7 +691,7 @@ export function createAcpDriver(
         const { url, token, skillsUrl } = await deps.toolServer();
         // In tool mode the skill tool rides on /mcp-skills, alongside the browser tools.
         const target = capabilities.skillsDelivery.mode === "tool" ? (skillsUrl ?? url) : url;
-        servers.push({ type: "http", name: TOOL_SERVER_NAME, url: target, headers: [{ name: "Authorization", value: `Bearer ${token}` }] } as { name: string });
+        servers.push({ type: "http", name: TOOL_SERVER_NAME, url: withProject(target, input.projectId), headers: [{ name: "Authorization", value: `Bearer ${token}` }] } as { name: string });
       } else dropped.push("the app's browser tools");
     }
     // Never a silent drop (invariant 7): name each server the agent can't take, once per connection.
@@ -964,12 +966,14 @@ export function createAcpDriver(
       // A new session's first prompt carries the harness guide and, when the
       // earlier session was lost, the seed's history prefix; only then are they dropped.
       const g = l.guidePending ? deps.guide?.(input.cwd) ?? "" : "";
+      const m = l.guidePending && input.projectId ? deps.memory?.(input.projectId) ?? "" : "";
       const fresh = l.guidePending;
-      if (g) l.guidePending = false;
+      if (g || m) l.guidePending = false;
       const h = l.historyPending;
       l.historyPending = null;
       const lead = [
         ...(g ? [{ type: "text", text: `<harness-guide>\n${g}\n</harness-guide>` }] : []),
+        ...(m ? [{ type: "text", text: m }] : []),
         ...(h ? [{ type: "text", text: `${h}\n---` }] : []),
       ];
       let current: TurnState | null = null;
@@ -1075,6 +1079,7 @@ export function createAcpDriver(
           const rows = [
             { label: "Harness tools", tokens: Math.ceil(serializedTools.length / 4) },
             { label: "Harness guide", tokens: Math.ceil(g.length / 4) },
+            { label: "Memory index", tokens: Math.ceil(m.length / 4) },
           ]
             .filter((r) => r.tokens > 0)
             .sort((a, b) => b.tokens - a.tokens);

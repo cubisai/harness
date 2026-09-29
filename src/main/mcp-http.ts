@@ -54,12 +54,21 @@ function authorized(req: IncomingMessage, token: string): boolean {
   return got.length === want.length && timingSafeEqual(got, want);
 }
 
+/** A tool-server URL that tells the tools which project is calling (`?p=`), or the URL unchanged without one. */
+export function withProject(url: string, projectId: string | undefined): string {
+  if (!projectId) return url;
+  const u = new URL(url);
+  u.searchParams.set("p", projectId);
+  return u.toString();
+}
+
 /**
  * The harness's own tools (the browser pane's) as a Streamable HTTP MCP
  * server on 127.0.0.1, for agents that take tools over MCP rather than
  * in-process (ACP agents such as deepseek-harness). `/mcp` serves `tools`;
  * `/mcp-skills` serves those plus `extra` (the skill tool). Stateless: every
- * request gets a fresh server over the current tool list.
+ * request gets a fresh server over the current tool list. A `?p=<projectId>`
+ * on the URL tells the tools which project is calling them.
  */
 export async function startToolServer(tools: () => HarnessTool[], extra?: () => HarnessTool[]): Promise<ToolServer> {
   const token = randomBytes(24).toString("hex");
@@ -73,6 +82,7 @@ export async function startToolServer(tools: () => HarnessTool[], extra?: () => 
       res.writeHead(404).end();
       return;
     }
+    const projectId = new URL(req.url ?? "/", "http://127.0.0.1").searchParams.get("p") ?? undefined;
     if (req.method !== "POST") {
       // Stateless servers have no server-initiated stream to offer.
       res.writeHead(405, { Allow: "POST" }).end();
@@ -82,7 +92,7 @@ export async function startToolServer(tools: () => HarnessTool[], extra?: () => 
     const list = path === "/mcp-skills" ? [...tools(), ...(extra?.() ?? [])] : tools();
     for (const t of list) {
       server.registerTool(t.name, { description: t.description, inputSchema: t.input }, async (args: unknown) =>
-        toResult(await t.run(args as never)),
+        toResult(await t.run(args as never, projectId ? { projectId } : undefined)),
       );
     }
     withRequiredArrays(server);

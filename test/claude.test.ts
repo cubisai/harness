@@ -2,9 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ModelInfo, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
-import { bundledClaudeVersion, createClaudeDriver, FIRST_RELIST_MS, fromSdk, handleMessage, newTurnState, pickClaudeExecutable, resolvePackagedClaudeBinary, turnEndFromResult } from "../src/main/agents/claude";
+import { bundledClaudeVersion, createClaudeDriver, FIRST_RELIST_MS, fromSdk, handleMessage, harnessToolOptions, newTurnState, pickClaudeExecutable, resolvePackagedClaudeBinary, turnEndFromResult } from "../src/main/agents/claude";
 import { MODEL_TTL_MS } from "../src/main/agents/model-ttl";
-import type { TurnInput } from "../src/main/agents/types";
+import { MEMORY_READ_TOOL } from "../src/main/memory/tool";
+import type { HarnessTool, TurnInput } from "../src/main/agents/types";
 import type { ThreadEvent } from "../src/shared/types";
 import { tempDir } from "./helpers";
 
@@ -775,5 +776,18 @@ describe("Claude plan mode", () => {
     const canUseTool = await gate(input);
     await canUseTool("ExitPlanMode", { planFilePath: file }, { suggestions: [] });
     expect(seen).toBe("# The plan");
+  });
+});
+
+describe("harnessToolOptions", () => {
+  const tool = (name: string, autoAllow = true): HarnessTool => ({ name, description: name, input: {}, autoAllow, run: async () => ({ text: "" }) });
+
+  it("drops memory_read: Claude reads the shared store natively", () => {
+    const opts = harnessToolOptions([tool("browser_snapshot"), tool(MEMORY_READ_TOOL), tool("browser_eval", false)]);
+    expect(opts.allowedTools).toEqual(["mcp__cubiq__browser_snapshot"]);
+  });
+
+  it("returns nothing when only memory_read is offered", () => {
+    expect(harnessToolOptions([tool(MEMORY_READ_TOOL)])).toEqual({});
   });
 });

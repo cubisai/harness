@@ -352,6 +352,7 @@ export class Service {
         threadId: thread.id,
         sessionId: null,
         cwd,
+        projectId: thread.projectId,
         model: thread.model,
         permissionMode: thread.permissionMode,
         tools: this.harnessTools(),

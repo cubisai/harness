@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { forCodex, mcpChangeNotice } from "../mcp/servers";
+import { withProject } from "../mcp-http";
 import { normalizeUsage } from "../usage";
 import type { InjectionPlan } from "../inject";
 import { RpcError, StdioRpc } from "./rpc";
@@ -70,6 +71,8 @@ export interface CodexConfig {
   guardScript?: string;
   /** The harness guide for this turn's cwd, sent as developer instructions to Codex. */
   guide?: (cwd: string) => string;
+  /** The memory block for this project's new sessions (memoryPrompt output, may be ""), or null when CubiQ memory is off. */
+  memory?: (projectId: string) => string | null;
 }
 
 /** The MCP server name the harness's tools go by, in Codex's config and its tool calls. */
@@ -258,6 +261,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   const turns = new Map<string, TurnState>(); // by Codex thread id
   /** Threads loaded in the running app-server, and the MCP config they were loaded with. */
   const loaded = new Map<string, string>();
+  /** The memory block a new session first carried, frozen by Codex thread id (prompt-cache reads). */
+  const frozenMemory = new Map<string, string>();
   /** MCP tools the user chose "always allow" for, by thread. */
   const alwaysAllowed = new Map<string, Set<string>>();
   /** configWarning summaries from the current app-server, reset at each start. */
@@ -587,14 +592,18 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   };
 
   const openThread = async (
-    input: Pick<TurnInput, "cwd" | "model" | "permissionMode" | "sessionId" | "tools" | "mcpServers" | "onEvent" | "onSession" | "onSessionRebuilt" | "onSessionLost">,
+    input: Pick<TurnInput, "threadId" | "projectId" | "cwd" | "model" | "permissionMode" | "sessionId" | "tools" | "mcpServers" | "onEvent" | "onSession" | "onSessionRebuilt" | "onSessionLost">,
   ): Promise<{ threadId: string; model: string | null }> => {
     const policy = codexPolicy(input.permissionMode);
     const model = input.model === CODEX_DEFAULT_MODEL ? null : input.model;
     await start(input.cwd);
     const conn = rpc!;
     const withTools = input.tools.length > 0 && Boolean(config.toolServer);
-    const threadConfig = codexToolConfig(withTools ? await config.toolServer!() : null, input.tools, input.permissionMode, input.mcpServers);
+    const server = withTools ? await config.toolServer!() : null;
+    let threadConfig = codexToolConfig(server ? { ...server, url: withProject(server.url, input.projectId) } : null, input.tools, input.permissionMode, input.mcpServers);
+    const memory = input.projectId ? config.memory?.(input.projectId) ?? null : null;
+    // CubiQ memory is on: Codex's own memories would duplicate it, so turn them off.
+    if (memory !== null) threadConfig = { ...(threadConfig ?? {}), memories: { use_memories: false, generate_memories: false } };
     const guideText = config.guide?.(input.cwd) ?? "";
     const signature = JSON.stringify(threadConfig ?? null);
     let threadId = "";
@@ -614,16 +623,20 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         input.onSessionRebuilt?.();
       }
       try {
+        // The block a session first carried is frozen: later turns pay cache reads, not writes.
+        const memText = frozenMemory.get(input.sessionId) ?? memory ?? "";
+        const developerInstructions = [guideText, memText].filter(Boolean).join("\n\n");
         const res = await conn.request<{ thread: { id: string }; model?: string }>("thread/resume", {
           threadId: input.sessionId,
           cwd: input.cwd,
           model,
           ...policy,
           config: threadConfig,
-          ...(guideText ? { developerInstructions: guideText } : {}),
+          ...(developerInstructions ? { developerInstructions } : {}),
         });
         threadId = res.thread.id;
         threadModel = res.model ?? null;
+        if (memText && !frozenMemory.has(threadId)) frozenMemory.set(threadId, memText);
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
         if (input.onSessionLost) seed = await input.onSessionLost(reason);
@@ -631,15 +644,18 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       }
     }
     if (!threadId) {
+      const memText = memory ?? "";
+      const developerInstructions = [guideText, memText].filter(Boolean).join("\n\n");
       const res = await conn.request<{ thread: { id: string }; model?: string }>("thread/start", {
         cwd: input.cwd,
         model,
         ...policy,
         config: threadConfig,
-        ...(guideText ? { developerInstructions: guideText } : {}),
+        ...(developerInstructions ? { developerInstructions } : {}),
       });
       threadId = res.thread.id;
       threadModel = res.model ?? null;
+      if (memText && !frozenMemory.has(threadId)) frozenMemory.set(threadId, memText);
       // A new thread catches up with the seed's history items; Codex only ever gets the inject shape.
       if (seed && "inject" in seed) {
         await seed.inject(threadId, (items) => conn.request("thread/inject_items", { threadId, items }).then(() => undefined));
@@ -690,7 +706,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     setModel: async ({ to }) => (to === CODEX_DEFAULT_MODEL ? "new-session" : "in-place"),
     async seed(req) {
       const events: ThreadEvent[] = []; // notices from opening the thread are dropped here; the Service reports the seed itself
-      const { threadId } = await openThread({ cwd: req.cwd, model: req.model, permissionMode: req.permissionMode, sessionId: req.sessionId, tools: req.tools, mcpServers: req.mcpServers, onEvent: (e) => events.push(e), onSession: req.onSession });
+      const { threadId } = await openThread({ threadId: req.threadId, projectId: req.projectId, cwd: req.cwd, model: req.model, permissionMode: req.permissionMode, sessionId: req.sessionId, tools: req.tools, mcpServers: req.mcpServers, onEvent: (e) => events.push(e), onSession: req.onSession });
       const conn = rpc!;
       const { sent } = await req.inject(threadId, (items) => conn.request("thread/inject_items", { threadId, items }).then(() => undefined));
       return { mode: "seeded", sessionId: threadId, sent };
@@ -814,6 +830,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
           const rows = [
             { label: "Harness tools", tokens: Math.ceil(serializedTools.length / 4) },
             { label: "Harness guide", tokens: Math.ceil((config.guide?.(input.cwd) ?? "").length / 4) },
+            { label: "Memory index", tokens: Math.ceil((frozenMemory.get(threadId) ?? "").length / 4) },
           ]
             .filter((r) => r.tokens > 0)
             .sort((a, b) => b.tokens - a.tokens);

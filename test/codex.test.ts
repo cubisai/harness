@@ -894,3 +894,79 @@ describe("codexToolConfig", () => {
     });
   });
 });
+
+describe("Codex shared memory", () => {
+  const safeTool: HarnessTool = {
+    name: "browser_snapshot",
+    description: "Snapshot",
+    input: {},
+    autoAllow: true,
+    run: async () => ({ text: "" }),
+  };
+
+  type ThreadProbe = { method: string; params: { developerInstructions?: string; config?: { memories?: unknown; mcp_servers?: Record<string, { url?: string }> } } };
+
+  function probeDriver(memory: (projectId: string) => string | null, extra: Record<string, unknown> = {}) {
+    const probe = join(tempDir(), "thread-probe.json");
+    process.env.GUIDE_PROBE = probe;
+    const d = createCodexDriver({ command: process.execPath, args: ["-e", PROBE_SERVER], clientVersion: "test", guide: () => "GUIDE", memory, ...extra });
+    closeAfter(() => d.dispose?.());
+    const sent = (): ThreadProbe => JSON.parse(readFileSync(probe, "utf8")) as ThreadProbe;
+    return { d, sent };
+  }
+
+  it("sends the memory block with the guide and turns off Codex's own memories", async () => {
+    const { d, sent } = probeDriver(() => "<harness-memory>MEM</harness-memory>");
+    try {
+      const t = turn("hi", { projectId: "p1" });
+      await d.runTurn(t.input);
+      const start = sent();
+      expect(start.method).toBe("thread/start");
+      expect(start.params.developerInstructions).toBe("GUIDE\n\n<harness-memory>MEM</harness-memory>");
+      expect(start.params.config?.memories).toEqual({ use_memories: false, generate_memories: false });
+    } finally {
+      delete process.env.GUIDE_PROBE;
+    }
+  });
+
+  it("leaves Codex's own memories and developer instructions alone when memory is off", async () => {
+    const { d, sent } = probeDriver(() => null);
+    try {
+      await d.runTurn(turn("hi", { projectId: "p1" }).input);
+      const start = sent();
+      expect(start.params.developerInstructions).toBe("GUIDE");
+      expect(start.params.config?.memories).toBeUndefined();
+    } finally {
+      delete process.env.GUIDE_PROBE;
+    }
+  });
+
+  it("freezes the block per session: a resume keeps the original after the store changes", async () => {
+    let memory = "<harness-memory>FIRST</harness-memory>";
+    const { d, sent } = probeDriver(() => memory);
+    try {
+      const first = turn("hi", { projectId: "p1" });
+      await d.runTurn(first.input);
+      expect(sent().params.developerInstructions).toContain("FIRST");
+      memory = "<harness-memory>SECOND</harness-memory>";
+      const second = turn("again", { sessionId: first.sessions[0]!, projectId: "p1" });
+      await d.runTurn(second.input);
+      const resumed = sent();
+      expect(resumed.method).toBe("thread/resume");
+      expect(resumed.params.developerInstructions).toContain("FIRST");
+      expect(resumed.params.developerInstructions).not.toContain("SECOND");
+    } finally {
+      delete process.env.GUIDE_PROBE;
+    }
+  });
+
+  it("carries the calling project on the tool server URL", async () => {
+    const { d, sent } = probeDriver(() => null, { toolServer: async () => ({ url: "http://127.0.0.1:1234/mcp", token: "tok" }) });
+    try {
+      await d.runTurn(turn("hi", { projectId: "p7", tools: [safeTool] }).input);
+      expect(sent().params.config?.mcp_servers?.cubiq?.url).toBe("http://127.0.0.1:1234/mcp?p=p7");
+    } finally {
+      delete process.env.GUIDE_PROBE;
+    }
+  });
+});

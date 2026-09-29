@@ -30,7 +30,8 @@ import { ensureOpenCodeGuard, withOpenCodeGuard } from "./inject/opencode-guard"
 import { BUILT_IN_GUARD, findPython } from "./guard";
 import { createGuide } from "./guide";
 import { buildContextPreview } from "./context-preview";
-import { createMemory, memoryOn } from "./memory";
+import { createMemory, memoryOn, memoryPrompt } from "./memory";
+import { memoryReadTool } from "./memory/tool";
 import { SettingsStore } from "./settings";
 import { agentCatalog, skillDetail } from "./library";
 import { fillUserEnvironment } from "./winspawn";
@@ -303,6 +304,19 @@ async function main(): Promise<void> {
     },
   );
   const tools = browserTools(browser);
+  const memoryTool = memoryReadTool({ store: memory.store, enabled: (pid) => memoryOn(settings.get(), pid) });
+  // A stable array identity: the tool list must not change mid-conversation.
+  const allTools = [...tools, memoryTool];
+  // The memory block for agents without native memory, or null when it's off. Never throws: memory must not block a turn.
+  const memoryPromptFor = (projectId: string): string | null => {
+    try {
+      if (!memoryOn(settings.get(), projectId)) return null;
+      memory.ensure(projectId, store.getProject(projectId).path);
+      return memoryPrompt(memory.store.index(projectId).text);
+    } catch {
+      return null;
+    }
+  };
   // Launched from an older terminal, the app would miss user variables agents read (a provider key in OpenCode's config).
   fillUserEnvironment();
   augmentPath();
@@ -314,7 +328,7 @@ async function main(): Promise<void> {
   for (const p of problems) console.warn(p);
   const modelSkillsDir = join(userData, "harness-skills");
   // Always offered: adding them when the tab opens would rewrite the prompt prefix and reload the session.
-  const harnessTools = () => tools;
+  const harnessTools = () => allTools;
   // Started on first use, for Codex and ACP agents, which take tools over MCP.
   let toolServer: Promise<ToolServer> | null = null;
   // `/mcp-skills` adds the skill tool for agents in "tool" delivery mode.
@@ -331,6 +345,7 @@ async function main(): Promise<void> {
             clientVersion: app.getVersion(),
             guardScript,
             guide: (cwd) => guide.forCwd(cwd),
+            memory: memoryPromptFor,
             skillsDir: () => ensureModelSkillsDir(forAgent(skills.global(), CODEX_CAPABILITIES.skillsDelivery), modelSkillsDir),
             toolServer: getToolServer,
             onLimits: limits.for("codex"),
@@ -367,6 +382,7 @@ async function main(): Promise<void> {
         toolServer: getToolServer,
         guardScript,
         guide: (cwd) => guide.forCwd(cwd),
+        memory: memoryPromptFor,
         ...(config.effortVia === "opencode-variants" ? { variants: () => opencodeVariants(config.command) } : {}),
         injection: (ctx) => {
           let plan = injectionFor(settings, config.id, process.env, {
