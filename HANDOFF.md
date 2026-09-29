@@ -1,6 +1,6 @@
-# Handoff — Phases 0–10 done (10 = skills, MCP scopes, guide, effort, sidebar)
+# Handoff — M4 round done (plan mode, token breakdown, $ skills, newest CLIs); next: Phase E (shared memory)
 
-Updated 2026-09-27 (evening) on the Windows PC, branch `m4`, last commit on it is this file. Phase 10 plan and status: `.ai/plans/phase-10-skills-ui.md`. Read **Resume here** first, then "After Phase 9" below, then `CLAUDE.md` (the opencode-delegation workflow). Memories that apply: `autonomous-phase-loop` (don't ask, keep going), `commit-only-own-paths` (the user's bun switch stays uncommitted; commit with explicit paths), `two-machines` (every fix must work on Windows and macOS).
+Updated 2026-09-29 on the **Mac**, branch `m4`, last commit on it is this file. Read **Resume here** first (Phase E kickoff), then `plan/docs/11-memory-extensions-guide.md` (the design Phase E implements), then `CLAUDE.md` (opencode-delegation workflow). This round's plan and status: `.ai/plans/plan-mode-tokens.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real`, `oc-dispatch-mac`, `context-no-bloat`; from the Windows PC: `commit-only-own-paths`, `two-machines` (every fix must work on Windows and macOS).
 
 ## Where things stand
 
@@ -20,6 +20,7 @@ Updated 2026-09-27 (evening) on the Windows PC, branch `m4`, last commit on it i
 | bun switch (user's, committed at their request) | done | `ab42bb9` |
 | 10 — Skills, MCP scopes, guide, effort, sidebar | **done**; typecheck, build, smoke green; tests green except the known Windows-machine items; every step checked in the real app (OpenCode + Codex turns; one Claude turn at the end) | 10A `0489835`, 10B `a46d5e0`, 10C `92ca50d`, 10E `a00acf0`, 10B2 `cbcc2aa`, schema fix `f937edc`, 10D `3f48d8d`, 10G `6e8f916`, guard `ad338c6`, UI `8848788`, ACP rows `f893297`; then @ mentions `98dced6`, Antigravity CLI + OpenCode variants `4fb54cf`, file:// links `77cb734` |
 | T8.13 worktrees (from the stash) | **done**; checked in the app on a throwaway repo | `4638000` |
+| M4 round (2026-09-29, Mac) — token breakdown, Plan mode, `$`/`/`, model + binary freshness, test suite | **done**; typecheck + full suite green (875 tests, 0 failed, ~22 s); every item checked in the real app on Claude, Codex and OpenCode | A `65191c7`, B1 `ff5922a`, B2 `8fd157b`, C `ae37baa`, doc 11 `0bcfb08`; models `6a428c8`, binaries `293c478` `05938a8`, menus `cc43588`, bugs `bdbc276`, Stop `fd4c151`, tests `4c596f4` |
 
 **Uncommitted on purpose (the user decides):** the `CLAUDE.md` notes (Windows notes + the new worker model order) and `SETUP-OTHER-PC.md`. The bun switch is committed (`ab42bb9`). `test/__snapshots__/providers.test.ts.snap` shows as modified: line endings only. Phase commits carry code + tests only, with no attribution trailer.
 
@@ -99,6 +100,14 @@ Updated 2026-09-27 (evening) on the Windows PC, branch `m4`, last commit on it i
 - **file:// links** (`77cb734`): Antigravity writes `[a.ts](file:///D:/…#L2)`; they render as open-in-editor buttons, never file:// anchors.
 - **T8.13** (`4638000`): migration **14** (`branch`, `worktree_path`); `createWorktreeThread` (branch `harness/<project>-<id6>`, folder `<userData>/worktrees/<threadId>`), turns/handoff/checkpoint/@-mentions/skills/terminal/Changes/Files use the thread's worktree; delete removes a clean worktree (branch kept); palette "New Thread in Worktree"; Alt+Enter starts the message as a new thread in the background. Checked in the app on a throwaway repo: file landed only in the worktree. The old stash (`stash@{0}`) is fully ported; the user can drop it.
 
+## What the M4 round shipped (2026-09-29, Mac)
+
+- **Token breakdown**: `ThreadEvent` `context-breakdown` (rows, total, estimated). Claude: `q.getContextUsage()` requested at `system/init` and awaited at `result` (the SDK closes a one-shot query at `result`); Codex/ACP: estimated guide + harness-tool rows. Shown in the context meter's tooltip (`Meters.tsx` `breakdownLines`). Measured Claude "hi" ≈ 23k: Messages 10.4k, **Skills 8.2k** (our plugin + `~/.claude/skills` — first trim target), system prompt 3.0k, tools 1.0k, memory 0.5k.
+- **Plan mode**: `PermissionMode` `"plan"` (order ask → auto-edit → plan → full = Shift+Tab cycle, `renderer/src/modes.ts`); `TurnInput.requestPlanDecision({plan}) → "auto" | "manual" | {keep}`; Service `pendingPlans` + IPC `plan:respond`, events `plan-proposal`/`plan-decision`, broadcast `plan-approval(-done)`; `PlanApprovalCard.tsx` (never auto-resolves). Claude: SDK `plan` mode, `ExitPlanMode` in `canUseTool` → `updatedPermissions setMode`. Codex: `initialize` with `experimentalApi`, `turn/start.collaborationMode {mode:"plan"|"default"}` + `sandboxPolicy` (plan = readOnly + approval `never`, so reads don't prompt), plan from the `{type:"plan"}` item or `<proposed_plan>`, up to 6 rounds per runTurn, one `turn-end`. ACP: native `session/set_mode` when the agent advertises a plan mode, else emulated (`<harness-plan-mode>` prefix + read-only `pickPermission`). Stop while the card is up ends the turn (`fd4c151`). `capabilities.planMode` is `"native" | "emulated"`.
+- **Composer**: `$name` triggers skills; `/` opens CubiQ commands (`renderer/src/commands.ts`: plan, ask, auto-edit, full, model, new; `/model` via store `requestModelPicker()`); running placeholder "Queue a message for the next turn…".
+- **Freshness**: model lists re-list on a 30-min TTL (`agents/model-ttl.ts`; Claude's first re-list after 60 s because the CLI's server-side model list is cached); every CLI spawns via `binaries.ts` `resolvedCommandAsync` (warmed at start, async, sequential probes, upgrade-only); Claude uses the installed CLI when ≥ the SDK's bundled `claudeCodeVersion`.
+- **Fixes**: notices written right after a user message render above it (`renderer/src/event-order.ts`, storage order unchanged); an ACP turn with no output and 0 tokens becomes an error naming the model (+ agent stderr); agent/effort menu padding.
+
 ## After Phase 9: fixes from the user's own testing (2026-09-27)
 
 All checked in the real app on Windows; code paths are cross-platform unless noted.
@@ -118,9 +127,31 @@ All checked in the real app on Windows; code paths are cross-platform unless not
 - **Antigravity**: Google's own ACP server (`agy_acp_server.par`, ACP registry `antigravity-acp`) must be on the app's PATH; it stays off until the Settings opt-in, then the generic ACP driver runs it with the user's Google sign-in.
 - Still to confirm on the Mac: the same smoke/model checks there.
 
-## Resume here
+## Resume here — Phase E: one shared CubiQ memory (start of a new session)
 
-State of the tree: everything of ours is committed. Uncommitted on purpose (the user's): `CLAUDE.md` notes, `SETUP-OTHER-PC.md`, and a line-ending-only snapshot. Before any commit: `git diff --cached --stat` must show only your files.
+State of the tree (Mac, 2026-09-29): everything committed; only the user's untracked screenshots in the repo root. Design to implement: `plan/docs/11-memory-extensions-guide.md` §11.2 (memory) — §11.3/§11.4 (extension import, guide diet) come after.
+
+**Decisions the user already made (don't re-ask):** harness memory **on by default**; it **replaces each agent's native learned memory** (Claude auto-memory, Codex memories); `CLAUDE.md`/`AGENTS.md`/`.claude/rules` **stay native** (repo rules, read by teammates/CI); cost kept low by (a) only a capped index in the prompt, frozen per session so it's a 0.1× cache read, bodies on demand, (b) memory *writing* for Codex/ACP done in the background by a free/cheap model, never the main agent.
+
+**Verified facts (file:line, 2026-09-29):**
+- Claude SDK: `Options.settings?: string | Settings` = the `--settings` tier (`node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts:2148`); `Settings.autoMemoryEnabled` (`:8848`) and `autoMemoryDirectory` (`:8852`, "ignored if set in projectSettings" — fine via `settings`). Default dir `~/.claude/projects/<sanitized-cwd>/memory/` (`MEMORY.md` + one file per fact — same format as ZCode). So: pass `settings: { autoMemoryDirectory: <userData>/memory/projects/<projectId> }` in `claude.ts` query options (~`runTurn` options block) → Claude reads/writes the shared store natively. `getContextUsage().memory_files` shows its cost (context breakdown already wired, `65191c7`).
+- Codex 0.157 binary contains `memories.use_memories`, `memories.generate_memories`, `memories.extract_model`, `memories.md`, `memory_tool` — **not yet confirmed as config keys**: first run `codex app-server generate-ts --experimental --out <scratch>` and grep the config/`thread/start` types; then send them `false` in the thread `config`. Index goes in `developerInstructions` (`codex.ts` thread/start, same channel as the guide).
+- OpenCode/ACP: no native learned memory; OpenCode's ACP `session/new` returns `modes: null`. Index rides the `<harness-guide>` first prompt (`acp/driver.ts`, search `guidePending`).
+- Guide assembly: `src/main/guide.ts` (bundled + user + project `.agents/HARNESS.md`, mtime-cached, per cwd). The memory index must be frozen per *session*, not per mtime (a mid-session rewrite breaks the cached prefix — `cache-policy.ts`).
+- ZCode reference: memory off by default there, `~/.zcode/cli/memories/projects/<p>/memory/MEMORY.md`, index size-capped (zcode.z.ai/en/docs/memory).
+
+**Open design questions for the Phase E plan (ask the user, then write `.ai/plans/phase-e-memory.md` and get approval before any implementer brief):**
+1. Extractor model for Codex/ACP memory writes: which provider is "free/cheap" for *app users* (not the delegation proxy on :4141)? Options: the thread's own agent on its cheapest model, a BYOK provider picked in Settings, or off until configured.
+2. Index cap (proposed ~1–1.5k tokens / 200 lines, like Claude) and the `memory_read` MCP tool on the harness tool server (`mcp-http.ts`) for bodies.
+3. One-time import from `~/.claude/projects/<cwd>/memory/` and `~/.codex/memories/` — originals untouched; dedupe by title.
+4. Library "Memory" tab (list/edit/delete, per-project toggle).
+
+**How to work on this Mac:** dispatch per memory `oc-dispatch-mac` (no `oc-run.mjs`; `perl -e 'alarm N; exec @ARGV' opencode run --agent orchestrator …`; start briefs with "dispatch immediately with your task tool…"; no git in briefs). Drive the app: `REMOTE_DEBUGGING_PORT=9444 bun run dev` (background), then `agent-browser --cdp 9444 …` with `AGENT_BROWSER_SESSION=cubiq-verify`; main-process changes need an app restart (no hot reload). App data: `~/Library/Application Support/CubiQ/unskilled.db` (events are JSON in `events.payload`, `json_extract(payload,'$.kind')`). Threads created via `window.unskilled.createThread` don't show until `location.reload()`. `api.send` returns when the turn is queued, not finished. Live checks: Claude sparingly (user's limit); OpenCode free models that work here: `opencode/nemotron-3-ultra-free`; `opencode-go/*` need a paid Go plan and some Zen models are region-locked (both now show a clear error).
+- Test project **plan-sandbox** (id `cubiq-plan-sandbox`, inserted straight into `projects`) points at a *session scratchpad* path that will be gone — delete it in the app (project ⋯ → delete) or `DELETE FROM projects WHERE id='cubiq-plan-sandbox'` with the app closed (its threads/events go with a project delete from the app).
+
+### Previous resume list (Windows PC, 2026-09-27)
+
+State then: everything committed. Uncommitted on purpose (the user's): `CLAUDE.md` notes, `SETUP-OTHER-PC.md`, and a line-ending-only snapshot. Before any commit: `git diff --cached --stat` must show only your files.
 
 In order:
 1. **Keep polishing the UI toward T3 Code** (ongoing user request): check every screen in both themes; Settings/ProviderSheet still use native selects (their options are themed).
@@ -138,7 +169,7 @@ In order:
 
 ## Open items
 
-- **Flaky under full-suite load (passes alone):** `switch.test` "handoff to an ACP agent" (seen twice, 2026-09-27), besides `codex-e2e` below.
+- ~~**Flaky under full-suite load**~~ **fixed 2026-09-29 (`4c596f4`)**: on macOS `git` is the `/usr/bin/git` xcrun shim, ~150 ms/call inside vitest workers vs ~5 ms for the real binary; `test/setup-git.ts` puts a symlink to `xcrun -f git` first on PATH (darwin only), `testTimeout` is 15 s for CLI e2e, and the db worker fixture resolves extensionless `.ts` imports. Full suite 0 failed twice on the Mac. Re-check on the Windows PC (no shim there; Node 22.17 `db.test` item below may still apply).
 - **This Windows PC:** Node 22.17 → `db.test` worker test fails (`Unknown file extension ".ts"`); needs Node ≥ 22.18. `codex-e2e` "offers the browser tools…" fails under full-suite load only: its first request goes out before the mock stdio `docs` MCP server is up (passes alone) — consider `startup_timeout_sec` for app MCP servers.
 - **Phase 6 carried forward:** T6.5 stale-cursor path (mark the binding `lost`, re-seed) and T6.11's lighter model-switch card; small threads can't be handed off (the checkpoint would exceed what it replaces — by design).
 - **This PC's accounts:** Codex returns 401 "workspace routing unauthorized" (sign in again); a Codex "retrying" status notice stays on screen after the turn ends (seen in the app, pre-existing) — Phase 7/8.
@@ -149,7 +180,7 @@ In order:
 
 - **Windows PC:** bun 1.4.2, Node 22.17, codex-cli 0.157.1 (npm shim, ChatGPT login), opencode 1.18.32 (npm shim), no `python` in Git Bash, delegation proxy on `127.0.0.1:3900`.
 - Headless preview check without agent-browser (no `AGENT_BROWSER_EXECUTABLE_PATH` in Git Bash): `chrome --headless=new --enable-logging=stderr --v=0 --virtual-time-budget=6000 --dump-dom http://localhost:5199/?state=thread`.
-- **Mac:** Node 24, codex 0.157, delegation proxy on `127.0.0.1:4141`.
+- **Mac:** Node 24.3, bun 1.4.2, codex 0.157.0, Claude Code 2.1.284 (`~/.local/bin`, self-updating; also 2.1.222 fnm + 2.0.56 `/usr/local` installed), OpenCode 1.18.33 (fnm; also 1.0.126 `/usr/local`, 0.0.55 Homebrew — no `acp`), agy 1.2.12; delegation proxy on `127.0.0.1:4141`; no `oc-run.mjs`. The app picks each CLI by `binaries.ts` (PATH-first baseline, only upgrades to a copy that answered `--version` and is strictly newer); Library → Experts → Engines shows the path, version and other installs.
 - **Never** touch `~/.config/opencode/opencode.json` (powers the delegation workers) or `~/.codex` in tests. Use temp `XDG_*` / `CODEX_HOME`. Run `electron . --smoke --user-data-dir=<tmp>`.
 - **Delegation status (2026-09-27, Phase 8):** two implementer dispatches (T8.3, T8.9) both landed on Token Harbor's qwen3.8-flash after deepseek-v4.1-flash and mimo-v2.6-flash returned empty output; T8.9 took ~40 min. Parallel dispatch works when the brief lists files the worker must not touch and the orchestrator edits only others. **Earlier (morning):** the Token Harbor free models started failing on long briefs (empty output, 40-min timeouts); `oc-run` fell back to Qwen3.8 Flash / GLM 5.3 Flash (Agent Pass). `oc-run` now also drops a model after `--idle` seconds with no activity (default 480; tested with a fake opencode), so a hung model no longer holds the chain for the whole `--timeout` — dispatch F2 with e.g. `--timeout 1800 --idle 300`. If models keep failing, write the brief shorter or do the step directly. A capabilities test ("turns off a preset's claimed capability…") flaked once under full-suite load; passes alone.
 - **Delegation:** dispatch with `node ~/.config/opencode/oc-run.mjs --worker <agent> --brief … --out … --log …` (walks the model chain itself — `opencode run` exits on the first model error, so the fallback plugin never fires headless). Write briefs with the Write tool (a bash heredoc with backticks broke once). No key-like strings, "dispatch exactly once". Routing and setup: `SETUP-OTHER-PC.md`.
@@ -159,4 +190,4 @@ In order:
 
 ## Next
 
-The Resume list above, top to bottom; then hand the human release checks (rollback drill, first CI run) to the user. Run them back to back without stopping, except for a big blocker (memory `autonomous-phase-loop`).
+Phase E (Resume here): answer the open questions with the user, write `.ai/plans/phase-e-memory.md`, get approval, then implement slice by slice (store + import + Claude `autoMemoryDirectory` → Codex/ACP index injection + disable native → background extractor → Library tab), each verified in the real app and committed. After that: doc 11 §11.3 extension import and §11.4 guide diet (measure with the breakdown), then the older Resume list and the human release checks (rollback drill, first CI run).
