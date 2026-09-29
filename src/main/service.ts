@@ -375,6 +375,7 @@ export class Service {
         await driver.runTurn({
           threadId: thread.id,
           cwd,
+          projectId: thread.projectId,
           prompt,
           sessionId: null,
           model: thread.model,
@@ -586,6 +587,7 @@ export class Service {
       await driver.runTurn({
         threadId: thread.id,
         cwd,
+        projectId: thread.projectId,
         prompt: turnPrompt,
         sessionId: current.sessionId,
         model: thread.model,

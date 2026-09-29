@@ -10,6 +10,7 @@ export function buildContextPreview(input: {
   guideParts: { source: "bundled" | "user" | "project"; path: string; text: string }[];
   tools: HarnessTool[];
   mcpServers: McpServerEntry[];
+  memoryIndex?: { lines: number; tokens: number } | null;
 }): ContextPreview {
   const tools = input.tools
     .map((t) => {
@@ -27,6 +28,6 @@ export function buildContextPreview(input: {
     guide: input.guideParts.map((p) => ({ source: p.source, path: p.path, tokens: Math.ceil(p.text.length / 4) })),
     tools,
     mcpServers: input.mcpServers.filter((s) => s.enabled === true).map((s) => s.name),
-    memoryIndex: null,
+    memoryIndex: input.memoryIndex ?? null,
   };
 }

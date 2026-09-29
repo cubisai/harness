@@ -35,6 +35,8 @@ export type SessionSeed = { inject: (sessionId: string, send: (items: unknown[])
 export interface TurnInput {
   threadId: string;
   cwd: string;
+  /** The thread's project, for per-project features (shared memory); absent in some tests. */
+  projectId?: string;
   prompt: string;
   /** The agent's session to resume, or null for a new conversation. */
   sessionId: string | null;

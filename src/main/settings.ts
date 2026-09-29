@@ -28,7 +28,7 @@ export interface SecretBox {
   decrypt(b64: string): string;
 }
 
-const DEFAULTS: Settings = { theme: "system", motion: "instant", density: "comfortable", antigravity: false, antigravityAck: null, defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {}, paneLayout: { ...DEFAULT_LAYOUT } };
+const DEFAULTS: Settings = { theme: "system", motion: "instant", density: "comfortable", antigravity: false, antigravityAck: null, defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {}, paneLayout: { ...DEFAULT_LAYOUT }, memory: { enabled: true, disabledProjects: [] } };
 
 /** A settings export file. */
 export interface SettingsExport {
@@ -139,7 +139,7 @@ export class SettingsStore {
 
   get(): Settings & { paneLayout: PaneLayout } {
     const stored = this.data.settings;
-    return { ...DEFAULTS, ...stored, paneLayout: sanitizeLayout({ ...DEFAULT_LAYOUT, ...stored?.paneLayout }) };
+    return { ...DEFAULTS, ...stored, paneLayout: sanitizeLayout({ ...DEFAULT_LAYOUT, ...stored?.paneLayout }), memory: { ...DEFAULTS.memory!, ...stored?.memory } };
   }
 
   view(): SettingsView {
@@ -174,6 +174,13 @@ export class SettingsStore {
     if (patch.skills && typeof patch.skills === "object" && Array.isArray(patch.skills.disabled)) {
       // Only `${origin}:${name}` strings; a wild renderer payload can't grow this unbounded.
       next.skills = { disabled: patch.skills.disabled.filter((s): s is string => typeof s === "string").slice(0, 500) };
+    }
+    if (patch.memory && typeof patch.memory === "object" && !Array.isArray(patch.memory)) {
+      const current = next.memory ?? { enabled: true, disabledProjects: [] };
+      const enabled = typeof patch.memory.enabled === "boolean" ? patch.memory.enabled : current.enabled;
+      const list = Array.isArray(patch.memory.disabledProjects) ? patch.memory.disabledProjects : current.disabledProjects;
+      const disabledProjects = [...new Set(list.filter((s): s is string => typeof s === "string"))].slice(0, 500);
+      next.memory = { enabled, disabledProjects };
     }
     // The Antigravity opt-in: the acknowledgement is stamped here, never trusted from
     // the caller, and the flag turns on only with a current one.

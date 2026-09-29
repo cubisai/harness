@@ -221,6 +221,32 @@ describe("Claude driver guide", () => {
   });
 });
 
+describe("Claude driver memory", () => {
+  it("points Claude's auto-memory at the shared folder", async () => {
+    sdk.calls.length = 0;
+    const d = createClaudeDriver({ pluginDir: () => null, memoryDir: () => "/tmp/mem" });
+    const { input } = turnInput();
+    input.projectId = "p1";
+    await d.runTurn(input);
+    expect(sdk.calls[0]?.options.settings).toEqual({ autoMemoryEnabled: true, autoMemoryDirectory: "/tmp/mem" });
+  });
+
+  it("leaves settings out when memory is off or there's no project", async () => {
+    sdk.calls.length = 0;
+    const off = createClaudeDriver({ pluginDir: () => null, memoryDir: () => null });
+    const { input } = turnInput();
+    input.projectId = "p1";
+    await off.runTurn(input);
+    expect(sdk.calls[0]?.options).not.toHaveProperty("settings");
+
+    sdk.calls.length = 0;
+    const noProject = createClaudeDriver({ pluginDir: () => null, memoryDir: () => "/tmp/mem" });
+    const { input: input2 } = turnInput();
+    await noProject.runTurn(input2);
+    expect(sdk.calls[0]?.options).not.toHaveProperty("settings");
+  });
+});
+
 describe("Claude driver effort", () => {
   it("passes effort and asks for summarized adaptive thinking on a model that supports it", async () => {
     sdk.calls.length = 0;

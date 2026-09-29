@@ -41,4 +41,10 @@ describe("buildContextPreview", () => {
     });
     expect(preview.mcpServers).toEqual(["on"]);
   });
+
+  it("carries the memory index through, null when absent", () => {
+    const preview = buildContextPreview({ guideParts: [], tools: [], mcpServers: [], memoryIndex: { lines: 3, tokens: 12 } });
+    expect(preview.memoryIndex).toEqual({ lines: 3, tokens: 12 });
+    expect(buildContextPreview({ guideParts: [], tools: [], mcpServers: [] }).memoryIndex).toBeNull();
+  });
 });

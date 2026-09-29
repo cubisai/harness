@@ -229,6 +229,8 @@ export interface ClaudeDriverConfig {
   guide?: (cwd: string) => string;
   /** Prefer the user's installed, self-updating Claude Code CLI over the SDK's bundled binary (default true). */
   useInstalledCli?: boolean;
+  /** The shared memory folder for this project, or null when CubiQ memory is off (Claude then uses its own). */
+  memoryDir?: (projectId: string) => string | null;
 }
 
 /**
@@ -411,6 +413,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
       }
 
       const guideText = config.guide?.(input.cwd) ?? "";
+      const memoryDir = input.projectId ? config.memoryDir?.(input.projectId) ?? null : null;
       const options: Options = {
         cwd: input.cwd,
         abortController,
@@ -426,6 +429,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         ...(adaptiveThinking.get(input.model) === true ? { thinking: { type: "adaptive" as const, display: "summarized" as const } } : {}),
         plugins,
         ...(guideText ? { systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: guideText } } : {}),
+        ...(memoryDir ? { settings: { autoMemoryEnabled: true, autoMemoryDirectory: memoryDir } } : {}),
         ...(plan ? { env: plan.env } : {}),
         ...withUserServers(harnessToolOptions(input.tools), input.mcpServers),
         hooks: { PreToolUse: [{ matcher: "Bash", hooks: [guard] }] },

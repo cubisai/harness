@@ -30,6 +30,7 @@ import { ensureOpenCodeGuard, withOpenCodeGuard } from "./inject/opencode-guard"
 import { BUILT_IN_GUARD, findPython } from "./guard";
 import { createGuide } from "./guide";
 import { buildContextPreview } from "./context-preview";
+import { createMemory, memoryOn } from "./memory";
 import { SettingsStore } from "./settings";
 import { agentCatalog, skillDetail } from "./library";
 import { fillUserEnvironment } from "./winspawn";
@@ -179,6 +180,7 @@ async function main(): Promise<void> {
     return net.fetch(pathToFileURL(join(shotsDir, name)).toString());
   });
   const store = new Store(join(userData, "unskilled.db"));
+  const memory = createMemory({ root: join(userData, "memory", "projects"), home: homedir(), codexHome: process.env.CODEX_HOME || undefined });
   const settings = new SettingsStore(join(userData, "settings.json"), {
     // On Linux, isEncryptionAvailable() is true even with the plain-text fallback backend.
     available: safeStorage.isEncryptionAvailable() && (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text"),
@@ -279,6 +281,7 @@ async function main(): Promise<void> {
         join(userData, "harness-plugin", createHash("sha256").update(cwd).digest("hex").slice(0, 12)),
       ),
     guardScript,
+    memoryDir: (projectId) => (memoryOn(settings.get(), projectId) ? memory.ensure(projectId, store.getProject(projectId).path) : null),
     onLimits: limits.for("claude"),
     injection: () => injectionFor(settings, "claude", process.env, { injector: "claude" }),
     byokModels: () => {
@@ -620,6 +623,7 @@ async function main(): Promise<void> {
       guideParts: cwd ? guide.partsForCwd(cwd) : [],
       tools: harnessTools(),
       mcpServers: mcpScopes.effective(pid),
+      memoryIndex: pid && memoryOn(settings.get(), pid) ? (({ lines, tokens }) => ({ lines, tokens }))(memory.store.index(pid)) : null,
     });
   });
   ipcMain.handle("app:update-status", () => updater.status());

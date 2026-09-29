@@ -142,6 +142,8 @@ export interface Settings {
   paneLayout?: PaneLayout;
   /** Skills the user turned off, as `${origin}:${name}`. */
   skills?: { disabled: string[] };
+  /** Shared CubiQ memory: on unless turned off; projects listed here are off. SettingsStore.get() always fills it in. */
+  memory?: { enabled: boolean; disabledProjects: string[] };
 }
 
 export interface EditorInfo {
