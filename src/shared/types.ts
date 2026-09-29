@@ -584,6 +584,8 @@ export interface AgentCapabilities {
   /** Per permission mode: whether the git guardrail can veto a command before it runs. */
   guardEnforcement: Record<PermissionMode, GuardEnforcement>;
   sandbox: "none" | "workspace" | "full";
+  /** The agent keeps the shared memory itself (reads and writes it natively), so the harness never extracts for it. */
+  nativeMemory?: boolean;
 }
 
 /** How an agent's credential row behaves in Settings: data from its driver, never its id. */

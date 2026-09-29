@@ -151,6 +151,11 @@ export interface AgentDriver {
   binary?(): AgentInfo["binary"];
   /** Seed a session with a handoff without starting a turn (inject-items channels only). */
   seed?(req: SeedRequest): Promise<SeedResult>;
+  /**
+   * One hidden prompt with no tools and no thread events, for background work
+   * (memory extraction). Resolves to the final assistant text. Absent = unsupported.
+   */
+  oneShot?(req: { prompt: string; model: string | null; effort?: string | null; signal?: AbortSignal }): Promise<string>;
   runTurn(input: TurnInput): Promise<void>;
   /** Stop any agent processes the driver keeps alive. */
   dispose?(): void;

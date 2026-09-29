@@ -984,3 +984,17 @@ describe("antigravity sign-in link", () => {
     expect(authUrlFrom("some unrelated log line")).toBeNull();
   });
 });
+
+describe("ACP oneShot", () => {
+  it("runs a throwaway prompt, returns the agent chunks, and leaves no session behind", async () => {
+    const d = driver();
+    expect(await d.oneShot!({ prompt: "world", model: null })).toBe("Hello, world (mock-small)");
+    // A second call resolves from its own process, on the model it switched to.
+    expect(await d.oneShot!({ prompt: "again", model: "mock-large" })).toBe("Hello, again (mock-large)");
+    // The throwaway never touched the driver's live sessions: a normal turn starts fresh.
+    const t = turn("world");
+    await d.runTurn(t.input);
+    expect(t.sessions).toEqual(["s-1"]);
+  });
+});
+

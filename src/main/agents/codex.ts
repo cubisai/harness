@@ -2,9 +2,9 @@ import type { McpServerEntry, ModelOption, PermissionDecision, PermissionMode, T
 import type { RunPayload, RunResult, ToolDiff } from "../../shared/tools";
 import { clipSummary } from "../../shared/tools";
 import { diffSummary } from "../../shared/diff";
-import { readFileSync, statSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { forCodex, mcpChangeNotice } from "../mcp/servers";
 import { withProject } from "../mcp-http";
@@ -151,6 +151,26 @@ export function codexAuthStamp(env: NodeJS.ProcessEnv = process.env): string | n
 
 export function codexDecision(d: PermissionDecision): "accept" | "acceptForSession" | "decline" {
   return d === "allow-always" ? "acceptForSession" : d === "allow-once" ? "accept" : "decline";
+}
+
+/** A no-op TurnInput for a hidden one-shot turn: its events, deltas and prompts go nowhere. */
+function stubInput(over: { threadId: string; cwd: string; prompt: string; model: string; signal: AbortSignal }): TurnInput {
+  return {
+    threadId: over.threadId,
+    cwd: over.cwd,
+    prompt: over.prompt,
+    sessionId: null,
+    model: over.model,
+    permissionMode: "plan",
+    signal: over.signal,
+    tools: [],
+    mcpServers: [],
+    onEvent: () => {},
+    onTextDelta: () => {},
+    onSession: () => {},
+    requestPermission: async () => "deny",
+    requestPlanDecision: async () => ({ keep: "" }),
+  };
 }
 
 /**
@@ -704,6 +724,68 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     // default sends model null, which keeps the old model, so that needs a
     // new thread.
     setModel: async ({ to }) => (to === CODEX_DEFAULT_MODEL ? "new-session" : "in-place"),
+    /**
+     * One hidden prompt on a throwaway, read-only, ephemeral thread in a
+     * scratch cwd, for background work (memory extraction). Its events go
+     * nowhere; only the final assistant text comes back.
+     */
+    async oneShot(req) {
+      const cwd = join(tmpdir(), "cubiq-oneshot");
+      mkdirSync(cwd, { recursive: true });
+      const model = req.model === CODEX_DEFAULT_MODEL ? null : req.model;
+      await start(cwd);
+      const conn = rpc!;
+      const opened = await conn.request<{ thread: { id: string } }>("thread/start", {
+        cwd,
+        model,
+        ...codexPolicy("plan"),
+        ephemeral: true,
+        config: { memories: { use_memories: false, generate_memories: false } },
+      });
+      const threadId = opened.thread.id;
+      let resolveTurn!: (t: Turn) => void;
+      const finished = new Promise<Turn>((r) => (resolveTurn = r));
+      const signal = req.signal ?? new AbortController().signal;
+      const state: TurnState = {
+        input: stubInput({ threadId, cwd, prompt: req.prompt, model: req.model ?? CODEX_DEFAULT_MODEL, signal }),
+        threadId,
+        turnId: null,
+        deltas: new Map(),
+        reasoning: new Map(),
+        usage: null,
+        contextSize: null,
+        retrying: new Set(),
+        compacted: false,
+        planText: null,
+        agentText: "",
+        done: resolveTurn,
+      };
+      turns.set(threadId, state);
+      const onAbort = () => {
+        if (state.turnId) void conn.request("turn/interrupt", { threadId, turnId: state.turnId }).catch(() => {});
+      };
+      signal.addEventListener("abort", onAbort, { once: true });
+      try {
+        const startedTurn = await conn.request<{ turn: Turn }>("turn/start", {
+          threadId,
+          input: [{ type: "text", text: req.prompt, text_elements: [] }],
+          model,
+          approvalPolicy: "never",
+          summary: "none",
+          ...(req.effort ? { effort: req.effort } : {}),
+        });
+        state.turnId ??= startedTurn.turn.id;
+        if (signal.aborted) onAbort();
+        const turn = await finished;
+        if (turn.status === "failed") throw new Error(`Codex: ${turn.error?.message ?? "the background turn failed."}`);
+        return state.agentText || [...state.deltas.values()].join("");
+      } finally {
+        signal.removeEventListener("abort", onAbort);
+        turns.delete(threadId);
+        // Awaited, so the hidden thread is released before the caller moves on.
+        await conn.request("thread/unsubscribe", { threadId }).catch(() => {});
+      }
+    },
     async seed(req) {
       const events: ThreadEvent[] = []; // notices from opening the thread are dropped here; the Service reports the seed itself
       const { threadId } = await openThread({ threadId: req.threadId, projectId: req.projectId, cwd: req.cwd, model: req.model, permissionMode: req.permissionMode, sessionId: req.sessionId, tools: req.tools, mcpServers: req.mcpServers, onEvent: (e) => events.push(e), onSession: req.onSession });

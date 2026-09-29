@@ -53,6 +53,7 @@ import { composePrompt } from "./skills/compose";
 import { mentionNote } from "./mentions";
 import { memoryScopeCheck } from "./inject/memory-scope";
 import { redactDeep, redactSecrets } from "./inject/redact";
+import type { TurnDelta } from "./memory/extractor";
 
 /**
  * Everything the UI can ask for, with no Electron in sight, so it runs
@@ -71,6 +72,8 @@ export class Service {
   private pendingSignal = new Map<string, { usage: Usage | null; mode: "handoff" | "back" }>();
   /** Threads whose next turn goes to an agent that hasn't seen the thread since afterSeq (0 = never). */
   private pendingCatchUp = new Map<string, { afterSeq: number }>();
+  /** Called after each finished, non-aborted turn, for background memory extraction. */
+  private turnListener: ((d: TurnDelta) => void) | null = null;
 
   private drivers: Map<string, AgentDriver>;
 
@@ -520,6 +523,11 @@ export class Service {
     for (const d of this.drivers.values()) d.dispose?.();
   }
 
+  /** A listener for finished turns (the background memory extractor); null turns it off. */
+  setTurnListener(fn: ((d: TurnDelta) => void) | null): void {
+    this.turnListener = fn;
+  }
+
   isRunning(threadId: string): boolean {
     return this.running.has(threadId);
   }
@@ -672,6 +680,26 @@ export class Service {
             this.broadcast({ type: "plan-approval", request: { requestId, threadId: thread.id, plan: p.plan } });
           }),
       });
+      // The turn finished cleanly: hand it to the memory extractor. A listener
+      // failure is its own concern and never touches the thread.
+      if (!controller.signal.aborted) {
+        try {
+          const last = [...this.store.listEvents(thread.id)].reverse().find((e) => e.event.kind === "assistant-text" && e.seq > userEvent.seq);
+          const answer = last && last.event.kind === "assistant-text" ? last.event.text : "";
+          if (answer) {
+            this.turnListener?.({
+              projectId: thread.projectId,
+              threadId: thread.id,
+              agentId: thread.agent,
+              model: thread.model,
+              user: scrub(req.text),
+              answer: scrub(answer),
+            });
+          }
+        } catch {
+          // Background extraction is best-effort.
+        }
+      }
     } finally {
       this.running.delete(thread.id);
       this.broadcast({ type: "running", threadId: thread.id, running: false });

@@ -1,6 +1,8 @@
 import type { AgentCapabilities, ModelOption, PermissionDecision, PermissionMode, PlanEntry } from "../../../shared/types";
 import { randomUUID } from "node:crypto";
-import { homedir } from "node:os";
+import { mkdirSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
 import { clipSummary } from "../../../shared/tools";
 import type { EditResult, RunPayload, RunResult, ToolDiff } from "../../../shared/tools";
 import { diffSummary, unifiedDiff } from "../../../shared/diff";
@@ -943,6 +945,64 @@ export function createAcpDriver(
     // session/set_config_option on the model option switches in place;
     // applyModel skips the default, so going back to it needs a new session.
     setModel: async ({ to }) => (to === DEFAULT_MODEL ? "new-session" : "in-place"),
+    /**
+     * One hidden prompt in a throwaway process (the refreshModels shape), for
+     * background work (memory extraction): no tools, no session reuse, and the
+     * process is closed as soon as the prompt's response lands.
+     */
+    async oneShot(req) {
+      await ensureVariants();
+      const plan = deps.injection?.();
+      if (plan?.error) throw new Error(plan.error);
+      const env: NodeJS.ProcessEnv = { ...(plan?.env ?? process.env), ...config.env };
+      if (config.skillsDirEnv && deps.skillsDir) {
+        const dir = deps.skillsDir();
+        if (dir) env[config.skillsDirEnv] = dir;
+      }
+      const cwd = join(tmpdir(), "cubiq-oneshot");
+      mkdirSync(cwd, { recursive: true });
+      let text = "";
+      let sessionId = "";
+      const conn = StdioRpc.spawn(bare ? await resolvedCommandAsync(config.command) : config.command, config.args, { cwd, env }, {
+        onNotification: (method, params) => {
+          if (method !== "session/update") return;
+          const update = (params as { update: SessionUpdate }).update;
+          if (update.sessionUpdate !== "agent_message_chunk") return;
+          const content = (update as { content?: { type?: string; text?: string } }).content;
+          if (content?.type === "text" && content.text) text += content.text;
+        },
+        onRequest: async (method, params) => {
+          if (method !== "session/request_permission") throw new RpcError(-32601, `${method} is not supported by this client`);
+          const options = (params as { options?: PermissionOption[] }).options ?? [];
+          const reject = options.find((o) => o.kind === "reject_once");
+          return reject ? { outcome: { outcome: "selected", optionId: reject.optionId } } : { outcome: { outcome: "cancelled" } };
+        },
+      });
+      const onAbort = () => {
+        if (sessionId) conn.notify("session/cancel", { sessionId });
+      };
+      req.signal?.addEventListener("abort", onAbort, { once: true });
+      try {
+        const init = await conn.request<InitializeResult>("initialize", {
+          protocolVersion: 1,
+          clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+          clientInfo: { name: "cubiq", version: deps.clientVersion },
+        });
+        applyInitialize(init);
+        const res = await conn.request<{ sessionId: string; configOptions?: ConfigOption[] }>("session/new", { cwd, mcpServers: [] });
+        sessionId = res.sessionId;
+        const model = (res.configOptions ?? []).find((o) => o.category === "model" && o.type === "select");
+        if (req.model && model) {
+          // A model the session can't switch to just leaves its default; extraction is best-effort.
+          await conn.request("session/set_config_option", { sessionId, configId: model.id, value: req.model }).catch(() => {});
+        }
+        await conn.request("session/prompt", { sessionId, prompt: [{ type: "text", text: req.prompt }] });
+        return text.trim();
+      } finally {
+        req.signal?.removeEventListener("abort", onAbort);
+        conn.close();
+      }
+    },
     async runTurn(input) {
       const key = input.threadId;
       let l: Live;

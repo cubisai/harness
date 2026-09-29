@@ -31,6 +31,7 @@ import { BUILT_IN_GUARD, findPython } from "./guard";
 import { createGuide } from "./guide";
 import { buildContextPreview } from "./context-preview";
 import { createMemory, memoryOn, memoryPrompt } from "./memory";
+import { createExtractor } from "./memory/extractor";
 import { memoryReadTool } from "./memory/tool";
 import { SettingsStore } from "./settings";
 import { agentCatalog, skillDetail } from "./library";
@@ -453,6 +454,13 @@ async function main(): Promise<void> {
     knownSecrets,
     join(userData, "worktrees"),
   );
+  // After a Codex/ACP turn, extract memory in the background; Claude keeps its own.
+  const extractor = createExtractor({
+    store: memory.store,
+    enabled: (pid) => memoryOn(settings.get(), pid),
+    driverFor: (id) => drivers.find((d) => d.id === id),
+  });
+  service.setTurnListener((d) => extractor.schedule(d));
 
   // The Library: skills, agents, and MCP servers, as the agents will see them.
   const catalogOfAgents = () =>
@@ -868,6 +876,7 @@ async function main(): Promise<void> {
   });
   app.on("before-quit", () => {
     updater.stop();
+    extractor.dispose();
     service.dispose();
     terminals.dispose();
     void toolServer?.then((s) => s.close());

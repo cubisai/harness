@@ -135,7 +135,8 @@ describe("Service.listAgents capabilities", () => {
     expect(infos.map((a) => a.id)).toEqual(["claude", "codex", "acp-test"]);
     for (const info of infos) {
       expect(info.capabilities).toBeDefined();
-      expect(Object.keys(info.capabilities).sort()).toEqual(Object.keys(SAFE_DEFAULTS).sort());
+      // Every driver carries the baseline shape; optional capability keys (e.g. nativeMemory) may differ.
+      expect(Object.keys(info.capabilities)).toEqual(expect.arrayContaining(Object.keys(SAFE_DEFAULTS)));
     }
   });
 });

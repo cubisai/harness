@@ -6,6 +6,7 @@ import type { LiveUpdate, PlanDecision, ThreadEvent } from "../src/shared/types"
 import type { AgentDriver, TurnInput } from "../src/main/agents/types";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
 import { Store } from "../src/main/db";
+import type { TurnDelta } from "../src/main/memory/extractor";
 import { Service, titleFrom } from "../src/main/service";
 import { normalizeUsage } from "../src/main/usage";
 import { catalog, closeAfter, tempDir } from "./helpers";
@@ -160,6 +161,44 @@ describe("Service.send", () => {
     await expect(service.send({ threadId: thread.id, text: "two" })).rejects.toThrow(/already running/);
     release();
     await first;
+  });
+
+  it("notifies the turn listener with the final answer and scrubbed user text", async () => {
+    const store = new Store(join(tempDir(), "t.db"));
+    closeAfter(() => store.close());
+    const driver = fakeDriver(async (input) => {
+      input.onEvent({ kind: "assistant-text", text: "Hello world" });
+    });
+    const service = new Service(store, () => catalog(), [driver], () => {}, undefined, undefined, undefined, () => ["super-secret-key"]);
+    const project = store.addProject(tempDir());
+    const thread = service.createThread(project.id);
+    const seen: TurnDelta[] = [];
+    service.setTurnListener((d) => seen.push(d));
+
+    await service.send({ threadId: thread.id, text: "deploy with super-secret-key now" });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      projectId: project.id,
+      threadId: thread.id,
+      agentId: "fake",
+      user: "deploy with «redacted» now",
+      answer: "Hello world",
+    });
+  });
+
+  it("does not notify the turn listener when the turn was interrupted", async () => {
+    const { service, thread } = setup(async (input) => {
+      await new Promise((r) => setTimeout(r, 30));
+      input.onEvent({ kind: "assistant-text", text: "late" });
+    });
+    const seen: TurnDelta[] = [];
+    service.setTurnListener((d) => seen.push(d));
+
+    const sending = service.send({ threadId: thread.id, text: "go" });
+    await new Promise((r) => setTimeout(r, 10));
+    service.interrupt(thread.id);
+    await sending;
+    expect(seen).toEqual([]);
   });
 
   it("remembers allow-always per agent and re-asks after a switch", async () => {

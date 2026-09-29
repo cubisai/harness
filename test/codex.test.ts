@@ -177,6 +177,39 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 });
 `;
 
+/** Records the hidden one-shot thread/start and turn/start params, then replies. */
+const ONESHOT_PROBE = `
+const fs = require("node:fs");
+const readline = require("node:readline");
+const send = (m) => process.stdout.write(JSON.stringify(m) + "\\n");
+const log = (o) => fs.appendFileSync(process.env.ONESHOT_PROBE, JSON.stringify(o) + "\\n");
+readline.createInterface({ input: process.stdin }).on("line", (line) => {
+  const msg = JSON.parse(line);
+  if (msg.id === undefined) return;
+  const { id, method, params } = msg;
+  if (method === "initialize") return send({ id, result: { userAgent: "probe" } });
+  if (method === "model/list") return send({ id, result: { data: [] } });
+  if (method === "thread/start") {
+    log({ method, params });
+    return send({ id, result: { thread: { id: "oneshot-thread" } } });
+  }
+  if (method === "turn/start") {
+    log({ method, params });
+    const turn = { id: "turn-1", status: "inProgress", error: null, durationMs: null };
+    send({ id, result: { turn } });
+    send({ method: "turn/started", params: { threadId: params.threadId, turn } });
+    send({ method: "item/completed", params: { threadId: params.threadId, turnId: turn.id, item: { type: "agentMessage", id: "m1", text: "EXTRACTED" } } });
+    send({ method: "turn/completed", params: { threadId: params.threadId, turn: { ...turn, status: "completed", durationMs: 1 } } });
+    return;
+  }
+  if (method === "thread/unsubscribe") {
+    log({ method, params });
+    return send({ id, result: {} });
+  }
+  send({ id, result: {} });
+});
+`;
+
 function driver() {
   const d = createCodexDriver({ command: process.execPath, args: [MOCK], clientVersion: "test", skillsDir: () => "/skills/here" });
   closeAfter(() => d.dispose?.());
@@ -741,6 +774,41 @@ describe("Codex seeding", () => {
     const t = turn("injects", { sessionId });
     await d.runTurn(t.input);
     expect(t.events.find((e) => e.kind === "assistant-text")).toMatchObject({ text: "injects=1 ids=call-9" });
+  });
+});
+
+describe("Codex oneShot", () => {
+  it("sends an ephemeral read-only thread, returns the text, and unsubscribes", async () => {
+    const probe = join(tempDir(), "oneshot.jsonl");
+    process.env.ONESHOT_PROBE = probe;
+    try {
+      const d = createCodexDriver({ command: process.execPath, args: ["-e", ONESHOT_PROBE], clientVersion: "test" });
+      closeAfter(() => d.dispose?.());
+      const text = await d.oneShot!({ prompt: "summarize this", model: "default" });
+      expect(text).toBe("EXTRACTED");
+      const calls = readFileSync(probe, "utf8").trim().split("\n").map((l) => JSON.parse(l) as { method: string; params: Record<string, unknown> });
+      const start = calls.find((c) => c.method === "thread/start")!;
+      expect(start.params.ephemeral).toBe(true);
+      expect(start.params.sandbox).toBe("read-only");
+      expect(start.params.approvalPolicy).toBe("never");
+      expect(start.params.config).toEqual({ memories: { use_memories: false, generate_memories: false } });
+      expect(start.params.developerInstructions).toBeUndefined();
+      const started = calls.find((c) => c.method === "turn/start")!;
+      expect(started.params.input).toEqual([{ type: "text", text: "summarize this", text_elements: [] }]);
+      expect(started.params.approvalPolicy).toBe("never");
+      expect(calls.some((c) => c.method === "thread/unsubscribe")).toBe(true);
+    } finally {
+      delete process.env.ONESHOT_PROBE;
+    }
+  });
+
+  it("leaves no turn state behind: a normal runTurn still works after it", async () => {
+    const d = driver();
+    expect(await d.oneShot!({ prompt: "hi", model: "default" })).toBe("Hi, hi");
+    const t = turn("there");
+    await d.runTurn(t.input);
+    expect(t.deltas.join("")).toBe("Hi, there");
+    expect(t.events.find((e) => e.kind === "assistant-text")).toMatchObject({ text: "Hi, there" });
   });
 });
 
