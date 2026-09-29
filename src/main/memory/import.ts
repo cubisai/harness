@@ -11,16 +11,18 @@ export function claudeProjectKey(projectPath: string): string {
  * Copy Claude's native auto-memory into the shared store once per project,
  * plus Codex's memory file. Runs at most once per project (the `.imported`
  * marker), never touches the sources, and is tolerant of missing folders.
+ * `force` re-runs it anyway (the Library's Import button); name dedupe still
+ * keeps it from importing anything twice.
  */
 export function importNativeMemory(
   store: MemoryStore,
   projectId: string,
   projectPath: string,
-  opts: { home: string; codexHome?: string },
+  opts: { home: string; codexHome?: string; force?: boolean },
 ): { imported: number; skipped: number } {
   const dir = store.dir(projectId);
   const marker = join(dir, ".imported");
-  if (existsSync(marker)) return { imported: 0, skipped: 0 };
+  if (!opts.force && existsSync(marker)) return { imported: 0, skipped: 0 };
   let imported = 0;
   let skipped = 0;
 

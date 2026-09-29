@@ -81,12 +81,29 @@ describe("MemoryStore", () => {
     const lines = text.replace(/\n$/, "").split("\n");
     expect(lines[0]).toBe("# Memory");
     expect(lines[1]).toBe("");
-    expect(lines[2]).toBe("- [Alpha](alpha.md) — first");
+    // Claude's own hook survives a write of a different fact untouched.
+    expect(lines[2]).toBe("- [Alpha](alpha.md) — old hook");
     expect(lines[3]).toBe("- note to self");
     expect(text).not.toContain("gone.md");
     expect(lines).toContain("- [Beta](beta.md) — second");
     expect(lines).toContain("- [Gamma](gamma.md) — third");
     expect(text.endsWith("\n")).toBe(true);
+  });
+
+  it("keeps a Claude-written line on another fact's write and rewrites only the written fact's line", () => {
+    const store = new MemoryStore(tempDir());
+    store.write("p1", { name: "Tabs", description: "starter", type: "project", body: "tabs" });
+    const indexPath = join(store.dir("p1"), "MEMORY.md");
+    writeFileSync(indexPath, "# Memory\n\n- [Tabs over spaces](tabs.md) — use tabs\n");
+    // A different fact: Claude's nicer title/hook stays verbatim.
+    store.write("p1", { name: "Deploy", description: "ship it", type: "project", body: "d" });
+    let text = readFileSync(indexPath, "utf8");
+    expect(text).toContain("- [Tabs over spaces](tabs.md) — use tabs");
+    // tabs.md itself: its line is rebuilt from the file.
+    store.write("p1", { name: "Tabs over spaces", description: "keep tabs", type: "project", body: "tabs", file: "tabs.md" });
+    text = readFileSync(indexPath, "utf8");
+    expect(text).toContain("- [Tabs over spaces](tabs.md) — keep tabs");
+    expect(text).not.toContain("use tabs");
   });
 
   it("removes a fact and its index line", () => {

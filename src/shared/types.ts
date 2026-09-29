@@ -146,6 +146,25 @@ export interface Settings {
   memory?: { enabled: boolean; disabledProjects: string[] };
 }
 
+export type MemoryType = "user" | "feedback" | "project" | "reference";
+
+/** One note in a project's shared memory, without its body. */
+export interface MemoryNote {
+  file: string;
+  name: string;
+  description: string;
+  type: MemoryType;
+}
+
+/** The Library's view of one project's memory. */
+export interface MemoryOverview {
+  enabled: boolean;
+  projectOn: boolean;
+  dir: string;
+  index: { lines: number; tokens: number };
+  notes: MemoryNote[];
+}
+
 export interface EditorInfo {
   id: string;
   label: string;
@@ -742,6 +761,15 @@ export interface UnskilledApi {
   aboutInfo(): Promise<AboutInfo>;
   /** The harness-side context a thread (or, with no thread, a new one in the project) starts with. */
   contextPreview(threadId: string | null, projectId: string | null): Promise<ContextPreview>;
+  memoryOverview(projectId: string): Promise<MemoryOverview>;
+  memoryRead(projectId: string, file: string): Promise<(MemoryNote & { body: string }) | null>;
+  /** Save a note (a new one when file is absent); returns its file. */
+  memoryWrite(projectId: string, note: { file?: string; name: string; description: string; type: MemoryType; body: string }): Promise<string>;
+  memoryDelete(projectId: string, file: string): Promise<boolean>;
+  /** Turn memory on/off everywhere (projectId null) or for one project. */
+  memorySetEnabled(projectId: string | null, on: boolean): Promise<MemoryOverview | null>;
+  /** Import Claude's/Codex's native memory again (deduped); returns how many notes were added. */
+  memoryImport(projectId: string): Promise<number>;
   /** Rate limits reported so far, by agent. */
   listLimits(): Promise<AgentLimits[]>;
   /** Every skill discovered for the project (or globally): the whole list, shadowed and disabled included. */

@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import type { MemoryType } from "../../shared/types";
 
 /** The kinds of fact Claude Code's auto-memory writes. */
-export type MemoryType = "user" | "feedback" | "project" | "reference";
+export type { MemoryType };
 
 export interface MemoryFact {
   /** The file's basename, e.g. "commit-style.md". */
@@ -174,7 +175,7 @@ export class MemoryStore {
     if (fact.file !== undefined && !validFile(fact.file)) throw new Error(`invalid memory file ${fact.file}`);
     const file = fact.file ?? slugFor(fact.name, new Set(this.list(projectId).map((f) => f.file.toLowerCase())));
     atomicWrite(join(this.dir(projectId), file), serializeFact({ name: fact.name, description: fact.description, type: fact.type, body: fact.body }));
-    this.rebuildIndex(projectId);
+    this.rebuildIndex(projectId, file);
     return file;
   }
 
@@ -189,11 +190,12 @@ export class MemoryStore {
   }
 
   /**
-   * Rebuild MEMORY.md from the facts on disk: keep every existing line in
-   * order (headings, blanks, Claude's own notes), drop dead links, rewrite
-   * links to their current name/description, and append any unlinked fact.
+   * Rebuild MEMORY.md from the facts on disk. Every existing line survives
+   * verbatim (headings, blanks, Claude's own titles/hooks); dead links are
+   * dropped, only the `touched` fact's own line is rewritten to its current
+   * name/description, and any unlinked fact is appended.
    */
-  rebuildIndex(projectId: string): void {
+  rebuildIndex(projectId: string, touched?: string): void {
     const d = this.dir(projectId);
     const indexPath = join(d, "MEMORY.md");
     const existing = existsSync(indexPath) ? readFileSync(indexPath, "utf8").replace(/^\uFEFF/, "").split(/\r?\n/) : [];
@@ -210,7 +212,8 @@ export class MemoryStore {
       const fact = validFile(file) ? this.read(projectId, file) : null;
       if (!fact) continue; // the link points at a fact that's gone
       linked.add(file.toLowerCase());
-      kept.push(`- [${fact.name}](${file}) — ${fact.description}`);
+      // Only the fact just written gets a fresh hook; the rest keep Claude's own wording.
+      kept.push(touched && file.toLowerCase() === touched.toLowerCase() ? `- [${fact.name}](${file}) — ${fact.description}` : line);
     }
     const unlinked = this.list(projectId).filter((f) => !linked.has(f.file.toLowerCase()));
     for (const f of unlinked) kept.push(`- [${f.name}](${f.file}) — ${f.description}`);

@@ -6,12 +6,14 @@ import { IconCopy } from "../icons";
 import { Markdown } from "../markdown";
 import { useStore, type LibraryTab } from "../store";
 import { CantDoList, CapabilityChips, BinaryLine } from "./Capabilities";
+import { MemoryTab } from "./MemoryTab";
 import { UnsupportedChip } from "./UnsupportedChip";
 
-const TABS: { id: "experts" | "skills" | "connectors"; label: string; icon: string }[] = [
+const TABS: { id: "experts" | "skills" | "connectors" | "memory"; label: string; icon: string }[] = [
   { id: "experts", label: "Experts", icon: "🧑‍💼" },
   { id: "skills", label: "Skills", icon: "🧩" },
   { id: "connectors", label: "Connectors", icon: "🔗" },
+  { id: "memory", label: "Memory", icon: "🧠" },
 ];
 
 interface ExpertPersona {
@@ -176,8 +178,8 @@ export function Library() {
 
 function LibrarySheet({ tab }: { tab: LibraryTab }) {
   const close = () => useStore.setState({ libraryTab: null });
-  const activeTab: "experts" | "skills" | "connectors" =
-    tab === "agents" ? "experts" : tab === "mcp" ? "connectors" : tab === "experts" ? "experts" : tab === "connectors" ? "connectors" : "skills";
+  const activeTab: "experts" | "skills" | "connectors" | "memory" =
+    tab === "agents" ? "experts" : tab === "mcp" ? "connectors" : tab === "experts" ? "experts" : tab === "connectors" ? "connectors" : tab === "memory" ? "memory" : "skills";
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -216,6 +218,7 @@ function LibrarySheet({ tab }: { tab: LibraryTab }) {
         {activeTab === "experts" && <ExpertsTab />}
         {activeTab === "skills" && <SkillsTab />}
         {activeTab === "connectors" && <ConnectorsTab />}
+        {activeTab === "memory" && <MemoryTab />}
       </div>
     </div>
   );

@@ -30,7 +30,7 @@ import { threadSeen, turnEnded, type FinishedTurn } from "./inbox";
 /** The right panel's tabs. Changes and Files need a project; Browser works without one. */
 export type InspectorTab = "changes" | "browser" | "files";
 
-export type LibraryTab = "experts" | "skills" | "connectors" | "mcp" | "agents";
+export type LibraryTab = "experts" | "skills" | "connectors" | "mcp" | "agents" | "memory";
 
 /** A new thread's pickers before it exists; reset once the thread is created. */
 interface Draft {

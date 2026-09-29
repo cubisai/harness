@@ -1,4 +1,4 @@
-import type { AgentCatalogEntry, LiveUpdate, McpOverview, Project, SettingsView, SkillEntry, SkillOrigin, StoredEvent, Thread, ThreadEvent, UnskilledApi } from "../../shared/types";
+import type { AgentCatalogEntry, LiveUpdate, McpOverview, MemoryNote, MemoryOverview, Project, SettingsView, SkillEntry, SkillOrigin, StoredEvent, Thread, ThreadEvent, UnskilledApi } from "../../shared/types";
 
 /**
  * A fake backend for `bun run preview:ui`: the real renderer in a plain
@@ -195,6 +195,19 @@ export function installMock(): void {
     guardEnforcement: { ask: "warnOnly", "auto-edit": "warnOnly", plan: "warnOnly", full: "warnOnly" },
     sandbox: "none",
   } as const;
+
+  // Two sample notes, so the Memory tab has something to show in the preview.
+  let memoryNotes: MemoryNote[] = [
+    { file: "commit-style.md", name: "Commit Style", description: "Keep commit messages under 150 characters", type: "feedback" },
+    { file: "deploy.md", name: "Deploy", description: "Run make deploy against staging before production", type: "project" },
+  ];
+  const memoryView = (): MemoryOverview => ({
+    enabled: true,
+    projectOn: true,
+    dir: "/Users/you/Library/Application Support/CubiQ/memory/projects/p1",
+    index: { lines: memoryNotes.length + 1, tokens: 48 },
+    notes: memoryNotes,
+  });
 
   const api: UnskilledApi = {
     platform: params.get("platform") ?? "darwin",
@@ -439,6 +452,24 @@ export function installMock(): void {
       mcpServers: ["github"],
       memoryIndex: null,
     }),
+    memoryOverview: async () => memoryView(),
+    memoryRead: async (_projectId, file) => {
+      const note = memoryNotes.find((n) => n.file === file);
+      return note ? { ...note, body: `# ${note.name}\n\n${note.description}.` } : null;
+    },
+    memoryWrite: async (_projectId, note) => {
+      const slug = note.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "note";
+      const file = note.file ?? `${slug}.md`;
+      memoryNotes = [...memoryNotes.filter((n) => n.file !== file), { file, name: note.name, description: note.description, type: note.type }];
+      return file;
+    },
+    memoryDelete: async (_projectId, file) => {
+      const before = memoryNotes.length;
+      memoryNotes = memoryNotes.filter((n) => n.file !== file);
+      return memoryNotes.length < before;
+    },
+    memorySetEnabled: async (projectId, _on) => (projectId === null ? null : memoryView()),
+    memoryImport: async () => 0,
     installUpdate: async () => {},
     terminalResize: () => {},
     terminalClose: async () => {},

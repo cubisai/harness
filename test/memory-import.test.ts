@@ -58,6 +58,21 @@ describe("importNativeMemory", () => {
     expect(importNativeMemory(store, "p1", "/proj", { home })).toEqual({ imported: 0, skipped: 0 });
   });
 
+  it("re-runs past the marker when forced, still deduping by name", () => {
+    const home = tempDir();
+    const key = claudeProjectKey("/proj");
+    const src = join(home, ".claude", "projects", key, "memory");
+    write(join(src, "one.md"), serializeFact({ name: "One", description: "first", type: "project", body: "1" }));
+    const store = new MemoryStore(tempDir());
+    expect(importNativeMemory(store, "p1", "/proj", { home })).toEqual({ imported: 1, skipped: 0 });
+    // A source note added later still lands with force (the old one dedupes)...
+    write(join(src, "two.md"), serializeFact({ name: "Two", description: "second", type: "project", body: "2" }));
+    expect(importNativeMemory(store, "p1", "/proj", { home, force: true })).toEqual({ imported: 1, skipped: 1 });
+    // ...and nothing duplicates on the next forced run.
+    expect(importNativeMemory(store, "p1", "/proj", { home, force: true })).toEqual({ imported: 0, skipped: 2 });
+    expect(store.list("p1").map((f) => f.name).sort()).toEqual(["One", "Two"]);
+  });
+
   it("imports Codex's own memories as codex-memories", () => {
     const home = tempDir();
     write(join(home, ".codex", "memories", "MEMORY.md"), "Codex notes here");

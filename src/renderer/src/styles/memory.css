@@ -1,0 +1,27 @@
+/* The Library's Memory tab: the two enable switches and the note editor. */
+.memory-tab .memory-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 4px 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.memory-tab .memory-switch .skill-switch { margin-left: 0; }
+
+.memory-form { display: grid; gap: 10px; }
+.memory-form .memory-row { display: grid; grid-template-columns: 96px 1fr; align-items: center; gap: 10px; }
+.memory-form .memory-row .label { color: var(--text-secondary); font-size: 13px; }
+.memory-form .form-error { margin: 0; }
+/* Scoped under the form so it outranks .text-input's fixed 28px height. */
+.memory-form .memory-body {
+  height: auto;
+  min-height: 240px;
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.memory-actions { display: flex; align-items: center; gap: 8px; }

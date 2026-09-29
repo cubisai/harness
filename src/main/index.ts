@@ -4,7 +4,7 @@ import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell } from "electron";
-import type { AboutInfo, AgentLimits, ContextPreview, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, OpenResult, PermissionDecision, PlanDecision, ProviderInput, ScreenshotInfo, SendRequest, Settings, SkillOrigin, SwitchMode, Thread } from "../shared/types";
+import type { AboutInfo, AgentLimits, ContextPreview, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, ScreenshotInfo, SendRequest, Settings, SkillOrigin, SwitchMode, Thread } from "../shared/types";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
 import { warmBinaries } from "./agents/binaries";
@@ -31,8 +31,9 @@ import { BUILT_IN_GUARD, findPython } from "./guard";
 import { createGuide } from "./guide";
 import { buildContextPreview } from "./context-preview";
 import { createMemory, memoryOn, memoryPrompt } from "./memory";
+import { createMemoryApi } from "./memory/api";
 import { createExtractor } from "./memory/extractor";
-import { memoryReadTool } from "./memory/tool";
+import { MEMORY_READ_TOOL, memoryReadTool } from "./memory/tool";
 import { SettingsStore } from "./settings";
 import { agentCatalog, skillDetail } from "./library";
 import { fillUserEnvironment } from "./winspawn";
@@ -188,6 +189,14 @@ async function main(): Promise<void> {
     available: safeStorage.isEncryptionAvailable() && (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text"),
     encrypt: (s) => safeStorage.encryptString(s).toString("base64"),
     decrypt: (b) => safeStorage.decryptString(Buffer.from(b, "base64")),
+  });
+  // The Library's memory tab: notes, the enable switches, and a re-run of the import.
+  const memoryApi = createMemoryApi({
+    memory,
+    settings,
+    projectPath: (pid) => store.getProject(pid).path,
+    home: homedir(),
+    codexHome: process.env.CODEX_HOME || undefined,
   });
   // Provider keys reach an agent only through its own injection plan (src/main/inject);
   // this is the list every stored or broadcast event is scrubbed of. Cached, and
@@ -645,11 +654,21 @@ async function main(): Promise<void> {
     const cwd = thread ? service.cwdOf(thread) : pid ? store.getProject(pid).path : null;
     return buildContextPreview({
       guideParts: cwd ? guide.partsForCwd(cwd) : [],
-      tools: harnessTools(),
+      // An agent that keeps the shared memory itself doesn't need the read tool.
+      tools: harnessTools().filter((t) => !(thread && drivers.find((d) => d.id === thread.agent)?.capabilities.nativeMemory && t.name === MEMORY_READ_TOOL)),
       mcpServers: mcpScopes.effective(pid),
       memoryIndex: pid && memoryOn(settings.get(), pid) ? (({ lines, tokens }) => ({ lines, tokens }))(memory.store.index(pid)) : null,
     });
   });
+  ipcMain.handle("memory:overview", (_e, projectId: string) => memoryApi.overview(projectId));
+  ipcMain.handle("memory:read", (_e, projectId: string, file: string) => memoryApi.read(projectId, file));
+  ipcMain.handle(
+    "memory:write",
+    (_e, projectId: string, note: { file?: string; name: string; description: string; type: MemoryType; body: string }) => memoryApi.write(projectId, note),
+  );
+  ipcMain.handle("memory:delete", (_e, projectId: string, file: string) => memoryApi.remove(projectId, file));
+  ipcMain.handle("memory:set-enabled", (_e, projectId: string | null, on: boolean) => memoryApi.setEnabled(projectId, on));
+  ipcMain.handle("memory:import", (_e, projectId: string) => memoryApi.reimport(projectId));
   ipcMain.handle("app:update-status", () => updater.status());
   ipcMain.handle("limits:list", () => limits.all());
   ipcMain.handle("app:install-update", () => updater.install());
