@@ -8,6 +8,8 @@
 //   "reason"  - emits three thought chunks, a tick apart, then answers
 //   "plan"    - emits a plan update with two entries, then answers
 //   "nousage" - answers with a prompt response that carries no usage object
+//   "empty"   - returns end_turn with no updates and zero usage, the way a
+//                provider that needs a subscription or key fails quietly
 //   "env:NAME" - answers "NAME=present" when the env var is a non-empty string,
 //                else "NAME=absent"; never echoes the value
 //   "config"  - answers with the "agent" section of OPENCODE_CONFIG_CONTENT, or "none"
@@ -156,9 +158,9 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
       const sid = params.sessionId;
       const text = params.prompt.map((b) => b.text).join("");
       cancelled = false;
-      // "reason" emits its own three thought chunks below; every other scenario
-      // gets this one shared chunk.
-      if (text !== "reason") update(sid, { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "thinking" } });
+      // "reason" emits its own three thought chunks below; "empty" emits nothing
+      // at all; every other scenario gets this one shared chunk.
+      if (text !== "reason" && text !== "empty") update(sid, { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "thinking" } });
       if (text === "canonical" || text === "canonical-opencode") {
         // OpenCode titles a call with its tool's name and names the file in rawInput.
         const opencode = text === "canonical-opencode";
@@ -288,6 +290,8 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
         const name = text.slice(4);
         const value = process.env[name];
         update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `${name}=${typeof value === "string" && value.length > 0 ? "present" : "absent"}` } });
+      } else if (text === "empty") {
+        // Nothing at all: no chunks, no usage_update, zero-usage end_turn.
       } else {
         if (text === "plan") {
           update(sid, {
@@ -301,10 +305,15 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
         update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `Hello, ${text} ` } });
         update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `(${model})` } });
       }
-      update(sid, { sessionUpdate: "usage_update", used: 1234, size: 100000, cost: { amount: 0.01, currency: "USD" } });
+      if (text !== "empty") update(sid, { sessionUpdate: "usage_update", used: 1234, size: 100000, cost: { amount: 0.01, currency: "USD" } });
       // "nousage" omits the response usage so the driver must not fall back to
       // the usage_update `used` (context occupancy) for the turn's input count.
-      const result = text === "nousage" ? { stopReason: "end_turn" } : { stopReason: "end_turn", usage: { inputTokens: 1200, outputTokens: 34 } };
+      const result =
+        text === "nousage"
+          ? { stopReason: "end_turn" }
+          : text === "empty"
+            ? { stopReason: "end_turn", usage: { inputTokens: 0, outputTokens: 0 } }
+            : { stopReason: "end_turn", usage: { inputTokens: 1200, outputTokens: 34 } };
       return send({ id, result });
     }
     default:

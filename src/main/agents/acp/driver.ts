@@ -206,6 +206,8 @@ interface TurnState {
   >;
   /** Permission toolCallIds seen this turn, to spot a mismatch from the real call. */
   permissionIds: Set<string>;
+  /** Whether a plan update (its own or a folded todowrite) was shown this turn. */
+  planned: boolean;
   /**
    * The turn's usage: `used`/`costUsd` fold the latest usage_update. `contextUsed`
    * stays null until one arrives, so a usage-free turn isn't read as a real 0.
@@ -496,7 +498,10 @@ export function createAcpDriver(
         return;
       }
       case "plan":
-        if (t) t.input.onEvent({ kind: "plan", entries: (update as { entries: PlanEntry[] }).entries });
+        if (t) {
+          t.planned = true;
+          t.input.onEvent({ kind: "plan", entries: (update as { entries: PlanEntry[] }).entries });
+        }
         return;
       case "config_option_update":
         l.configOptions = (update as { configOptions: ConfigOption[] }).configOptions;
@@ -878,7 +883,7 @@ export function createAcpDriver(
         return;
       }
       clearTimeout(l.idleTimer);
-      const turn: TurnState = { input, text: "", thought: "", tools: new Map(), permissionIds: new Set(), usage: { used: 0, costUsd: null, contextUsed: null, size: null }, run: 0 };
+      const turn: TurnState = { input, text: "", thought: "", tools: new Map(), permissionIds: new Set(), planned: false, usage: { used: 0, costUsd: null, contextUsed: null, size: null }, run: 0 };
       l.turn = turn;
       const started = Date.now();
       const onAbort = () => l.conn.notify("session/cancel", { sessionId: l.sessionId });
@@ -909,11 +914,24 @@ export function createAcpDriver(
             { type: "text", text: input.prompt },
           ],
         });
+        // Whether the turn produced anything visible; flushText clears the
+        // buffers this reads, so decide before flushing.
+        const empty = !turn.text.trim() && !turn.thought.trim() && turn.tools.size === 0 && !turn.planned;
         flushText(turn);
         if (res.stopReason === "cancelled") input.onEvent({ kind: "notice", text: "Stopped." });
         else if (res.stopReason === "refusal") input.onEvent({ kind: "error", message: `${config.label} declined this request.` });
         else if (res.stopReason === "max_tokens" || res.stopReason === "max_turn_requests") {
           input.onEvent({ kind: "notice", text: `${config.label} stopped early (${res.stopReason.replace(/_/g, " ")}).` });
+        }
+        // A prompt that resolves with no text, no tool call and no usage is how a
+        // provider that needs a subscription, a key or a login fails quietly;
+        // name it rather than letting the turn end silently.
+        const tokens = (res.usage?.inputTokens ?? 0) + (res.usage?.outputTokens ?? 0);
+        if (empty && tokens === 0 && res.stopReason !== "cancelled") {
+          input.onEvent({
+            kind: "error",
+            message: `${config.label} returned nothing for ${input.model === DEFAULT_MODEL ? "its default model" : input.model}. The model's provider may need a subscription, a key, or a login — try another model.${l.conn.stderrHint()}`,
+          });
         }
         // `usage_update.used` is context-window occupancy, not per-turn input:
         // only the prompt response's usage is a real input count.

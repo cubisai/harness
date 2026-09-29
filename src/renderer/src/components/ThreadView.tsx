@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { StoredEvent, ThreadEvent } from "../../../shared/types";
 import { prettyTool, type RunResult } from "../../../shared/tools";
+import { displayOrder } from "../event-order";
 import { type FileRef, parseFileRef } from "../fileref";
 import { emptyLive, liveReasoningMode, visibleItems } from "../live";
 import { Markdown } from "../markdown";
@@ -94,6 +95,8 @@ export function ThreadView({ threadId }: { threadId: string }) {
     }
     return events.slice(start);
   }, [events]);
+  // What the thread actually renders: notices written for a message show above it.
+  const displayEvents = useMemo(() => displayOrder(events), [events]);
 
   // Stay pinned to the bottom while the user hasn't scrolled away.
   const pinned = useRef(true);
@@ -123,7 +126,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
       }}
     >
       <div className="thread-inner" ref={inner}>
-        {events.map((e) =>
+        {displayEvents.map((e) =>
           stalePlans.has(e.seq) || e.event.parentId ? null : (
             <EventRow key={e.seq} stored={e} results={results} children={children} running={running} threadId={threadId} />
           ),

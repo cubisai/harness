@@ -178,6 +178,27 @@ describe("ACP driver", () => {
     });
   });
 
+  it("reports a turn where the model returned nothing, before the turn-end", async () => {
+    const d = driver();
+    const t = turn("empty", { model: "mock-small" });
+    await d.runTurn(t.input);
+    const kinds = t.events.map((e) => e.kind);
+    const error = t.events.find((e): e is Extract<ThreadEvent, { kind: "error" }> => e.kind === "error");
+    expect(error).toBeDefined();
+    // The model id names which model came back empty.
+    expect(error!.message).toContain("mock-small");
+    expect(error!.message).toContain("Mock returned nothing");
+    expect(error!.message).toContain("try another model");
+    expect(kinds.indexOf("error")).toBeLessThan(kinds.indexOf("turn-end"));
+  });
+
+  it("does not report an ordinary reply as empty", async () => {
+    const d = driver();
+    const t = turn("world");
+    await d.runTurn(t.input);
+    expect(t.events.some((e) => e.kind === "error")).toBe(false);
+  });
+
   it("carries the reported context window onto the turn-end usage", async () => {
     const d = driver();
     const t = turn("world");

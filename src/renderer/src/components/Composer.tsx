@@ -260,7 +260,9 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
 
   const placeholder = skill
     ? skill.argumentHint ?? `Anything to tell /${skill.name}? Or just press Return.`
-    : "Ask anything, or type / for a skill";
+    : running
+      ? "Queue a message for the next turn…"
+      : "Ask anything, or type / for a skill";
 
   return (
     <div className="composer-wrap">
@@ -334,7 +336,6 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
               </span>
             ))}
             <span className="grow" />
-            {running && <span className="hint">Return queues for the next turn</span>}
           </div>
           <div className="composer-actions">
             {running && (

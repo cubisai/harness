@@ -81,7 +81,7 @@ export class StdioRpc {
   }
 
   request<T = unknown>(method: string, params?: unknown): Promise<T> {
-    if (this.exited) return Promise.reject(new Error(`The agent exited.${this.stderrHint()}`));
+    if (this.exited) return Promise.reject(new Error(`The agent exited.${this.exitHint()}`));
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
@@ -103,7 +103,14 @@ export class StdioRpc {
     this.child.stdin!.write(`${JSON.stringify(message)}\n`);
   }
 
-  private stderrHint(): string {
+  /** The last stderr lines the agent wrote, as a hint a caller appends to its own error. */
+  stderrHint(): string {
+    const tail = this.stderrTail.trim().split("\n").slice(-6).join("\n").slice(-300);
+    return tail ? ` Agent said: ${tail}` : "";
+  }
+
+  /** The stderr tail for this transport's own exit errors, on its own line. */
+  private exitHint(): string {
     const tail = this.stderrTail.trim().split("\n").slice(-6).join("\n");
     return tail ? `\n${tail}` : "";
   }
@@ -148,7 +155,7 @@ export class StdioRpc {
   private onExit(code: number | null): void {
     if (this.exited) return;
     this.exited = true;
-    const err = new Error(`The agent exited (code ${code ?? "?"}).${this.stderrHint()}`);
+    const err = new Error(`The agent exited (code ${code ?? "?"}).${this.exitHint()}`);
     for (const p of this.pending.values()) p.reject(err);
     this.pending.clear();
     this.handlers.onExit?.(code, this.stderrTail);

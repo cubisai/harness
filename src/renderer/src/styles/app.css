@@ -700,7 +700,6 @@ details.tool[open]::details-content { height: auto; }
 .start-thread h1 { font: 600 24px/1.25 var(--font-display); letter-spacing: -0.02em; margin: 0 0 8px; }
 .start-thread p { margin: 0; color: var(--text-secondary); font-size: 13.5px; }
 .composer-bar .grow { flex: 1; }
-.composer-bar .hint { color: var(--text-tertiary); font-size: 11px; }
 .send {
   width: 30px;
   height: 30px;

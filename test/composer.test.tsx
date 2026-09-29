@@ -146,6 +146,21 @@ describe("composer actions row", () => {
     });
   });
 
+  it("shows the queue placeholder while running, and no inline hint", () => {
+    withRunning({ t: true }, () => {
+      const html = renderToStaticMarkup(<Composer threadId="t" />);
+      expect(html).toContain('placeholder="Queue a message for the next turn…"');
+      expect(html).not.toContain("Return queues for the next turn");
+    });
+  });
+
+  it("keeps the idle placeholder when not running", () => {
+    withRunning({}, () => {
+      const html = renderToStaticMarkup(<Composer threadId="t" />);
+      expect(html).toContain('placeholder="Ask anything, or type / for a skill"');
+    });
+  });
+
   it("renders meters in composer-meters, after composer-bar and outside it", () => {
     withRunning({ t: true }, () => {
       const html = renderToStaticMarkup(<Composer threadId="t" meters={<span className="x">M</span>} />);
