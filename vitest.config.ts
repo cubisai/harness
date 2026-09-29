@@ -8,5 +8,8 @@ export default defineConfig({
     // and never run in the default suite or CI.
     exclude: [...configDefaults.exclude, "manual/**"],
     environment: "node",
+    setupFiles: ["./test/setup-git.ts"],
+    // e2e specs legitimately spawn real CLIs (codex/claude/opencode) and need more than 5s.
+    testTimeout: 15_000,
   },
 });
