@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ModelOption } from "../../../shared/types";
 import { filterModels } from "../models";
+import { useStore } from "../store";
 
 /**
  * The header's model picker: a button that opens a searchable list, grouped
@@ -11,6 +12,7 @@ export function ModelPicker({
   current,
   disabled,
   placement = "down",
+  listenForOpenRequest = false,
   onPick,
 }: {
   models: ModelOption[];
@@ -18,6 +20,8 @@ export function ModelPicker({
   disabled?: boolean;
   /** Open below the button, or above it (from the message box). */
   placement?: "down" | "up";
+  /** Open when the store's requestModelPicker counter changes (only the composer's picker). */
+  listenForOpenRequest?: boolean;
   onPick(id: string): void;
 }) {
   const [open, setOpen] = useState(false);
@@ -27,6 +31,15 @@ export function ModelPicker({
   const groups = useMemo(() => filterModels(models, query), [models, query]);
   const flat = useMemo(() => groups.flatMap((g) => g.models), [groups]);
   const currentLabel = models.find((m) => m.id === current)?.label ?? current;
+
+  // The composer's "/model" command asks this picker to open, by bumping a counter.
+  const openRequest = useStore((s) => s.openPickerRequest);
+  const lastRequest = useRef(openRequest);
+  useEffect(() => {
+    if (openRequest === lastRequest.current) return;
+    lastRequest.current = openRequest;
+    if (listenForOpenRequest) setOpen(true);
+  }, [openRequest, listenForOpenRequest]);
 
   useEffect(() => setIndex(Math.max(0, flat.findIndex((m) => m.id === current))), [flat, current]);
   useEffect(() => {

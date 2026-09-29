@@ -342,7 +342,7 @@ export function installMock(): void {
         calledBy: allSkills.filter((x) => x.calls.includes(name)).map((x) => x.name),
         routes: agentCatalog
           .filter((a) => a.installed)
-          .map((a) => ({ agent: a.label, how: skill.invocation === "user" ? "From the / menu: the app puts the skill's text into your message" : a.skills })),
+          .map((a) => ({ agent: a.label, how: skill.invocation === "user" ? "From the $ menu: the app puts the skill's text into your message" : a.skills })),
         body: `# ${name}\n\n${skill.description}\n\n## Steps\n\n1. Read the ticket and the code it touches.\n2. Agree the seam to test at, then write **one** failing test.\n3. Make it pass with the smallest change, then refactor.\n\n\`\`\`bash\nnpm test -- --watch\n\`\`\`\n\n- Stop and ask when the spec and the code disagree.\n- Never weaken a test to make it pass.`,
       };
     },

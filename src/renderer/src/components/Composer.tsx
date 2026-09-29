@@ -1,22 +1,24 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { File, Folder } from "lucide-react";
-import type { SkillEntry } from "../../../shared/types";
+import type { PermissionMode, SkillEntry } from "../../../shared/types";
 import { IconArrowUp, IconStop } from "../icons";
 import { api } from "../api";
-import { chipLabel, composeMessage } from "../composer";
+import { chipLabel, commandQuery, composeMessage, skillQuery } from "../composer";
+import { matchCommands, type ComposerCommand } from "../commands";
 import { folderPaths, mentionQueryAt, mentionsIn, rankMentions } from "../mentions";
 import { nextMode } from "../modes";
 import { useStore } from "../store";
 import { originLabel } from "./Library";
 
 /**
- * The message box. Typing `/` at the start opens the menu of skilled's
+ * The message box. Typing `$` at the start opens the menu of skilled's
  * user-invoked skills; picking one turns it into a chip, and whatever is
- * typed after it goes to the skill as its arguments. A picked browser
- * element becomes a context chip whose text rides along with the message.
- * Sending while a turn runs queues the message for the next turn. With no
- * thread yet (`threadId` null), sending starts one. Alt+Return starts the
- * message in a new thread in the background instead, leaving this one open.
+ * typed after it goes to the skill as its arguments. Typing `/` opens the
+ * menu of CubiQ commands (permission modes, the model picker, a new thread).
+ * A picked browser element becomes a context chip whose text rides along with
+ * the message. Sending while a turn runs queues the message for the next turn.
+ * With no thread yet (`threadId` null), sending starts one. Alt+Return starts
+ * the message in a new thread in the background instead, leaving this one open.
  * The thread's controls (agent, model, permissions) and meters sit in its bar.
  */
 export function Composer({ threadId, controls, meters }: { threadId: string | null; controls?: ReactNode; meters?: ReactNode }) {
@@ -37,7 +39,7 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
   /** listFiles results by project id, with when they were fetched, so the picker doesn't refetch per keystroke. */
   const filesCache = useRef(new Map<string, { at: number; files: string[] }>());
 
-  const query = !skill && text.startsWith("/") && !/\s/.test(text) ? text.slice(1).toLowerCase() : null;
+  const query = skill ? null : skillQuery(text);
   const matches = useMemo(
     () =>
       query === null
@@ -53,8 +55,12 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
   );
   const menuOpen = query !== null;
 
+  const cmdQuery = skill ? null : commandQuery(text);
+  const commandMatches = useMemo(() => (cmdQuery === null ? [] : matchCommands(cmdQuery)), [cmdQuery]);
+  const commandOpen = cmdQuery !== null;
+
   const mentionQuery = mentionQueryAt(text, caret);
-  const mentionOpen = mentionQuery !== null && !menuOpen && !mentionDismissed;
+  const mentionOpen = mentionQuery !== null && !menuOpen && !commandOpen && !mentionDismissed;
   const knownPaths = useMemo(() => [...knownFiles, ...folderPaths(knownFiles)], [knownFiles]);
   const knownSet = useMemo(() => new Set(knownPaths), [knownPaths]);
   const mentionMatches = useMemo(
@@ -98,6 +104,7 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
   }, [mentionOpen, projectId, loadFiles]);
 
   useEffect(() => setMenuIndex(0), [query]);
+  useEffect(() => setMenuIndex(0), [cmdQuery]);
   useEffect(() => setMenuIndex(0), [mentionQuery?.start, mentionQuery?.query]);
   useEffect(() => setMentionDismissed(false), [mentionQuery?.start, mentionQuery?.query]);
   useEffect(() => {
@@ -156,6 +163,21 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
     const next = `${text.slice(0, mentionQuery.start)}@${path} ${text.slice(caret)}`;
     pendingCaret.current = mentionQuery.start + path.length + 2;
     setText(next);
+    area.current?.focus();
+  };
+
+  // Run a "/" command: set the permission mode, ask for the model picker, or start a new thread.
+  const runCommand = (c: ComposerCommand) => {
+    setText("");
+    setCaret(0);
+    const s = useStore.getState();
+    if (c.name === "new") void s.newThread();
+    else if (c.name === "model") s.requestModelPicker();
+    else if (c.name === "plan" || c.name === "ask" || c.name === "auto-edit" || c.name === "full") {
+      const mode: PermissionMode = c.name;
+      if (threadId) void s.updateThread({ permissionMode: mode });
+      else s.setDraft({ permissionMode: mode });
+    }
     area.current?.focus();
   };
 
@@ -220,6 +242,24 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
         return;
       }
     }
+    if (commandOpen && commandMatches.length) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMenuIndex((i) => (i + 1) % commandMatches.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMenuIndex((i) => (i - 1 + commandMatches.length) % commandMatches.length);
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        const c = commandMatches[menuIndex];
+        if (c) runCommand(c);
+        return;
+      }
+    }
     if (mentionOpen && mentionMatches.length) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -238,7 +278,7 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
         return;
       }
     }
-    if (e.key === "Escape" && menuOpen) {
+    if (e.key === "Escape" && (menuOpen || commandOpen)) {
       setText("");
       return;
     }
@@ -259,10 +299,10 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
   };
 
   const placeholder = skill
-    ? skill.argumentHint ?? `Anything to tell /${skill.name}? Or just press Return.`
+    ? skill.argumentHint ?? `Anything to tell $${skill.name}? Or just press Return.`
     : running
       ? "Queue a message for the next turn…"
-      : "Ask anything, or type / for a skill";
+      : "Ask anything — $ for a skill, / for a command";
 
   return (
     <div className="composer-wrap">
@@ -282,9 +322,30 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
                   pick(s);
                 }}
               >
-                <span className="n">/{s.name}</span>
+                <span className="n">${s.name}</span>
                 <span className="skill-origin">{originLabel(s.origin)}</span>
                 <span className="d">{s.description}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {commandOpen && (
+          <div className="skill-menu" role="listbox">
+            {commandMatches.length === 0 && <div className="empty-line">No command matches “{cmdQuery}”</div>}
+            {commandMatches.map((c, i) => (
+              <div
+                key={c.name}
+                role="option"
+                aria-selected={i === menuIndex}
+                className={`item${i === menuIndex ? " active" : ""}`}
+                onMouseEnter={() => setMenuIndex(i)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  runCommand(c);
+                }}
+              >
+                <span className="n">/{c.name}</span>
+                <span className="d">{c.description}</span>
               </div>
             ))}
           </div>
@@ -327,7 +388,7 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
             {controls}
             {skill && (
               <span className="skill-chip" title={skill.description}>
-                /{skill.name}
+                ${skill.name}
               </span>
             )}
             {chips.map((c, i) => (

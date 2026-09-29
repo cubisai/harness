@@ -162,7 +162,7 @@ export function App() {
               <>
                 <div className="start-thread">
                   <h1>What should we build in {project.name}?</h1>
-                  <p>Describe a change, ask about the code, or type / for a skill.</p>
+                  <p>Describe a change, ask about the code, or type $ for a skill or / for a command.</p>
                 </div>
                 <Composer threadId={null} controls={<DraftControls />} />
               </>

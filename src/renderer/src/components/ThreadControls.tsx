@@ -49,7 +49,7 @@ function Controls({
   return (
     <div className="thread-controls">
       {agents.length > 1 && <AgentPicker agents={agents} current={agent} disabled={disabled} onPick={onAgent} />}
-      <ModelPicker models={models} current={model} disabled={disabled} placement="up" onPick={onModel} />
+      <ModelPicker models={models} current={model} disabled={disabled} placement="up" listenForOpenRequest onPick={onModel} />
       <EffortPicker options={models.find((m) => m.id === model)?.efforts ?? []} current={effort} defaultEffort={defaultEffort} disabled={disabled} onPick={onEffort} />
       <div className="segmented compact" role="radiogroup" aria-label="Permissions">
         {MODE_ORDER.map((id) => {

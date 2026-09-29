@@ -231,7 +231,7 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
             <div className="row">
               <span className="label">Skills</span>
               <span className="value">
-                {skills.length > 0 ? `${skills.length} workflow skills in the / menu, and the rest loaded by the agent as needed` : "No skills installed"}
+                {skills.length > 0 ? `${skills.length} workflow skills in the $ menu, and the rest loaded by the agent as needed` : "No skills installed"}
               </span>
             </div>
             <div className="row">

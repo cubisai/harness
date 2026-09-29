@@ -139,6 +139,9 @@ interface State {
   startPick(): Promise<void>;
   /** A skill to pre-fill in the composer, set by the empty-state shortcuts. */
   pendingSkill: string | null;
+  /** Bumped by the composer's "/model" command so the model picker opens. */
+  openPickerRequest: number;
+  requestModelPicker(): void;
   diffVersion: number; // bumps when a turn ends, so the diff refreshes
 
   init(): Promise<void>;
@@ -451,6 +454,10 @@ export const useStore = create<State>((set, get) => ({
   },
   pendingSkill: null,
   diffVersion: 0,
+  openPickerRequest: 0,
+  requestModelPicker() {
+    set((s) => ({ openPickerRequest: s.openPickerRequest + 1 }));
+  },
 
   async init() {
     // React StrictMode runs effects twice in development; subscribe once.

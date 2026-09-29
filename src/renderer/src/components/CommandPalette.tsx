@@ -92,8 +92,10 @@ function Palette() {
         out.push({
           id: `skill:${sk.name}`,
           section: "Skills",
-          title: `/${sk.name}`,
+          title: `$${sk.name}`,
           detail: sk.description,
+          // The old "/name" trigger still finds the skill; the menu now uses "$".
+          keywords: `/${sk.name}`,
           // Into this thread's message box, or a new thread when none is open.
           run: () => (thread ? useStore.setState({ pendingSkill: sk.name }) : void s.newThread(sk.name)),
         });

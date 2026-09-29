@@ -155,7 +155,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
         {outbox.map((m, i) => (
           <div className="msg-user" key={`queued-${i}`}>
             <div className="bubble queued" title="Queued: sends when this turn ends">
-              {m.skill && <span className="skill-chip">/{m.skill}</span>}
+              {m.skill && <span className="skill-chip">${m.skill}</span>}
               {m.text}
             </div>
           </div>
@@ -174,7 +174,7 @@ export function EventRow({ stored, results, children, running, threadId }: { sto
       return (
         <div className="msg-user">
           <div className="bubble">
-            {e.skill && <span className="skill-chip">/{e.skill}</span>}
+            {e.skill && <span className="skill-chip">${e.skill}</span>}
             {e.text}
           </div>
         </div>

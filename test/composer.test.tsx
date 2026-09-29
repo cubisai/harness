@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
 import { describePick, type PickedElement } from "../src/main/browser/picker";
-import { chipLabel, composeMessage } from "../src/renderer/src/composer";
+import { chipLabel, commandQuery, composeMessage, skillQuery } from "../src/renderer/src/composer";
 import { Composer } from "../src/renderer/src/components/Composer";
 import { useStore } from "../src/renderer/src/store";
 import type { SendRequest } from "../src/shared/types";
@@ -26,6 +26,30 @@ describe("composeMessage", () => {
 
   it("sends a chip alone", () => {
     expect(composeMessage("", [picked])).toBe(picked);
+  });
+});
+
+describe("composer menu triggers", () => {
+  it("opens the skill menu on a leading $", () => {
+    expect(skillQuery("$tdd")).toBe("tdd");
+    expect(skillQuery("$")).toBe("");
+  });
+
+  it("doesn't open the skill menu for / or once whitespace is typed", () => {
+    expect(skillQuery("/tdd")).toBeNull();
+    expect(skillQuery("$td d")).toBeNull();
+    expect(skillQuery("tell me $tdd")).toBeNull();
+  });
+
+  it("opens the command menu on a leading /", () => {
+    expect(commandQuery("/plan")).toBe("plan");
+    expect(commandQuery("/")).toBe("");
+  });
+
+  it("doesn't open the command menu for $ or once whitespace is typed", () => {
+    expect(commandQuery("$plan")).toBeNull();
+    expect(commandQuery("/pl an")).toBeNull();
+    expect(commandQuery("run /plan")).toBeNull();
   });
 });
 
@@ -157,7 +181,7 @@ describe("composer actions row", () => {
   it("keeps the idle placeholder when not running", () => {
     withRunning({}, () => {
       const html = renderToStaticMarkup(<Composer threadId="t" />);
-      expect(html).toContain('placeholder="Ask anything, or type / for a skill"');
+      expect(html).toContain('placeholder="Ask anything — $ for a skill, / for a command"');
     });
   });
 

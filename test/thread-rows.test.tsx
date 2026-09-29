@@ -42,6 +42,11 @@ describe("thread rows", () => {
     const html = renderToStaticMarkup(<ReasoningBlock text="" opaque live newest tokens={1500} />);
     expect(html).toContain("1.5k tokens");
   });
+
+  it("labels a user message's skill with a leading $", () => {
+    const html = renderToStaticMarkup(<EventRow stored={{ seq: 1, createdAt: 0, event: { kind: "user", text: "go", skill: "implement" } }} results={new Map()} running={false} />);
+    expect(html).toContain(">$implement</span>");
+  });
 });
 
 describe("ReasoningBlock stays open", () => {

@@ -37,7 +37,7 @@ export function skillDetail(
       const reads = a.capabilities?.skillsDelivery.reads ?? [];
       const how =
         skill.invocation === "user"
-          ? "From the / menu: the app puts the skill's text into your message"
+          ? "From the $ menu: the app puts the skill's text into your message"
           : skill.origin && reads.includes(skill.origin)
             ? "Loads it itself from this folder, when the task calls for it"
             : nativeNames(a).has(skill.name)

@@ -57,7 +57,7 @@ describe("skillDetail", () => {
     expect(tdd.calledBy.length).toBeGreaterThan(0);
     expect(tdd.routes).toEqual([{ agent: "Claude", how: expect.stringMatching(/plugin/) }]);
     const implement = skillDetail(catalog(), "implement", agents);
-    expect(implement.routes[0]!.how).toMatch(/\/ menu/);
+    expect(implement.routes[0]!.how).toMatch(/\$ menu/);
     expect(() => skillDetail(catalog(), "nope", agents)).toThrow();
   });
 });

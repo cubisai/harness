@@ -368,7 +368,7 @@ function ExpertsTab() {
 
 // ---------- 2. SKILLS TAB ----------
 
-/** Where a skill came from, as the Library and the / menu label it. */
+/** Where a skill came from, as the Library and the $ menu label it. */
 export function originLabel(origin?: SkillOrigin): string {
   switch (origin) {
     case "project":
@@ -572,7 +572,7 @@ function SkillsTab() {
                     }}
                   >
                     <span className="library-item-text">
-                      <span className="n">{s.invocation === "user" ? `/${s.name}` : s.name}</span>
+                      <span className="n">{s.invocation === "user" ? `$${s.name}` : s.name}</span>
                       <span className="d">{s.description}</span>
                       {shadowed && <span className="shadow-note">Overridden by {originLabel(s.shadowedBy)}</span>}
                     </span>
@@ -608,9 +608,9 @@ function SkillView({ detail, onOpen }: { detail: SkillDetail; onOpen: (name: str
   return (
     <div className="skill-view">
       <div className="skill-title">
-        <h3>{skill.invocation === "user" ? `/${skill.name}` : skill.name}</h3>
+        <h3>{skill.invocation === "user" ? `$${skill.name}` : skill.name}</h3>
         <span className={`tag ${skill.invocation}`}>
-          {skill.invocation === "user" ? "You start it with /" : "The agent loads it when the task matches (you can also start it with /)"}
+          {skill.invocation === "user" ? "You start it with $" : "The agent loads it when the task matches (you can also start it with $)"}
         </span>
         <span className="tag">{originLabel(skill.origin)}</span>
         <span className="grow" />
@@ -628,7 +628,7 @@ function SkillView({ detail, onOpen }: { detail: SkillDetail; onOpen: (name: str
       <p className="skill-desc">{skill.description}</p>
       <dl className="facts">
         {skill.argumentHint && <FactRow label="Arguments" value={skill.argumentHint} mono />}
-        <FactRow label="Invocation" value={skill.invocation === "user" ? "User: typed in prompt box with /" : "Model: loaded by agent as needed"} />
+        <FactRow label="Invocation" value={skill.invocation === "user" ? "User: typed in prompt box with $" : "Model: loaded by agent as needed"} />
         {detail.calledBy.length > 0 && (
           <>
             <dt>Called By</dt>
