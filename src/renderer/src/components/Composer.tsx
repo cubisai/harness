@@ -166,13 +166,14 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
     area.current?.focus();
   };
 
-  // Run a "/" command: set the permission mode, ask for the model picker, or start a new thread.
+  // Run a "/" command: set the permission mode, ask for the model picker, open the context sheet, or start a new thread.
   const runCommand = (c: ComposerCommand) => {
     setText("");
     setCaret(0);
     const s = useStore.getState();
     if (c.name === "new") void s.newThread();
     else if (c.name === "model") s.requestModelPicker();
+    else if (c.name === "context") s.openContextSheet(threadId);
     else if (c.name === "plan" || c.name === "ask" || c.name === "auto-edit" || c.name === "full") {
       const mode: PermissionMode = c.name;
       if (threadId) void s.updateThread({ permissionMode: mode });

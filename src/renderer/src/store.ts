@@ -51,6 +51,11 @@ interface State {
   /** The About sheet is open (macOS app menu, or Settings → Updates). */
   aboutOpen: boolean;
   setAboutOpen(open: boolean): void;
+  /** The context sheet is open; true with contextSheetThread null means a new thread in the selected project. */
+  contextSheetOpen: boolean;
+  contextSheetThread: string | null;
+  openContextSheet(threadId: string | null): void;
+  closeContextSheet(): void;
   appUpdate: AppUpdateStatus | null;
   /** Plan rate limits by agent id, as the agents last reported them. */
   limits: Record<string, AgentLimits>;
@@ -262,6 +267,14 @@ export const useStore = create<State>((set, get) => ({
   aboutOpen: false,
   setAboutOpen(open) {
     set({ aboutOpen: open });
+  },
+  contextSheetOpen: false,
+  contextSheetThread: null,
+  openContextSheet(threadId) {
+    set({ contextSheetOpen: true, contextSheetThread: threadId });
+  },
+  closeContextSheet() {
+    set({ contextSheetOpen: false, contextSheetThread: null });
   },
   appUpdate: null,
   limits: {},

@@ -736,6 +736,8 @@ export interface UnskilledApi {
   updateStatus(): Promise<AppUpdateStatus>;
   /** Version, runtime versions and the git build stamp for the About sheet. */
   aboutInfo(): Promise<AboutInfo>;
+  /** The harness-side context a thread (or, with no thread, a new one in the project) starts with. */
+  contextPreview(threadId: string | null, projectId: string | null): Promise<ContextPreview>;
   /** Rate limits reported so far, by agent. */
   listLimits(): Promise<AgentLimits[]>;
   /** Every skill discovered for the project (or globally): the whole list, shadowed and disabled included. */
@@ -781,4 +783,13 @@ export interface AboutInfo {
   node: string;
   os: string;
   changelog: { hash: string; date: string; subject: string }[];
+}
+
+/** What the harness itself adds to a fresh session's context, estimated at ~4 chars per token. */
+export interface ContextPreview {
+  guide: { source: "bundled" | "user" | "project"; path: string; tokens: number }[];
+  tools: { name: string; tokens: number }[];
+  mcpServers: string[];
+  /** The shared memory index, once memory exists (null until then). */
+  memoryIndex: { lines: number; tokens: number } | null;
 }

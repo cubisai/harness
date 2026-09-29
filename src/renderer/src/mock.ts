@@ -430,6 +430,15 @@ export function installMock(): void {
         { hash: "9a0b1c2", date: "2026-09-25", subject: "Show rate limits in the Message Center" },
       ],
     }),
+    contextPreview: async () => ({
+      guide: [{ source: "bundled", path: "HARNESS.md", tokens: 1240 }],
+      tools: [
+        { name: "browser_open", tokens: 280 },
+        { name: "browser_click", tokens: 190 },
+      ],
+      mcpServers: ["github"],
+      memoryIndex: null,
+    }),
     installUpdate: async () => {},
     terminalResize: () => {},
     terminalClose: async () => {},

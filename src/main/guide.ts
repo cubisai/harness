@@ -8,7 +8,10 @@ import { join } from "node:path";
  * broken by a re-read (which also means a guide edited mid-session is only
  * picked up on the next mtime change, not mid-turn).
  */
-export function createGuide(opts: { bundled: string; global: string }): { forCwd(cwd: string): string } {
+export function createGuide(opts: { bundled: string; global: string }): {
+  forCwd(cwd: string): string;
+  partsForCwd(cwd: string): { source: "bundled" | "user" | "project"; path: string; text: string }[];
+} {
   const cache = new Map<string, { mtimeMs: number; text: string }>();
 
   /** A file's trimmed text, cached by mtime, or "" when it's missing or unreadable. */
@@ -25,11 +28,24 @@ export function createGuide(opts: { bundled: string; global: string }): { forCwd
     }
   };
 
+  /** The three guide files as parts, in the order agents receive them, omitting empty ones. */
+  const partsForCwd = (cwd: string): { source: "bundled" | "user" | "project"; path: string; text: string }[] => {
+    const sources: { source: "bundled" | "user" | "project"; path: string }[] = [
+      { source: "bundled", path: opts.bundled },
+      { source: "user", path: opts.global },
+      { source: "project", path: join(cwd, ".agents", "HARNESS.md") },
+    ];
+    return sources
+      .map((s) => ({ ...s, text: read(s.path) }))
+      .filter((p) => p.text.length > 0);
+  };
+
   return {
     forCwd(cwd: string): string {
-      return [read(opts.bundled), read(opts.global), read(join(cwd, ".agents", "HARNESS.md"))]
-        .filter((text) => text.length > 0)
+      return partsForCwd(cwd)
+        .map((p) => p.text)
         .join("\n\n");
     },
+    partsForCwd,
   };
 }

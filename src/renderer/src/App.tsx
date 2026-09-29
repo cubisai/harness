@@ -13,6 +13,7 @@ import { TerminalDrawer } from "./components/TerminalDrawer";
 import { Splitter } from "./components/Splitter";
 import { SwitchDialogHost } from "./components/SwitchDialog";
 import { AboutSheet } from "./components/AboutSheet";
+import { ContextSheet } from "./components/ContextSheet";
 import { ThreadView } from "./components/ThreadView";
 import { IconArrowLeft, IconDiff, IconFolder, IconGlobe, IconSparkle, IconTerminal } from "./icons";
 import { usePaneLayout } from "./hooks/usePaneLayout";
@@ -218,6 +219,7 @@ export function App() {
       <CommandPalette />
       <SwitchDialogHost />
       <AboutSheet />
+      <ContextSheet />
     </div>
   );
 }

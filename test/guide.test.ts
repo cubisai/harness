@@ -64,3 +64,41 @@ describe("createGuide", () => {
     expect(guide.forCwd(join(root, "project"))).toBe("cached");
   });
 });
+
+describe("createGuide.partsForCwd", () => {
+  it("returns the sources in order, trimming text and skipping missing files", () => {
+    const root = tempDir();
+    const bundled = join(root, "app", "HARNESS.md");
+    const global = join(root, "userData", "HARNESS.md");
+    const cwd = join(root, "project");
+    write(bundled, "  bundled  ");
+    write(global, "global");
+    const guide = createGuide({ bundled, global });
+    // No project file: only the two present ones, in source order.
+    expect(guide.partsForCwd(cwd)).toEqual([
+      { source: "bundled", path: bundled, text: "bundled" },
+      { source: "user", path: global, text: "global" },
+    ]);
+  });
+
+  it("labels the project guide and uses the .agents/HARNESS.md path", () => {
+    const root = tempDir();
+    const cwd = join(root, "project");
+    const project = join(cwd, ".agents", "HARNESS.md");
+    write(project, "project");
+    const guide = createGuide({ bundled: join(root, "none.md"), global: join(root, "none-user.md") });
+    expect(guide.partsForCwd(cwd)).toEqual([{ source: "project", path: project, text: "project" }]);
+  });
+
+  it("forCwd is the parts joined by a blank line", () => {
+    const root = tempDir();
+    const bundled = join(root, "app", "HARNESS.md");
+    const global = join(root, "userData", "HARNESS.md");
+    const cwd = join(root, "project");
+    write(bundled, "bundled");
+    write(global, "global");
+    write(join(cwd, ".agents", "HARNESS.md"), "project");
+    const guide = createGuide({ bundled, global });
+    expect(guide.forCwd(cwd)).toBe(guide.partsForCwd(cwd).map((p) => p.text).join("\n\n"));
+  });
+});

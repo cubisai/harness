@@ -4,7 +4,7 @@ import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell } from "electron";
-import type { AboutInfo, AgentLimits, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, OpenResult, PermissionDecision, PlanDecision, ProviderInput, ScreenshotInfo, SendRequest, Settings, SkillOrigin, SwitchMode, Thread } from "../shared/types";
+import type { AboutInfo, AgentLimits, ContextPreview, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, OpenResult, PermissionDecision, PlanDecision, ProviderInput, ScreenshotInfo, SendRequest, Settings, SkillOrigin, SwitchMode, Thread } from "../shared/types";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
 import { warmBinaries } from "./agents/binaries";
@@ -29,6 +29,7 @@ import { opencodeVariants, opencodeVersion, withOpenCodeVariant } from "./inject
 import { ensureOpenCodeGuard, withOpenCodeGuard } from "./inject/opencode-guard";
 import { BUILT_IN_GUARD, findPython } from "./guard";
 import { createGuide } from "./guide";
+import { buildContextPreview } from "./context-preview";
 import { SettingsStore } from "./settings";
 import { agentCatalog, skillDetail } from "./library";
 import { fillUserEnvironment } from "./winspawn";
@@ -610,6 +611,16 @@ async function main(): Promise<void> {
       os: process.platform === "darwin" ? `macOS ${process.getSystemVersion()}` : `${osType()} ${release()}`,
       changelog: build.changelog,
     };
+  });
+  ipcMain.handle("context:preview", (_e, threadId: string | null, projectId: string | null): ContextPreview => {
+    const thread = threadId ? store.getThread(threadId) : null;
+    const pid = thread?.projectId ?? projectId;
+    const cwd = thread ? service.cwdOf(thread) : pid ? store.getProject(pid).path : null;
+    return buildContextPreview({
+      guideParts: cwd ? guide.partsForCwd(cwd) : [],
+      tools: harnessTools(),
+      mcpServers: mcpScopes.effective(pid),
+    });
   });
   ipcMain.handle("app:update-status", () => updater.status());
   ipcMain.handle("limits:list", () => limits.all());

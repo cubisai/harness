@@ -47,6 +47,7 @@ const api: UnskilledApi = {
   openDataFolder: () => ipcRenderer.invoke("app:open-data-folder"),
   updateStatus: () => ipcRenderer.invoke("app:update-status"),
   aboutInfo: () => ipcRenderer.invoke("app:about"),
+  contextPreview: (threadId, projectId) => ipcRenderer.invoke("context:preview", threadId, projectId),
   listLimits: () => ipcRenderer.invoke("limits:list"),
   listAllSkills: (projectId) => ipcRenderer.invoke("library:skills", projectId),
   getSkillDetail: (name, projectId) => ipcRenderer.invoke("library:skill", name, projectId),
