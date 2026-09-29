@@ -35,6 +35,7 @@ type ThreadItem =
       error?: { message: string } | null;
     }
   | { type: "webSearch"; id: string; query?: string }
+  | { type: "plan"; id: string; text: string }
   | { type: string; id: string };
 interface Turn {
   id: string;
@@ -87,11 +88,45 @@ export function codexPolicy(mode: PermissionMode): { approvalPolicy: string; san
     case "auto-edit":
       return { approvalPolicy: "untrusted", sandbox: "workspace-write" };
     case "plan":
-      // Safe fallback until Codex's own plan mode lands: read-only, nothing to approve.
-      return { approvalPolicy: "untrusted", sandbox: "read-only" };
+      // Investigation runs without asking, as in Claude's plan mode: the
+      // read-only sandbox, not an approval prompt, is what stops writes.
+      return { approvalPolicy: "never", sandbox: "read-only" };
     default:
       return { approvalPolicy: "untrusted", sandbox: "workspace-write" };
   }
+}
+
+/** Codex's per-turn sandbox policy, as the app-server schema spells it. */
+type CodexSandboxPolicy =
+  | { type: "dangerFullAccess" }
+  | { type: "readOnly"; networkAccess: boolean }
+  | { type: "workspaceWrite"; writableRoots: string[]; networkAccess: boolean; excludeTmpdirEnvVar: boolean; excludeSlashTmp: boolean };
+
+/**
+ * The sandbox each mode runs turns under. A plan-mode thread is started
+ * read-only, so the implementing round must widen it back out.
+ */
+function sandboxPolicyFor(mode: PermissionMode): CodexSandboxPolicy {
+  switch (mode) {
+    case "plan":
+      return { type: "readOnly", networkAccess: false };
+    case "full":
+      return { type: "dangerFullAccess" };
+    default:
+      return { type: "workspaceWrite", writableRoots: [], networkAccess: false, excludeTmpdirEnvVar: false, excludeSlashTmp: false };
+  }
+}
+
+/** A pre-set collaboration mode for turn/start; null developer instructions mean the mode's built-in ones. */
+interface CollaborationMode {
+  mode: "plan" | "default";
+  settings: { model: string; reasoning_effort: string | null; developer_instructions: string | null };
+}
+
+/** The text inside a final message's <proposed_plan>…</proposed_plan>, or null when it isn't wrapped that way. */
+function proposedPlanText(text: string): string | null {
+  const m = /<proposed_plan>([\s\S]*?)<\/proposed_plan>/.exec(text);
+  return m ? m[1]!.trim() || null : null;
 }
 
 /** Who is logged in to Codex (mode, account, key hash), so a token refresh — which rewrites auth.json — is not mistaken for a new login. */
@@ -199,6 +234,10 @@ interface TurnState {
   retrying: Set<string>;
   /** A compaction was already emitted this turn (both notification paths can fire). */
   compacted: boolean;
+  /** The text of a completed plan item (or a <proposed_plan> fallback), for the user's decision. */
+  planText: string | null;
+  /** The latest completed agent message's text, so a wrapped plan can be recovered from it. */
+  agentText: string;
   done: (turn: Turn) => void;
 }
 
@@ -340,9 +379,15 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       emitCompaction(t);
       return;
     }
+    if (item.type === "plan") {
+      // A plan is a proposal, not assistant prose: keep it for the decision.
+      t.planText = (item as { text: string }).text;
+      return;
+    }
     if (item.type === "agentMessage") {
       const text = (item as { text: string }).text || t.deltas.get(item.id) || "";
       t.deltas.delete(item.id);
+      t.agentText = text;
       if (text.trim()) t.input.onEvent({ kind: "assistant-text", text, itemId: item.id });
       return;
     }
@@ -500,7 +545,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     ready = (async () => {
       await conn.request("initialize", {
         clientInfo: { name: "cubiq", title: "CubiQ", version: config.clientVersion },
-        capabilities: null,
+        // Plan mode rides Codex's experimental collaboration modes (0.157).
+        capabilities: { experimentalApi: true },
       });
       conn.notify("initialized");
       if (config.skillsDir) {
@@ -542,7 +588,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
 
   const openThread = async (
     input: Pick<TurnInput, "cwd" | "model" | "permissionMode" | "sessionId" | "tools" | "mcpServers" | "onEvent" | "onSession" | "onSessionRebuilt" | "onSessionLost">,
-  ): Promise<string> => {
+  ): Promise<{ threadId: string; model: string | null }> => {
     const policy = codexPolicy(input.permissionMode);
     const model = input.model === CODEX_DEFAULT_MODEL ? null : input.model;
     await start(input.cwd);
@@ -552,6 +598,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     const guideText = config.guide?.(input.cwd) ?? "";
     const signature = JSON.stringify(threadConfig ?? null);
     let threadId = "";
+    let threadModel: string | null = null;
     let seed: SessionSeed | null = null;
     if (input.sessionId) {
       // The MCP servers changed mid-conversation (the user opened the
@@ -567,7 +614,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         input.onSessionRebuilt?.();
       }
       try {
-        const res = await conn.request<{ thread: { id: string } }>("thread/resume", {
+        const res = await conn.request<{ thread: { id: string }; model?: string }>("thread/resume", {
           threadId: input.sessionId,
           cwd: input.cwd,
           model,
@@ -576,6 +623,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
           ...(guideText ? { developerInstructions: guideText } : {}),
         });
         threadId = res.thread.id;
+        threadModel = res.model ?? null;
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
         if (input.onSessionLost) seed = await input.onSessionLost(reason);
@@ -583,7 +631,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       }
     }
     if (!threadId) {
-      const res = await conn.request<{ thread: { id: string } }>("thread/start", {
+      const res = await conn.request<{ thread: { id: string }; model?: string }>("thread/start", {
         cwd: input.cwd,
         model,
         ...policy,
@@ -591,6 +639,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         ...(guideText ? { developerInstructions: guideText } : {}),
       });
       threadId = res.thread.id;
+      threadModel = res.model ?? null;
       // A new thread catches up with the seed's history items; Codex only ever gets the inject shape.
       if (seed && "inject" in seed) {
         await seed.inject(threadId, (items) => conn.request("thread/inject_items", { threadId, items }).then(() => undefined));
@@ -599,7 +648,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     // A resume of a thread that's already loaded keeps its config, so only a first load decides.
     if (!loaded.has(threadId)) loaded.set(threadId, signature);
     input.onSession(threadId);
-    return threadId;
+    return { threadId, model: threadModel };
   };
 
   return {
@@ -641,53 +690,109 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     setModel: async ({ to }) => (to === CODEX_DEFAULT_MODEL ? "new-session" : "in-place"),
     async seed(req) {
       const events: ThreadEvent[] = []; // notices from opening the thread are dropped here; the Service reports the seed itself
-      const threadId = await openThread({ cwd: req.cwd, model: req.model, permissionMode: req.permissionMode, sessionId: req.sessionId, tools: req.tools, mcpServers: req.mcpServers, onEvent: (e) => events.push(e), onSession: req.onSession });
+      const { threadId } = await openThread({ cwd: req.cwd, model: req.model, permissionMode: req.permissionMode, sessionId: req.sessionId, tools: req.tools, mcpServers: req.mcpServers, onEvent: (e) => events.push(e), onSession: req.onSession });
       const conn = rpc!;
       const { sent } = await req.inject(threadId, (items) => conn.request("thread/inject_items", { threadId, items }).then(() => undefined));
       return { mode: "seeded", sessionId: threadId, sent };
     },
     async runTurn(input) {
-      const policy = codexPolicy(input.permissionMode);
       const model = input.model === CODEX_DEFAULT_MODEL ? null : input.model;
       // A brand-new session's first turn pays to write the guide and tool schemas into the prompt cache.
       const fresh = !input.sessionId;
-      let threadId: string;
+      let opened: { threadId: string; model: string | null };
       try {
-        threadId = await openThread(input);
+        opened = await openThread(input);
       } catch (err) {
         input.onEvent({ kind: "error", message: `Codex failed to start: ${err instanceof Error ? err.message : String(err)}` });
         return;
       }
+      const threadId = opened.threadId;
+      // The model a collaboration mode names: the picked one, else the thread's
+      // own (thread/start resumes report it), else the newest listing, and only
+      // then a stand-in so the settings object is never empty.
+      const modeModel =
+        input.model !== CODEX_DEFAULT_MODEL
+          ? input.model
+          : (opened.model ?? models[models.length - 1]?.id ?? "gpt-5.6-sol"); // TODO: last resort; thread/start and model/list should name a real model.
 
       const conn = rpc!;
       const started = Date.now();
-      let resolveTurn!: (t: Turn) => void;
-      const finished = new Promise<Turn>((r) => (resolveTurn = r));
-      const state: TurnState = { input, threadId, turnId: null, deltas: new Map(), reasoning: new Map(), usage: null, contextSize: null, retrying: new Set(), compacted: false, done: resolveTurn };
-      turns.set(threadId, state);
-      const onAbort = () => {
-        if (state.turnId) void conn.request("turn/interrupt", { threadId, turnId: state.turnId }).catch(() => {});
+      // Accumulated across runOne rounds (the assignments happen inside the
+      // closure, so a holder keeps the compiler from narrowing these to null).
+      const last: { usage?: TokenBreakdown; contextSize?: number | null; turn?: Turn } = {};
+      /** Whether the previous runOne ran in plan mode, so leaving it re-sends a default collaboration mode. */
+      let previousPlan = false;
+
+      const runOne = async (prompt: string, mode: PermissionMode): Promise<{ turn: Turn; planText: string | null }> => {
+        const policy = codexPolicy(mode);
+        // Plan mode is a native collaboration mode; leaving it must say so
+        // explicitly, since the mode sticks to the thread between turns.
+        const collaborationMode: CollaborationMode | undefined =
+          mode === "plan" || previousPlan
+            ? {
+                mode: mode === "plan" ? "plan" : "default",
+                settings: { model: modeModel, reasoning_effort: input.effort ?? null, developer_instructions: null },
+              }
+            : undefined;
+        previousPlan = mode === "plan";
+
+        let resolveTurn!: (t: Turn) => void;
+        const finished = new Promise<Turn>((r) => (resolveTurn = r));
+        const state: TurnState = { input, threadId, turnId: null, deltas: new Map(), reasoning: new Map(), usage: null, contextSize: null, retrying: new Set(), compacted: false, planText: null, agentText: "", done: resolveTurn };
+        turns.set(threadId, state);
+        const onAbort = () => {
+          if (state.turnId) void conn.request("turn/interrupt", { threadId, turnId: state.turnId }).catch(() => {});
+        };
+        input.signal.addEventListener("abort", onAbort, { once: true });
+        try {
+          const res = await conn.request<{ turn: Turn }>("turn/start", {
+            threadId,
+            input: [{ type: "text", text: prompt, text_elements: [] }],
+            model,
+            approvalPolicy: policy.approvalPolicy,
+            // Summarized reasoning streams back as `summary: "auto"`.
+            summary: "auto",
+            ...(input.effort ? { effort: input.effort } : {}),
+            // Only a plan round (or the implementing round leaving it) overrides
+            // the thread's sandbox: a plan reads only, the round that follows
+            // widens the read-only thread back out.
+            ...(collaborationMode ? { collaborationMode, sandboxPolicy: sandboxPolicyFor(mode) } : {}),
+          });
+          state.turnId ??= res.turn.id;
+          if (input.signal.aborted) onAbort();
+          const turn = await finished;
+          // Flush what the terminal events didn't: thinking first, then assistant
+          // text, both before the interrupted-turn notice.
+          for (const [itemId, text] of state.reasoning) if (text.trim()) input.onEvent({ kind: "thinking", text, itemId });
+          for (const [itemId, text] of state.deltas) if (text.trim()) input.onEvent({ kind: "assistant-text", text, itemId });
+          if (turn.status === "interrupted") input.onEvent({ kind: "notice", text: "Stopped." });
+          else if (turn.status === "failed") input.onEvent({ kind: "error", message: `Codex: ${turn.error?.message ?? "the turn failed."}` });
+          last.usage = state.usage ?? undefined;
+          last.contextSize = state.contextSize;
+          last.turn = turn;
+          return { turn, planText: state.planText ?? proposedPlanText(state.agentText) };
+        } finally {
+          input.signal.removeEventListener("abort", onAbort);
+          turns.delete(threadId);
+        }
       };
-      input.signal.addEventListener("abort", onAbort, { once: true });
+
       try {
-        const res = await conn.request<{ turn: Turn }>("turn/start", {
-          threadId,
-          input: [{ type: "text", text: input.prompt, text_elements: [] }],
-          model,
-          approvalPolicy: policy.approvalPolicy,
-          // Summarized reasoning streams back as `summary: "auto"`.
-          summary: "auto",
-          ...(input.effort ? { effort: input.effort } : {}),
-        });
-        state.turnId ??= res.turn.id;
-        if (input.signal.aborted) onAbort();
-        const turn = await finished;
-        // Flush what the terminal events didn't: thinking first, then assistant
-        // text, both before the interrupted-turn notice.
-        for (const [itemId, text] of state.reasoning) if (text.trim()) input.onEvent({ kind: "thinking", text, itemId });
-        for (const [itemId, text] of state.deltas) if (text.trim()) input.onEvent({ kind: "assistant-text", text, itemId });
-        if (turn.status === "interrupted") input.onEvent({ kind: "notice", text: "Stopped." });
-        else if (turn.status === "failed") input.onEvent({ kind: "error", message: `Codex: ${turn.error?.message ?? "the turn failed."}` });
+        // A plan round hands its proposal to the user; their answer either
+        // switches to an implementing round or asks for a refined plan.
+        let mode: PermissionMode = input.permissionMode;
+        let prompt = input.prompt;
+        for (let round = 0; round < 6; round++) {
+          const r = await runOne(prompt, mode);
+          if (mode !== "plan" || !r.planText || r.turn.status !== "completed" || input.signal.aborted) break;
+          const d = await input.requestPlanDecision({ plan: r.planText });
+          if (d === "auto" || d === "manual") {
+            mode = d === "auto" ? "auto-edit" : "ask";
+            prompt = "Implement the plan.";
+          } else {
+            prompt = d.keep.trim() || "Refine the plan.";
+          }
+        }
         if (fresh) {
           const serializedTools = (() => {
             try {
@@ -703,14 +808,12 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
           ]
             .filter((r) => r.tokens > 0)
             .sort((a, b) => b.tokens - a.tokens);
-          if (rows.length) input.onEvent({ kind: "context-breakdown", rows, total: state.usage?.inputTokens ?? null, estimated: true });
+          if (rows.length) input.onEvent({ kind: "context-breakdown", rows, total: last.usage?.inputTokens ?? null, estimated: true });
         }
-        input.onEvent(turnEndFromUsage(state.usage ?? undefined, turn.durationMs ?? Date.now() - started, state.contextSize));
+        // One turn-end for the whole runTurn, on the last round's usage.
+        input.onEvent(turnEndFromUsage(last.usage, last.turn?.durationMs ?? Date.now() - started, last.contextSize));
       } catch (err) {
         input.onEvent({ kind: "error", message: err instanceof Error ? err.message : String(err) });
-      } finally {
-        input.signal.removeEventListener("abort", onAbort);
-        turns.delete(threadId);
       }
     },
     dispose() {

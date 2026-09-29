@@ -33,7 +33,7 @@ describe("permissionTable", () => {
     expect(entries).toBe(12);
     expect(permissionTable().ask.codex).toEqual({ approvalPolicy: "untrusted", sandbox: "workspace-write" });
     expect(permissionTable().plan.claude).toBe("Read-only; edits wait for your plan approval");
-    expect(permissionTable().plan.codex).toEqual({ approvalPolicy: "untrusted", sandbox: "read-only" });
+    expect(permissionTable().plan.codex).toEqual({ approvalPolicy: "never", sandbox: "read-only" });
     expect(permissionTable().plan.acp).toEqual(["fetch", "read", "search", "think"]);
   });
 });

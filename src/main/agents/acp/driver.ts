@@ -74,6 +74,7 @@ type SessionUpdate =
   | { sessionUpdate: "usage_update"; used: number; size: number; cost?: { amount: number; currency: string } | null }
   | { sessionUpdate: "plan"; entries: { content: string; priority: "high" | "medium" | "low"; status: "pending" | "in_progress" | "completed" }[] }
   | { sessionUpdate: "config_option_update"; configOptions: ConfigOption[] }
+  | { sessionUpdate: "current_mode_update"; currentModeId: string }
   | { sessionUpdate: string };
 interface ConfigOption {
   id: string;
@@ -82,6 +83,11 @@ interface ConfigOption {
   category?: string | null;
   currentValue: string | boolean;
   options?: ({ value: string; name: string } | { group: string; name: string; options: { value: string; name: string }[] })[];
+}
+/** ACP's native session modes, advertised by session/new when the agent has them. */
+interface SessionModeState {
+  currentModeId: string;
+  availableModes: { id: string; name: string; description?: string | null }[];
 }
 interface PermissionOption {
   optionId: string;
@@ -105,6 +111,10 @@ const AUTO_EDIT_KINDS = new Set<ToolKind>(["read", "search", "think", "fetch", "
 
 /** Plan mode's fallback: investigation only, everything that writes or runs waits for approval. */
 const PLAN_KINDS = new Set<ToolKind>(["read", "search", "think", "fetch"]);
+
+/** The plan-mode brief an agent without a native plan mode gets, ahead of the prompt. */
+export const PLAN_MODE_PREFIX =
+  "<harness-plan-mode>You are in plan mode. Investigate read-only (reads/searches only; edits and commands are refused). Finish by presenting a concise implementation plan in markdown and stop.</harness-plan-mode>\n\n";
 
 export function pickPermission(
   mode: PermissionMode,
@@ -168,6 +178,12 @@ interface Live {
   historyPending: string | null;
   /** The turn currently receiving this connection's updates. */
   turn: TurnState | null;
+  /** ACP's native session modes, when the agent advertises them (null = emulated plan mode). */
+  modes: SessionModeState | null;
+  /** The advertised mode id matching /plan/i, once modes are known. */
+  planModeId: string | null;
+  /** The mode to switch back to when leaving plan mode. */
+  defaultModeId: string | null;
   /** The sign-in URL the agent last printed on stderr, or null. */
   authUrl: string | null;
   idleTimer?: NodeJS.Timeout;
@@ -275,6 +291,56 @@ export function createAcpDriver(
     knownEfforts = effortsFrom(options) ?? knownEfforts;
     lastConfigOptions = options;
     if (threadKey) threadConfigs.set(threadKey, options);
+  };
+
+  /** Remember a session's native modes: the plan id, and the mode to return to when leaving plan. */
+  const rememberModes = (l: Live, modes: SessionModeState | null | undefined) => {
+    if (!modes?.availableModes?.length) return;
+    l.modes = modes;
+    const plan = modes.availableModes.find((m) => /plan/i.test(m.id))?.id ?? null;
+    l.planModeId = plan;
+    l.defaultModeId = modes.currentModeId !== plan ? modes.currentModeId : (modes.availableModes.find((m) => m.id !== plan)?.id ?? null);
+  };
+
+  /**
+   * Put the session into the mode this round wants, when the agent advertises a
+   * native plan mode. Returns whether plan mode is natively active (so the
+   * prompt needs no emulation brief). A failed switch turns native plan mode
+   * off for the session, with a notice, and the emulation path takes over.
+   */
+  const applyPlanMode = async (l: Live, input: TurnInput, mode: PermissionMode): Promise<boolean> => {
+    const setMode = async (modeId: string) => {
+      await l.conn.request("session/set_mode", { sessionId: l.sessionId, modeId });
+      if (l.modes) l.modes.currentModeId = modeId;
+    };
+    const fallback = () => {
+      l.planModeId = null;
+      const notice = `${config.label} couldn't switch its session mode; falling back to prompt-based plan mode.`;
+      if (!shownNotices.has(notice)) {
+        shownNotices.add(notice);
+        input.onEvent({ kind: "notice", text: notice });
+      }
+    };
+    if (mode === "plan") {
+      if (!l.planModeId) return false;
+      if (l.modes?.currentModeId === l.planModeId) return true;
+      try {
+        await setMode(l.planModeId);
+        return true;
+      } catch {
+        fallback();
+        return false;
+      }
+    }
+    // Leaving plan mode: put the session back where it was before.
+    if (l.planModeId && l.modes?.currentModeId === l.planModeId && l.defaultModeId) {
+      try {
+        await setMode(l.defaultModeId);
+      } catch {
+        fallback();
+      }
+    }
+    return false;
   };
 
   /** Load the variant map once, for the effortVia agents. */
@@ -507,6 +573,11 @@ export function createAcpDriver(
         l.configOptions = (update as { configOptions: ConfigOption[] }).configOptions;
         rememberConfig(l.configOptions, l.threadKey);
         return;
+      case "current_mode_update":
+        // The agent confirms a mode switch; keep the current id without
+        // re-asking its session/new state.
+        if (l.modes) l.modes.currentModeId = (update as { currentModeId: string }).currentModeId;
+        return;
       default:
         return;
     }
@@ -599,7 +670,7 @@ export function createAcpDriver(
       clientInfo: { name: "cubiq", version: deps.clientVersion },
     });
     applyInitialize(init, input);
-    l = { conn, init, threadKey, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, variantKey: wantedKey, droppedNotified: new Set(), guidePending: false, historyPending: null, turn: null, authUrl: null };
+    l = { conn, init, threadKey, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, variantKey: wantedKey, droppedNotified: new Set(), guidePending: false, historyPending: null, turn: null, modes: null, planModeId: null, defaultModeId: null, authUrl: null };
     // No proactive authenticate: the server infers the method from its own
     // settings and refreshes the token itself, so calling it here only ever
     // launched a browser (including during the startup model probe). A signed-out
@@ -696,11 +767,12 @@ export function createAcpDriver(
       l.mcpByName = byName;
       if (!canReopen) return;
       await l.conn.request("session/close", { sessionId: l.sessionId }).catch(() => {});
-      const res = await l.conn.request<{ configOptions?: ConfigOption[] }>("session/resume", { cwd: input.cwd, mcpServers, sessionId: l.sessionId });
+      const res = await l.conn.request<{ configOptions?: ConfigOption[]; modes?: SessionModeState | null }>("session/resume", { cwd: input.cwd, mcpServers, sessionId: l.sessionId });
       if (res?.configOptions) {
         l.configOptions = res.configOptions;
         rememberConfig(l.configOptions, l.threadKey);
       }
+      rememberModes(l, res?.modes);
       input.onSessionRebuilt?.();
       return;
     }
@@ -710,10 +782,11 @@ export function createAcpDriver(
     let reason: string | null = null;
     if (input.sessionId && caps?.sessionCapabilities?.resume) {
       try {
-        const res = await l.conn.request<{ configOptions?: ConfigOption[] }>("session/resume", { ...params, sessionId: input.sessionId });
+        const res = await l.conn.request<{ configOptions?: ConfigOption[]; modes?: SessionModeState | null }>("session/resume", { ...params, sessionId: input.sessionId });
         l.sessionId = input.sessionId;
         l.configOptions = res?.configOptions ?? [];
         rememberConfig(l.configOptions, l.threadKey);
+        rememberModes(l, res?.modes);
         return;
       } catch (err) {
         // fall through to a new session
@@ -721,10 +794,11 @@ export function createAcpDriver(
       }
     } else if (input.sessionId && caps?.loadSession) {
       try {
-        const res = await l.conn.request<{ configOptions?: ConfigOption[] }>("session/load", { ...params, sessionId: input.sessionId });
+        const res = await l.conn.request<{ configOptions?: ConfigOption[]; modes?: SessionModeState | null }>("session/load", { ...params, sessionId: input.sessionId });
         l.sessionId = input.sessionId;
         l.configOptions = res?.configOptions ?? [];
         rememberConfig(l.configOptions, l.threadKey);
+        rememberModes(l, res?.modes);
         return;
       } catch (err) {
         // fall through
@@ -737,19 +811,20 @@ export function createAcpDriver(
       if (input.onSessionLost) seed = await input.onSessionLost(reason);
       else input.onEvent({ kind: "notice", text: `${config.label} couldn't resume the earlier conversation (${reason}); this is a fresh session.` });
     }
-    let res: { sessionId: string; configOptions?: ConfigOption[] };
+    let res: { sessionId: string; configOptions?: ConfigOption[]; modes?: SessionModeState | null };
     try {
-      res = await l.conn.request<{ sessionId: string; configOptions?: ConfigOption[] }>("session/new", params);
+      res = await l.conn.request<{ sessionId: string; configOptions?: ConfigOption[]; modes?: SessionModeState | null }>("session/new", params);
     } catch (err) {
       // A profile that is signed out answers -32000. Signing in is a browser
       // flow, so it happens only here, never proactively.
       const needsAuth = err instanceof RpcError && (err.code === -32000 || /auth/i.test(err.message));
       if (!needsAuth || !(await signIn(l, input))) throw err;
-      res = await l.conn.request<{ sessionId: string; configOptions?: ConfigOption[] }>("session/new", params);
+      res = await l.conn.request<{ sessionId: string; configOptions?: ConfigOption[]; modes?: SessionModeState | null }>("session/new", params);
     }
     l.sessionId = res.sessionId;
     l.configOptions = res.configOptions ?? [];
     rememberConfig(l.configOptions, l.threadKey);
+    rememberModes(l, res.modes);
     l.guidePending = true;
     l.historyPending = seed && "promptPrefix" in seed ? seed.promptPrefix : null;
   };
@@ -883,11 +958,24 @@ export function createAcpDriver(
         return;
       }
       clearTimeout(l.idleTimer);
-      const turn: TurnState = { input, text: "", thought: "", tools: new Map(), permissionIds: new Set(), planned: false, usage: { used: 0, costUsd: null, contextUsed: null, size: null }, run: 0 };
-      l.turn = turn;
       const started = Date.now();
       const onAbort = () => l.conn.notify("session/cancel", { sessionId: l.sessionId });
       input.signal.addEventListener("abort", onAbort, { once: true });
+      // A new session's first prompt carries the harness guide and, when the
+      // earlier session was lost, the seed's history prefix; only then are they dropped.
+      const g = l.guidePending ? deps.guide?.(input.cwd) ?? "" : "";
+      const fresh = l.guidePending;
+      if (g) l.guidePending = false;
+      const h = l.historyPending;
+      l.historyPending = null;
+      const lead = [
+        ...(g ? [{ type: "text", text: `<harness-guide>\n${g}\n</harness-guide>` }] : []),
+        ...(h ? [{ type: "text", text: `${h}\n---` }] : []),
+      ];
+      let current: TurnState | null = null;
+      let lastUsage = normalizeUsage({ inputTokens: 0, outputTokens: 0, provenance: "unavailable" });
+      let lastCost: number | null = null;
+      let lastContextUsed: number | null = null;
       try {
         // The user may have aborted while the agent was still starting up; the
         // listener above missed it, so stop before sending the prompt.
@@ -896,58 +984,74 @@ export function createAcpDriver(
           return;
         }
         input.onEvent({ kind: "turn-start", turnId: randomUUID(), agent: config.id, model: input.model });
-        // A new session's first prompt carries the harness guide and, when the
-        // earlier session was lost, the seed's history prefix; only then are they dropped.
-        const g = l.guidePending ? deps.guide?.(input.cwd) ?? "" : "";
-        const fresh = l.guidePending;
-        if (g) l.guidePending = false;
-        const h = l.historyPending;
-        l.historyPending = null;
-        const res = await l.conn.request<{
-          stopReason: string;
-          usage?: { inputTokens?: number; outputTokens?: number; cachedReadTokens?: number; cachedWriteTokens?: number } | null;
-        }>("session/prompt", {
-          sessionId: l.sessionId,
-          prompt: [
-            ...(g ? [{ type: "text", text: `<harness-guide>\n${g}\n</harness-guide>` }] : []),
-            ...(h ? [{ type: "text", text: `${h}\n---` }] : []),
-            { type: "text", text: input.prompt },
-          ],
-        });
-        // Whether the turn produced anything visible; flushText clears the
-        // buffers this reads, so decide before flushing.
-        const empty = !turn.text.trim() && !turn.thought.trim() && turn.tools.size === 0 && !turn.planned;
-        flushText(turn);
-        if (res.stopReason === "cancelled") input.onEvent({ kind: "notice", text: "Stopped." });
-        else if (res.stopReason === "refusal") input.onEvent({ kind: "error", message: `${config.label} declined this request.` });
-        else if (res.stopReason === "max_tokens" || res.stopReason === "max_turn_requests") {
-          input.onEvent({ kind: "notice", text: `${config.label} stopped early (${res.stopReason.replace(/_/g, " ")}).` });
-        }
-        // A prompt that resolves with no text, no tool call and no usage is how a
-        // provider that needs a subscription, a key or a login fails quietly;
-        // name it rather than letting the turn end silently.
-        const tokens = (res.usage?.inputTokens ?? 0) + (res.usage?.outputTokens ?? 0);
-        if (empty && tokens === 0 && res.stopReason !== "cancelled") {
-          input.onEvent({
-            kind: "error",
-            message: `${config.label} returned nothing for ${input.model === DEFAULT_MODEL ? "its default model" : input.model}. The model's provider may need a subscription, a key, or a login — try another model.${l.conn.stderrHint()}`,
+        // A plan round hands its proposal to the user; their answer either
+        // switches to an implementing round or asks for a refined plan.
+        let mode: PermissionMode = input.permissionMode;
+        let prompt = input.prompt;
+        for (let round = 0; round < 6; round++) {
+          const turn: TurnState = { input, text: "", thought: "", tools: new Map(), permissionIds: new Set(), planned: false, usage: { used: 0, costUsd: null, contextUsed: null, size: null }, run: 0 };
+          current = turn;
+          l.turn = turn;
+          // A native plan mode switches the whole session; without one the
+          // prompt carries the plan-mode brief instead.
+          const nativePlan = await applyPlanMode(l, input, mode);
+          const prefix = mode === "plan" && !nativePlan ? PLAN_MODE_PREFIX : "";
+          const res = await l.conn.request<{
+            stopReason: string;
+            usage?: { inputTokens?: number; outputTokens?: number; cachedReadTokens?: number; cachedWriteTokens?: number } | null;
+          }>("session/prompt", {
+            sessionId: l.sessionId,
+            prompt: [...(round === 0 ? lead : []), { type: "text", text: prefix + prompt }],
           });
+          // Whether the turn produced anything visible; flushText clears the
+          // buffers this reads, so decide before flushing.
+          const empty = !turn.text.trim() && !turn.thought.trim() && turn.tools.size === 0 && !turn.planned;
+          const planText = mode === "plan" ? turn.text.trim() : "";
+          flushText(turn);
+          if (res.stopReason === "cancelled") input.onEvent({ kind: "notice", text: "Stopped." });
+          else if (res.stopReason === "refusal") input.onEvent({ kind: "error", message: `${config.label} declined this request.` });
+          else if (res.stopReason === "max_tokens" || res.stopReason === "max_turn_requests") {
+            input.onEvent({ kind: "notice", text: `${config.label} stopped early (${res.stopReason.replace(/_/g, " ")}).` });
+          }
+          // A prompt that resolves with no text, no tool call and no usage is how a
+          // provider that needs a subscription, a key or a login fails quietly;
+          // name it rather than letting the turn end silently.
+          const tokens = (res.usage?.inputTokens ?? 0) + (res.usage?.outputTokens ?? 0);
+          if (empty && tokens === 0 && res.stopReason !== "cancelled") {
+            input.onEvent({
+              kind: "error",
+              message: `${config.label} returned nothing for ${input.model === DEFAULT_MODEL ? "its default model" : input.model}. The model's provider may need a subscription, a key, or a login — try another model.${l.conn.stderrHint()}`,
+            });
+          }
+          // `usage_update.used` is context-window occupancy, not per-turn input:
+          // only the prompt response's usage is a real input count.
+          lastUsage = {
+            ...(res.usage
+              ? normalizeUsage({
+                  inputTokens: res.usage.inputTokens ?? 0,
+                  outputTokens: res.usage.outputTokens ?? 0,
+                  cacheReadTokens: res.usage.cachedReadTokens ?? null,
+                  cacheWriteTokens: res.usage.cachedWriteTokens ?? null,
+                  provenance: "reported",
+                })
+              : normalizeUsage({ inputTokens: 0, outputTokens: 0, provenance: "unavailable" })),
+            contextUsed: turn.usage.contextUsed,
+            contextSize: turn.usage.size,
+          };
+          lastCost = turn.usage.costUsd;
+          lastContextUsed = turn.usage.contextUsed;
+          if (mode === "plan" && res.stopReason === "end_turn" && planText && !input.signal.aborted) {
+            const d = await input.requestPlanDecision({ plan: planText });
+            if (d === "auto" || d === "manual") {
+              mode = d === "auto" ? "auto-edit" : "ask";
+              prompt = "Implement the plan.";
+            } else {
+              prompt = d.keep.trim() || "Refine the plan.";
+            }
+            continue;
+          }
+          break;
         }
-        // `usage_update.used` is context-window occupancy, not per-turn input:
-        // only the prompt response's usage is a real input count.
-        const usage = {
-          ...(res.usage
-            ? normalizeUsage({
-                inputTokens: res.usage.inputTokens ?? 0,
-                outputTokens: res.usage.outputTokens ?? 0,
-                cacheReadTokens: res.usage.cachedReadTokens ?? null,
-                cacheWriteTokens: res.usage.cachedWriteTokens ?? null,
-                provenance: "reported",
-              })
-            : normalizeUsage({ inputTokens: 0, outputTokens: 0, provenance: "unavailable" })),
-          contextUsed: turn.usage.contextUsed,
-          contextSize: turn.usage.size,
-        };
         if (fresh) {
           const serializedTools = (() => {
             try {
@@ -963,18 +1067,19 @@ export function createAcpDriver(
           ]
             .filter((r) => r.tokens > 0)
             .sort((a, b) => b.tokens - a.tokens);
-          if (rows.length) input.onEvent({ kind: "context-breakdown", rows, total: turn.usage.contextUsed, estimated: true });
+          if (rows.length) input.onEvent({ kind: "context-breakdown", rows, total: lastContextUsed, estimated: true });
         }
+        // One turn-end for the whole runTurn, on the last round's usage.
         input.onEvent({
           kind: "turn-end",
-          costUsd: turn.usage.costUsd,
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
+          costUsd: lastCost,
+          inputTokens: lastUsage.inputTokens,
+          outputTokens: lastUsage.outputTokens,
           durationMs: Date.now() - started,
-          usage,
+          usage: lastUsage,
         });
       } catch (err) {
-        flushText(turn);
+        if (current) flushText(current);
         input.onEvent({ kind: "error", message: err instanceof Error ? err.message : String(err) });
       } finally {
         input.signal.removeEventListener("abort", onAbort);

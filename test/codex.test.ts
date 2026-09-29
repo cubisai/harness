@@ -71,6 +71,40 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 });
 `;
 
+/** Records turn/start params, presents a plan item in plan mode, and completes each turn. */
+const PLAN_PROBE = `
+const fs = require("node:fs");
+const readline = require("node:readline");
+const send = (m) => process.stdout.write(JSON.stringify(m) + "\\n");
+const notify = (method, params) => send({ method, params });
+const log = (o) => fs.appendFileSync(process.env.PLAN_PROBE, JSON.stringify(o) + "\\n");
+readline.createInterface({ input: process.stdin }).on("line", (line) => {
+  const msg = JSON.parse(line);
+  if (msg.id === undefined) return;
+  const { id, method, params } = msg;
+  if (method === "initialize") return send({ id, result: { userAgent: "probe" } });
+  if (method === "initialized") return;
+  if (method === "model/list") return send({ id, result: { data: [{ id: "gpt-listed", displayName: "Listed", hidden: false }] } });
+  if (method === "thread/start" || method === "thread/resume") return send({ id, result: { thread: { id: "probe-thread" }, model: "gpt-thread" } });
+  if (method === "turn/start") {
+    log({ method, prompt: params.input.map((i) => i.text).join(""), params });
+    const turn = { id: "turn-1", status: "inProgress", error: null, durationMs: null };
+    send({ id, result: { turn } });
+    notify("turn/started", { threadId: params.threadId, turn });
+    const planning = params.collaborationMode?.mode === "plan";
+    const text = planning ? "# The plan" : "Implemented.";
+    if (planning) notify("item/completed", { threadId: params.threadId, turnId: turn.id, item: { type: "plan", id: "p1", text: "# The plan" } });
+    notify("item/agentMessage/delta", { threadId: params.threadId, turnId: turn.id, itemId: "m1", delta: text });
+    notify("item/completed", { threadId: params.threadId, turnId: turn.id, item: { type: "agentMessage", id: "m1", text } });
+    notify("thread/tokenUsage/updated", { threadId: params.threadId, turnId: turn.id, tokenUsage: { last: { inputTokens: 10, cachedInputTokens: 0, outputTokens: 2 }, modelContextWindow: null } });
+    notify("turn/completed", { threadId: params.threadId, turn: { ...turn, status: "completed", durationMs: 1 } });
+    return;
+  }
+  if (method === "turn/interrupt") return send({ id, result: {} });
+  send({ id, result: {} });
+});
+`;
+
 /** Rejects thread/resume and logs every request, for the session-loss path. */
 const LOST_PROBE = `
 const fs = require("node:fs");
@@ -522,6 +556,74 @@ describe("Codex driver", () => {
     const end = t.events.at(-1);
     expect(end).toMatchObject({ kind: "turn-end", inputTokens: 1000, outputTokens: 12 });
     expect(end?.kind === "turn-end" ? end.usage?.cacheReadTokens : undefined).toBe(8000);
+  });
+});
+
+describe("Codex plan mode", () => {
+  function planDriver() {
+    const d = createCodexDriver({ command: process.execPath, args: ["-e", PLAN_PROBE], clientVersion: "test" });
+    closeAfter(() => d.dispose?.());
+    return d;
+  }
+
+  it("runs a native plan turn, then implements on auto with the thread's own model", async () => {
+    const probe = join(tempDir(), "plan.jsonl");
+    process.env.PLAN_PROBE = probe;
+    try {
+      const plans: string[] = [];
+      const t = turn("make a plan", {
+        permissionMode: "plan",
+        requestPlanDecision: async (p) => {
+          plans.push(p.plan);
+          return "auto";
+        },
+      });
+      await planDriver().runTurn(t.input);
+      expect(plans).toEqual(["# The plan"]);
+      const starts = readFileSync(probe, "utf8").trim().split("\n").map((l) => JSON.parse(l) as { method: string; prompt: string; params: Record<string, unknown> });
+      expect(starts).toHaveLength(2);
+      // The collaboration mode names the model the thread actually runs, not the default alias.
+      expect(starts[0]!.params.collaborationMode).toEqual({
+        mode: "plan",
+        settings: { model: "gpt-thread", reasoning_effort: null, developer_instructions: null },
+      });
+      expect(starts[0]!.params.sandboxPolicy).toEqual({ type: "readOnly", networkAccess: false });
+      // The implementing round leaves plan mode and widens the read-only thread back to writes.
+      expect(starts[1]!.params.collaborationMode).toEqual({
+        mode: "default",
+        settings: { model: "gpt-thread", reasoning_effort: null, developer_instructions: null },
+      });
+      expect(starts[1]!.params.sandboxPolicy).toEqual({ type: "workspaceWrite", writableRoots: [], networkAccess: false, excludeTmpdirEnvVar: false, excludeSlashTmp: false });
+      expect(starts[1]!.prompt).toBe("Implement the plan.");
+      // The plan item is a proposal, not assistant prose; the final turn-end lands once.
+      expect(t.events.filter((e) => e.kind === "assistant-text").map((e) => (e as { text: string }).text)).toEqual(["# The plan", "Implemented."]);
+      expect(t.events.filter((e) => e.kind === "turn-end")).toHaveLength(1);
+    } finally {
+      delete process.env.PLAN_PROBE;
+    }
+  });
+
+  it("sends kept feedback as another native plan turn", async () => {
+    const probe = join(tempDir(), "plan.jsonl");
+    process.env.PLAN_PROBE = probe;
+    try {
+      let n = 0;
+      const t = turn("make a plan", {
+        permissionMode: "plan",
+        requestPlanDecision: async () => {
+          n++;
+          return n === 1 ? { keep: "Add tests" } : "auto";
+        },
+      });
+      await planDriver().runTurn(t.input);
+      const starts = readFileSync(probe, "utf8").trim().split("\n").map((l) => JSON.parse(l) as { method: string; prompt: string; params: { collaborationMode?: { mode: string } } });
+      expect(starts.map((s) => s.prompt)).toEqual(["make a plan", "Add tests", "Implement the plan."]);
+      // A keep stays in plan mode; only the accepted round leaves it.
+      expect(starts[1]!.params.collaborationMode?.mode).toBe("plan");
+      expect(starts[2]!.params.collaborationMode?.mode).toBe("default");
+    } finally {
+      delete process.env.PLAN_PROBE;
+    }
   });
 });
 

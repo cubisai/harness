@@ -53,7 +53,7 @@ exports[`permissionTable > maps every mode to every driver, plan included 1`] = 
     ],
     "claude": "Read-only; edits wait for your plan approval",
     "codex": {
-      "approvalPolicy": "untrusted",
+      "approvalPolicy": "never",
       "sandbox": "read-only",
     },
   },

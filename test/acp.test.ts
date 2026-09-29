@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -86,6 +86,45 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 
 function lostDriver() {
   const d = createAcpDriver({ id: "lossy", label: "Lossy", command: process.execPath, args: ["-e", INLINE_ACP_LOST] }, { clientVersion: "test" });
+  closeAfter(() => d.dispose?.());
+  return d;
+}
+
+// An agent that advertises ACP's native session modes (build/plan) and records
+// every session/set_mode and session/prompt, so a test can watch the switches.
+const MODES_ACP = `
+const fs = require("node:fs");
+const readline = require("node:readline");
+const send = (m) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...m }) + "\\n");
+const update = (sessionId, u) => send({ method: "session/update", params: { sessionId, update: u } });
+const log = (o) => fs.appendFileSync(process.env.MODES_PROBE, JSON.stringify(o) + "\\n");
+let currentMode = "build";
+readline.createInterface({ input: process.stdin }).on("line", (line) => {
+  const msg = JSON.parse(line);
+  const { id, method, params } = msg;
+  if (method === "initialize") return send({ id, result: { protocolVersion: 1, agentCapabilities: { sessionCapabilities: { resume: {}, close: {} }, mcpCapabilities: { http: true } }, authMethods: [] } });
+  if (method === "session/new" || method === "session/resume") return send({ id, result: { sessionId: "s-1", configOptions: [], modes: { currentModeId: currentMode, availableModes: [{ id: "build", name: "Build" }, { id: "plan", name: "Plan" }] } } });
+  if (method === "session/set_mode") {
+    currentMode = params.modeId;
+    log({ method, modeId: params.modeId });
+    update(params.sessionId, { sessionUpdate: "current_mode_update", currentModeId: currentMode });
+    return send({ id, result: {} });
+  }
+  if (method === "session/cancel") return;
+  if (method === "session/set_config_option") return send({ id, result: { configOptions: [] } });
+  if (method === "session/prompt") {
+    const text = params.prompt.map((b) => b.text).join("");
+    log({ method, prompt: text, mode: currentMode });
+    const answer = currentMode === "plan" ? "# Native plan" : "Implemented (build)";
+    update(params.sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: answer } });
+    return send({ id, result: { stopReason: "end_turn", usage: { inputTokens: 10, outputTokens: 2 } } });
+  }
+  send({ id, error: { code: -32601, message: method } });
+});
+`;
+
+function modesDriver() {
+  const d = createAcpDriver({ id: "modes", label: "Modes", command: process.execPath, args: ["-e", MODES_ACP] }, { clientVersion: "test" });
   closeAfter(() => d.dispose?.());
   return d;
 }
@@ -646,6 +685,52 @@ describe("ACP driver", () => {
     await d.runTurn(t.input);
     expect(t.events[0]).toMatchObject({ kind: "error" });
     expect((t.events[0] as { message: string }).message).toMatch(/Nope failed to start/);
+  });
+});
+
+describe("ACP plan mode", () => {
+  it("switches native session modes around a plan and implements on auto", async () => {
+    const probe = join(tempDir(), "modes.jsonl");
+    process.env.MODES_PROBE = probe;
+    try {
+      const plans: string[] = [];
+      const t = turn("make a plan", {
+        permissionMode: "plan" as PermissionMode,
+        requestPlanDecision: async (p) => {
+          plans.push(p.plan);
+          return "auto";
+        },
+      });
+      await modesDriver().runTurn(t.input);
+      expect(plans).toEqual(["# Native plan"]);
+      const calls = readFileSync(probe, "utf8").trim().split("\n").map((l) => JSON.parse(l) as { method: string; modeId?: string; prompt?: string });
+      // In plan, then back to the default mode for the implementing round.
+      expect(calls.filter((c) => c.method === "session/set_mode").map((c) => c.modeId)).toEqual(["plan", "build"]);
+      const prompts = calls.filter((c) => c.method === "session/prompt");
+      expect(prompts.map((c) => c.prompt)).toEqual(["make a plan", "Implement the plan."]);
+      // A native mode needs no emulation brief.
+      expect(prompts[0]!.prompt).not.toContain("<harness-plan-mode>");
+      expect(t.events.filter((e) => e.kind === "turn-start")).toHaveLength(1);
+      expect(t.events.filter((e) => e.kind === "turn-end")).toHaveLength(1);
+    } finally {
+      delete process.env.MODES_PROBE;
+    }
+  });
+
+  it("prefixes the prompt with the plan brief when the agent has no native mode", async () => {
+    const t = turn("make a plan", {
+      permissionMode: "plan" as PermissionMode,
+      requestPlanDecision: async () => "auto",
+    });
+    await lostDriver().runTurn(t.input);
+    // INLINE_ACP_LOST echoes its prompt blocks as JSON, so the driver's own brief is visible.
+    const texts = t.events.filter((e): e is Extract<ThreadEvent, { kind: "assistant-text" }> => e.kind === "assistant-text").map((e) => e.text);
+    const firstBlocks = JSON.parse(texts[0]!) as { text: string }[];
+    expect(firstBlocks[0]!.text).toContain("<harness-plan-mode>");
+    expect(firstBlocks[0]!.text).toContain("make a plan");
+    const secondBlocks = JSON.parse(texts[1]!) as { text: string }[];
+    expect(secondBlocks[0]!.text).toBe("Implement the plan.");
+    expect(t.events.filter((e) => e.kind === "turn-end")).toHaveLength(1);
   });
 });
 
