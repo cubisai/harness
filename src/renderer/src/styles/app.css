@@ -1115,6 +1115,10 @@ details.tool[open]::details-content { height: auto; }
 }
 .model-search:focus { border-color: var(--accent); }
 .model-list { overflow-y: auto; padding: 0 4px 6px; }
+/* Menus without a search box (agent picker): the list needs its own top gap. */
+.model-list:first-child { padding-top: 6px; }
+/* The effort picker puts its items straight in the menu: same gaps as a list. */
+.model-menu[role="listbox"] { padding: 6px 4px; }
 .model-group { padding: 8px 8px 3px; font-size: 10.5px; font-weight: 600; color: var(--text-tertiary); letter-spacing: 0.02em; }
 .model-item {
   display: block;
