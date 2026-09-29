@@ -625,6 +625,29 @@ describe("Codex plan mode", () => {
       delete process.env.PLAN_PROBE;
     }
   });
+
+  it("stops instead of starting another round when the plan card is aborted", async () => {
+    const probe = join(tempDir(), "plan.jsonl");
+    process.env.PLAN_PROBE = probe;
+    try {
+      let t!: ReturnType<typeof turn>;
+      t = turn("make a plan", {
+        permissionMode: "plan",
+        requestPlanDecision: async () => {
+          t.controller.abort();
+          return { keep: "" };
+        },
+      });
+      await planDriver().runTurn(t.input);
+      const starts = readFileSync(probe, "utf8").trim().split("\n").map((l) => JSON.parse(l) as { method: string });
+      // The aborted decision must not send a "Refine the plan." round.
+      expect(starts.filter((s) => s.method === "turn/start")).toHaveLength(1);
+      expect(t.events.filter((e) => e.kind === "notice" && e.text === "Stopped.")).toHaveLength(1);
+      expect(t.events.filter((e) => e.kind === "turn-end")).toHaveLength(1);
+    } finally {
+      delete process.env.PLAN_PROBE;
+    }
+  });
 });
 
 describe("Codex session loss", () => {

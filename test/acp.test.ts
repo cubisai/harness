@@ -732,6 +732,29 @@ describe("ACP plan mode", () => {
     expect(secondBlocks[0]!.text).toBe("Implement the plan.");
     expect(t.events.filter((e) => e.kind === "turn-end")).toHaveLength(1);
   });
+
+  it("stops instead of starting another round when the plan card is aborted", async () => {
+    const probe = join(tempDir(), "modes.jsonl");
+    process.env.MODES_PROBE = probe;
+    try {
+      let t!: ReturnType<typeof turn>;
+      t = turn("make a plan", {
+        permissionMode: "plan" as PermissionMode,
+        requestPlanDecision: async () => {
+          t.controller.abort();
+          return { keep: "" };
+        },
+      });
+      await modesDriver().runTurn(t.input);
+      const calls = readFileSync(probe, "utf8").trim().split("\n").map((l) => JSON.parse(l) as { method: string });
+      // The aborted decision must not send a "Refine the plan." prompt.
+      expect(calls.filter((c) => c.method === "session/prompt")).toHaveLength(1);
+      expect(t.events.filter((e) => e.kind === "notice" && e.text === "Stopped.")).toHaveLength(1);
+      expect(t.events.filter((e) => e.kind === "turn-end")).toHaveLength(1);
+    } finally {
+      delete process.env.MODES_PROBE;
+    }
+  });
 });
 
 describe("ACP tool payloads", () => {

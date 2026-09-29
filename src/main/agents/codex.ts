@@ -783,9 +783,18 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         let mode: PermissionMode = input.permissionMode;
         let prompt = input.prompt;
         for (let round = 0; round < 6; round++) {
+          // A Stop between rounds must end the run, never start another round.
+          if (round > 0 && input.signal.aborted) break;
           const r = await runOne(prompt, mode);
+          const alreadyStopped = r.turn.status === "interrupted";
           if (mode !== "plan" || !r.planText || r.turn.status !== "completed" || input.signal.aborted) break;
           const d = await input.requestPlanDecision({ plan: r.planText });
+          // Stop while the plan card was up: the abort resolves the decision as
+          // { keep: "" }, which must not be read as "keep planning".
+          if (input.signal.aborted) {
+            if (!alreadyStopped) input.onEvent({ kind: "notice", text: "Stopped." });
+            break;
+          }
           if (d === "auto" || d === "manual") {
             mode = d === "auto" ? "auto-edit" : "ask";
             prompt = "Implement the plan.";

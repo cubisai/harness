@@ -989,9 +989,12 @@ export function createAcpDriver(
         let mode: PermissionMode = input.permissionMode;
         let prompt = input.prompt;
         for (let round = 0; round < 6; round++) {
+          // A Stop between rounds must end the run, never start another round.
+          if (round > 0 && input.signal.aborted) break;
           const turn: TurnState = { input, text: "", thought: "", tools: new Map(), permissionIds: new Set(), planned: false, usage: { used: 0, costUsd: null, contextUsed: null, size: null }, run: 0 };
           current = turn;
           l.turn = turn;
+          let stopped = false;
           // A native plan mode switches the whole session; without one the
           // prompt carries the plan-mode brief instead.
           const nativePlan = await applyPlanMode(l, input, mode);
@@ -1008,8 +1011,10 @@ export function createAcpDriver(
           const empty = !turn.text.trim() && !turn.thought.trim() && turn.tools.size === 0 && !turn.planned;
           const planText = mode === "plan" ? turn.text.trim() : "";
           flushText(turn);
-          if (res.stopReason === "cancelled") input.onEvent({ kind: "notice", text: "Stopped." });
-          else if (res.stopReason === "refusal") input.onEvent({ kind: "error", message: `${config.label} declined this request.` });
+          if (res.stopReason === "cancelled") {
+            input.onEvent({ kind: "notice", text: "Stopped." });
+            stopped = true;
+          } else if (res.stopReason === "refusal") input.onEvent({ kind: "error", message: `${config.label} declined this request.` });
           else if (res.stopReason === "max_tokens" || res.stopReason === "max_turn_requests") {
             input.onEvent({ kind: "notice", text: `${config.label} stopped early (${res.stopReason.replace(/_/g, " ")}).` });
           }
@@ -1042,6 +1047,12 @@ export function createAcpDriver(
           lastContextUsed = turn.usage.contextUsed;
           if (mode === "plan" && res.stopReason === "end_turn" && planText && !input.signal.aborted) {
             const d = await input.requestPlanDecision({ plan: planText });
+            // Stop while the plan card was up: the abort resolves the decision as
+            // { keep: "" }, which must not be read as "keep planning".
+            if (input.signal.aborted) {
+              if (!stopped) input.onEvent({ kind: "notice", text: "Stopped." });
+              break;
+            }
             if (d === "auto" || d === "manual") {
               mode = d === "auto" ? "auto-edit" : "ask";
               prompt = "Implement the plan.";
