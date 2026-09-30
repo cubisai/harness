@@ -639,6 +639,54 @@ describe("Codex driver", () => {
   });
 });
 
+describe("Codex subagents", () => {
+  it("nests a child thread's steps under the Agent row it spawned", async () => {
+    const d = driver();
+    const t = turn("subagent");
+    await d.runTurn(t.input);
+
+    const toolUses = t.events.filter((e): e is Extract<ThreadEvent, { kind: "tool-use" }> => e.kind === "tool-use");
+    const agents = toolUses.filter((e) => e.name === "Agent");
+    expect(agents).toHaveLength(1);
+    expect(agents[0]).toMatchObject({ summary: "multiply", payload: { prompt: "", subagent_type: "multiply" } });
+    // The Agent row is top-level; the child's steps hang under it.
+    expect(agents[0]!.parentId).toBeUndefined();
+    const agentRow = agents[0]!.toolUseId;
+
+    const run = toolUses.find((e) => e.name === "Run");
+    expect(run).toMatchObject({ parentId: agentRow, summary: "echo 391" });
+    const runResult = t.events.find((e): e is Extract<ThreadEvent, { kind: "tool-result" }> => e.kind === "tool-result" && e.toolUseId === run!.toolUseId);
+    expect(runResult).toMatchObject({ parentId: agentRow, isError: false });
+    const childText = t.events.find((e): e is Extract<ThreadEvent, { kind: "assistant-text" }> => e.kind === "assistant-text" && e.text === "391");
+    expect(childText).toMatchObject({ parentId: agentRow });
+
+    // The root's own closing message is top-level, and turns are not duplicated.
+    const rootText = t.events.find((e): e is Extract<ThreadEvent, { kind: "assistant-text" }> => e.kind === "assistant-text" && e.text === "The answer is 391.");
+    expect(rootText).toBeDefined();
+    expect(rootText!.parentId).toBeUndefined();
+    expect(t.events.filter((e) => e.kind === "turn-start")).toHaveLength(1);
+    expect(t.events.filter((e) => e.kind === "turn-end")).toHaveLength(1);
+
+    // The child's approval was asked through requestPermission, not declined.
+    expect(t.asked).toContain("echo 391");
+    // The Agent row closes with the child's last message.
+    const closed = t.events.find((e): e is Extract<ThreadEvent, { kind: "tool-result" }> => e.kind === "tool-result" && e.toolUseId === agentRow);
+    expect(closed).toMatchObject({ summary: "391", isError: false });
+    // The child's streamed text never reaches the root's text deltas.
+    expect(t.deltas).not.toContain("391");
+  });
+  it("emits a spawnAgent row once its child id arrives, with the call's prompt", async () => {
+    const d = driver();
+    const t = turn("spawn");
+    await d.runTurn(t.input);
+    const agents = t.events.filter((e): e is Extract<ThreadEvent, { kind: "tool-use" }> => e.kind === "tool-use" && e.name === "Agent");
+    expect(agents).toHaveLength(1);
+    expect(agents[0]).toMatchObject({ toolUseId: "call_sp1", payload: { prompt: "What is 17*23?" } });
+    expect(t.events.find((e) => e.kind === "assistant-text" && e.text === "391")).toMatchObject({ parentId: "call_sp1" });
+    expect(t.events.find((e) => e.kind === "tool-result" && e.toolUseId === "call_sp1")).toMatchObject({ summary: "391", isError: false });
+  });
+});
+
 describe("Codex plan mode", () => {
   function planDriver() {
     const d = createCodexDriver({ command: process.execPath, args: ["-e", PLAN_PROBE], clientVersion: "test" });

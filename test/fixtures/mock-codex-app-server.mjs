@@ -14,6 +14,8 @@
 //   "cached" - the normal reply, but reports cached input tokens
 //   "reason" - streams reasoning text and summaries plus a command's output, then replies
 //   "canonical" - the render-parity event set: a message, a command, a file edit, a message
+//   "subagent" - spawns a child thread, asks for a command on it, and closes the Agent row
+//   "spawn" - a spawnAgent call whose child id only arrives on item/completed, then the child's reply
 //   other  - replies "Hi, <prompt>" in two deltas
 // Like Codex, a thread keeps the config it was loaded with until it is
 // unsubscribed (unloaded); resuming a loaded thread doesn't change it.
@@ -128,6 +130,44 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
         notify("item/started", { threadId, turnId: turn.id, item: file });
         notify("item/completed", { threadId, turnId: turn.id, item: { ...file, status: "completed" } });
         say("m2", "Done.");
+        return done("completed");
+      }
+      if (text === "spawn") {
+        const spawn = { type: "collabAgentToolCall", id: "call_sp1", tool: "spawnAgent", status: "inProgress", senderThreadId: threadId, receiverThreadIds: [], prompt: "What is 17*23?", model: null, agentsStates: {} };
+        notify("item/started", { threadId, turnId: turn.id, item: spawn });
+        notify("item/completed", { threadId, turnId: turn.id, item: { ...spawn, status: "completed", receiverThreadIds: ["child-2"] } });
+        notify("item/completed", { threadId: "child-2", turnId: "child-turn", item: { type: "agentMessage", id: "cm2", text: "391" } });
+        const finished = { type: "subAgentActivity", id: "subagent-completed-1", kind: "completed", agentThreadId: "child-2", agentPath: "/root/worker" };
+        notify("item/completed", { threadId, turnId: turn.id, item: finished });
+        return done("completed");
+      }
+      if (text === "subagent") {
+        // The root announces the child thread, which then runs its own turn.
+        const childId = "child-1";
+        const activity = { type: "subAgentActivity", id: "call_s1", kind: "started", agentThreadId: childId, agentPath: "/root/multiply" };
+        notify("item/started", { threadId, turnId: turn.id, item: activity });
+        notify("item/completed", { threadId, turnId: turn.id, item: activity });
+        const childTurn = { id: "child-turn", status: "inProgress", error: null, durationMs: null, items: [] };
+        notify("turn/started", { threadId: childId, turn: childTurn });
+        const cmd = { type: "commandExecution", id: "cc1", command: "echo 391", status: "inProgress", aggregatedOutput: null, exitCode: null };
+        notify("item/started", { threadId: childId, turnId: childTurn.id, item: cmd });
+        const res = await ask("item/commandExecution/requestApproval", { threadId: childId, turnId: childTurn.id, itemId: "cc1", command: "echo 391", startedAtMs: 0 });
+        const ok = res.decision === "accept" || res.decision === "acceptForSession";
+        notify("item/completed", { threadId: childId, turnId: childTurn.id, item: { ...cmd, status: ok ? "completed" : "declined", aggregatedOutput: ok ? "391" : null, exitCode: ok ? 0 : null } });
+        notify("item/agentMessage/delta", { threadId: childId, turnId: childTurn.id, itemId: "cm1", delta: "391" });
+        notify("item/completed", { threadId: childId, turnId: childTurn.id, item: { type: "agentMessage", id: "cm1", text: "391" } });
+        const childUsage = { inputTokens: 900, cachedInputTokens: 0, outputTokens: 12, totalTokens: 912, reasoningOutputTokens: 0, cacheWriteInputTokens: 0 };
+        notify("thread/tokenUsage/updated", { threadId: childId, turnId: childTurn.id, tokenUsage: { last: childUsage, total: {}, modelContextWindow: null } });
+        notify("turn/completed", { threadId: childId, turn: { ...childTurn, status: "completed", durationMs: 42 } });
+        // The root waits, then the child's completion closes the Agent row.
+        const wait = { type: "collabAgentToolCall", id: "call_w1", tool: "wait", status: "inProgress", senderThreadId: threadId, receiverThreadIds: [], prompt: null, model: null, agentsStates: {} };
+        notify("item/started", { threadId, turnId: turn.id, item: wait });
+        notify("item/completed", { threadId, turnId: turn.id, item: { ...wait, status: "completed" } });
+        const finished = { type: "subAgentActivity", id: "subagent-completed-0", kind: "completed", agentThreadId: childId, agentPath: "/root/multiply" };
+        notify("item/started", { threadId, turnId: turn.id, item: finished });
+        notify("item/completed", { threadId, turnId: turn.id, item: finished });
+        notify("item/agentMessage/delta", { threadId, turnId: turn.id, itemId: "m2", delta: "The answer is 391." });
+        notify("item/completed", { threadId, turnId: turn.id, item: { type: "agentMessage", id: "m2", text: "The answer is 391." } });
         return done("completed");
       }
       if (text === "slow") {

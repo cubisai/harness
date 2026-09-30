@@ -37,6 +37,19 @@ type ThreadItem =
     }
   | { type: "webSearch"; id: string; query?: string }
   | { type: "plan"; id: string; text: string }
+  // A parent thread's note that a subagent (a Codex child thread) started or ended.
+  | { type: "subAgentActivity"; id: string; kind: "started" | "interacted" | "interrupted" | "completed"; agentThreadId: string; agentPath: string }
+  | {
+      type: "collabAgentToolCall";
+      id: string;
+      tool: string;
+      status: string;
+      senderThreadId: string;
+      receiverThreadIds: string[];
+      prompt: string | null;
+      model: string | null;
+      agentsStates: Record<string, { status: string; message?: string | null }>;
+    }
   | { type: string; id: string };
 interface Turn {
   id: string;
@@ -264,6 +277,10 @@ interface TurnState {
   /** The latest completed agent message's text, so a wrapped plan can be recovered from it. */
   agentText: string;
   done: (turn: Turn) => void;
+  /** Set on a subagent (Codex child thread) state: the root turn it hangs under. */
+  parent?: TurnState;
+  /** The Agent row this child's events hang under (its toolUseId). */
+  rowId?: string;
 }
 
 /**
@@ -281,6 +298,12 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   /** When the current model list was last fetched; 0 = never. */
   let listedAt = 0;
   const turns = new Map<string, TurnState>(); // by Codex thread id
+  /** Codex child threads (subagents), by child thread id: their items hang under their Agent row. */
+  const children = new Map<string, TurnState>();
+  /** Agent rows already closed, so a duplicate completion emits one tool-result. */
+  const closedRows = new Set<string>();
+  /** spawnAgent rows whose child thread ids only arrive with item/completed. */
+  const spawnWait = new Map<string, string>();
   /** Threads loaded in the running app-server, and the MCP config they were loaded with. */
   const loaded = new Map<string, string>();
   /** The memory block a new session first carried, frozen by Codex thread id (prompt-cache reads). */
@@ -294,6 +317,69 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     if (t.compacted) return;
     t.compacted = true;
     t.input.onEvent({ kind: "compaction", trigger: "auto", preTokens: null, postTokens: null });
+  };
+
+  /** The turn state for a Codex thread id: a root thread's, or a subagent child's. */
+  const stateFor = (id: string): TurnState | undefined => turns.get(id) ?? children.get(id);
+
+  /** The last non-empty segment of a subagent's agentPath, e.g. "/root/multiply" -> "multiply". */
+  const agentName = (agentPath: string | undefined): string => {
+    const parts = (agentPath ?? "").split("/").filter(Boolean);
+    return parts[parts.length - 1] ?? "subagent";
+  };
+
+  /**
+   * Register a Codex child thread and emit the Agent row its items hang under.
+   * The child's events go through the root's onEvent with this row's id as
+   * parentId; its own approvals use the root's requestPermission.
+   */
+  const registerChild = (parent: TurnState, childThreadId: string, rowId: string, agent: { prompt: string; subagent: string }) => {
+    const child: TurnState = {
+      input: { ...parent.input, onEvent: (e) => parent.input.onEvent({ ...e, parentId: rowId }) },
+      threadId: childThreadId,
+      turnId: null,
+      deltas: new Map(),
+      reasoning: new Map(),
+      usage: null,
+      contextSize: null,
+      retrying: new Set(),
+      compacted: false,
+      planText: null,
+      agentText: "",
+      done: () => {},
+      parent,
+      rowId,
+    };
+    children.set(childThreadId, child);
+    // A spawnAgent call can name several children: its Agent row is emitted once.
+    for (const other of children.values()) if (other !== child && other.rowId === rowId) return;
+    parent.input.onEvent({ kind: "tool-use", toolUseId: rowId, name: "Agent", summary: clipSummary(agent.subagent), payload: { prompt: agent.prompt, subagent_type: agent.subagent } });
+  };
+
+  /** Close one Agent row once: its child thread ended with the given kind. */
+  const closeChild = (parent: TurnState, childThreadId: string, interrupted: boolean) => {
+    const child = children.get(childThreadId);
+    if (!child) return;
+    children.delete(childThreadId);
+    if (!child.rowId || closedRows.has(child.rowId)) return;
+    closedRows.add(child.rowId);
+    parent.input.onEvent({
+      kind: "tool-result",
+      toolUseId: child.rowId,
+      isError: interrupted,
+      summary: clipSummary(child.agentText) || (interrupted ? "Interrupted" : "Done"),
+    });
+  };
+
+  /** Close any Agent rows still open when a root turn ends. */
+  const closeRootChildren = (root: TurnState, interrupted: boolean) => {
+    for (const [childThreadId, child] of children) {
+      if (child.parent !== root) continue;
+      children.delete(childThreadId);
+      if (!child.rowId || closedRows.has(child.rowId)) continue;
+      closedRows.add(child.rowId);
+      root.input.onEvent({ kind: "tool-result", toolUseId: child.rowId, isError: interrupted, summary: interrupted ? "Stopped" : "Done" });
+    }
   };
 
   const onNotification = (method: string, params: unknown) => {
@@ -317,8 +403,26 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       item?: ThreadItem;
       turn?: Turn;
     };
-    const t = p.threadId ? turns.get(p.threadId) : undefined;
+    const t = p.threadId ? stateFor(p.threadId) : undefined;
     if (!t) return;
+    // A Codex child thread's notifications are the subagent's own: only its
+    // messages and tool calls surface, under the Agent row that spawned it.
+    // Its turn lifecycle, usage, reasoning and errors stay out of the root.
+    if (t.parent) {
+      switch (method) {
+        case "item/started":
+          if (p.item) onItemStarted(t, p.item);
+          return;
+        case "item/completed":
+          if (p.item) onItemCompleted(t, p.item);
+          return;
+        case "item/agentMessage/delta":
+          if (p.itemId && p.delta) t.deltas.set(p.itemId, (t.deltas.get(p.itemId) ?? "") + p.delta);
+          return;
+        default:
+          return;
+      }
+    }
     switch (method) {
       case "item/agentMessage/delta":
         if (p.itemId && p.delta) {
@@ -398,16 +502,53 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   };
 
   const onItemStarted = (t: TurnState, item: ThreadItem) => {
+    // A root thread's subagent bookkeeping: the Agent row its child thread's
+    // items hang under. Once registered, a later subAgentActivity says nothing.
+    if (!t.parent) {
+      if (item.type === "subAgentActivity") {
+        const a = item as { kind: string; agentThreadId: string; agentPath: string };
+        if (a.kind === "started" && !children.has(a.agentThreadId)) registerChild(t, a.agentThreadId, item.id, { prompt: "", subagent: agentName(a.agentPath) });
+        return;
+      }
+      if (item.type === "collabAgentToolCall") {
+        const c = item as { id: string; tool: string; receiverThreadIds: string[]; prompt: string | null };
+        if (c.tool === "spawnAgent") {
+          // The child ids can arrive on item/completed instead; emit the row then.
+          if (!c.receiverThreadIds.length) spawnWait.set(c.id, c.prompt ?? "");
+          for (const id of c.receiverThreadIds) if (!children.has(id)) registerChild(t, id, c.id, { prompt: c.prompt ?? "", subagent: "subagent" });
+        }
+        return;
+      }
+    }
     const tool = toolFor(item);
     if (tool) t.input.onEvent({ kind: "tool-use", toolUseId: item.id, ...tool });
   };
   const onItemCompleted = (t: TurnState, item: ThreadItem) => {
+    // Root-only subagent lifecycle: a subagent finishing closes its Agent row.
+    if (!t.parent) {
+      if (item.type === "subAgentActivity") {
+        const a = item as { kind: string; agentThreadId: string };
+        if (a.kind === "completed" || a.kind === "interrupted") closeChild(t, a.agentThreadId, a.kind === "interrupted");
+        return;
+      }
+      if (item.type === "collabAgentToolCall") {
+        const c = item as { id: string; tool: string; receiverThreadIds: string[]; prompt: string | null };
+        if (c.tool === "spawnAgent" && spawnWait.has(c.id)) {
+          const prompt = spawnWait.get(c.id) ?? "";
+          spawnWait.delete(c.id);
+          for (const id of c.receiverThreadIds) if (!children.has(id)) registerChild(t, id, c.id, { prompt: c.prompt ?? prompt, subagent: "subagent" });
+        }
+        // Other collaboration tools (wait, closeAgent, ...) emit nothing.
+        return;
+      }
+    }
     if (item.type === "contextCompaction") {
-      emitCompaction(t);
+      if (!t.parent) emitCompaction(t);
       return;
     }
     if (item.type === "plan") {
       // A plan is a proposal, not assistant prose: keep it for the decision.
+      if (t.parent) return;
       t.planText = (item as { text: string }).text;
       return;
     }
@@ -419,6 +560,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       return;
     }
     if (item.type === "reasoning") {
+      if (t.parent) return;
       const r = item as { summary: string[] };
       const text = r.summary.join("\n\n").trim() || t.reasoning.get(item.id)?.trim() || "";
       if (text) t.input.onEvent({ kind: "thinking", text, itemId: item.id });
@@ -456,7 +598,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
 
   const onRequest = async (method: string, params: unknown): Promise<unknown> => {
     const p = params as { threadId: string; command?: string | null; reason?: string | null; itemId: string };
-    const t = turns.get(p.threadId);
+    const t = stateFor(p.threadId);
     if (method === "item/commandExecution/requestApproval" || method === "item/fileChange/requestApproval") {
       if (!t) return { decision: "decline" };
       const isCommand = method === "item/commandExecution/requestApproval";
@@ -486,10 +628,12 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   // mcp_tool_call. Other elicitations (an MCP server asking the user for
   // input) have no UI here, so they're declined.
   const onElicitation = async (p: Elicitation): Promise<{ action: "accept" | "decline"; content: null }> => {
-    const t = turns.get(p.threadId);
+    const t = stateFor(p.threadId);
     if (!t || p._meta?.codex_approval_kind !== "mcp_tool_call") return { action: "decline", content: null };
     const tool = /tool "([^"]+)"/.exec(p.message ?? "")?.[1] ?? "a tool";
-    const allowed = alwaysAllowed.get(p.threadId);
+    // A subagent shares the root thread's "always allow" set.
+    const owner = t.parent?.threadId ?? t.threadId;
+    const allowed = alwaysAllowed.get(owner);
     if (allowed?.has(`${p.serverName}/${tool}`)) return { action: "accept", content: null };
     const decision = await t.input.requestPermission({
       toolName: TOOL_SERVERS.has(p.serverName) ? tool : `${p.serverName} · ${tool}`,
@@ -497,7 +641,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       canAlwaysAllow: true,
     });
     if (decision === "allow-always") {
-      if (!allowed) alwaysAllowed.set(p.threadId, new Set([`${p.serverName}/${tool}`]));
+      if (!allowed) alwaysAllowed.set(owner, new Set([`${p.serverName}/${tool}`]));
       else allowed.add(`${p.serverName}/${tool}`);
     }
     return { action: decision === "deny" ? "decline" : "accept", content: null };
@@ -847,6 +991,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
           if (state.turnId) void conn.request("turn/interrupt", { threadId, turnId: state.turnId }).catch(() => {});
         };
         input.signal.addEventListener("abort", onAbort, { once: true });
+        let interrupted = input.signal.aborted;
         try {
           const res = await conn.request<{ turn: Turn }>("turn/start", {
             threadId,
@@ -864,6 +1009,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
           state.turnId ??= res.turn.id;
           if (input.signal.aborted) onAbort();
           const turn = await finished;
+          interrupted = turn.status === "interrupted";
           // Flush what the terminal events didn't: thinking first, then assistant
           // text, both before the interrupted-turn notice.
           for (const [itemId, text] of state.reasoning) if (text.trim()) input.onEvent({ kind: "thinking", text, itemId });
@@ -876,6 +1022,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
           return { turn, planText: state.planText ?? proposedPlanText(state.agentText) };
         } finally {
           input.signal.removeEventListener("abort", onAbort);
+          // A subagent still open when the root turn ends closes with it.
+          closeRootChildren(state, interrupted);
           turns.delete(threadId);
         }
       };
