@@ -34,6 +34,10 @@ export interface Project {
   path: string;
   name: string;
   createdAt: number;
+  /** Run after a turn that changed files; null/absent = off. */
+  checkCommand?: string | null;
+  /** How many automatic fix turns a failed check may send (0-2); null/absent = 1. 0 = show the result, spend no tokens. */
+  checkFixRounds?: number | null;
 }
 
 export type PermissionMode = "ask" | "auto-edit" | "plan" | "full";
@@ -485,6 +489,8 @@ export type ThreadEvent = (
   | { kind: "plan-decision"; choice: "auto" | "manual" | "keep"; feedback?: string }
   | { kind: "compaction"; trigger: "manual" | "auto" | "unknown"; preTokens: number | null; postTokens: number | null }
   | { kind: "handoff"; phase: "seeded" | "reply" | "signal"; text: string; from?: string; to?: string; tokens?: number; tier?: number }
+  /** The project's check command after a turn that changed files; ok null = still running. */
+  | { kind: "check"; command: string; ok: boolean | null; exitCode: number | null; timedOut: boolean; durationMs: number; tail: string; round: number }
 ) &
   EventIds;
 
@@ -641,6 +647,8 @@ export interface SendRequest {
   skill?: string;
   /** Project-relative files and folders the user @-mentioned. */
   mentions?: string[];
+  /** Internal: which automatic fix round this send is (0 or absent = the user's). */
+  checkRound?: number;
 }
 
 /** A viewport the browser pane can emulate; desktop means no emulation. */
@@ -706,6 +714,8 @@ export interface UnskilledApi {
   listProjects(): Promise<Project[]>;
   addProject(): Promise<Project | null>;
   deleteProject(projectId: string): Promise<void>;
+  /** Set a project's post-turn check command; null/empty turns it off. */
+  setCheckCommand(projectId: string, command: string | null, fixRounds?: number | null): Promise<Project>;
   listThreads(projectId: string): Promise<Thread[]>;
   createThread(projectId: string, agent?: string, opts?: { worktree?: boolean }): Promise<Thread>;
   updateThread(threadId: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "permissionMode" | "agent" | "pinned" | "archived">>): Promise<Thread>;

@@ -95,6 +95,18 @@ export function ThreadView({ threadId }: { threadId: string }) {
     }
     return events.slice(start);
   }, [events]);
+  // A running check row is replaced by a later final row for the same round.
+  const hiddenChecks = useMemo(() => {
+    const finals = events.filter((e) => e.event.kind === "check" && e.event.ok !== null);
+    const hidden = new Set<number>();
+    for (const e of events) {
+      const c = e.event;
+      if (c.kind !== "check" || c.ok !== null) continue;
+      const replaced = finals.some((f) => f.seq > e.seq && f.event.kind === "check" && f.event.round === c.round && f.event.command === c.command);
+      if (replaced) hidden.add(e.seq);
+    }
+    return hidden;
+  }, [events]);
   // What the thread actually renders: notices written for a message show above it.
   const displayEvents = useMemo(() => displayOrder(events), [events]);
 
@@ -127,7 +139,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
     >
       <div className="thread-inner" ref={inner}>
         {displayEvents.map((e) =>
-          stalePlans.has(e.seq) || e.event.parentId ? null : (
+          stalePlans.has(e.seq) || hiddenChecks.has(e.seq) || e.event.parentId ? null : (
             <EventRow key={e.seq} stored={e} results={results} children={children} running={running} threadId={threadId} />
           ),
         )}
@@ -256,6 +268,25 @@ export function EventRow({ stored, results, children, running, threadId }: { sto
       return (
         <div className="compaction-divider">
           <span>{e.text}</span>
+        </div>
+      );
+    case "check":
+      // Short on purpose: the command itself is in the tooltip, and in a failure's output.
+      return (
+        <div className="notice check-row" title={e.command}>
+          {e.ok === null ? (
+            "Checking…"
+          ) : e.ok ? (
+            <>✓ Check passed · {(e.durationMs / 1000).toFixed(1)}s</>
+          ) : (
+            <>✗ Check failed{e.timedOut ? " (timed out)" : e.exitCode !== null ? ` (exit ${e.exitCode})` : ""}</>
+          )}
+          {e.ok === false && (
+            <details>
+              <summary>Output</summary>
+              <pre className="tool-pre">{`$ ${e.command}${e.tail ? `\n${e.tail}` : ""}`}</pre>
+            </details>
+          )}
         </div>
       );
     case "context-breakdown":

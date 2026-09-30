@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { statSync } from "node:fs";
 import { join } from "node:path";
 import type {
   AgentInfo,
@@ -35,8 +36,9 @@ import {
   toolSetOf,
 } from "./cache-policy";
 import { Approvals } from "./approvals";
+import { runCheck, tailOf } from "./check";
 import type { Store } from "./db";
-import { branchLabel, createWorktree, listProjectFiles, removeWorktree, workingTreeDiff, worktreeBranch } from "./git";
+import { branchLabel, createWorktree, gitState, listProjectFiles, removeWorktree, workingTreeDiff, worktreeBranch } from "./git";
 import {
   bloatSignal,
   buildCheckpoint,
@@ -544,11 +546,17 @@ export class Service {
     const project = this.store.getProject(thread.projectId);
     const cwd = this.cwdOf(thread);
     const driver = this.driverFor(thread.agent);
+    // The project's verification gate: off when there's no command; `round` counts the automatic fixes.
+    const checkCommand = project.checkCommand?.trim() || null;
+    const round = req.checkRound ?? 0;
+    // Fix turns are the gate's only token cost; the project caps them (default 1, 0 = none).
+    const maxRounds = project.checkFixRounds ?? 1;
     const provenance: Provenance = { agent: thread.agent, model: thread.model, provider: null, instanceId: null };
     const prompt = composePrompt(this.catalogFor(cwd), req.text, req.skill, driver.skillsDelivery) + mentionNote(cwd, req.mentions);
 
     const userEvent = this.emit(thread.id, { kind: "user", text: req.text, skill: req.skill });
-    if (thread.title === "New thread") {
+    // An automatic fix round never names the thread; the user's message does.
+    if (thread.title === "New thread" && !req.checkRound) {
       const title = titleFrom(req.text, req.skill);
       this.broadcast({ type: "thread", thread: this.store.updateThread(thread.id, { title }) });
     }
@@ -556,7 +564,12 @@ export class Service {
     const controller = new AbortController();
     this.running.set(thread.id, controller);
     this.broadcast({ type: "running", threadId: thread.id, running: true });
+    // Set when a failed check schedules the next automatic fix; fired after this send's finally.
+    let followUp: SendRequest | null = null;
     try {
+      // Snapshot the working tree before the turn, so an edit the agent reports
+      // (or a path git now sees) is what triggers the check.
+      const before = checkCommand ? await dirtySet(cwd) : null;
       if (!this.scopeChecked.has(project.id)) {
         this.scopeChecked.add(project.id);
         for (const text of memoryScopeCheck(cwd)) this.emit(thread.id, { kind: "notice", text });
@@ -586,6 +599,9 @@ export class Service {
       let rebuilt = false;
       let compacted = false;
       let answered = false;
+      // The agent reported an edit this turn: a tool-result for an Edit tool-use, or a path git changed.
+      const editIds = new Set<string>();
+      let edited = false;
       const live = (delta: LiveDelta) => this.broadcast({ type: "delta", threadId: thread.id, delta });
       const scrub = (text: string) => redactSecrets(text, this.secrets());
       const catchUp = await this.catchUp(thread.id, driver, userEvent.seq);
@@ -613,6 +629,9 @@ export class Service {
         onEvent: (event) => {
           if (event.kind === "compaction") compacted = true;
           if (event.kind === "assistant-text" || event.kind === "tool-use" || event.kind === "thinking" || event.kind === "error" || event.kind === "plan") answered = true;
+          // An Edit that completed is what makes a file change count even outside git.
+          if (event.kind === "tool-use" && event.name === "Edit") editIds.add(event.toolUseId);
+          if (event.kind === "tool-result" && !event.isError && editIds.has(event.toolUseId)) edited = true;
           // A model that returns nothing at all would otherwise leave the thread silent.
           if (event.kind === "turn-end" && !answered && !controller.signal.aborted) {
             this.emit(thread.id, { kind: "notice", text: `${driver.label} ended the turn without a reply from ${thread.model === "default" ? "its default model" : thread.model}. The model may be unavailable right now; try again or pick another.` }, provenance);
@@ -681,8 +700,9 @@ export class Service {
           }),
       });
       // The turn finished cleanly: hand it to the memory extractor. A listener
-      // failure is its own concern and never touches the thread.
-      if (!controller.signal.aborted) {
+      // failure is its own concern and never touches the thread. An automatic
+      // fix turn isn't user intent, so it never notifies the extractor.
+      if (!controller.signal.aborted && round === 0) {
         try {
           const last = [...this.store.listEvents(thread.id)].reverse().find((e) => e.event.kind === "assistant-text" && e.seq > userEvent.seq);
           const answer = last && last.event.kind === "assistant-text" ? last.event.text : "";
@@ -700,9 +720,43 @@ export class Service {
           // Background extraction is best-effort.
         }
       }
+      // The verification gate: only a turn that changed files runs it.
+      if (checkCommand && !controller.signal.aborted) {
+        // A fix round always re-checks: it exists to make the check pass.
+        const changed = round > 0 || edited || !sameSet(before!, await dirtySet(cwd));
+        if (changed) {
+          this.emit(thread.id, { kind: "check", command: checkCommand, ok: null, exitCode: null, timedOut: false, durationMs: 0, tail: "", round });
+          const r = await runCheck(checkCommand, cwd, { signal: controller.signal });
+          // A stop mid-check still closes its row, so it never spins on.
+          if (controller.signal.aborted) this.emit(thread.id, { kind: "check", command: checkCommand, ...r, ok: false, tail: "Stopped.", round });
+          else {
+            const tail = redactSecrets(r.tail, this.secrets());
+            this.emit(thread.id, { kind: "check", command: checkCommand, ...r, tail, round });
+            if (!r.ok) {
+              if (round < maxRounds) {
+                followUp = {
+                  threadId: thread.id,
+                  // Kept small: no command (the app re-runs it) and a shorter tail than the row's.
+                  text: `The project check ${r.timedOut ? "timed out" : `failed (exit ${r.exitCode})`}. Fix it, then stop; the app re-runs the check.\n\nOutput (last lines):\n\`\`\`\n${tailOf(tail, 40, 3000)}\n\`\`\``,
+                  checkRound: round + 1,
+                };
+              } else if (maxRounds > 0) {
+                this.emit(thread.id, { kind: "notice", text: `The check still fails after ${maxRounds} fix ${maxRounds === 1 ? "attempt" : "attempts"}, so it stopped. Run it yourself or ask again.` });
+              }
+            }
+          }
+        }
+      }
     } finally {
       this.running.delete(thread.id);
-      this.broadcast({ type: "running", threadId: thread.id, running: false });
+      if (followUp) {
+        // Re-add `running` before the renderer can drain its queued message: no
+        // `running: false` between rounds, so the fix and the user's queue can't race.
+        const next = followUp;
+        void this.send(next).catch((e) => this.emit(thread.id, { kind: "error", message: e instanceof Error ? e.message : String(e) }));
+      } else {
+        this.broadcast({ type: "running", threadId: thread.id, running: false });
+      }
       this.broadcast({ type: "thread", thread: this.store.updateThread(thread.id, {}) });
     }
   }
@@ -800,6 +854,36 @@ export class Service {
 
 function formatK(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+}
+
+/**
+ * The working tree's changed paths with each one's mtime and size, or an empty
+ * set outside git or when the read fails. The stamps catch a second edit to a
+ * file that was already dirty, which the path list alone can't see.
+ */
+async function dirtySet(cwd: string): Promise<Set<string>> {
+  try {
+    const state = await gitState(cwd);
+    const out = new Set<string>();
+    for (const path of (state?.dirty ?? []).slice(0, 500)) {
+      try {
+        const st = statSync(join(cwd, path));
+        out.add(`${path}|${st.mtimeMs}|${st.size}`);
+      } catch {
+        out.add(`${path}|gone`);
+      }
+    }
+    return out;
+  } catch {
+    return new Set();
+  }
+}
+
+/** Whether two sets hold the same members. */
+function sameSet<T>(a: Set<T>, b: Set<T>): boolean {
+  if (a.size !== b.size) return false;
+  for (const value of a) if (!b.has(value)) return false;
+  return true;
 }
 
 export function titleFrom(text: string, skill?: string): string {

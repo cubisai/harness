@@ -8,6 +8,7 @@ const api: UnskilledApi = {
   listProjects: () => ipcRenderer.invoke("projects:list"),
   addProject: () => ipcRenderer.invoke("projects:add"),
   deleteProject: (projectId) => ipcRenderer.invoke("projects:delete", projectId),
+  setCheckCommand: (projectId, command, fixRounds) => ipcRenderer.invoke("projects:set-check-command", projectId, command, fixRounds),
   listThreads: (projectId) => ipcRenderer.invoke("threads:list", projectId),
   createThread: (projectId, agent, opts) => ipcRenderer.invoke("threads:create", projectId, agent, opts),
   updateThread: (threadId, patch) => ipcRenderer.invoke("threads:update", threadId, patch),

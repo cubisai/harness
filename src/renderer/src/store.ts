@@ -152,6 +152,8 @@ interface State {
   init(): Promise<void>;
   addProject(): Promise<void>;
   deleteProject(id: string): Promise<void>;
+  /** Set a project's post-turn check command and apply the returned row. */
+  setCheckCommand(id: string, command: string | null, fixRounds?: number | null): Promise<void>;
   selectProject(id: string): Promise<void>;
   selectThread(id: string | null): Promise<void>;
   /** Open a new thread; `worktree` gives it its own git worktree on a new branch. */
@@ -564,6 +566,11 @@ export const useStore = create<State>((set, get) => ({
     } else if (!nextProjectId) {
       set({ selectedThreadId: null, skills: [] });
     }
+  },
+
+  async setCheckCommand(id, command, fixRounds) {
+    const project = await api().setCheckCommand(id, command, fixRounds);
+    set((s) => ({ projects: s.projects.map((p) => (p.id === project.id ? project : p)) }));
   },
 
   async selectProject(id) {

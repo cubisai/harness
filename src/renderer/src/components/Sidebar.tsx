@@ -21,8 +21,12 @@ function ProjectRow({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  // The inline "Check command…" panel, like `confirming` swapped into the menu.
+  const [checkEditing, setCheckEditing] = useState(false);
+  const [checkValue, setCheckValue] = useState(project.checkCommand ?? "");
+  const [fixRounds, setFixRounds] = useState(project.checkFixRounds ?? 1);
   const boxRef = useRef<HTMLDivElement>(null);
-  const { deleteProject, selectProject, newThread, openInEditor } = useStore.getState();
+  const { deleteProject, selectProject, newThread, openInEditor, setCheckCommand } = useStore.getState();
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -30,6 +34,7 @@ function ProjectRow({
       if (e instanceof KeyboardEvent ? e.key === "Escape" : !boxRef.current?.contains(e.target as Node)) {
         setMenuOpen(false);
         setConfirming(false);
+        setCheckEditing(false);
       }
     };
     document.addEventListener("mousedown", close);
@@ -44,7 +49,14 @@ function ProjectRow({
     e.stopPropagation();
     setMenuOpen(false);
     setConfirming(false);
+    setCheckEditing(false);
     void fn();
+  };
+
+  const saveCheck = async () => {
+    await setCheckCommand(project.id, checkValue.trim() || null, fixRounds);
+    setMenuOpen(false);
+    setCheckEditing(false);
   };
 
   return (
@@ -55,6 +67,7 @@ function ProjectRow({
         e.preventDefault();
         setMenuOpen(true);
         setConfirming(false);
+        setCheckEditing(false);
       }}
     >
       <button
@@ -87,6 +100,7 @@ function ProjectRow({
             e.stopPropagation();
             setMenuOpen((m) => !m);
             setConfirming(false);
+            setCheckEditing(false);
           }}
         >
           <IconMore size={14} />
@@ -110,6 +124,39 @@ function ProjectRow({
                 Cancel
               </button>
             </>
+          ) : checkEditing ? (
+            <>
+              <p className="thread-menu-note">Runs after a turn that changed files. A pass costs no tokens; each auto-fix is one more agent turn.</p>
+              <input
+                className="text-input"
+                placeholder="bun run typecheck"
+                value={checkValue}
+                autoFocus
+                onChange={(e) => setCheckValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void saveCheck();
+                  } else if (e.key === "Escape") {
+                    setCheckEditing(false);
+                  }
+                }}
+              />
+              <select className="select" value={fixRounds} onChange={(e) => setFixRounds(Number(e.target.value))} aria-label="Auto-fix">
+                <option value={0}>Auto-fix: off</option>
+                <option value={1}>Auto-fix: 1 round</option>
+                <option value={2}>Auto-fix: 2 rounds</option>
+              </select>
+              <button role="menuitem" onClick={() => void saveCheck()}>
+                Save
+              </button>
+              <button role="menuitem" onClick={act(() => setCheckCommand(project.id, null))}>
+                Clear
+              </button>
+              <button role="menuitem" onClick={() => setCheckEditing(false)}>
+                Cancel
+              </button>
+            </>
           ) : (
             <>
               <button role="menuitem" onClick={act(() => selectProject(project.id).then(() => newThread()))}>
@@ -120,6 +167,16 @@ function ProjectRow({
               </button>
               <button role="menuitem" onClick={act(() => navigator.clipboard.writeText(project.path))}>
                 Copy path
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  setCheckValue(project.checkCommand ?? "");
+                  setFixRounds(project.checkFixRounds ?? 1);
+                  setCheckEditing(true);
+                }}
+              >
+                Check command…
               </button>
               <button role="menuitem" className="danger" onClick={() => setConfirming(true)}>
                 Remove from Harness…

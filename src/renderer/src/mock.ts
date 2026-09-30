@@ -44,7 +44,7 @@ export function installMock(): void {
     scene === "welcome"
       ? []
       : [
-          { id: "p1", path: "/Users/you/code/acme-web", name: "acme-web", createdAt: now },
+          { id: "p1", path: "/Users/you/code/acme-web", name: "acme-web", createdAt: now, checkCommand: "bun run typecheck" },
           { id: "p2", path: "/Users/you/code/billing-service", name: "billing-service", createdAt: now },
         ];
   const t = (id: string, projectId: string, title: string, ago: number, agent = "claude"): Thread => ({
@@ -223,6 +223,13 @@ export function installMock(): void {
       const idx = projects.findIndex((p) => p.id === pid);
       if (idx >= 0) projects.splice(idx, 1);
       delete threads[pid];
+    },
+    setCheckCommand: async (pid, command, fixRounds) => {
+      const project = projects.find((p) => p.id === pid);
+      if (!project) throw new Error("no project");
+      project.checkCommand = command;
+      if (fixRounds !== undefined) project.checkFixRounds = fixRounds;
+      return project;
     },
     listThreads: async (pid) => threads[pid] ?? [],
     createThread: async (pid, agent, opts) => {

@@ -766,6 +766,10 @@ async function main(): Promise<void> {
     return res.canceled || !path ? null : store.addProject(path);
   });
   ipcMain.handle("projects:delete", (_e, id: string) => service.deleteProject(id));
+  // A project mutation returns the row, as add/delete do; the renderer store applies it.
+  ipcMain.handle("projects:set-check-command", (_e, projectId: string, command: string | null, fixRounds?: number | null) =>
+    store.setCheckCommand(projectId, command, fixRounds),
+  );
   ipcMain.handle("threads:list", (_e, projectId: string) => store.listThreads(projectId));
   ipcMain.handle("threads:create", (_e, projectId: string, agent?: string, opts?: { worktree?: boolean }) =>
     opts?.worktree ? service.createWorktreeThread(projectId, agent) : service.createThread(projectId, agent),

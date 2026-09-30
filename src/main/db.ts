@@ -27,7 +27,9 @@ export class Store {
         id TEXT PRIMARY KEY,
         path TEXT NOT NULL UNIQUE,
         name TEXT NOT NULL,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        check_command TEXT,
+        check_fix_rounds INTEGER
       );
       CREATE TABLE IF NOT EXISTS threads (
         id TEXT PRIMARY KEY,
@@ -132,6 +134,10 @@ export class Store {
         sql: `ALTER TABLE threads ADD COLUMN branch TEXT;
           ALTER TABLE threads ADD COLUMN worktree_path TEXT;`,
       },
+      // 15: the project's post-turn check command; null = off.
+      { applied: () => this.hasColumn("projects", "check_command"), sql: "ALTER TABLE projects ADD COLUMN check_command TEXT" },
+      // 16: how many automatic fix turns a failed check may send; null = 1.
+      { applied: () => this.hasColumn("projects", "check_fix_rounds"), sql: "ALTER TABLE projects ADD COLUMN check_fix_rounds INTEGER" },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;
@@ -159,13 +165,13 @@ export class Store {
 
   listProjects(): Project[] {
     return this.db
-      .prepare("SELECT id, path, name, created_at FROM projects ORDER BY name COLLATE NOCASE")
+      .prepare("SELECT id, path, name, created_at, check_command, check_fix_rounds FROM projects ORDER BY name COLLATE NOCASE")
       .all()
       .map((r) => toProject(r as unknown as ProjectRow));
   }
 
   addProject(path: string): Project {
-    const existing = this.db.prepare("SELECT id, path, name, created_at FROM projects WHERE path = ?").get(path);
+    const existing = this.db.prepare("SELECT id, path, name, created_at, check_command, check_fix_rounds FROM projects WHERE path = ?").get(path);
     if (existing) return toProject(existing as unknown as ProjectRow);
     const project: Project = { id: randomUUID(), path, name: basename(path) || path, createdAt: Date.now() };
     this.db
@@ -175,9 +181,20 @@ export class Store {
   }
 
   getProject(id: string): Project {
-    const row = this.db.prepare("SELECT id, path, name, created_at FROM projects WHERE id = ?").get(id);
+    const row = this.db.prepare("SELECT id, path, name, created_at, check_command, check_fix_rounds FROM projects WHERE id = ?").get(id);
     if (!row) throw new Error(`no project ${id}`);
     return toProject(row as unknown as ProjectRow);
+  }
+
+  /** Set the project's post-turn check command; a blank command turns it off. */
+  setCheckCommand(id: string, command: string | null, fixRounds?: number | null): Project {
+    this.db.prepare("UPDATE projects SET check_command = ? WHERE id = ?").run(command?.trim() || null, id);
+    // Left out = unchanged; otherwise clamped to 0-2 (null = the default, 1).
+    if (fixRounds !== undefined) {
+      const rounds = fixRounds === null ? null : Math.max(0, Math.min(2, Math.trunc(fixRounds)));
+      this.db.prepare("UPDATE projects SET check_fix_rounds = ? WHERE id = ?").run(rounds, id);
+    }
+    return this.getProject(id);
   }
 
   deleteProject(id: string): void {
@@ -488,6 +505,8 @@ interface ProjectRow {
   path: string;
   name: string;
   created_at: number;
+  check_command: string | null;
+  check_fix_rounds: number | null;
 }
 
 interface ThreadRow {
@@ -518,7 +537,7 @@ export function blobRefOf(event: ThreadEvent): { sha256: string; bytes: number |
 }
 
 function toProject(r: ProjectRow): Project {
-  return { id: r.id, path: r.path, name: r.name, createdAt: r.created_at };
+  return { id: r.id, path: r.path, name: r.name, createdAt: r.created_at, checkCommand: r.check_command ?? null, checkFixRounds: r.check_fix_rounds ?? null };
 }
 
 function toThread(r: ThreadRow): Thread {

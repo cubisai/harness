@@ -307,6 +307,103 @@ describe("Service.send", () => {
   });
 });
 
+describe("the project check gate", () => {
+  const node = process.execPath;
+  const nodeCmd = (script: string) => `"${node}" -e "${script}"`;
+  // An Edit tool-use plus a non-error result: what counts as a changed file.
+  const edit = (input: TurnInput) => {
+    input.onEvent({ kind: "tool-use", toolUseId: "e1", name: "Edit", summary: "a.ts" });
+    input.onEvent({ kind: "tool-result", toolUseId: "e1", isError: false, summary: "Updated" });
+  };
+
+  it("runs no check when the project has no command", async () => {
+    const { store, service, thread } = setup(async (input) => edit(input));
+    await service.send({ threadId: thread.id, text: "go" });
+    expect(store.listEvents(thread.id).filter((e) => e.event.kind === "check")).toHaveLength(0);
+  });
+
+  it("runs no check when the turn changed nothing", async () => {
+    const { store, service, thread } = setup(async () => {});
+    store.setCheckCommand(thread.projectId, nodeCmd("process.exit(0)"));
+    await service.send({ threadId: thread.id, text: "go" });
+    expect(store.listEvents(thread.id).filter((e) => e.event.kind === "check")).toHaveLength(0);
+  });
+
+  it("runs a passing check once and stops", async () => {
+    const { store, service, driver, thread } = setup(async (input) => edit(input));
+    store.setCheckCommand(thread.projectId, nodeCmd("process.exit(0)"));
+    await service.send({ threadId: thread.id, text: "go" });
+    const checks = store
+      .listEvents(thread.id)
+      .map((e) => e.event)
+      .filter((e): e is Extract<ThreadEvent, { kind: "check" }> => e.kind === "check");
+    expect(checks).toHaveLength(2); // the running row, then the final row
+    expect(checks[1]).toMatchObject({ ok: true, round: 0 });
+    expect(driver.prompts).toHaveLength(1);
+  });
+
+  it("sends up to 2 fix rounds when the check keeps failing", async () => {
+    const { store, service, driver, thread } = setup(async (input) => edit(input));
+    store.setCheckCommand(thread.projectId, nodeCmd("process.exit(3)"), 2);
+    await service.send({ threadId: thread.id, text: "go" });
+    await vi.waitFor(() => expect(service.isRunning(thread.id)).toBe(false), { timeout: 10_000 });
+    expect(driver.prompts).toHaveLength(3);
+    expect(driver.prompts[1]).toContain("failed (exit 3)");
+    expect(driver.prompts[2]).toContain("failed (exit 3)");
+    // A fix round never renames the thread, and never repeats the command.
+    expect(store.getThread(thread.id).title).toBe("go");
+    expect(driver.prompts[1]).not.toContain("process.exit");
+    const notices = store
+      .listEvents(thread.id)
+      .map((e) => e.event)
+      .filter((e): e is Extract<ThreadEvent, { kind: "notice" }> => e.kind === "notice")
+      .map((e) => e.text);
+    expect(notices).toContain("The check still fails after 2 fix attempts, so it stopped. Run it yourself or ask again.");
+  });
+
+  it("re-checks a fix round even when it made no edit the app can see", async () => {
+    // Only the user's turn reports an Edit; the fix turns change nothing visible (a shell write, say).
+    const { store, service, driver, thread } = setup(async (input) => {
+      if (!input.prompt.includes("failed (exit 3)")) edit(input);
+    });
+    store.setCheckCommand(thread.projectId, nodeCmd("process.exit(3)"), 2);
+    await service.send({ threadId: thread.id, text: "go" });
+    await vi.waitFor(() => expect(service.isRunning(thread.id)).toBe(false), { timeout: 10_000 });
+    expect(driver.prompts).toHaveLength(3);
+    const checks = store.listEvents(thread.id).filter((e) => e.event.kind === "check" && e.event.ok === false);
+    expect(checks).toHaveLength(3);
+  });
+
+  it("sends one fix round by default, and none when auto-fix is off", async () => {
+    const one = setup(async (input) => edit(input));
+    one.store.setCheckCommand(one.thread.projectId, nodeCmd("process.exit(3)"));
+    await one.service.send({ threadId: one.thread.id, text: "go" });
+    await vi.waitFor(() => expect(one.service.isRunning(one.thread.id)).toBe(false), { timeout: 10_000 });
+    expect(one.driver.prompts).toHaveLength(2);
+
+    const off = setup(async (input) => edit(input));
+    off.store.setCheckCommand(off.thread.projectId, nodeCmd("process.exit(3)"), 0);
+    await off.service.send({ threadId: off.thread.id, text: "go" });
+    await vi.waitFor(() => expect(off.service.isRunning(off.thread.id)).toBe(false), { timeout: 10_000 });
+    // Off: the failure shows as a row, and no token is spent on a fix turn.
+    expect(off.driver.prompts).toHaveLength(1);
+    const events = off.store.listEvents(off.thread.id).map((e) => e.event);
+    expect(events.some((e) => e.kind === "check" && e.ok === false)).toBe(true);
+    expect(events.some((e) => e.kind === "notice" && e.text.includes("fix attempt"))).toBe(false);
+  });
+
+  it("stops on interrupt during the check, with no follow-up", async () => {
+    const { store, service, driver, thread, updates } = setup(async (input) => edit(input));
+    store.setCheckCommand(thread.projectId, nodeCmd("setInterval(()=>{},1000)"));
+    const sending = service.send({ threadId: thread.id, text: "go" });
+    await vi.waitFor(() => expect(updates.some((u) => u.type === "event" && u.stored.event.kind === "check")).toBe(true), { timeout: 5000 });
+    service.interrupt(thread.id);
+    await sending;
+    await vi.waitFor(() => expect(service.isRunning(thread.id)).toBe(false), { timeout: 5000 });
+    expect(driver.prompts).toHaveLength(1);
+  });
+});
+
 describe("titleFrom", () => {
   it("uses the first line, prefixed with the skill", () => {
     expect(titleFrom("Fix the bug\nmore", undefined)).toBe("Fix the bug");

@@ -214,6 +214,36 @@ describe("Store migrations", () => {
     expect(store.listThreads("p")[0]).toMatchObject({ branch: "harness/keep-abc123", worktreePath: "/worktrees/t" });
   });
 
+  it("adds check_command to a database at version 14, and setCheckCommand round-trips", () => {
+    const file = join(tempDir(), "pre15.db");
+    const old = new DatabaseSync(file);
+    old.exec(`
+      CREATE TABLE projects (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at INTEGER NOT NULL);
+      CREATE TABLE threads (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, agent TEXT NOT NULL DEFAULT 'claude', title TEXT NOT NULL,
+        session_id TEXT, bindings TEXT NOT NULL DEFAULT '{}', model TEXT NOT NULL, effort TEXT, permission_mode TEXT NOT NULL,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0, archived INTEGER NOT NULL DEFAULT 0,
+        branch TEXT, worktree_path TEXT);
+      CREATE TABLE schema_version (version INTEGER NOT NULL);
+      INSERT INTO schema_version VALUES (14);
+      INSERT INTO projects VALUES ('p', '/x', 'x', 1);
+    `);
+    old.close();
+
+    const store = new Store(file);
+    closeAfter(() => store.close());
+    expect(store.getProject("p").checkCommand ?? null).toBeNull();
+    expect(store.setCheckCommand("p", "bun run typecheck").checkCommand).toBe("bun run typecheck");
+    expect(store.getProject("p").checkCommand).toBe("bun run typecheck");
+    expect(store.listProjects()[0]!.checkCommand).toBe("bun run typecheck");
+    // A blank command turns the gate off.
+    expect(store.setCheckCommand("p", "   ").checkCommand).toBeNull();
+    expect(store.getProject("p").checkFixRounds ?? null).toBeNull();
+    expect(store.setCheckCommand("p", "x", 0).checkFixRounds).toBe(0);
+    expect(store.setCheckCommand("p", "x", 9).checkFixRounds).toBe(2);
+    expect(store.setCheckCommand("p", "x").checkFixRounds).toBe(2);
+    expect(store.getProject("p").checkCommand).toBe("x");
+  });
+
   it("round-trips a thread's worktree on a fresh database", () => {
     const store = new Store(join(tempDir(), "worktree.db"));
     closeAfter(() => store.close());

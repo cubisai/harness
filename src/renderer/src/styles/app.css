@@ -582,6 +582,9 @@ details.tool[open]::details-content { height: auto; }
   font-variant-numeric: tabular-nums;
 }
 .notice { color: var(--text-secondary); font-size: 12px; margin: 8px 0; }
+/* A project check's running/passed/failed row. */
+.check-row summary { cursor: pointer; margin-top: 4px; }
+.check-row pre { margin: 4px 0 0; }
 /* The running turn's line, in Claude Code's style. */
 .waiting-line { display: flex; align-items: center; gap: 6px; margin: 12px 0 4px; font-size: 12.5px; color: var(--text-secondary); }
 .waiting-orb { width: 20px; height: 20px; flex: none; align-self: center; }
