@@ -72,12 +72,13 @@ describe("mock extension kit", () => {
 
   it("writes via the CLI, refusing to overwrite without --force", () => {
     const root = tempDir();
-    const first = spawnSync(process.execPath, [CLI, "--out", root, "--preset", "small"], { encoding: "utf-8" });
+    const out = join(root, "out");
+    const first = spawnSync(process.execPath, [CLI, "--out", out, "--preset", "small"], { encoding: "utf-8" });
     expect(first.status).toBe(0);
-    expect(first.stdout.trim()).toMatch(/^wrote \d+ skills, \d+ servers x \d+ tools to /);
-    expect(existsSync(join(root, ".agents", "skills"))).toBe(true);
-    expect(spawnSync(process.execPath, [CLI, "--out", root, "--preset", "small"], { encoding: "utf-8" }).status).toBe(1);
-    expect(spawnSync(process.execPath, [CLI, "--out", root, "--preset", "small", "--force"], { encoding: "utf-8" }).status).toBe(0);
+    expect(first.stdout.trim()).toMatch(/^wrote \d+ skills, \d+ servers x \d+ tools to .+ \(manifest: .+\)$/);
+    expect(existsSync(join(out, ".agents", "skills"))).toBe(true);
+    expect(spawnSync(process.execPath, [CLI, "--out", out, "--preset", "small"], { encoding: "utf-8" }).status).toBe(1);
+    expect(spawnSync(process.execPath, [CLI, "--out", out, "--preset", "small", "--force"], { encoding: "utf-8" }).status).toBe(0);
   });
 
   it("parses generated SKILL.md with CRLF line endings", () => {
@@ -93,23 +94,63 @@ describe("mock extension kit", () => {
 
   it("--mcp-out writes the MCP JSON to the given file", () => {
     const root = tempDir();
+    const out = join(root, "out");
     const other = tempDir();
     const mcpOut = join(other, "nested", "mcp.json");
-    const res = spawnSync(process.execPath, [CLI, "--out", root, "--preset", "small", "--mcp-out", mcpOut], { encoding: "utf-8" });
+    const res = spawnSync(process.execPath, [CLI, "--out", out, "--preset", "small", "--mcp-out", mcpOut], { encoding: "utf-8" });
     expect(res.status).toBe(0);
     expect(existsSync(mcpOut)).toBe(true);
     expect(Object.keys(JSON.parse(readFileSync(mcpOut, "utf-8")).mcpServers)).toHaveLength(PRESETS.small.servers);
-    expect(existsSync(join(root, ".mcp.json"))).toBe(false);
+    expect(existsSync(join(out, ".mcp.json"))).toBe(false);
   });
 
   it("refuses to overwrite an existing MCP file without --force", () => {
     const root = tempDir();
-    const mcp = join(root, ".mcp.json");
+    const out = join(root, "out");
+    const mcp = join(out, ".mcp.json");
+    mkdirSync(dirname(mcp), { recursive: true });
     writeFileSync(mcp, "keep me");
-    const refused = spawnSync(process.execPath, [CLI, "--out", root, "--preset", "small"], { encoding: "utf-8" });
+    const refused = spawnSync(process.execPath, [CLI, "--out", out, "--preset", "small"], { encoding: "utf-8" });
     expect(refused.status).toBe(1);
     expect(readFileSync(mcp, "utf-8")).toBe("keep me");
-    const forced = spawnSync(process.execPath, [CLI, "--out", root, "--preset", "small", "--force"], { encoding: "utf-8" });
+    const forced = spawnSync(process.execPath, [CLI, "--out", out, "--preset", "small", "--force"], { encoding: "utf-8" });
+    expect(forced.status).toBe(0);
+  });
+
+  it("writes the manifest outside the output dir by default", () => {
+    const root = tempDir();
+    const out = join(root, "out");
+    const res = spawnSync(process.execPath, [CLI, "--out", out, "--preset", "small"], { encoding: "utf-8" });
+    expect(res.status).toBe(0);
+    expect(existsSync(join(out, "mock-manifest.json"))).toBe(false);
+    const manifestPath = `${out}.manifest.json`;
+    expect(existsSync(manifestPath)).toBe(true);
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
+    expect(manifest.evals).toHaveLength(10);
+    expect(manifest.evals).toEqual(generate({ ...PRESETS.small, seed: 1, serverScript: SERVER }).manifest.evals);
+  });
+
+  it("--manifest-out writes the manifest to the given file", () => {
+    const root = tempDir();
+    const out = join(root, "out");
+    const other = tempDir();
+    const manifestOut = join(other, "nested", "manifest.json");
+    const res = spawnSync(process.execPath, [CLI, "--out", out, "--preset", "small", "--manifest-out", manifestOut], { encoding: "utf-8" });
+    expect(res.status).toBe(0);
+    expect(existsSync(manifestOut)).toBe(true);
+    expect(existsSync(join(out, "mock-manifest.json"))).toBe(false);
+    expect(JSON.parse(readFileSync(manifestOut, "utf-8")).evals).toHaveLength(10);
+  });
+
+  it("refuses to overwrite an existing manifest without --force", () => {
+    const root = tempDir();
+    const out = join(root, "out");
+    const manifestPath = `${out}.manifest.json`;
+    writeFileSync(manifestPath, "keep me");
+    const refused = spawnSync(process.execPath, [CLI, "--out", out, "--preset", "small"], { encoding: "utf-8" });
+    expect(refused.status).toBe(1);
+    expect(readFileSync(manifestPath, "utf-8")).toBe("keep me");
+    const forced = spawnSync(process.execPath, [CLI, "--out", out, "--preset", "small", "--force"], { encoding: "utf-8" });
     expect(forced.status).toBe(0);
   });
 });
