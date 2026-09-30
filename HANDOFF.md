@@ -1,6 +1,6 @@
 # Handoff — Phase E done (one shared CubiQ memory + /context); next: doc 11 §11.3 extension import, §11.4 guide diet
 
-Updated 2026-09-29 on the **Mac**, branch `m4`, last commit on it is this file. Read **Resume here** first, then `plan/docs/11-memory-extensions-guide.md` §11.3–11.4, then `CLAUDE.md` (opencode-delegation workflow). Phase E plan and per-slice evidence: `.ai/plans/phase-e-memory.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`; from the Windows PC: `commit-only-own-paths`, `two-machines` (every fix must work on Windows and macOS).
+Updated 2026-09-29 on the **Mac**, branch `m4`, last commit on it is this file. Read **Resume here** first, then `plan/docs/11-memory-extensions-guide.md` §11.3–11.4, then `CLAUDE.md` (opencode-delegation workflow). Current plan (all open work, research verdicts, backlog): `.ai/plans/harness-roadmap.md`; external research: `plan/docs/finding-research.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`; from the Windows PC: `commit-only-own-paths`, `two-machines` (every fix must work on Windows and macOS).
 
 ## Where things stand
 
