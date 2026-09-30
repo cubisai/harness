@@ -234,6 +234,40 @@ describe("ACP driver", () => {
     expect(firstText).not.toContain("<harness-memory>");
   });
 
+  it("prices the agent's skills and MCP tools in a fresh session's breakdown", async () => {
+    let extCalls = 0;
+    const d = createAcpDriver(
+      { id: "mock", label: "Mock", command: process.execPath, args: [MOCK] },
+      {
+        clientVersion: "test",
+        extensions: () => {
+          extCalls++;
+          return { skills: 120, mcp: 900 };
+        },
+      },
+    );
+    closeAfter(() => d.dispose?.());
+    const t = turn("hello");
+    await d.runTurn(t.input);
+    expect(extCalls).toBeGreaterThanOrEqual(2);
+    const breakdown = t.events.find((e): e is Extract<ThreadEvent, { kind: "context-breakdown" }> => e.kind === "context-breakdown");
+    expect(breakdown?.rows).toEqual(expect.arrayContaining([{ label: "Skills", tokens: 120 }, { label: "MCP tools", tokens: 900 }]));
+  });
+
+  it("drops the skills and MCP rows when the agent carries none", async () => {
+    const d = createAcpDriver(
+      { id: "mock", label: "Mock", command: process.execPath, args: [MOCK] },
+      { clientVersion: "test", extensions: () => ({ skills: 0, mcp: 0 }) },
+    );
+    closeAfter(() => d.dispose?.());
+    const t = turn("hello");
+    await d.runTurn(t.input);
+    const breakdown = t.events.find((e): e is Extract<ThreadEvent, { kind: "context-breakdown" }> => e.kind === "context-breakdown");
+    const labels = breakdown?.rows.map((r) => r.label) ?? [];
+    expect(labels).not.toContain("Skills");
+    expect(labels).not.toContain("MCP tools");
+  });
+
   it("ignores context-window usage when the prompt response has no usage", async () => {
     const d = driver();
     const t = turn("nousage");

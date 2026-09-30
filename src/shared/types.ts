@@ -821,7 +821,10 @@ export interface AboutInfo {
 export interface ContextPreview {
   guide: { source: "bundled" | "user" | "project"; path: string; tokens: number }[];
   tools: { name: string; tokens: number }[];
-  mcpServers: string[];
+  /** Each enabled MCP server: its tool count and schema cost, null until listed. Deferred = the agent loads schemas only on demand. */
+  mcp: { name: string; tools: number | null; tokens: number | null; deferred: boolean; error?: string }[];
+  /** The thread agent's skills listing cost; null outside a thread. */
+  skills: { mode: SkillsDelivery["mode"]; count: number; tokens: number } | null;
   /** The shared memory index, once memory exists (null until then). */
   memoryIndex: { lines: number; tokens: number } | null;
 }

@@ -71,6 +71,8 @@ export interface CodexConfig {
   guardScript?: string;
   /** The harness guide for this turn's cwd, sent as developer instructions to Codex. */
   guide?: (cwd: string) => string;
+  /** The skills listing and MCP tool schemas this project's new session carries, in estimated tokens (0 when deferred or not yet listed). */
+  extensions?: (cwd: string, projectId: string | null) => { skills: number; mcp: number };
   /** The memory block for this project's new sessions (memoryPrompt output, may be ""), or null when CubiQ memory is off. */
   memory?: (projectId: string) => string | null;
 }
@@ -797,6 +799,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       const model = input.model === CODEX_DEFAULT_MODEL ? null : input.model;
       // A brand-new session's first turn pays to write the guide and tool schemas into the prompt cache.
       const fresh = !input.sessionId;
+      // Warm the extensions estimate (MCP tool listings) so the breakdown at the end of this turn has it.
+      if (fresh) config.extensions?.(input.cwd, input.projectId ?? null);
       let opened: { threadId: string; model: string | null };
       try {
         opened = await openThread(input);
@@ -909,10 +913,13 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
               return JSON.stringify(input.tools.map((t) => ({ name: t.name, description: t.description })));
             }
           })();
+          const ext = config.extensions?.(input.cwd, input.projectId ?? null);
           const rows = [
             { label: "Harness tools", tokens: Math.ceil(serializedTools.length / 4) },
             { label: "Harness guide", tokens: Math.ceil((config.guide?.(input.cwd) ?? "").length / 4) },
             { label: "Memory index", tokens: Math.ceil((frozenMemory.get(threadId) ?? "").length / 4) },
+            { label: "Skills", tokens: ext?.skills ?? 0 },
+            { label: "MCP tools", tokens: ext?.mcp ?? 0 },
           ]
             .filter((r) => r.tokens > 0)
             .sort((a, b) => b.tokens - a.tokens);

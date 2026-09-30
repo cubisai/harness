@@ -4,6 +4,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { getDefaultEnvironment, StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { McpServerEntry, McpServerSpec, McpServerView, McpTestResult } from "../../shared/types";
+import { stableStringify } from "../cache-policy";
+import { killPidTree } from "../winspawn";
 
 /** The name the app's own tools use; a user server can't take it. */
 export const BUILT_IN_SERVER = "cubiq";
@@ -242,8 +244,25 @@ export function mcpChangeNotice(before: Record<string, unknown>, after: Record<s
     : `MCP servers changed (${parts.join("; ")}), but ${agent} can't reopen a session, so the change applies from the next new thread.`;
 }
 
-/** Connect, list the server's tools, disconnect. */
-export async function testServer(spec: McpServerSpec, timeoutMs = 20_000): Promise<McpTestResult> {
+/** One tool as a server described it, schema included: what the Context sheet prices. */
+export interface McpToolInfo {
+  name: string;
+  description: string;
+  inputSchema: unknown;
+}
+
+/** A pid is still running (signal 0 only probes). */
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Connect, list the server's tools with their schemas, disconnect. */
+export async function listServerTools(spec: McpServerSpec, timeoutMs = 20_000): Promise<{ ok: boolean; tools: McpToolInfo[]; error?: string }> {
   const client = new Client({ name: "cubiq", version: "1.0.0" });
   const transport =
     spec.type === "http"
@@ -256,11 +275,72 @@ export async function testServer(spec: McpServerSpec, timeoutMs = 20_000): Promi
   try {
     await Promise.race([client.connect(transport), timeout]);
     const { tools } = await Promise.race([client.listTools(), timeout]);
-    return { ok: true, tools: tools.map((t) => ({ name: t.name, description: t.description ?? "" })) };
+    return { ok: true, tools: tools.map((t) => ({ name: t.name, description: t.description ?? "", inputSchema: t.inputSchema })) };
   } catch (err) {
     return { ok: false, tools: [], error: err instanceof Error ? err.message : String(err) };
   } finally {
+    // The pid is read before close: the transport clears it as it shuts the child down.
+    const pid = transport instanceof StdioClientTransport ? transport.pid : null;
     clearTimeout(timer);
     await client.close().catch(() => {});
+    // A hung server can ignore the close; end its tree so it isn't left running.
+    if (pid !== null && alive(pid)) killPidTree(pid);
+  }
+}
+
+/** Connect, list the server's tools, disconnect. */
+export async function testServer(spec: McpServerSpec, timeoutMs = 20_000): Promise<McpTestResult> {
+  const r = await listServerTools(spec, timeoutMs);
+  return { ok: r.ok, tools: r.tools.map(({ name, description }) => ({ name, description })), ...(r.error !== undefined && { error: r.error }) };
+}
+
+interface McpToolsEntry {
+  at: number;
+  ok: boolean;
+  tools: McpToolInfo[];
+  error?: string;
+}
+
+/**
+ * The enabled MCP servers' tool schemas, listed once per spec and kept for the
+ * Context sheet. An ok listing lives 10 minutes and a failure 1, so a server
+ * that is down isn't re-probed on every open. Concurrent asks share one listing.
+ */
+export class McpToolsCache {
+  private entries = new Map<string, McpToolsEntry>();
+  private inflight = new Map<string, Promise<void>>();
+
+  constructor(private list = listServerTools, private now = () => Date.now()) {}
+
+  /** The cached listing for this spec, or null when there isn't a fresh one. */
+  peek(spec: McpServerSpec): { ok: boolean; tools: McpToolInfo[]; error?: string } | null {
+    const entry = this.entries.get(stableStringify(spec));
+    if (!entry) return null;
+    if (this.now() - entry.at >= (entry.ok ? 600_000 : 60_000)) return null;
+    return { ok: entry.ok, tools: entry.tools, ...(entry.error !== undefined && { error: entry.error }) };
+  }
+
+  /** List every enabled server without a fresh listing; never throws. */
+  async refresh(servers: McpServerEntry[], timeoutMs = 5_000): Promise<void> {
+    await Promise.all(
+      servers
+        .filter((s) => s.enabled === true && this.peek(s.spec) === null)
+        .map((s) => {
+          const key = stableStringify(s.spec);
+          const running = this.inflight.get(key);
+          if (running) return running;
+          const run = this.list(s.spec, timeoutMs)
+            .then((r) => {
+              this.entries.set(key, { at: this.now(), ok: r.ok, tools: r.tools, ...(r.error !== undefined && { error: r.error }) });
+            })
+            .catch(() => {
+              // listServerTools never throws, but the sheet must survive one that does.
+              this.entries.set(key, { at: this.now(), ok: false, tools: [], error: "failed" });
+            })
+            .finally(() => this.inflight.delete(key));
+          this.inflight.set(key, run);
+          return run;
+        }),
+    );
   }
 }

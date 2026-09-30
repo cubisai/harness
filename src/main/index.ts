@@ -4,7 +4,7 @@ import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell } from "electron";
-import type { AboutInfo, AgentLimits, ContextPreview, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, ScreenshotInfo, SendRequest, Settings, SkillOrigin, SwitchMode, Thread } from "../shared/types";
+import type { AboutInfo, AgentLimits, ContextPreview, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, ScreenshotInfo, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread } from "../shared/types";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
 import { warmBinaries } from "./agents/binaries";
@@ -29,7 +29,7 @@ import { opencodeVariants, opencodeVersion, withOpenCodeVariant } from "./inject
 import { ensureOpenCodeGuard, withOpenCodeGuard } from "./inject/opencode-guard";
 import { BUILT_IN_GUARD, findPython } from "./guard";
 import { createGuide } from "./guide";
-import { buildContextPreview } from "./context-preview";
+import { buildContextPreview, mcpRow, skillsOf } from "./context-preview";
 import { createMemory, memoryOn, memoryPrompt } from "./memory";
 import { createMemoryApi } from "./memory/api";
 import { createExtractor } from "./memory/extractor";
@@ -41,7 +41,8 @@ import { referenceEvents } from "./canonical-events";
 import { smokeCanonicalEvents, smokeHandoff, smokeMigration, smokeProviders } from "./smoke-checks";
 import { Editors, realHost } from "./editors";
 import { readExternalMcp } from "./mcp/external";
-import { BUILT_IN_SERVER, McpScopes, McpServerStore, testServer, viewOf } from "./mcp/servers";
+import { BUILT_IN_SERVER, McpScopes, McpServerStore, McpToolsCache, testServer, viewOf } from "./mcp/servers";
+import { providerWarning } from "../shared/provider-rules";
 import { Updater, type UpdaterBackend } from "./updater";
 import { defaultSkillsCandidates, findSkillsRoot } from "./skills/catalog";
 import { ensureModelSkillsDir, ensurePlugin } from "./skills/plugin";
@@ -219,6 +220,22 @@ async function main(): Promise<void> {
     harnessDir,
     disabled: () => settings.get().skills?.disabled ?? [],
   });
+  /**
+   * The skills listing one agent carries for a cwd, priced the same by the
+   * Context sheet and the first-turn breakdown. Null when the agent takes no
+   * skills. "tool" mode's list is built once, so the tool and the names it
+   * lists can't disagree.
+   */
+  const skillsInputFor = (delivery: SkillsDelivery | undefined, cwd: string | null) => {
+    if (!delivery) return null;
+    const toolSkills = forAgent(skills.global(), { mode: "tool", reads: ["project", "shared"] });
+    return {
+      mode: delivery.mode,
+      entries: skills.forProject(cwd).modelSkills.map(({ name, description }) => ({ name, description })),
+      tool: delivery.mode === "tool" ? skillTool(() => toolSkills) : undefined,
+      toolNames: toolSkills.map((s) => s.name),
+    };
+  };
   const windows = new Set<BrowserWindow>();
   const broadcast = (update: LiveUpdate) => {
     for (const w of windows) if (!w.isDestroyed()) w.webContents.send("unskilled:update", update);
@@ -356,6 +373,7 @@ async function main(): Promise<void> {
             guardScript,
             guide: (cwd) => guide.forCwd(cwd),
             memory: memoryPromptFor,
+            extensions: extensionsFor("codex"),
             skillsDir: () => ensureModelSkillsDir(forAgent(skills.global(), CODEX_CAPABILITIES.skillsDelivery), modelSkillsDir),
             toolServer: getToolServer,
             onLimits: limits.for("codex"),
@@ -393,6 +411,7 @@ async function main(): Promise<void> {
         guardScript,
         guide: (cwd) => guide.forCwd(cwd),
         memory: memoryPromptFor,
+        extensions: extensionsFor(config.id),
         ...(config.effortVia === "opencode-variants" ? { variants: () => opencodeVariants(config.command) } : {}),
         injection: (ctx) => {
           let plan = injectionFor(settings, config.id, process.env, {
@@ -449,6 +468,8 @@ async function main(): Promise<void> {
   const mcpStore = new McpServerStore(join(userData, "mcp.json"));
   const mcpProjectDir = (projectId: string) => join(userData, "projects", projectId);
   const mcpScopes = new McpScopes(mcpStore, mcpProjectDir);
+  // The enabled servers' tool schemas, for the Context sheet; listed on demand.
+  const mcpTools = new McpToolsCache();
   const service = new Service(
     store,
     (cwd: string | null) => skills.forProject(cwd),
@@ -648,15 +669,49 @@ async function main(): Promise<void> {
       changelog: build.changelog,
     };
   });
-  ipcMain.handle("context:preview", (_e, threadId: string | null, projectId: string | null): ContextPreview => {
+  // MCP tool search defers schemas to a lookup: still on for Claude's own login
+  // and a first-party key (a custom gateway drops it), Codex only on its own login.
+  const mcpDeferred = (driver: (typeof drivers)[number] | undefined): boolean => {
+    const mode = driver?.capabilities.skillsDelivery.mode;
+    if (!driver || (mode !== "plugin" && mode !== "extraRoots")) return false;
+    const c = settings.credential(driver.id);
+    if (c.kind === "subscription") return true;
+    if (mode !== "plugin") return false;
+    const p = settings.providers().find((x) => x.id === c.providerId);
+    return !!p && providerWarning(p, "claude") === null;
+  };
+  /**
+   * The skills and MCP-tool tokens a driver's fresh session carries, for the
+   * estimated first-turn breakdown. Hoisted so the driver configs, built before
+   * the mcp declarations below, can reference it; it only runs during a turn,
+   * after setup, so those references are safe.
+   */
+  function extensionsFor(driverId: string): (cwd: string, projectId: string | null) => { skills: number; mcp: number } {
+    return (cwd, projectId) => {
+      const driver = drivers.find((d) => d.id === driverId);
+      const servers = mcpScopes.effective(projectId).filter((s) => s.enabled === true);
+      void mcpTools.refresh(servers); // warm the cache; never awaited here
+      const mcp = mcpDeferred(driver) ? 0 : servers.reduce((sum, s) => sum + (mcpRow(s.name, mcpTools.peek(s.spec), false).tokens ?? 0), 0);
+      const delivery = driver?.capabilities.skillsDelivery;
+      const skills = delivery ? skillsOf(skillsInputFor(delivery, cwd))?.tokens ?? 0 : 0;
+      return { skills, mcp };
+    };
+  }
+  ipcMain.handle("context:preview", async (_e, threadId: string | null, projectId: string | null): Promise<ContextPreview> => {
     const thread = threadId ? store.getThread(threadId) : null;
     const pid = thread?.projectId ?? projectId;
     const cwd = thread ? service.cwdOf(thread) : pid ? store.getProject(pid).path : null;
+    const servers = mcpScopes.effective(pid).filter((s) => s.enabled === true);
+    await mcpTools.refresh(servers);
+    const driver = thread ? drivers.find((d) => d.id === thread.agent) : undefined;
+    const delivery = driver?.capabilities.skillsDelivery;
+    const deferred = thread ? mcpDeferred(driver) : false;
     return buildContextPreview({
       guideParts: cwd ? guide.partsForCwd(cwd) : [],
       // An agent that keeps the shared memory itself doesn't need the read tool.
       tools: harnessTools().filter((t) => !(thread && drivers.find((d) => d.id === thread.agent)?.capabilities.nativeMemory && t.name === MEMORY_READ_TOOL)),
-      mcpServers: mcpScopes.effective(pid),
+      skills: thread && delivery ? skillsInputFor(delivery, cwd) : null,
+      mcp: servers.map((s) => ({ name: s.name, listed: mcpTools.peek(s.spec), deferred })),
       memoryIndex: pid && memoryOn(settings.get(), pid) ? (({ lines, tokens }) => ({ lines, tokens }))(memory.store.index(pid)) : null,
     });
   });

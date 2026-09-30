@@ -148,8 +148,43 @@ export function ContextSheet({ preview: initial }: { preview?: ContextPreview | 
                 <p className="context-empty">None</p>
               )}
 
+              <h4>Skills</h4>
+              {preview.skills === null ? (
+                <p className="context-line">Open a thread to see its agent's skills</p>
+              ) : preview.skills.mode === "none" ? (
+                <p className="context-line">Not delivered to this agent</p>
+              ) : (
+                <p className="context-line">
+                  {`${preview.skills.count} skills · ${preview.skills.tokens.toLocaleString()} tokens · ${
+                    preview.skills.mode === "tool" ? "the skill tool plus the agent's own listing" : "listed by the agent itself"
+                  }`}
+                </p>
+              )}
+
               <h4>MCP servers</h4>
-              <p className="context-line">{preview.mcpServers.length > 0 ? preview.mcpServers.join(", ") : "None"}</p>
+              {preview.mcp.length > 0 ? (
+                <ul className="context-rows">
+                  {preview.mcp.map((s) => (
+                    <li key={s.name} className={s.deferred ? "context-deferred" : undefined}>
+                      <span className="context-label">{s.name}</span>
+                      <span className="context-tokens">
+                        {s.error ? `couldn't list: ${s.error}` : s.tokens === null ? "…" : `${s.tools} tools · ${s.tokens.toLocaleString()}${s.deferred ? " (deferred)" : ""}`}
+                      </span>
+                    </li>
+                  ))}
+                  <li className="context-total">
+                    <span className="context-label">Total</span>
+                    <span className="context-tokens">
+                      {preview.mcp
+                        .filter((s) => !s.deferred && s.tokens !== null)
+                        .reduce((sum, s) => sum + (s.tokens ?? 0), 0)
+                        .toLocaleString()}
+                    </span>
+                  </li>
+                </ul>
+              ) : (
+                <p className="context-empty">None</p>
+              )}
 
               <h4>Memory index</h4>
               <p className="context-line">
@@ -159,7 +194,7 @@ export function ContextSheet({ preview: initial }: { preview?: ContextPreview | 
           )}
         </section>
 
-        <p className="context-footnote">Estimated at ~4 characters per token. The agent's own prompt and tools are only in the first-turn numbers.</p>
+        <p className="context-footnote">Estimated at ~4 characters per token. The agent's own prompt and tools are only in the first-turn numbers. Deferred MCP schemas load only when the agent searches for a tool.</p>
 
         <div className="context-actions">
           <span className="spacer" />

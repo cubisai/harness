@@ -93,6 +93,24 @@ export function killTree(child: ChildProcess): void {
 }
 
 /**
+ * Stop a process tree by pid, for a child already dropped by its owner (an MCP
+ * transport's `close` clears the handle before the tree is checked). Windows
+ * goes through taskkill as `killTree` does; elsewhere the pid's own signal
+ * reaches the child.
+ */
+export function killPidTree(pid: number): void {
+  if (process.platform === "win32") {
+    spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true, timeout: 10_000 });
+    return;
+  }
+  try {
+    process.kill(pid);
+  } catch {
+    // Already gone.
+  }
+}
+
+/**
  * `reg query HKCU\Environment` output as name → value, with REG_EXPAND_SZ
  * `%NAME%` references expanded against `env`.
  */

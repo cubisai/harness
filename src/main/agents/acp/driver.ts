@@ -262,6 +262,8 @@ export function createAcpDriver(
     guardScript?: string;
     /** The harness guide for this turn's cwd, sent once, ahead of a new session's first prompt. */
     guide?: (cwd: string) => string;
+    /** The skills listing and MCP tool schemas this project's new session carries, in estimated tokens (0 when deferred or not yet listed). */
+    extensions?: (cwd: string, projectId: string | null) => { skills: number; mcp: number };
     /** The memory block for this project's new sessions (may be ""), or null when memory is off; sent once with the guide. */
     memory?: (projectId: string) => string | null;
   },
@@ -1028,6 +1030,8 @@ export function createAcpDriver(
       const g = l.guidePending ? deps.guide?.(input.cwd) ?? "" : "";
       const m = l.guidePending && input.projectId ? deps.memory?.(input.projectId) ?? "" : "";
       const fresh = l.guidePending;
+      // Warm the extensions estimate (MCP tool listings) so the breakdown at the end of this turn has it.
+      if (fresh) deps.extensions?.(input.cwd, input.projectId ?? null);
       if (g || m) l.guidePending = false;
       const h = l.historyPending;
       l.historyPending = null;
@@ -1136,10 +1140,13 @@ export function createAcpDriver(
               return JSON.stringify(input.tools.map((t) => ({ name: t.name, description: t.description })));
             }
           })();
+          const ext = deps.extensions?.(input.cwd, input.projectId ?? null);
           const rows = [
             { label: "Harness tools", tokens: Math.ceil(serializedTools.length / 4) },
             { label: "Harness guide", tokens: Math.ceil(g.length / 4) },
             { label: "Memory index", tokens: Math.ceil(m.length / 4) },
+            { label: "Skills", tokens: ext?.skills ?? 0 },
+            { label: "MCP tools", tokens: ext?.mcp ?? 0 },
           ]
             .filter((r) => r.tokens > 0)
             .sort((a, b) => b.tokens - a.tokens);

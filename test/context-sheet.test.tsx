@@ -9,7 +9,12 @@ const fakePreview: ContextPreview = {
     { name: "browser_open", tokens: 210 },
     { name: "browser_click", tokens: 90 },
   ],
-  mcpServers: ["github"],
+  skills: { mode: "tool", count: 12, tokens: 640 },
+  mcp: [
+    { name: "github", tools: 26, tokens: 5120, deferred: false },
+    { name: "linear", tools: 4, tokens: 900, deferred: true },
+    { name: "broken", tools: null, tokens: null, deferred: false, error: "No answer in 5 seconds." },
+  ],
   memoryIndex: null,
 };
 
@@ -70,6 +75,26 @@ describe("ContextSheet", () => {
     expect(html).toContain("Bundled guide");
     expect(html).toContain("300"); // 210 + 90 tools total
     expect(html).toContain("github");
+  });
+
+  it("renders the skills line", async () => {
+    const html = await render(fakePreview);
+    expect(html).toContain("Skills");
+    expect(html).toContain("12 skills · 640 tokens · the skill tool plus the agent&#x27;s own listing");
+  });
+
+  it("marks a deferred MCP row and leaves it out of the total", async () => {
+    const html = await render(fakePreview);
+    expect(html).toContain("4 tools · 900 (deferred)");
+    expect(html).toContain("26 tools · 5,120");
+    // Total counts github only (5,120); linear is deferred and broken has no tokens.
+    expect(html).not.toContain("6,020");
+  });
+
+  it("shows why a server couldn't be listed", async () => {
+    const html = await render(fakePreview);
+    // static markup escapes the apostrophe.
+    expect(html).toContain("couldn&#x27;t list: No answer in 5 seconds.");
   });
 
   it("renders the latest first-turn breakdown", async () => {
