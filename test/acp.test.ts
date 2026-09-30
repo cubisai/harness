@@ -656,6 +656,62 @@ describe("ACP driver", () => {
     expect(notices[0]).toMatch(/reopened/);
   });
 
+  it("routes the user's MCP servers through the harness router when the agent opts in", async () => {
+    const d = createAcpDriver(
+      { id: "mock", label: "Mock", command: process.execPath, args: [MOCK], capabilities: { mcpRouter: true } },
+      {
+        clientVersion: "test",
+        toolServer: async () => ({ url: "http://127.0.0.1:9/mcp", skillsUrl: "http://127.0.0.1:9/mcp-skills", routedUrl: "http://127.0.0.1:9/mcp-routed", token: "t" }),
+        mcpRouting: async () => true,
+      },
+    );
+    closeAfter(() => d.dispose?.());
+    const browser = { name: "browser_snapshot", description: "", input: {}, autoAllow: true, run: async () => ({ text: "" }) };
+    const docs = { name: "docs", enabled: true, spec: { type: "stdio" as const, command: "docs-mcp", args: [] } };
+    const t = turn("mcp", { tools: [browser], projectId: "p1", mcpServers: [docs] });
+    await d.runTurn(t.input);
+    // The user's server isn't sent; only the harness entry, on /mcp-routed with the project.
+    expect(JSON.parse(t.deltas.join(""))).toEqual([["http", "cubiq", "http://127.0.0.1:9/mcp-routed?p=p1"]]);
+  });
+
+  it("sends the user's MCP servers as before when the router decision is no", async () => {
+    const d = createAcpDriver(
+      { id: "mock", label: "Mock", command: process.execPath, args: [MOCK], capabilities: { mcpRouter: true } },
+      { clientVersion: "test", toolServer: async () => ({ url: "http://127.0.0.1:9/mcp", token: "t" }), mcpRouting: async () => false },
+    );
+    closeAfter(() => d.dispose?.());
+    const browser = { name: "browser_snapshot", description: "", input: {}, autoAllow: true, run: async () => ({ text: "" }) };
+    const docs = { name: "docs", enabled: true, spec: { type: "stdio" as const, command: "docs-mcp", args: [] } };
+    const t = turn("mcp", { tools: [browser], projectId: "p1", mcpServers: [docs] });
+    await d.runTurn(t.input);
+    const sent = JSON.parse(t.deltas.join("")) as [string | null, string, string?][];
+    expect(sent.map((m) => m[1])).toEqual(["docs", "cubiq"]);
+    expect(sent.find((m) => m[1] === "cubiq")?.[2]).toBe("http://127.0.0.1:9/mcp?p=p1");
+  });
+
+  it("never asks about routing when the agent doesn't declare mcpRouter", async () => {
+    let asked = 0;
+    const d = createAcpDriver(
+      { id: "mock", label: "Mock", command: process.execPath, args: [MOCK] },
+      {
+        clientVersion: "test",
+        toolServer: async () => ({ url: "http://127.0.0.1:9/mcp", routedUrl: "http://127.0.0.1:9/mcp-routed", token: "t" }),
+        mcpRouting: async () => {
+          asked++;
+          return true;
+        },
+      },
+    );
+    closeAfter(() => d.dispose?.());
+    const browser = { name: "browser_snapshot", description: "", input: {}, autoAllow: true, run: async () => ({ text: "" }) };
+    const docs = { name: "docs", enabled: true, spec: { type: "stdio" as const, command: "docs-mcp", args: [] } };
+    const t = turn("mcp", { tools: [browser], mcpServers: [docs] });
+    await d.runTurn(t.input);
+    expect(asked).toBe(0);
+    const sent = JSON.parse(t.deltas.join("")) as [string | null, string, string?][];
+    expect(sent.map((m) => m[1])).toEqual(["docs", "cubiq"]);
+  });
+
   it("cancels a running turn", async () => {
     const d = driver();
     const t = turn("slow");

@@ -45,7 +45,7 @@ export const ACP_PRESETS: AcpAgentConfig[] = [
     label: "OpenCode",
     command: "opencode",
     args: ["acp"],
-    capabilities: { mcpStdio: true, interrupt: true, perMessageModel: true, permissionGranularity: "perTool", skillsDelivery: { mode: "tool", prefix: "", reads: ["project", "shared"] } },
+    capabilities: { mcpStdio: true, interrupt: true, perMessageModel: true, permissionGranularity: "perTool", skillsDelivery: { mode: "tool", prefix: "", reads: ["project", "shared"] }, mcpRouter: true },
     injector: "opencode",
     guardPlugin: "opencode",
     effortVia: "opencode-variants",

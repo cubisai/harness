@@ -2,7 +2,7 @@ import type { ContextPreview, SkillsDelivery } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 
 /** The same ~4-chars-per-token estimate the drivers report, for one tool's serialized schema. */
-function toolTokens(t: HarnessTool): number {
+export function toolTokens(t: HarnessTool): number {
   let serialized: string;
   try {
     serialized = JSON.stringify({ name: t.name, description: t.description, schema: t.input });

@@ -11,6 +11,8 @@ export interface ToolServer {
   url: string;
   /** The same tools plus the extra set (the skill tool), on `/mcp-skills`. */
   skillsUrl: string;
+  /** The same tools, the extra set and the routed set (search_tools/call_mcp_tool), on `/mcp-routed`. */
+  routedUrl: string;
   /** Sent as `Authorization: Bearer <token>`; requests without it are refused. */
   token: string;
   close(): Promise<void>;
@@ -66,11 +68,17 @@ export function withProject(url: string, projectId: string | undefined): string 
  * The harness's own tools (the browser pane's) as a Streamable HTTP MCP
  * server on 127.0.0.1, for agents that take tools over MCP rather than
  * in-process (ACP agents such as deepseek-harness). `/mcp` serves `tools`;
- * `/mcp-skills` serves those plus `extra` (the skill tool). Stateless: every
- * request gets a fresh server over the current tool list. A `?p=<projectId>`
- * on the URL tells the tools which project is calling them.
+ * `/mcp-skills` serves those plus `extra` (the skill tool); `/mcp-routed`
+ * serves those plus `routed` (the MCP search/call router tools), built for
+ * the project the `?p=<projectId>` names. Stateless: every request gets a
+ * fresh server over the current tool list. A `?p=<projectId>` on the URL
+ * tells the tools (and the routed factory) which project is calling them.
  */
-export async function startToolServer(tools: () => HarnessTool[], extra?: () => HarnessTool[]): Promise<ToolServer> {
+export async function startToolServer(
+  tools: () => HarnessTool[],
+  extra?: () => HarnessTool[],
+  routed?: (projectId: string | undefined) => HarnessTool[],
+): Promise<ToolServer> {
   const token = randomBytes(24).toString("hex");
   const http = createServer((req, res) => {
     if (!authorized(req, token)) {
@@ -78,7 +86,7 @@ export async function startToolServer(tools: () => HarnessTool[], extra?: () => 
       return;
     }
     const path = (req.url ?? "").split("?")[0];
-    if (path !== "/mcp" && path !== "/mcp-skills") {
+    if (path !== "/mcp" && path !== "/mcp-skills" && path !== "/mcp-routed") {
       res.writeHead(404).end();
       return;
     }
@@ -89,7 +97,12 @@ export async function startToolServer(tools: () => HarnessTool[], extra?: () => 
       return;
     }
     const server = new McpServer({ name: TOOL_SERVER_NAME, version: "1.0.0" });
-    const list = path === "/mcp-skills" ? [...tools(), ...(extra?.() ?? [])] : tools();
+    const list =
+      path === "/mcp-skills"
+        ? [...tools(), ...(extra?.() ?? [])]
+        : path === "/mcp-routed"
+          ? [...tools(), ...(extra?.() ?? []), ...(routed?.(projectId) ?? [])]
+          : tools();
     for (const t of list) {
       server.registerTool(t.name, { description: t.description, inputSchema: t.input }, async (args: unknown) =>
         toResult(await t.run(args as never, projectId ? { projectId } : undefined)),
@@ -113,6 +126,7 @@ export async function startToolServer(tools: () => HarnessTool[], extra?: () => 
   return {
     url: `http://127.0.0.1:${port}/mcp`,
     skillsUrl: `http://127.0.0.1:${port}/mcp-skills`,
+    routedUrl: `http://127.0.0.1:${port}/mcp-routed`,
     token,
     close: () => new Promise<void>((resolve) => http.close(() => resolve())),
   };

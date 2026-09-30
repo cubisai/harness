@@ -245,6 +245,17 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
             <h3>MCP servers</h3>
             <p className="note">Servers every agent gets, and the ones each agent brings from its own config, are in the Library.</p>
             <div className="row">
+              <span className="label">MCP tool search</span>
+              <div className="segmented">
+                {([["auto", "Auto"], ["off", "Off"]] as const).map(([value, label]) => (
+                  <button key={value} className={(settings.mcpRouter ?? "auto") === value ? "on" : ""} onClick={() => update({ mcpRouter: value })}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="note">For agents without their own (OpenCode): route MCP tools through CubiQ's search when 20+ are enabled, instead of loading every schema.</p>
+            <div className="row">
               <span className="label" />
               <button className="button" onClick={() => openLibrary("mcp")}>
                 Open MCP Servers…

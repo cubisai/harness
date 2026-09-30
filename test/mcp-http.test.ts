@@ -67,6 +67,45 @@ describe("tool server", () => {
     await skills.close();
   });
 
+  it("adds the routed tools on /mcp-routed only", async () => {
+    const routed: HarnessTool = { ...skill, name: "search_tools", description: "Search MCP tools" };
+    const server = await startToolServer(() => [echo], () => [skill], () => [routed]);
+    closeAfter(() => void server.close());
+    expect(server.routedUrl.endsWith("/mcp-routed")).toBe(true);
+    // /mcp and /mcp-skills keep serving what they did before: no router tools.
+    const base = await connect(server.url, server.token);
+    expect((await base.listTools()).tools.map((t) => t.name)).toEqual(["echo"]);
+    await base.close();
+    const skills = await connect(server.skillsUrl, server.token);
+    expect((await skills.listTools()).tools.map((t) => t.name)).toEqual(["echo", "skill"]);
+    await skills.close();
+    const all = await connect(server.routedUrl, server.token);
+    expect((await all.listTools()).tools.map((t) => t.name)).toEqual(["echo", "skill", "search_tools"]);
+    await all.close();
+  });
+
+  it("tells the routed tool factory which project is calling, from the URL's ?p=", async () => {
+    const seen: (string | undefined)[] = [];
+    const server = await startToolServer(
+      () => [echo],
+      () => [skill],
+      (pid) => {
+        seen.push(pid);
+        return [{ ...skill, name: "search_tools", description: "Search MCP tools" }];
+      },
+    );
+    closeAfter(() => void server.close());
+    const withP = await connect(withProject(server.routedUrl, "p2"), server.token);
+    await withP.listTools();
+    await withP.close();
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every((pid) => pid === "p2")).toBe(true);
+    const plain = await connect(server.routedUrl, server.token);
+    await plain.listTools();
+    await plain.close();
+    expect(seen).toContain(undefined);
+  });
+
   it("404s any other path", async () => {
     const server = await startToolServer(() => [echo]);
     closeAfter(() => void server.close());

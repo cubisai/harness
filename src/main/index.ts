@@ -29,7 +29,7 @@ import { opencodeVariants, opencodeVersion, withOpenCodeVariant } from "./inject
 import { ensureOpenCodeGuard, withOpenCodeGuard } from "./inject/opencode-guard";
 import { BUILT_IN_GUARD, findPython } from "./guard";
 import { createGuide } from "./guide";
-import { buildContextPreview, mcpRow, skillsOf } from "./context-preview";
+import { buildContextPreview, mcpRow, skillsOf, toolTokens } from "./context-preview";
 import { createMemory, memoryOn, memoryPrompt } from "./memory";
 import { createMemoryApi } from "./memory/api";
 import { createExtractor } from "./memory/extractor";
@@ -42,6 +42,7 @@ import { smokeCanonicalEvents, smokeHandoff, smokeMigration, smokeProviders } fr
 import { Editors, realHost } from "./editors";
 import { readExternalMcp } from "./mcp/external";
 import { BUILT_IN_SERVER, McpScopes, McpServerStore, McpToolsCache, testServer, viewOf } from "./mcp/servers";
+import { MCP_ROUTER_MIN_TOOLS, McpClientPool, routerTools } from "./mcp/router";
 import { providerWarning } from "../shared/provider-rules";
 import { Updater, type UpdaterBackend } from "./updater";
 import { defaultSkillsCandidates, findSkillsRoot } from "./skills/catalog";
@@ -360,7 +361,7 @@ async function main(): Promise<void> {
   let toolServer: Promise<ToolServer> | null = null;
   // `/mcp-skills` adds the skill tool for agents in "tool" delivery mode.
   const getToolServer = () =>
-    (toolServer ??= startToolServer(harnessTools, () => [skillTool(() => forAgent(skills.global(), { mode: "tool", reads: ["project", "shared"] }))]));
+    (toolServer ??= startToolServer(harnessTools, () => [skillTool(() => forAgent(skills.global(), { mode: "tool", reads: ["project", "shared"] }))], (pid) => routedTools(pid)));
   const drivers = [
     driver,
     // Codex when it's installed: the same model-invoked skills as an extra skills root, and the browser tools over MCP.
@@ -412,6 +413,7 @@ async function main(): Promise<void> {
         guide: (cwd) => guide.forCwd(cwd),
         memory: memoryPromptFor,
         extensions: extensionsFor(config.id),
+        mcpRouting: (_pid, servers) => mcpRoutingFor(servers),
         ...(config.effortVia === "opencode-variants" ? { variants: () => opencodeVariants(config.command) } : {}),
         injection: (ctx) => {
           let plan = injectionFor(settings, config.id, process.env, {
@@ -470,6 +472,17 @@ async function main(): Promise<void> {
   const mcpScopes = new McpScopes(mcpStore, mcpProjectDir);
   // The enabled servers' tool schemas, for the Context sheet; listed on demand.
   const mcpTools = new McpToolsCache();
+  // One connection per routed MCP server, kept warm between calls and closed on quit.
+  const mcpPool = new McpClientPool();
+  /** The two router tools bound to the calling project's servers; only called when a session routes. */
+  const routedTools = (projectId?: string) => routerTools({ servers: (pid) => mcpScopes.effective(pid ?? null), listings: mcpTools, pool: mcpPool }, projectId);
+  /** Whether a project's listed MCP tools reach the router threshold, for agents without native tool search. */
+  async function mcpRoutingFor(servers: McpServerEntry[]): Promise<boolean> {
+    if (settings.get().mcpRouter === "off") return false;
+    await mcpTools.refresh(servers);
+    const count = servers.reduce((sum, s) => sum + (mcpTools.peek(s.spec)?.ok ? (mcpTools.peek(s.spec)?.tools.length ?? 0) : 0), 0);
+    return count >= MCP_ROUTER_MIN_TOOLS;
+  }
   const service = new Service(
     store,
     (cwd: string | null) => skills.forProject(cwd),
@@ -671,7 +684,14 @@ async function main(): Promise<void> {
   });
   // MCP tool search defers schemas to a lookup: still on for Claude's own login
   // and a first-party key (a custom gateway drops it), Codex only on its own login.
-  const mcpDeferred = (driver: (typeof drivers)[number] | undefined): boolean => {
+  /** The enabled servers' listed tool count from the cache, without listing (0 when nothing is cached). */
+  const listedToolCount = (servers: McpServerEntry[]): number =>
+    servers.reduce((sum, s) => sum + (mcpTools.peek(s.spec)?.ok ? (mcpTools.peek(s.spec)?.tools.length ?? 0) : 0), 0);
+  /** Whether this driver's session reaches the app's MCP router: capability on, setting not off, enough tools listed. */
+  const mcpRouted = (driver: (typeof drivers)[number] | undefined, servers: McpServerEntry[]): boolean =>
+    driver?.capabilities.mcpRouter === true && settings.get().mcpRouter !== "off" && listedToolCount(servers) >= MCP_ROUTER_MIN_TOOLS;
+  const mcpDeferred = (driver: (typeof drivers)[number] | undefined, servers: McpServerEntry[]): boolean => {
+    if (mcpRouted(driver, servers)) return true;
     const mode = driver?.capabilities.skillsDelivery.mode;
     if (!driver || (mode !== "plugin" && mode !== "extraRoots")) return false;
     const c = settings.credential(driver.id);
@@ -691,7 +711,12 @@ async function main(): Promise<void> {
       const driver = drivers.find((d) => d.id === driverId);
       const servers = mcpScopes.effective(projectId).filter((s) => s.enabled === true);
       void mcpTools.refresh(servers); // warm the cache; never awaited here
-      const mcp = mcpDeferred(driver) ? 0 : servers.reduce((sum, s) => sum + (mcpRow(s.name, mcpTools.peek(s.spec), false).tokens ?? 0), 0);
+      // A routed session pays only for the two router tools, not every server's schemas.
+      const mcp = mcpRouted(driver, servers)
+        ? routedTools(projectId ?? undefined).reduce((sum, t) => sum + toolTokens(t), 0)
+        : mcpDeferred(driver, servers)
+          ? 0
+          : servers.reduce((sum, s) => sum + (mcpRow(s.name, mcpTools.peek(s.spec), false).tokens ?? 0), 0);
       const delivery = driver?.capabilities.skillsDelivery;
       const skills = delivery ? skillsOf(skillsInputFor(delivery, cwd))?.tokens ?? 0 : 0;
       return { skills, mcp };
@@ -705,7 +730,7 @@ async function main(): Promise<void> {
     await mcpTools.refresh(servers);
     const driver = thread ? drivers.find((d) => d.id === thread.agent) : undefined;
     const delivery = driver?.capabilities.skillsDelivery;
-    const deferred = thread ? mcpDeferred(driver) : false;
+    const deferred = thread ? mcpDeferred(driver, servers) : false;
     return buildContextPreview({
       guideParts: cwd ? guide.partsForCwd(cwd) : [],
       // An agent that keeps the shared memory itself doesn't need the read tool.
@@ -954,6 +979,7 @@ async function main(): Promise<void> {
     service.dispose();
     terminals.dispose();
     void toolServer?.then((s) => s.close());
+    void mcpPool.closeAll();
     store.close();
   });
 }

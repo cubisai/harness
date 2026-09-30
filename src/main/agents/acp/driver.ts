@@ -1,4 +1,4 @@
-import type { AgentCapabilities, ModelOption, PermissionDecision, PermissionMode, PlanEntry } from "../../../shared/types";
+import type { AgentCapabilities, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, PlanEntry } from "../../../shared/types";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -253,7 +253,12 @@ export function createAcpDriver(
     skillsDir?: () => string | null;
     clientVersion: string;
     /** The harness's tools over HTTP MCP, for agents that take MCP servers. */
-    toolServer?: () => Promise<{ url: string; token: string; skillsUrl?: string }>;
+    toolServer?: () => Promise<{ url: string; token: string; skillsUrl?: string; routedUrl?: string }>;
+    /**
+     * Whether this session's MCP servers go through the app's router instead of
+     * being sent (decided at session start); only asked when capabilities.mcpRouter.
+     */
+    mcpRouting?: (projectId: string | null, servers: McpServerEntry[]) => Promise<boolean>;
     /** The credential plan for the next agent process; absent = inherit process.env. */
     injection?: (ctx?: { effort?: { agent: string; model: string; variant: string } }) => InjectionPlan;
     /** Per-model reasoning variants, for agents that carry them outside a thought_level option. */
@@ -685,16 +690,25 @@ export function createAcpDriver(
     return l;
   };
 
-  const mcpServersFor = async (l: Live, input: TurnInput) => {
+  const mcpServersFor = async (l: Live, input: TurnInput): Promise<{ servers: { name: string }[]; routedUsers: McpServerEntry[] }> => {
     const http = Boolean(l.init.agentCapabilities?.mcpCapabilities?.http);
-    const report = forAcpWithReport(input.mcpServers, http);
+    const enabled = input.mcpServers.filter((s) => s.enabled);
+    const routed =
+      capabilities.mcpRouter === true && http && !!deps.toolServer && input.tools.length > 0 && deps.mcpRouting
+        ? await deps.mcpRouting(input.projectId ?? null, enabled)
+        : false;
+    // Routed: the user's servers aren't sent; the agent reaches them through the
+    // app's search_tools/call_mcp_tool instead. The routed entries still count
+    // towards change detection, so an edit mid-thread is noticed.
+    const report = forAcpWithReport(routed ? [] : input.mcpServers, http);
     const servers: { name: string }[] = report.servers;
     const dropped = [...report.dropped];
     if (input.tools.length && deps.toolServer) {
       if (http) {
-        const { url, token, skillsUrl } = await deps.toolServer();
+        const { url, token, skillsUrl, routedUrl } = await deps.toolServer();
         // In tool mode the skill tool rides on /mcp-skills, alongside the browser tools.
-        const target = capabilities.skillsDelivery.mode === "tool" ? (skillsUrl ?? url) : url;
+        const skillsTarget = capabilities.skillsDelivery.mode === "tool" ? (skillsUrl ?? url) : url;
+        const target = routed ? (routedUrl ?? skillsUrl ?? url) : skillsTarget;
         servers.push({ type: "http", name: TOOL_SERVER_NAME, url: withProject(target, input.projectId), headers: [{ name: "Authorization", value: `Bearer ${token}` }] } as { name: string });
       } else dropped.push("the app's browser tools");
     }
@@ -707,7 +721,7 @@ export function createAcpDriver(
         text: `${config.label} doesn't support MCP over HTTP, so these servers were left out: ${fresh.join(", ")}.`,
       });
     }
-    return servers;
+    return { servers, routedUsers: routed ? enabled : [] };
   };
 
   /**
@@ -759,9 +773,12 @@ export function createAcpDriver(
 
   const openSession = async (l: Live, input: TurnInput) => {
     const caps = l.init.agentCapabilities;
-    const mcpServers = await mcpServersFor(l, input);
-    const signature = JSON.stringify(mcpServers);
-    const byName = Object.fromEntries(mcpServers.map((m) => [m.name, m]));
+    const { servers: mcpServers, routedUsers } = await mcpServersFor(l, input);
+    // Routed servers aren't sent, but their names+specs still take part in change
+    // detection (a stableStringify-clean array of pairs), so editing one mid-thread
+    // reopens the session and the notice can name it.
+    const signature = JSON.stringify([mcpServers, routedUsers.map((s) => [s.name, s.spec])]);
+    const byName = Object.fromEntries([...mcpServers.map((m) => [m.name, m]), ...routedUsers.map((s) => [s.name, s.spec])]);
     if (l.sessionId) {
       // The MCP servers changed mid-conversation (the user opened the
       // browser, or edited their servers): reopen the same session with them.

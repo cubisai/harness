@@ -144,6 +144,8 @@ export interface Settings {
   skills?: { disabled: string[] };
   /** Shared CubiQ memory: on unless turned off; projects listed here are off. SettingsStore.get() always fills it in. */
   memory?: { enabled: boolean; disabledProjects: string[] };
+  /** MCP tool search for agents without their own: "auto" routes when 20+ tools are enabled (default), "off" never. */
+  mcpRouter?: "auto" | "off";
 }
 
 export type MemoryType = "user" | "feedback" | "project" | "reference";
@@ -605,6 +607,8 @@ export interface AgentCapabilities {
   sandbox: "none" | "workspace" | "full";
   /** The agent keeps the shared memory itself (reads and writes it natively), so the harness never extracts for it. */
   nativeMemory?: boolean;
+  /** The app may route this agent's MCP servers through its own search_tools/call_mcp_tool when many tools are enabled (agents without native tool search). */
+  mcpRouter?: boolean;
 }
 
 /** How an agent's credential row behaves in Settings: data from its driver, never its id. */

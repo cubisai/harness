@@ -182,6 +182,7 @@ export class SettingsStore {
       const disabledProjects = [...new Set(list.filter((s): s is string => typeof s === "string"))].slice(0, 500);
       next.memory = { enabled, disabledProjects };
     }
+    if (patch.mcpRouter === "auto" || patch.mcpRouter === "off") next.mcpRouter = patch.mcpRouter;
     // The Antigravity opt-in: the acknowledgement is stamped here, never trusted from
     // the caller, and the flag turns on only with a current one.
     if (patch.antigravityAck === null) next.antigravityAck = null;
