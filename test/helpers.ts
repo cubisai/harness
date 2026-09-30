@@ -25,5 +25,5 @@ export function closeAfter(fn: () => void): void {
 
 afterEach(() => {
   while (closers.length) closers.pop()!();
-  while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true, maxRetries: 10 });
+  while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
 });
