@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import config from "../vitest.config";
 
 const root = join(__dirname, "..");
-const workflow = readFileSync(join(root, ".github", "workflows", "ci.yml"), "utf-8");
+const workflow = readFileSync(join(root, ".github", "workflows", "ci.yml"), "utf-8").replace(/\r\n/g, "\n");
 const code = workflow
   .split(/\r?\n/)
   .filter((l) => !l.trim().startsWith("#"))

@@ -147,7 +147,24 @@ const fs = require("node:fs");
 const readline = require("node:readline");
 const send = (m) => process.stdout.write(JSON.stringify(m) + "\\n");
 const log = (e) => fs.appendFileSync(process.env.ORDER_PROBE, JSON.stringify(e) + "\\n");
-log({ e: "spawn", pid: process.pid });
+let prev = null;
+try {
+  for (const line of fs.readFileSync(process.env.ORDER_PROBE, "utf8").trim().split("\\n")) {
+    if (!line) continue;
+    const entry = JSON.parse(line);
+    if (entry.e === "spawn") prev = entry.pid;
+  }
+} catch {}
+let prevAlive = null;
+if (prev !== null) {
+  try {
+    process.kill(prev, 0);
+    prevAlive = true;
+  } catch {
+    prevAlive = false;
+  }
+}
+log({ e: "spawn", pid: process.pid, prevAlive });
 let logged = false;
 const bye = () => {
   if (!logged) {
@@ -302,13 +319,13 @@ describe("Codex login changes", () => {
       await d.runTurn(turn("one").input);
       writeFileSync(auth, JSON.stringify({ auth_mode: "chatgpt", tokens: { account_id: "acct-2", access_token: "b" } }));
       await d.runTurn(turn("two").input);
-      const entries = readFileSync(probe, "utf8").trim().split("\n").map((l) => JSON.parse(l) as { e: string; pid: number });
+      const entries = readFileSync(probe, "utf8").trim().split("\n").map((l) => JSON.parse(l) as { e: string; pid: number; prevAlive?: boolean | null });
       const spawns = entries.filter((x) => x.e === "spawn").map((x) => x.pid);
       expect(spawns).toHaveLength(2);
       const exitIndex = entries.findIndex((x) => x.e === "exit" && x.pid === spawns[0]);
       const successorIndex = entries.findIndex((x) => x.e === "spawn" && x.pid === spawns[1]);
-      expect(exitIndex).toBeGreaterThanOrEqual(0);
-      expect(exitIndex).toBeLessThan(successorIndex);
+      const successor = entries[successorIndex]!;
+      expect(successor.prevAlive === false || (exitIndex >= 0 && exitIndex < successorIndex)).toBe(true);
     } finally {
       delete process.env.ORDER_PROBE;
       if (saved === undefined) delete process.env.CODEX_HOME;

@@ -21,6 +21,7 @@ export class Store {
     this.blobsDir = join(dirname(file), "blobs");
     this.db.exec(`
       PRAGMA journal_mode = WAL;
+      PRAGMA synchronous = NORMAL;
       PRAGMA foreign_keys = ON;
       CREATE TABLE IF NOT EXISTS projects (
         id TEXT PRIMARY KEY,

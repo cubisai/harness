@@ -39,10 +39,14 @@ function source(opts: { providers?: Provider[]; choice?: CredentialChoice; secre
 describe("injectionFor (Claude)", () => {
   it("starts from a copy of our environment", () => {
     const plan = injectionFor(source(), "claude", process.env, { injector: "claude" });
-    expect(plan.env.PATH).toBeDefined();
-    expect(plan.env.HOME).toBeDefined();
-    expect(plan.env.PATH).toBe(process.env.PATH);
-    expect(plan.env.HOME).toBe(process.env.HOME);
+    const envKey = (env: Record<string, string | undefined>, name: string) => Object.keys(env).find((k) => k.toUpperCase() === name);
+    const pathKey = envKey(plan.env, "PATH");
+    expect(pathKey).toBeDefined();
+    expect(plan.env[pathKey!]).toBe(process.env[pathKey!]);
+    const homeName = process.platform === "win32" ? "USERPROFILE" : "HOME";
+    const homeKey = envKey(plan.env, homeName);
+    expect(homeKey).toBeDefined();
+    expect(plan.env[homeKey!]).toBe(process.env[homeKey!]);
   });
 
   it("sends a gateway key as a Bearer token and warns about feature loss", () => {
