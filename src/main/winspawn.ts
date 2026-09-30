@@ -4,7 +4,7 @@ import { delimiter, extname, join, normalize } from "node:path";
 
 /**
  * How to start `command args` without a shell re-splitting the arguments.
- * On Windows a bare name ("codex", "opencode", "dsh") is usually an npm .cmd
+ * On Windows a bare name ("codex", "opencode", "cursor-agent") is usually an npm .cmd
  * shim that only cmd.exe can run, and Codex's `-c` values carry quotes and
  * spaces. So: resolve the name on PATH; run an .exe directly; run a .cmd/.bat
  * through cmd.exe with every argument escaped for it — twice, because the

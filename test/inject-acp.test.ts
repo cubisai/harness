@@ -34,7 +34,7 @@ function source(opts: { providers?: Provider[]; choice?: CredentialChoice; secre
 
 describe("injectAcp (generic ACP injector)", () => {
   it("passes a DeepSeek key under its documented variable, with no base URL or notice", () => {
-    const plan = injectionFor(source(), "deepseek", {}, { agentLabel: "DeepSeek", keyVar: "DEEPSEEK_API_KEY" });
+    const plan = injectionFor(source(), "acme", {}, { agentLabel: "Acme", keyVar: "DEEPSEEK_API_KEY" });
     expect(plan.env.DEEPSEEK_API_KEY).toBe(KEY);
     expect(plan.env.OPENAI_BASE_URL).toBeUndefined();
     expect(plan.warning).toBeUndefined();
@@ -62,14 +62,14 @@ describe("injectAcp (generic ACP injector)", () => {
 
   it("strips a planted key from a subscription ACP plan", () => {
     const env = { PATH: "/usr/bin", DEEPSEEK_API_KEY: "planted" };
-    const plan = injectionFor(source({ choice: { kind: "subscription" }, secretEnvNames: ["DEEPSEEK_API_KEY"] }), "deepseek", env, { keyVar: "DEEPSEEK_API_KEY" });
+    const plan = injectionFor(source({ choice: { kind: "subscription" }, secretEnvNames: ["DEEPSEEK_API_KEY"] }), "acme", env, { keyVar: "DEEPSEEK_API_KEY" });
     expect(plan.byok).toBe(false);
     expect(plan.env.DEEPSEEK_API_KEY).toBeUndefined();
     expect(plan.env.PATH).toBe("/usr/bin");
   });
 
   it("errors when the provider has no key saved", () => {
-    const plan = injectionFor(source({ secret: null }), "deepseek", {}, { agentLabel: "DeepSeek", keyVar: "DEEPSEEK_API_KEY" });
+    const plan = injectionFor(source({ secret: null }), "acme", {}, { agentLabel: "Acme", keyVar: "DEEPSEEK_API_KEY" });
     expect(plan.error).toMatch(/no key saved/);
   });
 
@@ -78,7 +78,7 @@ describe("injectAcp (generic ACP injector)", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
-      const a = injectionFor(source(), "deepseek", {}, { agentLabel: "DeepSeek", keyVar: "DEEPSEEK_API_KEY" });
+      const a = injectionFor(source(), "acme", {}, { agentLabel: "Acme", keyVar: "DEEPSEEK_API_KEY" });
       const b = injectionFor(
         source({ providers: [provider({ id: "gateway", label: "Gateway", baseURL: "https://gateway.example.com" })] }),
         "cursor",

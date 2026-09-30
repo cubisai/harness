@@ -141,7 +141,7 @@ describe("SettingsStore", () => {
     expect(JSON.parse(readFileSync(file, "utf-8")).schemaVersion).toBe(2);
   });
 
-  // T2.x — the v2 → v3 migration that keeps dsh's DeepSeek key once the global export goes.
+  // T2.x — the v2 → v3 migration that keeps the DeepSeek ACP agent's key once the global export goes.
   const deepseekProvider = () => ({
     id: "deepseek",
     label: "DeepSeek",
@@ -151,7 +151,7 @@ describe("SettingsStore", () => {
     secret: { kind: "safeStorage", ciphertext: box.encrypt("sk-deep") },
   });
 
-  it("carries a v1 DeepSeek key through both migrations to dsh in one start", () => {
+  it("carries a v1 DeepSeek key through both migrations to the deepseek credential in one start", () => {
     const file = fresh();
     writeFileSync(file, JSON.stringify({ secrets: { deepseek: box.encrypt("test-deepseek-key") } }));
     const s = new SettingsStore(file, box);
@@ -162,7 +162,7 @@ describe("SettingsStore", () => {
     expect(disk.credentials.deepseek).toEqual({ kind: "byok", providerId: "deepseek" });
   });
 
-  it("points dsh at its DeepSeek provider in a v2 file with no choice", () => {
+  it("points the deepseek credential at its DeepSeek provider in a v2 file with no choice", () => {
     const file = fresh();
     writeFileSync(file, JSON.stringify({ schemaVersion: 2, providers: [deepseekProvider()] }));
     const s = new SettingsStore(file, box);

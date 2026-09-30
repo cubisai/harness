@@ -66,7 +66,7 @@ export class StdioRpc {
   }
 
   static spawn(command: string, args: string[], opts: { cwd: string; env: NodeJS.ProcessEnv }, handlers: RpcHandlers): StdioRpc {
-    // On Windows a bare name like "dsh" or "npx" is usually a .cmd shim; spawnCommand runs it with its arguments intact.
+    // On Windows a bare name like "opencode" or "npx" is usually a .cmd shim; spawnCommand runs it with its arguments intact.
     const child = spawnCommand(command, args, { cwd: opts.cwd, env: opts.env, stdio: ["pipe", "pipe", "pipe"] });
     return new StdioRpc(child, handlers);
   }

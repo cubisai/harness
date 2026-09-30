@@ -41,9 +41,14 @@ export function injectOpenCode(
   const providerKey = `unskilled-${provider.id}`;
   const keyVar = providerKeyVar(provider.id);
   const hasHeaders = Boolean(provider.headers && Object.keys(provider.headers).length > 0);
+  const model = `${providerKey}/${provider.models[0]!.id}`;
   const config = {
     $schema: "https://opencode.ai/config.json",
-    model: `${providerKey}/${provider.models[0]!.id}`,
+    model,
+    // OpenCode then offers only this provider, so its own models (and a picked
+    // one) can't bypass the key.
+    enabled_providers: [providerKey],
+    small_model: model,
     provider: {
       [providerKey]: {
         npm: "@ai-sdk/openai-compatible",

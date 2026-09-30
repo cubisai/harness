@@ -16,7 +16,7 @@ The app follows the contract in [HARNESS.md](plan/docs/HARNESS.md) (see also [Re
 
 The Library (⌘⇧L, the books icon in the sidebar, or ⌘K) shows what the agents get, like the plugin and skill views in other harnesses:
 
-- **Skills:** every skilled skill, searchable, split into the workflow skills you start with `/` and the ones the agent loads by itself. Each one shows its full SKILL.md, what it calls and what calls it, its files, and how it reaches each installed agent (Claude's plugin, Codex's skills folder, `DSH_BUNDLED_SKILL_DIR`, or `install.py`). Workflow skills have a **Use in Thread** button.
+- **Skills:** every skilled skill, searchable, split into the workflow skills you start with `/` and the ones the agent loads by itself. Each one shows its full SKILL.md, what it calls and what calls it, its files, and how it reaches each installed agent (Claude's plugin, Codex's skills folder, or `install.py`). Workflow skills have a **Use in Thread** button.
 - **MCP Servers:** your own servers, the app's built-in browser tools, and, read-only, the servers each agent already loads from its own config: Claude Code's `~/.claude.json` and `.mcp.json`, Codex's `~/.codex/config.toml`, Gemini's `settings.json`, and OpenCode's `opencode.json`. Env and header values are never shown.
 - **Agents:** every agent the app knows, installed or not, with how it runs, how skills and MCP servers reach it, and a copyable install command for the missing ones.
 
@@ -85,7 +85,6 @@ What each agent can do here comes from its capabilities, not its name. The Libra
 - **Claude** (always there) uses the Claude Agent SDK. It gets skilled's model-invoked skills as a plugin, plus the browser tools.
 - **Codex** appears when `codex` is on your PATH. It runs as `codex app-server`, one process for all threads, and resumes threads from Codex's own history. It uses your Codex login. skilled's model-invoked skills reach it as an extra skills root, and Ask and Auto-edit both run Codex under the `untrusted` approval policy with a `workspace-write` sandbox, because `on-request` lets Codex run commands without asking. In Auto-edit the app accepts Codex's file changes itself and still asks for commands; the git guardrail checks every command. Full is `never` with full access. The browser tools are in its config from the first turn.
 - **Any agent that speaks ACP** (the [Agent Client Protocol](https://agentclientprotocol.com)) goes through one generic driver. Each thread keeps its agent process alive between turns and resumes the stored session after a restart when the agent supports it. Models come from the agent's own `model` config option.
-  - **DeepSeek** appears when `dsh` ([deepseek-harness](https://github.com/deepseek-ai/deepseek-harness), `npm i -g @deepseek-ai/dsh`) is on your PATH. It runs as `dsh --profile acp` and uses your dsh configuration and `DEEPSEEK_API_KEY`. skilled's model-invoked skills reach it through `DSH_BUNDLED_SKILL_DIR`, so nothing is written into your project.
   - **Antigravity** is off unless you opt in: Settings → Agents & Providers, after acknowledging that driving Google's Antigravity ACP server from another app is third-party access its Terms of Service (section 6) treat as a breach that can get the account suspended. The acknowledgement is kept, with the date and the disclosure version. Once on, it appears after a restart when Google's own [Antigravity ACP server](https://antigravity.google) (the ACP registry's `antigravity-acp`) is on your PATH; that is `agy_acp_server.par` on macOS/Linux and `agy_acp_server.exe` on Windows, and its `localharness_external` sibling must sit next to it. The first run needs a Google sign-in: the app shows the link the server prints on stderr. On a machine that has never signed in, the model list stays empty until the first successful turn signs in. The app runs Google's binary with your Google sign-in. It takes HTTP MCP servers only, not stdio, so the app's browser tools reach it but stdio servers don't. It is marked **Unsupported** and is never offered a provider from your list. CI never runs it.
   - **OpenCode** appears when `opencode` is on your PATH, and runs as `opencode acp`.
   - **Cursor** appears when `cursor-agent` is on your PATH.
@@ -98,7 +97,7 @@ What each agent can do here comes from its capabilities, not its name. The Libra
 
   The permission modes carry over. Ask asks for every tool call. Auto-edit allows reads and file edits without asking. Full allows everything.
 
-The `/` menu works the same for every agent, since the app composes the skill's text itself. The browser tools reach Codex and ACP agents too (for ACP, if the agent accepts HTTP MCP servers; deepseek-harness does). The app serves them from a local MCP server on 127.0.0.1, which only accepts requests carrying a per-run token.
+The `/` menu works the same for every agent, since the app composes the skill's text itself. The browser tools reach Codex and ACP agents too (for ACP, if the agent accepts HTTP MCP servers). The app serves them from a local MCP server on 127.0.0.1, which only accepts requests carrying a per-run token.
 
 ## The built-in browser
 

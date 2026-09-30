@@ -1019,10 +1019,9 @@ describe("agent registry", () => {
     const dir = tempDir();
     const file = join(dir, "agents.json");
     writeFileSync(file, JSON.stringify({ agents: [{ id: "qwen", label: "Qwen Code", command: "qwen", args: ["--acp"] }, { id: "bad" }] }));
-    const { agents, problems } = loadAcpAgents(file, (cmd) => cmd === "dsh" || cmd === "opencode");
-    expect(agents.map((a) => a.id)).toEqual(["deepseek", "opencode", "qwen"]);
-    expect(agents[0]).toMatchObject({ skillsDirEnv: "DSH_BUNDLED_SKILL_DIR" });
-    expect(agents[1]).toMatchObject({ command: "opencode", args: ["acp"] });
+    const { agents, problems } = loadAcpAgents(file, (cmd) => cmd === "opencode");
+    expect(agents.map((a) => a.id)).toEqual(["opencode", "qwen"]);
+    expect(agents[0]).toMatchObject({ command: "opencode", args: ["acp"] });
     expect(problems).toHaveLength(1);
   });
 

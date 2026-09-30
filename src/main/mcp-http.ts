@@ -67,7 +67,7 @@ export function withProject(url: string, projectId: string | undefined): string 
 /**
  * The harness's own tools (the browser pane's) as a Streamable HTTP MCP
  * server on 127.0.0.1, for agents that take tools over MCP rather than
- * in-process (ACP agents such as deepseek-harness). `/mcp` serves `tools`;
+ * in-process (ACP agents such as OpenCode). `/mcp` serves `tools`;
  * `/mcp-skills` serves those plus `extra` (the skill tool); `/mcp-routed`
  * serves those plus `routed` (the MCP search/call router tools), built for
  * the project the `?p=<projectId>` names. Stateless: every request gets a

@@ -639,6 +639,7 @@ async function main(): Promise<void> {
   const afterProviderChange = () => {
     secretsCache = null;
     service.dispose();
+    for (const d of drivers) void (d.refreshModels?.({ force: true }) ?? Promise.resolve()).finally(() => broadcast({ type: "agents" }));
     const view = settings.view();
     broadcast({ type: "settings", settings: view });
     return view;

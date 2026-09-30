@@ -67,9 +67,13 @@ describe("injectOpenCode", () => {
   it("builds a v1 config with the picked model and per-model wire ids", () => {
     const config = JSON.parse(lead().env.OPENCODE_CONFIG_CONTENT!) as {
       model: string;
+      small_model: string;
+      enabled_providers: string[];
       provider: Record<string, { npm: string; name: string; options: { baseURL: string; apiKey: string; headers?: Record<string, string> }; models: Record<string, { id?: string; tool_call: boolean }> }>;
     };
     expect(config.model).toBe("unskilled-gw/picked");
+    expect(config.small_model).toBe("unskilled-gw/picked");
+    expect(config.enabled_providers).toEqual(["unskilled-gw"]);
     const injected = config.provider["unskilled-gw"]!;
     expect(injected.npm).toBe("@ai-sdk/openai-compatible");
     expect(injected.name).toBe("GW");

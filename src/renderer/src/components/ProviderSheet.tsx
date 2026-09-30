@@ -8,7 +8,8 @@ import type {
   ProviderView,
   WireProtocol,
 } from "../../../shared/types";
-import { codexCompatible, providerWarning } from "../../../shared/provider-rules";
+import { PROVIDER_PRESETS, providerPreset, type ProviderPreset } from "../../../shared/provider-catalog";
+import { injectorCompatible, providerWarning } from "../../../shared/provider-rules";
 import { api } from "../api";
 import { useStore } from "../store";
 
@@ -111,7 +112,7 @@ export function CredentialRows({
                 >
                   <option value="subscription">{creds.own === "login" ? "Subscription login" : "Agent's own config"}</option>
                   {providers.map((p) => {
-                    const compat = creds.injector === "codex" ? codexCompatible(p) : ({ ok: true } as const);
+                    const compat = injectorCompatible(p, creds.injector);
                     return (
                       <option key={p.id} value={p.id} disabled={!compat.ok} title={compat.ok ? undefined : compat.reason}>
                         {p.label}
@@ -130,21 +131,54 @@ export function CredentialRows({
 
 /**
  * What the editor saves: its own fields over the existing provider, so the
- * fields it doesn't show (headers, env, query params, retries, label) survive an edit.
+ * fields it doesn't show (headers, env, query params, retries) survive an edit.
+ * The label comes from the fields for a new provider (the picked preset's, or
+ * the id when blank); an existing provider keeps its stored label, since the
+ * editor passes no label for it (and an undefined one never overwrites it).
  */
 export function toProviderInput(
   provider: ProviderView | undefined,
-  fields: Pick<ProviderInput, "id" | "wireProtocol" | "baseURL" | "models" | "pathMode" | "betaHeaders">,
+  fields: Pick<ProviderInput, "id" | "wireProtocol" | "baseURL" | "models" | "pathMode" | "betaHeaders"> & { label?: string },
 ): ProviderInput {
-  if (!provider) return { label: fields.id, ...fields };
+  const { label, ...rest } = fields;
+  if (!provider) return { ...rest, label: label?.trim() || fields.id };
   const { secretKind: _kind, hasSecret: _has, ...kept } = provider;
-  return { ...kept, ...fields, id: provider.id };
+  return { ...kept, ...rest, id: provider.id };
+}
+
+/** Pick a known provider preset to prefill the editor; "" means a custom provider. */
+export function PresetPicker({ value, onPick }: { value: string; onPick: (preset: ProviderPreset | null) => void }) {
+  return (
+    <div className="row">
+      <span className="label">Preset</span>
+      <select className="select" value={value} onChange={(e) => onPick(providerPreset(e.target.value) ?? null)}>
+        <option value="">Custom</option>
+        {PROVIDER_PRESETS.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
 }
 
 /** The provider editor: protocol → base URL → credential → models, then the two escape hatches. */
-function ProviderEditor({ provider, onSaved, onClose }: { provider?: ProviderView; onSaved: (id: string) => void; onClose: () => void }) {
+function ProviderEditor({
+  provider,
+  takenIds,
+  onSaved,
+  onClose,
+}: {
+  provider?: ProviderView;
+  takenIds?: readonly string[];
+  onSaved: (id: string) => void;
+  onClose: () => void;
+}) {
   const existing = provider !== undefined;
   const [id, setId] = useState(provider?.id ?? "");
+  const [label, setLabel] = useState(provider?.label ?? "");
+  const [presetId, setPresetId] = useState("");
   const [wireProtocol, setWireProtocol] = useState<WireProtocol>(provider?.wireProtocol ?? "anthropic-messages");
   const [baseURL, setBaseURL] = useState(provider?.baseURL ?? "");
   const [secret, setSecret] = useState("");
@@ -155,6 +189,8 @@ function ProviderEditor({ provider, onSaved, onClose }: { provider?: ProviderVie
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const preset = providerPreset(presetId);
+
   const patchModel = (i: number, patch: Partial<ProviderModel>) =>
     setModels((ms) => ms.map((m, j) => (j === i ? { ...m, ...patch } : m)));
 
@@ -163,10 +199,14 @@ function ProviderEditor({ provider, onSaved, onClose }: { provider?: ProviderVie
       setError("Use lowercase letters, digits and dashes: my-gateway.");
       return;
     }
+    if (!existing && takenIds?.includes(id)) {
+      setError(`A provider with id ${id} exists: edit it, or pick another id.`);
+      return;
+    }
     setError(null);
     setBusy(true);
     try {
-      const input = toProviderInput(provider, { id, wireProtocol, baseURL: baseURL.trim(), models, pathMode, betaHeaders });
+      const input = toProviderInput(provider, { id, wireProtocol, baseURL: baseURL.trim(), models, pathMode, betaHeaders, label });
       await api().saveProvider(input, secret.trim() ? secret : undefined);
       setSecret("");
       setResult(null);
@@ -210,10 +250,26 @@ function ProviderEditor({ provider, onSaved, onClose }: { provider?: ProviderVie
   return (
     <div className="provider-editor">
       {!existing && (
-        <div className="row">
-          <span className="label">Id</span>
-          <input className="text-input" placeholder="my-gateway" value={id} onChange={(e) => setId(e.target.value)} />
-        </div>
+        <>
+          <PresetPicker
+            value={presetId}
+            onPick={(picked) => {
+              setPresetId(picked?.id ?? "");
+              // Custom keeps what's typed, but not a preset's label: it isn't shown, so the id names it.
+              if (!picked) return setLabel("");
+              setId(picked.id);
+              setLabel(picked.label);
+              setWireProtocol(picked.wireProtocol);
+              setBaseURL(picked.baseURL);
+              setResult(null);
+              setError(null);
+            }}
+          />
+          <div className="row">
+            <span className="label">Id</span>
+            <input className="text-input" placeholder="my-gateway" value={id} onChange={(e) => setId(e.target.value)} />
+          </div>
+        </>
       )}
       <div className="row">
         <span className="label">Protocol</span>
@@ -229,6 +285,7 @@ function ProviderEditor({ provider, onSaved, onClose }: { provider?: ProviderVie
         <span className="label">Base URL</span>
         <input className="text-input" placeholder="https://gateway.example.com/v1" value={baseURL} onChange={(e) => setBaseURL(e.target.value)} />
       </div>
+      {preset && <p className="note">Docs: {preset.docs}</p>}
       <div className="row">
         <span className="label">Credential</span>
         <input
@@ -236,7 +293,7 @@ function ProviderEditor({ provider, onSaved, onClose }: { provider?: ProviderVie
           type="password"
           autoComplete="off"
           spellCheck={false}
-          placeholder={provider?.hasSecret ? "Saved — type to replace" : "API key"}
+          placeholder={provider?.hasSecret ? "Saved — type to replace" : preset?.local ? "Any value (local server)" : preset?.keyVar ? `API key (${preset.keyVar})` : "API key"}
           value={secret}
           onChange={(e) => setSecret(e.target.value)}
         />
@@ -389,6 +446,7 @@ export function ProvidersSection() {
         <ProviderEditor
           key={editing ?? "new"}
           provider={settings.providers.find((p) => p.id === editing)}
+          takenIds={settings.providers.map((p) => p.id)}
           onSaved={(id) => {
             setAdding(false);
             setEditing(id);

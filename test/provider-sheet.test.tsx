@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { ProviderView } from "../src/shared/types";
-import { CredentialRows, ProviderList, hostOf, toProviderInput } from "../src/renderer/src/components/ProviderSheet";
+import { CredentialRows, PresetPicker, ProviderList, hostOf, toProviderInput } from "../src/renderer/src/components/ProviderSheet";
 
 const caps = { tools: true, vision: false, reasoning: false };
 
@@ -80,12 +80,25 @@ describe("CredentialRows", () => {
   });
 
   it("disables a non-Responses provider for Codex and says why", () => {
-    const html = renderToStaticMarkup(<CredentialRows agents={agents} providers={providers} credentials={{}} onChange={() => {}} />);
+    const codex = [agents[1]!];
+    const html = renderToStaticMarkup(<CredentialRows agents={codex} providers={providers} credentials={{}} onChange={() => {}} />);
     const chatOptions = [...html.matchAll(/<option value="openai-chat"[^>]*>/g)].map((m) => m[0] ?? "");
     expect(chatOptions.some((o) => o.includes("disabled") && o.includes("Responses"))).toBe(true);
     const responsesOptions = [...html.matchAll(/<option value="openai-responses"[^>]*>/g)].map((m) => m[0] ?? "");
     expect(responsesOptions.length).toBeGreaterThan(0);
     expect(responsesOptions.every((o) => !o.includes("disabled"))).toBe(true);
+  });
+
+  it("disables anything but an anthropic-messages provider for Claude", () => {
+    const claude = [agents[0]!];
+    const chat = providerView({ id: "chat", label: "Chat Gateway", wireProtocol: "openai-chat" });
+    const anthropic = providerView({ id: "anthropic", label: "Anthropic", wireProtocol: "anthropic-messages" });
+    const html = renderToStaticMarkup(<CredentialRows agents={claude} providers={[chat, anthropic]} credentials={{}} onChange={() => {}} />);
+    const chatOptions = [...html.matchAll(/<option value="chat"[^>]*>/g)].map((m) => m[0] ?? "");
+    expect(chatOptions.some((o) => o.includes("disabled"))).toBe(true);
+    const anthropicOptions = [...html.matchAll(/<option value="anthropic"[^>]*>/g)].map((m) => m[0] ?? "");
+    expect(anthropicOptions.length).toBeGreaterThan(0);
+    expect(anthropicOptions.every((o) => !o.includes("disabled"))).toBe(true);
   });
 
   it("warns when Claude is pointed at a non-first-party provider", () => {
@@ -122,5 +135,29 @@ describe("toProviderInput", () => {
 
   it("labels a new provider with its id", () => {
     expect(toProviderInput(undefined, { id: "new", wireProtocol: "gemini", baseURL: "https://x", models: [], pathMode: "auto", betaHeaders: "default" }).label).toBe("new");
+  });
+
+  it("uses the picked preset's label for a new provider, falling back to the id", () => {
+    const fields = { id: "groq", wireProtocol: "openai-chat" as const, baseURL: "https://api.groq.com/openai/v1", models: [], pathMode: "auto" as const, betaHeaders: "default" as const };
+    expect(toProviderInput(undefined, { ...fields, label: "  Groq  " }).label).toBe("Groq");
+    expect(toProviderInput(undefined, { ...fields, label: "" }).label).toBe("groq");
+    expect(toProviderInput(undefined, fields).label).toBe("groq");
+  });
+
+  it("keeps the stored label when editing, even if the editor passes a blank one", () => {
+    const existing = providerView({ id: "gw", label: "My gateway" });
+    const fields = { id: "gw", wireProtocol: "openai-chat" as const, baseURL: "https://gw.example.com", models: [], pathMode: "auto" as const, betaHeaders: "default" as const };
+    expect(toProviderInput(existing, { ...fields, label: "X" }).label).toBe("My gateway");
+    expect(toProviderInput(existing, fields).label).toBe("My gateway");
+  });
+});
+
+describe("PresetPicker", () => {
+  it("offers Custom plus every preset", () => {
+    const html = renderToStaticMarkup(<PresetPicker value="" onPick={() => {}} />);
+    expect(html).toContain("Custom");
+    expect(html).toContain("Groq");
+    expect(html).toContain("Ollama (local)");
+    expect(html).toMatchSnapshot();
   });
 });

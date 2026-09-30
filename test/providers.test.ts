@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { afterEach, describe, expect, it } from "vitest";
 import type { Provider, WireProtocol } from "../src/shared/types";
 import { catalogFor, codexCompatible, isProviderId, providerWarning, testConnection } from "../src/main/providers";
+import { injectorCompatible } from "../src/shared/provider-rules";
 
 const capabilities = { tools: true, vision: false, reasoning: true };
 
@@ -81,6 +82,30 @@ describe("codexCompatible", () => {
     const bad = codexCompatible({ wireProtocol: "openai-chat" });
     expect(bad.ok).toBe(false);
     if (!bad.ok) expect(bad.reason).toMatch(/Responses/);
+  });
+});
+
+describe("injectorCompatible", () => {
+  it("defers to codexCompatible for Codex", () => {
+    expect(injectorCompatible({ wireProtocol: "openai-responses" }, "codex")).toEqual({ ok: true });
+    expect(injectorCompatible({ wireProtocol: "openai-chat" }, "codex").ok).toBe(false);
+  });
+
+  it("requires anthropic-messages for Claude and openai-chat for OpenCode", () => {
+    expect(injectorCompatible({ wireProtocol: "anthropic-messages" }, "claude")).toEqual({ ok: true });
+    expect(injectorCompatible({ wireProtocol: "openai-chat" }, "claude").ok).toBe(false);
+    expect(injectorCompatible({ wireProtocol: "openai-chat" }, "opencode")).toEqual({ ok: true });
+    expect(injectorCompatible({ wireProtocol: "anthropic-messages" }, "opencode").ok).toBe(false);
+  });
+
+  it("passes any protocol through for ACP", () => {
+    for (const provider of Object.values(byProtocol)) expect(injectorCompatible(provider, "acp")).toEqual({ ok: true });
+  });
+
+  it("names the protocol the agent needs in the reason", () => {
+    const compat = injectorCompatible({ wireProtocol: "gemini" }, "claude");
+    expect(compat.ok).toBe(false);
+    if (!compat.ok) expect(compat.reason).toMatch(/anthropic-messages/);
   });
 });
 

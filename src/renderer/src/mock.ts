@@ -66,7 +66,7 @@ export function installMock(): void {
         ? []
         : [
             t("t1", "p1", "Add rate limiting to the login endpoint", 60_000),
-            t("t2", "p1", "/domain-interview checkout redesign", 3_600_000, "deepseek"),
+            t("t2", "p1", "/domain-interview checkout redesign", 3_600_000, "opencode"),
             // Four days idle: Settled.
             t("t3", "p1", "Why is the settings page slow?", 4 * 86_400_000),
           ],
@@ -140,7 +140,6 @@ export function installMock(): void {
   ];
   const agentCatalog: AgentCatalogEntry[] = [
     { id: "claude", label: "Claude", kind: "agent-sdk", command: null, installed: true, source: "built-in", skills: "As a plugin, named skilled:<name>, loaded when the task calls for it", mcp: "Stdio and HTTP servers, the browser tools in-process, plus Claude Code's own config" },
-    { id: "deepseek", label: "DeepSeek", kind: "acp", command: "dsh --profile acp", installed: true, source: "built-in", skills: "Through DSH_BUNDLED_SKILL_DIR, loaded when the task calls for it", mcp: "Stdio servers, and HTTP ones (with the browser tools) when the agent supports them" },
     { id: "codex", label: "Codex", kind: "app-server", command: "codex app-server", installed: false, source: "built-in", install: "npm install -g @openai/codex", skills: "As an extra skills folder, loaded when the task calls for it", mcp: "Stdio and HTTP servers, the browser tools, plus ~/.codex/config.toml" },
     { id: "antigravity", label: "Antigravity", kind: "acp", command: "agy_acp_server.par", installed: false, source: "built-in", install: "Google's ACP server (ACP registry: antigravity-acp): unzip it and put agy_acp_server.par on your PATH", homepage: "https://antigravity.google", optIn: true, skills: "", mcp: "HTTP servers only (the browser tools); it has no stdio MCP" },
     { id: "opencode", label: "OpenCode", kind: "acp", command: "opencode acp", installed: false, source: "built-in", install: "npm install -g opencode-ai", skills: "Not automatic: run `python3 install.py --model-only` from skilled in the project (it reads .agents/skills)", mcp: "Stdio servers, and HTTP ones (with the browser tools) when the agent supports them" },
@@ -269,17 +268,6 @@ export function installMock(): void {
           { id: "opus", label: "Opus 5.5", efforts: ["low", "medium", "high", "xhigh", "max"], defaultEffort: "high" },
           { id: "sonnet", label: "Sonnet 5", efforts: ["low", "medium", "high", "xhigh", "max"], defaultEffort: "high" },
           { id: "haiku", label: "Haiku 4.5" },
-        ],
-      },
-      {
-        id: "deepseek",
-        label: "DeepSeek",
-        defaultModel: "default",
-        capabilities: mockCapabilities,
-        models: [
-          { id: "default", label: "Agent default" },
-          { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
-          { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash" },
         ],
       },
     ],

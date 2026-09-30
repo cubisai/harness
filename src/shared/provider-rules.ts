@@ -38,3 +38,11 @@ export function codexCompatible(provider: Pick<Provider, "wireProtocol">): { ok:
     reason: `Codex 0.157+ rejects wire_api = "chat" and supports only Responses-API providers; this provider speaks ${provider.wireProtocol} (spike S2, spec/open-questions.md).`,
   };
 }
+
+/** Whether an agent's injector can drive this provider; ACP passes any protocol through. */
+export function injectorCompatible(provider: Pick<Provider, "wireProtocol">, injector: string): { ok: true } | { ok: false; reason: string } {
+  if (injector === "codex") return codexCompatible(provider);
+  const needs = injector === "claude" ? "anthropic-messages" : injector === "opencode" ? "openai-chat" : null;
+  if (needs === null || provider.wireProtocol === needs) return { ok: true };
+  return { ok: false, reason: `This agent needs a ${needs} provider; this one speaks ${provider.wireProtocol}.` };
+}

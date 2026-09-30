@@ -592,11 +592,12 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   };
 
   let refreshing: Promise<void> | null = null;
-  const refreshModels = (): Promise<void> => {
+  const refreshModels = (opts?: { force?: boolean }): Promise<void> => {
     // model/list is per account (a free plan lists fewer models): after a new login, ask again.
     const loginChanged = models.length > 0 && codexAuthStamp(config.injection?.()?.env ?? process.env) !== authStamp;
-    // A list within the TTL is trusted; a stale one is re-asked.
-    if (models.length && !loginChanged && Date.now() - listedAt < MODEL_TTL_MS) return Promise.resolve();
+    // A list within the TTL is trusted; a stale one is re-asked, and force
+    // skips the TTL (after a provider or credential change).
+    if (!opts?.force && models.length && !loginChanged && Date.now() - listedAt < MODEL_TTL_MS) return Promise.resolve();
     refreshing ??= (async () => {
       // A running app-server answers a fresh model/list in place, no restart.
       if (models.length && !loginChanged && rpc?.alive) {

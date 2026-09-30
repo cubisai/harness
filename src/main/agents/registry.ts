@@ -27,19 +27,6 @@ export function antigravityAcpCommand(platform: NodeJS.Platform = process.platfo
  */
 export const ACP_PRESETS: AcpAgentConfig[] = [
   {
-    id: "deepseek",
-    label: "DeepSeek",
-    command: "dsh",
-    args: ["--profile", "acp"],
-    // deepseek-harness loads extra skills from this directory
-    // (packages/skill/skill-filesystem: DSH_BUNDLED_SKILL_DIR).
-    skillsDirEnv: "DSH_BUNDLED_SKILL_DIR",
-    capabilities: { mcpStdio: true, interrupt: true, perMessageModel: true },
-    keyVar: "DEEPSEEK_API_KEY",
-    install: "npm install -g @deepseek-ai/dsh",
-    homepage: "https://github.com/deepseek-ai/deepseek-harness",
-  },
-  {
     // Reads skills from .opencode/skills, .claude/skills, and .agents/skills.
     id: "opencode",
     label: "OpenCode",

@@ -18,7 +18,7 @@ import { RpcError, StdioRpc } from "../rpc";
 import { normalizeUsage } from "../../usage";
 import type { InjectionPlan } from "../../inject";
 
-/** An ACP agent the app can drive: deepseek-harness, Cursor, or any agent that speaks ACP over stdio. */
+/** An ACP agent the app can drive: OpenCode, Cursor, or any agent that speaks ACP over stdio. */
 export interface AcpAgentConfig {
   id: string;
   label: string;
@@ -883,11 +883,14 @@ export function createAcpDriver(
   };
 
   let refreshing: Promise<void> | null = null;
-  const refreshModels = (): Promise<void> => {
+  const refreshModels = (opts?: { force?: boolean }): Promise<void> => {
     const ready = ensureVariants();
     // Re-list once the current list is stale, so a model released while the
-    // app stays open shows up without a restart.
-    if (knownModels.length && Date.now() - listedAt < MODEL_TTL_MS) return ready;
+    // app stays open shows up without a restart. force skips the TTL (after a
+    // provider or credential change).
+    if (!opts?.force && knownModels.length && Date.now() - listedAt < MODEL_TTL_MS) return ready;
+    // A forced refresh waits out the run already in flight, then runs once more.
+    if (opts?.force && refreshing) return refreshing.then(() => refreshModels({ force: true }));
     // Checked outside the memoized refresh, so a fixed provider refreshes next time.
     // The turn surfaces the error; there's no process to start.
     const plan = deps.injection?.();

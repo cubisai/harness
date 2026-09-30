@@ -119,9 +119,10 @@ export class SettingsStore {
 
   /**
    * One-shot v2 → v3 migration: until now every saved key reached every agent
-   * through the global env, so dsh had its DeepSeek key. Keep that behaviour
-   * once the global export goes: a stored DeepSeek provider with no explicit
-   * choice for dsh becomes that provider's BYOK. Runs after `migrate()`, so a
+   * through the global env, so the DeepSeek ACP agent (since removed) had its
+   * DeepSeek key. Keep that behaviour once the global export goes: a stored
+   * DeepSeek provider with no explicit choice for that agent id becomes that
+   * provider's BYOK. Runs after `migrate()`, so a
    * v1 file falls through both steps in one construction. `schemaVersion` gates
    * a re-run, and the file is written only when a credential actually changed.
    */

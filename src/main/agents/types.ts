@@ -104,7 +104,7 @@ export interface SeedResult { mode: "resume" | "seeded" | "unsupported"; reason?
 
 /**
  * One agent backend. Milestone 1 ships Claude (Agent SDK); Codex
- * (app-server) and ACP agents (deepseek-harness, Antigravity, Cursor)
+ * (app-server) and ACP agents (OpenCode, Antigravity, Cursor)
  * implement the same interface next.
  */
 export interface AgentDriver {
@@ -131,8 +131,9 @@ export interface AgentDriver {
    * Ask the agent for its model list without running a turn, so the picker
    * is filled at startup. Resolves when models() may have grown; failures
    * leave the list as it was. Concurrent callers share one attempt.
+   * `force` skips the list's TTL (after a provider or credential change).
    */
-  refreshModels?(): Promise<void>;
+  refreshModels?(opts?: { force?: boolean }): Promise<void>;
   /**
    * Ask the agent for its plan rate limits without running a turn. Resolves
    * with a patch, with "unsupported" when this login has no plan limits, or

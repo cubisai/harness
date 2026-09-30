@@ -258,12 +258,13 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
   const claudePath = async (): Promise<string | undefined> =>
     config.useInstalledCli === false ? resolvePackagedClaudeBinary() : await claudeExecutableAsync();
 
-  const refreshModels = (): Promise<void> => {
+  const refreshModels = (opts?: { force?: boolean }): Promise<void> => {
     // Claude Code caches the server's model config, so the first listing after a
     // while can come back stale. Re-list once shortly after (FIRST_RELIST_MS),
     // then fall back to the normal TTL so a model released while the app stays
-    // open shows up without a restart.
-    if (Date.now() - listedAt < (relisted ? MODEL_TTL_MS : FIRST_RELIST_MS)) return Promise.resolve();
+    // open shows up without a restart. force skips both (after a provider or
+    // credential change).
+    if (!opts?.force && Date.now() - listedAt < (relisted ? MODEL_TTL_MS : FIRST_RELIST_MS)) return Promise.resolve();
     refreshing ??= (async () => {
       const controller = new AbortController();
       try {
