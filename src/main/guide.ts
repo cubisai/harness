@@ -20,7 +20,8 @@ export function createGuide(opts: { bundled: string; global: string }): {
       const { mtimeMs } = statSync(path);
       const hit = cache.get(path);
       if (hit && hit.mtimeMs === mtimeMs) return hit.text;
-      const text = readFileSync(path, "utf8").trim();
+      // LF only: a CRLF checkout (git autocrlf on Windows) would otherwise inflate the prompt and its estimate.
+      const text = readFileSync(path, "utf8").replace(/\r\n?/g, "\n").trim();
       cache.set(path, { mtimeMs, text });
       return text;
     } catch {

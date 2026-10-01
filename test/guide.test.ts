@@ -1,7 +1,8 @@
-import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createGuide } from "../src/main/guide";
+import { estimateTokens } from "../src/main/handoff";
 import { tempDir } from "./helpers";
 
 function write(path: string, text: string): void {
@@ -46,6 +47,19 @@ describe("createGuide", () => {
     const bumped = new Date(Date.now() + 10_000);
     utimesSync(bundled, bumped, bumped);
     expect(guide.forCwd(join(root, "project"))).toBe("two");
+  });
+
+  it("normalizes CRLF to LF", () => {
+    const root = tempDir();
+    const bundled = join(root, "HARNESS.md");
+    write(bundled, "# Guide\r\n\r\n- one\r\n- two\r\n");
+    const guide = createGuide({ bundled, global: join(root, "none.md") });
+    expect(guide.forCwd(join(root, "project"))).toBe("# Guide\n\n- one\n- two");
+  });
+
+  it("keeps the bundled guide within its 600-token budget", () => {
+    const text = readFileSync(join(__dirname, "..", "resources", "HARNESS.md"), "utf8").replace(/\r\n?/g, "\n").trim();
+    expect(estimateTokens(text)).toBeLessThanOrEqual(600);
   });
 
   it("serves the cached text while the mtime is unchanged", () => {
