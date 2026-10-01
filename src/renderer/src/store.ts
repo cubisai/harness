@@ -142,6 +142,9 @@ interface State {
   toggleBrowserWide(): void;
   /** Text to add to the message box (a picked element), with a nonce so repeats still apply. */
   composerInsert: { text: string; nonce: number } | null;
+  /** Text to put back in the message box (Edit on a sent message); consumed by the composer. */
+  composerDraft: { text: string; nonce: number } | null;
+  setComposerDraft(text: string): void;
   startPick(): Promise<void>;
   /** A skill to pre-fill in the composer, set by the empty-state shortcuts. */
   pendingSkill: string | null;
@@ -420,6 +423,10 @@ export const useStore = create<State>((set, get) => ({
   browser: { device: "desktop", logs: [], screenshots: [] },
   browserLoaded: false,
   composerInsert: null,
+  composerDraft: null,
+  setComposerDraft(text) {
+    set((s) => ({ composerDraft: { text, nonce: (s.composerDraft?.nonce ?? 0) + 1 } }));
+  },
 
   async loadBrowserState() {
     // Called when the browser panel mounts, never on every render.

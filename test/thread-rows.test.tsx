@@ -75,7 +75,13 @@ describe("subagent steps", () => {
     const savedDisclosures = state.disclosures;
     try {
       state.events = { t1: [agent, childTool, childText] };
+      // A finished run of tool calls folds into "Worked for …"; nothing of it shows until opened.
       state.disclosures = {};
+      const folded = renderToStaticMarkup(<ThreadView threadId="t1" />);
+      expect(folded).toMatch(/>Worked( for [^<]+)?</);
+      expect(folded).toContain("1 other step");
+      expect(folded).not.toContain("Found the bug");
+      state.disclosures = { t1: { [`work-${agent.seq}`]: true } };
       const closed = renderToStaticMarkup(<ThreadView threadId="t1" />);
       expect(closed).toContain("Agent");
       // The child's own text row is not at the top level; the collapsed Agent
@@ -83,7 +89,7 @@ describe("subagent steps", () => {
       expect(closed).not.toContain("Found the bug");
       expect(closed).toContain("1 step · Read calc.py");
 
-      state.disclosures = { t1: { "tu-agent": true } };
+      state.disclosures = { t1: { [`work-${agent.seq}`]: true, "tu-agent": true } };
       const open = renderToStaticMarkup(<ThreadView threadId="t1" />);
       expect(open).toContain("Steps");
       expect(open).toContain("Found the bug");

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronRight, Copy, Pencil, RotateCcw } from "lucide-react";
 import type { StoredEvent, ThreadEvent } from "../../../shared/types";
 import { prettyTool, type RunResult } from "../../../shared/tools";
 import { displayOrder } from "../event-order";
@@ -12,6 +13,7 @@ import { PlanApprovalCard } from "./PlanApprovalCard";
 import { ReasoningBlock } from "./ReasoningBlock";
 import { activityOf, WaitingLine } from "./WaitingLine";
 import { useSmoothText } from "../hooks/useSmoothText";
+import { segmentEvents, type Segment, type TurnChanges, workDuration, workSummary } from "../turns";
 
 type ToolEvent = Extract<ThreadEvent, { kind: "tool-use" }>;
 type ResultEvent = Extract<ThreadEvent, { kind: "tool-result" }>;
@@ -107,8 +109,17 @@ export function ThreadView({ threadId }: { threadId: string }) {
     }
     return hidden;
   }, [events]);
-  // What the thread actually renders: notices written for a message show above it.
+  // What the thread actually renders: notices written for a message show above it,
+  // tool runs fold into "Worked for" groups, and each turn ends with its footer.
   const displayEvents = useMemo(() => displayOrder(events), [events]);
+  const segments = useMemo(
+    () => segmentEvents(displayEvents.filter((e) => !stalePlans.has(e.seq) && !hiddenChecks.has(e.seq) && !e.event.parentId), running),
+    [displayEvents, stalePlans, hiddenChecks, running],
+  );
+  const lastTurnEnd = useMemo(() => {
+    for (let i = segments.length - 1; i >= 0; i--) if (segments[i]!.kind === "turn-end") return i;
+    return -1;
+  }, [segments]);
 
   // Stay pinned to the bottom while the user hasn't scrolled away.
   const pinned = useRef(true);
@@ -138,11 +149,9 @@ export function ThreadView({ threadId }: { threadId: string }) {
       }}
     >
       <div className="thread-inner" ref={inner}>
-        {displayEvents.map((e) =>
-          stalePlans.has(e.seq) || hiddenChecks.has(e.seq) || e.event.parentId ? null : (
-            <EventRow key={e.seq} stored={e} results={results} children={children} running={running} threadId={threadId} />
-          ),
-        )}
+        {segments.map((seg, i) => (
+          <SegmentRow key={segmentKey(seg)} seg={seg} results={results} children={children} running={running} threadId={threadId} last={i === lastTurnEnd} />
+        ))}
         {reasoningMode === "text" &&
           reasoningItems.map((item, i) => (
             <LiveReasoning key={item.key} text={item.text} newest={i === reasoningItems.length - 1 && textItems.length === 0} />
@@ -179,18 +188,140 @@ export function ThreadView({ threadId }: { threadId: string }) {
 
 const EMPTY: StoredEvent[] = [];
 
+function segmentKey(seg: Segment): string {
+  return seg.kind === "work" ? `w${seg.key}` : `e${seg.stored.seq}`;
+}
+
+/** One display segment: an event, a folded run of work, or a turn's changes card and footer. */
+function SegmentRow({ seg, results, children, running, threadId, last }: { seg: Segment; results: Map<string, ResultEvent>; children: Map<string, StoredEvent[]>; running: boolean; threadId: string; last: boolean }) {
+  if (seg.kind === "work") return <WorkGroup seg={seg} results={results} children={children} running={running} threadId={threadId} />;
+  if (seg.kind === "turn-end") {
+    return (
+      <>
+        {seg.changes && <ChangesCard changes={seg.changes} />}
+        <TurnFooter seg={seg} threadId={threadId} running={running} last={last} />
+      </>
+    );
+  }
+  return <EventRow stored={seg.stored} results={results} children={children} running={running} threadId={threadId} />;
+}
+
+/**
+ * A finished run of tool calls as one line, "Worked for 41s · read 2 files ·
+ * ran 1 command", opening to its steps (DESIGN.md §7.4). A run still in
+ * progress shows its rows as they come.
+ */
+function WorkGroup({ seg, results, children, running, threadId }: { seg: Extract<Segment, { kind: "work" }>; results: Map<string, ResultEvent>; children: Map<string, StoredEvent[]>; running: boolean; threadId: string }) {
+  const id = `work-${seg.key}`;
+  const open = useStore((s) => Boolean(s.disclosures[threadId]?.[id]));
+  const rows = seg.items.map((e) =>
+    e.event.kind === "assistant-text" ? (
+      <div className="work-note" key={e.seq}>
+        <Markdown text={e.event.text} onFile={openRef} />
+      </div>
+    ) : (
+      <EventRow key={e.seq} stored={e} results={results} children={children} running={running} threadId={threadId} />
+    ),
+  );
+  if (!seg.done) return <div className="work-live">{rows}</div>;
+  return (
+    <details className="work" open={open} onToggle={(e) => useStore.getState().setDisclosure(threadId, id, e.currentTarget.open)}>
+      <summary>
+        <ChevronRight size={13} className="chev" />
+        {seg.endedAt - seg.startedAt >= 1000 ? `Worked for ${workDuration(seg.endedAt - seg.startedAt)}` : "Worked"}
+        <span className="work-sum">{workSummary(seg.items) ? ` · ${workSummary(seg.items)}` : ""}</span>
+      </summary>
+      {open && <div className="work-body">{rows}</div>}
+    </details>
+  );
+}
+
+/** What a turn changed: "2 files changed +38 −0", with Review opening the Changes tab. */
+function ChangesCard({ changes }: { changes: TurnChanges }) {
+  const n = changes.files.length;
+  return (
+    <div className="changes-card" title={changes.files.join("\n")}>
+      <span className="changes-count">
+        {n} {n === 1 ? "file" : "files"} changed
+      </span>
+      {changes.additions !== null && <span className="add">+{changes.additions}</span>}
+      {changes.deletions !== null && <span className="del">−{changes.deletions}</span>}
+      <span className="grow" />
+      <button className="button" onClick={() => useStore.getState().showInspector("changes")}>
+        Review
+      </button>
+    </div>
+  );
+}
+
+/** A turn's footer: Copy and Retry, then the model's usage. Shown on hover, always on the last turn. */
+function TurnFooter({ seg, threadId, running, last }: { seg: Extract<Segment, { kind: "turn-end" }>; threadId: string; running: boolean; last: boolean }) {
+  const e = seg.stored.event as Extract<ThreadEvent, { kind: "turn-end" }>;
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className={`turn-foot${last ? " last" : ""}`}>
+      {seg.answer && (
+        <button
+          className="foot-button"
+          title={copied ? "Copied" : "Copy the reply"}
+          onClick={() => {
+            void navigator.clipboard?.writeText(seg.answer).then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1200);
+            });
+          }}
+        >
+          <Copy size={13} />
+        </button>
+      )}
+      {seg.prompt && (
+        <button
+          className="foot-button"
+          title="Send the same message again"
+          disabled={running}
+          onClick={() => void useStore.getState().send(seg.prompt!.text, seg.prompt!.skill, threadId)}
+        >
+          <RotateCcw size={13} />
+        </button>
+      )}
+      <span className="turn-meta">
+        <span>{formatTokens(e.inputTokens)} in</span>
+        <span>{formatTokens(e.outputTokens)} out</span>
+        {e.costUsd !== null && <span>${e.costUsd.toFixed(e.costUsd < 1 ? 3 : 2)}</span>}
+        <span>{(e.durationMs / 1000).toFixed(1)}s</span>
+      </span>
+    </div>
+  );
+}
+
+/** Your message: a compact bubble, with Copy, Edit (back into the message box) and the time on hover. */
+function UserMessage({ stored }: { stored: StoredEvent }) {
+  const e = stored.event as Extract<ThreadEvent, { kind: "user" }>;
+  const time = new Date(stored.createdAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return (
+    <div className="msg-user">
+      <div className="bubble">
+        {e.skill && <span className="skill-chip">${e.skill}</span>}
+        {e.text}
+      </div>
+      <div className="msg-actions">
+        <span className="msg-time">{time}</span>
+        <button className="foot-button" title="Copy" onClick={() => void navigator.clipboard?.writeText(e.text)}>
+          <Copy size={13} />
+        </button>
+        <button className="foot-button" title="Edit: put it back in the message box" onClick={() => useStore.getState().setComposerDraft(e.text)}>
+          <Pencil size={13} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function EventRow({ stored, results, children, running, threadId }: { stored: StoredEvent; results: Map<string, ResultEvent>; children?: Map<string, StoredEvent[]>; running: boolean; threadId?: string }) {
   const e = stored.event;
   switch (e.kind) {
     case "user":
-      return (
-        <div className="msg-user">
-          <div className="bubble">
-            {e.skill && <span className="skill-chip">${e.skill}</span>}
-            {e.text}
-          </div>
-        </div>
-      );
+      return <UserMessage stored={stored} />;
     case "assistant-text":
       return (
         <div className="msg-assistant">

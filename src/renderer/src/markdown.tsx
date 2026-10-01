@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment, type ReactNode, useState } from "react";
 import { type FileRef, fileUrlRef, parseFileRef } from "./fileref";
 import { memoizeByHash, parseBlocks, splitStreamingTail } from "./streaming";
 
@@ -22,11 +22,7 @@ export function Markdown({ text, streaming, onFile }: { text: string; streaming?
       {blocks.map((b, i) => {
         switch (b.type) {
           case "code":
-            return (
-              <pre key={i}>
-                <code>{b.text}</code>
-              </pre>
-            );
+            return <CodeBlock key={i} text={b.text} lang={b.lang} />;
           case "heading": {
             const H = (`h${Math.min(b.level, 3)}` as "h1" | "h2" | "h3");
             return <H key={i}>{inline(b.text, onFile)}</H>;
@@ -130,4 +126,30 @@ function inline(text: string, onFile?: (ref: FileRef) => void): ReactNode {
   }
   if (last < text.length) out.push(text.slice(last));
   return out.map((n, i) => <Fragment key={i}>{n}</Fragment>);
+}
+
+/** A fenced block with a header: its language and a Copy button (DESIGN.md §7.4). */
+function CodeBlock({ text, lang }: { text: string; lang?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="code-block">
+      <div className="code-head">
+        <span>{lang ?? "text"}</span>
+        <button
+          className="code-copy"
+          onClick={() => {
+            void navigator.clipboard?.writeText(text).then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1200);
+            });
+          }}
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <pre>
+        <code>{text}</code>
+      </pre>
+    </div>
+  );
 }

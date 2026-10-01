@@ -13,6 +13,6 @@
     "composite": true,
     "resolveJsonModule": true
   },
-  "include": ["src/main/**/*", "src/preload/**/*", "src/shared/**/*", "src/renderer/src/palette.ts", "src/renderer/src/live.ts", "src/renderer/src/streaming.ts", "src/renderer/src/cmdline.ts", "src/renderer/src/event-order.ts", "src/renderer/src/fileref.ts", "src/renderer/src/layout.ts", "src/renderer/src/splitter.ts", "src/renderer/src/sections.ts", "src/renderer/src/mentions.ts", "src/renderer/src/modes.ts", "src/renderer/src/commands.ts", "test/**/*", "electron.vite.config.ts", "vitest.config.ts"],
+  "include": ["src/main/**/*", "src/preload/**/*", "src/shared/**/*", "src/renderer/src/palette.ts", "src/renderer/src/live.ts", "src/renderer/src/streaming.ts", "src/renderer/src/cmdline.ts", "src/renderer/src/event-order.ts", "src/renderer/src/fileref.ts", "src/renderer/src/layout.ts", "src/renderer/src/splitter.ts", "src/renderer/src/sections.ts", "src/renderer/src/mentions.ts", "src/renderer/src/modes.ts", "src/renderer/src/commands.ts", "src/renderer/src/turns.ts", "test/**/*", "electron.vite.config.ts", "vitest.config.ts"],
   "exclude": ["test/**/*.tsx"]
 }

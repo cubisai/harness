@@ -130,6 +130,17 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
     area.current?.focus();
   }, [pendingSkill]);
 
+  // Edit on a sent message puts its text back here, caret at the end.
+  const draft = useStore((s) => s.composerDraft);
+  useEffect(() => {
+    if (!draft) return;
+    setText(draft.text);
+    setCaret(draft.text.length);
+    pendingCaret.current = draft.text.length;
+    useStore.setState({ composerDraft: null });
+    area.current?.focus();
+  }, [draft]);
+
   // A picked element becomes a chip; its full text goes out with the message.
   useEffect(() => {
     if (!insert) return;
