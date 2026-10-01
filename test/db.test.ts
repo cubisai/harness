@@ -165,6 +165,7 @@ describe("Store migrations", () => {
 
   it("keeps a thread's context-window override", () => {
     const store = new Store(join(tempDir(), "t.db"));
+    closeAfter(() => store.close());
     const p = store.addProject("/tmp/some/project");
     const t = store.createThread(p.id, "codex", "gpt-6-luna", "ask");
     expect(t.contextWindow ?? null).toBeNull();
@@ -176,6 +177,7 @@ describe("Store migrations", () => {
 
   it("moves a project to another folder, refusing one another project uses", () => {
     const store = new Store(join(tempDir(), "t.db"));
+    closeAfter(() => store.close());
     const a = store.addProject("/tmp/old/a");
     store.addProject("/tmp/taken");
     expect(store.setProjectPath(a.id, "/tmp/new/a").path).toBe("/tmp/new/a");
