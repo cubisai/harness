@@ -26,7 +26,7 @@ function ProjectRow({
   const [checkValue, setCheckValue] = useState(project.checkCommand ?? "");
   const [fixRounds, setFixRounds] = useState(project.checkFixRounds ?? 1);
   const boxRef = useRef<HTMLDivElement>(null);
-  const { deleteProject, selectProject, newThread, openInEditor, setCheckCommand } = useStore.getState();
+  const { deleteProject, selectProject, newThread, openInEditor, setCheckCommand, relocateProject } = useStore.getState();
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -72,12 +72,13 @@ function ProjectRow({
     >
       <button
         className="project-toggle"
-        title={project.path}
+        title={project.missing ? `Folder missing: ${project.path}` : project.path}
         aria-expanded={open}
         onClick={onToggle}
       >
         <IconChevron open={open} />
-        <span className="project-name">{project.name}</span>
+        <span className={`project-name${project.missing ? " missing" : ""}`}>{project.name}</span>
+        {project.missing && <span className="project-missing">Folder missing</span>}
         <span className="count">{count || ""}</span>
       </button>
       <span className="project-actions">
@@ -159,6 +160,11 @@ function ProjectRow({
             </>
           ) : (
             <>
+              {project.missing && (
+                <button role="menuitem" onClick={act(() => relocateProject(project.id))}>
+                  Locate folder…
+                </button>
+              )}
               <button role="menuitem" onClick={act(() => selectProject(project.id).then(() => newThread()))}>
                 New thread
               </button>

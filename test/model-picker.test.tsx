@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { ContextPicker, contextChoices } from "../src/renderer/src/components/ContextPicker";
 import { EffortPicker } from "../src/renderer/src/components/EffortPicker";
 import { ModelPicker } from "../src/renderer/src/components/ModelPicker";
 import { filterModels } from "../src/renderer/src/models";
@@ -50,5 +51,25 @@ describe("EffortPicker", () => {
     expect(html).toContain("(high)");
     expect(html).toContain(">low</button>");
     expect(html).toContain(">high</button>");
+  });
+});
+
+describe("ContextPicker", () => {
+  const luna = { id: "gpt-6-luna", label: "GPT-6-Luna", contextWindow: 272000, maxContextWindow: 872000 };
+
+  it("offers Default and Max only when the model accepts a larger window", () => {
+    expect(contextChoices(luna)).toEqual([
+      { label: "Default · 272K", value: null },
+      { label: "Max · 872K", value: 872000 },
+    ]);
+    expect(contextChoices({ ...luna, maxContextWindow: 272000 })).toEqual([]);
+    expect(contextChoices({ id: "opus", label: "Opus 5.5" })).toEqual([]);
+    expect(contextChoices(undefined)).toEqual([]);
+  });
+
+  it("renders nothing without a larger window, and the current size otherwise", () => {
+    expect(renderToStaticMarkup(<ContextPicker model={{ id: "gpt-5.5", label: "GPT-5.5", contextWindow: 272000, maxContextWindow: 272000 }} current={null} onPick={() => {}} />)).toBe("");
+    expect(renderToStaticMarkup(<ContextPicker model={luna} current={null} onPick={() => {}} />)).toContain("272K");
+    expect(renderToStaticMarkup(<ContextPicker model={luna} current={872000} onPick={() => {}} />)).toContain("872K");
   });
 });

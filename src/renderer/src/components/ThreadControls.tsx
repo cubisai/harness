@@ -2,6 +2,7 @@ import type { AgentInfo, ModelOption, PermissionMode, Thread } from "../../../sh
 import { MODE_ORDER } from "../modes";
 import { useStore } from "../store";
 import { AgentPicker } from "./AgentPicker";
+import { ContextPicker } from "./ContextPicker";
 import { EffortPicker } from "./EffortPicker";
 import { ModelPicker } from "./ModelPicker";
 
@@ -26,11 +27,14 @@ function Controls({
   models,
   effort,
   defaultEffort,
+  contextModel,
+  contextWindow,
   permissionMode,
   disabled,
   onAgent,
   onModel,
   onEffort,
+  onContextWindow,
   onPermission,
 }: {
   agents: AgentInfo[];
@@ -39,11 +43,15 @@ function Controls({
   models: ModelOption[];
   effort: string | null;
   defaultEffort?: string;
+  /** The current model option, for its context-window range. */
+  contextModel?: ModelOption;
+  contextWindow?: number | null;
   permissionMode: PermissionMode;
   disabled?: boolean;
   onAgent(id: string): void;
   onModel(id: string): void;
   onEffort(effort: string | null): void;
+  onContextWindow?(value: number | null): void;
   onPermission(mode: PermissionMode): void;
 }) {
   return (
@@ -51,6 +59,7 @@ function Controls({
       {agents.length > 1 && <AgentPicker agents={agents} current={agent} disabled={disabled} onPick={onAgent} />}
       <ModelPicker models={models} current={model} disabled={disabled} placement="up" listenForOpenRequest onPick={onModel} />
       <EffortPicker options={models.find((m) => m.id === model)?.efforts ?? []} current={effort} defaultEffort={defaultEffort} disabled={disabled} onPick={onEffort} />
+      {onContextWindow && <ContextPicker model={contextModel} current={contextWindow ?? null} disabled={disabled} onPick={onContextWindow} />}
       <div className="segmented compact" role="radiogroup" aria-label="Permissions">
         {MODE_ORDER.map((id) => {
           const m = MODES[id];
@@ -87,11 +96,14 @@ export function ThreadControls({ thread, running }: { thread: Thread; running: b
       models={models}
       effort={thread.effort}
       defaultEffort={model?.defaultEffort}
+      contextModel={model}
+      contextWindow={thread.contextWindow ?? null}
       permissionMode={thread.permissionMode}
       disabled={running}
       onAgent={openSwitch}
       onModel={(m) => void updateThread({ model: m })}
       onEffort={(effort) => void updateThread({ effort })}
+      onContextWindow={(contextWindow) => void updateThread({ contextWindow })}
       onPermission={(permissionMode) => void updateThread({ permissionMode })}
     />
   );
@@ -116,10 +128,13 @@ export function DraftControls() {
       models={models}
       effort={draft.effort ?? null}
       defaultEffort={models.find((m) => m.id === model)?.defaultEffort}
+      contextModel={models.find((m) => m.id === model)}
+      contextWindow={draft.contextWindow ?? null}
       permissionMode={draft.permissionMode ?? settings?.defaultPermissionMode ?? "ask"}
       onAgent={(id) => setDraft({ agent: id })}
       onModel={(m) => setDraft({ model: m })}
       onEffort={(effort) => setDraft({ effort })}
+      onContextWindow={(contextWindow) => setDraft({ contextWindow })}
       onPermission={(permissionMode) => setDraft({ permissionMode })}
     />
   );

@@ -68,7 +68,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
       extraRoots = params.extraRoots;
       return send({ id, result: {} });
     case "model/list":
-      return send({ id, result: { data: [{ id: "gpt-mock", displayName: "GPT Mock", hidden: false }, { id: "hidden", displayName: "H", hidden: true }], nextCursor: null } });
+      return send({ id, result: { data: [{ id: "gpt-mock", displayName: "GPT Mock", hidden: false, isDefault: true }, { id: "hidden", displayName: "H", hidden: true }], nextCursor: null } });
     case "thread/start": {
       const tid = `thread-${threads.size}`;
       threads.add(tid);

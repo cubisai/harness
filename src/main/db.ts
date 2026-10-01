@@ -138,6 +138,8 @@ export class Store {
       { applied: () => this.hasColumn("projects", "check_command"), sql: "ALTER TABLE projects ADD COLUMN check_command TEXT" },
       // 16: how many automatic fix turns a failed check may send; null = 1.
       { applied: () => this.hasColumn("projects", "check_fix_rounds"), sql: "ALTER TABLE projects ADD COLUMN check_fix_rounds INTEGER" },
+      // 17: the thread's context-window override in tokens; null = the model's default.
+      { applied: () => this.hasColumn("threads", "context_window"), sql: "ALTER TABLE threads ADD COLUMN context_window INTEGER" },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;
@@ -184,6 +186,14 @@ export class Store {
     const row = this.db.prepare("SELECT id, path, name, created_at, check_command, check_fix_rounds FROM projects WHERE id = ?").get(id);
     if (!row) throw new Error(`no project ${id}`);
     return toProject(row as unknown as ProjectRow);
+  }
+
+  /** Point a project at another folder; a folder another project already uses is refused. */
+  setProjectPath(id: string, path: string): Project {
+    const existing = this.db.prepare("SELECT id FROM projects WHERE path = ? AND id != ?").get(path, id);
+    if (existing) throw new Error("Another project already uses that folder.");
+    this.db.prepare("UPDATE projects SET path = ? WHERE id = ?").run(path, id);
+    return this.getProject(id);
   }
 
   /** Set the project's post-turn check command; a blank command turns it off. */
@@ -250,7 +260,7 @@ export class Store {
    * `sessionId` writes the cursor of the thread's agent (after any `agent` change in
    * the same patch). Changing `agent` keeps every binding, so switching back resumes.
    */
-  updateThread(id: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "permissionMode" | "sessionId" | "agent" | "pinned" | "archived">>): Thread {
+  updateThread(id: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "contextWindow" | "permissionMode" | "sessionId" | "agent" | "pinned" | "archived">>): Thread {
     const current = this.getThread(id);
     const now = Date.now();
     const { sessionId, ...rest } = patch;
@@ -264,8 +274,8 @@ export class Store {
     const activity = Object.keys(patch).some((k) => k !== "pinned" && k !== "archived" && k !== "title");
     const t: Thread = { ...current, ...rest, agent, bindings, sessionId: bindings[bindingKey(agent)]?.resumeCursor ?? null, updatedAt: activity ? now : current.updatedAt };
     this.db
-      .prepare("UPDATE threads SET agent = ?, title = ?, session_id = ?, bindings = ?, model = ?, effort = ?, permission_mode = ?, pinned = ?, archived = ?, updated_at = ? WHERE id = ?")
-      .run(t.agent, t.title, t.sessionId, JSON.stringify(bindings), t.model, t.effort, t.permissionMode, t.pinned ? 1 : 0, t.archived ? 1 : 0, t.updatedAt, id);
+      .prepare("UPDATE threads SET agent = ?, title = ?, session_id = ?, bindings = ?, model = ?, effort = ?, context_window = ?, permission_mode = ?, pinned = ?, archived = ?, updated_at = ? WHERE id = ?")
+      .run(t.agent, t.title, t.sessionId, JSON.stringify(bindings), t.model, t.effort, t.contextWindow ?? null, t.permissionMode, t.pinned ? 1 : 0, t.archived ? 1 : 0, t.updatedAt, id);
     return t;
   }
 
@@ -491,7 +501,7 @@ export class Store {
 }
 
 const THREAD_COLS =
-  "id, project_id, agent, title, session_id, bindings, model, effort, permission_mode, created_at, updated_at, pinned, archived, branch, worktree_path, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
+  "id, project_id, agent, title, session_id, bindings, model, effort, context_window, permission_mode, created_at, updated_at, pinned, archived, branch, worktree_path, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
 
 export interface LedgerTarget {
   threadId: string;
@@ -518,6 +528,7 @@ interface ThreadRow {
   bindings: string | null;
   model: string;
   effort: string | null;
+  context_window: number | null;
   permission_mode: string;
   created_at: number;
   updated_at: number;
@@ -568,6 +579,7 @@ function toThread(r: ThreadRow): Thread {
     bindings,
     model: r.model,
     effort: r.effort ?? null,
+    contextWindow: r.context_window ?? null,
     permissionMode: r.permission_mode as PermissionMode,
     createdAt: r.created_at,
     updatedAt: r.updated_at,

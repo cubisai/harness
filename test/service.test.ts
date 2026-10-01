@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { LiveUpdate, PlanDecision, ThreadEvent } from "../src/shared/types";
@@ -52,6 +52,33 @@ describe("Service.send", () => {
     expect(store.getThread(thread.id)).toMatchObject({ title: "Say hi", sessionId: "session-1" });
     expect(updates.filter((u) => u.type === "running").map((u) => (u as { running: boolean }).running)).toEqual([true, false]);
     expect(service.isRunning(thread.id)).toBe(false);
+  });
+
+  it("refuses to start in a project folder that's gone, and says why", async () => {
+    const { store, service, driver, thread, updates } = setup(async () => {});
+    rmSync(store.getProject(thread.projectId).path, { recursive: true, force: true });
+    await service.send({ threadId: thread.id, text: "hi" });
+    const events = store.listEvents(thread.id).map((e) => e.event);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ kind: "error" });
+    expect((events[0] as { message: string }).message).toContain("Project folder not found");
+    expect(driver.prompts).toEqual([]);
+    expect(updates.some((u) => u.type === "projects-changed")).toBe(true);
+    expect(updates).toContainEqual({ type: "running", threadId: thread.id, running: false });
+    expect(service.isRunning(thread.id)).toBe(false);
+    await expect(service.send({ threadId: thread.id, text: "again" })).resolves.toBeUndefined();
+  });
+
+  it("passes the thread's context window to the driver, and a model change clears it", async () => {
+    const seen: (number | null | undefined)[] = [];
+    const { service, thread } = setup(async (input) => {
+      seen.push(input.contextWindow);
+    });
+    service.updateThread(thread.id, { contextWindow: 872000 });
+    await service.send({ threadId: thread.id, text: "one" });
+    expect(service.updateThread(thread.id, { model: "other-model" }).contextWindow).toBeNull();
+    await service.send({ threadId: thread.id, text: "two" });
+    expect(seen).toEqual([872000, null]);
   });
 
   it("says so when a model ends the turn without any reply", async () => {

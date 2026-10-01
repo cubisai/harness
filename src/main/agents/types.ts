@@ -48,6 +48,8 @@ export interface TurnInput {
   model: string;
   /** Reasoning effort for this turn; null or absent keeps the model's default. */
   effort?: string | null;
+  /** Context-window override for this turn; null/absent keeps the model's default. */
+  contextWindow?: number | null;
   permissionMode: PermissionMode;
   signal: AbortSignal;
   onEvent(event: ThreadEvent): void;

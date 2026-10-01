@@ -37,6 +37,7 @@ interface Draft {
   agent?: string;
   model?: string;
   effort?: string | null;
+  contextWindow?: number | null;
   permissionMode?: PermissionMode;
 }
 
@@ -151,6 +152,8 @@ interface State {
 
   init(): Promise<void>;
   addProject(): Promise<void>;
+  /** Point a project at a newly picked folder and apply the returned row. */
+  relocateProject(id: string): Promise<void>;
   deleteProject(id: string): Promise<void>;
   /** Set a project's post-turn check command and apply the returned row. */
   setCheckCommand(id: string, command: string | null, fixRounds?: number | null): Promise<void>;
@@ -167,7 +170,7 @@ interface State {
   exportThread(): Promise<void>;
   /** Restore a thread export into the selected project and open it. */
   importThread(): Promise<void>;
-  updateThread(patch: Partial<Pick<Thread, "title" | "model" | "effort" | "permissionMode" | "agent">>): Promise<void>;
+  updateThread(patch: Partial<Pick<Thread, "title" | "model" | "effort" | "contextWindow" | "permissionMode" | "agent">>): Promise<void>;
   /** Step the open thread's reasoning effort down (-1) or up (+1), wrapping through Default. */
   cycleEffort(dir: 1 | -1): void;
   /** Start a turn on the open thread (or `threadId`); a no-op while that thread is running. */
@@ -200,10 +203,11 @@ function findThread(threads: Record<string, Thread[]>, id: string): Thread | und
 }
 
 /** The updates a freshly created thread needs to match the user's draft picks. */
-function draftPatch(draft: Draft, thread: Thread): Partial<Pick<Thread, "model" | "effort" | "permissionMode">> {
-  const patch: Partial<Pick<Thread, "model" | "effort" | "permissionMode">> = {};
+function draftPatch(draft: Draft, thread: Thread): Partial<Pick<Thread, "model" | "effort" | "contextWindow" | "permissionMode">> {
+  const patch: Partial<Pick<Thread, "model" | "effort" | "contextWindow" | "permissionMode">> = {};
   if (draft.model !== undefined && draft.model !== thread.model) patch.model = draft.model;
   if (draft.effort !== undefined && draft.effort !== thread.effort) patch.effort = draft.effort;
+  if (draft.contextWindow !== undefined && draft.contextWindow !== (thread.contextWindow ?? null)) patch.contextWindow = draft.contextWindow;
   if (draft.permissionMode !== undefined && draft.permissionMode !== thread.permissionMode) patch.permissionMode = draft.permissionMode;
   return patch;
 }
@@ -348,7 +352,10 @@ export const useStore = create<State>((set, get) => ({
       if (patch.agent !== undefined && patch.agent !== s.draft.agent) {
         delete draft.model;
         delete draft.effort;
+        delete draft.contextWindow;
       }
+      // A window picked for one model doesn't carry to another.
+      if (patch.model !== undefined && patch.model !== s.draft.model && patch.contextWindow === undefined) delete draft.contextWindow;
       return { draft };
     });
   },
@@ -525,6 +532,19 @@ export const useStore = create<State>((set, get) => ({
       threads: { ...s.threads, [project.id]: threads },
     }));
     await get().selectProject(project.id);
+  },
+
+  async relocateProject(id) {
+    let project: Project | null;
+    try {
+      project = await api().relocateProject(id);
+    } catch (err) {
+      get().showNotice(`Couldn't locate the project: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+    if (!project) return;
+    const relocated = project;
+    set((s) => ({ projects: s.projects.map((p) => (p.id === relocated.id ? relocated : p)) }));
   },
 
   async deleteProject(id) {
@@ -895,6 +915,9 @@ export const useStore = create<State>((set, get) => ({
         return;
       case "agents":
         void api().listAgents().then((agents) => set({ agents }));
+        return;
+      case "projects-changed":
+        void api().listProjects().then((projects) => set({ projects }));
         return;
       case "open-about":
         set({ aboutOpen: true });

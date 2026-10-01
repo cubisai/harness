@@ -163,6 +163,26 @@ describe("Store migrations", () => {
     expect(reread.sessionId).toBe(reread.bindings["codex:default"]!.resumeCursor);
   });
 
+  it("keeps a thread's context-window override", () => {
+    const store = new Store(join(tempDir(), "t.db"));
+    const p = store.addProject("/tmp/some/project");
+    const t = store.createThread(p.id, "codex", "gpt-6-luna", "ask");
+    expect(t.contextWindow ?? null).toBeNull();
+    expect(store.updateThread(t.id, { contextWindow: 872000 }).contextWindow).toBe(872000);
+    expect(store.getThread(t.id).contextWindow).toBe(872000);
+    expect(store.updateThread(t.id, { contextWindow: null }).contextWindow).toBeNull();
+    expect(store.getThread(t.id).contextWindow).toBeNull();
+  });
+
+  it("moves a project to another folder, refusing one another project uses", () => {
+    const store = new Store(join(tempDir(), "t.db"));
+    const a = store.addProject("/tmp/old/a");
+    store.addProject("/tmp/taken");
+    expect(store.setProjectPath(a.id, "/tmp/new/a").path).toBe("/tmp/new/a");
+    expect(store.getProject(a.id).path).toBe("/tmp/new/a");
+    expect(() => store.setProjectPath(a.id, "/tmp/taken")).toThrow("Another project already uses that folder.");
+  });
+
   it("adds effort to a database at version 12, keeping existing threads on the model default", () => {
     const file = join(tempDir(), "pre13.db");
     const old = new DatabaseSync(file);

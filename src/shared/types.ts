@@ -38,6 +38,8 @@ export interface Project {
   checkCommand?: string | null;
   /** How many automatic fix turns a failed check may send (0-2); null/absent = 1. 0 = show the result, spend no tokens. */
   checkFixRounds?: number | null;
+  /** The folder no longer exists (computed when listed, not stored). */
+  missing?: boolean;
 }
 
 export type PermissionMode = "ask" | "auto-edit" | "plan" | "full";
@@ -323,6 +325,8 @@ export interface Thread {
   model: string;
   /** Reasoning effort for the current model; null = the model's own default. */
   effort: string | null;
+  /** Context-window override in tokens; null/absent = the model's default. Codex only. */
+  contextWindow?: number | null;
   permissionMode: PermissionMode;
   createdAt: number;
   updatedAt: number;
@@ -571,6 +575,10 @@ export interface ModelOption {
   efforts?: string[];
   /** The model's default effort, when the agent reports one. */
   defaultEffort?: string;
+  /** Default context window in tokens, when the agent reports one. */
+  contextWindow?: number;
+  /** Largest window the model accepts as an override. */
+  maxContextWindow?: number;
 }
 
 export type GuardEnforcement = "block" | "warnOnly";
@@ -701,6 +709,8 @@ export type LiveUpdate =
   | { type: "limits"; limits: AgentLimits }
   /** A driver finished loading its model list; refetch agents. */
   | { type: "agents" }
+  /** The project list changed (a folder went missing, or was relocated): refetch it. */
+  | { type: "projects-changed" }
   /** The app menu asked for the About sheet. */
   | { type: "open-about" };
 
@@ -713,12 +723,14 @@ export interface UnskilledApi {
   smoke?: boolean;
   listProjects(): Promise<Project[]>;
   addProject(): Promise<Project | null>;
+  /** Point a project at a newly picked folder; null when the dialog was cancelled. */
+  relocateProject(projectId: string): Promise<Project | null>;
   deleteProject(projectId: string): Promise<void>;
   /** Set a project's post-turn check command; null/empty turns it off. */
   setCheckCommand(projectId: string, command: string | null, fixRounds?: number | null): Promise<Project>;
   listThreads(projectId: string): Promise<Thread[]>;
   createThread(projectId: string, agent?: string, opts?: { worktree?: boolean }): Promise<Thread>;
-  updateThread(threadId: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "permissionMode" | "agent" | "pinned" | "archived">>): Promise<Thread>;
+  updateThread(threadId: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "contextWindow" | "permissionMode" | "agent" | "pinned" | "archived">>): Promise<Thread>;
   deleteThread(threadId: string): Promise<void>;
   /** Move a thread to another agent; a refused switch changes nothing. */
   switchAgent(threadId: string, agent: string, mode: SwitchMode): Promise<SwitchResult>;

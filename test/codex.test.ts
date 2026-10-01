@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { PermissionDecision, ThreadEvent } from "../src/shared/types";
 import { z } from "zod";
-import { codexAuthStamp, codexDecision, codexPolicy, codexToolConfig, createCodexDriver, toolFor, turnEndFromUsage } from "../src/main/agents/codex";
+import { codexAuthStamp, codexDecision, codexWindows, codexPolicy, codexToolConfig, createCodexDriver, toolFor, turnEndFromUsage } from "../src/main/agents/codex";
 import type { LimitsPatch } from "../src/main/agents/limits";
 import type { HarnessTool, SeedRequest, TurnInput } from "../src/main/agents/types";
 import { Store } from "../src/main/db";
@@ -367,6 +367,22 @@ describe("Codex driver", () => {
     expect(d.models().map((m) => m.id)).toEqual(["default", "gpt-mock"]);
   });
 
+  it("adds context windows from Codex's model cache, the default option included", async () => {
+    const home = tempDir();
+    writeFileSync(join(home, "models_cache.json"), JSON.stringify({ models: [{ slug: "gpt-mock", context_window: 272000, max_context_window: 872000 }] }));
+    const was = process.env.CODEX_HOME;
+    process.env.CODEX_HOME = home;
+    try {
+      const d = driver();
+      await d.refreshModels!();
+      expect(d.models().find((m) => m.id === "gpt-mock")).toMatchObject({ contextWindow: 272000, maxContextWindow: 872000 });
+      expect(d.models().find((m) => m.id === "default")).toMatchObject({ contextWindow: 272000, maxContextWindow: 872000 });
+    } finally {
+      if (was === undefined) delete process.env.CODEX_HOME;
+      else process.env.CODEX_HOME = was;
+    }
+  });
+
   it("maps reasoning efforts and sends effort plus an auto summary on turn/start", async () => {
     const probe = join(tempDir(), "effort.json");
     process.env.EFFORT_PROBE = probe;
@@ -412,6 +428,24 @@ describe("Codex driver", () => {
     const sent = JSON.parse(readFileSync(probe, "utf8")) as { method: string; params: { developerInstructions?: string } };
     expect(sent.method).toBe("thread/start");
     expect(sent.params.developerInstructions).toBe("GUIDE");
+  });
+
+  it("sends model_context_window on start and resume only when the thread sets one", async () => {
+    const probe = join(tempDir(), "thread-start.json");
+    process.env.GUIDE_PROBE = probe;
+    const d = createCodexDriver({ command: process.execPath, args: ["-e", PROBE_SERVER], clientVersion: "test" });
+    closeAfter(() => d.dispose?.());
+    const sent = () => JSON.parse(readFileSync(probe, "utf8")) as { method: string; params: { config?: Record<string, unknown> | null } };
+    try {
+      await d.runTurn(turn("default").input);
+      expect(sent().params.config?.model_context_window).toBeUndefined();
+      await d.runTurn({ ...turn("max").input, contextWindow: 872000 });
+      expect(sent()).toMatchObject({ method: "thread/start", params: { config: { model_context_window: 872000 } } });
+      await d.runTurn({ ...turn("resumed").input, sessionId: "probe-thread", contextWindow: 500000 });
+      expect(sent()).toMatchObject({ method: "thread/resume", params: { config: { model_context_window: 500000 } } });
+    } finally {
+      delete process.env.GUIDE_PROBE;
+    }
   });
 
   it("prices the agent's skills and MCP tools in a fresh session's breakdown", async () => {
@@ -1131,5 +1165,27 @@ describe("Codex shared memory", () => {
     } finally {
       delete process.env.GUIDE_PROBE;
     }
+  });
+});
+
+describe("codexWindows", () => {
+  it("finds each slug's windows anywhere in the cache", () => {
+    const windows = codexWindows({
+      fetched_at: "x",
+      models: [
+        { slug: "gpt-6-luna", context_window: 272000, max_context_window: 872000 },
+        { slug: "gpt-5.5", context_window: 272000, max_context_window: 272000 },
+        { slug: "no-window" },
+      ],
+    });
+    expect(windows.get("gpt-6-luna")).toEqual({ contextWindow: 272000, maxContextWindow: 872000 });
+    expect(windows.get("gpt-5.5")).toEqual({ contextWindow: 272000, maxContextWindow: 272000 });
+    expect(windows.has("no-window")).toBe(false);
+  });
+
+  it("returns nothing for malformed input", () => {
+    expect(codexWindows(null).size).toBe(0);
+    expect(codexWindows("nope").size).toBe(0);
+    expect(codexWindows({ models: [{ slug: 1, context_window: "big" }] }).size).toBe(0);
   });
 });

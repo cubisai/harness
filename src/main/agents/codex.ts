@@ -168,6 +168,33 @@ export function codexDecision(d: PermissionDecision): "accept" | "acceptForSessi
   return d === "allow-always" ? "acceptForSession" : d === "allow-once" ? "accept" : "decline";
 }
 
+/**
+ * Context windows Codex reports in its own model cache (`models_cache.json`),
+ * by slug. The file isn't part of the app-server protocol, so walk it: any
+ * object with a string `slug` and numeric `context_window` counts. Malformed
+ * or absent input yields an empty map, and the picker simply hides.
+ */
+export function codexWindows(json: unknown): Map<string, { contextWindow: number; maxContextWindow?: number }> {
+  const out = new Map<string, { contextWindow: number; maxContextWindow?: number }>();
+  const walk = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item);
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    const o = value as Record<string, unknown>;
+    if (typeof o.slug === "string" && typeof o.context_window === "number") {
+      out.set(o.slug, {
+        contextWindow: o.context_window,
+        ...(typeof o.max_context_window === "number" ? { maxContextWindow: o.max_context_window } : {}),
+      });
+    }
+    for (const v of Object.values(o)) walk(v);
+  };
+  walk(json);
+  return out;
+}
+
 /** A no-op TurnInput for a hidden one-shot turn: its events, deltas and prompts go nowhere. */
 function stubInput(over: { threadId: string; cwd: string; prompt: string; model: string; signal: AbortSignal }): TurnInput {
   return {
@@ -295,6 +322,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   /** A replaced app-server's exit, while it's still under way. */
   let exiting: Promise<unknown> | null = null;
   let models: ModelOption[] = [];
+  /** The default model's context windows, for the "Codex default" option. */
+  let defaultWindows: { contextWindow?: number; maxContextWindow?: number } = {};
   /** When the current model list was last fetched; 0 = never. */
   let listedAt = 0;
   const turns = new Map<string, TurnState>(); // by Codex thread id
@@ -649,6 +678,16 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
 
   const liveReady = (): Promise<void> | null => (rpc?.alive && ready ? ready : null);
 
+  /** The context windows in Codex's own model cache; empty when it's missing or malformed. */
+  const cachedWindows = (): Map<string, { contextWindow: number; maxContextWindow?: number }> => {
+    try {
+      const file = join(process.env.CODEX_HOME ?? join(homedir(), ".codex"), "models_cache.json");
+      return codexWindows(JSON.parse(readFileSync(file, "utf8")));
+    } catch {
+      return new Map();
+    }
+  };
+
   /** Ask the running app-server for its model list; keep the last one on failure. */
   const listModels = async (conn: StdioRpc): Promise<void> => {
     const list = await conn
@@ -659,16 +698,22 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
           hidden: boolean;
           supportedReasoningEfforts?: { reasoningEffort: string; description: string }[];
           defaultReasoningEffort?: string;
+          isDefault?: boolean;
         }[];
       }>("model/list", {})
       .catch(() => null);
     if (!list) return;
+    const windows = cachedWindows();
     models = list.data.filter((m) => !m.hidden).map((m) => ({
       id: m.id,
       label: m.displayName,
       ...(m.supportedReasoningEfforts?.length ? { efforts: m.supportedReasoningEfforts.map((e) => e.reasoningEffort) } : {}),
       ...(m.defaultReasoningEffort ? { defaultEffort: m.defaultReasoningEffort } : {}),
+      ...(windows.get(m.id) ?? {}),
     }));
+    // "Codex default" runs the model Codex marks as default, so it gets that model's windows.
+    const fallback = list.data.find((m) => m.isDefault);
+    defaultWindows = (fallback && windows.get(fallback.id)) || {};
     listedAt = Date.now();
   };
 
@@ -759,7 +804,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   };
 
   const openThread = async (
-    input: Pick<TurnInput, "threadId" | "projectId" | "cwd" | "model" | "permissionMode" | "sessionId" | "tools" | "mcpServers" | "onEvent" | "onSession" | "onSessionRebuilt" | "onSessionLost">,
+    input: Pick<TurnInput, "threadId" | "projectId" | "cwd" | "model" | "contextWindow" | "permissionMode" | "sessionId" | "tools" | "mcpServers" | "onEvent" | "onSession" | "onSessionRebuilt" | "onSessionLost">,
   ): Promise<{ threadId: string; model: string | null }> => {
     const policy = codexPolicy(input.permissionMode);
     const model = input.model === CODEX_DEFAULT_MODEL ? null : input.model;
@@ -771,6 +816,11 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     const memory = input.projectId ? config.memory?.(input.projectId) ?? null : null;
     // CubiQ memory is on: Codex's own memories would duplicate it, so turn them off.
     if (memory !== null) threadConfig = { ...(threadConfig ?? {}), memories: { use_memories: false, generate_memories: false } };
+    // A context-window override rides the thread config, so changing it changes the
+    // signature below and reloads the thread with the new window on the next turn.
+    if (typeof input.contextWindow === "number" && input.contextWindow > 0) {
+      threadConfig = { ...(threadConfig ?? {}), model_context_window: input.contextWindow };
+    }
     const guideText = config.guide?.(input.cwd) ?? "";
     const signature = JSON.stringify(threadConfig ?? null);
     let threadId = "";
@@ -846,7 +896,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     binary: () => (config.command.includes("/") || config.command.includes("\\") ? undefined : (binaryInfo(config.command) ?? undefined)),
     models: () => {
       const byok = config.byokModels?.();
-      return byok ?? [{ id: CODEX_DEFAULT_MODEL, label: "Codex default" }, ...models];
+      return byok ?? [{ id: CODEX_DEFAULT_MODEL, label: "Codex default", ...defaultWindows }, ...models];
     },
     refreshModels,
     // Read account limits on demand. Never starts the app-server just to

@@ -224,6 +224,12 @@ export function installMock(): void {
       if (idx >= 0) projects.splice(idx, 1);
       delete threads[pid];
     },
+    relocateProject: async (pid) => {
+      const project = projects.find((p) => p.id === pid);
+      if (!project) throw new Error("no project");
+      project.missing = false;
+      return project;
+    },
     setCheckCommand: async (pid, command, fixRounds) => {
       const project = projects.find((p) => p.id === pid);
       if (!project) throw new Error("no project");

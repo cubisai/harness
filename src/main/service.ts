@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type {
   AgentInfo,
@@ -215,7 +215,7 @@ export class Service {
    * Switching agents keeps every agent's session: switching back resumes the
    * one it had, on the model it last used. A new agent starts fresh.
    */
-  updateThread(id: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "permissionMode" | "agent" | "pinned" | "archived">>): Thread {
+  updateThread(id: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "contextWindow" | "permissionMode" | "agent" | "pinned" | "archived">>): Thread {
     const current = this.store.getThread(id);
     if (patch.agent && patch.agent !== current.agent) {
       if (this.running.has(id)) throw new Error("Stop the running turn before switching agents.");
@@ -229,6 +229,8 @@ export class Service {
       const efforts = this.driverFor(current.agent).models().find((m) => m.id === (patch.model ?? current.model))?.efforts;
       if (!efforts || !efforts.includes(effort)) next.effort = null;
     }
+    // A model change also drops a context-window override picked for the old model.
+    if (patch.model !== undefined && patch.contextWindow === undefined) next.contextWindow = null;
     return this.store.updateThread(id, next);
   }
 
@@ -545,6 +547,18 @@ export class Service {
     const thread = this.store.getThread(req.threadId);
     const project = this.store.getProject(thread.projectId);
     const cwd = this.cwdOf(thread);
+    // A folder that's been moved or deleted fails the agent with a misleading error;
+    // say what's wrong instead, without starting anything or leaving the thread running.
+    if (!existsSync(cwd)) {
+      const message = thread.worktreePath
+        ? `This thread's worktree folder is gone: ${cwd}. Start a new thread.`
+        : `Project folder not found: ${cwd}. It was moved or deleted. Use Locate folder… in the project menu, or remove the project.`;
+      this.emit(thread.id, { kind: "error", message });
+      // The renderer marks the thread running as it sends; settle that too.
+      this.broadcast({ type: "running", threadId: thread.id, running: false });
+      this.broadcast({ type: "projects-changed" });
+      return;
+    }
     const driver = this.driverFor(thread.agent);
     // The project's verification gate: off when there's no command; `round` counts the automatic fixes.
     const checkCommand = project.checkCommand?.trim() || null;
@@ -617,6 +631,7 @@ export class Service {
         sessionId: current.sessionId,
         model: thread.model,
         effort: thread.effort,
+        contextWindow: thread.contextWindow ?? null,
         permissionMode: thread.permissionMode,
         signal: controller.signal,
         tools: this.harnessTools(),

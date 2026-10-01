@@ -754,7 +754,7 @@ async function main(): Promise<void> {
   ipcMain.handle("limits:list", () => limits.all());
   ipcMain.handle("app:install-update", () => updater.install());
 
-  ipcMain.handle("projects:list", () => store.listProjects());
+  ipcMain.handle("projects:list", () => store.listProjects().map((p) => ({ ...p, missing: !existsSync(p.path) })));
   ipcMain.handle("projects:add", async (event) => {
     const owner = BrowserWindow.fromWebContents(event.sender);
     const options: Electron.OpenDialogOptions = {
@@ -765,6 +765,17 @@ async function main(): Promise<void> {
     const path = res.filePaths[0];
     return res.canceled || !path ? null : store.addProject(path);
   });
+  ipcMain.handle("projects:relocate", async (event, id: string) => {
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    const options: Electron.OpenDialogOptions = {
+      title: "Locate the project folder",
+      properties: ["openDirectory"],
+    };
+    const res = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+    const path = res.filePaths[0];
+    if (res.canceled || !path) return null;
+    return { ...store.setProjectPath(id, path), missing: false };
+  });
   ipcMain.handle("projects:delete", (_e, id: string) => service.deleteProject(id));
   // A project mutation returns the row, as add/delete do; the renderer store applies it.
   ipcMain.handle("projects:set-check-command", (_e, projectId: string, command: string | null, fixRounds?: number | null) =>
@@ -774,8 +785,8 @@ async function main(): Promise<void> {
   ipcMain.handle("threads:create", (_e, projectId: string, agent?: string, opts?: { worktree?: boolean }) =>
     opts?.worktree ? service.createWorktreeThread(projectId, agent) : service.createThread(projectId, agent),
   );
-  ipcMain.handle("threads:update", (_e, id: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "permissionMode" | "agent" | "pinned" | "archived">>) =>
-    service.updateThread(id, pick(patch, ["title", "model", "effort", "permissionMode", "agent", "pinned", "archived"])),
+  ipcMain.handle("threads:update", (_e, id: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "contextWindow" | "permissionMode" | "agent" | "pinned" | "archived">>) =>
+    service.updateThread(id, pick(patch, ["title", "model", "effort", "contextWindow", "permissionMode", "agent", "pinned", "archived"])),
   );
   ipcMain.handle("threads:delete", (_e, id: string) => service.deleteThread(id));
   ipcMain.handle("threads:switch", (_e, id: string, agent: string, mode: SwitchMode) => service.switchAgent(id, agent, mode));
