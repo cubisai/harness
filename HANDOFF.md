@@ -1,6 +1,6 @@
-# Handoff: roadmap N1–N9 done (W0, N1–N9 committed, Windows CI green); next: Windows-PC gate for N7–N9, then the backlog B1–B12
+# Handoff: UI refresh "Ink Flat" U0–U2 done; next: U3 (inbox sidebar + ⌘K search), then U4–U6, then the Windows-PC gate
 
-Updated 2026-10-01 on the **Mac**, branch `m4`, last commit on it is this file. Read **Resume here — after N9** first, then `.ai/plans/harness-roadmap.md` (§1 Now = all ✅, §2 Backlog, §W Windows gate), then `CLAUDE.md` (opencode-delegation workflow). Current plan (all open work, research verdicts, backlog): `.ai/plans/harness-roadmap.md`; external research: `plan/docs/finding-research.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`; from the Windows PC: `commit-only-own-paths`, `two-machines` (every fix must work on Windows and macOS).
+Updated 2026-10-01 (evening) on the **Mac**, branch `m4`. Read **Resume here — UI refresh** first, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`.
 
 ## Where things stand
 
@@ -23,6 +23,7 @@ Updated 2026-10-01 on the **Mac**, branch `m4`, last commit on it is this file. 
 | M4 round (2026-09-29, Mac) — token breakdown, Plan mode, `$`/`/`, model + binary freshness, test suite | **done**; typecheck + full suite green (875 tests, 0 failed, ~22 s); every item checked in the real app on Claude, Codex and OpenCode | A `65191c7`, B1 `ff5922a`, B2 `8fd157b`, C `ae37baa`, doc 11 `0bcfb08`; models `6a428c8`, binaries `293c478` `05938a8`, menus `cc43588`, bugs `bdbc276`, Stop `fd4c151`, tests `4c596f4` |
 | Phase E (2026-09-29, Mac) — shared CubiQ memory, `/context` | **done**; typecheck + full suite green (966 passed, 0 failed); every slice checked live on OpenCode (nemotron free), Codex and Claude (Haiku) | S0 `/context` `1e1bee1`, S1 store + import + Claude `2bff594`, S2 Codex/ACP index + `memory_read` `e3fc39c`, S3 extractor `66020a8`, S4 Library tab `cc58301` |
 | Roadmap N1–N9 (2026-09-30 → 10-01, Mac) — mock kit, `/context` pricing, accuracy run, MCP router, provider catalog, Codex subagents, check gate, guide diet, context picker | **done**; full suite 1073 passed; each phase live on Claude (Haiku), Codex (GPT-6-Luna), OpenCode; Windows **CI** green for every phase (last run 36818195119); Windows **PC** gate pending for N7–N9 | N1 `331a6c0`, N2 `c68ca3c`, N4 `d19aef4`, N5 `82487e5`, N6 `cc1ea02`, N7 `f85e45c` + Windows fix `1d6f013`, N8 `9ed5546`, N9 `e72248f` `306c61c` |
+| UI refresh U0–U2 (2026-10-01, Mac): DESIGN.md, Ink Flat tokens, one-row composer, /compact, message folds | **done**; typecheck, build, smoke green; full suite 1088 passed; each phase live on Claude (Haiku), Codex, OpenCode; Windows PC/CI not run yet | U0 `6cb7ecb`, U1 `863875f`, U2 `a7583e3` |
 
 **Uncommitted on purpose (the user decides):** the `CLAUDE.md` notes (Windows notes + the new worker model order) and `SETUP-OTHER-PC.md`. The bun switch is committed (`ab42bb9`). `test/__snapshots__/providers.test.ts.snap` shows as modified: line endings only. Phase commits carry code + tests only, with no attribution trailer.
 
@@ -129,6 +130,23 @@ All checked in the real app on Windows; code paths are cross-platform unless not
 - **Antigravity**: Google's own ACP server (`agy_acp_server.par`, ACP registry `antigravity-acp`) must be on the app's PATH; it stays off until the Settings opt-in, then the generic ACP driver runs it with the user's Google sign-in.
 - Still to confirm on the Mac: the same smoke/model checks there.
 
+## Resume here — UI refresh (after U2)
+
+**Shipped this session (2026-10-01):**
+- **U0** `6cb7ecb`: `DESIGN.md` (Ink Flat: tokens, signal roles, type, spacing, components, motion, pre-ship checklist); `CLAUDE.md` + new `AGENTS.md` point every agent at it. `app.css` tokens rewritten: ink primary (`--primary`/`--on-primary`/`--focus`), acid only as signal (`--signal-fill` #A8FF55 with ink on top, `--signal-ink` #357A08 for text, `--signal-line` #4A9A12 for graphics in light mode; #A8FF55 on white is 1.23:1). No static shadows (`--shadow-float` on popovers/menus/sheets only). Geist + Geist Mono bundled (`src/renderer/src/assets/fonts`, OFL). Provider editor no longer overflows (rows wrap, `min-width: 0`); saved providers are list items (name over `protocol · host · models`).
+- **U1** `863875f`: composer bar = `+` (insert @ / $ / /) · mode chip menu (⇧Tab still cycles; Full access in danger) · spacer · **model menu** (this agent's models grouped by provider, other agents as "switch" rows → existing Switch dialog, Thinking and Context segments inside; button shows the effective effort, e.g. "Sonnet 5.5 · Low"; a model without levels says "Not offered by …") · **context ring** (popover: first-turn breakdown, 5h/weekly limits, usage, cache, cost, Compact now, Open /context) · send. Running beam on the composer (`--signal-line`; reduce-motion → static). `AgentPicker`/`EffortPicker`/`ContextPicker` deleted; `ThreadControls.tsx` exports `ThreadMode/ThreadModel/DraftMode/DraftModel`. **/compact [focus]** everywhere: `SendRequest.compact` → `TurnInput.compact`; capability `manualCompact`; Claude sends the SDK's `/compact`; Codex `thread/compact/start` (resolves on `thread/compacted`, 3-min timeout); ACP sends `/compact` when the agent advertises it **or** the preset declares `manualCompact` (OpenCode 1.18.33 runs it without advertising: context 13k → 483 in a probe). Codex "default" now carries its real model's efforts.
+- **U2** `a7583e3`: `src/renderer/src/turns.ts` `segmentEvents()` folds each turn's tool calls (plus narration between them) into one "Worked for 41s · read 2 files · edited 1 file · ran 1 command" disclosure (`work-<seq>` in `disclosures`); a run still in progress stays as rows. Changes card per turn ("2 files changed +38 −0 · Review" → Changes tab; counts hidden when no edit reported a stat). Turn footer: Copy reply, Retry (resends the prompt), mono meta line; hover-only except the last turn. User bubble: hover Copy / Edit (store `setComposerDraft`) / time. Code blocks get a header (language + Copy); `parseBlocks` keeps `lang`.
+
+**Next, in order:**
+1. **U3**: inbox sidebar (Running / Pinned / Recent with a By-project toggle; status dots, time, diff stat, "Needs approval"; project = folder label) and **⌘K search** (migration 18: SQLite FTS5 over titles + user/assistant text, IPC `search:query`, `SearchDialog` with filters; `>` hands off to the palette). Mock shows both.
+2. **U4**: right-side artifact panel (opens when a turn **finishes**, last previewable file written; versions; Preview/Source/Diff; click any touched file in tool rows / changes card to preview it with a diff). Changes + Browser become tabs of the same panel (user OK'd).
+3. **U5**: docx (mammoth), xlsx (SheetJS), pptx (Quick Look on macOS, slide-XML fallback via jszip) in an Electron `utilityProcess`, 25 MB cap, 10 s timeout, mtime cache. **New deps approved by the user** (mammoth, xlsx, jszip).
+4. **U6**: gooey `+`/popover morph, sweep every screen in both themes (Library still has emoji connector icons + native selects), Windows pass.
+5. Then the **native provider agent** spec (`.ai/plans/native-provider-agent.md`, user decision): added providers' models appear in the picker and run through CubiQ's own agent loop, no CLI. Plan first; nothing built before approval.
+6. **Windows PC gate** for N7–N9 and U0–U2 (bun install, typecheck, test, dev; check the composer, model menu, ring, /compact on each agent, Settings → provider editor at narrow width).
+
+**Working notes:** drive the dev app with `bun run dev -- --remoteDebuggingPort 9455` + `agent-browser --cdp 9455` (`AGENT_BROWSER_SESSION=cubiq-real`); live turns via `window.unskilled.createThread/updateThread/send` on project `sambor-prei-kuk` (tool-free prompts only), then delete the threads. Mock preview `bun run preview:ui` (port 5199, `?state=thread|settings|…`) is quickest for visuals. The OpenCode ACP command probe script pattern: spawn `opencode acp`, `initialize`, `session/new`, read `available_commands_update`.
+
 ## Resume here — after N9
 
 **Shipped this session (2026-10-01):**
@@ -206,4 +224,4 @@ In order:
 
 ## Next
 
-See **Resume here — after N9** above.
+See **Resume here — UI refresh (after U2)** above.
