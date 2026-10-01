@@ -9,7 +9,15 @@ describe("checkShell", () => {
 
   it("runs PowerShell with -NoProfile -Command", () => {
     const file = "C:\\Program Files\\PowerShell\\7\\pwsh.exe";
-    expect(checkShell("echo hi", { file, args: [] })).toEqual({ file, args: ["-NoProfile", "-Command", "echo hi"] });
+    const { args } = checkShell("echo hi", { file, args: [] });
+    expect(args.slice(0, 2)).toEqual(["-NoProfile", "-Command"]);
+    expect(args[2]!.split("\n")).toContain("echo hi");
+    expect(args[2]!).toContain("exit $LASTEXITCODE");
+  });
+
+  it("calls a quoted program path with & under PowerShell", () => {
+    const { args } = checkShell('"C:\\node.exe" -e "1"', { file: "pwsh.exe", args: [] });
+    expect(args[2]!.split("\n")).toContain('& "C:\\node.exe" -e "1"');
   });
 
   it("runs cmd with /d /s /c", () => {

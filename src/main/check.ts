@@ -16,10 +16,19 @@ export interface CheckResult {
 export function checkShell(command: string, shell = defaultShell()): { file: string; args: string[] } {
   // An absolute Windows path keeps its backslashes, so basename by hand there.
   const name = (shell.file.includes("\\") ? win32.basename(shell.file) : basename(shell.file)).toLowerCase().replace(/\.(exe|cmd|bat)$/, "");
-  if (name === "pwsh" || name === "powershell") return { file: shell.file, args: ["-NoProfile", "-Command", command] };
+  if (name === "pwsh" || name === "powershell") return { file: shell.file, args: ["-NoProfile", "-Command", pwshScript(command)] };
   if (name === "cmd") return { file: shell.file, args: ["/d", "/s", "/c", command] };
   // zsh, bash, sh and fish all take a single command string the same way.
   return { file: shell.file, args: ["-l", "-c", command] };
+}
+
+/**
+ * PowerShell needs `&` to run a quoted program path, and `-Command` turns any native exit code into 0 or 1,
+ * so keep the real code (or 1 for a failed cmdlet). Newlines, so a trailing `# comment` can't swallow the suffix.
+ */
+function pwshScript(command: string): string {
+  const run = /^\s*["']/.test(command) ? `& ${command.trimStart()}` : command;
+  return `$global:LASTEXITCODE = 0\n${run}\n$ok = $?\nif ($LASTEXITCODE) { exit $LASTEXITCODE }\nif (-not $ok) { exit 1 }`;
 }
 
 /** The last `maxLines` lines of `output`, with trailing blanks dropped, cut to `maxChars` from the end. */
