@@ -162,7 +162,7 @@ const FEATURED_CONNECTORS: FeaturedConnector[] = [
     id: "browser",
     name: "Built-in Browser Tools",
     category: "Development",
-    iconBg: "#0a84ff",
+    iconBg: "#0b0d10",
     iconText: "🌐",
     description: "Interactive DOM snapshots, visual clicking, text typing, and console error logs.",
     defaultCommand: "built-in",

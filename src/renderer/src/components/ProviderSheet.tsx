@@ -48,17 +48,19 @@ export function ProviderList({
         <p className="note">No providers yet.</p>
       ) : (
         providers.map((p) => (
-          <div className="row" key={p.id}>
-            <span className="label">{migratedProviders.includes(p.id) ? `${p.label} (from your saved key)` : p.label}</span>
-            <span className="chip mono">{p.wireProtocol}</span>
-            <span className="value">{hostOf(p.baseURL)}</span>
-            <span className="note">{p.models.length === 1 ? "1 model" : `${p.models.length} models`}</span>
+          <div className="provider-item" key={p.id}>
+            <div className="provider-item-main">
+              <span className="provider-item-name">{migratedProviders.includes(p.id) ? `${p.label} (from your saved key)` : p.label}</span>
+              <span className="provider-item-meta">
+                {p.wireProtocol} · {hostOf(p.baseURL)} · {p.models.length === 1 ? "1 model" : `${p.models.length} models`}
+              </span>
+            </div>
             {p.hasSecret ? (
-              <span className="value">
+              <span className="provider-item-status">
                 <span className="dot-ok" /> Saved
               </span>
             ) : (
-              <span className="value">Not configured</span>
+              <span className="provider-item-status muted">Not configured</span>
             )}
             <button className="button ghost" onClick={() => onEdit?.(p.id)}>
               Edit
@@ -315,6 +317,7 @@ function ProviderEditor({
                   className="text-input num"
                   type="number"
                   title="Context window"
+                  aria-label="Context window"
                   value={m.contextWindow}
                   onChange={(e) => patchModel(i, { contextWindow: Number(e.target.value) || 0 })}
                 />
@@ -322,6 +325,7 @@ function ProviderEditor({
                   className="text-input num"
                   type="number"
                   title="Max output"
+                  aria-label="Max output"
                   value={m.maxOutput}
                   onChange={(e) => patchModel(i, { maxOutput: Number(e.target.value) || 0 })}
                 />
@@ -347,14 +351,13 @@ function ProviderEditor({
                   <option value="sonnet">sonnet</option>
                   <option value="haiku">haiku</option>
                 </select>
-                <button className="button ghost danger" type="button" onClick={() => setModels((ms) => ms.filter((_, j) => j !== i))}>
+                <button className="button ghost danger remove" type="button" onClick={() => setModels((ms) => ms.filter((_, j) => j !== i))}>
                   Remove
                 </button>
               </div>
             </div>
           ))}
-          <div className="row">
-            <span className="label" />
+          <div>
             <button
               className="button ghost"
               type="button"
@@ -367,22 +370,25 @@ function ProviderEditor({
           </div>
         </div>
       </div>
-      <div className="row">
-        <span className="label" />
-        <label className="provider-check">
-          <input type="checkbox" checked={pathMode === "raw"} onChange={(e) => setPathMode(e.target.checked ? "raw" : "auto")} />
-          Send the URL exactly as typed
-        </label>
+      <div className="row provider-options-row">
+        <span className="label">Options</span>
+        <div className="provider-options">
+          <label className="provider-option">
+            <input type="checkbox" checked={pathMode === "raw"} onChange={(e) => setPathMode(e.target.checked ? "raw" : "auto")} />
+            <span>
+              Send the URL exactly as typed
+              <span className="note">Fixes a 404 from a doubled /v1 or a chat-vs-responses path.</span>
+            </span>
+          </label>
+          <label className="provider-option">
+            <input type="checkbox" checked={betaHeaders === "strip"} onChange={(e) => setBetaHeaders(e.target.checked ? "strip" : "default")} />
+            <span>
+              Strip experimental headers
+              <span className="note">For gateways that reject anthropic-beta.</span>
+            </span>
+          </label>
+        </div>
       </div>
-      <p className="note">Fixes a 404 from a doubled /v1 or a chat-vs-responses path.</p>
-      <div className="row">
-        <span className="label" />
-        <label className="provider-check">
-          <input type="checkbox" checked={betaHeaders === "strip"} onChange={(e) => setBetaHeaders(e.target.checked ? "strip" : "default")} />
-          Strip experimental headers
-        </label>
-      </div>
-      <p className="note">For gateways that reject anthropic-beta.</p>
 
       <div className="row end">
         <button className="button primary" disabled={busy} onClick={() => void save()}>
@@ -457,10 +463,9 @@ export function ProvidersSection() {
           }}
         />
       ) : (
-        <div className="row">
-          <span className="label" />
-          <button className="button" onClick={() => setAdding(true)}>
-            Add provider
+        <div className="provider-add">
+          <button className="button ghost" onClick={() => setAdding(true)}>
+            + Add provider
           </button>
         </div>
       )}

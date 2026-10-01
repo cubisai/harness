@@ -1,3 +1,7 @@
+## UI design rules
+
+Any change under `src/renderer/**` (styles, components, layout, copy) follows `DESIGN.md` at the repo root: tokens, type, spacing, components, motion and the pre-ship checklist. Read it first. When a brief for an `implementer` touches UI, cite the relevant `DESIGN.md` sections in the brief, since workers start cold.
+
 ## opencode delegation (custom, project-local — not the generic "skilled" template)
 
 Active when `"opencodeDelegation": true` in `.claude/settings.json`. *(opencode workers read this file too: this section is for Claude Code — as a worker, never run `opencode` or delegate.)*
