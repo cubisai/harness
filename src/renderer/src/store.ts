@@ -175,6 +175,8 @@ interface State {
   cycleEffort(dir: 1 | -1): void;
   /** Start a turn on the open thread (or `threadId`); a no-op while that thread is running. */
   send(text: string, skill?: string, threadId?: string, mentions?: string[]): Promise<void>;
+  /** Compact a thread's session now (/compact), with an optional focus for the summary. */
+  compact(threadId: string, focus: string | null): Promise<void>;
   /** Messages sent while a turn ran, by thread: each goes out as the next turn, in order. Stop clears them; never persisted. */
   outbox: Record<string, { text: string; skill?: string; mentions?: string[] }[]>;
   enqueue(threadId: string, text: string, skill?: string, mentions?: string[]): void;
@@ -732,6 +734,12 @@ export const useStore = create<State>((set, get) => ({
     if (!id || get().running[id]) return;
     set((s) => ({ running: { ...s.running, [id]: true } }));
     await api().send({ threadId: id, text, skill, ...(mentions?.length ? { mentions } : {}) });
+  },
+
+  async compact(threadId, focus) {
+    if (get().running[threadId]) return;
+    set((s) => ({ running: { ...s.running, [threadId]: true } }));
+    await api().send({ threadId, text: `/compact${focus ? ` ${focus}` : ""}`, compact: { focus } });
   },
 
   async interrupt() {

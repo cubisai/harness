@@ -180,6 +180,8 @@ interface Live {
   historyPending: string | null;
   /** The turn currently receiving this connection's updates. */
   turn: TurnState | null;
+  /** Slash commands the agent advertised for the session (available_commands_update), by name. */
+  commands?: string[];
   /** ACP's native session modes, when the agent advertises them (null = emulated plan mode). */
   modes: SessionModeState | null;
   /** The advertised mode id matching /plan/i, once modes are known. */
@@ -583,6 +585,13 @@ export function createAcpDriver(
       case "config_option_update":
         l.configOptions = (update as { configOptions: ConfigOption[] }).configOptions;
         rememberConfig(l.configOptions, l.threadKey);
+        return;
+      case "available_commands_update":
+        l.commands = ((update as { availableCommands?: { name: string }[] }).availableCommands ?? []).map((c) => c.name);
+        // /compact is offered once the agent advertises a compact command of its own.
+        if (!capabilities.manualCompact && l.commands.some((c) => c === "compact" || c === "summarize")) {
+          capabilities = withCapabilities(capabilities, { manualCompact: true });
+        }
         return;
       case "current_mode_update":
         // The agent confirms a mode switch; keep the current id without
@@ -1069,6 +1078,32 @@ export function createAcpDriver(
         // listener above missed it, so stop before sending the prompt.
         if (input.signal.aborted) {
           input.onEvent({ kind: "notice", text: "Stopped." });
+          return;
+        }
+        // /compact runs the agent's own compact command, only when it advertises one.
+        if (input.compact) {
+          // The command list arrives as an update right after the session opens; give it a moment.
+          for (let i = 0; i < 10 && l.commands === undefined; i++) await new Promise((r) => setTimeout(r, 100));
+          // An advertised command wins; a preset that declares manualCompact takes a bare "/compact".
+          const name = l.commands?.find((c) => c === "compact" || c === "summarize") ?? (capabilities.manualCompact ? "compact" : undefined);
+          if (!name) {
+            input.onEvent({ kind: "notice", text: `${config.label} doesn't offer a compact command in this session.` });
+            return;
+          }
+          input.onEvent({ kind: "turn-start", turnId: randomUUID(), agent: config.id, model: input.model });
+          const turn: TurnState = { input, text: "", thought: "", tools: new Map(), permissionIds: new Set(), planned: false, usage: { used: 0, costUsd: null, contextUsed: null, size: null }, run: 0 };
+          current = turn;
+          l.turn = turn;
+          const res = await l.conn.request<{ stopReason: string }>("session/prompt", {
+            sessionId: l.sessionId,
+            prompt: [{ type: "text", text: `/${name}${input.compact.focus ? ` ${input.compact.focus}` : ""}` }],
+          });
+          // The summary is the agent's own working note, not a reply to show.
+          turn.text = "";
+          turn.thought = "";
+          if (res.stopReason === "cancelled") input.onEvent({ kind: "notice", text: "Stopped." });
+          else input.onEvent({ kind: "compaction", trigger: "manual", preTokens: null, postTokens: null });
+          input.onEvent({ kind: "turn-end", costUsd: null, inputTokens: 0, outputTokens: 0, durationMs: Date.now() - started });
           return;
         }
         input.onEvent({ kind: "turn-start", turnId: randomUUID(), agent: config.id, model: input.model });

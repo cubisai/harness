@@ -1,36 +1,94 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ModelOption } from "../../../shared/types";
+import { Check, ChevronDown } from "lucide-react";
+import type { AgentInfo, ModelOption } from "../../../shared/types";
 import { filterModels } from "../models";
 import { useStore } from "../store";
 
+/** A token count for the context labels, e.g. 872000 -> "872K". */
+function formatK(n: number): string {
+  return `${Math.round(n / 1000)}K`;
+}
+
+/** The two context-window choices, or none when the model accepts no larger window. */
+export function contextChoices(model?: ModelOption): { label: string; value: number | null }[] {
+  if (!model?.contextWindow || !model?.maxContextWindow || model.maxContextWindow <= model.contextWindow) return [];
+  return [
+    { label: `Default ${formatK(model.contextWindow)}`, value: null },
+    { label: `Max ${formatK(model.maxContextWindow)}`, value: model.maxContextWindow },
+  ];
+}
+
+/** A model's own name without its provider prefix ("tokenharbor/qwen" -> "qwen"). */
+export function shortModelLabel(label: string): string {
+  return label.includes("/") ? label.slice(label.indexOf("/") + 1) : label;
+}
+
+/** "High" for "high", "XHigh" stays as given past the first letter. */
+function titleCase(s: string): string {
+  return s ? s[0]!.toUpperCase() + s.slice(1) : s;
+}
+
+const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
+
 /**
- * The header's model picker: a button that opens a searchable list, grouped
- * by provider. Arrow keys move, Return picks, Esc closes.
+ * The composer's one model control (DESIGN.md §7.3): the button reads
+ * "Model · Effort"; the menu lists this agent's models (searchable, grouped by
+ * provider), the other agents as switch rows, then the Thinking and Context
+ * segments for the current model. Arrow keys move, Return picks, Esc closes.
  */
 export function ModelPicker({
+  agents,
+  agent,
   models,
   current,
+  effort,
+  defaultEffort,
+  contextWindow,
   disabled,
-  placement = "down",
   listenForOpenRequest = false,
-  onPick,
+  defaultOpen = false,
+  onModel,
+  onAgent,
+  onEffort,
+  onContextWindow,
 }: {
+  agents: AgentInfo[];
+  agent: string;
   models: ModelOption[];
   current: string;
+  effort: string | null;
+  defaultEffort?: string;
+  contextWindow?: number | null;
   disabled?: boolean;
-  /** Open below the button, or above it (from the message box). */
-  placement?: "down" | "up";
   /** Open when the store's requestModelPicker counter changes (only the composer's picker). */
   listenForOpenRequest?: boolean;
-  onPick(id: string): void;
+  /** Start open (tests render the menu statically). */
+  defaultOpen?: boolean;
+  onModel(id: string): void;
+  onAgent(id: string): void;
+  onEffort(effort: string | null): void;
+  onContextWindow?(value: number | null): void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const box = useRef<HTMLDivElement>(null);
   const groups = useMemo(() => filterModels(models, query), [models, query]);
-  const flat = useMemo(() => groups.flatMap((g) => g.models), [groups]);
-  const currentLabel = models.find((m) => m.id === current)?.label ?? current;
+  const others = useMemo(() => {
+    const q = query.toLowerCase();
+    return agents.filter((a) => a.id !== agent && (!q || a.label.toLowerCase().includes(q)));
+  }, [agents, agent, query]);
+  // One flat list for the keyboard: models first, then the switch rows.
+  const rows = useMemo(
+    () => [...groups.flatMap((g) => g.models.map((m) => ({ kind: "model" as const, id: m.id }))), ...others.map((a) => ({ kind: "agent" as const, id: a.id }))],
+    [groups, others],
+  );
+  const model = models.find((m) => m.id === current);
+  const agentLabel = agents.find((a) => a.id === agent)?.label ?? agent;
+  const currentLabel = shortModelLabel(model?.label ?? current);
+  const efforts = model?.efforts ?? [];
+  const modelDefault = defaultEffort ?? model?.defaultEffort;
+  const windows = onContextWindow ? contextChoices(model) : [];
 
   // The composer's "/model" command asks this picker to open, by bumping a counter.
   const openRequest = useStore((s) => s.openPickerRequest);
@@ -41,7 +99,7 @@ export function ModelPicker({
     if (listenForOpenRequest) setOpen(true);
   }, [openRequest, listenForOpenRequest]);
 
-  useEffect(() => setIndex(Math.max(0, flat.findIndex((m) => m.id === current))), [flat, current]);
+  useEffect(() => setIndex(Math.max(0, rows.findIndex((r) => r.kind === "model" && r.id === current))), [rows, current]);
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent) => {
@@ -55,48 +113,56 @@ export function ModelPicker({
     if (open) box.current?.querySelector(".model-item.active")?.scrollIntoView({ block: "nearest" });
   }, [index, open]);
 
-  const pick = (id: string) => {
+  const close = () => {
     setOpen(false);
     setQuery("");
-    if (id !== current) onPick(id);
+  };
+  const pickRow = (r: { kind: "model" | "agent"; id: string }) => {
+    close();
+    if (r.kind === "agent") onAgent(r.id);
+    else if (r.id !== current) onModel(r.id);
   };
 
   let row = -1;
+  const title = [agentLabel, currentLabel, efforts.length ? `thinking ${effort ?? (modelDefault ? `default (${modelDefault})` : "default")}` : ""].filter(Boolean).join(" · ");
   return (
     <div className="model-picker" ref={box}>
-      <button className="select ghost-select model-picker-button" title={`Model: ${currentLabel}`} disabled={disabled} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        {currentLabel.includes("/") ? currentLabel.slice(currentLabel.indexOf("/") + 1) : currentLabel}
+      <button className="chip-button model-picker-button" title={title} disabled={disabled} aria-haspopup="dialog" aria-expanded={open} onClick={() => (open ? close() : setOpen(true))}>
+        <span className="model-picker-name">{currentLabel}</span>
+        {efforts.length > 0 && (effort ?? modelDefault) && <span className="model-picker-effort">{titleCase((effort ?? modelDefault)!)}</span>}
+        <ChevronDown size={12} className="chev" />
       </button>
       {open && (
-        <div className={`model-menu ${placement}`}>
+        <div className="model-menu up right" role="dialog" aria-label="Model">
           <input
             className="model-search"
             autoFocus
-            placeholder={`Search ${models.length} models`}
+            placeholder={`Search ${models.length} ${agentLabel} models`}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "ArrowDown") {
                 e.preventDefault();
-                setIndex((i) => Math.min(flat.length - 1, i + 1));
+                setIndex((i) => Math.min(rows.length - 1, i + 1));
               } else if (e.key === "ArrowUp") {
                 e.preventDefault();
                 setIndex((i) => Math.max(0, i - 1));
               } else if (e.key === "Enter") {
                 e.preventDefault();
-                const m = flat[index];
-                if (m) pick(m.id);
+                const r = rows[index];
+                if (r) pickRow(r);
               } else if (e.key === "Escape") {
                 e.stopPropagation();
-                setOpen(false);
+                close();
               }
             }}
           />
-          <div className="model-list" role="listbox">
-            {flat.length === 0 && <div className="model-empty">No model matches “{query}”</div>}
+          <div className="model-list" role="listbox" aria-label={`${agentLabel} models`}>
+            {rows.length === 0 && <div className="model-empty">No model matches “{query}”</div>}
+            {groups.length > 0 && <div className="model-group">{agentLabel}</div>}
             {groups.map((g) => (
               <div key={g.group || "-"}>
-                {g.group && <div className="model-group">{g.group}</div>}
+                {g.group && <div className="model-subgroup">{g.group}</div>}
                 {g.models.map((m) => {
                   row += 1;
                   const i = row;
@@ -107,14 +173,85 @@ export function ModelPicker({
                       aria-selected={m.id === current}
                       className={`model-item${i === index ? " active" : ""}${m.id === current ? " current" : ""}`}
                       onMouseEnter={() => setIndex(i)}
-                      onClick={() => pick(m.id)}
+                      onClick={() => pickRow({ kind: "model", id: m.id })}
                     >
-                      {m.label}
+                      <Check size={13} className="check" />
+                      <span className="label">{m.label}</span>
                     </button>
                   );
                 })}
               </div>
             ))}
+            {others.length > 0 && <div className="model-group">Switch agent</div>}
+            {others.map((a) => {
+              row += 1;
+              const i = row;
+              return (
+                <button
+                  key={a.id}
+                  role="option"
+                  aria-selected={false}
+                  className={`model-item${i === index ? " active" : ""}`}
+                  onMouseEnter={() => setIndex(i)}
+                  onClick={() => pickRow({ kind: "agent", id: a.id })}
+                >
+                  <span className="check" />
+                  <span className="label">{a.label}</span>
+                  <span className="hint">switch</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="model-options">
+              {efforts.length === 0 && (
+                <div className="model-option-off" title="This model doesn't take a thinking level">
+                  <span className="model-group">Thinking</span>
+                  <span>Not offered by {currentLabel}</span>
+                </div>
+              )}
+              {efforts.length > 0 && (
+                <>
+                  <div className="model-group">Thinking</div>
+                  <div className="segmented fill" role="radiogroup" aria-label="Thinking">
+                    {[null, ...efforts].map((e) => (
+                      <button
+                        key={e ?? "default"}
+                        role="radio"
+                        aria-checked={effort === e}
+                        className={effort === e ? "on" : ""}
+                        title={e === null && modelDefault ? `Model default (${modelDefault})` : undefined}
+                        onClick={() => {
+                          if (e !== effort) onEffort(e);
+                        }}
+                      >
+                        {e === null ? "Default" : titleCase(e)}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              {windows.length > 0 && (
+                <>
+                  <div className="model-group">Context</div>
+                  <div className="segmented fill" role="radiogroup" aria-label="Context window">
+                    {windows.map((w) => (
+                      <button
+                        key={String(w.value)}
+                        role="radio"
+                        aria-checked={(contextWindow ?? null) === w.value}
+                        className={(contextWindow ?? null) === w.value ? "on" : ""}
+                        title="A larger window holds more of the conversation before compacting; each turn can cost more."
+                        onClick={() => {
+                          if (w.value !== (contextWindow ?? null)) onContextWindow?.(w.value);
+                        }}
+                      >
+                        {w.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              {efforts.length > 0 && <div className="model-hint">{isMac ? "⌘⌥, ⌘⌥." : "Ctrl+Alt+, Ctrl+Alt+."} thinking</div>}
           </div>
         </div>
       )}

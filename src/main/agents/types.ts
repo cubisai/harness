@@ -43,6 +43,8 @@ export interface TurnInput {
   /** The thread's project, for per-project features (shared memory); absent in some tests. */
   projectId?: string;
   prompt: string;
+  /** Compact the session instead of prompting (/compact); the focus steers the summary where the agent supports it. */
+  compact?: { focus: string | null };
   /** The agent's session to resume, or null for a new conversation. */
   sessionId: string | null;
   model: string;

@@ -3,7 +3,7 @@ import { CommandPalette } from "./components/CommandPalette";
 import { Library } from "./components/Library";
 import { Composer } from "./components/Composer";
 import { ThreadMeters } from "./components/Meters";
-import { DraftControls, ThreadControls } from "./components/ThreadControls";
+import { DraftMode, DraftModel, ThreadMode, ThreadModel } from "./components/ThreadControls";
 import { Inspector } from "./components/Inspector";
 import { SettingsSheet } from "./components/SettingsSheet";
 import { MessageCenter } from "./components/MessageCenter";
@@ -165,14 +165,15 @@ export function App() {
                   <h1>What should we build in {project.name}?</h1>
                   <p>Describe a change, ask about the code, or type $ for a skill or / for a command.</p>
                 </div>
-                <Composer threadId={null} controls={<DraftControls />} />
+                <Composer threadId={null} mode={<DraftMode />} model={<DraftModel />} />
               </>
             ) : (
               <>
                 <ThreadView threadId={thread.id} />
                 <Composer
                   threadId={thread.id}
-                  controls={<ThreadControls thread={thread} running={running} />}
+                  mode={<ThreadMode thread={thread} running={running} />}
+                  model={<ThreadModel thread={thread} running={running} />}
                   meters={<ThreadMeters agent={thread.agent} threadId={thread.id} />}
                 />
               </>

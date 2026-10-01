@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { COMPOSER_COMMANDS, matchCommands } from "../src/renderer/src/commands";
 
 describe("COMPOSER_COMMANDS", () => {
-  it("lists the permission modes, the model picker, context, and a new thread", () => {
-    expect(COMPOSER_COMMANDS.map((c) => c.name)).toEqual(["plan", "ask", "auto-edit", "full", "model", "context", "new"]);
+  it("lists the permission modes, the model picker, context, compact, and a new thread", () => {
+    expect(COMPOSER_COMMANDS.map((c) => c.name)).toEqual(["plan", "ask", "auto-edit", "full", "model", "context", "compact", "new"]);
   });
 });
 
@@ -11,12 +11,13 @@ describe("matchCommands", () => {
   const names = (query: string) => matchCommands(query).map((c) => c.name);
 
   it("returns every command for an empty query, in order", () => {
-    expect(names("")).toEqual(["plan", "ask", "auto-edit", "full", "model", "context", "new"]);
+    expect(names("")).toEqual(["plan", "ask", "auto-edit", "full", "model", "context", "compact", "new"]);
   });
 
   it("puts name-prefix matches before substring matches", () => {
     expect(names("n")).toEqual(["new", "plan", "context"]);
-    expect(names("a")).toEqual(["ask", "auto-edit", "plan"]);
+    expect(names("a")).toEqual(["ask", "auto-edit", "plan", "compact"]);
+    expect(names("com")).toEqual(["compact"]);
   });
 
   it("matches case-insensitively on any part of the name", () => {

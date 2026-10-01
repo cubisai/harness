@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AgentLimits, LimitWindow, ThreadEvent } from "../../../shared/types";
+import { cacheStats } from "../../../shared/cache-stats";
 import { useStore } from "../store";
 import { CacheMeter } from "./CacheMeter";
 
@@ -214,14 +215,184 @@ export function ContextMeter({ threadId }: { threadId: string }) {
   );
 }
 
-/** The thread's plan limit, usage and cache figures: quiet, beside the send button. */
-export function ThreadMeters({ agent, threadId }: { agent: string; threadId: string }) {
+/** The latest context figures: the live turn's, else the last stored turn's. */
+export function contextFigures(events: { event: ThreadEvent }[] | undefined, live?: { usage?: { contextUsed?: number | null; contextSize?: number | null } | null }): { used: number | null; size: number | null } {
+  let used: number | null = null;
+  let size: number | null = null;
+  for (let i = (events?.length ?? 0) - 1; i >= 0; i--) {
+    const e = events![i]!.event;
+    if (e.kind !== "turn-end" || typeof e.usage?.contextUsed !== "number") continue;
+    used = e.usage.contextUsed;
+    size = typeof e.usage.contextSize === "number" ? e.usage.contextSize : null;
+    break;
+  }
+  if (typeof live?.usage?.contextUsed === "number") used = live.usage.contextUsed;
+  if (typeof live?.usage?.contextSize === "number") size = live.usage.contextSize;
+  return { used, size };
+}
+
+/** The breakdown rows the popover draws: the biggest five, the rest folded into "Other". */
+export function ringRows(rows: { label: string; tokens: number }[]): { label: string; tokens: number }[] {
+  const sorted = [...rows].filter((r) => r.tokens > 0).sort((a, b) => b.tokens - a.tokens);
+  if (sorted.length <= 5) return sorted;
+  const rest = sorted.slice(4).reduce((n, r) => n + r.tokens, 0);
+  return [...sorted.slice(0, 4), { label: "Other", tokens: rest }];
+}
+
+const RING_SHADES = ["var(--text)", "var(--text-secondary)", "var(--text-tertiary)", "var(--signal-line)", "var(--hairline-strong)"];
+
+/**
+ * The composer's context ring (DESIGN.md §7.3): how full the window is at a
+ * glance; a click opens the breakdown, plan limits, usage, cache and actions.
+ */
+export function ContextRing({ agent, threadId }: { agent: string; threadId: string }) {
+  const live = useStore((s) => s.live[threadId]);
+  const events = useStore((s) => s.events[threadId]);
+  const limits = useStore((s) => s.limits[agent]);
+  const running = useStore((s) => Boolean(s.running[threadId]));
+  const info = useStore((s) => s.agents.find((a) => a.id === agent));
+  const canCompact = Boolean(info?.capabilities.manualCompact);
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (!box.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  const { used, size } = contextFigures(events, live);
+  const pct = typeof used === "number" && typeof size === "number" && size > 0 ? Math.min(100, Math.round((used / size) * 100)) : 0;
+  let breakdown: Extract<ThreadEvent, { kind: "context-breakdown" }> | null = null;
+  for (let i = (events?.length ?? 0) - 1; i >= 0; i--) {
+    const e = events![i]!.event;
+    if (e.kind === "context-breakdown") {
+      breakdown = e;
+      break;
+    }
+  }
+  const now = Date.now();
+  const known = limits ? limits.windows.filter((w) => w.usedPercent !== null && !isReset(w, now)) : [];
+  const limitPct = known.length ? meterWindows(known).reduce((m, w) => Math.max(m, w.usedPercent ?? 0), 0) : 0;
+  const state = limits?.state === "limited" ? "limited" : pct >= 80 || limitPct >= 80 ? "warning" : "";
+  let input = 0;
+  let output = 0;
+  let cost = 0;
+  let turns = 0;
+  for (const e of events ?? []) {
+    if (e.event.kind !== "turn-end") continue;
+    turns++;
+    input += e.event.inputTokens;
+    output += e.event.outputTokens;
+    cost += e.event.costUsd ?? 0;
+  }
+  const cache = cacheStats(events ?? [], now);
+  const rows = breakdown ? ringRows(breakdown.rows) : [];
+  const rowTotal = rows.reduce((n, r) => n + r.tokens, 0);
+  const R = 7;
+  const C = 2 * Math.PI * R;
+  const label = typeof used === "number" ? (typeof size === "number" ? `${fmt(used)} / ${fmt(size)} · ${pct}%` : `${fmt(used)} in context`) : "No turns yet";
+
   return (
-    <div className="thread-meters">
-      <LimitMeter agent={agent} />
-      <UsageMeter threadId={threadId} />
-      <ContextMeter threadId={threadId} />
-      <CacheMeter threadId={threadId} />
+    <div className="model-picker context-ring" ref={box}>
+      <button className={`chip-button ring-button ${state}`} title={`Context: ${label}`} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+          <circle cx="10" cy="10" r={R} fill="none" stroke="var(--hairline-strong)" strokeWidth="2.4" />
+          <circle cx="10" cy="10" r={R} fill="none" stroke="currentColor" strokeWidth="2.4" strokeDasharray={`${(C * pct) / 100} ${C}`} strokeLinecap="round" transform="rotate(-90 10 10)" />
+        </svg>
+      </button>
+      {open && (
+        <div className="model-menu up right ring-menu" role="dialog" aria-label="Context">
+          <div className="ring-head">
+            <b>Context</b>
+            <span>{label}</span>
+          </div>
+          {rows.length > 0 && (
+            <>
+              <div className="ring-bar">
+                {rows.map((r, i) => (
+                  <i key={r.label} style={{ width: `${(r.tokens / rowTotal) * 100}%`, background: RING_SHADES[i % RING_SHADES.length] }} />
+                ))}
+              </div>
+              {rows.map((r, i) => (
+                <div className="ring-row" key={r.label}>
+                  <span className="sw" style={{ background: RING_SHADES[i % RING_SHADES.length] }} />
+                  {r.label}
+                  <span className="v">{fmt(r.tokens)}</span>
+                </div>
+              ))}
+              <div className="ring-note">First turn{breakdown?.estimated ? ", estimated" : ""}</div>
+            </>
+          )}
+          {(turns > 0 || known.length > 0) && <hr />}
+          {known.length > 0 &&
+            meterWindows(known).map((w) => (
+              <div className="ring-row" key={w.id}>
+                {w.label} limit
+                <span className={`v${(w.usedPercent ?? 0) >= 80 ? " warn" : ""}`}>
+                  {w.usedPercent}%{w.resetsAt ? ` · resets ${resetCountdown(w.resetsAt, now)}` : ""}
+                </span>
+              </div>
+            ))}
+          {turns > 0 && (
+            <>
+              <div className="ring-row">
+                This thread<span className="v">{fmt(input)} in · {fmt(output)} out</span>
+              </div>
+              {cache.reported && (
+                <div className="ring-row">
+                  Cache hit
+                  <span className={`v${cache.lastMiss ? " warn" : ""}`}>
+                    {Math.round((cache.lastHitRate ?? 0) * 100)}% · {cache.warm ? "warm" : "cold"}
+                  </span>
+                </div>
+              )}
+              {cost > 0 && (
+                <div className="ring-row">
+                  Cost<span className="v">${cost.toFixed(2)}</span>
+                </div>
+              )}
+            </>
+          )}
+          <div className="ring-actions">
+            <button
+              className="button"
+              disabled={!canCompact || running || turns === 0}
+              title={
+                !canCompact
+                  ? `${info?.label ?? "This agent"} can't compact on request`
+                  : turns === 0
+                    ? "Nothing to compact yet"
+                    : running
+                      ? "Wait for the turn to finish"
+                      : "Summarize the conversation so far to free up context (/compact)"
+              }
+              onClick={() => {
+                setOpen(false);
+                void useStore.getState().compact(threadId, null);
+              }}
+            >
+              Compact now
+            </button>
+            <button
+              className="button"
+              onClick={() => {
+                setOpen(false);
+                useStore.getState().openContextSheet(threadId);
+              }}
+            >
+              Open /context
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+/** The thread's meters in the message box: the context ring (limits, usage and cache live in its popover). */
+export function ThreadMeters({ agent, threadId }: { agent: string; threadId: string }) {
+  return <ContextRing agent={agent} threadId={threadId} />;
 }

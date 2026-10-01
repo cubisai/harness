@@ -83,6 +83,7 @@ export const CLAUDE_CAPABILITIES: AgentCapabilities = Object.freeze({
   guardEnforcement: Object.freeze({ ask: "block" as const, "auto-edit": "block" as const, plan: "block" as const, full: "block" as const }),
   sandbox: "none" as const,
   nativeMemory: true,
+  manualCompact: true,
 });
 
 /**
@@ -110,4 +111,5 @@ export const CODEX_CAPABILITIES: AgentCapabilities = Object.freeze({
   permissionGranularity: "perCommand" as const,
   guardEnforcement: Object.freeze({ ask: "block" as const, "auto-edit": "block" as const, plan: "block" as const, full: "warnOnly" as const }),
   sandbox: "workspace" as const,
+  manualCompact: true,
 });

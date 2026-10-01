@@ -1,8 +1,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { ContextPicker, contextChoices } from "../src/renderer/src/components/ContextPicker";
-import { EffortPicker } from "../src/renderer/src/components/EffortPicker";
-import { ModelPicker } from "../src/renderer/src/components/ModelPicker";
+import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
+import { ModelPicker, contextChoices } from "../src/renderer/src/components/ModelPicker";
+import { ModeMenu } from "../src/renderer/src/components/ThreadControls";
+import type { AgentInfo } from "../src/shared/types";
 import { filterModels } from "../src/renderer/src/models";
 
 const opencode = [
@@ -32,44 +33,75 @@ describe("filterModels", () => {
   });
 });
 
+const agents: AgentInfo[] = [
+  { id: "codex", label: "Codex", models: [], defaultModel: "default", capabilities: SAFE_DEFAULTS },
+  { id: "opencode", label: "OpenCode", models: opencode, defaultModel: "default", capabilities: SAFE_DEFAULTS },
+];
+const noop = () => {};
+const picker = (over: Partial<Parameters<typeof ModelPicker>[0]> = {}) =>
+  renderToStaticMarkup(
+    <ModelPicker agents={agents} agent="opencode" models={opencode} current="tokenharbor/glm-5.3-flash" effort={null} onModel={noop} onAgent={noop} onEffort={noop} onContextWindow={noop} {...over} />,
+  );
+const luna = { id: "gpt-6-luna", label: "GPT-6-Luna", contextWindow: 272000, maxContextWindow: 872000, efforts: ["low", "high"], defaultEffort: "high" };
+
 describe("ModelPicker", () => {
   it("shows the current model's own name, closed", () => {
-    const html = renderToStaticMarkup(<ModelPicker models={opencode} current="tokenharbor/glm-5.3-flash" onPick={() => {}} />);
-    expect(html).toContain(">GLM 5.3 Flash</button>");
+    const html = picker();
+    expect(html).toContain(">GLM 5.3 Flash</span>");
     expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain("model-menu");
+  });
+
+  it("shows the effective effort on the button: the pick, else the model's default", () => {
+    expect(picker({ models: [luna], current: "gpt-6-luna" })).toContain('model-picker-effort">High</span>');
+    expect(picker({ models: [luna], current: "gpt-6-luna", effort: "low" })).toContain('model-picker-effort">Low</span>');
+    expect(picker()).not.toContain("model-picker-effort");
+    expect(picker({ models: [luna], current: "gpt-6-luna", effort: "high" })).toContain('model-picker-effort">High</span>');
+  });
+
+  it("lists this agent's models, then the other agents as switch rows", () => {
+    const html = picker({ defaultOpen: true });
+    expect(html).toContain("Token Harbor");
+    expect(html).toContain("Switch agent");
+    expect(html).toContain(">Codex</span>");
+    expect(html).not.toContain(">OpenCode</span><span class=\"hint\">switch");
+  });
+
+  it("puts Thinking (Default first) and Context inside the menu for a model that has them", () => {
+    const html = picker({ defaultOpen: true, models: [luna], current: "gpt-6-luna" });
+    expect(html).toContain(">Thinking<");
+    expect(html).toMatch(/>Default<\/button><button[^>]*>Low<\/button><button[^>]*>High</);
+    expect(html).toContain("Model default (high)");
+    expect(html).toContain(">Context<");
+    expect(html).toContain(">Default 272K</button>");
+    expect(html).toContain(">Max 872K</button>");
+  });
+
+  it("says a model without thinking levels doesn't offer them, and leaves Context out", () => {
+    const html = picker({ defaultOpen: true });
+    expect(html).toContain("Not offered by GLM 5.3 Flash");
+    expect(html).not.toContain('aria-label="Thinking"');
+    expect(html).not.toContain(">Context<");
   });
 });
 
-describe("EffortPicker", () => {
-  it("renders nothing when the model offers no efforts", () => {
-    expect(renderToStaticMarkup(<EffortPicker options={[]} current={null} onPick={() => {}} />)).toBe("");
-  });
-
-  it("lists Default first, then the levels, noting the model's default", () => {
-    const html = renderToStaticMarkup(<EffortPicker options={["low", "high"]} current={null} defaultEffort="high" onPick={() => {}} />);
-    expect(html).toContain(">Default");
-    expect(html).toContain("(high)");
-    expect(html).toContain(">low</button>");
-    expect(html).toContain(">high</button>");
-  });
-});
-
-describe("ContextPicker", () => {
-  const luna = { id: "gpt-6-luna", label: "GPT-6-Luna", contextWindow: 272000, maxContextWindow: 872000 };
-
+describe("contextChoices", () => {
   it("offers Default and Max only when the model accepts a larger window", () => {
     expect(contextChoices(luna)).toEqual([
-      { label: "Default · 272K", value: null },
-      { label: "Max · 872K", value: 872000 },
+      { label: "Default 272K", value: null },
+      { label: "Max 872K", value: 872000 },
     ]);
     expect(contextChoices({ ...luna, maxContextWindow: 272000 })).toEqual([]);
     expect(contextChoices({ id: "opus", label: "Opus 5.5" })).toEqual([]);
     expect(contextChoices(undefined)).toEqual([]);
   });
+});
 
-  it("renders nothing without a larger window, and the current size otherwise", () => {
-    expect(renderToStaticMarkup(<ContextPicker model={{ id: "gpt-5.5", label: "GPT-5.5", contextWindow: 272000, maxContextWindow: 272000 }} current={null} onPick={() => {}} />)).toBe("");
-    expect(renderToStaticMarkup(<ContextPicker model={luna} current={null} onPick={() => {}} />)).toContain("272K");
-    expect(renderToStaticMarkup(<ContextPicker model={luna} current={872000} onPick={() => {}} />)).toContain("872K");
+describe("ModeMenu", () => {
+  it("shows the current mode, and Full access in the danger style", () => {
+    expect(renderToStaticMarkup(<ModeMenu mode="ask" onPick={noop} />)).toContain("Ask");
+    const full = renderToStaticMarkup(<ModeMenu mode="full" onPick={noop} />);
+    expect(full).toContain("mode-chip danger");
+    expect(full).toContain("Full access");
   });
 });

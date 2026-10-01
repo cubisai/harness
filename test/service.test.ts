@@ -334,6 +334,45 @@ describe("Service.send", () => {
   });
 });
 
+describe("Service.send /compact", () => {
+  it("says the agent can't compact on request, without starting a turn", async () => {
+    const { store, service, driver, thread, updates } = setup(async () => {});
+    store.updateThread(thread.id, { sessionId: "s1" });
+    await service.send({ threadId: thread.id, text: "/compact", compact: { focus: null } });
+    expect(driver.prompts).toEqual([]);
+    expect(store.listEvents(thread.id).map((e) => e.event)).toEqual([{ kind: "notice", text: "Fake can't compact on request." }]);
+    expect(updates).toContainEqual({ type: "running", threadId: thread.id, running: false });
+  });
+
+  it("says there's nothing to compact before the thread has a session", async () => {
+    const { store, service, driver, thread } = setup(async () => {});
+    driver.capabilities = { ...SAFE_DEFAULTS, manualCompact: true };
+    await service.send({ threadId: thread.id, text: "/compact", compact: { focus: null } });
+    expect(driver.prompts).toEqual([]);
+    expect((store.listEvents(thread.id)[0]!.event as { text: string }).text).toContain("Nothing to compact yet");
+  });
+
+  it("hands the driver the compact flag and a bare /compact prompt, and counts the compaction as the reply", async () => {
+    const seen: TurnInput[] = [];
+    const listener = vi.fn();
+    const { store, service, driver, thread } = setup(async (input) => {
+      seen.push(input);
+      input.onEvent({ kind: "compaction", trigger: "manual", preTokens: 48000, postTokens: 6000 });
+      input.onEvent({ kind: "turn-end", costUsd: null, inputTokens: 0, outputTokens: 0, durationMs: 1 });
+    });
+    driver.capabilities = { ...SAFE_DEFAULTS, manualCompact: true };
+    service.setTurnListener(listener);
+    store.updateThread(thread.id, { sessionId: "s1", title: "Earlier work" });
+    await service.send({ threadId: thread.id, text: "/compact keep the API decisions", compact: { focus: "keep the API decisions" } });
+    expect(seen[0]!.compact).toEqual({ focus: "keep the API decisions" });
+    expect(driver.prompts).toEqual(["/compact keep the API decisions"]);
+    const kinds = store.listEvents(thread.id).map((e) => e.event.kind);
+    expect(kinds).toEqual(["user", "compaction", "turn-end"]);
+    expect(store.getThread(thread.id).title).toBe("Earlier work");
+    expect(listener).not.toHaveBeenCalled();
+  });
+});
+
 describe("the project check gate", () => {
   const node = process.execPath;
   const nodeCmd = (script: string) => `"${node}" -e "${script}"`;

@@ -82,7 +82,8 @@ Full access mode shows its chip in `--danger`.
 - **Running beam** (from libraries.dev/beam, flattened): while a turn runs, one thin conic-gradient line in `--signal-line` travels around the composer border (2.6s per lap). No bloom.
 - **Gooey** (from libraries.dev/gooey): the composer's `+` splits into its actions (attach, @, skill, image) through an SVG goo filter. Popovers morph in from scale .92 with a larger radius.
 - No liquid-metal effects in the chrome.
-- The `motion` setting (default instant) and `prefers-reduced-motion` disable all of the above. A beam turns into a static 1px `--signal-line` border.
+- The beam is a status signal, not decoration: it runs regardless of the `motion` setting. `prefers-reduced-motion` turns it into a static `--signal-line` border.
+- The `motion` setting (default instant) gates entrance animations (gooey, popover morph). `prefers-reduced-motion` disables those too.
 
 ## 7. Components
 

@@ -185,15 +185,23 @@ describe("composer actions row", () => {
     });
   });
 
-  it("renders meters in composer-meters, after composer-bar and outside it", () => {
+  it("puts the model control and the meters in composer-actions, before Stop/Send", () => {
     withRunning({ t: true }, () => {
-      const html = renderToStaticMarkup(<Composer threadId="t" meters={<span className="x">M</span>} />);
-      // The wrapper is a sibling immediately after the bar.
-      expect(html).toMatch(/<\/div><div class="composer-meters"><span class="x">M<\/span><\/div>/);
-      // The bar itself (up to its closing tag before composer-meters) never contains it.
-      const bar = /<div class="composer-bar">([\s\S]*?)<\/div><div class="composer-meters">/.exec(html)?.[1] ?? "";
-      expect(bar).toContain("composer-actions");
-      expect(bar).not.toContain("composer-meters");
+      const html = renderToStaticMarkup(<Composer threadId="t" model={<span className="m">Model</span>} meters={<span className="x">M</span>} />);
+      expect(html).toMatch(/<div class="composer-actions"><span class="m">Model<\/span><span class="x">M<\/span><button class="send stop"/);
+      expect(html).not.toContain("composer-meters");
     });
+  });
+
+  it("puts + and the permission chip first in composer-left", () => {
+    withRunning({}, () => {
+      const html = renderToStaticMarkup(<Composer threadId="t" mode={<span className="mode">Ask</span>} />);
+      expect(html).toMatch(/<div class="composer-left"><div class="model-picker"><button class="chip-button icon" title="Add context"[\s\S]*?<\/div><span class="mode">Ask<\/span>/);
+    });
+  });
+
+  it("marks the composer running for the beam", () => {
+    withRunning({ t: true }, () => expect(renderToStaticMarkup(<Composer threadId="t" />)).toContain('class="composer running"'));
+    withRunning({}, () => expect(renderToStaticMarkup(<Composer threadId="t" />)).toContain('class="composer"'));
   });
 });

@@ -623,6 +623,8 @@ export interface AgentCapabilities {
   nativeMemory?: boolean;
   /** The app may route this agent's MCP servers through its own search_tools/call_mcp_tool when many tools are enabled (agents without native tool search). */
   mcpRouter?: boolean;
+  /** The user can compact the session on request (/compact). ACP agents also need to advertise a compact command. */
+  manualCompact?: boolean;
 }
 
 /** How an agent's credential row behaves in Settings: data from its driver, never its id. */
@@ -657,6 +659,8 @@ export interface SendRequest {
   mentions?: string[];
   /** Internal: which automatic fix round this send is (0 or absent = the user's). */
   checkRound?: number;
+  /** Compact the session instead of sending a message (/compact [focus]). */
+  compact?: { focus: string | null };
 }
 
 /** A viewport the browser pane can emulate; desktop means no emulation. */

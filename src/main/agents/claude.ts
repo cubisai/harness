@@ -544,7 +544,13 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         return lost ? "lost" : "done";
       };
 
+      // /compact is Claude Code's own slash command: the SDK compacts and reports a compact_boundary.
       if ((await attempt(options, input.prompt)) === "aborted") return;
+      if (lost && input.compact) {
+        // A lost session has nothing to compact; a fresh one would only compact an empty conversation.
+        input.onEvent({ kind: "notice", text: `Claude couldn't reopen its earlier session (${lost}), so there was nothing to compact.` });
+        return;
+      }
       if (lost) {
         // Cleared first, so a real error in the retry isn't swallowed as the lost session's throw.
         const reason: string = lost;

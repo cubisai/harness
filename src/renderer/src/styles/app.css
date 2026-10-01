@@ -1697,3 +1697,89 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 
 .skill-menu .item .mention-icon { display: inline-flex; align-items: center; align-self: center; color: var(--text-secondary); flex-shrink: 0; }
 .skill-menu .item.active .mention-icon { color: var(--text-secondary); }
+
+/* ---------- composer controls (DESIGN.md §7.3) ---------- */
+
+.chip-button {
+  height: 28px;
+  min-width: 28px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: var(--radius-m);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+.chip-button:hover:not(:disabled), .chip-button[aria-expanded="true"] { background: var(--bg-hover); color: var(--text); }
+.chip-button:disabled { opacity: 0.5; }
+.chip-button.icon { padding: 0; justify-content: center; }
+.chip-button .chev { opacity: 0.6; flex: none; }
+.mode-chip.danger, .mode-chip.danger:hover { color: var(--danger); }
+.model-picker-button { max-width: 240px; color: var(--text); }
+.model-picker-name { overflow: hidden; text-overflow: ellipsis; }
+.model-picker-effort { color: var(--text-tertiary); }
+.ring-button { padding: 0 5px; color: var(--text-secondary); }
+.ring-button.warning { color: var(--warning); }
+.ring-button.limited { color: var(--danger); }
+
+.model-menu.right { left: auto; right: 0; }
+.model-menu .model-group { padding: 8px 10px 3px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-tertiary); }
+.model-subgroup { padding: 5px 10px 2px 32px; font-size: 11px; color: var(--text-tertiary); }
+.model-menu .model-item { display: flex; align-items: center; gap: 8px; }
+.model-item .check { width: 13px; height: 13px; flex: none; visibility: hidden; color: var(--text); }
+.model-item.current .check { visibility: visible; }
+.model-item .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.model-item .hint { font: 11px var(--mono); color: var(--text-tertiary); }
+.model-item.two-line { align-items: flex-start; white-space: normal; }
+.model-item.two-line .check { margin-top: 2px; }
+.model-item .desc { display: block; font-size: 11.5px; font-weight: 400; color: var(--text-tertiary); }
+.model-item.danger .label { color: var(--danger); }
+.model-item.danger .desc { color: var(--text-tertiary); }
+.model-options { border-top: 1px solid var(--hairline); padding: 2px 6px 8px; }
+.segmented.fill { display: flex; margin: 2px 4px 4px; }
+.segmented.fill button { flex: 1; height: 24px; padding: 0 6px; font-size: 12px; }
+.model-hint { padding: 6px 10px 2px; font: 10.5px var(--mono); color: var(--text-tertiary); }
+.mode-menu { width: 270px; padding: 4px; }
+.plus-menu { width: 240px; padding: 4px; }
+.plus-menu .model-item .check { visibility: visible; color: var(--text-secondary); }
+
+.ring-menu { width: 290px; padding: 10px; gap: 0; }
+.ring-head { display: flex; justify-content: space-between; align-items: baseline; padding: 0 2px 8px; }
+.ring-head b { font-weight: 600; }
+.ring-head span { font: 11px var(--mono); color: var(--text-secondary); }
+.ring-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--bg-chip); margin: 0 2px 8px; }
+.ring-bar i { display: block; height: 100%; }
+.ring-row { display: flex; align-items: center; gap: 8px; padding: 3px 2px; font-size: 12.5px; color: var(--text-secondary); }
+.ring-row .sw { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.ring-row .v { margin-left: auto; font: 11px var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+.ring-row .v.warn { color: var(--warning); }
+.ring-note { padding: 2px 2px 0; font-size: 11px; color: var(--text-tertiary); }
+.ring-menu hr { border: 0; border-top: 1px solid var(--hairline); margin: 8px 0; width: 100%; }
+.ring-actions { display: flex; gap: 6px; padding-top: 10px; }
+.ring-actions .button { flex: 1; }
+
+/* Running beam (libraries.dev/beam, flattened): one thin line travels the border. */
+@property --beam-angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+.composer.running::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  background: conic-gradient(from var(--beam-angle), transparent 0 70%, color-mix(in srgb, var(--signal-line) 35%, transparent) 80%, var(--signal-line) 88%, transparent 95%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: beam 2.6s linear infinite;
+}
+@keyframes beam { to { --beam-angle: 360deg; } }
+@media (prefers-reduced-motion: reduce) {
+  .composer.running::before { animation: none; background: var(--signal-line); opacity: 0.6; }
+}
+.model-option-off { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding-right: 10px; font-size: 11.5px; color: var(--text-tertiary); }

@@ -14,6 +14,7 @@ export const COMPOSER_COMMANDS: ComposerCommand[] = [
   { name: "full", description: "Run everything without asking" },
   { name: "model", description: "Pick a model" },
   { name: "context", description: "Show what this thread loads into context" },
+  { name: "compact", description: "Compact the conversation now; add a focus: /compact keep the API decisions" },
   { name: "new", description: "Start a new thread" },
 ];
 

@@ -28,11 +28,12 @@ export function antigravityAcpCommand(platform: NodeJS.Platform = process.platfo
 export const ACP_PRESETS: AcpAgentConfig[] = [
   {
     // Reads skills from .opencode/skills, .claude/skills, and .agents/skills.
+    // manualCompact: its ACP server runs "/compact" (session summarize) without advertising it (checked on 1.18.33).
     id: "opencode",
     label: "OpenCode",
     command: "opencode",
     args: ["acp"],
-    capabilities: { mcpStdio: true, interrupt: true, perMessageModel: true, permissionGranularity: "perTool", skillsDelivery: { mode: "tool", prefix: "", reads: ["project", "shared"] }, mcpRouter: true },
+    capabilities: { mcpStdio: true, interrupt: true, perMessageModel: true, permissionGranularity: "perTool", skillsDelivery: { mode: "tool", prefix: "", reads: ["project", "shared"] }, mcpRouter: true, manualCompact: true },
     injector: "opencode",
     guardPlugin: "opencode",
     effortVia: "opencode-variants",

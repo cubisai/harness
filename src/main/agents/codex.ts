@@ -304,6 +304,8 @@ interface TurnState {
   /** The latest completed agent message's text, so a wrapped plan can be recovered from it. */
   agentText: string;
   done: (turn: Turn) => void;
+  /** This turn is a user-requested compaction (/compact): its compaction ends it and reads as manual. */
+  manualCompact?: boolean;
   /** Set on a subagent (Codex child thread) state: the root turn it hangs under. */
   parent?: TurnState;
   /** The Agent row this child's events hang under (its toolUseId). */
@@ -322,8 +324,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   /** A replaced app-server's exit, while it's still under way. */
   let exiting: Promise<unknown> | null = null;
   let models: ModelOption[] = [];
-  /** The default model's context windows, for the "Codex default" option. */
-  let defaultWindows: { contextWindow?: number; maxContextWindow?: number } = {};
+  /** The default model's context windows and thinking levels, for the "Codex default" option. */
+  let defaultWindows: { contextWindow?: number; maxContextWindow?: number; efforts?: string[]; defaultEffort?: string } = {};
   /** When the current model list was last fetched; 0 = never. */
   let listedAt = 0;
   const turns = new Map<string, TurnState>(); // by Codex thread id
@@ -345,7 +347,9 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   const emitCompaction = (t: TurnState) => {
     if (t.compacted) return;
     t.compacted = true;
-    t.input.onEvent({ kind: "compaction", trigger: "auto", preTokens: null, postTokens: null });
+    t.input.onEvent({ kind: "compaction", trigger: t.manualCompact ? "manual" : "auto", preTokens: null, postTokens: null });
+    // A requested compaction is done once Codex reports it, whether or not a turn/completed follows.
+    if (t.manualCompact) t.done({ id: t.turnId ?? "", status: "completed" } as Turn);
   };
 
   /** The turn state for a Codex thread id: a root thread's, or a subagent child's. */
@@ -711,9 +715,14 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       ...(m.defaultReasoningEffort ? { defaultEffort: m.defaultReasoningEffort } : {}),
       ...(windows.get(m.id) ?? {}),
     }));
-    // "Codex default" runs the model Codex marks as default, so it gets that model's windows.
+    // "Codex default" runs the model Codex marks as default, so it gets that model's windows and thinking levels.
     const fallback = list.data.find((m) => m.isDefault);
-    defaultWindows = (fallback && windows.get(fallback.id)) || {};
+    const fallbackOption = fallback && models.find((m) => m.id === fallback.id);
+    defaultWindows = {
+      ...((fallback && windows.get(fallback.id)) || {}),
+      ...(fallbackOption?.efforts ? { efforts: fallbackOption.efforts } : {}),
+      ...(fallbackOption?.defaultEffort ? { defaultEffort: fallbackOption.defaultEffort } : {}),
+    };
     listedAt = Date.now();
   };
 
@@ -1019,6 +1028,35 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       const last: { usage?: TokenBreakdown; contextSize?: number | null; turn?: Turn } = {};
       /** Whether the previous runOne ran in plan mode, so leaving it re-sends a default collaboration mode. */
       let previousPlan = false;
+
+      // /compact: Codex's own thread/compact/start; no prompt, no plan rounds.
+      if (input.compact) {
+        let resolveTurn!: (t: Turn) => void;
+        const finished = new Promise<Turn>((r) => (resolveTurn = r));
+        const state: TurnState = { input, threadId, turnId: null, deltas: new Map(), reasoning: new Map(), usage: null, contextSize: null, retrying: new Set(), compacted: false, planText: null, agentText: "", done: resolveTurn, manualCompact: true };
+        turns.set(threadId, state);
+        const onAbort = () => {
+          if (state.turnId) void conn.request("turn/interrupt", { threadId, turnId: state.turnId }).catch(() => {});
+          resolveTurn({ id: state.turnId ?? "", status: "interrupted" } as Turn);
+        };
+        input.signal.addEventListener("abort", onAbort, { once: true });
+        const timer = setTimeout(() => resolveTurn({ id: state.turnId ?? "", status: "failed", error: { message: "compaction didn't finish within 3 minutes." } } as Turn), 180_000);
+        try {
+          await conn.request("thread/compact/start", { threadId });
+          const turn = await finished;
+          if (turn.status === "interrupted") input.onEvent({ kind: "notice", text: "Stopped." });
+          else if (turn.status === "failed") input.onEvent({ kind: "error", message: `Codex: ${turn.error?.message ?? "compaction failed."}` });
+          else if (!state.compacted) emitCompaction(state);
+          input.onEvent(turnEndFromUsage(state.usage ?? undefined, Date.now() - started, state.contextSize));
+        } catch (err) {
+          input.onEvent({ kind: "error", message: `Codex couldn't compact: ${err instanceof Error ? err.message : String(err)}` });
+        } finally {
+          clearTimeout(timer);
+          input.signal.removeEventListener("abort", onAbort);
+          turns.delete(threadId);
+        }
+        return;
+      }
 
       const runOne = async (prompt: string, mode: PermissionMode): Promise<{ turn: Turn; planText: string | null }> => {
         const policy = codexPolicy(mode);

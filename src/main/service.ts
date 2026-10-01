@@ -560,17 +560,29 @@ export class Service {
       return;
     }
     const driver = this.driverFor(thread.agent);
+    const compact = req.compact ?? null;
+    // /compact needs an agent that compacts on request and a session to compact.
+    if (compact && (!driver.capabilities.manualCompact || thread.sessionId === null)) {
+      const text = !driver.capabilities.manualCompact
+        ? `${driver.label} can't compact on request.`
+        : `Nothing to compact yet: this thread has no ${driver.label} session.`;
+      this.emit(thread.id, { kind: "notice", text });
+      this.broadcast({ type: "running", threadId: thread.id, running: false });
+      return;
+    }
     // The project's verification gate: off when there's no command; `round` counts the automatic fixes.
     const checkCommand = project.checkCommand?.trim() || null;
     const round = req.checkRound ?? 0;
     // Fix turns are the gate's only token cost; the project caps them (default 1, 0 = none).
     const maxRounds = project.checkFixRounds ?? 1;
     const provenance: Provenance = { agent: thread.agent, model: thread.model, provider: null, instanceId: null };
-    const prompt = composePrompt(this.catalogFor(cwd), req.text, req.skill, driver.skillsDelivery) + mentionNote(cwd, req.mentions);
+    const prompt = compact
+      ? `/compact${compact.focus ? ` ${compact.focus}` : ""}`
+      : composePrompt(this.catalogFor(cwd), req.text, req.skill, driver.skillsDelivery) + mentionNote(cwd, req.mentions);
 
     const userEvent = this.emit(thread.id, { kind: "user", text: req.text, skill: req.skill });
     // An automatic fix round never names the thread; the user's message does.
-    if (thread.title === "New thread" && !req.checkRound) {
+    if (thread.title === "New thread" && !req.checkRound && !compact) {
       const title = titleFrom(req.text, req.skill);
       this.broadcast({ type: "thread", thread: this.store.updateThread(thread.id, { title }) });
     }
@@ -618,7 +630,7 @@ export class Service {
       let edited = false;
       const live = (delta: LiveDelta) => this.broadcast({ type: "delta", threadId: thread.id, delta });
       const scrub = (text: string) => redactSecrets(text, this.secrets());
-      const catchUp = await this.catchUp(thread.id, driver, userEvent.seq);
+      const catchUp = compact ? null : await this.catchUp(thread.id, driver, userEvent.seq);
       const turnPrompt = catchUp ? `${catchUp}\n---\n${prompt}` : prompt;
       if (!catchUp && !switched && current.sessionId === null && this.store.listEvents(thread.id).length > 1) {
         this.emit(thread.id, { kind: "notice", text: `Now talking to ${driver.label}. It starts without the earlier messages above.` });
@@ -628,6 +640,7 @@ export class Service {
         cwd,
         projectId: thread.projectId,
         prompt: turnPrompt,
+        ...(compact ? { compact } : {}),
         sessionId: current.sessionId,
         model: thread.model,
         effort: thread.effort,
@@ -642,7 +655,10 @@ export class Service {
         },
         onSessionLost: (reason) => this.rehydrate(thread.id, driver, reason, userEvent.seq),
         onEvent: (event) => {
-          if (event.kind === "compaction") compacted = true;
+          if (event.kind === "compaction") {
+            compacted = true;
+            answered = true;
+          }
           if (event.kind === "assistant-text" || event.kind === "tool-use" || event.kind === "thinking" || event.kind === "error" || event.kind === "plan") answered = true;
           // An Edit that completed is what makes a file change count even outside git.
           if (event.kind === "tool-use" && event.name === "Edit") editIds.add(event.toolUseId);
@@ -717,7 +733,7 @@ export class Service {
       // The turn finished cleanly: hand it to the memory extractor. A listener
       // failure is its own concern and never touches the thread. An automatic
       // fix turn isn't user intent, so it never notifies the extractor.
-      if (!controller.signal.aborted && round === 0) {
+      if (!controller.signal.aborted && round === 0 && !compact) {
         try {
           const last = [...this.store.listEvents(thread.id)].reverse().find((e) => e.event.kind === "assistant-text" && e.seq > userEvent.seq);
           const answer = last && last.event.kind === "assistant-text" ? last.event.text : "";
@@ -736,7 +752,7 @@ export class Service {
         }
       }
       // The verification gate: only a turn that changed files runs it.
-      if (checkCommand && !controller.signal.aborted) {
+      if (checkCommand && !controller.signal.aborted && !compact) {
         // A fix round always re-checks: it exists to make the check pass.
         const changed = round > 0 || edited || !sameSet(before!, await dirtySet(cwd));
         if (changed) {

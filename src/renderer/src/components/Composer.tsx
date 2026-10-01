@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { File, Folder } from "lucide-react";
+import { AtSign, File, Folder, Plus, Slash, Sparkles } from "lucide-react";
 import type { PermissionMode, SkillEntry } from "../../../shared/types";
 import { IconArrowUp, IconStop } from "../icons";
 import { api } from "../api";
@@ -19,9 +19,10 @@ import { originLabel } from "./Library";
  * the message. Sending while a turn runs queues the message for the next turn.
  * With no thread yet (`threadId` null), sending starts one. Alt+Return starts
  * the message in a new thread in the background instead, leaving this one open.
- * The thread's controls (agent, model, permissions) and meters sit in its bar.
+ * One bar under the text (DESIGN.md §7.3): + and the permission chip on the
+ * left; the model control, the context ring and send on the right.
  */
-export function Composer({ threadId, controls, meters }: { threadId: string | null; controls?: ReactNode; meters?: ReactNode }) {
+export function Composer({ threadId, mode, model, meters }: { threadId: string | null; mode?: ReactNode; model?: ReactNode; meters?: ReactNode }) {
   const skills = useStore((s) => s.skills);
   const running = useStore((s) => (threadId ? Boolean(s.running[threadId]) : false));
   const insert = useStore((s) => s.composerInsert);
@@ -34,6 +35,8 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
   const [caret, setCaret] = useState(0);
   const [knownFiles, setKnownFiles] = useState<string[]>([]);
   const [mentionDismissed, setMentionDismissed] = useState(false);
+  const [plusOpen, setPlusOpen] = useState(false);
+  const plusBox = useRef<HTMLDivElement>(null);
   const area = useRef<HTMLTextAreaElement>(null);
   const pendingCaret = useRef<number | null>(null);
   /** listFiles results by project id, with when they were fetched, so the picker doesn't refetch per keystroke. */
@@ -174,6 +177,9 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
     if (c.name === "new") void s.newThread();
     else if (c.name === "model") s.requestModelPicker();
     else if (c.name === "context") s.openContextSheet(threadId);
+    else if (c.name === "compact") {
+      if (threadId) void s.compact(threadId, null);
+    }
     else if (c.name === "plan" || c.name === "ask" || c.name === "auto-edit" || c.name === "full") {
       const mode: PermissionMode = c.name;
       if (threadId) void s.updateThread({ permissionMode: mode });
@@ -183,6 +189,15 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
   };
 
   const submit = () => {
+    // "/compact <focus>" is a command with an argument, not a message.
+    const compactMatch = !skill && /^\/compact(?:\s+([\s\S]*))?$/.exec(text.trim());
+    if (compactMatch) {
+      if (!threadId || running) return;
+      void useStore.getState().compact(threadId, compactMatch[1]?.trim() || null);
+      setText("");
+      setCaret(0);
+      return;
+    }
     const body = composeMessage(text, chips);
     if (!body && !skill) return;
     const mentions = mentionsIn(text, knownSet);
@@ -305,9 +320,32 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
       ? "Queue a message for the next turn…"
       : "Ask anything — $ for a skill, / for a command";
 
+  // The + menu starts a trigger at the caret, as if typed: @ mention, $ skill, / command.
+  useEffect(() => {
+    if (!plusOpen) return;
+    const close = (e: MouseEvent) => {
+      if (!plusBox.current?.contains(e.target as Node)) setPlusOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [plusOpen]);
+  const startTrigger = (ch: "@" | "$" | "/") => {
+    setPlusOpen(false);
+    // $ and / only open their menus at the start of the message.
+    const at = ch === "@" ? caret : 0;
+    const before = text.slice(0, at);
+    const spacer = ch === "@" && before && !/\s$/.test(before) ? " " : "";
+    const next = ch === "@" ? `${before}${spacer}@${text.slice(at)}` : `${ch}${text.replace(/^[$/]\S*\s?/, "")}`;
+    const pos = ch === "@" ? at + spacer.length + 1 : 1;
+    setText(next);
+    setCaret(pos);
+    pendingCaret.current = pos;
+    area.current?.focus();
+  };
+
   return (
     <div className="composer-wrap">
-      <div className="composer">
+      <div className={`composer${running ? " running" : ""}`}>
         {menuOpen && (
           <div className="skill-menu" role="listbox">
             {matches.length === 0 && <div className="empty-line">No skill matches “{query}”</div>}
@@ -386,7 +424,31 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
         />
         <div className="composer-bar">
           <div className="composer-left">
-            {controls}
+            <div className="model-picker" ref={plusBox}>
+              <button className="chip-button icon" title="Add context" aria-haspopup="menu" aria-expanded={plusOpen} onClick={() => setPlusOpen((o) => !o)}>
+                <Plus size={15} />
+              </button>
+              {plusOpen && (
+                <div className="model-menu up plus-menu" role="menu">
+                  <button role="menuitem" className="model-item" onClick={() => startTrigger("@")}>
+                    <AtSign size={13} className="check" />
+                    <span className="label">Mention a file or folder</span>
+                    <span className="hint">@</span>
+                  </button>
+                  <button role="menuitem" className="model-item" onClick={() => startTrigger("$")}>
+                    <Sparkles size={13} className="check" />
+                    <span className="label">Use a skill</span>
+                    <span className="hint">$</span>
+                  </button>
+                  <button role="menuitem" className="model-item" onClick={() => startTrigger("/")}>
+                    <Slash size={13} className="check" />
+                    <span className="label">Run a command</span>
+                    <span className="hint">/</span>
+                  </button>
+                </div>
+              )}
+            </div>
+            {mode}
             {skill && (
               <span className="skill-chip" title={skill.description}>
                 ${skill.name}
@@ -400,6 +462,8 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
             <span className="grow" />
           </div>
           <div className="composer-actions">
+            {model}
+            {meters}
             {running && (
               <button className="send stop" title="Stop (clears queued messages)" onClick={() => void interrupt()}>
                 <IconStop />
@@ -412,7 +476,6 @@ export function Composer({ threadId, controls, meters }: { threadId: string | nu
             )}
           </div>
         </div>
-        {meters && <div className="composer-meters">{meters}</div>}
       </div>
     </div>
   );
