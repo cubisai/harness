@@ -1,6 +1,6 @@
-# Handoff — Phase E done (one shared CubiQ memory + /context); next: doc 11 §11.3 extension import, §11.4 guide diet
+# Handoff: roadmap N1–N9 done (W0, N1–N9 committed, Windows CI green); next: Windows-PC gate for N7–N9, then the backlog B1–B12
 
-Updated 2026-09-29 on the **Mac**, branch `m4`, last commit on it is this file. Read **Resume here** first, then `plan/docs/11-memory-extensions-guide.md` §11.3–11.4, then `CLAUDE.md` (opencode-delegation workflow). Current plan (all open work, research verdicts, backlog): `.ai/plans/harness-roadmap.md`; external research: `plan/docs/finding-research.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`; from the Windows PC: `commit-only-own-paths`, `two-machines` (every fix must work on Windows and macOS).
+Updated 2026-10-01 on the **Mac**, branch `m4`, last commit on it is this file. Read **Resume here — after N9** first, then `.ai/plans/harness-roadmap.md` (§1 Now = all ✅, §2 Backlog, §W Windows gate), then `CLAUDE.md` (opencode-delegation workflow). Current plan (all open work, research verdicts, backlog): `.ai/plans/harness-roadmap.md`; external research: `plan/docs/finding-research.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`; from the Windows PC: `commit-only-own-paths`, `two-machines` (every fix must work on Windows and macOS).
 
 ## Where things stand
 
@@ -22,6 +22,7 @@ Updated 2026-09-29 on the **Mac**, branch `m4`, last commit on it is this file. 
 | T8.13 worktrees (from the stash) | **done**; checked in the app on a throwaway repo | `4638000` |
 | M4 round (2026-09-29, Mac) — token breakdown, Plan mode, `$`/`/`, model + binary freshness, test suite | **done**; typecheck + full suite green (875 tests, 0 failed, ~22 s); every item checked in the real app on Claude, Codex and OpenCode | A `65191c7`, B1 `ff5922a`, B2 `8fd157b`, C `ae37baa`, doc 11 `0bcfb08`; models `6a428c8`, binaries `293c478` `05938a8`, menus `cc43588`, bugs `bdbc276`, Stop `fd4c151`, tests `4c596f4` |
 | Phase E (2026-09-29, Mac) — shared CubiQ memory, `/context` | **done**; typecheck + full suite green (966 passed, 0 failed); every slice checked live on OpenCode (nemotron free), Codex and Claude (Haiku) | S0 `/context` `1e1bee1`, S1 store + import + Claude `2bff594`, S2 Codex/ACP index + `memory_read` `e3fc39c`, S3 extractor `66020a8`, S4 Library tab `cc58301` |
+| Roadmap N1–N9 (2026-09-30 → 10-01, Mac) — mock kit, `/context` pricing, accuracy run, MCP router, provider catalog, Codex subagents, check gate, guide diet, context picker | **done**; full suite 1073 passed; each phase live on Claude (Haiku), Codex (GPT-6-Luna), OpenCode; Windows **CI** green for every phase (last run 36818195119); Windows **PC** gate pending for N7–N9 | N1 `331a6c0`, N2 `c68ca3c`, N4 `d19aef4`, N5 `82487e5`, N6 `cc1ea02`, N7 `f85e45c` + Windows fix `1d6f013`, N8 `9ed5546`, N9 `e72248f` `306c61c` |
 
 **Uncommitted on purpose (the user decides):** the `CLAUDE.md` notes (Windows notes + the new worker model order) and `SETUP-OTHER-PC.md`. The bun switch is committed (`ab42bb9`). `test/__snapshots__/providers.test.ts.snap` shows as modified: line endings only. Phase commits carry code + tests only, with no attribution trailer.
 
@@ -128,7 +129,29 @@ All checked in the real app on Windows; code paths are cross-platform unless not
 - **Antigravity**: Google's own ACP server (`agy_acp_server.par`, ACP registry `antigravity-acp`) must be on the app's PATH; it stays off until the Settings opt-in, then the generic ACP driver runs it with the user's Google sign-in.
 - Still to confirm on the Mac: the same smoke/model checks there.
 
-## Resume here — after Phase E
+## Resume here — after N9
+
+**Shipped this session (2026-10-01):**
+- **N7 Windows fix** `1d6f013`: `check.ts` `pwshScript()` — PowerShell `-Command` couldn't run a quoted program path (needs `& `) and collapsed exit codes to 0/1; now appends `exit $LASTEXITCODE` (or 1 for a failed cmdlet).
+- **N8 guide diet** `9ed5546`: `resources/HARNESS.md` 707 → 332 tokens (bytes/3; `/context` row 249). `guide.ts` normalizes CRLF on read; `test/guide.test.ts` enforces the 600-token budget.
+- **N9** `e72248f` `306c61c` (spec `.ai/plans/n9-context-picker.md`, has the live probe table):
+  - Codex context picker: windows come from `~/.codex/models_cache.json` (`$CODEX_HOME`; `model/list` has no window fields), `codexWindows()` in `codex.ts`; "Codex default" gets the `isDefault` model's windows. `Thread.contextWindow` (migration 17) → `config.model_context_window` on thread start/resume (rides the config signature, so a change reloads the thread). Picker in `ContextPicker.tsx`, shown for threads **and drafts** only when `maxContextWindow > contextWindow` (GPT-6-Luna / 5.6: 272K → 872K; Codex clamps above max, reports 95%). Model change clears it.
+  - No Claude/ACP picker: Opus/Sonnet 5.5 already report 1M; `supportedModels()` has no `[1m]` values; ACP exposes no option.
+  - Missing project folder: `Service.send` checks `existsSync(cwd)` first → one `error` event + `running:false` + `projects-changed`; `projects:list` adds `missing`; sidebar "Folder missing" + **Locate folder…** (`projects:relocate`, `Store.setProjectPath`).
+
+**Next, in order:**
+1. **Windows PC gate for N7, N8, N9** (roadmap §W step 2): `bun install`, `bun run typecheck`, `bun run test`, `bun run dev`, then live: a failing check command under PowerShell (N7), `/context` guide row (N8), Codex Max → footer `/ 828k` and a project with a deleted folder (N9). Record "Windows: ✅ date" on each roadmap line.
+2. Pick from the backlog (roadmap §2, B1–B12, each with its promotion trigger) — ask the user which.
+3. Small follow-ups found in N9 (not done): the typed message is dropped when the folder is missing (could stay in the composer); Locate folder… dialog not driven live (CDP can't drive native dialogs; path setter is unit-tested); empty "New thread" leftovers in `sambor-prei-kuk` / `n2-live` from testing.
+
+**Test projects:** `n2-live`, `n3-live`, `mem-sandbox` point at deleted session scratchpads (they now show "Folder missing") — use them to test N9, or remove them. `sambor-prei-kuk` is the user's real project: only tool-free prompts in Ask mode.
+
+**Working notes from this session:**
+- Restarting the dev app: `pkill -f "electron-vite dev"` leaves the Electron child alive on the CDP port — also `kill $(lsof -tiTCP:9455 -sTCP:LISTEN)`. Main-process changes need that restart. Launch: `bun run dev -- --remoteDebuggingPort 9455`; drive with `agent-browser --cdp 9455` (plain `connect` launches a separate browser).
+- Delegation: a 12-file implementer brief timed out at 40 min (DeepSeek v4 Flash, ~2/3 done). Keep implementer briefs to ≤ ~5 files, or do mid-size phases directly; researcher briefs are fast and reliable.
+- The auto-mode classifier blocks `git push -f origin HEAD:windows` and `gh run …` until the user grants it in-session.
+
+## Resume here — after Phase E (older)
 
 **Phase E shipped (how it works):** per-project notes are markdown files in `<userData>/memory/projects/<projectId>/` (`MEMORY.md` + one file per fact, Claude's auto-memory format; not in the repo, not in the DB). `src/main/memory/`: `store.ts` (cap 200 lines / 4,800 chars; `rebuildIndex` keeps Claude's own lines verbatim), `import.ts` (one-time copy from `~/.claude/projects/<key>/memory` + `~/.codex/memories/MEMORY.md`, `.imported` marker, sources untouched), `index.ts` (`memoryOn`, `memoryPrompt`), `tool.ts` (`memory_read`, project from the tool-server URL `?p=`), `extractor.ts` (after a Codex/ACP turn, debounced 30 s, the thread's own agent on its cheapest same-provider model via hidden `oneShot` → add/update/delete ops), `api.ts` (Library IPC). Claude: `settings.autoMemoryDirectory` (native read/write; capability `nativeMemory`, so no extractor and no `memory_read`). Codex: `memories.use_memories/generate_memories=false` in the thread config (keys confirmed in 0.157: typed `[memories]` table; `features.memories` defaults off) + index in `developerInstructions`, frozen per Codex thread. ACP: `<harness-memory>` block after `<harness-guide>` in the first prompt only. Settings `memory: { enabled, disabledProjects }` (on by default). `/context` sheet lists the whole first-turn breakdown, the agent's own share, and what CubiQ adds.
 
@@ -183,4 +206,4 @@ In order:
 
 ## Next
 
-See **Resume here — after Phase E** above.
+See **Resume here — after N9** above.
