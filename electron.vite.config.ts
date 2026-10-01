@@ -46,7 +46,10 @@ export default defineConfig({
     // so every dependency stays external rather than bundled.
     plugins: [externalizeDepsPlugin()],
     build: {
-      rollupOptions: { output: { format: "es" } },
+      rollupOptions: {
+        input: { index: resolve("src/main/index.ts"), "preview-worker": resolve("src/main/preview/worker.ts") },
+        output: { format: "es" },
+      },
     },
   },
   preload: {

@@ -523,6 +523,43 @@ export function installMock(): void {
       listeners.add(l);
       return () => listeners.delete(l);
     },
+    search: async ({ text, projectId }) => {
+      const words = text.toLowerCase().split(/\s+/).filter(Boolean);
+      const all = Object.values(threads).flat().filter((t) => !projectId || t.projectId === projectId);
+      const mark = (body: string): string | null => {
+        const lower = body.toLowerCase();
+        if (!words.length || !words.every((w) => lower.includes(w))) return null;
+        const at = lower.indexOf(words[0]!);
+        const start = Math.max(0, at - 40);
+        const hit = body.slice(at, at + words[0]!.length);
+        return (start > 0 ? "…" : "") + body.slice(start, at) + "\u0001" + hit + "\u0002" + body.slice(at + hit.length, at + 80);
+      };
+      const hit = (t: Thread, seq: number | null, kind: "title" | "user" | "assistant-text", snippet: string) =>
+        ({ threadId: t.id, projectId: t.projectId, title: t.title, agent: t.agent, seq, kind, snippet, updatedAt: t.updatedAt });
+      const found = all.flatMap((t) => {
+        const title = mark(t.title);
+        const messages = (events[t.id] ?? []).flatMap((e) => {
+          if (e.event.kind !== "user" && e.event.kind !== "assistant-text") return [];
+          const snippet = mark(e.event.text);
+          return snippet ? [hit(t, e.seq, e.event.kind, snippet)] : [];
+        });
+        return [...(title ? [hit(t, null, "title", title)] : []), ...messages];
+      });
+      return { threads: found.filter((h) => h.kind === "title"), messages: found.filter((h) => h.kind !== "title") };
+    },
+    listArtifacts: async (threadId) =>
+      threadId === "t1"
+        ? [
+            { path: "src/middleware/rateLimit.ts", kind: "code", versions: [{ version: 1, sha256: "a1", bytes: 412, createdAt: now - 90_000, turnSeq: 18 }, { version: 2, sha256: "a2", bytes: 498, createdAt: now - 30_000, turnSeq: 18 }] },
+            { path: "docs/rate-limit.md", kind: "md", versions: [{ version: 1, sha256: "b1", bytes: 300, createdAt: now - 30_000, turnSeq: 18 }] },
+          ]
+        : [],
+    readArtifact: async (_threadId, path, version) =>
+      path.endsWith(".md")
+        ? { ok: true, path, kind: "md", bytes: 300, version: version ?? null, text: "# Login rate limit\n\nThe 6th attempt inside a minute gets **429**.\n\n| Setting | Value |\n|---|---|\n| window | 60 s |\n| max | 5 |\n" }
+        : { ok: true, path, kind: "code", bytes: 498, version: version ?? null, text: 'import rateLimit from "express-rate-limit";\n\nexport const loginLimiter = rateLimit({ windowMs: 60_000, max: 5 });\n' },
+    artifactDiff: async (_threadId, path) =>
+      `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1,3 +1,3 @@\n import rateLimit from "express-rate-limit";\n \n-export const loginLimiter = rateLimit({ windowMs: 60_000, max: 10 });\n+export const loginLimiter = rateLimit({ windowMs: 60_000, max: 5 });\n`,
   };
   window.unskilled = api;
 
@@ -533,6 +570,7 @@ export function installMock(): void {
       const tab = scene === "library-mcp" ? "mcp" : scene === "library-agents" ? "agents" : "skills";
       void import("./store").then(({ useStore }) => useStore.setState({ libraryTab: tab, librarySkill: scene === "library" ? "implement" : null }));
     }
+    if (scene === "artifact") emit({ type: "artifact-ready", threadId: "t1", path: "docs/rate-limit.md", files: ["src/middleware/rateLimit.ts", "docs/rate-limit.md"] });
     if (scene === "palette") void import("./store").then(({ useStore }) => useStore.getState().setPaletteOpen(true));
     if (scene === "running" || scene === "permission") {
       emit({ type: "running", threadId: "t1", running: true });

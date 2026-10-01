@@ -152,6 +152,8 @@ export interface Settings {
   memory?: { enabled: boolean; disabledProjects: string[] };
   /** MCP tool search for agents without their own: "auto" routes when 20+ tools are enabled (default), "off" never. */
   mcpRouter?: "auto" | "off";
+  /** Sidebar Recent section grouped by project (true) or flat (false, the default). */
+  sidebarGroupByProject?: boolean;
 }
 
 export type MemoryType = "user" | "feedback" | "project" | "reference";
@@ -568,6 +570,73 @@ export interface DiffFile {
   hunks: DiffHunk[];
 }
 
+/** ⌘K search: what to look for, optionally within one project or agent's threads. */
+export interface SearchQuery {
+  text: string;
+  projectId?: string | null;
+  agent?: string | null;
+  limit?: number;
+}
+
+/** One search hit. `snippet` marks matched terms between \u0001 and \u0002 (never HTML). */
+export interface SearchHit {
+  threadId: string;
+  projectId: string;
+  title: string;
+  agent: string;
+  /** The event's seq for a message hit; null for a title hit. */
+  seq: number | null;
+  kind: "title" | "user" | "assistant-text";
+  snippet: string;
+  updatedAt: number;
+}
+
+/** Threads whose title matched, then message hits, each best match first. */
+export interface SearchResults {
+  threads: SearchHit[];
+  messages: SearchHit[];
+}
+
+/** One worksheet, its rows as strings, and whether the row cap cut it short. */
+export type SheetPreview = { name: string; rows: string[][]; totalRows: number; truncated: boolean };
+
+/** One slide, its title and text runs, and embedded images as data: URIs. */
+export type SlidePreview = { index: number; title: string; texts: string[]; images: string[] };
+
+/** Everything the preview worker hands back for a supported office file. */
+export type OfficePreview =
+  | { kind: "docx"; html: string; warnings: string[] }
+  | { kind: "sheet"; sheets: SheetPreview[] }
+  | { kind: "pptx"; slides: SlidePreview[] };
+
+/** How the artifact panel shows a file. */
+export type ArtifactKind = "md" | "html" | "svg" | "pdf" | "image" | "csv" | "docx" | "sheet" | "pptx" | "code" | "text";
+
+/** One saved version of a file an agent wrote: a new one only when the content changed. */
+export interface ArtifactVersion {
+  version: number;
+  sha256: string;
+  bytes: number;
+  createdAt: number;
+  /** The seq of the turn-end that recorded it. */
+  turnSeq: number;
+}
+
+/** A file an agent wrote in a thread, relative to the thread's folder (forward slashes), newest version last. */
+export interface ArtifactFile {
+  path: string;
+  kind: ArtifactKind;
+  versions: ArtifactVersion[];
+}
+
+/**
+ * A file's content for the panel. Text kinds carry `text`; pdf and image carry a
+ * `cubiq-file:` `url`; office kinds (docx, sheet, pptx, csv) carry `office`.
+ */
+export type ArtifactContent =
+  | { ok: true; path: string; kind: ArtifactKind; bytes: number; version: number | null; text?: string; truncated?: boolean; url?: string; office?: OfficePreview }
+  | { ok: false; error: string };
+
 export interface ModelOption {
   id: string;
   label: string;
@@ -716,7 +785,9 @@ export type LiveUpdate =
   /** The project list changed (a folder went missing, or was relocated): refetch it. */
   | { type: "projects-changed" }
   /** The app menu asked for the About sheet. */
-  | { type: "open-about" };
+  | { type: "open-about" }
+  /** A turn finished having written previewable files: open the panel on `path` (the last one). */
+  | { type: "artifact-ready"; threadId: string; path: string; files: string[] };
 
 /** The API the preload script exposes as `window.unskilled`. */
 export interface UnskilledApi {
@@ -832,6 +903,14 @@ export interface UnskilledApi {
   /** Quit and install the downloaded update. */
   installUpdate(): Promise<void>;
   onUpdate(listener: (update: LiveUpdate) => void): () => void;
+  /** ⌘K full-text search over thread titles and user/assistant messages. */
+  search(query: SearchQuery): Promise<SearchResults>;
+  /** The files agents wrote in this thread, with their versions; most recently written first. */
+  listArtifacts(threadId: string): Promise<ArtifactFile[]>;
+  /** A thread file's content for the panel: the file on disk, or a saved version. */
+  readArtifact(threadId: string, path: string, version?: number | null): Promise<ArtifactContent>;
+  /** Unified diff of a version against the one before it (or against git HEAD / empty for the first); null when not text. */
+  artifactDiff(threadId: string, path: string, version?: number | null): Promise<string | null>;
 }
 
 /** What the About sheet shows: the app, its runtime, and the git build stamp. */

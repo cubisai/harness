@@ -73,6 +73,10 @@ const api: UnskilledApi = {
   listEditors: () => ipcRenderer.invoke("editors:list"),
   openInEditor: (target, editor) => ipcRenderer.invoke("editors:open", target, editor),
   installUpdate: () => ipcRenderer.invoke("app:install-update"),
+  search: (query) => ipcRenderer.invoke("search:query", query),
+  listArtifacts: (threadId) => ipcRenderer.invoke("artifacts:list", threadId),
+  readArtifact: (threadId, path, version) => ipcRenderer.invoke("artifacts:read", threadId, path, version),
+  artifactDiff: (threadId, path, version) => ipcRenderer.invoke("artifacts:diff", threadId, path, version),
   onUpdate: (listener) => {
     const handler = (_e: Electron.IpcRendererEvent, update: LiveUpdate) => listener(update);
     ipcRenderer.on("unskilled:update", handler);
