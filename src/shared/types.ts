@@ -131,6 +131,8 @@ export interface Settings {
   motion?: Motion;
   /** Thread, tool and turn-meta row spacing; SettingsStore.get() always fills it in (default comfortable). */
   density?: Density;
+  /** Whole-app zoom, one of ZOOM_STEPS (shared/zoom.ts); SettingsStore.get() always fills it in (default 1). */
+  zoom?: number;
   /** The Antigravity opt-in; on only with a current `antigravityAck`. Default off. */
   antigravity?: boolean;
   /** When the user accepted the Antigravity terms risk, and which disclosure version they saw. */

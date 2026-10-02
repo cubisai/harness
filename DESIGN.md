@@ -57,6 +57,7 @@ Full access mode shows its chip in `--danger`.
 
 - **Faces**: Geist (UI) and Geist Mono (code, meta, numbers), bundled locally as woff2 under `src/renderer/src/assets/fonts/` (SIL OFL, no network). Fallbacks: `-apple-system, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif` and `ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace`.
 - **Scale**: 10.5 (kbd, meta mono) · 11.5 (sub-labels, section headers) · 12.5 (controls, tool rows) · 13 (body) · 14 (thread title, ⌘K input) · 18 (doc h3 in the panel). Nothing larger in the app chrome.
+- **Text size** (Settings › Appearance, ⌘= / ⌘− / ⌘0, Ctrl on Windows): the whole app zooms by one of 80 / 90 / 100 / 110 / 125 / 140% (`shared/zoom.ts`), through Electron's page zoom, so the scale above stays in px. The app owns zoom: Chromium's own zoom keys and Ctrl+wheel step the setting instead. Anything that must clear native chrome (the macOS traffic lights, the Windows caption buttons) divides its inset by `--zoom`, and on macOS the lights move to stay centred on the zoomed header.
 - **Weights**: 400 body, 500 labels, 600 titles and group headers. No 700 in the chrome.
 - **Line height**: 1.5 chrome, 1.6 for agent replies.
 - Section headers (Running, Pinned, Recent) are 11px/600 in `--text-tertiary`, sentence case, no uppercase. Uppercase is allowed only for popover group labels (10.5px, +0.03em).
@@ -67,7 +68,7 @@ Full access mode shows its chip in `--danger`.
 - 4px grid: gaps of 2 · 4 · 6 · 8 · 12 · 16 · 24.
 - Controls are 28px tall (icon buttons 28×28). Sidebar rows are about 28px for one line, 40px with a sub-line. The send button is 30px round.
 - Radius: `--radius-s` 6 (chips, kbd, small buttons) · `--radius-m` 8 (controls, rows, code) · `--radius-l` 10 (composer, cards, popovers) · 12 (⌘K, dialogs). Pills only for filter chips.
-- Layout: sidebar 248px (resizable), artifact panel 430px (resizable, always on the **right**), reading column max 720px centred, header 46px.
+- Layout: sidebar 248px (resizable), artifact panel 430px (resizable, always on the **right**), reading column max 720px centred, header 46px. On macOS the traffic lights are centred on the header and the sidebar toggle sits right after them at the same spot whether the sidebar is open or collapsed; collapsed, New thread follows it (as in the ChatGPT and Claude apps).
 
 ## 5. Elevation and borders
 
@@ -142,6 +143,7 @@ Parsing runs in an Electron `utilityProcess`, with a 25 MB cap and a 10 s timeou
 - Rows of inputs use `display: flex; flex-wrap: wrap; gap: 6px` and every input gets `min-width: 0` plus a flex-basis. Trailing actions (Remove) wrap to the next line rather than overflow.
 - Checkbox options sit in a list with their help text directly under each one, not centred.
 - Selects use the themed menu component, not native `<select>`, wherever the popup shows.
+- A choice along a scale (Text size) uses the same step slider as Thinking (§7.3), not a segmented control: Smaller ↔ Larger, Reset back to 100%, green from 125% up.
 
 ## 8. Do and don't
 

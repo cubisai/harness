@@ -13,6 +13,7 @@ import type {
   SettingsView,
 } from "../shared/types";
 import { DEFAULT_LAYOUT, sanitizeLayout } from "../shared/layout";
+import { isZoom } from "../shared/zoom";
 import { LEGACY_ENV, LEGACY_PROVIDERS, isProviderId, type LegacyProviderId } from "./providers";
 import { protocolKeyVar } from "./inject/keys";
 import { ANTIGRAVITY_ACK_VERSION } from "../shared/provider-rules";
@@ -28,7 +29,7 @@ export interface SecretBox {
   decrypt(b64: string): string;
 }
 
-const DEFAULTS: Settings = { theme: "system", motion: "full", density: "comfortable", antigravity: false, antigravityAck: null, defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {}, paneLayout: { ...DEFAULT_LAYOUT }, memory: { enabled: true, disabledProjects: [] } };
+const DEFAULTS: Settings = { theme: "system", motion: "full", density: "comfortable", zoom: 1, antigravity: false, antigravityAck: null, defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {}, paneLayout: { ...DEFAULT_LAYOUT }, memory: { enabled: true, disabledProjects: [] } };
 
 /** A settings export file. */
 export interface SettingsExport {
@@ -158,6 +159,7 @@ export class SettingsStore {
     if (patch.theme && ["system", "light", "dark"].includes(patch.theme)) next.theme = patch.theme;
     if (patch.motion && ["instant", "subtle", "full"].includes(patch.motion)) next.motion = patch.motion;
     if (patch.density && ["comfortable", "compact"].includes(patch.density)) next.density = patch.density;
+    if (isZoom(patch.zoom)) next.zoom = patch.zoom;
     if (patch.defaultAgent !== undefined) next.defaultAgent = patch.defaultAgent;
     if (patch.defaultPermissionMode && (["ask", "auto-edit", "plan", "full"] as PermissionMode[]).includes(patch.defaultPermissionMode)) {
       next.defaultPermissionMode = patch.defaultPermissionMode;

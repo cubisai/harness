@@ -5,6 +5,7 @@ import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell, utilityProcess } from "electron";
 import type { AboutInfo, AgentLimits, ContextPreview, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread } from "../shared/types";
+import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
 import { warmBinaries } from "./agents/binaries";
@@ -113,7 +114,8 @@ function createWindow(): BrowserWindow {
     // A frameless-looking window on every OS: traffic lights inset on macOS,
     // native caption buttons overlaid on Windows and Linux.
     titleBarStyle: isMac ? "hiddenInset" : "hidden",
-    trafficLightPosition: isMac ? { x: 16, y: 18 } : undefined,
+    // 14px lights centred on the 46px header, so they line up with its icons (DESIGN.md §2).
+    trafficLightPosition: isMac ? { x: 16, y: 16 } : undefined,
     titleBarOverlay: isMac
       ? undefined
       : { color: "#00000000", symbolColor: nativeTheme.shouldUseDarkColors ? "#f5f5f7" : "#1d1d1f", height: 52 },
@@ -248,6 +250,21 @@ async function main(): Promise<void> {
   const broadcast = (update: LiveUpdate) => {
     for (const w of windows) if (!w.isDestroyed()) w.webContents.send("unskilled:update", update);
   };
+  // The app owns zoom (Settings › Text size): Chromium's own zoom would drift from the setting and from the
+  // traffic lights, which macOS draws unzoomed, so they move to stay centred on the zoomed header.
+  const applyZoom = (w: BrowserWindow) => {
+    if (w.isDestroyed()) return;
+    const zoom = settings.get().zoom ?? 1;
+    w.webContents.setZoomFactor(zoom);
+    if (process.platform === "darwin") w.setWindowButtonPosition(trafficLightPosition(zoom));
+    // Windows and Linux: the caption buttons keep their share of the zoomed header (52px at 100%, see createWindow).
+    else w.setTitleBarOverlay({ height: Math.round(52 * zoom) });
+  };
+  const stepAppZoom = (dir: -1 | 0 | 1) => {
+    settings.update({ zoom: stepZoom(settings.get().zoom ?? 1, dir) });
+    for (const w of windows) applyZoom(w);
+    broadcast({ type: "settings", settings: settings.view() });
+  };
   // macOS needs its own app menu for "About CubiQ" to reach the in-app sheet;
   // elsewhere the default menu stands. Built after `broadcast`, which it uses.
   if (process.platform === "darwin") {
@@ -269,7 +286,21 @@ async function main(): Promise<void> {
         },
         { role: "fileMenu" },
         { role: "editMenu" },
-        { role: "viewMenu" },
+        {
+          label: "View",
+          submenu: [
+            { role: "reload" },
+            { role: "forceReload" },
+            { role: "toggleDevTools" },
+            { type: "separator" },
+            // Shown for discovery; the keys themselves are caught in before-input-event (open()), on every OS.
+            { label: "Actual Size", accelerator: "CmdOrCtrl+0", registerAccelerator: false, click: () => stepAppZoom(0) },
+            { label: "Zoom In", accelerator: "CmdOrCtrl+=", registerAccelerator: false, click: () => stepAppZoom(1) },
+            { label: "Zoom Out", accelerator: "CmdOrCtrl+-", registerAccelerator: false, click: () => stepAppZoom(-1) },
+            { type: "separator" },
+            { role: "togglefullscreen" },
+          ],
+        },
         { role: "windowMenu" },
       ]),
     );
@@ -663,6 +694,7 @@ async function main(): Promise<void> {
     const next = settings.update(patch);
     nativeTheme.themeSource = next.theme;
     if (next.autoUpdate !== before) updater.refresh();
+    if (patch.zoom !== undefined) for (const w of windows) applyZoom(w);
     const view = settings.view();
     broadcast({ type: "settings", settings: view });
     return view;
@@ -939,6 +971,18 @@ async function main(): Promise<void> {
     const win = createWindow();
     windows.add(win);
     win.on("closed", () => windows.delete(win));
+    applyZoom(win);
+    // Chromium resets zoom per page load, and a reload would otherwise come back at its own remembered level.
+    win.webContents.on("did-finish-load", () => applyZoom(win));
+    win.webContents.on("before-input-event", (event, input) => {
+      if (input.type !== "keyDown") return;
+      const dir = zoomKey(input, process.platform === "darwin");
+      if (dir === null) return;
+      event.preventDefault();
+      stepAppZoom(dir);
+    });
+    // Ctrl+wheel / pinch steps the setting too, instead of zooming behind its back.
+    win.webContents.on("zoom-changed", (_e, direction) => stepAppZoom(direction === "in" ? 1 : -1));
     win.on("focus", refreshAgents);
     return win;
   };

@@ -4,6 +4,8 @@ import { api } from "../api";
 import { ProvidersSection } from "./ProviderSheet";
 import { useStore, type LibraryTab } from "../store";
 import { ANTIGRAVITY_ACK_VERSION } from "../../../shared/provider-rules";
+import { ZOOM_STEPS } from "../../../shared/zoom";
+import { StepSlider } from "./StepSlider";
 import { UnsupportedChip } from "./UnsupportedChip";
 import { Select, selectPopupOpen } from "./Select";
 
@@ -23,6 +25,7 @@ const DENSITIES: { id: Density; label: string }[] = [
   { id: "comfortable", label: "Comfortable" },
   { id: "compact", label: "Compact" },
 ];
+const zoomKeys = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform) ? "⌘= ⌘− ⌘0" : "Ctrl+= Ctrl+− Ctrl+0";
 
 const MODES: { id: PermissionMode; label: string }[] = [
   { id: "ask", label: "Ask" },
@@ -126,6 +129,7 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
     void api().updateSettings(patch).then((s) => useStore.setState({ settings: s }));
   const openLibrary = (tab: LibraryTab) => useStore.setState({ settingsOpen: false, libraryTab: tab });
 
+  const zoom = settings.zoom ?? 1;
   switch (group) {
     case "appearance":
       return (
@@ -159,6 +163,22 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
                   {d.label}
                 </button>
               ))}
+            </div>
+          </div>
+          <div className="row">
+            <span className="label" title={`Scales the whole app (${zoomKeys})`}>Text size</span>
+            <div className="settings-slider">
+              <StepSlider
+                ariaLabel="Text size"
+                labels={ZOOM_STEPS.map((z) => `${Math.round(z * 100)}%`)}
+                index={Math.max(0, ZOOM_STEPS.indexOf(zoom as (typeof ZOOM_STEPS)[number]))}
+                label={zoom === 1 ? "100% · default" : `${Math.round(zoom * 100)}%`}
+                ends={["Smaller", "Larger"]}
+                hotFrom={ZOOM_STEPS.indexOf(1.25)}
+                title={`Scales the whole app (${zoomKeys})`}
+                reset={zoom !== 1 ? { title: "Back to 100%", onReset: () => update({ zoom: 1 }) } : undefined}
+                onPick={(i) => update({ zoom: ZOOM_STEPS[i] ?? 1 })}
+              />
             </div>
           </div>
         </section>
