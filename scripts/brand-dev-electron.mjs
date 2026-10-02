@@ -19,9 +19,10 @@ if (process.platform === "darwin") {
     const copy = join(dirname(app), `${productName}.app`);
     rmSync(copy, { recursive: true, force: true });
     try {
-      execFileSync("cp", ["-Rc", app, copy]); // APFS clone: a full copy that costs no extra disk.
+      // /bin/cp, not PATH: GNU cp (conda, Homebrew coreutils) has no -c.
+      execFileSync("/bin/cp", ["-Rc", app, copy]); // APFS clone: a full copy that costs no extra disk.
     } catch {
-      execFileSync("cp", ["-R", app, copy]); // Non-APFS volumes can't clone.
+      execFileSync("/bin/cp", ["-R", app, copy]); // Non-APFS volumes can't clone.
     }
     const plist = join(copy, "Contents", "Info.plist");
     const set = (key, value) => {

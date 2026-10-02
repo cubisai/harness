@@ -286,7 +286,15 @@ export function Sidebar() {
     const list = model.archived[projectId] ?? [];
     if (!list.length) return null;
     return (
-      <details className="thread-archived" onToggle={(e) => setArchivedOpen((a) => ({ ...a, [projectId]: e.currentTarget.open }))}>
+      <details
+        className="thread-archived"
+        open={Boolean(archivedOpen[projectId])}
+        onToggle={(e) => {
+          // Read it now: React clears currentTarget before the updater runs.
+          const isOpen = e.currentTarget.open;
+          setArchivedOpen((a) => ({ ...a, [projectId]: isOpen }));
+        }}
+      >
         <summary className="thread-section-label">
           <IconChevron open={Boolean(archivedOpen[projectId])} size={12} /> Archived · {list.length}
         </summary>
