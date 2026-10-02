@@ -32,7 +32,7 @@ const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform
 
 /** The slider's dot grid: columns × rows of 6px cells, wider than any track so the fill only ever clips it. */
 const DOT_COLS = 48;
-const DOT_ROWS = 4;
+const DOT_ROWS = 3;
 
 /**
  * Each dot's own blink (delay, length, peak), from a fixed pseudo-random
@@ -59,60 +59,81 @@ const EffortDots = memo(function EffortDots() {
 });
 
 /**
- * Thinking as one Faster ↔ Smarter slider, a stop per level (DESIGN.md §7.3).
- * While unset it rests on the model's own default. A native range input lies
- * over the drawn track, so drag, arrow keys and screen readers just work; the
- * pick is sent once the drag or key press ends, not at every stop.
+ * A row of stops as one slider (DESIGN.md §7.3), shared by Thinking and Context.
+ * A native range input lies over the drawn track, so drag, arrow keys and
+ * screen readers just work; the pick is sent once the drag or key press ends,
+ * not at every stop. `index` is the committed stop, `hotFrom` the first stop
+ * whose dots glow green.
  */
-function ThinkingSlider({ efforts, effort, modelDefault, onEffort }: { efforts: string[]; effort: string | null; modelDefault?: string; onEffort(effort: string | null): void }) {
+function StepSlider({
+  name,
+  ariaLabel,
+  labels,
+  index,
+  label,
+  ends,
+  hotFrom = Infinity,
+  title,
+  reset,
+  onPick,
+}: {
+  name: string;
+  ariaLabel: string;
+  labels: string[];
+  index: number;
+  /** The head's reading while nothing is being dragged. */
+  label: string;
+  ends: [string, string];
+  hotFrom?: number;
+  title?: string;
+  reset?: { title: string; onReset(): void };
+  onPick(index: number): void;
+}) {
   const [draft, setDraft] = useState<number | null>(null);
   // A drag follows the pointer closely; a tap or a key press glides.
   const [dragging, setDragging] = useState(false);
   const pressX = useRef<number | null>(null);
-  const resting = efforts.indexOf(effort ?? modelDefault ?? "");
-  const value = draft ?? (resting >= 0 ? resting : Math.floor((efforts.length - 1) / 2));
-  const last = Math.max(1, efforts.length - 1);
-  const level = efforts[value];
-  // From Xhigh up the dots glow green; without "xhigh", from the level after High (none when High is the top),
-  // and a model without "high" heats up over its top third.
-  const xhigh = efforts.indexOf("xhigh");
-  const high = efforts.indexOf("high");
-  const hotFrom = xhigh >= 0 ? xhigh : high >= 0 ? high + 1 : Math.ceil(last * (2 / 3));
-  const hot = efforts.length > 1 && value >= hotFrom;
-  const label = draft === null && effort === null ? (modelDefault ? `${titleCase(modelDefault)} · default` : "Default") : titleCase(level ?? "");
-  // The knob holds the picked stop until the thread's new effort comes back, so it never flicks back to the old one in between.
-  useEffect(() => setDraft(null), [effort]);
+  const value = draft ?? index;
+  const last = Math.max(1, labels.length - 1);
+  const hot = labels.length > 1 && value >= hotFrom;
+  const shown = draft === null ? label : (labels[value] ?? "");
+  // The knob holds the picked stop until the new value comes back, so it never flicks back to the old one in between.
+  useEffect(() => setDraft(null), [index]);
   const commit = () => {
     if (draft === null) return;
-    const picked = efforts[draft];
-    if (picked === undefined || picked === effort) setDraft(null);
-    else onEffort(picked);
+    if (draft === index || labels[draft] === undefined) setDraft(null);
+    else onPick(draft);
+  };
+  const release = () => {
+    pressX.current = null;
+    setDragging(false);
+    commit();
   };
   return (
-    <div className={`effort${hot ? " hot" : ""}${dragging ? " dragging" : ""}`} style={{ "--p": value / last } as CSSProperties}>
+    <div className={`effort${hot ? " hot" : ""}${dragging ? " dragging" : ""}`} style={{ "--p": value / last } as CSSProperties} title={title}>
       <div className="effort-head">
-        <span className="model-group">Thinking</span>
-        <span className="effort-level">{label}</span>
-        {effort !== null && (
-          <button className="effort-reset" title={modelDefault ? `Back to the model default (${modelDefault})` : "Back to the model default"} onClick={() => onEffort(null)}>
+        <span className="model-group">{name}</span>
+        <span className="effort-level">{shown}</span>
+        {reset && (
+          <button className="effort-reset" title={reset.title} onClick={reset.onReset}>
             Reset
           </button>
         )}
       </div>
       <div className="effort-ends" aria-hidden="true">
-        <span>Faster</span>
-        <span>Smarter</span>
+        <span>{ends[0]}</span>
+        <span>{ends[1]}</span>
       </div>
       <div className="effort-control">
         <input
           type="range"
           className="effort-slider"
           min={0}
-          max={efforts.length - 1}
+          max={labels.length - 1}
           step={1}
           value={value}
-          aria-label="Thinking"
-          aria-valuetext={label}
+          aria-label={ariaLabel}
+          aria-valuetext={shown}
           onChange={(e) => setDraft(Number(e.target.value))}
           onPointerDown={(e) => {
             pressX.current = e.clientX;
@@ -120,17 +141,9 @@ function ThinkingSlider({ efforts, effort, modelDefault, onEffort }: { efforts: 
           onPointerMove={(e) => {
             if (!dragging && e.buttons && pressX.current !== null && Math.abs(e.clientX - pressX.current) > 3) setDragging(true);
           }}
-          onPointerUp={() => {
-            pressX.current = null;
-            setDragging(false);
-            commit();
-          }}
+          onPointerUp={release}
           onKeyUp={commit}
-          onBlur={() => {
-            pressX.current = null;
-            setDragging(false);
-            commit();
-          }}
+          onBlur={release}
         />
         <div className="effort-track" aria-hidden="true">
           <EffortDots />
@@ -146,11 +159,37 @@ function ThinkingSlider({ efforts, effort, modelDefault, onEffort }: { efforts: 
   );
 }
 
+/** Thinking as one Faster ↔ Smarter slider, a stop per level. While unset it rests on the model's own default. */
+function ThinkingSlider({ efforts, effort, modelDefault, onEffort }: { efforts: string[]; effort: string | null; modelDefault?: string; onEffort(effort: string | null): void }) {
+  const resting = efforts.indexOf(effort ?? modelDefault ?? "");
+  const index = resting >= 0 ? resting : Math.floor((efforts.length - 1) / 2);
+  // From Xhigh up the dots glow green; without "xhigh", from the level after High (none when High is the top),
+  // and a model without "high" heats up over its top third.
+  const xhigh = efforts.indexOf("xhigh");
+  const high = efforts.indexOf("high");
+  const hotFrom = xhigh >= 0 ? xhigh : high >= 0 ? high + 1 : Math.ceil(Math.max(1, efforts.length - 1) * (2 / 3));
+  const labels = efforts.map(titleCase);
+  const label = effort === null ? (modelDefault ? `${titleCase(modelDefault)} · default` : "Default") : (labels[index] ?? "");
+  return (
+    <StepSlider
+      name="Thinking"
+      ariaLabel="Thinking"
+      labels={labels}
+      index={index}
+      label={label}
+      ends={["Faster", "Smarter"]}
+      hotFrom={hotFrom}
+      reset={effort !== null ? { title: modelDefault ? `Back to the model default (${modelDefault})` : "Back to the model default", onReset: () => onEffort(null) } : undefined}
+      onPick={(i) => onEffort(efforts[i] ?? null)}
+    />
+  );
+}
+
 /**
  * The composer's one model control (DESIGN.md §7.3): the button reads
  * "Model · Effort"; the menu lists this agent's models (searchable, grouped by
- * provider), the other agents as switch rows, then the Thinking slider and the
- * Context segments for the current model. Arrow keys move, Return picks, Esc closes.
+ * provider), the other agents as switch rows, then the Thinking and Context
+ * sliders for the current model. Arrow keys move, Return picks, Esc closes.
  */
 export function ModelPicker({
   agents,
@@ -327,25 +366,17 @@ export function ModelPicker({
               )}
               {efforts.length > 0 && <ThinkingSlider efforts={efforts} effort={effort} modelDefault={modelDefault} onEffort={onEffort} />}
               {windows.length > 0 && (
-                <>
-                  <div className="model-group">Context</div>
-                  <div className="segmented fill" role="radiogroup" aria-label="Context window">
-                    {windows.map((w) => (
-                      <button
-                        key={String(w.value)}
-                        role="radio"
-                        aria-checked={(contextWindow ?? null) === w.value}
-                        className={(contextWindow ?? null) === w.value ? "on" : ""}
-                        title="A larger window holds more of the conversation before compacting; each turn can cost more."
-                        onClick={() => {
-                          if (w.value !== (contextWindow ?? null)) onContextWindow?.(w.value);
-                        }}
-                      >
-                        {w.label}
-                      </button>
-                    ))}
-                  </div>
-                </>
+                <StepSlider
+                  name="Context"
+                  ariaLabel="Context window"
+                  labels={windows.map((w) => w.label)}
+                  index={Math.max(0, windows.findIndex((w) => w.value === (contextWindow ?? null)))}
+                  label={windows.find((w) => w.value === (contextWindow ?? null))?.label ?? windows[0]!.label}
+                  ends={[formatK(model!.contextWindow!), formatK(model!.maxContextWindow!)]}
+                  hotFrom={1}
+                  title="A larger window holds more of the conversation before compacting; each turn can cost more."
+                  onPick={(i) => onContextWindow?.(windows[i]?.value ?? null)}
+                />
               )}
               {efforts.length > 0 && <div className="model-hint">{isMac ? "⌘⌥, ⌘⌥." : "Ctrl+Alt+, Ctrl+Alt+."} thinking</div>}
           </div>

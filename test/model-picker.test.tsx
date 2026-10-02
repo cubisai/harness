@@ -77,8 +77,11 @@ describe("ModelPicker", () => {
     expect(html).toContain(">Smarter<");
     expect(html).not.toContain(">Reset<");
     expect(html).toContain(">Context<");
-    expect(html).toContain(">Default 272K</button>");
-    expect(html).toContain(">Max 872K</button>");
+    // Context is the same kind of slider: two stops, resting on the default window.
+    expect(html).toContain('aria-label="Context window"');
+    expect(html).toContain('aria-valuetext="Default 272K"');
+    expect(html).toContain(">272K<");
+    expect(html).toContain(">872K<");
   });
 
   it("shows a picked level and offers Reset back to the default", () => {
@@ -86,6 +89,13 @@ describe("ModelPicker", () => {
     expect(html).toContain('aria-valuetext="Low"');
     expect(html).toContain('value="0"');
     expect(html).toContain(">Reset<");
+  });
+
+  it("puts the Context knob on Max when the larger window is picked", () => {
+    const html = picker({ defaultOpen: true, models: [luna], current: "gpt-6-luna", contextWindow: 872000 });
+    expect(html).toContain('aria-valuetext="Max 872K"');
+    expect(html).toMatch(/aria-label="Context window"/);
+    expect((html.match(/class="effort hot/g) ?? []).length).toBe(1);
   });
 
   it("lights the dots green from Xhigh up, or past High when there's no Xhigh", () => {

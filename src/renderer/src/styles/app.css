@@ -1892,18 +1892,16 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 .model-item.danger .label { color: var(--danger); }
 .model-item.danger .desc { color: var(--text-tertiary); }
 .model-options { border-top: 1px solid var(--hairline); padding: 2px 6px 8px; }
-.segmented.fill { display: flex; margin: 2px 4px 4px; }
-.segmented.fill button { flex: 1; height: 24px; padding: 0 6px; font-size: 12px; }
 .model-hint { padding: 6px 10px 2px; font: 10.5px var(--mono); color: var(--text-tertiary); }
-/* Thinking: a Faster ↔ Smarter slider (DESIGN.md §7.3). A transparent range input sits over the drawn track. */
-.effort { --knob: 14px; padding: 0 4px 4px; }
+/* Thinking and Context: step sliders (DESIGN.md §7.3). A transparent range input sits over the drawn track. */
+.effort { --knob: 12px; padding: 0 4px 4px; }
 .effort-head { display: flex; align-items: baseline; gap: 8px; padding-right: 6px; }
 .effort-head .model-group { flex: 1; min-width: 0; }
 .effort-level { font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .effort-reset { padding: 0; border: 0; background: none; font-size: 11.5px; color: var(--text-tertiary); cursor: pointer; }
 .effort-reset:hover { color: var(--text); }
-.effort-ends { display: flex; justify-content: space-between; padding: 2px 6px 4px; font-size: 11.5px; color: var(--text-tertiary); }
-.effort-control { position: relative; height: 26px; margin: 0 4px; }
+.effort-ends { display: flex; justify-content: space-between; padding: 0 6px 3px; font-size: 11.5px; color: var(--text-tertiary); }
+.effort-control { position: relative; height: 20px; margin: 0 4px; }
 .effort-slider { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .effort-track {
   position: absolute;
@@ -1911,8 +1909,9 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
   overflow: hidden;
   contain: strict;
   border-radius: var(--radius-m);
-  border: 1px solid var(--hairline);
-  background: var(--bg-chip);
+  border: 1px solid var(--hairline-strong);
+  /* The lit part, left of the knob; the cover keeps the rest in the plain chip colour. */
+  background: color-mix(in srgb, var(--text-secondary) 16%, var(--bg-chip));
 }
 .effort-slider:focus-visible + .effort-track { outline: 2px solid var(--focus); outline-offset: 2px; }
 /*
@@ -1931,12 +1930,12 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
   align-content: center;
   place-items: center;
   padding: 0 3px;
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 80%);
-  mask-image: linear-gradient(to right, transparent, #000 80%);
+  -webkit-mask-image: linear-gradient(to right, rgb(0 0 0 / 0.6), #000 60%);
+  mask-image: linear-gradient(to right, rgb(0 0 0 / 0.6), #000 60%);
 }
 /* --rest is how lit a dot sits between flares, --flare how bright it peaks, --s its size. */
-.effort-dots { --rest: 0.22; --flare: 0.7; --s: 1; }
-.effort-dots i { width: 2px; height: 2px; border-radius: 50%; background: var(--text-tertiary); opacity: calc(var(--peak) * (var(--rest) + 0.25)); transform: scale(var(--s)); }
+.effort-dots { --rest: 0.6; --flare: 1; --s: 1; }
+.effort-dots i { width: 2px; height: 2px; border-radius: 50%; background: var(--text-secondary); opacity: calc(var(--peak) * (var(--rest) + 0.25)); transform: scale(var(--s)); }
 /* Xhigh and up: the dots light in signal green (user decision 2026-10-02), sit brighter, flare to full and grow a little. */
 .effort.hot .effort-dots { --rest: 0.6; --flare: 1; --s: 1.3; }
 .effort.hot .effort-dots i { background: var(--signal-line); }
