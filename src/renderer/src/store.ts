@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type {
+  ArtifactFile,
   BrowserState,
   DevicePreset,
   EditorInfo,
@@ -27,8 +28,8 @@ import { DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
 import { IDLE, takeOverReducer, type TakeOverState } from "./takeover";
 import { threadSeen, turnEnded, type FinishedTurn } from "./inbox";
 
-/** The right panel's tabs. Changes and Files need a project; Browser works without one. */
-export type InspectorTab = "changes" | "browser" | "files";
+/** The right panel's tabs. Changes and Files need a project; Browser works without one; File shows an artifact. */
+export type InspectorTab = "changes" | "browser" | "files" | "artifact";
 
 export type LibraryTab = "experts" | "skills" | "connectors" | "mcp" | "agents" | "memory";
 
@@ -61,7 +62,15 @@ interface State {
   /** Plan rate limits by agent id, as the agents last reported them. */
   limits: Record<string, AgentLimits>;
   paletteOpen: boolean;
-  setPaletteOpen(open: boolean): void;
+  /** What the palette's input starts with (">" when search hands off to actions). */
+  paletteQuery: string;
+  setPaletteOpen(open: boolean, query?: string): void;
+  /** ⌘K search dialog. */
+  searchOpen: boolean;
+  setSearchOpen(open: boolean): void;
+  /** Sidebar project groups the user closed (session only). */
+  collapsedProjects: Record<string, boolean>;
+  toggleProjectCollapsed(projectId: string): void;
   /** The agent a pending Switch dialog would move the thread to. */
   pendingSwitch: string | null;
   openSwitch(agent: string | null): void;
@@ -188,6 +197,13 @@ interface State {
   respondPlan(requestId: string, decision: PlanDecision): Promise<void>;
   toggleInspector(): void;
   showInspector(tab: InspectorTab): void;
+  /** The file shown in the panel's File tab, for one thread. */
+  artifact: { threadId: string; path: string } | null;
+  /** The files agents wrote, by thread, as last listed. */
+  artifactFiles: Record<string, ArtifactFile[]>;
+  /** Show a thread file in the panel (path relative to the thread's folder, or absolute inside it). */
+  openArtifact(path: string, threadId?: string): void;
+  closeArtifact(): void;
   toggleTerminal(): void;
   /** Add the current terminal to `terminals` if missing, so its shell is mounted. */
   ensureTerminal(): void;
@@ -290,6 +306,9 @@ export const useStore = create<State>((set, get) => ({
   appUpdate: null,
   limits: {},
   paletteOpen: false,
+  paletteQuery: "",
+  searchOpen: false,
+  collapsedProjects: {},
   pendingSwitch: null,
   libraryTab: null,
   librarySkill: null,
@@ -308,8 +327,14 @@ export const useStore = create<State>((set, get) => ({
     const res = await api().openInEditor({ projectId: s.selectedProjectId, path, line: target.line, column: target.column }, editor);
     if (!res.ok) get().showNotice(res.error);
   },
-  setPaletteOpen(open) {
-    set({ paletteOpen: open });
+  setPaletteOpen(open, query = "") {
+    set({ paletteOpen: open, paletteQuery: query, ...(open ? { searchOpen: false } : {}) });
+  },
+  setSearchOpen(open) {
+    set({ searchOpen: open, ...(open ? { paletteOpen: false } : {}) });
+  },
+  toggleProjectCollapsed(projectId) {
+    set((s) => ({ collapsedProjects: { ...s.collapsedProjects, [projectId]: !s.collapsedProjects[projectId] } }));
   },
   openSwitch(agent) {
     const id = get().selectedThreadId;
@@ -415,6 +440,8 @@ export const useStore = create<State>((set, get) => ({
   paneLayout: { ...DEFAULT_LAYOUT },
   inspectorOpen: false,
   inspectorTab: "changes",
+  artifact: null,
+  artifactFiles: {},
   browserMounted: false,
   terminals: [],
   browserUrl: null,
@@ -613,7 +640,14 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async selectThread(id) {
-    set((s) => ({ selectedThreadId: id, finished: threadSeen(s.finished, id) }));
+    set((s) => ({
+      selectedThreadId: id,
+      finished: threadSeen(s.finished, id),
+      // The File tab belongs to one thread: leaving it closes the file.
+      ...(s.artifact && s.artifact.threadId !== id
+        ? { artifact: null, ...(s.inspectorTab === "artifact" ? { inspectorTab: "changes" as const, inspectorOpen: false } : {}) }
+        : {}),
+    }));
     if (id && !get().events[id]) {
       const events = await api().listEvents(id);
       set((s) => ({ events: { ...s.events, [id]: events } }));
@@ -804,6 +838,24 @@ export const useStore = create<State>((set, get) => ({
     if (opens && get().paneLayout.inspectorCollapsed) get().setPaneLayout({ inspectorCollapsed: false }, true);
   },
 
+  openArtifact(path, threadId) {
+    const s = get();
+    const id = threadId ?? s.selectedThreadId;
+    if (!id) return;
+    const rel = relativeToThread(s, id, path);
+    const opens = !s.inspectorOpen;
+    set({ artifact: { threadId: id, path: rel }, inspectorOpen: true, inspectorTab: "artifact" });
+    if (opens && s.paneLayout.inspectorCollapsed) s.setPaneLayout({ inspectorCollapsed: false }, true);
+    void api()
+      .listArtifacts(id)
+      .then((files) => set((x) => ({ artifactFiles: { ...x.artifactFiles, [id]: files } })))
+      .catch(() => {});
+  },
+
+  closeArtifact() {
+    set((s) => ({ artifact: null, ...(s.inspectorTab === "artifact" ? { inspectorTab: "changes" as const, inspectorOpen: false } : {}) }));
+  },
+
   ensureTerminal() {
     const term = get().selectedProjectId ?? "home";
     set((s) => (s.terminals.includes(term) ? {} : { terminals: [...s.terminals, term] }));
@@ -817,6 +869,15 @@ export const useStore = create<State>((set, get) => ({
 
   apply(update) {
     switch (update.type) {
+      case "artifact-ready":
+        // Opens on its own only for the thread on screen, once its turn has ended.
+        if (update.threadId === get().selectedThreadId) get().openArtifact(update.path, update.threadId);
+        else
+          void api()
+            .listArtifacts(update.threadId)
+            .then((files) => set((x) => ({ artifactFiles: { ...x.artifactFiles, [update.threadId]: files } })))
+            .catch(() => {});
+        return;
       case "event":
         set((s) => {
           const list = s.events[update.threadId] ?? [];
@@ -951,4 +1012,17 @@ export function useSelectedThread(): Thread | null {
     if (!s.selectedProjectId || !s.selectedThreadId) return null;
     return s.threads[s.selectedProjectId]?.find((t) => t.id === s.selectedThreadId) ?? null;
   });
+}
+
+/** A path relative to the thread's folder (its worktree, else its project), with forward slashes; unchanged when outside. */
+export function relativeToThread(s: Pick<State, "threads" | "projects">, threadId: string, path: string): string {
+  const thread = Object.values(s.threads).flat().find((t) => t.id === threadId);
+  const root = thread?.worktreePath ?? s.projects.find((p) => p.id === thread?.projectId)?.path;
+  const norm = (p: string) => p.replace(/\\/g, "/");
+  const p = norm(path);
+  if (!root) return p;
+  const r = norm(root).replace(/\/+$/, "");
+  const win = /^[a-z]:\//i.test(r);
+  const under = win ? p.toLowerCase().startsWith(`${r.toLowerCase()}/`) : p.startsWith(`${r}/`);
+  return under ? p.slice(r.length + 1) : p.replace(/^\.\//, "");
 }

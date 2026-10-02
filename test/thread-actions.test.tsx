@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { Store } from "../src/main/db";
 import { ThreadRow } from "../src/renderer/src/components/ThreadRow";
-import { archivedThreads, sectionThreads } from "../src/renderer/src/sections";
+import { inboxModel } from "../src/renderer/src/sections";
 import { useStore } from "../src/renderer/src/store";
 import type { Thread } from "../src/shared/types";
 import { closeAfter, tempDir } from "./helpers";
@@ -26,12 +26,10 @@ const thread = (id: string, patch: Partial<Thread> = {}): Thread => ({
 describe("thread pin and archive", () => {
   it("keeps archived threads out of the sections and lists them apart", () => {
     const list = [thread("a", { updatedAt: 3 }), thread("b", { archived: true, updatedAt: 2 }), thread("c", { pinned: true })];
-    const sections = sectionThreads(list, { running: {}, now: 5 });
-    expect(sections.map((s) => [s.name, s.threads.map((t) => t.id)])).toEqual([
-      ["Pinned", ["c"]],
-      ["Active", ["a"]],
-    ]);
-    expect(archivedThreads(list).map((t) => t.id)).toEqual(["b"]);
+    const m = inboxModel(["p"], { p: list }, { running: {} });
+    expect(m.pinned.map((t) => t.id)).toEqual(["c"]);
+    expect(m.recent.map((t) => t.id)).toEqual(["a"]);
+    expect(m.archived.p!.map((t) => t.id)).toEqual(["b"]);
   });
 
   it("stores pinned and archived, and neither counts as activity", () => {
@@ -63,10 +61,21 @@ describe("store thread actions", () => {
 describe("ThreadRow", () => {
   it("offers its actions from a ⋯ menu button and shows a pin", () => {
     const html = renderToStaticMarkup(
-      <ThreadRow thread={thread("x", { title: "Fix login", pinned: true })} agent={undefined} branch={null} selected={false} running={false} onOpen={() => {}} />,
+      <ThreadRow thread={thread("x", { title: "Fix login", pinned: true })} agent={undefined} branch={null} selected={false} status={null} time="3h" onOpen={() => {}} />,
     );
     expect(html).toContain('aria-haspopup="menu"');
     expect(html).toContain("Fix login");
+    expect(html).toContain('title="Archive"');
+    expect(html).toContain("3h");
     expect(html).toContain("<svg"); // the pin before the title
+  });
+
+  it("labels its status dot and shows a sub-line", () => {
+    const html = renderToStaticMarkup(
+      <ThreadRow thread={thread("x")} agent={undefined} branch={null} selected status="waiting" time="12s" sub={<span className="need">Needs approval</span>} onOpen={() => {}} />,
+    );
+    expect(html).toContain('aria-label="Needs approval"');
+    expect(html).toContain('class="thread-dot waiting"');
+    expect(html).toContain("thread-sub");
   });
 });

@@ -120,7 +120,7 @@ Full access mode shows its chip in `--danger`.
 - Reasoning shows as a muted "Thought for 6s" disclosure.
 
 ### 7.5 Artifact panel (right side)
-- Opens by itself **when a turn finishes**, never mid-stream, on the last previewable file the agent wrote in that turn. If the turn wrote several, it shows the last one with a switcher. A rewrite of the same file adds a version (v1, v2…).
+- Opens by itself **when a turn finishes**, never mid-stream, on the last file the agent wrote in that turn of a deliverable kind (html, svg, pdf, image, csv, docx, xlsx, pptx). Markdown and code never open by themselves: their file card in the chat has a **Preview** button. If the turn wrote several, it shows the last one with a switcher. A rewrite of the same file adds a version (v1, v2…).
 - The header shows the file name, version ▾, Open in ▾, Copy and Close. Tabs: Preview · Source · Diff.
 - Any file the agent read, created or edited opens here on click, from tool rows, the changes card or links in replies. Code gets line numbers, syntax colouring and diff tinting (`--add-bg` / `--del-bg`).
 - While the agent writes, the file card in the chat reads "Generating…".

@@ -1,0 +1,321 @@
+/* The artifact panel: one file an agent wrote, in Preview / Source / Diff
+   (DESIGN.md §7.5, §7.6). Tokens only, flat, no static shadows. */
+
+.artifact {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ---------- header ---------- */
+
+.artifact-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding: 8px 10px 8px 14px;
+  border-bottom: 1px solid var(--hairline);
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.artifact-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: 600 13px var(--font);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-head-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px;
+  min-width: 0;
+}
+
+.artifact-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+  max-width: 160px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background 120ms var(--ease), color 120ms var(--ease);
+}
+.artifact-chip:hover { background: var(--bg-hover); color: var(--text); }
+
+.artifact-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-secondary);
+  transition: background 120ms var(--ease), color 120ms var(--ease);
+}
+.artifact-icon:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+.artifact-icon:disabled { opacity: 0.4; }
+
+/* ---------- popover menus ---------- */
+
+.artifact-menu-wrap { position: relative; display: inline-flex; min-width: 0; }
+
+.artifact-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  max-width: min(320px, 80vw);
+  max-height: min(360px, 60vh);
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-m);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-float);
+}
+
+.artifact-menu button {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text);
+  font-size: 12.5px;
+  text-align: left;
+}
+.artifact-menu button:hover { background: var(--bg-hover); }
+.artifact-menu button.on { background: var(--bg-selected); }
+
+.artifact-menu-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artifact-menu-sub {
+  min-width: 0;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+}
+
+/* ---------- tabs ---------- */
+
+.artifact-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 10px 0;
+  border-bottom: 1px solid var(--hairline);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.artifact-tabs [role="tab"] {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: var(--radius-s) var(--radius-s) 0 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  white-space: nowrap;
+  transition: background 120ms var(--ease), color 120ms var(--ease);
+}
+.artifact-tabs [role="tab"]:hover { background: var(--bg-hover); color: var(--text); }
+.artifact-tabs [role="tab"][aria-selected="true"] { color: var(--text); border-bottom-color: var(--primary); font-weight: 500; }
+
+/* ---------- body ---------- */
+
+.artifact-body { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: auto; }
+
+.artifact-loading { padding: 16px 18px; color: var(--text-tertiary); font-size: 12.5px; }
+
+.artifact-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 24px;
+  text-align: center;
+}
+.artifact-empty-title { margin: 0; color: var(--text); font-size: 13.5px; font-weight: 600; }
+.artifact-empty-detail { margin: 0; max-width: 100%; color: var(--text-secondary); font-size: 12.5px; line-height: 1.5; word-break: break-word; }
+
+.artifact-note { padding: 8px 18px; color: var(--text-tertiary); font-size: 11.5px; }
+
+/* md: the shared renderer in a padded reading column. */
+.artifact-md { max-width: 720px; margin: 0 auto; padding: 14px 18px; }
+.artifact-md.msg-assistant { margin: 0 auto; font-size: 13px; }
+
+/* html / pdf / docx */
+.artifact-frame { display: block; width: 100%; height: 100%; min-height: 320px; border: 0; background: var(--bg); }
+
+/* svg / raster image, fit to the panel */
+.artifact-image-wrap {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 100%;
+  padding: 14px;
+}
+.artifact-image { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
+
+/* ---------- source ---------- */
+
+.artifact-source { display: flex; flex-direction: column; min-height: 100%; }
+.artifact-source-scroll {
+  display: flex;
+  align-items: flex-start;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  font: 12px/1.6 var(--mono);
+}
+.artifact-gutter {
+  position: sticky;
+  left: 0;
+  flex-shrink: 0;
+  padding: 8px 8px 8px 12px;
+  border-right: 1px solid var(--hairline);
+  background: var(--bg);
+  color: var(--text-tertiary);
+  text-align: right;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+.artifact-code {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 8px 14px;
+  color: var(--text);
+  white-space: pre;
+}
+
+/* ---------- diff ---------- */
+
+.artifact-diff { padding-bottom: 10px; font: 11.5px/1.6 var(--mono); }
+.artifact-diff-file { min-width: 0; }
+.artifact-diff-path {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--bg);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.artifact-hunk-header { padding: 4px 14px; background: var(--bg-subtle); color: var(--text-tertiary); white-space: pre; }
+.artifact-diff-line { display: flex; align-items: baseline; min-width: max-content; white-space: pre; }
+.artifact-diff-line.add { background: var(--add-bg); }
+.artifact-diff-line.del { background: var(--del-bg); }
+.artifact-diff-no {
+  flex-shrink: 0;
+  width: 34px;
+  padding-right: 8px;
+  color: var(--text-tertiary);
+  text-align: right;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+.artifact-diff-sign { flex-shrink: 0; width: 14px; color: var(--text-tertiary); }
+.artifact-diff-line.add .artifact-diff-sign { color: var(--success); }
+.artifact-diff-line.del .artifact-diff-sign { color: var(--danger); }
+.artifact-diff-text { padding-right: 14px; }
+
+/* ---------- sheet / csv ---------- */
+
+.artifact-sheet { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.artifact-sheet-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 10px 0;
+  border-bottom: 1px solid var(--hairline);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.artifact-sheet-tabs button {
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.artifact-sheet-tabs button:hover { background: var(--bg-hover); color: var(--text); }
+.artifact-sheet-tabs button.on { background: var(--bg-selected); color: var(--text); }
+
+.artifact-sheet-scroll { flex: 1; min-height: 0; overflow: auto; }
+.artifact-sheet-table { min-width: 100%; border-collapse: collapse; font: 11.5px/1.5 var(--mono); }
+.artifact-sheet-table th,
+.artifact-sheet-table td {
+  box-sizing: border-box;
+  height: 26px;
+  max-width: 240px;
+  padding: 0 10px;
+  border-right: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.artifact-sheet-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.artifact-rownum {
+  position: sticky;
+  left: 0;
+  background: var(--bg-subtle);
+  color: var(--text-tertiary);
+  text-align: right;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+.artifact-sheet-spacer td { height: auto; padding: 0; border: 0; }
+.artifact-sheet-foot { padding: 6px 12px; border-top: 1px solid var(--hairline); color: var(--text-tertiary); font-size: 11px; flex-shrink: 0; }
+
+/* ---------- pptx ---------- */
+
+.artifact-slides { display: flex; flex-direction: column; gap: 12px; padding: 14px; }
+.artifact-slide { padding: 12px 14px; border: 1px solid var(--hairline); border-radius: var(--radius-m); background: var(--bg-elevated); }
+.artifact-slide-label { color: var(--text-tertiary); font: 600 10.5px var(--mono); letter-spacing: 0.03em; text-transform: uppercase; }
+.artifact-slide-title { margin: 4px 0 8px; font: 600 14px var(--font); }
+.artifact-slide-text { margin: 0 0 6px; color: var(--text); font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
+.artifact-slide-img { display: block; max-width: 100%; height: auto; margin-top: 8px; border: 1px solid var(--hairline); border-radius: var(--radius-s); }

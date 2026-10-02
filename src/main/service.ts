@@ -3,6 +3,8 @@ import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type {
   AgentInfo,
+  ArtifactContent,
+  ArtifactFile,
   DiffFile,
   LiveDelta,
   LiveUpdate,
@@ -36,6 +38,7 @@ import {
   toolSetOf,
 } from "./cache-policy";
 import { Approvals } from "./approvals";
+import { artifactDiff, listArtifacts, opensByItself, readArtifact, recordTurnArtifacts, type ArtifactDeps } from "./artifacts";
 import { runCheck, tailOf } from "./check";
 import type { Store } from "./db";
 import { branchLabel, createWorktree, gitState, listProjectFiles, removeWorktree, workingTreeDiff, worktreeBranch } from "./git";
@@ -63,6 +66,7 @@ import type { TurnDelta } from "./memory/extractor";
  */
 export class Service {
   private running = new Map<string, AbortController>();
+  private artifacts: ArtifactDeps | null = null;
   /** Projects already warned about loading the same conventions twice: said once, not every turn. */
   private scopeChecked = new Set<string>();
   private pendingPermissions = new Map<string, (d: PermissionDecision) => void>();
@@ -679,8 +683,11 @@ export class Service {
               }),
             };
           }
-          this.emit(thread.id, event, provenance);
-          if (event.kind === "turn-end") this.emitSignal(thread.id, event.usage);
+          const stored = this.emit(thread.id, event, provenance);
+          if (event.kind === "turn-end") {
+            this.emitSignal(thread.id, event.usage);
+            this.recordArtifacts(thread.id, cwd, stored.seq);
+          }
         },
         // Live text is scrubbed like stored events. A key split across two deltas can
         // slip through here, but the turn's stored assistant-text event is redacted whole.
@@ -859,6 +866,47 @@ export class Service {
       }
     }
     return null;
+  }
+
+  /** Wire the artifact panel's storage and preview; without it, turns record no artifacts. */
+  setArtifacts(deps: ArtifactDeps): void {
+    this.artifacts = deps;
+  }
+
+  /**
+   * Save a version of each file the turn edited, then tell the renderer which
+   * one to open: the last file of a kind that opens by itself (not markdown or
+   * code), never mid-stream. Never throws.
+   */
+  private recordArtifacts(threadId: string, root: string, turnSeq: number): void {
+    if (!this.artifacts) return;
+    try {
+      const { files } = recordTurnArtifacts(this.artifacts, { threadId, root, events: this.store.listEvents(threadId), turnSeq });
+      const path = files.filter(opensByItself).at(-1);
+      if (path) this.broadcast({ type: "artifact-ready", threadId, path, files });
+    } catch (err) {
+      console.warn("artifact recording failed", err);
+    }
+  }
+
+  /** The folder a thread's tools run in: its worktree, else its project. */
+  threadFolder(threadId: string): string {
+    const thread = this.store.getThread(threadId);
+    return this.folderOf(thread.projectId, threadId);
+  }
+
+  listArtifacts(threadId: string): ArtifactFile[] {
+    return this.artifacts ? listArtifacts(this.artifacts, threadId) : [];
+  }
+
+  readArtifact(threadId: string, path: string, version?: number | null): Promise<ArtifactContent> {
+    if (!this.artifacts) return Promise.resolve({ ok: false, error: "Previews are off" });
+    return readArtifact(this.artifacts, { threadId, root: this.threadFolder(threadId), path, version });
+  }
+
+  artifactDiff(threadId: string, path: string, version?: number | null): Promise<string | null> {
+    if (!this.artifacts) return Promise.resolve(null);
+    return artifactDiff(this.artifacts, { threadId, root: this.threadFolder(threadId), path, version });
   }
 
   getDiff(projectId: string, threadId?: string | null): Promise<DiffFile[]> {

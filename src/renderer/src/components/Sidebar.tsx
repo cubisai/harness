@@ -1,22 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import type { Project, Thread } from "../../../shared/types";
-import { IconChevron, IconCompose, IconFolder, IconGear, IconLibrary, IconMore, IconPlus } from "../icons";
+import { IconChevron, IconCompose, IconFolder, IconGear, IconLibrary, IconMore, IconPlus, IconSearch } from "../icons";
 import { api } from "../api";
-import { archivedThreads, sectionThreads } from "../sections";
-import { ThreadRow } from "./ThreadRow";
+import { elapsed, inboxModel, shortTime, waitingThreads } from "../sections";
+import { ThreadRow, type ThreadStatus } from "./ThreadRow";
 import { useStore } from "../store";
 import { InboxBell } from "./MessageCenter";
 import { SidebarToggle } from "./PaneRail";
 
+/** A project as a small folder label: toggles its group, + starts a thread, ⋯ opens its menu. */
 function ProjectRow({
   project,
   open,
-  count,
+  branch,
   onToggle,
 }: {
   project: Project;
   open: boolean;
-  count: number;
+  /** The project's checked-out branch when it isn't the default one. */
+  branch: string | null | undefined;
   onToggle: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -76,10 +78,17 @@ function ProjectRow({
         aria-expanded={open}
         onClick={onToggle}
       >
-        <IconChevron open={open} />
+        <IconChevron open={open} size={12} />
         <span className={`project-name${project.missing ? " missing" : ""}`}>{project.name}</span>
-        {project.missing && <span className="project-missing">Folder missing</span>}
-        <span className="count">{count || ""}</span>
+        {project.missing ? (
+          <span className="project-missing">Folder missing</span>
+        ) : (
+          branch && (
+            <span className="branch-chip" title={`Branch ${branch}`}>
+              {branch}
+            </span>
+          )
+        )}
       </button>
       <span className="project-actions">
         <button
@@ -195,32 +204,98 @@ function ProjectRow({
   );
 }
 
+/** Ticks once a second while any thread runs, so elapsed times move. */
+function useNow(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [active]);
+  return active ? now : Date.now();
+}
+
 export function Sidebar() {
   const projects = useStore((s) => s.projects);
   const threads = useStore((s) => s.threads);
   const running = useStore((s) => s.running);
+  const permissions = useStore((s) => s.permissions);
+  const plans = useStore((s) => s.plans);
+  const finished = useStore((s) => s.finished);
+  const turnStartedAt = useStore((s) => s.turnStartedAt);
   const selectedProjectId = useStore((s) => s.selectedProjectId);
   const selectedThreadId = useStore((s) => s.selectedThreadId);
   const readyVersion = useStore((s) => s.appUpdate?.ready);
   const agents = useStore((s) => s.agents);
   const branches = useStore((s) => s.projectBranches);
-  const { addProject, selectProject, selectThread, newThread } = useStore.getState();
-  // Sections are re-read on every render (any thread update re-renders), so Settled stays current enough.
-  const now = Date.now();
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const grouped = useStore((s) => s.settings?.sidebarGroupByProject ?? true);
+  const collapsed = useStore((s) => s.collapsedProjects);
+  const { addProject, selectProject, selectThread, newThread, setSearchOpen, toggleProjectCollapsed } = useStore.getState();
   const [archivedOpen, setArchivedOpen] = useState<Record<string, boolean>>({});
-  const newThreadKey = api().platform === "darwin" ? "⌘N" : "Ctrl N";
-  const row = (projectId: string, t: Thread) => (
+  const mac = api().platform === "darwin";
+  const newThreadKey = mac ? "⌘N" : "Ctrl N";
+  const searchKey = mac ? "⌘K" : "Ctrl K";
+
+  const waiting = waitingThreads(permissions, plans);
+  const unread = new Set(finished.map((f) => f.threadId));
+  const model = inboxModel(
+    projects.map((p) => p.id),
+    threads,
+    { running, waiting },
+  );
+  const now = useNow(model.running.length > 0);
+  const projectName = (id: string) => projects.find((p) => p.id === id)?.name ?? "";
+  const agentOf = (t: Thread) => agents.find((a) => a.id === t.agent);
+  const statusOf = (t: Thread): ThreadStatus => (waiting.has(t.id) ? "waiting" : running[t.id] ? "running" : unread.has(t.id) ? "unread" : null);
+  const open = (t: Thread) => {
+    void selectProject(t.projectId);
+    void selectThread(t.id);
+  };
+  const row = (t: Thread, live = false) => (
     <ThreadRow
       key={t.id}
       thread={t}
-      agent={agents.find((a) => a.id === t.agent)}
-      branch={t.branch ?? branches[projectId]}
+      agent={agentOf(t)}
+      branch={t.branch}
       selected={t.id === selectedThreadId}
-      running={Boolean(running[t.id])}
-      onOpen={() => {
-        void selectProject(projectId);
-        void selectThread(t.id);
+      status={statusOf(t)}
+      time={live && turnStartedAt[t.id] ? elapsed(now - turnStartedAt[t.id]!) : shortTime(t.updatedAt, now)}
+      sub={
+        live ? (
+          waiting.has(t.id) ? (
+            <>
+              <span className="need">Needs approval</span> · {agentOf(t)?.label ?? t.agent}
+            </>
+          ) : (
+            <>
+              {projectName(t.projectId)} · {agentOf(t)?.label ?? t.agent}
+            </>
+          )
+        ) : undefined
+      }
+      onOpen={() => open(t)}
+    />
+  );
+  const archived = (projectId: string) => {
+    const list = model.archived[projectId] ?? [];
+    if (!list.length) return null;
+    return (
+      <details className="thread-archived" onToggle={(e) => setArchivedOpen((a) => ({ ...a, [projectId]: e.currentTarget.open }))}>
+        <summary className="thread-section-label">
+          <IconChevron open={Boolean(archivedOpen[projectId])} size={12} /> Archived · {list.length}
+        </summary>
+        {list.map((t) => row(t))}
+      </details>
+    );
+  };
+  const projectRow = (p: Project) => (
+    <ProjectRow
+      project={p}
+      open={!collapsed[p.id]}
+      branch={branches[p.id]}
+      onToggle={() => {
+        void selectProject(p.id);
+        toggleProjectCollapsed(p.id);
       }}
     />
   );
@@ -234,46 +309,81 @@ export function Sidebar() {
         </div>
       </div>
 
-      <button className="new-thread-button" title={`New thread (${newThreadKey})`} onClick={() => void newThread()} disabled={!selectedProjectId}>
-        <IconCompose />
-        <span>New thread</span>
-        <kbd>{newThreadKey}</kbd>
-      </button>
+      <nav className="sidebar-nav" aria-label="Sidebar">
+        <button className="nav-row" title={`New thread (${newThreadKey})`} onClick={() => void newThread()} disabled={!selectedProjectId}>
+          <IconCompose />
+          <span>New thread</span>
+          <kbd>{newThreadKey}</kbd>
+        </button>
+        <button className="nav-row" title={`Search (${searchKey})`} onClick={() => setSearchOpen(true)}>
+          <IconSearch />
+          <span>Search</span>
+          <kbd>{searchKey}</kbd>
+        </button>
+        <button className="nav-row" title="Library: skills, MCP servers, agents (⌘⇧L)" onClick={() => useStore.setState({ libraryTab: "skills" })}>
+          <IconLibrary />
+          <span>Library</span>
+        </button>
+      </nav>
 
       <div className="sidebar-scroll">
-        {projects.length > 0 && <div className="section-label">Projects</div>}
-        {projects.map((p) => {
-          const list = threads[p.id] ?? [];
-          const open = !collapsed[p.id];
-          return (
-            <div className="project" key={p.id}>
-              <ProjectRow
-                project={p}
-                open={open}
-                count={list.filter((t) => !t.archived).length}
-                onToggle={() => {
-                  void selectProject(p.id);
-                  setCollapsed((c) => ({ ...c, [p.id]: selectedProjectId === p.id ? open : false }));
-                }}
-              />
-              {open &&
-                sectionThreads(list, { running, now }).map((section) => (
-                  <div className="thread-section" key={section.name}>
-                    <div className="thread-section-label">{section.name}</div>
-                    {section.threads.map((t) => row(p.id, t))}
-                  </div>
-                ))}
-              {open && archivedThreads(list).length > 0 && (
-                <details className="thread-archived" onToggle={(e) => setArchivedOpen((a) => ({ ...a, [p.id]: e.currentTarget.open }))}>
-                  <summary className="thread-section-label">
-                    <IconChevron open={Boolean(archivedOpen[p.id])} size={12} /> Archived · {archivedThreads(list).length}
-                  </summary>
-                  {archivedThreads(list).map((t) => row(p.id, t))}
-                </details>
-              )}
+        {model.running.length > 0 && (
+          <section className="inbox-section" aria-label="Running">
+            <div className="section-label">
+              Running <span className="count">{model.running.length}</span>
             </div>
-          );
-        })}
+            {model.running.map((t) => row(t, true))}
+          </section>
+        )}
+        {model.pinned.length > 0 && (
+          <section className="inbox-section" aria-label="Pinned">
+            <div className="section-label">Pinned</div>
+            {model.pinned.map((t) => row(t))}
+          </section>
+        )}
+        {projects.length > 0 && (
+          <section className="inbox-section" aria-label="Recent">
+            <div className="section-label">
+              Recent
+              <button
+                className="group-toggle"
+                aria-pressed={grouped}
+                title={grouped ? "Show one list" : "Group by project"}
+                onClick={() => void api().updateSettings({ sidebarGroupByProject: !grouped }).then((v) => useStore.setState({ settings: v }))}
+              >
+                {grouped ? "By project" : "All"}
+                <IconChevron open size={10} />
+              </button>
+            </div>
+            {grouped
+              ? model.groups.map(({ projectId, threads: list }) => {
+                  const p = projects.find((x) => x.id === projectId)!;
+                  return (
+                    <div className="project" key={projectId}>
+                      {projectRow(p)}
+                      {!collapsed[projectId] && (
+                        <>
+                          {list.map((t) => row(t))}
+                          {archived(projectId)}
+                        </>
+                      )}
+                    </div>
+                  );
+                })
+              : model.recent.map((t) => row(t))}
+          </section>
+        )}
+        {!grouped && projects.length > 0 && (
+          <section className="inbox-section" aria-label="Projects">
+            <div className="section-label">Projects</div>
+            {projects.map((p) => (
+              <div className="project" key={p.id}>
+                {projectRow(p)}
+                {!collapsed[p.id] && archived(p.id)}
+              </div>
+            ))}
+          </section>
+        )}
       </div>
 
       {readyVersion && (
@@ -290,12 +400,9 @@ export function Sidebar() {
 
       <div className="sidebar-foot">
         <button className="button ghost block" onClick={() => void addProject()}>
-          <IconFolder /> Add Project…
+          <IconFolder /> Add project
         </button>
         <InboxBell />
-        <button className="icon-button" title="Library: skills, MCP servers, agents (⌘⇧L)" onClick={() => useStore.setState({ libraryTab: "skills" })}>
-          <IconLibrary />
-        </button>
         <button className="icon-button" title="Settings (⌘,)" onClick={() => useStore.getState().setSettingsOpen(true)}>
           <IconGear />
         </button>

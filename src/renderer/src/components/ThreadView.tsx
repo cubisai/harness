@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, Copy, Pencil, RotateCcw } from "lucide-react";
-import type { StoredEvent, ThreadEvent } from "../../../shared/types";
+import { artifactKind, isPreviewable } from "../../../shared/artifact-kind";
+import type { ArtifactKind, StoredEvent, ThreadEvent } from "../../../shared/types";
 import { prettyTool, type RunResult } from "../../../shared/tools";
 import { displayOrder } from "../event-order";
 import { type FileRef, parseFileRef } from "../fileref";
 import { emptyLive, liveReasoningMode, visibleItems } from "../live";
 import { Markdown } from "../markdown";
-import { useStore } from "../store";
+import { relativeToThread, useStore } from "../store";
 import { DiffView, diffsOf } from "./DiffView";
 import { PermissionCard } from "./PermissionCard";
 import { PlanApprovalCard } from "./PlanApprovalCard";
@@ -198,6 +199,7 @@ function SegmentRow({ seg, results, children, running, threadId, last }: { seg: 
   if (seg.kind === "turn-end") {
     return (
       <>
+        {seg.changes && <FileCards files={seg.changes.files} />}
         {seg.changes && <ChangesCard changes={seg.changes} />}
         <TurnFooter seg={seg} threadId={threadId} running={running} last={last} />
       </>
@@ -233,6 +235,45 @@ function WorkGroup({ seg, results, children, running, threadId }: { seg: Extract
       </summary>
       {open && <div className="work-body">{rows}</div>}
     </details>
+  );
+}
+
+const KIND_LABEL: Record<ArtifactKind, string> = {
+  md: "Document", html: "Web page", svg: "Image", pdf: "PDF", image: "Image", csv: "Table",
+  docx: "Word document", sheet: "Spreadsheet", pptx: "Presentation", code: "Code", text: "Text",
+};
+
+/** A card for each previewable file the turn wrote (the last three); Preview shows it in the panel. */
+function FileCards({ files }: { files: string[] }) {
+  const open = useStore((s) => s.artifact?.path ?? null);
+  const threadId = useStore((s) => s.selectedThreadId);
+  const threads = useStore((s) => s.threads);
+  const projects = useStore((s) => s.projects);
+  const toRel = (path: string) => (threadId ? relativeToThread({ threads, projects }, threadId, path) : path);
+  const shown = files.filter(isPreviewable).slice(-3);
+  if (!shown.length) return null;
+  return (
+    <div className="file-cards">
+      {shown.map((file) => {
+        const rel = toRel(file);
+        const name = rel.split("/").pop() ?? rel;
+        const ext = (/\.([^.]+)$/.exec(name)?.[1] ?? "").slice(0, 4).toUpperCase();
+        const dir = rel.includes("/") ? rel.slice(0, rel.lastIndexOf("/") + 1) : "";
+        return (
+          <button key={file} className={`file-card${open === rel ? " open" : ""}`} title={file} onClick={() => useStore.getState().openArtifact(file)}>
+            <span className="file-card-ext">{ext}</span>
+            <span className="file-card-text">
+              <span className="file-card-name">{name}</span>
+              <span className="file-card-sub">
+                {KIND_LABEL[artifactKind(name)]}
+                {dir && ` · ${dir}`}
+              </span>
+            </span>
+            <span className="file-card-action">Preview</span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -522,7 +563,7 @@ export function ToolRow({
         {fileRef ? (
           <button
             className="summary file-link"
-            title="Open in the editor"
+            title="Open in the panel"
             onClick={(e) => {
               e.preventDefault();
               openRef(fileRef);
@@ -643,8 +684,11 @@ export function payloadText(v: unknown): string {
 
 const FILE_TOOLS = new Set(["Read", "Edit", "Write", "MultiEdit", "NotebookEdit"]);
 
+/** A file named in a reply or a tool row opens in the panel; with no thread open, in the editor. */
 function openRef(ref: FileRef): void {
-  void useStore.getState().openInEditor(ref);
+  const s = useStore.getState();
+  if (s.selectedThreadId) s.openArtifact(ref.path);
+  else void s.openInEditor(ref);
 }
 
 function formatTokens(n: number): string {

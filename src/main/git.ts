@@ -14,6 +14,15 @@ const run = promisify(execFile);
 
 const MAX_UNTRACKED_BYTES = 200_000;
 
+/** A file's content at HEAD (path relative to `cwd`), or null: no repository, no commits, or not tracked. */
+export async function headContent(cwd: string, relPath: string): Promise<string | null> {
+  try {
+    return (await run("git", ["show", `HEAD:./${relPath}`], { cwd, maxBuffer: 4 * 1024 * 1024 })).stdout;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Everything that changed in the working tree against HEAD: tracked edits
  * (staged or not) plus untracked files, shown as all-added. Empty when the

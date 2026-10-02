@@ -389,3 +389,45 @@ describe("Store seq allocation", () => {
     },
   );
 });
+
+describe("Store search and artifact versions", () => {
+  it("upgrades a version-17 database with search and artifact versions", () => {
+    const file = join(tempDir(), "pre18.db");
+    const old = new DatabaseSync(file);
+    old.exec(`
+      CREATE TABLE projects (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at INTEGER NOT NULL,
+        check_command TEXT, check_fix_rounds INTEGER);
+      CREATE TABLE threads (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, agent TEXT NOT NULL DEFAULT 'claude', title TEXT NOT NULL,
+        session_id TEXT, bindings TEXT NOT NULL DEFAULT '{}', model TEXT NOT NULL, effort TEXT, permission_mode TEXT NOT NULL,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0, archived INTEGER NOT NULL DEFAULT 0,
+        branch TEXT, worktree_path TEXT, context_window INTEGER);
+      CREATE TABLE schema_version (version INTEGER NOT NULL);
+      CREATE TABLE events (thread_id TEXT NOT NULL, seq INTEGER NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL,
+        provenance TEXT, message_id TEXT, turn_id TEXT, item_id TEXT, parent_id TEXT, payload_ref TEXT, payload_bytes INTEGER,
+        PRIMARY KEY (thread_id, seq));
+      CREATE TABLE blobs (sha256 TEXT PRIMARY KEY, bytes INTEGER NOT NULL, created_at INTEGER NOT NULL);
+      INSERT INTO schema_version VALUES (17);
+      INSERT INTO projects VALUES ('p', '/x', 'x', 1, NULL, NULL);
+      INSERT INTO threads (id, project_id, agent, title, model, permission_mode, created_at, updated_at)
+        VALUES ('t', 'p', 'claude', 'Old login work', 'opus', 'ask', 1, 1);
+      INSERT INTO events VALUES ('t', 1, '{"kind":"user","text":"fix the login limiter"}', 2, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+    `);
+    old.close();
+
+    const store = new Store(file);
+    closeAfter(() => store.close());
+    expect(store.search({ text: "limiter" }).messages).toHaveLength(1);
+    expect(store.search({ text: "login work" }).threads).toHaveLength(1);
+
+    const v1 = store.addArtifactVersion("t", "src/a.ts", "sha1", 10, 3);
+    expect(v1).toMatchObject({ version: 1, sha256: "sha1", bytes: 10, turnSeq: 3 });
+    expect(store.addArtifactVersion("t", "src/a.ts", "sha1", 10, 4)).toBeNull();
+    const v2 = store.addArtifactVersion("t", "src/a.ts", "sha2", 12, 5);
+    expect(v2).toMatchObject({ version: 2, sha256: "sha2", bytes: 12, turnSeq: 5 });
+    expect(store.listArtifactVersions("t")).toEqual([{ path: "src/a.ts", versions: [v1, v2] }]);
+
+    const bytes = Buffer.from([0, 1, 2, 255]);
+    store.writeBlobBytes("blobsha", bytes);
+    expect(store.readBlobBytes("blobsha").equals(bytes)).toBe(true);
+  });
+});

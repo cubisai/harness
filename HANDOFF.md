@@ -1,6 +1,6 @@
-# Handoff: UI refresh "Ink Flat" U0–U2 done, U5 main side + U3/U4 contract done; next: U3 + U4 in parallel, then U5 wiring, U6, Windows-PC gate
+# Handoff: UI refresh "Ink Flat" U0–U5 done; next: U6 polish, then Windows-PC gate
 
-Updated 2026-10-01 (late evening) on the **Mac**, branch `m4`. Read **Resume here — UI refresh** first, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`.
+Updated 2026-10-02 on the **Mac**, branch `m4`. Read **Resume here — UI refresh** first, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`.
 
 ## Where things stand
 
@@ -24,7 +24,8 @@ Updated 2026-10-01 (late evening) on the **Mac**, branch `m4`. Read **Resume her
 | Phase E (2026-09-29, Mac) — shared CubiQ memory, `/context` | **done**; typecheck + full suite green (966 passed, 0 failed); every slice checked live on OpenCode (nemotron free), Codex and Claude (Haiku) | S0 `/context` `1e1bee1`, S1 store + import + Claude `2bff594`, S2 Codex/ACP index + `memory_read` `e3fc39c`, S3 extractor `66020a8`, S4 Library tab `cc58301` |
 | Roadmap N1–N9 (2026-09-30 → 10-01, Mac) — mock kit, `/context` pricing, accuracy run, MCP router, provider catalog, Codex subagents, check gate, guide diet, context picker | **done**; full suite 1073 passed; each phase live on Claude (Haiku), Codex (GPT-6-Luna), OpenCode; Windows **CI** green for every phase (last run 36818195119); Windows **PC** gate pending for N7–N9 | N1 `331a6c0`, N2 `c68ca3c`, N4 `d19aef4`, N5 `82487e5`, N6 `cc1ea02`, N7 `f85e45c` + Windows fix `1d6f013`, N8 `9ed5546`, N9 `e72248f` `306c61c` |
 | UI refresh U0–U2 (2026-10-01, Mac): DESIGN.md, Ink Flat tokens, one-row composer, /compact, message folds | **done**; typecheck, build, smoke green; full suite 1088 passed; each phase live on Claude (Haiku), Codex, OpenCode; Windows PC/CI not run yet | U0 `6cb7ecb`, U1 `863875f`, U2 `a7583e3` |
-| U5a (2026-10-01, Mac): office preview worker (main side only) + U3/U4 API contract | **done, not user-visible yet**; typecheck, full suite 1098 passed, build, smoke 3/4 (one unexplained failure on the first run right after build, then 3 ok); worker probed in a real Electron `utilityProcess`; no live agent turns (nothing reachable from the UI) | U5a (this commit) |
+| U5a (2026-10-01, Mac): office preview worker (main side only) + U3/U4 API contract | **done, not user-visible yet**; typecheck, full suite 1098 passed, build, smoke 3/4 (one unexplained failure on the first run right after build, then 3 ok); worker probed in a real Electron `utilityProcess`; no live agent turns (nothing reachable from the UI) | `5a3f911` |
+| U3 + U4 + U5 wiring (2026-10-02, Mac): inbox sidebar, ⌘K FTS search, artifact panel + file cards | **done**; typecheck, full suite 1153 passed, build, smoke 2/2; live in the built app (temp data dir, scratch repo): OpenCode md (Preview button), Codex html (auto-open), Claude Haiku csv (auto-open via the worker), ⌘K over FTS; Windows not run | one commit (U3/U4 share store/App/db) |
 
 **Uncommitted on purpose (the user decides):** the `CLAUDE.md` notes (Windows notes + the new worker model order) and `SETUP-OTHER-PC.md`. The bun switch is committed (`ab42bb9`). `test/__snapshots__/providers.test.ts.snap` shows as modified: line endings only. Phase commits carry code + tests only, with no attribution trailer.
 
@@ -144,13 +145,20 @@ All checked in the real app on Windows; code paths are cross-platform unless not
 - Contract for U3/U4 in `src/shared/types.ts` (search + artifact types, `artifact-ready` LiveUpdate, `Settings.sidebarGroupByProject`, API `search/listArtifacts/readArtifact/artifactDiff`), preload channels `search:query`, `artifacts:list|read|diff` (**no ipcMain handlers yet** — calling them rejects), mock implementations + `?state=artifact`.
 - Built by opencode workers (U5 implementer, two researchers), verified by Claude (diff read, typecheck, suite, build, utilityProcess probe).
 
+**Shipped 2026-10-02, U3 + U4 (+ U5 wiring), one commit:**
+- Sidebar v2 (`Sidebar.tsx`, `ThreadRow.tsx`, `sections.ts` `inboxModel`): nav rows New thread / Search / Library; Running (live dot, elapsed, project · agent or "Needs approval"), Pinned, Recent "By project" ⇄ "All" (`Settings.sidebarGroupByProject`, default grouped; flat mode lists projects below). Row = status dot (running/waiting/unread) · title · mono time; hover shows archive + ⋯. ⌘1–9 follow this order across projects. Settled section is gone.
+- Search: migration **18** `search_fts` (FTS5 + triggers) and `Store.search`; `SearchDialog.tsx` (filters All / This project / Running / per agent / Files); ⌘K opens it, `>` or ⌘⇧P opens the palette with `>`.
+- Artifacts: migration **19** `artifact_versions` (content in blobs, `writeBlobBytes`); `src/main/artifacts.ts` (record at turn-end, `resolveInside` realpath containment, read/diff, never throws); `cubiq-file://f/<thread>/<path>` serves pdf/images only (CSP `img-src`/`frame-src`); `PreviewHost` in `index.ts` for docx/xlsx/pptx/csv. Inspector gets a **File** tab (`ArtifactPanel.tsx`: Preview/Source/Diff, versions, Open in, Copy). Tool-row file links and reply links open the panel. File cards with **Preview** under each turn.
+- **User decision 2026-10-02**: the panel opens by itself only for html, svg, pdf, image, csv, docx, xlsx, pptx (`shared/artifact-kind.ts` `AUTO_OPEN`); markdown and code never auto-open, their file card has Preview. DESIGN §7.5 updated.
+- Built by four opencode implementers in parallel (db, artifacts, panel, search; all passed first try); sidebar, wiring and fixes by Claude.
+
+**Known gaps (not done):** no syntax colouring or mermaid in the panel (no new deps); "Generating…" file card while writing; a message search hit opens the thread but doesn't scroll to the message; older versions of pdf/image/office files can't be previewed (latest only); Codex writes `[x](/abs/path)` links that render as raw text (pre-existing); the renderer loses `running` on reload (pre-existing).
+
 **Next, in order:**
-1. **U3 + U4 in parallel**: the split, file:line evidence and who does what are in `.ai/plans/u3-u4-build.md` (Mac only, gitignored). Summary: implementer W-A `db.ts` migrations 18 (FTS5) + 19 (`artifact_versions`); W-B `src/main/artifacts.ts`; W-C `ArtifactPanel.tsx`; W-D `SearchDialog.tsx`; Claude does Sidebar v2, all wiring (ipcMain handlers, `cubiq-file:` protocol + CSP, PreviewHost instance, turn-end → artifact-ready, store, Inspector tab, ⌘K). Commit U3 and U4 separately, live turns on all three agents first.
-2. **U5 wiring** lands with U4 (docx/sheet/pptx/csv go through `PreviewHost`).
-3. **U6**: gooey `+`/popover morph, sweep every screen in both themes (Library still has emoji connector icons + native selects), Windows pass.
-4. Look into the one smoke failure seen on the first run after a fresh build (reason not captured; 3 reruns ok).
-5. Then the **native provider agent** spec (`.ai/plans/native-provider-agent.md`, user decision): added providers' models appear in the picker and run through CubiQ's own agent loop, no CLI. Plan first; nothing built before approval.
-6. **Windows PC gate** for N7–N9 and U0–U2 (bun install, typecheck, test, dev; check the composer, model menu, ring, /compact on each agent, Settings → provider editor at narrow width).
+1. **U6**: gooey `+`/popover morph, sweep every screen in both themes (Library still has emoji connector icons + native selects), Windows pass.
+2. Look into the one smoke failure seen on the first run after a fresh build (not seen again: 2/2 ok on 2026-10-02).
+3. Then the **native provider agent** spec (`.ai/plans/native-provider-agent.md`, user decision): plan first; nothing built before approval.
+4. **Windows PC gate** for N7–N9 and U0–U5 (bun install, typecheck, test, dev; composer, model menu, ring, /compact, sidebar, ⌘K, artifact panel incl. `cubiq-file:` on a `C:\` path and the preview worker).
 
 **Working notes:** drive the dev app with `bun run dev -- --remoteDebuggingPort 9455` + `agent-browser --cdp 9455` (`AGENT_BROWSER_SESSION=cubiq-real`); live turns via `window.unskilled.createThread/updateThread/send` on project `sambor-prei-kuk` (tool-free prompts only), then delete the threads. Mock preview `bun run preview:ui` (port 5199, `?state=thread|settings|…`) is quickest for visuals. The OpenCode ACP command probe script pattern: spawn `opencode acp`, `initialize`, `session/new`, read `available_commands_update`.
 
@@ -231,4 +239,4 @@ In order:
 
 ## Next
 
-See **Resume here — UI refresh (after U2)** above.
+See **Resume here — UI refresh (after U2)** above (now through U5).

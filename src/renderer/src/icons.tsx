@@ -1,5 +1,6 @@
 // Lucide icons behind the names the app already uses. 16px, currentColor, one stroke weight.
 import {
+  Archive,
   ArrowLeft,
   ArrowRight,
   ArrowUp,
@@ -17,11 +18,13 @@ import {
   PanelLeftOpen,
   Pin,
   Plus,
+  Search,
   RefreshCw,
   Settings,
   Sparkles,
   SquarePen,
   SquareTerminal,
+  X,
   type LucideIcon,
 } from "lucide-react";
 
@@ -55,6 +58,9 @@ export const IconCopy = icon(Copy, 14);
 export const IconOpen = icon(ExternalLink, 14);
 export const IconSidebarClose = icon(PanelLeftClose);
 export const IconSidebarOpen = icon(PanelLeftOpen);
+export const IconArchive = icon(Archive, 14);
+export const IconSearch = icon(Search);
+export const IconClose = icon(X, 14);
 
 /** A filled square: Lucide's Square is an outline, and Stop reads better solid. */
 export const IconStop = ({ size = 12 }: P) => (

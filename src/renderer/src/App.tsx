@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { CommandPalette } from "./components/CommandPalette";
+import { SearchDialog } from "./components/SearchDialog";
 import { Library } from "./components/Library";
 import { Composer } from "./components/Composer";
 import { ThreadMeters } from "./components/Meters";
@@ -18,7 +19,7 @@ import { ThreadView } from "./components/ThreadView";
 import { IconArrowLeft, IconDiff, IconFolder, IconGlobe, IconSparkle, IconTerminal } from "./icons";
 import { usePaneLayout } from "./hooks/usePaneLayout";
 import { BOUNDS, DEFAULT_LAYOUT } from "./layout";
-import { nthVisibleThread } from "./sections";
+import { inboxModel, nthVisibleThread, waitingThreads } from "./sections";
 import { useSelectedThread, useStore } from "./store";
 
 
@@ -37,14 +38,21 @@ export function App() {
     void init();
   }, [init]);
 
-  // ⌘K: command palette. ⌘\: sidebar. ⌘N / Ctrl+N: new thread. ⌘⇧D: changes. Esc: stop the running turn.
+  // ⌘K: search (> in it, or ⌘⇧P, for the command palette). ⌘\: sidebar. ⌘N / Ctrl+N: new thread. ⌘⇧D: changes. Esc: stop the running turn.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       if (mod && !e.shiftKey && e.key.toLowerCase() === "k") {
         e.preventDefault();
         const s = useStore.getState();
-        s.setPaletteOpen(!s.paletteOpen);
+        if (s.searchOpen || s.paletteOpen) {
+          s.setSearchOpen(false);
+          s.setPaletteOpen(false);
+        } else s.setSearchOpen(true);
+      } else if (mod && e.shiftKey && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        const s = useStore.getState();
+        s.setPaletteOpen(!s.paletteOpen, ">");
       } else if (mod && e.shiftKey && e.key.toLowerCase() === "l") {
         e.preventDefault();
         const s = useStore.getState();
@@ -77,15 +85,20 @@ export function App() {
       } else if (mod && !e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key)) {
         // ⌘1–9: the nth thread in the sidebar's order. Not over a modal, and not
         // while the browser pane has focus (its page keeps its own shortcuts).
-        if (document.querySelector(".palette, .sheet, .library") || document.activeElement?.tagName === "WEBVIEW") return;
+        if (document.querySelector(".palette, .search-dialog, .sheet, .library") || document.activeElement?.tagName === "WEBVIEW") return;
         const s = useStore.getState();
-        const list = s.selectedProjectId ? (s.threads[s.selectedProjectId] ?? []) : [];
-        const target = nthVisibleThread(list, Number(e.key), { running: s.running, now: Date.now() });
+        const model = inboxModel(
+          s.projects.map((p) => p.id),
+          s.threads,
+          { running: s.running, waiting: waitingThreads(s.permissions, s.plans) },
+        );
+        const target = nthVisibleThread(model, Number(e.key), { groupByProject: s.settings?.sidebarGroupByProject ?? true, collapsed: s.collapsedProjects });
         if (target) {
           e.preventDefault();
+          void s.selectProject(target.projectId);
           void s.selectThread(target.id);
         }
-      } else if (e.key === "Escape" && running &&!document.querySelector(".skill-menu, .palette, .sheet, .library")) {
+      } else if (e.key === "Escape" && running &&!document.querySelector(".skill-menu, .palette, .search-dialog, .sheet, .library")) {
         void interrupt();
       }
     };
@@ -218,10 +231,37 @@ export function App() {
       <Notice />
       <Library />
       <CommandPalette />
+      <SearchHost />
       <SwitchDialogHost />
       <AboutSheet />
       <ContextSheet />
     </div>
+  );
+}
+
+/** ⌘K: search threads, messages and the project's files; ">" hands off to the command palette. */
+function SearchHost() {
+  const open = useStore((s) => s.searchOpen);
+  const projectId = useStore((s) => s.selectedProjectId);
+  const projects = useStore((s) => s.projects);
+  const agents = useStore((s) => s.agents);
+  const running = useStore((s) => s.running);
+  if (!open) return null;
+  const s = useStore.getState();
+  return (
+    <SearchDialog
+      projectId={projectId}
+      projects={projects}
+      agents={agents.map((a) => ({ id: a.id, label: a.label }))}
+      runningThreadIds={Object.keys(running).filter((id) => running[id])}
+      onOpenThread={(threadId) => {
+        const thread = Object.values(useStore.getState().threads).flat().find((t) => t.id === threadId);
+        if (thread) void s.selectProject(thread.projectId).then(() => s.selectThread(threadId));
+      }}
+      onOpenFile={(path) => (useStore.getState().selectedThreadId ? s.openArtifact(path) : void s.openInEditor({ path }))}
+      onActions={(query) => s.setPaletteOpen(true, query)}
+      onClose={() => s.setSearchOpen(false)}
+    />
   );
 }
 

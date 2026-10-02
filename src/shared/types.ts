@@ -152,7 +152,7 @@ export interface Settings {
   memory?: { enabled: boolean; disabledProjects: string[] };
   /** MCP tool search for agents without their own: "auto" routes when 20+ tools are enabled (default), "off" never. */
   mcpRouter?: "auto" | "off";
-  /** Sidebar Recent section grouped by project (true) or flat (false, the default). */
+  /** Sidebar Recent section grouped by project (true, the default when unset) or one flat list (false). */
   sidebarGroupByProject?: boolean;
 }
 

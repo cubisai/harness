@@ -1,27 +1,38 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { AgentInfo, Thread } from "../../../shared/types";
-import { IconMore, IconPin } from "../icons";
+import { IconArchive, IconMore, IconPin } from "../icons";
 import { useStore } from "../store";
 import { UnsupportedChip } from "./UnsupportedChip";
 
+/** The dot before a thread's title. */
+export type ThreadStatus = "running" | "waiting" | "unread" | null;
+
+const STATUS_LABEL: Record<Exclude<ThreadStatus, null>, string> = { running: "Running", waiting: "Needs approval", unread: "Finished, not seen yet" };
+
 /**
- * One thread in the sidebar: open it, or from its ⋯ menu rename, pin,
- * archive or delete it. Delete asks once, in the menu itself (a native
- * dialog would block the window).
+ * One thread in the sidebar: a status dot, the title, and the time on the
+ * right; open it, or from its ⋯ menu rename, pin, archive or delete it.
+ * Delete asks once, in the menu itself (a native dialog would block the window).
  */
 export function ThreadRow({
   thread,
   agent,
   branch,
   selected,
-  running,
+  status,
+  time,
+  sub,
   onOpen,
 }: {
   thread: Thread;
   agent: AgentInfo | undefined;
+  /** The thread's own worktree branch, shown in the tooltip. */
   branch: string | null | undefined;
   selected: boolean;
-  running: boolean;
+  status: ThreadStatus;
+  time: string;
+  /** A second line (Running rows: project · agent, or Needs approval). */
+  sub?: ReactNode;
   onOpen(): void;
 }) {
   const [menu, setMenu] = useState(false);
@@ -61,7 +72,7 @@ export function ThreadRow({
   };
 
   return (
-    <div ref={box} className={`thread-row${selected ? " selected" : ""}${menu ? " menu-open" : ""}`}>
+    <div ref={box} className={`thread-row${selected ? " selected" : ""}${menu ? " menu-open" : ""}${sub ? " has-sub" : ""}`}>
       {renaming ? (
         <input
           className="thread-rename"
@@ -77,29 +88,35 @@ export function ThreadRow({
           }}
         />
       ) : (
-        <button className="thread-open" onClick={onOpen} onDoubleClick={() => setRenaming(true)} title={thread.title}>
-          <span className="thread-text">
-            <span className="title">
-              {thread.pinned && <IconPin size={11} />}
-              {thread.title}
-            </span>
-            <span className="thread-meta">
-              <span>{agent?.label ?? thread.agent}</span>
-              {agent?.unsupported && <UnsupportedChip note={agent.unsupported} compact />}
-              {branch && (
-                <span className="branch-chip" title={`Branch ${branch}`}>
-                  {branch}
-                </span>
-              )}
-            </span>
+        <button
+          className="thread-open"
+          onClick={onOpen}
+          onDoubleClick={() => setRenaming(true)}
+          title={[thread.title, agent?.label ?? thread.agent, branch ? `⎇ ${branch}` : null].filter(Boolean).join(" · ")}
+        >
+          <span className={`thread-dot${status ? ` ${status}` : ""}`} role={status ? "img" : undefined} aria-label={status ? STATUS_LABEL[status] : undefined} />
+          <span className="title">
+            {thread.pinned && <IconPin size={11} />}
+            {thread.title}
           </span>
-          {running && <span className="spinner" />}
+          <span className="thread-time">
+            {agent?.unsupported && <UnsupportedChip note={agent.unsupported} compact />}
+            {time}
+          </span>
+          {sub && <span className="thread-sub">{sub}</span>}
         </button>
       )}
       {!renaming && (
-        <button className="icon-button thread-more" aria-haspopup="menu" aria-expanded={menu} title="More" onClick={() => setMenu((m) => !m)}>
-          <IconMore />
-        </button>
+        <span className="thread-actions">
+          {!thread.archived && (
+            <button className="icon-button" title="Archive" onClick={() => void setArchived(thread.id, true)}>
+              <IconArchive />
+            </button>
+          )}
+          <button className="icon-button thread-more" aria-haspopup="menu" aria-expanded={menu} title="More" onClick={() => setMenu((m) => !m)}>
+            <IconMore />
+          </button>
+        </span>
       )}
       {menu && (
         <div className="thread-menu" role="menu">

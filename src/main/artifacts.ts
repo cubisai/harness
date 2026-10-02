@@ -1,0 +1,226 @@
+import { createHash } from "node:crypto";
+import { readFileSync, realpathSync, statSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { artifactKind } from "../shared/artifact-kind";
+import { unifiedDiff } from "../shared/diff";
+import { canonicalTool } from "../shared/tools";
+import type { ArtifactContent, ArtifactFile, ArtifactKind, ArtifactVersion, StoredEvent } from "../shared/types";
+import type { PreviewResult } from "./preview/host";
+
+/** A saved file bigger than this is not versioned or served. */
+export const MAX_ARTIFACT_BYTES = 25 * 1024 * 1024;
+/** Text served to the panel is cut here; the response then sets `truncated`. */
+export const MAX_TEXT_BYTES = 2 * 1024 * 1024;
+
+/** How many leading bytes are scanned for a NUL when guessing binary. */
+const NUL_SCAN_BYTES = 8000;
+
+export { artifactKind, isPreviewable, opensByItself, PREVIEWABLE } from "../shared/artifact-kind";
+
+/** Kinds whose only servable form is the newest one on disk. */
+const LATEST_ONLY: ReadonlySet<ArtifactKind> = new Set<ArtifactKind>(["pdf", "image", "csv", "docx", "sheet", "pptx"]);
+
+/** Kinds the diff view can render as text. */
+const DIFFABLE: ReadonlySet<ArtifactKind> = new Set<ArtifactKind>(["md", "html", "svg", "code", "text", "csv"]);
+
+/**
+ * The files an agent wrote in the current turn: from every successful Edit
+ * tool-use after the last user event. A file edited again moves to the end.
+ */
+export function editedFilesInTurn(events: StoredEvent[]): string[] {
+  let start = 0;
+  for (let i = events.length - 1; i >= 0; i--) {
+    if (events[i]!.event.kind === "user") {
+      start = i + 1;
+      break;
+    }
+  }
+
+  const errors = new Map<string, boolean>();
+  for (let i = start; i < events.length; i++) {
+    const ev = events[i]!.event;
+    if (ev.kind === "tool-result") errors.set(ev.toolUseId, ev.isError);
+  }
+
+  const files = new Map<string, true>();
+  for (let i = start; i < events.length; i++) {
+    const ev = events[i]!.event;
+    if (ev.kind !== "tool-use" || canonicalTool(ev.name) !== "Edit") continue;
+    // The call counts only when its matching result came back without an error.
+    if (errors.get(ev.toolUseId) !== false) continue;
+    for (const file of ev.summary.split(", ").filter(Boolean)) {
+      // A clipped summary can't be trusted to name a real path.
+      if (file.endsWith("…")) continue;
+      files.delete(file);
+      files.set(file, true);
+    }
+  }
+  return [...files.keys()];
+}
+
+/** Resolve `p` inside `root`, following symlinks; null when it escapes or can't be resolved. */
+export function resolveInside(root: string, p: string): string | null {
+  let realRoot: string;
+  try {
+    realRoot = realpathSync(root);
+  } catch {
+    return null;
+  }
+  const target = isAbsolute(p) ? p : resolve(root, p);
+  const real = realpathOf(target);
+  if (!real) return null;
+  const rel = relative(realRoot, real);
+  if (!rel || rel.startsWith("..") || isAbsolute(rel)) return null;
+  return rel.split(sep).join("/");
+}
+
+/** realpath a path, or its real parent plus the basename when the file itself doesn't exist yet. */
+function realpathOf(path: string): string | null {
+  try {
+    return realpathSync(path);
+  } catch {
+    try {
+      return join(realpathSync(dirname(path)), basename(path));
+    } catch {
+      return null;
+    }
+  }
+}
+
+/** The main-process services the artifacts module leans on; injected so it stays testable. */
+export interface ArtifactDeps {
+  addVersion(threadId: string, path: string, sha256: string, bytes: number, turnSeq: number): ArtifactVersion | null;
+  listVersions(threadId: string): { path: string; versions: ArtifactVersion[] }[];
+  writeBlob(sha256: string, content: Buffer): void;
+  readBlob(sha256: string): Buffer;
+  gitHead(root: string, relPath: string): Promise<string | null>;
+  preview(absPath: string): Promise<PreviewResult>;
+  fileUrl(threadId: string, relPath: string): string;
+}
+
+/**
+ * Save a version of every file an agent edited this turn. Unreadable, missing,
+ * oversized or escaping files are skipped; `changed` names the files that got a
+ * new version, while `files` is every file that was recorded.
+ */
+export function recordTurnArtifacts(
+  deps: ArtifactDeps,
+  input: { threadId: string; root: string; events: StoredEvent[]; turnSeq: number },
+): { files: string[]; changed: string[] } {
+  const files: string[] = [];
+  const changed: string[] = [];
+  for (const edited of editedFilesInTurn(input.events)) {
+    try {
+      const rel = resolveInside(input.root, edited);
+      if (!rel) continue;
+      const abs = join(input.root, rel);
+      const stat = statSync(abs);
+      if (!stat.isFile() || stat.size > MAX_ARTIFACT_BYTES) continue;
+      const buf = readFileSync(abs);
+      const sha256 = createHash("sha256").update(buf).digest("hex");
+      deps.writeBlob(sha256, buf);
+      const version = deps.addVersion(input.threadId, rel, sha256, buf.length, input.turnSeq);
+      files.push(rel);
+      if (version) changed.push(rel);
+    } catch {
+      // An unreadable file is not worth failing the turn over.
+    }
+  }
+  return { files, changed };
+}
+
+/** The thread's artifacts, with their kinds; the store's order is kept. */
+export function listArtifacts(deps: ArtifactDeps, threadId: string): ArtifactFile[] {
+  return deps.listVersions(threadId).map(({ path, versions }) => ({ path, kind: artifactKind(path), versions }));
+}
+
+/** Read a file for the panel: the disk copy, or one saved version. Never throws. */
+export async function readArtifact(
+  deps: ArtifactDeps,
+  input: { threadId: string; root: string; path: string; version?: number | null },
+): Promise<ArtifactContent> {
+  const version = input.version ?? null;
+  try {
+    const rel = resolveInside(input.root, input.path);
+    if (!rel) return { ok: false, error: "Outside the project folder" };
+    const kind = artifactKind(rel);
+    const versions = deps.listVersions(input.threadId).find((v) => v.path === rel)?.versions ?? [];
+    const latest = versions.length ? versions[versions.length - 1]!.version : null;
+
+    let bytes: Buffer;
+    if (version !== null) {
+      const entry = versions.find((v) => v.version === version);
+      if (!entry) return { ok: false, error: "No such version" };
+      if (LATEST_ONLY.has(kind) && version !== latest) return { ok: false, error: "Only the latest version can be previewed" };
+      bytes = deps.readBlob(entry.sha256);
+    } else {
+      const abs = join(realpathSync(input.root), rel);
+      let stat;
+      try {
+        stat = statSync(abs);
+      } catch {
+        return { ok: false, error: "File not found" };
+      }
+      if (!stat.isFile()) return { ok: false, error: "File not found" };
+      if (stat.size > MAX_ARTIFACT_BYTES) return { ok: false, error: "Too large to preview" };
+      bytes = readFileSync(abs);
+    }
+
+    const base = { ok: true as const, path: rel, kind, bytes: bytes.length, version };
+
+    if (kind === "md" || kind === "html" || kind === "svg" || kind === "code" || kind === "text") {
+      if (bytes.subarray(0, NUL_SCAN_BYTES).includes(0)) return { ok: false, error: "Binary file" };
+      return { ...base, ...cutText(bytes) };
+    }
+
+    if (kind === "pdf" || kind === "image") {
+      return { ...base, url: deps.fileUrl(input.threadId, rel) };
+    }
+
+    // csv, docx, sheet and pptx are rendered by the preview worker.
+    const preview = await deps.preview(join(realpathSync(input.root), rel));
+    if (!preview.ok) return { ok: false, error: preview.error };
+    if (kind === "csv") return { ...base, office: preview.result, ...cutText(bytes) };
+    return { ...base, office: preview.result };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** A version cut to MAX_TEXT_BYTES, decoded as UTF-8. */
+function cutText(bytes: Buffer): { text: string; truncated?: boolean } {
+  if (bytes.length > MAX_TEXT_BYTES) return { text: bytes.subarray(0, MAX_TEXT_BYTES).toString("utf-8"), truncated: true };
+  return { text: bytes.toString("utf-8") };
+}
+
+/** Unified diff of one saved version against the one before it, or git HEAD for the first. Null for non-text. */
+export async function artifactDiff(
+  deps: ArtifactDeps,
+  input: { threadId: string; root: string; path: string; version?: number | null },
+): Promise<string | null> {
+  try {
+    const rel = resolveInside(input.root, input.path);
+    if (!rel) return null;
+    if (!DIFFABLE.has(artifactKind(rel))) return null;
+
+    const versions = deps.listVersions(input.threadId).find((v) => v.path === rel)?.versions ?? [];
+
+    if (!versions.length) {
+      const abs = join(input.root, rel);
+      if (statSync(abs).size > MAX_TEXT_BYTES) return null;
+      const current = readFileSync(abs, "utf-8");
+      return unifiedDiff(rel, (await deps.gitHead(input.root, rel)) ?? "", current);
+    }
+
+    const want = input.version ?? null;
+    const index = want === null ? versions.length - 1 : versions.findIndex((v) => v.version === want);
+    if (index < 0) return null;
+
+    const target = versions[index]!;
+    const newText = deps.readBlob(target.sha256).toString("utf-8");
+    const oldText = index > 0 ? deps.readBlob(versions[index - 1]!.sha256).toString("utf-8") : (await deps.gitHead(input.root, rel)) ?? "";
+    return unifiedDiff(rel, oldText, newText);
+  } catch {
+    return null;
+  }
+}

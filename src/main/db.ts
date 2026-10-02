@@ -3,7 +3,20 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { bindingKey } from "../shared/bindings";
-import type { PermissionMode, Project, Provenance, SessionBinding, StoredEvent, Thread, ThreadEvent, Usage } from "../shared/types";
+import type {
+  ArtifactVersion,
+  PermissionMode,
+  Project,
+  Provenance,
+  SearchHit,
+  SearchQuery,
+  SearchResults,
+  SessionBinding,
+  StoredEvent,
+  Thread,
+  ThreadEvent,
+  Usage,
+} from "../shared/types";
 
 /**
  * Plain rows in SQLite (node:sqlite, so no native module to rebuild per
@@ -140,6 +153,51 @@ export class Store {
       { applied: () => this.hasColumn("projects", "check_fix_rounds"), sql: "ALTER TABLE projects ADD COLUMN check_fix_rounds INTEGER" },
       // 17: the thread's context-window override in tokens; null = the model's default.
       { applied: () => this.hasColumn("threads", "context_window"), sql: "ALTER TABLE threads ADD COLUMN context_window INTEGER" },
+      // 18: full-text search over thread titles and user/assistant messages (⌘K).
+      {
+        applied: () => this.hasTable("search_fts"),
+        sql: `CREATE VIRTUAL TABLE search_fts USING fts5(body, thread_id UNINDEXED, seq UNINDEXED, kind UNINDEXED, tokenize = 'unicode61 remove_diacritics 2');
+          INSERT INTO search_fts (body, thread_id, seq, kind) SELECT title, id, NULL, 'title' FROM threads;
+          INSERT INTO search_fts (body, thread_id, seq, kind)
+            SELECT json_extract(payload, '$.text'), thread_id, seq, json_extract(payload, '$.kind')
+            FROM events WHERE json_extract(payload, '$.kind') IN ('user', 'assistant-text');
+          CREATE TRIGGER search_events_ai AFTER INSERT ON events
+            WHEN json_extract(new.payload, '$.kind') IN ('user', 'assistant-text')
+            BEGIN
+              INSERT INTO search_fts (body, thread_id, seq, kind)
+                VALUES (json_extract(new.payload, '$.text'), new.thread_id, new.seq, json_extract(new.payload, '$.kind'));
+            END;
+          CREATE TRIGGER search_events_ad AFTER DELETE ON events
+            BEGIN
+              DELETE FROM search_fts WHERE thread_id = old.thread_id AND seq = old.seq;
+            END;
+          CREATE TRIGGER search_threads_ai AFTER INSERT ON threads
+            BEGIN
+              INSERT INTO search_fts (body, thread_id, seq, kind) VALUES (new.title, new.id, NULL, 'title');
+            END;
+          CREATE TRIGGER search_threads_au AFTER UPDATE OF title ON threads
+            BEGIN
+              UPDATE search_fts SET body = new.title WHERE kind = 'title' AND thread_id = new.id;
+            END;
+          CREATE TRIGGER search_threads_ad AFTER DELETE ON threads
+            BEGIN
+              DELETE FROM search_fts WHERE thread_id = old.id;
+            END;`,
+      },
+      // 19: saved versions of files agents wrote (artifact panel); content lives in blobs.
+      {
+        applied: () => this.hasTable("artifact_versions"),
+        sql: `CREATE TABLE artifact_versions (
+          thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+          path TEXT NOT NULL,
+          version INTEGER NOT NULL,
+          sha256 TEXT NOT NULL,
+          bytes INTEGER NOT NULL,
+          created_at INTEGER NOT NULL,
+          turn_seq INTEGER NOT NULL,
+          PRIMARY KEY (thread_id, path, version)
+        )`,
+      },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;
@@ -359,6 +417,109 @@ export class Store {
       .run(sha256, Buffer.byteLength(content), Date.now());
   }
 
+  /** Store binary content under its sha256; content-addressed, so a second write is a no-op. */
+  writeBlobBytes(sha256: string, content: Buffer): void {
+    const file = join(this.blobsDir, sha256);
+    if (!existsSync(file)) {
+      mkdirSync(this.blobsDir, { recursive: true });
+      writeFileSync(file, content);
+    }
+    this.db
+      .prepare("INSERT OR IGNORE INTO blobs (sha256, bytes, created_at) VALUES (?, ?, ?)")
+      .run(sha256, content.length, Date.now());
+  }
+
+  /** Read binary content back by its sha256. */
+  readBlobBytes(sha256: string): Buffer {
+    return readFileSync(join(this.blobsDir, sha256));
+  }
+
+  /** Full-text search across thread titles and messages; an unparseable query finds nothing. */
+  search(query: SearchQuery): SearchResults {
+    const words = query.text
+      .split(/\s+/)
+      .map((w) => w.replace(/"/g, ""))
+      .filter((w) => w.length > 0);
+    if (words.length === 0) return { threads: [], messages: [] };
+    const match = words.map((w) => `"${w}"*`).join(" ");
+    const limit = query.limit ?? 20;
+    const run = (kind: string): SearchHit[] => {
+      const filters = [kind];
+      const params: (string | number)[] = [match];
+      if (query.projectId != null) {
+        filters.push("threads.project_id = ?");
+        params.push(query.projectId);
+      }
+      if (query.agent != null) {
+        filters.push("threads.agent = ?");
+        params.push(query.agent);
+      }
+      params.push(limit);
+      const rows = this.db
+        .prepare(
+          `SELECT search_fts.thread_id AS thread_id, threads.project_id AS project_id, threads.title AS title, threads.agent AS agent,
+             search_fts.seq AS seq, search_fts.kind AS kind,
+             snippet(search_fts, 0, char(1), char(2), '…', 12) AS snippet, threads.updated_at AS updated_at
+           FROM search_fts JOIN threads ON threads.id = search_fts.thread_id
+           WHERE search_fts MATCH ? AND threads.archived = 0 AND ${filters.join(" AND ")}
+           ORDER BY rank LIMIT ?`,
+        )
+        .all(...params) as unknown as SearchRow[];
+      return rows.map((r) => ({
+        threadId: r.thread_id,
+        projectId: r.project_id,
+        title: r.title,
+        agent: r.agent,
+        seq: r.seq,
+        kind: r.kind as SearchHit["kind"],
+        snippet: r.snippet,
+        updatedAt: r.updated_at,
+      }));
+    };
+    try {
+      return { threads: run("search_fts.kind = 'title'"), messages: run("search_fts.kind IN ('user', 'assistant-text')") };
+    } catch {
+      return { threads: [], messages: [] };
+    }
+  }
+
+  /** Save a file's content as a new version; unchanged content is a no-op. */
+  addArtifactVersion(threadId: string, path: string, sha256: string, bytes: number, turnSeq: number): ArtifactVersion | null {
+    const latest = this.db
+      .prepare("SELECT version, sha256 FROM artifact_versions WHERE thread_id = ? AND path = ? ORDER BY version DESC LIMIT 1")
+      .get(threadId, path) as unknown as { version: number; sha256: string } | undefined;
+    if (latest?.sha256 === sha256) return null;
+    const version = (latest?.version ?? 0) + 1;
+    const createdAt = Date.now();
+    this.db
+      .prepare("INSERT INTO artifact_versions (thread_id, path, version, sha256, bytes, created_at, turn_seq) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(threadId, path, version, sha256, bytes, createdAt, turnSeq);
+    return { version, sha256, bytes, createdAt, turnSeq };
+  }
+
+  /** Every file the thread wrote, each with its versions ascending, newest file first. */
+  listArtifactVersions(threadId: string): { path: string; versions: ArtifactVersion[] }[] {
+    const rows = this.db
+      .prepare("SELECT path, version, sha256, bytes, created_at, turn_seq FROM artifact_versions WHERE thread_id = ? ORDER BY path, version")
+      .all(threadId) as unknown as ArtifactRow[];
+    const byPath = new Map<string, ArtifactVersion[]>();
+    for (const r of rows) {
+      const versions = byPath.get(r.path) ?? [];
+      versions.push({ version: r.version, sha256: r.sha256, bytes: r.bytes, createdAt: r.created_at, turnSeq: r.turn_seq });
+      byPath.set(r.path, versions);
+    }
+    return [...byPath.entries()]
+      .map(([path, versions]) => ({ path, versions }))
+      .sort((a, b) => {
+        const newest = (v: ArtifactVersion[]) => v[v.length - 1]!;
+        const an = newest(a.versions);
+        const bn = newest(b.versions);
+        if (bn.createdAt !== an.createdAt) return bn.createdAt - an.createdAt;
+        if (bn.turnSeq !== an.turnSeq) return bn.turnSeq - an.turnSeq;
+        return a.path.localeCompare(b.path);
+      });
+  }
+
   /**
    * Injection ledger: seeding a target is not idempotent, so every item is
    * recorded before it is sent and marked after. Intent and failed rows roll
@@ -517,6 +678,26 @@ interface ProjectRow {
   created_at: number;
   check_command: string | null;
   check_fix_rounds: number | null;
+}
+
+interface SearchRow {
+  thread_id: string;
+  project_id: string;
+  title: string;
+  agent: string;
+  seq: number | null;
+  kind: string;
+  snippet: string;
+  updated_at: number;
+}
+
+interface ArtifactRow {
+  path: string;
+  version: number;
+  sha256: string;
+  bytes: number;
+  created_at: number;
+  turn_seq: number;
 }
 
 interface ThreadRow {

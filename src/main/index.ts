@@ -1,10 +1,10 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell } from "electron";
-import type { AboutInfo, AgentLimits, ContextPreview, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, ScreenshotInfo, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread } from "../shared/types";
+import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell, utilityProcess } from "electron";
+import type { AboutInfo, AgentLimits, ContextPreview, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread } from "../shared/types";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
 import { warmBinaries } from "./agents/binaries";
@@ -17,6 +17,9 @@ import { loadAcpAgents, onPath } from "./agents/registry";
 import { BrowserController, isAllowedUrl } from "./browser/controller";
 import { browserTools } from "./browser/tools";
 import { Store } from "./db";
+import { artifactKind, resolveInside } from "./artifacts";
+import { headContent } from "./git";
+import { PreviewHost, utilityFork } from "./preview/host";
 import { migrateLegacyData } from "./migrate-data";
 import { startToolServer, type ToolServer } from "./mcp-http";
 import { TerminalManager } from "./terminal";
@@ -168,7 +171,11 @@ async function main(): Promise<void> {
 
   // Registered before ready: unskilled-shot:// serves saved screenshots to the
   // renderer's <img>. A standard scheme so the file name is the URL host.
-  protocol.registerSchemesAsPrivileged([{ scheme: "unskilled-shot", privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+  // cubiq-file:// serves a thread's pdf and image files to the artifact panel.
+  protocol.registerSchemesAsPrivileged([
+    { scheme: "unskilled-shot", privileges: { standard: true, secure: true, supportFetchAPI: true } },
+    { scheme: "cubiq-file", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+  ]);
   await app.whenReady();
   // A dev run is the stock Electron binary: give its Dock tile the app's own icon.
   if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(appIcon());
@@ -497,6 +504,32 @@ async function main(): Promise<void> {
     knownSecrets,
     join(userData, "worktrees"),
   );
+  // The artifact panel: versions in the store's blobs, office files parsed in a utility process.
+  const previews = new PreviewHost(utilityFork(utilityProcess, join(here, "preview-worker.js")));
+  const fileUrl = (threadId: string, rel: string) => `cubiq-file://f/${encodeURIComponent(threadId)}/${rel.split("/").map(encodeURIComponent).join("/")}`;
+  service.setArtifacts({
+    addVersion: (threadId, path, sha, bytes, turnSeq) => store.addArtifactVersion(threadId, path, sha, bytes, turnSeq),
+    listVersions: (threadId) => store.listArtifactVersions(threadId),
+    writeBlob: (sha, content) => store.writeBlobBytes(sha, content),
+    readBlob: (sha) => store.readBlobBytes(sha),
+    gitHead: headContent,
+    preview: (path) => previews.preview(path),
+    fileUrl,
+  });
+  // Only a thread's own pdf and image files, resolved inside its folder: nothing else is reachable.
+  protocol.handle("cubiq-file", (req) => {
+    try {
+      const [threadId, ...rest] = new URL(req.url).pathname.replace(/^\/+/, "").split("/").map(decodeURIComponent);
+      if (!threadId || !rest.length) return new Response(null, { status: 404 });
+      const root = service.threadFolder(threadId);
+      const rel = resolveInside(root, rest.join("/"));
+      const kind = rel ? artifactKind(rel) : null;
+      if (!rel || (kind !== "pdf" && kind !== "image")) return new Response(null, { status: 404 });
+      return net.fetch(pathToFileURL(join(realpathSync(root), rel)).toString());
+    } catch {
+      return new Response(null, { status: 404 });
+    }
+  });
   // After a Codex/ACP turn, extract memory in the background; Claude keeps its own.
   const extractor = createExtractor({
     store: memory.store,
@@ -857,6 +890,21 @@ async function main(): Promise<void> {
   );
   ipcMain.handle("plan:respond", (_e, requestId: string, decision: PlanDecision) => service.respondPlan(requestId, decision));
   ipcMain.handle("diff:get", (_e, projectId: string, threadId?: string | null) => service.getDiff(projectId, threadId));
+  ipcMain.handle("search:query", (_e, query: SearchQuery) =>
+    store.search({
+      text: typeof query?.text === "string" ? query.text.slice(0, 500) : "",
+      projectId: typeof query?.projectId === "string" ? query.projectId : null,
+      agent: typeof query?.agent === "string" ? query.agent : null,
+      limit: typeof query?.limit === "number" ? Math.min(Math.max(1, Math.floor(query.limit)), 100) : 20,
+    }),
+  );
+  ipcMain.handle("artifacts:list", (_e, threadId: string) => service.listArtifacts(threadId));
+  ipcMain.handle("artifacts:read", (_e, threadId: string, path: string, version?: number | null) =>
+    service.readArtifact(threadId, String(path), typeof version === "number" ? version : null),
+  );
+  ipcMain.handle("artifacts:diff", (_e, threadId: string, path: string, version?: number | null) =>
+    service.artifactDiff(threadId, String(path), typeof version === "number" ? version : null),
+  );
   ipcMain.handle("files:list", (_e, projectId: string, threadId?: string | null) => service.listFiles(projectId, threadId));
   ipcMain.handle("project:branch", (_e, projectId: string) => service.projectBranch(projectId));
   ipcMain.handle("browser:attached", (_e, webContentsId: number) => browser.attach(webContentsId));
@@ -993,6 +1041,7 @@ async function main(): Promise<void> {
     updater.stop();
     extractor.dispose();
     service.dispose();
+    previews.dispose();
     terminals.dispose();
     void toolServer?.then((s) => s.close());
     void mcpPool.closeAll();

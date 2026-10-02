@@ -1,0 +1,300 @@
+import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import {
+  PREVIEWABLE,
+  artifactDiff,
+  artifactKind,
+  editedFilesInTurn,
+  isPreviewable,
+  listArtifacts,
+  readArtifact,
+  recordTurnArtifacts,
+  resolveInside,
+  type ArtifactDeps,
+} from "../src/main/artifacts";
+import type { PreviewResult } from "../src/main/preview/host";
+import type { ArtifactKind, ArtifactVersion, StoredEvent, ThreadEvent } from "../src/shared/types";
+import { tempDir } from "./helpers";
+
+let seq = 0;
+function at(event: ThreadEvent): StoredEvent {
+  seq += 1;
+  return { seq, createdAt: seq, event };
+}
+
+const user = (text: string): StoredEvent => at({ kind: "user", text });
+const edit = (id: string, summary: string): StoredEvent => at({ kind: "tool-use", toolUseId: id, name: "Edit", summary });
+const use = (id: string, name: string, summary: string): StoredEvent => at({ kind: "tool-use", toolUseId: id, name, summary });
+const result = (id: string, isError = false): StoredEvent => at({ kind: "tool-result", toolUseId: id, isError, summary: isError ? "failed" : "+1 −1" });
+
+/** An in-memory ArtifactDeps: versions by thread+path, blobs by sha. */
+function fakeDeps(overrides: Partial<ArtifactDeps> = {}): { deps: ArtifactDeps; store: Map<string, ArtifactVersion[]> } {
+  const store = new Map<string, ArtifactVersion[]>();
+  const blobs = new Map<string, Buffer>();
+  const deps: ArtifactDeps = {
+    addVersion(threadId, path, sha256, bytes, turnSeq) {
+      const key = `${threadId}\u0000${path}`;
+      const versions = store.get(key) ?? [];
+      const last = versions.at(-1);
+      if (last && last.sha256 === sha256) return null;
+      const version: ArtifactVersion = { version: (last?.version ?? 0) + 1, sha256, bytes, createdAt: 0, turnSeq };
+      versions.push(version);
+      store.set(key, versions);
+      return version;
+    },
+    listVersions(threadId) {
+      const out: { path: string; versions: ArtifactVersion[] }[] = [];
+      for (const [key, versions] of store) {
+        const [tid, path] = key.split("\u0000") as [string, string];
+        if (tid === threadId) out.push({ path, versions });
+      }
+      return out;
+    },
+    writeBlob(sha256, content) {
+      blobs.set(sha256, content);
+    },
+    readBlob(sha256) {
+      return blobs.get(sha256) ?? Buffer.alloc(0);
+    },
+    gitHead: async () => null,
+    preview: async (): Promise<PreviewResult> => ({ ok: false, error: "no preview" }),
+    fileUrl: (threadId, relPath) => `cubiq-file://${threadId}/${relPath}`,
+    ...overrides,
+  };
+  return { deps, store };
+}
+
+describe("artifactKind", () => {
+  it("maps extensions to kinds, case-insensitively", () => {
+    const cases: [string, ArtifactKind][] = [
+      ["a.md", "md"],
+      ["a.MARKDOWN", "md"],
+      ["a.mdx", "md"],
+      ["a.html", "html"],
+      ["a.htm", "html"],
+      ["a.svg", "svg"],
+      ["a.pdf", "pdf"],
+      ["a.PNG", "image"],
+      ["a.jpeg", "image"],
+      ["a.avif", "image"],
+      ["a.csv", "csv"],
+      ["a.tsv", "csv"],
+      ["a.docx", "docx"],
+      ["a.xlsx", "sheet"],
+      ["a.ods", "sheet"],
+      ["a.xls", "sheet"],
+      ["a.pptx", "pptx"],
+      ["a.ts", "code"],
+      ["a.tsx", "code"],
+      ["a.py", "code"],
+      ["a.rs", "code"],
+      ["a.sh", "code"],
+      ["a.css", "code"],
+      ["a.yaml", "code"],
+      ["a.xml", "code"],
+      ["a.r", "code"],
+      ["a.txt", "text"],
+      ["noext", "text"],
+      ["a.bin", "text"],
+    ];
+    for (const [path, kind] of cases) expect(artifactKind(path), path).toBe(kind);
+    expect(artifactKind("a.MD")).toBe("md");
+  });
+
+  it("previews every kind but code and text", () => {
+    expect(PREVIEWABLE.has("code")).toBe(false);
+    expect(PREVIEWABLE.has("text")).toBe(false);
+    expect(isPreviewable("a.md")).toBe(true);
+    expect(isPreviewable("a.png")).toBe(true);
+    expect(isPreviewable("a.docx")).toBe(true);
+    expect(isPreviewable("a.ts")).toBe(false);
+    expect(isPreviewable("a.txt")).toBe(false);
+  });
+});
+
+describe("resolveInside", () => {
+  function project(): string {
+    const root = tempDir();
+    mkdirSync(join(root, "sub"), { recursive: true });
+    writeFileSync(join(root, "sub", "a.txt"), "a");
+    return root;
+  }
+
+  it("accepts nested relative and absolute-inside paths", () => {
+    const root = project();
+    expect(resolveInside(root, "sub/a.txt")).toBe("sub/a.txt");
+    expect(resolveInside(root, join(root, "sub", "a.txt"))).toBe("sub/a.txt");
+  });
+
+  it("accepts a not-yet-existing file in an existing directory", () => {
+    expect(resolveInside(project(), "sub/new.txt")).toBe("sub/new.txt");
+  });
+
+  it("rejects traversal and absolute paths outside the root", () => {
+    const root = project();
+    const outside = tempDir();
+    writeFileSync(join(outside, "out.txt"), "x");
+    expect(resolveInside(root, "../x")).toBeNull();
+    expect(resolveInside(root, join(outside, "out.txt"))).toBeNull();
+  });
+
+  it("rejects a symlink inside the root that points outside", () => {
+    const root = project();
+    const outside = tempDir();
+    writeFileSync(join(outside, "out.txt"), "x");
+    symlinkSync(join(outside, "out.txt"), join(root, "link.txt"));
+    expect(resolveInside(root, "link.txt")).toBeNull();
+  });
+
+  it("rejects the root itself and a missing parent", () => {
+    const root = project();
+    expect(resolveInside(root, ".")).toBeNull();
+    expect(resolveInside(root, "nope/deep.txt")).toBeNull();
+  });
+});
+
+describe("editedFilesInTurn", () => {
+  it("takes only the current turn's successful edits", () => {
+    const events = [user("old"), edit("e0", "old.ts"), result("e0"), user("new"), edit("e1", "a.ts, b.ts"), result("e1")];
+    expect(editedFilesInTurn(events)).toEqual(["a.ts", "b.ts"]);
+  });
+
+  it("ignores failed results, non-Edit tools, and clipped summaries", () => {
+    const events = [
+      user("go"),
+      edit("e1", "fail.ts"),
+      result("e1", true),
+      use("r1", "Read", "read.ts"),
+      result("r1"),
+      edit("e2", "ok.ts, clipped.ts…"),
+      result("e2"),
+    ];
+    expect(editedFilesInTurn(events)).toEqual(["ok.ts"]);
+  });
+
+  it("moves a re-edited file to the end, deduplicated", () => {
+    const events = [user("go"), edit("e1", "a.ts, b.ts"), result("e1"), edit("e2", "a.ts"), result("e2")];
+    expect(editedFilesInTurn(events)).toEqual(["b.ts", "a.ts"]);
+  });
+});
+
+describe("recordTurnArtifacts", () => {
+  it("records v1, nothing on an unchanged re-record, and v2 after a change", () => {
+    const root = tempDir();
+    writeFileSync(join(root, "a.md"), "one\n");
+    const { deps } = fakeDeps();
+    const events = [user("go"), edit("e1", "a.md"), result("e1")];
+
+    expect(recordTurnArtifacts(deps, { threadId: "t", root, events, turnSeq: 1 })).toEqual({ files: ["a.md"], changed: ["a.md"] });
+    const list = listArtifacts(deps, "t");
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ path: "a.md", kind: "md" });
+    expect(list[0]!.versions.map((v) => v.version)).toEqual([1]);
+
+    expect(recordTurnArtifacts(deps, { threadId: "t", root, events, turnSeq: 2 })).toEqual({ files: ["a.md"], changed: [] });
+    expect(deps.listVersions("t")[0]!.versions).toHaveLength(1);
+
+    writeFileSync(join(root, "a.md"), "two\n");
+    expect(recordTurnArtifacts(deps, { threadId: "t", root, events, turnSeq: 3 })).toEqual({ files: ["a.md"], changed: ["a.md"] });
+    expect(deps.listVersions("t")[0]!.versions.map((v) => v.version)).toEqual([1, 2]);
+  });
+
+  it("skips missing files and paths outside the root", () => {
+    const root = tempDir();
+    const { deps } = fakeDeps();
+    const events = [user("go"), edit("e1", "missing.md, ../escape.md"), result("e1")];
+    expect(recordTurnArtifacts(deps, { threadId: "t", root, events, turnSeq: 1 })).toEqual({ files: [], changed: [] });
+  });
+});
+
+describe("readArtifact", () => {
+  it("reads markdown text from disk", async () => {
+    const root = tempDir();
+    writeFileSync(join(root, "note.md"), "# hi\n");
+    const { deps } = fakeDeps();
+    const content = await readArtifact(deps, { threadId: "t", root, path: "note.md" });
+    expect(content).toMatchObject({ ok: true, path: "note.md", kind: "md", version: null, text: "# hi\n" });
+  });
+
+  it("reads a saved version from the blob store", async () => {
+    const root = tempDir();
+    writeFileSync(join(root, "note.md"), "v1\n");
+    const { deps } = fakeDeps();
+    const events = [user("go"), edit("e1", "note.md"), result("e1")];
+    recordTurnArtifacts(deps, { threadId: "t", root, events, turnSeq: 1 });
+    writeFileSync(join(root, "note.md"), "v2\n");
+    const content = await readArtifact(deps, { threadId: "t", root, path: "note.md", version: 1 });
+    expect(content).toMatchObject({ ok: true, kind: "md", version: 1, text: "v1\n" });
+  });
+
+  it("refuses a path outside the root", async () => {
+    const { deps } = fakeDeps();
+    expect(await readArtifact(deps, { threadId: "t", root: tempDir(), path: "../secret.md" })).toEqual({ ok: false, error: "Outside the project folder" });
+  });
+
+  it("returns a file URL for an image", async () => {
+    const root = tempDir();
+    writeFileSync(join(root, "pic.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const { deps } = fakeDeps();
+    const content = await readArtifact(deps, { threadId: "t", root, path: "pic.png" });
+    expect(content).toMatchObject({ ok: true, kind: "image", bytes: 4, url: "cubiq-file://t/pic.png" });
+  });
+
+  it("renders docx through the preview dependency", async () => {
+    const root = tempDir();
+    writeFileSync(join(root, "doc.docx"), "not really a docx");
+    const preview: PreviewResult = { ok: true, result: { kind: "docx", html: "<p>hi</p>", warnings: [] } };
+    const { deps } = fakeDeps({ preview: async () => preview });
+    const content = await readArtifact(deps, { threadId: "t", root, path: "doc.docx" });
+    expect(content).toMatchObject({ ok: true, kind: "docx", office: { kind: "docx", html: "<p>hi</p>" } });
+  });
+
+  it("reports a missing file", async () => {
+    expect(await readArtifact(fakeDeps().deps, { threadId: "t", root: tempDir(), path: "nope.md" })).toEqual({ ok: false, error: "File not found" });
+  });
+});
+
+describe("artifactDiff", () => {
+  it("diffs the first version against git HEAD", async () => {
+    const root = tempDir();
+    writeFileSync(join(root, "f.md"), "new line\n");
+    const { deps } = fakeDeps({ gitHead: async () => "old line\n" });
+    const events = [user("go"), edit("e1", "f.md"), result("e1")];
+    recordTurnArtifacts(deps, { threadId: "t", root, events, turnSeq: 1 });
+
+    const diff = await artifactDiff(deps, { threadId: "t", root, path: "f.md", version: 1 });
+    expect(diff).toContain("-old line");
+    expect(diff).toContain("+new line");
+  });
+
+  it("diffs a later version against the one before it", async () => {
+    const root = tempDir();
+    const { deps } = fakeDeps({ gitHead: async () => "old line\n" });
+    const events = [user("go"), edit("e1", "f.md"), result("e1")];
+    writeFileSync(join(root, "f.md"), "new line\n");
+    recordTurnArtifacts(deps, { threadId: "t", root, events, turnSeq: 1 });
+    writeFileSync(join(root, "f.md"), "newer line\n");
+    recordTurnArtifacts(deps, { threadId: "t", root, events, turnSeq: 2 });
+
+    const diff = await artifactDiff(deps, { threadId: "t", root, path: "f.md", version: 2 });
+    expect(diff).toContain("-new line");
+    expect(diff).toContain("+newer line");
+  });
+
+  it("is null for non-text kinds and escaping paths", async () => {
+    const root = tempDir();
+    writeFileSync(join(root, "pic.png"), "x");
+    const { deps } = fakeDeps();
+    expect(await artifactDiff(deps, { threadId: "t", root, path: "pic.png" })).toBeNull();
+    expect(await artifactDiff(deps, { threadId: "t", root, path: "../x.md" })).toBeNull();
+  });
+});
+
+describe("opensByItself", () => {
+  it("opens deliverables at turn end, never markdown or code", async () => {
+    const { opensByItself } = await import("../src/shared/artifact-kind");
+    expect(["deck.pptx", "report.docx", "data.xlsx", "page.html", "chart.svg", "a.pdf", "shot.png", "t.csv"].every(opensByItself)).toBe(true);
+    expect(["notes/limits.md", "src/a.ts", "README", "x.txt"].some(opensByItself)).toBe(false);
+  });
+});

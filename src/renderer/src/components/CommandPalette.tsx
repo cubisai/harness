@@ -35,7 +35,7 @@ function Palette() {
   const inspectorOpen = useStore((s) => s.inspectorOpen);
   const thread = useSelectedThread();
   const running = useStore((s) => (thread ? Boolean(s.running[thread.id]) : false));
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => useStore.getState().paletteQuery);
   const [index, setIndex] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
