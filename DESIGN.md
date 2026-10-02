@@ -6,7 +6,7 @@ The single source of truth for how CubiQ looks and behaves. Every agent (Claude 
 
 1. **Flat.** No drop shadows on cards, rows, the composer, buttons or sheets. Depth comes from surface tint and 1px hairlines. The only exception is overlays that float over content (popovers, menus, ⌘K, dialogs), which get `--shadow-float`, one soft layer.
 2. **Compact.** 13px body text, 28px controls, 4px spacing grid. One row of controls in the composer. Show detail on hover or click, not by default.
-3. **Ink is primary, acid is a signal.** Buttons, selection and focus use Agent Ink in light mode and Signal White in dark mode. Acid Signal marks only "the agent is alive": a live run, the iQ dot, a search match. The running beam is the one exception: it is rainbow (user decision 2026-10-02).
+3. **Ink is primary, acid is a signal.** Buttons, selection and focus use Agent Ink in light mode and Signal White in dark mode. Acid Signal marks only "the agent is alive": a live run, the iQ dot, a search match. The running beam is an exception: it is rainbow (user decision 2026-10-02). So is the Thinking slider: from Xhigh up its dots glow in `--signal-line` (user decision 2026-10-02).
 4. **Nothing overflows.** Every flex or grid child that holds text or an input gets `min-width: 0`. Long text is ellipsized or wraps inside its own box. Sheets scroll inside themselves. The window never scrolls sideways.
 5. **Fast and crash-proof.** Heavy renderers (docx, xlsx, pptx, mermaid) load lazily and parse outside the renderer process (§7.6).
 
@@ -83,7 +83,7 @@ Full access mode shows its chip in `--danger`.
 - **Gooey** (after libraries.dev/gooey, `GooeyPlus.tsx`): the composer's `+` splits into round @ / $ / / buttons in a row along the bar, through an SVG goo filter (blur 6, alpha `18 -7`) drawn under the real buttons so icons stay crisp; `cubic-bezier(.34,1.56,.64,1)` 550ms, 40ms stagger, icons fade in after their blob pulls away; the `+` turns to ×; the chips beside it step aside while open. Composer popovers (`.model-menu.up`) morph in from scale .92 with a 22px radius.
 - No liquid-metal effects in the chrome.
 - The beam is a status signal, not decoration: it runs regardless of the `motion` setting. `prefers-reduced-motion` holds it still (no spin).
-- The `motion` setting (default full since 2026-10-02) gates entrance animations (gooey, popover morph). `prefers-reduced-motion` disables those too.
+- The `motion` setting (default full since 2026-10-02) gates entrance animations (gooey, popover morph) and the Thinking slider's firefly dots (subtle and full). `prefers-reduced-motion` disables those too.
 
 ## 7. Components
 
@@ -104,7 +104,7 @@ Full access mode shows its chip in `--danger`.
 ### 7.3 Composer
 - One box, radius 10, 1px hairline, no shadow. Text area on top, one bar below:
   `[+] [mode ▾] ······ [Model · Effort ▾] [context ring] [send/stop]`.
-- **Model picker**: search, models grouped by agent (picking another agent's model opens the Switch dialog), then **Thinking** (segmented) and **Context** (segmented, only when the model offers more than one window). Shortcuts are listed at the bottom.
+- **Model picker**: search, models grouped by agent (picking another agent's model opens the Switch dialog), then **Thinking** (a Faster ↔ Smarter slider, one stop per level, resting on the model's default until moved, with Reset; its lit part is a dot grid whose dots blink like fireflies, each on its own random clock, muted below Xhigh and in `--signal-line` green from Xhigh up; the knob and trail glide 360ms with the popover overshoot) and **Context** (segmented, only when the model offers more than one window). Shortcuts are listed at the bottom.
 - **Mode chip**: shows the current mode and opens a menu (Ask / Auto-edit / Plan / Full access, each with a one-line description). ⇧Tab cycles. Full access is shown in `--danger`.
 - **Context ring**: an 18px ring showing the share used. Click opens the breakdown: a stacked bar plus rows for System, Tools & MCP, Skills, Guide + memory and Messages, then this thread's in/out, cache hit, cost and auto-compact point, and the buttons **Compact now** and **Open /context**.
 - Slash commands include `/compact [focus]`.

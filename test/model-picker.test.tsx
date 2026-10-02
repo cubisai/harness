@@ -67,14 +67,37 @@ describe("ModelPicker", () => {
     expect(html).not.toContain(">OpenCode</span><span class=\"hint\">switch");
   });
 
-  it("puts Thinking (Default first) and Context inside the menu for a model that has them", () => {
+  it("puts a Thinking slider and Context inside the menu for a model that has them", () => {
     const html = picker({ defaultOpen: true, models: [luna], current: "gpt-6-luna" });
     expect(html).toContain(">Thinking<");
-    expect(html).toMatch(/>Default<\/button><button[^>]*>Low<\/button><button[^>]*>High</);
-    expect(html).toContain("Model default (high)");
+    // One stop per level; unset, it rests on the model's default and offers no Reset.
+    expect(html).toMatch(/type="range"[^>]*min="0"[^>]*max="1"/);
+    expect(html).toContain('aria-valuetext="High · default"');
+    expect(html).toContain(">Faster<");
+    expect(html).toContain(">Smarter<");
+    expect(html).not.toContain(">Reset<");
     expect(html).toContain(">Context<");
     expect(html).toContain(">Default 272K</button>");
     expect(html).toContain(">Max 872K</button>");
+  });
+
+  it("shows a picked level and offers Reset back to the default", () => {
+    const html = picker({ defaultOpen: true, models: [luna], current: "gpt-6-luna", effort: "low" });
+    expect(html).toContain('aria-valuetext="Low"');
+    expect(html).toContain('value="0"');
+    expect(html).toContain(">Reset<");
+  });
+
+  it("lights the dots green from Xhigh up, or past High when there's no Xhigh", () => {
+    const gpt = { ...luna, efforts: ["low", "medium", "high", "xhigh", "max"], defaultEffort: "medium" };
+    const hot = (effort: string, model = gpt) => /class="effort hot/.test(picker({ defaultOpen: true, models: [model], current: model.id, effort }));
+    expect(hot("high")).toBe(false);
+    expect(hot("xhigh")).toBe(true);
+    expect(hot("max")).toBe(true);
+    const claude = { ...luna, efforts: ["low", "medium", "high", "max"] };
+    expect(hot("high", claude)).toBe(false);
+    expect(hot("max", claude)).toBe(true);
+    expect(hot("high", { ...luna, efforts: ["low", "medium", "high"] })).toBe(false);
   });
 
   it("says a model without thinking levels doesn't offer them, and leaves Context out", () => {

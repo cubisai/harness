@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import type { AgentInfo, ModelOption } from "../../../shared/types";
 import { filterModels } from "../models";
@@ -30,11 +30,127 @@ function titleCase(s: string): string {
 
 const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
 
+/** The slider's dot grid: columns × rows of 6px cells, wider than any track so the fill only ever clips it. */
+const DOT_COLS = 48;
+const DOT_ROWS = 4;
+
+/**
+ * Each dot's own blink (delay, length, peak), from a fixed pseudo-random
+ * sequence: the dots flicker out of step like fireflies, and the pattern
+ * doesn't reshuffle on every render.
+ */
+const DOTS: CSSProperties[] = Array.from({ length: DOT_COLS * DOT_ROWS }, (_, i) => {
+  const r = (n: number) => {
+    const x = Math.sin(i * 12.9898 + n * 78.233) * 43758.5453;
+    return x - Math.floor(x);
+  };
+  return { "--d": `${(-r(1) * 6).toFixed(2)}s`, "--t": `${(3 + r(2) * 4).toFixed(2)}s`, "--peak": (0.55 + r(3) * 0.45).toFixed(2) } as CSSProperties;
+});
+
+/** The dot grid, drawn once: moving the slider slides a cover over it instead of re-rendering 192 dots. */
+const EffortDots = memo(function EffortDots() {
+  return (
+    <div className="effort-dots">
+      {DOTS.map((style, i) => (
+        <i key={i} style={style} />
+      ))}
+    </div>
+  );
+});
+
+/**
+ * Thinking as one Faster ↔ Smarter slider, a stop per level (DESIGN.md §7.3).
+ * While unset it rests on the model's own default. A native range input lies
+ * over the drawn track, so drag, arrow keys and screen readers just work; the
+ * pick is sent once the drag or key press ends, not at every stop.
+ */
+function ThinkingSlider({ efforts, effort, modelDefault, onEffort }: { efforts: string[]; effort: string | null; modelDefault?: string; onEffort(effort: string | null): void }) {
+  const [draft, setDraft] = useState<number | null>(null);
+  // A drag follows the pointer closely; a tap or a key press glides.
+  const [dragging, setDragging] = useState(false);
+  const pressX = useRef<number | null>(null);
+  const resting = efforts.indexOf(effort ?? modelDefault ?? "");
+  const value = draft ?? (resting >= 0 ? resting : Math.floor((efforts.length - 1) / 2));
+  const last = Math.max(1, efforts.length - 1);
+  const level = efforts[value];
+  // From Xhigh up the dots glow green; without "xhigh", from the level after High (none when High is the top),
+  // and a model without "high" heats up over its top third.
+  const xhigh = efforts.indexOf("xhigh");
+  const high = efforts.indexOf("high");
+  const hotFrom = xhigh >= 0 ? xhigh : high >= 0 ? high + 1 : Math.ceil(last * (2 / 3));
+  const hot = efforts.length > 1 && value >= hotFrom;
+  const label = draft === null && effort === null ? (modelDefault ? `${titleCase(modelDefault)} · default` : "Default") : titleCase(level ?? "");
+  // The knob holds the picked stop until the thread's new effort comes back, so it never flicks back to the old one in between.
+  useEffect(() => setDraft(null), [effort]);
+  const commit = () => {
+    if (draft === null) return;
+    const picked = efforts[draft];
+    if (picked === undefined || picked === effort) setDraft(null);
+    else onEffort(picked);
+  };
+  return (
+    <div className={`effort${hot ? " hot" : ""}${dragging ? " dragging" : ""}`} style={{ "--p": value / last } as CSSProperties}>
+      <div className="effort-head">
+        <span className="model-group">Thinking</span>
+        <span className="effort-level">{label}</span>
+        {effort !== null && (
+          <button className="effort-reset" title={modelDefault ? `Back to the model default (${modelDefault})` : "Back to the model default"} onClick={() => onEffort(null)}>
+            Reset
+          </button>
+        )}
+      </div>
+      <div className="effort-ends" aria-hidden="true">
+        <span>Faster</span>
+        <span>Smarter</span>
+      </div>
+      <div className="effort-control">
+        <input
+          type="range"
+          className="effort-slider"
+          min={0}
+          max={efforts.length - 1}
+          step={1}
+          value={value}
+          aria-label="Thinking"
+          aria-valuetext={label}
+          onChange={(e) => setDraft(Number(e.target.value))}
+          onPointerDown={(e) => {
+            pressX.current = e.clientX;
+          }}
+          onPointerMove={(e) => {
+            if (!dragging && e.buttons && pressX.current !== null && Math.abs(e.clientX - pressX.current) > 3) setDragging(true);
+          }}
+          onPointerUp={() => {
+            pressX.current = null;
+            setDragging(false);
+            commit();
+          }}
+          onKeyUp={commit}
+          onBlur={() => {
+            pressX.current = null;
+            setDragging(false);
+            commit();
+          }}
+        />
+        <div className="effort-track" aria-hidden="true">
+          <EffortDots />
+          <div className="effort-rail">
+            <div className="effort-cover" />
+          </div>
+          <div className="effort-rail">
+            <div className="effort-knob" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * The composer's one model control (DESIGN.md §7.3): the button reads
  * "Model · Effort"; the menu lists this agent's models (searchable, grouped by
- * provider), the other agents as switch rows, then the Thinking and Context
- * segments for the current model. Arrow keys move, Return picks, Esc closes.
+ * provider), the other agents as switch rows, then the Thinking slider and the
+ * Context segments for the current model. Arrow keys move, Return picks, Esc closes.
  */
 export function ModelPicker({
   agents,
@@ -209,27 +325,7 @@ export function ModelPicker({
                   <span>Not offered by {currentLabel}</span>
                 </div>
               )}
-              {efforts.length > 0 && (
-                <>
-                  <div className="model-group">Thinking</div>
-                  <div className="segmented fill" role="radiogroup" aria-label="Thinking">
-                    {[null, ...efforts].map((e) => (
-                      <button
-                        key={e ?? "default"}
-                        role="radio"
-                        aria-checked={effort === e}
-                        className={effort === e ? "on" : ""}
-                        title={e === null && modelDefault ? `Model default (${modelDefault})` : undefined}
-                        onClick={() => {
-                          if (e !== effort) onEffort(e);
-                        }}
-                      >
-                        {e === null ? "Default" : titleCase(e)}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
+              {efforts.length > 0 && <ThinkingSlider efforts={efforts} effort={effort} modelDefault={modelDefault} onEffort={onEffort} />}
               {windows.length > 0 && (
                 <>
                   <div className="model-group">Context</div>
