@@ -18,6 +18,17 @@ describe("clampLayout", () => {
     expect(layout.inspector).toBe(460); // the stored layout is never mutated
   });
 
+  it("narrows a wide inspector to fit instead of hiding it", () => {
+    const layout = { ...DEFAULT_LAYOUT, sidebar: 359, inspector: BOUNDS.inspector.max };
+    expect(clampLayout(1402, layout)).toEqual({ sidebar: 359, inspector: 623, main: 420, inspectorAutoCollapsed: false });
+    expect(layout.inspector).toBe(BOUNDS.inspector.max);
+  });
+
+  it("shrinks the sidebar when the inspector at its minimum still doesn't fit", () => {
+    const result = clampLayout(1000, { ...DEFAULT_LAYOUT, sidebar: 300 });
+    expect(result).toEqual({ sidebar: 260, inspector: BOUNDS.inspector.min, main: 420, inspectorAutoCollapsed: false });
+  });
+
   it("keeps the inspector at 1200", () => {
     const result = clampLayout(1200, { ...DEFAULT_LAYOUT });
     expect(result).toEqual({ sidebar: 256, inspector: 460, main: 484, inspectorAutoCollapsed: false });

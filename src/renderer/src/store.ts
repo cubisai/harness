@@ -648,6 +648,13 @@ export const useStore = create<State>((set, get) => ({
         ? { artifact: null, ...(s.inspectorTab === "artifact" ? { inspectorTab: "changes" as const, inspectorOpen: false } : {}) }
         : {}),
     }));
+    // The thread's recorded files, so each turn's file cards include what it wrote by command.
+    if (id && !get().artifactFiles[id]) {
+      void Promise.resolve()
+        .then(() => api().listArtifacts(id))
+        .then((files) => set((x) => ({ artifactFiles: { ...x.artifactFiles, [id]: files } })))
+        .catch(() => {});
+    }
     if (id && !get().events[id]) {
       const events = await api().listEvents(id);
       set((s) => ({ events: { ...s.events, [id]: events } }));

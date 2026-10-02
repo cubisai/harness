@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { readFileSync, realpathSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { artifactKind } from "../shared/artifact-kind";
+import { artifactKind, opensByItself } from "../shared/artifact-kind";
 import { unifiedDiff } from "../shared/diff";
 import { canonicalTool } from "../shared/tools";
 import type { ArtifactContent, ArtifactFile, ArtifactKind, ArtifactVersion, StoredEvent } from "../shared/types";
@@ -58,6 +58,50 @@ export function editedFilesInTurn(events: StoredEvent[]): string[] {
   return [...files.keys()];
 }
 
+/** Folders the turn-end scan never enters: VCS, dependencies and build output. */
+const SCAN_SKIP = new Set(["node_modules", "dist", "out", "build", "target", "__pycache__", "venv"]);
+const SCAN_MAX_DEPTH = 6;
+const SCAN_MAX_ENTRIES = 20_000;
+const SCAN_MAX_FILES = 20;
+
+/**
+ * Deliverables (the kinds that open by themselves: docx, pdf, images…) under
+ * `root` modified at or after `sinceMs`, oldest first. These are the files an
+ * agent wrote with a command, a script or a skill, which no Edit tool-use
+ * names. The walk is bounded and skips dot-folders and build output; never throws.
+ */
+export function filesWrittenSince(root: string, sinceMs: number): string[] {
+  const found: { rel: string; mtime: number }[] = [];
+  let entries = 0;
+  const walk = (dir: string, rel: string, depth: number): void => {
+    let list;
+    try {
+      list = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of list) {
+      if (++entries > SCAN_MAX_ENTRIES) return;
+      const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        if (depth < SCAN_MAX_DEPTH && !entry.name.startsWith(".") && !SCAN_SKIP.has(entry.name)) walk(join(dir, entry.name), childRel, depth + 1);
+      } else if (entry.isFile() && opensByItself(entry.name)) {
+        try {
+          const mtime = statSync(join(dir, entry.name)).mtimeMs;
+          if (mtime >= sinceMs) found.push({ rel: childRel, mtime });
+        } catch {
+          // Gone between readdir and stat.
+        }
+      }
+    }
+  };
+  walk(root, "", 0);
+  return found
+    .sort((a, b) => a.mtime - b.mtime)
+    .slice(-SCAN_MAX_FILES)
+    .map((f) => f.rel);
+}
+
 /** Resolve `p` inside `root`, following symlinks; null when it escapes or can't be resolved. */
 export function resolveInside(root: string, p: string): string | null {
   let realRoot: string;
@@ -99,17 +143,22 @@ export interface ArtifactDeps {
 }
 
 /**
- * Save a version of every file an agent edited this turn. Unreadable, missing,
- * oversized or escaping files are skipped; `changed` names the files that got a
- * new version, while `files` is every file that was recorded.
+ * Save a version of every file an agent edited this turn, plus, when
+ * `turnStartedAt` is given, every deliverable it wrote some other way (see
+ * `filesWrittenSince`). Unreadable, missing, oversized or escaping files are
+ * skipped; `changed` names the files that got a new version, while `files` is
+ * every file that was recorded.
  */
 export function recordTurnArtifacts(
   deps: ArtifactDeps,
-  input: { threadId: string; root: string; events: StoredEvent[]; turnSeq: number },
+  input: { threadId: string; root: string; events: StoredEvent[]; turnSeq: number; turnStartedAt?: number },
 ): { files: string[]; changed: string[] } {
   const files: string[] = [];
   const changed: string[] = [];
-  for (const edited of editedFilesInTurn(input.events)) {
+  const edits = editedFilesInTurn(input.events);
+  const named = new Set(edits.map((p) => resolveInside(input.root, p)));
+  const written = input.turnStartedAt === undefined ? [] : filesWrittenSince(input.root, input.turnStartedAt).filter((rel) => !named.has(rel));
+  for (const edited of [...edits, ...written]) {
     try {
       const rel = resolveInside(input.root, edited);
       if (!rel) continue;

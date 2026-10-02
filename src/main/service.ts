@@ -639,6 +639,8 @@ export class Service {
       if (!catchUp && !switched && current.sessionId === null && this.store.listEvents(thread.id).length > 1) {
         this.emit(thread.id, { kind: "notice", text: `Now talking to ${driver.label}. It starts without the earlier messages above.` });
       }
+      // Files the turn writes by command are found by mtime; 2 s of slack covers coarse filesystem clocks.
+      const turnStartedAt = Date.now() - 2000;
       await driver.runTurn({
         threadId: thread.id,
         cwd,
@@ -686,7 +688,7 @@ export class Service {
           const stored = this.emit(thread.id, event, provenance);
           if (event.kind === "turn-end") {
             this.emitSignal(thread.id, event.usage);
-            this.recordArtifacts(thread.id, cwd, stored.seq);
+            this.recordArtifacts(thread.id, cwd, stored.seq, turnStartedAt);
           }
         },
         // Live text is scrubbed like stored events. A key split across two deltas can
@@ -874,14 +876,14 @@ export class Service {
   }
 
   /**
-   * Save a version of each file the turn edited, then tell the renderer which
+   * Save a version of each file the turn edited or wrote, then tell the renderer which
    * one to open: the last file of a kind that opens by itself (not markdown or
    * code), never mid-stream. Never throws.
    */
-  private recordArtifacts(threadId: string, root: string, turnSeq: number): void {
+  private recordArtifacts(threadId: string, root: string, turnSeq: number, turnStartedAt: number): void {
     if (!this.artifacts) return;
     try {
-      const { files } = recordTurnArtifacts(this.artifacts, { threadId, root, events: this.store.listEvents(threadId), turnSeq });
+      const { files } = recordTurnArtifacts(this.artifacts, { threadId, root, events: this.store.listEvents(threadId), turnSeq, turnStartedAt });
       const path = files.filter(opensByItself).at(-1);
       if (path) this.broadcast({ type: "artifact-ready", threadId, path, files });
     } catch (err) {

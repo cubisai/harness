@@ -1,4 +1,4 @@
-import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -6,6 +6,7 @@ import {
   artifactDiff,
   artifactKind,
   editedFilesInTurn,
+  filesWrittenSince,
   isPreviewable,
   listArtifacts,
   readArtifact,
@@ -205,6 +206,63 @@ describe("recordTurnArtifacts", () => {
     const { deps } = fakeDeps();
     const events = [user("go"), edit("e1", "missing.md, ../escape.md"), result("e1")];
     expect(recordTurnArtifacts(deps, { threadId: "t", root, events, turnSeq: 1 })).toEqual({ files: [], changed: [] });
+  });
+
+  it("also records a deliverable the turn wrote by command, after the edited files", () => {
+    const root = tempDir();
+    writeFileSync(join(root, "a.md"), "one\n");
+    mkdirSync(join(root, "out-docs"));
+    writeFileSync(join(root, "out-docs", "Summary.docx"), "PK");
+    const { deps } = fakeDeps();
+    const events = [user("go"), edit("e1", "a.md"), result("e1")];
+    expect(recordTurnArtifacts(deps, { threadId: "t", root, events, turnSeq: 1, turnStartedAt: Date.now() - 2000 })).toEqual({
+      files: ["a.md", "out-docs/Summary.docx"],
+      changed: ["a.md", "out-docs/Summary.docx"],
+    });
+  });
+
+  it("doesn't record a deliverable twice when an Edit already named it", () => {
+    const root = tempDir();
+    writeFileSync(join(root, "page.html"), "<p>hi</p>");
+    const { deps } = fakeDeps();
+    const events = [user("go"), edit("e1", "page.html"), result("e1")];
+    expect(recordTurnArtifacts(deps, { threadId: "t", root, events, turnSeq: 1, turnStartedAt: Date.now() - 2000 }).files).toEqual(["page.html"]);
+  });
+});
+
+describe("filesWrittenSince", () => {
+  const old = (path: string) => utimesSync(path, new Date(1_000_000), new Date(1_000_000));
+
+  it("finds deliverables changed since the turn began, oldest first", () => {
+    const root = tempDir();
+    const since = Date.now() - 2000;
+    writeFileSync(join(root, "first.pdf"), "%PDF");
+    utimesSync(join(root, "first.pdf"), new Date(since + 100), new Date(since + 100));
+    writeFileSync(join(root, "report.docx"), "PK");
+    writeFileSync(join(root, "stale.xlsx"), "PK");
+    old(join(root, "stale.xlsx"));
+    expect(filesWrittenSince(root, since)).toEqual(["first.pdf", "report.docx"]);
+  });
+
+  it("leaves out code, markdown and text, which a command writes all the time", () => {
+    const root = tempDir();
+    for (const f of ["build.js", "notes.md", "log.txt", "chart.png"]) writeFileSync(join(root, f), "x");
+    expect(filesWrittenSince(root, Date.now() - 2000)).toEqual(["chart.png"]);
+  });
+
+  it("skips dot-folders, dependencies and build output", () => {
+    const root = tempDir();
+    for (const dir of [".git", ".venv", "node_modules", "dist", "build"]) {
+      mkdirSync(join(root, dir));
+      writeFileSync(join(root, dir, "x.pdf"), "%PDF");
+    }
+    mkdirSync(join(root, "docs"));
+    writeFileSync(join(root, "docs", "kept.pdf"), "%PDF");
+    expect(filesWrittenSince(root, Date.now() - 2000)).toEqual(["docs/kept.pdf"]);
+  });
+
+  it("returns nothing for a folder that doesn't exist", () => {
+    expect(filesWrittenSince(join(tempDir(), "gone"), 0)).toEqual([]);
   });
 });
 

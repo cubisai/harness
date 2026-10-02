@@ -199,7 +199,7 @@ function SegmentRow({ seg, results, children, running, threadId, last }: { seg: 
   if (seg.kind === "turn-end") {
     return (
       <>
-        {seg.changes && <FileCards files={seg.changes.files} />}
+        <FileCards files={seg.changes?.files ?? []} turnSeq={seg.stored.seq} />
         {seg.changes && <ChangesCard changes={seg.changes} />}
         <TurnFooter seg={seg} threadId={threadId} running={running} last={last} />
       </>
@@ -243,14 +243,20 @@ const KIND_LABEL: Record<ArtifactKind, string> = {
   docx: "Word document", sheet: "Spreadsheet", pptx: "Presentation", code: "Code", text: "Text",
 };
 
-/** A card for each previewable file the turn wrote (the last three); Preview shows it in the panel. */
-function FileCards({ files }: { files: string[] }) {
+/**
+ * A card for each previewable file the turn wrote (the last three); Preview shows it in the panel.
+ * `files` are the turn's Edit paths; files it wrote by command come from the artifacts recorded at its turn-end.
+ */
+function FileCards({ files, turnSeq }: { files: string[]; turnSeq: number }) {
   const open = useStore((s) => s.artifact?.path ?? null);
   const threadId = useStore((s) => s.selectedThreadId);
   const threads = useStore((s) => s.threads);
   const projects = useStore((s) => s.projects);
+  const recorded = useStore((s) => (threadId ? s.artifactFiles[threadId] : undefined));
   const toRel = (path: string) => (threadId ? relativeToThread({ threads, projects }, threadId, path) : path);
-  const shown = files.filter(isPreviewable).slice(-3);
+  const written = (recorded ?? []).filter((f) => f.versions.some((v) => v.turnSeq === turnSeq)).map((f) => f.path);
+  const unique = [...new Map([...files, ...written].map((f) => [toRel(f), f])).values()];
+  const shown = unique.filter(isPreviewable).slice(-3);
   if (!shown.length) return null;
   return (
     <div className="file-cards">
