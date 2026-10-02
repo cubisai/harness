@@ -1,4 +1,4 @@
-# Handoff: UI refresh "Ink Flat" U0–U5 done; next: U6 polish, then Windows-PC gate
+# Handoff: UI refresh "Ink Flat" U0–U6 done; next: wide artifact panel (P1), multiple skills (P3), then Windows-PC gate
 
 Updated 2026-10-02 on the **Mac**, branch `m4`. Read **Resume here — UI refresh** first, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`.
 
@@ -162,13 +162,24 @@ All checked in the real app on Windows; code paths are cross-platform unless not
 
 **Open from U6 part 1:** the user reported a screen flicker while chatting; 30-frame bursts showed no full-window flash, the beam was made cheaper (above) — **ask the user whether it's gone**, and if not, where it flickers.
 
-**Shipped 2026-10-02, U6 part 2:** `GooeyPlus.tsx` (the composer + splits into @ / $ / / with a goo merge, recipe read from libraries.dev/gooey), popover morph on `.model-menu.up`; sweep of Files, Message Center, About, provider editor at 760 px in both themes found nothing to fix. Both are gated by the Motion setting, whose default is still **instant** (so off): ask the user whether the default should change.
+**Shipped 2026-10-02, U6 part 2:** `GooeyPlus.tsx` (the composer + splits into @ / $ / / with a goo merge, recipe read from libraries.dev/gooey), popover morph on `.model-menu.up`; sweep of Files, Message Center, About, provider editor at 760 px in both themes found nothing to fix. Both are gated by the Motion setting; its default became **full** (`15a9c26`, user decision).
+
+**Shipped 2026-10-02, U6 part 3** (user-driven):
+- `b739c6e` + `efc694b`: model picker **Thinking** is a Faster ↔ Smarter step slider (`StepSlider.tsx`, now its own component; firefly dot grid, green `--signal-line` from Xhigh); **Context** is the same slider (Default ↔ Max, green on Max). Track 20px, lit fill `color-mix(--text-secondary 16%, --bg-chip)` so the trail reads.
+- `d406cef`: **Text size** in Settings › Appearance = the same slider (80/90/100/110/125/140%, green from 125%, Reset). The app owns zoom (`shared/zoom.ts`, `Settings.zoom`): main `setZoomFactor` on load / settings change; ⌘= ⌘− ⌘0 (Ctrl elsewhere) caught in `before-input-event`, Ctrl+wheel via `zoom-changed`, custom mac View menu items. macOS traffic lights move with zoom (`setWindowButtonPosition`, y = round(22.5·z − 7)), Windows caption overlay height scales; CSS insets that clear native chrome divide by `--zoom`. Sidebar toggle sits at the same spot open or collapsed (ChatGPT/Claude style), New thread beside it when collapsed. Measured: lights vs icons within 1px at 80–140%.
+- Not verified: real ⌘−/⌘=/⌘0 keystrokes (CDP keys bypass `before-input-event`; no accessibility permission) — **ask the user**; Windows caption spacing at zoom; Claude live turn after `d406cef` (OpenCode + Codex ran; Claude ran on `efc694b`).
+- Gotchas: Chromium remembers zoom per origin, so the old dev origin came back at 91% before the setting existed. `screencapture -l <wid>` of an occluded window returns stale content (Chromium stops painting); measure page content with `agent-browser screenshot` instead. Window ids: a small Swift `CGWindowListCopyWindowInfo` script.
+
+**Approved plan, not started** (`.ai/plans/zoom-wide-panel-multi-skill.md`, Mac only; P2 = text size is done):
+- **P1 artifact panel to 80%**: today `BOUNDS.inspector.max = 720`, `BOUNDS.main = 420` (`shared/layout.ts:6`), enforced by the Splitter `max` (`App.tsx:219` → `splitter.ts:53`), `clampLayout` (`renderer/src/layout.ts:17-35`), `sanitizeLayout`. Make the max window-relative: up to 80% of the space right of the sidebar, chat keeps ≥ 20% (floor ~260px) so it can be dragged back; composer must not overflow at that width. Tests: `pane-layout`, `splitter`, `splitter-markup`.
+- **P3 multiple skills as chips inside the input** (user picked "inline in input", ChatGPT-style): single-valued today end to end — `Composer.tsx:35` `SkillEntry|null`, `store.ts:159` `pendingSkill`, `SendRequest.skill?: string` (`types.ts:726`), `composePrompt(…, skillName?)` (`main/skills/compose.ts:15`, one `<skill>` block), chip rendered in the bottom bar (`Composer.tsx:440`). Change to `skills: string[]` at each layer (old `skill` still read), one `<skill>` block per skill, `$` at any word start, ✓ in the menu toggles, chips (skills + context) inline before the text with ×, Backspace removes the last; ⌘K / Library add instead of replace.
 
 **Next, in order:**
-1. **Windows pass** for U0–U6 (see the Windows PC gate below).
-2. Look into the one smoke failure seen on the first run after a fresh build (not seen again: 2/2 ok on 2026-10-02).
-3. Then the **native provider agent** spec (`.ai/plans/native-provider-agent.md`, user decision): plan first; nothing built before approval.
-4. **Windows PC gate** for N7–N9 and U0–U5 (bun install, typecheck, test, dev; composer, model menu, ring, /compact, sidebar, ⌘K, artifact panel incl. `cubiq-file:` on a `C:\` path and the preview worker).
+1. P1, then P3 (above); each its own commit after typecheck, full suite, app screenshots and a live OpenCode / Codex / Claude turn.
+2. **Windows pass** for U0–U6 (see the Windows PC gate below), now including Text size zoom (caption buttons, Ctrl+= / Ctrl+− / Ctrl+0).
+3. Look into the one smoke failure seen on the first run after a fresh build (not seen again: 2/2 ok on 2026-10-02).
+4. Then the **native provider agent** spec (`.ai/plans/native-provider-agent.md`, user decision): plan first; nothing built before approval.
+5. **Windows PC gate** for N7–N9 and U0–U5 (bun install, typecheck, test, dev; composer, model menu, ring, /compact, sidebar, ⌘K, artifact panel incl. `cubiq-file:` on a `C:\` path and the preview worker).
 
 **Working notes:** drive the dev app with `bun run dev -- --remoteDebuggingPort 9455` + `agent-browser --cdp 9455` (`AGENT_BROWSER_SESSION=cubiq-real`); live turns via `window.unskilled.createThread/updateThread/send` on project `sambor-prei-kuk` (tool-free prompts only), then delete the threads. Mock preview `bun run preview:ui` (port 5199, `?state=thread|settings|…`) is quickest for visuals. The OpenCode ACP command probe script pattern: spawn `opencode acp`, `initialize`, `session/new`, read `available_commands_update`.
 
