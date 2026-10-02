@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AtSign, File, Folder, Plus, Slash, Sparkles } from "lucide-react";
+import { AtSign, File, Folder, Slash, Sparkles } from "lucide-react";
 import type { PermissionMode, SkillEntry } from "../../../shared/types";
 import { IconArrowUp, IconStop } from "../icons";
 import { api } from "../api";
@@ -10,6 +10,7 @@ import { nextMode } from "../modes";
 import { useStore } from "../store";
 import { originLabel } from "./Library";
 import { Beam } from "./Beam";
+import { GooeyPlus } from "./GooeyPlus";
 
 /**
  * The message box. Typing `$` at the start opens the menu of skilled's
@@ -36,8 +37,6 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
   const [caret, setCaret] = useState(0);
   const [knownFiles, setKnownFiles] = useState<string[]>([]);
   const [mentionDismissed, setMentionDismissed] = useState(false);
-  const [plusOpen, setPlusOpen] = useState(false);
-  const plusBox = useRef<HTMLDivElement>(null);
   const area = useRef<HTMLTextAreaElement>(null);
   const pendingCaret = useRef<number | null>(null);
   /** listFiles results by project id, with when they were fetched, so the picker doesn't refetch per keystroke. */
@@ -332,17 +331,8 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
       ? "Queue a message for the next turn…"
       : "Ask anything — $ for a skill, / for a command";
 
-  // The + menu starts a trigger at the caret, as if typed: @ mention, $ skill, / command.
-  useEffect(() => {
-    if (!plusOpen) return;
-    const close = (e: MouseEvent) => {
-      if (!plusBox.current?.contains(e.target as Node)) setPlusOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [plusOpen]);
+  // The + starts a trigger at the caret, as if typed: @ mention, $ skill, / command.
   const startTrigger = (ch: "@" | "$" | "/") => {
-    setPlusOpen(false);
     // $ and / only open their menus at the start of the message.
     const at = ch === "@" ? caret : 0;
     const before = text.slice(0, at);
@@ -439,30 +429,13 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
         />
         <div className="composer-bar">
           <div className="composer-left">
-            <div className="model-picker" ref={plusBox}>
-              <button className="chip-button icon" title="Add context" aria-haspopup="menu" aria-expanded={plusOpen} onClick={() => setPlusOpen((o) => !o)}>
-                <Plus size={15} />
-              </button>
-              {plusOpen && (
-                <div className="model-menu up plus-menu" role="menu">
-                  <button role="menuitem" className="model-item" onClick={() => startTrigger("@")}>
-                    <AtSign size={13} className="check" />
-                    <span className="label">Mention a file or folder</span>
-                    <span className="hint">@</span>
-                  </button>
-                  <button role="menuitem" className="model-item" onClick={() => startTrigger("$")}>
-                    <Sparkles size={13} className="check" />
-                    <span className="label">Use a skill</span>
-                    <span className="hint">$</span>
-                  </button>
-                  <button role="menuitem" className="model-item" onClick={() => startTrigger("/")}>
-                    <Slash size={13} className="check" />
-                    <span className="label">Run a command</span>
-                    <span className="hint">/</span>
-                  </button>
-                </div>
-              )}
-            </div>
+            <GooeyPlus
+              items={[
+                { id: "mention", label: "Mention a file or folder (@)", icon: <AtSign size={14} />, onSelect: () => startTrigger("@") },
+                { id: "skill", label: "Use a skill ($)", icon: <Sparkles size={14} />, onSelect: () => startTrigger("$") },
+                { id: "command", label: "Run a command (/)", icon: <Slash size={14} />, onSelect: () => startTrigger("/") },
+              ]}
+            />
             {mode}
             {skill && (
               <span className="skill-chip" title={skill.description}>

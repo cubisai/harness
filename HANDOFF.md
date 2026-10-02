@@ -162,8 +162,10 @@ All checked in the real app on Windows; code paths are cross-platform unless not
 
 **Open from U6 part 1:** the user reported a screen flicker while chatting; 30-frame bursts showed no full-window flash, the beam was made cheaper (above) — **ask the user whether it's gone**, and if not, where it flickers.
 
+**Shipped 2026-10-02, U6 part 2:** `GooeyPlus.tsx` (the composer + splits into @ / $ / / with a goo merge, recipe read from libraries.dev/gooey), popover morph on `.model-menu.up`; sweep of Files, Message Center, About, provider editor at 760 px in both themes found nothing to fix. Both are gated by the Motion setting, whose default is still **instant** (so off): ask the user whether the default should change.
+
 **Next, in order:**
-1. **U6 part 2**: gooey `+` (libraries.dev Gooey) and popover morph, sweep the remaining screens (Files, Message Center, About, provider editor at narrow width) in both themes, Windows pass.
+1. **Windows pass** for U0–U6 (see the Windows PC gate below).
 2. Look into the one smoke failure seen on the first run after a fresh build (not seen again: 2/2 ok on 2026-10-02).
 3. Then the **native provider agent** spec (`.ai/plans/native-provider-agent.md`, user decision): plan first; nothing built before approval.
 4. **Windows PC gate** for N7–N9 and U0–U5 (bun install, typecheck, test, dev; composer, model menu, ring, /compact, sidebar, ⌘K, artifact panel incl. `cubiq-file:` on a `C:\` path and the preview worker).

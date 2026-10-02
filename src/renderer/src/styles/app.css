@@ -41,6 +41,7 @@
   --send-bg: #ffffff;
   --send-fg: var(--text);
   --send-ring: var(--hairline-strong);
+  --goo-fill: #e8ebef;
   --beam-stroke: 0.55;
   --beam-bloom: 0;
   --beam-sheen: transparent;
@@ -92,6 +93,7 @@
   --send-bg: #23262c;
   --send-fg: #f7f8fa;
   --send-ring: #30343c;
+  --goo-fill: #262a30;
   --beam-stroke: 0.26;
   --beam-bloom: 0.24;
   --beam-sheen: rgb(255 255 255 / 0.27);
@@ -133,6 +135,7 @@
   --send-bg: #23262c;
   --send-fg: #f7f8fa;
   --send-ring: #30343c;
+  --goo-fill: #262a30;
   --beam-stroke: 0.26;
   --beam-bloom: 0.24;
   --beam-sheen: rgb(255 255 255 / 0.27);
@@ -771,6 +774,7 @@ details.tool[open]::details-content { height: auto; }
 .plan-card .plan-body pre code { display: block; padding: 0; background: transparent; }
 .plan-card .plan-feedback { display: block; width: 100%; height: auto; min-height: 56px; padding: 8px 10px; font: 12px var(--mono); resize: vertical; margin-bottom: 10px; }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+@keyframes morph { from { opacity: 0; transform: scale(0.92) translateY(6px); border-radius: 22px; } }
 
 /* ---------- empty states ---------- */
 
@@ -909,6 +913,10 @@ details.tool[open]::details-content { height: auto; }
   [data-motion="subtle"] .open-menu { animation: rise 70ms var(--ease); }
   [data-motion="full"] .select-popup { animation: rise 140ms var(--ease); }
   [data-motion="subtle"] .select-popup { animation: rise 70ms var(--ease); }
+  /* Composer popovers grow out of their button (popover morph). */
+  [data-motion="full"] .model-menu.up { animation: morph 220ms cubic-bezier(0.2, 0.9, 0.25, 1.15); transform-origin: bottom left; }
+  [data-motion="full"] .model-menu.up.right { transform-origin: bottom right; }
+  [data-motion="subtle"] .model-menu.up { animation: rise 90ms var(--ease); }
   [data-motion="full"] .toast { animation: rise 180ms var(--ease); }
   [data-motion="subtle"] .toast { animation: rise 90ms var(--ease); }
 }
@@ -1822,6 +1830,45 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 .chip-button:hover:not(:disabled), .chip-button[aria-expanded="true"] { background: var(--bg-hover); color: var(--text); }
 .chip-button:disabled { opacity: 0.5; }
 .chip-button.icon { padding: 0; justify-content: center; }
+
+/* GooeyPlus (after libraries.dev Gooey): the + splits into round items that merge like
+   liquid. Shapes live in an SVG under the buttons, run through a goo filter. */
+.goo { position: relative; width: 28px; height: 28px; flex-shrink: 0; }
+.goo-shapes { position: absolute; left: 0; top: 0; width: 28px; height: 28px; overflow: visible; pointer-events: none; }
+.goo-blob { fill: var(--goo-fill); fill-opacity: 0; transform-box: view-box; }
+.goo.open .goo-blob { fill-opacity: 1; }
+.goo-main { position: relative; z-index: 2; }
+.goo.open .goo-main { background: transparent; color: var(--text); }
+.goo-main svg { transition: transform 200ms var(--ease); }
+.goo.open .goo-main svg { transform: rotate(45deg); }
+.goo-items { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+.goo-item {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  opacity: 0;
+  -webkit-app-region: no-drag;
+}
+.goo.open .goo-item { opacity: 1; pointer-events: auto; }
+.goo-item:hover, .goo-item:focus-visible { color: var(--text); }
+.goo-item:focus-visible { outline-offset: 0; }
+/* While the + is open its items take the bar's left side: the chips beside it step aside. */
+.composer-left > :not(.goo) { transition: opacity 120ms var(--ease); }
+.composer-left:has(.goo.open) > :not(.goo) { opacity: 0; pointer-events: none; }
+@media (prefers-reduced-motion: no-preference) {
+  /* Travel on a bouncy curve; per-item delays (stagger, icons after their blob) are inline. */
+  [data-motion="full"] .goo-blob, [data-motion="subtle"] .goo-blob { transition: transform 550ms cubic-bezier(0.34, 1.56, 0.64, 1), fill-opacity 160ms var(--ease); }
+  [data-motion="full"] .goo-item, [data-motion="subtle"] .goo-item { transition: transform 550ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 180ms var(--ease); }
+  [data-motion="subtle"] .goo-blob, [data-motion="subtle"] .goo-item { transition-duration: 380ms, 120ms; }
+}
 .chip-button .chev { opacity: 0.6; flex: none; }
 .mode-chip.danger, .mode-chip.danger:hover { color: var(--danger); }
 .model-picker-button { max-width: 240px; color: var(--text); }

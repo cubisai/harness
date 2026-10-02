@@ -196,7 +196,7 @@ describe("composer actions row", () => {
   it("puts + and the permission chip first in composer-left", () => {
     withRunning({}, () => {
       const html = renderToStaticMarkup(<Composer threadId="t" mode={<span className="mode">Ask</span>} />);
-      expect(html).toMatch(/<div class="composer-left"><div class="model-picker"><button class="chip-button icon" title="Add context"[\s\S]*?<\/div><span class="mode">Ask<\/span>/);
+      expect(html).toMatch(/<div class="composer-left"><div class="goo">[\s\S]*?<button class="chip-button icon goo-main" title="Add context"[\s\S]*?<span class="mode">Ask<\/span>/);
     });
   });
 

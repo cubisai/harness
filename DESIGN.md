@@ -78,11 +78,11 @@ Full access mode shows its chip in `--danger`.
 
 ## 6. Motion
 
-- Durations: 120ms hover and fade, 200–220ms popover in, 380ms gooey. Ease `cubic-bezier(.2,.8,.2,1)`. Popovers use a slight overshoot `cubic-bezier(.2,.9,.25,1.15)`.
-- **Running beam** (after libraries.dev border-beam, rebuilt in CSS, user decision 2026-10-02): while a turn runs, soft colour blobs glow just inside the composer's edges (within 28px) and a faint highlight rides the 1px border; a rotating conic window (1.96s per lap) sweeps them round and the hue drifts ±30° over 12s. Dark mode adds a white highlight, inner sheen and a blurred sparkle. Fades in over 0.6s. Strengths are the `--beam-*` tokens.
-- **Gooey** (from libraries.dev/gooey): the composer's `+` splits into its actions (attach, @, skill, image) through an SVG goo filter. Popovers morph in from scale .92 with a larger radius.
+- Durations: 120ms hover and fade, 200–220ms popover in, 550ms gooey (380ms on subtle). Ease `cubic-bezier(.2,.8,.2,1)`. Popovers use a slight overshoot `cubic-bezier(.2,.9,.25,1.15)`.
+- **Running beam** (after libraries.dev border-beam, rebuilt in CSS, user decision 2026-10-02): while a turn runs, soft colour blobs glow just inside the composer's edges (within 28px) and a faint highlight rides the 1px border; a rotating conic window (1.96s per lap) sweeps them round (no hue drift: animating `filter` made the window flicker). It is on its own layer (`contain: strict`). Dark mode adds a white highlight, inner sheen and a blurred sparkle. Fades in over 0.6s. Strengths are the `--beam-*` tokens.
+- **Gooey** (after libraries.dev/gooey, `GooeyPlus.tsx`): the composer's `+` splits into round @ / $ / / buttons in a row along the bar, through an SVG goo filter (blur 6, alpha `18 -7`) drawn under the real buttons so icons stay crisp; `cubic-bezier(.34,1.56,.64,1)` 550ms, 40ms stagger, icons fade in after their blob pulls away; the `+` turns to ×; the chips beside it step aside while open. Composer popovers (`.model-menu.up`) morph in from scale .92 with a 22px radius.
 - No liquid-metal effects in the chrome.
-- The beam is a status signal, not decoration: it runs regardless of the `motion` setting. `prefers-reduced-motion` holds it still (no spin, no hue drift).
+- The beam is a status signal, not decoration: it runs regardless of the `motion` setting. `prefers-reduced-motion` holds it still (no spin).
 - The `motion` setting (default instant) gates entrance animations (gooey, popover morph). `prefers-reduced-motion` disables those too.
 
 ## 7. Components
