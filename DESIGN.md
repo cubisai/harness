@@ -83,7 +83,7 @@ Full access mode shows its chip in `--danger`.
 - **Gooey** (after libraries.dev/gooey, `GooeyPlus.tsx`): the composer's `+` splits into round @ / $ / / buttons in a row along the bar, through an SVG goo filter (blur 6, alpha `18 -7`) drawn under the real buttons so icons stay crisp; `cubic-bezier(.34,1.56,.64,1)` 550ms, 40ms stagger, icons fade in after their blob pulls away; the `+` turns to ×; the chips beside it step aside while open. Composer popovers (`.model-menu.up`) morph in from scale .92 with a 22px radius.
 - No liquid-metal effects in the chrome.
 - The beam is a status signal, not decoration: it runs regardless of the `motion` setting. `prefers-reduced-motion` holds it still (no spin).
-- The `motion` setting (default instant) gates entrance animations (gooey, popover morph). `prefers-reduced-motion` disables those too.
+- The `motion` setting (default full since 2026-10-02) gates entrance animations (gooey, popover morph). `prefers-reduced-motion` disables those too.
 
 ## 7. Components
 

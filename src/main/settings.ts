@@ -28,7 +28,7 @@ export interface SecretBox {
   decrypt(b64: string): string;
 }
 
-const DEFAULTS: Settings = { theme: "system", motion: "instant", density: "comfortable", antigravity: false, antigravityAck: null, defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {}, paneLayout: { ...DEFAULT_LAYOUT }, memory: { enabled: true, disabledProjects: [] } };
+const DEFAULTS: Settings = { theme: "system", motion: "full", density: "comfortable", antigravity: false, antigravityAck: null, defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {}, paneLayout: { ...DEFAULT_LAYOUT }, memory: { enabled: true, disabledProjects: [] } };
 
 /** A settings export file. */
 export interface SettingsExport {

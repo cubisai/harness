@@ -268,7 +268,7 @@ export function applyTheme(theme: SettingsView["theme"]): void {
 
 /** The motion preference on <html data-motion>; app.css plays entrances only for subtle/full. */
 export function applyMotion(motion: SettingsView["motion"]): void {
-  document.documentElement.dataset.motion = motion ?? "instant";
+  document.documentElement.dataset.motion = motion ?? "full";
 }
 
 /** The density preference on <html data-density>; app.css tightens rows for compact. */

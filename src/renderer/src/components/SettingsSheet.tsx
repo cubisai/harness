@@ -145,7 +145,7 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
             <span className="label" title="Your system's reduce-motion setting always wins">Motion</span>
             <div className="segmented">
               {MOTIONS.map((m) => (
-                <button key={m.id} className={(settings.motion ?? "instant") === m.id ? "on" : ""} onClick={() => update({ motion: m.id })}>
+                <button key={m.id} className={(settings.motion ?? "full") === m.id ? "on" : ""} onClick={() => update({ motion: m.id })}>
                   {m.label}
                 </button>
               ))}

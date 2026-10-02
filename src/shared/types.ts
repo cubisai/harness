@@ -127,7 +127,7 @@ export interface PaneLayout {
 
 export interface Settings {
   theme: Theme;
-  /** Panel and thread-switch animation; SettingsStore.get() always fills it in (default instant). */
+  /** Panel and thread-switch animation; SettingsStore.get() always fills it in (default full). */
   motion?: Motion;
   /** Thread, tool and turn-meta row spacing; SettingsStore.get() always fills it in (default comfortable). */
   density?: Density;

@@ -10,20 +10,20 @@ const box: SecretBox = { available: false, encrypt: (s) => s, decrypt: (s) => s 
 const css = readFileSync(join(__dirname, "..", "src", "renderer", "src", "styles", "app.css"), "utf-8");
 
 describe("motion setting", () => {
-  it("defaults to instant, round-trips, and ignores unknown values", () => {
+  it("defaults to full, round-trips, and ignores unknown values", () => {
     const file = join(tempDir(), "settings.json");
     const store = new SettingsStore(file, box);
-    expect(store.get().motion).toBe("instant");
-    store.update({ motion: "full" });
-    expect(new SettingsStore(file, box).get().motion).toBe("full");
-    store.update({ motion: "wild" as Motion });
     expect(store.get().motion).toBe("full");
+    store.update({ motion: "instant" });
+    expect(new SettingsStore(file, box).get().motion).toBe("instant");
+    store.update({ motion: "wild" as Motion });
+    expect(store.get().motion).toBe("instant");
   });
 
-  it("fills in instant for a file written before the setting existed", () => {
+  it("fills in full for a file written before the setting existed", () => {
     const file = join(tempDir(), "settings.json");
     writeFileSync(file, JSON.stringify({ schemaVersion: 3, settings: { theme: "dark" } }));
-    expect(new SettingsStore(file, box).get().motion).toBe("instant");
+    expect(new SettingsStore(file, box).get().motion).toBe("full");
   });
 });
 
@@ -33,13 +33,13 @@ describe("applyMotion", () => {
     globalThis.document = saved;
   });
 
-  it("writes data-motion on the root, instant when unset", () => {
+  it("writes data-motion on the root, full when unset", () => {
     const root = { dataset: {} as Record<string, string> };
     globalThis.document = { documentElement: root } as unknown as Document;
     applyMotion("subtle");
     expect(root.dataset.motion).toBe("subtle");
     applyMotion(undefined);
-    expect(root.dataset.motion).toBe("instant");
+    expect(root.dataset.motion).toBe("full");
   });
 });
 
