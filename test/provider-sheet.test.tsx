@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { ProviderView } from "../src/shared/types";
-import { CredentialRows, PresetPicker, ProviderList, hostOf, toProviderInput } from "../src/renderer/src/components/ProviderSheet";
+import { CredentialRows, PresetPicker, ProviderList, credentialOptions, hostOf, presetOptions, toProviderInput } from "../src/renderer/src/components/ProviderSheet";
 
 const caps = { tools: true, vision: false, reasoning: false };
 
@@ -77,28 +77,31 @@ describe("CredentialRows", () => {
     expect(html).not.toContain("Antigravity");
     expect(html).toContain("Subscription login");
     expect(html).toMatch(/Agent(?:&#x27;|')s own config/);
+    expect(html).toContain('aria-haspopup="listbox"');
+    expect(html).not.toContain("<select");
   });
 
   it("disables a non-Responses provider for Codex and says why", () => {
-    const codex = [agents[1]!];
-    const html = renderToStaticMarkup(<CredentialRows agents={codex} providers={providers} credentials={{}} onChange={() => {}} />);
-    const chatOptions = [...html.matchAll(/<option value="openai-chat"[^>]*>/g)].map((m) => m[0] ?? "");
-    expect(chatOptions.some((o) => o.includes("disabled") && o.includes("Responses"))).toBe(true);
-    const responsesOptions = [...html.matchAll(/<option value="openai-responses"[^>]*>/g)].map((m) => m[0] ?? "");
-    expect(responsesOptions.length).toBeGreaterThan(0);
-    expect(responsesOptions.every((o) => !o.includes("disabled"))).toBe(true);
+    const codex = agents[1]!;
+    const options = credentialOptions(codex.credentials, providers);
+    const chatOption = options.find((o) => o.value === "openai-chat");
+    expect(chatOption?.disabled).toBe(true);
+    expect(chatOption?.detail).toContain("Responses");
+    const responsesOption = options.find((o) => o.value === "openai-responses");
+    expect(responsesOption).toBeDefined();
+    expect(responsesOption?.disabled).toBeFalsy();
   });
 
   it("disables anything but an anthropic-messages provider for Claude", () => {
-    const claude = [agents[0]!];
+    const claude = agents[0]!;
     const chat = providerView({ id: "chat", label: "Chat Gateway", wireProtocol: "openai-chat" });
     const anthropic = providerView({ id: "anthropic", label: "Anthropic", wireProtocol: "anthropic-messages" });
-    const html = renderToStaticMarkup(<CredentialRows agents={claude} providers={[chat, anthropic]} credentials={{}} onChange={() => {}} />);
-    const chatOptions = [...html.matchAll(/<option value="chat"[^>]*>/g)].map((m) => m[0] ?? "");
-    expect(chatOptions.some((o) => o.includes("disabled"))).toBe(true);
-    const anthropicOptions = [...html.matchAll(/<option value="anthropic"[^>]*>/g)].map((m) => m[0] ?? "");
-    expect(anthropicOptions.length).toBeGreaterThan(0);
-    expect(anthropicOptions.every((o) => !o.includes("disabled"))).toBe(true);
+    const options = credentialOptions(claude.credentials, [chat, anthropic]);
+    const chatOption = options.find((o) => o.value === "chat");
+    expect(chatOption?.disabled).toBe(true);
+    const anthropicOption = options.find((o) => o.value === "anthropic");
+    expect(anthropicOption).toBeDefined();
+    expect(anthropicOption?.disabled).toBeFalsy();
   });
 
   it("warns when Claude is pointed at a non-first-party provider", () => {
@@ -154,10 +157,13 @@ describe("toProviderInput", () => {
 
 describe("PresetPicker", () => {
   it("offers Custom plus every preset", () => {
+    const options = presetOptions();
+    expect(options[0]).toEqual({ value: "", label: "Custom" });
+    expect(options.map((o) => o.label)).toEqual(expect.arrayContaining(["Groq", "Ollama (local)"]));
     const html = renderToStaticMarkup(<PresetPicker value="" onPick={() => {}} />);
     expect(html).toContain("Custom");
-    expect(html).toContain("Groq");
-    expect(html).toContain("Ollama (local)");
+    expect(html).toContain('aria-haspopup="listbox"');
+    expect(html).not.toContain("<select");
     expect(html).toMatchSnapshot();
   });
 });

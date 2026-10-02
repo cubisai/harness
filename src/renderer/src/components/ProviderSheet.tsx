@@ -12,6 +12,7 @@ import { PROVIDER_PRESETS, providerPreset, type ProviderPreset } from "../../../
 import { injectorCompatible, providerWarning } from "../../../shared/provider-rules";
 import { api } from "../api";
 import { useStore } from "../store";
+import { Select, type SelectOption } from "./Select";
 
 const WIRE_PROTOCOLS: WireProtocol[] = ["anthropic-messages", "openai-responses", "openai-chat", "gemini"];
 const PROVIDER_ID_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
@@ -76,6 +77,21 @@ export function ProviderList({
 const ACP_CREDENTIALS: AgentCredentials = { byok: true, own: "config", injector: "acp" };
 
 /**
+ * The credential pick list for one agent: its own login/config first, then one
+ * row per provider. An incompatible provider stays listed but disabled, with
+ * the reason as its detail line.
+ */
+export function credentialOptions(creds: AgentCredentials, providers: ProviderView[]): SelectOption<string>[] {
+  return [
+    { value: "subscription", label: creds.own === "login" ? "Subscription login" : "Agent's own config" },
+    ...providers.map((p): SelectOption<string> => {
+      const compat = injectorCompatible(p, creds.injector);
+      return { value: p.id, label: p.label, disabled: !compat.ok, detail: compat.ok ? undefined : compat.reason };
+    }),
+  ];
+}
+
+/**
  * One credential row per agent above the provider list. Subscription stays a
  * first-class peer; an agent whose provider injection is unverified has no row.
  * Everything here reads the agent's credentials descriptor, never its id.
@@ -105,23 +121,12 @@ export function CredentialRows({
             <div key={agent.id}>
               <div className="row">
                 <span className="label">{agent.label}</span>
-                <select
-                  className="select"
+                <Select
                   value={selected}
-                  onChange={(e) =>
-                    onChange(agent.id, e.target.value === "subscription" ? { kind: "subscription" } : { kind: "byok", providerId: e.target.value })
-                  }
-                >
-                  <option value="subscription">{creds.own === "login" ? "Subscription login" : "Agent's own config"}</option>
-                  {providers.map((p) => {
-                    const compat = injectorCompatible(p, creds.injector);
-                    return (
-                      <option key={p.id} value={p.id} disabled={!compat.ok} title={compat.ok ? undefined : compat.reason}>
-                        {p.label}
-                      </option>
-                    );
-                  })}
-                </select>
+                  options={credentialOptions(creds, providers)}
+                  onChange={(v) => onChange(agent.id, v === "subscription" ? { kind: "subscription" } : { kind: "byok", providerId: v })}
+                  ariaLabel={`${agent.label} credentials`}
+                />
               </div>
               {warning && <p className="note">{warning}</p>}
             </div>
@@ -148,19 +153,17 @@ export function toProviderInput(
   return { ...kept, ...rest, id: provider.id };
 }
 
+/** The preset pick list: a custom provider first, then every known preset. */
+export function presetOptions(): SelectOption<string>[] {
+  return [{ value: "", label: "Custom" }, ...PROVIDER_PRESETS.map((p) => ({ value: p.id, label: p.label }))];
+}
+
 /** Pick a known provider preset to prefill the editor; "" means a custom provider. */
 export function PresetPicker({ value, onPick }: { value: string; onPick: (preset: ProviderPreset | null) => void }) {
   return (
     <div className="row">
       <span className="label">Preset</span>
-      <select className="select" value={value} onChange={(e) => onPick(providerPreset(e.target.value) ?? null)}>
-        <option value="">Custom</option>
-        {PROVIDER_PRESETS.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.label}
-          </option>
-        ))}
-      </select>
+      <Select value={value} options={presetOptions()} onChange={(v) => onPick(providerPreset(v) ?? null)} ariaLabel="Preset" />
     </div>
   );
 }
@@ -275,13 +278,12 @@ function ProviderEditor({
       )}
       <div className="row">
         <span className="label">Protocol</span>
-        <select className="select" value={wireProtocol} onChange={(e) => setWireProtocol(e.target.value as WireProtocol)}>
-          {WIRE_PROTOCOLS.map((w) => (
-            <option key={w} value={w}>
-              {w}
-            </option>
-          ))}
-        </select>
+        <Select
+          value={wireProtocol}
+          options={WIRE_PROTOCOLS.map((w): SelectOption<string> => ({ value: w, label: w }))}
+          onChange={(v) => setWireProtocol(v as WireProtocol)}
+          ariaLabel="Protocol"
+        />
       </div>
       <div className="row">
         <span className="label">Base URL</span>
@@ -341,16 +343,18 @@ function ProviderEditor({
                     {cap}
                   </label>
                 ))}
-                <select
-                  className="select alias"
+                <Select
+                  className="alias"
                   value={m.alias ?? ""}
-                  onChange={(e) => patchModel(i, { alias: (e.target.value || undefined) as ProviderModel["alias"] })}
-                >
-                  <option value="">No alias</option>
-                  <option value="opus">opus</option>
-                  <option value="sonnet">sonnet</option>
-                  <option value="haiku">haiku</option>
-                </select>
+                  options={[
+                    { value: "", label: "No alias" },
+                    { value: "opus", label: "opus" },
+                    { value: "sonnet", label: "sonnet" },
+                    { value: "haiku", label: "haiku" },
+                  ]}
+                  onChange={(v) => patchModel(i, { alias: (v || undefined) as ProviderModel["alias"] })}
+                  ariaLabel="Alias"
+                />
                 <button className="button ghost danger remove" type="button" onClick={() => setModels((ms) => ms.filter((_, j) => j !== i))}>
                   Remove
                 </button>

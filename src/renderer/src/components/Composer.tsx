@@ -9,6 +9,7 @@ import { folderPaths, mentionQueryAt, mentionsIn, rankMentions } from "../mentio
 import { nextMode } from "../modes";
 import { useStore } from "../store";
 import { originLabel } from "./Library";
+import { Beam } from "./Beam";
 
 /**
  * The message box. Typing `$` at the start opens the menu of skilled's
@@ -354,9 +355,12 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
     area.current?.focus();
   };
 
+  const canSend = Boolean(text.trim() || skill || chips.length);
+
   return (
     <div className="composer-wrap">
       <div className={`composer${running ? " running" : ""}`}>
+        {running && <Beam />}
         {menuOpen && (
           <div className="skill-menu" role="listbox">
             {matches.length === 0 && <div className="empty-line">No skill matches “{query}”</div>}
@@ -477,11 +481,14 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
             {meters}
             {running && (
               <button className="send stop" title="Stop (clears queued messages)" onClick={() => void interrupt()}>
+                <Beam />
                 <IconStop />
               </button>
             )}
             {(!running || text.trim() || chips.length > 0) && (
-              <button className="send" title={running ? "Queue for the next turn" : "Send"} disabled={!text.trim() && !skill && !chips.length} onClick={submit}>
+              <button className="send" title={running ? "Queue for the next turn" : "Send"} disabled={!canSend} onClick={submit}>
+                {/* Ready to send: the beam invites the click. */}
+                {canSend && <Beam />}
                 <IconArrowUp />
               </button>
             )}

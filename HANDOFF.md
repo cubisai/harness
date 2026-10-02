@@ -154,8 +154,16 @@ All checked in the real app on Windows; code paths are cross-platform unless not
 
 **Known gaps (not done):** no syntax colouring or mermaid in the panel (no new deps); "Generating…" file card while writing; a message search hit opens the thread but doesn't scroll to the message; older versions of pdf/image/office files can't be previewed (latest only); Codex writes `[x](/abs/path)` links that render as raw text (pre-existing); the renderer loses `running` on reload (pre-existing).
 
+**Shipped 2026-10-02, U6 part 1** (user-driven, several rounds):
+- **Beam** (`Beam.tsx`, `.beam` in app.css): rebuilt after libraries.dev border-beam (its computed styles were read from the live page): colour blobs glowing inside the edges + 1px highlight ring + blurred sparkle, rotating conic window 1.96s, fade-in 0.6s. On the composer while running, the Stop button while running, Send when there's something to send, and the ⌘K search **text field** (not the card). Own layer (`contain: strict; translateZ(0)`), no animated filter (the hue drift was dropped after the user saw flicker). Send/Stop are raised surface circles (`--send-*` tokens: white light, #23262c dark), not ink/white.
+- **Orb** in the waiting line is tinted `--signal-line` via `useCssColor` (follows theme changes).
+- **Select.tsx**: themed listbox replacing all 9 native selects (Library scope, Memory type, provider credentials/preset/protocol/alias, Settings default agent/editor, project auto-fix); Settings/Library ignore Escape while a list is open (`selectPopupOpen`). Library/Memory emoji → Lucide; avatars neutral.
+- Built by two opencode implementers (selects + emoji) in parallel; beam/orb/Select by Claude.
+
+**Open from U6 part 1:** the user reported a screen flicker while chatting; 30-frame bursts showed no full-window flash, the beam was made cheaper (above) — **ask the user whether it's gone**, and if not, where it flickers.
+
 **Next, in order:**
-1. **U6**: gooey `+`/popover morph, sweep every screen in both themes (Library still has emoji connector icons + native selects), Windows pass.
+1. **U6 part 2**: gooey `+` (libraries.dev Gooey) and popover morph, sweep the remaining screens (Files, Message Center, About, provider editor at narrow width) in both themes, Windows pass.
 2. Look into the one smoke failure seen on the first run after a fresh build (not seen again: 2/2 ok on 2026-10-02).
 3. Then the **native provider agent** spec (`.ai/plans/native-provider-agent.md`, user decision): plan first; nothing built before approval.
 4. **Windows PC gate** for N7–N9 and U0–U5 (bun install, typecheck, test, dev; composer, model menu, ring, /compact, sidebar, ⌘K, artifact panel incl. `cubiq-file:` on a `C:\` path and the preview worker).

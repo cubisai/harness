@@ -6,7 +6,7 @@ The single source of truth for how CubiQ looks and behaves. Every agent (Claude 
 
 1. **Flat.** No drop shadows on cards, rows, the composer, buttons or sheets. Depth comes from surface tint and 1px hairlines. The only exception is overlays that float over content (popovers, menus, ⌘K, dialogs), which get `--shadow-float`, one soft layer.
 2. **Compact.** 13px body text, 28px controls, 4px spacing grid. One row of controls in the composer. Show detail on hover or click, not by default.
-3. **Ink is primary, acid is a signal.** Buttons, selection and focus use Agent Ink in light mode and Signal White in dark mode. Acid Signal marks only "the agent is alive": a live run, the running beam, the iQ dot, a search match.
+3. **Ink is primary, acid is a signal.** Buttons, selection and focus use Agent Ink in light mode and Signal White in dark mode. Acid Signal marks only "the agent is alive": a live run, the iQ dot, a search match. The running beam is the one exception: it is rainbow (user decision 2026-10-02).
 4. **Nothing overflows.** Every flex or grid child that holds text or an input gets `min-width: 0`. Long text is ellipsized or wraps inside its own box. Sheets scroll inside themselves. The window never scrolls sideways.
 5. **Fast and crash-proof.** Heavy renderers (docx, xlsx, pptx, mermaid) load lazily and parse outside the renderer process (§7.6).
 
@@ -39,7 +39,7 @@ Defined once in `src/renderer/src/styles/app.css` `:root`, redefined for dark mo
 |---|---|---|---|
 | `--signal-fill` | `#A8FF55` | `#A8FF55` | Fills only, always with Agent Ink on top (15.8:1): badges, the running dot, `<mark>` highlights |
 | `--signal-ink` | `#357A08` (5.3:1) | `#A8FF55` | Text and icons that mean "live": the status line, "Running" |
-| `--signal-line` | `#4A9A12` (3.55:1) | `#A8FF55` | Non-text graphics: the running beam, the ring around the live dot |
+| `--signal-line` | `#4A9A12` (3.55:1) | `#A8FF55` | Non-text graphics: the ring around the live dot |
 
 ### Semantic colors (never used as accent)
 
@@ -79,10 +79,10 @@ Full access mode shows its chip in `--danger`.
 ## 6. Motion
 
 - Durations: 120ms hover and fade, 200–220ms popover in, 380ms gooey. Ease `cubic-bezier(.2,.8,.2,1)`. Popovers use a slight overshoot `cubic-bezier(.2,.9,.25,1.15)`.
-- **Running beam** (from libraries.dev/beam, flattened): while a turn runs, one thin conic-gradient line in `--signal-line` travels around the composer border (2.6s per lap). No bloom.
+- **Running beam** (after libraries.dev border-beam, rebuilt in CSS, user decision 2026-10-02): while a turn runs, soft colour blobs glow just inside the composer's edges (within 28px) and a faint highlight rides the 1px border; a rotating conic window (1.96s per lap) sweeps them round and the hue drifts ±30° over 12s. Dark mode adds a white highlight, inner sheen and a blurred sparkle. Fades in over 0.6s. Strengths are the `--beam-*` tokens.
 - **Gooey** (from libraries.dev/gooey): the composer's `+` splits into its actions (attach, @, skill, image) through an SVG goo filter. Popovers morph in from scale .92 with a larger radius.
 - No liquid-metal effects in the chrome.
-- The beam is a status signal, not decoration: it runs regardless of the `motion` setting. `prefers-reduced-motion` turns it into a static `--signal-line` border.
+- The beam is a status signal, not decoration: it runs regardless of the `motion` setting. `prefers-reduced-motion` holds it still (no spin, no hue drift).
 - The `motion` setting (default instant) gates entrance animations (gooey, popover morph). `prefers-reduced-motion` disables those too.
 
 ## 7. Components

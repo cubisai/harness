@@ -3,6 +3,7 @@ import type { JSX } from "react";
 import type { SearchHit, SearchResults } from "../../../shared/types";
 import { api } from "../api";
 import "../styles/search.css";
+import { Beam } from "./Beam";
 
 /** The active filter chip: everything, the selected project, running threads, one agent, or files. */
 export type SearchFilter =
@@ -339,40 +340,43 @@ export function SearchDialog({
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="search-dialog" role="dialog" aria-modal="true" aria-label="Search">
-        <input
-          ref={inputRef}
-          className="search-input"
-          placeholder="Search threads, messages and files  ·  > for actions"
-          spellCheck={false}
-          value={text}
-          role="combobox"
-          aria-expanded="true"
-          aria-controls="search-list"
-          aria-activedescendant={rows[active] ? `search-row-${active}` : undefined}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            // Handled here, so the window's own shortcuts (Esc stops a turn) don't also fire.
-            if (e.key === "ArrowDown" || (e.ctrlKey && e.key === "n")) {
-              setActiveIndex(Math.min(active + 1, Math.max(0, rows.length - 1)));
-            } else if (e.key === "ArrowUp" || (e.ctrlKey && e.key === "p")) {
-              setActiveIndex(Math.max(active - 1, 0));
-            } else if (e.key === "Enter") {
-              openRow(rows[active]);
-            } else if (e.key === "Escape") {
-              onClose();
-            } else if (e.key === "Tab") {
-              if (chipFilters.length === 0) return;
-              const dir = e.shiftKey ? -1 : 1;
-              const found = chipFilters.findIndex((f) => sameFilter(f, filter));
-              const i = found >= 0 ? found : dir > 0 ? -1 : 0;
-              setFilter(chipFilters[(i + dir + chipFilters.length) % chipFilters.length]!);
-            } else {
-              return;
-            }
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-        />
+        <div className="search-field">
+          <Beam edge={14} />
+          <input
+            ref={inputRef}
+            className="search-input"
+            placeholder="Search threads, messages and files  ·  > for actions"
+            spellCheck={false}
+            value={text}
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="search-list"
+            aria-activedescendant={rows[active] ? `search-row-${active}` : undefined}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              // Handled here, so the window's own shortcuts (Esc stops a turn) don't also fire.
+              if (e.key === "ArrowDown" || (e.ctrlKey && e.key === "n")) {
+                setActiveIndex(Math.min(active + 1, Math.max(0, rows.length - 1)));
+              } else if (e.key === "ArrowUp" || (e.ctrlKey && e.key === "p")) {
+                setActiveIndex(Math.max(active - 1, 0));
+              } else if (e.key === "Enter") {
+                openRow(rows[active]);
+              } else if (e.key === "Escape") {
+                onClose();
+              } else if (e.key === "Tab") {
+                if (chipFilters.length === 0) return;
+                const dir = e.shiftKey ? -1 : 1;
+                const found = chipFilters.findIndex((f) => sameFilter(f, filter));
+                const i = found >= 0 ? found : dir > 0 ? -1 : 0;
+                setFilter(chipFilters[(i + dir + chipFilters.length) % chipFilters.length]!);
+              } else {
+                return;
+              }
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+          />
+        </div>
 
         <div className="search-filters" role="radiogroup" aria-label="Search filter">
           {chips.map(({ filter: f, label, disabled }) => (

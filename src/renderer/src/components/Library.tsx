@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { Brain, BriefcaseBusiness, GitPullRequest, Globe, ListChecks, Mail, NotebookText, Palette, Plug, Puzzle } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { AgentCatalogEntry, ExternalMcpServer, McpOverview, McpServerEntry, McpServerSpec, McpServerView, McpTestResult, SkillDetail, SkillEntry, SkillOrigin } from "../../../shared/types";
 import { api } from "../api";
 import { joinCommandLine, splitCommandLine } from "../cmdline";
@@ -7,13 +9,14 @@ import { Markdown } from "../markdown";
 import { useStore, type LibraryTab } from "../store";
 import { CantDoList, CapabilityChips, BinaryLine } from "./Capabilities";
 import { MemoryTab } from "./MemoryTab";
+import { Select, selectPopupOpen } from "./Select";
 import { UnsupportedChip } from "./UnsupportedChip";
 
-const TABS: { id: "experts" | "skills" | "connectors" | "memory"; label: string; icon: string }[] = [
-  { id: "experts", label: "Experts", icon: "🧑‍💼" },
-  { id: "skills", label: "Skills", icon: "🧩" },
-  { id: "connectors", label: "Connectors", icon: "🔗" },
-  { id: "memory", label: "Memory", icon: "🧠" },
+const TABS: { id: "experts" | "skills" | "connectors" | "memory"; label: string; icon: LucideIcon }[] = [
+  { id: "experts", label: "Experts", icon: BriefcaseBusiness },
+  { id: "skills", label: "Skills", icon: Puzzle },
+  { id: "connectors", label: "Connectors", icon: Plug },
+  { id: "memory", label: "Memory", icon: Brain },
 ];
 
 interface ExpertPersona {
@@ -21,7 +24,6 @@ interface ExpertPersona {
   name: string;
   persona: string;
   category: string;
-  avatarBg: string;
   avatarText: string;
   description: string;
   tags: string[];
@@ -33,7 +35,6 @@ const EXPERT_PERSONAS: ExpertPersona[] = [
     name: "Code Review Expert",
     persona: "Kim",
     category: "Engineering",
-    avatarBg: "#10b981",
     avatarText: "CR",
     description: "Examines every line of code with eagle-eye standards, intercepting defects and module boundary violations.",
     tags: ["Code Review", "Quality Gate", "Security"],
@@ -43,7 +44,6 @@ const EXPERT_PERSONAS: ExpertPersona[] = [
     name: "UI Designer",
     persona: "Sam",
     category: "Product Design",
-    avatarBg: "#8b5cf6",
     avatarText: "UI",
     description: "Expert in design systems and component libraries, pursuing pixel-perfect accessible user interfaces.",
     tags: ["UI Design", "Design Systems", "Accessibility"],
@@ -53,7 +53,6 @@ const EXPERT_PERSONAS: ExpertPersona[] = [
     name: "Frontend Developer",
     persona: "Paul",
     category: "Engineering",
-    avatarBg: "#3b82f6",
     avatarText: "FE",
     description: "Expert in modern web technologies, responsive SPAs, React hooks, and state management.",
     tags: ["Frontend Dev", "React", "TypeScript"],
@@ -63,7 +62,6 @@ const EXPERT_PERSONAS: ExpertPersona[] = [
     name: "Diagram Design Expert",
     persona: "Mia",
     category: "Data & AI",
-    avatarBg: "#ec4899",
     avatarText: "DG",
     description: "Transforms complex software architectures and workflows into clear Mermaid and SVG diagrams.",
     tags: ["Mermaid Diagrams", "Architecture", "SVG"],
@@ -73,7 +71,6 @@ const EXPERT_PERSONAS: ExpertPersona[] = [
     name: "Senior Project Manager",
     persona: "Dylan",
     category: "Project & Quality",
-    avatarBg: "#f59e0b",
     avatarText: "PM",
     description: "Breaks down vague requirements into actionable milestones, specs, and risk-managed delivery plans.",
     tags: ["Project Management", "Scoping", "Milestones"],
@@ -83,7 +80,6 @@ const EXPERT_PERSONAS: ExpertPersona[] = [
     name: "Data Analytics Reporter",
     persona: "Phoebe",
     category: "Data & AI",
-    avatarBg: "#06b6d4",
     avatarText: "DA",
     description: "Transforms complex data into clear actionable business insights, visual charts, and executive summaries.",
     tags: ["Data Analysis", "Reporting", "Dashboards"],
@@ -94,8 +90,7 @@ interface FeaturedConnector {
   id: string;
   name: string;
   category: string;
-  iconBg: string;
-  iconText: string;
+  icon: LucideIcon;
   description: string;
   defaultCommand: string;
   envKey?: string;
@@ -107,8 +102,7 @@ const FEATURED_CONNECTORS: FeaturedConnector[] = [
     id: "github",
     name: "GitHub",
     category: "Collaboration",
-    iconBg: "#24292e",
-    iconText: "🐙",
+    icon: GitPullRequest,
     description: "Clone, push, and manage repositories, issues, and pull requests with natural language.",
     defaultCommand: "npx -y @modelcontextprotocol/server-github",
     envKey: "GITHUB_PERSONAL_ACCESS_TOKEN",
@@ -118,8 +112,7 @@ const FEATURED_CONNECTORS: FeaturedConnector[] = [
     id: "linear",
     name: "Linear",
     category: "Collaboration",
-    iconBg: "#5e6ad2",
-    iconText: "📐",
+    icon: ListChecks,
     description: "Manage issues, projects, cycles, and releases in Linear directly from your agent.",
     defaultCommand: "npx -y @modelcontextprotocol/server-linear",
     envKey: "LINEAR_API_KEY",
@@ -129,8 +122,7 @@ const FEATURED_CONNECTORS: FeaturedConnector[] = [
     id: "notion",
     name: "Notion",
     category: "Collaboration",
-    iconBg: "#000000",
-    iconText: "📝",
+    icon: NotebookText,
     description: "Create, search, and manage your Notion workspace databases, specifications, and docs.",
     defaultCommand: "npx -y @modelcontextprotocol/server-notion",
     envKey: "NOTION_API_TOKEN",
@@ -140,8 +132,7 @@ const FEATURED_CONNECTORS: FeaturedConnector[] = [
     id: "canva",
     name: "Canva",
     category: "Content Creation",
-    iconBg: "#00c4cc",
-    iconText: "🎨",
+    icon: Palette,
     description: "Access Canva design capabilities: design creation, brand management, and asset exports.",
     defaultCommand: "npx -y @modelcontextprotocol/server-canva",
     envKey: "CANVA_API_KEY",
@@ -151,8 +142,7 @@ const FEATURED_CONNECTORS: FeaturedConnector[] = [
     id: "outlook",
     name: "Microsoft Outlook",
     category: "Productivity",
-    iconBg: "#0078d4",
-    iconText: "📧",
+    icon: Mail,
     description: "Read and manage Outlook email messages, calendar events, and contacts via Microsoft Graph.",
     defaultCommand: "npx -y @modelcontextprotocol/server-outlook",
     envKey: "MICROSOFT_GRAPH_TOKEN",
@@ -162,8 +152,7 @@ const FEATURED_CONNECTORS: FeaturedConnector[] = [
     id: "browser",
     name: "Built-in Browser Tools",
     category: "Development",
-    iconBg: "#0b0d10",
-    iconText: "🌐",
+    icon: Globe,
     description: "Interactive DOM snapshots, visual clicking, text typing, and console error logs.",
     defaultCommand: "built-in",
     tags: ["Browser", "Testing", "DOM"],
@@ -183,6 +172,8 @@ function LibrarySheet({ tab }: { tab: LibraryTab }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // An open pick list takes Escape for itself.
+      if (e.key === "Escape" && selectPopupOpen()) return;
       if (e.key === "Escape" && !document.querySelector(".library .editing")) {
         e.stopPropagation();
         close();
@@ -206,7 +197,9 @@ function LibrarySheet({ tab }: { tab: LibraryTab }) {
                 className={activeTab === t.id ? "on" : ""}
                 onClick={() => useStore.setState({ libraryTab: t.id })}
               >
-                <span style={{ marginRight: 6 }}>{t.icon}</span>
+                <span style={{ display: "inline-flex", marginRight: 6, verticalAlign: "-2px" }}>
+                  <t.icon size={14} strokeWidth={1.75} aria-hidden />
+                </span>
                 {t.label}
               </button>
             ))}
@@ -293,7 +286,7 @@ function ExpertsTab() {
           {filteredPersonas.map((p) => (
             <div key={p.id} className="wb-card">
               <div className="wb-card-header">
-                <div className="wb-avatar" style={{ background: p.avatarBg }}>
+                <div className="wb-avatar">
                   {p.avatarText}
                 </div>
                 <div className="wb-card-meta">
@@ -485,12 +478,16 @@ function SkillsTab() {
     >
       <input className="text-input" autoFocus value={form.name} placeholder="release-notes" spellCheck={false} onChange={(e) => setForm({ ...form, name: e.target.value })} />
       <textarea className="text-input" rows={2} value={form.description} placeholder="What it does, then: Use when …" onChange={(e) => setForm({ ...form, description: e.target.value })} />
-      <select className="text-input" value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value as "harness" | "project" })}>
-        <option value="harness">Global (CubiQ)</option>
-        <option value="project" disabled={!projectId}>
-          This project
-        </option>
-      </select>
+      <Select
+        className="block"
+        value={form.scope}
+        options={[
+          { value: "harness", label: "Global (CubiQ)" },
+          { value: "project", label: "This project", disabled: !projectId },
+        ]}
+        onChange={(v) => setForm({ ...form, scope: v })}
+        ariaLabel="Scope"
+      />
       {formError && <p className="form-error">{formError}</p>}
       <div className="skill-new-actions">
         <button type="button" className="button ghost" onClick={toggleForm}>
@@ -525,7 +522,7 @@ function SkillsTab() {
   if (all.length === 0) {
     return (
       <div className="wb-content-pad" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", paddingTop: 60 }}>
-        <div style={{ fontSize: 48, marginBottom: 12 }}>🧩</div>
+        <Puzzle size={32} strokeWidth={1.5} aria-hidden style={{ color: "var(--text-tertiary)", marginBottom: 12 }} />
         <h3 style={{ margin: "0 0 8px", fontSize: 18, color: "var(--text)" }}>No skills yet</h3>
         <p style={{ maxWidth: 460, color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.6, margin: "0 0 20px" }}>
           Add a skill folder with a SKILL.md, or create one here.
@@ -786,8 +783,8 @@ function ConnectorsTab() {
             return (
               <div key={fc.id} className="wb-card">
                 <div className="wb-card-header">
-                  <div className="wb-avatar" style={{ background: fc.iconBg }}>
-                    {fc.iconText}
+                  <div className="wb-avatar">
+                    <fc.icon size={18} strokeWidth={1.75} aria-hidden />
                   </div>
                   <div className="wb-card-meta">
                     <h4 className="wb-card-title">{fc.name}</h4>

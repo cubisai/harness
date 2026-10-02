@@ -34,6 +34,21 @@
   --signal-fill: #a8ff55;
   --signal-ink: #357a08;
   --signal-line: #4a9a12;
+  /* The running beam's strengths (Beam.tsx, .beam). Light mode leans on the colour;
+     dark adds a white highlight and sheen. */
+  --beam-inner: 0.3;
+  /* Send and Stop: a raised circle in the surface colour (light or dark), so the beam's glow reads on it. */
+  --send-bg: #ffffff;
+  --send-fg: var(--text);
+  --send-ring: var(--hairline-strong);
+  --beam-stroke: 0.55;
+  --beam-bloom: 0;
+  --beam-sheen: transparent;
+  --beam-hi-10: transparent;
+  --beam-hi-30: transparent;
+  --beam-hi-60: transparent;
+  --beam-hi-75: transparent;
+  --beam-hi-85: transparent;
   --danger: #e5484d;
   --success: #2f9e44;
   --warning: #c98500;
@@ -73,6 +88,18 @@
     --signal-fill: #a8ff55;
     --signal-ink: #a8ff55;
     --signal-line: #a8ff55;
+  --beam-inner: 0.19;
+  --send-bg: #23262c;
+  --send-fg: #f7f8fa;
+  --send-ring: #30343c;
+  --beam-stroke: 0.26;
+  --beam-bloom: 0.24;
+  --beam-sheen: rgb(255 255 255 / 0.27);
+  --beam-hi-10: rgb(255 255 255 / 0.1);
+  --beam-hi-30: rgb(255 255 255 / 0.3);
+  --beam-hi-60: rgb(255 255 255 / 0.6);
+  --beam-hi-75: rgb(255 255 255 / 0.75);
+  --beam-hi-85: rgb(255 255 255 / 0.85);
     --danger: #ff6369;
     --success: #3fb950;
     --warning: #f5a524;
@@ -102,6 +129,18 @@
   --signal-fill: #a8ff55;
   --signal-ink: #a8ff55;
   --signal-line: #a8ff55;
+  --beam-inner: 0.19;
+  --send-bg: #23262c;
+  --send-fg: #f7f8fa;
+  --send-ring: #30343c;
+  --beam-stroke: 0.26;
+  --beam-bloom: 0.24;
+  --beam-sheen: rgb(255 255 255 / 0.27);
+  --beam-hi-10: rgb(255 255 255 / 0.1);
+  --beam-hi-30: rgb(255 255 255 / 0.3);
+  --beam-hi-60: rgb(255 255 255 / 0.6);
+  --beam-hi-75: rgb(255 255 255 / 0.75);
+  --beam-hi-85: rgb(255 255 255 / 0.85);
   --danger: #ff6369;
   --success: #3fb950;
   --warning: #f5a524;
@@ -447,6 +486,48 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
   font-size: 12px;
 }
 
+/* Select.tsx: a themed pick list (button + fixed listbox popup). */
+.select-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 8px 0 10px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--hairline);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+  transition: background 120ms var(--ease), border-color 120ms var(--ease);
+}
+.select-button:hover:not(:disabled) { background: var(--bg-hover); }
+.select-button[aria-expanded="true"] { border-color: var(--hairline-strong); }
+.select-button:disabled { opacity: 0.5; }
+.select-button .select-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-button svg { flex-shrink: 0; color: var(--text-tertiary); }
+.select-button.block { width: 100%; height: 32px; }
+.select-popup {
+  position: fixed;
+  z-index: 200;
+  max-width: min(360px, calc(100vw - 16px));
+  max-height: min(320px, 50vh);
+  overflow-y: auto;
+  padding: 4px;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--hairline-strong);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-float);
+  outline: none;
+}
+.select-option { display: flex; flex-direction: column; gap: 1px; padding: 6px 28px 6px 10px; border-radius: var(--radius-s); font-size: 12.5px; color: var(--text); cursor: default; position: relative; }
+.select-option.active { background: var(--bg-hover); }
+.select-option.on::after { content: ""; position: absolute; right: 10px; top: 50%; width: 8px; height: 4px; border-left: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-70%) rotate(-45deg); }
+.select-option[aria-disabled] { color: var(--text-tertiary); }
+.select-option-detail { font-size: 11.5px; color: var(--text-tertiary); }
+
 .segmented {
   display: inline-flex;
   padding: 2px;
@@ -761,19 +842,21 @@ details.tool[open]::details-content { height: auto; }
 .start-thread p { margin: 0; color: var(--text-secondary); font-size: 13.5px; }
 .composer-bar .grow { flex: 1; }
 .send {
+  position: relative;
   width: 30px;
   height: 30px;
   border-radius: 50%;
   border: 0;
   display: grid;
   place-items: center;
-  background: var(--primary);
-  color: var(--on-primary);
+  background: var(--send-bg);
+  color: var(--send-fg);
+  box-shadow: inset 0 0 0 1px var(--send-ring);
   transition: transform 100ms var(--ease), opacity 150ms var(--ease);
 }
 .send:disabled { opacity: 0.3; }
 .send:not(:disabled):active { transform: scale(0.92); }
-.send.stop { background: var(--text); color: var(--bg); }
+.send.stop { background: var(--send-bg); color: var(--send-fg); }
 
 .skill-menu {
   position: absolute;
@@ -824,6 +907,8 @@ details.tool[open]::details-content { height: auto; }
   [data-motion="subtle"] .library { animation: rise 110ms var(--ease); }
   [data-motion="full"] .open-menu { animation: rise 140ms var(--ease); }
   [data-motion="subtle"] .open-menu { animation: rise 70ms var(--ease); }
+  [data-motion="full"] .select-popup { animation: rise 140ms var(--ease); }
+  [data-motion="subtle"] .select-popup { animation: rise 70ms var(--ease); }
   [data-motion="full"] .toast { animation: rise 180ms var(--ease); }
   [data-motion="subtle"] .toast { animation: rise 90ms var(--ease); }
 }
@@ -1565,13 +1650,13 @@ button.hunk:hover { color: var(--text); }
 .wb-avatar {
   width: 36px;
   height: 36px;
-  border-radius: 9px;
+  border-radius: var(--radius-m);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
-  font-weight: 600;
-  color: #fff;
+  font: 600 12px var(--mono);
+  background: var(--bg-chip);
+  color: var(--text-secondary);
   flex-shrink: 0;
 }
 .wb-card-meta {
@@ -1696,7 +1781,7 @@ button.hunk:hover { color: var(--text); }
 .library-item.off,
 .library-item.shadowed { opacity: 0.55; }
 .skill-origin { font-size: 11px; color: var(--text-tertiary); margin-left: 6px; }
-.form-error { color: var(--danger, #d33); font-size: 12px; }
+.form-error { color: var(--danger); font-size: 12px; }
 
 /* Connectors: the per-project "Use in this project" toggle for a global server. */
 .mcp-file-label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); white-space: nowrap; padding-top: 2px; }
@@ -1782,24 +1867,71 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 .ring-actions { display: flex; gap: 6px; padding-top: 10px; }
 .ring-actions .button { flex: 1; }
 
-/* Running beam (libraries.dev/beam, flattened): one thin line travels the border. */
-@property --beam-angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
-.composer.running::before {
-  content: "";
+/* Running beam (Beam.tsx; after libraries.dev border-beam, rebuilt in CSS). Soft colour
+   glows just inside the host's edges and a faint highlight rides its border; a rotating
+   window sweeps them round and the hue drifts. Blob sizes are % of the host, so one
+   recipe fits the composer, the search box and the round stop button. */
+@property --beam-angle { syntax: "<angle>"; inherits: true; initial-value: 0deg; }
+@property --beam-on { syntax: "<number>"; inherits: true; initial-value: 0; }
+.beam {
+  --beam-edge: 28px;
+  --beam-window: conic-gradient(from var(--beam-angle), transparent 0%, transparent 30%, rgb(255 255 255 / 0.1) 36%, rgb(255 255 255 / 0.35) 44%, #fff 52%, #fff 80%, rgb(255 255 255 / 0.35) 86%, rgb(255 255 255 / 0.1) 92%, transparent 95%);
+  --beam-blobs:
+    radial-gradient(9% 48% at 18% -7%, rgb(255 50 100), transparent),
+    radial-gradient(8% 42% at 6% -5%, rgb(40 140 255), transparent),
+    radial-gradient(6% 84% at 1% 68%, rgb(50 200 80), transparent),
+    radial-gradient(3% 42% at 1% 68%, rgb(30 185 170), transparent),
+    radial-gradient(34% 38% at 70% 100%, rgb(100 70 255), transparent),
+    radial-gradient(16% 31% at 40% 100%, rgb(40 140 255), transparent),
+    radial-gradient(15% 38% at 90% 0%, rgb(255 120 40), transparent),
+    radial-gradient(4% 50% at 100% 30%, rgb(240 50 180), transparent),
+    radial-gradient(7% 57% at 100% 30%, rgb(180 40 240), transparent);
   position: absolute;
   inset: -1px;
   border-radius: inherit;
-  padding: 1px;
   pointer-events: none;
-  background: conic-gradient(from var(--beam-angle), transparent 0 70%, color-mix(in srgb, var(--signal-line) 35%, transparent) 80%, var(--signal-line) 88%, transparent 95%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  animation: beam 2.6s linear infinite;
+  z-index: 1;
+  /* Its own layer, painted on its own: the spin never repaints the page around it. */
+  contain: strict;
+  transform: translateZ(0);
+  animation: beam-spin 1.96s linear infinite, beam-in 0.6s ease forwards;
 }
-@keyframes beam { to { --beam-angle: 360deg; } }
+.beam > span { position: absolute; inset: 0; border-radius: inherit; }
+/* Inner glow: the colour blobs, only within --beam-edge of an edge, only inside the window. */
+.beam-inner {
+  background: var(--beam-blobs);
+  mask: var(--beam-window), linear-gradient(#fff, transparent var(--beam-edge), transparent calc(100% - var(--beam-edge)), #fff), linear-gradient(to right, #fff, transparent var(--beam-edge), transparent calc(100% - var(--beam-edge)), #fff);
+  mask-composite: intersect, add;
+  opacity: calc(var(--beam-on) * var(--beam-inner));
+  box-shadow: inset 0 0 9px 1px var(--beam-sheen);
+  filter: brightness(1.3) saturate(1.2);
+}
+/* Border: a highlight plus the blobs, masked to a 1px ring inside the window. */
+.beam-stroke {
+  padding: 1px;
+  background: conic-gradient(from var(--beam-angle), transparent 0%, transparent 54%, var(--beam-hi-10) 57%, var(--beam-hi-30) 60%, var(--beam-hi-60) 63%, var(--beam-hi-75) 66%, var(--beam-hi-60) 69%, var(--beam-hi-30) 72%, var(--beam-hi-10) 75%, transparent 78%), var(--beam-blobs);
+  mask: var(--beam-window), linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0) border-box;
+  mask-composite: intersect, exclude;
+  opacity: calc(var(--beam-on) * var(--beam-stroke));
+  filter: brightness(1.3) saturate(1.2);
+}
+/* Bloom: a narrow highlight on the ring, blurred into a sparkle. */
+.beam-bloom {
+  padding: 1px;
+  background: conic-gradient(from var(--beam-angle), transparent 0%, transparent 58%, var(--beam-hi-10) 65%, var(--beam-hi-30) 67%, var(--beam-hi-60) 69%, var(--beam-hi-85) 70%, var(--beam-hi-85) 70.5%, var(--beam-hi-60) 71.5%, var(--beam-hi-30) 73%, var(--beam-hi-10) 75%, transparent 82%);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0) border-box;
+  mask-composite: exclude;
+  filter: blur(8px) brightness(1.3) saturate(1.2);
+  opacity: calc(var(--beam-on) * var(--beam-bloom));
+}
+/* Small hosts: a stronger, tighter glow (the round stop button). */
+.send .beam { --beam-edge: 9px; inset: -2px; }
+.send .beam-inner { opacity: calc(var(--beam-on) * min(1, var(--beam-inner) * 3)); }
+.send .beam-stroke { padding: 2px; opacity: calc(var(--beam-on) * min(1, var(--beam-stroke) * 2.5)); }
+@keyframes beam-spin { to { --beam-angle: 360deg; } }
+@keyframes beam-in { to { --beam-on: 1; } }
 @media (prefers-reduced-motion: reduce) {
-  .composer.running::before { animation: none; background: var(--signal-line); opacity: 0.6; }
+  .beam { animation: beam-in 0.6s ease forwards; --beam-angle: 140deg; }
 }
 .model-option-off { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding-right: 10px; font-size: 11.5px; color: var(--text-tertiary); }
 

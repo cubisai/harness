@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import { Brain } from "lucide-react";
 import type { MemoryOverview, MemoryType } from "../../../shared/types";
 import { api } from "../api";
 import { useStore } from "../store";
+import { Select } from "./Select";
 import "../styles/memory.css";
 
 const TYPES: MemoryType[] = ["user", "feedback", "project", "reference"];
@@ -54,7 +56,7 @@ export function MemoryTab({ overview: initial }: { overview?: MemoryOverview | n
   if (!projectId) {
     return (
       <div className="wb-content-pad" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", paddingTop: 60 }}>
-        <div style={{ fontSize: 48, marginBottom: 12 }}>🧠</div>
+        <Brain size={32} strokeWidth={1.5} aria-hidden style={{ color: "var(--text-tertiary)", marginBottom: 12 }} />
         <h3 style={{ margin: "0 0 8px", fontSize: 18, color: "var(--text)" }}>No project memory</h3>
         <p style={{ maxWidth: 460, color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.6, margin: 0 }}>Pick a project to see its memory.</p>
       </div>
@@ -213,13 +215,13 @@ export function MemoryTab({ overview: initial }: { overview?: MemoryOverview | n
             </div>
             <div className="memory-row">
               <span className="label">Type</span>
-              <select className="text-input" value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value as MemoryType })}>
-                {TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
+              <Select
+                className="block"
+                value={draft.type}
+                options={TYPES.map((t) => ({ value: t, label: t }))}
+                onChange={(v) => setDraft({ ...draft, type: v })}
+                ariaLabel="Type"
+              />
             </div>
             <textarea className="text-input memory-body" rows={14} value={draft.body} placeholder="The note itself" onChange={(e) => setDraft({ ...draft, body: e.target.value })} />
             {error && <p className="form-error">{error}</p>}

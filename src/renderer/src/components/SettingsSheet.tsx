@@ -5,6 +5,7 @@ import { ProvidersSection } from "./ProviderSheet";
 import { useStore, type LibraryTab } from "../store";
 import { ANTIGRAVITY_ACK_VERSION } from "../../../shared/provider-rules";
 import { UnsupportedChip } from "./UnsupportedChip";
+import { Select, selectPopupOpen } from "./Select";
 
 const THEMES: { id: Theme; label: string }[] = [
   { id: "system", label: "System" },
@@ -67,6 +68,8 @@ export function SettingsSheet() {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
+      // An open pick list takes Escape for itself.
+      if (e.key === "Escape" && selectPopupOpen()) return;
       if (e.key === "Escape") {
         e.stopPropagation();
         setOpen(false);
@@ -167,14 +170,15 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
             <h3>New threads</h3>
             <div className="row">
               <span className="label">Agent</span>
-              <select className="select" value={settings.defaultAgent ?? ""} onChange={(e) => update({ defaultAgent: e.target.value || null })}>
-                <option value="">{agents[0]?.label ?? "Claude"} (default)</option>
-                {agents.slice(1).map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.label}
-                  </option>
-                ))}
-              </select>
+              <Select
+                value={settings.defaultAgent ?? ""}
+                options={[
+                  { value: "", label: `${agents[0]?.label ?? "Claude"} (default)` },
+                  ...agents.slice(1).map((a) => ({ value: a.id, label: a.label })),
+                ]}
+                onChange={(v) => update({ defaultAgent: v || null })}
+                ariaLabel="Default agent"
+              />
             </div>
             <div className="row">
               <span className="label">Permissions</span>
@@ -192,14 +196,15 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
             <div className="row">
               <span className="label">Open files in</span>
               {editors.length ? (
-                <select className="select" value={settings.editor ?? ""} onChange={(e) => update({ editor: e.target.value || null })}>
-                  <option value="">{editors[0]!.label} (first found)</option>
-                  {editors.slice(1).map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.label}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  value={settings.editor ?? ""}
+                  options={[
+                    { value: "", label: `${editors[0]!.label} (first found)` },
+                    ...editors.slice(1).map((e) => ({ value: e.id, label: e.label })),
+                  ]}
+                  onChange={(v) => update({ editor: v || null })}
+                  ariaLabel="Editor"
+                />
               ) : (
                 <span className="value">No editors found</span>
               )}

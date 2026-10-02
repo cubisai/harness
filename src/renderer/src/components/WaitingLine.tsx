@@ -69,6 +69,30 @@ function orbFor(activity: Activity, startedAt: number): { state: OrbState; verb:
 }
 
 /**
+ * A CSS colour token's current value (e.g. "--signal-line"), re-read when the
+ * theme changes (the html data-theme attribute or the OS colour scheme). The orb
+ * paints on a canvas, so it needs the colour as a string rather than a var().
+ */
+export function useCssColor(token: string): string | undefined {
+  const read = () => (typeof document === "undefined" ? "" : getComputedStyle(document.documentElement).getPropertyValue(token).trim());
+  const [color, setColor] = useState(read);
+  useEffect(() => {
+    const update = () => setColor(read());
+    const observer = new MutationObserver(update);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class"] });
+    const media = window.matchMedia?.("(prefers-color-scheme: dark)");
+    media?.addEventListener("change", update);
+    update();
+    return () => {
+      observer.disconnect();
+      media?.removeEventListener("change", update);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+  return color || undefined;
+}
+
+/**
  * The line under a running turn, in Claude Code's style: a thinking orb that
  * follows the agent's activity, a verb, how long it has run, the tokens it has
  * produced so far, and how to stop.
@@ -83,10 +107,12 @@ export function WaitingLine({ startedAt, outputTokens, now: fixedNow, activity =
   }, [fixedNow]);
 
   const { state, verb } = orbFor(activity, startedAt);
+  // The orb takes the signal colour, like the verb beside it.
+  const orbColor = useCssColor("--signal-line");
   const facts = [elapsed(now - startedAt), ...(outputTokens ? [`↓ ${tokens(outputTokens)} tokens`] : []), "esc to interrupt"];
   return (
     <div className="waiting-line" role="status" aria-live="polite">
-      <ThinkingOrb state={state} size={20} className="waiting-orb" aria-hidden paused={reducedMotion} />
+      <ThinkingOrb state={state} size={20} className="waiting-orb" aria-hidden paused={reducedMotion} color={orbColor} />
       <span className="waiting-verb">{verb}…</span>
       <span className="waiting-facts">({facts.join(" · ")})</span>
     </div>

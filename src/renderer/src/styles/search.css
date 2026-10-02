@@ -14,14 +14,21 @@
 }
 
 /* Same size as .palette-input, so the two dialogs read as one family. */
+/* The text field, with the beam riding its edge while the dialog is open. */
+.search-field {
+  position: relative;
+  margin: 10px 10px 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-m);
+}
 .search-input {
   width: 100%;
   border: 0;
-  border-bottom: 1px solid var(--hairline);
+  border-radius: inherit;
   background: transparent;
   color: var(--text);
-  font: 400 17px var(--font-display);
-  padding: 16px 18px;
+  font: 400 16px var(--font-display);
+  padding: 11px 14px;
   outline: none;
 }
 .search-input::placeholder { color: var(--text-tertiary); }

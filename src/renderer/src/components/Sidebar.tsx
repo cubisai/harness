@@ -7,6 +7,7 @@ import { ThreadRow, type ThreadStatus } from "./ThreadRow";
 import { useStore } from "../store";
 import { InboxBell } from "./MessageCenter";
 import { SidebarToggle } from "./PaneRail";
+import { Select } from "./Select";
 
 /** A project as a small folder label: toggles its group, + starts a thread, ⋯ opens its menu. */
 function ProjectRow({
@@ -152,11 +153,16 @@ function ProjectRow({
                   }
                 }}
               />
-              <select className="select" value={fixRounds} onChange={(e) => setFixRounds(Number(e.target.value))} aria-label="Auto-fix">
-                <option value={0}>Auto-fix: off</option>
-                <option value={1}>Auto-fix: 1 round</option>
-                <option value={2}>Auto-fix: 2 rounds</option>
-              </select>
+              <Select
+                value={fixRounds}
+                options={[
+                  { value: 0, label: "Auto-fix: off" },
+                  { value: 1, label: "Auto-fix: 1 round" },
+                  { value: 2, label: "Auto-fix: 2 rounds" },
+                ]}
+                onChange={(v) => setFixRounds(v)}
+                ariaLabel="Auto-fix"
+              />
               <button role="menuitem" onClick={() => void saveCheck()}>
                 Save
               </button>
