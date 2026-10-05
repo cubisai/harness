@@ -123,6 +123,8 @@ export interface PaneLayout {
   terminalOpen: boolean;
   /** The browser takes the main area and the conversation becomes a rail. */
   browserWide: boolean;
+  /** The user dragged the side panel past the chat's normal width: it may keep up to 80%, the chat down to its floor. */
+  inspectorWide: boolean;
 }
 
 export interface Settings {

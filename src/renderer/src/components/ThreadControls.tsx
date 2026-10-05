@@ -54,7 +54,7 @@ export function ModeMenu({ mode, disabled, onPick }: { mode: PermissionMode; dis
         onClick={() => setOpen((o) => !o)}
       >
         <m.Icon size={13} />
-        {m.label}
+        <span className="mode-chip-label">{m.label}</span>
         <ChevronDown size={12} className="chev" />
       </button>
       {open && (

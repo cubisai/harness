@@ -68,7 +68,7 @@ Full access mode shows its chip in `--danger`.
 - 4px grid: gaps of 2 · 4 · 6 · 8 · 12 · 16 · 24.
 - Controls are 28px tall (icon buttons 28×28). Sidebar rows are about 28px for one line, 40px with a sub-line. The send button is 30px round.
 - Radius: `--radius-s` 6 (chips, kbd, small buttons) · `--radius-m` 8 (controls, rows, code) · `--radius-l` 10 (composer, cards, popovers) · 12 (⌘K, dialogs). Pills only for filter chips.
-- Layout: sidebar 248px (resizable), artifact panel 430px (resizable, always on the **right**), reading column max 720px centred, header 46px. On macOS the traffic lights are centred on the header and the sidebar toggle sits right after them at the same spot whether the sidebar is open or collapsed; collapsed, New thread follows it (as in the ChatGPT and Claude apps).
+- Layout: sidebar 248px (resizable), artifact panel 430px (resizable up to 80% of the space right of the sidebar, always on the **right**; the chat keeps 420px unless the user drags the panel wider, then never under 260px or 20%), reading column max 720px centred, header 46px. On macOS the traffic lights are centred on the header and the sidebar toggle sits right after them at the same spot whether the sidebar is open or collapsed; collapsed, New thread follows it (as in the ChatGPT and Claude apps).
 
 ## 5. Elevation and borders
 
@@ -123,6 +123,7 @@ Full access mode shows its chip in `--danger`.
 ### 7.5 Artifact panel (right side)
 - Opens by itself **when a turn finishes**, never mid-stream, on the last file the agent wrote in that turn of a deliverable kind (html, svg, pdf, image, csv, docx, xlsx, pptx). Markdown and code never open by themselves: their file card in the chat has a **Preview** button. If the turn wrote several, it shows the last one with a switcher. A rewrite of the same file adds a version (v1, v2…).
 - The header shows the file name, version ▾, Open in ▾, Copy and Close. Tabs: Preview · Source · Diff.
+- Drag it up to 80% wide for long documents and plans. Beside it the chat must still work at 260px: the composer stays one row (model label ellipsizes, chips wrap), nothing scrolls sideways.
 - Any file the agent read, created or edited opens here on click, from tool rows, the changes card or links in replies. Code gets line numbers, syntax colouring and diff tinting (`--add-bg` / `--del-bg`).
 - While the agent writes, the file card in the chat reads "Generating…".
 

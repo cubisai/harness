@@ -475,6 +475,17 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
   .main-header .main-title .sub { display: none; }
   .thread-meters { display: none; }
 }
+/* A narrow chat beside a wide side panel (down to 260px): the message box keeps one row of controls. */
+@container main (max-width: 420px) {
+  /* Scoped under .composer: these rules sit above the composer's own, which would otherwise win. */
+  /* The + and the mode chip keep their size; the actions give way (the model name ellipsizes). */
+  .composer .composer-left { flex: 0 0 auto; flex-wrap: nowrap; }
+  .composer .composer-actions { flex: 1 1 auto; min-width: 0; justify-content: flex-end; }
+  .composer .composer-actions .model-picker { min-width: 0; }
+  .composer .mode-chip .mode-chip-label, .composer .model-picker-effort { display: none; }
+  .composer .model-picker-button { max-width: 100%; }
+  .composer textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
 .main-title {
   font: 600 13px var(--font-display);
   flex: 1;
@@ -731,7 +742,11 @@ details.tool[open]::details-content { height: auto; }
   font: 10.5px var(--mono);
   margin: 8px 0 18px;
   font-variant-numeric: tabular-nums;
+  /* In a narrow chat the items wrap whole ("1.2k in"), never inside. */
+  flex-wrap: wrap;
+  row-gap: 2px;
 }
+.turn-meta > * { white-space: nowrap; }
 .notice { color: var(--text-secondary); font-size: 12px; margin: 8px 0; }
 /* A project check's running/passed/failed row. */
 .check-row summary { cursor: pointer; margin-top: 4px; }

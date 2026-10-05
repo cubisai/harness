@@ -3,9 +3,35 @@
 
 import type { PaneLayout } from "./types";
 
-export const BOUNDS = { sidebar: { min: 180, max: 360 }, rail: 48, inspector: { min: 320, max: 720 }, main: 420, terminal: { min: 120, max: 600 } } as const;
+/**
+ * `inspector.max` is only a sanity bound for stored values: the real cap is relative to the window (`inspectorCap`).
+ * `main` is the chat's normal minimum; a panel the user dragged wide lets it go down to `mainFloor` (or 20%).
+ */
+export const BOUNDS = {
+  sidebar: { min: 180, max: 360 },
+  rail: 48,
+  inspector: { min: 320, max: 4000, share: 0.8 },
+  main: 420,
+  mainFloor: 260,
+  terminal: { min: 120, max: 600 },
+} as const;
 
-export const DEFAULT_LAYOUT: PaneLayout = { sidebar: 256, sidebarCollapsed: false, inspector: 460, inspectorCollapsed: false, terminal: 240, terminalOpen: false, browserWide: false };
+export const DEFAULT_LAYOUT: PaneLayout = {
+  sidebar: 256,
+  sidebarCollapsed: false,
+  inspector: 460,
+  inspectorCollapsed: false,
+  terminal: 240,
+  terminalOpen: false,
+  browserWide: false,
+  inspectorWide: false,
+};
+
+/** The narrowest the chat gets beside a wide panel: 20% of the space right of the sidebar, never under `mainFloor`. */
+export const chatFloor = (avail: number) => Math.max(BOUNDS.mainFloor, Math.ceil(avail * (1 - BOUNDS.inspector.share)));
+
+/** The widest the side panel may be, given the space right of the sidebar: 80% of it, leaving the chat its floor. */
+export const inspectorCap = (avail: number) => Math.max(BOUNDS.inspector.min, Math.min(Math.floor(avail * BOUNDS.inspector.share), avail - chatFloor(avail)));
 
 export const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
 
@@ -27,5 +53,6 @@ export function sanitizeLayout(value: unknown): PaneLayout {
     terminal: num(v.terminal, DEFAULT_LAYOUT.terminal, BOUNDS.terminal.min, BOUNDS.terminal.max),
     terminalOpen: bool(v.terminalOpen, DEFAULT_LAYOUT.terminalOpen),
     browserWide: bool(v.browserWide, DEFAULT_LAYOUT.browserWide),
+    inspectorWide: bool(v.inspectorWide, DEFAULT_LAYOUT.inspectorWide),
   };
 }

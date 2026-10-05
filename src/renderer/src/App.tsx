@@ -19,7 +19,7 @@ import { ContextSheet } from "./components/ContextSheet";
 import { ThreadView } from "./components/ThreadView";
 import { IconArrowLeft, IconDiff, IconFolder, IconGlobe, IconSparkle, IconTerminal } from "./icons";
 import { usePaneLayout } from "./hooks/usePaneLayout";
-import { BOUNDS, DEFAULT_LAYOUT } from "./layout";
+import { BOUNDS, DEFAULT_LAYOUT, isWideInspector } from "./layout";
 import { inboxModel, nthVisibleThread, waitingThreads } from "./sections";
 import { useSelectedThread, useStore } from "./store";
 
@@ -112,6 +112,11 @@ export function App() {
   const layout = useStore((s) => s.paneLayout);
   const pane = usePaneLayout(Boolean(inspectorVisible));
   const setPaneLayout = useStore((s) => s.setPaneLayout);
+  // A width that leaves the chat under its normal minimum was dragged there on purpose: keep it wide.
+  const inspectorPatch = (v: number, c: boolean) => {
+    const inspector = v || layout.inspector;
+    return { inspector, inspectorCollapsed: c, inspectorWide: isWideInspector(pane.width, pane.sidebar, inspector) };
+  };
   const wide = layout.browserWide && inspectorVisible && inspectorTab === "browser" && pane.inspector !== null;
 
   return (
@@ -216,15 +221,16 @@ export function App() {
           orientation="vertical"
           controls="inspector"
           label="Resize side panel"
-          value={layout.inspector}
+          // The drawn width (a narrowed panel drags from where it is), capped relative to the window.
+          value={pane.inspector ?? layout.inspector}
           min={BOUNDS.inspector.min}
-          max={BOUNDS.inspector.max}
+          max={pane.inspectorMax}
           defaultValue={DEFAULT_LAYOUT.inspector}
           collapsed={layout.inspectorCollapsed}
           invert
           className="splitter-inspector"
-          onChange={(v, c) => setPaneLayout({ inspector: v || layout.inspector, inspectorCollapsed: c }, false)}
-          onCommit={(v, c) => setPaneLayout({ inspector: v || layout.inspector, inspectorCollapsed: c }, true)}
+          onChange={(v, c) => setPaneLayout(inspectorPatch(v, c), false)}
+          onCommit={(v, c) => setPaneLayout(inspectorPatch(v, c), true)}
         />
       )}
       {inspectorVisible && pane.inspector !== null && <Inspector projectId={project?.id ?? null} />}
