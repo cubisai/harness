@@ -385,9 +385,9 @@ export function installMock(): void {
         name: entry.name,
         enabled: entry.enabled,
         type: entry.spec.type,
-        target: entry.spec.type === "http" ? entry.spec.url : [entry.spec.command, ...(entry.spec.args ?? [])].join(" "),
+        target: entry.spec.type !== "stdio" ? entry.spec.url : [entry.spec.command, ...(entry.spec.args ?? [])].join(" "),
         envKeys: entry.spec.type === "stdio" ? Object.keys(entry.spec.env ?? {}) : [],
-        headerKeys: entry.spec.type === "http" ? Object.keys(entry.spec.headers ?? {}) : [],
+        headerKeys: entry.spec.type !== "stdio" ? Object.keys(entry.spec.headers ?? {}) : [],
       };
       const kept = (projectId ? mcp.project?.servers ?? [] : mcp.servers).filter((x) => x.name !== (previous ?? entry.name));
       mcp = projectId
@@ -419,6 +419,25 @@ export function installMock(): void {
       mcp = { ...mcp, project: { ...mcp.project!, offGlobal } };
       return mcp;
     },
+    probeMcp: async (url) => {
+      await new Promise((r) => setTimeout(r, 300));
+      return url.includes("linear") ? { ok: true, transport: "http", auth: "oauth" } : { ok: true, transport: "http", auth: "none", serverName: "Mock" };
+    },
+    mcpStatus: async (projectId) =>
+      (projectId ? (mcp.project?.servers ?? []) : mcp.servers).map((s) =>
+        !s.enabled
+          ? { name: s.name, state: "disabled" as const, tools: [] }
+          : s.name === "github"
+            ? { name: s.name, state: "connected" as const, tools: ["search_issues", "create_issue", "get_pull_request"].map((n) => ({ name: n, description: "" })) }
+            : { name: s.name, state: "needs-auth" as const, tools: [], auth: { signedIn: false } },
+      ),
+    connectMcp: async () => {
+      await new Promise((r) => setTimeout(r, 600));
+      return { ok: true };
+    },
+    disconnectMcp: async () => mcp,
+    setMcpClientSecret: async () => mcp,
+    importMcp: async () => mcp,
     revealPath: async () => {},
     listEditors: async () => [
       { id: "cursor", label: "Cursor" },

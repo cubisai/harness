@@ -1,6 +1,5 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { getDefaultEnvironment, StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { JsonSchemaType } from "@modelcontextprotocol/sdk/validation";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
 import { z } from "zod";
@@ -8,6 +7,7 @@ import type { McpServerEntry, McpServerSpec } from "../../shared/types";
 import type { HarnessTool } from "../agents/types";
 import { stableStringify } from "../cache-policy";
 import { killPidTree } from "../winspawn";
+import { clientTransport, type ClientTransport } from "./transport";
 import type { McpToolsCache, McpToolInfo } from "./servers";
 
 /**
@@ -16,7 +16,7 @@ import type { McpToolsCache, McpToolInfo } from "./servers";
  * spec between calls, sweeping idle servers and closing them on shutdown.
  */
 
-type Transport = StdioClientTransport | StreamableHTTPClientTransport;
+type Transport = ClientTransport;
 
 interface PoolEntry {
   client: Client;
@@ -99,10 +99,7 @@ export class McpClientPool {
   }
 
   private createEntry(spec: McpServerSpec): PoolEntry {
-    const transport: Transport =
-      spec.type === "http"
-        ? new StreamableHTTPClientTransport(new URL(spec.url), { requestInit: { headers: spec.headers } })
-        : new StdioClientTransport({ command: spec.command, args: spec.args ?? [], env: { ...getDefaultEnvironment(), ...spec.env }, stderr: "ignore" });
+    const transport: Transport = clientTransport(spec);
     return { client: new Client({ name: "cubiq", version: "1.0.0" }), transport, lastUsed: this.now() };
   }
 

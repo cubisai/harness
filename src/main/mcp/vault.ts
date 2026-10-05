@@ -13,6 +13,21 @@ export const VAULT_MARK = "$vault";
 export interface VaultEntry {
   headers?: Record<string, string>;
   env?: Record<string, string>;
+  oauth?: VaultOAuth;
+}
+
+/** A remote server's OAuth state: never leaves the main process. */
+export interface VaultOAuth {
+  /** The secret of a client the user registered themselves (the id is in mcp.json). */
+  clientSecret?: string;
+  /** What dynamic registration returned (client_id, maybe client_secret, redirect_uris…). */
+  client?: Record<string, unknown>;
+  /** The token response, plus when it arrived (ms), to know when it expires. */
+  tokens?: { access_token: string; token_type: string; refresh_token?: string; expires_in?: number; scope?: string; id_token?: string; obtained_at: number };
+  /** Discovery results (authorization server, its metadata, the resource metadata), so a refresh skips discovery. */
+  discovery?: Record<string, unknown>;
+  /** Scopes a 403 asked for that the token lacks; the next sign-in asks for these too. */
+  stepUpScopes?: string;
 }
 
 interface FileShape {
@@ -102,6 +117,28 @@ export class McpVault {
     this.cache.set(key, clean);
   }
 
+  /** Replace only the given fields (an empty map or undefined clears that field), keeping the rest. */
+  update(key: string, patch: Partial<Record<keyof VaultEntry, unknown>>): void {
+    const next: VaultEntry = { ...(this.get(key) ?? {}) };
+    for (const [field, value] of Object.entries(patch) as [keyof VaultEntry, unknown][]) {
+      if (value === undefined || (typeof value === "object" && value !== null && !Object.keys(value).length)) delete next[field];
+      else (next as Record<string, unknown>)[field] = value;
+    }
+    this.set(key, next);
+  }
+
+  /** Move an entry to a new key (a renamed server). */
+  rename(from: string, to: string): void {
+    if (from === to) return;
+    const data = this.read();
+    if (!(from in data.entries)) return;
+    data.entries[to] = data.entries[from]!;
+    delete data.entries[from];
+    this.write(data);
+    this.cache.delete(from);
+    this.cache.delete(to);
+  }
+
   remove(key: string): void {
     const data = this.read();
     this.cache.delete(key);
@@ -122,6 +159,10 @@ export class McpVault {
       const e = this.get(key);
       if (!e) continue;
       out.push(...Object.values(e.headers ?? {}), ...Object.values(e.env ?? {}));
+      const o = e.oauth;
+      if (o?.clientSecret) out.push(o.clientSecret);
+      if (typeof o?.client?.client_secret === "string") out.push(o.client.client_secret);
+      if (o?.tokens) out.push(...[o.tokens.access_token, o.tokens.refresh_token, o.tokens.id_token].filter((t): t is string => Boolean(t)));
     }
     return out;
   }
@@ -131,5 +172,6 @@ function compact(entry: VaultEntry): VaultEntry | null {
   const out: VaultEntry = {};
   if (entry.headers && Object.keys(entry.headers).length) out.headers = entry.headers;
   if (entry.env && Object.keys(entry.env).length) out.env = entry.env;
+  if (entry.oauth && Object.keys(entry.oauth).length) out.oauth = entry.oauth;
   return Object.keys(out).length ? out : null;
 }

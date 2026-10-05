@@ -186,10 +186,41 @@ export interface EditorInfo {
 
 export type OpenResult = { ok: true; editor: string } | { ok: false; error: string };
 
-/** How to start an MCP server: a local command, or a URL (Streamable HTTP). */
+/** How to start an MCP server: a local command, or a URL (Streamable HTTP, or the older SSE transport). */
 export type McpServerSpec =
   | { type: "stdio"; command: string; args?: string[]; env?: Record<string, string> }
-  | { type: "http"; url: string; headers?: Record<string, string> };
+  | { type: "http"; url: string; headers?: Record<string, string>; oauth?: McpOAuthConfig }
+  | { type: "sse"; url: string; headers?: Record<string, string>; oauth?: McpOAuthConfig };
+
+/** A remote server's OAuth settings. Empty = discover everything and register dynamically. */
+export interface McpOAuthConfig {
+  /** A client the user registered with the server themselves; its secret, if any, lives in the vault. */
+  clientId?: string;
+  /** Space-separated scopes to ask for instead of the server's own list. */
+  scopes?: string;
+  /** Fixed loopback port for the sign-in callback (a pre-registered client needs a stable redirect URI). */
+  callbackPort?: number;
+}
+
+/** One server read out of pasted text (a URL, a command line or JSON config), ready to review and save. */
+export interface McpDraft {
+  name: string;
+  spec: McpServerSpec;
+}
+
+/** What a remote MCP URL turned out to be when the app knocked on it. */
+export interface McpProbeResult {
+  ok: boolean;
+  /** Which transport answered. */
+  transport?: "http" | "sse";
+  /** "oauth": it wants a sign-in (it publishes OAuth metadata); "token": it wants a key but publishes no OAuth; "none": it answered. */
+  auth: "none" | "oauth" | "token";
+  /** The server's own name from its initialize answer, when it gave one. */
+  serverName?: string;
+  /** The protected-resource metadata URL from the 401 challenge, when there was one. */
+  resourceMetadata?: string;
+  error?: string;
+}
 
 /** An MCP server the app passes to every agent (mcp.json in the data folder). */
 export interface McpServerEntry {
@@ -211,6 +242,25 @@ export interface McpServerView {
   headerKeys: string[];
   /** Its stored secrets can't be decrypted here (another machine or a reset keychain): enter them again. */
   locked?: boolean;
+  /** The URL's transport ("http" or "sse") is in `type`; its OAuth settings, when it has any. */
+  oauth?: McpOAuthConfig;
+  /** For the edit form: the command's arguments (stdio). */
+  args?: string[];
+  /** For the edit form: env/header values that aren't secret (${VAR} references); secret keys are absent and show as set. */
+  publicValues?: Record<string, string>;
+  /** A client secret for the user's own OAuth client is stored. */
+  hasClientSecret?: boolean;
+}
+
+/** One server's live state, for the Connectors list and the /mcp sheet. */
+export interface McpServerStatus {
+  name: string;
+  /** checking: being listed now; needs-auth: sign in (Connect) first; failed: see error. */
+  state: "connected" | "needs-auth" | "failed" | "disabled" | "checking";
+  tools: { name: string; description: string }[];
+  error?: string;
+  /** Sign-in state for a URL server. */
+  auth?: { signedIn: boolean; expiresAt?: number; scopes?: string; needsScopes?: string };
 }
 
 /** A server an agent loads from its own config, shown read-only. */
@@ -221,6 +271,8 @@ export interface ExternalMcpServer {
   /** Which agent loads it, and from where. */
   agent: string;
   source: string;
+  /** The app can copy it into its own list (its values are read in the main process, never shown). */
+  importable?: boolean;
 }
 
 export interface McpOverview {
@@ -836,6 +888,8 @@ export type LiveUpdate =
   | { type: "limits"; limits: AgentLimits }
   /** A driver finished loading its model list; refetch agents. */
   | { type: "agents" }
+  /** An MCP server's connection or sign-in state changed: ask for mcpStatus again. */
+  | { type: "mcp-status" }
   /** The project list changed (a folder went missing, or was relocated): refetch it. */
   | { type: "projects-changed" }
   /** The app menu asked for the About sheet. */
@@ -940,6 +994,18 @@ export interface UnskilledApi {
   createSkill(input: { scope: "harness" | "project"; projectId?: string | null; name: string; description: string }): Promise<string>;
   listAgentCatalog(): Promise<AgentCatalogEntry[]>;
   getMcp(projectId: string | null): Promise<McpOverview>;
+  /** Knock on a URL: transport, whether it wants a sign-in, its name. Saves nothing. */
+  probeMcp(url: string, headers?: Record<string, string>): Promise<McpProbeResult>;
+  /** Live state of the scope's own servers (global when projectId is null), listing tools as needed. */
+  mcpStatus(projectId: string | null, refresh?: boolean): Promise<McpServerStatus[]>;
+  /** Sign in to a URL server in the browser (OAuth); resolves when the sign-in finishes or fails. */
+  connectMcp(name: string, projectId?: string | null): Promise<{ ok: boolean; error?: string }>;
+  /** Sign out: revoke when the server allows, forget the tokens. */
+  disconnectMcp(name: string, projectId?: string | null): Promise<McpOverview>;
+  /** Store (or clear, with null) the secret of an OAuth client the user registered themselves. */
+  setMcpClientSecret(name: string, secret: string | null, projectId?: string | null): Promise<McpOverview>;
+  /** Copy a server another agent loads (Library's read-only list) into the app's list; values move into the vault. */
+  importMcp(agent: string, source: string, name: string, projectId?: string | null): Promise<McpOverview>;
   /** Add or replace a server. Env or header values left empty keep what was stored. */
   saveMcpServer(entry: McpServerEntry, previousName?: string, projectId?: string | null): Promise<McpOverview>;
   removeMcpServer(name: string, projectId?: string | null): Promise<McpOverview>;

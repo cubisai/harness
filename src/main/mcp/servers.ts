@@ -1,11 +1,11 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { getDefaultEnvironment, StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { McpServerEntry, McpServerSpec, McpServerView, McpTestResult } from "../../shared/types";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import type { McpOAuthConfig, McpServerEntry, McpServerSpec, McpServerView, McpTestResult } from "../../shared/types";
 import { stableStringify } from "../cache-policy";
 import { killPidTree } from "../winspawn";
+import { clientTransport } from "./transport";
 import { expandEnvRefs, isSecretValue, VAULT_MARK, type McpVault, type VaultEntry } from "./vault";
 
 /** The name the app's own tools use; a user server can't take it. */
@@ -21,7 +21,8 @@ interface FileShape {
 
 function specOf(raw: Record<string, unknown>): McpServerSpec | null {
   if (typeof raw.url === "string" && raw.type !== "stdio") {
-    return { type: "http", url: raw.url, ...(isStringMap(raw.headers) && { headers: raw.headers }) };
+    const oauth = oauthOf(raw.oauth);
+    return { type: raw.type === "sse" ? "sse" : "http", url: raw.url, ...(isStringMap(raw.headers) && { headers: raw.headers }), ...(oauth && { oauth }) };
   }
   if (typeof raw.command === "string") {
     return {
@@ -34,12 +35,28 @@ function specOf(raw: Record<string, unknown>): McpServerSpec | null {
   return null;
 }
 
+function oauthOf(raw: unknown): McpOAuthConfig | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const out: McpOAuthConfig = {
+    ...(typeof o.clientId === "string" && o.clientId.trim() && { clientId: o.clientId.trim() }),
+    ...(typeof o.scopes === "string" && o.scopes.trim() && { scopes: o.scopes.trim() }),
+    ...(typeof o.callbackPort === "number" && Number.isInteger(o.callbackPort) && o.callbackPort > 0 && o.callbackPort < 65536 && { callbackPort: o.callbackPort }),
+  };
+  return out;
+}
+
+/** Whether the spec is a URL (Streamable HTTP or SSE) rather than a command. */
+export function isRemote(spec: McpServerSpec): spec is Extract<McpServerSpec, { url: string }> {
+  return spec.type !== "stdio";
+}
+
 function isStringMap(v: unknown): v is Record<string, string> {
   return Boolean(v) && typeof v === "object" && Object.values(v as object).every((x) => typeof x === "string");
 }
 
 export function describeSpec(spec: McpServerSpec): string {
-  return spec.type === "http" ? spec.url : [spec.command, ...(spec.args ?? [])].join(" ");
+  return isRemote(spec) ? spec.url : [spec.command, ...(spec.args ?? [])].join(" ");
 }
 
 export function viewOf(entry: McpServerEntry): McpServerView {
@@ -50,19 +67,20 @@ export function viewOf(entry: McpServerEntry): McpServerView {
     type: spec.type,
     target: describeSpec(spec),
     envKeys: spec.type === "stdio" ? Object.keys(spec.env ?? {}) : [],
-    headerKeys: spec.type === "http" ? Object.keys(spec.headers ?? {}) : [],
+    headerKeys: isRemote(spec) ? Object.keys(spec.headers ?? {}) : [],
     ...(entry.locked && { locked: true }),
+    ...(isRemote(spec) && spec.oauth && { oauth: spec.oauth }),
   };
 }
 
 /** The values a spec keeps in a map (headers or env), whichever it has. */
 function secretMap(spec: McpServerSpec): Record<string, string> | undefined {
-  return spec.type === "http" ? spec.headers : spec.env;
+  return isRemote(spec) ? spec.headers : spec.env;
 }
 
 function withMap(spec: McpServerSpec, map: Record<string, string> | undefined): McpServerSpec {
   const m = map && Object.keys(map).length ? map : undefined;
-  if (spec.type === "http") {
+  if (isRemote(spec)) {
     const { headers: _h, ...rest } = spec;
     return { ...rest, ...(m && { headers: m }) };
   }
@@ -79,7 +97,7 @@ export function resolveSpec(spec: McpServerSpec, env: NodeJS.ProcessEnv = proces
   const x = (v: string) => expandEnvRefs(v, env);
   const map = secretMap(spec);
   const resolved = map ? Object.fromEntries(Object.entries(map).filter(([, v]) => v !== VAULT_MARK).map(([k, v]) => [k, x(v)])) : undefined;
-  if (spec.type === "http") return withMap({ type: "http", url: x(spec.url) }, resolved);
+  if (isRemote(spec)) return withMap({ type: spec.type, url: x(spec.url), ...(spec.oauth && { oauth: spec.oauth }) }, resolved);
   return withMap({ type: "stdio", command: x(spec.command), ...(spec.args && { args: spec.args.map(x) }) }, resolved);
 }
 
@@ -120,7 +138,7 @@ export class McpServerStore {
         if (Object.values(map).some(isSecretValue)) plaintext = true;
         if (Object.values(map).includes(VAULT_MARK)) {
           const stored = this.vault.get(this.key(name));
-          const from = (spec.type === "http" ? stored?.headers : stored?.env) ?? {};
+          const from = (isRemote(spec) ? stored?.headers : stored?.env) ?? {};
           const filled = Object.fromEntries(Object.entries(map).map(([k, v]) => [k, v === VAULT_MARK ? (from[k] ?? VAULT_MARK) : v]));
           entry.spec = withMap(spec, filled);
           if (Object.values(filled).includes(VAULT_MARK)) entry.locked = true;
@@ -168,6 +186,8 @@ export class McpServerStore {
       if (added) throw new Error("This computer can't encrypt secrets (no OS keychain), so they can't be saved. Use ${VAR} to read the value from an environment variable instead.");
     }
     const next = list.filter((s) => s.name !== (previousName ?? entry.name));
+    // A rename keeps the server's sign-in: move its vault entry before the write drops the old key.
+    if (this.vault && previousName && previousName !== entry.name) this.vault.rename(this.key(previousName), this.key(entry.name));
     const { locked: _l, ...rest } = entry;
     next.push({ ...rest, spec });
     this.write(next);
@@ -212,9 +232,7 @@ export class McpServerStore {
         shown[k] = VAULT_MARK;
       } else shown[k] = v;
     }
-    const entry: VaultEntry = s.spec.type === "http" ? { headers: secret } : { env: secret };
-    if (Object.keys(secret).length) this.vault.set(this.key(s.name), entry);
-    else if (!Object.values(map).includes(VAULT_MARK)) this.vault.remove(this.key(s.name));
+    this.vault.update(this.key(s.name), isRemote(s.spec) ? { headers: secret } : { env: secret });
     return withMap(s.spec, shown);
   }
 }
@@ -285,11 +303,12 @@ function normalize(spec: McpServerSpec, old: McpServerSpec | undefined): McpServ
     }
     return Object.keys(out).length ? out : undefined;
   };
-  if (spec.type === "http") {
+  if (isRemote(spec)) {
     const url = spec.url.trim();
     if (!/^https?:\/\//i.test(url)) throw new Error("The URL has to start with http:// or https://.");
-    const headers = keep(spec.headers, old?.type === "http" ? old.headers : undefined);
-    return { type: "http", url, ...(headers && { headers }) };
+    const headers = keep(spec.headers, old && isRemote(old) ? old.headers : undefined);
+    const oauth = oauthOf(spec.oauth);
+    return { type: spec.type, url, ...(headers && { headers }), ...(oauth && Object.keys(oauth).length && { oauth }) };
   }
   const command = spec.command.trim();
   if (!command) throw new Error("Enter the command that starts the server.");
@@ -302,7 +321,14 @@ function normalize(spec: McpServerSpec, old: McpServerSpec | undefined): McpServ
 
 /** Claude Agent SDK `options.mcpServers`. */
 export function forClaude(servers: McpServerEntry[]): Record<string, McpServerSpec> {
-  return Object.fromEntries(servers.map((s) => [s.name, s.spec]));
+  return Object.fromEntries(servers.map((s) => [s.name, wireSpec(s.spec)]));
+}
+
+/** The spec without the app's own settings (OAuth), as an agent's config takes it. */
+function wireSpec(spec: McpServerSpec): McpServerSpec {
+  if (!isRemote(spec) || !spec.oauth) return spec;
+  const { oauth: _o, ...rest } = spec;
+  return rest;
 }
 
 /** Codex thread config (`mcp_servers`, as in ~/.codex/config.toml). */
@@ -310,7 +336,7 @@ export function forCodex(servers: McpServerEntry[]): Record<string, Record<strin
   return Object.fromEntries(
     servers.map((s) => [
       s.name,
-      s.spec.type === "http"
+      isRemote(s.spec)
         ? { url: s.spec.url, ...(s.spec.headers && { http_headers: s.spec.headers }) }
         : { command: s.spec.command, args: s.spec.args ?? [], ...(s.spec.env && { env: s.spec.env }) },
     ]),
@@ -336,7 +362,7 @@ export function forAcp(servers: McpServerEntry[], http: boolean): AcpMcpServer[]
  * gets only stdio servers, and the user has to be told which ones went missing.
  */
 export function forAcpWithReport(servers: McpServerEntry[], http: boolean): { servers: AcpMcpServer[]; dropped: string[] } {
-  return { servers: forAcp(servers, http), dropped: http ? [] : servers.filter((s) => s.spec.type !== "stdio").map((s) => s.name) };
+  return { servers: forAcp(servers, http), dropped: http ? [] : servers.filter((s) => isRemote(s.spec)).map((s) => s.name) };
 }
 
 /**
@@ -377,10 +403,7 @@ function alive(pid: number): boolean {
 /** Connect, list the server's tools with their schemas, disconnect. */
 export async function listServerTools(spec: McpServerSpec, timeoutMs = 20_000): Promise<{ ok: boolean; tools: McpToolInfo[]; error?: string }> {
   const client = new Client({ name: "cubiq", version: "1.0.0" });
-  const transport =
-    spec.type === "http"
-      ? new StreamableHTTPClientTransport(new URL(spec.url), { requestInit: { headers: spec.headers } })
-      : new StdioClientTransport({ command: spec.command, args: spec.args ?? [], env: { ...getDefaultEnvironment(), ...spec.env }, stderr: "ignore" });
+  const transport = clientTransport(spec);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error(`No answer in ${Math.round(timeoutMs / 1000)} seconds.`)), timeoutMs);
