@@ -132,6 +132,9 @@ All checked in the real app on Windows; code paths are cross-platform unless not
 - **Antigravity**: Google's own ACP server (`agy_acp_server.par`, ACP registry `antigravity-acp`) must be on the app's PATH; it stays off until the Settings opt-in, then the generic ACP driver runs it with the user's Google sign-in.
 - Still to confirm on the Mac: the same smoke/model checks there.
 
+## Next: the user has more enhancements to request (2026-10-05)
+Plan mode v2, blob pruning, P1 and P3 are done and pushed; nothing is mid-flight on the Mac. Start the next session from the user's new requests; follow the CLAUDE.md workflow (research → `.ai/plans/<slug>.md` → approval → briefs/edits → own verification → live turn on OpenCode, Codex and Claude Sonnet 5.5 → commit ≤150 chars, no trailer → `rm .ai/tmp/*`).
+
 ## Resume here — Plan mode v2 (2026-10-05, Mac)
 
 Spec: `.ai/plans/plan-mode-v2.md` (user-approved). Roadmap research round (other harness apps, ranked R1–R12) appended to `.ai/plans/harness-roadmap.md` §3. User decisions: every "waiting on you" card docks **above the composer**; agents may ask in **every** mode; Plan mode v2 goes before P1/P3.
@@ -165,7 +168,8 @@ Also fixed in that round: plan-card buttons wrapped their text at panel-open wid
 **P3 multiple skills (`0932b8a`):** P3a (types, `shared/skill-list.ts` `skillsOf`, `composePrompt` one `<skill>` block per skill + one Arguments line, single skill byte-identical, `titleFrom` "/a /b text") was done by an opencode implementer in a worktree, reviewed and re-run by me. P3b (me): store `pendingSkills`/`addPendingSkills`/`takePendingSkills`, `send/enqueue/startThread/sendInBackground/newThread` take `skills?: string[]`, `SendRequest.skill` removed (old stored `skill` still read). Composer: chips inline in `.composer-input` before the textarea with ×; `$` at any word start (`skillQueryAt`), picks toggle (✓ in menu), Esc closes the skill menu keeping text, Backspace on empty removes the last chip; ⌘K/Library add to the list; bubbles/queue show every chip. Live: two skills ($pdf $docx) on OpenCode, Codex and Claude (that one ran on Opus 5.5, the Sonnet click missed) → each replied "OK, pdf, docx".
 
 **Not done yet:**
-1. Windows PC gate for everything since `4641861`: `bun run typecheck/test`, smoke; Codex Plan question card (model_catalog_json path); OpenCode ask_user wait > 60s; plan panel v1 → v2; delete a thread and watch `%APPDATA%\CubiQ\blobs` shrink; drag the side panel to 80% and check the narrow composer; two skill chips on a send. Or push `m4` and let CI `windows-latest` run (never run yet; needs the user's OK to push).
+0. **Windows CI** run 37291725048 (`gh workflow run ci.yml --ref m4 -f os=windows`, extras off so codex-e2e skipped) was still running at handoff: check `gh run view 37291725048`; fix any failure before new work. `m4` is pushed (`origin/m4` = `ed96389` + this handoff).
+1. Windows PC gate for everything since `4641861` (CI covers unit tests only, not these live checks): `bun run typecheck/test`, smoke; Codex Plan question card (model_catalog_json path); OpenCode ask_user wait > 60s; plan panel v1 → v2; delete a thread and watch `%APPDATA%\CubiQ\blobs` shrink; drag the side panel to 80% and check the narrow composer; two skill chips on a send. Or push `m4` and let CI `windows-latest` run (never run yet; needs the user's OK to push).
 2. A plan proposed before the plan artifact has no saved copy: its "Open in panel" shows "No plan yet".
 3. `[CLAUDE_SDK_CAN_USE_TOOL_SHADOWED]` on stderr is expected (auto-allowed harness tools in `allowedTools`).
 
