@@ -3,7 +3,7 @@ import type { JSX, ReactNode } from "react";
 import { parseUnifiedDiff } from "../../../shared/diff";
 import type { ArtifactContent, ArtifactFile, ArtifactKind, DiffHunk, SheetPreview, SlidePreview } from "../../../shared/types";
 import { api } from "../api";
-import { artifactKind } from "../../../shared/artifact-kind";
+import { artifactKind, isPlanArtifact } from "../../../shared/artifact-kind";
 import { IconChevron, IconCopy, IconOpen } from "../icons";
 import { Markdown } from "../markdown";
 import "../styles/artifact.css";
@@ -52,6 +52,11 @@ export function visibleRows(scrollTop: number, viewport: number, rowHeight: numb
 function basename(path: string): string {
   const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   return i < 0 ? path : path.slice(i + 1);
+}
+
+/** The name the panel shows: the file name, or "Plan" for the thread's plan proposals. */
+function displayName(path: string): string {
+  return isPlanArtifact(path) ? "Plan" : basename(path);
 }
 
 function dirname(path: string): string {
@@ -380,6 +385,8 @@ class ArtifactErrorBoundary extends Component<{ children: ReactNode; onOpenInEdi
 export function ArtifactPanel(props: ArtifactPanelProps): JSX.Element {
   const { threadId, files, path, onSelectPath, onClose, onOpenInEditor, onReveal, fileManager } = props;
   const file = files.find((f) => f.path === path) ?? null;
+  // The plan lives only in the version store: no file to open elsewhere.
+  const plan = isPlanArtifact(path);
   // From the path itself: the thread's file list loads after the panel opens.
   const kind: ArtifactKind = file?.kind ?? artifactKind(path);
   const versions = [...(file?.versions ?? [])].sort((a, b) => b.version - a.version);
@@ -405,6 +412,9 @@ export function ArtifactPanel(props: ArtifactPanelProps): JSX.Element {
     // Reset only when the file changes; `kind` follows it.
   }, [path]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // "Latest" reloads when a new version lands (the plan gets one per round while the panel is open).
+  const newest = version === null ? (versions[0]?.version ?? null) : null;
+
   // Load the content; a late response for an old path/version never lands.
   useEffect(() => {
     const seq = ++loadSeq.current;
@@ -417,7 +427,7 @@ export function ArtifactPanel(props: ArtifactPanelProps): JSX.Element {
       .catch(() => {
         if (seq === loadSeq.current) setContent({ ok: false, error: "Couldn't read this file." });
       });
-  }, [threadId, path, version]);
+  }, [threadId, path, version, newest]);
 
   // The diff is fetched only when its tab is opened, and refetched when the file or version changes.
   useEffect(() => {
@@ -432,7 +442,7 @@ export function ArtifactPanel(props: ArtifactPanelProps): JSX.Element {
       .catch(() => {
         if (seq === diffSeq.current) setDiff(null);
       });
-  }, [tab, threadId, path, version]);
+  }, [tab, threadId, path, version, newest]);
 
   useEffect(() => {
     if (!openMenu) return;
@@ -477,8 +487,8 @@ export function ArtifactPanel(props: ArtifactPanelProps): JSX.Element {
   return (
     <div className="artifact">
       <div className="artifact-head" ref={headerRef}>
-        <div className="artifact-name" title={path}>
-          {basename(path)}
+        <div className="artifact-name" title={plan ? "The agent's plan, one version per round" : path}>
+          {displayName(path)}
         </div>
         <div className="artifact-head-actions">
           {files.length > 1 ? (
@@ -505,7 +515,7 @@ export function ArtifactPanel(props: ArtifactPanelProps): JSX.Element {
                         onSelectPath(f.path);
                       }}
                     >
-                      <span className="artifact-menu-label">{basename(f.path)}</span>
+                      <span className="artifact-menu-label">{displayName(f.path)}</span>
                       {dirname(f.path) ? <span className="artifact-menu-sub">{dirname(f.path)}</span> : null}
                     </button>
                   ))}
@@ -536,7 +546,7 @@ export function ArtifactPanel(props: ArtifactPanelProps): JSX.Element {
                       setOpenMenu(null);
                     }}
                   >
-                    Latest on disk
+                    {plan ? "Latest" : "Latest on disk"}
                   </button>
                   {versions.map((v) => (
                     <button
@@ -556,6 +566,7 @@ export function ArtifactPanel(props: ArtifactPanelProps): JSX.Element {
             </div>
           ) : null}
 
+          {plan ? null : (
           <div className="artifact-menu-wrap">
             <button
               className="artifact-chip"
@@ -591,6 +602,7 @@ export function ArtifactPanel(props: ArtifactPanelProps): JSX.Element {
               </div>
             ) : null}
           </div>
+          )}
 
           <button className="artifact-icon" aria-label={copied ? "Copied" : "Copy"} title="Copy" disabled={text === undefined} onClick={copy}>
             <IconCopy />

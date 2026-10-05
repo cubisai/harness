@@ -43,7 +43,7 @@ import {
   toolSetOf,
 } from "./cache-policy";
 import { Approvals } from "./approvals";
-import { artifactDiff, listArtifacts, opensByItself, readArtifact, recordTurnArtifacts, type ArtifactDeps } from "./artifacts";
+import { artifactDiff, listArtifacts, opensByItself, readArtifact, recordPlan, recordTurnArtifacts, type ArtifactDeps } from "./artifacts";
 import { runCheck, tailOf } from "./check";
 import type { Store } from "./db";
 import { branchLabel, createWorktree, gitState, listProjectFiles, removeWorktree, workingTreeDiff, worktreeBranch } from "./git";
@@ -753,7 +753,10 @@ export class Service {
               { once: true },
             );
             // The proposal is history, not a live row: it takes the same path as driver events.
-            this.emit(thread.id, { kind: "plan-proposal", text: p.plan });
+            const proposal = this.emit(thread.id, { kind: "plan-proposal", text: p.plan });
+            // Each round is also the next version of the thread's plan artifact (File panel).
+            // Stored as the event was, with secrets already masked.
+            if (this.artifacts && proposal.event.kind === "plan-proposal") recordPlan(this.artifacts, { threadId: thread.id, text: proposal.event.text, turnSeq: proposal.seq });
             const request = { requestId, threadId: thread.id, plan: p.plan };
             this.planRequests.set(requestId, request);
             this.broadcast({ type: "plan-approval", request });

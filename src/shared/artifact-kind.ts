@@ -44,3 +44,14 @@ export const AUTO_OPEN: ReadonlySet<ArtifactKind> = new Set<ArtifactKind>(["html
 export function opensByItself(path: string): boolean {
   return AUTO_OPEN.has(artifactKind(path));
 }
+
+/**
+ * The thread's plan proposals, kept as artifact versions under a path that is
+ * never a file (":" can't name one on Windows, and it never resolves inside the
+ * project), so the panel reads every round from the store and nothing touches disk.
+ */
+export const PLAN_ARTIFACT = "cubiq:plan.md";
+
+export function isPlanArtifact(path: string): boolean {
+  return path === PLAN_ARTIFACT;
+}

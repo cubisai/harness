@@ -2,6 +2,7 @@ import { mkdirSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  PLAN_ARTIFACT,
   PREVIEWABLE,
   artifactDiff,
   artifactKind,
@@ -10,6 +11,7 @@ import {
   isPreviewable,
   listArtifacts,
   readArtifact,
+  recordPlan,
   recordTurnArtifacts,
   resolveInside,
   type ArtifactDeps,
@@ -346,6 +348,34 @@ describe("artifactDiff", () => {
     const { deps } = fakeDeps();
     expect(await artifactDiff(deps, { threadId: "t", root, path: "pic.png" })).toBeNull();
     expect(await artifactDiff(deps, { threadId: "t", root, path: "../x.md" })).toBeNull();
+  });
+});
+
+describe("plan artifact", () => {
+  it("keeps one version per changed plan, served from the store with nothing on disk", async () => {
+    const root = tempDir();
+    let gitAsked = false;
+    const { deps } = fakeDeps({ gitHead: async () => ((gitAsked = true), "git") });
+    expect(recordPlan(deps, { threadId: "t", text: "# One\n", turnSeq: 3 })?.version).toBe(1);
+    expect(recordPlan(deps, { threadId: "t", text: "# One\n", turnSeq: 5 })).toBeNull();
+    expect(recordPlan(deps, { threadId: "t", text: "   ", turnSeq: 6 })).toBeNull();
+    expect(recordPlan(deps, { threadId: "t", text: "# Two\n", turnSeq: 7 })?.version).toBe(2);
+
+    expect(listArtifacts(deps, "t")).toEqual([expect.objectContaining({ path: PLAN_ARTIFACT, kind: "md" })]);
+    expect(await readArtifact(deps, { threadId: "t", root, path: PLAN_ARTIFACT })).toMatchObject({ ok: true, kind: "md", text: "# Two\n", version: null });
+    expect(await readArtifact(deps, { threadId: "t", root, path: PLAN_ARTIFACT, version: 1 })).toMatchObject({ ok: true, text: "# One\n", version: 1 });
+    expect(await readArtifact(deps, { threadId: "t", root, path: PLAN_ARTIFACT, version: 9 })).toEqual({ ok: false, error: "No such version" });
+    expect(await readArtifact(deps, { threadId: "other", root, path: PLAN_ARTIFACT })).toEqual({ ok: false, error: "No plan yet" });
+
+    const first = await artifactDiff(deps, { threadId: "t", root, path: PLAN_ARTIFACT, version: 1 });
+    expect(first).toContain("+# One");
+    const second = await artifactDiff(deps, { threadId: "t", root, path: PLAN_ARTIFACT });
+    expect(second).toContain("-# One");
+    expect(second).toContain("+# Two");
+    // The diff names the plan, not its internal path.
+    expect(second).not.toContain(PLAN_ARTIFACT);
+    expect(await artifactDiff(deps, { threadId: "other", root, path: PLAN_ARTIFACT })).toBeNull();
+    expect(gitAsked).toBe(false);
   });
 });
 

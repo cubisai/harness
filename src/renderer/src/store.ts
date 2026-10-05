@@ -912,6 +912,14 @@ export const useStore = create<State>((set, get) => ({
             .catch(() => {});
         return;
       case "event":
+        // A plan proposal is also a new version of the thread's plan artifact: refresh its file list.
+        if (update.stored.event.kind === "plan-proposal") {
+          const id = update.threadId;
+          void api()
+            .listArtifacts(id)
+            .then((files) => set((x) => ({ artifactFiles: { ...x.artifactFiles, [id]: files } })))
+            .catch(() => {});
+        }
         set((s) => {
           const list = s.events[update.threadId] ?? [];
           if (list.some((e) => e.seq === update.stored.seq)) return {};

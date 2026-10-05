@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { LiveUpdate, PlanDecision, ThreadEvent } from "../src/shared/types";
 import type { AgentDriver, TurnInput } from "../src/main/agents/types";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
+import { PLAN_ARTIFACT } from "../src/shared/artifact-kind";
 import { Store } from "../src/main/db";
 import type { TurnDelta } from "../src/main/memory/extractor";
 import { Service, titleFrom } from "../src/main/service";
@@ -166,6 +167,36 @@ describe("Service.send", () => {
     expect(kinds).toContain("plan-proposal");
     expect(kinds).toContain("plan-decision");
     expect(updates.some((u) => u.type === "plan-approval-done")).toBe(true);
+  });
+
+  it("keeps each plan round as the next version of the thread's plan artifact", async () => {
+    const { service, thread, store, updates } = setup(async (input) => {
+      await input.requestPlanDecision({ plan: "# Plan one" });
+      await input.requestPlanDecision({ plan: "# Plan one" });
+      await input.requestPlanDecision({ plan: "# Plan two" });
+    });
+    service.setArtifacts({
+      addVersion: (threadId, path, sha, bytes, turnSeq) => store.addArtifactVersion(threadId, path, sha, bytes, turnSeq),
+      listVersions: (threadId) => store.listArtifactVersions(threadId),
+      writeBlob: (sha, content) => store.writeBlobBytes(sha, content),
+      readBlob: (sha) => store.readBlobBytes(sha),
+      gitHead: async () => null,
+      preview: async () => ({ ok: false, error: "none" }),
+      fileUrl: () => "",
+    });
+    const sending = service.send({ threadId: thread.id, text: "go" });
+    for (let i = 0; i < 3; i++) {
+      await vi.waitFor(() => expect(updates.filter((u) => u.type === "plan-approval")).toHaveLength(i + 1));
+      const req = updates.filter((u) => u.type === "plan-approval")[i] as Extract<LiveUpdate, { type: "plan-approval" }>;
+      service.respondPlan(req.request.requestId, { keep: "" });
+    }
+    await sending;
+    // An unchanged round adds no version.
+    expect(service.listArtifacts(thread.id)).toEqual([expect.objectContaining({ path: PLAN_ARTIFACT, kind: "md", versions: [expect.objectContaining({ version: 1 }), expect.objectContaining({ version: 2 })] })]);
+    const latest = await service.readArtifact(thread.id, PLAN_ARTIFACT, null);
+    expect(latest.ok && latest.text).toBe("# Plan two");
+    const first = await service.readArtifact(thread.id, PLAN_ARTIFACT, 1);
+    expect(first.ok && first.text).toBe("# Plan one");
   });
 
   it("resolves a pending plan with keep-on-empty when interrupted", async () => {

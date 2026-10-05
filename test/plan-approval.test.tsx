@@ -85,4 +85,14 @@ describe("PlanApprovalCard", () => {
       .onClick!();
     expect(onRespond).toHaveBeenCalledWith({ keep: "add tests" });
   });
+
+  it("opens the plan in the panel from Open in panel, and shows no such button without a handler", () => {
+    const onOpen = vi.fn();
+    const props = { request, keeping: false, feedback: "", onKeep: () => {}, onCancel: () => {}, onFeedback: () => {}, onRespond: () => {} };
+    buttons(PlanApprovalCardBody({ ...props, onOpen }))
+      .find((b) => b.text === "Open in panel")!
+      .onClick!();
+    expect(onOpen).toHaveBeenCalled();
+    expect(buttons(PlanApprovalCardBody(props)).some((b) => b.text === "Open in panel")).toBe(false);
+  });
 });

@@ -255,7 +255,7 @@ export function Sidebar() {
   const now = useNow(model.running.length > 0);
   const projectName = (id: string) => projects.find((p) => p.id === id)?.name ?? "";
   const agentOf = (t: Thread) => agents.find((a) => a.id === t.agent);
-  const statusOf = (t: Thread): ThreadStatus => (waiting.has(t.id) ? "waiting" : running[t.id] ? "running" : unread.has(t.id) ? "unread" : null);
+  const statusOf = (t: Thread): ThreadStatus => (answering.has(t.id) ? "answering" : waiting.has(t.id) ? "waiting" : running[t.id] ? "running" : unread.has(t.id) ? "unread" : null);
   const open = (t: Thread) => {
     void selectProject(t.projectId);
     void selectThread(t.id);

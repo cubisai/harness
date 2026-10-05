@@ -161,3 +161,30 @@ describe("ArtifactBody", () => {
     expect(html).toContain("Permission denied");
   });
 });
+
+describe("ArtifactPanel header", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const render = async (path: string) => {
+    const { ArtifactPanel } = await load();
+    const files = [{ path, kind: "md" as const, versions: [{ version: 1, sha256: "a", bytes: 1, createdAt: 0, turnSeq: 1 }] }];
+    const noop = () => {};
+    return renderToStaticMarkup(
+      <ArtifactPanel threadId="t1" files={files} path={path} onSelectPath={noop} onClose={noop} onOpenInEditor={noop} onReveal={noop} fileManager="Finder" />,
+    );
+  };
+
+  it("names the plan artifact Plan and offers no Open in, since no file is on disk", async () => {
+    const { PLAN_ARTIFACT } = await import("../src/shared/artifact-kind");
+    const html = await render(PLAN_ARTIFACT);
+    expect(html).toContain(">Plan</div>");
+    expect(html).not.toContain("cubiq:plan.md</div>");
+    expect(html).not.toContain("Open in");
+  });
+
+  it("keeps Open in for a real file", async () => {
+    const html = await render("docs/notes.md");
+    expect(html).toContain(">notes.md</div>");
+    expect(html).toContain("Open in");
+  });
+});

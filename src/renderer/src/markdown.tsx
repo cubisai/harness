@@ -73,7 +73,7 @@ export function Markdown({ text, streaming, onFile }: { text: string; streaming?
   );
 }
 
-const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*|_[^_\s][^_]*_)|(\[[^\]]+\]\(((?:https?|file):\/\/[^)\s]+)\))|(~~[^~]+~~)/g;
+const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*|_[^_\s][^_]*_)|(\[[^\]]+\]\(((?:https?|file):\/\/[^)\s]+|\/[^)\s]+|[A-Za-z]:[\\/][^)\s]+)\))|(~~[^~]+~~)/g;
 
 function inline(text: string, onFile?: (ref: FileRef) => void): ReactNode {
   const out: ReactNode[] = [];
@@ -100,9 +100,10 @@ function inline(text: string, onFile?: (ref: FileRef) => void): ReactNode {
     else if (m[3]) out.push(<em key={key++}>{tok.slice(1, -1)}</em>);
     else if (m[4]) {
       const label = /^\[([^\]]+)\]/.exec(tok)?.[1] ?? tok;
-      if (m[5]!.startsWith("file:")) {
-        // A local file (Antigravity links them this way): open it in the editor, never navigate to it.
-        const ref = fileUrlRef(m[5]!);
+      if (!/^https?:/.test(m[5]!)) {
+        // A local file: a file:// URL (Antigravity) or a bare absolute path, "/a/b.ts:12" or
+        // "C:\a\b.ts" (Codex). Open it in the editor, never navigate to it.
+        const ref = m[5]!.startsWith("file:") ? fileUrlRef(m[5]!) : parseFileRef(m[5]!);
         out.push(
           ref && onFile ? (
             <button key={key++} className="file-link" title={`Open ${ref.path} in the editor`} onClick={() => onFile(ref)}>

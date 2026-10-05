@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, Copy, Pencil, RotateCcw } from "lucide-react";
-import { artifactKind, isPreviewable } from "../../../shared/artifact-kind";
+import { artifactKind, isPreviewable, PLAN_ARTIFACT } from "../../../shared/artifact-kind";
 import type { ArtifactKind, StoredEvent, ThreadEvent } from "../../../shared/types";
 import { prettyTool, type RunResult } from "../../../shared/tools";
 import { displayOrder } from "../event-order";
@@ -418,6 +418,15 @@ export function EventRow({ stored, results, children, running, threadId }: { sto
         <details className="tool plan-proposal">
           <summary className="tool-row">
             <span className="name">Plan</span>
+            <button
+              className="plan-open"
+              onClick={(ev) => {
+                ev.preventDefault();
+                useStore.getState().openArtifact(PLAN_ARTIFACT);
+              }}
+            >
+              Open in panel
+            </button>
           </summary>
           <div className="tool-body">
             <Markdown text={e.text} onFile={openRef} />

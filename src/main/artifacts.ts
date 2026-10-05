@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { artifactKind, opensByItself } from "../shared/artifact-kind";
+import { artifactKind, isPlanArtifact, opensByItself, PLAN_ARTIFACT } from "../shared/artifact-kind";
 import { unifiedDiff } from "../shared/diff";
 import { canonicalTool } from "../shared/tools";
 import type { ArtifactContent, ArtifactFile, ArtifactKind, ArtifactVersion, StoredEvent } from "../shared/types";
@@ -15,7 +15,7 @@ export const MAX_TEXT_BYTES = 2 * 1024 * 1024;
 /** How many leading bytes are scanned for a NUL when guessing binary. */
 const NUL_SCAN_BYTES = 8000;
 
-export { artifactKind, isPreviewable, opensByItself, PREVIEWABLE } from "../shared/artifact-kind";
+export { artifactKind, isPlanArtifact, isPreviewable, opensByItself, PLAN_ARTIFACT, PREVIEWABLE } from "../shared/artifact-kind";
 
 /** Kinds whose only servable form is the newest one on disk. */
 const LATEST_ONLY: ReadonlySet<ArtifactKind> = new Set<ArtifactKind>(["pdf", "image", "csv", "docx", "sheet", "pptx"]);
@@ -178,6 +178,28 @@ export function recordTurnArtifacts(
   return { files, changed };
 }
 
+/** Save a plan proposal as the next version of the thread's plan artifact; an unchanged plan adds none. Never throws. */
+export function recordPlan(deps: ArtifactDeps, input: { threadId: string; text: string; turnSeq: number }): ArtifactVersion | null {
+  if (!input.text.trim()) return null;
+  try {
+    const buf = Buffer.from(input.text, "utf-8");
+    const sha256 = createHash("sha256").update(buf).digest("hex");
+    deps.writeBlob(sha256, buf);
+    return deps.addVersion(input.threadId, PLAN_ARTIFACT, sha256, buf.length, input.turnSeq);
+  } catch {
+    return null;
+  }
+}
+
+/** The plan artifact read from the store: the newest version unless one is named. */
+function readPlan(deps: ArtifactDeps, threadId: string, version: number | null): ArtifactContent {
+  const versions = deps.listVersions(threadId).find((v) => v.path === PLAN_ARTIFACT)?.versions ?? [];
+  const entry = version === null ? versions.at(-1) : versions.find((v) => v.version === version);
+  if (!entry) return { ok: false, error: version === null ? "No plan yet" : "No such version" };
+  const bytes = deps.readBlob(entry.sha256);
+  return { ok: true, path: PLAN_ARTIFACT, kind: "md", bytes: bytes.length, version, ...cutText(bytes) };
+}
+
 /** The thread's artifacts, with their kinds; the store's order is kept. */
 export function listArtifacts(deps: ArtifactDeps, threadId: string): ArtifactFile[] {
   return deps.listVersions(threadId).map(({ path, versions }) => ({ path, kind: artifactKind(path), versions }));
@@ -189,6 +211,13 @@ export async function readArtifact(
   input: { threadId: string; root: string; path: string; version?: number | null },
 ): Promise<ArtifactContent> {
   const version = input.version ?? null;
+  if (isPlanArtifact(input.path)) {
+    try {
+      return readPlan(deps, input.threadId, version);
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
   try {
     const rel = resolveInside(input.root, input.path);
     if (!rel) return { ok: false, error: "Outside the project folder" };
@@ -248,13 +277,16 @@ export async function artifactDiff(
   input: { threadId: string; root: string; path: string; version?: number | null },
 ): Promise<string | null> {
   try {
-    const rel = resolveInside(input.root, input.path);
+    // A plan has no disk or git copy: its first version diffs against nothing.
+    const plan = isPlanArtifact(input.path);
+    const rel = plan ? PLAN_ARTIFACT : resolveInside(input.root, input.path);
     if (!rel) return null;
     if (!DIFFABLE.has(artifactKind(rel))) return null;
 
     const versions = deps.listVersions(input.threadId).find((v) => v.path === rel)?.versions ?? [];
 
     if (!versions.length) {
+      if (plan) return null;
       const abs = join(input.root, rel);
       if (statSync(abs).size > MAX_TEXT_BYTES) return null;
       const current = readFileSync(abs, "utf-8");
@@ -267,8 +299,8 @@ export async function artifactDiff(
 
     const target = versions[index]!;
     const newText = deps.readBlob(target.sha256).toString("utf-8");
-    const oldText = index > 0 ? deps.readBlob(versions[index - 1]!.sha256).toString("utf-8") : (await deps.gitHead(input.root, rel)) ?? "";
-    return unifiedDiff(rel, oldText, newText);
+    const oldText = index > 0 ? deps.readBlob(versions[index - 1]!.sha256).toString("utf-8") : plan ? "" : ((await deps.gitHead(input.root, rel)) ?? "");
+    return unifiedDiff(plan ? "Plan" : rel, oldText, newText);
   } catch {
     return null;
   }

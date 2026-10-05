@@ -5,9 +5,14 @@ import { useStore } from "../store";
 import { UnsupportedChip } from "./UnsupportedChip";
 
 /** The dot before a thread's title. */
-export type ThreadStatus = "running" | "waiting" | "unread" | null;
+export type ThreadStatus = "running" | "waiting" | "answering" | "unread" | null;
 
-const STATUS_LABEL: Record<Exclude<ThreadStatus, null>, string> = { running: "Running", waiting: "Needs approval", unread: "Finished, not seen yet" };
+const STATUS_LABEL: Record<Exclude<ThreadStatus, null>, string> = {
+  running: "Running",
+  waiting: "Needs approval",
+  answering: "Needs your answer",
+  unread: "Finished, not seen yet",
+};
 
 /**
  * One thread in the sidebar: a status dot, the title, and the time on the
@@ -94,7 +99,7 @@ export function ThreadRow({
           onDoubleClick={() => setRenaming(true)}
           title={[thread.title, agent?.label ?? thread.agent, branch ? `⎇ ${branch}` : null].filter(Boolean).join(" · ")}
         >
-          <span className={`thread-dot${status ? ` ${status}` : ""}`} role={status ? "img" : undefined} aria-label={status ? STATUS_LABEL[status] : undefined} />
+          <span className={`thread-dot${status ? ` ${status === "answering" ? "waiting" : status}` : ""}`} role={status ? "img" : undefined} aria-label={status ? STATUS_LABEL[status] : undefined} />
           <span className="title">
             {thread.pinned && <IconPin size={11} />}
             {thread.title}

@@ -62,4 +62,19 @@ describe("markdown dialect", () => {
     const html = render("[x](javascript:alert(1))");
     expect(html).not.toContain('href="javascript');
   });
+
+  it("turns a link to an absolute path into a file link, never raw markdown or a navigation", () => {
+    const opened: string[] = [];
+    const withFile = (text: string) => renderToStaticMarkup(<Markdown text={text} onFile={(r) => opened.push(r.path)} />);
+    for (const target of ["/tmp/app/notes.js", "/tmp/app/notes.js:12", "C:\\app\\notes.js", "C:/app/notes.js"]) {
+      const html = withFile(`See [notes.js](${target}) now.`);
+      expect(html).toContain('<button class="file-link"');
+      expect(html).toContain("<code>notes.js</code>");
+      expect(html).not.toContain("](");
+      expect(html).not.toContain("<a ");
+    }
+    // Without a file handler it still reads as the label, not the raw link.
+    expect(render("See [notes.js](/tmp/app/notes.js).")).toBe("<p>See <code>notes.js</code>.</p>");
+    expect(render("[docs](https://example.com)")).toContain('<a href="https://example.com"');
+  });
 });
