@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { getDefaultEnvironment, StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -6,6 +6,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { McpServerEntry, McpServerSpec, McpServerView, McpTestResult } from "../../shared/types";
 import { stableStringify } from "../cache-policy";
 import { killPidTree } from "../winspawn";
+import { expandEnvRefs, isSecretValue, VAULT_MARK, type McpVault, type VaultEntry } from "./vault";
 
 /** The name the app's own tools use; a user server can't take it. */
 export const BUILT_IN_SERVER = "cubiq";
@@ -50,17 +51,52 @@ export function viewOf(entry: McpServerEntry): McpServerView {
     target: describeSpec(spec),
     envKeys: spec.type === "stdio" ? Object.keys(spec.env ?? {}) : [],
     headerKeys: spec.type === "http" ? Object.keys(spec.headers ?? {}) : [],
+    ...(entry.locked && { locked: true }),
   };
+}
+
+/** The values a spec keeps in a map (headers or env), whichever it has. */
+function secretMap(spec: McpServerSpec): Record<string, string> | undefined {
+  return spec.type === "http" ? spec.headers : spec.env;
+}
+
+function withMap(spec: McpServerSpec, map: Record<string, string> | undefined): McpServerSpec {
+  const m = map && Object.keys(map).length ? map : undefined;
+  if (spec.type === "http") {
+    const { headers: _h, ...rest } = spec;
+    return { ...rest, ...(m && { headers: m }) };
+  }
+  const { env: _e, ...rest } = spec;
+  return { ...rest, ...(m && { env: m }) };
+}
+
+/**
+ * A spec as an agent should get it: ${VAR} references filled from the
+ * environment (command, args, URL, headers, env), and any value still locked
+ * in the vault left out rather than sent as the placeholder.
+ */
+export function resolveSpec(spec: McpServerSpec, env: NodeJS.ProcessEnv = process.env): McpServerSpec {
+  const x = (v: string) => expandEnvRefs(v, env);
+  const map = secretMap(spec);
+  const resolved = map ? Object.fromEntries(Object.entries(map).filter(([, v]) => v !== VAULT_MARK).map(([k, v]) => [k, x(v)])) : undefined;
+  if (spec.type === "http") return withMap({ type: "http", url: x(spec.url) }, resolved);
+  return withMap({ type: "stdio", command: x(spec.command), ...(spec.args && { args: spec.args.map(x) }) }, resolved);
 }
 
 /**
  * The MCP servers the app gives every agent, in mcp.json in the data folder,
  * in the same shape as Claude Code's .mcp.json so entries can be copied
- * across. Env and header values may hold tokens: the file is private to
- * the user, and values never go to the window.
+ * across. Env and header values may hold tokens: with a vault, each one is
+ * encrypted there and mcp.json says "$vault" in its place (a plain-text file
+ * from before the vault is moved over on first read). Values never go to the
+ * window. Without a vault (tests) the values stay in the private file.
  */
 export class McpServerStore {
-  constructor(private file: string) {}
+  constructor(private file: string, private vault?: McpVault, private scope = "global") {}
+
+  private key(name: string): string {
+    return `${this.scope}:${name}`;
+  }
 
   private read(): FileShape {
     if (!existsSync(this.file)) return {};
@@ -74,10 +110,26 @@ export class McpServerStore {
   list(): McpServerEntry[] {
     const raw = this.read();
     const out: McpServerEntry[] = [];
+    let plaintext = false;
     for (const [name, value] of Object.entries(raw.mcpServers ?? {})) {
       const spec = value && typeof value === "object" ? specOf(value as Record<string, unknown>) : null;
-      if (spec && NAME.test(name) && name !== BUILT_IN_SERVER) out.push({ name, spec, enabled: !value.disabled });
+      if (!spec || !NAME.test(name) || name === BUILT_IN_SERVER) continue;
+      const entry: McpServerEntry = { name, spec, enabled: !value.disabled };
+      const map = secretMap(spec);
+      if (this.vault && map) {
+        if (Object.values(map).some(isSecretValue)) plaintext = true;
+        if (Object.values(map).includes(VAULT_MARK)) {
+          const stored = this.vault.get(this.key(name));
+          const from = (spec.type === "http" ? stored?.headers : stored?.env) ?? {};
+          const filled = Object.fromEntries(Object.entries(map).map(([k, v]) => [k, v === VAULT_MARK ? (from[k] ?? VAULT_MARK) : v]));
+          entry.spec = withMap(spec, filled);
+          if (Object.values(filled).includes(VAULT_MARK)) entry.locked = true;
+        }
+      }
+      out.push(entry);
     }
+    // A file written before the vault existed: move its values into the vault now.
+    if (plaintext && this.vault?.available) this.write(out, this.offGlobalOf(raw));
     return out;
   }
 
@@ -87,7 +139,11 @@ export class McpServerStore {
 
   /** Global servers this project switches off, as stored in the file. */
   offGlobal(): string[] {
-    const off = this.read().offGlobal;
+    return this.offGlobalOf(this.read());
+  }
+
+  private offGlobalOf(raw: FileShape): string[] {
+    const off = raw.offGlobal;
     return Array.isArray(off) ? off.filter((n): n is string => typeof n === "string") : [];
   }
 
@@ -106,8 +162,14 @@ export class McpServerStore {
     if (entry.name !== previousName && list.some((s) => s.name === entry.name)) throw new Error(`There's already a server named "${entry.name}".`);
     const old = list.find((s) => s.name === (previousName ?? entry.name));
     const spec = normalize(entry.spec, old?.spec);
+    if (this.vault && !this.vault.available) {
+      const before = old ? secretMap(old.spec) : undefined;
+      const added = Object.entries(secretMap(spec) ?? {}).some(([k, v]) => isSecretValue(v) && before?.[k] !== v);
+      if (added) throw new Error("This computer can't encrypt secrets (no OS keychain), so they can't be saved. Use ${VAR} to read the value from an environment variable instead.");
+    }
     const next = list.filter((s) => s.name !== (previousName ?? entry.name));
-    next.push({ ...entry, spec });
+    const { locked: _l, ...rest } = entry;
+    next.push({ ...rest, spec });
     this.write(next);
   }
 
@@ -120,13 +182,40 @@ export class McpServerStore {
   }
 
   private write(list: McpServerEntry[], offGlobal?: string[]): void {
-    const mcpServers: FileShape["mcpServers"] = {};
-    for (const s of list) mcpServers[s.name] = { ...s.spec, ...(s.enabled ? {} : { disabled: true }) };
     const off = offGlobal ?? this.offGlobal();
+    const mcpServers: FileShape["mcpServers"] = {};
+    for (const s of list) mcpServers[s.name] = { ...this.vaulted(s), ...(s.enabled ? {} : { disabled: true }) };
+    // Secrets of servers that are gone (removed or renamed) leave the vault too.
+    if (this.vault) {
+      const keep = new Set(list.map((s) => this.key(s.name)));
+      for (const k of this.vault.keys(`${this.scope}:`)) if (!keep.has(k)) this.vault.remove(k);
+    }
     mkdirSync(dirname(this.file), { recursive: true });
     const tmp = `${this.file}.tmp`;
     writeFileSync(tmp, JSON.stringify({ mcpServers, ...(off.length ? { offGlobal: off } : {}) }, null, 2), { mode: 0o600 });
     renameSync(tmp, this.file);
+  }
+
+  /**
+   * The spec as mcp.json stores it: with a usable vault, every secret value is
+   * encrypted there first and replaced by the mark. Where the vault can't
+   * encrypt, values already in the file stay as they were (save refuses new ones).
+   */
+  private vaulted(s: McpServerEntry): McpServerSpec {
+    const map = secretMap(s.spec);
+    if (!this.vault?.available || !map) return s.spec;
+    const secret: Record<string, string> = {};
+    const shown: Record<string, string> = {};
+    for (const [k, v] of Object.entries(map)) {
+      if (isSecretValue(v)) {
+        secret[k] = v;
+        shown[k] = VAULT_MARK;
+      } else shown[k] = v;
+    }
+    const entry: VaultEntry = s.spec.type === "http" ? { headers: secret } : { env: secret };
+    if (Object.keys(secret).length) this.vault.set(this.key(s.name), entry);
+    else if (!Object.values(map).includes(VAULT_MARK)) this.vault.remove(this.key(s.name));
+    return withMap(s.spec, shown);
   }
 }
 
@@ -139,27 +228,51 @@ export class McpServerStore {
 export class McpScopes {
   private projects = new Map<string, McpServerStore>();
 
-  constructor(private global: McpServerStore, private dir: (projectId: string) => string) {}
+  constructor(private global: McpServerStore, private dir: (projectId: string) => string, private vault?: McpVault) {}
 
   /** This project's own mcp.json, cached per project id. */
   project(projectId: string): McpServerStore {
     let store = this.projects.get(projectId);
     if (!store) {
-      store = new McpServerStore(join(this.dir(projectId), "mcp.json"));
+      store = new McpServerStore(join(this.dir(projectId), "mcp.json"), this.vault, `project:${projectId}`);
       this.projects.set(projectId, store);
     }
     return store;
   }
 
-  /** The servers the thread's project actually gets; null project = the global list. */
+  /** The servers the thread's project actually gets, ready to hand to an agent; null project = the global list. */
   effective(projectId: string | null): McpServerEntry[] {
-    if (!projectId) return this.global.enabled();
+    const ready = (list: McpServerEntry[]) => list.map(({ locked: _l, ...s }) => ({ ...s, spec: resolveSpec(s.spec) }));
+    if (!projectId) return ready(this.global.enabled());
     const project = this.project(projectId);
     const ownNames = new Set(project.list().map((s) => s.name));
     const off = new Set(project.offGlobal());
     const fromGlobal = this.global.enabled().filter((s) => !ownNames.has(s.name) && !off.has(s.name));
-    return [...project.enabled(), ...fromGlobal];
+    return ready([...project.enabled(), ...fromGlobal]);
   }
+}
+
+/**
+ * Read every mcp.json once (global, then each project folder that has one), so
+ * any plain-text value from before the vault is moved into it. Reading is what
+ * migrates; a failure leaves that file as it was. Never throws.
+ */
+export function migrateMcpSecrets(global: McpServerStore, scopes: McpScopes, projectsDir: string): void {
+  const read = (store: McpServerStore) => {
+    try {
+      store.list();
+    } catch (err) {
+      console.error(`MCP secrets: couldn't move a server's values into the vault: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+  read(global);
+  let ids: string[] = [];
+  try {
+    ids = readdirSync(projectsDir).filter((id) => existsSync(join(projectsDir, id, "mcp.json")));
+  } catch {
+    // No projects folder yet.
+  }
+  for (const id of ids) read(scopes.project(id));
 }
 
 function normalize(spec: McpServerSpec, old: McpServerSpec | undefined): McpServerSpec {

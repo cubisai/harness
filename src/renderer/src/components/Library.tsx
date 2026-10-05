@@ -848,6 +848,7 @@ function ConnectorsTab() {
                   </div>
                   <code className="mcp-target">{s.target}</code>
                   {(s.envKeys.length > 0 || s.headerKeys.length > 0) && <div className="mcp-keys">{[...s.envKeys, ...s.headerKeys].join(" · ")}</div>}
+                  {s.locked && <div className="mcp-test bad">Its saved secrets can&apos;t be opened on this computer. Remove it and add it again with the values.</div>}
                   {t && t !== "running" && (
                     <div className={`mcp-test ${t.ok ? "ok" : "bad"}`}>
                       {t.ok ? `Connected · ${t.tools.length} tool${t.tools.length === 1 ? "" : "s"}` : `Couldn't connect: ${t.error}`}

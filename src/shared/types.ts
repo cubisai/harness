@@ -196,6 +196,8 @@ export interface McpServerEntry {
   name: string;
   spec: McpServerSpec;
   enabled: boolean;
+  /** Some of its secret values are in the vault but can't be opened on this machine; enter them again. */
+  locked?: boolean;
 }
 
 /** An MCP server as the window sees it: env and header values never leave the main process. */
@@ -207,6 +209,8 @@ export interface McpServerView {
   target: string;
   envKeys: string[];
   headerKeys: string[];
+  /** Its stored secrets can't be decrypted here (another machine or a reset keychain): enter them again. */
+  locked?: boolean;
 }
 
 /** A server an agent loads from its own config, shown read-only. */

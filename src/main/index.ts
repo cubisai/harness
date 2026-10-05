@@ -40,14 +40,15 @@ import { createMemoryApi } from "./memory/api";
 import { createExtractor } from "./memory/extractor";
 import { MEMORY_READ_TOOL, memoryReadTool } from "./memory/tool";
 import { askUserTool, questionAnswerOf } from "./questions";
-import { SettingsStore } from "./settings";
+import { SettingsStore, type SecretBox } from "./settings";
 import { agentCatalog, skillDetail } from "./library";
 import { fillUserEnvironment } from "./winspawn";
 import { referenceEvents } from "./canonical-events";
 import { smokeCanonicalEvents, smokeHandoff, smokeMigration, smokeProviders } from "./smoke-checks";
 import { Editors, realHost } from "./editors";
 import { readExternalMcp } from "./mcp/external";
-import { BUILT_IN_SERVER, McpScopes, McpServerStore, McpToolsCache, testServer, viewOf } from "./mcp/servers";
+import { BUILT_IN_SERVER, McpScopes, McpServerStore, McpToolsCache, migrateMcpSecrets, resolveSpec, testServer, viewOf } from "./mcp/servers";
+import { McpVault } from "./mcp/vault";
 import { MCP_ROUTER_MIN_TOOLS, McpClientPool, routerTools } from "./mcp/router";
 import { providerWarning } from "../shared/provider-rules";
 import { Updater, type UpdaterBackend } from "./updater";
@@ -199,12 +200,15 @@ async function main(): Promise<void> {
   // Content left behind by threads deleted before blobs were pruned on delete, off the startup path.
   setImmediate(() => store.pruneBlobs());
   const memory = createMemory({ root: join(userData, "memory", "projects"), home: homedir(), codexHome: process.env.CODEX_HOME || undefined });
-  const settings = new SettingsStore(join(userData, "settings.json"), {
+  const secretBox: SecretBox = {
     // On Linux, isEncryptionAvailable() is true even with the plain-text fallback backend.
     available: safeStorage.isEncryptionAvailable() && (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text"),
     encrypt: (s) => safeStorage.encryptString(s).toString("base64"),
     decrypt: (b) => safeStorage.decryptString(Buffer.from(b, "base64")),
-  });
+  };
+  const settings = new SettingsStore(join(userData, "settings.json"), secretBox);
+  // MCP header and env secrets, encrypted the same way, one entry per server.
+  const mcpVault = new McpVault(join(userData, "mcp-secrets.json"), secretBox);
   // The Library's memory tab: notes, the enable switches, and a re-run of the import.
   const memoryApi = createMemoryApi({
     memory,
@@ -217,11 +221,14 @@ async function main(): Promise<void> {
   // this is the list every stored or broadcast event is scrubbed of. Cached, and
   // reset whenever a provider or credential changes.
   let secretsCache: string[] | null = null;
-  const knownSecrets = () =>
-    (secretsCache ??= settings
+  const knownSecrets = () => [
+    ...(secretsCache ??= settings
       .providers()
       .map((p) => settings.providerSecret(p.id))
-      .filter((s): s is string => Boolean(s)));
+      .filter((s): s is string => Boolean(s))),
+    // The vault caches what it decrypts, so this stays cheap per call.
+    ...mcpVault.values(),
+  ];
   nativeTheme.themeSource = settings.get().theme;
   const root = findSkillsRoot(
     defaultSkillsCandidates({ resourcesPath: app.isPackaged ? process.resourcesPath : undefined, appPath: app.getAppPath() }),
@@ -517,9 +524,11 @@ async function main(): Promise<void> {
   for (const d of drivers) {
     void (d.refreshModels?.() ?? Promise.resolve()).finally(() => broadcast({ type: "agents" }));
   }
-  const mcpStore = new McpServerStore(join(userData, "mcp.json"));
+  const mcpStore = new McpServerStore(join(userData, "mcp.json"), mcpVault);
   const mcpProjectDir = (projectId: string) => join(userData, "projects", projectId);
-  const mcpScopes = new McpScopes(mcpStore, mcpProjectDir);
+  const mcpScopes = new McpScopes(mcpStore, mcpProjectDir, mcpVault);
+  // Move any plain-text secrets left in mcp.json files from before the vault into it now, off the startup path.
+  setImmediate(() => migrateMcpSecrets(mcpStore, mcpScopes, join(userData, "projects")));
   // The enabled servers' tool schemas, for the Context sheet; listed on demand.
   const mcpTools = new McpToolsCache();
   // One connection per routed MCP server, kept warm between calls and closed on quit.
@@ -659,7 +668,7 @@ async function main(): Promise<void> {
   ipcMain.handle("mcp:test", async (_e, name: string, projectId?: string | null) => {
     const store = projectId ? mcpScopes.project(projectId) : mcpStore;
     const entry = store.list().find((s) => s.name === name);
-    return entry ? testServer(entry.spec) : { ok: false, tools: [], error: "No such server." };
+    return entry ? testServer(resolveSpec(entry.spec)) : { ok: false, tools: [], error: "No such server." };
   });
   // A project can switch off an individual global server without editing either file.
   ipcMain.handle("mcp:global-off", (_e, projectId: string, name: string, off: boolean) => {
