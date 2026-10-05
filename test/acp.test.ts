@@ -594,10 +594,10 @@ describe("ACP driver", () => {
     const tool = { name: "browser_snapshot", description: "", input: {}, autoAllow: true, run: async () => ({ text: "" }) };
     const first = turn("mcp", { tools: [tool] });
     await d.runTurn(first.input);
-    expect(first.deltas.join("")).toBe('[["http","cubiq","http://127.0.0.1:9/mcp"]]');
+    expect(first.deltas.join("")).toBe('[["http","cubiq","http://127.0.0.1:9/mcp?t=thread-1"]]');
     const second = turn("mcp", { sessionId: first.sessions[0]!, tools: [tool] });
     await d.runTurn(second.input);
-    expect(second.deltas.join("")).toBe('[["http","cubiq","http://127.0.0.1:9/mcp"]]');
+    expect(second.deltas.join("")).toBe('[["http","cubiq","http://127.0.0.1:9/mcp?t=thread-1"]]');
     expect(second.events.some((e) => e.kind === "notice" && (e as { text: string }).text.includes("reopened"))).toBe(false);
   });
 
@@ -671,7 +671,7 @@ describe("ACP driver", () => {
     const t = turn("mcp", { tools: [browser], projectId: "p1", mcpServers: [docs] });
     await d.runTurn(t.input);
     // The user's server isn't sent; only the harness entry, on /mcp-routed with the project.
-    expect(JSON.parse(t.deltas.join(""))).toEqual([["http", "cubiq", "http://127.0.0.1:9/mcp-routed?p=p1"]]);
+    expect(JSON.parse(t.deltas.join(""))).toEqual([["http", "cubiq", "http://127.0.0.1:9/mcp-routed?p=p1&t=thread-1"]]);
   });
 
   it("sends the user's MCP servers as before when the router decision is no", async () => {
@@ -686,7 +686,7 @@ describe("ACP driver", () => {
     await d.runTurn(t.input);
     const sent = JSON.parse(t.deltas.join("")) as [string | null, string, string?][];
     expect(sent.map((m) => m[1])).toEqual(["docs", "cubiq"]);
-    expect(sent.find((m) => m[1] === "cubiq")?.[2]).toBe("http://127.0.0.1:9/mcp?p=p1");
+    expect(sent.find((m) => m[1] === "cubiq")?.[2]).toBe("http://127.0.0.1:9/mcp?p=p1&t=thread-1");
   });
 
   it("never asks about routing when the agent doesn't declare mcpRouter", async () => {

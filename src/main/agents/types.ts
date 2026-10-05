@@ -1,5 +1,5 @@
 import type { ZodRawShape, z } from "zod";
-import type { AgentCapabilities, AgentCredentials, AgentInfo, LiveDelta, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, PlanDecision, Provenance, SkillsDelivery, ThreadEvent } from "../../shared/types";
+import type { AgentCapabilities, AgentCredentials, AgentInfo, LiveDelta, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, PlanDecision, Provenance, Question, QuestionAnswer, SkillsDelivery, ThreadEvent } from "../../shared/types";
 import type { LimitsPatch } from "./limits";
 
 export type { AgentCapabilities, SkillsDelivery } from "../../shared/types";
@@ -17,6 +17,10 @@ export interface ToolOutput {
 /** Who is calling a harness tool, when the transport knows (the HTTP tool server does). */
 export interface ToolContext {
   projectId?: string;
+  /** The thread whose turn called the tool, when the tool server knows it (`?t=`). */
+  threadId?: string;
+  /** Aborts when the caller gives up on the call (the HTTP request closed). */
+  signal?: AbortSignal;
 }
 
 /**
@@ -77,6 +81,8 @@ export interface TurnInput {
   requestPermission(req: { toolName: string; summary: string; canAlwaysAllow: boolean }): Promise<PermissionDecision>;
   /** Plan mode: the agent presented a plan and waits for the user's decision. */
   requestPlanDecision(p: { plan: string }): Promise<PlanDecision>;
+  /** The agent asks the user questions (Claude's AskUserQuestion, Codex's request_user_input); resolves "dismiss" when skipped or stopped. Absent: the driver answers "dismiss". */
+  requestUserInput?(questions: Question[], opts?: { async?: boolean }): Promise<QuestionAnswer>;
   /** Harness-provided tools for this turn; empty when none apply. */
   tools: HarnessTool[];
   /** The user's MCP servers (mcp.json), passed to the agent alongside its own. */
@@ -150,6 +156,8 @@ export interface AgentDriver {
    * invalidates the prompt cache (each model has its own).
    */
   setModel?(req: { threadId: string; sessionId: string; from: string; to: string }): Promise<ModelSwitch>;
+  /** Add the user's words to the thread's running turn (Codex turn/steer); false when no turn of this thread is running. */
+  steer?(threadId: string, text: string): Promise<boolean>;
   /** Count tokens in the target model's own tokenizer, when the agent offers a free way to. Absent: the harness estimates. */
   countTokens?(text: string, model: string): Promise<number>;
   /** The CLI copy this agent actually runs, and the other copies found, when the driver knows. */

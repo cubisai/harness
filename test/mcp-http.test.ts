@@ -3,7 +3,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { HarnessTool, ToolContext } from "../src/main/agents/types";
-import { startToolServer, withProject } from "../src/main/mcp-http";
+import { startToolServer, withProject, withThread } from "../src/main/mcp-http";
 import { closeAfter } from "./helpers";
 
 const echo: HarnessTool = {
@@ -151,5 +151,31 @@ describe("tool server", () => {
     await plain.callTool({ name: "ctx", arguments: {} });
     await plain.close();
     expect(seen).toEqual([{ projectId: "p1" }, undefined]);
+  });
+
+  it("keeps a thread tool's call alive past the client's timeout with a progress heartbeat", async () => {
+    // OpenCode times an MCP call out after 60s but resets on progress; ask_user waits on a person.
+    const wait: HarnessTool = { ...echo, name: "wait", input: {}, run: () => new Promise((r) => setTimeout(() => r({ text: "answered" }), 300)) };
+    const server = await startToolServer(() => [echo], undefined, undefined, () => [wait], 40);
+    closeAfter(() => void server.close());
+    const client = await connect(withThread(server.url, "t1"), server.token);
+    let beats = 0;
+    const res = await client.callTool({ name: "wait", arguments: {} }, undefined, {
+      timeout: 150,
+      resetTimeoutOnProgress: true,
+      onprogress: () => void (beats += 1),
+    });
+    expect(res.content).toEqual([{ type: "text", text: "answered" }]);
+    expect(beats).toBeGreaterThan(2);
+    // Other tools still answer as plain JSON, with no heartbeat.
+    expect((await client.callTool({ name: "echo", arguments: { text: "hi" } })).content).toEqual([{ type: "text", text: "echo: hi" }]);
+    await client.close();
+  });
+
+  it("400s a body that isn't JSON", async () => {
+    const server = await startToolServer(() => [echo]);
+    closeAfter(() => void server.close());
+    const res = await fetch(server.url, { method: "POST", headers: { Authorization: `Bearer ${server.token}` }, body: "{" });
+    expect(res.status).toBe(400);
   });
 });

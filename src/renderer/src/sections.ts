@@ -2,7 +2,7 @@ import type { Thread } from "../../shared/types";
 
 export interface InboxInput {
   running: Record<string, boolean>;
-  /** Threads with a permission or plan waiting on the user. */
+  /** Threads with a permission, plan or question waiting on the user. */
   waiting?: ReadonlySet<string>;
   /** Overrides each thread's own `pinned` (previews and tests). */
   pinned?: Record<string, boolean>;
@@ -56,9 +56,9 @@ export function nthVisibleThread(model: InboxModel, n: number, opts: { groupByPr
   return visibleThreads(model, opts)[n - 1] ?? null;
 }
 
-/** Threads with a permission or plan waiting on the user. */
-export function waitingThreads(permissions: { threadId: string }[], plans: { threadId: string }[]): Set<string> {
-  return new Set([...permissions.map((p) => p.threadId), ...plans.map((p) => p.threadId)]);
+/** Threads with a permission, plan or question waiting on the user. */
+export function waitingThreads(...pending: { threadId: string }[][]): Set<string> {
+  return new Set(pending.flat().map((p) => p.threadId));
 }
 
 /** A row's time on the right: "now", "5m", "3h", "Yd" (yesterday), a weekday this week, else "Sep 4". */

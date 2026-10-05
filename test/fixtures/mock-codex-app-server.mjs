@@ -207,6 +207,21 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
         });
         return done("completed");
       }
+      if (text === "ask-async") {
+        const item = { type: "agentMessage", id: "call_async", text: "Free-form or fixed?\n- Free-form\n- Fixed", phase: "final_answer", delivery: "async", questions: [{ title: "Free-form or fixed?", options: ["Free-form", "Fixed"] }] };
+        notify("item/started", { threadId, turnId: turn.id, item });
+        notify("item/completed", { threadId, turnId: turn.id, item });
+      }
+      if (text === "ask") {
+        const res = await ask("item/tool/requestUserInput", {
+          threadId,
+          turnId: turn.id,
+          itemId: "q1",
+          isBlocking: true,
+          questions: [{ id: "scope", header: "Scope", question: "Which scope?", isOther: false, options: [{ label: "Project", description: "" }, { label: "Global", description: "" }] }],
+        });
+        notify("item/completed", { threadId, turnId: turn.id, item: { type: "agentMessage", id: "m-ask", text: `answers ${JSON.stringify(res)}` } });
+      }
       if (text === "tool") {
         const item = { type: "commandExecution", id: "c1", command: "npm test", status: "inProgress", aggregatedOutput: null, exitCode: null };
         notify("item/started", { threadId, turnId: turn.id, item });

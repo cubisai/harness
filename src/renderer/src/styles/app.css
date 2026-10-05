@@ -433,6 +433,8 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .button:active { transform: scale(0.98); }
 .button.primary { background: var(--primary); border-color: transparent; color: var(--on-primary); }
 .button.primary:hover { filter: brightness(1.06); }
+.button:disabled { opacity: 0.4; cursor: default; }
+.button:disabled:active { transform: none; }
 .button.danger { color: var(--danger); }
 .button.ghost { border-color: transparent; background: transparent; color: var(--text-secondary); }
 .button.ghost:hover { background: var(--bg-hover); color: var(--text); }
@@ -766,6 +768,7 @@ details.tool[open]::details-content { height: auto; }
   word-break: break-all;
 }
 .permission-card .actions { display: flex; gap: 8px; justify-content: flex-end; }
+.request-dock .permission-card { margin: 0 auto; }
 .permission-guard { font-size: 11px; color: var(--text-secondary); margin-top: 8px; }
 .permission-guard.warn { color: var(--warning); }
 
@@ -777,6 +780,100 @@ details.tool[open]::details-content { height: auto; }
 .plan-card .plan-body pre { margin: 0 0 10px; }
 .plan-card .plan-body pre code { display: block; padding: 0; background: transparent; }
 .plan-card .plan-feedback { display: block; width: 100%; height: auto; min-height: 56px; padding: 8px 10px; font: 12px var(--mono); resize: vertical; margin-bottom: 10px; }
+/* ---------- request dock: approvals, questions and plans, above the composer ---------- */
+
+.request-dock { padding: 0 28px 8px; flex-shrink: 0; }
+.request-dock > .permission-card,
+.request-dock > .dock-card {
+  max-width: 760px;
+  margin: 0 auto;
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
+}
+.dock-card {
+  border: 1px solid var(--hairline-strong);
+  background: var(--bg-elevated);
+  border-radius: var(--radius-l);
+  padding: 12px 14px;
+}
+.dock-card:focus { outline: none; }
+.dock-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.dock-head { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 6px; }
+.dock-chip { font-size: 11.5px; font-weight: 500; color: var(--text-secondary); background: var(--bg-chip); border-radius: var(--radius-s); padding: 1px 6px; }
+.dock-meta { font: 10.5px var(--mono); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.dock-spacer { flex: 1; }
+.dock-more { max-width: 760px; margin: 4px auto 0; font-size: 11.5px; color: var(--text-tertiary); }
+.dock-card .actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+
+.qc-question { font-size: 13px; font-weight: 600; line-height: 1.5; margin-bottom: 8px; overflow-wrap: anywhere; }
+.qc-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.qc-body.with-preview { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+@media (max-width: 720px) { .qc-body.with-preview { grid-template-columns: minmax(0, 1fr); } }
+.qc-options { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.qc-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-m);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms var(--ease), border-color 120ms var(--ease);
+}
+.qc-option:hover, .qc-option.cursor { background: var(--bg-hover); }
+.qc-option.picked { background: var(--bg-selected); border-color: var(--hairline-strong); }
+.qc-option.other { align-items: center; cursor: default; }
+button.qc-option.other { cursor: pointer; }
+.qc-key {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-s);
+  font: 10.5px var(--mono);
+  color: var(--text-secondary);
+}
+.qc-option.picked .qc-key { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.qc-text { display: flex; flex-direction: column; min-width: 0; }
+.qc-label { font-size: 12.5px; font-weight: 500; overflow-wrap: anywhere; }
+.qc-desc { font-size: 11.5px; color: var(--text-secondary); line-height: 1.45; overflow-wrap: anywhere; }
+.qc-other { flex: 1; min-width: 0; height: 28px; font-family: var(--font); font-size: 12.5px; }
+.qc-body.with-preview .qc-preview { grid-column: 2; grid-row: 1 / span 2; }
+@media (max-width: 720px) { .qc-body.with-preview .qc-preview { grid-column: 1; grid-row: auto; } }
+.qc-note { grid-column: 1; min-width: 0; height: 28px; font-family: var(--font); font-size: 12.5px; }
+.qc-note-toggle {
+  grid-column: 1;
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  font: 500 11.5px var(--font);
+  padding: 2px 8px;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+}
+.qc-note-toggle:hover { background: var(--bg-hover); color: var(--text-secondary); }
+.qc-preview { min-width: 0; max-height: 280px; overflow: auto; font-size: 12px; line-height: 1.55; }
+.qc-preview .code-block { margin: 0; }
+.qc-preview pre { margin: 0; padding: 10px 12px; overflow-x: auto; background: var(--bg); }
+.qc-preview pre code { background: none; border: 0; padding: 0; font: 12px/1.55 var(--mono); }
+.qc-preview > :first-child { margin-top: 0; }
+.qc-preview > :last-child { margin-bottom: 0; }
+
+.questions-row .qa + .qa { margin-top: 8px; }
+.questions-row .q { color: var(--text-secondary); font-size: 12px; }
+.questions-row .a { font-size: 12.5px; }
+.questions-row .note { font-size: 12px; color: var(--text-secondary); }
+
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
 @keyframes morph { from { opacity: 0; transform: scale(0.92) translateY(6px); border-radius: 22px; } }
 
@@ -904,6 +1001,8 @@ details.tool[open]::details-content { height: auto; }
   [data-motion="subtle"] .inspector { animation: slide-in 120ms var(--ease); }
   [data-motion="full"] .permission-card { animation: rise 220ms var(--ease); }
   [data-motion="subtle"] .permission-card { animation: rise 120ms var(--ease); }
+  [data-motion="full"] .dock-card { animation: rise 220ms var(--ease); }
+  [data-motion="subtle"] .dock-card { animation: rise 120ms var(--ease); }
   [data-motion="full"] .skill-menu, [data-motion="subtle"] .skill-menu { animation: rise 160ms var(--ease); }
   [data-motion="full"] .sheet-backdrop { animation: fade 160ms var(--ease); }
   [data-motion="subtle"] .sheet-backdrop { animation: fade 80ms var(--ease); }

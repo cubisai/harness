@@ -227,6 +227,7 @@ export function Sidebar() {
   const running = useStore((s) => s.running);
   const permissions = useStore((s) => s.permissions);
   const plans = useStore((s) => s.plans);
+  const questions = useStore((s) => s.questions);
   const finished = useStore((s) => s.finished);
   const turnStartedAt = useStore((s) => s.turnStartedAt);
   const selectedProjectId = useStore((s) => s.selectedProjectId);
@@ -242,7 +243,9 @@ export function Sidebar() {
   const newThreadKey = mac ? "⌘N" : "Ctrl N";
   const searchKey = mac ? "⌘K" : "Ctrl K";
 
-  const waiting = waitingThreads(permissions, plans);
+  const waiting = waitingThreads(permissions, plans, questions);
+  // Only a question (no approval or plan) waits for an answer rather than an approval.
+  const answering = new Set([...waitingThreads(questions)].filter((id) => !waitingThreads(permissions, plans).has(id)));
   const unread = new Set(finished.map((f) => f.threadId));
   const model = inboxModel(
     projects.map((p) => p.id),
@@ -270,7 +273,7 @@ export function Sidebar() {
         live ? (
           waiting.has(t.id) ? (
             <>
-              <span className="need">Needs approval</span> · {agentOf(t)?.label ?? t.agent}
+              <span className="need">{answering.has(t.id) ? "Needs your answer" : "Needs approval"}</span> · {agentOf(t)?.label ?? t.agent}
             </>
           ) : (
             <>

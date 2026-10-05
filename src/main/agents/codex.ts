@@ -2,7 +2,7 @@ import type { McpServerEntry, ModelOption, PermissionDecision, PermissionMode, T
 import type { RunPayload, RunResult, ToolDiff } from "../../shared/tools";
 import { clipSummary } from "../../shared/tools";
 import { diffSummary } from "../../shared/diff";
-import { mkdirSync, readFileSync, statSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,6 +18,7 @@ import { summarizeToolInput, summarizeToolResult } from "./summarize";
 import { MODEL_TTL_MS } from "./model-ttl";
 import { binaryInfo, resolvedCommandAsync } from "./binaries";
 import type { AgentDriver, HarnessTool, SessionSeed, TurnInput } from "./types";
+import { codexAnswers, fromCodexAsyncQuestions, fromCodexQuestions } from "../questions";
 
 // The slices of Codex's app-server protocol (`codex app-server generate-ts`) this driver uses.
 type ThreadItem =
@@ -70,6 +71,8 @@ export interface CodexConfig {
   command: string;
   args: string[];
   clientVersion: string;
+  /** Where to write the model catalog without the async question tools; none: Codex uses its own. */
+  catalogDir?: () => string | null;
   /** Model-invoked skills, registered as an extra skills root if present. */
   skillsDir?: () => string | null;
   /** The harness's tools over HTTP MCP (the browser pane's), attached per thread. */
@@ -166,6 +169,44 @@ export function codexAuthStamp(env: NodeJS.ProcessEnv = process.env): string | n
 
 export function codexDecision(d: PermissionDecision): "accept" | "acceptForSession" | "decline" {
   return d === "allow-always" ? "acceptForSession" : d === "allow-once" ? "accept" : "decline";
+}
+
+/** The tool names that make a model ask without waiting (the second is the older catalog name for the same tool). */
+const ASYNC_QUESTION_TOOLS = new Set(["request_user_input_async", "send_user_message_async"]);
+
+/**
+ * Codex's model cache without the async question tools, or null when no model
+ * offers them. A model that has them (GPT-6-Luna) asks and ends its turn, so
+ * the answer could only arrive as a new message; without them it asks with the
+ * blocking request_user_input and waits inside the turn.
+ */
+export function blockingQuestionCatalog(json: unknown): { models: unknown[] } | null {
+  const models = (json as { models?: unknown } | null)?.models;
+  if (!Array.isArray(models)) return null;
+  let changed = false;
+  const out = models.map((m) => {
+    const tools = (m as { experimental_supported_tools?: unknown } | null)?.experimental_supported_tools;
+    if (!Array.isArray(tools) || !tools.some((t) => ASYNC_QUESTION_TOOLS.has(t as string))) return m;
+    changed = true;
+    return { ...(m as object), experimental_supported_tools: tools.filter((t) => !ASYNC_QUESTION_TOOLS.has(t as string)) };
+  });
+  return changed ? { models: out } : null;
+}
+
+/** `-c model_catalog_json=…` for the app-server, when the cache needs trimming; never fails a spawn. */
+function catalogArgs(env: NodeJS.ProcessEnv, dir: string | null): string[] {
+  if (!dir) return [];
+  try {
+    const trimmed = blockingQuestionCatalog(JSON.parse(readFileSync(join(env.CODEX_HOME || join(homedir(), ".codex"), "models_cache.json"), "utf8")));
+    if (!trimmed) return [];
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, "codex-models.json");
+    writeFileSync(file, JSON.stringify(trimmed));
+    // A TOML basic string: JSON's escaping (backslashes in a Windows path) is valid there.
+    return ["-c", `model_catalog_json=${JSON.stringify(file)}`];
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -588,6 +629,13 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     if (item.type === "agentMessage") {
       const text = (item as { text: string }).text || t.deltas.get(item.id) || "";
       t.deltas.delete(item.id);
+      // request_user_input_async: the questions ride on a message and the turn
+      // goes on; the card replaces the message's plain-text rendering.
+      const asked = fromCodexAsyncQuestions((item as { questions?: unknown }).questions);
+      if (asked.length && !t.parent && t.input.requestUserInput) {
+        void t.input.requestUserInput(asked, { async: true }).catch(() => {});
+        return;
+      }
       t.agentText = text;
       if (text.trim()) t.input.onEvent({ kind: "assistant-text", text, itemId: item.id });
       return;
@@ -654,6 +702,13 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       return { decision: codexDecision(decision) };
     }
     if (method === "mcpServer/elicitation/request") return onElicitation(params as Elicitation);
+    // Plan mode's questions: the user answers in the app's card; a skip sends
+    // no answers, and Codex goes on with its recommended defaults.
+    if (method === "item/tool/requestUserInput") {
+      const questions = fromCodexQuestions(params);
+      if (!t?.input.requestUserInput || !questions.length) return codexAnswers("dismiss");
+      return codexAnswers(await t.input.requestUserInput(questions));
+    }
     throw new RpcError(-32601, `${method} is not supported by this client`);
   };
 
@@ -754,7 +809,9 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     startWarnings = [];
     // A bare command is resolved to its newest installed copy at spawn time.
     const command = config.command.includes("/") || config.command.includes("\\") ? config.command : await resolvedCommandAsync(config.command);
-    const conn: StdioRpc = StdioRpc.spawn(command, [...config.args, ...(plan?.args ?? [])], { cwd, env: plan?.env ?? process.env }, {
+    // A BYOK provider brings its own models; only Codex's own catalog is trimmed.
+    const catalog = plan?.byok ? [] : catalogArgs(plan?.env ?? process.env, config.catalogDir?.() ?? null);
+    const conn: StdioRpc = StdioRpc.spawn(command, [...config.args, ...(plan?.args ?? []), ...catalog], { cwd, env: plan?.env ?? process.env }, {
       onNotification,
       onRequest,
       onExit: () => {
@@ -1166,6 +1223,16 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         input.onEvent(turnEndFromUsage(last.usage, last.turn?.durationMs ?? Date.now() - started, last.contextSize));
       } catch (err) {
         input.onEvent({ kind: "error", message: err instanceof Error ? err.message : String(err) });
+      }
+    },
+    async steer(harnessThreadId, text) {
+      const state = [...turns.values()].find((t) => !t.parent && t.input.threadId === harnessThreadId && t.turnId);
+      if (!state || !rpc) return false;
+      try {
+        await rpc.request("turn/steer", { threadId: state.threadId, expectedTurnId: state.turnId, input: [{ type: "text", text, text_elements: [] }] });
+        return true;
+      } catch {
+        return false;
       }
     },
     dispose() {

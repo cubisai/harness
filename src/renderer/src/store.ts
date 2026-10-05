@@ -15,6 +15,8 @@ import type {
   PermissionRequest,
   PlanDecision,
   PlanRequest,
+  QuestionAnswer,
+  QuestionRequest,
   Project,
   SkillEntry,
   StoredEvent,
@@ -113,6 +115,8 @@ interface State {
   permissions: PermissionRequest[];
   /** Plan proposals waiting on the user, like permissions. */
   plans: PlanRequest[];
+  /** Agent questions waiting on the user, answered in the docked card. */
+  questions: QuestionRequest[];
   /** Turns that ended on a thread that wasn't open, for the Message Center. */
   finished: FinishedTurn[];
   /** When each running turn started (renderer clock), for a Finished row's duration. */
@@ -195,6 +199,7 @@ interface State {
   interrupt(): Promise<void>;
   respond(requestId: string, decision: "allow-once" | "allow-always" | "deny"): Promise<void>;
   respondPlan(requestId: string, decision: PlanDecision): Promise<void>;
+  respondQuestion(requestId: string, answer: QuestionAnswer): Promise<void>;
   toggleInspector(): void;
   showInspector(tab: InspectorTab): void;
   /** The file shown in the panel's File tab, for one thread. */
@@ -436,6 +441,7 @@ export const useStore = create<State>((set, get) => ({
   disclosures: {},
   permissions: [],
   plans: [],
+  questions: [],
   finished: [],
   turnStartedAt: {},
   inboxOpen: false,
@@ -528,13 +534,14 @@ export const useStore = create<State>((set, get) => ({
     initialized = true;
     // Subscribe before the first await, so no update sent during startup is lost.
     api().onUpdate((u) => get().apply(u));
-    const [projects, skills, agents, settings, appUpdate, limitList] = await Promise.all([
+    const [projects, skills, agents, settings, appUpdate, limitList, pending] = await Promise.all([
       api().listProjects(),
       api().listSkills(),
       api().listAgents(),
       api().getSettings(),
       api().updateStatus(),
       api().listLimits(),
+      api().pendingState(),
     ]);
     void api()
       .listEditors()
@@ -548,6 +555,15 @@ export const useStore = create<State>((set, get) => ({
     for (const p of projects) void get().loadBranch(p.id);
     const limits = Object.fromEntries(limitList.map((l) => [l.agent, l]));
     set((s) => ({ projects, skills, agents, threads, settings, paneLayout: sanitizeLayout(settings.paneLayout), appUpdate, limits: { ...limits, ...s.limits } }));
+    // A window that loads mid-turn picks up what's live: running threads and the cards waiting on the user.
+    const now = Date.now();
+    set((s) => ({
+      running: { ...Object.fromEntries(pending.running.map((id) => [id, true])), ...s.running },
+      turnStartedAt: { ...Object.fromEntries(pending.running.map((id) => [id, now])), ...s.turnStartedAt },
+      permissions: [...s.permissions, ...pending.permissions.filter((p) => !s.permissions.some((x) => x.requestId === p.requestId))],
+      plans: [...s.plans, ...pending.plans.filter((p) => !s.plans.some((x) => x.requestId === p.requestId))],
+      questions: [...s.questions, ...pending.questions.filter((q) => !s.questions.some((x) => x.requestId === q.requestId))],
+    }));
     const first = projects[0];
     if (first) {
       await get().selectProject(first.id);
@@ -816,6 +832,10 @@ export const useStore = create<State>((set, get) => ({
     set((s) => ({ plans: s.plans.filter((p) => p.requestId !== requestId) }));
     await api().respondPlan(requestId, decision);
   },
+  async respondQuestion(requestId, answer) {
+    set((s) => ({ questions: s.questions.filter((q) => q.requestId !== requestId) }));
+    await api().respondQuestion(requestId, answer);
+  },
 
   setDisclosure(threadId, id, open) {
     set((s) => {
@@ -929,6 +949,8 @@ export const useStore = create<State>((set, get) => ({
           live: update.running ? s.live : { ...s.live, [update.threadId]: emptyLive() },
           permissions: update.running ? s.permissions : s.permissions.filter((p) => p.threadId !== update.threadId),
           plans: update.running ? s.plans : s.plans.filter((p) => p.threadId !== update.threadId),
+          // An async question outlives its turn: the answer goes back as the next message.
+          questions: update.running ? s.questions : s.questions.filter((q) => q.threadId !== update.threadId || q.async),
           diffVersion: update.running ? s.diffVersion : s.diffVersion + 1,
         }));
         // The next queued message goes out as the next turn, exactly once.
@@ -959,6 +981,12 @@ export const useStore = create<State>((set, get) => ({
         return;
       case "plan-approval-done":
         set((s) => ({ plans: s.plans.filter((p) => p.requestId !== update.requestId) }));
+        return;
+      case "question":
+        set((s) => (s.questions.some((q) => q.requestId === update.request.requestId) ? {} : { questions: [...s.questions, update.request] }));
+        return;
+      case "question-done":
+        set((s) => ({ questions: s.questions.filter((q) => q.requestId !== update.requestId) }));
         return;
       case "browser-open":
         set({ inspectorOpen: true, inspectorTab: "browser", browserMounted: true, browserUrl: update.url ?? null });

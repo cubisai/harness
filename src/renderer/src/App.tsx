@@ -3,6 +3,7 @@ import { CommandPalette } from "./components/CommandPalette";
 import { SearchDialog } from "./components/SearchDialog";
 import { Library } from "./components/Library";
 import { Composer } from "./components/Composer";
+import { RequestDock } from "./components/RequestDock";
 import { ThreadMeters } from "./components/Meters";
 import { DraftMode, DraftModel, ThreadMode, ThreadModel } from "./components/ThreadControls";
 import { Inspector } from "./components/Inspector";
@@ -90,7 +91,7 @@ export function App() {
         const model = inboxModel(
           s.projects.map((p) => p.id),
           s.threads,
-          { running: s.running, waiting: waitingThreads(s.permissions, s.plans) },
+          { running: s.running, waiting: waitingThreads(s.permissions, s.plans, s.questions) },
         );
         const target = nthVisibleThread(model, Number(e.key), { groupByProject: s.settings?.sidebarGroupByProject ?? true, collapsed: s.collapsedProjects });
         if (target) {
@@ -183,6 +184,7 @@ export function App() {
             ) : (
               <>
                 <ThreadView threadId={thread.id} />
+                <RequestDock threadId={thread.id} />
                 <Composer
                   threadId={thread.id}
                   mode={<ThreadMode thread={thread} running={running} />}

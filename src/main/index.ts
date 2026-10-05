@@ -4,7 +4,8 @@ import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell, utilityProcess } from "electron";
-import type { AboutInfo, AgentLimits, ContextPreview, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread } from "../shared/types";
+import type { AboutInfo, AgentLimits, ContextPreview, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread } from "../shared/types";
+import type { HarnessTool } from "./agents/types";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
@@ -38,6 +39,7 @@ import { createMemory, memoryOn, memoryPrompt } from "./memory";
 import { createMemoryApi } from "./memory/api";
 import { createExtractor } from "./memory/extractor";
 import { MEMORY_READ_TOOL, memoryReadTool } from "./memory/tool";
+import { askUserTool, questionAnswerOf } from "./questions";
 import { SettingsStore } from "./settings";
 import { agentCatalog, skillDetail } from "./library";
 import { fillUserEnvironment } from "./winspawn";
@@ -399,7 +401,14 @@ async function main(): Promise<void> {
   let toolServer: Promise<ToolServer> | null = null;
   // `/mcp-skills` adds the skill tool for agents in "tool" delivery mode.
   const getToolServer = () =>
-    (toolServer ??= startToolServer(harnessTools, () => [skillTool(() => forAgent(skills.global(), { mode: "tool", reads: ["project", "shared"] }))], (pid) => routedTools(pid)));
+    (toolServer ??= startToolServer(
+      harnessTools,
+      () => [skillTool(() => forAgent(skills.global(), { mode: "tool", reads: ["project", "shared"] }))],
+      (pid) => routedTools(pid),
+      () => threadTools,
+    ));
+  // Served only on a thread's own URL (`?t=`): ACP agents' question tool, answered in the app's card.
+  const threadTools: HarnessTool[] = [askUserTool((threadId: string, questions: Question[], signal?: AbortSignal) => service.askFromTool(threadId, questions, signal))];
   const drivers = [
     driver,
     // Codex when it's installed: the same model-invoked skills as an extra skills root, and the browser tools over MCP.
@@ -409,6 +418,7 @@ async function main(): Promise<void> {
             command: "codex",
             args: ["app-server"],
             clientVersion: app.getVersion(),
+            catalogDir: () => userData,
             guardScript,
             guide: (cwd) => guide.forCwd(cwd),
             memory: memoryPromptFor,
@@ -921,6 +931,8 @@ async function main(): Promise<void> {
     service.respondPermission(requestId, decision),
   );
   ipcMain.handle("plan:respond", (_e, requestId: string, decision: PlanDecision) => service.respondPlan(requestId, decision));
+  ipcMain.handle("pending:get", () => service.pendingState());
+  ipcMain.handle("question:respond", (_e, requestId: string, answer: unknown) => service.respondQuestion(requestId, questionAnswerOf(answer)));
   ipcMain.handle("diff:get", (_e, projectId: string, threadId?: string | null) => service.getDiff(projectId, threadId));
   ipcMain.handle("search:query", (_e, query: SearchQuery) =>
     store.search({

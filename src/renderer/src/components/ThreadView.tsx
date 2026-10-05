@@ -9,8 +9,6 @@ import { emptyLive, liveReasoningMode, visibleItems } from "../live";
 import { Markdown } from "../markdown";
 import { relativeToThread, useStore } from "../store";
 import { DiffView, diffsOf } from "./DiffView";
-import { PermissionCard } from "./PermissionCard";
-import { PlanApprovalCard } from "./PlanApprovalCard";
 import { ReasoningBlock } from "./ReasoningBlock";
 import { activityOf, WaitingLine } from "./WaitingLine";
 import { useSmoothText } from "../hooks/useSmoothText";
@@ -49,6 +47,8 @@ export function ThreadView({ threadId }: { threadId: string }) {
   const permissions = useMemo(() => allPermissions.filter((p) => p.threadId === threadId), [allPermissions, threadId]);
   const allPlans = useStore((s) => s.plans);
   const plans = useMemo(() => allPlans.filter((p) => p.threadId === threadId), [allPlans, threadId]);
+  // The cards themselves are docked above the composer (RequestDock); here they only pause the waiting line.
+  const asking = useStore((s) => s.questions.some((q) => q.threadId === threadId));
   const scroller = useRef<HTMLDivElement>(null);
   // Tool-output items are not rendered yet; reasoning uses ReasoningBlock below.
   const textItems = visibleItems(live, "text");
@@ -161,19 +161,13 @@ export function ThreadView({ threadId }: { threadId: string }) {
         {textItems.map((item) => (
           <LiveText key={item.key} text={item.text} />
         ))}
-        {running && permissions.length === 0 && plans.length === 0 && (
+        {running && permissions.length === 0 && plans.length === 0 && !asking && (
           <WaitingLine
             startedAt={startedAt ?? Date.now()}
             outputTokens={live.usage?.outputTokens ?? live.thinkingTokens ?? null}
             activity={activityOf(turnEvents, { textStreaming: textItems.length > 0, reasoningStreaming: reasoningItems.length > 0 || live.thinkingTokens !== null })}
           />
         )}
-        {permissions.map((p) => (
-          <PermissionCard key={p.requestId} request={p} />
-        ))}
-        {plans.map((p) => (
-          <PlanApprovalCard key={p.requestId} request={p} />
-        ))}
         {outbox.map((m, i) => (
           <div className="msg-user" key={`queued-${i}`}>
             <div className="bubble queued" title="Queued: sends when this turn ends">
@@ -436,6 +430,8 @@ export function EventRow({ stored, results, children, running, threadId }: { sto
           {e.choice === "auto" ? "Plan approved — auto-accept edits" : e.choice === "manual" ? "Plan approved — manual approval" : "Kept planning"}
         </div>
       );
+    case "questions":
+      return <QuestionsRow items={e.items} skipped={e.skipped} />;
     case "compaction":
       return (
         <div className="compaction-divider">
@@ -699,4 +695,28 @@ function openRef(ref: FileRef): void {
 
 function formatTokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n);
+}
+
+/** An answered (or skipped) set of agent questions, one line; the full questions and answers on open. */
+function QuestionsRow({ items, skipped }: { items: { header: string; question: string; answer: string[]; note?: string }[]; skipped: boolean }) {
+  const n = items.length;
+  const line = skipped
+    ? `Skipped ${n === 1 ? "a question" : `${n} questions`}`
+    : `Answered ${n === 1 ? "a question" : `${n} questions`} · ${items.map((i) => `${i.header || i.question}: ${i.answer.join(", ") || "default"}`).join(" · ")}`;
+  return (
+    <details className="tool questions-row">
+      <summary className="tool-row">
+        <span className="name">{line}</span>
+      </summary>
+      <div className="tool-body">
+        {items.map((i, k) => (
+          <div key={k} className="qa">
+            <div className="q">{i.question}</div>
+            <div className="a">{skipped ? "Skipped: the agent uses its default" : i.answer.join(", ") || "No answer: the agent uses its default"}</div>
+            {i.note && <div className="note">Note: {i.note}</div>}
+          </div>
+        ))}
+      </div>
+    </details>
+  );
 }

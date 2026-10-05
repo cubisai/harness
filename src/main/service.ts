@@ -11,8 +11,13 @@ import type {
   McpServerEntry,
   PermissionMode,
   PermissionDecision,
+  PendingState,
+  PermissionRequest,
   PlanDecision,
+  PlanRequest,
   Provenance,
+  Question,
+  QuestionAnswer,
   SendRequest,
   SkillEntry,
   StoredEvent,
@@ -59,6 +64,7 @@ import { mentionNote } from "./mentions";
 import { memoryScopeCheck } from "./inject/memory-scope";
 import { redactDeep, redactSecrets } from "./inject/redact";
 import type { TurnDelta } from "./memory/extractor";
+import { answersMessage } from "./questions";
 
 /**
  * Everything the UI can ask for, with no Electron in sight, so it runs
@@ -70,8 +76,16 @@ export class Service {
   /** Projects already warned about loading the same conventions twice: said once, not every turn. */
   private scopeChecked = new Set<string>();
   private pendingPermissions = new Map<string, (d: PermissionDecision) => void>();
+  /** The open permission requests themselves, for a window that reloads. */
+  private permissionRequests = new Map<string, PermissionRequest>();
+  /** Plan requests still open, likewise. */
+  private planRequests = new Map<string, PlanRequest>();
+  /** Answers to async questions that arrived as the turn ended, sent once it has. */
+  private afterTurn = new Map<string, string[]>();
   /** Plans waiting on the user, by request id, with the thread each belongs to. */
   private pendingPlans = new Map<string, { threadId: string; resolve: (d: PlanDecision) => void }>();
+  /** Agent questions waiting on the user, by request id. */
+  private pendingQuestions = new Map<string, { threadId: string; questions: Question[]; async: boolean; resolve: (a: QuestionAnswer) => void }>();
   /** One Approvals per project, so an allow-always never leaks to another repo. */
   private approvals = new Map<string, Approvals>();
   /** Threads just switched to another agent, with the last usage before the switch and how it switched, for the first turn's bloat signal. */
@@ -715,12 +729,15 @@ export class Service {
             const requestId = randomUUID();
             const done = (d: PermissionDecision) => {
               this.pendingPermissions.delete(requestId);
+              this.permissionRequests.delete(requestId);
               if (d === "allow-always" && p.canAlwaysAllow) approvals.remember(thread.agent, p.toolName, p.summary);
               resolve(d);
             };
             this.pendingPermissions.set(requestId, done);
             controller.signal.addEventListener("abort", () => done("deny"), { once: true });
-            this.broadcast({ type: "permission", request: { requestId, threadId: thread.id, ...p } });
+            const request = { requestId, threadId: thread.id, ...p };
+            this.permissionRequests.set(requestId, request);
+            this.broadcast({ type: "permission", request });
           });
         },
         requestPlanDecision: (p) =>
@@ -730,14 +747,19 @@ export class Service {
             controller.signal.addEventListener(
               "abort",
               () => {
+                this.planRequests.delete(requestId);
                 if (this.pendingPlans.delete(requestId)) resolve({ keep: "" });
               },
               { once: true },
             );
             // The proposal is history, not a live row: it takes the same path as driver events.
             this.emit(thread.id, { kind: "plan-proposal", text: p.plan });
-            this.broadcast({ type: "plan-approval", request: { requestId, threadId: thread.id, plan: p.plan } });
+            const request = { requestId, threadId: thread.id, plan: p.plan };
+            this.planRequests.set(requestId, request);
+            this.broadcast({ type: "plan-approval", request });
           }),
+        // An async question doesn't hold the turn, so Stop doesn't take its card away.
+        requestUserInput: (questions, opts) => this.ask(thread.id, questions, opts?.async ? [] : [controller.signal], opts?.async === true),
       });
       // The turn finished cleanly: hand it to the memory extractor. A listener
       // failure is its own concern and never touches the thread. An automatic
@@ -789,6 +811,10 @@ export class Service {
       }
     } finally {
       this.running.delete(thread.id);
+      // An async answer that missed the turn goes out as the next message (unless a check fix round is next).
+      const late = this.afterTurn.get(thread.id);
+      this.afterTurn.delete(thread.id);
+      if (!followUp && late?.length) followUp = { threadId: thread.id, text: late.join("\n\n") };
       if (followUp) {
         // Re-add `running` before the renderer can drain its queued message: no
         // `running: false` between rounds, so the fix and the user's queue can't race.
@@ -809,11 +835,90 @@ export class Service {
     this.pendingPermissions.get(requestId)?.(decision);
   }
 
+  /**
+   * Put an agent's questions in front of the user. Resolves "dismiss" when any
+   * signal aborts (Stop, or a tool call the agent gave up on) before an answer.
+   */
+  private ask(threadId: string, questions: Question[], signals: AbortSignal[], async = false): Promise<QuestionAnswer> {
+    return new Promise<QuestionAnswer>((resolve) => {
+      const requestId = randomUUID();
+      const cancel = () => {
+        if (!this.pendingQuestions.delete(requestId)) return;
+        this.broadcast({ type: "question-done", requestId });
+        resolve("dismiss");
+      };
+      if (signals.some((s) => s.aborted)) return resolve("dismiss");
+      this.pendingQuestions.set(requestId, { threadId, questions, async, resolve });
+      for (const s of signals) s.addEventListener("abort", cancel, { once: true });
+      this.broadcast({ type: "question", request: { requestId, threadId, questions, ...(async ? { async } : {}) } });
+    });
+  }
+
+  /** A harness tool (ACP's ask_user) asks on behalf of a thread's running turn; null when no turn is running there. */
+  askFromTool(threadId: string, questions: Question[], signal?: AbortSignal): Promise<QuestionAnswer> | null {
+    const turn = this.running.get(threadId);
+    if (!turn) return null;
+    return this.ask(threadId, questions, signal ? [turn.signal, signal] : [turn.signal]);
+  }
+
+  /** The user answered (or skipped) an agent's questions: record it, tell the UI, and hand the answer to the agent. */
+  respondQuestion(requestId: string, answer: QuestionAnswer): void {
+    const pending = this.pendingQuestions.get(requestId);
+    if (!pending) return;
+    this.pendingQuestions.delete(requestId);
+    const skipped = answer === "dismiss";
+    const items = pending.questions.map((q) => {
+      const given = skipped ? [] : (answer.answers[q.id] ?? []);
+      const note = skipped ? undefined : answer.notes?.[q.id];
+      return {
+        header: q.header,
+        question: q.question,
+        answer: q.secret ? given.map(() => "•••") : given.map((a) => redactSecrets(a, this.secrets())),
+        ...(note && !q.secret ? { note: redactSecrets(note, this.secrets()) } : {}),
+      };
+    });
+    this.emit(pending.threadId, { kind: "questions", items, skipped });
+    this.broadcast({ type: "question-done", requestId });
+    pending.resolve(answer);
+    if (pending.async) void this.deliverAsync(pending.threadId, pending.questions, answer);
+  }
+
+  /**
+   * An async question's answer: into the running turn if the agent can take it
+   * (Codex turn/steer), else as the next message, after the turn if one is
+   * still finishing. A skip with no turn running needs no message at all.
+   */
+  private async deliverAsync(threadId: string, questions: Question[], answer: QuestionAnswer): Promise<void> {
+    const text = answersMessage(questions, answer);
+    const thread = this.store.getThread(threadId);
+    if (this.running.has(threadId)) {
+      const steered = await this.drivers.get(thread.agent)?.steer?.(threadId, text).catch(() => false);
+      if (steered) return;
+      if (this.running.has(threadId)) {
+        this.afterTurn.set(threadId, [...(this.afterTurn.get(threadId) ?? []), text]);
+        return;
+      }
+    }
+    if (answer === "dismiss") return;
+    await this.send({ threadId, text }).catch((e) => this.emit(threadId, { kind: "error", message: e instanceof Error ? e.message : String(e) }));
+  }
+
+  /** Everything open right now, so a reloaded window shows running threads and their cards again. */
+  pendingState(): PendingState {
+    return {
+      running: [...this.running.keys()],
+      permissions: [...this.permissionRequests.values()],
+      plans: [...this.planRequests.values()],
+      questions: [...this.pendingQuestions.entries()].map(([requestId, q]) => ({ requestId, threadId: q.threadId, questions: q.questions, ...(q.async ? { async: true } : {}) })),
+    };
+  }
+
   /** The user answered a plan proposal: record it, tell the UI, and follow the chosen mode. */
   respondPlan(requestId: string, decision: PlanDecision): void {
     const pending = this.pendingPlans.get(requestId);
     if (!pending) return;
     this.pendingPlans.delete(requestId);
+    this.planRequests.delete(requestId);
     const choice = decision === "auto" ? "auto" : decision === "manual" ? "manual" : "keep";
     const feedback = typeof decision === "object" ? decision.keep.trim() : "";
     this.emit(pending.threadId, { kind: "plan-decision", choice, ...(choice === "keep" && feedback ? { feedback } : {}) });

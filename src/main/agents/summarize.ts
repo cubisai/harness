@@ -18,6 +18,13 @@ export function summarizeToolInput(name: string, input: Record<string, unknown>)
     str(input.query) ??
     str(input.prompt);
   if (pick) return clip(pick);
+  // Questions and plans read as their text, not as JSON.
+  const questions = Array.isArray(input.questions) ? input.questions : null;
+  const first = questions?.[0] as { question?: unknown; title?: unknown } | undefined;
+  const asked = str(first?.question) ?? str(first?.title);
+  if (asked) return clip(questions!.length > 1 ? `${asked} (+${questions!.length - 1} more)` : asked);
+  const plan = str(input.plan);
+  if (plan) return clip(plan.split(/\r?\n/).find((l) => l.trim())?.replace(/^#+\s*/, "") ?? plan);
   const json = JSON.stringify(input);
   return json === "{}" ? name : clip(json);
 }

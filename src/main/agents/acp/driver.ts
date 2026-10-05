@@ -12,7 +12,8 @@ import { binaryInfo, resolvedCommandAsync } from "../binaries";
 import type { AgentDriver, SessionSeed, TurnInput } from "../types";
 import { acpCapabilities, withCapabilities } from "../capabilities";
 import { forAcpWithReport, mcpChangeNotice } from "../../mcp/servers";
-import { TOOL_SERVER_NAME, withProject } from "../../mcp-http";
+import { TOOL_SERVER_NAME, withProject, withThread } from "../../mcp-http";
+import { ASK_USER_TOOL } from "../../questions";
 import { checkCommand } from "../../guard";
 import { RpcError, StdioRpc } from "../rpc";
 import { normalizeUsage } from "../../usage";
@@ -114,9 +115,22 @@ const AUTO_EDIT_KINDS = new Set<ToolKind>(["read", "search", "think", "fetch", "
 /** Plan mode's fallback: investigation only, everything that writes or runs waits for approval. */
 const PLAN_KINDS = new Set<ToolKind>(["read", "search", "think", "fetch"]);
 
-/** The plan-mode brief an agent without a native plan mode gets, ahead of the prompt. */
-export const PLAN_MODE_PREFIX =
-  "<harness-plan-mode>You are in plan mode. Investigate read-only (reads/searches only; edits and commands are refused). Finish by presenting a concise implementation plan in markdown and stop.</harness-plan-mode>\n\n";
+/**
+ * The plan-mode brief an agent without a native plan mode gets, ahead of the
+ * prompt: read-only, explore before asking, ask only the user's decisions (via
+ * ask_user), then one decision-complete plan. Distilled from Codex's plan mode.
+ */
+export const PLAN_MODE_PREFIX = `<harness-plan-mode>
+You are in plan mode: read-only. Reads and searches run; edits and commands are refused. A request to build something means: plan it.
+1. Explore first. Never ask what the project can answer (where code lives, which component exists).
+2. Ask only decisions that are the user's (preference, trade-off, scope) and change the plan: call ask_user with 2-4 options, your recommendation first marked "(Recommended)". If they skip, take your recommendation. No ask_user tool: ask in your reply and stop.
+3. Finish with one plan an engineer could implement without making decisions: Summary, Key changes (by behavior, few file paths), Test plan, Assumptions. Then stop; don't ask "should I proceed?".
+</harness-plan-mode>
+
+`;
+
+/** What an agent with its own plan mode is told: its question tool doesn't reach the app over ACP, ask_user does. */
+export const PLAN_MODE_HINT = "<harness-plan-mode>To ask the user a question, call ask_user (2-4 options, recommended first).</harness-plan-mode>\n\n";
 
 export function pickPermission(
   mode: PermissionMode,
@@ -190,6 +204,8 @@ interface Live {
   defaultModeId: string | null;
   /** The sign-in URL the agent last printed on stderr, or null. */
   authUrl: string | null;
+  /** The app's tool server (with ask_user) is attached to this session. */
+  askUser?: boolean;
   idleTimer?: NodeJS.Timeout;
 }
 
@@ -664,6 +680,8 @@ export function createAcpDriver(
           // The harness's own safe tools (browser snapshot, click, ...) run without asking.
           const title = `${p.toolCall.title ?? ""}`;
           if (t.input.tools.some((tool) => tool.autoAllow && title.includes(tool.name))) return "allow-once";
+          // Asking the user is never an action to approve, in any mode (Plan included).
+          if (title.includes(ASK_USER_TOOL)) return "allow-once";
           if (picked === "deny") return "deny";
           return t.input.requestPermission({
             toolName: kindLabel(p.toolCall.kind),
@@ -718,7 +736,8 @@ export function createAcpDriver(
         // In tool mode the skill tool rides on /mcp-skills, alongside the browser tools.
         const skillsTarget = capabilities.skillsDelivery.mode === "tool" ? (skillsUrl ?? url) : url;
         const target = routed ? (routedUrl ?? skillsUrl ?? url) : skillsTarget;
-        servers.push({ type: "http", name: TOOL_SERVER_NAME, url: withProject(target, input.projectId), headers: [{ name: "Authorization", value: `Bearer ${token}` }] } as { name: string });
+        servers.push({ type: "http", name: TOOL_SERVER_NAME, url: withThread(withProject(target, input.projectId), input.threadId), headers: [{ name: "Authorization", value: `Bearer ${token}` }] } as { name: string });
+        l.askUser = true;
       } else dropped.push("the app's browser tools");
     }
     // Never a silent drop (invariant 7): name each server the agent can't take, once per connection.
@@ -1121,7 +1140,8 @@ export function createAcpDriver(
           // A native plan mode switches the whole session; without one the
           // prompt carries the plan-mode brief instead.
           const nativePlan = await applyPlanMode(l, input, mode);
-          const prefix = mode === "plan" && !nativePlan ? PLAN_MODE_PREFIX : "";
+          // A native plan mode has its own brief; it only needs to learn that ask_user exists.
+          const prefix = mode !== "plan" ? "" : !nativePlan ? PLAN_MODE_PREFIX : l.askUser ? PLAN_MODE_HINT : "";
           const res = await l.conn.request<{
             stopReason: string;
             usage?: { inputTokens?: number; outputTokens?: number; cachedReadTokens?: number; cachedWriteTokens?: number } | null;

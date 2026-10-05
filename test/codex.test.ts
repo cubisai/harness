@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { PermissionDecision, ThreadEvent } from "../src/shared/types";
 import { z } from "zod";
-import { codexAuthStamp, codexDecision, codexWindows, codexPolicy, codexToolConfig, createCodexDriver, toolFor, turnEndFromUsage } from "../src/main/agents/codex";
+import { blockingQuestionCatalog, codexAuthStamp, codexDecision, codexWindows, codexPolicy, codexToolConfig, createCodexDriver, toolFor, turnEndFromUsage } from "../src/main/agents/codex";
 import type { LimitsPatch } from "../src/main/agents/limits";
 import type { HarnessTool, SeedRequest, TurnInput } from "../src/main/agents/types";
 import { Store } from "../src/main/db";
@@ -512,6 +512,43 @@ describe("Codex driver", () => {
       { kind: "tool-use", toolUseId: "c1", name: "Run", summary: "npm test", payload: { command: "npm test" } },
       { kind: "tool-result", toolUseId: "c1", isError: false, summary: "3 passed (accept)", payload: { exitCode: 0, output: "3 passed (accept)" } },
     ]);
+  });
+
+  it("puts request_user_input questions to the user and answers by id", async () => {
+    const d = driver();
+    let seen: unknown = null;
+    const t = turn("ask", {
+      requestUserInput: async (qs) => {
+        seen = qs;
+        return { answers: { scope: ["Global"] } };
+      },
+    });
+    await d.runTurn(t.input);
+    expect(seen).toEqual([{ id: "scope", header: "Scope", question: "Which scope?", options: [{ label: "Project", description: "" }, { label: "Global", description: "" }], multiSelect: false, allowOther: false }]);
+    expect(t.events.some((e) => e.kind === "assistant-text" && e.text === 'answers {"answers":{"scope":{"answers":["Global"]}}}')).toBe(true);
+  });
+
+  it("turns request_user_input_async questions into a non-blocking card instead of text", async () => {
+    const d = driver();
+    const calls: { qs: unknown; opts: unknown }[] = [];
+    const t = turn("ask-async", {
+      requestUserInput: async (qs, opts) => {
+        calls.push({ qs, opts });
+        return "dismiss";
+      },
+    });
+    await d.runTurn(t.input);
+    expect(calls).toEqual([
+      { qs: [{ id: "q0", header: "", question: "Free-form or fixed?", options: [{ label: "Free-form", description: "" }, { label: "Fixed", description: "" }], multiSelect: false, allowOther: true }], opts: { async: true } },
+    ]);
+    expect(t.events.some((e) => e.kind === "assistant-text" && e.text.includes("Free-form or fixed?"))).toBe(false);
+  });
+
+  it("answers nothing when the user can't be asked", async () => {
+    const d = driver();
+    const t = turn("ask");
+    await d.runTurn(t.input);
+    expect(t.events.some((e) => e.kind === "assistant-text" && e.text === 'answers {"answers":{}}')).toBe(true);
   });
 
   it("declines a guarded command without asking, and notices", async () => {
@@ -1187,5 +1224,31 @@ describe("codexWindows", () => {
     expect(codexWindows(null).size).toBe(0);
     expect(codexWindows("nope").size).toBe(0);
     expect(codexWindows({ models: [{ slug: 1, context_window: "big" }] }).size).toBe(0);
+  });
+});
+
+describe("blockingQuestionCatalog", () => {
+  it("drops the async question tools so every model asks and waits in its turn", () => {
+    const cache = {
+      fetched_at: "x",
+      models: [
+        { slug: "gpt-6-luna", experimental_supported_tools: ["send_user_message_async", "clock"] },
+        { slug: "gpt-5.6-terra", experimental_supported_tools: [] },
+        { slug: "other", experimental_supported_tools: ["request_user_input_async"] },
+      ],
+    };
+    expect(blockingQuestionCatalog(cache)).toEqual({
+      models: [
+        { slug: "gpt-6-luna", experimental_supported_tools: ["clock"] },
+        { slug: "gpt-5.6-terra", experimental_supported_tools: [] },
+        { slug: "other", experimental_supported_tools: [] },
+      ],
+    });
+  });
+
+  it("leaves Codex's own catalog alone when nothing needs trimming", () => {
+    expect(blockingQuestionCatalog({ models: [{ slug: "a", experimental_supported_tools: ["clock"] }, { slug: "b" }] })).toBeNull();
+    expect(blockingQuestionCatalog(null)).toBeNull();
+    expect(blockingQuestionCatalog({})).toBeNull();
   });
 });

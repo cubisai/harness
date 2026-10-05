@@ -288,6 +288,8 @@ export function installMock(): void {
     interrupt: async () => {},
     respondPermission: async () => {},
     respondPlan: async () => {},
+    respondQuestion: async () => {},
+    pendingState: async () => ({ running: [], permissions: [], plans: [], questions: [] }),
     browserAttached: async () => {},
     browserPick: async () => {},
     terminalOpen: async (id) => {
@@ -572,7 +574,7 @@ export function installMock(): void {
     }
     if (scene === "artifact") emit({ type: "artifact-ready", threadId: "t1", path: "docs/rate-limit.md", files: ["src/middleware/rateLimit.ts", "docs/rate-limit.md"] });
     if (scene === "palette") void import("./store").then(({ useStore }) => useStore.getState().setPaletteOpen(true));
-    if (scene === "running" || scene === "permission") {
+    if (scene === "running" || scene === "permission" || scene === "question") {
       emit({ type: "running", threadId: "t1", running: true });
       emit({ type: "delta", threadId: "t1", delta: { kind: "text-delta", itemId: "", text: "Setting `trust proxy` so the limiter sees the real client IP. I'll check how the app is" } });
     }
@@ -581,6 +583,41 @@ export function installMock(): void {
       emit({
         type: "permission",
         request: { requestId: "r1", threadId: "t1", toolName: "Bash", summary: "npm install express-rate-limit@7", canAlwaysAllow: true },
+      });
+    }
+    if (scene === "question") {
+      emit({
+        type: "question",
+        request: {
+          requestId: "q1",
+          threadId: "t1",
+          questions: [
+            {
+              id: "q0",
+              header: "Store",
+              question: "Where should the rate-limit counters live?",
+              options: [
+                { label: "Redis (Recommended)", description: "Shared across instances; needs REDIS_URL in every environment.", preview: "```ts\nnew RedisStore({ client })\n```" },
+                { label: "In memory", description: "Zero setup, but each instance counts on its own." },
+                { label: "Postgres", description: "Reuses the existing database; slower under load." },
+              ],
+              multiSelect: false,
+              allowOther: true,
+            },
+            {
+              id: "q1",
+              header: "Routes",
+              question: "Which routes get the limiter?",
+              options: [
+                { label: "Auth", description: "/login, /signup, /reset" },
+                { label: "Public API", description: "/api/v1/*" },
+                { label: "Everything", description: "Global middleware" },
+              ],
+              multiSelect: true,
+              allowOther: true,
+            },
+          ],
+        },
       });
     }
   }, 300);

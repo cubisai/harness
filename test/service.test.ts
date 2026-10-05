@@ -548,3 +548,131 @@ describe("worktree threads", () => {
     expect(store.listThreads(project.id)).toEqual([]);
   });
 });
+
+describe("Service questions", () => {
+  const questions = [
+    { id: "q0", header: "Format", question: "Which format?", options: [{ label: "A", description: "a" }, { label: "B", description: "b" }], multiSelect: false, allowOther: true },
+    { id: "q1", header: "Key", question: "Your API key?", options: [], multiSelect: false, allowOther: true, secret: true },
+  ];
+
+  it("routes an agent's questions to the UI and back, keeping secrets out of history", async () => {
+    let answer: unknown = null;
+    const { service, thread, store, updates } = setup(async (input) => {
+      answer = await input.requestUserInput!(questions);
+    });
+    const sending = service.send({ threadId: thread.id, text: "go" });
+    await new Promise((r) => setTimeout(r, 10));
+    const req = updates.find((u) => u.type === "question") as Extract<LiveUpdate, { type: "question" }>;
+    expect(req.request.questions).toHaveLength(2);
+    service.respondQuestion(req.request.requestId, { answers: { q0: ["B"], q1: ["sk-secret-123"] }, notes: { q0: "B but smaller", q1: "never store" } });
+    await sending;
+    expect(answer).toEqual({ answers: { q0: ["B"], q1: ["sk-secret-123"] }, notes: { q0: "B but smaller", q1: "never store" } });
+    const recorded = store.listEvents(thread.id).find((e) => e.event.kind === "questions")!.event;
+    expect(recorded).toEqual({
+      kind: "questions",
+      skipped: false,
+      items: [
+        { header: "Format", question: "Which format?", answer: ["B"], note: "B but smaller" },
+        { header: "Key", question: "Your API key?", answer: ["•••"] },
+      ],
+    });
+    expect(updates.some((u) => u.type === "question-done")).toBe(true);
+  });
+
+  it("resolves pending questions as dismissed when interrupted", async () => {
+    let answer: unknown = null;
+    const { service, thread, updates } = setup(async (input) => {
+      answer = await input.requestUserInput!(questions);
+    });
+    const sending = service.send({ threadId: thread.id, text: "go" });
+    await new Promise((r) => setTimeout(r, 10));
+    service.interrupt(thread.id);
+    await sending;
+    expect(answer).toBe("dismiss");
+    expect(updates.some((u) => u.type === "question-done")).toBe(true);
+  });
+
+  it("lets a harness tool ask for a running thread only", async () => {
+    let release!: () => void;
+    const { service, thread, updates } = setup(() => new Promise<void>((r) => (release = r)));
+    expect(service.askFromTool(thread.id, questions)).toBeNull();
+    const sending = service.send({ threadId: thread.id, text: "go" });
+    await new Promise((r) => setTimeout(r, 10));
+    const tool = new AbortController();
+    const asked = service.askFromTool(thread.id, questions, tool.signal)!;
+    expect(updates.some((u) => u.type === "question")).toBe(true);
+    // The agent gave up on the call: the card goes away and the tool gets a skip.
+    tool.abort();
+    expect(await asked).toBe("dismiss");
+    release();
+    await sending;
+  });
+});
+
+describe("Service async questions", () => {
+  const questions = [{ id: "q0", header: "", question: "Free-form or fixed?", options: [{ label: "Free-form", description: "" }], multiSelect: false, allowOther: true }];
+
+  it("steers the running turn with the answer when the agent can take it", async () => {
+    let release!: () => void;
+    const steered: string[] = [];
+    const { service, thread, updates, driver } = setup(async (input) => {
+      void input.requestUserInput!(questions, { async: true });
+      await new Promise<void>((r) => (release = r));
+    });
+    driver.steer = async (_t, text) => {
+      steered.push(text);
+      return true;
+    };
+    const sending = service.send({ threadId: thread.id, text: "go" });
+    await new Promise((r) => setTimeout(r, 10));
+    const req = updates.find((u) => u.type === "question") as Extract<LiveUpdate, { type: "question" }>;
+    expect(req.request.async).toBe(true);
+    expect(service.pendingState().questions.map((q) => q.requestId)).toEqual([req.request.requestId]);
+    expect(service.pendingState().running).toEqual([thread.id]);
+    service.respondQuestion(req.request.requestId, { answers: { q0: ["Free-form"] } });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(steered[0]).toContain("Answer: Free-form");
+    release();
+    await sending;
+    expect(driver.prompts).toHaveLength(1);
+  });
+
+  it("keeps the card after the turn and sends the answer as the next message", async () => {
+    const { service, thread, updates, driver } = setup(async (input) => {
+      void input.requestUserInput!(questions, { async: true });
+    });
+    await service.send({ threadId: thread.id, text: "go" });
+    const req = updates.find((u) => u.type === "question") as Extract<LiveUpdate, { type: "question" }>;
+    expect(service.pendingState().questions).toHaveLength(1);
+    service.respondQuestion(req.request.requestId, { answers: { q0: ["Free-form"] } });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(driver.prompts).toHaveLength(2);
+    expect(driver.prompts[1]).toContain("Answer: Free-form");
+  });
+
+  it("a skipped async question after the turn sends nothing", async () => {
+    const { service, thread, updates, driver } = setup(async (input) => {
+      void input.requestUserInput!(questions, { async: true });
+    });
+    await service.send({ threadId: thread.id, text: "go" });
+    const req = updates.find((u) => u.type === "question") as Extract<LiveUpdate, { type: "question" }>;
+    service.respondQuestion(req.request.requestId, "dismiss");
+    await new Promise((r) => setTimeout(r, 30));
+    expect(driver.prompts).toHaveLength(1);
+  });
+
+  it("lists open permissions for a reloaded window", async () => {
+    let release!: () => void;
+    const { service, thread } = setup(async (input) => {
+      void input.requestPermission({ toolName: "Bash", summary: "ls", canAlwaysAllow: false });
+      await new Promise<void>((r) => (release = r));
+    });
+    const sending = service.send({ threadId: thread.id, text: "go" });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(service.pendingState().permissions).toMatchObject([{ threadId: thread.id, toolName: "Bash", summary: "ls" }]);
+    service.interrupt(thread.id);
+    release();
+    await sending;
+    expect(service.pendingState()).toEqual({ running: [], permissions: [], plans: [], questions: [] });
+  });
+});

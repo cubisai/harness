@@ -22,6 +22,7 @@ import { MODEL_TTL_MS } from "./model-ttl";
 import { newestInstallAsync, PREFERRED } from "./binaries";
 import type { BinaryResolution } from "./binaries";
 import type { AgentDriver, HarnessTool, ToolOutput, TurnInput } from "./types";
+import { claudeAnnotations, claudeAnswers, fromClaudeQuestions, SKIPPED_TEXT } from "../questions";
 
 /** MCP server name for harness tools: they reach Claude as mcp__cubiq__<tool>. */
 export const TOOL_SERVER = "cubiq";
@@ -426,6 +427,8 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         permissionMode: SDK_MODE[input.permissionMode],
         allowDangerouslySkipPermissions: input.permissionMode === "full",
         includePartialMessages: true,
+        // Options may carry a markdown mockup, shown beside them in the question card.
+        toolConfig: { askUserQuestion: { previewFormat: "markdown" } },
         // Effort guides how deep the model thinks; summarized adaptive thinking
         // returns the reasoning text instead of omitting it.
         ...(input.effort ? { effort: input.effort as EffortLevel } : {}),
@@ -460,6 +463,15 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
               behavior: "deny",
               message: d.keep.trim() ? `The user wants to keep planning: ${d.keep}` : "The user wants to keep planning. Refine the plan.",
             };
+          }
+          // Claude's clarifying questions: the user answers in the app's card, and
+          // the answers ride back on the tool's input (keyed by question text).
+          if (toolName === "AskUserQuestion") {
+            const questions = fromClaudeQuestions(toolInput);
+            const answer = input.requestUserInput && questions.length ? await input.requestUserInput(questions) : "dismiss";
+            if (answer === "dismiss") return { behavior: "deny", message: SKIPPED_TEXT };
+            const annotations = claudeAnnotations(questions, answer);
+            return { behavior: "allow", updatedInput: { ...toolInput, answers: claudeAnswers(questions, answer), ...(annotations ? { annotations } : {}) } };
           }
           const decision = await input.requestPermission({
             toolName,

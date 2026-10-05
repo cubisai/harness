@@ -495,6 +495,8 @@ export type ThreadEvent = (
   | { kind: "plan-proposal"; text: string }
   /** The user's answer to a plan proposal, kept in history. */
   | { kind: "plan-decision"; choice: "auto" | "manual" | "keep"; feedback?: string }
+  /** The agent asked the user questions; what they answered (secret answers masked), or skipped. */
+  | { kind: "questions"; items: { header: string; question: string; answer: string[]; note?: string }[]; skipped: boolean }
   | { kind: "compaction"; trigger: "manual" | "auto" | "unknown"; preTokens: number | null; postTokens: number | null }
   | { kind: "handoff"; phase: "seeded" | "reply" | "signal"; text: string; from?: string; to?: string; tokens?: number; tier?: number }
   /** The project's check command after a turn that changed files; ok null = still running. */
@@ -553,6 +555,48 @@ export interface PlanRequest {
   threadId: string;
   plan: string;
 }
+
+/** One choice of an agent's question; `preview` is markdown (a mockup or snippet). */
+export interface QuestionOption {
+  label: string;
+  description: string;
+  preview?: string;
+}
+
+/** One question an agent asks the user; no options means a free-text answer. */
+export interface Question {
+  /** Stable within the request; the driver maps answers back by it. */
+  id: string;
+  /** A short chip label (Claude caps it at 12 chars). */
+  header: string;
+  question: string;
+  options: QuestionOption[];
+  multiSelect: boolean;
+  /** Offer an "Other…" free-text answer besides the options. */
+  allowOther: boolean;
+  /** The answer is a secret: never stored or shown in history. */
+  secret?: boolean;
+}
+
+/** An agent's questions waiting on the user. */
+export interface QuestionRequest {
+  requestId: string;
+  threadId: string;
+  questions: Question[];
+  /** The agent didn't wait (Codex's request_user_input_async): the card outlives the turn, and the answer goes back as a message. */
+  async?: boolean;
+}
+
+/** What is live in the main process, for a window that (re)loads mid-turn. */
+export interface PendingState {
+  running: string[];
+  permissions: PermissionRequest[];
+  plans: PlanRequest[];
+  questions: QuestionRequest[];
+}
+
+/** The user's answers by question id (option labels, or their own text), with optional notes per question, or "dismiss" when they skipped. */
+export type QuestionAnswer = { answers: Record<string, string[]>; notes?: Record<string, string> } | "dismiss";
 
 export interface DiffLine {
   kind: "context" | "add" | "del";
@@ -764,6 +808,8 @@ export type LiveUpdate =
   | { type: "permission"; request: PermissionRequest }
   | { type: "plan-approval"; request: PlanRequest }
   | { type: "plan-approval-done"; requestId: string }
+  | { type: "question"; request: QuestionRequest }
+  | { type: "question-done"; requestId: string }
   | { type: "thread"; thread: Thread }
   /** The agent needs the browser pane: show it, optionally at a URL. */
   | { type: "browser-open"; url?: string }
@@ -826,6 +872,8 @@ export interface UnskilledApi {
   interrupt(threadId: string): Promise<void>;
   respondPermission(requestId: string, decision: PermissionDecision): Promise<void>;
   respondPlan(requestId: string, decision: PlanDecision): Promise<void>;
+  respondQuestion(requestId: string, answer: QuestionAnswer): Promise<void>;
+  pendingState(): Promise<PendingState>;
   /** The working-tree diff of the project, or of `threadId`'s worktree when it has one. */
   getDiff(projectId: string, threadId?: string | null): Promise<DiffFile[]>;
   /** The project's files (git-tracked plus untracked-not-ignored), for the Files tab. */

@@ -763,6 +763,32 @@ describe("Claude plan mode", () => {
     expect(res.message).toMatch(/Refine the plan/);
   });
 
+  it("answers AskUserQuestion from the user's card, keyed by question text", async () => {
+    const { input } = turnInput();
+    input.requestUserInput = async (qs) => ({ answers: { [qs[0]!.id]: ["Detailed"] }, notes: { [qs[0]!.id]: "with examples" } });
+    const canUseTool = await gate(input);
+    const questions = [{ question: "Which format?", header: "Format", multiSelect: false, options: [{ label: "Summary", description: "" }, { label: "Detailed", description: "" }] }];
+    const res = (await canUseTool("AskUserQuestion", { questions }, { suggestions: [] })) as { behavior: string; updatedInput?: Record<string, unknown> };
+    expect(res.behavior).toBe("allow");
+    expect(res.updatedInput).toEqual({ questions, answers: { "Which format?": "Detailed" }, annotations: { "Which format?": { notes: "with examples" } } });
+    expect(sdk.calls[0]!.options.toolConfig).toEqual({ askUserQuestion: { previewFormat: "markdown" } });
+  });
+
+  it("a skipped AskUserQuestion tells Claude to go on with its defaults, never a permission card", async () => {
+    const { input } = turnInput();
+    const asked: string[] = [];
+    input.requestPermission = async (r) => {
+      asked.push(r.toolName);
+      return "allow-once";
+    };
+    input.requestUserInput = async () => "dismiss";
+    const canUseTool = await gate(input);
+    const res = await canUseTool("AskUserQuestion", { questions: [{ question: "Q?", header: "Q", multiSelect: false, options: [] }] }, { suggestions: [] });
+    expect(res.behavior).toBe("deny");
+    expect(res.message).toMatch(/recommended defaults/);
+    expect(asked).toEqual([]);
+  });
+
   it("reads the plan from planFilePath when no inline plan was sent", async () => {
     const file = join(tempDir(), "plan.md");
     writeFileSync(file, "# The plan");
