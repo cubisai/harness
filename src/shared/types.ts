@@ -481,7 +481,7 @@ export interface EventIds {
  * never persisted.
  */
 export type ThreadEvent = (
-  | { kind: "user"; text: string; skill?: string }
+  | { kind: "user"; text: string; /** Older events: one skill. */ skill?: string; /** The skills the user picked, in order. */ skills?: string[] }
   | { kind: "assistant-text"; text: string }
   | { kind: "thinking"; text: string; signature?: string; opaque?: boolean }
   | { kind: "tool-use"; toolUseId: string; name: string; summary: string; payload?: unknown }
@@ -770,8 +770,8 @@ export interface AgentInfo {
 export interface SendRequest {
   threadId: string;
   text: string;
-  /** A user-invoked skill picked from the / menu. */
-  skill?: string;
+  /** User-invoked skills picked in the composer, in order. */
+  skills?: string[];
   /** Project-relative files and folders the user @-mentioned. */
   mentions?: string[];
   /** Internal: which automatic fix round this send is (0 or absent = the user's). */

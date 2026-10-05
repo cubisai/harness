@@ -47,6 +47,14 @@ describe("thread rows", () => {
     const html = renderToStaticMarkup(<EventRow stored={{ seq: 1, createdAt: 0, event: { kind: "user", text: "go", skill: "implement" } }} results={new Map()} running={false} />);
     expect(html).toContain(">$implement</span>");
   });
+
+  it("shows every skill a message ran with, in order", () => {
+    const html = renderToStaticMarkup(
+      <EventRow stored={{ seq: 1, createdAt: 0, event: { kind: "user", text: "go", skills: ["tdd", "review"] } }} results={new Map()} running={false} />,
+    );
+    expect(html.indexOf(">$tdd</span>")).toBeGreaterThan(-1);
+    expect(html.indexOf(">$review</span>")).toBeGreaterThan(html.indexOf(">$tdd</span>"));
+  });
 });
 
 describe("ReasoningBlock stays open", () => {

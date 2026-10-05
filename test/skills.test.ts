@@ -92,6 +92,27 @@ describe("composePrompt", () => {
     expect(() => composePrompt(catalog(), "", "nope")).toThrow(/unknown/);
   });
 
+  it("composes several skills as one block each, in order, with one Arguments line", () => {
+    const prompt = composePrompt(catalog(), "fix it", ["implement", "tdd"]);
+    const names = [...prompt.matchAll(/<skill name="([^"]+)"/g)].map((m) => m[1]);
+    expect(names).toEqual(["implement", "tdd"]);
+    expect(prompt.match(/^Arguments:/gm)).toHaveLength(1);
+    expect(prompt.endsWith("Arguments: fix it")).toBe(true);
+  });
+
+  it("throws on an unknown skill in a list before composing", () => {
+    expect(() => composePrompt(catalog(), "x", ["tdd", "nope"])).toThrow(/unknown/);
+  });
+
+  it("treats a one-item list exactly like the old single name", () => {
+    const c = catalog();
+    expect(composePrompt(c, "x", ["tdd"])).toBe(composePrompt(c, "x", "tdd"));
+  });
+
+  it("passes text through for an empty list", () => {
+    expect(composePrompt(catalog(), "x", [])).toBe("x");
+  });
+
   it("qualifies calls with the delivery prefix", () => {
     const prompt = composePrompt(catalog(), "ticket 3", "implement", { mode: "plugin", prefix: "harness-skills:" });
     expect(prompt).toContain('"harness-skills:tdd"');

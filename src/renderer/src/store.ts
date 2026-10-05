@@ -160,7 +160,8 @@ interface State {
   setComposerDraft(text: string): void;
   startPick(): Promise<void>;
   /** A skill to pre-fill in the composer, set by the empty-state shortcuts. */
-  pendingSkill: string | null;
+  /** Skills picked from ⌘K or the Library, waiting for the composer to add them as chips. */
+  pendingSkills: string[];
   /** Bumped by the composer's "/model" command so the model picker opens. */
   openPickerRequest: number;
   requestModelPicker(): void;
@@ -176,12 +177,14 @@ interface State {
   selectProject(id: string): Promise<void>;
   selectThread(id: string | null): Promise<void>;
   /** Open a new thread; `worktree` gives it its own git worktree on a new branch. */
-  newThread(skill?: string, opts?: { worktree?: boolean }): Promise<void>;
+  newThread(skills?: string[], opts?: { worktree?: boolean }): Promise<void>;
   /** Start `text` as a new thread in the open project without leaving the current one; it reports through the Message Center. */
-  sendInBackground(text: string, skill?: string, opts?: { worktree?: boolean }, mentions?: string[]): Promise<void>;
+  sendInBackground(text: string, skills?: string[], opts?: { worktree?: boolean }, mentions?: string[]): Promise<void>;
   /** From the project's start screen: open a new thread and send `text` in it. */
-  startThread(text: string, skill?: string, mentions?: string[]): Promise<void>;
-  takePendingSkill(): string | null;
+  startThread(text: string, skills?: string[], mentions?: string[]): Promise<void>;
+  /** Add skills for the composer to pick up (deduped, in order). */
+  addPendingSkills(names: string[]): void;
+  takePendingSkills(): string[];
   /** Save the open thread to a JSON file. */
   exportThread(): Promise<void>;
   /** Restore a thread export into the selected project and open it. */
@@ -190,12 +193,12 @@ interface State {
   /** Step the open thread's reasoning effort down (-1) or up (+1), wrapping through Default. */
   cycleEffort(dir: 1 | -1): void;
   /** Start a turn on the open thread (or `threadId`); a no-op while that thread is running. */
-  send(text: string, skill?: string, threadId?: string, mentions?: string[]): Promise<void>;
+  send(text: string, skills?: string[], threadId?: string, mentions?: string[]): Promise<void>;
   /** Compact a thread's session now (/compact), with an optional focus for the summary. */
   compact(threadId: string, focus: string | null): Promise<void>;
   /** Messages sent while a turn ran, by thread: each goes out as the next turn, in order. Stop clears them; never persisted. */
-  outbox: Record<string, { text: string; skill?: string; mentions?: string[] }[]>;
-  enqueue(threadId: string, text: string, skill?: string, mentions?: string[]): void;
+  outbox: Record<string, { text: string; skills?: string[]; mentions?: string[] }[]>;
+  enqueue(threadId: string, text: string, skills?: string[], mentions?: string[]): void;
   interrupt(): Promise<void>;
   respond(requestId: string, decision: "allow-once" | "allow-always" | "deny"): Promise<void>;
   respondPlan(requestId: string, decision: PlanDecision): Promise<void>;
@@ -521,7 +524,7 @@ export const useStore = create<State>((set, get) => ({
   setWatch(on) {
     set((s) => ({ takeOver: takeOverReducer(s.takeOver, { type: "watch", on }) }));
   },
-  pendingSkill: null,
+  pendingSkills: [],
   diffVersion: 0,
   openPickerRequest: 0,
   requestModelPicker() {
@@ -683,7 +686,7 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
-  async newThread(skill, opts) {
+  async newThread(skills, opts) {
     const projectId = get().selectedProjectId;
     if (!projectId) return;
     let thread: Thread;
@@ -697,7 +700,7 @@ export const useStore = create<State>((set, get) => ({
       return;
     }
     set((s) => ({
-      pendingSkill: skill ?? null,
+      pendingSkills: skills ?? [],
       threads: { ...s.threads, [projectId]: upsertThread(s.threads[projectId], thread) },
       events: { ...s.events, [thread.id]: [] },
       selectedThreadId: thread.id,
@@ -706,7 +709,7 @@ export const useStore = create<State>((set, get) => ({
     }));
   },
 
-  async sendInBackground(text, skill, opts, mentions) {
+  async sendInBackground(text, skills, opts, mentions) {
     const projectId = get().selectedProjectId;
     if (!projectId) return;
     let thread: Thread;
@@ -725,20 +728,24 @@ export const useStore = create<State>((set, get) => ({
       draft: {},
       lastAgent: thread.agent,
     }));
-    await get().send(text, skill, thread.id, mentions);
+    await get().send(text, skills, thread.id, mentions);
     get().showNotice("Started in the background. The Message Center says when it's done.");
   },
 
-  async startThread(text, skill, mentions) {
+  async startThread(text, skills, mentions) {
     await get().newThread();
     const id = get().selectedThreadId;
-    if (id) await get().send(text, skill, id, mentions);
+    if (id) await get().send(text, skills, id, mentions);
   },
 
-  takePendingSkill() {
-    const skill = get().pendingSkill;
-    if (skill) set({ pendingSkill: null });
-    return skill;
+  addPendingSkills(names) {
+    set((s) => ({ pendingSkills: [...new Set([...s.pendingSkills, ...names])] }));
+  },
+
+  takePendingSkills() {
+    const skills = get().pendingSkills;
+    if (skills.length) set({ pendingSkills: [] });
+    return skills;
   },
 
   async exportThread() {
@@ -790,20 +797,20 @@ export const useStore = create<State>((set, get) => ({
   },
 
   outbox: {},
-  enqueue(threadId, text, skill, mentions) {
+  enqueue(threadId, text, skills, mentions) {
     set((s) => ({
       outbox: {
         ...s.outbox,
-        [threadId]: [...(s.outbox[threadId] ?? []), { text, ...(skill ? { skill } : {}), ...(mentions?.length ? { mentions } : {}) }],
+        [threadId]: [...(s.outbox[threadId] ?? []), { text, ...(skills?.length ? { skills } : {}), ...(mentions?.length ? { mentions } : {}) }],
       },
     }));
   },
 
-  async send(text, skill, threadId, mentions) {
+  async send(text, skills, threadId, mentions) {
     const id = threadId ?? get().selectedThreadId;
     if (!id || get().running[id]) return;
     set((s) => ({ running: { ...s.running, [id]: true } }));
-    await api().send({ threadId: id, text, skill, ...(mentions?.length ? { mentions } : {}) });
+    await api().send({ threadId: id, text, ...(skills?.length ? { skills } : {}), ...(mentions?.length ? { mentions } : {}) });
   },
 
   async compact(threadId, focus) {
@@ -966,7 +973,7 @@ export const useStore = create<State>((set, get) => ({
           const next = get().outbox[update.threadId]?.[0];
           if (next) {
             set((s) => ({ outbox: { ...s.outbox, [update.threadId]: s.outbox[update.threadId]!.slice(1) } }));
-            void get().send(next.text, next.skill, update.threadId, next.mentions);
+            void get().send(next.text, next.skills, update.threadId, next.mentions);
           }
         }
         if (!update.running && get().takeOver.mode !== "idle") {

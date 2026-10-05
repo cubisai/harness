@@ -19,7 +19,7 @@ export interface Command {
 export function newThreadCommands(opts: {
   enabled: boolean;
   shortcut: string;
-  newThread(skill?: string, opts?: { worktree?: boolean }): void;
+  newThread(skills?: string[], opts?: { worktree?: boolean }): void;
 }): Command[] {
   if (!opts.enabled) return [];
   return [

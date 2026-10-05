@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
 import { describePick, type PickedElement } from "../src/main/browser/picker";
-import { chipLabel, commandQuery, composeMessage, skillQuery } from "../src/renderer/src/composer";
+import { chipLabel, commandQuery, composeMessage, skillQueryAt, toggleSkill } from "../src/renderer/src/composer";
 import { Composer } from "../src/renderer/src/components/Composer";
 import { useStore } from "../src/renderer/src/store";
 import type { SendRequest } from "../src/shared/types";
@@ -30,15 +30,25 @@ describe("composeMessage", () => {
 });
 
 describe("composer menu triggers", () => {
-  it("opens the skill menu on a leading $", () => {
-    expect(skillQuery("$tdd")).toBe("tdd");
-    expect(skillQuery("$")).toBe("");
+  it("opens the skill menu on a $ at a word start, up to the caret", () => {
+    expect(skillQueryAt("$tdd", 4)).toEqual({ start: 0, query: "tdd" });
+    expect(skillQueryAt("$", 1)).toEqual({ start: 0, query: "" });
+    expect(skillQueryAt("fix login $Rev", 14)).toEqual({ start: 10, query: "rev" });
+    // The caret decides: text after it doesn't count.
+    expect(skillQueryAt("$tdd fix", 2)).toEqual({ start: 0, query: "t" });
   });
 
-  it("doesn't open the skill menu for / or once whitespace is typed", () => {
-    expect(skillQuery("/tdd")).toBeNull();
-    expect(skillQuery("$td d")).toBeNull();
-    expect(skillQuery("tell me $tdd")).toBeNull();
+  it("doesn't open the skill menu mid-word, for /, or once whitespace is typed", () => {
+    expect(skillQueryAt("/tdd", 4)).toBeNull();
+    expect(skillQueryAt("$td d", 5)).toBeNull();
+    expect(skillQueryAt("costs a$5", 9)).toBeNull();
+    expect(skillQueryAt("no trigger", 10)).toBeNull();
+  });
+
+  it("toggles a skill in the picked list, keeping order", () => {
+    expect(toggleSkill([], "tdd")).toEqual(["tdd"]);
+    expect(toggleSkill(["tdd"], "review")).toEqual(["tdd", "review"]);
+    expect(toggleSkill(["tdd", "review"], "tdd")).toEqual(["review"]);
   });
 
   it("opens the command menu on a leading /", () => {
@@ -88,10 +98,10 @@ describe("queued send", () => {
 
   it("delivers a message queued mid-turn exactly once, as the next turn", () => {
     const s = useStore.getState();
-    s.enqueue("t", "and add a test", "tdd");
-    expect(useStore.getState().outbox.t).toEqual([{ text: "and add a test", skill: "tdd" }]);
+    s.enqueue("t", "and add a test", ["tdd", "review"]);
+    expect(useStore.getState().outbox.t).toEqual([{ text: "and add a test", skills: ["tdd", "review"] }]);
     s.apply({ type: "running", threadId: "t", running: false });
-    expect(sent).toEqual([{ threadId: "t", text: "and add a test", skill: "tdd" }]);
+    expect(sent).toEqual([{ threadId: "t", text: "and add a test", skills: ["tdd", "review"] }]);
     expect(useStore.getState().outbox.t).toEqual([]);
     s.apply({ type: "running", threadId: "t", running: true });
     s.apply({ type: "running", threadId: "t", running: false });
@@ -122,8 +132,8 @@ describe("queued send", () => {
   describe("sendInBackground", () => {
     it("starts the message in its own thread and leaves the current one selected", async () => {
       useStore.setState({ selectedProjectId: "p", selectedThreadId: "keep", running: {}, threads: {}, events: {} });
-      await useStore.getState().sendInBackground("do it", "tdd", undefined, ["src/a.ts"]);
-      expect(sent).toEqual([{ threadId: "t-bg", text: "do it", skill: "tdd", mentions: ["src/a.ts"] }]);
+      await useStore.getState().sendInBackground("do it", ["tdd"], undefined, ["src/a.ts"]);
+      expect(sent).toEqual([{ threadId: "t-bg", text: "do it", skills: ["tdd"], mentions: ["src/a.ts"] }]);
       expect(useStore.getState().selectedThreadId).toBe("keep");
       expect(useStore.getState().threads.p!.map((t) => t.id)).toEqual(["t-bg"]);
     });

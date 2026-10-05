@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, Copy, Pencil, RotateCcw } from "lucide-react";
 import { artifactKind, isPreviewable, PLAN_ARTIFACT } from "../../../shared/artifact-kind";
+import { skillsOf } from "../../../shared/skill-list";
 import type { ArtifactKind, StoredEvent, ThreadEvent } from "../../../shared/types";
 import { prettyTool, type RunResult } from "../../../shared/tools";
 import { displayOrder } from "../event-order";
@@ -34,7 +35,20 @@ function LiveReasoning({ text, newest }: { text: string; newest: boolean }) {
   const shown = useSmoothText(text, true);
   return <ReasoningBlock text={shown} opaque={false} live newest={newest} tokens={null} />;
 }
-const NO_QUEUE: { text: string; skill?: string }[] = [];
+const NO_QUEUE: { text: string; skills?: string[] }[] = [];
+
+/** The skills a message ran with, as chips before its text. */
+function SkillChips({ names }: { names: string[] }) {
+  return (
+    <>
+      {names.map((n) => (
+        <span key={n} className="skill-chip">
+          ${n}
+        </span>
+      ))}
+    </>
+  );
+}
 
 export function ThreadView({ threadId }: { threadId: string }) {
   const events = useStore((s) => s.events[threadId]) ?? EMPTY;
@@ -171,7 +185,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
         {outbox.map((m, i) => (
           <div className="msg-user" key={`queued-${i}`}>
             <div className="bubble queued" title="Queued: sends when this turn ends">
-              {m.skill && <span className="skill-chip">${m.skill}</span>}
+              <SkillChips names={m.skills ?? []} />
               {m.text}
             </div>
           </div>
@@ -320,7 +334,7 @@ function TurnFooter({ seg, threadId, running, last }: { seg: Extract<Segment, { 
           className="foot-button"
           title="Send the same message again"
           disabled={running}
-          onClick={() => void useStore.getState().send(seg.prompt!.text, seg.prompt!.skill, threadId)}
+          onClick={() => void useStore.getState().send(seg.prompt!.text, seg.prompt!.skills, threadId)}
         >
           <RotateCcw size={13} />
         </button>
@@ -342,7 +356,7 @@ function UserMessage({ stored }: { stored: StoredEvent }) {
   return (
     <div className="msg-user">
       <div className="bubble">
-        {e.skill && <span className="skill-chip">${e.skill}</span>}
+        <SkillChips names={skillsOf(e)} />
         {e.text}
       </div>
       <div className="msg-actions">

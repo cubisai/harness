@@ -108,11 +108,12 @@ Full access mode shows its chip in `--danger`.
 - **Model picker**: search, models grouped by agent (picking another agent's model opens the Switch dialog), then **Thinking** (a Faster ↔ Smarter slider, one stop per level, resting on the model's default until moved, with Reset; its lit part is a dot grid whose dots blink like fireflies, each on its own random clock, muted below Xhigh and in `--signal-line` green from Xhigh up; the knob and trail glide 360ms with the popover overshoot; 20px track) and **Context** (the same slider with two stops, Default ↔ Max window, ends labelled with the sizes, green on Max; only when the model offers more than one window). Shortcuts are listed at the bottom.
 - **Mode chip**: shows the current mode and opens a menu (Ask / Auto-edit / Plan / Full access, each with a one-line description). ⇧Tab cycles. Full access is shown in `--danger`.
 - **Context ring**: an 18px ring showing the share used. Click opens the breakdown: a stacked bar plus rows for System, Tools & MCP, Skills, Guide + memory and Messages, then this thread's in/out, cache hit, cost and auto-compact point, and the buttons **Compact now** and **Open /context**.
+- **Skill chips**: `$` at any word start (or + › Use a skill) opens the skill menu; each pick becomes a chip inside the text area, before the text (`[$tdd ×] [$review ×] Ask anything…`), wrapping with it. Picked skills show ✓ in the menu and picking one again takes it out; × or Backspace in an empty box removes a chip. Browser-context chips sit in the same row. Sent bubbles show every skill chip.
 - Slash commands include `/compact [focus]`.
 - While running, the status line above the composer reads `● Writing tests · 12s · Esc to stop` in `--signal-ink`.
 
 ### 7.4 Messages
-- **User**: right-aligned bubble (`--bg-chip`, radius 10, max 82%). Attachments and @-file chips sit above it. Hover shows Edit, Copy and the time.
+- **User**: right-aligned bubble (`--bg-chip`, radius 10, max 82%). Attachments and @-file chips sit above it; its skill chips lead the text. Hover shows Edit, Copy and the time.
 - **Agent**: no bubble or avatar, full column width, line height 1.6.
   - Tool calls collapse into one line: "Worked for 41s · read 1 file · edited 1 · ran 1 command". Expanded, the rows sit behind a 1px left rule. Every file path in them is clickable and opens the panel.
   - Code blocks have a 1px border, a header with the language and Copy, and a body on `--bg`.

@@ -602,8 +602,8 @@ function SkillView({ detail, onOpen }: { detail: SkillDetail; onOpen: (name: str
   const use = () => {
     const s = useStore.getState();
     useStore.setState({ libraryTab: null });
-    if (s.selectedThreadId) useStore.setState({ pendingSkill: skill.name });
-    else void s.newThread(skill.name);
+    if (s.selectedThreadId) s.addPendingSkills([skill.name]);
+    else void s.newThread([skill.name]);
   };
   return (
     <div className="skill-view">

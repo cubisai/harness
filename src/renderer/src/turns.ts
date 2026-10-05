@@ -1,3 +1,4 @@
+import { skillsOf } from "../../shared/skill-list";
 import type { StoredEvent } from "../../shared/types";
 import { canonicalTool } from "../../shared/tools";
 
@@ -7,7 +8,7 @@ export type Segment =
   /** Consecutive tool calls (and the thinking between them). `done` = something came after, so it folds. */
   | { kind: "work"; key: number; items: StoredEvent[]; startedAt: number; endedAt: number; done: boolean }
   /** A turn's end: its final answer (for Copy), the message that started it (for Retry), and what it changed. */
-  | { kind: "turn-end"; stored: StoredEvent; answer: string; prompt: { text: string; skill?: string } | null; changes: TurnChanges | null };
+  | { kind: "turn-end"; stored: StoredEvent; answer: string; prompt: { text: string; skills?: string[] } | null; changes: TurnChanges | null };
 
 export interface TurnChanges {
   files: string[];
@@ -32,7 +33,7 @@ export function segmentEvents(events: StoredEvent[], running: boolean): Segment[
   const out: Segment[] = [];
   let run: StoredEvent[] = [];
   let answer: string[] = [];
-  let prompt: { text: string; skill?: string } | null = null;
+  let prompt: { text: string; skills?: string[] } | null = null;
   let edits = new Map<string, { additions: number; deletions: number }>();
   let statKnown = false;
   const results = new Map<string, { summary?: string; isError: boolean }>();
@@ -80,7 +81,8 @@ export function segmentEvents(events: StoredEvent[], running: boolean): Segment[
     }
     flush(true, e.createdAt);
     if (ev.kind === "user") {
-      prompt = { text: ev.text, ...(ev.skill ? { skill: ev.skill } : {}) };
+      const skills = skillsOf(ev);
+      prompt = { text: ev.text, ...(skills.length ? { skills } : {}) };
       answer = [];
       edits = new Map();
       statKnown = false;

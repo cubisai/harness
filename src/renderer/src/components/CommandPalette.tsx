@@ -49,7 +49,7 @@ function Palette() {
     const action = (id: string, title: string, run: () => void, extra: Partial<Command> = {}) =>
       out.push({ id: `action:${id}`, section: "Actions", title, run, ...extra });
 
-    out.push(...newThreadCommands({ enabled: Boolean(selectedProjectId), shortcut: key("N"), newThread: (skill, o) => void s.newThread(skill, o) }));
+    out.push(...newThreadCommands({ enabled: Boolean(selectedProjectId), shortcut: key("N"), newThread: (skills, o) => void s.newThread(skills, o) }));
     action("add-project", "Add Project…", () => void s.addProject(), { keywords: "open folder" });
     action("library-skills", "Library: Skills", () => useStore.setState({ libraryTab: "skills" }), { shortcut: mac ? "⌘⇧L" : "Ctrl+Shift+L", keywords: "plugins browse skills" });
     action("library-mcp", "Library: MCP Servers", () => useStore.setState({ libraryTab: "mcp" }), { keywords: "mcp tools add server" });
@@ -97,7 +97,7 @@ function Palette() {
           // The old "/name" trigger still finds the skill; the menu now uses "$".
           keywords: `/${sk.name}`,
           // Into this thread's message box, or a new thread when none is open.
-          run: () => (thread ? useStore.setState({ pendingSkill: sk.name }) : void s.newThread(sk.name)),
+          run: () => (thread ? s.addPendingSkills([sk.name]) : void s.newThread([sk.name])),
         });
       }
     }

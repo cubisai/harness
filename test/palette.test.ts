@@ -60,7 +60,7 @@ describe("rankCommands", () => {
 
 describe("newThreadCommands", () => {
   it("lists New Thread and New Thread in Worktree, which asks for a worktree", () => {
-    const calls: [string | undefined, { worktree?: boolean } | undefined][] = [];
+    const calls: [string[] | undefined, { worktree?: boolean } | undefined][] = [];
     const list = newThreadCommands({ enabled: true, shortcut: "⌘N", newThread: (skill, opts) => calls.push([skill, opts]) });
     expect(list.map((c) => c.title)).toEqual(["New Thread", "New Thread in Worktree"]);
     list[0]!.run();

@@ -30,6 +30,7 @@ import type {
   Usage,
 } from "../shared/types";
 import { bindingKey } from "../shared/bindings";
+import { skillsOf } from "../shared/skill-list";
 import type { AgentDriver, HarnessTool, ModelSwitch, SessionSeed } from "./agents/types";
 import {
   annotateUsage,
@@ -594,14 +595,15 @@ export class Service {
     // Fix turns are the gate's only token cost; the project caps them (default 1, 0 = none).
     const maxRounds = project.checkFixRounds ?? 1;
     const provenance: Provenance = { agent: thread.agent, model: thread.model, provider: null, instanceId: null };
+    const skills = skillsOf(req);
     const prompt = compact
       ? `/compact${compact.focus ? ` ${compact.focus}` : ""}`
-      : composePrompt(this.catalogFor(cwd), req.text, req.skill, driver.skillsDelivery) + mentionNote(cwd, req.mentions);
+      : composePrompt(this.catalogFor(cwd), req.text, skills, driver.skillsDelivery) + mentionNote(cwd, req.mentions);
 
-    const userEvent = this.emit(thread.id, { kind: "user", text: req.text, skill: req.skill });
+    const userEvent = this.emit(thread.id, { kind: "user", text: req.text, ...(skills.length ? { skills } : {}) });
     // An automatic fix round never names the thread; the user's message does.
     if (thread.title === "New thread" && !req.checkRound && !compact) {
-      const title = titleFrom(req.text, req.skill);
+      const title = titleFrom(req.text, skills);
       this.broadcast({ type: "thread", thread: this.store.updateThread(thread.id, { title }) });
     }
 
@@ -1075,9 +1077,11 @@ function sameSet<T>(a: Set<T>, b: Set<T>): boolean {
   return true;
 }
 
-export function titleFrom(text: string, skill?: string): string {
+export function titleFrom(text: string, skillNames?: string | readonly string[]): string {
   const firstLine = text.trim().split("\n")[0] ?? "";
-  const base = firstLine || (skill ? `/${skill}` : "New thread");
-  const withSkill = skill && firstLine ? `/${skill} ${firstLine}` : base;
+  const skills = typeof skillNames === "string" ? [skillNames] : [...new Set(skillNames ?? [])];
+  const prefix = skills.map((s) => `/${s}`).join(" ");
+  const base = firstLine || "New thread";
+  const withSkill = prefix ? (firstLine ? `${prefix} ${firstLine}` : prefix) : base;
   return withSkill.length > 60 ? `${withSkill.slice(0, 59)}…` : withSkill;
 }

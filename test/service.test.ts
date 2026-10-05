@@ -119,8 +119,19 @@ describe("Service.send", () => {
 
   it("expands a user-invoked skill into the prompt", async () => {
     const { service, thread, driver } = setup(async () => {});
-    await service.send({ threadId: thread.id, text: "ticket 2", skill: "implement" });
+    await service.send({ threadId: thread.id, text: "ticket 2", skills: ["implement"] });
     expect(driver.prompts[0]).toContain('<skill name="implement"');
+  });
+
+  it("stores several skills on the user event, with no single skill field", async () => {
+    const { store, service, thread } = setup(async () => {});
+    await service.send({ threadId: thread.id, text: "ticket 2", skills: ["implement", "tdd"] });
+    const user = store
+      .listEvents(thread.id)
+      .map((e) => e.event)
+      .find((e): e is Extract<ThreadEvent, { kind: "user" }> => e.kind === "user");
+    expect(user?.skills).toEqual(["implement", "tdd"]);
+    expect(user && "skill" in user).toBe(false);
   });
 
   it("routes permission requests to the UI and back", async () => {
@@ -507,6 +518,11 @@ describe("titleFrom", () => {
     expect(titleFrom("ticket 3", "implement")).toBe("/implement ticket 3");
     expect(titleFrom("", "skilled-setup")).toBe("/skilled-setup");
     expect(titleFrom("x".repeat(80)).length).toBe(60);
+  });
+
+  it("prefixes every skill in order", () => {
+    expect(titleFrom("fix login", ["tdd", "review"])).toBe("/tdd /review fix login");
+    expect(titleFrom("", ["tdd", "review"])).toBe("/tdd /review");
   });
 });
 
