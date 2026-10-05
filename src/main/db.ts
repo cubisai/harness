@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { bindingKey } from "../shared/bindings";
@@ -276,6 +276,7 @@ export class Store {
       this.db.prepare(`DELETE FROM threads WHERE id IN (${placeholders})`).run(...threadIds);
     }
     this.db.prepare("DELETE FROM projects WHERE id = ?").run(id);
+    this.pruneBlobs();
   }
 
   listThreads(projectId: string): Thread[] {
@@ -359,6 +360,7 @@ export class Store {
 
   deleteThread(id: string): void {
     this.db.prepare("DELETE FROM threads WHERE id = ?").run(id);
+    this.pruneBlobs();
   }
 
   appendEvent(threadId: string, event: ThreadEvent, provenance: Provenance | null = null): StoredEvent {
@@ -432,6 +434,48 @@ export class Store {
   /** Read binary content back by its sha256. */
   readBlobBytes(sha256: string): Buffer {
     return readFileSync(join(this.blobsDir, sha256));
+  }
+
+  /**
+   * Remove every blob nothing points at any more (an offloaded event payload or a
+   * saved artifact version, plans included), rows and files alike. Deleting a
+   * thread or project cascades its events and versions but not their content, so
+   * this runs after each delete and once at startup. Returns how many went; never throws.
+   */
+  pruneBlobs(): number {
+    try {
+      const rows = this.db
+        .prepare("SELECT payload_ref AS sha FROM events WHERE payload_ref IS NOT NULL UNION SELECT sha256 FROM artifact_versions")
+        .all() as unknown as { sha: string }[];
+      const live = new Set(rows.map((r) => r.sha));
+      const gone = new Set<string>();
+      const del = this.db.prepare("DELETE FROM blobs WHERE sha256 = ?");
+      for (const { sha256 } of this.db.prepare("SELECT sha256 FROM blobs").all() as unknown as { sha256: string }[]) {
+        if (live.has(sha256)) continue;
+        del.run(sha256);
+        gone.add(sha256);
+      }
+      let files: string[] = [];
+      try {
+        files = readdirSync(this.blobsDir);
+      } catch {
+        // No blob was ever written.
+      }
+      for (const name of files) {
+        // Only content-addressed files; anything else in the folder isn't ours to remove.
+        if (!/^[0-9a-f]{64}$/.test(name) || live.has(name)) continue;
+        try {
+          rmSync(join(this.blobsDir, name), { force: true });
+          gone.add(name);
+        } catch {
+          // Locked (Windows) or already gone: the next prune tries again.
+        }
+      }
+      return gone.size;
+    } catch (err) {
+      console.warn("blob prune failed", err);
+      return 0;
+    }
   }
 
   /** Full-text search across thread titles and messages; an unparseable query finds nothing. */

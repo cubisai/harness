@@ -196,6 +196,8 @@ async function main(): Promise<void> {
     return net.fetch(pathToFileURL(join(shotsDir, name)).toString());
   });
   const store = new Store(join(userData, "unskilled.db"));
+  // Content left behind by threads deleted before blobs were pruned on delete, off the startup path.
+  setImmediate(() => store.pruneBlobs());
   const memory = createMemory({ root: join(userData, "memory", "projects"), home: homedir(), codexHome: process.env.CODEX_HOME || undefined });
   const settings = new SettingsStore(join(userData, "settings.json"), {
     // On Linux, isEncryptionAvailable() is true even with the plain-text fallback backend.

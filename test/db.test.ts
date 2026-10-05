@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { existsSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
@@ -302,6 +303,41 @@ describe("Store event payloads", () => {
     expect(events[1]!.provenance).toBeNull();
     expect(events[1]!.event).toEqual({ kind: "user", text: "no provenance" });
     store.close();
+  });
+
+  it("removes a deleted thread's blobs (payloads, file and plan versions) but keeps any another thread still uses", () => {
+    const dir = tempDir();
+    const store = new Store(join(dir, "gc.db"));
+    closeAfter(() => store.close());
+    const p = store.addProject("/tmp/gc");
+    const a = store.createThread(p.id, "claude", "opus", "ask");
+    const b = store.createThread(p.id, "claude", "opus", "ask");
+    const blobs = join(dir, "blobs");
+    const files = () => (existsSync(blobs) ? readdirSync(blobs).sort() : []);
+    const rows = () => (store as unknown as { db: DatabaseSync }).db.prepare("SELECT COUNT(*) AS n FROM blobs").get() as unknown as { n: number };
+
+    // A: an offloaded payload, a file version and a plan; B: the same plan text (one shared blob).
+    store.appendEvent(a.id, { kind: "tool-result", toolUseId: "tu", isError: false, summary: "big", payload: { data: "x".repeat(100_000) } });
+    const sha = (text: string) => createHash("sha256").update(text).digest("hex");
+    for (const [thread, path, text] of [[a.id, "src/a.ts", "code"], [a.id, "cubiq:plan.md", "# plan"], [b.id, "cubiq:plan.md", "# plan"]] as const) {
+      store.writeBlobBytes(sha(text), Buffer.from(text));
+      store.addArtifactVersion(thread, path, sha(text), text.length, 1);
+    }
+    // A stray file from an interrupted write, and something that isn't a blob at all.
+    writeFileSync(join(blobs, "f".repeat(64)), "orphan");
+    writeFileSync(join(blobs, "README"), "keep me");
+    expect(files()).toHaveLength(5);
+    expect(rows().n).toBe(3);
+
+    store.deleteThread(a.id);
+    expect(files()).toEqual([sha("# plan"), "README"].sort());
+    expect(rows().n).toBe(1);
+    expect(store.readBlobBytes(sha("# plan")).toString()).toBe("# plan");
+
+    store.deleteProject(p.id);
+    expect(files()).toEqual(["README"]);
+    expect(rows().n).toBe(0);
+    expect(store.pruneBlobs()).toBe(0);
   });
 
   it("offloads 100 KB tool payloads to one blob and keeps 2 KB ones inline", () => {
