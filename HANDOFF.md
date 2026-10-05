@@ -1,6 +1,6 @@
-# Handoff: UI refresh "Ink Flat" U0–U6 done; next: wide artifact panel (P1), multiple skills (P3), then Windows-PC gate
+# Handoff: Plan mode v2 (agent questions card) committed; next: plan artifact (Q5b), Windows gate, then P1 wide panel + P3 multiple skills
 
-Updated 2026-10-02 on the **Mac**, branch `m4`. Read **Resume here — UI refresh** first, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`.
+Updated 2026-10-05 on the **Mac**, branch `m4`. Read **Resume here — Plan mode v2** first, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`.
 
 ## Where things stand
 
@@ -131,6 +131,37 @@ All checked in the real app on Windows; code paths are cross-platform unless not
 - **Lucide icons**: the user asked for `lucide-react`. Adding a dependency touches `package.json` + the lockfile, which are in the user's uncommitted bun switch; do it (`bun add lucide-react`, replace `icons.tsx`) right after that switch is committed.
 - **Antigravity**: Google's own ACP server (`agy_acp_server.par`, ACP registry `antigravity-acp`) must be on the app's PATH; it stays off until the Settings opt-in, then the generic ACP driver runs it with the user's Google sign-in.
 - Still to confirm on the Mac: the same smoke/model checks there.
+
+## Resume here — Plan mode v2 (2026-10-05, Mac)
+
+Spec: `.ai/plans/plan-mode-v2.md` (user-approved). Roadmap research round (other harness apps, ranked R1–R12) appended to `.ai/plans/harness-roadmap.md` §3. User decisions: every "waiting on you" card docks **above the composer**; agents may ask in **every** mode; Plan mode v2 goes before P1/P3.
+
+**Why:** before this, CubiQ dropped agent questions. Claude's `AskUserQuestion` hit the generic permission card and "Allow" returned no answers; Codex's `item/tool/requestUserInput` was rejected (`-32601`); OpenCode's `question` tool isn't sent over ACP (upstream #30343, closed not planned).
+
+**Built (on `m4`, commit `4641861`):**
+- One question type end to end: `Question`/`QuestionRequest`/`QuestionAnswer` (+ `notes`), `PendingState` in `shared/types.ts`; event `questions` (history row, secrets masked as •••); LiveUpdates `question` / `question-done`; IPC `question:respond`, `pending:get`.
+- `src/main/questions.ts`: mapping for Claude (`fromClaudeQuestions`, `claudeAnswers` keyed by question text, `claudeAnnotations` = notes + picked preview), Codex (`fromCodexQuestions`, `codexAnswers`, notes as `user_note: …`, `fromCodexAsyncQuestions`), `answersText`/`answersMessage`, and the **`ask_user` harness tool** for ACP.
+- Service: `pendingQuestions`, `ask()` (dismiss on Stop), `askFromTool()` (ACP tool path), `respondQuestion()`, async delivery (`deliverAsync`: `driver.steer` → else `afterTurn` queue → else next message), **`pendingState()`**, so a reloaded window gets back running threads and open permission/plan/question cards. That fixes the HANDOFF gap "renderer loses `running` on reload", which the user saw as "Codex shows no loading/waiting".
+- Claude (`claude.ts` canUseTool): `AskUserQuestion` → card → `updatedInput {questions, answers, annotations}`; skip → deny "proceed with your recommended defaults". `toolConfig.askUserQuestion.previewFormat: "markdown"`.
+- Codex (`codex.ts`): handles `item/tool/requestUserInput` (blocking, answer by id). **Found live:** GPT-6-Luna's model catalog advertises `send_user_message_async` → Codex also registers `request_user_input_async`; the model asks via an agentMessage (`delivery:"async"`, `questions`) and **ends its turn**, so the answer had to become a new message (user: "should be within that chat"). Fix: at app-server spawn, `catalogArgs()` writes `<userData>/codex-models.json` = `models_cache.json` minus the async tools (`blockingQuestionCatalog`) and passes `-c model_catalog_json="…"` (process-level; a thread-level `config` override did NOT work, probed). Skipped for BYOK. Async items are still caught as a fallback (card with "answer anytime", answer via `turn/steer` or the next message). `AgentDriver.steer?` implemented for Codex.
+- ACP/OpenCode: tool server serves thread tools on `?t=<threadId>` (`withThread`, `mcp-http.ts`), `ask_user` auto-allowed in every mode (Plan included). `PLAN_MODE_PREFIX` rewritten (~150 tokens, distilled from Codex's plan template: explore first, ask only user decisions via ask_user, decision-complete plan: Summary · Key changes · Test plan · Assumptions); native plan mode gets the short `PLAN_MODE_HINT` only when the tool server is attached (`l.askUser`).
+- Guide `resources/HARNESS.md`: one "Questions" line (budget test passes).
+- UI: `RequestDock.tsx` (permission → question → plan, one at a time, "+N more waiting") between ThreadView and Composer; cards no longer inline in the thread. `QuestionCard.tsx` + pure `question-card.ts` reducer: stepper "1 of N", number keys, ↑↓/Enter/Space, Esc = Skip, "Other…" text, multi-select, markdown preview pane, **"+ Note" (N) per question** (user request: add a note beside a recommended pick). With a note open, a pick doesn't auto-advance. History row "Answered 2 questions · Header: answer" (notes shown when open). Sidebar sub-line "Needs your answer" for question-only waits. `.button:disabled` now dims globally (opacity .4, as icon buttons already did). Tool rows for AskUserQuestion/ExitPlanMode/async show the question or plan title, not JSON (`summarize.ts`).
+
+**Verified by me:** typecheck; full suite **1212 passed** (124 files); build; `electron . --smoke` ok. Live in the built app (temp `--user-data-dir`, scratch repo `notes-app`, project inserted into the temp DB):
+- **Codex GPT-6-Luna, Plan:** card shown, turn kept running, answered "Fixed list" → plan "Add Fixed-List Tags to Notes" **in the same turn** (events: user → turn-start → questions → plan-proposal). Stop while the plan card is up ends the turn and clears the card.
+- **Claude Sonnet 5.5, Plan** (user: test Claude with Sonnet 5.5): AskUserQuestion card → answered "Fixed list" → ExitPlanMode plan "Tags on notes (fixed list)", same turn.
+- Preview (`?state=question`, added to `mock.ts`): light/dark, keyboard flow, multi-select + Other.
+
+**OpenCode live run (done, 2026-10-05 afternoon):** `agentrouter/deepseek-v4-flash`, Plan: ask_user card → answer + note → plan card (Summary · Key changes · Test plan · Assumptions), same turn. **Found:** OpenCode times an MCP call out after 60s (`MCP error -32001`; tool timeout = `mcp.<name>.timeout` ?? `experimental.mcp_timeout`, else the SDK's 60s), so a card left unanswered a minute broke the turn. OpenCode calls tools with `resetTimeoutOnProgress: true`, so the fix is scoped to the tool server: a call to a thread tool (ask_user) answers as SSE and sends `notifications/progress` every 15s (`HEARTBEAT_MS`, `mcp-http.ts`); every other call stays plain JSON. The body is now parsed up front (bad JSON → 400). Re-checked live: card held 3+ min, then answered fine; Codex cubiq tool call and a Claude Sonnet turn also green. Notes UI checked live (+ Note opens under the pick; note reached the model).
+
+**Not done yet:**
+1. Q5 second half: plan proposal as a **plan artifact** in the File panel (versions per refinement). Not started.
+2. Windows: `-c model_catalog_json="C:\…"` quoting relies on winspawn's Codex `-c` escaping (JSON string = valid TOML basic string); check on the PC gate. Also re-run the ask_user wait (>60s) on the PC.
+3. Small: the sidebar status icon's label says "Needs approval" even for a question-only wait (the sub-line correctly says "Needs your answer").
+4. The `[CLAUDE_SDK_CAN_USE_TOOL_SHADOWED]` warning on stderr is expected: harness tools with `autoAllow` go in `allowedTools`, so the SDK notes canUseTool won't see them. Harmless noise, by design.
+
+**Gotchas from this session:** don't `location.reload()` mid-turn when testing, or (before this fix) the UI lost the running state; with `pending:get` it now restores. In zsh, `AB="agent-browser --cdp 9455"; $AB …` doesn't word-split: use a function `ab(){ AGENT_BROWSER_SESSION=cubiq-live agent-browser --cdp 9455 "$@"; }`. The preview server binds `localhost`, not `127.0.0.1`. The memory extractor wrote a note into the temp data dir's project during testing (harmless; temp dir).
 
 ## Resume here — UI refresh (after U2)
 
