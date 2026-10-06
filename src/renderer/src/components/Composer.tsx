@@ -192,7 +192,7 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
     area.current?.focus();
   };
 
-  // Run a "/" command: set the permission mode, ask for the model picker, open the context sheet, or start a new thread.
+  // Run a "/" command: set the permission mode, ask for the model picker, open the context or MCP sheet, or start a new thread.
   const runCommand = (c: ComposerCommand) => {
     setText("");
     setCaret(0);
@@ -200,6 +200,7 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
     if (c.name === "new") void s.newThread();
     else if (c.name === "model") s.requestModelPicker();
     else if (c.name === "context") s.openContextSheet(threadId);
+    else if (c.name === "mcp") s.openMcpSheet();
     else if (c.name === "compact") {
       if (threadId) void s.compact(threadId, null);
     }
@@ -221,6 +222,14 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
       setCaret(0);
       return;
     }
+    // "/mcp <url|command|json>" opens the MCP sheet with that text up for review; it never goes to the agent.
+    const mcpMatch = !picked.length && /^\/mcp(?:\s+([\s\S]*))?$/.exec(text.trim());
+    if (mcpMatch) {
+      useStore.getState().openMcpSheet(mcpMatch[1]?.trim() ?? "");
+      setText("");
+      setCaret(0);
+      return;
+    }
     const body = composeMessage(text, chips);
     if (!body && !picked.length) return;
     const mentions = mentionsIn(text, knownSet);
@@ -236,6 +245,14 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
 
   // Alt+Return starts the message as its own thread in the background and leaves this one open.
   const submitInBackground = () => {
+    // "/mcp <url|command|json>" opens the MCP sheet with that text up for review; it never goes to the agent.
+    const mcpMatch = !picked.length && /^\/mcp(?:\s+([\s\S]*))?$/.exec(text.trim());
+    if (mcpMatch) {
+      useStore.getState().openMcpSheet(mcpMatch[1]?.trim() ?? "");
+      setText("");
+      setCaret(0);
+      return;
+    }
     const body = composeMessage(text, chips);
     if (!body && !picked.length) return;
     const mentions = mentionsIn(text, knownSet);

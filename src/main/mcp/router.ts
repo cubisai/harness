@@ -218,6 +218,9 @@ const jsonValidator = new AjvJsonSchemaValidator();
  * servers (and, from the cache only, their tool names) go into the descriptions
  * so the model knows what exists without a round-trip.
  */
+/** How long a router call waits for a server to list its tools; `npx -y …` servers can take several seconds to start. */
+const LIST_TIMEOUT_MS = 15_000;
+
 export function routerTools(
   deps: {
     servers: (projectId: string | undefined) => McpServerEntry[];
@@ -250,7 +253,7 @@ export function routerTools(
     },
     run: async ({ query, limit }, ctx) => {
       const enabled = deps.servers(ctx?.projectId).filter((s) => s.enabled === true);
-      await deps.listings.refresh(enabled);
+      await deps.listings.refresh(enabled, LIST_TIMEOUT_MS);
       const entries: { server: string; tool: McpToolInfo }[] = [];
       for (const server of enabled) {
         const listing = deps.listings.peek(server.spec);
@@ -282,8 +285,10 @@ export function routerTools(
         const names = enabled.map((s) => s.name);
         return { text: `Unknown MCP server "${server}". Available: ${names.length ? names.join(", ") : "none"}.`, isError: true };
       }
-      await deps.listings.refresh([target]);
+      await deps.listings.refresh([target], LIST_TIMEOUT_MS);
       const listing = deps.listings.peek(target.spec);
+      // A server that didn't list isn't missing the tool: say what went wrong instead.
+      if (listing && !listing.ok) return { text: `Couldn't reach MCP server "${server}": ${(listing.error ?? "it didn't answer").replace(/\.$/, "")}.`, isError: true };
       const tools = listing?.ok ? listing.tools : [];
       const found = tools.find((t) => t.name === tool);
       if (!found) {

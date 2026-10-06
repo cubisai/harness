@@ -232,6 +232,16 @@ describe("routerTools", () => {
     expect(out.text).toContain("db");
   });
 
+  it("call_mcp_tool says the server didn't answer, not that the tool is unknown, when listing failed", async () => {
+    let called = false;
+    const listings = new Map<McpServerSpec, Listing>([[DB_SPEC, { ok: false, tools: [], error: "No answer in 15 seconds." } as Listing]]);
+    const { call } = fakeRouter([dbEntry], listings, { callTool: async () => ((called = true), { ok: true, text: "", isError: false }) });
+    const out = await call.run({ server: "db", tool: "run_query" });
+    expect(out.isError).toBe(true);
+    expect(out.text).toBe('Couldn\'t reach MCP server "db": No answer in 15 seconds.');
+    expect(called).toBe(false);
+  });
+
   it("call_mcp_tool errors on an unknown tool, naming the closest ones", async () => {
     const { call } = fakeRouter([dbEntry], new Map([[DB_SPEC, dbListing]]), { callTool: async () => ({ ok: true, text: "", isError: false }) });
     const out = await call.run({ server: "db", tool: "database tables" });

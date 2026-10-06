@@ -60,6 +60,11 @@ interface State {
   contextSheetThread: string | null;
   openContextSheet(threadId: string | null): void;
   closeContextSheet(): void;
+  /** The /mcp sheet is open; `mcpSheetPrefill` is text to review right away (`/mcp <url|command>`). */
+  mcpSheetOpen: boolean;
+  mcpSheetPrefill: string;
+  openMcpSheet(prefill?: string): void;
+  closeMcpSheet(): void;
   appUpdate: AppUpdateStatus | null;
   /** Plan rate limits by agent id, as the agents last reported them. */
   limits: Record<string, AgentLimits>;
@@ -315,6 +320,14 @@ export const useStore = create<State>((set, get) => ({
   },
   closeContextSheet() {
     set({ contextSheetOpen: false, contextSheetThread: null });
+  },
+  mcpSheetOpen: false,
+  mcpSheetPrefill: "",
+  openMcpSheet(prefill) {
+    set({ mcpSheetOpen: true, mcpSheetPrefill: prefill ?? "" });
+  },
+  closeMcpSheet() {
+    set({ mcpSheetOpen: false, mcpSheetPrefill: "" });
   },
   appUpdate: null,
   limits: {},

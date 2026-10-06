@@ -176,7 +176,17 @@ export class McpGateway {
       }
       if (res.status === 401) {
         const hint = res.headers.get("www-authenticate");
-        this.setState(key, { state: "needs-auth", error: signedIn ? "The sign-in expired or was revoked. Connect again." : hint ? "The server wants a sign-in. Connect first." : "The server refused the credentials." });
+        const keyed = Object.keys(spec.headers ?? {}).some((k) => k.toLowerCase() === "authorization");
+        this.setState(key, {
+          state: "needs-auth",
+          error: signedIn
+            ? "The sign-in expired or was revoked. Connect again."
+            : keyed
+              ? "The server refused the key in the Authorization header. Check it, or remove it and sign in instead."
+              : hint
+                ? "The server wants a sign-in. Connect first."
+                : "The server refused the credentials.",
+        });
       } else if (res.status === 403) {
         const scopes = insufficientScope(res.headers.get("www-authenticate"));
         if (scopes) {

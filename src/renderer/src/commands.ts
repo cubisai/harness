@@ -1,4 +1,4 @@
-/** The message box's "/" commands: permission modes, the model picker, context, and a new thread. */
+/** The message box's "/" commands: permission modes, the model picker, context, MCP servers, and a new thread. */
 
 /** One command the message box can run when the text starts with "/name". */
 export interface ComposerCommand {
@@ -14,6 +14,7 @@ export const COMPOSER_COMMANDS: ComposerCommand[] = [
   { name: "full", description: "Run everything without asking" },
   { name: "model", description: "Pick a model" },
   { name: "context", description: "Show what this thread loads into context" },
+  { name: "mcp", description: "MCP servers: status, sign-in, tools; /mcp <url or command> adds one" },
   { name: "compact", description: "Compact the conversation now; add a focus: /compact keep the API decisions" },
   { name: "new", description: "Start a new thread" },
 ];
