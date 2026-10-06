@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { useId, useState } from "react";
 import type {
   AgentCredentials,
   ConnectionResult,
   CredentialChoice,
+  DiscoveredModel,
+  ModelDiscovery,
   ProviderInput,
   ProviderModel,
   ProviderView,
@@ -17,6 +20,47 @@ import { Select, type SelectOption } from "./Select";
 const WIRE_PROTOCOLS: WireProtocol[] = ["anthropic-messages", "openai-responses", "openai-chat", "gemini"];
 const PROVIDER_ID_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const CAPS = ["tools", "vision", "reasoning"] as const;
+
+/** How Anthropic Messages sends the key; `auto` picks by host. */
+type AuthStyle = "auto" | "bearer" | "x-api-key";
+
+const AUTH_OPTIONS: SelectOption<AuthStyle>[] = [
+  { value: "auto", label: "Automatic (X-Api-Key on api.anthropic.com, Bearer elsewhere)" },
+  { value: "bearer", label: "Authorization: Bearer" },
+  { value: "x-api-key", label: "X-Api-Key" },
+];
+
+/** One header row: a plain one, or a secret whose value travels separately (and stays encrypted). */
+interface HeaderRow {
+  key: string;
+  value: string;
+  secret: boolean;
+  /** A value already stored (a loaded secret header): an empty value keeps it. */
+  stored: boolean;
+}
+
+interface QueryRow {
+  key: string;
+  value: string;
+}
+
+/** A context window as a compact K/M label, e.g. 128000 → "128K". */
+function contextSize(tokens: number): string {
+  // One decimal at most, and none when it rounds to a whole number (1,048,576 → "1M").
+  const short = (n: number) => n.toFixed(1).replace(/\.0$/, "");
+  if (tokens >= 1_000_000) return `${short(tokens / 1_000_000)}M`;
+  if (tokens >= 1_000) return `${short(tokens / 1_000)}K`;
+  return String(tokens);
+}
+
+/** "id · 128K ctx · $0.10 / $0.40 per 1M · tools", for one discovered model. */
+function discoveredMeta(m: DiscoveredModel): string {
+  const parts = [m.id];
+  if (m.contextWindow > 0) parts.push(`${contextSize(m.contextWindow)} ctx`);
+  if (m.cost) parts.push(`$${m.cost.input.toFixed(2)} / $${m.cost.output.toFixed(2)} per 1M`);
+  if (m.capabilities.tools) parts.push("tools");
+  return parts.join(" · ");
+}
 
 /** The host (plus a non-default port) of a URL — never userinfo, path or query. */
 export function hostOf(url: string): string {
@@ -145,7 +189,22 @@ export function CredentialRows({
  */
 export function toProviderInput(
   provider: ProviderView | undefined,
-  fields: Pick<ProviderInput, "id" | "wireProtocol" | "baseURL" | "models" | "pathMode" | "betaHeaders"> & { label?: string },
+  fields: Pick<
+    ProviderInput,
+    | "id"
+    | "wireProtocol"
+    | "baseURL"
+    | "models"
+    | "pathMode"
+    | "betaHeaders"
+    | "headers"
+    | "queryParams"
+    | "retries"
+    | "contextWindowOverride"
+    | "authStyle"
+    | "smallModel"
+    | "secretHeaderNames"
+  > & { label?: string },
 ): ProviderInput {
   const { label, ...rest } = fields;
   if (!provider) return { ...rest, label: label?.trim() || fields.id };
@@ -190,14 +249,91 @@ function ProviderEditor({
   const [models, setModels] = useState<ProviderModel[]>(provider?.models ?? []);
   const [pathMode, setPathMode] = useState<"auto" | "raw">(provider?.pathMode ?? "auto");
   const [betaHeaders, setBetaHeaders] = useState<"default" | "strip">(provider?.betaHeaders ?? "default");
+  const [headerRows, setHeaderRows] = useState<HeaderRow[]>(() => [
+    ...Object.entries(provider?.headers ?? {}).map(([key, value]): HeaderRow => ({ key, value, secret: false, stored: false })),
+    ...(provider?.secretHeaderNames ?? []).map((key): HeaderRow => ({ key, value: "", secret: true, stored: true })),
+  ]);
+  const [queryRows, setQueryRows] = useState<QueryRow[]>(() => Object.entries(provider?.queryParams ?? {}).map(([key, value]) => ({ key, value })));
+  const [retryRequest, setRetryRequest] = useState(provider?.retries?.request !== undefined ? String(provider.retries.request) : "");
+  const [retryStream, setRetryStream] = useState(provider?.retries?.stream !== undefined ? String(provider.retries.stream) : "");
+  const [retryIdle, setRetryIdle] = useState(provider?.retries?.streamIdleTimeoutMs !== undefined ? String(provider.retries.streamIdleTimeoutMs) : "");
+  const [contextOverride, setContextOverride] = useState(provider?.contextWindowOverride !== undefined ? String(provider.contextWindowOverride) : "");
+  const [authStyle, setAuthStyle] = useState<AuthStyle>(provider?.authStyle ?? "auto");
+  const [smallModel, setSmallModel] = useState(provider?.smallModel ?? "");
+  const [advanced, setAdvanced] = useState(false);
+  const [discovery, setDiscovery] = useState<ModelDiscovery | null>(null);
+  const [discoverFilter, setDiscoverFilter] = useState("");
+  const [discoverPicked, setDiscoverPicked] = useState<ReadonlySet<string>>(new Set());
   const [result, setResult] = useState<ConnectionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const advancedId = useId();
 
   const preset = providerPreset(presetId);
 
   const patchModel = (i: number, patch: Partial<ProviderModel>) =>
     setModels((ms) => ms.map((m, j) => (j === i ? { ...m, ...patch } : m)));
+  const patchHeader = (i: number, patch: Partial<HeaderRow>) =>
+    setHeaderRows((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const patchQuery = (i: number, patch: Partial<QueryRow>) =>
+    setQueryRows((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+
+  /**
+   * What Save, Test and Fetch all send: the editor's fields over the stored
+   * provider (`undefined` clears a stored one), plus new secret header values
+   * that travel once. `secretHeaderNames` is always set so an unticked or
+   * removed stored secret is dropped.
+   */
+  const draft = (): { input: ProviderInput; headerValues: Record<string, string> } => {
+    const headers: Record<string, string> = {};
+    const headerValues: Record<string, string> = {};
+    const secretHeaderNames: string[] = [];
+    for (const row of headerRows) {
+      const key = row.key.trim();
+      if (!key) continue;
+      if (row.secret) {
+        if (row.value !== "") headerValues[key] = row.value;
+        else if (row.stored) secretHeaderNames.push(key);
+      } else {
+        headers[key] = row.value;
+      }
+    }
+    const queryParams: Record<string, string> = {};
+    for (const row of queryRows) {
+      const key = row.key.trim();
+      if (key) queryParams[key] = row.value;
+    }
+    const numberOrUndefined = (text: string): number | undefined => {
+      const trimmed = text.trim();
+      if (trimmed === "") return undefined;
+      const value = Number(trimmed);
+      return Number.isFinite(value) ? value : undefined;
+    };
+    const retries: NonNullable<ProviderInput["retries"]> = {};
+    const request = numberOrUndefined(retryRequest);
+    const stream = numberOrUndefined(retryStream);
+    const idle = numberOrUndefined(retryIdle);
+    if (request !== undefined) retries.request = request;
+    if (stream !== undefined) retries.stream = stream;
+    if (idle !== undefined) retries.streamIdleTimeoutMs = idle;
+    const input = toProviderInput(provider, {
+      id,
+      wireProtocol,
+      baseURL: baseURL.trim(),
+      models,
+      pathMode,
+      betaHeaders,
+      label,
+      headers: Object.keys(headers).length ? headers : undefined,
+      queryParams: Object.keys(queryParams).length ? queryParams : undefined,
+      retries: Object.keys(retries).length ? retries : undefined,
+      contextWindowOverride: numberOrUndefined(contextOverride),
+      authStyle: wireProtocol === "anthropic-messages" && authStyle !== "auto" ? authStyle : undefined,
+      smallModel: smallModel !== "" && models.some((m) => m.id === smallModel) ? smallModel : undefined,
+      secretHeaderNames,
+    });
+    return { input, headerValues };
+  };
 
   const save = async () => {
     if (!existing && !PROVIDER_ID_RE.test(id)) {
@@ -211,9 +347,11 @@ function ProviderEditor({
     setError(null);
     setBusy(true);
     try {
-      const input = toProviderInput(provider, { id, wireProtocol, baseURL: baseURL.trim(), models, pathMode, betaHeaders, label });
-      await api().saveProvider(input, secret.trim() ? secret : undefined);
+      const { input, headerValues } = draft();
+      await api().saveProvider(input, secret.trim() ? secret : undefined, headerValues);
       setSecret("");
+      // A typed secret header is stored now: clear the field and keep the row as saved.
+      setHeaderRows((rows) => rows.map((r) => (r.secret && r.value !== "" ? { ...r, value: "", stored: true } : r)));
       setResult(null);
       useStore.setState({ settings: await api().getSettings() });
       onSaved(id);
@@ -244,13 +382,68 @@ function ProviderEditor({
     setError(null);
     setBusy(true);
     try {
-      setResult(await api().testProvider(id, model.id));
+      const { input, headerValues } = draft();
+      setResult(await api().testProvider(input, model.id, secret.trim() || undefined, headerValues));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
   };
+
+  const fetchModels = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      const { input, headerValues } = draft();
+      const found = await api().discoverProviderModels(input, secret.trim() || undefined, headerValues);
+      if (!found.ok) {
+        setDiscovery(null);
+        setError(found.error);
+        return;
+      }
+      setDiscovery(found);
+      setDiscoverFilter("");
+      // Nothing ticked: a gateway can list dozens of models, and the user adds the few they want.
+      setDiscoverPicked(new Set());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleDiscovered = (modelId: string) =>
+    setDiscoverPicked((picked) => {
+      const next = new Set(picked);
+      if (next.has(modelId)) next.delete(modelId);
+      else next.add(modelId);
+      return next;
+    });
+
+  const addDiscovered = () => {
+    if (!discovery?.ok) return;
+    const toPlain = ({ cost: _cost, enriched: _enriched, ...model }: DiscoveredModel): ProviderModel => model;
+    const toAdd = discovery.models.filter((m) => discoverPicked.has(m.id) && !models.some((x) => x.id === m.id)).map(toPlain);
+    if (!toAdd.length) return;
+    setModels((ms) => [...ms, ...toAdd]);
+    if (smallModel === "" && discovery.smallModel && toAdd.some((m) => m.id === discovery.smallModel)) setSmallModel(discovery.smallModel);
+    setDiscovery(null);
+    setDiscoverFilter("");
+    setDiscoverPicked(new Set());
+  };
+
+  const closeDiscovery = () => {
+    setDiscovery(null);
+    setDiscoverFilter("");
+    setDiscoverPicked(new Set());
+  };
+
+  const candidates = discovery?.ok ? discovery.models.filter((m) => !models.some((x) => x.id === m.id)) : [];
+  const filterText = discoverFilter.trim().toLowerCase();
+  const visibleDiscovered = filterText
+    ? candidates.filter((m) => m.id.toLowerCase().includes(filterText) || (m.name ?? "").toLowerCase().includes(filterText))
+    : candidates;
 
   return (
     <div className="provider-editor">
@@ -361,7 +554,7 @@ function ProviderEditor({
               </div>
             </div>
           ))}
-          <div>
+          <div className="provider-model-actions">
             <button
               className="button ghost"
               type="button"
@@ -371,8 +564,189 @@ function ProviderEditor({
             >
               Add model
             </button>
+            <button className="button ghost" type="button" disabled={!baseURL.trim() || busy} onClick={() => void fetchModels()}>
+              Fetch models
+            </button>
           </div>
+          <div className="provider-small">
+            <span className="provider-small-label">Small model</span>
+            <Select<string>
+              value={smallModel}
+              options={[
+                { value: "", label: "Same as the main model" },
+                ...models.filter((m) => m.id.trim() !== "").map((m): SelectOption<string> => ({ value: m.id, label: m.id })),
+              ]}
+              onChange={setSmallModel}
+              ariaLabel="Small model"
+            />
+            <p className="note">A cheaper model the agent uses for side tasks, such as titles and summaries.</p>
+          </div>
+          {discovery?.ok && (
+            <div className="provider-discover">
+              <input
+                className="text-input"
+                placeholder="Filter models"
+                aria-label="Filter models"
+                value={discoverFilter}
+                spellCheck={false}
+                onChange={(e) => setDiscoverFilter(e.target.value)}
+              />
+              <div className="provider-discover-list" role="group" aria-label="Discovered models">
+                {visibleDiscovered.length === 0 ? (
+                  <p className="note">No models to add.</p>
+                ) : (
+                  visibleDiscovered.map((m) => (
+                    <label className="provider-discover-row" key={m.id}>
+                      <input type="checkbox" checked={discoverPicked.has(m.id)} onChange={() => toggleDiscovered(m.id)} />
+                      <span className="provider-discover-main">
+                        <span className="provider-discover-name">{m.name ?? m.id}</span>
+                        <span className="provider-discover-meta">{discoveredMeta(m)}</span>
+                      </span>
+                    </label>
+                  ))
+                )}
+              </div>
+              <div className="provider-discover-actions">
+                <button className="button primary" type="button" disabled={discoverPicked.size === 0} onClick={addDiscovered}>
+                  Add {discoverPicked.size} model{discoverPicked.size === 1 ? "" : "s"}
+                </button>
+                <button className="button ghost" type="button" onClick={closeDiscovery}>
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
         </div>
+      </div>
+      <div className="provider-advanced">
+        <button
+          type="button"
+          className="provider-disclosure"
+          aria-expanded={advanced}
+          aria-controls={advancedId}
+          onClick={() => setAdvanced((a) => !a)}
+        >
+          {advanced ? <ChevronDown size={12} aria-hidden /> : <ChevronRight size={12} aria-hidden />}
+          Advanced
+        </button>
+        {advanced && (
+          <div className="provider-advanced-body" id={advancedId}>
+            {wireProtocol === "anthropic-messages" && (
+              <div className="row">
+                <span className="label">Key header</span>
+                <div className="provider-auth">
+                  <Select<AuthStyle> value={authStyle} options={AUTH_OPTIONS} onChange={setAuthStyle} ariaLabel="Key header" />
+                </div>
+              </div>
+            )}
+            <div className="row">
+              <span className="label">Headers</span>
+              <div className="provider-pairs">
+                {headerRows.map((row, i) => (
+                  <div className="provider-pair" key={i}>
+                    <input
+                      className="text-input"
+                      placeholder="Header"
+                      aria-label="Header name"
+                      value={row.key}
+                      spellCheck={false}
+                      onChange={(e) => patchHeader(i, { key: e.target.value })}
+                    />
+                    <input
+                      className="text-input"
+                      type={row.secret ? "password" : "text"}
+                      autoComplete="off"
+                      spellCheck={false}
+                      placeholder={row.secret && row.stored ? "Saved — type to replace" : "Value"}
+                      aria-label={row.key.trim() ? `${row.key.trim()} value` : "Header value"}
+                      value={row.value}
+                      onChange={(e) => patchHeader(i, { value: e.target.value })}
+                    />
+                    <label className="provider-check">
+                      <input type="checkbox" checked={row.secret} onChange={(e) => patchHeader(i, { secret: e.target.checked })} />
+                      Secret
+                    </label>
+                    <button className="button ghost remove" type="button" onClick={() => setHeaderRows((rows) => rows.filter((_, j) => j !== i))}>
+                      Remove
+                    </button>
+                  </div>
+                ))}
+                <div>
+                  <button className="button ghost" type="button" onClick={() => setHeaderRows((rows) => [...rows, { key: "", value: "", secret: false, stored: false }])}>
+                    Add header
+                  </button>
+                </div>
+                <p className="note">
+                  {"Secret values are encrypted and reach the agent only through its environment. A value of ${env:VAR} is read from your environment when the agent starts."}
+                </p>
+              </div>
+            </div>
+            <div className="row">
+              <span className="label">Query params</span>
+              <div className="provider-pairs">
+                {queryRows.map((row, i) => (
+                  <div className="provider-pair" key={i}>
+                    <input
+                      className="text-input"
+                      placeholder="Parameter"
+                      aria-label="Query parameter name"
+                      value={row.key}
+                      spellCheck={false}
+                      onChange={(e) => patchQuery(i, { key: e.target.value })}
+                    />
+                    <input
+                      className="text-input"
+                      placeholder="Value"
+                      aria-label={row.key.trim() ? `${row.key.trim()} value` : "Query parameter value"}
+                      value={row.value}
+                      spellCheck={false}
+                      onChange={(e) => patchQuery(i, { value: e.target.value })}
+                    />
+                    <button className="button ghost remove" type="button" onClick={() => setQueryRows((rows) => rows.filter((_, j) => j !== i))}>
+                      Remove
+                    </button>
+                  </div>
+                ))}
+                <div>
+                  <button className="button ghost" type="button" onClick={() => setQueryRows((rows) => [...rows, { key: "", value: "" }])}>
+                    Add parameter
+                  </button>
+                </div>
+                <p className="note">Sent by Codex and OpenCode (chat-completions only).</p>
+              </div>
+            </div>
+            <div className="row">
+              <span className="label">Retries</span>
+              <div className="provider-retries">
+                <input className="text-input num" type="number" aria-label="Request" placeholder="Request" value={retryRequest} onChange={(e) => setRetryRequest(e.target.value)} />
+                <input className="text-input num" type="number" aria-label="Stream" placeholder="Stream" value={retryStream} onChange={(e) => setRetryStream(e.target.value)} />
+                <input
+                  className="text-input num"
+                  type="number"
+                  aria-label="Idle timeout (ms)"
+                  placeholder="Idle timeout (ms)"
+                  value={retryIdle}
+                  onChange={(e) => setRetryIdle(e.target.value)}
+                />
+                <p className="note">Codex only.</p>
+              </div>
+            </div>
+            <div className="row">
+              <span className="label">Context window</span>
+              <div className="provider-context">
+                <input
+                  className="text-input num"
+                  type="number"
+                  aria-label="Context window override"
+                  placeholder="Each model's own"
+                  value={contextOverride}
+                  onChange={(e) => setContextOverride(e.target.value)}
+                />
+                <p className="note">Overrides every model&apos;s context window.</p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       <div className="row provider-options-row">
         <span className="label">Options</span>
@@ -403,7 +777,7 @@ function ProviderEditor({
             Remove
           </button>
         )}
-        <button className="button" disabled={!existing || models.length === 0 || busy} onClick={() => void test()}>
+        <button className="button" disabled={models.length === 0 || !baseURL.trim() || busy} onClick={() => void test()}>
           Test connection
         </button>
       </div>

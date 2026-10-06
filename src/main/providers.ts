@@ -36,6 +36,7 @@ export function isProviderId(id: string): boolean {
 // Moved to src/shared so the renderer can use them too; re-exported here so
 // existing main-process callers (and test/providers.test.ts) keep working.
 export { codexCompatible, providerWarning } from "../shared/provider-rules";
+import { anthropicAuthStyle } from "../shared/provider-rules";
 
 /**
  * The environment variable each migrated legacy key is conventionally read
@@ -58,7 +59,7 @@ export const LEGACY_PROVIDERS: Record<LegacyProviderId, Pick<Provider, "label" |
 };
 
 /** The id actually sent on the wire: the model's modelID when set, else the picker id. */
-function wireIdOf(model: ProviderModel | undefined, modelId: string): string {
+export function wireIdOf(model: ProviderModel | undefined, modelId: string): string {
   return model?.modelID ?? modelId;
 }
 
@@ -68,7 +69,7 @@ function withQuery(url: string, params: Record<string, string> | undefined): str
   return url.includes("?") ? `${url}&${q}` : `${url}?${q}`;
 }
 
-interface Endpoints {
+export interface Endpoints {
   models: string | null; // null = listing not attempted (raw path mode)
   generate: string;
 }
@@ -77,7 +78,7 @@ interface Endpoints {
  * Path suffixes per protocol. `auto` strips a trailing slash and never doubles
  * `/v1`; `raw` posts to baseURL exactly as typed and skips the models probe.
  */
-function endpointsFor(provider: Provider, wire: string): Endpoints {
+export function endpointsFor(provider: Provider, wire: string): Endpoints {
   const base = provider.baseURL.replace(/\/+$/, "");
   const raw = provider.pathMode === "raw";
   let models: string | null = null;
@@ -116,14 +117,18 @@ function endpointsFor(provider: Provider, wire: string): Endpoints {
   };
 }
 
-/** Auth headers differ by protocol: Claude reads X-Api-Key, OpenAI-style reads Bearer, Gemini reads x-goog-api-key. */
-function buildHeaders(provider: Provider, apiKey: string | null): Record<string, string> {
+/**
+ * Auth headers differ by protocol: Anthropic Messages sends X-Api-Key or Bearer
+ * as Claude would (anthropicAuthStyle), OpenAI-style reads Bearer, Gemini reads x-goog-api-key.
+ */
+export function buildHeaders(provider: Provider, apiKey: string | null): Record<string, string> {
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (provider.wireProtocol === "anthropic-messages") headers["anthropic-version"] = "2023-06-01";
   if (apiKey !== null) {
     switch (provider.wireProtocol) {
       case "anthropic-messages":
-        headers["x-api-key"] = apiKey;
+        if (anthropicAuthStyle(provider) === "x-api-key") headers["x-api-key"] = apiKey;
+        else headers["Authorization"] = `Bearer ${apiKey}`;
         break;
       case "openai-chat":
       case "openai-responses":
@@ -200,6 +205,21 @@ function hasToolCall(protocol: WireProtocol, json: unknown): boolean {
   }
 }
 
+/** The error message in an OpenAI/Anthropic/Gemini-style error body, trimmed, with the key masked; null when there isn't one. */
+export function upstreamMessage(body: string, apiKey: string | null): string | null {
+  let message: unknown;
+  try {
+    const j = JSON.parse(body) as { error?: { message?: unknown } | string; message?: unknown };
+    message = typeof j.error === "string" ? j.error : (j.error?.message ?? j.message);
+  } catch {
+    return null;
+  }
+  if (typeof message !== "string" || !message.trim()) return null;
+  let text = message.trim().replace(/\s+/g, " ").slice(0, 300);
+  if (apiKey) text = text.split(apiKey).join("«redacted»");
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
 function triageFor(status: number): string {
   switch (status) {
     case 401:
@@ -256,10 +276,11 @@ export async function testConnection(
   }
 
   let genStatus = 0;
+  let genBody = "";
   try {
     const res = await fetchImpl(generate, { method: "POST", headers, body: JSON.stringify(bodyFor(provider, wire, false)) });
     genStatus = res.status;
-    await res.text().catch(() => "");
+    genBody = await res.text().catch(() => "");
   } catch {
     return {
       reachable: false,
@@ -269,7 +290,9 @@ export async function testConnection(
     };
   }
   if (genStatus < 200 || genStatus >= 300) {
-    return { reachable: false, listsModels, supportsTools: null, triage: triageFor(genStatus) };
+    // The server's own words first ("model not in your plan"), then the usual causes for the status.
+    const said = upstreamMessage(genBody, apiKey);
+    return { reachable: false, listsModels, supportsTools: null, triage: said ? `The server said: ${said} ${triageFor(genStatus)}` : triageFor(genStatus) };
   }
 
   let supportsTools = false;
@@ -294,8 +317,9 @@ export interface ProviderCatalog {
   acp: { configOption: Record<string, unknown> };
 }
 
-/** Compile one Provider into each driver's native model/config shape. */
+/** Compile one Provider into each driver's native model/config shape; a context override replaces every model's window. */
 export function catalogFor(provider: Provider): ProviderCatalog {
+  const contextOf = (model: ProviderModel) => provider.contextWindowOverride ?? model.contextWindow;
   const claudeEnv: Record<string, string> = { ...provider.env };
   for (const model of provider.models) {
     if (model.alias) claudeEnv[`ANTHROPIC_DEFAULT_${model.alias.toUpperCase()}_MODEL`] = wireIdOf(model, model.id);
@@ -312,7 +336,7 @@ export function catalogFor(provider: Provider): ProviderCatalog {
       tool_call: model.capabilities.tools,
       reasoning: model.capabilities.reasoning,
       attachment: model.capabilities.vision,
-      limit: { context: model.contextWindow, output: model.maxOutput },
+      limit: { context: contextOf(model), output: model.maxOutput },
     };
   }
 
@@ -325,7 +349,7 @@ export function catalogFor(provider: Provider): ProviderCatalog {
       models: provider.models.map((model, index) => ({
         slug: wireIdOf(model, model.id),
         display_name: model.name ?? model.id,
-        context_window: model.contextWindow,
+        context_window: contextOf(model),
         max_output_tokens: model.maxOutput,
         // The full entry Codex's model_catalog_json requires; base_instructions is added at injection time.
         supported_reasoning_levels: model.capabilities.reasoning

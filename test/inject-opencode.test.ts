@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { CredentialChoice, Provider, Settings } from "../src/shared/types";
 import { type InjectionPlan, type InjectionSource, injectionFor } from "../src/main/inject";
-import { parseOpenCodeVariants, withOpenCodeVariant } from "../src/main/inject/opencode";
+import { opencodePackage, parseOpenCodeVariants, withOpenCodeVariant } from "../src/main/inject/opencode";
 
 const KEY = "test-opencode-key";
 const VERSION = "1.18.32";
@@ -36,12 +36,13 @@ function settings(): Settings {
 }
 
 /** A fake settings surface: no disk, no SettingsStore. */
-function source(opts: { providers?: Provider[]; choice?: CredentialChoice; secret?: string | null } = {}): InjectionSource {
+function source(opts: { providers?: Provider[]; choice?: CredentialChoice; secret?: string | null; providerSecretHeaders?: Record<string, string> } = {}): InjectionSource {
   const providers = opts.providers ?? [provider()];
   return {
     credential: () => opts.choice ?? { kind: "byok", providerId: providers[0]!.id },
     providers: () => providers,
     providerSecret: () => (opts.secret === undefined ? KEY : opts.secret),
+    providerSecretHeaders: () => opts.providerSecretHeaders ?? {},
     secretEnvNames: () => [],
     get: () => settings(),
   };
@@ -99,13 +100,66 @@ describe("injectOpenCode", () => {
     expect(lead(null).error).toMatch(/version unknown/);
   });
 
-  it("errors for a non chat-completions provider, a missing key, and no models", () => {
-    const anthropic = injectionFor(source({ providers: [provider({ wireProtocol: "anthropic-messages" })] }), "opencode", process.env, opts());
-    expect(anthropic.error).toMatch(/OpenAI-compatible/);
+  it("errors for a missing key and no models", () => {
     const noKey = injectionFor(source({ secret: null }), "opencode", process.env, opts());
     expect(noKey.error).toMatch(/no key saved/);
     const noModels = injectionFor(source({ providers: [provider({ models: [] })] }), "opencode", process.env, opts());
     expect(noModels.error).toMatch(/no models/);
+  });
+
+  it("injects every wire protocol without error", () => {
+    for (const wireProtocol of ["openai-chat", "openai-responses", "anthropic-messages", "gemini"] as const) {
+      const plan = injectionFor(source({ providers: [provider({ wireProtocol })] }), "opencode", process.env, opts());
+      expect(plan.error, wireProtocol).toBeUndefined();
+    }
+  });
+
+  it("adds a bearer Authorization for Anthropic on a non-Anthropic host, unless x-api-key is chosen", () => {
+    const plan = injectionFor(source({ providers: [provider({ wireProtocol: "anthropic-messages", baseURL: "https://gw.example.com" })] }), "opencode", process.env, opts());
+    const config = JSON.parse(plan.env.OPENCODE_CONFIG_CONTENT!) as { provider: Record<string, { options: { headers: Record<string, string> } }> };
+    expect(config.provider["unskilled-gw"]!.options.headers.Authorization).toBe("Bearer {env:UNSKILLED_GW_KEY}");
+    const chosen = injectionFor(source({ providers: [provider({ wireProtocol: "anthropic-messages", baseURL: "https://gw.example.com", authStyle: "x-api-key" })] }), "opencode", process.env, opts());
+    const chosenConfig = JSON.parse(chosen.env.OPENCODE_CONFIG_CONTENT!) as { provider: Record<string, { options: { headers: Record<string, string> } }> };
+    expect(chosenConfig.provider["unskilled-gw"]!.options.headers.Authorization).toBeUndefined();
+  });
+
+  it("turns an env-ref header into an {env:} ref and keeps a secret header's value out of the config", () => {
+    const secretValue = "super-secret-header-value";
+    const plan = injectionFor(
+      source({ providers: [provider({ headers: { "X-A": "${env:FOO}", "X-Secret": "plain" } })], providerSecretHeaders: { "X-Secret": secretValue } }),
+      "opencode",
+      process.env,
+      opts(),
+    );
+    const config = JSON.parse(plan.env.OPENCODE_CONFIG_CONTENT!) as { provider: Record<string, { options: { headers: Record<string, string> } }> };
+    const headers = config.provider["unskilled-gw"]!.options.headers;
+    expect(headers["X-A"]).toBe("{env:FOO}");
+    expect(headers["X-Secret"]).toBe("{env:UNSKILLED_GW_HEADER_1}");
+    expect(plan.env.UNSKILLED_GW_HEADER_1).toBe(secretValue);
+    expect(plan.env.OPENCODE_CONFIG_CONTENT).not.toContain(secretValue);
+    expect(JSON.stringify(plan)).not.toContain(secretValue);
+  });
+
+  it("uses provider.smallModel when it names one of the models, else falls back to model", () => {
+    const named = injectionFor(source({ providers: [provider({ smallModel: "plain" })] }), "opencode", process.env, opts());
+    const namedConfig = JSON.parse(named.env.OPENCODE_CONFIG_CONTENT!) as { model: string; small_model: string };
+    expect(namedConfig.model).toBe("unskilled-gw/picked");
+    expect(namedConfig.small_model).toBe("unskilled-gw/plain");
+    const unknown = injectionFor(source({ providers: [provider({ smallModel: "nope" })] }), "opencode", process.env, opts());
+    const unknownConfig = JSON.parse(unknown.env.OPENCODE_CONFIG_CONTENT!) as { model: string; small_model: string };
+    expect(unknownConfig.small_model).toBe("unskilled-gw/picked");
+  });
+
+  it("passes queryParams to chat providers and warns for the rest", () => {
+    const chat = injectionFor(source({ providers: [provider({ queryParams: { api_version: "2024-10-01" } })] }), "opencode", process.env, opts());
+    expect(chat.warning).toBeUndefined();
+    const chatConfig = JSON.parse(chat.env.OPENCODE_CONFIG_CONTENT!) as { provider: Record<string, { options: { queryParams?: Record<string, string> } }> };
+    expect(chatConfig.provider["unskilled-gw"]!.options.queryParams).toEqual({ api_version: "2024-10-01" });
+
+    const responses = injectionFor(source({ providers: [provider({ wireProtocol: "openai-responses", queryParams: { api_version: "2024-10-01" } })] }), "opencode", process.env, opts());
+    expect(responses.warning).toMatch(/query parameters only to chat-completions providers/);
+    const responsesConfig = JSON.parse(responses.env.OPENCODE_CONFIG_CONTENT!) as { provider: Record<string, { options: { queryParams?: unknown } }> };
+    expect(responsesConfig.provider["unskilled-gw"]!.options.queryParams).toBeUndefined();
   });
 
   it("stays inert on a subscription", () => {
@@ -113,6 +167,27 @@ describe("injectOpenCode", () => {
     expect(plan.byok).toBe(false);
     expect(Object.keys(plan.env).some((name) => name.startsWith("UNSKILLED_"))).toBe(false);
     expect(plan.env.OPENCODE_CONFIG_CONTENT).toBeUndefined();
+  });
+});
+
+describe("opencodePackage", () => {
+  it("picks the AI-SDK package and base URL per protocol", () => {
+    expect(opencodePackage(provider({ wireProtocol: "openai-chat", baseURL: "https://gw.example.com/v1" }))).toEqual({ npm: "@ai-sdk/openai-compatible", baseURL: "https://gw.example.com/v1" });
+    expect(opencodePackage(provider({ wireProtocol: "openai-responses", baseURL: "https://gw.example.com/v1" }))).toEqual({ npm: "@ai-sdk/openai", baseURL: "https://gw.example.com/v1" });
+    expect(opencodePackage(provider({ wireProtocol: "anthropic-messages", baseURL: "https://gw.example.com" }))).toEqual({ npm: "@ai-sdk/anthropic", baseURL: "https://gw.example.com/v1" });
+    expect(opencodePackage(provider({ wireProtocol: "gemini", baseURL: "https://gw.example.com" }))).toEqual({ npm: "@ai-sdk/google", baseURL: "https://gw.example.com/v1beta" });
+  });
+
+  it("doesn't double /v1 for Anthropic or /v1beta for Gemini", () => {
+    expect(opencodePackage(provider({ wireProtocol: "anthropic-messages", baseURL: "https://gw.example.com/v1" })).baseURL).toBe("https://gw.example.com/v1");
+    expect(opencodePackage(provider({ wireProtocol: "gemini", baseURL: "https://gw.example.com/v1beta" })).baseURL).toBe("https://gw.example.com/v1beta");
+  });
+
+  it("strips trailing slashes in auto mode, and leaves a raw URL exactly as typed", () => {
+    expect(opencodePackage(provider({ baseURL: "https://gw.example.com/v1///" })).baseURL).toBe("https://gw.example.com/v1");
+    for (const wireProtocol of ["openai-chat", "openai-responses", "anthropic-messages", "gemini"] as const) {
+      expect(opencodePackage(provider({ wireProtocol, baseURL: "https://gw.example.com/custom/", pathMode: "raw" })).baseURL).toBe("https://gw.example.com/custom/");
+    }
   });
 });
 

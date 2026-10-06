@@ -332,6 +332,18 @@ export function installMock(): void {
       await new Promise((r) => setTimeout(r, 400));
       return { reachable: true, listsModels: true, supportsTools: true };
     },
+    discoverProviderModels: async () => {
+      await new Promise((r) => setTimeout(r, 400));
+      const caps = { tools: true, vision: false, reasoning: true };
+      return {
+        ok: true,
+        smallModel: "deepseek-v4-flash",
+        models: [
+          { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash", capabilities: caps, contextWindow: 1_000_000, maxOutput: 65_536, cost: { input: 0.1, output: 0.4 }, enriched: true },
+          { id: "glm-5.3", name: "GLM 5.3", capabilities: caps, contextWindow: 200_000, maxOutput: 32_768, cost: { input: 0.6, output: 2.2 }, enriched: true },
+        ],
+      };
+    },
     setCredential: async (agentId, choice) => (settings = { ...settings, providerCredential: { ...settings.providerCredential, [agentId]: choice } }),
     openDataFolder: async () => {},
     listLimits: async () =>

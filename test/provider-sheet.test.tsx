@@ -153,6 +153,57 @@ describe("toProviderInput", () => {
     expect(toProviderInput(existing, { ...fields, label: "X" }).label).toBe("My gateway");
     expect(toProviderInput(existing, fields).label).toBe("My gateway");
   });
+
+  it("clears a stored field the editor passes as undefined, and keeps the ones it omits", () => {
+    const existing: ProviderView = {
+      id: "gw",
+      label: "My gateway",
+      wireProtocol: "openai-chat",
+      baseURL: "https://gw.example.com",
+      models: [],
+      headers: { "X-Team": "a" },
+      env: { EXTRA: "1" },
+      queryParams: { "api-version": "2" },
+      secretKind: "safeStorage",
+      hasSecret: false,
+    };
+    const fields = { id: "gw", wireProtocol: "openai-chat" as const, baseURL: "https://gw.example.com", models: [], pathMode: "auto" as const, betaHeaders: "default" as const };
+    // Removing every header / query param clears the stored maps; env is untouched (the editor never passes it).
+    const cleared = toProviderInput(existing, { ...fields, headers: undefined, queryParams: undefined });
+    expect(cleared.headers).toBeUndefined();
+    expect(cleared.queryParams).toBeUndefined();
+    expect(cleared.env).toEqual({ EXTRA: "1" });
+    // Omitting a key entirely (not passing it as undefined) keeps the stored value.
+    const kept = toProviderInput(existing, fields);
+    expect(kept.headers).toEqual({ "X-Team": "a" });
+    expect(kept.queryParams).toEqual({ "api-version": "2" });
+  });
+
+  it("carries authStyle, smallModel and secretHeaderNames, and an empty list clears stored secret headers", () => {
+    const existing = providerView({ id: "gw", label: "My gateway", authStyle: "auto", smallModel: "old", secretHeaderNames: ["X-Key"] });
+    const fields = { id: "gw", wireProtocol: "anthropic-messages" as const, baseURL: "https://gw.example.com", models: [], pathMode: "auto" as const, betaHeaders: "default" as const };
+    const input = toProviderInput(existing, { ...fields, authStyle: "x-api-key", smallModel: "new", secretHeaderNames: [] });
+    expect(input.authStyle).toBe("x-api-key");
+    expect(input.smallModel).toBe("new");
+    expect(input.secretHeaderNames).toEqual([]);
+    expect("hasSecret" in input || "secretKind" in input).toBe(false);
+  });
+
+  it("carries the new fields for a brand-new provider too", () => {
+    const input = toProviderInput(undefined, {
+      id: "gw",
+      wireProtocol: "openai-responses",
+      baseURL: "https://gw.example.com",
+      models: [],
+      pathMode: "auto",
+      betaHeaders: "default",
+      headers: { "X-Team": "a" },
+      retries: { request: 3 },
+      contextWindowOverride: 200_000,
+      secretHeaderNames: ["X-Key"],
+    });
+    expect(input).toMatchObject({ label: "gw", headers: { "X-Team": "a" }, retries: { request: 3 }, contextWindowOverride: 200_000, secretHeaderNames: ["X-Key"] });
+  });
 });
 
 describe("PresetPicker", () => {

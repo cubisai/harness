@@ -93,13 +93,22 @@ export interface Provider {
   contextWindowOverride?: number;
   pathMode?: "auto" | "raw"; // escape hatch: send the URL exactly as typed
   betaHeaders?: "default" | "strip";
+  /** Anthropic Messages only: how the key is sent. auto = X-Api-Key on api.anthropic.com, Bearer elsewhere. */
+  authStyle?: "auto" | "bearer" | "x-api-key";
+  /** A cheap model (one of `models` by id) for background work: Claude's small/fast slot, OpenCode's small_model. */
+  smallModel?: string;
+  /** Header name → safeStorage ciphertext; only main reads it. Plain `headers` may say `${env:VAR}` instead. */
+  secretHeaders?: Record<string, string>;
 }
 
 /** A Provider as the renderer sees it; never carries key material. */
-export type ProviderView = Omit<Provider, "secret"> & { secretKind: ProviderSecret["kind"]; hasSecret: boolean };
+export type ProviderView = Omit<Provider, "secret" | "secretHeaders"> & { secretKind: ProviderSecret["kind"]; hasSecret: boolean; secretHeaderNames?: string[] };
 
-/** A Provider as the renderer sends it: the secret is a descriptor, never a value. */
-export type ProviderInput = Omit<Provider, "secret"> & { secret?: Omit<ProviderSecret, "ciphertext"> };
+/**
+ * A Provider as the renderer sends it: the secret is a descriptor, never a value.
+ * `secretHeaderNames` lists the encrypted headers to keep; new values travel separately, once.
+ */
+export type ProviderInput = Omit<Provider, "secret" | "secretHeaders"> & { secret?: Omit<ProviderSecret, "ciphertext">; secretHeaderNames?: string[] };
 
 /** The result of probing a provider: reachability, model listing, and tool-calling parity. */
 export interface ConnectionResult {
@@ -108,6 +117,15 @@ export interface ConnectionResult {
   supportsTools: boolean | null;
   triage?: string;
 }
+
+/** A model a provider's own listing returned, enriched from models.dev where it knows the id. */
+export interface DiscoveredModel extends ProviderModel {
+  cost?: { input: number; output: number }; // USD per 1M tokens
+  enriched: boolean; // true when models.dev (or the listing itself) supplied limits/capabilities
+}
+
+/** Fetch models: the listing, plus the cheapest tool model as the suggested small model. */
+export type ModelDiscovery = { ok: true; models: DiscoveredModel[]; smallModel?: string } | { ok: false; error: string };
 
 /** The per-agent credential choice; subscription = the agent's own login/config. */
 export type CredentialChoice = { kind: "byok"; providerId: string } | { kind: "subscription" };
@@ -959,11 +977,14 @@ export interface UnskilledApi {
   updateSettings(patch: Partial<Settings>): Promise<SettingsView>;
   listProviders(): Promise<ProviderView[]>;
   /** Create or replace a provider. The secret is write-only and never echoed back. */
-  saveProvider(input: ProviderInput, secret?: string | null): Promise<ProviderView>;
+  saveProvider(input: ProviderInput, secret?: string | null, headerValues?: Record<string, string>): Promise<ProviderView>;
   removeProvider(id: string): Promise<SettingsView>;
   /** Store a provider's key (encrypted), or remove it with null. Agents restart to pick it up. */
   setProviderSecret(id: string, value: string | null): Promise<SettingsView>;
-  testProvider(id: string, modelId: string): Promise<ConnectionResult>;
+  /** Probe a saved provider (by id) or an unsaved draft; a draft without a new key uses the saved one of the same id. */
+  testProvider(target: string | ProviderInput, modelId: string, secret?: string, headerValues?: Record<string, string>): Promise<ConnectionResult>;
+  /** List a provider's models (saved or draft, as for testProvider), enriched from models.dev. */
+  discoverProviderModels(input: ProviderInput, secret?: string, headerValues?: Record<string, string>): Promise<ModelDiscovery>;
   setCredential(agentId: string, choice: CredentialChoice): Promise<SettingsView>;
   /** Show the app's data folder (agents.json, the database) in the file manager. */
   openDataFolder(): Promise<void>;

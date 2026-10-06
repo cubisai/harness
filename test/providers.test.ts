@@ -91,11 +91,10 @@ describe("injectorCompatible", () => {
     expect(injectorCompatible({ wireProtocol: "openai-chat" }, "codex").ok).toBe(false);
   });
 
-  it("requires anthropic-messages for Claude and openai-chat for OpenCode", () => {
+  it("requires anthropic-messages for Claude and takes any protocol on OpenCode", () => {
     expect(injectorCompatible({ wireProtocol: "anthropic-messages" }, "claude")).toEqual({ ok: true });
     expect(injectorCompatible({ wireProtocol: "openai-chat" }, "claude").ok).toBe(false);
-    expect(injectorCompatible({ wireProtocol: "openai-chat" }, "opencode")).toEqual({ ok: true });
-    expect(injectorCompatible({ wireProtocol: "anthropic-messages" }, "opencode").ok).toBe(false);
+    for (const provider of Object.values(byProtocol)) expect(injectorCompatible(provider, "opencode")).toEqual({ ok: true });
   });
 
   it("passes any protocol through for ACP", () => {

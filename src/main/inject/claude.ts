@@ -3,8 +3,9 @@
 
 import { resolveSettings } from "@anthropic-ai/claude-agent-sdk";
 import type { Provider } from "../../shared/types";
-import { providerWarning } from "../../shared/provider-rules";
-import { catalogFor } from "../providers";
+import { anthropicAuthStyle, providerWarning } from "../../shared/provider-rules";
+import { catalogFor, wireIdOf } from "../providers";
+import { headerPlan, resolvedHeaders } from "./headers";
 import type { InjectedEnv, InjectionPlan } from ".";
 
 /** The variables Claude reads its endpoint and key from; stripped from every plan before injection. */
@@ -13,21 +14,13 @@ export const CLAUDE_KEY_VARS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "AN
 const STRIP_BETA_WARNING =
   "Stripping experimental headers also turns off MCP tool search, so every MCP tool is loaded up front.";
 
-/** The hostname a provider points Claude at, or null when the URL won't parse. */
-function hostOf(baseURL: string): string | null {
-  try {
-    return new URL(baseURL).hostname;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * The environment for one Claude turn on a BYOK provider: the endpoint, the
- * key (as X-Api-Key on api.anthropic.com, Bearer everywhere else), the first
- * model's wire id, and the provider's own env and headers.
+ * key (by the provider's auth style: X-Api-Key on api.anthropic.com and Bearer
+ * elsewhere unless chosen), the first model's wire id, the small/fast model,
+ * and the provider's own env and headers (secret ones decrypted by the caller).
  */
-export function injectClaude(provider: Provider, secret: string | null, base: InjectedEnv): InjectionPlan {
+export function injectClaude(provider: Provider, secret: string | null, base: InjectedEnv, opts: { secretHeaders?: Record<string, string> } = {}): InjectionPlan {
   if (provider.wireProtocol !== "anthropic-messages") {
     return {
       env: base,
@@ -41,13 +34,20 @@ export function injectClaude(provider: Provider, secret: string | null, base: In
   // Exactly one of the two key variables, whatever the provider's own env set.
   delete env.ANTHROPIC_API_KEY;
   delete env.ANTHROPIC_AUTH_TOKEN;
-  if (hostOf(provider.baseURL) === "api.anthropic.com") env.ANTHROPIC_API_KEY = secret;
-  else env.ANTHROPIC_AUTH_TOKEN = secret; // a gateway takes Bearer, not X-Api-Key
+  if (anthropicAuthStyle(provider) === "x-api-key") env.ANTHROPIC_API_KEY = secret;
+  else env.ANTHROPIC_AUTH_TOKEN = secret; // sent as Authorization: Bearer
 
   const first = provider.models[0];
   if (first) env.ANTHROPIC_MODEL = first.modelID ?? first.id;
-  if (provider.headers && Object.keys(provider.headers).length > 0) {
-    env.ANTHROPIC_CUSTOM_HEADERS = Object.entries(provider.headers)
+  // Background work (titles, summaries) goes to the cheap model; the haiku slot follows it unless pinned.
+  const small = provider.models.find((m) => m.id === provider.smallModel);
+  if (small) {
+    env.ANTHROPIC_SMALL_FAST_MODEL = wireIdOf(small, small.id);
+    if (!provider.models.some((m) => m.alias === "haiku")) env.ANTHROPIC_DEFAULT_HAIKU_MODEL = wireIdOf(small, small.id);
+  }
+  const headers = resolvedHeaders(headerPlan(provider, opts.secretHeaders), base);
+  if (Object.keys(headers).length > 0) {
+    env.ANTHROPIC_CUSTOM_HEADERS = Object.entries(headers)
       .map(([k, v]) => `${k}: ${v}`)
       .join("\n");
   }

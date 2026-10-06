@@ -34,6 +34,8 @@ export interface InjectionSource {
   credential(agentId: string): CredentialChoice;
   providers(): Provider[];
   providerSecret(id: string): string | null;
+  /** The provider's secret headers, decrypted (name → value); none when it has no such headers. */
+  providerSecretHeaders?(id: string): Record<string, string>;
   secretEnvNames(): string[];
   get(): Settings;
 }
@@ -102,26 +104,30 @@ export function injectionFor(
     }, []);
   }
   const secret = source.providerSecret(provider.id);
+  const secretHeaders = source.providerSecretHeaders?.(provider.id) ?? {};
+  // Everything a serialized plan must never show: the key and every secret header value.
+  const secrets = [...(secret ? [secret] : []), ...Object.values(secretHeaders)];
   switch (opts.injector ?? "acp") {
     case "claude":
-      return sealed(injectClaude(provider, secret, base), secret ? [secret] : []);
+      return sealed(injectClaude(provider, secret, base, { secretHeaders }), secrets);
     case "codex":
       if (!opts.codexCatalogDir) {
-        return sealed({ env: base, byok: true, error: "Codex BYOK needs the app data folder." }, secret ? [secret] : []);
+        return sealed({ env: base, byok: true, error: "Codex BYOK needs the app data folder." }, secrets);
       }
       return sealed(
         injectCodex(provider, secret, base, {
           catalogDir: opts.codexCatalogDir,
           instructions: opts.codexInstructions?.() ?? FALLBACK_INSTRUCTIONS,
+          secretHeaders,
         }),
-        secret ? [secret] : [],
+        secrets,
       );
     case "opencode":
-      return sealed(injectOpenCode(provider, secret, base, { version: opts.opencodeVersion?.() ?? null }), secret ? [secret] : []);
+      return sealed(injectOpenCode(provider, secret, base, { version: opts.opencodeVersion?.() ?? null, secretHeaders }), secrets);
     case "acp":
       return sealed(
         injectAcp({ label: opts.agentLabel ?? agentId, keyVar: opts.keyVar, providerEnvOnly: opts.providerEnvOnly }, provider, secret, base),
-        secret ? [secret] : [],
+        secrets,
       );
   }
 }

@@ -4,7 +4,7 @@ import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell, utilityProcess } from "electron";
-import type { AboutInfo, AgentLimits, ContextPreview, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, McpServerSpec, McpServerStatus, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread } from "../shared/types";
+import type { AboutInfo, AgentLimits, ContextPreview, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
 import { spawnSync } from "node:child_process";
@@ -27,6 +27,7 @@ import { startToolServer, type ToolServer } from "./mcp-http";
 import { TerminalManager } from "./terminal";
 import { Service } from "./service";
 import { catalogFor, testConnection } from "./providers";
+import { discoverModels, ModelsDev, pickSmallModel } from "./models-catalog";
 import { injectionFor } from "./inject";
 import { redactSecrets } from "./inject/redact";
 import { codexInstructions, prepareCodexPlan } from "./inject/codex";
@@ -229,7 +230,7 @@ async function main(): Promise<void> {
   const knownSecrets = () => [
     ...(secretsCache ??= settings
       .providers()
-      .map((p) => settings.providerSecret(p.id))
+      .flatMap((p) => [settings.providerSecret(p.id), ...Object.values(settings.providerSecretHeaders(p.id))])
       .filter((s): s is string => Boolean(s))),
     // The vault caches what it decrypts, so this stays cheap per call.
     ...mcpVault.values(),
@@ -867,8 +868,8 @@ async function main(): Promise<void> {
     return view;
   };
   ipcMain.handle("providers:list", () => settings.providers().map((p) => settings.providerView(p)));
-  ipcMain.handle("providers:save", (_e, input: ProviderInput, secret?: string | null) => {
-    const view = settings.saveProvider(input, secret);
+  ipcMain.handle("providers:save", (_e, input: ProviderInput, secret?: string | null, headerValues?: Record<string, string>) => {
+    const view = settings.saveProvider(input, secret, headerValues);
     afterProviderChange();
     return view;
   });
@@ -880,10 +881,25 @@ async function main(): Promise<void> {
     settings.setProviderSecret(id, value);
     return afterProviderChange();
   });
-  ipcMain.handle("providers:test", (_e, id: string, modelId: string) => {
-    const provider = settings.providers().find((p) => p.id === id);
-    if (!provider) throw new Error(`unknown provider ${id}`);
-    return testConnection(provider, modelId, settings.providerSecret(id));
+  /** A saved provider by id, or a draft from the editor, with its headers resolved and its key. */
+  const probeTarget = (target: string | ProviderInput, secret?: string, headerValues?: Record<string, string>) => {
+    if (typeof target !== "string") return settings.draftProvider(target, secret, headerValues);
+    const saved = settings.providers().find((p) => p.id === target);
+    if (!saved) throw new Error(`unknown provider ${target}`);
+    return settings.draftProvider(settings.providerView(saved));
+  };
+  ipcMain.handle("providers:test", (_e, target: string | ProviderInput, modelId: string, secret?: string, headerValues?: Record<string, string>) => {
+    const { provider, key } = probeTarget(target, secret, headerValues);
+    return testConnection(provider, modelId, key);
+  });
+  // models.dev metadata, cached a day in the data folder; discovery still works without it.
+  const modelsDev = new ModelsDev({ file: join(userData, "models-dev.json") });
+  ipcMain.handle("providers:discover", async (_e, input: ProviderInput, secret?: string, headerValues?: Record<string, string>): Promise<ModelDiscovery> => {
+    const { provider, key } = probeTarget(input, secret, headerValues);
+    const result = await discoverModels(provider, key, { modelsDev });
+    if (!result.ok) return { ok: false, error: redactSecrets(result.error, [...knownSecrets(), ...(key ? [key] : [])]) };
+    const smallModel = pickSmallModel(result.models);
+    return { ok: true, models: result.models, ...(smallModel && { smallModel }) };
   });
   ipcMain.handle("providers:setCredential", (_e, agentId: string, choice: CredentialChoice) => {
     settings.setCredential(agentId, choice);

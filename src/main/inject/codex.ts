@@ -8,6 +8,7 @@ import type { Provider } from "../../shared/types";
 import { execCommandSync } from "../winspawn";
 import { codexCompatible } from "../../shared/provider-rules";
 import { catalogFor } from "../providers";
+import { headerPlan, type HeaderPlan } from "./headers";
 import { providerKeyVar } from "./keys";
 import type { InjectedEnv, InjectionPlan } from ".";
 
@@ -21,20 +22,26 @@ function tomlString(s: string): string {
   return JSON.stringify(s);
 }
 
-/** The `model_providers.<id>={…}` inline table for one provider. */
-function providerTable(provider: Provider, providerId: string, keyVar: string): string {
+/** A TOML inline table of string pairs. */
+function tomlTable(pairs: Record<string, string>): string {
+  return `{ ${Object.entries(pairs).map(([k, v]) => `${tomlString(k)}=${tomlString(v)}`).join(", ")} }`;
+}
+
+/**
+ * The `model_providers.<id>={…}` inline table for one provider. Literal headers
+ * go in http_headers; `${env:VAR}` and secret ones in env_http_headers, which
+ * names the variable, so no secret value reaches argv.
+ */
+function providerTable(provider: Provider, providerId: string, keyVar: string, headers: HeaderPlan): string {
   const fields = [
     `name=${tomlString(provider.label)}`,
     `base_url=${tomlString(provider.baseURL)}`,
     `env_key=${tomlString(keyVar)}`,
     `wire_api="responses"`,
   ];
-  if (provider.headers && Object.keys(provider.headers).length > 0) {
-    fields.push(`http_headers={ ${Object.entries(provider.headers).map(([k, v]) => `${tomlString(k)}=${tomlString(v)}`).join(", ")} }`);
-  }
-  if (provider.queryParams && Object.keys(provider.queryParams).length > 0) {
-    fields.push(`query_params={ ${Object.entries(provider.queryParams).map(([k, v]) => `${tomlString(k)}=${tomlString(v)}`).join(", ")} }`);
-  }
+  if (Object.keys(headers.literal).length > 0) fields.push(`http_headers=${tomlTable(headers.literal)}`);
+  if (Object.keys(headers.fromEnv).length > 0) fields.push(`env_http_headers=${tomlTable(headers.fromEnv)}`);
+  if (provider.queryParams && Object.keys(provider.queryParams).length > 0) fields.push(`query_params=${tomlTable(provider.queryParams)}`);
   if (provider.retries?.request !== undefined) fields.push(`request_max_retries=${provider.retries.request}`);
   if (provider.retries?.stream !== undefined) fields.push(`stream_max_retries=${provider.retries.stream}`);
   if (provider.retries?.streamIdleTimeoutMs !== undefined) fields.push(`stream_idle_timeout_ms=${provider.retries.streamIdleTimeoutMs}`);
@@ -50,7 +57,7 @@ export function injectCodex(
   provider: Provider,
   secret: string | null,
   base: InjectedEnv,
-  opts: { catalogDir: string; instructions: string },
+  opts: { catalogDir: string; instructions: string; secretHeaders?: Record<string, string> },
 ): InjectionPlan {
   const compatible = codexCompatible(provider);
   if (!compatible.ok) return { env: base, byok: true, error: compatible.reason };
@@ -58,7 +65,8 @@ export function injectCodex(
   if (provider.models.length === 0) return { env: base, byok: true, error: `${provider.label} lists no models for Codex.` };
 
   const keyVar = codexKeyVar(provider.id);
-  const env: InjectedEnv = { ...base, ...provider.env, [keyVar]: secret };
+  const headers = headerPlan(provider, opts.secretHeaders);
+  const env: InjectedEnv = { ...base, ...provider.env, ...headers.secretVars, [keyVar]: secret };
   const providerId = `unskilled-${provider.id}`;
   const catalogPath = join(opts.catalogDir, `unskilled-${provider.id}.json`);
   const models = catalogFor(provider).codex.models;
@@ -69,7 +77,7 @@ export function injectCodex(
     "-c", `model_provider=${tomlString(providerId)}`,
     "-c", `model=${tomlString(String(models[0]!.slug))}`,
     "-c", `model_catalog_json=${tomlString(catalogPath)}`,
-    "-c", providerTable(provider, providerId, keyVar),
+    "-c", providerTable(provider, providerId, keyVar, headers),
   ];
   return { env, args, files: [{ path: catalogPath, contents: JSON.stringify(catalog, null, 2) }], byok: true };
 }

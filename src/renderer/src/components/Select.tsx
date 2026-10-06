@@ -92,7 +92,8 @@ export function Select<T extends string | number>({
   useLayoutEffect(() => {
     if (!open || !button.current || !list.current) return;
     setPlace(popupPlacement(button.current.getBoundingClientRect(), list.current.offsetHeight, window.innerHeight));
-    list.current.focus();
+    // Without preventScroll, focusing the not-yet-placed popup scrolls a scrolled sheet, and that scroll closes it.
+    list.current.focus({ preventScroll: true });
   }, [open]);
 
   useEffect(() => {
@@ -114,8 +115,13 @@ export function Select<T extends string | number>({
     };
   }, [open]);
 
+  // Keep the active option in view by scrolling the list alone; scrollIntoView would scroll the sheet too (and close the popup).
   useEffect(() => {
-    if (open) list.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
+    const el = list.current;
+    const option = el?.querySelector<HTMLElement>(`[data-index="${active}"]`);
+    if (!open || !el || !option) return;
+    if (option.offsetTop < el.scrollTop) el.scrollTop = option.offsetTop;
+    else if (option.offsetTop + option.offsetHeight > el.scrollTop + el.clientHeight) el.scrollTop = option.offsetTop + option.offsetHeight - el.clientHeight;
   }, [open, active]);
 
   const onListKey = (e: React.KeyboardEvent) => {

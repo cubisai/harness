@@ -1534,6 +1534,43 @@ button.qc-option.other { cursor: pointer; }
 .sheet .row > .chip, .sheet .row > .note { white-space: nowrap; flex-shrink: 0; margin: 0; }
 .sheet .row > .value { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
+/* Provider editor: the label column, secret header pairs, retries and discovery (DESIGN.md §7.7). */
+.provider-editor .label { width: 140px; }
+.provider-models-row > .label { align-self: flex-start; padding-top: 4px; }
+.provider-model-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.provider-small { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.provider-small-label { color: var(--text-secondary); font-size: 12.5px; flex-shrink: 0; }
+.provider-small .select-button { flex: 0 1 220px; min-width: 0; }
+.provider-small .note { flex-basis: 100%; margin: 0; }
+.provider-advanced { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
+.provider-disclosure { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; height: 24px; padding: 0 4px; border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-size: 12.5px; border-radius: var(--radius-s); cursor: pointer; }
+.provider-disclosure:hover { background: var(--bg-hover); color: var(--text); }
+.provider-disclosure:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.provider-advanced-body { display: flex; flex-direction: column; gap: 6px; }
+.provider-advanced .row { align-items: flex-start; }
+.provider-advanced .row > .label { padding-top: 4px; }
+.provider-auth { flex: 1; min-width: 0; }
+.provider-auth .select-button { width: 100%; }
+.provider-pairs, .provider-retries, .provider-context { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.provider-retries, .provider-context { flex-direction: row; flex-wrap: wrap; }
+.provider-pair { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.provider-pair .text-input { flex: 1 1 120px; min-width: 0; height: 26px; padding: 0 8px; }
+.provider-pair .provider-check { flex-shrink: 0; }
+.provider-pair .remove { margin-left: auto; }
+.provider-retries .text-input { flex: 0 1 120px; min-width: 0; }
+.provider-context .text-input { flex: 0 1 160px; min-width: 0; }
+.provider-pairs > .note, .provider-retries > .note, .provider-context > .note { margin: 0; flex-basis: 100%; }
+.provider-discover { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--hairline); border-radius: var(--radius-s); padding: 8px; min-width: 0; }
+.provider-discover .text-input { flex: none; height: 26px; }
+.provider-discover-list { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; min-width: 0; }
+.provider-discover-row { display: flex; align-items: flex-start; gap: 8px; padding: 4px 6px; border-radius: var(--radius-s); cursor: pointer; min-width: 0; }
+.provider-discover-row:hover { background: var(--bg-hover); }
+.provider-discover-row input { margin: 3px 0 0; flex: none; }
+.provider-discover-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.provider-discover-name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.provider-discover-meta { font: 11px var(--mono); color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.provider-discover-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+
 /* ---------- library: skills, MCP servers, agents ---------- */
 
 .library {

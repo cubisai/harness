@@ -15,6 +15,7 @@ import type {
 import { DEFAULT_LAYOUT, sanitizeLayout } from "../shared/layout";
 import { isZoom } from "../shared/zoom";
 import { LEGACY_ENV, LEGACY_PROVIDERS, isProviderId, type LegacyProviderId } from "./providers";
+import { headerPlan, resolvedHeaders } from "./inject/headers";
 import { protocolKeyVar } from "./inject/keys";
 import { ANTIGRAVITY_ACK_VERSION } from "../shared/provider-rules";
 
@@ -255,8 +256,13 @@ export class SettingsStore {
 
   /** A Provider as the renderer sees it: the secret itself is replaced by its kind and whether it is usable. */
   providerView(p: Provider): ProviderView {
-    const { secret, ...rest } = p;
-    return { ...rest, secretKind: secret.kind, hasSecret: this.secretIsUsable(secret) };
+    const { secret, secretHeaders, ...rest } = p;
+    return {
+      ...rest,
+      secretKind: secret.kind,
+      hasSecret: this.secretIsUsable(secret),
+      ...(secretHeaders && Object.keys(secretHeaders).length > 0 && { secretHeaderNames: Object.keys(secretHeaders) }),
+    };
   }
 
   /**
@@ -280,9 +286,11 @@ export class SettingsStore {
   /**
    * Create or replace a provider. A duplicate id replaces every field including
    * wireProtocol, but keeps the stored ciphertext unless secretValue is given:
-   * a string stores a new encrypted key, null clears it.
+   * a string stores a new encrypted key, null clears it. Secret headers: the
+   * ones `input.secretHeaderNames` lists are kept (all of them when it's
+   * absent), and `headerValues` encrypts new or replaced ones.
    */
-  saveProvider(input: ProviderInput, secretValue?: string | null): ProviderView {
+  saveProvider(input: ProviderInput, secretValue?: string | null, headerValues?: Record<string, string>): ProviderView {
     if (!isProviderId(input.id)) throw new Error(`invalid provider id ${input.id}`);
     // A command secret runs a program; the renderer must never be able to choose one.
     if (input.secret?.kind === "command") throw new Error("command secrets can't be set from the app");
@@ -295,7 +303,14 @@ export class SettingsStore {
       const ciphertext = secretValue === null ? undefined : existing?.secret.ciphertext;
       if (ciphertext !== undefined) secret.ciphertext = ciphertext;
     }
-    const provider: Provider = { ...input, secret };
+    const { secretHeaderNames, ...fields } = input;
+    const keep = new Set(secretHeaderNames ?? Object.keys(existing?.secretHeaders ?? {}));
+    const secretHeaders: Record<string, string> = {};
+    for (const [name, ciphertext] of Object.entries(existing?.secretHeaders ?? {})) if (keep.has(name)) secretHeaders[name] = ciphertext;
+    for (const [name, value] of Object.entries(headerValues ?? {})) {
+      if (name.trim() && value.trim()) secretHeaders[name.trim()] = this.box.encrypt(value.trim());
+    }
+    const provider: Provider = { ...fields, secret, ...(Object.keys(secretHeaders).length > 0 && { secretHeaders }) };
     const providers = this.data.providers ?? (this.data.providers = []);
     const at = providers.findIndex((p) => p.id === input.id);
     if (at >= 0) providers[at] = provider;
@@ -339,6 +354,44 @@ export class SettingsStore {
     }
   }
 
+  /**
+   * A provider the window hasn't saved (or is editing), ready to probe: its key
+   * is the new value, else its env var, else the saved key of the same id (only
+   * while the host is unchanged, so a typo'd or new URL never receives it); its
+   * headers are fully resolved (kept secret headers decrypted, new ones added).
+   */
+  draftProvider(input: ProviderInput, secretValue?: string, headerValues: Record<string, string> = {}): { provider: Provider; key: string | null } {
+    const { secretHeaderNames, secret: descriptor, ...fields } = input;
+    const existing = this.findProvider(input.id);
+    const sameHost = existing !== undefined && hostOf(existing.baseURL) !== null && hostOf(existing.baseURL) === hostOf(input.baseURL);
+    const saved = sameHost ? this.providerSecretHeaders(input.id) : {};
+    const keep = new Set(secretHeaderNames ?? Object.keys(saved));
+    const secretHeaders = { ...Object.fromEntries(Object.entries(saved).filter(([name]) => keep.has(name))), ...headerValues };
+    const provider: Provider = { ...fields, secret: { kind: "safeStorage" } };
+    provider.headers = resolvedHeaders(headerPlan(provider, secretHeaders), process.env);
+    const key = secretValue?.trim()
+      ? secretValue.trim()
+      : descriptor?.kind === "envRef" && descriptor.envVar
+        ? (process.env[descriptor.envVar] ?? null)
+        : sameHost
+          ? this.providerSecret(input.id)
+          : null;
+    return { provider, key };
+  }
+
+  /** The provider's secret headers, decrypted; one that won't open on this machine is left out. */
+  providerSecretHeaders(id: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const [name, ciphertext] of Object.entries(this.findProvider(id)?.secretHeaders ?? {})) {
+      try {
+        out[name] = this.box.decrypt(ciphertext);
+      } catch {
+        // encrypted on another machine or user account
+      }
+    }
+    return out;
+  }
+
   /** The provider's own env map plus its resolved key under the variable its protocol expects. */
   providerEnv(id: string): Record<string, string> {
     const provider = this.findProvider(id);
@@ -365,5 +418,14 @@ export class SettingsStore {
     if (choice.kind === "byok" && !this.findProvider(choice.providerId)) throw new Error(`unknown provider ${choice.providerId}`);
     (this.data.credentials ??= {})[agentId] = choice;
     this.write();
+  }
+}
+
+/** A URL's host, or null when it doesn't parse. */
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).host;
+  } catch {
+    return null;
   }
 }
