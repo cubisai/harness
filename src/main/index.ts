@@ -538,8 +538,13 @@ async function main(): Promise<void> {
   setImmediate(() => migrateMcpSecrets(mcpStore, mcpScopes, join(userData, "projects")));
   // The enabled servers' tool schemas, for the Context sheet; listed on demand.
   const mcpTools = new McpToolsCache();
+  /** A server announced new tools: drop its listing, and the window asks again (debounced there). */
+  const mcpToolsChanged = (spec: McpServerSpec | null) => {
+    if (spec) mcpTools.invalidate(spec);
+    broadcast({ type: "mcp-status" });
+  };
   // One connection per routed MCP server, kept warm between calls and closed on quit.
-  const mcpPool = new McpClientPool();
+  const mcpPool = new McpClientPool({ onToolsChanged: mcpToolsChanged });
   /** "global" or "project:<id>": the scope part of a server's vault key and gateway path. */
   const mcpScope = (projectId: string | null | undefined) => (projectId ? `project:${projectId}` : "global");
   // Sign-in for URL servers (OAuth). Tokens live in the vault and never leave main.
@@ -553,6 +558,11 @@ async function main(): Promise<void> {
     },
     auth: mcpAuth,
     onState: () => broadcast({ type: "mcp-status" }),
+    onToolsChanged: (key) => {
+      // The key is "<scope>:<name>", and a project scope has a colon of its own.
+      const at = key.indexOf(":", key.startsWith("project:") ? "project:".length : 0);
+      mcpToolsChanged(gatewaySpec(key.slice(0, at), key.slice(at + 1)));
+    },
   });
   let toolServerUp: ToolServer | null = null;
   /** The spec agents (and main's own listing) get for a URL server: its gateway route; null until the tool server listens. */
@@ -734,7 +744,15 @@ async function main(): Promise<void> {
     return mcpOverview(projectId ?? null);
   });
   ipcMain.handle("mcp:remove", async (_e, name: string, projectId?: string | null) => {
-    (projectId ? mcpScopes.project(projectId) : mcpStore).remove(name);
+    const store = projectId ? mcpScopes.project(projectId) : mcpStore;
+    const entry = store.list().find((s) => s.name === name);
+    const key = `${mcpScope(projectId)}:${name}`;
+    // Revoke the sign-in at the server (best effort) before the store drops its tokens from the vault.
+    if (entry && isRemote(entry.spec) && mcpAuth.hasTokens(key)) {
+      const spec = resolveSpec(entry.spec);
+      if (isRemote(spec)) await mcpAuth.disconnect(key, spec).catch(() => {});
+    }
+    store.remove(name);
     await mcpChanged(mcpScope(projectId), name);
     return mcpOverview(projectId ?? null);
   });

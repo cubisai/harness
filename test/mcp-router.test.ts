@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -10,6 +11,20 @@ import { tempDir } from "./helpers";
 const MANY = join(__dirname, "fixtures", "mock-mcp-many.mjs");
 const PIDFILE = join(__dirname, "fixtures", "mock-mcp-pidfile.mjs");
 const HANG = join(__dirname, "fixtures", "mock-mcp-hang.mjs");
+const SSE = join(__dirname, "fixtures", "mock-mcp-sse.mjs");
+
+/** Start the SSE fixture; resolves with its /sse URL and a stop function. */
+async function sseFixture(): Promise<{ url: string; stop: () => void }> {
+  const child = spawn(process.execPath, [SSE], { stdio: ["ignore", "pipe", "inherit"] });
+  const port = await new Promise<string>((resolve, reject) => {
+    child.stdout!.on("data", (d: Buffer) => {
+      const m = /PORT (\d+)/.exec(d.toString());
+      if (m) resolve(m[1]!);
+    });
+    child.on("exit", () => reject(new Error("SSE fixture exited")));
+  });
+  return { url: `http://127.0.0.1:${port}/sse`, stop: () => child.kill() };
+}
 
 interface MockTool {
   name: string;
@@ -107,6 +122,23 @@ describe("McpClientPool", () => {
     expect(r.isError).toBe(false);
     expect(r.text).toContain(`SENTINEL-mock-database-${target.name}`);
     await pool.closeAll();
+  }, 20_000);
+
+  it("reports a server's tools/list_changed through onToolsChanged", async () => {
+    const fixture = await sseFixture();
+    const changed: McpServerSpec[] = [];
+    const pool = new McpClientPool({ onToolsChanged: (spec) => void changed.push(spec) });
+    const spec: McpServerSpec = { type: "sse", url: fixture.url };
+    try {
+      const r = await pool.callTool(spec, "add_tool", {});
+      expect(r.text).toBe("Added added_1.");
+      for (let i = 0; i < 100 && !changed.length; i++) await new Promise((res) => setTimeout(res, 20));
+      expect(changed).toEqual([spec]);
+      expect((await pool.callTool(spec, "added_1", {})).text).toBe("added_1 works");
+    } finally {
+      await pool.closeAll();
+      fixture.stop();
+    }
   }, 20_000);
 
   it("shares one connection between concurrent calls", async () => {

@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, Copy } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { commandWarnings, parseMcpInput } from "../../../shared/mcp-add";
 import type { ExternalMcpServer, McpDraft, McpOverview, McpProbeResult, McpServerSpec, McpServerStatus, McpServerView } from "../../../shared/types";
 import { api } from "../api";
@@ -175,6 +175,8 @@ export function McpPanel({ prefill, compact }: { prefill?: string; compact?: boo
   const [open, setOpen] = useState<Set<string>>(new Set());
   const scopeRef = useRef(projectId);
   scopeRef.current = projectId;
+  /** Whatever was focused when a review opened; focus goes back there on cancel or save. */
+  const openerRef = useRef<HTMLElement | null>(null);
 
   const loadStatus = useCallback((refresh = false) => {
     const pid = scopeRef.current;
@@ -229,9 +231,22 @@ export function McpPanel({ prefill, compact }: { prefill?: string; compact?: boo
     return () => clearTimeout(timer);
   }, [probeUrl, probeHeaders]);
 
-  const startReview = (drafts: McpDraft[]) => {
+  /** Open a review and remember what was focused, so focus can return to it. */
+  const openReview = (next: Review | null) => {
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setFormError(null);
-    setReview(drafts[0] ? reviewOf(drafts[0]) : null);
+    setReview(next);
+  };
+
+  /** Put focus back on the control that opened the review, when it is still in the document. */
+  const restoreOpener = () => {
+    const el = openerRef.current;
+    if (el?.isConnected) el.focus();
+    openerRef.current = null;
+  };
+
+  const startReview = (drafts: McpDraft[]) => {
+    openReview(drafts[0] ? reviewOf(drafts[0]) : null);
     setQueue(drafts.slice(1));
   };
 
@@ -255,6 +270,14 @@ export function McpPanel({ prefill, compact }: { prefill?: string; compact?: boo
     setReview(next ? reviewOf(next) : null);
     setQueue(rest);
     setFormError(null);
+  };
+
+  /** Close the review the user backed out of, and hand focus back to whatever opened it. */
+  const cancelReview = () => {
+    setReview(null);
+    setQueue([]);
+    setFormError(null);
+    restoreOpener();
   };
 
   const connect = async (name: string) => {
@@ -286,8 +309,10 @@ export function McpPanel({ prefill, compact }: { prefill?: string; compact?: boo
       setData(await api().saveMcpServer({ name, spec, enabled: true }, review.previous ?? undefined, projectId));
       if (review.clientSecret) setData(await api().setMcpClientSecret(name, review.clientSecret, projectId));
       const signIn = review.previous === null && typeof review.probe === "object" && review.probe?.auth === "oauth" && !hasAuthHeader(review);
+      const hasNext = queue.length > 0;
       closeReview();
       setInput("");
+      if (!hasNext) restoreOpener();
       if (signIn) await connect(name);
       else loadStatus(true);
     } catch (err) {
@@ -323,11 +348,11 @@ export function McpPanel({ prefill, compact }: { prefill?: string; compact?: boo
   return (
     <div className={`mcp-panel${compact ? " compact" : ""}`}>
       <div className="mcp-bar">
-        <div className="segmented compact">
-          <button className={scope === "all" ? "on" : ""} onClick={() => setScope("all")}>
+        <div className="segmented compact" role="group" aria-label="Scope">
+          <button type="button" className={scope === "all" ? "on" : ""} aria-pressed={scope === "all"} onClick={() => setScope("all")}>
             All projects
           </button>
-          <button className={inProject ? "on" : ""} disabled={!selectedProjectId} title={selectedProjectId ? undefined : "Pick a project first"} onClick={() => setScope("project")}>
+          <button type="button" className={inProject ? "on" : ""} aria-pressed={inProject} disabled={!selectedProjectId} title={selectedProjectId ? undefined : "Pick a project first"} onClick={() => setScope("project")}>
             This project
           </button>
         </div>
@@ -352,7 +377,7 @@ export function McpPanel({ prefill, compact }: { prefill?: string; compact?: boo
           Add
         </button>
       </form>
-      {inputError && <p className="mcp-error">{inputError}</p>}
+      {inputError && <p className="mcp-error" role="alert">{inputError}</p>}
 
       {review && (
         <ReviewForm
@@ -362,7 +387,7 @@ export function McpPanel({ prefill, compact }: { prefill?: string; compact?: boo
           error={formError}
           saving={saving}
           onSave={() => void save()}
-          onCancel={() => (setReview(null), setQueue([]), setFormError(null))}
+          onCancel={cancelReview}
         />
       )}
 
@@ -390,7 +415,7 @@ export function McpPanel({ prefill, compact }: { prefill?: string; compact?: boo
               onEnable={(on) => void rowAction(s.name, on ? "Turning on…" : "Turning off…", () => api().setMcpServerEnabled(s.name, on, projectId))}
               onConnect={() => void connect(s.name)}
               onSignOut={() => void rowAction(s.name, "Signing out…", () => api().disconnectMcp(s.name, projectId))}
-              onEdit={() => (setFormError(null), setQueue([]), setReview(editOf(s)))}
+              onEdit={() => (setQueue([]), openReview(editOf(s)))}
               onRemove={() => void rowAction(s.name, "Removing…", () => api().removeMcpServer(s.name, projectId))}
             />
           ))
@@ -412,7 +437,7 @@ export function McpPanel({ prefill, compact }: { prefill?: string; compact?: boo
                   <code className="mcp-target">{s.target}</code>
                 </div>
                 <label className="mcp-check">
-                  <input type="checkbox" checked={!off} onChange={(e) => void api().setGlobalMcpOff(selectedProjectId!, s.name, !e.target.checked).then(setData)} />
+                  <input type="checkbox" aria-label={`Use ${s.name} here`} checked={!off} onChange={(e) => void api().setGlobalMcpOff(selectedProjectId!, s.name, !e.target.checked).then(setData)} />
                   Use here
                 </label>
               </div>
@@ -430,6 +455,7 @@ export function McpPanel({ prefill, compact }: { prefill?: string; compact?: boo
               return (
                 <button
                   key={f.url}
+                  type="button"
                   className="mcp-featured-card"
                   disabled={isAdded}
                   onClick={() => {
@@ -467,10 +493,10 @@ export function McpPanel({ prefill, compact }: { prefill?: string; compact?: boo
                     </span>
                   </div>
                   {s.target && <code className="mcp-target">{s.target}</code>}
-                  {rowError[key] && <p className="mcp-error">{rowError[key]}</p>}
+                  {rowError[key] && <p className="mcp-error" role="alert">{rowError[key]}</p>}
                 </div>
                 {s.importable && (
-                  <button className="button ghost" disabled={Boolean(busy[key])} onClick={() => void importExternal(s)}>
+                  <button type="button" className="button ghost" disabled={Boolean(busy[key])} aria-label={`Import ${s.name}`} onClick={() => void importExternal(s)}>
                     {busy[key] || "Import"}
                   </button>
                 )}
@@ -539,6 +565,7 @@ function ServerRow({
   const keyed = view.headerKeys.some((k) => k.toLowerCase() === "authorization");
   const canSignIn = remote && (Boolean(view.oauth) || Boolean(auth) || (state === "needs-auth" && !keyed));
   const tools = status?.tools ?? [];
+  const toolsId = useId();
   const stateText =
     state === "connected"
       ? `${tools.length} tool${tools.length === 1 ? "" : "s"}`
@@ -551,6 +578,9 @@ function ServerRow({
           : state === "disabled"
             ? "Off"
             : "Checking…";
+  // The status dot is aria-hidden, so name its state in text when the visible label doesn't already.
+  const stateWord = state === "connected" ? "Connected" : state === "needs-auth" ? "Needs sign-in" : state === "failed" ? "Failed" : state === "disabled" ? "Off" : "Checking";
+  const announcedState = stateText.toLowerCase().includes(stateWord.toLowerCase().split(" ")[0]!) ? null : stateWord;
   return (
     <div className={`mcp-server${view.enabled ? "" : " off"}`}>
       <label className="switch" title={view.enabled ? "On" : "Off"}>
@@ -560,15 +590,16 @@ function ServerRow({
       <div className="mcp-server-main">
         <div className="mcp-server-name">
           <span className={`mcp-dot ${state}`} aria-hidden />
+          {announcedState && <span className="sr-only">{announcedState}</span>}
           <span className="mcp-name-text">{view.name}</span>
           <span className="tag">{typeLabel(view.type)}</span>
           {state === "connected" && tools.length > 0 ? (
-            <button className="mcp-state link" aria-expanded={open} onClick={onToggleTools}>
+            <button type="button" className="mcp-state link" aria-expanded={open} aria-controls={toolsId} onClick={onToggleTools}>
               {open ? <ChevronDown size={12} aria-hidden /> : <ChevronRight size={12} aria-hidden />}
               {stateText}
             </button>
           ) : (
-            <span className={`mcp-state ${state}`}>{stateText}</span>
+            <span className={`mcp-state ${state}`} aria-live="polite">{stateText}</span>
           )}
         </div>
         <code className="mcp-target" title={view.target}>
@@ -581,12 +612,12 @@ function ServerRow({
             {auth.needsScopes ? ` · wants ${auth.needsScopes}` : ""}
           </div>
         )}
-        {view.locked && <p className="mcp-error">Its saved secrets can&apos;t be opened on this computer. Edit it and enter them again.</p>}
-        {state !== "connected" && state !== "disabled" && status?.error && <p className="mcp-error">{status.error}</p>}
-        {error && <p className="mcp-error">{error}</p>}
+        {view.locked && <p className="mcp-error" role="alert">Its saved secrets can&apos;t be opened on this computer. Edit it and enter them again.</p>}
+        {state !== "connected" && state !== "disabled" && status?.error && <p className="mcp-error" role="alert">{status.error}</p>}
+        {error && <p className="mcp-error" role="alert">{error}</p>}
         {busy && <div className="mcp-meta">{busy}</div>}
         {open && state === "connected" && (
-          <ul className="mcp-tool-list">
+          <ul className="mcp-tool-list" id={toolsId}>
             {tools.map((t) => (
               <li key={t.name}>
                 <code>{t.name}</code>
@@ -598,19 +629,19 @@ function ServerRow({
       </div>
       <div className="mcp-actions">
         {canSignIn && view.enabled && (state === "needs-auth" || !auth?.signedIn) && (
-          <button className="button primary" disabled={Boolean(busy)} onClick={onConnect}>
+          <button type="button" className="button primary" disabled={Boolean(busy)} aria-label={`${auth?.signedIn || auth?.needsScopes ? "Reconnect" : "Connect"} ${view.name}`} onClick={onConnect}>
             {auth?.signedIn || auth?.needsScopes ? "Reconnect" : "Connect"}
           </button>
         )}
         {auth?.signedIn && (
-          <button className="button ghost" disabled={Boolean(busy)} onClick={onSignOut}>
+          <button type="button" className="button ghost" disabled={Boolean(busy)} aria-label={`Sign out ${view.name}`} onClick={onSignOut}>
             Sign out
           </button>
         )}
-        <button className="button ghost" disabled={Boolean(busy)} onClick={onEdit}>
+        <button type="button" className="button ghost" disabled={Boolean(busy)} aria-label={`Edit ${view.name}`} onClick={onEdit}>
           Edit
         </button>
-        <button className="button ghost danger" disabled={Boolean(busy)} onClick={onRemove}>
+        <button type="button" className="button ghost danger" disabled={Boolean(busy)} aria-label={`Remove ${view.name}`} onClick={onRemove}>
           Remove
         </button>
       </div>
@@ -637,6 +668,13 @@ function ReviewForm({
 }) {
   const set = (patch: Partial<Review>) => setReview((x) => (x ? { ...x, ...patch } : x));
   const setPair = (i: number, patch: Partial<Pair>) => set({ pairs: r.pairs.map((p, j) => (j === i ? { ...p, ...patch } : p)) });
+  const nameRef = useRef<HTMLInputElement>(null);
+  const advancedId = useId();
+  const trustId = useId();
+  // The form opens above the row that asked for it; put focus on the first field so the keyboard follows.
+  useEffect(() => {
+    nameRef.current?.focus();
+  }, []);
   const isCommand = r.type === "stdio";
   // A new command, or one whose command line changed, runs only after the user says so.
   const needsConsent = isCommand && r.line.trim() !== (r.approvedLine ?? "").trim();
@@ -654,7 +692,8 @@ function ReviewForm({
 
   return (
     <form
-      className="mcp-review"
+      // "editing": the Library's own Escape (close the sheet) leaves this form's Escape alone.
+      className="mcp-review editing"
       aria-label={r.previous ? `Edit ${r.previous}` : "Add a server"}
       onSubmit={(e) => {
         e.preventDefault();
@@ -662,6 +701,8 @@ function ReviewForm({
       }}
       onKeyDown={(e) => {
         if (e.key === "Escape") {
+          // Handled here: the /mcp sheet checks defaultPrevented before closing.
+          e.preventDefault();
           e.stopPropagation();
           onCancel();
         }
@@ -674,7 +715,7 @@ function ReviewForm({
 
       <div className="mcp-field">
         <span className="mcp-label">Name</span>
-        <input className="text-input" value={r.name} spellCheck={false} onChange={(e) => set({ name: e.target.value })} />
+        <input ref={nameRef} className="text-input" value={r.name} spellCheck={false} onChange={(e) => set({ name: e.target.value })} />
       </div>
 
       {isCommand ? (
@@ -690,7 +731,7 @@ function ReviewForm({
           </div>
           <div className="mcp-field">
             <span className="mcp-label" />
-            <span className={`mcp-probe${probe && !probe.ok ? " bad" : ""}`}>
+            <span className={`mcp-probe${probe && !probe.ok ? " bad" : ""}`} aria-live="polite">
               {r.probe === "running"
                 ? "Checking the server…"
                 : !probe
@@ -736,12 +777,12 @@ function ReviewForm({
 
       {!isCommand && (
         <div className="mcp-advanced">
-          <button type="button" className="mcp-disclosure" aria-expanded={r.advanced} onClick={() => set({ advanced: !r.advanced })}>
+          <button type="button" className="mcp-disclosure" aria-expanded={r.advanced} aria-controls={advancedId} onClick={() => set({ advanced: !r.advanced })}>
             {r.advanced ? <ChevronDown size={12} aria-hidden /> : <ChevronRight size={12} aria-hidden />}
             Sign-in settings
           </button>
           {r.advanced && (
-            <>
+            <div className="mcp-advanced-body" id={advancedId}>
               <p className="mcp-note">Leave empty to register automatically. Use your own OAuth client when the server doesn&apos;t allow that; register this callback URL with it.</p>
               <div className="mcp-field">
                 <span className="mcp-label">Callback URL</span>
@@ -775,7 +816,7 @@ function ReviewForm({
                 <span className="mcp-label">Callback port</span>
                 <input className="text-input mono mcp-port" inputMode="numeric" value={r.callbackPort} placeholder={String(DEFAULT_CALLBACK_PORT)} onChange={(e) => set({ callbackPort: e.target.value.replace(/\D/g, "") })} />
               </div>
-            </>
+            </div>
           )}
         </div>
       )}
@@ -795,13 +836,13 @@ function ReviewForm({
               ))}
             </ul>
           )}
-          <label className="mcp-check">
-            <input type="checkbox" checked={r.trusted} onChange={(e) => set({ trusted: e.target.checked })} />I trust this command
+          <label className="mcp-check" htmlFor={trustId}>
+            <input id={trustId} type="checkbox" checked={r.trusted} onChange={(e) => set({ trusted: e.target.checked })} />I trust this command
           </label>
         </div>
       )}
 
-      {error && <p className="mcp-error">{error}</p>}
+      {error && <p className="mcp-error" role="alert">{error}</p>}
       <div className="mcp-review-actions">
         <button type="button" className="button ghost" onClick={onCancel}>
           Cancel

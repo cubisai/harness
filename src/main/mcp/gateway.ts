@@ -4,9 +4,10 @@
 // vault, an OAuth access token refreshed here), so tokens never reach an
 // agent's config, env, argv or logs, and a refresh never reopens a session.
 // Streamable HTTP upstreams get a byte-level reverse proxy; legacy SSE
-// upstreams get an MCP-level bridge (an SDK client behind a stateless server),
+// upstreams get an MCP-level bridge (an SDK client behind a session per agent),
 // which also turns them into Streamable HTTP for agents that can't speak SSE.
 
+import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -27,8 +28,10 @@ import {
   ListToolsResultSchema,
   ReadResourceRequestSchema,
   ReadResourceResultSchema,
+  ToolListChangedNotificationSchema,
   type ServerCapabilities,
 } from "@modelcontextprotocol/sdk/types.js";
+import type { z } from "zod";
 import type { McpServerSpec } from "../../shared/types";
 import type { McpAuth } from "./oauth";
 import { clientTransport } from "./transport";
@@ -43,6 +46,10 @@ const MAX_BODY = 16 * 1024 * 1024;
 const BRIDGE_CONNECT_MS = 15_000;
 /** How long a bridged call may run; agents keep their own, shorter limits. */
 const BRIDGE_CALL_MS = 10 * 60_000;
+/** Agent sessions kept per bridged server; agents rarely end theirs, so the oldest go past this. */
+const MAX_SESSIONS = 32;
+/** The notification a server sends when its tools change; spotted in streams the proxy passes through. */
+const LIST_CHANGED = "notifications/tools/list_changed";
 
 /** The request headers an MCP client sends that the upstream needs; everything else (the gateway's Bearer, cookies…) stays here. */
 const FORWARD_REQUEST = ["content-type", "accept", "mcp-session-id", "mcp-protocol-version", "last-event-id"];
@@ -80,7 +87,15 @@ export interface McpGatewayDeps {
   auth: Pick<McpAuth, "accessToken" | "refresh" | "noteStepUp" | "hasTokens">;
   /** A server's state changed (signed out, refused, back up). */
   onState?(key: string, state: GatewayState): void;
+  /** The server said its tool list changed, so cached listings are stale. */
+  onToolsChanged?(key: string): void;
   fetchFn?: FetchLike;
+}
+
+interface BridgeSession {
+  key: string;
+  server: Server;
+  transport: StreamableHTTPServerTransport;
 }
 
 interface Bridge {
@@ -92,6 +107,8 @@ interface Bridge {
 export class McpGateway {
   private states = new Map<string, GatewayState>();
   private bridges = new Map<string, Bridge>();
+  /** Agent sessions on SSE bridges, by mcp-session-id. */
+  private sessions = new Map<string, BridgeSession>();
 
   constructor(private deps: McpGatewayDeps) {}
 
@@ -106,12 +123,14 @@ export class McpGateway {
     const bridge = this.bridges.get(key);
     this.bridges.delete(key);
     await bridge?.client.close().catch(() => {});
+    await this.closeSessions(key);
   }
 
   async closeAll(): Promise<void> {
     const all = [...this.bridges.values()];
     this.bridges.clear();
     await Promise.all(all.map((b) => b.client.close().catch(() => {})));
+    await this.closeSessions();
   }
 
   private setState(key: string, next: GatewayState): void {
@@ -230,6 +249,16 @@ export class McpGateway {
     }
     const stream = Readable.fromWeb(upstream.body as import("node:stream/web").ReadableStream);
     stream.on("error", () => res.destroy());
+    const onToolsChanged = this.deps.onToolsChanged;
+    if (onToolsChanged && /text\/event-stream/i.test(upstream.headers.get("content-type") ?? "")) {
+      // Watch the stream for list_changed; the tail is one byte short of a match, so a split one is seen once.
+      let tail = "";
+      stream.on("data", (chunk: Buffer) => {
+        const text = tail + chunk.toString("utf8");
+        if (text.includes(LIST_CHANGED)) onToolsChanged(key);
+        tail = text.slice(-(LIST_CHANGED.length - 1));
+      });
+    }
     stream.pipe(res);
   }
 
@@ -242,6 +271,7 @@ export class McpGateway {
     }
     if (!bridge) {
       const client = new Client({ name: "cubiq", version: "1.0.0" });
+      client.setNotificationHandler(ToolListChangedNotificationSchema, () => this.toolsChanged(key));
       const transport = clientTransport(spec, this.authedFetch(key, spec));
       let timer: ReturnType<typeof setTimeout> | undefined;
       const timeout = new Promise<never>((_, reject) => {
@@ -265,58 +295,113 @@ export class McpGateway {
     return bridge.client;
   }
 
-  /** SSE: answer as a stateless Streamable HTTP server whose tools, prompts and resources are the upstream's. */
+  /**
+   * SSE: answer as a Streamable HTTP server whose tools, prompts and resources
+   * are the upstream's. Each agent gets a session of its own (so it can hold a
+   * GET stream), and the upstream's tools/list_changed reaches every one.
+   */
   private async bridge(req: IncomingMessage, res: ServerResponse, key: string, spec: RemoteSpec): Promise<void> {
-    if (req.method !== "POST") {
-      // Stateless: there's no server-initiated stream to offer.
-      res.writeHead(405, { Allow: "POST" }).end();
+    const method = req.method ?? "GET";
+    if (method !== "POST" && method !== "GET" && method !== "DELETE") {
+      res.writeHead(405, { Allow: "POST, GET, DELETE" }).end();
       return;
     }
-    const raw = await readBody(req);
-    if (raw === null) {
-      res.writeHead(413).end();
+    const id = req.headers["mcp-session-id"];
+    if (typeof id === "string") {
+      const session = this.sessions.get(id);
+      if (!session || session.key !== key) {
+        // Unknown (the app restarted, or the server was reset): the agent initializes again.
+        res.writeHead(404).end();
+        return;
+      }
+      await session.transport.handleRequest(req, res, method === "POST" ? await this.jsonBody(req, res) : undefined);
       return;
     }
-    let body: unknown;
-    try {
-      body = JSON.parse(raw.toString("utf8"));
-    } catch {
+    if (method !== "POST") {
       res.writeHead(400).end();
       return;
     }
+    const body = await this.jsonBody(req, res);
+    if (body === undefined) return;
+    // Connect upstream first, so a refusal shows as a failed request rather than a session that can't work.
     const client = await this.sseClient(key, spec);
     const upstream = client.getServerCapabilities() ?? {};
     const capabilities: ServerCapabilities = {
-      ...(upstream.tools && { tools: {} }),
+      ...(upstream.tools && { tools: { listChanged: true } }),
       ...(upstream.prompts && { prompts: {} }),
       ...(upstream.resources && { resources: {} }),
     };
     const info = client.getServerVersion();
     const instructions = client.getInstructions();
     const server = new Server({ name: info?.name ?? "upstream", version: info?.version ?? "1.0.0" }, { capabilities, ...(instructions && { instructions }) });
-    const gone = new AbortController();
-    res.on("close", () => gone.abort());
-    const opts = { signal: gone.signal, timeout: BRIDGE_CALL_MS };
+    // Each call asks for the shared client again: it reconnects after a dropped stream.
+    const forward =
+      <T extends z.ZodTypeAny>(name: string, schema: T) =>
+      async (r: { params?: unknown }, extra: { signal: AbortSignal }) =>
+        (await this.sseClient(key, spec)).request({ method: name, params: r.params as Record<string, unknown> }, schema, { signal: extra.signal, timeout: BRIDGE_CALL_MS });
     if (capabilities.tools) {
-      server.setRequestHandler(ListToolsRequestSchema, (r) => client.request({ method: "tools/list", params: r.params }, ListToolsResultSchema, opts));
-      server.setRequestHandler(CallToolRequestSchema, (r) => client.request({ method: "tools/call", params: r.params }, CallToolResultSchema, opts));
+      server.setRequestHandler(ListToolsRequestSchema, forward("tools/list", ListToolsResultSchema));
+      server.setRequestHandler(CallToolRequestSchema, forward("tools/call", CallToolResultSchema));
     }
     if (capabilities.prompts) {
-      server.setRequestHandler(ListPromptsRequestSchema, (r) => client.request({ method: "prompts/list", params: r.params }, ListPromptsResultSchema, opts));
-      server.setRequestHandler(GetPromptRequestSchema, (r) => client.request({ method: "prompts/get", params: r.params }, GetPromptResultSchema, opts));
+      server.setRequestHandler(ListPromptsRequestSchema, forward("prompts/list", ListPromptsResultSchema));
+      server.setRequestHandler(GetPromptRequestSchema, forward("prompts/get", GetPromptResultSchema));
     }
     if (capabilities.resources) {
-      server.setRequestHandler(ListResourcesRequestSchema, (r) => client.request({ method: "resources/list", params: r.params }, ListResourcesResultSchema, opts));
-      server.setRequestHandler(ListResourceTemplatesRequestSchema, (r) => client.request({ method: "resources/templates/list", params: r.params }, ListResourceTemplatesResultSchema, opts));
-      server.setRequestHandler(ReadResourceRequestSchema, (r) => client.request({ method: "resources/read", params: r.params }, ReadResourceResultSchema, opts));
+      server.setRequestHandler(ListResourcesRequestSchema, forward("resources/list", ListResourcesResultSchema));
+      server.setRequestHandler(ListResourceTemplatesRequestSchema, forward("resources/templates/list", ListResourceTemplatesResultSchema));
+      server.setRequestHandler(ReadResourceRequestSchema, forward("resources/read", ReadResourceResultSchema));
     }
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
-    res.on("close", () => {
-      void transport.close();
-      void server.close();
+    const transport: StreamableHTTPServerTransport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      enableJsonResponse: true,
+      onsessioninitialized: (sid) => {
+        this.sessions.set(sid, { key, server, transport });
+        this.trimSessions(key);
+      },
     });
+    transport.onclose = () => {
+      if (transport.sessionId) this.sessions.delete(transport.sessionId);
+    };
     await server.connect(transport);
     await transport.handleRequest(req, res, body);
+  }
+
+  /** Keep at most MAX_SESSIONS per server; agents that never said goodbye go first. */
+  private trimSessions(key: string): void {
+    const own = [...this.sessions.entries()].filter(([, s]) => s.key === key);
+    for (const [sid, s] of own.slice(0, Math.max(0, own.length - MAX_SESSIONS))) {
+      this.sessions.delete(sid);
+      void s.server.close().catch(() => {});
+    }
+  }
+
+  /** Close every agent session on this server (all of them without a key). */
+  private async closeSessions(key?: string): Promise<void> {
+    const gone = [...this.sessions.entries()].filter(([, s]) => key === undefined || s.key === key);
+    for (const [sid] of gone) this.sessions.delete(sid);
+    await Promise.all(gone.map(([, s]) => s.server.close().catch(() => {})));
+  }
+
+  /** The upstream's tools changed: tell the app, and every agent session on this server. */
+  private toolsChanged(key: string): void {
+    this.deps.onToolsChanged?.(key);
+    for (const s of this.sessions.values()) if (s.key === key) void s.server.sendToolListChanged().catch(() => {});
+  }
+
+  /** A POST body as JSON; answers 413/400 itself and returns undefined when it can't be read. */
+  private async jsonBody(req: IncomingMessage, res: ServerResponse): Promise<unknown> {
+    const raw = await readBody(req);
+    if (raw === null) {
+      res.writeHead(413).end();
+      return undefined;
+    }
+    try {
+      return JSON.parse(raw.toString("utf8"));
+    } catch {
+      res.writeHead(400).end();
+      return undefined;
+    }
   }
 }
 

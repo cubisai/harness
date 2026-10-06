@@ -6,6 +6,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { startToolServer, type ToolServer } from "../src/main/mcp-http";
@@ -50,6 +51,7 @@ interface Seen {
  */
 async function httpUpstream(opts: { bearer?: () => string; challenge?: string; refuse?: (res: ServerResponse) => boolean } = {}) {
   const seen: Seen = { auth: [], sessions: [], methods: [], agentBearer: false };
+  const servers: McpServer[] = [];
   const sessions = new Map<string, StreamableHTTPServerTransport>();
   const { base } = await listen(async (req, res) => {
     seen.auth.push(req.headers.authorization);
@@ -64,23 +66,28 @@ async function httpUpstream(opts: { bearer?: () => string; challenge?: string; r
     let transport = id ? sessions.get(id) : undefined;
     if (!transport) {
       transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID(), onsessioninitialized: (sid) => void sessions.set(sid, transport!) });
-      await upstreamServer().connect(transport);
+      const server = upstreamServer();
+      servers.push(server);
+      await server.connect(transport);
     }
     await transport.handleRequest(req, res);
   });
-  return { url: `${base}/mcp`, seen };
+  return { url: `${base}/mcp`, seen, servers };
 }
 
 /** A legacy SSE upstream: GET /sse opens the stream, POST /messages carries requests. It wants `x-key: k1`. */
 async function sseUpstream() {
   const transports = new Map<string, SSEServerTransport>();
+  const servers: McpServer[] = [];
   const { base } = await listen(async (req, res) => {
     if (req.headers["x-key"] !== "k1") return void res.writeHead(401).end();
     const url = new URL(req.url ?? "/", "http://x");
     if (req.method === "GET" && url.pathname === "/sse") {
       const transport = new SSEServerTransport("/messages", res);
       transports.set(transport.sessionId, transport);
-      await upstreamServer().connect(transport);
+      const server = upstreamServer();
+      servers.push(server);
+      await server.connect(transport);
       return;
     }
     if (req.method === "POST" && url.pathname === "/messages") {
@@ -91,7 +98,7 @@ async function sseUpstream() {
     }
     res.writeHead(404).end();
   });
-  return { url: `${base}/sse` };
+  return { url: `${base}/sse`, servers };
 }
 
 interface FakeAuth {
@@ -120,15 +127,17 @@ function fakeAuth(token: string | null, refreshed: string | null = null): FakeAu
 /** The app's tool server with the gateway on /mcp-up, serving one remote server as global:remote. */
 async function gateway(spec: RemoteSpec, auth = fakeAuth(null)) {
   const states: GatewayState[] = [];
+  const changed: string[] = [];
   const gw = new McpGateway({
     target: (scope, name) => (scope === "global" && name === "remote" ? { key: "global:remote", spec } : null),
     auth: auth.api,
     onState: (_k, s) => void states.push(s),
+    onToolsChanged: (k) => void changed.push(k),
   });
   const server: ToolServer = await startToolServer(() => [], undefined, undefined, undefined, undefined, (req, res, scope, name) => gw.handle(req, res, scope, name));
   closers.push(() => server.close(), () => gw.closeAll());
   const url = new URL(gatewayPath("global", "remote"), server.url).toString();
-  return { gw, server, url, states, auth };
+  return { gw, server, url, states, auth, changed };
 }
 
 async function connect(url: string, token: string): Promise<Client> {
@@ -234,7 +243,61 @@ describe("gateway, Streamable HTTP upstream", () => {
   });
 });
 
+/** Wait until `check` holds, polling every 20 ms for up to 3 s. */
+async function until(check: () => boolean): Promise<void> {
+  for (let i = 0; i < 150 && !check(); i++) await new Promise((r) => setTimeout(r, 20));
+  expect(check()).toBe(true);
+}
+
+/** A tool registered on a connected McpServer makes it send notifications/tools/list_changed. */
+function addTool(server: McpServer): void {
+  server.registerTool("added", { description: "Added later" }, async () => ({ content: [{ type: "text", text: "new" }] }));
+}
+
+describe("gateway, tools/list_changed", () => {
+  it("spots list_changed in a proxied stream and still delivers it to the agent", async () => {
+    const up = await httpUpstream();
+    const g = await gateway({ type: "http", url: up.url, headers: { "x-key": "k1" } });
+    const client = await connect(g.url, g.server.token);
+    let agentSaw = false;
+    client.setNotificationHandler(ToolListChangedNotificationSchema, () => void (agentSaw = true));
+    // The client opens its GET stream after initialize; give it a moment, then change the tools.
+    await until(() => up.seen.methods.includes("GET"));
+    addTool(up.servers[0]!);
+    await until(() => g.changed.length > 0 && agentSaw);
+    expect(g.changed[0]).toBe("global:remote");
+  });
+
+  it("hears list_changed from an SSE upstream behind the bridge and passes it to every agent session", async () => {
+    const up = await sseUpstream();
+    const g = await gateway({ type: "sse", url: up.url, headers: { "x-key": "k1" } });
+    const client = await connect(g.url, g.server.token);
+    const other = await connect(g.url, g.server.token);
+    const told = { client: false, other: false };
+    client.setNotificationHandler(ToolListChangedNotificationSchema, () => void (told.client = true));
+    other.setNotificationHandler(ToolListChangedNotificationSchema, () => void (told.other = true));
+    expect((await client.listTools()).tools.map((t) => t.name)).toEqual(["echo"]);
+    // Both agents share one upstream connection; give their GET streams a moment to open.
+    await new Promise((r) => setTimeout(r, 100));
+    expect(up.servers).toHaveLength(1);
+    addTool(up.servers[0]!);
+    await until(() => g.changed.includes("global:remote") && told.client && told.other);
+    expect((await client.listTools()).tools.map((t) => t.name).sort()).toEqual(["added", "echo"]);
+  });
+});
+
 describe("gateway, SSE upstream", () => {
+  it("refuses an unknown session so the agent initializes again, and forgets sessions on reset", async () => {
+    const up = await sseUpstream();
+    const g = await gateway({ type: "sse", url: up.url, headers: { "x-key": "k1" } });
+    const headers = { Authorization: `Bearer ${g.server.token}`, "content-type": "application/json", accept: "application/json, text/event-stream", "mcp-session-id": "nope" };
+    expect((await fetch(g.url, { method: "POST", headers, body: "{}" })).status).toBe(404);
+    const client = await connect(g.url, g.server.token);
+    expect((await client.listTools()).tools).toHaveLength(1);
+    await g.gw.reset("global:remote");
+    await expect(client.listTools()).rejects.toThrow();
+  });
+
   it("bridges a legacy SSE server to Streamable HTTP, headers included", async () => {
     const up = await sseUpstream();
     const g = await gateway({ type: "sse", url: up.url, headers: { "x-key": "k1" } });

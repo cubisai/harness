@@ -1,5 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { JsonSchemaType } from "@modelcontextprotocol/sdk/validation";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
 import { z } from "zod";
@@ -44,12 +45,15 @@ export class McpClientPool {
   private readonly callTimeoutMs: number;
   private readonly idleMs: number;
   private readonly now: () => number;
+  private readonly onToolsChanged?: (spec: McpServerSpec) => void;
 
-  constructor(opts: { connectTimeoutMs?: number; callTimeoutMs?: number; idleMs?: number; now?: () => number } = {}) {
+  /** `onToolsChanged`: a connected server said its tool list changed (notifications/tools/list_changed). */
+  constructor(opts: { connectTimeoutMs?: number; callTimeoutMs?: number; idleMs?: number; now?: () => number; onToolsChanged?: (spec: McpServerSpec) => void } = {}) {
     this.connectTimeoutMs = opts.connectTimeoutMs ?? 10_000;
     this.callTimeoutMs = opts.callTimeoutMs ?? 60_000;
     this.idleMs = opts.idleMs ?? 600_000;
     this.now = opts.now ?? (() => Date.now());
+    this.onToolsChanged = opts.onToolsChanged;
   }
 
   /** Call one tool on this server, connecting it first if needed; never throws. */
@@ -100,7 +104,9 @@ export class McpClientPool {
 
   private createEntry(spec: McpServerSpec): PoolEntry {
     const transport: Transport = clientTransport(spec);
-    return { client: new Client({ name: "cubiq", version: "1.0.0" }), transport, lastUsed: this.now() };
+    const client = new Client({ name: "cubiq", version: "1.0.0" });
+    client.setNotificationHandler(ToolListChangedNotificationSchema, () => this.onToolsChanged?.(spec));
+    return { client, transport, lastUsed: this.now() };
   }
 
   private async drop(key: string, entry: PoolEntry): Promise<void> {
