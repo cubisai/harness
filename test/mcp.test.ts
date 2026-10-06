@@ -16,7 +16,7 @@ describe("McpServerStore", () => {
     store.save({ name: "docs", enabled: true, spec: { type: "stdio", command: " npx ", args: ["-y", "docs-mcp", ""], env: { TOKEN: "secret", " ": "x" } } });
     expect(JSON.parse(readFileSync(file, "utf-8"))).toEqual({ mcpServers: { docs: { type: "stdio", command: "npx", args: ["-y", "docs-mcp"], env: { TOKEN: "secret" } } } });
     if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
-    expect(viewOf(store.list()[0]!)).toEqual({ name: "docs", enabled: true, type: "stdio", target: "npx -y docs-mcp", envKeys: ["TOKEN"], headerKeys: [] });
+    expect(viewOf(store.list()[0]!)).toEqual({ name: "docs", enabled: true, type: "stdio", target: "npx -y docs-mcp", envKeys: ["TOKEN"], headerKeys: [], args: ["-y", "docs-mcp"] });
   });
 
   it("keeps a stored value when an edit leaves it blank, and renames", () => {

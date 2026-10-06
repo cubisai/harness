@@ -59,8 +59,15 @@ export function describeSpec(spec: McpServerSpec): string {
   return isRemote(spec) ? spec.url : [spec.command, ...(spec.args ?? [])].join(" ");
 }
 
-export function viewOf(entry: McpServerEntry): McpServerView {
+/**
+ * A server as the window may see it. `vault` + `key` (its vault key) add
+ * whether a client secret is stored; values that aren't secret (${VAR}
+ * references) come along for the edit form, secret ones never do.
+ */
+export function viewOf(entry: McpServerEntry, vault?: McpVault, key?: string): McpServerView {
   const { spec } = entry;
+  const map = secretMap(spec) ?? {};
+  const publicValues = Object.fromEntries(Object.entries(map).filter(([, v]) => v !== VAULT_MARK && !isSecretValue(v)));
   return {
     name: entry.name,
     enabled: entry.enabled,
@@ -70,6 +77,9 @@ export function viewOf(entry: McpServerEntry): McpServerView {
     headerKeys: isRemote(spec) ? Object.keys(spec.headers ?? {}) : [],
     ...(entry.locked && { locked: true }),
     ...(isRemote(spec) && spec.oauth && { oauth: spec.oauth }),
+    ...(spec.type === "stdio" && spec.args?.length && { args: spec.args }),
+    ...(Object.keys(publicValues).length && { publicValues }),
+    ...(vault && key && vault.get(key)?.oauth?.clientSecret && { hasClientSecret: true }),
   };
 }
 
@@ -245,8 +255,24 @@ export class McpServerStore {
  */
 export class McpScopes {
   private projects = new Map<string, McpServerStore>();
+  private remote: ((scope: string, name: string) => McpServerSpec | null) | null = null;
 
   constructor(private global: McpServerStore, private dir: (projectId: string) => string, private vault?: McpVault) {}
+
+  /**
+   * Hand every URL server to agents as this spec instead (the gateway's
+   * loopback URL), so their credentials stay in main. null = not ready: the
+   * server is left out rather than given directly.
+   */
+  setRemote(fn: (scope: string, name: string) => McpServerSpec | null): void {
+    this.remote = fn;
+  }
+
+  /** The store a scope names ("global" or "project:<id>"), or null. */
+  store(scope: string): McpServerStore | null {
+    if (scope === "global") return this.global;
+    return scope.startsWith("project:") && scope.length > 8 ? this.project(scope.slice(8)) : null;
+  }
 
   /** This project's own mcp.json, cached per project id. */
   project(projectId: string): McpServerStore {
@@ -260,13 +286,18 @@ export class McpScopes {
 
   /** The servers the thread's project actually gets, ready to hand to an agent; null project = the global list. */
   effective(projectId: string | null): McpServerEntry[] {
-    const ready = (list: McpServerEntry[]) => list.map(({ locked: _l, ...s }) => ({ ...s, spec: resolveSpec(s.spec) }));
-    if (!projectId) return ready(this.global.enabled());
+    const ready = (list: McpServerEntry[], scope: string) =>
+      list.flatMap(({ locked: _l, ...s }) => {
+        if (!this.remote || !isRemote(s.spec)) return [{ ...s, spec: resolveSpec(s.spec) }];
+        const spec = this.remote(scope, s.name);
+        return spec ? [{ ...s, spec }] : [];
+      });
+    if (!projectId) return ready(this.global.enabled(), "global");
     const project = this.project(projectId);
     const ownNames = new Set(project.list().map((s) => s.name));
     const off = new Set(project.offGlobal());
     const fromGlobal = this.global.enabled().filter((s) => !ownNames.has(s.name) && !off.has(s.name));
-    return ready([...project.enabled(), ...fromGlobal]);
+    return [...ready(project.enabled(), `project:${projectId}`), ...ready(fromGlobal, "global")];
   }
 }
 
@@ -447,6 +478,12 @@ export class McpToolsCache {
   private inflight = new Map<string, Promise<void>>();
 
   constructor(private list = listServerTools, private now = () => Date.now()) {}
+
+  /** Drop the listing for this spec (all of them without one), so the next refresh lists again. */
+  invalidate(spec?: McpServerSpec): void {
+    if (spec) this.entries.delete(stableStringify(spec));
+    else this.entries.clear();
+  }
 
   /** The cached listing for this spec, or null when there isn't a fresh one. */
   peek(spec: McpServerSpec): { ok: boolean; tools: McpToolInfo[]; error?: string } | null {

@@ -4,7 +4,7 @@ import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell, utilityProcess } from "electron";
-import type { AboutInfo, AgentLimits, ContextPreview, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread } from "../shared/types";
+import type { AboutInfo, AgentLimits, ContextPreview, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, McpServerEntry, McpServerSpec, McpServerStatus, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
 import { spawnSync } from "node:child_process";
@@ -46,8 +46,13 @@ import { fillUserEnvironment } from "./winspawn";
 import { referenceEvents } from "./canonical-events";
 import { smokeCanonicalEvents, smokeHandoff, smokeMigration, smokeProviders } from "./smoke-checks";
 import { Editors, realHost } from "./editors";
-import { readExternalMcp } from "./mcp/external";
-import { BUILT_IN_SERVER, McpScopes, McpServerStore, McpToolsCache, migrateMcpSecrets, resolveSpec, testServer, viewOf } from "./mcp/servers";
+import { readExternalMcp, readExternalSpec } from "./mcp/external";
+import { gatewayPath, McpGateway } from "./mcp/gateway";
+import { McpAuth } from "./mcp/oauth";
+import { probeMcpUrl } from "./mcp/probe";
+import { BUILT_IN_SERVER, isRemote, McpScopes, McpServerStore, McpToolsCache, migrateMcpSecrets, resolveSpec, testServer, viewOf } from "./mcp/servers";
+import { cleanName } from "../shared/mcp-add";
+import { expandEnvRefs } from "./mcp/vault";
 import { McpVault } from "./mcp/vault";
 import { MCP_ROUTER_MIN_TOOLS, McpClientPool, routerTools } from "./mcp/router";
 import { providerWarning } from "../shared/provider-rules";
@@ -415,6 +420,8 @@ async function main(): Promise<void> {
       () => [skillTool(() => forAgent(skills.global(), { mode: "tool", reads: ["project", "shared"] }))],
       (pid) => routedTools(pid),
       () => threadTools,
+      undefined,
+      (req, res, scope, name) => mcpGateway.handle(req, res, scope, name),
     ));
   // Served only on a thread's own URL (`?t=`): ACP agents' question tool, answered in the app's card.
   const threadTools: HarnessTool[] = [askUserTool((threadId: string, questions: Question[], signal?: AbortSignal) => service.askFromTool(threadId, questions, signal))];
@@ -533,6 +540,73 @@ async function main(): Promise<void> {
   const mcpTools = new McpToolsCache();
   // One connection per routed MCP server, kept warm between calls and closed on quit.
   const mcpPool = new McpClientPool();
+  /** "global" or "project:<id>": the scope part of a server's vault key and gateway path. */
+  const mcpScope = (projectId: string | null | undefined) => (projectId ? `project:${projectId}` : "global");
+  // Sign-in for URL servers (OAuth). Tokens live in the vault and never leave main.
+  const mcpAuth = new McpAuth({ vault: mcpVault, openExternal: (url) => shell.openExternal(url) });
+  // URL servers reach agents through the tool server's /mcp-up route, which adds their credentials here.
+  const mcpGateway = new McpGateway({
+    target: (scope, name) => {
+      const entry = mcpScopes.store(scope)?.list().find((s) => s.name === name && s.enabled);
+      const spec = entry && isRemote(entry.spec) ? resolveSpec(entry.spec) : null;
+      return spec && isRemote(spec) ? { key: `${scope}:${name}`, spec } : null;
+    },
+    auth: mcpAuth,
+    onState: () => broadcast({ type: "mcp-status" }),
+  });
+  let toolServerUp: ToolServer | null = null;
+  /** The spec agents (and main's own listing) get for a URL server: its gateway route; null until the tool server listens. */
+  const gatewaySpec = (scope: string, name: string): McpServerSpec | null =>
+    toolServerUp ? { type: "http", url: new URL(gatewayPath(scope, name), toolServerUp.url).toString(), headers: { Authorization: `Bearer ${toolServerUp.token}` } } : null;
+  mcpScopes.setRemote(gatewaySpec);
+  // Started now rather than on first use, so URL servers have their route before the first turn.
+  void getToolServer().then((s) => {
+    toolServerUp = s;
+  });
+  /** A server was signed in or out, edited or removed: drop what the gateway and the listing cache hold for it, and tell the window. */
+  const mcpChanged = async (scope: string, name: string) => {
+    await mcpGateway.reset(`${scope}:${name}`);
+    const spec = gatewaySpec(scope, name);
+    if (spec) mcpTools.invalidate(spec);
+    broadcast({ type: "mcp-status" });
+  };
+  /** The scope's own server by name, or an error the window can show. */
+  const mcpEntry = (name: string, projectId: string | null | undefined) => {
+    const entry = mcpScopes.store(mcpScope(projectId))?.list().find((s) => s.name === name);
+    if (!entry) throw new Error(`There's no server named "${name}".`);
+    return entry;
+  };
+  const remoteSpecOf = (name: string, projectId: string | null | undefined) => {
+    const spec = resolveSpec(mcpEntry(name, projectId).spec);
+    if (!isRemote(spec)) throw new Error(`"${name}" isn't a URL server, so it has no sign-in.`);
+    return spec;
+  };
+  /** Live state of the scope's own servers; URL servers are listed through the gateway, like agents see them. */
+  async function mcpStatusOf(projectId: string | null, refresh: boolean): Promise<McpServerStatus[]> {
+    const scope = mcpScope(projectId);
+    const list = mcpScopes.store(scope)?.list() ?? [];
+    const listingSpec = (e: McpServerEntry) => (isRemote(e.spec) ? gatewaySpec(scope, e.name) : resolveSpec(e.spec));
+    const live = list.flatMap((e) => {
+      const spec = e.enabled && !e.locked ? listingSpec(e) : null;
+      return spec ? [{ ...e, spec }] : [];
+    });
+    if (refresh) for (const e of live) mcpTools.invalidate(e.spec);
+    await mcpTools.refresh(live, 15_000);
+    return list.map((e): McpServerStatus => {
+      const key = `${scope}:${e.name}`;
+      const auth = isRemote(e.spec) && (e.spec.oauth || mcpAuth.hasTokens(key)) ? mcpAuth.status(key) : undefined;
+      const base = { name: e.name, tools: [], ...(auth && { auth }) };
+      if (!e.enabled) return { ...base, state: "disabled" };
+      if (e.locked) return { ...base, state: "failed", error: "Its saved secrets can't be opened on this computer. Enter them again." };
+      const spec = listingSpec(e);
+      const got = spec ? mcpTools.peek(spec) : null;
+      if (got?.ok) return { ...base, state: "connected", tools: got.tools.map(({ name, description }) => ({ name, description })) };
+      const gw = isRemote(e.spec) ? mcpGateway.state(key) : undefined;
+      if (gw?.state === "needs-auth") return { ...base, state: "needs-auth", error: gw.error };
+      if (!got) return { ...base, state: "checking" };
+      return { ...base, state: "failed", error: got.error ?? "The server didn't answer." };
+    });
+  }
   /** The two router tools bound to the calling project's servers; only called when a session routes. */
   const routedTools = (projectId?: string) => routerTools({ servers: (pid) => mcpScopes.effective(pid ?? null), listings: mcpTools, pool: mcpPool }, projectId);
   /** Whether a project's listed MCP tools reach the router threshold, for agents without native tool search. */
@@ -612,9 +686,9 @@ async function main(): Promise<void> {
         active: browser.enabled,
         tools: tools.map((t) => ({ name: t.name, description: t.description, autoAllow: t.autoAllow })),
       },
-      servers: mcpStore.list().map(viewOf),
+      servers: mcpStore.list().map((e) => viewOf(e, mcpVault, `global:${e.name}`)),
       project: projectScope
-        ? { servers: projectScope.list().map(viewOf), offGlobal: projectScope.offGlobal(), file: join(mcpProjectDir(projectId!), "mcp.json") }
+        ? { servers: projectScope.list().map((e) => viewOf(e, mcpVault, `${mcpScope(projectId)}:${e.name}`)), offGlobal: projectScope.offGlobal(), file: join(mcpProjectDir(projectId!), "mcp.json") }
         : null,
       external: readExternalMcp({ projectPath: projectPathOf(projectId) }),
       file: join(userData, "mcp.json"),
@@ -653,22 +727,66 @@ async function main(): Promise<void> {
   });
   ipcMain.handle("library:agents", () => catalogOfAgents());
   ipcMain.handle("mcp:get", (_e, projectId: string | null) => mcpOverview(projectId));
-  ipcMain.handle("mcp:save", (_e, entry: McpServerEntry, previousName?: string, projectId?: string | null) => {
+  ipcMain.handle("mcp:save", async (_e, entry: McpServerEntry, previousName?: string, projectId?: string | null) => {
     (projectId ? mcpScopes.project(projectId) : mcpStore).save(entry, previousName);
+    if (previousName && previousName !== entry.name) await mcpChanged(mcpScope(projectId), previousName);
+    await mcpChanged(mcpScope(projectId), entry.name);
     return mcpOverview(projectId ?? null);
   });
-  ipcMain.handle("mcp:remove", (_e, name: string, projectId?: string | null) => {
+  ipcMain.handle("mcp:remove", async (_e, name: string, projectId?: string | null) => {
     (projectId ? mcpScopes.project(projectId) : mcpStore).remove(name);
+    await mcpChanged(mcpScope(projectId), name);
     return mcpOverview(projectId ?? null);
   });
-  ipcMain.handle("mcp:enable", (_e, name: string, enabled: boolean, projectId?: string | null) => {
+  ipcMain.handle("mcp:enable", async (_e, name: string, enabled: boolean, projectId?: string | null) => {
     (projectId ? mcpScopes.project(projectId) : mcpStore).setEnabled(name, enabled);
+    await mcpChanged(mcpScope(projectId), name);
     return mcpOverview(projectId ?? null);
   });
   ipcMain.handle("mcp:test", async (_e, name: string, projectId?: string | null) => {
     const store = projectId ? mcpScopes.project(projectId) : mcpStore;
     const entry = store.list().find((s) => s.name === name);
-    return entry ? testServer(resolveSpec(entry.spec)) : { ok: false, tools: [], error: "No such server." };
+    if (!entry) return { ok: false, tools: [], error: "No such server." };
+    if (!isRemote(entry.spec)) return testServer(resolveSpec(entry.spec));
+    // A URL server is tested the way agents reach it: through the gateway, which serves only enabled servers.
+    if (!entry.enabled) return { ok: false, tools: [], error: "Turn the server on to test it." };
+    const spec = gatewaySpec(mcpScope(projectId), name);
+    return spec ? testServer(spec) : { ok: false, tools: [], error: "The app's tool server isn't up yet. Try again in a moment." };
+  });
+  ipcMain.handle("mcp:probe", (_e, url: string, headers?: Record<string, string>) =>
+    probeMcpUrl(url, { ...(headers && { headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k, expandEnvRefs(v)])) }) }),
+  );
+  ipcMain.handle("mcp:status", (_e, projectId: string | null, refresh?: boolean) => mcpStatusOf(projectId ?? null, refresh === true));
+  ipcMain.handle("mcp:connect", async (_e, name: string, projectId?: string | null) => {
+    let spec;
+    try {
+      spec = remoteSpecOf(name, projectId);
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+    const result = await mcpAuth.connect(`${mcpScope(projectId)}:${name}`, spec);
+    await mcpChanged(mcpScope(projectId), name);
+    return result.ok ? { ok: true } : { ok: false, error: redactSecrets(result.error, knownSecrets()) };
+  });
+  ipcMain.handle("mcp:disconnect", async (_e, name: string, projectId?: string | null) => {
+    await mcpAuth.disconnect(`${mcpScope(projectId)}:${name}`, remoteSpecOf(name, projectId));
+    await mcpChanged(mcpScope(projectId), name);
+    return mcpOverview(projectId ?? null);
+  });
+  ipcMain.handle("mcp:client-secret", (_e, name: string, secret: string | null, projectId?: string | null) => {
+    remoteSpecOf(name, projectId);
+    if (secret && !mcpVault.available) throw new Error("This computer can't encrypt secrets (no OS keychain), so a client secret can't be saved.");
+    mcpAuth.setClientSecret(`${mcpScope(projectId)}:${name}`, secret);
+    return mcpOverview(projectId ?? null);
+  });
+  // Copy a server another agent loads into the app's list; its values are read here and go straight into the vault.
+  ipcMain.handle("mcp:import", async (_e, agent: string, source: string, name: string, projectId?: string | null) => {
+    const spec = readExternalSpec(agent, source, name, { projectPath: projectPathOf(projectId ?? null) });
+    if (!spec) throw new Error(`Couldn't read "${name}" from ${source}.`);
+    const own = cleanName(name);
+    (projectId ? mcpScopes.project(projectId) : mcpStore).save({ name: own, spec, enabled: true });
+    await mcpChanged(mcpScope(projectId), own);
+    return mcpOverview(projectId ?? null);
   });
   // A project can switch off an individual global server without editing either file.
   ipcMain.handle("mcp:global-off", (_e, projectId: string, name: string, off: boolean) => {
@@ -1112,6 +1230,7 @@ async function main(): Promise<void> {
     terminals.dispose();
     void toolServer?.then((s) => s.close());
     void mcpPool.closeAll();
+    void mcpGateway.closeAll();
     store.close();
   });
 }

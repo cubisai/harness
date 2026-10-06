@@ -1,11 +1,12 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { createServer, type IncomingMessage } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { HarnessTool, ToolOutput } from "./agents/types";
+import { parseGatewayPath } from "./mcp/gateway";
 
 export const TOOL_SERVER_NAME = "cubiq";
 
@@ -121,6 +122,8 @@ export function withThread(url: string, threadId: string | undefined): string {
  * tells the tools (and the routed factory) which project is calling them; a
  * `?t=<threadId>` adds `threadTools` (ask_user), which act for that thread;
  * a call to one answers as an SSE stream carrying a progress heartbeat.
+ * `/mcp-up/<scope>/<name>` hands the request to `upstream` (the gateway to
+ * the user's remote servers), behind the same Bearer.
  */
 export async function startToolServer(
   tools: () => HarnessTool[],
@@ -128,6 +131,7 @@ export async function startToolServer(
   routed?: (projectId: string | undefined) => HarnessTool[],
   threadTools?: () => HarnessTool[],
   heartbeatMs = HEARTBEAT_MS,
+  upstream?: (req: IncomingMessage, res: ServerResponse, scope: string, name: string) => Promise<void>,
 ): Promise<ToolServer> {
   const token = randomBytes(24).toString("hex");
   const http = createServer(async (req, res) => {
@@ -135,7 +139,12 @@ export async function startToolServer(
       res.writeHead(401).end();
       return;
     }
-    const path = (req.url ?? "").split("?")[0];
+    const path = (req.url ?? "").split("?")[0] ?? "";
+    const up = upstream ? parseGatewayPath(path) : null;
+    if (up && upstream) {
+      await upstream(req, res, up.scope, up.name);
+      return;
+    }
     if (path !== "/mcp" && path !== "/mcp-skills" && path !== "/mcp-routed") {
       res.writeHead(404).end();
       return;
