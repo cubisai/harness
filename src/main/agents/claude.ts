@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
 import type { EffortLevel, HookCallback, ModelInfo, ModelUsage, Options, PermissionResult, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { McpServerEntry, ModelOption, PermissionMode, PlanEntry, ThreadEvent } from "../../shared/types";
+import { providerOfModel } from "../../shared/provider-rules";
 import { canonicalTool, clipSummary, type EditResult, type RunPayload, type RunResult } from "../../shared/tools";
 import { diffSummary, unifiedDiff } from "../../shared/diff";
 import type { ToolDiff } from "../../shared/tools";
@@ -224,10 +225,15 @@ export interface ClaudeDriverConfig {
   guardScript?: string;
   /** Plan rate limits, as Claude reports them during turns (claude.ai logins only). */
   onLimits?: LimitsListener;
-  /** The credential plan for the next turn; absent = inherit process.env (tests). */
-  injection?: () => InjectionPlan;
+  /**
+   * The credential plan for the next turn; absent = inherit process.env (tests).
+   * A thread on a provider's model (`unskilled-<provider>/…`) passes that provider and model.
+   */
+  injection?: (ctx?: { providerId: string; model: string }) => InjectionPlan | Promise<InjectionPlan>;
   /** The BYOK provider's models, or null on subscription. */
   byokModels?: () => ModelOption[] | null;
+  /** Saved providers' models Claude can reach (directly or through the gateway), listed after its own. */
+  extraModels?: () => ModelOption[];
   /** The harness guide for this turn's cwd, appended to Claude Code's own system prompt. */
   guide?: (cwd: string) => string;
   /** Prefer the user's installed, self-updating Claude Code CLI over the SDK's bundled binary (default true). */
@@ -321,7 +327,11 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
     credentials: { byok: true, own: "login", injector: "claude" },
     skillsDelivery: CLAUDE_CAPABILITIES.skillsDelivery,
     skillCallPrefix: `${PLUGIN_NAME}:`,
-    models: () => config.byokModels?.() ?? models,
+    models: () => {
+      const own = config.byokModels?.() ?? models;
+      const extra = (config.extraModels?.() ?? []).filter((m) => !own.some((o) => o.id === m.id));
+      return extra.length ? [...own, ...extra] : own;
+    },
     refreshModels,
     /** Which Claude Code binary actually runs, and the other installs found. Cached only: undefined until warmed. */
     binary: () => {
@@ -401,7 +411,10 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
       const pluginPath = config.pluginDir?.(input.cwd);
       const plugins: { type: "local"; path: string }[] = pluginPath ? [{ type: "local", path: pluginPath }] : [];
 
-      const plan = config.injection?.();
+      // A provider's model pins that provider to this turn; the SDK runs its wire id.
+      const providerId = providerOfModel(input.model);
+      const plan = await config.injection?.(providerId ? { providerId, model: input.model } : undefined);
+      const model = plan?.model ?? input.model;
       if (plan?.error) {
         input.onEvent({ kind: "error", message: plan.error });
         return;
@@ -422,7 +435,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         cwd: input.cwd,
         abortController,
         pathToClaudeCodeExecutable: await claudePath(),
-        model: input.model,
+        model,
         resume: input.sessionId ?? undefined,
         permissionMode: SDK_MODE[input.permissionMode],
         allowDangerouslySkipPermissions: input.permissionMode === "full",

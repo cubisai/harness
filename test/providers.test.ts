@@ -93,7 +93,7 @@ describe("injectorCompatible", () => {
 
   it("requires anthropic-messages for Claude and takes any protocol on OpenCode", () => {
     expect(injectorCompatible({ wireProtocol: "anthropic-messages" }, "claude")).toEqual({ ok: true });
-    expect(injectorCompatible({ wireProtocol: "openai-chat" }, "claude").ok).toBe(false);
+    expect(injectorCompatible({ wireProtocol: "openai-chat" }, "claude")).toEqual({ ok: true, via: "gateway" });
     for (const provider of Object.values(byProtocol)) expect(injectorCompatible(provider, "opencode")).toEqual({ ok: true });
   });
 
@@ -104,7 +104,7 @@ describe("injectorCompatible", () => {
   it("names the protocol the agent needs in the reason", () => {
     const compat = injectorCompatible({ wireProtocol: "gemini" }, "claude");
     expect(compat.ok).toBe(false);
-    if (!compat.ok) expect(compat.reason).toMatch(/anthropic-messages/);
+    if (!compat.ok) expect(compat.reason).toMatch(/Anthropic Messages/);
   });
 });
 

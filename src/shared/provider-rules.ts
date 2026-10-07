@@ -64,10 +64,17 @@ export function anthropicAuthStyle(provider: Pick<Provider, "baseURL" | "authSty
   return host === "api.anthropic.com" ? "x-api-key" : "bearer";
 }
 
-/** Whether an agent's injector can drive this provider; OpenCode and ACP take any protocol. */
-export function injectorCompatible(provider: Pick<Provider, "wireProtocol">, injector: string): { ok: true } | { ok: false; reason: string } {
+/**
+ * Whether an agent's injector can drive this provider; OpenCode and ACP take
+ * any protocol. Claude reaches a chat-completions provider through the app's
+ * translation gateway (`via: "gateway"`).
+ */
+export function injectorCompatible(
+  provider: Pick<Provider, "wireProtocol">,
+  injector: string,
+): { ok: true; via?: "gateway" } | { ok: false; reason: string } {
   if (injector === "codex") return codexCompatible(provider);
-  const needs = injector === "claude" ? "anthropic-messages" : null;
-  if (needs === null || provider.wireProtocol === needs) return { ok: true };
-  return { ok: false, reason: `This agent needs a ${needs} provider; this one speaks ${provider.wireProtocol}.` };
+  if (injector !== "claude" || provider.wireProtocol === "anthropic-messages") return { ok: true };
+  if (provider.wireProtocol === "openai-chat") return { ok: true, via: "gateway" };
+  return { ok: false, reason: `Claude takes an Anthropic Messages provider, or a chat-completions one through CubiQ's gateway; this one speaks ${provider.wireProtocol}.` };
 }

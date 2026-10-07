@@ -123,14 +123,15 @@ const ACP_CREDENTIALS: AgentCredentials = { byok: true, own: "config", injector:
 /**
  * The credential pick list for one agent: its own login/config first, then one
  * row per provider. An incompatible provider stays listed but disabled, with
- * the reason as its detail line.
+ * the reason as its detail line; one reached through the gateway says so.
  */
 export function credentialOptions(creds: AgentCredentials, providers: ProviderView[]): SelectOption<string>[] {
   return [
     { value: "subscription", label: creds.own === "login" ? "Subscription login" : "Agent's own config" },
     ...providers.map((p): SelectOption<string> => {
       const compat = injectorCompatible(p, creds.injector);
-      return { value: p.id, label: p.label, disabled: !compat.ok, detail: compat.ok ? undefined : compat.reason };
+      const detail = !compat.ok ? compat.reason : compat.via === "gateway" ? "Through CubiQ's gateway" : undefined;
+      return { value: p.id, label: p.label, disabled: !compat.ok, detail };
     }),
   ];
 }

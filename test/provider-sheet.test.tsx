@@ -92,13 +92,16 @@ describe("CredentialRows", () => {
     expect(responsesOption?.disabled).toBeFalsy();
   });
 
-  it("disables anything but an anthropic-messages provider for Claude", () => {
+  it("offers Claude Anthropic Messages providers, chat-completions ones through the gateway, and nothing else", () => {
     const claude = agents[0]!;
     const chat = providerView({ id: "chat", label: "Chat Gateway", wireProtocol: "openai-chat" });
+    const gemini = providerView({ id: "gem", label: "Gemini", wireProtocol: "gemini" });
     const anthropic = providerView({ id: "anthropic", label: "Anthropic", wireProtocol: "anthropic-messages" });
-    const options = credentialOptions(claude.credentials, [chat, anthropic]);
+    const options = credentialOptions(claude.credentials, [chat, gemini, anthropic]);
     const chatOption = options.find((o) => o.value === "chat");
-    expect(chatOption?.disabled).toBe(true);
+    expect(chatOption?.disabled).toBeFalsy();
+    expect(chatOption?.detail).toBe("Through CubiQ's gateway");
+    expect(options.find((o) => o.value === "gem")?.disabled).toBe(true);
     const anthropicOption = options.find((o) => o.value === "anthropic");
     expect(anthropicOption).toBeDefined();
     expect(anthropicOption?.disabled).toBeFalsy();

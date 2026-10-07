@@ -4,12 +4,12 @@ import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell, utilityProcess } from "electron";
-import type { AboutInfo, AgentLimits, ContextPreview, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, ModelOption, McpServerEntry, McpServerSpec, McpServerStatus, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread } from "../shared/types";
+import type { AboutInfo, AgentLimits, ContextPreview, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, ModelOption, McpServerEntry, McpServerSpec, McpServerStatus, MemoryType, OpenResult, PermissionDecision, PlanDecision, Provider, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
-import { PROVIDER_MODEL_PREFIX } from "../shared/provider-rules";
+import { PROVIDER_MODEL_PREFIX, injectorCompatible } from "../shared/provider-rules";
 import { warmBinaries } from "./agents/binaries";
 import { createClaudeDriver, resolvePackagedClaudeBinary } from "./agents/claude";
 import { createCodexDriver } from "./agents/codex";
@@ -30,6 +30,7 @@ import { Service } from "./service";
 import { catalogFor, testConnection } from "./providers";
 import { discoverModels, ModelsDev, pickSmallModel } from "./models-catalog";
 import { injectionFor } from "./inject";
+import { createGateway } from "./gateway/route";
 import { redactSecrets } from "./inject/redact";
 import { codexInstructions, prepareCodexPlan } from "./inject/codex";
 import { opencodeVariants, opencodeVersion, withOpenCodeVariant } from "./inject/opencode";
@@ -374,13 +375,26 @@ async function main(): Promise<void> {
     guardScript,
     memoryDir: (projectId) => (memoryOn(settings.get(), projectId) ? memory.ensure(projectId, store.getProject(projectId).path) : null),
     onLimits: limits.for("claude"),
-    injection: () => injectionFor(settings, "claude", process.env, { injector: "claude" }),
+    // Async: a chat-completions provider needs the translation gateway, which lives on the tool server.
+    injection: async (ctx) => {
+      const pinned = ctx ? settings.providers().find((p) => p.id === ctx.providerId) : undefined;
+      const agentWide = settings.credential("claude");
+      const provider = pinned ?? (agentWide.kind === "byok" ? settings.providers().find((p) => p.id === agentWide.providerId) : undefined);
+      const gateway = provider?.wireProtocol === "openai-chat" ? await getToolServer() : null;
+      return injectionFor(settings, "claude", process.env, {
+        injector: "claude",
+        ...(ctx && { providerId: ctx.providerId, model: ctx.model }),
+        ...(gateway?.llmUrl && gateway.llmToken && { gateway: { url: gateway.llmUrl, token: gateway.llmToken } }),
+      });
+    },
     byokModels: () => {
       const c = settings.credential("claude");
       if (c.kind !== "byok") return null;
       const p = settings.providers().find((x) => x.id === c.providerId);
       return p ? catalogFor(p).claude.models : null;
     },
+    // Providers Claude can reach (Anthropic Messages directly, chat-completions through the gateway), pinned per thread.
+    extraModels: () => providerModelOptions((p) => injectorCompatible(p, "claude").ok),
   });
   const browser = new BrowserController(
     (url) => broadcast({ type: "browser-open", url }),
@@ -431,12 +445,19 @@ async function main(): Promise<void> {
       () => threadTools,
       undefined,
       (req, res, scope, name) => mcpGateway.handle(req, res, scope, name),
+      llmGateway,
     ));
+  // The translation gateway: agents reach chat-completions providers through it; keys stay here.
+  const llmGateway = createGateway({
+    providers: () => settings.providers(),
+    secret: (id) => settings.providerSecret(id),
+    secretHeaders: (id) => settings.providerSecretHeaders(id),
+  });
   // Served only on a thread's own URL (`?t=`): ACP agents' question tool, answered in the app's card.
   const threadTools: HarnessTool[] = [askUserTool((threadId: string, questions: Question[], signal?: AbortSignal) => service.askFromTool(threadId, questions, signal))];
   /** Every saved provider's models as picker options, `unskilled-<provider>/<model>` ("TokenHarbor/DeepSeek V4 Flash"). */
-  const providerModelOptions = (): ModelOption[] =>
-    settings.providers().flatMap((p) =>
+  const providerModelOptions = (include: (p: Provider) => boolean = () => true): ModelOption[] =>
+    settings.providers().filter(include).flatMap((p) =>
       p.models.map((m) => ({ id: `${PROVIDER_MODEL_PREFIX}${p.id}/${m.id}`, label: `${p.label}/${m.name ?? m.id}`, contextWindow: p.contextWindowOverride ?? m.contextWindow })),
     );
   const drivers = [

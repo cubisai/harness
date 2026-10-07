@@ -26,6 +26,8 @@ export interface InjectionPlan {
   warning?: string;
   /** Injection is impossible (e.g. the provider has no key): the caller errors and does not start the agent. */
   error?: string;
+  /** The id the agent runs a pinned provider model as (its wire id), in place of the thread's `unskilled-<provider>/<model>`. */
+  model?: string;
   byok: boolean;
 }
 
@@ -85,6 +87,10 @@ export function injectionFor(
     providerEnvOnly?: boolean;
     /** A provider the thread pinned (by picking one of its models): it wins over the agent's own credential. */
     providerId?: string;
+    /** The thread's model id (`unskilled-<provider>/<model>`), so the plan can name its wire id. */
+    model?: string;
+    /** The translation gateway (`…/llm` and its token), for providers the agent can't speak to directly. */
+    gateway?: { url: string; token: string };
   } = {},
 ): InjectionPlan {
   const base = strippedBase(source, env);
@@ -108,10 +114,10 @@ export function injectionFor(
   const secret = source.providerSecret(provider.id);
   const secretHeaders = source.providerSecretHeaders?.(provider.id) ?? {};
   // Everything a serialized plan must never show: the key and every secret header value.
-  const secrets = [...(secret ? [secret] : []), ...Object.values(secretHeaders)];
+  const secrets = [...(secret ? [secret] : []), ...Object.values(secretHeaders), ...(opts.gateway ? [opts.gateway.token] : [])];
   switch (opts.injector ?? "acp") {
     case "claude":
-      return sealed(injectClaude(provider, secret, base, { secretHeaders }), secrets);
+      return sealed(injectClaude(provider, secret, base, { secretHeaders, ...(opts.gateway && { gateway: opts.gateway }), ...(opts.model && { model: opts.model }) }), secrets);
     case "codex":
       if (!opts.codexCatalogDir) {
         return sealed({ env: base, byok: true, error: "Codex BYOK needs the app data folder." }, secrets);
