@@ -1,4 +1,5 @@
 import { writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { execCommandSync, findOnPath, killTree, launchSpec, mergePath, parseUserEnvironment, spawnCommand } from "../src/main/winspawn";
@@ -42,7 +43,8 @@ describe.runIf(win)("winspawn on Windows", () => {
   it("killTree ends the agent behind a shim, not just cmd.exe", async () => {
     const dir = tempDir();
     shim(dir, "sleeper", "process.stdout.write(String(process.pid) + '\\n'); setInterval(() => {}, 1000);");
-    const child = spawnCommand(join(dir, "sleeper.cmd"), [], { cwd: dir, stdio: ["pipe", "pipe", "ignore"] });
+    // Not cwd: dir — Windows keeps a dead process's working directory locked for a while, so the temp dir couldn't be removed (EBUSY).
+    const child = spawnCommand(join(dir, "sleeper.cmd"), [], { cwd: tmpdir(), stdio: ["pipe", "pipe", "ignore"] });
     const pid = await new Promise<number>((resolve) => child.stdout!.once("data", (d: Buffer) => resolve(Number(String(d).trim()))));
     const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
     killTree(child);
