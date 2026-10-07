@@ -10,6 +10,10 @@ import { buildHeaders, endpointsFor, upstreamMessage, wireIdOf } from "../provid
 import { ENV_REF, headerPlan, resolvedHeaders } from "../inject/headers";
 import { ChatToAnthropicStream, anthropicToChat, chatToAnthropicMessage } from "./anthropic-chat";
 import { createSseParser } from "./chat-stream";
+import { ChatToResponsesStream, responsesToChat } from "./responses-chat";
+
+/** The env var a Codex app-server reads the gateway's token from (its pinned providers' `env_key`). */
+export const GATEWAY_TOKEN_VAR = "CUBIQ_GATEWAY_TOKEN";
 
 /** Request bodies past this are refused (413): a long session with images stays well under it. */
 export const LLM_BODY_LIMIT = 32 * 1024 * 1024;
@@ -32,9 +36,14 @@ export function parseLlmPath(path: string): { providerId: string; rest: string }
   return m ? { providerId: m[1]!, rest: m[2] ?? "/" } : null;
 }
 
-/** Whether a provider is reached through the gateway by this injector (rather than directly, or not at all). */
+/**
+ * Whether the gateway serves this provider to this agent: chat-completions for
+ * Claude (translated) and for Codex (translated), Responses for Codex (passed through).
+ */
 export function viaGateway(provider: Pick<Provider, "wireProtocol">, injector: string): boolean {
-  return injector === "claude" && provider.wireProtocol === "openai-chat";
+  if (injector === "claude") return provider.wireProtocol === "openai-chat";
+  if (injector === "codex") return provider.wireProtocol === "openai-chat" || provider.wireProtocol === "openai-responses";
+  return false;
 }
 
 type ReadResult = { ok: true; body: unknown } | { ok: false; status: 400 | 413 };
@@ -81,24 +90,84 @@ function upstreamHeaders(provider: Provider, key: string | null, secretHeaders: 
   return headers;
 }
 
-let messageCounter = 0;
+let counter = 0;
+const nextId = (prefix: string) => `${prefix}_gw_${Date.now().toString(36)}_${(++counter).toString(36)}`;
+
+/** An error in the OpenAI shape Codex reads. A 404 goes out as 400, as for Claude: it isn't a missing route. */
+function openaiError(res: ServerResponse, status: number, message: string): void {
+  const out = status === 404 ? 400 : status;
+  if (res.headersSent) return void res.end();
+  res.writeHead(out, { "content-type": "application/json" });
+  res.end(JSON.stringify({ error: { message, type: out === 429 ? "rate_limit_exceeded" : out >= 500 ? "server_error" : "invalid_request_error", code: null } }));
+}
+
+/** A translator for one streamed answer: chat chunks in, the client protocol's SSE out. */
+interface StreamTranslator {
+  push(chunk: unknown): string;
+  finish(): string;
+  error(message: string): string;
+}
+
+/** Pipe a chat-completions SSE body through a translator into the response; an upstream error chunk ends it with an error event. */
+async function pipeChat(upstream: Response, res: ServerResponse, stream: StreamTranslator, label: string, key: string | null, abort: AbortController): Promise<void> {
+  res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
+  // After an error event the turn is over: nothing else is sent, not even a normal finish.
+  let failed = false;
+  const onChunk = (data: string): void => {
+    let chunk: unknown;
+    try {
+      chunk = JSON.parse(data);
+    } catch {
+      return; // a keep-alive or vendor line that isn't a chunk
+    }
+    if ((chunk as { error?: unknown }).error) {
+      failed = true;
+      res.write(stream.error(`${label}: ${upstreamMessage(data, key) ?? "the stream failed."}`));
+      return;
+    }
+    const out = stream.push(chunk);
+    if (out) res.write(out);
+  };
+  const parser = createSseParser((data) => {
+    if (data === "[DONE]" || failed) return;
+    // Some servers put several chunks in one event, one per line.
+    if (data.includes("\n")) for (const line of data.split("\n")) onChunk(line);
+    else onChunk(data);
+  });
+  try {
+    const decoder = new TextDecoder();
+    const reader = upstream.body?.getReader();
+    for (let next = await reader?.read(); next && !next.done; next = await reader!.read()) parser.push(decoder.decode(next.value, { stream: true }));
+    parser.end();
+    res.end(failed ? undefined : stream.finish());
+  } catch (err) {
+    if (abort.signal.aborted) return;
+    res.end(stream.error(`${label}: the stream broke off (${err instanceof Error ? err.message : String(err)}).`));
+  }
+}
 
 /**
  * The gateway handler for one `/llm/<providerId>/…` request. Serves Claude
  * Code's connectivity check (`/api/hello`), `POST /v1/messages` (streaming and
- * not) and a rough `count_tokens`.
+ * not) and a rough `count_tokens` for Claude, and `POST /v1/responses` for
+ * Codex: translated for a chat-completions provider, passed through (key
+ * added) for a Responses one.
  */
 export function createGateway(deps: GatewayDeps): (req: IncomingMessage, res: ServerResponse, providerId: string, rest: string) => Promise<void> {
   const doFetch = deps.fetch ?? fetch;
   return async (req, res, providerId, rest) => {
     if (rest === "/api/hello" || rest === "/") return void res.writeHead(200).end();
     if (req.method !== "POST") return void res.writeHead(405, { Allow: "POST" }).end();
+    const codex = rest === "/v1/responses";
+    const fail = codex ? openaiError : anthropicError;
     const provider = deps.providers().find((p) => p.id === providerId);
-    if (!provider) return anthropicError(res, 400, "This provider no longer exists in CubiQ.");
-    if (!viaGateway(provider, "claude")) return anthropicError(res, 400, `${provider.label} speaks ${provider.wireProtocol}; the gateway translates only chat-completions providers.`);
+    if (!provider) return fail(res, 400, "This provider no longer exists in CubiQ.");
+    if (!viaGateway(provider, codex ? "codex" : "claude")) {
+      return fail(res, 400, `${provider.label} speaks ${provider.wireProtocol}, which the gateway doesn't translate for ${codex ? "Codex" : "Claude"}.`);
+    }
 
     const read = await readBody(req, deps.bodyLimit ?? LLM_BODY_LIMIT);
-    if (!read.ok) return anthropicError(res, read.status, read.status === 413 ? "The request is larger than the gateway accepts (32 MB)." : "The request body isn't JSON.");
+    if (!read.ok) return fail(res, read.status, read.status === 413 ? "The request is larger than the gateway accepts (32 MB)." : "The request body isn't JSON.");
     const body = read.body as { model?: unknown; stream?: unknown; messages?: unknown };
 
     if (rest === "/v1/messages/count_tokens") {
@@ -106,17 +175,14 @@ export function createGateway(deps: GatewayDeps): (req: IncomingMessage, res: Se
       res.writeHead(200, { "content-type": "application/json" });
       return void res.end(JSON.stringify({ input_tokens: Math.ceil(JSON.stringify(body.messages ?? []).length / 4) }));
     }
-    if (rest !== "/v1/messages") return anthropicError(res, 400, `The gateway doesn't serve ${rest}.`);
+    if (rest !== "/v1/messages" && !codex) return fail(res, 400, `The gateway doesn't serve ${rest}.`);
 
     const wire = typeof body.model === "string" ? body.model : (provider.models[0] ? wireIdOf(provider.models[0], provider.models[0].id) : "");
     const model = provider.models.find((m) => wireIdOf(m, m.id) === wire);
-    const chat = anthropicToChat(body as never, {
-      model: wire,
-      ...(model?.maxOutput ? { maxOutput: model.maxOutput } : {}),
-      reasoning: model?.capabilities.reasoning === true,
-    });
+    const shape = { model: wire, ...(model?.maxOutput ? { maxOutput: model.maxOutput } : {}), reasoning: model?.capabilities.reasoning === true };
+    const passthrough = codex && provider.wireProtocol === "openai-responses";
+    const translated = passthrough ? null : codex ? responsesToChat(body as never, shape) : { chat: anthropicToChat(body as never, shape), names: null };
     const key = deps.secret(provider.id);
-    const env = deps.env ?? process.env;
     const abort = new AbortController();
     res.on("close", () => {
       if (!res.writableFinished) abort.abort();
@@ -126,61 +192,47 @@ export function createGateway(deps: GatewayDeps): (req: IncomingMessage, res: Se
     try {
       upstream = await doFetch(endpointsFor(provider, wire).generate, {
         method: "POST",
-        headers: upstreamHeaders(provider, key, deps.secretHeaders(provider.id), env),
-        body: JSON.stringify(chat),
+        headers: upstreamHeaders(provider, key, deps.secretHeaders(provider.id), deps.env ?? process.env),
+        body: JSON.stringify(translated ? translated.chat : body),
         signal: abort.signal,
       });
     } catch (err) {
       if (abort.signal.aborted) return;
-      return anthropicError(res, 502, `${provider.label} couldn't be reached: ${err instanceof Error ? err.message : String(err)}`);
+      return fail(res, 502, `${provider.label} couldn't be reached: ${err instanceof Error ? err.message : String(err)}`);
     }
     if (!upstream.ok) {
       const text = await upstream.text().catch(() => "");
-      return anthropicError(res, upstream.status, `${provider.label}: ${upstreamMessage(text, key) ?? `HTTP ${upstream.status}.`}`);
+      return fail(res, upstream.status, `${provider.label}: ${upstreamMessage(text, key) ?? `HTTP ${upstream.status}.`}`);
     }
 
-    const messageId = `msg_gw_${Date.now().toString(36)}_${(++messageCounter).toString(36)}`;
+    if (!translated) {
+      // A Responses provider already speaks Codex's protocol: stream its answer back untouched.
+      res.writeHead(upstream.status, { "content-type": upstream.headers.get("content-type") ?? "text/event-stream", "cache-control": "no-cache" });
+      try {
+        const reader = upstream.body?.getReader();
+        for (let next = await reader?.read(); next && !next.done; next = await reader!.read()) res.write(next.value);
+      } catch {
+        // The client went away or the upstream broke off; the client sees the stream end.
+      }
+      return void res.end();
+    }
+
     if (body.stream !== true) {
       let json: unknown;
       try {
         json = await upstream.json();
       } catch {
-        return anthropicError(res, 502, `${provider.label} answered with something that isn't JSON.`);
+        return fail(res, 502, `${provider.label} answered with something that isn't JSON.`);
       }
+      if (codex) return fail(res, 400, "Codex requests are streamed; the gateway doesn't answer a non-streaming one.");
       res.writeHead(200, { "content-type": "application/json" });
-      return void res.end(JSON.stringify(chatToAnthropicMessage(json, { model: wire, messageId })));
+      return void res.end(JSON.stringify(chatToAnthropicMessage(json, { model: wire, messageId: nextId("msg") })));
     }
 
-    res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
-    const stream = new ChatToAnthropicStream({ model: wire, messageId });
-    // After an error event the turn is over: nothing else is sent, not even a normal finish.
-    let failed = false;
-    const parser = createSseParser((data) => {
-      if (data === "[DONE]" || failed) return;
-      let chunk: unknown;
-      try {
-        chunk = JSON.parse(data);
-      } catch {
-        return; // a keep-alive or vendor line that isn't a chunk
-      }
-      const failure = (chunk as { error?: unknown }).error;
-      if (failure) {
-        failed = true;
-        res.write(stream.error(`${provider.label}: ${upstreamMessage(data, key) ?? "the stream failed."}`));
-        return;
-      }
-      const out = stream.push(chunk);
-      if (out) res.write(out);
-    });
-    try {
-      const decoder = new TextDecoder();
-      const reader = upstream.body?.getReader();
-      for (let next = await reader?.read(); next && !next.done; next = await reader!.read()) parser.push(decoder.decode(next.value, { stream: true }));
-      parser.end();
-      res.end(failed ? undefined : stream.finish());
-    } catch (err) {
-      if (abort.signal.aborted) return;
-      res.end(stream.error(`${provider.label}: the stream broke off (${err instanceof Error ? err.message : String(err)}).`));
-    }
+    const stream: StreamTranslator =
+      codex && translated.names
+        ? new ChatToResponsesStream({ model: wire, responseId: nextId("resp"), names: translated.names, createdAt: Math.floor(Date.now() / 1000) })
+        : new ChatToAnthropicStream({ model: wire, messageId: nextId("msg") });
+    await pipeChat(upstream, res, stream, provider.label, key, abort);
   };
 }

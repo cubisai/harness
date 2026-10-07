@@ -2,6 +2,7 @@ import type { McpServerEntry, ModelOption, PermissionDecision, PermissionMode, T
 import type { RunPayload, RunResult, ToolDiff } from "../../shared/tools";
 import { clipSummary } from "../../shared/tools";
 import { diffSummary } from "../../shared/diff";
+import { providerOfModel } from "../../shared/provider-rules";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { homedir, tmpdir } from "node:os";
@@ -67,12 +68,30 @@ interface TokenBreakdown {
   netNewInputTokens?: number;
 }
 
+/** How a pinned thread reaches its provider: `thread/start`'s modelProvider plus that provider's config entry. */
+export interface CodexPin {
+  model: string;
+  modelProvider: string;
+  provider: Record<string, unknown>;
+  contextWindow?: number;
+}
+
 export interface CodexConfig {
   command: string;
   args: string[];
   clientVersion: string;
   /** Where to write the model catalog without the async question tools; none: Codex uses its own. */
   catalogDir?: () => string | null;
+  /**
+   * A thread on a saved provider's model (`unskilled-<provider>/<model>`): the
+   * provider entry the thread defines in its own config (through the app's
+   * gateway), its id, and the wire model id. An error when it can't be reached.
+   */
+  pin?: (model: string) => Promise<CodexPin | { error: string }>;
+  /** Variables the app-server is spawned with on top of the plan's env (the gateway token the pinned providers read). */
+  gatewayEnv?: () => Promise<Record<string, string>>;
+  /** Saved providers' models Codex can reach, listed after its own. */
+  extraModels?: () => ModelOption[];
   /** Model-invoked skills for a project (the app-wide set without one), registered as Codex's extra skills root. */
   skillsDir?: (cwd?: string) => string | null;
   /** The harness's tools over HTTP MCP (the browser pane's), attached per thread. */
@@ -824,7 +843,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     const command = config.command.includes("/") || config.command.includes("\\") ? config.command : await resolvedCommandAsync(config.command);
     // A BYOK provider brings its own models; only Codex's own catalog is trimmed.
     const catalog = plan?.byok ? [] : catalogArgs(plan?.env ?? process.env, config.catalogDir?.() ?? null);
-    const conn: StdioRpc = StdioRpc.spawn(command, [...config.args, ...(plan?.args ?? []), ...catalog], { cwd, env: plan?.env ?? process.env }, {
+    const gatewayEnv = (await config.gatewayEnv?.().catch(() => ({}))) ?? {};
+    const conn: StdioRpc = StdioRpc.spawn(command, [...config.args, ...(plan?.args ?? []), ...catalog], { cwd, env: { ...(plan?.env ?? process.env), ...gatewayEnv } }, {
       onNotification,
       onRequest,
       onExit: () => {
@@ -882,9 +902,14 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
 
   const openThread = async (
     input: Pick<TurnInput, "threadId" | "projectId" | "cwd" | "model" | "contextWindow" | "permissionMode" | "sessionId" | "tools" | "mcpServers" | "onEvent" | "onSession" | "onSessionRebuilt" | "onSessionLost">,
-  ): Promise<{ threadId: string; model: string | null }> => {
+  ): Promise<{ threadId: string; model: string | null; wire?: string }> => {
     const policy = codexPolicy(input.permissionMode);
-    const model = input.model === CODEX_DEFAULT_MODEL ? null : input.model;
+    // A provider's model pins the thread to that provider, defined in the thread's own config.
+    const pinned = providerOfModel(input.model) && config.pin ? await config.pin(input.model) : null;
+    if (pinned && "error" in pinned) throw new Error(pinned.error);
+    const pin = pinned;
+    const model = pin ? pin.model : input.model === CODEX_DEFAULT_MODEL ? null : input.model;
+    const providerParams = pin ? { modelProvider: pin.modelProvider } : {};
     await start(input.cwd);
     const conn = rpc!;
     const withTools = input.tools.length > 0 && Boolean(config.toolServer);
@@ -897,7 +922,11 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     // signature below and reloads the thread with the new window on the next turn.
     if (typeof input.contextWindow === "number" && input.contextWindow > 0) {
       threadConfig = { ...(threadConfig ?? {}), model_context_window: input.contextWindow };
+    } else if (pin?.contextWindow) {
+      threadConfig = { ...(threadConfig ?? {}), model_context_window: pin.contextWindow };
     }
+    // In the signature too, so moving the thread to another provider reloads it there.
+    if (pin) threadConfig = { ...(threadConfig ?? {}), model_providers: { [pin.modelProvider]: pin.provider } };
     const guideText = config.guide?.(input.cwd) ?? "";
     const signature = JSON.stringify(threadConfig ?? null);
     let threadId = "";
@@ -926,6 +955,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
           threadId: input.sessionId,
           cwd: input.cwd,
           model,
+          ...providerParams,
           ...policy,
           config: threadConfig,
           ...(developerInstructions ? { developerInstructions } : {}),
@@ -945,6 +975,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       const res = await conn.request<{ thread: { id: string }; model?: string }>("thread/start", {
         cwd: input.cwd,
         model,
+        ...providerParams,
         ...policy,
         config: threadConfig,
         ...(developerInstructions ? { developerInstructions } : {}),
@@ -960,7 +991,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     // A resume of a thread that's already loaded keeps its config, so only a first load decides.
     if (!loaded.has(threadId)) loaded.set(threadId, signature);
     input.onSession(threadId);
-    return { threadId, model: threadModel };
+    return { threadId, model: threadModel, ...(pin ? { wire: pin.model } : {}) };
   };
 
   return {
@@ -974,8 +1005,9 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     /** The Codex copy a bare command resolves to at spawn time, and the others found. */
     binary: () => (config.command.includes("/") || config.command.includes("\\") ? undefined : (binaryInfo(config.command) ?? undefined)),
     models: () => {
-      const byok = config.byokModels?.();
-      return byok ?? [{ id: CODEX_DEFAULT_MODEL, label: "Codex default", ...defaultWindows }, ...models];
+      const own = config.byokModels?.() ?? [{ id: CODEX_DEFAULT_MODEL, label: "Codex default", ...defaultWindows }, ...models];
+      const extra = (config.extraModels?.() ?? []).filter((m) => !own.some((o) => o.id === m.id));
+      return extra.length ? [...own, ...extra] : own;
     },
     refreshModels,
     // Read account limits on demand. Never starts the app-server just to
@@ -999,7 +1031,9 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     // turn/start carries the model and it sticks (spike S4); back to the
     // default sends model null, which keeps the old model, so that needs a
     // new thread.
-    setModel: async ({ to }) => (to === CODEX_DEFAULT_MODEL ? "new-session" : "in-place"),
+    // Leaving a gateway provider for Codex's own models starts a new session: the history's
+    // reasoning items carry the gateway's stand-in encrypted_content, which OpenAI rejects.
+    setModel: async ({ from, to }) => (to === CODEX_DEFAULT_MODEL || (providerOfModel(from) !== null && providerOfModel(to) === null) ? "new-session" : "in-place"),
     /**
      * One hidden prompt on a throwaway, read-only, ephemeral thread in a
      * scratch cwd, for background work (memory extraction). Its events go
@@ -1070,12 +1104,12 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       return { mode: "seeded", sessionId: threadId, sent };
     },
     async runTurn(input) {
-      const model = input.model === CODEX_DEFAULT_MODEL ? null : input.model;
+      let model = input.model === CODEX_DEFAULT_MODEL ? null : input.model;
       // A brand-new session's first turn pays to write the guide and tool schemas into the prompt cache.
       const fresh = !input.sessionId;
       // Warm the extensions estimate (MCP tool listings) so the breakdown at the end of this turn has it.
       if (fresh) config.extensions?.(input.cwd, input.projectId ?? null);
-      let opened: { threadId: string; model: string | null };
+      let opened: { threadId: string; model: string | null; wire?: string };
       try {
         opened = await openThread(input);
       } catch (err) {
@@ -1083,12 +1117,14 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         return;
       }
       const threadId = opened.threadId;
+      // A pinned provider's model runs as its wire id.
+      if (opened.wire) model = opened.wire;
       // The model a collaboration mode names: the picked one, else the thread's
       // own (thread/start resumes report it), else the newest listing, and only
       // then a stand-in so the settings object is never empty.
       const modeModel =
         input.model !== CODEX_DEFAULT_MODEL
-          ? input.model
+          ? (model ?? input.model)
           : (opened.model ?? models[models.length - 1]?.id ?? "gpt-5.6-sol"); // TODO: last resort; thread/start and model/list should name a real model.
 
       const conn = rpc!;

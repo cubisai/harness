@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { PermissionDecision, ThreadEvent } from "../src/shared/types";
 import { z } from "zod";
-import { blockingQuestionCatalog, codexAuthStamp, codexDecision, codexWindows, codexPolicy, codexToolConfig, createCodexDriver, toolFor, turnEndFromUsage } from "../src/main/agents/codex";
+import { CODEX_DEFAULT_MODEL, blockingQuestionCatalog, codexAuthStamp, codexDecision, codexWindows, codexPolicy, codexToolConfig, createCodexDriver, toolFor, turnEndFromUsage } from "../src/main/agents/codex";
 import type { LimitsPatch } from "../src/main/agents/limits";
 import type { HarnessTool, SeedRequest, TurnInput } from "../src/main/agents/types";
 import { Store } from "../src/main/db";
@@ -413,6 +413,16 @@ describe("Codex driver", () => {
     const t = turn("roots");
     await d.runTurn(t.input);
     expect(t.events[1]).toMatchObject({ kind: "assistant-text", text: '["/skills/here"]' });
+  });
+
+  it("starts a new session when a thread leaves a gateway provider for Codex's own models", async () => {
+    const d = driver();
+    const req = (from: string, to: string) => ({ threadId: "t", sessionId: "s", from, to });
+    expect(await d.setModel!(req("unskilled-th/flash", "gpt-6-luna"))).toBe("new-session");
+    expect(await d.setModel!(req("gpt-6-luna", "unskilled-th/flash"))).toBe("in-place");
+    expect(await d.setModel!(req("unskilled-th/flash", "unskilled-pgs/glm"))).toBe("in-place");
+    expect(await d.setModel!(req("gpt-6-luna", "gpt-5.6-terra"))).toBe("in-place");
+    expect(await d.setModel!(req("gpt-6-luna", CODEX_DEFAULT_MODEL))).toBe("new-session");
   });
 
   it("points the extra skills root at the turn's project", async () => {

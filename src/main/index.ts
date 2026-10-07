@@ -9,7 +9,7 @@ import type { HarnessTool } from "./agents/types";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
-import { PROVIDER_MODEL_PREFIX, injectorCompatible } from "../shared/provider-rules";
+import { PROVIDER_MODEL_PREFIX, injectorCompatible, providerOfModel } from "../shared/provider-rules";
 import { warmBinaries } from "./agents/binaries";
 import { createClaudeDriver, resolvePackagedClaudeBinary } from "./agents/claude";
 import { createCodexDriver } from "./agents/codex";
@@ -30,7 +30,8 @@ import { Service } from "./service";
 import { catalogFor, testConnection } from "./providers";
 import { discoverModels, ModelsDev, pickSmallModel } from "./models-catalog";
 import { injectionFor } from "./inject";
-import { createGateway } from "./gateway/route";
+import { GATEWAY_TOKEN_VAR, createGateway, viaGateway } from "./gateway/route";
+import type { CodexPin } from "./agents/codex";
 import { redactSecrets } from "./inject/redact";
 import { codexInstructions, prepareCodexPlan } from "./inject/codex";
 import { opencodeVariants, opencodeVersion, withOpenCodeVariant } from "./inject/opencode";
@@ -460,6 +461,33 @@ async function main(): Promise<void> {
     settings.providers().filter(include).flatMap((p) =>
       p.models.map((m) => ({ id: `${PROVIDER_MODEL_PREFIX}${p.id}/${m.id}`, label: `${p.label}/${m.name ?? m.id}`, contextWindow: p.contextWindowOverride ?? m.contextWindow })),
     );
+  /** How a Codex thread on `unskilled-<provider>/<model>` reaches it: through the gateway, never with the key. */
+  const codexPin = async (model: string): Promise<CodexPin | { error: string }> => {
+    const providerId = providerOfModel(model);
+    const provider = settings.providers().find((p) => p.id === providerId);
+    if (!provider) return { error: "The provider this thread uses no longer exists." };
+    if (!viaGateway(provider, "codex")) return { error: `Codex can't use ${provider.label}: it speaks ${provider.wireProtocol}.` };
+    if (!settings.providerSecret(provider.id)) return { error: `${provider.label} has no key saved.` };
+    const server = await getToolServer();
+    if (!server.llmUrl) return { error: `CubiQ's gateway for ${provider.label} isn't running; try again.` };
+    const id = model.slice(`${PROVIDER_MODEL_PREFIX}${provider.id}/`.length);
+    const entry = provider.models.find((m) => m.id === id);
+    const contextWindow = provider.contextWindowOverride ?? entry?.contextWindow;
+    return {
+      model: entry ? (entry.modelID ?? entry.id) : id,
+      modelProvider: `${PROVIDER_MODEL_PREFIX}${provider.id}`,
+      provider: {
+        name: provider.label,
+        base_url: `${server.llmUrl}/${provider.id}/v1`,
+        env_key: GATEWAY_TOKEN_VAR,
+        wire_api: "responses",
+        ...(provider.retries?.request !== undefined ? { request_max_retries: provider.retries.request } : {}),
+        ...(provider.retries?.stream !== undefined ? { stream_max_retries: provider.retries.stream } : {}),
+        ...(provider.retries?.streamIdleTimeoutMs !== undefined ? { stream_idle_timeout_ms: provider.retries.streamIdleTimeoutMs } : {}),
+      },
+      ...(contextWindow ? { contextWindow } : {}),
+    };
+  };
   const drivers = [
     driver,
     // Codex when it's installed: the same model-invoked skills as an extra skills root, and the browser tools over MCP.
@@ -490,6 +518,13 @@ async function main(): Promise<void> {
                 }),
                 "codex",
               ),
+            // A thread on a saved provider's model defines that provider in its own config, pointed at the gateway.
+            pin: async (model) => codexPin(model),
+            gatewayEnv: async (): Promise<Record<string, string>> => {
+              const server = await getToolServer();
+              return server.llmToken ? { [GATEWAY_TOKEN_VAR]: server.llmToken } : {};
+            },
+            extraModels: () => providerModelOptions((p) => viaGateway(p, "codex")),
             byokModels: () => {
               const c = settings.credential("codex");
               if (c.kind !== "byok") return null;

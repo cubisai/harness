@@ -196,3 +196,58 @@ describe("translation gateway route", () => {
     expect(up.requests).toEqual([]);
   });
 });
+
+describe("translation gateway route for Codex (/v1/responses)", () => {
+  const responsesBody = (over: Record<string, unknown> = {}) =>
+    JSON.stringify({ model: "deepseek-v4-flash", instructions: "Be brief.", input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }], tools: [], stream: true, store: false, include: ["reasoning.encrypted_content"], prompt_cache_key: "k", ...over });
+
+  it("streams a chat-completions answer back as Responses events", async () => {
+    const up = await fakeChat((_b, res) =>
+      sseChunks(res, [
+        { choices: [{ index: 0, delta: { content: "Hello." }, finish_reason: "stop" }] },
+        { choices: [], usage: { prompt_tokens: 10, completion_tokens: 2, prompt_tokens_details: { cached_tokens: 4 } } },
+      ]),
+    );
+    const server = await gatewayServer(provider(up.url));
+    const res = await fetch(`${server.llmUrl}/th/v1/responses`, { method: "POST", headers: { authorization: `Bearer ${server.llmToken}` }, body: responsesBody() });
+    expect(res.status).toBe(200);
+    const evs = events(await res.text());
+    expect(evs[0]!.event).toBe("response.created");
+    expect(evs.some((e) => e.event === "response.output_text.delta")).toBe(true);
+    expect(evs.at(-1)).toMatchObject({ event: "response.completed", data: { response: { status: "completed", usage: { input_tokens: 10, output_tokens: 2, input_tokens_details: { cached_tokens: 4 } } } } });
+    const sent = up.requests[0]!;
+    expect(sent.url).toBe("/v1/chat/completions");
+    expect(sent.headers.authorization).toBe(`Bearer ${KEY}`);
+    expect(sent.body).toMatchObject({ model: "deepseek-v4-flash", messages: [{ role: "system", content: "Be brief." }, { role: "user", content: "hi" }] });
+    for (const dropped of ["store", "include", "prompt_cache_key"]) expect(sent.body).not.toHaveProperty(dropped);
+  });
+
+  it("passes a Responses provider's stream through untouched, with the key added in main", async () => {
+    const raw = 'event: response.completed\ndata: {"type":"response.completed","response":{"id":"r1"}}\n\n';
+    const up = await fakeChat((_b, res) => {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.end(raw);
+    });
+    const server = await gatewayServer(provider(up.url, { wireProtocol: "openai-responses" }));
+    const res = await fetch(`${server.llmUrl}/th/v1/responses`, { method: "POST", headers: { authorization: `Bearer ${server.llmToken}` }, body: responsesBody() });
+    expect(await res.text()).toBe(raw);
+    expect(up.requests[0]!.url).toBe("/v1/responses");
+    expect(up.requests[0]!.headers.authorization).toBe(`Bearer ${KEY}`);
+    expect(up.requests[0]!.body).toMatchObject({ model: "deepseek-v4-flash", store: false, prompt_cache_key: "k" });
+  });
+
+  it("answers errors in OpenAI's shape, never as a 404, and refuses Anthropic providers for Codex", async () => {
+    const up = await fakeChat((_b, res) => {
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: { message: "no such model" } }));
+    });
+    const server = await gatewayServer(provider(up.url));
+    const res = await fetch(`${server.llmUrl}/th/v1/responses`, { method: "POST", headers: { authorization: `Bearer ${server.llmToken}` }, body: responsesBody() });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: { message: "TokenHarbor: no such model.", type: "invalid_request_error" } });
+    const anthropic = await gatewayServer(provider(up.url, { wireProtocol: "anthropic-messages" }));
+    const refused = await fetch(`${anthropic.llmUrl}/th/v1/responses`, { method: "POST", headers: { authorization: `Bearer ${anthropic.llmToken}` }, body: responsesBody() });
+    expect(refused.status).toBe(400);
+    expect(((await refused.json()) as { error: { message: string } }).error.message).toMatch(/doesn't translate for Codex/);
+  });
+});

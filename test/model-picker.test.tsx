@@ -82,6 +82,9 @@ describe("ModelPicker", () => {
     expect(picker(onClaude)).not.toContain(">Providers</div>");
     // On OpenCode itself, the provider is one of its own groups.
     expect(picker({ agents: withProviders, models: withProviders[1]!.models, defaultOpen: true, onAgentModel: noop })).not.toContain(">Providers</div>");
+    // An agent that serves the same provider model itself doesn't list OpenCode's copy too.
+    const claudeToo = [{ ...withProviders[0]!, models: [...withProviders[0]!.models, { id: "unskilled-th/fast", label: "TokenHarbor/Fast" }] }, withProviders[1]!];
+    expect(picker({ agents: claudeToo, agent: "claude", models: claudeToo[0]!.models, current: "opus", defaultOpen: true, onAgentModel: noop })).not.toContain("on OpenCode");
   });
 
   it("puts a Thinking slider and Context inside the menu for a model that has them", () => {

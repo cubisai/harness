@@ -110,16 +110,16 @@ export function ModelPicker({
     const q = query.toLowerCase();
     return agents.filter((a) => a.id !== agent && (!q || a.label.toLowerCase().includes(q)));
   }, [agents, agent, query]);
-  // Saved providers another agent serves (OpenCode speaks every protocol); this agent's own are already in its groups.
+  // Saved providers another agent serves that this one doesn't (this agent's own are already in its groups).
   const providers = useMemo(
     () =>
       onAgentModel
         ? agents
             .filter((a) => a.id !== agent)
-            .map((a) => ({ agent: a, groups: filterModels(a.models.filter((m) => providerOfModel(m.id) !== null), query) }))
+            .map((a) => ({ agent: a, groups: filterModels(a.models.filter((m) => providerOfModel(m.id) !== null && !models.some((own) => own.id === m.id)), query) }))
             .filter((p) => p.groups.length > 0)
         : [],
-    [agents, agent, query, onAgentModel],
+    [agents, agent, query, onAgentModel, models],
   );
   // One flat list for the keyboard: models first, then other agents' providers, then the switch rows.
   const rows = useMemo(
