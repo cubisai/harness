@@ -1,6 +1,6 @@
-# Handoff: MCP done, P1 providers done (P1a–c + P1d picker); next: P2 translation gateway, then Windows gate
+# Handoff: P2 translation gateway done (Claude + Codex on chat providers), C0 `.cubiq/` folder done; next: Windows gate
 
-Updated 2026-10-07 on the **Mac**, branch `m4`. Read **Resume here — P1 done, next P2 (2026-10-07)** first, then **Resume here — MCP, providers, Design mode**, then **Resume here — Plan mode v2**, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`, `secrets-handling` (every stored credential safeStorage-encrypted; keys pasted in chat never go in files).
+Updated 2026-10-07 on the **Mac**, branch `m4`. Read **Resume here — C0 + P2 done, next Windows gate (2026-10-07)** first, then **Resume here — P1 done, next P2**, then **Resume here — MCP, providers, Design mode**, then **Resume here — Plan mode v2**, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`, `secrets-handling` (every stored credential safeStorage-encrypted; keys pasted in chat never go in files).
 
 ## Where things stand
 
@@ -31,6 +31,8 @@ Updated 2026-10-07 on the **Mac**, branch `m4`. Read **Resume here — P1 done, 
 | MCP leftovers (2026-10-06, Mac) | **done**; SSE bridge live on Claude/Codex/OpenCode (local SSE fixture), list_changed, revoke on Remove, McpPanel a11y | `2466589` |
 | P1a–c providers (2026-10-06, Mac) | **done**; 1367 passed; TokenHarbor + PGS Grove live on chat/Responses/Anthropic via OpenCode | `3fa2789` |
 | P1d providers in the picker (2026-10-07, Mac) | **done**; 1373 passed; live: draft pick, in-place provider switch (resume), Claude→provider handoff | `7383268` |
+| C0 per-project `.cubiq/` (2026-10-07, Mac) | **done**; `.cubiq/CUBIQ.md` guide (falls back to `.agents/HARNESS.md`), `.cubiq/skills/` first; project skills now really delivered to Codex (per-project extraRoots) and OpenCode (per-project skill tool) | `ac88d64` |
+| P2 translation gateway (2026-10-07, Mac) | **done**; 1488 passed; live on TokenHarbor DeepSeek V4 Flash + PGS Grove GLM 5.3 Flash for Claude **and** Codex | P2b `58eb8a2`, P2c `113c006`, P2d `f4b4ac6` |
 
 **Uncommitted on purpose (the user decides):** the `CLAUDE.md` notes (Windows notes + the new worker model order) and `SETUP-OTHER-PC.md`. The bun switch is committed (`ab42bb9`). `test/__snapshots__/providers.test.ts.snap` shows as modified: line endings only. Phase commits carry code + tests only, with no attribution trailer.
 
@@ -136,6 +138,22 @@ All checked in the real app on Windows; code paths are cross-platform unless not
 - **Lucide icons**: the user asked for `lucide-react`. Adding a dependency touches `package.json` + the lockfile, which are in the user's uncommitted bun switch; do it (`bun add lucide-react`, replace `icons.tsx`) right after that switch is committed.
 - **Antigravity**: Google's own ACP server (`agy_acp_server.par`, ACP registry `antigravity-acp`) must be on the app's PATH; it stays off until the Settings opt-in, then the generic ACP driver runs it with the user's Google sign-in.
 - Still to confirm on the Mac: the same smoke/model checks there.
+
+## Resume here — C0 + P2 done, next Windows gate (2026-10-07)
+
+Plans: `.ai/plans/c0-cubiq-folder.md`, `.ai/plans/p2-gateway.md` (spike results + per-phase notes; gitignored, Mac only).
+
+**C0** (`ac88d64`): project guide `.cubiq/CUBIQ.md` (else `.agents/HARNESS.md`, never both); bundled `resources/CUBIQ.md`; `<userData>/HARNESS.md` renamed to `CUBIQ.md` once (`guide.ts` `userGuidePath`). Skills origin `projectCubiq` (`.cubiq/skills`, first). Live testing showed Codex/OpenCode never got project skills except the ones they read natively: Codex now gets a per-project merged dir (`<userData>/harness-skills-projects/<hash>`, `skills/extraRoots/set` before thread start/resume), tool-mode agents a per-project skill tool (`/mcp-skills?p=`; `TOOL_SKILL_READS` in `index.ts`; OpenCode reads `.claude/skills` natively).
+
+**P2 gateway** (`src/main/gateway/`): `/llm/<providerId>/…` on the tool server with its **own** per-launch token (`llmUrl`/`llmToken`); key + headers added in main, never in an agent's env/argv/files.
+- Claude (`/v1/messages`, `anthropic-chat.ts`): a thread on `unskilled-<provider>/<model>` pins it (`injection(ctx)` async; plan `model` = wire id, `pricing` from the saved model's `cost`, else no cost shown). Claude Code sends `HEAD /api/hello`, treats any 404 as "issue with the selected model" (gateway maps 404→400), and puts its environment (cwd, platform) in a **`role: "system"` message inside `messages`** — merged into the system prompt before the first answer, `<system>`-tagged user message after.
+- Codex (`/v1/responses`, `responses-chat.ts`; Responses providers pass through): per-thread `config.model_providers.unskilled-<id>` + `modelProvider` + wire model on `thread/start`/`resume`, `env_key=CUBIQ_GATEWAY_TOKEN` set at app-server spawn; one app-server serves subscription and gateway threads. Leaving a gateway provider for Codex's own models → `setModel` returns new-session (OpenAI rejects the gateway's `cubiq:` reasoning `encrypted_content`).
+- Picker: provider models listed on Claude/Codex/OpenCode; another agent's copy is hidden when this agent has it. Provider rows say "Through CubiQ's gateway". Model `cost` now survives Fetch models.
+- Delegation: the two translators came from the opencode implementer (Responses one on attempt 2; attempt 1 empty, AgentRouter "sensitive words"), reviewed + fixed here.
+
+**Keys**: TokenHarbor `thk_live_…` and PGS Grove `pgsk_plan_…` (`https://api.pgsgrove.com/v1`) were used live 2026-10-07 via the app's encrypted save only; no trace in data/logs/sessions. The user should revoke both now.
+
+**Next**: Windows gate for everything since M1 (MCP M1–M4 + leftovers, P1, P1d, C0, P2: check `.cubiq` paths, the gateway on Windows, Codex per-thread providers with the npm shim) + CI; then P3 presets (+ pricing), D1–D4. Open: weaker models on the gateway don't always follow instructions as well (model quality, not a bug); untracked screenshot in the repo root is the user's.
 
 ## Resume here — P1 done, next P2 (2026-10-07)
 
@@ -356,4 +374,4 @@ In order:
 
 ## Next
 
-MCP and P1 (incl. P1d) are done and live-tested (see **Resume here — P1 done, next P2**). Next: **P2 translation gateway** (research map in that section), then the Windows PC gate for everything since M1, then P3 presets (no-key ones skipped), D1–D4 Design mode.
+MCP, P1, C0 and P2 are done and live-tested (see **Resume here — C0 + P2 done**). Next: the Windows PC gate for everything since M1, then P3 presets (no-key ones skipped), D1–D4 Design mode.
