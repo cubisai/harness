@@ -1,6 +1,6 @@
-# Handoff: P2 translation gateway done (Claude + Codex on chat providers), C0 `.cubiq/` folder done; next: Windows gate
+# Handoff: C0 + P2 done; Windows CI gate green; next: Windows PC gate (checklist below), then P3
 
-Updated 2026-10-07 on the **Mac**, branch `m4`. Read **Resume here — C0 + P2 done, next Windows gate (2026-10-07)** first, then **Resume here — P1 done, next P2**, then **Resume here — MCP, providers, Design mode**, then **Resume here — Plan mode v2**, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`, `secrets-handling` (every stored credential safeStorage-encrypted; keys pasted in chat never go in files).
+Updated 2026-10-07 on the **Mac**, branch `m4`. Read **Windows gate (2026-10-07)** first, then **Resume here — C0 + P2 done**, then **Resume here — P1 done, next P2**, then **Resume here — MCP, providers, Design mode**, then **Resume here — Plan mode v2**, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`, `secrets-handling` (every stored credential safeStorage-encrypted; keys pasted in chat never go in files).
 
 ## Where things stand
 
@@ -138,6 +138,21 @@ All checked in the real app on Windows; code paths are cross-platform unless not
 - **Lucide icons**: the user asked for `lucide-react`. Adding a dependency touches `package.json` + the lockfile, which are in the user's uncommitted bun switch; do it (`bun add lucide-react`, replace `icons.tsx`) right after that switch is committed.
 - **Antigravity**: Google's own ACP server (`agy_acp_server.par`, ACP registry `antigravity-acp`) must be on the app's PATH; it stays off until the Settings opt-in, then the generic ACP driver runs it with the user's Google sign-in.
 - Still to confirm on the Mac: the same smoke/model checks there.
+
+## Windows gate (2026-10-07)
+
+**CI (windows-latest): green** — run `37596111446` on `m4` at `16241a4` (after the killTree test fix): 135 files / 1481 passed, 10 skipped; build OK. Real Claude Code through the gateway (`gateway-claude-e2e`), `claude-e2e`, both translators, the route, `.cubiq` guide and skills all ran on Windows. Skipped there (no codex/opencode in CI): `codex-e2e`, `gateway-codex-e2e`, `opencode-e2e`. The first run (`37594861457`) failed only on `winspawn.test.ts` cleanup (EBUSY: Windows keeps a killed process's cwd locked) → the test's child now runs from `tmpdir()`.
+
+**PC run: pending** (needs the Windows PC). Covers everything since M1. Do it in order; a phase isn't done until it passes:
+1. `git pull` on `m4`; Node ≥ 22.18 (else `db.test` fails on `.ts` workers); `bun install`; `bun run typecheck && bun run test && bun run build`; `electron . --smoke --user-data-dir=<tmp>`.
+2. Real CLIs through the shims: `UNSKILLED_CODEX_BIN=<codex.cmd path> npx vitest run test/codex-e2e.test.ts test/gateway-codex-e2e.test.ts test/opencode-e2e.test.ts` (the gateway one checks Codex's per-thread provider + `CUBIQ_GATEWAY_TOKEN` via `winspawn`). Codex 401 "workspace routing" on this PC = sign in again.
+3. Live app (temp `--user-data-dir`, CDP, recipe in **Environment facts**), scratch project with `.cubiq/CUBIQ.md` (codeword) and `.cubiq/skills/cubiq-probe` (probe phrase), checked out with CRLF:
+   - **C0**: Claude, Codex, OpenCode each answer the codeword and load the probe skill (OpenCode via its skill tool, Codex from `harness-skills-projects\<hash>`); a project with only `.agents/HARNESS.md` still gets its guide.
+   - **MCP M1–M4 + leftovers**: mock stdio server (`test/fixtures/mock-mcp-stdio.mjs`) and SSE fixture (`mock-mcp-sse.mjs`) on all three agents; `/mcp` sheet; POSARA read-only tool only (`get_branches`).
+   - **P1/P1d**: provider editor Fetch models + Test before save + a secret header; an OpenCode thread on a provider model.
+   - **P2**: Claude thread pinned to a TokenHarbor chat model (tool call + follow-up; it must name the scratch folder as its cwd); Codex thread pinned to it (shell command), then switch to GPT-6-Luna → new session + handoff notice; interrupt a gateway turn.
+   - Afterwards `grep`/`findstr` the data dir, app log, `~/.claude/projects`, `~/.codex/sessions` for the key: nothing.
+4. Fresh TokenHarbor/PGS keys from the user (the 2026-10-07 ones are to be revoked), entered only in the app.
 
 ## Resume here — C0 + P2 done, next Windows gate (2026-10-07)
 
