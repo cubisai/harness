@@ -934,7 +934,8 @@ export interface UnskilledApi {
   updateThread(threadId: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "contextWindow" | "permissionMode" | "agent" | "pinned" | "archived">>): Promise<Thread>;
   deleteThread(threadId: string): Promise<void>;
   /** Move a thread to another agent; a refused switch changes nothing. */
-  switchAgent(threadId: string, agent: string, mode: SwitchMode): Promise<SwitchResult>;
+  /** `model`: land on this model of the new agent (a provider model), else its default. */
+  switchAgent(threadId: string, agent: string, mode: SwitchMode, model?: string): Promise<SwitchResult>;
   /** Save a thread to a JSON file; null when the dialog was cancelled. */
   exportThread(threadId: string): Promise<string | null>;
   /** Restore a thread from a JSON file as a new thread; null when cancelled. */

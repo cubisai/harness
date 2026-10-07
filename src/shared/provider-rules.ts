@@ -20,6 +20,16 @@ export function providerWarning(provider: Pick<Provider, "baseURL">, injector: s
   return "A non-first-party ANTHROPIC_BASE_URL disables Remote Control and MCP tool search by default. Use api.anthropic.com to keep them, or accept the loss.";
 }
 
+/** The id prefix of a model an injected BYOK provider serves: `unskilled-<providerId>/<model>`. */
+export const PROVIDER_MODEL_PREFIX = "unskilled-";
+
+/** The provider a model id names (`unskilled-<id>/…`), or null for an agent's own models. */
+export function providerOfModel(model: string | null | undefined): string | null {
+  if (!model?.startsWith(PROVIDER_MODEL_PREFIX)) return null;
+  const slash = model.indexOf("/");
+  return slash > PROVIDER_MODEL_PREFIX.length ? model.slice(PROVIDER_MODEL_PREFIX.length, slash) : null;
+}
+
 /**
  * The Antigravity disclosure's version. Bumping it (when the text changes in
  * substance) turns the opt-in off until the user acknowledges the new text.

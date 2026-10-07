@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { CredentialChoice, Provider, ProviderInput, Settings } from "../src/shared/types";
-import { anthropicAuthStyle } from "../src/shared/provider-rules";
+import { anthropicAuthStyle, providerOfModel } from "../src/shared/provider-rules";
 import { type InjectionSource, injectionFor } from "../src/main/inject";
 import { ENV_REF, headerPlan, resolvedHeaders } from "../src/main/inject/headers";
 import { catalogFor, upstreamMessage } from "../src/main/providers";
@@ -166,5 +166,26 @@ describe("upstreamMessage", () => {
     expect(upstreamMessage(JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "bad key sk-1" } }), "sk-1")).toBe("bad key «redacted».");
     expect(upstreamMessage(JSON.stringify({ error: "nope!" }), null)).toBe("nope!");
     expect(upstreamMessage("<html>502</html>", null)).toBeNull();
+  });
+});
+
+describe("per-thread provider (P1d)", () => {
+  it("reads the provider a model id names", () => {
+    expect(providerOfModel("unskilled-th-chat/deepseek-v4-flash")).toBe("th-chat");
+    expect(providerOfModel("unskilled-gw/vendor/model")).toBe("gw");
+    expect(providerOfModel("anthropic/claude")).toBeNull();
+    expect(providerOfModel("unskilled-/x")).toBeNull();
+    expect(providerOfModel(null)).toBeNull();
+  });
+
+  it("lets a thread's provider win over the agent's subscription", () => {
+    const p = provider({ wireProtocol: "openai-chat", baseURL: "https://gw.example.com/v1" });
+    const sub: InjectionSource = { ...source(p), credential: () => ({ kind: "subscription" }) };
+    const opts = { injector: "opencode" as const, opencodeVersion: () => "1.18.0" };
+    expect(injectionFor(sub, "opencode", { PATH: "/usr/bin" }, opts).byok).toBe(false);
+    const pinned = injectionFor(sub, "opencode", { PATH: "/usr/bin" }, { ...opts, providerId: "gw" });
+    expect(pinned.byok).toBe(true);
+    expect(pinned.env.UNSKILLED_GW_KEY).toBe(KEY);
+    expect(injectionFor(sub, "opencode", {}, { ...opts, providerId: "gone" }).error).toMatch(/no longer exists/);
   });
 });

@@ -99,6 +99,8 @@ interface Picks {
   permissionMode: PermissionMode;
   disabled?: boolean;
   onAgent(id: string): void;
+  /** Another agent's provider model: the thread (or draft) moves to that agent on it. */
+  onAgentModel(agent: string, model: string): void;
   onModel(id: string): void;
   onEffort(effort: string | null): void;
   onContextWindow(value: number | null): void;
@@ -117,7 +119,8 @@ function useThreadPicks(thread: Thread, running: boolean): Picks {
     contextWindow: thread.contextWindow ?? null,
     permissionMode: thread.permissionMode,
     disabled: running,
-    onAgent: openSwitch,
+    onAgent: (id) => openSwitch(id),
+    onAgentModel: (id, model) => openSwitch(id, model),
     onModel: (m) => void updateThread({ model: m }),
     onEffort: (effort) => void updateThread({ effort }),
     onContextWindow: (contextWindow) => void updateThread({ contextWindow }),
@@ -143,6 +146,7 @@ function useDraftPicks(): Picks | null {
     contextWindow: draft.contextWindow ?? null,
     permissionMode: draft.permissionMode ?? settings?.defaultPermissionMode ?? "ask",
     onAgent: (id) => setDraft({ agent: id }),
+    onAgentModel: (id, model) => setDraft({ agent: id, model }),
     onModel: (m) => setDraft({ model: m }),
     onEffort: (effort) => setDraft({ effort }),
     onContextWindow: (contextWindow) => setDraft({ contextWindow }),
@@ -168,6 +172,7 @@ function Model({ p }: { p: Picks }) {
       listenForOpenRequest
       onModel={p.onModel}
       onAgent={p.onAgent}
+      onAgentModel={p.onAgentModel}
       onEffort={p.onEffort}
       onContextWindow={p.onContextWindow}
     />

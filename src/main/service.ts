@@ -261,7 +261,8 @@ export class Service {
    * resets trust: the default permission mode, and approvals are per agent.
    * A refused switch changes nothing.
    */
-  async switchAgent(threadId: string, agent: string, mode: SwitchMode): Promise<SwitchResult> {
+  /** `model`: the new agent's model to land on (a provider model picked from its list), else its default. */
+  async switchAgent(threadId: string, agent: string, mode: SwitchMode, model?: string): Promise<SwitchResult> {
     if (this.running.has(threadId)) return { ok: false, reason: "Stop the running turn before switching agents." };
     const thread = this.store.getThread(threadId);
     if (agent === thread.agent) return { ok: false, reason: "This thread already runs that agent." };
@@ -271,7 +272,7 @@ export class Service {
       return { ok: false, reason: `There's no earlier ${driver.label} conversation in this thread to go back to.` };
     }
     if (mode !== "handoff") {
-      const switched = this.applySwitch(thread, agent, mode);
+      const switched = this.applySwitch(thread, agent, mode, model);
       // "Start fresh" is the user's explicit choice: nothing is carried over.
       if (mode === "fresh") this.pendingCatchUp.delete(threadId);
       return { ok: true, mode, thread: switched };
@@ -295,7 +296,7 @@ export class Service {
     const git = await checkpointGit(this.cwdOf(thread), cp.lastSeq);
     if (!git.ok && git.kind === "dirty") return { ok: false, reason: git.reason };
 
-    const switched = this.applySwitch(thread, agent, "handoff");
+    const switched = this.applySwitch(thread, agent, "handoff", model);
     if (!git.ok) this.emit(threadId, { kind: "notice", text: `${git.reason} The handoff goes ahead without one.` });
     const seeded = { channel, tokens: fit.tokens, tier: fit.tier, estimated: fit.estimated };
     const size = `${fit.estimated ? "about " : ""}${formatK(fit.tokens)} tokens`;

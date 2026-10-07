@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import type { AgentInfo, ModelOption } from "../../../shared/types";
+import { providerOfModel } from "../../../shared/provider-rules";
 import { filterModels } from "../models";
 import { useStore } from "../store";
 import { StepSlider } from "./StepSlider";
@@ -60,8 +61,9 @@ function ThinkingSlider({ efforts, effort, modelDefault, onEffort }: { efforts: 
 /**
  * The composer's one model control (DESIGN.md §7.3): the button reads
  * "Model · Effort"; the menu lists this agent's models (searchable, grouped by
- * provider), the other agents as switch rows, then the Thinking and Context
- * sliders for the current model. Arrow keys move, Return picks, Esc closes.
+ * provider), the saved providers another agent serves (picking one moves the
+ * thread there), the other agents as switch rows, then the Thinking and
+ * Context sliders for the current model. Arrow keys move, Return picks, Esc closes.
  */
 export function ModelPicker({
   agents,
@@ -76,6 +78,7 @@ export function ModelPicker({
   defaultOpen = false,
   onModel,
   onAgent,
+  onAgentModel,
   onEffort,
   onContextWindow,
 }: {
@@ -93,6 +96,8 @@ export function ModelPicker({
   defaultOpen?: boolean;
   onModel(id: string): void;
   onAgent(id: string): void;
+  /** Move to another agent on one of its provider models; without it, other agents' providers aren't offered. */
+  onAgentModel?(agent: string, model: string): void;
   onEffort(effort: string | null): void;
   onContextWindow?(value: number | null): void;
 }) {
@@ -105,10 +110,25 @@ export function ModelPicker({
     const q = query.toLowerCase();
     return agents.filter((a) => a.id !== agent && (!q || a.label.toLowerCase().includes(q)));
   }, [agents, agent, query]);
-  // One flat list for the keyboard: models first, then the switch rows.
+  // Saved providers another agent serves (OpenCode speaks every protocol); this agent's own are already in its groups.
+  const providers = useMemo(
+    () =>
+      onAgentModel
+        ? agents
+            .filter((a) => a.id !== agent)
+            .map((a) => ({ agent: a, groups: filterModels(a.models.filter((m) => providerOfModel(m.id) !== null), query) }))
+            .filter((p) => p.groups.length > 0)
+        : [],
+    [agents, agent, query, onAgentModel],
+  );
+  // One flat list for the keyboard: models first, then other agents' providers, then the switch rows.
   const rows = useMemo(
-    () => [...groups.flatMap((g) => g.models.map((m) => ({ kind: "model" as const, id: m.id }))), ...others.map((a) => ({ kind: "agent" as const, id: a.id }))],
-    [groups, others],
+    () => [
+      ...groups.flatMap((g) => g.models.map((m) => ({ kind: "model" as const, id: m.id }))),
+      ...providers.flatMap((p) => p.groups.flatMap((g) => g.models.map((m) => ({ kind: "provider" as const, id: m.id, agent: p.agent.id })))),
+      ...others.map((a) => ({ kind: "agent" as const, id: a.id })),
+    ],
+    [groups, providers, others],
   );
   const model = models.find((m) => m.id === current);
   const agentLabel = agents.find((a) => a.id === agent)?.label ?? agent;
@@ -144,9 +164,10 @@ export function ModelPicker({
     setOpen(false);
     setQuery("");
   };
-  const pickRow = (r: { kind: "model" | "agent"; id: string }) => {
+  const pickRow = (r: { kind: "model" | "agent" | "provider"; id: string; agent?: string }) => {
     close();
     if (r.kind === "agent") onAgent(r.id);
+    else if (r.kind === "provider" && r.agent) onAgentModel?.(r.agent, r.id);
     else if (r.id !== current) onModel(r.id);
   };
 
@@ -209,6 +230,32 @@ export function ModelPicker({
                 })}
               </div>
             ))}
+            {providers.length > 0 && <div className="model-group">Providers</div>}
+            {providers.map((p) =>
+              p.groups.map((g) => (
+                <div key={`${p.agent.id}:${g.group || "-"}`}>
+                  {g.group && <div className="model-subgroup">{g.group}</div>}
+                  {g.models.map((m) => {
+                    row += 1;
+                    const i = row;
+                    return (
+                      <button
+                        key={m.id}
+                        role="option"
+                        aria-selected={false}
+                        className={`model-item${i === index ? " active" : ""}`}
+                        onMouseEnter={() => setIndex(i)}
+                        onClick={() => pickRow({ kind: "provider", id: m.id, agent: p.agent.id })}
+                      >
+                        <span className="check" />
+                        <span className="label">{m.label}</span>
+                        <span className="hint">on {p.agent.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )),
+            )}
             {others.length > 0 && <div className="model-group">Switch agent</div>}
             {others.map((a) => {
               row += 1;

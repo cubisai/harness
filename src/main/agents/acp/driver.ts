@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { providerOfModel } from "../../../shared/provider-rules";
 import { clipSummary } from "../../../shared/tools";
 import type { EditResult, RunPayload, RunResult, ToolDiff } from "../../../shared/tools";
 import { diffSummary, unifiedDiff } from "../../../shared/diff";
@@ -186,6 +187,8 @@ interface Live {
    * new process and the session resumed.
    */
   variantKey: string | null;
+  /** The BYOK provider this process was spawned with (the thread's model names it), or null. Fixed at startup too. */
+  providerId: string | null;
   /** HTTP servers already reported as dropped on this connection, so each is said once. */
   droppedNotified: Set<string>;
   /** A freshly created session still owes its first prompt the harness guide. */
@@ -278,7 +281,9 @@ export function createAcpDriver(
      */
     mcpRouting?: (projectId: string | null, servers: McpServerEntry[]) => Promise<boolean>;
     /** The credential plan for the next agent process; absent = inherit process.env. */
-    injection?: (ctx?: { effort?: { agent: string; model: string; variant: string } }) => InjectionPlan;
+    injection?: (ctx?: { effort?: { agent: string; model: string; variant: string }; providerId?: string }) => InjectionPlan;
+    /** Models served by saved BYOK providers (ids `unskilled-<provider>/<model>`), offered next to the agent's own. */
+    extraModels?: () => ModelOption[];
     /** Per-model reasoning variants, for agents that carry them outside a thought_level option. */
     variants?: () => Promise<Record<string, string[]>>;
     /** The git-guardrails script: an execute permission call is vetoed in every mode. */
@@ -624,9 +629,15 @@ export function createAcpDriver(
     const existing = live.get(threadKey);
     // A live process has a pick already; a new one resolves from the turn's model.
     const wanted = wantedVariant(threadKey, input, existing);
+    // A provider's model pins that provider to this thread's process.
+    const providerId = providerOfModel(input.model);
     const wantedKey = variantKeyOf(wanted);
-    if (existing?.conn.alive && wantedKey === existing.variantKey) return existing;
-    if (existing?.conn.alive) {
+    if (existing?.conn.alive && wantedKey === existing.variantKey && providerId === existing.providerId) return existing;
+    if (existing?.conn.alive && providerId !== existing.providerId) {
+      existing.conn.close();
+      live.delete(threadKey);
+      input.onEvent({ kind: "notice", text: `${config.label} restarted to switch provider; the conversation continues.` });
+    } else if (existing?.conn.alive) {
       // The variant is fixed when OpenCode starts, so a changed pick (or a
       // reset to default) needs a new process, resumed with the same session.
       existing.conn.close();
@@ -637,7 +648,8 @@ export function createAcpDriver(
       }
     }
 
-    const plan = deps.injection?.(wanted ? { effort: wanted } : undefined);
+    const ctx = { ...(wanted && { effort: wanted }), ...(providerId && { providerId }) };
+    const plan = deps.injection?.(Object.keys(ctx).length ? ctx : undefined);
     if (plan?.error) throw new Error(plan.error);
     if (plan?.warning && !shownNotices.has(plan.warning)) {
       shownNotices.add(plan.warning);
@@ -708,7 +720,7 @@ export function createAcpDriver(
       clientInfo: { name: "cubiq", version: deps.clientVersion },
     });
     applyInitialize(init, input);
-    l = { conn, init, threadKey, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, variantKey: wantedKey, droppedNotified: new Set(), guidePending: false, historyPending: null, turn: null, modes: null, planModeId: null, defaultModeId: null, authUrl: null };
+    l = { conn, init, threadKey, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, variantKey: wantedKey, providerId, droppedNotified: new Set(), guidePending: false, historyPending: null, turn: null, modes: null, planModeId: null, defaultModeId: null, authUrl: null };
     // No proactive authenticate: the server infers the method from its own
     // settings and refreshes the token itself, so calling it here only ever
     // launched a browser (including during the startup model probe). A signed-out
@@ -979,17 +991,19 @@ export function createAcpDriver(
     /** The CLI copy a bare command resolves to at spawn time, and the others found. */
     ...(bare ? { binary: () => binaryInfo(config.command) ?? undefined } : {}),
     models: () => {
+      // Saved providers' models follow the agent's own; one the agent already lists (its injected provider) isn't repeated.
+      const extra = (deps.extraModels?.() ?? []).filter((m) => !knownModels.some((k) => k.id === m.id));
       // OpenCode's levels are per-model variants, not a session thought_level option.
       if (effortViaVariants) {
         const withVariants = (m: ModelOption): ModelOption => (knownVariants[m.id]?.length ? { ...m, efforts: knownVariants[m.id] } : m);
         const current = modelFrom(lastConfigOptions);
         const defaultOption: ModelOption = { id: DEFAULT_MODEL, label: "Agent default" };
         if (current && knownVariants[current]?.length) defaultOption.efforts = knownVariants[current];
-        return [defaultOption, ...knownModels.map(withVariants)];
+        return [defaultOption, ...knownModels.map(withVariants), ...extra];
       }
       // One thought-level list per session: every model of the agent carries it.
       const withEfforts = (m: ModelOption): ModelOption => (knownEfforts.length ? { ...m, efforts: knownEfforts } : m);
-      return [withEfforts({ id: DEFAULT_MODEL, label: "Agent default" }), ...knownModels.map(withEfforts)];
+      return [withEfforts({ id: DEFAULT_MODEL, label: "Agent default" }), ...knownModels.map(withEfforts), ...extra];
     },
     refreshModels,
     // session/set_config_option on the model option switches in place;
@@ -1002,7 +1016,8 @@ export function createAcpDriver(
      */
     async oneShot(req) {
       await ensureVariants();
-      const plan = deps.injection?.();
+      const providerId = providerOfModel(req.model);
+      const plan = deps.injection?.(providerId ? { providerId } : undefined);
       if (plan?.error) throw new Error(plan.error);
       const env: NodeJS.ProcessEnv = { ...(plan?.env ?? process.env), ...config.env };
       if (config.skillsDirEnv && deps.skillsDir) {

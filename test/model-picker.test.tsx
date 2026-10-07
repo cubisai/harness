@@ -67,6 +67,23 @@ describe("ModelPicker", () => {
     expect(html).not.toContain(">OpenCode</span><span class=\"hint\">switch");
   });
 
+  it("offers other agents' saved providers under Providers only when it can move there", () => {
+    const withProviders: AgentInfo[] = [
+      { id: "claude", label: "Claude", models: [{ id: "opus", label: "Opus 5.5" }], defaultModel: "default", capabilities: SAFE_DEFAULTS },
+      { id: "opencode", label: "OpenCode", models: [...opencode, { id: "unskilled-th/fast", label: "TokenHarbor/Fast" }], defaultModel: "default", capabilities: SAFE_DEFAULTS },
+    ];
+    const onClaude = { agents: withProviders, agent: "claude", models: withProviders[0]!.models, current: "opus", defaultOpen: true };
+    const html = picker({ ...onClaude, onAgentModel: noop });
+    expect(html).toContain(">Providers</div>");
+    expect(html).toContain(">TokenHarbor</div>");
+    expect(html).toContain('<span class="label">Fast</span><span class="hint">on OpenCode</span>');
+    // OpenCode's own models aren't providers.
+    expect(html).not.toContain("Big Pickle");
+    expect(picker(onClaude)).not.toContain(">Providers</div>");
+    // On OpenCode itself, the provider is one of its own groups.
+    expect(picker({ agents: withProviders, models: withProviders[1]!.models, defaultOpen: true, onAgentModel: noop })).not.toContain(">Providers</div>");
+  });
+
   it("puts a Thinking slider and Context inside the menu for a model that has them", () => {
     const html = picker({ defaultOpen: true, models: [luna], current: "gpt-6-luna" });
     expect(html).toContain(">Thinking<");

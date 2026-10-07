@@ -4,11 +4,12 @@ import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell, utilityProcess } from "electron";
-import type { AboutInfo, AgentLimits, ContextPreview, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread } from "../shared/types";
+import type { AboutInfo, AgentLimits, ContextPreview, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, ModelOption, McpServerEntry, McpServerSpec, McpServerStatus, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
+import { PROVIDER_MODEL_PREFIX } from "../shared/provider-rules";
 import { warmBinaries } from "./agents/binaries";
 import { createClaudeDriver, resolvePackagedClaudeBinary } from "./agents/claude";
 import { createCodexDriver } from "./agents/codex";
@@ -426,6 +427,11 @@ async function main(): Promise<void> {
     ));
   // Served only on a thread's own URL (`?t=`): ACP agents' question tool, answered in the app's card.
   const threadTools: HarnessTool[] = [askUserTool((threadId: string, questions: Question[], signal?: AbortSignal) => service.askFromTool(threadId, questions, signal))];
+  /** Every saved provider's models as picker options, `unskilled-<provider>/<model>` ("TokenHarbor/DeepSeek V4 Flash"). */
+  const providerModelOptions = (): ModelOption[] =>
+    settings.providers().flatMap((p) =>
+      p.models.map((m) => ({ id: `${PROVIDER_MODEL_PREFIX}${p.id}/${m.id}`, label: `${p.label}/${m.name ?? m.id}`, contextWindow: p.contextWindowOverride ?? m.contextWindow })),
+    );
   const drivers = [
     driver,
     // Codex when it's installed: the same model-invoked skills as an extra skills root, and the browser tools over MCP.
@@ -480,12 +486,15 @@ async function main(): Promise<void> {
         extensions: extensionsFor(config.id),
         mcpRouting: (_pid, servers) => mcpRoutingFor(servers),
         ...(config.effortVia === "opencode-variants" ? { variants: () => opencodeVariants(config.command) } : {}),
+        // OpenCode speaks every provider protocol, so each saved provider's models are offered on it, pinned per thread.
+        ...(config.injector === "opencode" ? { extraModels: providerModelOptions } : {}),
         injection: (ctx) => {
           let plan = injectionFor(settings, config.id, process.env, {
             injector: config.injector ?? "acp",
             keyVar: config.keyVar,
             providerEnvOnly: config.providerEnvOnly,
             agentLabel: config.label,
+            ...(ctx?.providerId && { providerId: ctx.providerId }),
             ...(config.injector === "opencode" ? { opencodeVersion: () => opencodeVersion(config.command) } : {}),
           });
           if (python && config.guardPlugin === "opencode") {
@@ -1027,7 +1036,7 @@ async function main(): Promise<void> {
     service.updateThread(id, pick(patch, ["title", "model", "effort", "contextWindow", "permissionMode", "agent", "pinned", "archived"])),
   );
   ipcMain.handle("threads:delete", (_e, id: string) => service.deleteThread(id));
-  ipcMain.handle("threads:switch", (_e, id: string, agent: string, mode: SwitchMode) => service.switchAgent(id, agent, mode));
+  ipcMain.handle("threads:switch", (_e, id: string, agent: string, mode: SwitchMode, model?: string) => service.switchAgent(id, agent, mode, model));
   ipcMain.handle("threads:export", async (event, id: string) => {
     const owner = BrowserWindow.fromWebContents(event.sender);
     const title = store.getThread(id).title.replace(/[\\/:*?"<>|]+/g, " ").trim() || "thread";

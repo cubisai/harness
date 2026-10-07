@@ -83,10 +83,12 @@ export function injectionFor(
     agentLabel?: string;
     keyVar?: string;
     providerEnvOnly?: boolean;
+    /** A provider the thread pinned (by picking one of its models): it wins over the agent's own credential. */
+    providerId?: string;
   } = {},
 ): InjectionPlan {
   const base = strippedBase(source, env);
-  const choice = source.credential(agentId);
+  const choice: CredentialChoice = opts.providerId ? { kind: "byok", providerId: opts.providerId } : source.credential(agentId);
   // Subscription: the agent's own login, so no provider key — not even one the
   // shell happens to have exported.
   if (choice.kind === "subscription") return sealed({ env: base, byok: false }, []);

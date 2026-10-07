@@ -148,6 +148,21 @@ describe("Service.switchAgent", () => {
     await second;
   });
 
+  it("lands on the model picked with the switch (a provider model), and the next turn runs on it", async () => {
+    const a = fake("a", async (input) => input.onEvent(endWith(usage({}))));
+    const models: string[] = [];
+    const b = fake("b", async (input) => {
+      models.push(input.model);
+      input.onEvent(endWith(usage({})));
+    });
+    const { service, thread } = setup([a, b]);
+    await service.send({ threadId: thread.id, text: "one" });
+    const res = await service.switchAgent(thread.id, "b", "fresh", "unskilled-th/fast");
+    expect(res).toMatchObject({ ok: true, thread: { agent: "b", model: "unskilled-th/fast" } });
+    await service.send({ threadId: thread.id, text: "two" });
+    expect(models).toEqual(["unskilled-th/fast"]);
+  });
+
   it("goes back to the earlier session, and the bloat signal reads the first turn after a switch", async () => {
     let bTurn = 0;
     const a = fake("a", async (input) => {

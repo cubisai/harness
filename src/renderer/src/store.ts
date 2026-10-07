@@ -80,7 +80,9 @@ interface State {
   toggleProjectCollapsed(projectId: string): void;
   /** The agent a pending Switch dialog would move the thread to. */
   pendingSwitch: string | null;
-  openSwitch(agent: string | null): void;
+  /** The model the thread takes once that switch lands (a provider model picked from another agent), or null for the agent's default. */
+  pendingSwitchModel: string | null;
+  openSwitch(agent: string | null, model?: string): void;
   /** Move the open thread to another agent; returns an error message, or null when done. */
   switchAgent(agent: string, mode: SwitchMode): Promise<string | null>;
   /** Installed editors, for "Open in". */
@@ -336,6 +338,7 @@ export const useStore = create<State>((set, get) => ({
   searchOpen: false,
   collapsedProjects: {},
   pendingSwitch: null,
+  pendingSwitchModel: null,
   libraryTab: null,
   librarySkill: null,
   editors: [],
@@ -362,7 +365,8 @@ export const useStore = create<State>((set, get) => ({
   toggleProjectCollapsed(projectId) {
     set((s) => ({ collapsedProjects: { ...s.collapsedProjects, [projectId]: !s.collapsedProjects[projectId] } }));
   },
-  openSwitch(agent) {
+  openSwitch(agent, model) {
+    set({ pendingSwitchModel: model ?? null });
     const id = get().selectedThreadId;
     const events = id ? get().events[id] : undefined;
     // A thread with its (empty) history loaded has nothing to carry over: switch it without the dialog.
@@ -379,12 +383,15 @@ export const useStore = create<State>((set, get) => ({
     if (!id) return "No thread is open.";
     let res: SwitchResult;
     try {
+      const model = get().pendingSwitchModel ?? undefined;
+      set({ pendingSwitchModel: null });
       if (mode === "back") {
         // updateThread already resumes the kept session for that agent.
-        await get().updateThread({ agent });
+        await get().updateThread({ agent, ...(model && { model }) });
         return null;
       }
-      res = await api().switchAgent(id, agent, mode);
+      // The model rides along, so a handoff seeds the session on it rather than on the agent's default.
+      res = model ? await api().switchAgent(id, agent, mode, model) : await api().switchAgent(id, agent, mode);
     } catch (err) {
       return ipcErrorText(err);
     }
@@ -404,9 +411,9 @@ export const useStore = create<State>((set, get) => ({
   setDraft(patch) {
     set((s) => {
       const draft = { ...s.draft, ...patch };
-      // A new agent brings its own model and effort; drop the old picks.
+      // A new agent brings its own model and effort; drop the old picks (a model picked with it stays).
       if (patch.agent !== undefined && patch.agent !== s.draft.agent) {
-        delete draft.model;
+        if (patch.model === undefined) delete draft.model;
         delete draft.effort;
         delete draft.contextWindow;
       }

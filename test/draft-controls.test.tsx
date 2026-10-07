@@ -70,6 +70,12 @@ describe("draft picks", () => {
     expect(useStore.getState().draft).toEqual({ agent: "codex" });
   });
 
+  it("keeps a model picked together with a new agent (another agent's provider model)", () => {
+    useStore.setState({ draft: { agent: "claude", model: "opus", effort: "high" } });
+    useStore.getState().setDraft({ agent: "opencode", model: "unskilled-th/fast" });
+    expect(useStore.getState().draft).toEqual({ agent: "opencode", model: "unskilled-th/fast" });
+  });
+
   it("keeps the model when the same agent is picked again", () => {
     useStore.setState({ draft: { agent: "claude", model: "opus" } });
     useStore.getState().setDraft({ agent: "claude" });
