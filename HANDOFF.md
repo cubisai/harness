@@ -1,6 +1,6 @@
-# Handoff: MCP M1–M4 done (vault, gateway + OAuth, Connectors panel, /mcp); next: Windows gate for M1–M4, then P1 providers
+# Handoff: MCP done, P1 providers done (P1a–c + P1d picker); next: P2 translation gateway, then Windows gate
 
-Updated 2026-10-06 on the **Mac**, branch `m4`. Read **Resume here — MCP, providers, Design mode** first, then **Resume here — Plan mode v2**, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`, `secrets-handling` (every stored credential safeStorage-encrypted; keys pasted in chat never go in files).
+Updated 2026-10-07 on the **Mac**, branch `m4`. Read **Resume here — P1 done, next P2 (2026-10-07)** first, then **Resume here — MCP, providers, Design mode**, then **Resume here — Plan mode v2**, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`, `secrets-handling` (every stored credential safeStorage-encrypted; keys pasted in chat never go in files).
 
 ## Where things stand
 
@@ -28,6 +28,9 @@ Updated 2026-10-06 on the **Mac**, branch `m4`. Read **Resume here — MCP, prov
 | U3 + U4 + U5 wiring (2026-10-02, Mac): inbox sidebar, ⌘K FTS search, artifact panel + file cards | **done**; typecheck, full suite 1153 passed, build, smoke 2/2; live in the built app (temp data dir, scratch repo): OpenCode md (Preview button), Codex html (auto-open), Claude Haiku csv (auto-open via the worker), ⌘K over FTS; Windows not run | one commit (U3/U4 share store/App/db) |
 | M1 (2026-10-05, Mac): MCP secret vault | **done**; typecheck, full suite 1249 passed, build, smoke ok; live in the built app (temp data dir, real keychain): plaintext `mcp.json` migrated, Connectors Test mock 1 tool + POSARA 113 tools, Claude Sonnet 5.5 / Codex GPT-6-Luna / OpenCode each called both servers; no secret in any file afterwards; Windows not run | `5ccaf3b` |
 | M2 + M3 backend (2026-10-05, Mac), **WIP** | parser, probe, SSE type, shared transport, OAuth module, API contract + preload + preview mocks committed; **not wired** (no IPC handlers, no gateway, no UI yet); typecheck + full suite green (1287 passed); no live run | WIP commit (see below) |
+| MCP leftovers (2026-10-06, Mac) | **done**; SSE bridge live on Claude/Codex/OpenCode (local SSE fixture), list_changed, revoke on Remove, McpPanel a11y | `2466589` |
+| P1a–c providers (2026-10-06, Mac) | **done**; 1367 passed; TokenHarbor + PGS Grove live on chat/Responses/Anthropic via OpenCode | `3fa2789` |
+| P1d providers in the picker (2026-10-07, Mac) | **done**; 1373 passed; live: draft pick, in-place provider switch (resume), Claude→provider handoff | `7383268` |
 
 **Uncommitted on purpose (the user decides):** the `CLAUDE.md` notes (Windows notes + the new worker model order) and `SETUP-OTHER-PC.md`. The bun switch is committed (`ab42bb9`). `test/__snapshots__/providers.test.ts.snap` shows as modified: line endings only. Phase commits carry code + tests only, with no attribution trailer.
 
@@ -133,6 +136,30 @@ All checked in the real app on Windows; code paths are cross-platform unless not
 - **Lucide icons**: the user asked for `lucide-react`. Adding a dependency touches `package.json` + the lockfile, which are in the user's uncommitted bun switch; do it (`bun add lucide-react`, replace `icons.tsx`) right after that switch is committed.
 - **Antigravity**: Google's own ACP server (`agy_acp_server.par`, ACP registry `antigravity-acp`) must be on the app's PATH; it stays off until the Settings opt-in, then the generic ACP driver runs it with the user's Google sign-in.
 - Still to confirm on the Mac: the same smoke/model checks there.
+
+## Resume here — P1 done, next P2 (2026-10-07)
+
+Plans: `.ai/plans/p1-providers.md`, `.ai/plans/p1d-picker.md` (gitignored, Mac only). All committed; tree clean except `electron.vite.config.ts` (a formatting-only change nobody asked for: keep or `git checkout` it, the user decides).
+
+**Shipped this session**
+- `2466589` MCP: SSE bridge keeps a session per agent and forwards upstream `tools/list_changed` (Claude called a tool added mid-turn); the HTTP proxy sniffs `list_changed` in streams; the router pool too; all → `mcpTools.invalidate` + `mcp-status`. `mcp:remove` revokes the sign-in first. McpPanel keyboard/a11y (focus into/out of the review form, Escape no longer closes the whole Library: form is `.editing` + `preventDefault`). Fixture `test/fixtures/mock-mcp-sse.mjs` (`--port`, `--key`, tools `whoami`, `add_tool`). No public no-auth SSE server exists any more (DeepWiki/Cloudflare 410; Atlassian `/v1/sse`, Asana `/sse` need sign-in).
+- `3fa2789` P1a–c: `Provider.authStyle` (`anthropicAuthStyle` in `provider-rules.ts`, also used by probes), `smallModel` (Claude `ANTHROPIC_SMALL_FAST_MODEL` + haiku slot; OpenCode `small_model`), `secretHeaders` (safeStorage per header; view shows names only; `inject/headers.ts` `headerPlan`: Codex `env_http_headers`, OpenCode `{env:VAR}`, values only in env), `${env:VAR}` header values, `contextWindowOverride` in `catalogFor`. OpenCode takes every protocol (`opencodePackage`: `@ai-sdk/openai-compatible|openai|anthropic|google`). `src/main/models-catalog.ts`: discovery per protocol (OpenAI/OpenRouter/TokenHarbor/PGS field variants, Anthropic paging, Gemini) + models.dev cache 24 h, `pickSmallModel`. IPC `providers:discover`, `providers:test` on unsaved drafts (`settings.draftProvider`: saved key only while the host is unchanged). Probe triage shows the server's own error (`upstreamMessage`). Editor: Fetch models picker, Small model, Advanced (key header, headers + Secret, query params, retries, context). `Select` popup no longer closes itself inside a scrolled sheet.
+- `7383268` P1d: every saved provider is offered on OpenCode as `unskilled-<provider>/<model>` (`extraModels` dep, `providerModelOptions` in `index.ts`); the thread's model id pins the provider (`providerOfModel` in `provider-rules.ts`; `injectionFor` `opts.providerId` overrides the agent credential); a changed provider restarts that thread's OpenCode and resumes the session. Picker: a "Providers" section lists other agents' provider models ("on OpenCode"); picking one moves the draft/thread there (`openSwitch(agent, model)`, `switchAgent(…, model)` so a handoff seeds on that model). Claude and Codex stay on their subscriptions.
+
+**User decisions (2026-10-06/07)**: never switch Claude or Codex to a BYOK provider in tests; test third-party providers through OpenCode (or a per-thread pin); use a free OpenCode model for non-provider OpenCode checks (Big Pickle worked; Ling 3.1 Flash Free was down; AgentRouter DeepSeek fails on thinking mode). Skipped for now: Azure/Bedrock/Vertex, the MiniMax/DeepSeek-anthropic/Moonshot/Z.ai presets (no keys). The note under Small model was reworded so it doesn't read as routing through OpenCode.
+
+**Next: P2 translation gateway (user said do it, after P1d).** Research map (2026-10-06, spot-checked):
+- Hook: `startToolServer` (`mcp-http.ts:128-213`) has a fixed path allowlist (`/mcp`, `/mcp-skills`, `/mcp-routed`) plus the `/mcp-up/` callback; add an `/llm/<providerId>/…` branch (same per-launch Bearer, 127.0.0.1). Request bodies there are uncapped today (`readJson` `:82-90`); cap LLM bodies (e.g. 32 MB).
+- Claude: point `ANTHROPIC_BASE_URL` at `<tool server>/llm/<id>` with the per-launch token as `ANTHROPIC_AUTH_TOKEN` (proven shape: `test/claude-e2e.test.ts:180-247`); serve `POST /v1/messages` (SSE) translated to the provider's chat-completions. Codex: `base_url` at the route, `wire_api="responses"`, serve `POST /v1/responses` SSE (`test/codex-e2e.test.ts:204-262`).
+- Translators are new (no raw chunk parsers in `src/main`); reuse `normalizeUsage`, `buildHeaders`, `endpointsFor`, `wireIdOf`. Fakes to reuse: `test/claude-e2e.test.ts:20-63` (Anthropic SSE), `test/fixtures/fake-openai.mjs` (Responses SSE), `test/opencode-e2e.test.ts:22-52` + `opencode-guard.test.ts:110-154` (chat chunks with tool calls).
+- Build-or-buy: `@musistudio/llms` is ~8 MB with fastify + 3 SDKs and stale since 2026-01 → own minimal translators, golden fixtures recorded from TokenHarbor.
+- Product shape to keep: per-thread pin (Claude/Codex never globally switched). Likely: offer provider models on Claude/Codex too when the protocol needs translation, gated by `injectorCompatible` "via gateway".
+
+**Delegation note:** on 2026-10-06 the opencode `researcher` failed twice with "reasoning_content in the thinking mode must be passed back" (AgentRouter DeepSeek); with no `oc-run.mjs` on the Mac there's no model fallback, so do the research directly after two such failures. Implementers worked earlier the same day.
+
+**Test keys**: TokenHarbor `thk_live_…` and PGS Grove `pgsk_plan_…` (PGS plan includes `glm-5.3-flash`, `mimo-v2.6-flash`, `deepseek-v4.1-flash`, not `deepseek-v4-flash`) were still valid on 2026-10-07; the user will revoke them after testing, so ask for fresh ones for P2. Never write them to files.
+
+**Pending**: Windows gate (M1–M4, MCP leftovers, P1, P1d) + CI; then P3 (TokenHarbor/PGS presets, Add from catalog), D1–D4. Small: chat renderer italicises intraword underscores; provider editor "Options" label isn't top-aligned; Antigravity `providerEnvOnly` vs `test/inject-acp.test.ts:57`.
 
 ## Resume here — MCP, providers, Design mode (2026-10-05, Mac)
 
@@ -329,4 +356,4 @@ In order:
 
 ## Next
 
-MCP M1–M4 are done and live-tested (see **Resume here — MCP, providers, Design mode**). Next: the Windows PC gate for M1–M4 together with the older pending gates, then **P1 providers, native**, then P2 translation gateway, P3 presets, D1–D4 Design mode.
+MCP and P1 (incl. P1d) are done and live-tested (see **Resume here — P1 done, next P2**). Next: **P2 translation gateway** (research map in that section), then the Windows PC gate for everything since M1, then P3 presets (no-key ones skipped), D1–D4 Design mode.
