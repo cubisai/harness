@@ -294,6 +294,7 @@ function ExpertsTab() {
 /** Where a skill came from, as the Library and the $ menu label it. */
 export function originLabel(origin?: SkillOrigin): string {
   switch (origin) {
+    case "projectCubiq":
     case "project":
     case "projectClaude":
       return "Project";
@@ -324,7 +325,7 @@ function SkillsTab() {
   const [detail, setDetail] = useState<SkillDetail | null>(null);
   const [form, setForm] = useState<{ name: string; description: string; scope: "harness" | "project" } | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const [folders, setFolders] = useState<{ project: string; projectClaude: string; harness: string; bundled: string } | null>(null);
+  const [folders, setFolders] = useState<{ projectCubiq: string; project: string; projectClaude: string; harness: string; bundled: string } | null>(null);
   const [creating, setCreating] = useState(false);
 
   const reload = () => void api().listAllSkills(projectId ?? undefined).then(setAll);
@@ -357,8 +358,8 @@ function SkillsTab() {
 
   const q = query.trim().toLowerCase();
   const shown = all.filter((s) => !q || s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q));
-  // Both project folders list together under Project.
-  const groupOf = (s: SkillEntry) => (s.origin === "projectClaude" ? "project" : (s.origin ?? "legacy"));
+  // The project folders list together under Project.
+  const groupOf = (s: SkillEntry) => (s.origin === "projectClaude" || s.origin === "projectCubiq" ? "project" : (s.origin ?? "legacy"));
   const groups = SKILL_ORIGINS.map((origin) => [origin, shown.filter((s) => groupOf(s) === origin)] as const);
 
   const open = (name: string) => {
@@ -431,6 +432,7 @@ function SkillsTab() {
     <div className="skill-folders">
       {(
         [
+          ["project", folders.projectCubiq],
           ["project", folders.project],
           ["project", folders.projectClaude],
           ["harness", folders.harness],

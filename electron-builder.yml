@@ -14,8 +14,8 @@ extraResources:
   # Built-in skills (browser, docx, pdf, xlsx, pptx, skill-creator) and the agent guide.
   - from: resources/skills
     to: skills
-  - from: resources/HARNESS.md
-    to: HARNESS.md
+  - from: resources/CUBIQ.md
+    to: CUBIQ.md
 # The Agent SDK spawns its bundled Claude Code binary; binaries can't run
 # from inside an asar archive.
 asarUnpack:

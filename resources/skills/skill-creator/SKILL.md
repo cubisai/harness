@@ -10,7 +10,7 @@ A skill is a folder whose name is the skill's name, holding `SKILL.md` and any f
 ## Where it goes
 
 Ask which one if the user didn't say:
-- **This project only**: `<project>/.agents/skills/<name>/`. Checked into the repo, so the team gets it; Codex, OpenCode and this harness read it.
+- **This project only**: `<project>/.cubiq/skills/<name>/`. Checked into the repo, so the team gets it; CubiQ gives it to every agent.
 - **Every project**: the harness's own skills folder, shown in the Library under Skills → Folders (the user can also use Library → Skills → New skill). Don't write into another tool's global folder (`~/.claude/skills`, `~/.codex`) unless the user asks for that tool specifically.
 
 ## SKILL.md

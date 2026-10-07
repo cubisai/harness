@@ -35,7 +35,7 @@ function stamp(dir: string): string {
 
 /**
  * The standard Agent Skills folders, merged by precedence: the project's
- * `.agents/skills` then `.claude/skills`, the app's own (global) folder, the
+ * `.cubiq/skills`, `.agents/skills` then `.claude/skills`, the app's own (global) folder, the
  * bundled set, and finally the legacy skills.json root. Discovered layers are
  * cached by their folders' mtimes, so repeated lookups are cheap and an edit
  * shows up.
@@ -59,9 +59,10 @@ export class SkillCatalogs {
     return loadCatalog(this.opts.legacyRoot).skills;
   }
 
-  /** The folders this app reads, for the UI. `project` and `projectClaude` are "" without a cwd. */
-  dirs(cwd: string | null): { project: string; projectClaude: string; harness: string; bundled: string } {
+  /** The folders this app reads, for the UI. The project ones are "" without a cwd. */
+  dirs(cwd: string | null): { projectCubiq: string; project: string; projectClaude: string; harness: string; bundled: string } {
     return {
+      projectCubiq: cwd ? join(cwd, ".cubiq", "skills") : "",
       project: cwd ? join(cwd, ".agents", "skills") : "",
       projectClaude: cwd ? join(cwd, ".claude", "skills") : "",
       harness: this.opts.harnessDir,
@@ -81,9 +82,16 @@ export class SkillCatalogs {
   forProject(cwd: string | null): Catalog {
     const disabled = new Set(this.opts.disabled());
     const layers: SkillEntry[][] = [];
-    // .agents comes first so it wins a name in both. The .claude folder has its own origin:
-    // Claude reads it natively, but Codex and OpenCode only read .agents, so the app delivers it to them.
-    if (cwd) layers.push(this.discovered("project", join(cwd, ".agents", "skills")), this.discovered("projectClaude", join(cwd, ".claude", "skills")));
+    // .cubiq comes first, then .agents, so they win a name over the later folders. .cubiq is the
+    // app's own (no agent reads it, so it's delivered to all); Codex and OpenCode read .agents natively;
+    // Claude reads .claude natively, so the app delivers that one to the others.
+    if (cwd) {
+      layers.push(
+        this.discovered("projectCubiq", join(cwd, ".cubiq", "skills")),
+        this.discovered("project", join(cwd, ".agents", "skills")),
+        this.discovered("projectClaude", join(cwd, ".claude", "skills")),
+      );
+    }
     layers.push(this.discovered("harness", this.opts.harnessDir), this.discovered("bundled", this.opts.bundledDir), this.legacy());
     return mergeCatalog(layers, disabled, this.opts.legacyRoot);
   }

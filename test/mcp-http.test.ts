@@ -67,6 +67,22 @@ describe("tool server", () => {
     await skills.close();
   });
 
+  it("builds the extra tools for the project ?p= names", async () => {
+    const seen: (string | undefined)[] = [];
+    const server = await startToolServer(() => [echo], (pid) => {
+      seen.push(pid);
+      return [{ ...skill, name: `skill_${pid ?? "none"}` }];
+    });
+    closeAfter(() => void server.close());
+    const plain = await connect(server.skillsUrl, server.token);
+    expect((await plain.listTools()).tools.map((t) => t.name)).toEqual(["echo", "skill_none"]);
+    await plain.close();
+    const scoped = await connect(withProject(server.skillsUrl, "p7"), server.token);
+    expect((await scoped.listTools()).tools.map((t) => t.name)).toEqual(["echo", "skill_p7"]);
+    await scoped.close();
+    expect(seen).toContain("p7");
+  });
+
   it("adds the routed tools on /mcp-routed only", async () => {
     const routed: HarnessTool = { ...skill, name: "search_tools", description: "Search MCP tools" };
     const server = await startToolServer(() => [echo], () => [skill], () => [routed]);

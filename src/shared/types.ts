@@ -4,8 +4,11 @@
 export type Invocation = "model" | "user";
 
 /** Where a skill was found: the standard folders, or the legacy skills.json root. */
-/** "projectClaude" is the project's .claude/skills: listed as Project, read natively only by Claude. */
-export type SkillOrigin = "project" | "projectClaude" | "harness" | "shared" | "bundled" | "legacy";
+/**
+ * "projectCubiq" is the project's .cubiq/skills, which no agent reads natively; "project" is .agents/skills;
+ * "projectClaude" is .claude/skills, read natively only by Claude. All three are listed as Project.
+ */
+export type SkillOrigin = "projectCubiq" | "project" | "projectClaude" | "harness" | "shared" | "bundled" | "legacy";
 
 /** One skill: a folder with a SKILL.md (see plan/docs/HARNESS.md). */
 export interface SkillEntry {
@@ -1011,7 +1014,7 @@ export interface UnskilledApi {
   /** Turn one skill on or off; returns the refreshed all-skills list. */
   setSkillEnabled(origin: SkillOrigin, name: string, enabled: boolean): Promise<SkillEntry[]>;
   /** The standard skill folders, for the Settings/Library UI. `project` and `projectClaude` are "" without one. */
-  getSkillFolders(projectId?: string): Promise<{ project: string; projectClaude: string; harness: string; bundled: string }>;
+  getSkillFolders(projectId?: string): Promise<{ projectCubiq: string; project: string; projectClaude: string; harness: string; bundled: string }>;
   /** Create a skill stub under the harness or the project; returns the SKILL.md path. */
   createSkill(input: { scope: "harness" | "project"; projectId?: string | null; name: string; description: string }): Promise<string>;
   listAgentCatalog(): Promise<AgentCatalogEntry[]>;

@@ -381,13 +381,14 @@ export function installMock(): void {
     getSkillFolders: async () => ({
       project: projects.length ? "/Users/you/code/acme-web/.agents/skills" : "",
       projectClaude: projects.length ? "/Users/you/code/acme-web/.claude/skills" : "",
+      projectCubiq: projects.length ? "/Users/you/code/acme-web/.cubiq/skills" : "",
       harness: "/Users/you/Library/Application Support/CubiQ/skills",
       bundled: "/Applications/CubiQ.app/Contents/Resources/skilled/skills",
     }),
     createSkill: async (input) => {
-      const origin: SkillOrigin = input.scope === "project" ? "project" : "harness";
+      const origin: SkillOrigin = input.scope === "project" ? "projectCubiq" : "harness";
       allSkills.push({ name: input.name, description: input.description, invocation: "user", calls: [], files: ["SKILL.md"], sha256: "", origin });
-      const dir = origin === "project" ? "/Users/you/code/acme-web/.agents/skills" : "/Users/you/Library/Application Support/CubiQ/skills";
+      const dir = origin === "projectCubiq" ? "/Users/you/code/acme-web/.cubiq/skills" : "/Users/you/Library/Application Support/CubiQ/skills";
       return `${dir}/${input.name}/SKILL.md`;
     },
     listAgentCatalog: async () => agentCatalog,
@@ -478,7 +479,7 @@ export function installMock(): void {
       ],
     }),
     contextPreview: async () => ({
-      guide: [{ source: "bundled", path: "HARNESS.md", tokens: 1240 }],
+      guide: [{ source: "bundled", path: "CUBIQ.md", tokens: 1240 }],
       tools: [
         { name: "browser_open", tokens: 280 },
         { name: "browser_click", tokens: 190 },

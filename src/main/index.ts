@@ -35,7 +35,7 @@ import { codexInstructions, prepareCodexPlan } from "./inject/codex";
 import { opencodeVariants, opencodeVersion, withOpenCodeVariant } from "./inject/opencode";
 import { ensureOpenCodeGuard, withOpenCodeGuard } from "./inject/opencode-guard";
 import { BUILT_IN_GUARD, findPython } from "./guard";
-import { createGuide } from "./guide";
+import { createGuide, userGuidePath } from "./guide";
 import { buildContextPreview, mcpRow, skillsOf, toolTokens } from "./context-preview";
 import { createMemory, memoryOn, memoryPrompt } from "./memory";
 import { createMemoryApi } from "./memory/api";
@@ -167,6 +167,12 @@ function createWindow(): BrowserWindow {
   return win;
 }
 
+/**
+ * What the shared skill tool (`/mcp-skills`) leaves out: folders tool-mode agents
+ * read themselves (OpenCode reads .agents and .claude). .cubiq is always served.
+ */
+const TOOL_SKILL_READS: SkillOrigin[] = ["project", "projectClaude", "shared"];
+
 async function main(): Promise<void> {
   // The app was renamed: adopt a pre-rename data folder (threads, settings,
   // keys, skills) before anything reads userData, and before ready, while
@@ -256,7 +262,7 @@ async function main(): Promise<void> {
    */
   const skillsInputFor = (delivery: SkillsDelivery | undefined, cwd: string | null) => {
     if (!delivery) return null;
-    const toolSkills = forAgent(skills.global(), { mode: "tool", reads: ["project", "shared"] });
+    const toolSkills = forAgent(skills.forProject(cwd), { mode: "tool", reads: TOOL_SKILL_READS });
     return {
       mode: delivery.mode,
       entries: skills.forProject(cwd).modelSkills.map(({ name, description }) => ({ name, description })),
@@ -350,8 +356,8 @@ async function main(): Promise<void> {
   const guardScript = root?.skillsDir ? join(root.skillsDir, "git-guardrails", "scripts", "block-dangerous-git.py") : BUILT_IN_GUARD;
   // One guide for every agent: the app's, the user's, then the project's, stable for the session.
   const guide = createGuide({
-    bundled: app.isPackaged ? join(process.resourcesPath, "HARNESS.md") : join(app.getAppPath(), "resources", "HARNESS.md"),
-    global: join(userData, "HARNESS.md"),
+    bundled: app.isPackaged ? join(process.resourcesPath, "CUBIQ.md") : join(app.getAppPath(), "resources", "CUBIQ.md"),
+    global: userGuidePath(userData),
   });
   const driver = createClaudeDriver({
     guide: (cwd) => guide.forCwd(cwd),
@@ -419,7 +425,8 @@ async function main(): Promise<void> {
   const getToolServer = () =>
     (toolServer ??= startToolServer(
       harnessTools,
-      () => [skillTool(() => forAgent(skills.global(), { mode: "tool", reads: ["project", "shared"] }))],
+      // The project's skills too (.cubiq, .claude), which tool-mode agents don't read themselves.
+      (pid) => [skillTool(() => forAgent(skills.forProject(projectPathOf(pid ?? null)), { mode: "tool", reads: TOOL_SKILL_READS }))],
       (pid) => routedTools(pid),
       () => threadTools,
       undefined,
@@ -446,7 +453,11 @@ async function main(): Promise<void> {
             guide: (cwd) => guide.forCwd(cwd),
             memory: memoryPromptFor,
             extensions: extensionsFor("codex"),
-            skillsDir: () => ensureModelSkillsDir(forAgent(skills.global(), CODEX_CAPABILITIES.skillsDelivery), modelSkillsDir),
+            // Per project: Codex reads .agents/skills itself, but not .cubiq or .claude.
+            skillsDir: (cwd) =>
+              cwd
+                ? ensureModelSkillsDir(forAgent(skills.forProject(cwd), CODEX_CAPABILITIES.skillsDelivery), join(`${modelSkillsDir}-projects`, createHash("sha256").update(cwd).digest("hex").slice(0, 12)))
+                : ensureModelSkillsDir(forAgent(skills.global(), CODEX_CAPABILITIES.skillsDelivery), modelSkillsDir),
             toolServer: getToolServer,
             onLimits: limits.for("codex"),
             injection: () =>
@@ -733,7 +744,7 @@ async function main(): Promise<void> {
   ipcMain.handle("skills:create", (_e, input: { scope: "harness" | "project"; projectId?: string | null; name: string; description: string }) => {
     if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(input.name)) throw new Error("A skill name is lowercase letters, digits and dashes, up to 64 characters.");
     const dirs = skills.dirs(projectPathOf(input.projectId ?? null));
-    const base = input.scope === "project" ? dirs.project : dirs.harness;
+    const base = input.scope === "project" ? dirs.projectCubiq : dirs.harness;
     if (!base) throw new Error("Pick a project before creating a project skill.");
     const folder = join(base, input.name);
     if (existsSync(folder)) throw new Error(`A skill named ${input.name} already exists.`);

@@ -415,6 +415,24 @@ describe("Codex driver", () => {
     expect(t.events[1]).toMatchObject({ kind: "assistant-text", text: '["/skills/here"]' });
   });
 
+  it("points the extra skills root at the turn's project", async () => {
+    const asked: (string | undefined)[] = [];
+    const d = createCodexDriver({
+      command: process.execPath,
+      args: [MOCK],
+      clientVersion: "test",
+      skillsDir: (cwd) => {
+        asked.push(cwd);
+        return cwd ? `/skills/${cwd === tmpdir() ? "this-project" : "other"}` : "/skills/global";
+      },
+    });
+    closeAfter(() => d.dispose?.());
+    const t = turn("roots");
+    await d.runTurn(t.input);
+    expect(t.events[1]).toMatchObject({ kind: "assistant-text", text: '["/skills/this-project"]' });
+    expect(asked).toEqual([undefined, tmpdir()]);
+  });
+
   it("sends the harness guide as developer instructions on thread/start", async () => {
     const probe = join(tempDir(), "thread-start.json");
     process.env.GUIDE_PROBE = probe;

@@ -1,7 +1,7 @@
-import { mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createGuide } from "../src/main/guide";
+import { createGuide, projectGuidePath, userGuidePath } from "../src/main/guide";
 import { estimateTokens } from "../src/main/handoff";
 import { tempDir } from "./helpers";
 
@@ -13,12 +13,12 @@ function write(path: string, text: string): void {
 describe("createGuide", () => {
   it("joins the bundled, global, and project guides in that order", () => {
     const root = tempDir();
-    const bundled = join(root, "app", "HARNESS.md");
-    const global = join(root, "userData", "HARNESS.md");
+    const bundled = join(root, "app", "CUBIQ.md");
+    const global = join(root, "userData", "CUBIQ.md");
     const cwd = join(root, "project");
     write(bundled, "  bundled  ");
     write(global, "global");
-    write(join(cwd, ".agents", "HARNESS.md"), "project");
+    write(join(cwd, ".cubiq", "CUBIQ.md"), "project");
     const guide = createGuide({ bundled, global });
     expect(guide.forCwd(cwd)).toBe("bundled\n\nglobal\n\nproject");
   });
@@ -31,7 +31,7 @@ describe("createGuide", () => {
 
   it("keeps only the guides that exist", () => {
     const root = tempDir();
-    const global = join(root, "userData", "HARNESS.md");
+    const global = join(root, "userData", "CUBIQ.md");
     write(global, "global");
     const guide = createGuide({ bundled: join(root, "missing.md"), global });
     expect(guide.forCwd(join(root, "project"))).toBe("global");
@@ -39,7 +39,7 @@ describe("createGuide", () => {
 
   it("re-reads a file once its mtime changes", () => {
     const root = tempDir();
-    const bundled = join(root, "HARNESS.md");
+    const bundled = join(root, "CUBIQ.md");
     write(bundled, "one");
     const guide = createGuide({ bundled, global: join(root, "none.md") });
     expect(guide.forCwd(join(root, "project"))).toBe("one");
@@ -51,20 +51,20 @@ describe("createGuide", () => {
 
   it("normalizes CRLF to LF", () => {
     const root = tempDir();
-    const bundled = join(root, "HARNESS.md");
+    const bundled = join(root, "CUBIQ.md");
     write(bundled, "# Guide\r\n\r\n- one\r\n- two\r\n");
     const guide = createGuide({ bundled, global: join(root, "none.md") });
     expect(guide.forCwd(join(root, "project"))).toBe("# Guide\n\n- one\n- two");
   });
 
   it("keeps the bundled guide within its 600-token budget", () => {
-    const text = readFileSync(join(__dirname, "..", "resources", "HARNESS.md"), "utf8").replace(/\r\n?/g, "\n").trim();
+    const text = readFileSync(join(__dirname, "..", "resources", "CUBIQ.md"), "utf8").replace(/\r\n?/g, "\n").trim();
     expect(estimateTokens(text)).toBeLessThanOrEqual(600);
   });
 
   it("serves the cached text while the mtime is unchanged", () => {
     const root = tempDir();
-    const bundled = join(root, "HARNESS.md");
+    const bundled = join(root, "CUBIQ.md");
     write(bundled, "cached");
     const guide = createGuide({ bundled, global: join(root, "none.md") });
     expect(guide.forCwd(join(root, "project"))).toBe("cached");
@@ -82,8 +82,8 @@ describe("createGuide", () => {
 describe("createGuide.partsForCwd", () => {
   it("returns the sources in order, trimming text and skipping missing files", () => {
     const root = tempDir();
-    const bundled = join(root, "app", "HARNESS.md");
-    const global = join(root, "userData", "HARNESS.md");
+    const bundled = join(root, "app", "CUBIQ.md");
+    const global = join(root, "userData", "CUBIQ.md");
     const cwd = join(root, "project");
     write(bundled, "  bundled  ");
     write(global, "global");
@@ -95,10 +95,10 @@ describe("createGuide.partsForCwd", () => {
     ]);
   });
 
-  it("labels the project guide and uses the .agents/HARNESS.md path", () => {
+  it("labels the project guide and uses the .cubiq/CUBIQ.md path", () => {
     const root = tempDir();
     const cwd = join(root, "project");
-    const project = join(cwd, ".agents", "HARNESS.md");
+    const project = join(cwd, ".cubiq", "CUBIQ.md");
     write(project, "project");
     const guide = createGuide({ bundled: join(root, "none.md"), global: join(root, "none-user.md") });
     expect(guide.partsForCwd(cwd)).toEqual([{ source: "project", path: project, text: "project" }]);
@@ -106,13 +106,40 @@ describe("createGuide.partsForCwd", () => {
 
   it("forCwd is the parts joined by a blank line", () => {
     const root = tempDir();
-    const bundled = join(root, "app", "HARNESS.md");
-    const global = join(root, "userData", "HARNESS.md");
+    const bundled = join(root, "app", "CUBIQ.md");
+    const global = join(root, "userData", "CUBIQ.md");
     const cwd = join(root, "project");
     write(bundled, "bundled");
     write(global, "global");
-    write(join(cwd, ".agents", "HARNESS.md"), "project");
+    write(join(cwd, ".cubiq", "CUBIQ.md"), "project");
     const guide = createGuide({ bundled, global });
     expect(guide.forCwd(cwd)).toBe(guide.partsForCwd(cwd).map((p) => p.text).join("\n\n"));
+  });
+});
+
+describe("guide paths", () => {
+  it("falls back to .agents/HARNESS.md only when .cubiq/CUBIQ.md is missing", () => {
+    const cwd = join(tempDir(), "project");
+    const own = join(cwd, ".cubiq", "CUBIQ.md");
+    const legacy = join(cwd, ".agents", "HARNESS.md");
+    expect(projectGuidePath(cwd)).toBe(own);
+    write(legacy, "old");
+    expect(projectGuidePath(cwd)).toBe(legacy);
+    expect(createGuide({ bundled: join(cwd, "none.md"), global: join(cwd, "none-user.md") }).forCwd(cwd)).toBe("old");
+    // Both present: only CUBIQ.md is read, so nothing reaches the prompt twice.
+    write(own, "new");
+    expect(projectGuidePath(cwd)).toBe(own);
+    expect(createGuide({ bundled: join(cwd, "none.md"), global: join(cwd, "none-user.md") }).forCwd(cwd)).toBe("new");
+  });
+
+  it("moves the user's old HARNESS.md to CUBIQ.md once, never over an existing one", () => {
+    const data = tempDir();
+    write(join(data, "HARNESS.md"), "mine");
+    expect(userGuidePath(data)).toBe(join(data, "CUBIQ.md"));
+    expect(readFileSync(join(data, "CUBIQ.md"), "utf8")).toBe("mine");
+    expect(existsSync(join(data, "HARNESS.md"))).toBe(false);
+    write(join(data, "HARNESS.md"), "stale");
+    userGuidePath(data);
+    expect(readFileSync(join(data, "CUBIQ.md"), "utf8")).toBe("mine");
   });
 });

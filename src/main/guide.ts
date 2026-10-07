@@ -1,5 +1,32 @@
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, statSync } from "node:fs";
 import { join } from "node:path";
+
+/**
+ * The project's guide: `.cubiq/CUBIQ.md`, or the older `.agents/HARNESS.md`
+ * when there's no CUBIQ.md. Never both, so nothing is sent twice.
+ */
+export function projectGuidePath(cwd: string): string {
+  const own = join(cwd, ".cubiq", "CUBIQ.md");
+  const legacy = join(cwd, ".agents", "HARNESS.md");
+  return !existsSync(own) && existsSync(legacy) ? legacy : own;
+}
+
+/**
+ * The user's own guide in the app data folder, `CUBIQ.md`. A `HARNESS.md` from
+ * before the rename is moved over once; best effort, a failed move reads nothing.
+ */
+export function userGuidePath(dataDir: string): string {
+  const own = join(dataDir, "CUBIQ.md");
+  const legacy = join(dataDir, "HARNESS.md");
+  if (!existsSync(own) && existsSync(legacy)) {
+    try {
+      renameSync(legacy, own);
+    } catch {
+      // Left where it was; the user can move it.
+    }
+  }
+  return own;
+}
 
 /**
  * The harness guide agents receive as instructions: the app's bundled copy,
@@ -34,7 +61,7 @@ export function createGuide(opts: { bundled: string; global: string }): {
     const sources: { source: "bundled" | "user" | "project"; path: string }[] = [
       { source: "bundled", path: opts.bundled },
       { source: "user", path: opts.global },
-      { source: "project", path: join(cwd, ".agents", "HARNESS.md") },
+      { source: "project", path: projectGuidePath(cwd) },
     ];
     return sources
       .map((s) => ({ ...s, text: read(s.path) }))

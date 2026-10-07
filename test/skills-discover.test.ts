@@ -173,6 +173,19 @@ describe("SkillCatalogs", () => {
     expect(cat.byName.get("dup")?.dir).toBe(join(cwd, ".agents", "skills", "dup"));
   });
 
+  it("reads .cubiq/skills first and delivers it to every agent", () => {
+    const cwd = tempDir();
+    writeSkill(join(cwd, ".cubiq", "skills"), "dup", "---\nname: dup\ndescription: From cubiq\n---\nbody");
+    writeSkill(join(cwd, ".agents", "skills"), "dup", "---\nname: dup\ndescription: From agents\n---\nbody");
+    writeSkill(join(cwd, ".cubiq", "skills"), "own", "---\nname: own\ndescription: Cubiq project skill\n---\nbody");
+    const cat = catalogs().forProject(cwd);
+    expect(cat.byName.get("dup")?.origin).toBe("projectCubiq");
+    expect(cat.byName.get("dup")?.dir).toBe(join(cwd, ".cubiq", "skills", "dup"));
+    // No agent reads .cubiq on its own, so Codex/OpenCode and Claude all get it from the app.
+    expect(forAgent(cat, { mode: "extraRoots", prefix: "", reads: ["project", "shared"] }).map((s) => s.name)).toContain("own");
+    expect(forAgent(cat, { mode: "plugin", prefix: "p:", reads: [] }).map((s) => s.name)).toContain("own");
+  });
+
   it("no longer lists a skill that only lives in the old shared folder", () => {
     const cwd = tempDir();
     const shared = join(tempDir(), "shared-skills");
@@ -185,11 +198,13 @@ describe("SkillCatalogs", () => {
   it("reports the project, projectClaude, harness and bundled folders", () => {
     const cwd = "/tmp/proj";
     const dirs = catalogs().dirs(cwd);
+    expect(dirs.projectCubiq).toBe(join(cwd, ".cubiq", "skills"));
     expect(dirs.project).toBe(join(cwd, ".agents", "skills"));
     expect(dirs.projectClaude).toBe(join(cwd, ".claude", "skills"));
     const none = catalogs().dirs(null);
     expect(none.project).toBe("");
     expect(none.projectClaude).toBe("");
+    expect(none.projectCubiq).toBe("");
   });
 });
 

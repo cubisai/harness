@@ -73,8 +73,8 @@ export interface CodexConfig {
   clientVersion: string;
   /** Where to write the model catalog without the async question tools; none: Codex uses its own. */
   catalogDir?: () => string | null;
-  /** Model-invoked skills, registered as an extra skills root if present. */
-  skillsDir?: () => string | null;
+  /** Model-invoked skills for a project (the app-wide set without one), registered as Codex's extra skills root. */
+  skillsDir?: (cwd?: string) => string | null;
   /** The harness's tools over HTTP MCP (the browser pane's), attached per thread. */
   toolServer?: () => Promise<{ url: string; token: string }>;
   /** Plan rate limits, from the notifications Codex sends with its responses. */
@@ -378,6 +378,19 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   const spawnWait = new Map<string, string>();
   /** Threads loaded in the running app-server, and the MCP config they were loaded with. */
   const loaded = new Map<string, string>();
+  /** The extra skills roots last sent to the running app-server, as JSON. */
+  let skillRoots: string | null = null;
+  /** Point the app-server's extra skills root at this project's delivered skills; a no-op when unchanged. */
+  const useSkillRoots = async (conn: StdioRpc, cwd?: string): Promise<void> => {
+    if (!config.skillsDir) return;
+    const dir = config.skillsDir(cwd);
+    const roots = dir ? [dir] : [];
+    const key = JSON.stringify(roots);
+    if (key === skillRoots) return;
+    await conn.request("skills/extraRoots/set", { extraRoots: roots }).then(() => {
+      skillRoots = key;
+    }, () => {});
+  };
   /** The memory block a new session first carried, frozen by Codex thread id (prompt-cache reads). */
   const frozenMemory = new Map<string, string>();
   /** MCP tools the user chose "always allow" for, by thread. */
@@ -831,10 +844,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         capabilities: { experimentalApi: true },
       });
       conn.notify("initialized");
-      if (config.skillsDir) {
-        const dir = config.skillsDir();
-        if (dir) await conn.request("skills/extraRoots/set", { extraRoots: [dir] }).catch(() => {});
-      }
+      skillRoots = null;
+      await useSkillRoots(conn);
       await listModels(conn);
       if (plan?.byok && startWarnings.length) throw new Error(`Codex rejected the provider config: ${startWarnings.join("; ")}`);
     })();
@@ -892,6 +903,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     let threadId = "";
     let threadModel: string | null = null;
     let seed: SessionSeed | null = null;
+    // Codex's extra skills root is app-server wide: this project's set, before the thread loads its skills.
+    await useSkillRoots(conn, input.cwd);
     if (input.sessionId) {
       // The MCP servers changed mid-conversation (the user opened the
       // browser, or edited their servers): unload the thread so the

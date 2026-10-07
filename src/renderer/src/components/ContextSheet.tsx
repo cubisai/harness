@@ -8,7 +8,7 @@ import "../styles/context.css";
 const GUIDE_LABELS: Record<ContextPreview["guide"][number]["source"], string> = {
   bundled: "Bundled guide",
   user: "Your guide",
-  project: "Project .agents/HARNESS.md",
+  project: "Project .cubiq/CUBIQ.md",
 };
 
 /**
