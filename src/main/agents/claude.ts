@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
 import type { EffortLevel, HookCallback, ModelInfo, ModelUsage, Options, PermissionResult, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
-import type { McpServerEntry, ModelOption, PermissionMode, PlanEntry, ThreadEvent } from "../../shared/types";
+import type { McpServerEntry, ModelOption, ModelPricing, PermissionMode, PlanEntry, ThreadEvent } from "../../shared/types";
 import { providerOfModel } from "../../shared/provider-rules";
 import { canonicalTool, clipSummary, type EditResult, type RunPayload, type RunResult } from "../../shared/tools";
 import { diffSummary, unifiedDiff } from "../../shared/diff";
@@ -501,6 +501,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
       };
 
       const turn = newTurnState();
+      if (plan && "pricing" in plan) turn.pricing = plan.pricing;
 
       // One query() attempt. "aborted" means the turn was stopped (the caller returns);
       // "lost" means the stored session couldn't be reopened and the caller should seed a new one.
@@ -618,6 +619,19 @@ export interface TurnState {
   contextInputTokens: number | null;
   /** The model the turn's main thread last reported, for the context window lookup. */
   model: string | null;
+  /** A pinned provider model's prices (null: unknown), in place of Claude Code's own estimate; undefined keeps Claude's. */
+  pricing?: ModelPricing | null;
+}
+
+/** A turn's cost from its token counts at a provider's per-1M prices; null when the prices are unknown. */
+export function priceUsage(
+  usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null },
+  pricing: ModelPricing | null,
+): number | null {
+  if (!pricing) return null;
+  const input = usage.input_tokens + (usage.cache_creation_input_tokens ?? 0);
+  const cached = usage.cache_read_input_tokens ?? 0;
+  return (input * pricing.input + cached * (pricing.cacheRead ?? pricing.input) + usage.output_tokens * pricing.output) / 1_000_000;
 }
 
 /** Fresh per-turn state for runTurn and for mapping a message stream in tests. */
@@ -646,10 +660,11 @@ export function newTurnState(): TurnState {
  * `contextUsed` is the last main-thread assistant call's full input (cached
  * included), and `contextSize` the model's window.
  */
-export function turnEndFromResult(message: SDKResultMessage, contextUsed?: number | null, model?: string | null): ThreadEvent {
+export function turnEndFromResult(message: SDKResultMessage, contextUsed?: number | null, model?: string | null, pricing?: ModelPricing | null): ThreadEvent {
   return {
     kind: "turn-end",
-    costUsd: typeof message.total_cost_usd === "number" ? message.total_cost_usd : null,
+    // Claude Code prices a model it doesn't know as one it does; a provider's own prices (or none) replace that.
+    costUsd: pricing !== undefined ? priceUsage(message.usage, pricing) : typeof message.total_cost_usd === "number" ? message.total_cost_usd : null,
     inputTokens: message.usage.input_tokens,
     outputTokens: message.usage.output_tokens,
     durationMs: message.duration_ms,
@@ -839,7 +854,7 @@ export function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnS
       return;
     }
     case "result": {
-      input.onEvent(turnEndFromResult(message, turn.contextInputTokens, turn.model));
+      input.onEvent(turnEndFromResult(message, turn.contextInputTokens, turn.model, turn.pricing));
       if (message.subtype !== "success") {
         input.onEvent({ kind: "error", message: `The turn ended early (${message.subtype}).` });
       }

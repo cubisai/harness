@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ModelInfo, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
-import { bundledClaudeVersion, createClaudeDriver, FIRST_RELIST_MS, fromSdk, handleMessage, harnessToolOptions, newTurnState, pickClaudeExecutable, resolvePackagedClaudeBinary, turnEndFromResult } from "../src/main/agents/claude";
+import { bundledClaudeVersion, createClaudeDriver, FIRST_RELIST_MS, fromSdk, handleMessage, harnessToolOptions, newTurnState, pickClaudeExecutable, priceUsage, resolvePackagedClaudeBinary, turnEndFromResult } from "../src/main/agents/claude";
 import { MODEL_TTL_MS } from "../src/main/agents/model-ttl";
 import { MEMORY_READ_TOOL } from "../src/main/memory/tool";
 import type { HarnessTool, TurnInput } from "../src/main/agents/types";
@@ -815,5 +815,14 @@ describe("harnessToolOptions", () => {
 
   it("returns nothing when only memory_read is offered", () => {
     expect(harnessToolOptions([tool(MEMORY_READ_TOOL)])).toEqual({});
+  });
+});
+
+describe("priceUsage", () => {
+  it("prices uncached, cache-write and cache-read input and output per 1M tokens", () => {
+    const usage = { input_tokens: 1_000, cache_creation_input_tokens: 1_000, cache_read_input_tokens: 10_000, output_tokens: 500 };
+    expect(priceUsage(usage, { input: 1, output: 4, cacheRead: 0.1 })).toBeCloseTo((2_000 * 1 + 10_000 * 0.1 + 500 * 4) / 1e6);
+    expect(priceUsage(usage, { input: 1, output: 4 })).toBeCloseTo((12_000 + 2_000) / 1e6);
+    expect(priceUsage(usage, null)).toBeNull();
   });
 });

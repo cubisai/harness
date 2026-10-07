@@ -2,7 +2,7 @@
 // warning that a project or user settings file can still override it with.
 
 import { resolveSettings } from "@anthropic-ai/claude-agent-sdk";
-import type { Provider } from "../../shared/types";
+import type { ModelPricing, Provider } from "../../shared/types";
 import { PROVIDER_MODEL_PREFIX, anthropicAuthStyle, providerWarning } from "../../shared/provider-rules";
 import { catalogFor, wireIdOf } from "../providers";
 import { headerPlan, resolvedHeaders } from "./headers";
@@ -11,16 +11,19 @@ import type { InjectedEnv, InjectionPlan } from ".";
 /** The variables Claude reads its endpoint and key from; stripped from every plan before injection. */
 export const CLAUDE_KEY_VARS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"];
 
+const GATEWAY_WARNING =
+  "Claude reaches this provider through CubiQ's gateway, so it runs without Remote Control and MCP tool search: every MCP tool is loaded up front.";
+
 const STRIP_BETA_WARNING =
   "Stripping experimental headers also turns off MCP tool search, so every MCP tool is loaded up front.";
 
-/** The wire id of the provider model a thread's `unskilled-<provider>/<model>` id names, or undefined. */
-function pinnedWireId(provider: Provider, model: string | undefined): string | undefined {
+/** The provider model a thread's `unskilled-<provider>/<model>` id names (its wire id and price), or undefined. */
+function pinnedModel(provider: Provider, model: string | undefined): { wire: string; pricing: ModelPricing | null } | undefined {
   const prefix = `${PROVIDER_MODEL_PREFIX}${provider.id}/`;
   if (!model?.startsWith(prefix)) return undefined;
   const id = model.slice(prefix.length);
   const found = provider.models.find((m) => m.id === id);
-  return found ? wireIdOf(found, found.id) : id;
+  return { wire: found ? wireIdOf(found, found.id) : id, pricing: found?.cost ?? null };
 }
 
 /**
@@ -56,9 +59,9 @@ export function injectClaude(
   else if (anthropicAuthStyle(provider) === "x-api-key") env.ANTHROPIC_API_KEY = secret;
   else env.ANTHROPIC_AUTH_TOKEN = secret; // sent as Authorization: Bearer
 
-  const pinned = pinnedWireId(provider, opts.model);
+  const pinned = pinnedModel(provider, opts.model);
   const first = provider.models[0];
-  if (pinned) env.ANTHROPIC_MODEL = pinned;
+  if (pinned) env.ANTHROPIC_MODEL = pinned.wire;
   else if (first) env.ANTHROPIC_MODEL = first.modelID ?? first.id;
   // Background work (titles, summaries) goes to the cheap model; the haiku slot follows it unless pinned.
   const small = provider.models.find((m) => m.id === provider.smallModel);
@@ -75,7 +78,8 @@ export function injectClaude(
   }
 
   const warnings: string[] = [];
-  const remote = providerWarning(provider, "claude");
+  // Through the gateway the URL is CubiQ's own, so say what that costs rather than how to avoid it.
+  const remote = gateway ? GATEWAY_WARNING : providerWarning(provider, "claude");
   if (remote) warnings.push(remote);
   // The gateway never forwards beta headers, so there is nothing to strip.
   if (provider.betaHeaders === "strip" && !gateway) {
@@ -83,7 +87,7 @@ export function injectClaude(
     warnings.push(STRIP_BETA_WARNING);
   }
 
-  return { env, byok: true, ...(pinned ? { model: pinned } : {}), ...(warnings.length ? { warning: warnings.join(" ") } : {}) };
+  return { env, byok: true, ...(pinned ? { model: pinned.wire, pricing: pinned.pricing } : {}), ...(warnings.length ? { warning: warnings.join(" ") } : {}) };
 }
 
 /** Which settings sources pin an Anthropic key or base URL, by path where there is one. */

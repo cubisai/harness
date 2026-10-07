@@ -955,7 +955,7 @@ export class Service {
     const text =
       result === "in-place"
         ? `Switched the model from ${label(from)} to ${label(to)}. ${driver.label} keeps the conversation, but the prompt cache starts over, so the next reply may be slower and cost more.`
-        : `Switched the model from ${label(from)} to ${label(to)}. ${driver.label} can't change models mid-conversation, so this is a new session; the conversation so far is handed over with your next message.`;
+        : `Switched the model from ${label(from)} to ${label(to)}. ${driver.label} starts a new session for this switch; the conversation so far is handed over with your next message.`;
     this.emit(threadId, { kind: "notice", text });
     return result;
   }

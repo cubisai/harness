@@ -2,7 +2,7 @@
 // itself: it asks for a plan and applies it (env, argv, files), so the same
 // rules decide what every agent inherits and what it never sees.
 
-import type { CredentialChoice, Provider, Settings } from "../../shared/types";
+import type { CredentialChoice, ModelPricing, Provider, Settings } from "../../shared/types";
 import { redactDeep } from "./redact";
 import { injectAcp } from "./acp";
 import { CLAUDE_KEY_VARS, injectClaude } from "./claude";
@@ -28,6 +28,8 @@ export interface InjectionPlan {
   error?: string;
   /** The id the agent runs a pinned provider model as (its wire id), in place of the thread's `unskilled-<provider>/<model>`. */
   model?: string;
+  /** A pinned provider model's prices; null when unknown, so the turn shows no cost rather than the agent's guess. */
+  pricing?: ModelPricing | null;
   byok: boolean;
 }
 

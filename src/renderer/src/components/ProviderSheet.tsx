@@ -424,7 +424,8 @@ function ProviderEditor({
 
   const addDiscovered = () => {
     if (!discovery?.ok) return;
-    const toPlain = ({ cost: _cost, enriched: _enriched, ...model }: DiscoveredModel): ProviderModel => model;
+    // The price stays on the model: turns through the gateway are costed from it.
+    const toPlain = ({ enriched: _enriched, ...model }: DiscoveredModel): ProviderModel => model;
     const toAdd = discovery.models.filter((m) => discoverPicked.has(m.id) && !models.some((x) => x.id === m.id)).map(toPlain);
     if (!toAdd.length) return;
     setModels((ms) => [...ms, ...toAdd]);

@@ -251,3 +251,23 @@ describe("translation gateway route for Codex (/v1/responses)", () => {
     expect(((await refused.json()) as { error: { message: string } }).error.message).toMatch(/doesn't translate for Codex/);
   });
 });
+
+describe("translation gateway aborts", () => {
+  it("cancels the upstream request when the agent hangs up mid-stream", async () => {
+    let upstreamClosed: () => void = () => {};
+    const closed = new Promise<void>((r) => (upstreamClosed = r));
+    const up = await fakeChat((_b, res) => {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "Hel" } }] })}\n\n`);
+      // Never finishes: only the gateway's abort ends it.
+      res.on("close", () => upstreamClosed());
+    });
+    const server = await gatewayServer(provider(up.url));
+    const client = new AbortController();
+    const res = await fetch(`${server.llmUrl}/th/v1/messages`, { method: "POST", headers: { authorization: `Bearer ${server.llmToken}` }, body: messagesBody(), signal: client.signal });
+    const reader = res.body!.getReader();
+    await reader.read(); // the first events arrived
+    client.abort();
+    await expect(Promise.race([closed.then(() => "closed"), new Promise((r) => setTimeout(() => r("still open"), 3_000))])).resolves.toBe("closed");
+  });
+});

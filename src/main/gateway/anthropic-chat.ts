@@ -364,9 +364,24 @@ export function anthropicToChat(
   const messages: ChatMessage[] = [];
 
   const system = systemToText(req.system);
-  if (system.length > 0) messages.push({ role: "system", content: system });
+  const head: ChatMessage = { role: "system", content: system };
+  messages.push(head);
+  let answered = false;
 
   for (const message of req.messages ?? []) {
+    // Claude Code sends part of its system prompt (the environment: working
+    // directory, platform, git status) as a system message inside `messages`.
+    // Before the first answer it joins the leading system prompt; a later one
+    // becomes a tagged user message, since strict chat templates reject a
+    // system role mid-conversation.
+    if (message.role === "system") {
+      const text = typeof message.content === "string" ? message.content : systemToText(message.content as AnthropicTextBlock[]);
+      if (!text) continue;
+      if (!answered) head.content = head.content ? `${head.content}\n\n${text}` : text;
+      else messages.push({ role: "user", content: `<system>\n${text}\n</system>` });
+      continue;
+    }
+    if (message.role === "assistant") answered = true;
     if (message.role === "user") {
       appendUserMessage(message.content, messages);
     } else if (message.role === "assistant") {
@@ -375,6 +390,7 @@ export function anthropicToChat(
     }
   }
 
+  if (!head.content) messages.shift();
   const chat: ChatRequest = { model: opts.model, messages, stream: req.stream === true };
   if (chat.stream) chat.stream_options = { include_usage: true };
 

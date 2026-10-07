@@ -73,6 +73,14 @@ export interface ProviderModel {
   contextWindow: number;
   maxOutput: number;
   alias?: "opus" | "sonnet" | "haiku"; // pins Claude alias slots
+  cost?: ModelPricing; // from the provider's listing or models.dev, when known
+}
+
+/** USD per 1M tokens; cache reads cost `cacheRead` when the provider says, else the input price. */
+export interface ModelPricing {
+  input: number;
+  output: number;
+  cacheRead?: number;
 }
 
 export interface ProviderSecret {

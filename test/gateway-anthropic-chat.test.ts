@@ -628,3 +628,35 @@ describe("chatToAnthropicMessage", () => {
     expect(message.usage).toEqual({ input_tokens: 30, output_tokens: 8, cache_read_input_tokens: 20 });
   });
 });
+
+describe("anthropicToChat system messages inside messages", () => {
+  it("joins one before the first answer to the system prompt, and tags a later one as a user message", () => {
+    const chat = anthropicToChat(
+      {
+        system: [{ type: "text", text: "You are Claude Code." }],
+        messages: [
+          { role: "user", content: "hi" },
+          { role: "system", content: [{ type: "text", text: "Primary working directory: /p" }] } as never,
+          { role: "assistant", content: "hello" },
+          { role: "system", content: "Reminder: be brief." } as never,
+          { role: "user", content: "again" },
+        ],
+      },
+      { model: "m", reasoning: false },
+    );
+    expect(chat.messages).toEqual([
+      { role: "system", content: "You are Claude Code.\n\nPrimary working directory: /p" },
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "hello" },
+      { role: "user", content: "<system>\nReminder: be brief.\n</system>" },
+      { role: "user", content: "again" },
+    ]);
+  });
+
+  it("still starts with a system message when only an in-messages one exists, and omits an empty one", () => {
+    const withEnv = anthropicToChat({ messages: [{ role: "system", content: "env" } as never, { role: "user", content: "hi" }] }, { model: "m", reasoning: false });
+    expect(withEnv.messages[0]).toEqual({ role: "system", content: "env" });
+    const none = anthropicToChat({ messages: [{ role: "user", content: "hi" }] }, { model: "m", reasoning: false });
+    expect(none.messages).toEqual([{ role: "user", content: "hi" }]);
+  });
+});

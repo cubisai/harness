@@ -125,6 +125,48 @@ describe("injectionFor (Claude)", () => {
   });
 });
 
+describe("injectionFor (Claude through the gateway)", () => {
+  const chat = provider({
+    id: "th",
+    wireProtocol: "openai-chat",
+    baseURL: "https://tokenharbor.example/v1",
+    headers: { "x-team": "a" },
+    betaHeaders: "strip",
+    models: [
+      { id: "flash", modelID: "deepseek-v4-flash", capabilities: { tools: true, vision: false, reasoning: true }, contextWindow: 128_000, maxOutput: 8_192, cost: { input: 0.3, output: 1.2 } },
+      { id: "noprice", capabilities: { tools: true, vision: false, reasoning: false }, contextWindow: 128_000, maxOutput: 8_192 },
+    ],
+  });
+  const gateway = { url: "http://127.0.0.1:5000/llm", token: "gw-token-abc" };
+  const plan = (model: string) => injectionFor(source({ providers: [chat], choice: { kind: "subscription" } }), "claude", {}, { injector: "claude", providerId: "th", model, gateway });
+
+  it("points Claude at the gateway with its token, never the provider key or headers", () => {
+    const p = plan("unskilled-th/flash");
+    expect(p.error).toBeUndefined();
+    expect(p.env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:5000/llm/th");
+    expect(p.env.ANTHROPIC_AUTH_TOKEN).toBe("gw-token-abc");
+    expect(p.env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(p.env.ANTHROPIC_MODEL).toBe("deepseek-v4-flash");
+    expect(p.env.ANTHROPIC_CUSTOM_HEADERS).toBeUndefined();
+    expect(p.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS).toBeUndefined();
+    expect(JSON.stringify(p.env)).not.toContain(KEY);
+    expect(JSON.stringify(p)).not.toContain("gw-token-abc");
+    expect(p.model).toBe("deepseek-v4-flash");
+    expect(p.warning).toMatch(/CubiQ's gateway/);
+    expect(p.warning).not.toMatch(/accept the loss/);
+  });
+
+  it("carries the model's price, or null when the provider has none", () => {
+    expect(plan("unskilled-th/flash").pricing).toEqual({ input: 0.3, output: 1.2 });
+    expect(plan("unskilled-th/noprice").pricing).toBeNull();
+  });
+
+  it("refuses a chat-completions provider when the gateway isn't running", () => {
+    const p = injectionFor(source({ providers: [chat] }), "claude", {}, { injector: "claude" });
+    expect(p.error).toMatch(/gateway/);
+  });
+});
+
 describe("injectionFor (gated drivers)", () => {
   it("warns and skips injection for a gated driver", () => {
     GATED_DRIVERS.add("test-gated");

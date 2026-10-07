@@ -28,10 +28,11 @@ function fakeChatUpstream(file: string) {
     req.on("end", () => {
       const body = JSON.parse(raw) as (typeof requests)[number]["body"];
       requests.push({ auth: req.headers.authorization, body });
-      const last = body.messages.at(-1);
+      // Claude Code may follow a tool result with a system note, so look for the result anywhere.
+      const result = body.messages.find((m) => m.role === "tool");
       const chunks: unknown[] =
-        last?.role === "tool"
-          ? [{ choices: [{ index: 0, delta: { content: `The file says ${String(last.content).includes("hello-gateway") ? "hello-gateway" : "something else"}.` }, finish_reason: "stop" }] }]
+        result
+          ? [{ choices: [{ index: 0, delta: { content: `The file says ${String(result.content).includes("hello-gateway") ? "hello-gateway" : "something else"}.` }, finish_reason: "stop" }] }]
           : body.tools?.length
             ? [
                 { choices: [{ index: 0, delta: { reasoning_content: "I should read the file." } }] },
@@ -140,6 +141,9 @@ describe("Claude through the translation gateway (real Claude Code, fake chat up
     expect(turn.length).toBeGreaterThanOrEqual(2);
     expect(upstream.requests.every((r) => r.auth === `Bearer ${KEY}`)).toBe(true);
     expect(turn[0]!.body.model).toBe("deepseek-v4-flash");
+    // Claude Code's environment (sent as a system message inside messages) reaches the model's system prompt.
+    expect(turn[0]!.body.messages[0]).toMatchObject({ role: "system" });
+    expect(String(turn[0]!.body.messages[0]!.content)).toContain("cubiq-gw-cwd-");
     const followUp = turn.at(-1)!.body.messages;
     const assistant = followUp.find((m) => m.role === "assistant" && m.tool_calls?.length);
     expect(assistant?.reasoning_content).toBe("I should read the file.");
