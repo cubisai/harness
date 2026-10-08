@@ -1,6 +1,6 @@
-# Handoff: C0 + P2 done; Windows CI gate green; next: Windows PC gate (checklist below), then P3
+# Handoff: P3 done; next: Design mode D1–D4 (Windows PC gate still pending, checklist below)
 
-Updated 2026-10-07 on the **Mac**, branch `m4`. Read **Windows gate (2026-10-07)** first, then **Resume here — C0 + P2 done**, then **Resume here — P1 done, next P2**, then **Resume here — MCP, providers, Design mode**, then **Resume here — Plan mode v2**, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`, `secrets-handling` (every stored credential safeStorage-encrypted; keys pasted in chat never go in files).
+Updated 2026-10-08 on the **Mac**, branch `m4`. Read **Resume here — P3 done** first, then **Windows gate (2026-10-07)**, then **Resume here — C0 + P2 done**, then **Resume here — P1 done, next P2**, then **Resume here — MCP, providers, Design mode**, then **Resume here — Plan mode v2**, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`, `secrets-handling` (every stored credential safeStorage-encrypted; keys pasted in chat never go in files).
 
 ## Where things stand
 
@@ -33,6 +33,7 @@ Updated 2026-10-07 on the **Mac**, branch `m4`. Read **Windows gate (2026-10-07)
 | P1d providers in the picker (2026-10-07, Mac) | **done**; 1373 passed; live: draft pick, in-place provider switch (resume), Claude→provider handoff | `7383268` |
 | C0 per-project `.cubiq/` (2026-10-07, Mac) | **done**; `.cubiq/CUBIQ.md` guide (falls back to `.agents/HARNESS.md`), `.cubiq/skills/` first; project skills now really delivered to Codex (per-project extraRoots) and OpenCode (per-project skill tool) | `ac88d64` |
 | P2 translation gateway (2026-10-07, Mac) | **done**; 1488 passed; live on TokenHarbor DeepSeek V4 Flash + PGS Grove GLM 5.3 Flash for Claude **and** Codex | P2b `58eb8a2`, P2c `113c006`, P2d `f4b4ac6` |
+| P3 presets, catalog, prices (2026-10-07/08, Mac) | **done**; 1499 passed (one unidentified flake on the first of three runs), build, smoke; live: both presets on Claude, Codex and OpenCode; Claude + Codex on subscription | `5ac596f` |
 
 **Uncommitted on purpose (the user decides):** the `CLAUDE.md` notes (Windows notes + the new worker model order) and `SETUP-OTHER-PC.md`. The bun switch is committed (`ab42bb9`). `test/__snapshots__/providers.test.ts.snap` shows as modified: line endings only. Phase commits carry code + tests only, with no attribution trailer.
 
@@ -138,6 +139,17 @@ All checked in the real app on Windows; code paths are cross-platform unless not
 - **Lucide icons**: the user asked for `lucide-react`. Adding a dependency touches `package.json` + the lockfile, which are in the user's uncommitted bun switch; do it (`bun add lucide-react`, replace `icons.tsx`) right after that switch is committed.
 - **Antigravity**: Google's own ACP server (`agy_acp_server.par`, ACP registry `antigravity-acp`) must be on the app's PATH; it stays off until the Settings opt-in, then the generic ACP driver runs it with the user's Google sign-in.
 - Still to confirm on the Mac: the same smoke/model checks there.
+
+## Resume here — P3 done (2026-10-08, Mac)
+
+Plan: `.ai/plans/p3-presets.md` (gitignored, Mac only).
+- **Presets** (`shared/provider-catalog.ts`): TokenHarbor (`https://tokenharbor.ai/v1`, `TOKENHARBOR_API_KEY`) and PGS Grove (`https://api.pgsgrove.com/v1`, its docs name no key var) on `openai-chat`, so every agent reaches them (Claude/Codex via the gateway). New `alsoServes`: both hosts also answer Messages and Responses on the same `/v1` (probed: 401 there vs 404 on a bogus path); the editor says so.
+- **Add from catalog**: `ModelsDev` now keeps models.dev's providers (`catalogProtocol`: `@ai-sdk/anthropic`→messages, `@ai-sdk/openai`→responses, `@ai-sdk/google`→gemini, else chat; no `api` URL or Bedrock/Vertex/Azure/SAP/watsonx/GitLab → left out; OpenAI/Anthropic/Google get their public URL from `FIRST_PARTY_API`). IPC `providers:catalog` → `searchProviderCatalog`. Editor row "Catalog": pick fills id/label/protocol/URL/key hint/docs and opens the model checklist (with prices); a curated preset with the same id wins; note "From models.dev, not tested by CubiQ". The MiniMax/DeepSeek-anthropic/Moonshot/Z.ai and Azure/Bedrock/Vertex presets stay unlisted (no keys); MiniMax is reachable via the catalog.
+- **Prices**: `ModelOption.cost`; picker rows show `$in / $out` per 1M (mono, tabular, muted) for provider models only; OpenCode's own copy of a saved model keeps the price (`acp/driver.ts`). Cache-read prices are now kept (models.dev `cache_read`, PGS `cached_input_per_m`, OpenRouter `input_cache_read`), which Claude gateway turns already use (`agents/claude.ts` `priceUsage`).
+- Implementer (opencode) wrote the catalog parsing + tests on the first try; reviewed here (reserved ids now imported, empty query sorted).
+- **Keys**: the user pasted TokenHarbor + PGS keys in chat on 2026-10-07 (again); entered only through the app editor into temp data dirs; nothing in repo, data dirs, logs, `~/.claude/projects` (non-transcript) or `~/.codex/sessions`. **Revoke both.**
+
+**Next: Design mode D1–D4** (spec `.ai/plans/mcp-providers-design.md` Part 3). The Windows PC gate below still covers M1…P3 when the PC is at hand (add: P3 catalog search + a preset save on Windows).
 
 ## Windows gate (2026-10-07)
 
@@ -389,4 +401,4 @@ In order:
 
 ## Next
 
-MCP, P1, C0 and P2 are done and live-tested (see **Resume here — C0 + P2 done**). Next: the Windows PC gate for everything since M1, then P3 presets (no-key ones skipped), D1–D4 Design mode.
+MCP, P1, C0, P2 and P3 are done and live-tested (see **Resume here — P3 done**). Next: D1–D4 Design mode; the Windows PC gate for everything since M1 whenever the PC is available.
