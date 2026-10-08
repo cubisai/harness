@@ -34,6 +34,10 @@ Updated 2026-10-08 on the **Mac**, branch `m4`. Read **Resume here — D3 done, 
 | C0 per-project `.cubiq/` (2026-10-07, Mac) | **done**; `.cubiq/CUBIQ.md` guide (falls back to `.agents/HARNESS.md`), `.cubiq/skills/` first; project skills now really delivered to Codex (per-project extraRoots) and OpenCode (per-project skill tool) | `ac88d64` |
 | P2 translation gateway (2026-10-07, Mac) | **done**; 1488 passed; live on TokenHarbor DeepSeek V4 Flash + PGS Grove GLM 5.3 Flash for Claude **and** Codex | P2b `58eb8a2`, P2c `113c006`, P2d `f4b4ac6` |
 | P3 presets, catalog, prices (2026-10-07/08, Mac) | **done**; 1499 passed (one unidentified flake on the first of three runs), build, smoke; live: both presets on Claude, Codex and OpenCode; Claude + Codex on subscription | `5ac596f` |
+| D1 Design shell (2026-10-08, Mac) | **done**; 1508 passed, build, smoke; live: design threads on Claude, Codex, OpenCode; Chat/Design filters, ⌘K, light/dark, 900–1280px | `86f71c0` |
+| D2 Design live canvas (2026-10-08, Mac) | **done**; 1545 passed, build, smoke; live: canvas follows mid-turn writes on all three agents, no-network probe, pick → chip, v1/v2 | `89530f2` |
+| D3 Design brain (2026-10-08, Mac) | **done**; 1577 passed, build, smoke; live: UI Designer on Claude Opus, Slide Designer on Codex, OpenCode Mono → Playful switch; chat threads carry no design skills | `c65337f` |
+| D4 evaluator loop + export | **next**: plan first (`.ai/plans/d4-*.md`), needs approval | — |
 
 **Uncommitted on purpose (the user decides):** the `CLAUDE.md` notes (Windows notes + the new worker model order) and `SETUP-OTHER-PC.md`. The bun switch is committed (`ab42bb9`). `test/__snapshots__/providers.test.ts.snap` shows as modified: line endings only. Phase commits carry code + tests only, with no attribution trailer.
 
@@ -142,7 +146,7 @@ All checked in the real app on Windows; code paths are cross-platform unless not
 
 ## Resume here — D3 done, D4 next (2026-10-08, Mac)
 
-D3 committed (plan `.ai/plans/d3-design-brain.md`, approved 2026-10-08). D3a (skill `mode`, `forAgent` design option, `main/design/systems.ts` + tests) by the opencode implementer on the first try, reviewed here; wiring, content and UI here.
+D3 committed `c65337f` (plan `.ai/plans/d3-design-brain.md`, approved 2026-10-08). D3a (skill `mode`, `forAgent` design option, `main/design/systems.ts` + tests) by the opencode implementer on the first try, reviewed here; wiring, content and UI here.
 - **Guide**: `resources/DESIGN-MODE.md` (≤700-token test) replaces `designNote` for design threads (`createGuide({ designMode })`, `{dir}` filled in; `designNote` stays as the fallback when the file is missing). Rules: build at `designs/<id8>/index.html`, follow `system/DESIGN.md` + link `system/tokens.css`, 8pt scale, 4px baseline, 44px targets, 4.5:1, states, no network, which `design-*` skill fits.
 - **Design-only skills**: six `resources/skills/design-*` (`prototype`, `mobile`, `slides` with `deck.js`/`deck.css`, `system-extract`, `critique` + `references/rubric.md`, `handoff` + template), all `mode: design` in frontmatter. `forAgent(…, { design })` keeps them out of chat threads: Claude gets a separate plugin dir per cwd+design, Codex a separate extra root per cwd+design, OpenCode's skill tool looks up the thread kind from `?t=` (`mcp-http.ts` `extra(pid, tid)`). Context sheet counts them only for design threads; the composer `$` menu hides them in chat (`Composer.tsx` filter on `threadKind`).
 - **Claude asks for paths outside its directories even in Full access** (verified live: a Full chat thread prompts for `head -1 <repo>/resources/...`). Design threads now pass `additionalDirectories` = design plugin dir + bundled + harness skills dirs (`ClaudeDriverConfig.skillDirs`), so skill scaffolds read without a prompt. Chat threads unchanged (pre-existing behaviour for chip skills with assets, e.g. pptx).
@@ -449,4 +453,4 @@ In order:
 
 ## Next
 
-MCP, P1, C0, P2 and P3 are done and live-tested (see **Resume here — P3 done**). D1 done (`86f71c0`), D2 done (`89530f2`), D3 done. Next: D4 (plan first, needs the user's approval); the Windows PC gate for everything since M1 whenever the PC is available.
+MCP, P1, C0, P2 and P3 are done and live-tested (see **Resume here — P3 done**). D1 done (`86f71c0`), D2 done (`89530f2`), D3 done (`c65337f`). Next: D4 (plan first, needs the user's approval); the Windows PC gate for everything since M1 whenever the PC is available.
