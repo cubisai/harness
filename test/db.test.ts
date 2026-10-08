@@ -285,6 +285,59 @@ describe("Store migrations", () => {
     new Store(file).close();
     new Store(file).close();
   });
+
+  it("adds a kind column to a pre-20 database, defaulting every existing thread to chat", () => {
+    const file = join(tempDir(), "pre20.db");
+    const old = new DatabaseSync(file);
+    old.exec(`
+      CREATE TABLE projects (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at INTEGER NOT NULL,
+        check_command TEXT, check_fix_rounds INTEGER);
+      CREATE TABLE threads (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, agent TEXT NOT NULL DEFAULT 'claude', title TEXT NOT NULL,
+        session_id TEXT, bindings TEXT NOT NULL DEFAULT '{}', model TEXT NOT NULL, effort TEXT, permission_mode TEXT NOT NULL,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0, archived INTEGER NOT NULL DEFAULT 0,
+        branch TEXT, worktree_path TEXT, context_window INTEGER);
+      CREATE TABLE schema_version (version INTEGER NOT NULL);
+      INSERT INTO schema_version VALUES (19);
+      INSERT INTO projects VALUES ('p', '/x', 'x', 1, NULL, NULL);
+      INSERT INTO threads (id, project_id, agent, title, model, permission_mode, created_at, updated_at)
+        VALUES ('t', 'p', 'claude', 'Old thread', 'opus', 'ask', 1, 1);
+    `);
+    old.close();
+
+    const store = new Store(file);
+    closeAfter(() => store.close());
+    expect(store.getThread("t").kind).toBe("chat");
+  });
+
+  it("stores a thread's kind, defaulting to chat", () => {
+    const store = new Store(join(tempDir(), "kind.db"));
+    closeAfter(() => store.close());
+    const p = store.addProject("/tmp/p");
+
+    const design = store.createThread(p.id, "claude", "m", "ask", "design");
+    expect(design.kind).toBe("design");
+    expect(store.getThread(design.id).kind).toBe("design");
+
+    const chat = store.createThread(p.id, "claude", "m", "ask");
+    expect(chat.kind).toBe("chat");
+    expect(store.getThread(chat.id).kind).toBe("chat");
+  });
+
+  it("restores a thread's exported kind, defaulting to chat", () => {
+    const store = new Store(join(tempDir(), "restore-kind.db"));
+    closeAfter(() => store.close());
+    const p = store.addProject("/tmp/p");
+    const design = store.createThread(p.id, "claude", "m", "ask", "design");
+
+    const restored = store.restoreThread(p.id, { thread: { ...design }, events: [] });
+    expect(restored.kind).toBe("design");
+    expect(store.getThread(restored.id).kind).toBe("design");
+
+    // An export from before kind existed has no field; it comes back as a chat.
+    const { kind: _kind, ...withoutKind } = design;
+    const older = store.restoreThread(p.id, { thread: withoutKind, events: [] });
+    expect(older.kind).toBe("chat");
+  });
 });
 
 describe("Store event payloads", () => {

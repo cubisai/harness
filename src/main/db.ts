@@ -15,6 +15,7 @@ import type {
   StoredEvent,
   Thread,
   ThreadEvent,
+  ThreadKind,
   Usage,
 } from "../shared/types";
 
@@ -198,6 +199,8 @@ export class Store {
           PRIMARY KEY (thread_id, path, version)
         )`,
       },
+      // 20: design threads (Design mode); every existing thread is a chat.
+      { applied: () => this.hasColumn("threads", "kind"), sql: "ALTER TABLE threads ADD COLUMN kind TEXT NOT NULL DEFAULT 'chat'" },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;
@@ -286,7 +289,7 @@ export class Store {
       .map((r) => toThread(r as unknown as ThreadRow));
   }
 
-  createThread(projectId: string, agent: string, model: string, permissionMode: PermissionMode): Thread {
+  createThread(projectId: string, agent: string, model: string, permissionMode: PermissionMode, kind: ThreadKind = "chat"): Thread {
     const now = Date.now();
     const thread: Thread = {
       id: randomUUID(),
@@ -300,12 +303,13 @@ export class Store {
       permissionMode,
       createdAt: now,
       updatedAt: now,
+      kind,
     };
     this.db
       .prepare(
-        "INSERT INTO threads (id, project_id, agent, title, session_id, model, effort, permission_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO threads (id, project_id, agent, title, session_id, model, effort, permission_mode, created_at, updated_at, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
-      .run(thread.id, projectId, agent, thread.title, null, model, null, permissionMode, now, now);
+      .run(thread.id, projectId, agent, thread.title, null, model, null, permissionMode, now, now, kind);
     return thread;
   }
 
@@ -629,7 +633,7 @@ export class Store {
     try {
       this.db
         .prepare(
-          "INSERT INTO threads (id, project_id, agent, title, session_id, bindings, model, effort, permission_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO threads (id, project_id, agent, title, session_id, bindings, model, effort, permission_mode, created_at, updated_at, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .run(
           id,
@@ -643,6 +647,7 @@ export class Store {
           thread.permissionMode,
           thread.createdAt,
           Date.now(),
+          thread.kind === "design" ? "design" : "chat",
         );
       const insert = this.db.prepare(
         `INSERT INTO events (thread_id, seq, payload, created_at, provenance, message_id, turn_id, item_id, parent_id, payload_ref, payload_bytes)
@@ -706,7 +711,7 @@ export class Store {
 }
 
 const THREAD_COLS =
-  "id, project_id, agent, title, session_id, bindings, model, effort, context_window, permission_mode, created_at, updated_at, pinned, archived, branch, worktree_path, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
+  "id, project_id, agent, title, session_id, bindings, model, effort, context_window, permission_mode, created_at, updated_at, pinned, archived, branch, worktree_path, kind, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
 
 export interface LedgerTarget {
   threadId: string;
@@ -761,6 +766,7 @@ interface ThreadRow {
   archived: number;
   branch: string | null;
   worktree_path: string | null;
+  kind: string | null;
   project_path: string | null;
 }
 
@@ -812,5 +818,6 @@ function toThread(r: ThreadRow): Thread {
     archived: r.archived === 1,
     branch: r.branch,
     worktreePath: r.worktree_path,
+    kind: r.kind === "design" ? "design" : "chat",
   };
 }

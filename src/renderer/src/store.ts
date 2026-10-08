@@ -23,12 +23,14 @@ import type {
   SwitchMode,
   SwitchResult,
   Thread,
+  ThreadKind,
 } from "../../shared/types";
 import { api } from "./api";
 import { appendDelta, applyLiveEvent, emptyLive, flushPending, type LiveThread } from "./live";
 import { DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
 import { IDLE, takeOverReducer, type TakeOverState } from "./takeover";
 import { threadSeen, turnEnded, type FinishedTurn } from "./inbox";
+import { threadKind } from "./sections";
 
 /** The right panel's tabs. Changes and Files need a project; Browser works without one; File shows an artifact. */
 export type InspectorTab = "changes" | "browser" | "files" | "artifact";
@@ -103,6 +105,10 @@ interface State {
   setDraft(patch: Partial<Draft>): void;
   selectedProjectId: string | null;
   selectedThreadId: string | null;
+  /** Chat or Design mode: which threads the sidebar lists and what New thread makes. Follows the selected thread. */
+  threadKind: ThreadKind;
+  /** Switch mode; a selected thread of the other kind gives way to the project's latest of this kind, if any. */
+  setThreadKind(kind: ThreadKind): Promise<void>;
   events: Record<string, StoredEvent[]>; // by thread id
   live: Record<string, LiveThread>; // streaming state not yet stored
   running: Record<string, boolean>;
@@ -424,6 +430,18 @@ export const useStore = create<State>((set, get) => ({
   },
   selectedProjectId: null,
   selectedThreadId: null,
+  threadKind: "chat",
+  async setThreadKind(kind) {
+    const s = get();
+    if (s.threadKind === kind) return;
+    set({ threadKind: kind });
+    const current = s.selectedThreadId ? Object.values(s.threads).flat().find((t) => t.id === s.selectedThreadId) : undefined;
+    if (current && threadKind(current) === kind) return;
+    const latest = (s.threads[s.selectedProjectId ?? ""] ?? [])
+      .filter((t) => !t.archived && threadKind(t) === kind)
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    await get().selectThread(latest?.id ?? null);
+  },
   events: {},
   live: {},
   running: {},
@@ -685,8 +703,11 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async selectThread(id) {
+    const picked = id ? Object.values(get().threads).flat().find((t) => t.id === id) : undefined;
     set((s) => ({
       selectedThreadId: id,
+      // Jumping to a thread (⌘K, the Message Center) lands in its mode.
+      ...(picked ? { threadKind: threadKind(picked) } : {}),
       finished: threadSeen(s.finished, id),
       // The File tab belongs to one thread: leaving it closes the file.
       ...(s.artifact && s.artifact.threadId !== id
@@ -712,7 +733,7 @@ export const useStore = create<State>((set, get) => ({
     let thread: Thread;
     const draft = get().draft;
     try {
-      thread = await api().createThread(projectId, draft.agent ?? get().lastAgent ?? undefined, opts);
+      thread = await api().createThread(projectId, draft.agent ?? get().lastAgent ?? undefined, { ...opts, kind: get().threadKind });
       const patch = draftPatch(draft, thread);
       if (Object.keys(patch).length) thread = await api().updateThread(thread.id, patch);
     } catch (err) {
@@ -735,7 +756,7 @@ export const useStore = create<State>((set, get) => ({
     let thread: Thread;
     const draft = get().draft;
     try {
-      thread = await api().createThread(projectId, draft.agent ?? get().lastAgent ?? undefined, opts);
+      thread = await api().createThread(projectId, draft.agent ?? get().lastAgent ?? undefined, { ...opts, kind: get().threadKind });
       const patch = draftPatch(draft, thread);
       if (Object.keys(patch).length) thread = await api().updateThread(thread.id, patch);
     } catch (err) {

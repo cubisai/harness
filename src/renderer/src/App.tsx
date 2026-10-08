@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { CommandPalette } from "./components/CommandPalette";
 import { SearchDialog } from "./components/SearchDialog";
 import { Library } from "./components/Library";
@@ -21,8 +21,11 @@ import { ThreadView } from "./components/ThreadView";
 import { IconArrowLeft, IconDiff, IconFolder, IconGlobe, IconSparkle, IconTerminal } from "./icons";
 import { usePaneLayout } from "./hooks/usePaneLayout";
 import { BOUNDS, DEFAULT_LAYOUT, isWideInspector } from "./layout";
-import { inboxModel, nthVisibleThread, waitingThreads } from "./sections";
+import { inboxModel, nthVisibleThread, threadKind, waitingThreads } from "./sections";
 import { useSelectedThread, useStore } from "./store";
+
+// Its own chunk: Chat never loads the design canvas.
+const DesignCanvas = lazy(() => import("./design/DesignCanvas"));
 
 
 export function App() {
@@ -92,7 +95,7 @@ export function App() {
         const model = inboxModel(
           s.projects.map((p) => p.id),
           s.threads,
-          { running: s.running, waiting: waitingThreads(s.permissions, s.plans, s.questions) },
+          { running: s.running, waiting: waitingThreads(s.permissions, s.plans, s.questions), kind: s.threadKind },
         );
         const target = nthVisibleThread(model, Number(e.key), { groupByProject: s.settings?.sidebarGroupByProject ?? true, collapsed: s.collapsedProjects });
         if (target) {
@@ -119,9 +122,12 @@ export function App() {
     return { inspector, inspectorCollapsed: c, inspectorWide: isWideInspector(pane.width, pane.sidebar, inspector) };
   };
   const wide = layout.browserWide && inspectorVisible && inspectorTab === "browser" && pane.inspector !== null;
+  // A design thread puts its canvas between the chat and the side panel; browser-wide still wins.
+  const design = Boolean(thread && threadKind(thread) === "design" && !wide);
+  const designMode = useStore((s) => s.threadKind) === "design";
 
   return (
-    <div className={`app${inspectorVisible && pane.inspector !== null ? " with-inspector" : ""}${wide ? " browser-wide" : ""}${layout.sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
+    <div className={`app${inspectorVisible && pane.inspector !== null ? " with-inspector" : ""}${wide ? " browser-wide" : ""}${layout.sidebarCollapsed ? " sidebar-collapsed" : ""}${design ? " design-thread" : ""}`}>
       {layout.sidebarCollapsed ? <PaneRail /> : <Sidebar />}
       <main className="main">
         {wide ? (
@@ -182,8 +188,17 @@ export function App() {
             ) : !thread ? (
               <>
                 <div className="start-thread">
-                  <h1>What should we build in {project.name}?</h1>
-                  <p>Describe a change, ask about the code, or type $ for a skill or / for a command.</p>
+                  {designMode ? (
+                    <>
+                      <h1>What should we design in {project.name}?</h1>
+                      <p>Describe a page, screen or component. The design opens on a canvas beside this chat.</p>
+                    </>
+                  ) : (
+                    <>
+                      <h1>What should we build in {project.name}?</h1>
+                      <p>Describe a change, ask about the code, or type $ for a skill or / for a command.</p>
+                    </>
+                  )}
                 </div>
                 <Composer threadId={null} mode={<DraftMode />} model={<DraftModel />} />
               </>
@@ -204,6 +219,11 @@ export function App() {
         {/* Outside the wide branch: the shells stay mounted (hidden) while the browser has the main area. */}
         <TerminalDrawer />
       </main>
+      {design && thread && (
+        <Suspense fallback={<section className="design-canvas" aria-label="Design canvas" />}>
+          <DesignCanvas threadId={thread.id} />
+        </Suspense>
+      )}
       <Splitter
         orientation="vertical"
         controls="sidebar"

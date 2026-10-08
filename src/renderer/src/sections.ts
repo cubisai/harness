@@ -1,4 +1,4 @@
-import type { Thread } from "../../shared/types";
+import type { Thread, ThreadKind } from "../../shared/types";
 
 export interface InboxInput {
   running: Record<string, boolean>;
@@ -6,6 +6,8 @@ export interface InboxInput {
   waiting?: ReadonlySet<string>;
   /** Overrides each thread's own `pinned` (previews and tests). */
   pinned?: Record<string, boolean>;
+  /** Show only threads of this kind (Chat or Design mode); Running still lists every kind. */
+  kind?: ThreadKind;
 }
 
 /** The sidebar's inbox: live threads, pins, then everything else, across projects. */
@@ -24,13 +26,16 @@ export interface InboxModel {
 const newestFirst = (a: Thread, b: Thread) => b.updatedAt - a.updatedAt;
 
 /** Sort every project's threads into the sidebar's Running / Pinned / Recent sections. */
-export function inboxModel(projectIds: string[], threads: Record<string, Thread[]>, { running, waiting, pinned }: InboxInput): InboxModel {
+export function inboxModel(projectIds: string[], threads: Record<string, Thread[]>, { running, waiting, pinned, kind }: InboxInput): InboxModel {
   const model: InboxModel = { running: [], pinned: [], recent: [], groups: [], archived: {} };
   for (const projectId of projectIds) {
     const group: Thread[] = [];
     for (const t of threads[projectId] ?? []) {
+      const live = !t.archived && (running[t.id] || waiting?.has(t.id));
+      // A running thread of the other kind is never hidden.
+      if (kind && !live && threadKind(t) !== kind) continue;
       if (t.archived) (model.archived[projectId] ??= []).push(t);
-      else if (running[t.id] || waiting?.has(t.id)) model.running.push(t);
+      else if (live) model.running.push(t);
       else if (pinned?.[t.id] ?? t.pinned) model.pinned.push(t);
       else group.push(t);
     }
@@ -44,6 +49,9 @@ export function inboxModel(projectIds: string[], threads: Record<string, Thread[
   model.recent.sort(newestFirst);
   return model;
 }
+
+/** A thread's kind; older threads have none and are chats. */
+export const threadKind = (t: Pick<Thread, "kind">): ThreadKind => t.kind ?? "chat";
 
 /** The threads in the order the sidebar shows them (archived and collapsed groups left out). */
 export function visibleThreads(model: InboxModel, opts: { groupByProject: boolean; collapsed?: Record<string, boolean> }): Thread[] {

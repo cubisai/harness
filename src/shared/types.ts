@@ -410,6 +410,8 @@ export interface SettingsView extends Settings {
   secretsEncrypted: boolean;
 }
 
+export type ThreadKind = "chat" | "design";
+
 export interface Thread {
   id: string;
   projectId: string;
@@ -439,6 +441,8 @@ export interface Thread {
   branch?: string | null;
   /** Where the thread's tools run when it has its own worktree. */
   worktreePath?: string | null;
+  /** "design" threads open with the design canvas; absent = "chat" (older rows and exports). */
+  kind?: ThreadKind;
 }
 
 /**
@@ -953,7 +957,7 @@ export interface UnskilledApi {
   /** Set a project's post-turn check command; null/empty turns it off. */
   setCheckCommand(projectId: string, command: string | null, fixRounds?: number | null): Promise<Project>;
   listThreads(projectId: string): Promise<Thread[]>;
-  createThread(projectId: string, agent?: string, opts?: { worktree?: boolean }): Promise<Thread>;
+  createThread(projectId: string, agent?: string, opts?: { worktree?: boolean; kind?: ThreadKind }): Promise<Thread>;
   updateThread(threadId: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "contextWindow" | "permissionMode" | "agent" | "pinned" | "archived">>): Promise<Thread>;
   deleteThread(threadId: string): Promise<void>;
   /** Move a thread to another agent; a refused switch changes nothing. */

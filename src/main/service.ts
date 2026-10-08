@@ -27,6 +27,7 @@ import type {
   Thread,
   ThreadEvent,
   ThreadExport,
+  ThreadKind,
   Usage,
 } from "../shared/types";
 import { bindingKey } from "../shared/bindings";
@@ -165,23 +166,23 @@ export class Service {
     });
   }
 
-  createThread(projectId: string, agent?: string): Thread {
+  createThread(projectId: string, agent?: string, kind: ThreadKind = "chat"): Thread {
     this.store.getProject(projectId);
     const d = this.defaults();
     const wanted = agent ?? d.agent;
     // A default agent that's no longer installed falls back to the first one.
     const driver = (wanted && this.drivers.get(wanted)) || [...this.drivers.values()][0]!;
-    return this.store.createThread(projectId, driver.id, driver.defaultModel, d.permissionMode);
+    return this.store.createThread(projectId, driver.id, driver.defaultModel, d.permissionMode, kind);
   }
 
   /**
    * A thread with its own git worktree on a new branch, so its edits stay off
    * the project's checkout. Nothing is left behind when the worktree can't be made.
    */
-  async createWorktreeThread(projectId: string, agent?: string): Promise<Thread> {
+  async createWorktreeThread(projectId: string, agent?: string, kind: ThreadKind = "chat"): Promise<Thread> {
     if (!this.worktreesDir) throw new Error("Worktree threads aren't available here.");
     const project = this.store.getProject(projectId);
-    const thread = this.createThread(projectId, agent);
+    const thread = this.createThread(projectId, agent, kind);
     const branch = worktreeBranch(project.name, thread.id);
     const dir = join(this.worktreesDir, thread.id);
     try {

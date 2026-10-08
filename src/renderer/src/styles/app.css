@@ -196,6 +196,19 @@ button { cursor: default; }
 }
 .app > * { min-height: 0; }
 .app.with-inspector { grid-template-columns: var(--sidebar-w) 1fr var(--inspector-w); }
+/*
+ * A design thread: the chat takes 45% of the room beside the sidebar and side panel, kept between 260 and 420px,
+ * and the canvas the rest.
+ */
+.app.design-thread {
+  --design-room: calc(100% - var(--sidebar-w));
+  --design-chat-w: clamp(260px, calc(var(--design-room) * 0.45), 420px);
+  grid-template-columns: var(--sidebar-w) var(--design-chat-w) minmax(0, 1fr);
+}
+.app.design-thread.with-inspector {
+  --design-room: calc(100% - var(--sidebar-w) - var(--inspector-w));
+  grid-template-columns: var(--sidebar-w) var(--design-chat-w) minmax(0, 1fr) var(--inspector-w);
+}
 
 .drag { -webkit-app-region: drag; }
 .no-drag, .drag button, .drag select, .drag input { -webkit-app-region: no-drag; }
@@ -236,6 +249,8 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 }
 .platform-win32 .sidebar-top, .platform-linux .sidebar-top { padding-left: 16px; }
 .sidebar-brand { display: flex; align-items: center; gap: 6px; min-width: 0; }
+/* Chat | Design, at the right end of the brand row so the toggle keeps its spot by the traffic lights. */
+.mode-switch { margin-left: auto; flex-shrink: 0; }
 .sidebar-nav { display: flex; flex-direction: column; gap: 1px; padding: 2px 10px 6px; flex-shrink: 0; }
 .nav-row {
   display: flex;
@@ -461,6 +476,27 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .platform-win32 .main-header, .platform-linux .main-header { padding-right: calc(150px / var(--zoom, 1)); } /* caption buttons, which don't zoom */
 /* With the inspector open, the caption buttons sit over it, not over the header. */
 .platform-win32 .app.with-inspector .main-header, .platform-linux .app.with-inspector .main-header { padding-right: 14px; }
+/* In a design thread the canvas is on the right, so the caption buttons sit over it instead. */
+.platform-win32 .app.design-thread .main-header, .platform-linux .app.design-thread .main-header { padding-right: 14px; }
+
+/* ---------- design canvas ---------- */
+
+.design-canvas { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg-subtle); border-left: 1px solid var(--hairline); }
+.design-canvas-head {
+  height: var(--titlebar);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--bg);
+  flex-shrink: 0;
+}
+.platform-win32 .app:not(.with-inspector) .design-canvas-head, .platform-linux .app:not(.with-inspector) .design-canvas-head { padding-right: calc(150px / var(--zoom, 1)); }
+.design-canvas-title { font-size: 12.5px; font-weight: 500; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.design-canvas-empty { flex: 1; min-height: 0; display: grid; place-items: center; padding: 24px; text-align: center; }
+.design-canvas-empty h2 { margin: 0 0 4px; font-size: 14px; font-weight: 600; color: var(--text); }
+.design-canvas-empty p { margin: 0; font-size: 13px; color: var(--text-tertiary); max-width: 260px; }
 /*
  * Sidebar collapsed: its toggle and New thread lead the header, just past the macOS traffic lights. On macOS the
  * toggle sits at 84 screen px either way (48px rail + the rest here = .sidebar-top's inset, both divided by the zoom,
@@ -482,9 +518,15 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
   .composer .composer-left { flex: 0 0 auto; flex-wrap: nowrap; }
   .composer .composer-actions { flex: 1 1 auto; min-width: 0; justify-content: flex-end; }
   .composer .composer-actions .model-picker { min-width: 0; }
+  /* The context ring is a .model-picker too, but it can't shrink: its button would spill over Send. */
+  .composer .composer-actions .context-ring { flex: 0 0 auto; }
   .composer .mode-chip .mode-chip-label, .composer .model-picker-effort { display: none; }
   .composer .model-picker-button { max-width: 100%; }
   .composer textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+/* At the narrowest (a design thread's chat beside the side panel) the chips drop their chevrons so Send keeps its room. */
+@container main (max-width: 300px) {
+  .composer .mode-chip .chev, .composer .model-picker-button .chev { display: none; }
 }
 .main-title {
   font: 600 13px var(--font-display);

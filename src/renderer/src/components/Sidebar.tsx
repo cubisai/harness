@@ -237,11 +237,13 @@ export function Sidebar() {
   const branches = useStore((s) => s.projectBranches);
   const grouped = useStore((s) => s.settings?.sidebarGroupByProject ?? true);
   const collapsed = useStore((s) => s.collapsedProjects);
-  const { addProject, selectProject, selectThread, newThread, setSearchOpen, toggleProjectCollapsed } = useStore.getState();
+  const kind = useStore((s) => s.threadKind);
+  const { setThreadKind, addProject, selectProject, selectThread, newThread, setSearchOpen, toggleProjectCollapsed } = useStore.getState();
   const [archivedOpen, setArchivedOpen] = useState<Record<string, boolean>>({});
   const mac = api().platform === "darwin";
   const newThreadKey = mac ? "⌘N" : "Ctrl N";
   const searchKey = mac ? "⌘K" : "Ctrl K";
+  const newLabel = kind === "design" ? "New design" : "New thread";
 
   const waiting = waitingThreads(permissions, plans, questions);
   // Only a question (no approval or plan) waits for an answer rather than an approval.
@@ -250,7 +252,7 @@ export function Sidebar() {
   const model = inboxModel(
     projects.map((p) => p.id),
     threads,
-    { running, waiting },
+    { running, waiting, kind },
   );
   const now = useNow(model.running.length > 0);
   const projectName = (id: string) => projects.find((p) => p.id === id)?.name ?? "";
@@ -324,12 +326,19 @@ export function Sidebar() {
           <span className="wordmark">CubiQ</span>
           <SidebarToggle collapsed={false} />
         </div>
+        <div className="segmented compact mode-switch" role="group" aria-label="Mode">
+          {(["chat", "design"] as const).map((k) => (
+            <button key={k} className={kind === k ? "on" : undefined} aria-pressed={kind === k} onClick={() => void setThreadKind(k)}>
+              {k === "chat" ? "Chat" : "Design"}
+            </button>
+          ))}
+        </div>
       </div>
 
       <nav className="sidebar-nav" aria-label="Sidebar">
-        <button className="nav-row" title={`New thread (${newThreadKey})`} onClick={() => void newThread()} disabled={!selectedProjectId}>
+        <button className="nav-row" title={`${newLabel} (${newThreadKey})`} onClick={() => void newThread()} disabled={!selectedProjectId}>
           <IconCompose />
-          <span>New thread</span>
+          <span>{newLabel}</span>
           <kbd>{newThreadKey}</kbd>
         </button>
         <button className="nav-row" title={`Search (${searchKey})`} onClick={() => setSearchOpen(true)}>
