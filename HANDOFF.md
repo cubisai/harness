@@ -1,6 +1,6 @@
-# Handoff: D1 Design shell done; next: D2 live canvas (Windows PC gate still pending)
+# Handoff: D2 live canvas done; next: D3 design brain (Windows PC gate still pending)
 
-Updated 2026-10-08 on the **Mac**, branch `m4`. Read **Resume here — D1 done, D2 next** first, then **Resume here — D1 next** (its plan), then **Resume here — P3 done**, then **Windows gate (2026-10-07)**, then **Resume here — C0 + P2 done**, then **Resume here — P1 done, next P2**, then **Resume here — MCP, providers, Design mode**, then **Resume here — Plan mode v2**, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`, `secrets-handling` (every stored credential safeStorage-encrypted; keys pasted in chat never go in files).
+Updated 2026-10-08 on the **Mac**, branch `m4`. Read **Resume here — D2 done, D3 next** first, then **Resume here — D1 done, D2 next**, then **Resume here — D1 next** (its plan), then **Resume here — P3 done**, then **Windows gate (2026-10-07)**, then **Resume here — C0 + P2 done**, then **Resume here — P1 done, next P2**, then **Resume here — MCP, providers, Design mode**, then **Resume here — Plan mode v2**, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`, `secrets-handling` (every stored credential safeStorage-encrypted; keys pasted in chat never go in files).
 
 ## Where things stand
 
@@ -139,6 +139,20 @@ All checked in the real app on Windows; code paths are cross-platform unless not
 - **Lucide icons**: the user asked for `lucide-react`. Adding a dependency touches `package.json` + the lockfile, which are in the user's uncommitted bun switch; do it (`bun add lucide-react`, replace `icons.tsx`) right after that switch is committed.
 - **Antigravity**: Google's own ACP server (`agy_acp_server.par`, ACP registry `antigravity-acp`) must be on the app's PATH; it stays off until the Settings opt-in, then the generic ACP driver runs it with the user's Google sign-in.
 - Still to confirm on the Mac: the same smoke/model checks there.
+
+## Resume here — D2 done, D3 next (2026-10-08, Mac)
+
+D2 committed `89530f2` (plan `.ai/plans/d2-live-canvas.md`, approved 2026-10-08; Export moved to D4; designs live in the project's `designs/<id8>/`). D2a (serve/watch/bridge + tests) by the opencode implementer, reviewed here; wiring and UI here.
+- **Agent side**: design threads get a stable design note appended to the guide (`guide.ts` `designNote`, `TurnInput.design`, `guide(cwd, design)` in Claude/Codex/ACP) telling them to build `designs/<id8>/index.html`, no remote assets. D3 replaces it with `DESIGN-MODE.md`.
+- **Serving**: `cubiq-design://d/<threadId>/<rel>[?v=N]` (`main/design/serve.ts`): design threads only, `resolveInside` on the design root, CSP with `connect-src 'none'` (no network), ACAO `*`, no-store, nosniff; html gets the bridge (`main/design/bridge.ts`: scroll report/restore, pick mode using the now top-level `selectorFor` from `browser/picker.ts`). Renderer CSP `frame-src` + `cubiq-design:`.
+- **Watch**: `DesignWatcher` (recursive `fs.watch`, 150 ms debounce, refcounted per window, released on window destroy/navigation, `closeAll` on quit; removes the `designs/<id8>` folders it created if still empty) → push `design-changed` → store `designReload` nonce → canvas remounts the frame, scroll restored.
+- **Canvas** (`renderer/src/design/DesignCanvas.tsx` + `frame.ts`): `iframe sandbox="allow-scripts"`; toolbar Viewport (Fit/Mobile/Tablet/Desktop/Slide, sizes as detail), Zoom (hidden on Fit), Version (Latest/vN via `?v=N`, "Viewing vN" bar), 8px grid, Pick, Reload, Open folder. Bridge messages validated field by field (`readBridgeMessage`), only from the frame's own window. Pick → composer chip in the browser-pick format.
+- **Layout**: `clampLayout(…, mainFloor)`; design threads reserve `DESIGN_FLOOR` 620 (chat 260 + canvas 360) so the side panel narrows/collapses first. A design thread's own pages don't auto-open the side panel (other files still do; chat threads unchanged). Collapsed rail and sidebars under 230px get a one-icon Chat/Design toggle (`ModeToggle`).
+- **Regression pins** (user: don't break existing features): guide output unchanged without design, `clampLayout` unchanged without floor, chat-thread auto-open, picker/bridge scripts self-contained; live: browser-pane pick still makes its chip, a Claude chat turn writing `hello2.html` auto-opened the panel.
+- **Verified**: typecheck, 1545 tests, build (DesignCanvas chunk 11.8 kB), smoke; live (temp data dir): Claude Opus landing page, pick → "make this button bigger" → v2 and v1 view; Codex GPT-6-Luna two-step write showed mid-turn; OpenCode Ling sign-up page mid-turn; probe page: `js-ran top-denied fetch-blocked img-blocked`; Mobile + grid; dark 900px; narrow sidebar toggle.
+- **Notes**: the Mac disk filled (ENOSPC) mid-session: other projects' Claude temp dirs (`Kotluy` 5.6G, `cambodia-center` 3.4G under `/private/tmp/claude-501`) — not touched. Two untracked `Screenshot … .png` files in the repo root are the user's, left alone. Ling 3.1 Flash Free sometimes ends a turn with "Upstream request failed: Endpoint is unavailable" (no turn-end → no artifact push; pre-existing).
+
+**Next: D3** (design brain: `resources/DESIGN-MODE.md` guide layer, `design-*` skills, design systems as data + picker, Experts presets; spec `.ai/plans/mcp-providers-design.md` Part 3 › D3). Write `.ai/plans/d3-*.md` and get approval first.
 
 ## Resume here — D1 done, D2 next (2026-10-08, Mac)
 
@@ -422,4 +436,4 @@ In order:
 
 ## Next
 
-MCP, P1, C0, P2 and P3 are done and live-tested (see **Resume here — P3 done**). D1 done (`86f71c0`). Next: D2 (plan first, needs the user's approval), then D3–D4; the Windows PC gate for everything since M1 whenever the PC is available.
+MCP, P1, C0, P2 and P3 are done and live-tested (see **Resume here — P3 done**). D1 done (`86f71c0`), D2 done (`89530f2`). Next: D3 (plan first, needs the user's approval), then D4; the Windows PC gate for everything since M1 whenever the PC is available.
