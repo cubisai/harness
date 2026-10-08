@@ -112,9 +112,10 @@ export class SkillCatalogs {
 
 /**
  * Model skills to deliver, minus the origins the agent already loads itself
- * and any name it already has from its own folders (`native`).
+ * and any name it already has from its own folders (`native`). Design-only
+ * skills are left out unless `opts.design` is set.
  */
-export function forAgent(catalog: Catalog, delivery: SkillsDelivery, native: Set<string> = new Set()): SkillEntry[] {
+export function forAgent(catalog: Catalog, delivery: SkillsDelivery, native: Set<string> = new Set(), opts: { design?: boolean } = {}): SkillEntry[] {
   const reads = delivery.reads ?? [];
-  return catalog.modelSkills.filter((s) => !(s.origin && reads.includes(s.origin)) && !native.has(s.name));
+  return catalog.modelSkills.filter((s) => !(s.origin && reads.includes(s.origin)) && !native.has(s.name) && (opts.design === true || s.mode !== "design"));
 }

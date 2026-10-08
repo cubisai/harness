@@ -201,6 +201,8 @@ export class Store {
       },
       // 20: design threads (Design mode); every existing thread is a chat.
       { applied: () => this.hasColumn("threads", "kind"), sql: "ALTER TABLE threads ADD COLUMN kind TEXT NOT NULL DEFAULT 'chat'" },
+      // 21: a design thread's chosen design system (null = the default: the project's DESIGN.md, else Clean).
+      { applied: () => this.hasColumn("threads", "design_system"), sql: "ALTER TABLE threads ADD COLUMN design_system TEXT" },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;
@@ -289,7 +291,7 @@ export class Store {
       .map((r) => toThread(r as unknown as ThreadRow));
   }
 
-  createThread(projectId: string, agent: string, model: string, permissionMode: PermissionMode, kind: ThreadKind = "chat"): Thread {
+  createThread(projectId: string, agent: string, model: string, permissionMode: PermissionMode, kind: ThreadKind = "chat", designSystem: string | null = null): Thread {
     const now = Date.now();
     const thread: Thread = {
       id: randomUUID(),
@@ -304,12 +306,13 @@ export class Store {
       createdAt: now,
       updatedAt: now,
       kind,
+      ...(kind === "design" && designSystem ? { designSystem } : {}),
     };
     this.db
       .prepare(
-        "INSERT INTO threads (id, project_id, agent, title, session_id, model, effort, permission_mode, created_at, updated_at, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO threads (id, project_id, agent, title, session_id, model, effort, permission_mode, created_at, updated_at, kind, design_system) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
-      .run(thread.id, projectId, agent, thread.title, null, model, null, permissionMode, now, now, kind);
+      .run(thread.id, projectId, agent, thread.title, null, model, null, permissionMode, now, now, kind, thread.designSystem ?? null);
     return thread;
   }
 
@@ -340,6 +343,12 @@ export class Store {
       .prepare("UPDATE threads SET agent = ?, title = ?, session_id = ?, bindings = ?, model = ?, effort = ?, context_window = ?, permission_mode = ?, pinned = ?, archived = ?, updated_at = ? WHERE id = ?")
       .run(t.agent, t.title, t.sessionId, JSON.stringify(bindings), t.model, t.effort, t.contextWindow ?? null, t.permissionMode, t.pinned ? 1 : 0, t.archived ? 1 : 0, t.updatedAt, id);
     return t;
+  }
+
+  /** A design thread's design system (null = the default). Not activity: the thread keeps its place. */
+  setDesignSystem(id: string, designSystem: string | null): Thread {
+    this.db.prepare("UPDATE threads SET design_system = ? WHERE id = ?").run(designSystem, id);
+    return this.getThread(id);
   }
 
   /** Record the worktree and branch a thread runs in (set once, when it is created). */
@@ -633,7 +642,7 @@ export class Store {
     try {
       this.db
         .prepare(
-          "INSERT INTO threads (id, project_id, agent, title, session_id, bindings, model, effort, permission_mode, created_at, updated_at, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO threads (id, project_id, agent, title, session_id, bindings, model, effort, permission_mode, created_at, updated_at, kind, design_system) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .run(
           id,
@@ -648,6 +657,7 @@ export class Store {
           thread.createdAt,
           Date.now(),
           thread.kind === "design" ? "design" : "chat",
+          thread.kind === "design" ? (thread.designSystem ?? null) : null,
         );
       const insert = this.db.prepare(
         `INSERT INTO events (thread_id, seq, payload, created_at, provenance, message_id, turn_id, item_id, parent_id, payload_ref, payload_bytes)
@@ -711,7 +721,7 @@ export class Store {
 }
 
 const THREAD_COLS =
-  "id, project_id, agent, title, session_id, bindings, model, effort, context_window, permission_mode, created_at, updated_at, pinned, archived, branch, worktree_path, kind, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
+  "id, project_id, agent, title, session_id, bindings, model, effort, context_window, permission_mode, created_at, updated_at, pinned, archived, branch, worktree_path, kind, design_system, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
 
 export interface LedgerTarget {
   threadId: string;
@@ -767,6 +777,7 @@ interface ThreadRow {
   branch: string | null;
   worktree_path: string | null;
   kind: string | null;
+  design_system: string | null;
   project_path: string | null;
 }
 
@@ -819,5 +830,6 @@ function toThread(r: ThreadRow): Thread {
     branch: r.branch,
     worktreePath: r.worktree_path,
     kind: r.kind === "design" ? "design" : "chat",
+    ...(r.kind === "design" && r.design_system ? { designSystem: r.design_system } : {}),
   };
 }

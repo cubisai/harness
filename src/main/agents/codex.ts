@@ -92,8 +92,8 @@ export interface CodexConfig {
   gatewayEnv?: () => Promise<Record<string, string>>;
   /** Saved providers' models Codex can reach, listed after its own. */
   extraModels?: () => ModelOption[];
-  /** Model-invoked skills for a project (the app-wide set without one), registered as Codex's extra skills root. */
-  skillsDir?: (cwd?: string) => string | null;
+  /** Model-invoked skills for a project (the app-wide set without one), registered as Codex's extra skills root; `design` adds the design-only ones. */
+  skillsDir?: (cwd?: string, design?: boolean) => string | null;
   /** The harness's tools over HTTP MCP (the browser pane's), attached per thread. */
   toolServer?: () => Promise<{ url: string; token: string }>;
   /** Plan rate limits, from the notifications Codex sends with its responses. */
@@ -400,9 +400,9 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   /** The extra skills roots last sent to the running app-server, as JSON. */
   let skillRoots: string | null = null;
   /** Point the app-server's extra skills root at this project's delivered skills; a no-op when unchanged. */
-  const useSkillRoots = async (conn: StdioRpc, cwd?: string): Promise<void> => {
+  const useSkillRoots = async (conn: StdioRpc, cwd?: string, design?: boolean): Promise<void> => {
     if (!config.skillsDir) return;
-    const dir = config.skillsDir(cwd);
+    const dir = config.skillsDir(cwd, design);
     const roots = dir ? [dir] : [];
     const key = JSON.stringify(roots);
     if (key === skillRoots) return;
@@ -933,7 +933,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     let threadModel: string | null = null;
     let seed: SessionSeed | null = null;
     // Codex's extra skills root is app-server wide: this project's set, before the thread loads its skills.
-    await useSkillRoots(conn, input.cwd);
+    await useSkillRoots(conn, input.cwd, !!input.design);
     if (input.sessionId) {
       // The MCP servers changed mid-conversation (the user opened the
       // browser, or edited their servers): unload the thread so the

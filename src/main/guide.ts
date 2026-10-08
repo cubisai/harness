@@ -29,9 +29,9 @@ export function userGuidePath(dataDir: string): string {
 }
 
 /**
- * What a design thread's agent is told until Design mode has its own guide (D3):
- * where to build, and that the canvas has no network. Stable per thread, so the
- * prompt cache holds.
+ * What a design thread's agent is told when the bundled Design mode guide
+ * (`DESIGN-MODE.md`) is missing: where to build, and that the canvas has no
+ * network. Stable per thread, so the prompt cache holds.
  */
 export function designNote(dir: string): string {
   return [
@@ -43,12 +43,13 @@ export function designNote(dir: string): string {
 
 /**
  * The harness guide agents receive as instructions: the app's bundled copy,
- * then the user's own, then the project's. Each file is read once and cached by
+ * then the user's own, then the project's; a design thread's ends with Design
+ * mode's guide (`designMode`) for its folder. Each file is read once and cached by
  * its mtime, so repeated calls return the same text and the prompt cache isn't
  * broken by a re-read (which also means a guide edited mid-session is only
  * picked up on the next mtime change, not mid-turn).
  */
-export function createGuide(opts: { bundled: string; global: string }): {
+export function createGuide(opts: { bundled: string; global: string; designMode?: string }): {
   forCwd(cwd: string, design?: string): string;
   partsForCwd(cwd: string): { source: "bundled" | "user" | "project"; path: string; text: string }[];
 } {
@@ -81,9 +82,15 @@ export function createGuide(opts: { bundled: string; global: string }): {
       .filter((p) => p.text.length > 0);
   };
 
+  /** Design mode's guide with the thread's folder filled in; the short note when the file is missing. */
+  const designGuide = (dir: string): string => {
+    const text = opts.designMode ? read(opts.designMode) : "";
+    return text ? text.replaceAll("{dir}", dir) : designNote(dir);
+  };
+
   return {
     forCwd(cwd: string, design?: string): string {
-      return [...partsForCwd(cwd).map((p) => p.text), ...(design ? [designNote(design)] : [])].join("\n\n");
+      return [...partsForCwd(cwd).map((p) => p.text), ...(design ? [designGuide(design)] : [])].join("\n\n");
     },
     partsForCwd,
   };

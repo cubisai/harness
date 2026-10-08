@@ -340,6 +340,51 @@ describe("Store migrations", () => {
   });
 });
 
+describe("Store design systems (migration 21)", () => {
+  it("adds a nullable design_system column to a pre-21 database", () => {
+    const file = join(tempDir(), "pre21.db");
+    const old = new DatabaseSync(file);
+    old.exec(`
+      CREATE TABLE projects (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at INTEGER NOT NULL,
+        check_command TEXT, check_fix_rounds INTEGER);
+      CREATE TABLE threads (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, agent TEXT NOT NULL DEFAULT 'claude', title TEXT NOT NULL,
+        session_id TEXT, bindings TEXT NOT NULL DEFAULT '{}', model TEXT NOT NULL, effort TEXT, permission_mode TEXT NOT NULL,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0, archived INTEGER NOT NULL DEFAULT 0,
+        branch TEXT, worktree_path TEXT, context_window INTEGER, kind TEXT NOT NULL DEFAULT 'chat');
+      CREATE TABLE schema_version (version INTEGER NOT NULL);
+      INSERT INTO schema_version VALUES (20);
+      INSERT INTO projects VALUES ('p', '/x', 'x', 1, NULL, NULL);
+      INSERT INTO threads (id, project_id, agent, title, model, permission_mode, created_at, updated_at, kind)
+        VALUES ('t', 'p', 'claude', 'Old design', 'opus', 'ask', 1, 1, 'design');
+    `);
+    old.close();
+
+    const store = new Store(file);
+    closeAfter(() => store.close());
+    const t = store.getThread("t");
+    expect(t.kind).toBe("design");
+    expect(t.designSystem).toBeUndefined();
+    expect(store.setDesignSystem("t", "mono").designSystem).toBe("mono");
+  });
+
+  it("keeps a design thread's system through create, set (not activity) and restore; never on a chat", () => {
+    const store = new Store(join(tempDir(), "ds.db"));
+    closeAfter(() => store.close());
+    const p = store.addProject("/tmp/p");
+    const design = store.createThread(p.id, "claude", "m", "ask", "design", "editorial");
+    expect(store.getThread(design.id).designSystem).toBe("editorial");
+    const updated = store.setDesignSystem(design.id, null);
+    expect(updated.designSystem).toBeUndefined();
+    expect(updated.updatedAt).toBe(design.updatedAt);
+    store.setDesignSystem(design.id, "mono");
+    const restored = store.restoreThread(p.id, { thread: store.getThread(design.id), events: [] });
+    expect(store.getThread(restored.id).designSystem).toBe("mono");
+
+    const chat = store.createThread(p.id, "claude", "m", "ask", "chat", "mono");
+    expect(store.getThread(chat.id).designSystem).toBeUndefined();
+  });
+});
+
 describe("Store event payloads", () => {
   it("round-trips provenance and semantic ids", () => {
     const store = new Store(join(tempDir(), "ids.db"));

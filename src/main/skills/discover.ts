@@ -9,6 +9,8 @@ export interface ParsedSkill {
   disableModelInvocation: boolean;
   userInvocable: boolean;
   argumentHint?: string;
+  /** `mode: design` in the frontmatter: delivered to design threads only. */
+  mode?: "design";
   /** Everything after the closing `---`. */
   body: string;
 }
@@ -49,6 +51,7 @@ export function parseSkillMd(text: string): ParsedSkill {
   if (description) parsed.description = description;
   const argumentHint = fields.get("argument-hint");
   if (argumentHint) parsed.argumentHint = argumentHint;
+  if (fields.get("mode") === "design") parsed.mode = "design";
   return parsed;
 }
 
@@ -89,6 +92,7 @@ export function discoverSkills(source: SkillSource): SkillEntry[] {
         description,
         invocation: parsed.disableModelInvocation ? "user" : "model",
         ...(parsed.argumentHint ? { argumentHint: parsed.argumentHint } : {}),
+        ...(parsed.mode ? { mode: parsed.mode } : {}),
         calls: [],
         files: [],
         sha256: createHash("sha256").update(text).digest("hex"),

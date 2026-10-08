@@ -558,13 +558,13 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
   .composer .composer-actions .model-picker { min-width: 0; }
   /* The context ring is a .model-picker too, but it can't shrink: its button would spill over Send. */
   .composer .composer-actions .context-ring { flex: 0 0 auto; }
-  .composer .mode-chip .mode-chip-label, .composer .model-picker-effort { display: none; }
+  .composer .mode-chip .mode-chip-label, .composer .ds-chip .ds-chip-label, .composer .model-picker-effort { display: none; }
   .composer .model-picker-button { max-width: 100%; }
   .composer textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
 /* At the narrowest (a design thread's chat beside the side panel) the chips drop their chevrons so Send keeps its room. */
 @container main (max-width: 300px) {
-  .composer .mode-chip .chev, .composer .model-picker-button .chev { display: none; }
+  .composer .mode-chip .chev, .composer .ds-chip .chev, .composer .model-picker-button .chev { display: none; }
 }
 .main-title {
   font: 600 13px var(--font-display);
@@ -2127,6 +2127,17 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 }
 .chip-button .chev { opacity: 0.6; flex: none; }
 .mode-chip.danger, .mode-chip.danger:hover { color: var(--danger); }
+/* A design thread's system chip: up to three swatches and the name; the menu shows each system's four. */
+.ds-chip { color: var(--text-secondary); }
+.ds-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ds-swatches { display: inline-flex; flex: none; }
+.ds-swatch { width: 10px; height: 10px; border-radius: 999px; box-shadow: 0 0 0 1px var(--hairline-strong); }
+.ds-swatch + .ds-swatch { margin-left: -3px; }
+.ds-menu { width: 280px; padding: 4px; max-height: min(420px, 70vh); overflow-y: auto; }
+.ds-name { display: flex; align-items: center; gap: 8px; }
+/* The menu scrolls; its rows keep their height, and a long description stops at two lines. */
+.ds-menu .model-item { flex: none; }
+.ds-menu .model-item .desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .model-picker-button { max-width: 240px; color: var(--text); }
 .model-picker-name { overflow: hidden; text-overflow: ellipsis; }
 .model-picker-effort { color: var(--text-tertiary); }

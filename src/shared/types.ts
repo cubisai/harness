@@ -26,6 +26,8 @@ export interface SkillEntry {
   dir?: string;
   /** False when the frontmatter says `user-invocable: false`. */
   userInvocable?: boolean;
+  /** "design" = delivered to design threads only (frontmatter `mode: design`). */
+  mode?: "design";
   /** False when the user turned it off in Settings. */
   enabled?: boolean;
   /** The origin of the higher-precedence same-name skill that won. */
@@ -443,6 +445,8 @@ export interface Thread {
   worktreePath?: string | null;
   /** "design" threads open with the design canvas; absent = "chat" (older rows and exports). */
   kind?: ThreadKind;
+  /** A design thread's design system id (see DesignSystemOption); absent = the default. */
+  designSystem?: string;
 }
 
 /**
@@ -770,6 +774,17 @@ export interface ArtifactVersion {
 }
 
 /** A file an agent wrote in a thread, relative to the thread's folder (forward slashes), newest version last. */
+/** A design system a design thread can use, for the composer's picker. */
+export interface DesignSystemOption {
+  /** "project" (the repo's DESIGN.md), "project:<folder>" (.agents/design-systems), or a built-in's folder name. */
+  id: string;
+  name: string;
+  description: string;
+  /** Up to 4 CSS colors to preview it. */
+  swatches: string[];
+  source: "project" | "projectFolder" | "builtin";
+}
+
 export interface DesignEntry {
   /** The design folder, relative to the thread's working folder ("designs/<id8>"). */
   dir: string;
@@ -968,7 +983,9 @@ export interface UnskilledApi {
   /** Set a project's post-turn check command; null/empty turns it off. */
   setCheckCommand(projectId: string, command: string | null, fixRounds?: number | null): Promise<Project>;
   listThreads(projectId: string): Promise<Thread[]>;
-  createThread(projectId: string, agent?: string, opts?: { worktree?: boolean; kind?: ThreadKind }): Promise<Thread>;
+  createThread(projectId: string, agent?: string, opts?: { worktree?: boolean; kind?: ThreadKind; designSystem?: string }): Promise<Thread>;
+  /** Pick a design thread's design system (null = the default); the next turn copies it into the design folder. */
+  setDesignSystem(threadId: string, id: string | null): Promise<Thread>;
   updateThread(threadId: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "contextWindow" | "permissionMode" | "agent" | "pinned" | "archived">>): Promise<Thread>;
   deleteThread(threadId: string): Promise<void>;
   /** Move a thread to another agent; a refused switch changes nothing. */
@@ -1098,6 +1115,8 @@ export interface UnskilledApi {
   designUnwatch(threadId: string): Promise<void>;
   /** Show a design thread's folder in Finder / Explorer. */
   designReveal(threadId: string): Promise<void>;
+  /** The design systems a project's design threads can use: its DESIGN.md, its .agents/design-systems, then the built-ins. */
+  designSystems(projectId: string | null): Promise<DesignSystemOption[]>;
   /** A thread file's content for the panel: the file on disk, or a saved version. */
   readArtifact(threadId: string, path: string, version?: number | null): Promise<ArtifactContent>;
   /** Unified diff of a version against the one before it (or against git HEAD / empty for the first); null when not text. */

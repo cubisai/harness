@@ -6,6 +6,7 @@ import { Composer } from "./components/Composer";
 import { RequestDock } from "./components/RequestDock";
 import { ThreadMeters } from "./components/Meters";
 import { DraftMode, DraftModel, ThreadMode, ThreadModel } from "./components/ThreadControls";
+import { DraftDesignSystem, ThreadDesignSystem } from "./components/DesignSystemMenu";
 import { Inspector } from "./components/Inspector";
 import { SettingsSheet } from "./components/SettingsSheet";
 import { MessageCenter } from "./components/MessageCenter";
@@ -201,7 +202,20 @@ export function App() {
                     </>
                   )}
                 </div>
-                <Composer threadId={null} mode={<DraftMode />} model={<DraftModel />} />
+                <Composer
+                  threadId={null}
+                  mode={
+                    designMode ? (
+                      <>
+                        <DraftMode />
+                        <DraftDesignSystem />
+                      </>
+                    ) : (
+                      <DraftMode />
+                    )
+                  }
+                  model={<DraftModel />}
+                />
               </>
             ) : (
               <>
@@ -209,7 +223,16 @@ export function App() {
                 <RequestDock threadId={thread.id} />
                 <Composer
                   threadId={thread.id}
-                  mode={<ThreadMode thread={thread} running={running} />}
+                  mode={
+                    designThread ? (
+                      <>
+                        <ThreadMode thread={thread} running={running} />
+                        <ThreadDesignSystem thread={thread} running={running} />
+                      </>
+                    ) : (
+                      <ThreadMode thread={thread} running={running} />
+                    )
+                  }
                   model={<ThreadModel thread={thread} running={running} />}
                   meters={<ThreadMeters agent={thread.agent} threadId={thread.id} />}
                 />

@@ -11,11 +11,16 @@ extraResources:
   # The window icon on Linux (build/ holds the icon electron-builder bundles for each OS).
   - from: build/icon.png
     to: icon.png
-  # Built-in skills (browser, docx, pdf, xlsx, pptx, skill-creator) and the agent guide.
+  # Built-in skills (browser, docx, pdf, xlsx, pptx, skill-creator, design-*) and the agent guide.
   - from: resources/skills
     to: skills
   - from: resources/CUBIQ.md
     to: CUBIQ.md
+  # Design mode: its guide and the built-in design systems.
+  - from: resources/DESIGN-MODE.md
+    to: DESIGN-MODE.md
+  - from: resources/design-systems
+    to: design-systems
 # The Agent SDK spawns its bundled Claude Code binary; binaries can't run
 # from inside an asar archive.
 asarUnpack:

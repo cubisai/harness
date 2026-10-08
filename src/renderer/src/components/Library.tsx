@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Brain, BriefcaseBusiness, Plug, Puzzle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { AgentCatalogEntry, SkillDetail, SkillEntry, SkillOrigin } from "../../../shared/types";
+import { EXPERTS, type ExpertPreset } from "../../../shared/experts";
 import { api } from "../api";
 import { IconCopy } from "../icons";
 import { Markdown } from "../markdown";
@@ -17,73 +18,6 @@ const TABS: { id: "experts" | "skills" | "connectors" | "memory"; label: string;
   { id: "skills", label: "Skills", icon: Puzzle },
   { id: "connectors", label: "Connectors", icon: Plug },
   { id: "memory", label: "Memory", icon: Brain },
-];
-
-interface ExpertPersona {
-  id: string;
-  name: string;
-  persona: string;
-  category: string;
-  avatarText: string;
-  description: string;
-  tags: string[];
-}
-
-const EXPERT_PERSONAS: ExpertPersona[] = [
-  {
-    id: "code-review",
-    name: "Code Review Expert",
-    persona: "Kim",
-    category: "Engineering",
-    avatarText: "CR",
-    description: "Examines every line of code with eagle-eye standards, intercepting defects and module boundary violations.",
-    tags: ["Code Review", "Quality Gate", "Security"],
-  },
-  {
-    id: "ui-designer",
-    name: "UI Designer",
-    persona: "Sam",
-    category: "Product Design",
-    avatarText: "UI",
-    description: "Expert in design systems and component libraries, pursuing pixel-perfect accessible user interfaces.",
-    tags: ["UI Design", "Design Systems", "Accessibility"],
-  },
-  {
-    id: "frontend-dev",
-    name: "Frontend Developer",
-    persona: "Paul",
-    category: "Engineering",
-    avatarText: "FE",
-    description: "Expert in modern web technologies, responsive SPAs, React hooks, and state management.",
-    tags: ["Frontend Dev", "React", "TypeScript"],
-  },
-  {
-    id: "diagram-expert",
-    name: "Diagram Design Expert",
-    persona: "Mia",
-    category: "Data & AI",
-    avatarText: "DG",
-    description: "Transforms complex software architectures and workflows into clear Mermaid and SVG diagrams.",
-    tags: ["Mermaid Diagrams", "Architecture", "SVG"],
-  },
-  {
-    id: "senior-pm",
-    name: "Senior Project Manager",
-    persona: "Dylan",
-    category: "Project & Quality",
-    avatarText: "PM",
-    description: "Breaks down vague requirements into actionable milestones, specs, and risk-managed delivery plans.",
-    tags: ["Project Management", "Scoping", "Milestones"],
-  },
-  {
-    id: "data-reporter",
-    name: "Data Analytics Reporter",
-    persona: "Phoebe",
-    category: "Data & AI",
-    avatarText: "DA",
-    description: "Transforms complex data into clear actionable business insights, visual charts, and executive summaries.",
-    tags: ["Data Analysis", "Reporting", "Dashboards"],
-  },
 ];
 
 export function Library() {
@@ -158,11 +92,11 @@ function ExpertsTab() {
     void api().listAgentCatalog().then(setAgents);
   }, []);
 
-  const categories = ["All", "Engineering", "Product Design", "Data & AI", "Project & Quality", "Engines"];
+  const categories = ["All", "Design", "Engineering", "Data & AI", "Project & Quality", "Engines"];
 
   const filteredPersonas = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return EXPERT_PERSONAS.filter((p) => {
+    return EXPERTS.filter((p) => {
       const matchCat = selectedCategory === "All" || p.category === selectedCategory;
       const matchQ = !q || p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q) || p.persona.toLowerCase().includes(q);
       return matchCat && matchQ;
@@ -182,10 +116,16 @@ function ExpertsTab() {
     setTimeout(() => setCopied(null), 1500);
   };
 
-  const startThreadWithExpert = (name: string) => {
+  // A design expert opens a design thread with its skills as chips and its system picked; the others (and engines) a plain thread.
+  const startThreadWithExpert = async (expert: ExpertPreset | null) => {
     const s = useStore.getState();
     useStore.setState({ libraryTab: null });
-    void s.newThread();
+    if (expert?.kind !== "design") {
+      await s.newThread();
+      return;
+    }
+    await s.setThreadKind("design");
+    await s.newThread(expert.skills, expert.designSystem ? { designSystem: expert.designSystem } : undefined);
   };
 
   return (
@@ -229,8 +169,8 @@ function ExpertsTab() {
                   ))}
                 </div>
                 {hasProject && (
-                  <button className="button primary wb-action-btn" onClick={() => startThreadWithExpert(p.name)}>
-                    Start Thread
+                  <button className="button primary wb-action-btn" onClick={() => void startThreadWithExpert(p)}>
+                    {p.kind === "design" ? "Start design" : "Start Thread"}
                   </button>
                 )}
               </div>
@@ -274,7 +214,7 @@ function ExpertsTab() {
                   </button>
                 ) : (
                   hasProject && (
-                    <button className="button ghost wb-action-btn" onClick={() => startThreadWithExpert(a.label)}>
+                    <button className="button ghost wb-action-btn" onClick={() => void startThreadWithExpert(null)}>
                       Start Thread
                     </button>
                   )

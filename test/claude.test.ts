@@ -222,6 +222,30 @@ describe("Claude driver guide", () => {
   });
 });
 
+describe("Claude driver design threads", () => {
+  it("gives a design thread its design plugin and lets it read the skill folders; a chat thread gets neither", async () => {
+    sdk.calls.length = 0;
+    const plugins: [string, boolean | undefined][] = [];
+    const d = createClaudeDriver({
+      pluginDir: (cwd, design) => {
+        plugins.push([cwd, design]);
+        return design ? "/tmp/plugin-design" : "/tmp/plugin";
+      },
+      skillDirs: () => ["/app/skills", "/data/skills"],
+    });
+    const chat = turnInput();
+    await d.runTurn(chat.input);
+    const design = turnInput();
+    await d.runTurn({ ...design.input, design: "designs/abcd1234" });
+    expect(plugins).toEqual([
+      ["/tmp/project", false],
+      ["/tmp/project", true],
+    ]);
+    expect(sdk.calls[0]?.options).not.toHaveProperty("additionalDirectories");
+    expect(sdk.calls[1]?.options.additionalDirectories).toEqual(["/tmp/plugin-design", "/app/skills", "/data/skills"]);
+  });
+});
+
 describe("Claude driver memory", () => {
   it("points Claude's auto-memory at the shared folder", async () => {
     sdk.calls.length = 0;

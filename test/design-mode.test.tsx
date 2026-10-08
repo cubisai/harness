@@ -108,4 +108,16 @@ describe("store mode", () => {
     expect(created).toEqual([{ worktree: false, kind: "design" }]);
     expect(useStore.getState().selectedThreadId).toBe("new");
   });
+
+  it("a new design thread takes the draft's design system, an explicit one first; a chat thread never does", async () => {
+    await useStore.getState().setThreadKind("design");
+    useStore.getState().setDraft({ designSystem: "mono" });
+    await useStore.getState().newThread();
+    await useStore.getState().newThread(["design-slides"], { designSystem: "editorial" });
+    expect(useStore.getState().pendingSkills).toEqual(["design-slides"]);
+    await useStore.getState().setThreadKind("chat");
+    useStore.getState().setDraft({ designSystem: "mono" });
+    await useStore.getState().newThread();
+    expect(created).toEqual([{ kind: "design", designSystem: "mono" }, { kind: "design", designSystem: "editorial" }, { kind: "chat" }]);
+  });
 });

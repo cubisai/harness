@@ -219,8 +219,10 @@ function claudeInstall(): BinaryResolution | null {
 }
 
 export interface ClaudeDriverConfig {
-  /** The generated plugin carrying model-invoked skills for this turn's cwd, or null if none. */
-  pluginDir?: (cwd: string) => string | null;
+  /** The generated plugin carrying model-invoked skills for this turn's cwd (plus the design-only ones in a design thread), or null if none. */
+  pluginDir?: (cwd: string, design?: boolean) => string | null;
+  /** Skill folders outside any project (the app's bundled and the user's own), which a design thread's skills read their assets from. */
+  skillDirs?: () => string[];
   /** Git guardrails script, if installed. */
   guardScript?: string;
   /** Plan rate limits, as Claude reports them during turns (claude.ai logins only). */
@@ -408,8 +410,10 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         };
       };
 
-      const pluginPath = config.pluginDir?.(input.cwd);
+      const pluginPath = config.pluginDir?.(input.cwd, !!input.design);
       const plugins: { type: "local"; path: string }[] = pluginPath ? [{ type: "local", path: pluginPath }] : [];
+      // A design thread's skills keep their scaffolds and scripts outside the project; reading them shouldn't ask (Claude asks for paths outside its directories even in Full access).
+      const skillRoots = input.design ? [...(pluginPath ? [pluginPath] : []), ...(config.skillDirs?.() ?? [])] : [];
 
       // A provider's model pins that provider to this turn; the SDK runs its wire id.
       const providerId = providerOfModel(input.model);
@@ -439,6 +443,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         resume: input.sessionId ?? undefined,
         permissionMode: SDK_MODE[input.permissionMode],
         allowDangerouslySkipPermissions: input.permissionMode === "full",
+        ...(skillRoots.length ? { additionalDirectories: skillRoots } : {}),
         includePartialMessages: true,
         // Options may carry a markdown mockup, shown beside them in the question card.
         toolConfig: { askUserQuestion: { previewFormat: "markdown" } },

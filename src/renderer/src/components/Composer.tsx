@@ -32,7 +32,10 @@ function entriesOf(names: string[], extra: SkillEntry[] = []): SkillEntry[] {
 }
 
 export function Composer({ threadId, mode, model, meters }: { threadId: string | null; mode?: ReactNode; model?: ReactNode; meters?: ReactNode }) {
-  const skills = useStore((s) => s.skills);
+  const allSkills = useStore((s) => s.skills);
+  // Design-only skills are offered in design threads (and a design draft) only; threadKind follows the open thread.
+  const designKind = useStore((s) => s.threadKind) === "design";
+  const skills = useMemo(() => (designKind ? allSkills : allSkills.filter((s) => s.mode !== "design")), [allSkills, designKind]);
   const running = useStore((s) => (threadId ? Boolean(s.running[threadId]) : false));
   const insert = useStore((s) => s.composerInsert);
   const { send, interrupt, enqueue, startThread, sendInBackground } = useStore.getState();

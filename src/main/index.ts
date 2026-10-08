@@ -4,7 +4,7 @@ import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell, utilityProcess } from "electron";
-import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, ModelOption, McpServerEntry, McpServerSpec, McpServerStatus, MemoryType, OpenResult, PermissionDecision, PlanDecision, Provider, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
+import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, CredentialChoice, DesignSystemOption, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, ModelOption, McpServerEntry, McpServerSpec, McpServerStatus, MemoryType, OpenResult, PermissionDecision, PlanDecision, Provider, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
 import { DESIGN_SCHEME, designDirName, designUrl, entryFile, serveDesign } from "./design/serve";
@@ -268,12 +268,15 @@ async function main(): Promise<void> {
    * skills. "tool" mode's list is built once, so the tool and the names it
    * lists can't disagree.
    */
-  const skillsInputFor = (delivery: SkillsDelivery | undefined, cwd: string | null) => {
+  const skillsInputFor = (delivery: SkillsDelivery | undefined, cwd: string | null, design = false) => {
     if (!delivery) return null;
-    const toolSkills = forAgent(skills.forProject(cwd), { mode: "tool", reads: TOOL_SKILL_READS });
+    const toolSkills = forAgent(skills.forProject(cwd), { mode: "tool", reads: TOOL_SKILL_READS }, new Set(), { design });
     return {
       mode: delivery.mode,
-      entries: skills.forProject(cwd).modelSkills.map(({ name, description }) => ({ name, description })),
+      entries: skills
+        .forProject(cwd)
+        .modelSkills.filter((s) => design || s.mode !== "design")
+        .map(({ name, description }) => ({ name, description })),
       tool: delivery.mode === "tool" ? skillTool(() => toolSkills) : undefined,
       toolNames: toolSkills.map((s) => s.name),
     };
@@ -366,19 +369,23 @@ async function main(): Promise<void> {
   const guide = createGuide({
     bundled: app.isPackaged ? join(process.resourcesPath, "CUBIQ.md") : join(app.getAppPath(), "resources", "CUBIQ.md"),
     global: userGuidePath(userData),
+    designMode: app.isPackaged ? join(process.resourcesPath, "DESIGN-MODE.md") : join(app.getAppPath(), "resources", "DESIGN-MODE.md"),
   });
   const driver = createClaudeDriver({
     guide: (cwd, design) => guide.forCwd(cwd, design),
-    pluginDir: (cwd) =>
+    pluginDir: (cwd, design) =>
       ensurePlugin(
         forAgent(
           skills.forProject(cwd),
           CLAUDE_CAPABILITIES.skillsDelivery,
           // Claude Code loads these itself; the plugin would list them twice.
           skills.namesIn([join(homedir(), ".claude", "skills"), join(cwd, ".claude", "skills")]),
+          { design },
         ),
-        join(userData, "harness-plugin", createHash("sha256").update(cwd).digest("hex").slice(0, 12)),
+        // Design threads get their own plugin (with the design-only skills), so a chat thread's never changes.
+        join(userData, "harness-plugin", createHash("sha256").update(design ? `${cwd}\0design` : cwd).digest("hex").slice(0, 12)),
       ),
+    skillDirs: () => [skills.dirs(null).bundled, skills.dirs(null).harness],
     guardScript,
     memoryDir: (projectId) => (memoryOn(settings.get(), projectId) ? memory.ensure(projectId, store.getProject(projectId).path) : null),
     onLimits: limits.for("claude"),
@@ -447,7 +454,10 @@ async function main(): Promise<void> {
     (toolServer ??= startToolServer(
       harnessTools,
       // The project's skills too (.cubiq, .claude), which tool-mode agents don't read themselves.
-      (pid) => [skillTool(() => forAgent(skills.forProject(projectPathOf(pid ?? null)), { mode: "tool", reads: TOOL_SKILL_READS }))],
+      // A design thread's (named by `?t=`) list adds the design-only skills.
+      (pid, tid) => [
+        skillTool(() => forAgent(skills.forProject(projectPathOf(pid ?? null)), { mode: "tool", reads: TOOL_SKILL_READS }, new Set(), { design: isDesignThread(tid) })),
+      ],
       (pid) => routedTools(pid),
       () => threadTools,
       undefined,
@@ -509,9 +519,13 @@ async function main(): Promise<void> {
             memory: memoryPromptFor,
             extensions: extensionsFor("codex"),
             // Per project: Codex reads .agents/skills itself, but not .cubiq or .claude.
-            skillsDir: (cwd) =>
+            // A design thread's set adds the design-only skills, in a folder of its own.
+            skillsDir: (cwd, design) =>
               cwd
-                ? ensureModelSkillsDir(forAgent(skills.forProject(cwd), CODEX_CAPABILITIES.skillsDelivery), join(`${modelSkillsDir}-projects`, createHash("sha256").update(cwd).digest("hex").slice(0, 12)))
+                ? ensureModelSkillsDir(
+                    forAgent(skills.forProject(cwd), CODEX_CAPABILITIES.skillsDelivery, new Set(), { design }),
+                    join(`${modelSkillsDir}-projects`, createHash("sha256").update(design ? `${cwd}\0design` : cwd).digest("hex").slice(0, 12)),
+                  )
                 : ensureModelSkillsDir(forAgent(skills.global(), CODEX_CAPABILITIES.skillsDelivery), modelSkillsDir),
             toolServer: getToolServer,
             onLimits: limits.for("codex"),
@@ -723,6 +737,7 @@ async function main(): Promise<void> {
     knownSecrets,
     join(userData, "worktrees"),
   );
+  service.setDesignSystemsDir(app.isPackaged ? join(process.resourcesPath, "design-systems") : join(app.getAppPath(), "resources", "design-systems"));
   // The artifact panel: versions in the store's blobs, office files parsed in a utility process.
   const previews = new PreviewHost(utilityFork(utilityProcess, join(here, "preview-worker.js")));
   const fileUrl = (threadId: string, rel: string) => `cubiq-file://f/${encodeURIComponent(threadId)}/${rel.split("/").map(encodeURIComponent).join("/")}`;
@@ -822,6 +837,14 @@ async function main(): Promise<void> {
       custom: customAgents,
       liveCapabilities: (id) => service.listAgents().find((a) => a.id === id)?.capabilities,
     });
+  /** Whether the tool server's `?t=` names a design thread (its skill tool then lists the design-only skills). */
+  const isDesignThread = (threadId: string | undefined): boolean => {
+    try {
+      return !!threadId && store.getThread(threadId).kind === "design";
+    } catch {
+      return false;
+    }
+  };
   const projectPathOf = (projectId: string | null) => {
     try {
       return projectId ? store.getProject(projectId).path : null;
@@ -1118,7 +1141,7 @@ async function main(): Promise<void> {
       guideParts: cwd ? guide.partsForCwd(cwd) : [],
       // An agent that keeps the shared memory itself doesn't need the read tool.
       tools: harnessTools().filter((t) => !(thread && drivers.find((d) => d.id === thread.agent)?.capabilities.nativeMemory && t.name === MEMORY_READ_TOOL)),
-      skills: thread && delivery ? skillsInputFor(delivery, cwd) : null,
+      skills: thread && delivery ? skillsInputFor(delivery, cwd, thread.kind === "design") : null,
       mcp: servers.map((s) => ({ name: s.name, listed: mcpTools.peek(s.spec), deferred })),
       memoryIndex: pid && memoryOn(settings.get(), pid) ? (({ lines, tokens }) => ({ lines, tokens }))(memory.store.index(pid)) : null,
     });
@@ -1164,10 +1187,18 @@ async function main(): Promise<void> {
     store.setCheckCommand(projectId, command, fixRounds),
   );
   ipcMain.handle("threads:list", (_e, projectId: string) => store.listThreads(projectId));
-  ipcMain.handle("threads:create", (_e, projectId: string, agent?: string, opts?: { worktree?: boolean; kind?: unknown }) => {
+  ipcMain.handle("threads:create", (_e, projectId: string, agent?: string, opts?: { worktree?: boolean; kind?: unknown; designSystem?: unknown }) => {
     const kind: ThreadKind = opts?.kind === "design" ? "design" : "chat";
-    return opts?.worktree ? service.createWorktreeThread(projectId, agent, kind) : service.createThread(projectId, agent, kind);
+    // Only a design thread keeps a system, and only an id the picker could offer (checked again at each turn).
+    const designSystem = kind === "design" && typeof opts?.designSystem === "string" && /^[\w:.-]{1,80}$/.test(opts.designSystem) ? opts.designSystem : null;
+    return opts?.worktree
+      ? service.createWorktreeThread(projectId, agent, kind, designSystem)
+      : service.createThread(projectId, agent, kind, designSystem);
   });
+  ipcMain.handle("threads:set-design-system", (_e, threadId: string, id: unknown) =>
+    service.setDesignSystem(threadId, typeof id === "string" && /^[\w:.-]{1,80}$/.test(id) ? id : null),
+  );
+  ipcMain.handle("design:systems", (_e, projectId: string | null): DesignSystemOption[] => service.designSystems(projectId)),
   ipcMain.handle("threads:update", (_e, id: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "contextWindow" | "permissionMode" | "agent" | "pinned" | "archived">>) =>
     service.updateThread(id, pick(patch, ["title", "model", "effort", "contextWindow", "permissionMode", "agent", "pinned", "archived"])),
   );

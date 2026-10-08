@@ -122,7 +122,8 @@ export function withThread(url: string, threadId: string | undefined): string {
  * in-process (ACP agents such as OpenCode). `/mcp` serves `tools`;
  * `/mcp-skills` serves those plus `extra` (the skill tool); `/mcp-routed`
  * serves those plus `routed` (the MCP search/call router tools), built for
- * the project the `?p=<projectId>` names (so is the skill tool's list). Stateless: every request gets a
+ * the project the `?p=<projectId>` names (so is the skill tool's list, which a
+ * design thread's `?t=` widens to its design-only skills). Stateless: every request gets a
  * fresh server over the current tool list. A `?p=<projectId>` on the URL
  * tells the tools (and the routed factory) which project is calling them; a
  * `?t=<threadId>` adds `threadTools` (ask_user), which act for that thread;
@@ -133,7 +134,7 @@ export function withThread(url: string, threadId: string | undefined): string {
  */
 export async function startToolServer(
   tools: () => HarnessTool[],
-  extra?: (projectId: string | undefined) => HarnessTool[],
+  extra?: (projectId: string | undefined, threadId?: string) => HarnessTool[],
   routed?: (projectId: string | undefined) => HarnessTool[],
   threadTools?: () => HarnessTool[],
   heartbeatMs = HEARTBEAT_MS,
@@ -184,9 +185,9 @@ export async function startToolServer(
     const server = new McpServer({ name: TOOL_SERVER_NAME, version: "1.0.0" });
     const list =
       path === "/mcp-skills"
-        ? [...tools(), ...(extra?.(projectId) ?? [])]
+        ? [...tools(), ...(extra?.(projectId, threadId) ?? [])]
         : path === "/mcp-routed"
-          ? [...tools(), ...(extra?.(projectId) ?? []), ...(routed?.(projectId) ?? [])]
+          ? [...tools(), ...(extra?.(projectId, threadId) ?? []), ...(routed?.(projectId) ?? [])]
           : [...tools()];
     const waiting = threadId ? (threadTools?.() ?? []) : [];
     list.push(...waiting);

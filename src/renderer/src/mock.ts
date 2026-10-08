@@ -244,8 +244,22 @@ export function installMock(): void {
         th.branch = `harness/${pid}-${th.id.slice(0, 6)}`;
         th.worktreePath = `/Users/you/Library/Application Support/CubiQ/worktrees/${th.id}`;
       }
+      if (opts?.kind === "design") {
+        th.kind = "design";
+        if (opts.designSystem) th.designSystem = opts.designSystem;
+      }
       threads[pid] = [th, ...(threads[pid] ?? [])];
       return th;
+    },
+    setDesignSystem: async (id, system) => {
+      for (const list of Object.values(threads)) {
+        const i = list.findIndex((x) => x.id === id);
+        if (i >= 0) {
+          const { designSystem: _old, ...rest } = list[i]!;
+          return (list[i] = system ? { ...rest, designSystem: system } : rest);
+        }
+      }
+      throw new Error("no thread");
     },
     updateThread: async (id, patch) => {
       for (const list of Object.values(threads)) {
@@ -594,6 +608,13 @@ export function installMock(): void {
     designWatch: async () => {},
     designUnwatch: async () => {},
     designReveal: async () => {},
+    designSystems: async () => [
+      { id: "clean", name: "Clean", description: "Neutral and calm: white surfaces, one blue accent, soft radii.", swatches: ["#ffffff", "#18181b", "#2563eb", "#0e7490"], source: "builtin" },
+      { id: "dashboard", name: "Dashboard", description: "Dense and data-first.", swatches: ["#f6f7f9", "#111827", "#4f46e5", "#0e7490"], source: "builtin" },
+      { id: "editorial", name: "Editorial", description: "Warm paper and a serif display face.", swatches: ["#fbf8f3", "#1f1a14", "#9a3412", "#1e3a5f"], source: "builtin" },
+      { id: "mono", name: "Mono", description: "Black, white and one gray ramp.", swatches: ["#ffffff", "#0a0a0a", "#0a0a0a", "#404040"], source: "builtin" },
+      { id: "playful", name: "Playful", description: "Bright and friendly, big radii.", swatches: ["#fffaf5", "#2a1b3d", "#7c3aed", "#c2410c"], source: "builtin" },
+    ],
     listArtifacts: async (threadId) =>
       threadId === "t1"
         ? [

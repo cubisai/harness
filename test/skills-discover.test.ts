@@ -51,6 +51,13 @@ describe("parseSkillMd", () => {
     expect(parsed.userInvocable).toBe(true);
     expect(parsed.body).toBe("# Title\n\nJust text");
   });
+
+  it("reads `mode: design` and ignores any other mode", () => {
+    const design = parseSkillMd("---\ndescription: A design skill\nmode: design\n---\nbody");
+    expect(design.mode).toBe("design");
+    const other = parseSkillMd("---\ndescription: Not design\nmode: something-else\n---\nbody");
+    expect(other.mode).toBeUndefined();
+  });
 });
 
 describe("discoverSkills", () => {
@@ -80,6 +87,13 @@ describe("discoverSkills", () => {
     const [skill] = discoverSkills({ origin: "shared", dir });
     expect(skill!.name).toBe("folder-name");
     expect(skill!.invocation).toBe("model");
+  });
+
+  it("sets mode on a design-only skill's entry", () => {
+    const dir = tempDir();
+    writeSkill(dir, "painter", "---\nname: painter\ndescription: Design work\nmode: design\n---\nbody");
+    const [skill] = discoverSkills({ origin: "project", dir });
+    expect(skill!.mode).toBe("design");
   });
 });
 
@@ -129,6 +143,12 @@ describe("forAgent", () => {
     expect(forAgent(catalog, { mode: "tool", reads: ["project", "shared"] }).map((s) => s.name).sort()).toEqual(["h", "l"]);
     expect(forAgent(catalog, { mode: "extraRoots", reads: [] }).map((s) => s.name).sort()).toEqual(["h", "l", "p", "s"]);
     expect(forAgent(catalog, { mode: "none" }).map((s) => s.name).sort()).toEqual(["h", "l", "p", "s"]);
+  });
+
+  it("keeps design-only skills out unless design delivery is asked for", () => {
+    const withDesign: Catalog = mergeCatalog([[entry("d", "project", { mode: "design" })]], new Set());
+    expect(forAgent(withDesign, { mode: "none" }).map((s) => s.name)).toEqual([]);
+    expect(forAgent(withDesign, { mode: "none" }, new Set(), { design: true }).map((s) => s.name)).toEqual(["d"]);
   });
 });
 

@@ -45,6 +45,8 @@ interface Draft {
   effort?: string | null;
   contextWindow?: number | null;
   permissionMode?: PermissionMode;
+  /** A design thread's design system (absent = the project's default). */
+  designSystem?: string;
 }
 
 interface State {
@@ -192,8 +194,10 @@ interface State {
   setCheckCommand(id: string, command: string | null, fixRounds?: number | null): Promise<void>;
   selectProject(id: string): Promise<void>;
   selectThread(id: string | null): Promise<void>;
-  /** Open a new thread; `worktree` gives it its own git worktree on a new branch. */
-  newThread(skills?: string[], opts?: { worktree?: boolean }): Promise<void>;
+  /** Open a new thread; `worktree` gives it its own git worktree on a new branch; `designSystem` picks a design thread's system. */
+  newThread(skills?: string[], opts?: { worktree?: boolean; designSystem?: string }): Promise<void>;
+  /** Pick a design thread's design system; the next turn copies it into the design folder. */
+  setDesignSystem(threadId: string, id: string): Promise<void>;
   /** Start `text` as a new thread in the open project without leaving the current one; it reports through the Message Center. */
   sendInBackground(text: string, skills?: string[], opts?: { worktree?: boolean }, mentions?: string[]): Promise<void>;
   /** From the project's start screen: open a new thread and send `text` in it. */
@@ -245,6 +249,12 @@ function findThread(threads: Record<string, Thread[]>, id: string): Thread | und
   return Object.values(threads)
     .flat()
     .find((t) => t.id === id);
+}
+
+/** createThread's options: the kind being shown, and a design thread's system (an explicit one beats the draft's). */
+function createOpts(kind: ThreadKind, draft: Draft, opts?: { worktree?: boolean; designSystem?: string }): { worktree?: boolean; kind: ThreadKind; designSystem?: string } {
+  const designSystem = kind === "design" ? (opts?.designSystem ?? draft.designSystem) : undefined;
+  return { ...(opts?.worktree !== undefined ? { worktree: opts.worktree } : {}), kind, ...(designSystem ? { designSystem } : {}) };
 }
 
 /** The updates a freshly created thread needs to match the user's draft picks. */
@@ -737,7 +747,7 @@ export const useStore = create<State>((set, get) => ({
     let thread: Thread;
     const draft = get().draft;
     try {
-      thread = await api().createThread(projectId, draft.agent ?? get().lastAgent ?? undefined, { ...opts, kind: get().threadKind });
+      thread = await api().createThread(projectId, draft.agent ?? get().lastAgent ?? undefined, createOpts(get().threadKind, draft, opts));
       const patch = draftPatch(draft, thread);
       if (Object.keys(patch).length) thread = await api().updateThread(thread.id, patch);
     } catch (err) {
@@ -760,7 +770,7 @@ export const useStore = create<State>((set, get) => ({
     let thread: Thread;
     const draft = get().draft;
     try {
-      thread = await api().createThread(projectId, draft.agent ?? get().lastAgent ?? undefined, { ...opts, kind: get().threadKind });
+      thread = await api().createThread(projectId, draft.agent ?? get().lastAgent ?? undefined, createOpts(get().threadKind, draft, opts));
       const patch = draftPatch(draft, thread);
       if (Object.keys(patch).length) thread = await api().updateThread(thread.id, patch);
     } catch (err) {
@@ -812,6 +822,14 @@ export const useStore = create<State>((set, get) => ({
       if (!thread) return;
       set((s) => ({ threads: { ...s.threads, [projectId]: upsertThread(s.threads[projectId], thread) } }));
       await get().selectThread(thread.id);
+    } catch (err) {
+      get().showNotice(ipcErrorText(err));
+    }
+  },
+
+  async setDesignSystem(threadId, id) {
+    try {
+      get().apply({ type: "thread", thread: await api().setDesignSystem(threadId, id) });
     } catch (err) {
       get().showNotice(ipcErrorText(err));
     }

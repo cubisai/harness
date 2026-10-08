@@ -1,0 +1,102 @@
+/* Mono: CubiQ built-in design system tokens. Link this file and use the custom properties, not raw values. */
+:root {
+  color-scheme: light dark;
+
+  /* Color (light) */
+  --color-bg: #ffffff;
+  --color-surface: #fafafa;
+  --color-surface-2: #f0f0f0;
+  --color-text: #0a0a0a;
+  --color-text-muted: #525252;
+  --color-border: #d4d4d4;
+  --color-primary: #0a0a0a;
+  --color-on-primary: #ffffff;
+  --color-accent: #404040;
+  --color-success: #166534;
+  --color-warning: #92400e;
+  --color-danger: #b91c1c;
+  --color-focus: #0a0a0a;
+
+  /* Type */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --text-xs: 12px;
+  --leading-xs: 16px;
+  --text-sm: 14px;
+  --leading-sm: 20px;
+  --text-md: 16px;
+  --leading-md: 24px;
+  --text-lg: 20px;
+  --leading-lg: 28px;
+  --text-xl: 24px;
+  --leading-xl: 32px;
+  --text-2xl: 32px;
+  --leading-2xl: 40px;
+  --text-3xl: 48px;
+  --leading-3xl: 56px;
+  --text-4xl: 64px;
+  --leading-4xl: 72px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 700;
+
+  /* Space: the 8pt scale (4 is for type and icon nudges only) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* Size */
+  --target-min: 44px;
+  --content-max: 1200px;
+  --measure: 68ch;
+
+  /* Radius */
+  --radius-sm: 0px;
+  --radius-md: 2px;
+  --radius-lg: 4px;
+  --radius-full: 9999px;
+
+  /* Elevation */
+  --shadow-1: none;
+  --shadow-2: 0 0 0 1px rgb(0 0 0 / 0.08);
+  --shadow-3: 0 8px 24px rgb(0 0 0 / 0.12);
+
+  /* Motion */
+  --duration-fast: 120ms;
+  --duration: 200ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0a0a0a;
+    --color-surface: #141414;
+    --color-surface-2: #1f1f1f;
+    --color-text: #fafafa;
+    --color-text-muted: #a3a3a3;
+    --color-border: #2e2e2e;
+    --color-primary: #fafafa;
+    --color-on-primary: #0a0a0a;
+    --color-accent: #d4d4d4;
+    --color-success: #4ade80;
+    --color-warning: #fbbf24;
+    --color-danger: #f87171;
+    --color-focus: #fafafa;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration: 0ms;
+  }
+}

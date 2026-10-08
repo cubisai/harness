@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type {
   AgentInfo,
   ArtifactContent,
   ArtifactFile,
+  DesignSystemOption,
   DiffFile,
   LiveDelta,
   LiveUpdate,
@@ -32,6 +33,7 @@ import type {
 } from "../shared/types";
 import { bindingKey } from "../shared/bindings";
 import { designDirName } from "./design/serve";
+import { listDesignSystems, materializeSystem, resolveDesignSystem } from "./design/systems";
 import { skillsOf } from "../shared/skill-list";
 import type { AgentDriver, HarnessTool, ModelSwitch, SessionSeed } from "./agents/types";
 import {
@@ -76,6 +78,7 @@ import { answersMessage } from "./questions";
 export class Service {
   private running = new Map<string, AbortController>();
   private artifacts: ArtifactDeps | null = null;
+  private designSystemsDir: string | null = null;
   /** Projects already warned about loading the same conventions twice: said once, not every turn. */
   private scopeChecked = new Set<string>();
   private pendingPermissions = new Map<string, (d: PermissionDecision) => void>();
@@ -167,23 +170,23 @@ export class Service {
     });
   }
 
-  createThread(projectId: string, agent?: string, kind: ThreadKind = "chat"): Thread {
+  createThread(projectId: string, agent?: string, kind: ThreadKind = "chat", designSystem: string | null = null): Thread {
     this.store.getProject(projectId);
     const d = this.defaults();
     const wanted = agent ?? d.agent;
     // A default agent that's no longer installed falls back to the first one.
     const driver = (wanted && this.drivers.get(wanted)) || [...this.drivers.values()][0]!;
-    return this.store.createThread(projectId, driver.id, driver.defaultModel, d.permissionMode, kind);
+    return this.store.createThread(projectId, driver.id, driver.defaultModel, d.permissionMode, kind, designSystem);
   }
 
   /**
    * A thread with its own git worktree on a new branch, so its edits stay off
    * the project's checkout. Nothing is left behind when the worktree can't be made.
    */
-  async createWorktreeThread(projectId: string, agent?: string, kind: ThreadKind = "chat"): Promise<Thread> {
+  async createWorktreeThread(projectId: string, agent?: string, kind: ThreadKind = "chat", designSystem: string | null = null): Promise<Thread> {
     if (!this.worktreesDir) throw new Error("Worktree threads aren't available here.");
     const project = this.store.getProject(projectId);
-    const thread = this.createThread(projectId, agent, kind);
+    const thread = this.createThread(projectId, agent, kind, designSystem);
     const branch = worktreeBranch(project.name, thread.id);
     const dir = join(this.worktreesDir, thread.id);
     try {
@@ -601,9 +604,11 @@ export class Service {
     const maxRounds = project.checkFixRounds ?? 1;
     const provenance: Provenance = { agent: thread.agent, model: thread.model, provider: null, instanceId: null };
     const skills = skillsOf(req);
+    // A design thread's system is copied into its folder before each turn; a switch is said once, in this prompt.
+    const systemNote = compact ? "" : this.prepareDesignSystem(thread);
     const prompt = compact
       ? `/compact${compact.focus ? ` ${compact.focus}` : ""}`
-      : composePrompt(this.catalogFor(cwd), req.text, skills, driver.skillsDelivery) + mentionNote(cwd, req.mentions);
+      : composePrompt(this.catalogFor(cwd), req.text, skills, driver.skillsDelivery) + mentionNote(cwd, req.mentions) + systemNote;
 
     const userEvent = this.emit(thread.id, { kind: "user", text: req.text, ...(skills.length ? { skills } : {}) });
     // An automatic fix round never names the thread; the user's message does.
@@ -1018,6 +1023,58 @@ export class Service {
     const thread = this.store.getThread(threadId);
     const dir = designOf(thread);
     return dir ? join(this.threadFolder(threadId), dir) : null;
+  }
+
+  /** Where the built-in design systems live; without it a design thread gets only its project's own. */
+  setDesignSystemsDir(dir: string): void {
+    this.designSystemsDir = dir;
+  }
+
+  /** The design systems a project's design threads can use, for the composer's picker. */
+  designSystems(projectId: string | null): DesignSystemOption[] {
+    return listDesignSystems(this.projectPath(projectId), this.designSystemsDir ?? "").map(({ id, name, description, swatches, source }) => ({
+      id,
+      name,
+      description,
+      swatches,
+      source,
+    }));
+  }
+
+  /** Pick a design thread's system (null = the default); the next turn copies it in and tells the agent. */
+  setDesignSystem(threadId: string, id: string | null): Thread {
+    const thread = this.store.getThread(threadId);
+    if (thread.kind !== "design") throw new Error("Only a design thread has a design system.");
+    return this.store.setDesignSystem(threadId, id);
+  }
+
+  /**
+   * Copy a design thread's system into `<design folder>/system/` when it's
+   * missing or changed (the canvas can only load files from that folder, and the
+   * guide always names the same place, so switching never changes the guide).
+   * Returns the line that tells the agent about a switch, once; "" otherwise.
+   */
+  private prepareDesignSystem(thread: Thread): string {
+    const root = this.designRoot(thread.id);
+    if (!root) return "";
+    try {
+      const system = resolveDesignSystem(listDesignSystems(this.projectPath(thread.projectId), this.designSystemsDir ?? ""), thread.designSystem);
+      if (!system) return "";
+      const dir = join(root, "system");
+      let before = "";
+      try {
+        before = readFileSync(join(dir, ".system"), "utf8").trim();
+      } catch {
+        // First turn: nothing there yet.
+      }
+      materializeSystem(system, dir);
+      return before && before !== system.id
+        ? `\n\n(CubiQ: the design system is now ${system.name}; \`${designOf(thread)}/system/\` was replaced. Read its DESIGN.md and restyle with its tokens.)`
+        : "";
+    } catch {
+      // A failed copy leaves the last system in place; never fail the turn over it.
+      return "";
+    }
   }
 
   /** A stored turn-end version of a file in a design thread's folder (`rel` is inside that folder). */
