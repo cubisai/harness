@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Provider } from "../src/shared/types";
-import { ModelsDev, discoverModels, pickSmallModel, type DiscoveredModel } from "../src/main/models-catalog";
+import { ModelsDev, catalogProtocol, catalogProviderId, discoverModels, pickSmallModel, type DiscoveredModel } from "../src/main/models-catalog";
 
 interface RequestRecord {
   method: string;
@@ -161,7 +161,7 @@ describe("discoverModels listings", () => {
     const stub = await startStub((_req, res) =>
       send(res, 200, {
         data: [
-          { id: "mimo-v2.6-pro", type: "chat", context_window: 1_048_576, max_output_tokens: 32_768, modalities: { input: ["text", "image"] }, pricing: { input_per_m: 0.56, output_per_m: 1.12 } },
+          { id: "mimo-v2.6-pro", type: "chat", context_window: 1_048_576, max_output_tokens: 32_768, modalities: { input: ["text", "image"] }, pricing: { input_per_m: 0.56, output_per_m: 1.12, cached_input_per_m: 0.005 } },
           { id: "kokoro-82m", type: "tts" },
           { id: "embeddinggemma-300m", type: "embedding" },
         ],
@@ -171,7 +171,7 @@ describe("discoverModels listings", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.models.map((m) => m.id)).toEqual(["mimo-v2.6-pro"]);
-    expect(result.models[0]).toMatchObject({ contextWindow: 1_048_576, maxOutput: 32_768, cost: { input: 0.56, output: 1.12 }, capabilities: { vision: true } });
+    expect(result.models[0]).toMatchObject({ contextWindow: 1_048_576, maxOutput: 32_768, cost: { input: 0.56, output: 1.12, cacheRead: 0.005 }, capabilities: { vision: true } });
   });
 
   it("pages anthropic listings with after_id and limit", async () => {
@@ -417,5 +417,136 @@ describe("pickSmallModel", () => {
   it("is undefined without any tool-capable model that has a cost", () => {
     expect(pickSmallModel([dm("x", undefined, true), dm("y", { input: 1, output: 1 }, false)])).toBeUndefined();
     expect(pickSmallModel([])).toBeUndefined();
+  });
+});
+
+describe("models.dev provider catalog", () => {
+  const catalogBody = {
+    minimax: {
+      id: "minimax",
+      name: "MiniMax",
+      api: "https://api.minimax.io/anthropic/v1",
+      env: ["MINIMAX_API_KEY", "MINIMAX_BACKUP_KEY"],
+      npm: "@ai-sdk/anthropic",
+      doc: "https://platform.minimax.io/docs",
+      models: {
+        "MiniMax-Text-01": {
+          id: "MiniMax-Text-01",
+          name: "MiniMax Text 01",
+          tool_call: true,
+          reasoning: false,
+          attachment: false,
+          modalities: { input: ["text"] },
+          limit: { context: 1_000_000, output: 40_000 },
+          cost: { input: 0.2, output: 1.1, cache_read: 0.04 },
+        },
+      },
+    },
+    "wafer.ai": {
+      id: "wafer.ai",
+      name: "Wafer",
+      api: "https://api.wafer.ai/v1",
+      env: ["WAFER_API_KEY"],
+      npm: "@ai-sdk/openai",
+      models: {
+        "wafer-zeta": { id: "wafer-zeta", name: "Wafer Zeta", tool_call: true, limit: { context: 8_000, output: 1_000 } },
+        "wafer-alpha": { id: "wafer-alpha", name: "Wafer Alpha", tool_call: true, limit: { context: 8_000, output: 1_000 } },
+      },
+    },
+    openai: { id: "openai", name: "OpenAI", env: ["OPENAI_API_KEY"], npm: "@ai-sdk/openai", models: { "gpt-x": { id: "gpt-x" } } },
+    noapi: {
+      id: "noapi",
+      name: "No API",
+      models: { ghost: { id: "ghost", name: "Ghost", limit: { context: 1_000, output: 100 } } },
+    },
+  };
+
+  const rankingBody = {
+    a: { id: "alpha-one", name: "Alpha One", api: "https://a.example.com", models: { m: { id: "m" } } },
+    b: { id: "beta-two", name: "Alpha Two", api: "https://b.example.com", models: { m: { id: "m" } } },
+    c: { id: "gamma-three", name: "Grand Alpha Co", api: "https://c.example.com", models: { m: { id: "m" } } },
+    d: { id: "delta-four", name: "Omega Alpha", api: "https://d.example.com", models: { m: { id: "m" } } },
+  };
+
+  function loadedCatalog(body: unknown): ModelsDev {
+    const file = tempFile();
+    writeFileSync(file, JSON.stringify(body));
+    const modelsDev = new ModelsDev({ file, url: "http://127.0.0.1:1/api.json" });
+    return modelsDev;
+  }
+
+  it("maps npm packages and api URLs to a wire protocol", () => {
+    expect(catalogProtocol("@ai-sdk/anthropic", "https://api.anthropic.com")).toBe("anthropic-messages");
+    expect(catalogProtocol("@ai-sdk/openai", "https://api.openai.com/v1")).toBe("openai-responses");
+    expect(catalogProtocol("@ai-sdk/google", "https://generativelanguage.googleapis.com")).toBe("gemini");
+    expect(catalogProtocol(undefined, "https://custom.example.com/v1")).toBe("openai-chat");
+    expect(catalogProtocol("@ai-sdk/some-other", "https://custom.example.com/v1")).toBe("openai-chat");
+
+    expect(catalogProtocol("@ai-sdk/anthropic", undefined)).toBeNull();
+    expect(catalogProtocol("@ai-sdk/anthropic", "not a url")).toBeNull();
+    expect(catalogProtocol("@ai-sdk/anthropic", "ftp://files.example.com")).toBeNull();
+    expect(catalogProtocol("@ai-sdk/amazon-bedrock", "https://bedrock-runtime.us-east-1.amazonaws.com")).toBeNull();
+    expect(catalogProtocol("@ai-sdk/azure", "https://my-resource.openai.azure.com")).toBeNull();
+  });
+
+  it("derives ids from keys, collapsing punctuation and refusing reserved ids", () => {
+    expect(catalogProviderId("wafer.ai")).toBe("wafer-ai");
+    expect(catalogProviderId("Claude Code")).toBe("claude-code");
+    expect(catalogProviderId("claude")).toBeNull();
+    expect(catalogProviderId("codex")).toBeNull();
+    expect(catalogProviderId("default")).toBeNull();
+    expect(catalogProviderId("---")).toBeNull();
+  });
+
+  it("returns no providers before load has run", () => {
+    const modelsDev = new ModelsDev({ file: tempFile(), url: "http://127.0.0.1:1/api.json" });
+    expect(modelsDev.catalog("mini")).toEqual([]);
+    expect(modelsDev.catalog("")).toEqual([]);
+  });
+
+  it("builds providers with protocol, base URL, key var, docs and enriched models", async () => {
+    const modelsDev = loadedCatalog(catalogBody);
+    await modelsDev.load();
+
+    const minimax = modelsDev.catalog("minimax");
+    expect(minimax).toHaveLength(1);
+    expect(minimax[0]).toMatchObject({
+      id: "minimax",
+      name: "MiniMax",
+      wireProtocol: "anthropic-messages",
+      baseURL: "https://api.minimax.io/anthropic/v1",
+      keyVar: "MINIMAX_API_KEY",
+      docs: "https://platform.minimax.io/docs",
+    });
+    const model = minimax[0]!.models[0]!;
+    expect(model.name).toBe("MiniMax Text 01");
+    expect(model.contextWindow).toBe(1_000_000);
+    expect(model.maxOutput).toBe(40_000);
+    expect(model.cost).toEqual({ input: 0.2, output: 1.1, cacheRead: 0.04 });
+    expect(model.enriched).toBe(true);
+
+    // A provider with no api can't be reached, so it never shows up.
+    expect(modelsDev.catalog("noapi")).toEqual([]);
+    expect(modelsDev.catalog("").map((p) => p.id)).not.toContain("noapi");
+    // …except the first-party hosts, whose public endpoint is known.
+    expect(modelsDev.catalog("openai")[0]).toMatchObject({ id: "openai", wireProtocol: "openai-responses", baseURL: "https://api.openai.com/v1", keyVar: "OPENAI_API_KEY" });
+
+    // The key is slugged and models come back sorted by id.
+    const wafer = modelsDev.catalog("wafer");
+    expect(wafer[0]!.id).toBe("wafer-ai");
+    expect(wafer[0]!.wireProtocol).toBe("openai-responses");
+    expect(wafer[0]!.models.map((m) => m.id)).toEqual(["wafer-alpha", "wafer-zeta"]);
+  });
+
+  it("ranks prefix matches first, folds case, and honours the limit", async () => {
+    const modelsDev = loadedCatalog(rankingBody);
+    await modelsDev.load();
+
+    const all = modelsDev.catalog("alpha");
+    expect(all.map((p) => p.id)).toEqual(["alpha-one", "beta-two", "gamma-three", "delta-four"]);
+    expect(modelsDev.catalog("  ALPHA  ").map((p) => p.id)).toEqual(all.map((p) => p.id));
+    expect(modelsDev.catalog("alpha", 2).map((p) => p.id)).toEqual(["alpha-one", "beta-two"]);
+    expect(modelsDev.catalog("").length).toBe(4);
+    expect(modelsDev.catalog("nope")).toEqual([]);
   });
 });

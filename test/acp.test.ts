@@ -436,7 +436,7 @@ describe("ACP driver", () => {
         clientVersion: "test",
         extraModels: () => [
           { id: "unskilled-th/fast", label: "TokenHarbor/Fast" },
-          { id: "mock-small", label: "Mock Small (again)" },
+          { id: "mock-small", label: "Mock Small (again)", cost: { input: 0.1, output: 0.4 } },
         ],
         injection: (ctx) => {
           providers.push(ctx?.providerId ?? null);
@@ -452,6 +452,8 @@ describe("ACP driver", () => {
     expect(own.deltas.join("")).toBe("Hello, one (mock-small)");
     // Saved providers' models follow the agent's own; one it already lists isn't repeated.
     expect(d.models().map((m) => m.id)).toEqual(["default", "mock-small", "mock-large", "unskilled-th/fast"]);
+    // The agent's own copy keeps the saved model's price.
+    expect(d.models().find((m) => m.id === "mock-small")?.cost).toEqual({ input: 0.1, output: 0.4 });
 
     const pinned = turn("two", { sessionId: own.sessions[0]!, model: "unskilled-th/fast" });
     await d.runTurn(pinned.input);

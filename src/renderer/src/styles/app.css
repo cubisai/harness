@@ -1570,6 +1570,11 @@ button.qc-option.other { cursor: pointer; }
 .provider-discover-name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .provider-discover-meta { font: 11px var(--mono); color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .provider-discover-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.provider-catalog { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.provider-catalog .text-input { flex: none; }
+.provider-catalog .provider-discover-list { border: 1px solid var(--hairline); border-radius: var(--radius-s); padding: 4px; }
+.provider-catalog-row { width: 100%; border: 0; background: none; font: inherit; text-align: left; }
+.provider-catalog-row:focus-visible { outline-offset: -2px; }
 
 /* ---------- library: skills, MCP servers, agents ---------- */
 
@@ -2057,6 +2062,7 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 .model-item.current .check { visibility: visible; }
 .model-item .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .model-item .hint { font: 11px var(--mono); color: var(--text-tertiary); }
+.model-item .price { flex: none; font: 10.5px var(--mono); font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
 .model-item.two-line { align-items: flex-start; white-space: normal; }
 .model-item.two-line .check { margin-top: 2px; }
 .model-item .desc { display: block; font-size: 11.5px; font-weight: 400; color: var(--text-tertiary); }

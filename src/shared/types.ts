@@ -131,12 +131,22 @@ export interface ConnectionResult {
 
 /** A model a provider's own listing returned, enriched from models.dev where it knows the id. */
 export interface DiscoveredModel extends ProviderModel {
-  cost?: { input: number; output: number }; // USD per 1M tokens
   enriched: boolean; // true when models.dev (or the listing itself) supplied limits/capabilities
 }
 
 /** Fetch models: the listing, plus the cheapest tool model as the suggested small model. */
 export type ModelDiscovery = { ok: true; models: DiscoveredModel[]; smallModel?: string } | { ok: false; error: string };
+
+/** A models.dev provider the "Add provider" editor can start from; untested by CubiQ. */
+export interface CatalogProvider {
+  id: string; // a valid provider id derived from the models.dev key
+  name: string;
+  wireProtocol: WireProtocol;
+  baseURL: string;
+  keyVar?: string; // first `env` entry
+  docs?: string;
+  models: DiscoveredModel[];
+}
 
 /** The per-agent credential choice; subscription = the agent's own login/config. */
 export type CredentialChoice = { kind: "byok"; providerId: string } | { kind: "subscription" };
@@ -781,6 +791,8 @@ export interface ModelOption {
   contextWindow?: number;
   /** Largest window the model accepts as an override. */
   maxContextWindow?: number;
+  /** A provider model's price (USD per 1M tokens), when known; subscription models have none. */
+  cost?: ModelPricing;
 }
 
 export type GuardEnforcement = "block" | "warnOnly";
@@ -997,6 +1009,8 @@ export interface UnskilledApi {
   testProvider(target: string | ProviderInput, modelId: string, secret?: string, headerValues?: Record<string, string>): Promise<ConnectionResult>;
   /** List a provider's models (saved or draft, as for testProvider), enriched from models.dev. */
   discoverProviderModels(input: ProviderInput, secret?: string, headerValues?: Record<string, string>): Promise<ModelDiscovery>;
+  /** Search models.dev's providers (cached, offline-safe) to start a new provider from one. */
+  searchProviderCatalog(query: string): Promise<CatalogProvider[]>;
   setCredential(agentId: string, choice: CredentialChoice): Promise<SettingsView>;
   /** Show the app's data folder (agents.json, the database) in the file manager. */
   openDataFolder(): Promise<void>;

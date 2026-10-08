@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { ProviderView } from "../src/shared/types";
-import { CredentialRows, PresetPicker, ProviderList, credentialOptions, hostOf, presetOptions, toProviderInput } from "../src/renderer/src/components/ProviderSheet";
+import { CatalogSearch, CredentialRows, PresetPicker, ProviderList, catalogMeta, credentialOptions, hostOf, presetOptions, toProviderInput } from "../src/renderer/src/components/ProviderSheet";
 
 const caps = { tools: true, vision: false, reasoning: false };
 
@@ -219,5 +219,20 @@ describe("PresetPicker", () => {
     expect(html).toContain('aria-haspopup="listbox"');
     expect(html).not.toContain("<select");
     expect(html).toMatchSnapshot();
+  });
+});
+
+describe("CatalogSearch", () => {
+  it("starts as a labelled search with no result list", () => {
+    const html = renderToStaticMarkup(<CatalogSearch onPick={() => {}} />);
+    expect(html).toContain('aria-label="Search models.dev providers"');
+    expect(html).not.toContain("Catalog providers");
+  });
+
+  it("describes a result by protocol, host and model count", () => {
+    const entry = { id: "minimax", name: "MiniMax", wireProtocol: "anthropic-messages" as const, baseURL: "https://api.minimax.io/anthropic/v1", models: [] };
+    expect(catalogMeta(entry)).toBe("anthropic-messages · api.minimax.io · 0 models");
+    const one = { ...entry, models: [{ id: "m", capabilities: { tools: true, vision: false, reasoning: false }, contextWindow: 1, maxOutput: 1, enriched: true }] };
+    expect(catalogMeta(one)).toBe("anthropic-messages · api.minimax.io · 1 model");
   });
 });

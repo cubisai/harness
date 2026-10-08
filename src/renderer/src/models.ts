@@ -1,9 +1,9 @@
-import type { ModelOption } from "../../shared/types";
+import type { ModelOption, ModelPricing } from "../../shared/types";
 
 export interface ModelGroup {
   /** The provider the models come from ("OpenCode Zen", "tokenharbor"), or "" when there's one. */
   group: string;
-  models: { id: string; label: string }[];
+  models: { id: string; label: string; cost?: ModelPricing }[];
 }
 
 /** Split "Provider/Model" (label first, then id) into a group and the model's own name. */
@@ -28,7 +28,7 @@ export function filterModels(models: ModelOption[], query: string): ModelGroup[]
     if (!words.every((w) => hay.includes(w))) continue;
     let g = groups.find((x) => x.group === group);
     if (!g) groups.push((g = { group, models: [] }));
-    g.models.push({ id: m.id, label });
+    g.models.push({ id: m.id, label, ...(m.cost && { cost: m.cost }) });
   }
   return groups;
 }

@@ -46,7 +46,8 @@ describe("PROVIDER_PRESETS", () => {
   });
 
   it("gives every non-local preset a documented key variable", () => {
-    for (const preset of PROVIDER_PRESETS.filter((p) => !p.local)) {
+    // PGS Grove's docs name no variable.
+    for (const preset of PROVIDER_PRESETS.filter((p) => !p.local && p.id !== "pgsgrove")) {
       expect(preset.keyVar, preset.id).toBeDefined();
       expect(preset.keyVar, preset.id).toMatch(/^[A-Z][A-Z0-9_]*_KEY$/);
     }
@@ -65,6 +66,22 @@ describe("PROVIDER_PRESETS", () => {
   it("provides a docs URL for every preset", () => {
     for (const preset of PROVIDER_PRESETS) {
       expect(preset.docs, preset.id).toMatch(/^https:\/\//);
+    }
+  });
+
+  it("lists only other, distinct protocols as also served", () => {
+    for (const preset of PROVIDER_PRESETS.filter((p) => p.alsoServes)) {
+      expect(preset.alsoServes, preset.id).not.toContain(preset.wireProtocol);
+      expect(new Set(preset.alsoServes).size, preset.id).toBe(preset.alsoServes!.length);
+    }
+  });
+
+  it("offers TokenHarbor and PGS Grove on chat, which every agent reaches", () => {
+    for (const id of ["tokenharbor", "pgsgrove"]) {
+      const preset = providerPreset(id)!;
+      expect(preset.wireProtocol, id).toBe("openai-chat");
+      expect(preset.baseURL.endsWith("/v1"), id).toBe(true);
+      expect([...preset.alsoServes!].sort(), id).toEqual(["anthropic-messages", "openai-responses"]);
     }
   });
 });

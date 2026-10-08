@@ -3,8 +3,8 @@
 // cheap tool-capable default. Listing data always wins over models.dev.
 
 import { readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
-import type { DiscoveredModel, ModelCapabilities, Provider } from "../shared/types";
-import { buildHeaders, endpointsFor } from "./providers";
+import type { CatalogProvider, DiscoveredModel, ModelCapabilities, ModelPricing, Provider, WireProtocol } from "../shared/types";
+import { RESERVED_PROVIDER_IDS, buildHeaders, endpointsFor } from "./providers";
 
 export type { DiscoveredModel };
 
@@ -17,7 +17,7 @@ export interface ModelsDevMetadata {
   tools?: boolean;
   reasoning?: boolean;
   vision?: boolean;
-  cost?: { input: number; output: number };
+  cost?: ModelPricing;
 }
 
 const DEFAULT_CONTEXT_WINDOW = 128_000;
@@ -26,9 +26,55 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const MODELS_DEV_URL = "https://models.dev/api.json";
 const MODELS_DEV_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_PAGES = 10;
+const MAX_PROVIDER_ID = 63;
+
+/** Packages that gate a models.dev entry behind a cloud host the app can't reach directly. */
+const UNREACHABLE_NPM = /bedrock|vertex|azure|sap-ai|watsonx|gitlab/;
+
+/** models.dev leaves out the API URL of the first-party hosts; these are their public endpoints. */
+const FIRST_PARTY_API: Record<string, string> = {
+  openai: "https://api.openai.com/v1",
+  anthropic: "https://api.anthropic.com",
+  google: "https://generativelanguage.googleapis.com",
+};
 
 interface ModelsDevEntry extends ModelsDevMetadata {
   apiHost?: string;
+}
+
+/** One parsed api.json: the model index, plus the trimmed providers the Add-provider editor can start from. */
+interface ParsedCatalog {
+  index: Map<string, ModelsDevEntry[]>;
+  providers: CatalogProvider[];
+}
+
+/** The wire protocol a models.dev provider speaks, or null when it points somewhere unreachable; entries without an npm package default to the OpenAI chat shape. */
+export function catalogProtocol(npm: string | undefined, api: string | undefined): WireProtocol | null {
+  if (!api) return null;
+  let url: URL;
+  try {
+    url = new URL(api);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  if (npm && UNREACHABLE_NPM.test(npm)) return null;
+  if (npm === "@ai-sdk/anthropic") return "anthropic-messages";
+  if (npm === "@ai-sdk/openai") return "openai-responses";
+  if (npm === "@ai-sdk/google") return "gemini";
+  return "openai-chat";
+}
+
+/** A models.dev key as a usable provider id, or null when it collapses away or collides with a reserved id. */
+export function catalogProviderId(key: string): string | null {
+  const id = key
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, MAX_PROVIDER_ID);
+  if (id === "" || RESERVED_PROVIDER_IDS.has(id)) return null;
+  return id;
 }
 
 /** Add query params to a URL that may or may not already carry some. */
@@ -70,7 +116,8 @@ function entryFrom(model: any, apiHost: string | undefined): ModelsDevEntry {
   entry.vision = model?.attachment === true || (Array.isArray(modalities) && modalities.includes("image"));
   const input = num(model?.cost?.input);
   const costOutput = num(model?.cost?.output);
-  if (input !== undefined && costOutput !== undefined) entry.cost = { input, output: costOutput };
+  const cacheRead = num(model?.cost?.cache_read);
+  if (input !== undefined && costOutput !== undefined) entry.cost = { input, output: costOutput, ...(cacheRead !== undefined && { cacheRead }) };
   return entry;
 }
 
@@ -85,6 +132,7 @@ export class ModelsDev {
   private readonly ttlMs: number;
   private readonly url: string;
   private index: Map<string, ModelsDevEntry[]> | null = null;
+  private providers: CatalogProvider[] | null = null;
   private loading: Promise<void> | null = null;
   /** When the index was last loaded; a load older than the ttl runs again, so a long-running app stays current. */
   private loadedAt: number | null = null;
@@ -128,10 +176,32 @@ export class ModelsDev {
     return metadata;
   }
 
+  /** Providers whose id or name matches `query` (case-insensitive), prefix matches first; an empty query returns them all, and at most `limit` come back. Empty until `load` has run. */
+  catalog(query: string, limit = 30): CatalogProvider[] {
+    const providers = this.providers;
+    if (!providers) return [];
+    const q = query.trim().toLowerCase();
+    const byName = (a: CatalogProvider, b: CatalogProvider): number => a.name.localeCompare(b.name);
+    if (q === "") return [...providers].sort(byName).slice(0, limit);
+    const prefix: CatalogProvider[] = [];
+    const rest: CatalogProvider[] = [];
+    for (const provider of providers) {
+      const id = provider.id.toLowerCase();
+      const name = provider.name.toLowerCase();
+      if (!id.includes(q) && !name.includes(q)) continue;
+      if (id.startsWith(q) || name.startsWith(q)) prefix.push(provider);
+      else rest.push(provider);
+    }
+    prefix.sort(byName);
+    rest.sort(byName);
+    return [...prefix, ...rest].slice(0, limit);
+  }
+
   private async doLoad(): Promise<void> {
     const fresh = this.readFreshIndex();
     if (fresh) {
-      this.index = fresh;
+      this.index = fresh.index;
+      this.providers = fresh.providers;
       return;
     }
     try {
@@ -140,7 +210,8 @@ export class ModelsDev {
         const text = await res.text();
         const parsed = this.parse(text);
         if (parsed) {
-          this.index = parsed;
+          this.index = parsed.index;
+          this.providers = parsed.providers;
           this.writeAtomic(text);
           return;
         }
@@ -148,10 +219,14 @@ export class ModelsDev {
     } catch {
       // fall through to a stale cache file
     }
-    this.index = this.readFileIndex() ?? this.index;
+    const stale = this.readFileIndex();
+    if (stale) {
+      this.index = stale.index;
+      this.providers = stale.providers;
+    }
   }
 
-  private readFreshIndex(): Map<string, ModelsDevEntry[]> | null {
+  private readFreshIndex(): ParsedCatalog | null {
     try {
       const stat = statSync(this.file);
       if (this.now() - stat.mtimeMs < this.ttlMs) return this.readFileIndex();
@@ -161,7 +236,7 @@ export class ModelsDev {
     return null;
   }
 
-  private readFileIndex(): Map<string, ModelsDevEntry[]> | null {
+  private readFileIndex(): ParsedCatalog | null {
     try {
       return this.parse(readFileSync(this.file, "utf8"));
     } catch {
@@ -179,7 +254,7 @@ export class ModelsDev {
     }
   }
 
-  private parse(text: string): Map<string, ModelsDevEntry[]> | null {
+  private parse(text: string): ParsedCatalog | null {
     let root: any;
     try {
       root = JSON.parse(text);
@@ -188,21 +263,42 @@ export class ModelsDev {
     }
     if (!root || typeof root !== "object") return null;
     const index = new Map<string, ModelsDevEntry[]>();
-    for (const provider of Object.values(root)) {
+    const providers: CatalogProvider[] = [];
+    for (const [key, provider] of Object.entries(root)) {
       const p = provider as any;
       if (!p || typeof p !== "object") continue;
       const apiHost = hostOf(typeof p.api === "string" ? p.api : undefined);
-      if (!p.models || typeof p.models !== "object") continue;
-      for (const [key, value] of Object.entries(p.models as Record<string, any>)) {
-        if (!value || typeof value !== "object") continue;
-        const id = typeof value.id === "string" ? value.id : key;
-        const entry = entryFrom(value, apiHost);
-        const existing = index.get(id);
-        if (existing) existing.push(entry);
-        else index.set(id, [entry]);
+      const models: DiscoveredModel[] = [];
+      if (p.models && typeof p.models === "object") {
+        for (const [modelKey, value] of Object.entries(p.models as Record<string, any>)) {
+          if (!value || typeof value !== "object") continue;
+          const id = typeof value.id === "string" ? value.id : modelKey;
+          const entry = entryFrom(value, apiHost);
+          const existing = index.get(id);
+          if (existing) existing.push(entry);
+          else index.set(id, [entry]);
+          const listing: ListingModel = { id, supplied: true };
+          if (typeof value.name === "string") listing.name = value.name;
+          models.push(buildModel(listing, entry));
+        }
       }
+      const api = typeof p.api === "string" ? p.api : FIRST_PARTY_API[key];
+      const protocol = catalogProtocol(p.npm, api);
+      const id = catalogProviderId(typeof p.id === "string" ? p.id : key);
+      if (protocol === null || id === null) continue;
+      models.sort((a, b) => a.id.localeCompare(b.id));
+      const catalogProvider: CatalogProvider = {
+        id,
+        name: typeof p.name === "string" ? p.name : id,
+        wireProtocol: protocol,
+        baseURL: (api ?? "").replace(/\/+$/, ""),
+        models,
+      };
+      if (Array.isArray(p.env) && typeof p.env[0] === "string") catalogProvider.keyVar = p.env[0];
+      if (typeof p.doc === "string") catalogProvider.docs = p.doc;
+      providers.push(catalogProvider);
     }
-    return index;
+    return { index, providers };
   }
 }
 
@@ -215,7 +311,7 @@ interface ListingModel {
   tools?: boolean;
   promptCaching?: boolean;
   vision?: boolean;
-  cost?: { input: number; output: number };
+  cost?: ModelPricing;
   supplied: boolean;
 }
 
@@ -262,17 +358,20 @@ function parseOpenAi(json: any): ListingModel[] {
       const flag = [item.supports_tool_calling, item.tool_calling, item.tool_call, item.function_call].find((v) => typeof v === "boolean");
       if (flag !== undefined) tools = flag;
     }
-    let cost: { input: number; output: number } | undefined;
+    let cost: ModelPricing | undefined;
     const pricing = item.pricing;
     if (pricing && typeof pricing === "object") {
       const perMillionIn = num(pricing.input) ?? num(pricing.input_usd_per_1m) ?? num(pricing.input_per_m);
       const perMillionOut = num(pricing.output) ?? num(pricing.output_usd_per_1m) ?? num(pricing.output_per_m);
       if (perMillionIn !== undefined && perMillionOut !== undefined) {
-        cost = { input: perMillionIn, output: perMillionOut };
+        const perMillionCached = num(pricing.cached_input_per_m) ?? num(pricing.cache_read) ?? num(pricing.cached_input);
+        cost = { input: perMillionIn, output: perMillionOut, ...(perMillionCached !== undefined && { cacheRead: perMillionCached }) };
       } else {
         const perTokenIn = num(pricing.prompt);
         const perTokenOut = num(pricing.completion);
-        if (perTokenIn !== undefined && perTokenOut !== undefined) cost = { input: perTokenIn * 1e6, output: perTokenOut * 1e6 };
+        const perTokenCached = num(pricing.input_cache_read);
+        if (perTokenIn !== undefined && perTokenOut !== undefined)
+          cost = { input: perTokenIn * 1e6, output: perTokenOut * 1e6, ...(perTokenCached !== undefined && { cacheRead: perTokenCached * 1e6 }) };
       }
     }
     const promptCaching = typeof item.supports_prompt_cache === "boolean" ? item.supports_prompt_cache : undefined;

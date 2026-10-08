@@ -14,10 +14,15 @@ export interface ProviderPreset {
   docs: string;
   /** A local server that ignores the key. */
   local?: true;
+  /** Other protocols the same base URL serves, besides `wireProtocol`. */
+  alsoServes?: readonly WireProtocol[];
 }
 
 // anthropic-messages presets (MiniMax, DeepSeek /anthropic, Moonshot, Z.ai /api/anthropic) wait for a live Claude turn per endpoint (roadmap N5).
+// TokenHarbor and PGS Grove serve chat, Messages and Responses on one /v1 base (probed 2026-10-07); chat is the default because it reaches every agent (Claude and Codex through the gateway).
 export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
+  { id: "tokenharbor", label: "TokenHarbor", wireProtocol: "openai-chat", baseURL: "https://tokenharbor.ai/v1", keyVar: "TOKENHARBOR_API_KEY", docs: "https://tokenharbor.ai/docs", alsoServes: ["anthropic-messages", "openai-responses"] },
+  { id: "pgsgrove", label: "PGS Grove", wireProtocol: "openai-chat", baseURL: "https://api.pgsgrove.com/v1", docs: "https://pgsgrove.com", alsoServes: ["anthropic-messages", "openai-responses"] },
   { id: "deepseek", label: "DeepSeek", wireProtocol: "openai-chat", baseURL: "https://api.deepseek.com", keyVar: "DEEPSEEK_API_KEY", docs: "https://api-docs.deepseek.com" },
   { id: "openrouter", label: "OpenRouter", wireProtocol: "openai-chat", baseURL: "https://openrouter.ai/api/v1", keyVar: "OPENROUTER_API_KEY", docs: "https://openrouter.ai/docs" },
   { id: "fireworks-ai", label: "Fireworks AI", wireProtocol: "openai-chat", baseURL: "https://api.fireworks.ai/inference/v1", keyVar: "FIREWORKS_API_KEY", docs: "https://docs.fireworks.ai" },

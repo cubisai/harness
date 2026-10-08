@@ -1,7 +1,8 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import type {
   AgentCredentials,
+  CatalogProvider,
   ConnectionResult,
   CredentialChoice,
   DiscoveredModel,
@@ -228,6 +229,72 @@ export function PresetPicker({ value, onPick }: { value: string; onPick: (preset
   );
 }
 
+/** One catalog result's sub-line: protocol, host and how many models models.dev lists. */
+export function catalogMeta(entry: CatalogProvider): string {
+  return `${entry.wireProtocol} · ${hostOf(entry.baseURL)} · ${entry.models.length} model${entry.models.length === 1 ? "" : "s"}`;
+}
+
+/** Search models.dev's providers; picking one prefills the editor. Results show only while there's a query. */
+export function CatalogSearch({ onPick }: { onPick: (entry: CatalogProvider) => void }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<CatalogProvider[]>([]);
+  const latest = useRef(0);
+  const search = (text: string) => {
+    setQuery(text);
+    const ticket = ++latest.current;
+    if (!text.trim()) return setResults([]);
+    void api()
+      .searchProviderCatalog(text)
+      .then((found) => {
+        // A slower answer to an older query never replaces a newer one.
+        if (ticket === latest.current) setResults(found);
+      })
+      .catch(() => {
+        if (ticket === latest.current) setResults([]);
+      });
+  };
+  return (
+    <div className="row provider-models-row">
+      <span className="label">Catalog</span>
+      <div className="provider-catalog">
+        <input
+          className="text-input"
+          placeholder="Search models.dev providers"
+          aria-label="Search models.dev providers"
+          value={query}
+          spellCheck={false}
+          onChange={(e) => search(e.target.value)}
+        />
+        {query.trim() !== "" && (
+          <div className="provider-discover-list" role="group" aria-label="Catalog providers">
+            {results.length === 0 ? (
+              <p className="note">No provider matches. The catalog needs one download (models.dev) to work offline.</p>
+            ) : (
+              results.map((entry) => (
+                <button
+                  type="button"
+                  className="provider-discover-row provider-catalog-row"
+                  key={entry.id}
+                  onClick={() => {
+                    onPick(entry);
+                    setQuery("");
+                    setResults([]);
+                  }}
+                >
+                  <span className="provider-discover-main">
+                    <span className="provider-discover-name">{entry.name}</span>
+                    <span className="provider-discover-meta">{catalogMeta(entry)}</span>
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** The provider editor: protocol → base URL → credential → models, then the two escape hatches. */
 function ProviderEditor({
   provider,
@@ -244,6 +311,7 @@ function ProviderEditor({
   const [id, setId] = useState(provider?.id ?? "");
   const [label, setLabel] = useState(provider?.label ?? "");
   const [presetId, setPresetId] = useState("");
+  const [catalogPick, setCatalogPick] = useState<CatalogProvider | null>(null);
   const [wireProtocol, setWireProtocol] = useState<WireProtocol>(provider?.wireProtocol ?? "anthropic-messages");
   const [baseURL, setBaseURL] = useState(provider?.baseURL ?? "");
   const [secret, setSecret] = useState("");
@@ -271,6 +339,8 @@ function ProviderEditor({
   const advancedId = useId();
 
   const preset = providerPreset(presetId);
+  /** Where the prefilled fields came from: a curated preset, else a catalog pick. */
+  const origin = preset ?? catalogPick;
 
   const patchModel = (i: number, patch: Partial<ProviderModel>) =>
     setModels((ms) => ms.map((m, j) => (j === i ? { ...m, ...patch } : m)));
@@ -455,6 +525,7 @@ function ProviderEditor({
             value={presetId}
             onPick={(picked) => {
               setPresetId(picked?.id ?? "");
+              setCatalogPick(null);
               // Custom keeps what's typed, but not a preset's label: it isn't shown, so the id names it.
               if (!picked) return setLabel("");
               setId(picked.id);
@@ -463,6 +534,26 @@ function ProviderEditor({
               setBaseURL(picked.baseURL);
               setResult(null);
               setError(null);
+            }}
+          />
+          <CatalogSearch
+            onPick={(entry) => {
+              // A curated preset with the same id wins: it was checked live.
+              const curated = providerPreset(entry.id);
+              setPresetId(curated?.id ?? "");
+              setCatalogPick(curated ? null : entry);
+              setId(entry.id);
+              setLabel(curated?.label ?? entry.name);
+              setWireProtocol(curated?.wireProtocol ?? entry.wireProtocol);
+              setBaseURL(curated?.baseURL ?? entry.baseURL);
+              setResult(null);
+              setError(null);
+              // Its models go to the pick list, not straight in: a router can list hundreds.
+              if (entry.models.length) {
+                setDiscovery({ ok: true, models: entry.models });
+                setDiscoverFilter("");
+                setDiscoverPicked(new Set());
+              }
             }}
           />
           <div className="row">
@@ -484,7 +575,9 @@ function ProviderEditor({
         <span className="label">Base URL</span>
         <input className="text-input" placeholder="https://gateway.example.com/v1" value={baseURL} onChange={(e) => setBaseURL(e.target.value)} />
       </div>
-      {preset && <p className="note">Docs: {preset.docs}</p>}
+      {origin?.docs && <p className="note">Docs: {origin.docs}</p>}
+      {preset?.alsoServes && <p className="note">This URL also serves {preset.alsoServes.join(" and ")}.</p>}
+      {catalogPick && <p className="note">From models.dev, not tested by CubiQ: use Test before saving.</p>}
       <div className="row">
         <span className="label">Credential</span>
         <input
@@ -492,7 +585,7 @@ function ProviderEditor({
           type="password"
           autoComplete="off"
           spellCheck={false}
-          placeholder={provider?.hasSecret ? "Saved — type to replace" : preset?.local ? "Any value (local server)" : preset?.keyVar ? `API key (${preset.keyVar})` : "API key"}
+          placeholder={provider?.hasSecret ? "Saved — type to replace" : preset?.local ? "Any value (local server)" : origin?.keyVar ? `API key (${origin.keyVar})` : "API key"}
           value={secret}
           onChange={(e) => setSecret(e.target.value)}
         />

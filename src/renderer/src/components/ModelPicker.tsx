@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
-import type { AgentInfo, ModelOption } from "../../../shared/types";
+import type { AgentInfo, ModelOption, ModelPricing } from "../../../shared/types";
 import { providerOfModel } from "../../../shared/provider-rules";
 import { filterModels } from "../models";
 import { useStore } from "../store";
@@ -18,6 +18,18 @@ export function contextChoices(model?: ModelOption): { label: string; value: num
     { label: `Default ${formatK(model.contextWindow)}`, value: null },
     { label: `Max ${formatK(model.maxContextWindow)}`, value: model.maxContextWindow },
   ];
+}
+
+/** A provider model's price per 1M tokens, input then output ("$0.10 / $0.40"); "" when unknown. */
+export function priceLabel(cost: ModelPricing | undefined): string {
+  if (!cost) return "";
+  return `$${cost.input.toFixed(2)} / $${cost.output.toFixed(2)}`;
+}
+
+/** The muted price after a model's label, with its unit on hover. */
+function Price({ cost }: { cost: ModelPricing | undefined }) {
+  const text = priceLabel(cost);
+  return text ? <span className="price" title="USD per 1M tokens: input / output">{text}</span> : null;
 }
 
 /** A model's own name without its provider prefix ("tokenharbor/qwen" -> "qwen"). */
@@ -225,6 +237,7 @@ export function ModelPicker({
                     >
                       <Check size={13} className="check" />
                       <span className="label">{m.label}</span>
+                      <Price cost={m.cost} />
                     </button>
                   );
                 })}
@@ -249,6 +262,7 @@ export function ModelPicker({
                       >
                         <span className="check" />
                         <span className="label">{m.label}</span>
+                        <Price cost={m.cost} />
                         <span className="hint">on {p.agent.label}</span>
                       </button>
                     );

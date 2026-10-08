@@ -344,6 +344,15 @@ export function installMock(): void {
         ],
       };
     },
+    searchProviderCatalog: async (query) => {
+      const caps = { tools: true, vision: false, reasoning: true };
+      const all = [
+        { id: "minimax", name: "MiniMax (minimax.io)", wireProtocol: "anthropic-messages" as const, baseURL: "https://api.minimax.io/anthropic/v1", keyVar: "MINIMAX_API_KEY", docs: "https://platform.minimax.io/docs/guides/quickstart", models: [{ id: "MiniMax-M3", name: "MiniMax-M3", capabilities: caps, contextWindow: 1_000_000, maxOutput: 512_000, cost: { input: 0.3, output: 1.2, cacheRead: 0.06 }, enriched: true }] },
+        { id: "openrouter", name: "OpenRouter", wireProtocol: "openai-chat" as const, baseURL: "https://openrouter.ai/api/v1", keyVar: "OPENROUTER_API_KEY", docs: "https://openrouter.ai/models", models: [] },
+      ];
+      const q = query.trim().toLowerCase();
+      return all.filter((p) => !q || p.id.includes(q) || p.name.toLowerCase().includes(q));
+    },
     setCredential: async (agentId, choice) => (settings = { ...settings, providerCredential: { ...settings.providerCredential, [agentId]: choice } }),
     openDataFolder: async () => {},
     listLimits: async () =>

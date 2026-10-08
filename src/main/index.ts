@@ -4,7 +4,7 @@ import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell, utilityProcess } from "electron";
-import type { AboutInfo, AgentLimits, ContextPreview, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, ModelOption, McpServerEntry, McpServerSpec, McpServerStatus, MemoryType, OpenResult, PermissionDecision, PlanDecision, Provider, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread } from "../shared/types";
+import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, ModelOption, McpServerEntry, McpServerSpec, McpServerStatus, MemoryType, OpenResult, PermissionDecision, PlanDecision, Provider, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
 import { spawnSync } from "node:child_process";
@@ -459,7 +459,7 @@ async function main(): Promise<void> {
   /** Every saved provider's models as picker options, `unskilled-<provider>/<model>` ("TokenHarbor/DeepSeek V4 Flash"). */
   const providerModelOptions = (include: (p: Provider) => boolean = () => true): ModelOption[] =>
     settings.providers().filter(include).flatMap((p) =>
-      p.models.map((m) => ({ id: `${PROVIDER_MODEL_PREFIX}${p.id}/${m.id}`, label: `${p.label}/${m.name ?? m.id}`, contextWindow: p.contextWindowOverride ?? m.contextWindow })),
+      p.models.map((m) => ({ id: `${PROVIDER_MODEL_PREFIX}${p.id}/${m.id}`, label: `${p.label}/${m.name ?? m.id}`, contextWindow: p.contextWindowOverride ?? m.contextWindow, ...(m.cost && { cost: m.cost }) })),
     );
   /** How a Codex thread on `unskilled-<provider>/<model>` reaches it: through the gateway, never with the key. */
   const codexPin = async (model: string): Promise<CodexPin | { error: string }> => {
@@ -976,6 +976,10 @@ async function main(): Promise<void> {
     if (!result.ok) return { ok: false, error: redactSecrets(result.error, [...knownSecrets(), ...(key ? [key] : [])]) };
     const smallModel = pickSmallModel(result.models);
     return { ok: true, models: result.models, ...(smallModel && { smallModel }) };
+  });
+  ipcMain.handle("providers:catalog", async (_e, query: unknown): Promise<CatalogProvider[]> => {
+    await modelsDev.load();
+    return modelsDev.catalog(typeof query === "string" ? query.slice(0, 100) : "");
   });
   ipcMain.handle("providers:setCredential", (_e, agentId: string, choice: CredentialChoice) => {
     settings.setCredential(agentId, choice);

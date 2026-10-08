@@ -992,18 +992,24 @@ export function createAcpDriver(
     ...(bare ? { binary: () => binaryInfo(config.command) ?? undefined } : {}),
     models: () => {
       // Saved providers' models follow the agent's own; one the agent already lists (its injected provider) isn't repeated.
-      const extra = (deps.extraModels?.() ?? []).filter((m) => !knownModels.some((k) => k.id === m.id));
+      const saved = deps.extraModels?.() ?? [];
+      const extra = saved.filter((m) => !knownModels.some((k) => k.id === m.id));
+      // The agent's own copy of a saved provider model still shows that model's price.
+      const priced = knownModels.map((m): ModelOption => {
+        const cost = m.cost ?? saved.find((s) => s.id === m.id)?.cost;
+        return cost ? { ...m, cost } : m;
+      });
       // OpenCode's levels are per-model variants, not a session thought_level option.
       if (effortViaVariants) {
         const withVariants = (m: ModelOption): ModelOption => (knownVariants[m.id]?.length ? { ...m, efforts: knownVariants[m.id] } : m);
         const current = modelFrom(lastConfigOptions);
         const defaultOption: ModelOption = { id: DEFAULT_MODEL, label: "Agent default" };
         if (current && knownVariants[current]?.length) defaultOption.efforts = knownVariants[current];
-        return [defaultOption, ...knownModels.map(withVariants), ...extra];
+        return [defaultOption, ...priced.map(withVariants), ...extra];
       }
       // One thought-level list per session: every model of the agent carries it.
       const withEfforts = (m: ModelOption): ModelOption => (knownEfforts.length ? { ...m, efforts: knownEfforts } : m);
-      return [withEfforts({ id: DEFAULT_MODEL, label: "Agent default" }), ...knownModels.map(withEfforts), ...extra];
+      return [withEfforts({ id: DEFAULT_MODEL, label: "Agent default" }), ...priced.map(withEfforts), ...extra];
     },
     refreshModels,
     // session/set_config_option on the model option switches in place;

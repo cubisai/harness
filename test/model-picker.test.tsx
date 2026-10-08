@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
-import { ModelPicker, contextChoices } from "../src/renderer/src/components/ModelPicker";
+import { ModelPicker, contextChoices, priceLabel } from "../src/renderer/src/components/ModelPicker";
 import { ModeMenu } from "../src/renderer/src/components/ThreadControls";
 import type { AgentInfo } from "../src/shared/types";
 import { filterModels } from "../src/renderer/src/models";
@@ -26,6 +26,14 @@ describe("filterModels", () => {
     expect(filterModels(opencode, "harbor glm").flatMap((g) => g.models.map((m) => m.id))).toEqual(["tokenharbor/glm-5.3-flash"]);
     expect(filterModels(opencode, "free").flatMap((g) => g.models.map((m) => m.id))).toEqual(["tokenharbor/qwen3.8-flash:free"]);
     expect(filterModels(opencode, "nothing-like-this")).toEqual([]);
+  });
+
+  it("keeps a provider model's price, and gives subscription models none", () => {
+    const groups = filterModels([{ id: "opus", label: "Opus 5.5" }, { id: "unskilled-th/glm", label: "TokenHarbor/GLM", cost: { input: 0.1, output: 0.4 } }], "");
+    expect(groups).toEqual([
+      { group: "", models: [{ id: "opus", label: "Opus 5.5" }] },
+      { group: "TokenHarbor", models: [{ id: "unskilled-th/glm", label: "GLM", cost: { input: 0.1, output: 0.4 } }] },
+    ]);
   });
 
   it("groups plain Claude models under no provider", () => {
@@ -135,6 +143,14 @@ describe("ModelPicker", () => {
     expect(html).toContain("Not offered by GLM 5.3 Flash");
     expect(html).not.toContain('aria-label="Thinking"');
     expect(html).not.toContain(">Context<");
+  });
+});
+
+describe("priceLabel", () => {
+  it("shows input / output per 1M with two decimals, nothing when unknown", () => {
+    expect(priceLabel({ input: 0.1, output: 0.4 })).toBe("$0.10 / $0.40");
+    expect(priceLabel({ input: 3, output: 15, cacheRead: 0.3 })).toBe("$3.00 / $15.00");
+    expect(priceLabel(undefined)).toBe("");
   });
 });
 
