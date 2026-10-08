@@ -1,6 +1,6 @@
-# Handoff: P3 done; next: D1 Design shell (plan written, awaiting approval; Windows PC gate still pending)
+# Handoff: D1 Design shell done; next: D2 live canvas (Windows PC gate still pending)
 
-Updated 2026-10-08 on the **Mac**, branch `m4`. Read **Resume here — D1 next** first, then **Resume here — P3 done**, then **Windows gate (2026-10-07)**, then **Resume here — C0 + P2 done**, then **Resume here — P1 done, next P2**, then **Resume here — MCP, providers, Design mode**, then **Resume here — Plan mode v2**, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`, `secrets-handling` (every stored credential safeStorage-encrypted; keys pasted in chat never go in files).
+Updated 2026-10-08 on the **Mac**, branch `m4`. Read **Resume here — D1 done, D2 next** first, then **Resume here — D1 next** (its plan), then **Resume here — P3 done**, then **Windows gate (2026-10-07)**, then **Resume here — C0 + P2 done**, then **Resume here — P1 done, next P2**, then **Resume here — MCP, providers, Design mode**, then **Resume here — Plan mode v2**, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`, `secrets-handling` (every stored credential safeStorage-encrypted; keys pasted in chat never go in files).
 
 ## Where things stand
 
@@ -139,6 +139,19 @@ All checked in the real app on Windows; code paths are cross-platform unless not
 - **Lucide icons**: the user asked for `lucide-react`. Adding a dependency touches `package.json` + the lockfile, which are in the user's uncommitted bun switch; do it (`bun add lucide-react`, replace `icons.tsx`) right after that switch is committed.
 - **Antigravity**: Google's own ACP server (`agy_acp_server.par`, ACP registry `antigravity-acp`) must be on the app's PATH; it stays off until the Settings opt-in, then the generic ACP driver runs it with the user's Google sign-in.
 - Still to confirm on the Mac: the same smoke/model checks there.
+
+## Resume here — D1 done, D2 next (2026-10-08, Mac)
+
+D1 committed `86f71c0` (plan `.ai/plans/d1-design-shell.md`, approved 2026-10-08). D1a by the opencode implementer (first try, reviewed here), D1b here.
+- **Data**: `ThreadKind`, `Thread.kind` (absent = chat), migration 20 `threads.kind` default `'chat'`; create (IPC validates, anything else → chat), worktree and restore keep it.
+- **Renderer**: store `threadKind` + `setThreadKind` (switching selects the project's latest thread of that kind, else none); `selectThread` follows the thread's kind (⌘K / Message Center / startup); New thread makes the current kind ("New design" label, design start-screen copy). Sidebar `.segmented.compact.mode-switch` at the right of the brand row (toggle keeps its spot by the traffic lights); `inboxModel({ kind })` filters Pinned/Recent/Archived, Running shows every kind; ⌘1–9 uses the same filter.
+- **Layout**: `.app.design-thread` = `sidebar | chat | canvas [| inspector]`; chat = 45% of the room beside the sidebar and panel, clamped 260–420px; canvas `design/DesignCanvas.tsx` via `React.lazy` (own 0.86 kB chunk; main bundle +2.7 kB for the switch/store). Windows caption padding moves to the canvas header.
+- **Fixed on the way**: at a 260px chat the context ring's wrapper (also `.model-picker`) shrank to 8px and its button overlapped Send; now `flex: 0 0 auto`, and under 300px the mode/model chips drop their chevrons.
+- **Verified**: typecheck, 1508 tests (new `test/design-mode.test.tsx`, db migration/create/restore tests), build, smoke; live in the built app (temp data dir): design threads on Claude Sonnet 5.5, Codex GPT-6-Luna, OpenCode Ling 3.1 Flash Free (twice each, last on the final build), Chat/Design filtering, ⌘K jump flips to Design, light/dark, 900/1100/1280px, no horizontal scroll. Not live-checked: a running design thread listed under Running in Chat mode (unit-tested).
+- **Known, for D2**: with the side panel open at ~1100px the canvas is only ~160px (chat 260 + panel 424); D2 should decide whether the canvas replaces the artifact panel for design threads or the panel cap counts the canvas. With the sidebar collapsed the switch isn't reachable (rail has no Chat/Design control).
+- The user allows **Opus** for Design-mode live tests (2026-10-08).
+
+**Next: D2** (live canvas: `cubiq-design://`, sandboxed iframe, `fs.watch` reload, toolbar, pick-to-comment; spec `.ai/plans/mcp-providers-design.md` Part 3). Write `.ai/plans/d2-*.md` and get approval first.
 
 ## Resume here — D1 next (2026-10-08, Mac)
 
@@ -409,4 +422,4 @@ In order:
 
 ## Next
 
-MCP, P1, C0, P2 and P3 are done and live-tested (see **Resume here — P3 done**). Next: D1 (plan in **Resume here — D1 next**, needs the user's approval), then D2–D4; the Windows PC gate for everything since M1 whenever the PC is available.
+MCP, P1, C0, P2 and P3 are done and live-tested (see **Resume here — P3 done**). D1 done (`86f71c0`). Next: D2 (plan first, needs the user's approval), then D3–D4; the Windows PC gate for everything since M1 whenever the PC is available.
