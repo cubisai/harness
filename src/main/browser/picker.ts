@@ -14,7 +14,35 @@ export interface PickedElement {
   rect: { x: number; y: number; width: number; height: number };
 }
 
-export function startPicker(binding: string): void {
+/**
+ * A short CSS selector for `el`: a unique id, else a data-testid, else up to five
+ * `tag:nth-of-type` steps. Runs inside the page (passed in with toString), so it
+ * must not reference anything outside.
+ */
+export function selectorFor(el: Element): string {
+  if (el.id && document.querySelectorAll(`#${CSS.escape(el.id)}`).length === 1) return `#${CSS.escape(el.id)}`;
+  const parts: string[] = [];
+  let cur: Element | null = el;
+  while (cur && cur !== document.documentElement && parts.length < 5) {
+    if (cur.id && document.querySelectorAll(`#${CSS.escape(cur.id)}`).length === 1) {
+      parts.unshift(`#${CSS.escape(cur.id)}`);
+      break;
+    }
+    const tag = cur.tagName.toLowerCase();
+    const testId = cur.getAttribute("data-testid");
+    if (testId) {
+      parts.unshift(`${tag}[data-testid="${testId}"]`);
+      break;
+    }
+    const parent: Element | null = cur.parentElement;
+    const same = parent ? Array.from(parent.children).filter((c) => c.tagName === cur!.tagName) : [];
+    parts.unshift(same.length > 1 ? `${tag}:nth-of-type(${same.indexOf(cur) + 1})` : tag);
+    cur = parent;
+  }
+  return parts.join(" > ");
+}
+
+export function startPicker(binding: string, selectorFor: (el: Element) => string): void {
   const w = window as unknown as Record<string, unknown>;
   (w.__unskilledPickStop as (() => void) | undefined)?.();
 
@@ -25,29 +53,6 @@ export function startPicker(binding: string): void {
   tip.style.cssText =
     "position:fixed;pointer-events:none;z-index:2147483647;font:11px/1.4 ui-monospace,Menlo,monospace;background:#1d1d1f;color:#fff;padding:2px 6px;border-radius:4px;display:none;max-width:60vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
   document.documentElement.append(box, tip);
-
-  const selectorFor = (el: Element): string => {
-    if (el.id && document.querySelectorAll(`#${CSS.escape(el.id)}`).length === 1) return `#${CSS.escape(el.id)}`;
-    const parts: string[] = [];
-    let cur: Element | null = el;
-    while (cur && cur !== document.documentElement && parts.length < 5) {
-      if (cur.id && document.querySelectorAll(`#${CSS.escape(cur.id)}`).length === 1) {
-        parts.unshift(`#${CSS.escape(cur.id)}`);
-        break;
-      }
-      const tag = cur.tagName.toLowerCase();
-      const testId = cur.getAttribute("data-testid");
-      if (testId) {
-        parts.unshift(`${tag}[data-testid="${testId}"]`);
-        break;
-      }
-      const parent: Element | null = cur.parentElement;
-      const same = parent ? Array.from(parent.children).filter((c) => c.tagName === cur!.tagName) : [];
-      parts.unshift(same.length > 1 ? `${tag}:nth-of-type(${same.indexOf(cur) + 1})` : tag);
-      cur = parent;
-    }
-    return parts.join(" > ");
-  };
 
   let current: Element | null = null;
   const onMove = (e: MouseEvent) => {

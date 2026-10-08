@@ -590,6 +590,10 @@ export function installMock(): void {
       });
       return { threads: found.filter((h) => h.kind === "title"), messages: found.filter((h) => h.kind !== "title") };
     },
+    designEntry: async () => null,
+    designWatch: async () => {},
+    designUnwatch: async () => {},
+    designReveal: async () => {},
     listArtifacts: async (threadId) =>
       threadId === "t1"
         ? [

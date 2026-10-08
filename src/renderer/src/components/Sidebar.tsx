@@ -6,7 +6,7 @@ import { elapsed, inboxModel, shortTime, waitingThreads } from "../sections";
 import { ThreadRow, type ThreadStatus } from "./ThreadRow";
 import { useStore } from "../store";
 import { InboxBell } from "./MessageCenter";
-import { SidebarToggle } from "./PaneRail";
+import { ModeToggle, SidebarToggle } from "./PaneRail";
 import { Select } from "./Select";
 
 /** A project as a small folder label: toggles its group, + starts a thread, ⋯ opens its menu. */
@@ -333,6 +333,7 @@ export function Sidebar() {
             </button>
           ))}
         </div>
+        <ModeToggle className="mode-switch-icon" />
       </div>
 
       <nav className="sidebar-nav" aria-label="Sidebar">

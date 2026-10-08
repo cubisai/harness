@@ -1,7 +1,23 @@
+import { PenTool } from "lucide-react";
 import { IconCompose, IconFolder, IconGear, IconLibrary, IconRefresh, IconSidebarClose, IconSidebarOpen } from "../icons";
 import { api } from "../api";
 import { InboxBell } from "./MessageCenter";
 import { useStore } from "../store";
+
+/** Chat or Design as one icon button, where the two-part switch doesn't fit (the rail, a narrow sidebar). */
+export function ModeToggle({ className = "" }: { className?: string }) {
+  const kind = useStore((s) => s.threadKind);
+  return (
+    <button
+      className={`icon-button${kind === "design" ? " active" : ""}${className ? ` ${className}` : ""}`}
+      title={kind === "design" ? "Design mode: switch to Chat" : "Chat mode: switch to Design"}
+      aria-pressed={kind === "design"}
+      onClick={() => void useStore.getState().setThreadKind(kind === "design" ? "chat" : "design")}
+    >
+      <PenTool size={16} strokeWidth={1.75} aria-hidden />
+    </button>
+  );
+}
 
 /** Collapse or restore the sidebar (⌘\ / Ctrl+\). Points the way the sidebar will move. */
 export function SidebarToggle({ collapsed }: { collapsed: boolean }) {
@@ -48,6 +64,7 @@ export function PaneRail() {
     <nav className="pane-rail" id="sidebar" aria-label="Sidebar">
       {/* The title bar's share of the rail: the toggle and New thread sit in the header. */}
       <div className="rail-top drag" />
+      <ModeToggle />
       <div className="rail-foot">
         {readyVersion && (
           <button className="icon-button active" title={`Update ready: restart to install version ${readyVersion}`} onClick={() => void api().installUpdate()}>

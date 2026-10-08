@@ -235,7 +235,7 @@ export interface ClaudeDriverConfig {
   /** Saved providers' models Claude can reach (directly or through the gateway), listed after its own. */
   extraModels?: () => ModelOption[];
   /** The harness guide for this turn's cwd, appended to Claude Code's own system prompt. */
-  guide?: (cwd: string) => string;
+  guide?: (cwd: string, design?: string) => string;
   /** Prefer the user's installed, self-updating Claude Code CLI over the SDK's bundled binary (default true). */
   useInstalledCli?: boolean;
   /** The shared memory folder for this project, or null when CubiQ memory is off (Claude then uses its own). */
@@ -429,7 +429,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         if (stale) input.onEvent({ kind: "notice", text: stale });
       }
 
-      const guideText = config.guide?.(input.cwd) ?? "";
+      const guideText = config.guide?.(input.cwd, input.design) ?? "";
       const memoryDir = input.projectId ? config.memoryDir?.(input.projectId) ?? null : null;
       const options: Options = {
         cwd: input.cwd,

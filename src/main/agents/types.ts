@@ -46,6 +46,8 @@ export interface TurnInput {
   cwd: string;
   /** The thread's project, for per-project features (shared memory); absent in some tests. */
   projectId?: string;
+  /** A design thread's folder (relative to cwd), which the guide tells the agent to build in. */
+  design?: string;
   prompt: string;
   /** Compact the session instead of prompting (/compact); the focus steers the summary where the agent supports it. */
   compact?: { focus: string | null };
@@ -99,6 +101,8 @@ export interface SeedRequest {
   cwd: string;
   /** The thread's project, for per-project features (shared memory); absent in some tests. */
   projectId?: string;
+  /** A design thread's folder (relative to cwd), as in `TurnInput`. */
+  design?: string;
   model: string;
   permissionMode: PermissionMode;
   tools: HarnessTool[];

@@ -289,7 +289,7 @@ export function createAcpDriver(
     /** The git-guardrails script: an execute permission call is vetoed in every mode. */
     guardScript?: string;
     /** The harness guide for this turn's cwd, sent once, ahead of a new session's first prompt. */
-    guide?: (cwd: string) => string;
+    guide?: (cwd: string, design?: string) => string;
     /** The skills listing and MCP tool schemas this project's new session carries, in estimated tokens (0 when deferred or not yet listed). */
     extensions?: (cwd: string, projectId: string | null) => { skills: number; mcp: number };
     /** The memory block for this project's new sessions (may be ""), or null when memory is off; sent once with the guide. */
@@ -1096,7 +1096,7 @@ export function createAcpDriver(
       input.signal.addEventListener("abort", onAbort, { once: true });
       // A new session's first prompt carries the harness guide and, when the
       // earlier session was lost, the seed's history prefix; only then are they dropped.
-      const g = l.guidePending ? deps.guide?.(input.cwd) ?? "" : "";
+      const g = l.guidePending ? deps.guide?.(input.cwd, input.design) ?? "" : "";
       const m = l.guidePending && input.projectId ? deps.memory?.(input.projectId) ?? "" : "";
       const fresh = l.guidePending;
       // Warm the extensions estimate (MCP tool listings) so the breakdown at the end of this turn has it.

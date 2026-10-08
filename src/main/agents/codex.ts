@@ -105,7 +105,7 @@ export interface CodexConfig {
   /** The git-guardrails script: command approvals are vetoed before the user is asked. */
   guardScript?: string;
   /** The harness guide for this turn's cwd, sent as developer instructions to Codex. */
-  guide?: (cwd: string) => string;
+  guide?: (cwd: string, design?: string) => string;
   /** The skills listing and MCP tool schemas this project's new session carries, in estimated tokens (0 when deferred or not yet listed). */
   extensions?: (cwd: string, projectId: string | null) => { skills: number; mcp: number };
   /** The memory block for this project's new sessions (memoryPrompt output, may be ""), or null when CubiQ memory is off. */
@@ -901,7 +901,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   };
 
   const openThread = async (
-    input: Pick<TurnInput, "threadId" | "projectId" | "cwd" | "model" | "contextWindow" | "permissionMode" | "sessionId" | "tools" | "mcpServers" | "onEvent" | "onSession" | "onSessionRebuilt" | "onSessionLost">,
+    input: Pick<TurnInput, "threadId" | "projectId" | "design" | "cwd" | "model" | "contextWindow" | "permissionMode" | "sessionId" | "tools" | "mcpServers" | "onEvent" | "onSession" | "onSessionRebuilt" | "onSessionLost">,
   ): Promise<{ threadId: string; model: string | null; wire?: string }> => {
     const policy = codexPolicy(input.permissionMode);
     // A provider's model pins the thread to that provider, defined in the thread's own config.
@@ -927,7 +927,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     }
     // In the signature too, so moving the thread to another provider reloads it there.
     if (pin) threadConfig = { ...(threadConfig ?? {}), model_providers: { [pin.modelProvider]: pin.provider } };
-    const guideText = config.guide?.(input.cwd) ?? "";
+    const guideText = config.guide?.(input.cwd, input.design) ?? "";
     const signature = JSON.stringify(threadConfig ?? null);
     let threadId = "";
     let threadModel: string | null = null;

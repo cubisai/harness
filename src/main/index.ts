@@ -7,6 +7,10 @@ import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, 
 import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, CredentialChoice, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, ModelOption, McpServerEntry, McpServerSpec, McpServerStatus, MemoryType, OpenResult, PermissionDecision, PlanDecision, Provider, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
+import { DESIGN_SCHEME, designDirName, designUrl, entryFile, serveDesign } from "./design/serve";
+import { DesignWatcher } from "./design/watch";
+import { bridgeScript } from "./design/bridge";
+import { selectorFor } from "./browser/picker";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
 import { PROVIDER_MODEL_PREFIX, injectorCompatible, providerOfModel } from "../shared/provider-rules";
@@ -195,6 +199,8 @@ async function main(): Promise<void> {
   protocol.registerSchemesAsPrivileged([
     { scheme: "unskilled-shot", privileges: { standard: true, secure: true, supportFetchAPI: true } },
     { scheme: "cubiq-file", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+    // cubiq-design:// serves a design thread's folder to the canvas's sandboxed frame (scripts on, no network).
+    { scheme: DESIGN_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
   ]);
   await app.whenReady();
   // A dev run is the stock Electron binary: give its Dock tile the app's own icon.
@@ -362,7 +368,7 @@ async function main(): Promise<void> {
     global: userGuidePath(userData),
   });
   const driver = createClaudeDriver({
-    guide: (cwd) => guide.forCwd(cwd),
+    guide: (cwd, design) => guide.forCwd(cwd, design),
     pluginDir: (cwd) =>
       ensurePlugin(
         forAgent(
@@ -499,7 +505,7 @@ async function main(): Promise<void> {
             clientVersion: app.getVersion(),
             catalogDir: () => userData,
             guardScript,
-            guide: (cwd) => guide.forCwd(cwd),
+            guide: (cwd, design) => guide.forCwd(cwd, design),
             memory: memoryPromptFor,
             extensions: extensionsFor("codex"),
             // Per project: Codex reads .agents/skills itself, but not .cubiq or .claude.
@@ -548,7 +554,7 @@ async function main(): Promise<void> {
         clientVersion: app.getVersion(),
         toolServer: getToolServer,
         guardScript,
-        guide: (cwd) => guide.forCwd(cwd),
+        guide: (cwd, design) => guide.forCwd(cwd, design),
         memory: memoryPromptFor,
         extensions: extensionsFor(config.id),
         mcpRouting: (_pid, servers) => mcpRoutingFor(servers),
@@ -742,6 +748,64 @@ async function main(): Promise<void> {
     } catch {
       return new Response(null, { status: 404 });
     }
+  });
+  // Design threads: their folder only, with the canvas bridge injected into pages and a no-network CSP on every response.
+  const designBridgeJs = bridgeScript(selectorFor);
+  protocol.handle(DESIGN_SCHEME, (req) =>
+    serveDesign(req.url, {
+      designRoot: (threadId) => service.designRoot(threadId),
+      readVersion: (threadId, rel, version) => service.readDesignVersion(threadId, rel, version),
+      bridge: designBridgeJs,
+    }),
+  );
+  const designWatcher = new DesignWatcher({ onChange: (threadId) => broadcast({ type: "design-changed", threadId }) });
+  // Each window's watches, so a window that closes (or reloads) without unmounting its canvas releases them.
+  const designWatches = new Map<number, Map<string, number>>();
+  const designHooked = new Set<number>();
+  const releaseDesignWatches = (senderId: number) => {
+    for (const [threadId, n] of designWatches.get(senderId) ?? []) for (let i = 0; i < n; i++) designWatcher.unwatch(threadId);
+    designWatches.delete(senderId);
+  };
+  ipcMain.handle("design:entry", (_e, threadId: string) => {
+    const root = service.designRoot(threadId);
+    const rel = root ? entryFile(root) : null;
+    return root && rel ? { dir: designDirName(threadId), rel, url: designUrl(threadId, rel) } : null;
+  });
+  ipcMain.handle("design:watch", (e, threadId: string) => {
+    const root = service.designRoot(threadId);
+    if (!root) return;
+    const id = e.sender.id;
+    if (!designHooked.has(id)) {
+      designHooked.add(id);
+      e.sender.once("destroyed", () => {
+        releaseDesignWatches(id);
+        designHooked.delete(id);
+      });
+      e.sender.on("did-start-navigation", (_ev, _url, isInPlace, isMainFrame) => {
+        if (isMainFrame && !isInPlace) releaseDesignWatches(id);
+      });
+    }
+    let mine = designWatches.get(id);
+    if (!mine) {
+      mine = new Map();
+      designWatches.set(id, mine);
+    }
+    mine.set(threadId, (mine.get(threadId) ?? 0) + 1);
+    designWatcher.watch(threadId, root);
+  });
+  ipcMain.handle("design:unwatch", (e, threadId: string) => {
+    const mine = designWatches.get(e.sender.id);
+    const n = mine?.get(threadId) ?? 0;
+    if (!mine || n === 0) return;
+    if (n === 1) mine.delete(threadId);
+    else mine.set(threadId, n - 1);
+    designWatcher.unwatch(threadId);
+  });
+  ipcMain.handle("design:reveal", async (_e, threadId: string) => {
+    const root = service.designRoot(threadId);
+    if (!root) return;
+    mkdirSync(root, { recursive: true });
+    await shell.openPath(root);
   });
   // After a Codex/ACP turn, extract memory in the background; Claude keeps its own.
   const extractor = createExtractor({
@@ -1342,6 +1406,7 @@ async function main(): Promise<void> {
     extractor.dispose();
     service.dispose();
     previews.dispose();
+    designWatcher.closeAll();
     terminals.dispose();
     void toolServer?.then((s) => s.close());
     void mcpPool.closeAll();

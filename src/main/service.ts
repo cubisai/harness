@@ -31,6 +31,7 @@ import type {
   Usage,
 } from "../shared/types";
 import { bindingKey } from "../shared/bindings";
+import { designDirName } from "./design/serve";
 import { skillsOf } from "../shared/skill-list";
 import type { AgentDriver, HarnessTool, ModelSwitch, SessionSeed } from "./agents/types";
 import {
@@ -381,6 +382,7 @@ export class Service {
         sessionId: null,
         cwd,
         projectId: thread.projectId,
+        design: designOf(thread),
         model: thread.model,
         permissionMode: thread.permissionMode,
         tools: this.harnessTools(),
@@ -405,6 +407,7 @@ export class Service {
           threadId: thread.id,
           cwd,
           projectId: thread.projectId,
+          design: designOf(thread),
           prompt,
           sessionId: null,
           model: thread.model,
@@ -663,6 +666,7 @@ export class Service {
         threadId: thread.id,
         cwd,
         projectId: thread.projectId,
+        design: designOf(thread),
         prompt: turnPrompt,
         ...(compact ? { compact } : {}),
         sessionId: current.sessionId,
@@ -1009,6 +1013,21 @@ export class Service {
     return this.folderOf(thread.projectId, threadId);
   }
 
+  /** A design thread's folder, absolute; null for any other thread (the canvas serves nothing for it). */
+  designRoot(threadId: string): string | null {
+    const thread = this.store.getThread(threadId);
+    const dir = designOf(thread);
+    return dir ? join(this.threadFolder(threadId), dir) : null;
+  }
+
+  /** A stored turn-end version of a file in a design thread's folder (`rel` is inside that folder). */
+  readDesignVersion(threadId: string, rel: string, version: number): Buffer | null {
+    const dir = designOf(this.store.getThread(threadId));
+    if (!dir || !this.artifacts) return null;
+    const entry = this.artifacts.listVersions(threadId).find((v) => v.path === `${dir}/${rel}`)?.versions.find((v) => v.version === version);
+    return entry ? this.artifacts.readBlob(entry.sha256) : null;
+  }
+
   listArtifacts(threadId: string): ArtifactFile[] {
     return this.artifacts ? listArtifacts(this.artifacts, threadId) : [];
   }
@@ -1043,6 +1062,11 @@ export class Service {
   projectBranch(projectId: string): Promise<string | null> {
     return branchLabel(this.store.getProject(projectId).path);
   }
+}
+
+/** A design thread's folder relative to its working folder, else undefined. */
+function designOf(thread: Thread): string | undefined {
+  return thread.kind === "design" ? designDirName(thread.id) : undefined;
 }
 
 function formatK(n: number): string {

@@ -20,7 +20,7 @@ import { McpSheet } from "./components/McpSheet";
 import { ThreadView } from "./components/ThreadView";
 import { IconArrowLeft, IconDiff, IconFolder, IconGlobe, IconSparkle, IconTerminal } from "./icons";
 import { usePaneLayout } from "./hooks/usePaneLayout";
-import { BOUNDS, DEFAULT_LAYOUT, isWideInspector } from "./layout";
+import { BOUNDS, DEFAULT_LAYOUT, DESIGN_FLOOR, isWideInspector } from "./layout";
 import { inboxModel, nthVisibleThread, threadKind, waitingThreads } from "./sections";
 import { useSelectedThread, useStore } from "./store";
 
@@ -114,7 +114,8 @@ export function App() {
   // The browser works without a project; Changes and Files need one.
   const inspectorVisible = inspectorOpen && (project || inspectorTab === "browser");
   const layout = useStore((s) => s.paneLayout);
-  const pane = usePaneLayout(Boolean(inspectorVisible));
+  const designThread = Boolean(thread && threadKind(thread) === "design");
+  const pane = usePaneLayout(Boolean(inspectorVisible), designThread ? DESIGN_FLOOR : undefined);
   const setPaneLayout = useStore((s) => s.setPaneLayout);
   // A width that leaves the chat under its normal minimum was dragged there on purpose: keep it wide.
   const inspectorPatch = (v: number, c: boolean) => {
@@ -123,7 +124,7 @@ export function App() {
   };
   const wide = layout.browserWide && inspectorVisible && inspectorTab === "browser" && pane.inspector !== null;
   // A design thread puts its canvas between the chat and the side panel; browser-wide still wins.
-  const design = Boolean(thread && threadKind(thread) === "design" && !wide);
+  const design = designThread && !wide;
   const designMode = useStore((s) => s.threadKind) === "design";
 
   return (

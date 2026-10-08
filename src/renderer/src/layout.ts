@@ -18,10 +18,13 @@ export function clampLayout(
   windowWidth: number,
   layout: PaneLayout,
   inspectorOpen = true,
+  /** The room the main area must keep, overriding the chat's (a design thread: chat plus canvas). */
+  mainFloor?: number,
 ): { sidebar: number; inspector: number | null; main: number; inspectorAutoCollapsed: boolean; inspectorMax: number } {
   let sidebar = layout.sidebarCollapsed ? BOUNDS.rail : clamp(layout.sidebar, BOUNDS.sidebar.min, BOUNDS.sidebar.max);
-  const inspectorMax = inspectorCap(windowWidth - sidebar);
-  const floor = layout.inspectorWide ? chatFloor(windowWidth - sidebar) : BOUNDS.main;
+  const cap = inspectorCap(windowWidth - sidebar);
+  const inspectorMax = mainFloor === undefined ? cap : Math.max(BOUNDS.inspector.min, Math.min(cap, windowWidth - sidebar - mainFloor));
+  const floor = mainFloor ?? (layout.inspectorWide ? chatFloor(windowWidth - sidebar) : BOUNDS.main);
   const wanted = inspectorOpen && !layout.inspectorCollapsed ? clamp(layout.inspector, BOUNDS.inspector.min, inspectorMax) : null;
   let inspector = wanted;
   let inspectorAutoCollapsed = false;
@@ -44,6 +47,9 @@ export function clampLayout(
   const main = windowWidth - sidebar - (inspector ?? 0);
   return { sidebar, inspector, main, inspectorAutoCollapsed, inspectorMax };
 }
+
+/** A design thread's main area: its chat at the narrowest (260) plus a canvas worth looking at (360). */
+export const DESIGN_FLOOR = 620;
 
 /** Whether a panel width the user set leaves the chat under its normal minimum, which marks it as dragged wide. */
 export function isWideInspector(windowWidth: number, sidebar: number, inspector: number): boolean {

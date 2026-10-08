@@ -29,6 +29,19 @@ export function userGuidePath(dataDir: string): string {
 }
 
 /**
+ * What a design thread's agent is told until Design mode has its own guide (D3):
+ * where to build, and that the canvas has no network. Stable per thread, so the
+ * prompt cache holds.
+ */
+export function designNote(dir: string): string {
+  return [
+    "# Design thread",
+    `This thread is a design. Build it as one self-contained web page at \`${dir}/index.html\` (relative to the working folder); put any extra CSS, JS, images or fonts beside it in \`${dir}/\` and link them with relative paths.`,
+    "The page shows live in CubiQ's canvas, which reloads as you write and has no network: no CDN scripts, web fonts, remote images or fetch calls. Inline scripts and styles work.",
+  ].join("\n\n");
+}
+
+/**
  * The harness guide agents receive as instructions: the app's bundled copy,
  * then the user's own, then the project's. Each file is read once and cached by
  * its mtime, so repeated calls return the same text and the prompt cache isn't
@@ -36,7 +49,7 @@ export function userGuidePath(dataDir: string): string {
  * picked up on the next mtime change, not mid-turn).
  */
 export function createGuide(opts: { bundled: string; global: string }): {
-  forCwd(cwd: string): string;
+  forCwd(cwd: string, design?: string): string;
   partsForCwd(cwd: string): { source: "bundled" | "user" | "project"; path: string; text: string }[];
 } {
   const cache = new Map<string, { mtimeMs: number; text: string }>();
@@ -69,10 +82,8 @@ export function createGuide(opts: { bundled: string; global: string }): {
   };
 
   return {
-    forCwd(cwd: string): string {
-      return partsForCwd(cwd)
-        .map((p) => p.text)
-        .join("\n\n");
+    forCwd(cwd: string, design?: string): string {
+      return [...partsForCwd(cwd).map((p) => p.text), ...(design ? [designNote(design)] : [])].join("\n\n");
     },
     partsForCwd,
   };

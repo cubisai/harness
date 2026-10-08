@@ -7,7 +7,7 @@ import { useStore } from "../store";
  * resulting widths to the CSS custom properties the grid reads; the stored
  * layout is never changed here.
  */
-export function usePaneLayout(inspectorVisible: boolean): { sidebar: number; inspector: number | null; inspectorAutoCollapsed: boolean; inspectorMax: number; width: number } {
+export function usePaneLayout(inspectorVisible: boolean, mainFloor?: number): { sidebar: number; inspector: number | null; inspectorAutoCollapsed: boolean; inspectorMax: number; width: number } {
   const layout = useStore((s) => s.paneLayout);
   const [width, setWidth] = useState(() => window.innerWidth);
 
@@ -17,7 +17,7 @@ export function usePaneLayout(inspectorVisible: boolean): { sidebar: number; ins
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  const result = clampLayout(width, layout, inspectorVisible);
+  const result = clampLayout(width, layout, inspectorVisible, mainFloor);
 
   useLayoutEffect(() => {
     document.documentElement.style.setProperty("--sidebar-w", `${result.sidebar}px`);

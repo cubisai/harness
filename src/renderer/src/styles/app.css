@@ -251,6 +251,13 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .sidebar-brand { display: flex; align-items: center; gap: 6px; min-width: 0; }
 /* Chat | Design, at the right end of the brand row so the toggle keeps its spot by the traffic lights. */
 .mode-switch { margin-left: auto; flex-shrink: 0; }
+/* A sidebar too narrow for both words (beside the macOS traffic lights or the Windows wordmark) gets the one-icon toggle instead. */
+.sidebar-top .mode-switch-icon { display: none; margin-left: auto; flex-shrink: 0; }
+.sidebar { container: sidebar / inline-size; }
+@container sidebar (max-width: 229px) {
+  .sidebar-top .mode-switch { display: none; }
+  .sidebar-top .mode-switch-icon { display: inline-flex; }
+}
 .sidebar-nav { display: flex; flex-direction: column; gap: 1px; padding: 2px 10px 6px; flex-shrink: 0; }
 .nav-row {
   display: flex;
@@ -493,7 +500,38 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
   flex-shrink: 0;
 }
 .platform-win32 .app:not(.with-inspector) .design-canvas-head, .platform-linux .app:not(.with-inspector) .design-canvas-head { padding-right: calc(150px / var(--zoom, 1)); }
-.design-canvas-title { font-size: 12.5px; font-weight: 500; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.design-canvas-title { flex: 1 1 auto; font-size: 12.5px; font-weight: 500; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* The tools keep their size; the file name gives way first. */
+.design-tools { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+.design-tools .select { height: 28px; font-size: 12.5px; flex-shrink: 0; }
+.design-version-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 14px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  background: var(--bg);
+  border-bottom: 1px solid var(--hairline);
+  flex-shrink: 0;
+}
+.design-version-bar span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Fit: the page fills the stage. A sized viewport sits centred with room around it and scrolls when larger. */
+.design-stage { flex: 1; min-height: 0; min-width: 0; display: flex; overflow: auto; padding: 24px; }
+.design-stage.fit { padding: 0; overflow: hidden; }
+.design-frame-box { position: relative; margin: auto; flex-shrink: 0; background: var(--bg); border: 1px solid var(--hairline); }
+.design-stage.fit .design-frame-box { flex: 1; align-self: stretch; margin: 0; border: 0; }
+.design-frame { display: block; border: 0; background: #fff; transform-origin: 0 0; }
+.design-stage.fit .design-frame { width: 100%; height: 100%; }
+/* The 8px grid sits over the page and never takes a click. */
+.design-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--danger) 18%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--danger) 18%, transparent) 1px, transparent 1px);
+}
 .design-canvas-empty { flex: 1; min-height: 0; display: grid; place-items: center; padding: 24px; text-align: center; }
 .design-canvas-empty h2 { margin: 0 0 4px; font-size: 14px; font-weight: 600; color: var(--text); }
 .design-canvas-empty p { margin: 0; font-size: 13px; color: var(--text-tertiary); max-width: 260px; }

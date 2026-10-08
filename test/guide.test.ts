@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createGuide, projectGuidePath, userGuidePath } from "../src/main/guide";
+import { createGuide, designNote, projectGuidePath, userGuidePath } from "../src/main/guide";
 import { estimateTokens } from "../src/main/handoff";
 import { tempDir } from "./helpers";
 
@@ -21,6 +21,18 @@ describe("createGuide", () => {
     write(join(cwd, ".cubiq", "CUBIQ.md"), "project");
     const guide = createGuide({ bundled, global });
     expect(guide.forCwd(cwd)).toBe("bundled\n\nglobal\n\nproject");
+  });
+
+  it("ends a design thread's guide with the design note naming its folder, the same every turn", () => {
+    const root = tempDir();
+    const bundled = join(root, "app", "CUBIQ.md");
+    write(bundled, "bundled");
+    const guide = createGuide({ bundled, global: join(root, "none.md") });
+    const text = guide.forCwd(join(root, "project"), "designs/abcd1234");
+    expect(text).toBe(`bundled\n\n${designNote("designs/abcd1234")}`);
+    expect(text).toContain("`designs/abcd1234/index.html`");
+    expect(guide.forCwd(join(root, "project"), "designs/abcd1234")).toBe(text);
+    expect(guide.forCwd(join(root, "project"))).toBe("bundled");
   });
 
   it("skips missing files and returns empty when there are none", () => {

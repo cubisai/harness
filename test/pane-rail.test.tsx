@@ -24,9 +24,9 @@ describe("PaneRail", () => {
   it("keeps every sidebar-footer control, each a titled button", () => {
     const html = renderToStaticMarkup(<PaneRail />);
     const buttons = html.match(/<button[^>]*>/g) ?? [];
-    expect(buttons.length).toBe(4);
+    expect(buttons.length).toBe(5);
     for (const b of buttons) expect(b).toMatch(/title="[^"]+"/);
-    for (const title of ["Add Project", "Message Center", "Library", "Settings"]) expect(html).toContain(title);
+    for (const title of ["switch to Design", "Add Project", "Message Center", "Library", "Settings"]) expect(html).toContain(title);
   });
 });
 

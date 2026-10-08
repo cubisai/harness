@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { WebContents } from "electron";
 import { webContents as allWebContents } from "electron";
 import type { BrowserLogEntry, DevicePreset } from "../../shared/types";
-import { PICK_BINDING, type PickedElement, describePick, startPicker } from "./picker";
+import { PICK_BINDING, type PickedElement, describePick, selectorFor, startPicker } from "./picker";
 import { collectPage, formatSnapshot, type PageSnapshot } from "./snapshot";
 import { isAllowedUrl, normalizeUrl } from "./url";
 
@@ -347,7 +347,7 @@ export class BrowserController {
   /** Let the user click an element in the pane; the result arrives through onPicked. */
   async startPick(): Promise<void> {
     const wc = await this.page();
-    await this.evaluate(wc, `(${startPicker.toString()})(${JSON.stringify(PICK_BINDING)})`);
+    await this.evaluate(wc, `(${startPicker.toString()})(${JSON.stringify(PICK_BINDING)}, ${selectorFor.toString()})`);
     wc.focus();
   }
 

@@ -770,6 +770,15 @@ export interface ArtifactVersion {
 }
 
 /** A file an agent wrote in a thread, relative to the thread's folder (forward slashes), newest version last. */
+export interface DesignEntry {
+  /** The design folder, relative to the thread's working folder ("designs/<id8>"). */
+  dir: string;
+  /** The page shown, relative to the design folder ("index.html"). */
+  rel: string;
+  /** Its `cubiq-design:` URL (the latest file; add `?v=N` for a stored version). */
+  url: string;
+}
+
 export interface ArtifactFile {
   path: string;
   kind: ArtifactKind;
@@ -940,7 +949,9 @@ export type LiveUpdate =
   /** The app menu asked for the About sheet. */
   | { type: "open-about" }
   /** A turn finished having written previewable files: open the panel on `path` (the last one). */
-  | { type: "artifact-ready"; threadId: string; path: string; files: string[] };
+  | { type: "artifact-ready"; threadId: string; path: string; files: string[] }
+  /** Something in an open design thread's folder changed (debounced): the canvas reloads. */
+  | { type: "design-changed"; threadId: string };
 
 /** The API the preload script exposes as `window.unskilled`. */
 export interface UnskilledApi {
@@ -1080,6 +1091,13 @@ export interface UnskilledApi {
   search(query: SearchQuery): Promise<SearchResults>;
   /** The files agents wrote in this thread, with their versions; most recently written first. */
   listArtifacts(threadId: string): Promise<ArtifactFile[]>;
+  /** A design thread's page for the canvas: its folder (relative to the thread's), entry file and `cubiq-design:` URL; null before the agent writes one. */
+  designEntry(threadId: string): Promise<DesignEntry | null>;
+  /** Watch an open design thread's folder (creating it), so changes push `design-changed`; counted per call. */
+  designWatch(threadId: string): Promise<void>;
+  designUnwatch(threadId: string): Promise<void>;
+  /** Show a design thread's folder in Finder / Explorer. */
+  designReveal(threadId: string): Promise<void>;
   /** A thread file's content for the panel: the file on disk, or a saved version. */
   readArtifact(threadId: string, path: string, version?: number | null): Promise<ArtifactContent>;
   /** Unified diff of a version against the one before it (or against git HEAD / empty for the first); null when not text. */

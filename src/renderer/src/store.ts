@@ -31,6 +31,7 @@ import { DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
 import { IDLE, takeOverReducer, type TakeOverState } from "./takeover";
 import { threadSeen, turnEnded, type FinishedTurn } from "./inbox";
 import { threadKind } from "./sections";
+import { designDirName } from "../../shared/design";
 
 /** The right panel's tabs. Changes and Files need a project; Browser works without one; File shows an artifact. */
 export type InspectorTab = "changes" | "browser" | "files" | "artifact";
@@ -168,6 +169,8 @@ interface State {
   toggleBrowserWide(): void;
   /** Text to add to the message box (a picked element), with a nonce so repeats still apply. */
   composerInsert: { text: string; nonce: number } | null;
+  /** Bumped when an open design thread's folder changes, so its canvas reloads. */
+  designReload: Record<string, number>;
   /** Text to put back in the message box (Edit on a sent message); consumed by the composer. */
   composerDraft: { text: string; nonce: number } | null;
   setComposerDraft(text: string): void;
@@ -502,6 +505,7 @@ export const useStore = create<State>((set, get) => ({
   browser: { device: "desktop", logs: [], screenshots: [] },
   browserLoaded: false,
   composerInsert: null,
+  designReload: {},
   composerDraft: null,
   setComposerDraft(text) {
     set((s) => ({ composerDraft: { text, nonce: (s.composerDraft?.nonce ?? 0) + 1 } }));
@@ -951,13 +955,17 @@ export const useStore = create<State>((set, get) => ({
   apply(update) {
     switch (update.type) {
       case "artifact-ready":
-        // Opens on its own only for the thread on screen, once its turn has ended.
-        if (update.threadId === get().selectedThreadId) get().openArtifact(update.path, update.threadId);
+        // Opens on its own only for the thread on screen, once its turn has ended. A design thread's own
+        // pages already show on its canvas, so they only refresh the file list (and the canvas's versions).
+        if (update.threadId === get().selectedThreadId && !isDesignFile(get(), update.threadId, update.path)) get().openArtifact(update.path, update.threadId);
         else
           void api()
             .listArtifacts(update.threadId)
             .then((files) => set((x) => ({ artifactFiles: { ...x.artifactFiles, [update.threadId]: files } })))
             .catch(() => {});
+        return;
+      case "design-changed":
+        set((s) => ({ designReload: { ...s.designReload, [update.threadId]: (s.designReload[update.threadId] ?? 0) + 1 } }));
         return;
       case "event":
         // A plan proposal is also a new version of the thread's plan artifact: refresh its file list.
@@ -1104,6 +1112,12 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 }));
+
+/** Whether `path` (relative to the thread's folder) is inside a design thread's own folder. */
+function isDesignFile(s: Pick<State, "threads">, threadId: string, path: string): boolean {
+  const thread = Object.values(s.threads).flat().find((t) => t.id === threadId);
+  return thread?.kind === "design" && path.startsWith(`${designDirName(threadId)}/`);
+}
 
 export function useSelectedThread(): Thread | null {
   return useStore((s) => {
