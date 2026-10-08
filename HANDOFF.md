@@ -1,6 +1,6 @@
-# Handoff: P3 done; next: Design mode D1–D4 (Windows PC gate still pending, checklist below)
+# Handoff: P3 done; next: D1 Design shell (plan written, awaiting approval; Windows PC gate still pending)
 
-Updated 2026-10-08 on the **Mac**, branch `m4`. Read **Resume here — P3 done** first, then **Windows gate (2026-10-07)**, then **Resume here — C0 + P2 done**, then **Resume here — P1 done, next P2**, then **Resume here — MCP, providers, Design mode**, then **Resume here — Plan mode v2**, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`, `secrets-handling` (every stored credential safeStorage-encrypted; keys pasted in chat never go in files).
+Updated 2026-10-08 on the **Mac**, branch `m4`. Read **Resume here — D1 next** first, then **Resume here — P3 done**, then **Windows gate (2026-10-07)**, then **Resume here — C0 + P2 done**, then **Resume here — P1 done, next P2**, then **Resume here — MCP, providers, Design mode**, then **Resume here — Plan mode v2**, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`, `secrets-handling` (every stored credential safeStorage-encrypted; keys pasted in chat never go in files).
 
 ## Where things stand
 
@@ -140,6 +140,14 @@ All checked in the real app on Windows; code paths are cross-platform unless not
 - **Antigravity**: Google's own ACP server (`agy_acp_server.par`, ACP registry `antigravity-acp`) must be on the app's PATH; it stays off until the Settings opt-in, then the generic ACP driver runs it with the user's Google sign-in.
 - Still to confirm on the Mac: the same smoke/model checks there.
 
+## Resume here — D1 next (2026-10-08, Mac)
+
+The user said start Design mode with D1. Plan written: `.ai/plans/d1-design-shell.md` (gitignored, Mac only; summary below). **Ask the user to approve it before any code.** Parent spec: `.ai/plans/mcp-providers-design.md` Part 3.
+- **D1a data** (opencode implementer, ≤5 files): `ThreadKind = "chat" | "design"`, `Thread.kind?` (absent = chat); migration 20 `ALTER TABLE threads ADD COLUMN kind TEXT NOT NULL DEFAULT 'chat'` after step 19 in `db.ts` (`steps` ~:95-200); kind in `createThread` (`db.ts:289`), `restoreThread` (`:627`), `THREAD_COLS` (`:709`), `toThread` (`:807`); `createThread(projectId, agent?, { worktree?, kind? })` through preload (`:14`), IPC `threads:create` (`index.ts:1104`, validate → chat), `service.createThread`/`createWorktreeThread` (`service.ts:168-193`).
+- **D1b renderer** (do here; DESIGN.md §2–5, §7.1, §8, §9): store `threadKind` + `setThreadKind`, follows the selected thread's kind; `newThread`/`sendInBackground` (`store.ts:709-753`) pass it. Sidebar brand row (`Sidebar.tsx:321-326`): `.segmented.compact` Chat | Design (`aria-pressed`, no-drag); project lists, Pinned, Archived filtered by kind via `inboxModel` (`sections.ts:27`), Running shows all. Design thread layout: `.app.design-thread` grid `sidebar | chat 420px | canvas 1fr [| inspector]`, existing `main` = chat column, canvas = `React.lazy(() => import("./design/DesignCanvas"))` empty state (real frame/toolbar/live reload = D2). Browser-wide still wins.
+- **Verify**: typecheck, suite, build (design chunk separate; Chat bundle size unchanged), smoke; live: a design thread on Claude (Haiku), Codex, OpenCode (free model), filters, ⌘K jump flips the mode, light/dark + 900px screenshots. Then commit D1 (≤150 chars, no trailer), `rm .ai/tmp/*`.
+- Then D2 (live canvas: `cubiq-design://`, sandboxed iframe, `fs.watch` reload, toolbar, pick-to-comment), D3 (guide + skills + design systems + Experts), D4 (screenshot/lint tools, critique loop, export).
+
 ## Resume here — P3 done (2026-10-08, Mac)
 
 Plan: `.ai/plans/p3-presets.md` (gitignored, Mac only).
@@ -149,7 +157,7 @@ Plan: `.ai/plans/p3-presets.md` (gitignored, Mac only).
 - Implementer (opencode) wrote the catalog parsing + tests on the first try; reviewed here (reserved ids now imported, empty query sorted).
 - **Keys**: the user pasted TokenHarbor + PGS keys in chat on 2026-10-07 (again); entered only through the app editor into temp data dirs; nothing in repo, data dirs, logs, `~/.claude/projects` (non-transcript) or `~/.codex/sessions`. Both revoked by the user 2026-10-08; ask for fresh keys for any live provider test.
 
-**Next: Design mode D1–D4** (spec `.ai/plans/mcp-providers-design.md` Part 3). The Windows PC gate below still covers M1…P3 when the PC is at hand (add: P3 catalog search + a preset save on Windows).
+**Next: Design mode D1–D4** (see **Resume here — D1 next**). The Windows PC gate below still covers M1…P3 when the PC is at hand (add: P3 catalog search + a preset save on Windows).
 
 ## Windows gate (2026-10-07)
 
@@ -401,4 +409,4 @@ In order:
 
 ## Next
 
-MCP, P1, C0, P2 and P3 are done and live-tested (see **Resume here — P3 done**). Next: D1–D4 Design mode; the Windows PC gate for everything since M1 whenever the PC is available.
+MCP, P1, C0, P2 and P3 are done and live-tested (see **Resume here — P3 done**). Next: D1 (plan in **Resume here — D1 next**, needs the user's approval), then D2–D4; the Windows PC gate for everything since M1 whenever the PC is available.
