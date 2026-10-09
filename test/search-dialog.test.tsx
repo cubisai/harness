@@ -63,6 +63,29 @@ describe("rankFiles", () => {
   });
 });
 
+describe("searchKeyOf", () => {
+  it("is null when the input asks for no full-text search", async () => {
+    const { searchKeyOf } = await load();
+    expect(searchKeyOf("", { id: "all" }, "p1")).toBeNull();
+    expect(searchKeyOf("   ", { id: "all" }, "p1")).toBeNull();
+    expect(searchKeyOf(">x", { id: "all" }, "p1")).toBeNull();
+    expect(searchKeyOf("abc", { id: "files" }, "p1")).toBeNull();
+  });
+
+  it("is equal for the same trimmed text, filter and project", async () => {
+    const { searchKeyOf } = await load();
+    const filter = { id: "all" } as const;
+    expect(searchKeyOf("abc", filter, "p1")).toBe(searchKeyOf("  abc  ", filter, "p1"));
+  });
+
+  it("differs when the filter or the project changes", async () => {
+    const { searchKeyOf } = await load();
+    const base = searchKeyOf("abc", { id: "all" }, "p1");
+    expect(searchKeyOf("abc", { id: "running" }, "p1")).not.toBe(base);
+    expect(searchKeyOf("abc", { id: "all" }, "p2")).not.toBe(base);
+  });
+});
+
 describe("flattenRows", () => {
   it("orders Threads, then Messages, then Files", async () => {
     const { flattenRows } = await load();
@@ -72,6 +95,34 @@ describe("flattenRows", () => {
       files: ["src/a.ts"],
     });
     expect(rows.map((r) => r.kind)).toEqual(["thread", "message", "message", "file"]);
+  });
+});
+
+describe("emptyListState", () => {
+  it("shows the hint when the query is empty, whatever else is set", async () => {
+    const { emptyListState } = await load();
+    expect(emptyListState({ hint: true, rows: 0, pending: true, failed: "boom" })).toBe("hint");
+    expect(emptyListState({ hint: true, rows: 3, pending: false, failed: null })).toBe("hint");
+  });
+
+  it("returns null while there are rows", async () => {
+    const { emptyListState } = await load();
+    expect(emptyListState({ hint: false, rows: 1, pending: true, failed: "boom" })).toBeNull();
+  });
+
+  it("shows the error over the searching line", async () => {
+    const { emptyListState } = await load();
+    expect(emptyListState({ hint: false, rows: 0, pending: true, failed: "boom" })).toBe("error");
+  });
+
+  it("shows a searching line while a request is pending", async () => {
+    const { emptyListState } = await load();
+    expect(emptyListState({ hint: false, rows: 0, pending: true, failed: null })).toBe("searching");
+  });
+
+  it("falls back to the empty message", async () => {
+    const { emptyListState } = await load();
+    expect(emptyListState({ hint: false, rows: 0, pending: false, failed: null })).toBe("empty");
   });
 });
 

@@ -94,6 +94,8 @@ interface State {
   editors: EditorInfo[];
   /** A short message at the bottom of the window (an editor that didn't open). */
   notice: string | null;
+  /** Set when a startup IPC call fails, so the window can offer a retry instead of a blank welcome. */
+  initError: string | null;
   showNotice(text: string): void;
   /** Open a file (relative to the project, at a line) or the project itself in an editor. */
   openInEditor(target: { path?: string; line?: number; column?: number }, editor?: string): Promise<void>;
@@ -212,8 +214,8 @@ interface State {
   updateThread(patch: Partial<Pick<Thread, "title" | "model" | "effort" | "contextWindow" | "permissionMode" | "agent">>): Promise<void>;
   /** Step the open thread's reasoning effort down (-1) or up (+1), wrapping through Default. */
   cycleEffort(dir: 1 | -1): void;
-  /** Start a turn on the open thread (or `threadId`); a no-op while that thread is running. */
-  send(text: string, skills?: string[], threadId?: string, mentions?: string[]): Promise<void>;
+  /** Start a turn on the open thread (or `threadId`); resolves false when it couldn't start (no thread, already running, or the send failed). */
+  send(text: string, skills?: string[], threadId?: string, mentions?: string[]): Promise<boolean>;
   /** Compact a thread's session now (/compact), with an optional focus for the summary. */
   compact(threadId: string, focus: string | null): Promise<void>;
   /** Messages sent while a turn ran, by thread: each goes out as the next turn, in order. Stop clears them; never persisted. */
@@ -273,6 +275,7 @@ function ipcErrorText(err: unknown): string {
 }
 
 let initialized = false;
+let subscribed = false;
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 
 // Live deltas are batched: tokens accumulate in the queue and land in the
@@ -362,6 +365,7 @@ export const useStore = create<State>((set, get) => ({
   librarySkill: null,
   editors: [],
   notice: null,
+  initError: null,
   showNotice(text) {
     set({ notice: text });
     clearTimeout(noticeTimer);
@@ -460,21 +464,41 @@ export const useStore = create<State>((set, get) => ({
   running: {},
   async togglePin(threadId) {
     const thread = findThread(get().threads, threadId);
-    if (thread) get().apply({ type: "thread", thread: await api().updateThread(threadId, { pinned: !thread.pinned }) });
+    if (!thread) return;
+    try {
+      get().apply({ type: "thread", thread: await api().updateThread(threadId, { pinned: !thread.pinned }) });
+    } catch (err) {
+      get().showNotice(`Couldn't pin the thread: ${ipcErrorText(err)}`);
+    }
   },
   async renameThread(threadId, title) {
     const clean = title.trim();
-    if (clean) get().apply({ type: "thread", thread: await api().updateThread(threadId, { title: clean }) });
+    if (!clean) return;
+    try {
+      get().apply({ type: "thread", thread: await api().updateThread(threadId, { title: clean }) });
+    } catch (err) {
+      get().showNotice(`Couldn't rename the thread: ${ipcErrorText(err)}`);
+    }
   },
   async setArchived(threadId, archived) {
-    // Archiving a pin unpins it: an archived thread sits only in Archived.
-    get().apply({ type: "thread", thread: await api().updateThread(threadId, archived ? { archived, pinned: false } : { archived }) });
+    try {
+      // Archiving a pin unpins it: an archived thread sits only in Archived.
+      get().apply({ type: "thread", thread: await api().updateThread(threadId, archived ? { archived, pinned: false } : { archived }) });
+    } catch (err) {
+      get().showNotice(archived ? `Couldn't archive the thread: ${ipcErrorText(err)}` : `Couldn't restore the thread: ${ipcErrorText(err)}`);
+      return;
+    }
     if (archived && get().selectedThreadId === threadId) await get().selectThread(null);
   },
   async deleteThread(threadId) {
     const thread = findThread(get().threads, threadId);
     if (!thread) return;
-    await api().deleteThread(threadId);
+    try {
+      await api().deleteThread(threadId);
+    } catch (err) {
+      get().showNotice(`Couldn't delete the thread: ${ipcErrorText(err)}`);
+      return;
+    }
     set((s) => {
       const { [threadId]: _events, ...events } = s.events;
       return {
@@ -587,43 +611,54 @@ export const useStore = create<State>((set, get) => ({
     // React StrictMode runs effects twice in development; subscribe once.
     if (initialized) return;
     initialized = true;
-    // Subscribe before the first await, so no update sent during startup is lost.
-    api().onUpdate((u) => get().apply(u));
-    const [projects, skills, agents, settings, appUpdate, limitList, pending] = await Promise.all([
-      api().listProjects(),
-      api().listSkills(),
-      api().listAgents(),
-      api().getSettings(),
-      api().updateStatus(),
-      api().listLimits(),
-      api().pendingState(),
-    ]);
-    void api()
-      .listEditors()
-      .then((editors) => set({ editors }));
-    applyTheme(settings.theme);
-    applyMotion(settings.motion);
-    applyDensity(settings.density);
-    applyZoom(settings.zoom);
-    const threads: Record<string, Thread[]> = {};
-    for (const p of projects) threads[p.id] = await api().listThreads(p.id);
-    for (const p of projects) void get().loadBranch(p.id);
-    const limits = Object.fromEntries(limitList.map((l) => [l.agent, l]));
-    set((s) => ({ projects, skills, agents, threads, settings, paneLayout: sanitizeLayout(settings.paneLayout), appUpdate, limits: { ...limits, ...s.limits } }));
-    // A window that loads mid-turn picks up what's live: running threads and the cards waiting on the user.
-    const now = Date.now();
-    set((s) => ({
-      running: { ...Object.fromEntries(pending.running.map((id) => [id, true])), ...s.running },
-      turnStartedAt: { ...Object.fromEntries(pending.running.map((id) => [id, now])), ...s.turnStartedAt },
-      permissions: [...s.permissions, ...pending.permissions.filter((p) => !s.permissions.some((x) => x.requestId === p.requestId))],
-      plans: [...s.plans, ...pending.plans.filter((p) => !s.plans.some((x) => x.requestId === p.requestId))],
-      questions: [...s.questions, ...pending.questions.filter((q) => !s.questions.some((x) => x.requestId === q.requestId))],
-    }));
-    const first = projects[0];
-    if (first) {
-      await get().selectProject(first.id);
-      const recent = threads[first.id]?.[0];
-      if (recent) await get().selectThread(recent.id);
+    set({ initError: null });
+    // Subscribe before the first await, so no update sent during startup is lost. A retry after a
+    // failed init must not double-subscribe (each onUpdate would then apply every update twice).
+    if (!subscribed) {
+      subscribed = true;
+      api().onUpdate((u) => get().apply(u));
+    }
+    try {
+      const [projects, skills, agents, settings, appUpdate, limitList, pending] = await Promise.all([
+        api().listProjects(),
+        api().listSkills(),
+        api().listAgents(),
+        api().getSettings(),
+        api().updateStatus(),
+        api().listLimits(),
+        api().pendingState(),
+      ]);
+      void api()
+        .listEditors()
+        .then((editors) => set({ editors }));
+      applyTheme(settings.theme);
+      applyMotion(settings.motion);
+      applyDensity(settings.density);
+      applyZoom(settings.zoom);
+      const threads: Record<string, Thread[]> = {};
+      for (const p of projects) threads[p.id] = await api().listThreads(p.id);
+      for (const p of projects) void get().loadBranch(p.id);
+      const limits = Object.fromEntries(limitList.map((l) => [l.agent, l]));
+      set((s) => ({ projects, skills, agents, threads, settings, paneLayout: sanitizeLayout(settings.paneLayout), appUpdate, limits: { ...limits, ...s.limits } }));
+      // A window that loads mid-turn picks up what's live: running threads and the cards waiting on the user.
+      const now = Date.now();
+      set((s) => ({
+        running: { ...Object.fromEntries(pending.running.map((id) => [id, true])), ...s.running },
+        turnStartedAt: { ...Object.fromEntries(pending.running.map((id) => [id, now])), ...s.turnStartedAt },
+        permissions: [...s.permissions, ...pending.permissions.filter((p) => !s.permissions.some((x) => x.requestId === p.requestId))],
+        plans: [...s.plans, ...pending.plans.filter((p) => !s.plans.some((x) => x.requestId === p.requestId))],
+        questions: [...s.questions, ...pending.questions.filter((q) => !s.questions.some((x) => x.requestId === q.requestId))],
+      }));
+      const first = projects[0];
+      if (first) {
+        await get().selectProject(first.id);
+        const recent = threads[first.id]?.[0];
+        if (recent) await get().selectThread(recent.id);
+      }
+    } catch (err) {
+      // A startup call that rejects used to leave a blank window; let the user retry.
+      initialized = false;
+      set({ initError: ipcErrorText(err) });
     }
   },
 
@@ -871,15 +906,27 @@ export const useStore = create<State>((set, get) => ({
 
   async send(text, skills, threadId, mentions) {
     const id = threadId ?? get().selectedThreadId;
-    if (!id || get().running[id]) return;
+    if (!id || get().running[id]) return false;
     set((s) => ({ running: { ...s.running, [id]: true } }));
-    await api().send({ threadId: id, text, ...(skills?.length ? { skills } : {}), ...(mentions?.length ? { mentions } : {}) });
+    try {
+      await api().send({ threadId: id, text, ...(skills?.length ? { skills } : {}), ...(mentions?.length ? { mentions } : {}) });
+      return true;
+    } catch (err) {
+      set((s) => ({ running: { ...s.running, [id]: false } }));
+      get().showNotice(`Couldn't send: ${ipcErrorText(err)}`);
+      return false;
+    }
   },
 
   async compact(threadId, focus) {
     if (get().running[threadId]) return;
     set((s) => ({ running: { ...s.running, [threadId]: true } }));
-    await api().send({ threadId, text: `/compact${focus ? ` ${focus}` : ""}`, compact: { focus } });
+    try {
+      await api().send({ threadId, text: `/compact${focus ? ` ${focus}` : ""}`, compact: { focus } });
+    } catch (err) {
+      set((s) => ({ running: { ...s.running, [threadId]: false } }));
+      get().showNotice(`Couldn't compact: ${ipcErrorText(err)}`);
+    }
   },
 
   async interrupt() {
@@ -894,17 +941,35 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async respond(requestId, decision) {
+    const removed = get().permissions.find((p) => p.requestId === requestId);
     set((s) => ({ permissions: s.permissions.filter((p) => p.requestId !== requestId) }));
-    await api().respondPermission(requestId, decision);
+    try {
+      await api().respondPermission(requestId, decision);
+    } catch (err) {
+      if (removed) set((s) => (s.permissions.some((p) => p.requestId === requestId) ? {} : { permissions: [...s.permissions, removed] }));
+      get().showNotice(`Couldn't send your answer: ${ipcErrorText(err)}`);
+    }
   },
 
   async respondPlan(requestId, decision) {
+    const removed = get().plans.find((p) => p.requestId === requestId);
     set((s) => ({ plans: s.plans.filter((p) => p.requestId !== requestId) }));
-    await api().respondPlan(requestId, decision);
+    try {
+      await api().respondPlan(requestId, decision);
+    } catch (err) {
+      if (removed) set((s) => (s.plans.some((p) => p.requestId === requestId) ? {} : { plans: [...s.plans, removed] }));
+      get().showNotice(`Couldn't send your answer: ${ipcErrorText(err)}`);
+    }
   },
   async respondQuestion(requestId, answer) {
+    const removed = get().questions.find((q) => q.requestId === requestId);
     set((s) => ({ questions: s.questions.filter((q) => q.requestId !== requestId) }));
-    await api().respondQuestion(requestId, answer);
+    try {
+      await api().respondQuestion(requestId, answer);
+    } catch (err) {
+      if (removed) set((s) => (s.questions.some((q) => q.requestId === requestId) ? {} : { questions: [...s.questions, removed] }));
+      get().showNotice(`Couldn't send your answer: ${ipcErrorText(err)}`);
+    }
   },
 
   setDisclosure(threadId, id, open) {

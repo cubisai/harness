@@ -305,7 +305,15 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
           </div>
           <div className="row">
             <span className="label">Settings file</span>
-            <button className="button" onClick={() => void api().exportSettings()}>
+            <button
+              className="button"
+              onClick={() =>
+                void api()
+                  .exportSettings()
+                  .then((path) => path && useStore.getState().showNotice(`Exported to ${path}`))
+                  .catch((err: unknown) => useStore.getState().showNotice(err instanceof Error ? err.message : String(err)))
+              }
+            >
               Export Settings…
             </button>
             <button

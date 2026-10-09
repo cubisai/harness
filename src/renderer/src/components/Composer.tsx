@@ -239,7 +239,10 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
     const names = picked.map((p) => p.name);
     if (!threadId) void startThread(body, names, mentions);
     else if (running) enqueue(threadId, body, names, mentions);
-    else void send(body, names, undefined, mentions);
+    else
+      void send(body, names, undefined, mentions).then((ok) => {
+        if (!ok) setText((cur) => cur || text);
+      });
     setText("");
     setChips([]);
     setPicked([]);

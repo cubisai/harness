@@ -129,6 +129,21 @@ export function flattenRows(groups: SearchGroups): SearchRow[] {
   ];
 }
 
+/** What the result list shows when it has no rows: the hint, a searching line, the error, or "No matches". */
+export function emptyListState(opts: { hint: boolean; rows: number; pending: boolean; failed: string | null }): "hint" | "searching" | "error" | "empty" | null {
+  if (opts.hint) return "hint";
+  if (opts.rows > 0) return null;
+  if (opts.failed) return "error";
+  if (opts.pending) return "searching";
+  return "empty";
+}
+
+/** The key of the full-text search the current input asks for, or null when it asks for none (empty text, ">" actions, the Files filter). */
+export function searchKeyOf(text: string, filter: SearchFilter, projectId: string | null): string | null {
+  if (text.startsWith(">") || filter.id === "files" || text.trim().length === 0) return null;
+  return JSON.stringify([text.trim(), filter, projectId]);
+}
+
 /** A snippet with its matched spans wrapped in `<mark>`. Renders text, never HTML. */
 export function SearchSnippet({ snippet }: { snippet: string }): JSX.Element {
   return (
@@ -168,6 +183,8 @@ export function SearchDialog({
   const [results, setResults] = useState<SearchResults | null>(null);
   const [files, setFiles] = useState<string[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [settledKey, setSettledKey] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const seqRef = useRef(0);
@@ -197,15 +214,13 @@ export function SearchDialog({
   // Debounced full-text search. An empty query, the Files filter and ">" mode
   // clear the results instead of searching.
   useEffect(() => {
-    if (text.startsWith(">") || filter.id === "files") {
-      seqRef.current += 1;
-      setResults(null);
-      return;
-    }
+    const key = searchKeyOf(text, filter, projectId);
     const q = text.trim();
-    if (!q) {
+    if (key === null) {
       seqRef.current += 1;
       setResults(null);
+      setFailed(null);
+      setSettledKey(null);
       return;
     }
     const seq = ++seqRef.current;
@@ -218,7 +233,17 @@ export function SearchDialog({
           limit: 20,
         })
         .then((r) => {
-          if (seq === seqRef.current) setResults(r);
+          if (seq === seqRef.current) {
+            setResults(r);
+            setFailed(null);
+            setSettledKey(key);
+          }
+        })
+        .catch((err: unknown) => {
+          if (seq === seqRef.current) {
+            setFailed(err instanceof Error ? err.message : String(err));
+            setSettledKey(key);
+          }
         });
     }, 120);
     return () => clearTimeout(handle);
@@ -271,6 +296,9 @@ export function SearchDialog({
   const chipFilters = chips.filter((c) => !c.disabled).map((c) => c.filter);
 
   const showHint = text.trim().length === 0;
+  const searchKey = searchKeyOf(text, filter, projectId);
+  const pending = searchKey !== null && searchKey !== settledKey;
+  const listState = emptyListState({ hint: showHint, rows: rows.length, pending, failed: pending ? null : failed });
 
   const renderHit = (kind: "thread" | "message", hit: SearchHit, index: number) => {
     const isActive = index === active;
@@ -395,8 +423,10 @@ export function SearchDialog({
         </div>
 
         <div className="search-list" id="search-list" role="listbox" ref={listRef}>
-          {showHint && <div className="search-hint">Type to search threads, messages and files.</div>}
-          {!showHint && rows.length === 0 && <div className="search-empty">No matches</div>}
+          {listState === "hint" && <div className="search-hint">Type to search threads, messages and files.</div>}
+          {listState === "searching" && <div className="search-empty" role="status">Searching…</div>}
+          {listState === "error" && <div className="search-empty" role="alert">Search failed: {failed}</div>}
+          {listState === "empty" && <div className="search-empty">No matches</div>}
 
           {groups.threads.length > 0 && <div className="search-section">Threads</div>}
           {groups.threads.map((hit, i) => renderHit("thread", hit, i))}

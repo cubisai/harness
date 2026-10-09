@@ -35,4 +35,11 @@ describe("TerminalDrawerView", () => {
     expect(html).toContain('aria-orientation="horizontal"');
     expect(html).toContain('aria-controls="terminal-drawer"');
   });
+
+  it("shows a close control in the open drawer", () => {
+    const html = view(true, "p1");
+    expect(html).toContain('aria-label="Close terminal"');
+    expect(html).toContain("terminal-close");
+    expect(html).toMatch(/<button[^>]*aria-label="Close terminal"/);
+  });
 });

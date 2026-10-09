@@ -1308,6 +1308,7 @@ button.qc-option.other { cursor: pointer; }
 .terminal-drawer[hidden] { display: none; }
 .terminal-drawer .terminal-body { flex: 1; min-height: 0; }
 .terminal-drawer .terminal-body[hidden] { display: none; }
+.terminal-drawer .terminal-close { position: absolute; top: 6px; right: 8px; z-index: 1; }
 .splitter.splitter-drawer { position: absolute; top: -14px; left: 0; right: 0; }
 
 /* ---------- settings ---------- */

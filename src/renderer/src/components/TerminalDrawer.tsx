@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { BOUNDS, DEFAULT_LAYOUT } from "../layout";
 import { useStore } from "../store";
+import { IconClose } from "../icons";
 import { Splitter } from "./Splitter";
 import { TerminalPanel } from "./TerminalPanel";
 
@@ -17,9 +18,12 @@ export function TerminalDrawerView(props: {
   onResize(height: number, persist: boolean): void;
   onClose(): void;
 }) {
-  const { open, height, terminals, current, renderPanel, onResize } = props;
+  const { open, height, terminals, current, renderPanel, onResize, onClose } = props;
   return (
     <section className="terminal-drawer" id="terminal-drawer" aria-label="Terminal" hidden={!open} style={{ height: open ? height : undefined }}>
+      <button type="button" className="icon-button terminal-close" aria-label="Close terminal" title="Close terminal (⌃`)" onClick={onClose}>
+        <IconClose />
+      </button>
       <Splitter
         orientation="horizontal"
         controls="terminal-drawer"

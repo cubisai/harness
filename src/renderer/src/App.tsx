@@ -22,6 +22,7 @@ import { ThreadView } from "./components/ThreadView";
 import { IconArrowLeft, IconDiff, IconFolder, IconGlobe, IconSparkle, IconTerminal } from "./icons";
 import { usePaneLayout } from "./hooks/usePaneLayout";
 import { BOUNDS, DEFAULT_LAYOUT, DESIGN_FLOOR, isWideInspector } from "./layout";
+import { ESCAPE_OWNERS, escapeStopsTurn, type EscapeTarget } from "./escape";
 import { inboxModel, nthVisibleThread, threadKind, waitingThreads } from "./sections";
 import { useSelectedThread, useStore } from "./store";
 
@@ -39,6 +40,7 @@ export function App() {
   const running = useStore((s) => (thread ? Boolean(s.running[thread.id]) : false));
   const { init, newThread, showInspector, updateThread, interrupt, addProject } = useStore.getState();
   const project = projects.find((p) => p.id === selectedProjectId) ?? null;
+  const initError = useStore((s) => s.initError);
 
   useEffect(() => {
     void init();
@@ -104,7 +106,7 @@ export function App() {
           void s.selectProject(target.projectId);
           void s.selectThread(target.id);
         }
-      } else if (e.key === "Escape" && running &&!document.querySelector(".skill-menu, .palette, .search-dialog, .sheet, .library")) {
+      } else if (escapeStopsTurn({ key: e.key, defaultPrevented: e.defaultPrevented, target: e.target as EscapeTarget | null }, running, document.querySelector(ESCAPE_OWNERS) !== null)) {
         void interrupt();
       }
     };
@@ -178,15 +180,27 @@ export function App() {
             </header>
 
             {!project ? (
-              <div className="empty">
-                <div>
-                  <h1>Welcome to CubiQ</h1>
-                  <p>Open a project folder to start. Claude works inside it, with the skilled workflow built in.</p>
-                  <button className="button primary" onClick={() => void addProject()}>
-                    <IconFolder /> Open Project…
-                  </button>
+              initError ? (
+                <div className="empty" role="alert">
+                  <div>
+                    <h1>CubiQ couldn't start</h1>
+                    <p>{initError}</p>
+                    <button className="button primary" onClick={() => void init()}>
+                      Try again
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="empty">
+                  <div>
+                    <h1>Welcome to CubiQ</h1>
+                    <p>Open a project folder to start. Claude works inside it, with the skilled workflow built in.</p>
+                    <button className="button primary" onClick={() => void addProject()}>
+                      <IconFolder /> Open Project…
+                    </button>
+                  </div>
+                </div>
+              )
             ) : !thread ? (
               <>
                 <div className="start-thread">
