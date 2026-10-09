@@ -491,6 +491,11 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
             const annotations = claudeAnnotations(questions, answer);
             return { behavior: "allow", updatedInput: { ...toolInput, answers: claudeAnswers(questions, answer), ...(annotations ? { annotations } : {}) } };
           }
+          // Full access means no cards: the CLI still routes Bash commands its
+          // shell parser can't read (heredocs, code from stdin) to this
+          // callback even under bypassPermissions, so answer them here. The
+          // git guard hook runs before this and still denies its commands.
+          if (input.permissionMode === "full") return { behavior: "allow", updatedInput: toolInput };
           const decision = await input.requestPermission({
             toolName,
             summary: summarizeToolInput(toolName, toolInput),

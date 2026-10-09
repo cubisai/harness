@@ -829,6 +829,45 @@ describe("Claude plan mode", () => {
   });
 });
 
+describe("Claude permission callback", () => {
+  type CanUseTool = (
+    name: string,
+    toolInput: Record<string, unknown>,
+    opts: { suggestions: unknown[] },
+  ) => Promise<{ behavior: string; message?: string }>;
+
+  async function gate(input: TurnInput): Promise<CanUseTool> {
+    sdk.calls.length = 0;
+    sdk.attempts.length = 0;
+    const d = createClaudeDriver({ pluginDir: () => null });
+    await d.runTurn(input);
+    return sdk.calls[0]!.options.canUseTool as CanUseTool;
+  }
+
+  // The CLI routes Bash commands its shell parser can't read (heredocs, code
+  // from stdin) to this callback even under bypassPermissions. Full access is
+  // the app's "run everything without asking", so it must answer, not card.
+  it("answers an unreadable Bash command itself in Full access, and asks in every other mode", async () => {
+    const { input } = turnInput();
+    const asked: string[] = [];
+    input.requestPermission = async (r) => {
+      asked.push(r.toolName);
+      return "allow-once";
+    };
+    const command = { command: "python3 - <<'EOF'\nprint(1)\nEOF" };
+
+    input.permissionMode = "full";
+    const full = await gate(input);
+    expect(await full("Bash", command, { suggestions: [] })).toMatchObject({ behavior: "allow" });
+    expect(asked).toEqual([]);
+
+    input.permissionMode = "ask";
+    const ask = await gate(input);
+    expect(await ask("Bash", command, { suggestions: [] })).toMatchObject({ behavior: "allow" });
+    expect(asked).toEqual(["Bash"]);
+  });
+});
+
 describe("harnessToolOptions", () => {
   const tool = (name: string, autoAllow = true): HarnessTool => ({ name, description: name, input: {}, autoAllow, run: async () => ({ text: "" }) });
 
