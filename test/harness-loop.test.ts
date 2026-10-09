@@ -175,11 +175,83 @@ describe("runLoop", () => {
     expect(two.events.at(-1)).toMatchObject({ kind: "notice", text: expect.stringMatching(/output limit/) });
   });
 
+  it("treats a prepare that aborts as a clean stop", async () => {
+    const s = script(text("never"));
+    const { input, events } = setup({
+      stream: s.stream,
+      prepare: async () => {
+        throw new LlmError("Stopped.", "aborted");
+      },
+    });
+    expect(await runLoop(input)).toMatchObject({ stop: "stopped", steps: 0 });
+    expect(events).toEqual([]);
+  });
+
   it("lets other model errors through", async () => {
     const failing = { stream: (async function* () {
       throw new LlmError("TokenHarbor: bad key.", "auth", 401);
     }) as LoopInput["stream"] };
     await expect(runLoop(setup({ stream: failing.stream }).input)).rejects.toMatchObject({ kind: "auth" });
+  });
+
+  it("runs prepare before each step and uses the in-place replacement it makes", async () => {
+    const s = script([call("c1", "read", { path: "a" })], text("done"));
+    const prepared: number[] = [];
+    let n = 0;
+    const { input, messages } = setup({
+      stream: s.stream,
+      tools: [tool("read", "read")],
+      prepare: async (msgs) => {
+        prepared.push(++n);
+        if (n === 1) msgs.splice(0, msgs.length, { role: "user", content: [{ type: "text", text: "prepared" }] });
+      },
+    });
+    await runLoop(input);
+    expect(prepared).toEqual([1, 2]);
+    expect(s.requests[0]!.messages).toEqual([{ role: "user", content: [{ type: "text", text: "prepared" }] }]);
+    expect(messages.map((m) => m.role)).toEqual(["user", "assistant", "tool", "assistant"]);
+  });
+
+  it("retries a step once after an overflow when onOverflow asks", async () => {
+    let calls = 0;
+    const requests: LlmRequest[] = [];
+    const stream = (async function* (_r: Route, req: LlmRequest): AsyncGenerator<LlmEvent> {
+      requests.push(req);
+      calls++;
+      if (calls === 1) throw new LlmError("too long", "overflow", 400);
+      yield { type: "finish", reason: "stop", message: text("recovered"), usage: usage(10) };
+    }) as LoopInput["stream"];
+    const seen: LlmMessage[][] = [];
+    const { input, events } = setup({ stream, onOverflow: async (m) => (seen.push([...m]), true) });
+    const r = await runLoop(input);
+    expect(r).toMatchObject({ stop: "done", steps: 1 });
+    expect(seen).toHaveLength(1);
+    expect(requests).toHaveLength(2);
+    expect(events).toEqual([{ kind: "assistant-text", text: "recovered", itemId: "t1-0-t" }]);
+  });
+
+  it("rethrows a second overflow instead of retrying again", async () => {
+    let calls = 0;
+    const stream = (async function* (): AsyncGenerator<LlmEvent> {
+      calls++;
+      throw new LlmError("still too long", "overflow", 400);
+    }) as LoopInput["stream"];
+    let overflowCalls = 0;
+    const { input } = setup({ stream, onOverflow: async () => (overflowCalls++, true) });
+    await expect(runLoop(input)).rejects.toMatchObject({ kind: "overflow" });
+    expect(overflowCalls).toBe(1);
+    expect(calls).toBe(2);
+  });
+
+  it("does not retry an overflow after a text delta streamed", async () => {
+    const stream = (async function* (): AsyncGenerator<LlmEvent> {
+      yield { type: "text-delta", text: "partial" };
+      throw new LlmError("too long", "overflow", 400);
+    }) as LoopInput["stream"];
+    let overflowCalls = 0;
+    const { input } = setup({ stream, onOverflow: async () => (overflowCalls++, true) });
+    await expect(runLoop(input)).rejects.toMatchObject({ kind: "overflow" });
+    expect(overflowCalls).toBe(0);
   });
 });
 

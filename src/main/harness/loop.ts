@@ -48,6 +48,10 @@ export interface LoopInput {
   emit: LoopEmitter;
   /** Every message the loop appends, for the session store. */
   onMessage(m: LlmMessage): void;
+  /** Runs before every model call, after the abort check; it may rewrite `messages` in place. */
+  prepare?(messages: LlmMessage[], last: LlmUsage | null): Promise<void>;
+  /** On an overflow before anything streamed; true retries the step once (a second overflow rethrows). */
+  onOverflow?(messages: LlmMessage[]): Promise<boolean>;
   /** Tests. */
   stream?: typeof streamLlm;
 }
@@ -88,6 +92,7 @@ export async function runLoop(input: LoopInput): Promise<LoopResult> {
   const recent: string[] = [];
   let usage = emptyUsage();
   let last: LlmUsage | null = null;
+  let overflowRetried = false;
 
   const append = (m: LlmMessage): void => {
     input.messages.push(m);
@@ -96,19 +101,34 @@ export async function runLoop(input: LoopInput): Promise<LoopResult> {
 
   for (let step = 0; step < maxSteps; step++) {
     if (input.signal.aborted) return { stop: "stopped", usage, last, steps: step };
+    if (input.prepare) {
+      try {
+        await input.prepare(input.messages, last);
+      } catch (err) {
+        // A stop that lands mid-prepare (compaction streaming) ends the turn
+        // cleanly instead of surfacing as an error.
+        if ((err instanceof LlmError && err.kind === "aborted") || input.signal.aborted) return { stop: "stopped", usage, last, steps: step };
+        throw err;
+      }
+    }
     const itemId = `${input.turnId}-${step}`;
     let liveText = "";
     let message: AssistantPart[] | null = null;
     let reason: string = "stop";
+    let streamedText = false;
+    let streamedToolInput = false;
 
     try {
       for await (const e of stream(input.route, { ...input.request, messages: input.messages, tools: definitions }, { signal: input.signal })) {
         if (e.type === "text-delta") {
+          streamedText = true;
           liveText += e.text;
           input.emit.textDelta(e.text, `${itemId}-t`);
         } else if (e.type === "reasoning-delta") input.emit.reasoningDelta(`${itemId}-r`, e.text);
-        else if (e.type === "tool-input-delta") input.emit.toolInputDelta(e.id, e.delta);
-        else if (e.type === "usage") input.emit.usage(add(usage, e.usage));
+        else if (e.type === "tool-input-delta") {
+          streamedToolInput = true;
+          input.emit.toolInputDelta(e.id, e.delta);
+        } else if (e.type === "usage") input.emit.usage(add(usage, e.usage));
         else {
           message = e.message;
           reason = e.reason;
@@ -124,6 +144,14 @@ export async function runLoop(input: LoopInput): Promise<LoopResult> {
           append({ role: "assistant", content: [{ type: "text", text: liveText }] });
         }
         return { stop: "stopped", usage, last, steps: step + 1 };
+      }
+      // An overflow with nothing streamed yet can be retried once, by compacting first.
+      if (err instanceof LlmError && err.kind === "overflow" && !streamedText && !streamedToolInput && input.onOverflow && !overflowRetried) {
+        overflowRetried = true;
+        if (await input.onOverflow(input.messages)) {
+          step--; // The retry isn't a step.
+          continue;
+        }
       }
       throw err;
     }

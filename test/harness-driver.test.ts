@@ -6,11 +6,12 @@ import { z } from "zod";
 import type { PermissionMode, Provider, ThreadEvent } from "../src/shared/types";
 import type { HarnessTool, TurnInput } from "../src/main/agents/types";
 import { BUILT_IN_GUARD } from "../src/main/guard";
-import { createProviderDriver, providerAgentId } from "../src/main/harness/driver";
+import { createProviderDriver, providerAgentId, type ProviderDriverDeps } from "../src/main/harness/driver";
 import { ProviderAgents } from "../src/main/harness/register";
 import { SessionStore, repairHistory } from "../src/main/harness/session";
+import { PRUNED_MARKER } from "../src/main/harness/context/prune";
 import type { Route } from "../src/main/harness/llm/client";
-import { emptyUsage, type AssistantPart, type LlmEvent, type LlmRequest } from "../src/main/harness/llm/types";
+import { LlmError, emptyUsage, type AssistantPart, type LlmEvent, type LlmMessage, type LlmRequest } from "../src/main/harness/llm/types";
 
 const dirs: string[] = [];
 const tmp = () => {
@@ -32,17 +33,41 @@ const provider = (over: Partial<Provider> = {}): Provider => ({
   ...over,
 });
 
+const SUMMARY_ANSWER = "## Objective\nx";
+
 function scripted(...answers: AssistantPart[][]) {
   const requests: LlmRequest[] = [];
+  let n = 0;
   const stream = async function* (_r: Route, req: LlmRequest): AsyncGenerator<LlmEvent> {
     requests.push(JSON.parse(JSON.stringify(req)) as LlmRequest);
-    const message = answers[Math.min(requests.length - 1, answers.length - 1)]!;
+    // A request with no tools is the compaction summariser.
+    if (req.tools.length === 0) {
+      yield { type: "finish", reason: "stop", message: [{ type: "text", text: SUMMARY_ANSWER }], usage: { ...emptyUsage(), inputTokens: 50, outputTokens: 10 } };
+      return;
+    }
+    const message = answers[Math.min(n++, answers.length - 1)]!;
     yield { type: "finish", reason: message.some((p) => p.type === "tool-call") ? "tool-calls" : "stop", message, usage: { ...emptyUsage(), inputTokens: 1000, outputTokens: 100 } };
   };
   return { stream, requests };
 }
 
-function setup(answers: AssistantPart[][], opts: { mode?: PermissionMode; decision?: "allow-once" | "deny"; tools?: HarnessTool[]; saved?: Provider | undefined } = {}) {
+/** A session with two user turns and big tool results, long enough to compact. */
+function seedSession(sessions: SessionStore, size = 40_000): string {
+  const id = sessions.create();
+  const big = "x".repeat(size);
+  sessions.append(id, { role: "user", content: [{ type: "text", text: "start" }] });
+  sessions.append(id, { role: "assistant", content: [{ type: "tool-call", id: "c1", name: "read", input: { path: "a" } }] });
+  sessions.append(id, { role: "tool", results: [{ callId: "c1", name: "read", text: big }] });
+  sessions.append(id, { role: "user", content: [{ type: "text", text: "more" }] });
+  sessions.append(id, { role: "assistant", content: [{ type: "tool-call", id: "c2", name: "read", input: { path: "b" } }] });
+  sessions.append(id, { role: "tool", results: [{ callId: "c2", name: "read", text: big }] });
+  return id;
+}
+
+function setup(
+  answers: AssistantPart[][],
+  opts: { mode?: PermissionMode; decision?: "allow-once" | "deny"; tools?: HarnessTool[]; saved?: Provider | undefined; skills?: (cwd: string, design: boolean) => HarnessTool | null; stream?: ProviderDriverDeps["stream"] } = {},
+) {
   const cwd = tmp();
   const data = tmp();
   const s = scripted(...answers);
@@ -58,7 +83,8 @@ function setup(answers: AssistantPart[][], opts: { mode?: PermissionMode; decisi
     guide: () => "GUIDE TEXT",
     memory: () => "MEMORY TEXT",
     mcpTools: () => [],
-    stream: s.stream,
+    ...(opts.skills ? { skills: opts.skills } : {}),
+    stream: opts.stream ?? s.stream,
   });
   const events: ThreadEvent[] = [];
   const asked: string[] = [];
@@ -92,15 +118,17 @@ describe("provider driver", () => {
     expect(driver.models()).toEqual([{ id: "deepseek-v4", label: "DeepSeek V4", contextWindow: 128_000, efforts: ["low", "medium", "high"], cost: { input: 1, output: 2 } }]);
     expect(driver.defaultModel).toBe("deepseek-v4");
     expect(driver.credentials?.byok).toBe(false);
+    expect(driver.capabilities.manualCompact).toBe(true);
+    expect(driver.skillsDelivery).toEqual({ mode: "tool", prefix: "", reads: [] });
   });
 
   it("runs a turn that writes a file, and persists the session for the next turn", async () => {
     const t = setup([[{ type: "tool-call", id: "c1", name: "write", input: { path: "hello.txt", content: "hi\n" } }], [{ type: "text", text: "Created hello.txt." }], [{ type: "text", text: "Still here." }]]);
     await t.driver.runTurn(t.input("make hello.txt"));
     expect(readFileSync(join(t.cwd, "hello.txt"), "utf8")).toBe("hi\n");
-    expect(t.events.map((e) => e.kind)).toEqual(["turn-start", "tool-use", "tool-result", "assistant-text", "turn-end"]);
-    expect(t.events[1]).toMatchObject({ name: "Write", summary: "hello.txt" });
-    expect(t.events[2]).toMatchObject({ isError: false, payload: { diff: [{ path: "hello.txt" }] } });
+    expect(t.events.map((e) => e.kind)).toEqual(["turn-start", "context-breakdown", "tool-use", "tool-result", "assistant-text", "turn-end"]);
+    expect(t.events[2]).toMatchObject({ name: "Write", summary: "hello.txt" });
+    expect(t.events[3]).toMatchObject({ isError: false, payload: { diff: [{ path: "hello.txt" }] } });
     const end = t.events.at(-1) as Extract<ThreadEvent, { kind: "turn-end" }>;
     expect(end).toMatchObject({ inputTokens: 2000, outputTokens: 200, costUsd: (2000 * 1 + 200 * 2) / 1e6, usage: { contextUsed: 1000, contextSize: 128_000 } });
 
@@ -183,6 +211,138 @@ describe("provider driver", () => {
     await t.driver.runTurn({ ...t.input("hi"), model: "gpt-5.5" });
     expect(t.requests[0]!.tools.map((x) => x.name)).toContain("apply_patch");
     expect(t.requests[0]!.tools.map((x) => x.name)).not.toContain("edit");
+  });
+
+  it("auto-compacts a long session before the call", async () => {
+    const t = setup([[{ type: "text", text: "done" }]], {
+      saved: provider({ models: [{ id: "deepseek-v4", name: "DeepSeek V4", capabilities: { tools: true, vision: false, reasoning: true }, contextWindow: 20_000, maxOutput: 8_000, cost: { input: 1, output: 2 } }] }),
+    });
+    const sid = seedSession(t.sessions);
+    await t.driver.runTurn(t.input("and now?", sid));
+    expect(t.events.find((e) => e.kind === "compaction")).toMatchObject({ trigger: "auto" });
+    const first = t.sessions.load(sid)![0]!;
+    const firstText = first.role === "user" ? first.content.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("") : "";
+    expect(firstText.startsWith("<conversation-summary>")).toBe(true);
+    expect(t.events.at(-1)).toMatchObject({ kind: "turn-end" });
+  });
+
+  it("prunes old tool output under a large reported context instead of compacting", async () => {
+    const requests: LlmRequest[] = [];
+    let n = 0;
+    const stream = (async function* (_r: Route, req: LlmRequest): AsyncGenerator<LlmEvent> {
+      requests.push(req);
+      if (req.tools.length === 0) {
+        yield { type: "finish", reason: "stop", message: [{ type: "text", text: SUMMARY_ANSWER }], usage: { ...emptyUsage(), inputTokens: 50, outputTokens: 10 } };
+        return;
+      }
+      n++;
+      const message: AssistantPart[] = n === 1 ? [{ type: "tool-call", id: "c9", name: "read", input: { path: "x" } }] : [{ type: "text", text: "done" }];
+      yield { type: "finish", reason: n === 1 ? "tool-calls" : "stop", message, usage: { ...emptyUsage(), inputTokens: n === 1 ? 400_000 : 500, outputTokens: 100 } };
+    }) as ProviderDriverDeps["stream"];
+    const t = setup([], { stream });
+    const sid = seedSession(t.sessions, 160_000);
+    await t.driver.runTurn(t.input("hi", sid));
+    // The old result is cleared and, because the estimate now fits, no summary call is made.
+    expect(requests.filter((r) => r.tools.length === 0)).toHaveLength(0);
+    expect(t.events.some((e) => e.kind === "compaction")).toBe(false);
+    expect(t.sessions.load(sid)![2]).toMatchObject({ role: "tool", results: [{ text: PRUNED_MARKER }] });
+  });
+
+  it("auto-compacts at most once when the kept tail alone still exceeds the limit", async () => {
+    const requests: LlmRequest[] = [];
+    let n = 0;
+    const stream = (async function* (_r: Route, req: LlmRequest): AsyncGenerator<LlmEvent> {
+      requests.push(req);
+      if (req.tools.length === 0) {
+        yield { type: "finish", reason: "stop", message: [{ type: "text", text: SUMMARY_ANSWER }], usage: { ...emptyUsage(), inputTokens: 50, outputTokens: 10 } };
+        return;
+      }
+      n++;
+      const message: AssistantPart[] = n <= 2 ? [{ type: "tool-call", id: `c${n}`, name: "read", input: { path: "x" } }] : [{ type: "text", text: "done" }];
+      yield { type: "finish", reason: n <= 2 ? "tool-calls" : "stop", message, usage: { ...emptyUsage(), inputTokens: 1000, outputTokens: 100 } };
+    }) as ProviderDriverDeps["stream"];
+    const t = setup([], {
+      stream,
+      saved: provider({ models: [{ id: "deepseek-v4", name: "DeepSeek V4", capabilities: { tools: true, vision: false, reasoning: true }, contextWindow: 20_000, maxOutput: 8_000, cost: { input: 1, output: 2 } }] }),
+    });
+    // The huge result sits between two user boundaries, so it stays in the kept
+    // tail: after one summary the history is still over the cap.
+    const sid = t.sessions.create();
+    const huge = "x".repeat(80_000);
+    const load = (m: LlmMessage) => t.sessions.append(sid, m);
+    load({ role: "user", content: [{ type: "text", text: "start" }] });
+    load({ role: "assistant", content: [{ type: "tool-call", id: "s1", name: "read", input: { path: "a" } }] });
+    load({ role: "tool", results: [{ callId: "s1", name: "read", text: "small" }] });
+    load({ role: "user", content: [{ type: "text", text: "more" }] });
+    load({ role: "assistant", content: [{ type: "tool-call", id: "s2", name: "read", input: { path: "b" } }] });
+    load({ role: "tool", results: [{ callId: "s2", name: "read", text: huge }] });
+    load({ role: "user", content: [{ type: "text", text: "final" }] });
+    load({ role: "assistant", content: [{ type: "tool-call", id: "s3", name: "read", input: { path: "c" } }] });
+    load({ role: "tool", results: [{ callId: "s3", name: "read", text: "small" }] });
+    await t.driver.runTurn(t.input("go", sid));
+    expect(requests.filter((r) => r.tools.length === 0)).toHaveLength(1);
+    expect(t.events.filter((e) => e.kind === "compaction")).toHaveLength(1);
+  });
+
+  it("compacts on /compact with a focus and runs no loop", async () => {
+    const t = setup([[{ type: "text", text: "should not run" }]]);
+    const sid = seedSession(t.sessions);
+    await t.driver.runTurn({ ...t.input("", sid), compact: { focus: "the auth flow" } });
+    expect(t.events.find((e) => e.kind === "compaction")).toMatchObject({ trigger: "manual" });
+    expect(t.events.at(-1)).toMatchObject({ kind: "turn-end" });
+    const summaryReq = t.requests.find((r) => r.tools.length === 0)!;
+    expect(summaryReq.messages[0]).toMatchObject({ role: "user", content: [{ type: "text", text: expect.stringContaining("the auth flow") }] });
+    expect(t.requests.every((r) => r.tools.length === 0)).toBe(true);
+  });
+
+  it("says nothing to compact for an unknown session", async () => {
+    const t = setup([]);
+    await t.driver.runTurn({ ...t.input("", "00000000-0000-0000-0000-000000000000"), compact: { focus: null } });
+    expect(t.events.map((e) => e.kind)).toEqual(["turn-start", "notice", "turn-end"]);
+    expect(t.events[1]).toMatchObject({ text: "Nothing to compact yet." });
+  });
+
+  it("compacts once and retries when the first call overflows", async () => {
+    let n = 0;
+    const stream = (async function* (_r: Route, req: LlmRequest): AsyncGenerator<LlmEvent> {
+      if (req.tools.length === 0) {
+        yield { type: "finish", reason: "stop", message: [{ type: "text", text: SUMMARY_ANSWER }], usage: { ...emptyUsage(), inputTokens: 50, outputTokens: 10 } };
+        return;
+      }
+      n++;
+      if (n === 1) throw new LlmError("too long", "overflow", 400);
+      yield { type: "finish", reason: "stop", message: [{ type: "text", text: "done" }], usage: { ...emptyUsage(), inputTokens: 1000, outputTokens: 100 } };
+    }) as ProviderDriverDeps["stream"];
+    const t = setup([], { stream });
+    const sid = seedSession(t.sessions);
+    await t.driver.runTurn(t.input("hi", sid));
+    expect(t.events.filter((e) => e.kind === "compaction")).toHaveLength(1);
+    expect(t.events.some((e) => e.kind === "assistant-text")).toBe(true);
+    expect(t.events.at(-1)).toMatchObject({ kind: "turn-end" });
+  });
+
+  it("emits the context breakdown on the first turn only", async () => {
+    const t = setup([[{ type: "text", text: "one" }], [{ type: "text", text: "two" }]]);
+    await t.driver.runTurn(t.input("hi"));
+    expect(t.events.some((e) => e.kind === "context-breakdown")).toBe(true);
+    const sid = t.session()!;
+    t.events.length = 0;
+    await t.driver.runTurn(t.input("again", sid));
+    expect(t.events.some((e) => e.kind === "context-breakdown")).toBe(false);
+  });
+
+  it("appends the skills tool to the request", async () => {
+    const skill: HarnessTool = { name: "skill", description: "Load a skill", input: { name: z.string() }, autoAllow: true, run: async () => ({ text: "<skill/>" }) };
+    const t = setup([[{ type: "text", text: "ok" }]], { skills: () => skill });
+    await t.driver.runTurn(t.input("hi"));
+    expect(t.requests[0]!.tools.map((x) => x.name)).toContain("skill");
+  });
+
+  it("folds AGENTS.md into the system prompt", async () => {
+    const t = setup([[{ type: "text", text: "ok" }]]);
+    writeFileSync(join(t.cwd, "AGENTS.md"), "PROJECT RULES\n");
+    await t.driver.runTurn(t.input("hi"));
+    expect(t.requests[0]!.system.join("\n")).toContain("Project instructions from AGENTS.md:\n\nPROJECT RULES");
   });
 });
 

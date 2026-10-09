@@ -780,6 +780,11 @@ async function main(): Promise<void> {
     memory: memoryPromptFor,
     // The project's MCP servers through the app's router (search_tools / call_mcp_tool).
     mcpTools: (projectId) => (mcpScopes.effective(projectId ?? null).length ? routedTools(projectId) : []),
+    // The project's model-invoked skills as a `skill` tool, when it has any.
+    skills: (cwd, design) => {
+      const list = forAgent(skills.forProject(cwd), { mode: "tool", reads: [] }, new Set(), { design });
+      return list.length ? skillTool(() => list) : null;
+    },
   });
   const syncProviderAgents = () => service.syncDrivers(PROVIDER_AGENT_PREFIX, providerAgents.list());
   syncProviderAgents();

@@ -10,11 +10,15 @@ import type { AgentDriver, HarnessTool, TurnInput } from "../agents/types";
 import { normalizeUsage } from "../usage";
 import { wireIdOf } from "../providers";
 import { routeFor, streamLlm } from "./llm/client";
-import { LlmError, type Effort, type HarnessProtocol, type LlmMessage, type LlmUsage } from "./llm/types";
+import { emptyUsage, LlmError, type Effort, type HarnessProtocol, type LlmMessage, type LlmUsage } from "./llm/types";
 import { runLoop, type Authorization, type LoopTool } from "./loop";
 import { decide, refusal } from "./permissions";
 import { systemPrompt } from "./prompt";
 import { SessionStore, repairHistory } from "./session";
+import { compactedHistory, splitForCompaction, summaryPrompt } from "./context/compact";
+import { estimateMessages, estimateText } from "./context/estimate";
+import { contextFiles } from "./context/files";
+import { pruneToolOutputs } from "./context/prune";
 import { nativeTools, shellFor, todosOf, type NativeTool, type ToolContext } from "./tools";
 import { resolvePath } from "./tools/paths";
 
@@ -35,6 +39,8 @@ export interface ProviderDriverDeps {
   memory(projectId: string): string | null;
   /** The app's MCP router tools (search_tools / call_mcp_tool) for a project; empty when it has no servers. */
   mcpTools(projectId?: string): HarnessTool[];
+  /** The model-invoked skills tool for this folder, or null when there are none. */
+  skills?(cwd: string, design: boolean): HarnessTool | null;
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform;
   /** Tests. */
@@ -43,6 +49,15 @@ export interface ProviderDriverDeps {
 
 const EFFORTS = ["low", "medium", "high"];
 
+/** Sum two usages, keeping "never reported" (null) distinct from zero. */
+const addUsage = (a: LlmUsage, b: LlmUsage): LlmUsage => ({
+  inputTokens: a.inputTokens + b.inputTokens,
+  outputTokens: a.outputTokens + b.outputTokens,
+  cacheReadTokens: a.cacheReadTokens === null && b.cacheReadTokens === null ? null : (a.cacheReadTokens ?? 0) + (b.cacheReadTokens ?? 0),
+  cacheWriteTokens: a.cacheWriteTokens === null && b.cacheWriteTokens === null ? null : (a.cacheWriteTokens ?? 0) + (b.cacheWriteTokens ?? 0),
+  reasoningTokens: a.reasoningTokens === null && b.reasoningTokens === null ? null : (a.reasoningTokens ?? 0) + (b.reasoningTokens ?? 0),
+});
+
 const CAPABILITIES = withCapabilities(SAFE_DEFAULTS, {
   resume: true,
   interrupt: true,
@@ -50,6 +65,7 @@ const CAPABILITIES = withCapabilities(SAFE_DEFAULTS, {
   vision: true,
   liveReasoning: true,
   preToolGuard: true,
+  manualCompact: true,
   permissionGranularity: "perTool",
   guardEnforcement: { ask: "block", "auto-edit": "block", plan: "block", full: "block" },
   seeding: "first-message",
@@ -87,7 +103,7 @@ export function createProviderDriver(providerId: string, deps: ProviderDriverDep
     capabilities: CAPABILITIES,
     // No credential row: a provider agent always uses its own key.
     credentials: { byok: false, own: "config", injector: "acp" },
-    skillsDelivery: { mode: "none" },
+    skillsDelivery: { mode: "tool", prefix: "", reads: [] },
     skillCallPrefix: "",
     async runTurn(input) {
       const started = Date.now();
@@ -121,47 +137,112 @@ async function runTurn(
   if (!provider) throw new Error("This provider was removed in Settings. Pick another agent for this thread.");
   const protocol = protocolOf(provider);
   if (!protocol) throw new Error(`${provider.label} speaks the Gemini protocol, which CubiQ's own agent doesn't support yet.`);
-  if (input.compact) {
-    input.onEvent({ kind: "notice", text: "Compacting isn't available for this agent yet." });
-    input.onEvent({ kind: "turn-end", costUsd: null, inputTokens: 0, outputTokens: 0, durationMs: Date.now() - started });
-    return;
-  }
   const entry = provider.models.find((m) => m.id === input.model) ?? provider.models[0];
   if (!entry) throw new Error(`${provider.label} has no models saved. Add one in Settings → Providers.`);
   const wire = wireIdOf(entry, entry.id);
   const env = deps.env ?? process.env;
   const platform = deps.platform ?? process.platform;
   const route = routeFor(provider, protocol, wire, deps.secret(), deps.secretHeaders(), env);
-
-  // The session: resume the stored history, or start one (seeded by a handoff when the old one is gone).
-  let sessionId = input.sessionId;
-  let history = sessionId ? deps.sessions.load(sessionId) : null;
-  let prompt = input.prompt;
-  if (!sessionId || !history) {
-    const lostReason = sessionId ? "The session's history file is gone." : null;
-    sessionId = deps.sessions.create();
-    history = [];
-    if (lostReason) {
-      const seed = await input.onSessionLost?.(lostReason);
-      if (seed && "promptPrefix" in seed) prompt = `${seed.promptPrefix}\n\n${prompt}`;
-    }
-    input.onSession(sessionId);
-  }
-  const messages = repairHistory(history);
-  const sid = sessionId;
-  const userMessage: LlmMessage = { role: "user", content: [{ type: "text", text: prompt }] };
-  messages.push(userMessage);
-  deps.sessions.append(sid, userMessage);
-
   const shell = shellFor(platform, env).name;
+  const guide = deps.guide(input.cwd, input.design);
+  const memory = input.projectId ? deps.memory(input.projectId) : null;
+  const files = contextFiles(input.cwd);
   const system = systemPrompt({
     cwd: input.cwd,
     platform,
     shell,
     model: entry.name ?? entry.id,
-    guide: deps.guide(input.cwd, input.design),
-    memory: input.projectId ? deps.memory(input.projectId) : null,
+    modelId: wire,
+    guide,
+    memory,
+    contextFiles: files,
   });
+
+  const contextSize = provider.contextWindowOverride ?? entry.contextWindow;
+  const costOf = (u: LlmUsage): number | null =>
+    entry.cost ? (u.inputTokens * entry.cost.input + (u.cacheReadTokens ?? 0) * (entry.cost.cacheRead ?? entry.cost.input) + (u.cacheWriteTokens ?? 0) * entry.cost.input + u.outputTokens * entry.cost.output) / 1e6 : null;
+  const contextOf = (u: LlmUsage): number => u.inputTokens + (u.cacheReadTokens ?? 0) + (u.cacheWriteTokens ?? 0);
+  // The summary call's usage, folded into the turn's reported usage and cost.
+  let extraUsage = emptyUsage();
+  // The estimate right after the last auto compaction, so a turn doesn't compact
+  // again until the history has grown meaningfully past that point.
+  let compactedAt: number | null = null;
+
+  // /compact works on an existing session; a normal turn resumes one or starts a new one.
+  let sid: string;
+  let messages: LlmMessage[];
+  let createdNew = false;
+  if (input.compact) {
+    const loaded = input.sessionId ? deps.sessions.load(input.sessionId) : null;
+    if (!input.sessionId || !loaded || loaded.length === 0) {
+      input.onEvent({ kind: "notice", text: "Nothing to compact yet." });
+      input.onEvent({ kind: "turn-end", costUsd: null, inputTokens: 0, outputTokens: 0, durationMs: Date.now() - started });
+      return;
+    }
+    sid = input.sessionId;
+    messages = repairHistory(loaded);
+  } else {
+    let sessionId = input.sessionId;
+    let history = sessionId ? deps.sessions.load(sessionId) : null;
+    let prompt = input.prompt;
+    if (!sessionId || !history) {
+      const lostReason = sessionId ? "The session's history file is gone." : null;
+      sessionId = deps.sessions.create();
+      history = [];
+      createdNew = true;
+      if (lostReason) {
+        const seed = await input.onSessionLost?.(lostReason);
+        if (seed && "promptPrefix" in seed) prompt = `${seed.promptPrefix}\n\n${prompt}`;
+      }
+      input.onSession(sessionId);
+    }
+    sid = sessionId;
+    messages = repairHistory(history);
+    const userMessage: LlmMessage = { role: "user", content: [{ type: "text", text: prompt }] };
+    messages.push(userMessage);
+    deps.sessions.append(sid, userMessage);
+  }
+
+  // Summarise the head of the history into one message, keep the tail verbatim.
+  const compact = async (trigger: "manual" | "auto" | "unknown", focus: string | null): Promise<boolean> => {
+    const { head, tail } = splitForCompaction(messages);
+    if (head.length === 0) return false;
+    const p = summaryPrompt(head, { focus, maxTokens: contextSize ? Math.floor(contextSize * 0.6) : 60_000 });
+    const preTokens = estimateMessages(messages);
+    let summary = "";
+    for await (const e of (deps.stream ?? streamLlm)(
+      route,
+      {
+        model: wire,
+        system: [p.system],
+        messages: [{ role: "user", content: [{ type: "text", text: p.user }] }],
+        tools: [],
+        maxTokens: Math.min(entry.maxOutput ?? 8_000, 8_000),
+        reasoning: false,
+        cacheKey: sid,
+      },
+      { signal: input.signal },
+    )) {
+      if (e.type === "finish") {
+        summary = e.message.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
+        extraUsage = addUsage(extraUsage, e.usage);
+      }
+    }
+    if (!summary.trim()) throw new Error("Compacting failed: the model returned an empty summary.");
+    const next = compactedHistory(summary, tail);
+    messages.splice(0, messages.length, ...next);
+    deps.sessions.replace(sid, messages);
+    if (trigger === "auto") compactedAt = estimateMessages(messages);
+    input.onEvent({ kind: "compaction", trigger, preTokens, postTokens: estimateMessages(messages) });
+    return true;
+  };
+
+  if (input.compact) {
+    const ok = await compact("manual", input.compact.focus);
+    if (!ok) input.onEvent({ kind: "notice", text: "The conversation is too short to compact." });
+    input.onEvent({ kind: "turn-end", costUsd: costOf(extraUsage), inputTokens: extraUsage.inputTokens, outputTokens: extraUsage.outputTokens, durationMs: Date.now() - started });
+    return;
+  }
 
   let reads = readsBySession.get(sid);
   if (!reads) readsBySession.set(sid, (reads = new Map<string, number>()));
@@ -176,10 +257,27 @@ async function runTurn(
     env,
     platform,
   });
-  const tools = [
-    ...nativeTools(wire).map((t) => nativeLoopTool(t, toolCtx, input)),
-    ...[...input.tools, ...deps.mcpTools(input.projectId)].map((t) => appLoopTool(t, input)),
-  ].filter((t, i, all) => all.findIndex((o) => o.definition.name === t.definition.name) === i);
+  const nativeLoop = nativeTools(wire).map((t) => nativeLoopTool(t, toolCtx, input));
+  const appTools = [...input.tools, ...deps.mcpTools(input.projectId)].map((t) => appLoopTool(t, input));
+  const skill = deps.skills?.(input.cwd, Boolean(input.design)) ?? null;
+  const skillLoop = skill ? appLoopTool(skill, input) : null;
+  const tools = [...nativeLoop, ...appTools, ...(skillLoop ? [skillLoop] : [])].filter((t, i, all) => all.findIndex((o) => o.definition.name === t.definition.name) === i);
+
+  // A brand-new session's first turn gets a one-line token breakdown of what it starts with.
+  if (createdNew) {
+    const rows: { label: string; tokens: number }[] = [];
+    const push = (label: string, tokens: number): void => {
+      if (tokens > 0) rows.push({ label, tokens });
+    };
+    push("System prompt", estimateText(system[0] ?? ""));
+    push("Guide", estimateText(guide ?? ""));
+    push("Project files", files.reduce((n, f) => n + estimateText(f.text), 0));
+    push("Memory", estimateText(memory ?? ""));
+    push("Tools", estimateText(JSON.stringify(nativeLoop.map((t) => t.definition))));
+    push("App tools", estimateText(JSON.stringify(appTools.map((t) => t.definition))));
+    push("Skills", skillLoop ? estimateText(JSON.stringify(skillLoop.definition)) : 0);
+    input.onEvent({ kind: "context-breakdown", rows, total: rows.reduce((n, r) => n + r.tokens, 0), estimated: true });
+  }
 
   const authorize = async (tool: LoopTool, args: Record<string, unknown>, summary: string): Promise<Authorization> => {
     const verdict = decide(input.permissionMode, tool.access, tool.outside?.(args) ?? false);
@@ -189,10 +287,25 @@ async function runTurn(
     return decision === "deny" ? { ok: false, reason: refusal(input.permissionMode, "denied-by-user") } : { ok: true };
   };
 
-  const contextSize = provider.contextWindowOverride ?? entry.contextWindow;
-  const costOf = (u: LlmUsage): number | null =>
-    entry.cost ? (u.inputTokens * entry.cost.input + (u.cacheReadTokens ?? 0) * (entry.cost.cacheRead ?? entry.cost.input) + (u.cacheWriteTokens ?? 0) * entry.cost.input + u.outputTokens * entry.cost.output) / 1e6 : null;
-  const contextOf = (u: LlmUsage): number => u.inputTokens + (u.cacheReadTokens ?? 0) + (u.cacheWriteTokens ?? 0);
+  // Auto-compaction: keep the real context under this cap by pruning, then summarising.
+  const definitions = tools.map((t) => t.definition);
+  const overhead = estimateText(system.join("\n")) + estimateText(JSON.stringify(definitions));
+  const limit = contextSize > 0 ? Math.max(Math.floor(contextSize * 0.75), contextSize - 20_000) : null;
+  const prepareFor = (cap: number) =>
+    async (msgs: LlmMessage[], last: LlmUsage | null): Promise<void> => {
+      // The previous call's real context is only good for deciding whether to
+      // act: it was measured before pruning, so it can't judge the result.
+      if (Math.max(estimateMessages(msgs) + overhead, last ? contextOf(last) : 0) <= cap) return;
+      const pruned = pruneToolOutputs(msgs);
+      if (pruned.pruned > 0) {
+        msgs.splice(0, msgs.length, ...pruned.messages);
+        deps.sessions.replace(sid, msgs);
+      }
+      if (estimateMessages(msgs) + overhead <= cap) return;
+      // Don't auto-compact again until the history grows past the last summary.
+      if (compactedAt !== null && estimateMessages(msgs) < compactedAt + Math.floor(cap * 0.2)) return;
+      await compact("auto", null);
+    };
 
   const result = await runLoop({
     route,
@@ -227,12 +340,15 @@ async function runTurn(
         }),
     },
     onMessage: (m) => deps.sessions.append(sid, m),
+    ...(limit !== null ? { prepare: prepareFor(limit) } : {}),
+    onOverflow: () => compact("auto", null),
     ...(deps.stream ? { stream: deps.stream } : {}),
   });
 
   if (result.stop === "stopped") input.onEvent({ kind: "notice", text: "Stopped." });
-  const usage = { ...normalizeUsage(result.usage), ...(result.last ? { contextUsed: contextOf(result.last) } : {}), contextSize };
-  input.onEvent({ kind: "turn-end", costUsd: costOf(result.usage), inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, durationMs: Date.now() - started, usage });
+  const totalUsage = addUsage(result.usage, extraUsage);
+  const usage = { ...normalizeUsage(totalUsage), ...(result.last ? { contextUsed: contextOf(result.last) } : {}), contextSize };
+  input.onEvent({ kind: "turn-end", costUsd: costOf(totalUsage), inputTokens: totalUsage.inputTokens, outputTokens: totalUsage.outputTokens, durationMs: Date.now() - started, usage });
 }
 
 /** A built-in tool in the loop; TodoWrite also updates the thread's plan. */
