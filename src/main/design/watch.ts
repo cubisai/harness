@@ -1,5 +1,5 @@
-import { mkdirSync, rmdirSync, watch as fsWatch } from "node:fs";
-import { dirname, relative } from "node:path";
+import { existsSync, mkdirSync, rmdirSync, watch as fsWatch } from "node:fs";
+import { dirname, isAbsolute, relative } from "node:path";
 
 /** The watcher a {@link DesignWatcher} holds, opened by the injected `watchFn`. */
 export interface WatchHandle {
@@ -56,7 +56,8 @@ export class DesignWatcher {
     let handle: WatchHandle;
     let created: string | null = null;
     try {
-      created = mkdirSync(dir, { recursive: true }) ?? null;
+      created = firstCreated(dir);
+      mkdirSync(dir, { recursive: true });
       handle = this.watchFn(dir, () => this.bump(threadId));
     } catch (err) {
       console.warn(`DesignWatcher: can't watch ${dir}`, err);
@@ -136,12 +137,31 @@ export class DesignWatcher {
 }
 
 /**
+ * The topmost folder `mkdirSync(dir, { recursive: true })` would create: the
+ * shallowest missing ancestor. Computed from `dir` itself, not from the value
+ * `mkdirSync` returns (its spelling differs on Windows, which made
+ * `removeEmpty` keep walking past the folder the watch actually created).
+ */
+function firstCreated(dir: string): string | null {
+  const missing: string[] = [];
+  for (let d = dir; !existsSync(d); ) {
+    missing.push(d);
+    const parent = dirname(d);
+    if (parent === d) return null;
+    d = parent;
+  }
+  return missing.at(-1) ?? null;
+}
+
+/**
  * Remove `dir` and its parents up to `top` (the folder the watch created) while they're empty, so a design thread
  * that never wrote anything leaves no empty `designs/<id>` behind. A folder with anything in it stays.
  */
 function removeEmpty(dir: string, top: string): void {
   for (let d = dir; ; d = dirname(d)) {
-    if (relative(top, d).startsWith("..")) return;
+    const rel = relative(top, d);
+    // Above the topmost folder we created, or sharing no root with it: stop.
+    if (rel.startsWith("..") || isAbsolute(rel)) return;
     try {
       rmdirSync(d);
     } catch {
