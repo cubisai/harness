@@ -155,7 +155,7 @@ describe("SettingsStore", () => {
     const file = fresh();
     writeFileSync(file, JSON.stringify({ secrets: { deepseek: box.encrypt("test-deepseek-key") } }));
     const s = new SettingsStore(file, box);
-    expect(s.credential("deepseek")).toEqual({ kind: "byok", providerId: "deepseek" });
+    expect(s.view().providerCredential.deepseek).toEqual({ kind: "byok", providerId: "deepseek" });
     expect(s.providerSecret("deepseek")).toBe("test-deepseek-key");
     const disk = JSON.parse(readFileSync(file, "utf-8"));
     expect(disk.schemaVersion).toBe(3);
@@ -166,7 +166,7 @@ describe("SettingsStore", () => {
     const file = fresh();
     writeFileSync(file, JSON.stringify({ schemaVersion: 2, providers: [deepseekProvider()] }));
     const s = new SettingsStore(file, box);
-    expect(s.credential("deepseek")).toEqual({ kind: "byok", providerId: "deepseek" });
+    expect(s.credential("deepseek")).toEqual({ kind: "subscription" });
     expect(s.view().providerCredential.deepseek).toEqual({ kind: "byok", providerId: "deepseek" });
     expect(JSON.parse(readFileSync(file, "utf-8")).schemaVersion).toBe(3);
   });
@@ -202,13 +202,15 @@ describe("SettingsStore", () => {
     expect(() => new SettingsStore(fresh(), box).setProviderSecret("nope", "x")).toThrow(/unknown provider nope/);
   });
 
-  // T1.4 — subscription by default, except the migrated anthropic key for Claude.
-  it("defaults every agent to subscription, changing only Claude's migrated key", () => {
+  // T1.4 — subscription by default, and now for every agent: a stored choice is ignored.
+  it("returns subscription for every agent, whatever choice is stored", () => {
     const freshStore = new SettingsStore(fresh(), box);
     expect(freshStore.credential("claude")).toEqual({ kind: "subscription" });
     expect(freshStore.credential("opencode")).toEqual({ kind: "subscription" });
     const migrated = new SettingsStore(legacyFixture(), box);
-    expect(migrated.credential("claude")).toEqual({ kind: "byok", providerId: "anthropic" });
+    // The migration still stores Claude's key choice; credential() no longer surfaces it.
+    expect(migrated.view().providerCredential.claude).toEqual({ kind: "byok", providerId: "anthropic" });
+    expect(migrated.credential("claude")).toEqual({ kind: "subscription" });
   });
 
   // T1.9 — the whole view payload is secret-free.

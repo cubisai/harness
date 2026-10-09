@@ -1,0 +1,219 @@
+// The agent loop: call the model, show what it says, run the tools it asks for,
+// feed the results back, repeat until it answers without tools. Read-only calls
+// in a row run together; edits and commands run one at a time, in order.
+// History stays valid on every exit: each tool call gets a result.
+
+import type { ThreadEvent } from "../../shared/types";
+import { streamLlm, type Route } from "./llm/client";
+import type { AssistantPart, LlmMessage, LlmRequest, LlmUsage, ToolCallPart, ToolDefinition, ToolResult as LlmToolResult } from "./llm/types";
+import { LlmError, emptyUsage } from "./llm/types";
+import { ToolError, type ToolAccess, type ToolResult } from "./tools/types";
+
+/** A tool as the loop sees it: the harness's own, or an app tool adapted. */
+export interface LoopTool {
+  definition: ToolDefinition;
+  displayName: string;
+  access: ToolAccess;
+  summarize(args: Record<string, unknown>): string;
+  /** The tool-use payload the thread shows; the arguments when absent. */
+  inputPayload?(args: Record<string, unknown>): unknown;
+  /** True when the call reaches outside the thread's folder (edits there ask). */
+  outside?(args: Record<string, unknown>): boolean;
+  run(args: Record<string, unknown>, call: { id: string; signal: AbortSignal; onOutput(text: string): void }): Promise<ToolResult>;
+}
+
+export interface LoopEmitter {
+  event(e: ThreadEvent): void;
+  textDelta(text: string, itemId: string): void;
+  reasoningDelta(itemId: string, text: string): void;
+  toolInputDelta(toolUseId: string, text: string): void;
+  toolOutputDelta(toolUseId: string, text: string): void;
+  usage(u: LlmUsage): void;
+}
+
+export type Authorization = { ok: true } | { ok: false; reason: string };
+
+export interface LoopInput {
+  route: Route;
+  request: Omit<LlmRequest, "messages" | "tools">;
+  /** The history, the new user message last; the loop appends to it. */
+  messages: LlmMessage[];
+  tools: LoopTool[];
+  signal: AbortSignal;
+  /** An id for this turn's live items. */
+  turnId: string;
+  maxSteps?: number;
+  /** Decide (and ask the user when the mode says so) before a call runs. */
+  authorize(tool: LoopTool, args: Record<string, unknown>, summary: string): Promise<Authorization>;
+  emit: LoopEmitter;
+  /** Every message the loop appends, for the session store. */
+  onMessage(m: LlmMessage): void;
+  /** Tests. */
+  stream?: typeof streamLlm;
+}
+
+export type LoopStop = "done" | "max-steps" | "stopped" | "length" | "refusal";
+
+export interface LoopResult {
+  stop: LoopStop;
+  /** Summed over every call of the turn. */
+  usage: LlmUsage;
+  /** The last call's usage: what the context holds now. */
+  last: LlmUsage | null;
+  steps: number;
+}
+
+export const DEFAULT_MAX_STEPS = 100;
+const DOOM_REPEATS = 3;
+const READ_CONCURRENCY = 8;
+
+const add = (a: LlmUsage, b: LlmUsage): LlmUsage => ({
+  inputTokens: a.inputTokens + b.inputTokens,
+  outputTokens: a.outputTokens + b.outputTokens,
+  cacheReadTokens: a.cacheReadTokens === null && b.cacheReadTokens === null ? null : (a.cacheReadTokens ?? 0) + (b.cacheReadTokens ?? 0),
+  cacheWriteTokens: a.cacheWriteTokens === null && b.cacheWriteTokens === null ? null : (a.cacheWriteTokens ?? 0) + (b.cacheWriteTokens ?? 0),
+  reasoningTokens: a.reasoningTokens === null && b.reasoningTokens === null ? null : (a.reasoningTokens ?? 0) + (b.reasoningTokens ?? 0),
+});
+
+const oneLine = (text: string, max = 160): string => {
+  const line = text.trim().split("\n")[0] ?? "";
+  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+};
+
+export async function runLoop(input: LoopInput): Promise<LoopResult> {
+  const stream = input.stream ?? streamLlm;
+  const maxSteps = input.maxSteps ?? DEFAULT_MAX_STEPS;
+  const byName = new Map(input.tools.map((t) => [t.definition.name, t]));
+  const definitions = input.tools.map((t) => t.definition);
+  const recent: string[] = [];
+  let usage = emptyUsage();
+  let last: LlmUsage | null = null;
+
+  const append = (m: LlmMessage): void => {
+    input.messages.push(m);
+    input.onMessage(m);
+  };
+
+  for (let step = 0; step < maxSteps; step++) {
+    if (input.signal.aborted) return { stop: "stopped", usage, last, steps: step };
+    const itemId = `${input.turnId}-${step}`;
+    let liveText = "";
+    let message: AssistantPart[] | null = null;
+    let reason: string = "stop";
+
+    try {
+      for await (const e of stream(input.route, { ...input.request, messages: input.messages, tools: definitions }, { signal: input.signal })) {
+        if (e.type === "text-delta") {
+          liveText += e.text;
+          input.emit.textDelta(e.text, `${itemId}-t`);
+        } else if (e.type === "reasoning-delta") input.emit.reasoningDelta(`${itemId}-r`, e.text);
+        else if (e.type === "tool-input-delta") input.emit.toolInputDelta(e.id, e.delta);
+        else if (e.type === "usage") input.emit.usage(add(usage, e.usage));
+        else {
+          message = e.message;
+          reason = e.reason;
+          usage = add(usage, e.usage);
+          last = e.usage;
+        }
+      }
+    } catch (err) {
+      if (err instanceof LlmError && err.kind === "aborted") {
+        // Keep what was already said, so the conversation reads on from it.
+        if (liveText.trim()) {
+          input.emit.event({ kind: "assistant-text", text: liveText, itemId: `${itemId}-t` });
+          append({ role: "assistant", content: [{ type: "text", text: liveText }] });
+        }
+        return { stop: "stopped", usage, last, steps: step + 1 };
+      }
+      throw err;
+    }
+    if (!message) throw new LlmError(`${input.route.label} ended the answer early.`, "transient");
+
+    showMessage(input.emit, message, itemId);
+    append({ role: "assistant", content: message });
+    const calls = message.filter((p): p is ToolCallPart => p.type === "tool-call");
+    if (calls.length === 0) {
+      if (reason === "length") {
+        input.emit.event({ kind: "notice", text: "The answer stopped at the model's output limit." });
+        return { stop: "length", usage, last, steps: step + 1 };
+      }
+      return { stop: reason === "refusal" ? "refusal" : "done", usage, last, steps: step + 1 };
+    }
+
+    const results = await runCalls(input, calls, byName, recent);
+    append({ role: "tool", results });
+    if (input.signal.aborted) return { stop: "stopped", usage, last, steps: step + 1 };
+  }
+  input.emit.event({ kind: "notice", text: `Stopped after ${maxSteps} steps. Send a message to let it continue.` });
+  return { stop: "max-steps", usage, last, steps: maxSteps };
+}
+
+/** The finished message as thread events: thinking, the text (clearing its live item), each call. */
+function showMessage(emit: LoopEmitter, message: AssistantPart[], itemId: string): void {
+  const thought = message.flatMap((p) => (p.type === "reasoning" && p.text ? [p.text] : [])).join("\n\n");
+  if (thought) emit.event({ kind: "thinking", text: thought, itemId: `${itemId}-r` });
+  const text = message.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("");
+  if (text.trim()) emit.event({ kind: "assistant-text", text, itemId: `${itemId}-t` });
+}
+
+type Planned = { call: ToolCallPart; tool: LoopTool | undefined };
+
+async function runCalls(input: LoopInput, calls: ToolCallPart[], byName: Map<string, LoopTool>, recent: string[]): Promise<LlmToolResult[]> {
+  const planned: Planned[] = calls.map((call) => ({ call, tool: byName.get(call.name) }));
+  for (const { call, tool } of planned) {
+    const summary = tool ? safeSummary(tool, call.input) : call.name;
+    input.emit.event({ kind: "tool-use", toolUseId: call.id, name: tool?.displayName ?? call.name, summary, payload: tool?.inputPayload ? tool.inputPayload(call.input) : call.input });
+  }
+
+  const results: LlmToolResult[] = new Array(planned.length);
+  let i = 0;
+  while (i < planned.length) {
+    if (input.signal.aborted) {
+      for (; i < planned.length; i++) results[i] = finish(input, planned[i]!, { text: "Interrupted by the user.", isError: true });
+      break;
+    }
+    // A run of read-only calls goes together; anything else runs alone.
+    let j = i + 1;
+    if (planned[i]!.tool?.access === "read") while (j < planned.length && j - i < READ_CONCURRENCY && planned[j]!.tool?.access === "read") j++;
+    const batch = planned.slice(i, j);
+    const done = await Promise.all(batch.map((p) => runOne(input, p, recent)));
+    done.forEach((r, k) => (results[i + k] = finish(input, batch[k]!, r)));
+    i = j;
+  }
+  return results;
+}
+
+function safeSummary(tool: LoopTool, args: Record<string, unknown>): string {
+  try {
+    return oneLine(tool.summarize(args));
+  } catch {
+    return tool.displayName;
+  }
+}
+
+async function runOne(input: LoopInput, { call, tool }: Planned, recent: string[]): Promise<ToolResult> {
+  if (!tool) return { text: `There's no tool named "${call.name}". Use one of: ${[...input.tools.map((t) => t.definition.name)].join(", ")}.`, isError: true };
+  if (call.invalidInput !== undefined) return { text: `The arguments weren't valid JSON: ${call.invalidInput.slice(0, 200)}. Send them again as a JSON object.`, isError: true };
+
+  const signature = `${call.name}:${JSON.stringify(call.input)}`;
+  recent.push(signature);
+  if (recent.length > DOOM_REPEATS) recent.shift();
+  if (recent.length === DOOM_REPEATS && recent.every((s) => s === signature)) {
+    return { text: `You've made this exact call ${DOOM_REPEATS} times in a row. Stop repeating it: change the approach, or tell the user what's blocking you.`, isError: true };
+  }
+
+  const auth = await input.authorize(tool, call.input, safeSummary(tool, call.input));
+  if (!auth.ok) return { text: auth.reason, isError: true };
+  if (input.signal.aborted) return { text: "Interrupted by the user.", isError: true };
+  try {
+    return await tool.run(call.input, { id: call.id, signal: input.signal, onOutput: (text) => input.emit.toolOutputDelta(call.id, text) });
+  } catch (err) {
+    if (err instanceof ToolError) return { text: err.message, isError: true };
+    return { text: `${tool.displayName} failed: ${err instanceof Error ? err.message : String(err)}`, isError: true };
+  }
+}
+
+function finish(input: LoopInput, { call, tool }: Planned, r: ToolResult): LlmToolResult {
+  input.emit.event({ kind: "tool-result", toolUseId: call.id, isError: r.isError === true, summary: oneLine(r.text), payload: r.display?.result ?? r.text });
+  return { callId: call.id, name: tool?.definition.name ?? call.name, text: r.text, ...(r.isError ? { isError: true } : {}), ...(r.imagePng ? { imagePng: r.imagePng } : {}) };
+}

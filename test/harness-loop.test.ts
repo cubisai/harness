@@ -1,0 +1,193 @@
+import { describe, expect, it } from "vitest";
+import type { ThreadEvent } from "../src/shared/types";
+import { runLoop, type LoopInput, type LoopTool } from "../src/main/harness/loop";
+import { decide } from "../src/main/harness/permissions";
+import type { Route } from "../src/main/harness/llm/client";
+import { LlmError, emptyUsage, type AssistantPart, type LlmEvent, type LlmMessage, type LlmRequest } from "../src/main/harness/llm/types";
+import { ToolError } from "../src/main/harness/tools/types";
+
+const route: Route = { protocol: "openai-chat", url: "http://x", headers: {}, label: "TokenHarbor", key: null };
+const usage = (input: number) => ({ ...emptyUsage(), inputTokens: input, outputTokens: 5 });
+const text = (t: string): AssistantPart[] => [{ type: "text", text: t }];
+const call = (id: string, name: string, input: Record<string, unknown> = {}): AssistantPart => ({ type: "tool-call", id, name, input });
+
+/** A fake model: each call answers with the next scripted message (after streaming its text). */
+function script(...answers: (AssistantPart[] | ((req: LlmRequest) => AssistantPart[]))[]) {
+  const requests: LlmRequest[] = [];
+  const stream = async function* (_r: Route, req: LlmRequest, opts?: { signal?: AbortSignal }): AsyncGenerator<LlmEvent> {
+    requests.push({ ...req, messages: [...req.messages] });
+    const a = answers[Math.min(requests.length - 1, answers.length - 1)]!;
+    const message = typeof a === "function" ? a(req) : a;
+    for (const p of message) if (p.type === "text") yield { type: "text-delta", text: p.text };
+    if (opts?.signal?.aborted) throw new LlmError("Stopped.", "aborted");
+    const calls = message.some((p) => p.type === "tool-call");
+    yield { type: "finish", reason: calls ? "tool-calls" : "stop", message, usage: usage(10) };
+  };
+  return { stream: stream as LoopInput["stream"], requests };
+}
+
+function tool(name: string, access: LoopTool["access"], run: LoopTool["run"] = async () => ({ text: `${name} ok` })): LoopTool {
+  return { definition: { name, description: name, parameters: { type: "object", properties: {} } }, displayName: name.toUpperCase(), access, summarize: (a) => String(a.path ?? name), run };
+}
+
+function setup(over: Partial<LoopInput> & { stream: LoopInput["stream"] }) {
+  const events: ThreadEvent[] = [];
+  const deltas: string[] = [];
+  const stored: LlmMessage[] = [];
+  const messages: LlmMessage[] = [{ role: "user", content: [{ type: "text", text: "go" }] }];
+  const input: LoopInput = {
+    route,
+    request: { model: "m", system: ["sys"] },
+    messages,
+    tools: [],
+    signal: new AbortController().signal,
+    turnId: "t1",
+    authorize: async () => ({ ok: true }),
+    emit: { event: (e) => events.push(e), textDelta: (t) => deltas.push(t), reasoningDelta: () => {}, toolInputDelta: () => {}, toolOutputDelta: () => {}, usage: () => {} },
+    onMessage: (m) => stored.push(m),
+    ...over,
+  };
+  return { input, events, deltas, stored, messages };
+}
+
+describe("runLoop", () => {
+  it("ends on an answer without tools", async () => {
+    const s = script(text("Hello"));
+    const { input, events, deltas, stored } = setup({ stream: s.stream });
+    const r = await runLoop(input);
+    expect(r).toMatchObject({ stop: "done", steps: 1, usage: { inputTokens: 10 } });
+    expect(deltas).toEqual(["Hello"]);
+    expect(events).toEqual([{ kind: "assistant-text", text: "Hello", itemId: "t1-0-t" }]);
+    expect(stored).toEqual([{ role: "assistant", content: text("Hello") }]);
+  });
+
+  it("runs a tool, feeds the result back and continues", async () => {
+    const s = script([call("c1", "read", { path: "a.ts" })], text("Done"));
+    const read = tool("read", "read", async (args) => ({ text: `contents of ${String(args.path)}`, display: { summary: "a.ts" } }));
+    const { input, events, messages } = setup({ stream: s.stream, tools: [read] });
+    const r = await runLoop(input);
+    expect(r).toMatchObject({ stop: "done", steps: 2, usage: { inputTokens: 20 } });
+    expect(events.map((e) => e.kind)).toEqual(["tool-use", "tool-result", "assistant-text"]);
+    expect(events[0]).toMatchObject({ toolUseId: "c1", name: "READ", summary: "a.ts", payload: { path: "a.ts" } });
+    expect(events[1]).toMatchObject({ toolUseId: "c1", isError: false, payload: "contents of a.ts" });
+    expect(messages.map((m) => m.role)).toEqual(["user", "assistant", "tool", "assistant"]);
+    expect(s.requests[1]!.messages.at(-1)).toEqual({ role: "tool", results: [{ callId: "c1", name: "read", text: "contents of a.ts" }] });
+    expect(s.requests[0]!.tools.map((t) => t.name)).toEqual(["read"]);
+  });
+
+  it("runs read-only calls together and edits one at a time, results in call order", async () => {
+    let active = 0;
+    let peak = 0;
+    const slow = (name: string, access: LoopTool["access"]) =>
+      tool(name, access, async (args) => {
+        active++;
+        peak = Math.max(peak, active);
+        await new Promise((r) => setTimeout(r, 20));
+        active--;
+        return { text: `${name}:${String(args.n)}` };
+      });
+    const s = script([call("a", "read", { n: 1 }), call("b", "read", { n: 2 }), call("c", "read", { n: 3 }), call("d", "edit", { n: 4 }), call("e", "edit", { n: 5 })], text("ok"));
+    const { input, messages } = setup({ stream: s.stream, tools: [slow("read", "read"), slow("edit", "edit")] });
+    await runLoop(input);
+    expect(peak).toBe(3);
+    const results = (messages[2] as Extract<LlmMessage, { role: "tool" }>).results;
+    expect(results.map((r) => r.text)).toEqual(["read:1", "read:2", "read:3", "edit:4", "edit:5"]);
+  });
+
+  it("reports refusals, unknown tools, bad JSON and tool errors to the model", async () => {
+    const s = script(
+      [
+        call("a", "edit"),
+        call("b", "nope"),
+        { type: "tool-call", id: "c", name: "read", input: {}, invalidInput: "{oops" },
+        call("d", "boom"),
+      ],
+      text("ok"),
+    );
+    const boom = tool("boom", "other", async () => {
+      throw new ToolError("No such file: x");
+    });
+    const { input, events, messages } = setup({
+      stream: s.stream,
+      tools: [tool("edit", "edit"), tool("read", "read"), boom],
+      authorize: async (t) => (t.access === "edit" ? { ok: false, reason: "The user denied this call." } : { ok: true }),
+    });
+    await runLoop(input);
+    const results = (messages[2] as Extract<LlmMessage, { role: "tool" }>).results;
+    expect(results.map((r) => r.isError)).toEqual([true, true, true, true]);
+    expect(results[0]!.text).toContain("denied");
+    expect(results[1]!.text).toContain('no tool named "nope"');
+    expect(results[2]!.text).toContain("valid JSON");
+    expect(results[3]!.text).toBe("No such file: x");
+    expect(events.filter((e) => e.kind === "tool-result").every((e) => (e as { isError: boolean }).isError)).toBe(true);
+  });
+
+  it("breaks a doom loop on the third identical call", async () => {
+    const s = script([call("a", "read", { path: "x" })], [call("b", "read", { path: "x" })], [call("c", "read", { path: "x" })], text("ok"));
+    const runs: string[] = [];
+    const { input, messages } = setup({ stream: s.stream, tools: [tool("read", "read", async () => (runs.push("r"), { text: "same" }))] });
+    await runLoop(input);
+    expect(runs).toHaveLength(2);
+    const third = messages[6] as Extract<LlmMessage, { role: "tool" }>;
+    expect(third.results[0]!.text).toMatch(/3 times in a row/);
+  });
+
+  it("keeps the partial answer on Stop and closes every open call", async () => {
+    const abort = new AbortController();
+    const s = script(text("Half an ans"));
+    abort.abort();
+    const one = setup({ stream: s.stream, signal: abort.signal });
+    // Aborted before the first step: nothing runs.
+    expect(await runLoop(one.input)).toMatchObject({ stop: "stopped", steps: 0 });
+
+    const mid = new AbortController();
+    const s2 = script([call("a", "edit", { n: 1 }), call("b", "edit", { n: 2 })]);
+    const two = setup({
+      stream: s2.stream,
+      signal: mid.signal,
+      tools: [tool("edit", "edit", async () => (mid.abort(), { text: "edited" }))],
+    });
+    expect(await runLoop(two.input)).toMatchObject({ stop: "stopped" });
+    const results = (two.messages[2] as Extract<LlmMessage, { role: "tool" }>).results;
+    expect(results.map((r) => r.text)).toEqual(["edited", "Interrupted by the user."]);
+
+    const s3 = { stream: (async function* () {
+      yield { type: "text-delta", text: "partial" } as LlmEvent;
+      throw new LlmError("Stopped.", "aborted");
+    }) as LoopInput["stream"] };
+    const three = setup({ stream: s3.stream });
+    expect(await runLoop(three.input)).toMatchObject({ stop: "stopped", steps: 1 });
+    expect(three.messages.at(-1)).toEqual({ role: "assistant", content: text("partial") });
+    expect(three.events).toEqual([{ kind: "assistant-text", text: "partial", itemId: "t1-0-t" }]);
+  });
+
+  it("stops at the step limit and at the output limit with a notice", async () => {
+    const s = script([call("a", "read", { n: Math.random() })], [call("b", "read", { n: Math.random() })]);
+    const { input, events } = setup({ stream: s.stream, tools: [tool("read", "read")], maxSteps: 2 });
+    expect(await runLoop(input)).toMatchObject({ stop: "max-steps", steps: 2 });
+    expect(events.at(-1)).toMatchObject({ kind: "notice" });
+
+    const cut = { stream: (async function* () {
+      yield { type: "finish", reason: "length", message: text("trunc"), usage: usage(1) } as LlmEvent;
+    }) as LoopInput["stream"] };
+    const two = setup({ stream: cut.stream });
+    expect(await runLoop(two.input)).toMatchObject({ stop: "length" });
+    expect(two.events.at(-1)).toMatchObject({ kind: "notice", text: expect.stringMatching(/output limit/) });
+  });
+
+  it("lets other model errors through", async () => {
+    const failing = { stream: (async function* () {
+      throw new LlmError("TokenHarbor: bad key.", "auth", 401);
+    }) as LoopInput["stream"] };
+    await expect(runLoop(setup({ stream: failing.stream }).input)).rejects.toMatchObject({ kind: "auth" });
+  });
+});
+
+describe("decide", () => {
+  it("maps mode × access", () => {
+    expect(["ask", "auto-edit", "plan", "full"].map((m) => decide(m as never, "read"))).toEqual(["allow", "allow", "allow", "allow"]);
+    expect(["ask", "auto-edit", "plan", "full"].map((m) => decide(m as never, "edit"))).toEqual(["ask", "allow", "deny", "allow"]);
+    expect(["ask", "auto-edit", "plan", "full"].map((m) => decide(m as never, "shell"))).toEqual(["ask", "ask", "deny", "allow"]);
+    expect(decide("auto-edit", "edit", true)).toBe("ask");
+  });
+});

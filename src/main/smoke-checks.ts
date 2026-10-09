@@ -9,14 +9,17 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { ThreadEvent } from "../shared/types";
-import { codexCompatible } from "../shared/provider-rules";
 import { handleMessage, newTurnState } from "./agents/claude";
 import type { TurnInput } from "./agents/types";
 import { CANONICAL, claudeCanonicalMessages, shape, visible } from "./canonical-events";
 import { Store } from "./db";
 import { buildCheckpoint, exportThread, importThread, renderCheckpoint } from "./handoff";
 import { injectionFor } from "./inject";
-import { FALLBACK_INSTRUCTIONS } from "./inject/codex";
+import { BUILT_IN_GUARD } from "./guard";
+import { routeFor } from "./harness/llm/client";
+import type { HarnessProtocol } from "./harness/llm/types";
+import { ProviderAgents } from "./harness/register";
+import { SessionStore } from "./harness/session";
 import { SettingsStore, type SecretBox } from "./settings";
 
 export interface SmokeResult {
@@ -33,24 +36,47 @@ const box: SecretBox = {
 
 const fail = (detail: string): SmokeResult => ({ ok: false, detail });
 
-/** Providers resolve into each agent's plan: Claude's key env, Codex's Responses-only overrides, subscription stays keyless. */
+/**
+ * Each saved provider is its own agent, routed with its own key; Claude, Codex
+ * and OpenCode stay on their own sign-in even when an old byok choice is stored.
+ */
 export function smokeProviders(dir: string): SmokeResult {
   const settings = new SettingsStore(join(dir, "settings.json"), box);
   const model = { id: "smoke-model", capabilities: { tools: true, vision: false, reasoning: true }, contextWindow: 128_000, maxOutput: 8_000 };
   settings.saveProvider({ id: "smoke-anthropic", label: "Smoke Anthropic", wireProtocol: "anthropic-messages", baseURL: "https://api.anthropic.com", models: [model] }, "smoke-key-a");
   settings.saveProvider({ id: "smoke-responses", label: "Smoke Responses", wireProtocol: "openai-responses", baseURL: "https://gw.example.com/v1", models: [model] }, "smoke-key-b");
   settings.saveProvider({ id: "smoke-chat", label: "Smoke Chat", wireProtocol: "openai-chat", baseURL: "https://gw.example.com/v1", models: [model] }, "smoke-key-c");
+  settings.saveProvider({ id: "smoke-gemini", label: "Smoke Gemini", wireProtocol: "gemini", baseURL: "https://generativelanguage.googleapis.com", models: [model] }, "smoke-key-d");
   settings.setCredential("claude", { kind: "byok", providerId: "smoke-anthropic" });
-  settings.setCredential("codex", { kind: "byok", providerId: "smoke-responses" });
 
   const claude = injectionFor(settings, "claude", process.env, { injector: "claude" });
-  if (!claude.byok || claude.error || claude.env.ANTHROPIC_API_KEY !== "smoke-key-a") return fail(`claude plan: ${claude.error ?? "key not injected"}`);
-  const codex = injectionFor(settings, "codex", process.env, { injector: "codex", codexCatalogDir: join(dir, "catalogs"), codexInstructions: () => FALLBACK_INSTRUCTIONS });
-  if (!codex.byok || codex.error || !codex.args?.some((a) => a.includes("unskilled-smoke-responses"))) return fail(`codex plan: ${codex.error ?? "provider not in args"}`);
-  if (codexCompatible(settings.providers().find((p) => p.id === "smoke-chat")!).ok) return fail("codex accepted a chat-completions provider");
-  settings.setCredential("claude", { kind: "subscription" });
-  const sub = injectionFor(settings, "claude", process.env, { injector: "claude" });
-  if (sub.byok || "ANTHROPIC_API_KEY" in sub.env) return fail("subscription plan carries a key");
+  if (claude.byok || "ANTHROPIC_API_KEY" in claude.env) return fail("claude picked up a provider key");
+
+  const agents = new ProviderAgents({
+    providers: () => settings.providers(),
+    secret: (id) => settings.providerSecret(id),
+    secretHeaders: (id) => settings.providerSecretHeaders(id),
+    sessions: new SessionStore(join(dir, "sessions")),
+    outputDir: join(dir, "output"),
+    guardScript: BUILT_IN_GUARD,
+    guide: () => null,
+    memory: () => null,
+    mcpTools: () => [],
+  }).list();
+  const ids = agents.map((a) => a.id).join(",");
+  if (ids !== "provider-smoke-anthropic,provider-smoke-responses,provider-smoke-chat") return fail(`provider agents: ${ids}`);
+  if (agents[0]!.label !== "Smoke Anthropic" || agents[0]!.models()[0]?.id !== "smoke-model") return fail("provider agent label or models");
+
+  const expected: [string, string, string, string][] = [
+    ["smoke-anthropic", "https://api.anthropic.com/v1/messages", "x-api-key", "smoke-key-a"],
+    ["smoke-responses", "https://gw.example.com/v1/responses", "Authorization", "Bearer smoke-key-b"],
+    ["smoke-chat", "https://gw.example.com/v1/chat/completions", "Authorization", "Bearer smoke-key-c"],
+  ];
+  for (const [id, url, header, value] of expected) {
+    const p = settings.providers().find((x) => x.id === id)!;
+    const route = routeFor(p, p.wireProtocol as HarnessProtocol, "smoke-model", settings.providerSecret(id));
+    if (route.url !== url || route.headers[header] !== value) return fail(`${id} route: ${route.url}`);
+  }
   return { ok: true };
 }
 

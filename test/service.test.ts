@@ -82,6 +82,24 @@ describe("Service.send", () => {
     expect(seen).toEqual([872000, null]);
   });
 
+  it("moves a thread pinned to a saved provider back to the agent's default model, with a notice", async () => {
+    const seen: string[] = [];
+    const { store, service, thread, updates } = setup(async (input) => {
+      seen.push(input.model);
+    });
+    store.updateThread(thread.id, { model: "unskilled-th/deepseek" });
+    await service.send({ threadId: thread.id, text: "go" });
+    expect(seen).toEqual(["fake-1"]);
+    expect(store.getThread(thread.id).model).toBe("fake-1");
+    expect(updates).toContainEqual({ type: "thread", thread: expect.objectContaining({ id: thread.id, model: "fake-1" }) });
+    const notices = store
+      .listEvents(thread.id)
+      .map((e) => e.event)
+      .filter((e): e is Extract<ThreadEvent, { kind: "notice" }> => e.kind === "notice")
+      .map((e) => e.text);
+    expect(notices).toContain("th is its own agent now. This thread is back on Fake's default model; pick th in the model picker to use it.");
+  });
+
   it("says so when a model ends the turn without any reply", async () => {
     const turnEnd = { kind: "turn-end" as const, costUsd: null, inputTokens: 10, outputTokens: 0, durationMs: 5 };
     const silent = setup(async (input) => input.onEvent(turnEnd));

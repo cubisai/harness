@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { ProviderView } from "../src/shared/types";
-import { CatalogSearch, CredentialRows, PresetPicker, ProviderList, catalogMeta, credentialOptions, hostOf, presetOptions, toProviderInput } from "../src/renderer/src/components/ProviderSheet";
+import { CatalogSearch, PresetPicker, ProviderList, catalogMeta, hostOf, presetOptions, toProviderInput } from "../src/renderer/src/components/ProviderSheet";
 
 const caps = { tools: true, vision: false, reasoning: false };
 
@@ -56,63 +56,6 @@ describe("ProviderList", () => {
   it("omits the banner when nothing migrated", () => {
     const html = renderToStaticMarkup(<ProviderList providers={providers} migratedProviders={[]} />);
     expect(html).not.toContain("Your saved keys now live in Providers. Nothing was deleted.");
-  });
-});
-
-describe("CredentialRows", () => {
-  // As Service.listAgents describes them; rows read these, never the ids.
-  const agents = [
-    { id: "claude", label: "Claude", credentials: { byok: true, own: "login", injector: "claude" } as const },
-    { id: "codex", label: "Codex", credentials: { byok: true, own: "login", injector: "codex" } as const },
-    { id: "opencode", label: "OpenCode", credentials: { byok: true, own: "config", injector: "opencode" } as const },
-    { id: "antigravity", label: "Antigravity", credentials: { byok: false, own: "config", injector: "acp" } as const },
-  ];
-  const providers = [
-    providerView({ id: "openai-chat", label: "Chat Gateway" }),
-    providerView({ id: "openai-responses", label: "Responses Gateway", wireProtocol: "openai-responses" }),
-  ];
-
-  it("lists every agent whose provider injection is verified, with the right subscription labels", () => {
-    const html = renderToStaticMarkup(<CredentialRows agents={agents} providers={providers} credentials={{}} onChange={() => {}} />);
-    expect(html).not.toContain("Antigravity");
-    expect(html).toContain("Subscription login");
-    expect(html).toMatch(/Agent(?:&#x27;|')s own config/);
-    expect(html).toContain('aria-haspopup="listbox"');
-    expect(html).not.toContain("<select");
-  });
-
-  it("disables a non-Responses provider for Codex and says why", () => {
-    const codex = agents[1]!;
-    const options = credentialOptions(codex.credentials, providers);
-    const chatOption = options.find((o) => o.value === "openai-chat");
-    expect(chatOption?.disabled).toBe(true);
-    expect(chatOption?.detail).toContain("Responses");
-    const responsesOption = options.find((o) => o.value === "openai-responses");
-    expect(responsesOption).toBeDefined();
-    expect(responsesOption?.disabled).toBeFalsy();
-  });
-
-  it("offers Claude Anthropic Messages providers, chat-completions ones through the gateway, and nothing else", () => {
-    const claude = agents[0]!;
-    const chat = providerView({ id: "chat", label: "Chat Gateway", wireProtocol: "openai-chat" });
-    const gemini = providerView({ id: "gem", label: "Gemini", wireProtocol: "gemini" });
-    const anthropic = providerView({ id: "anthropic", label: "Anthropic", wireProtocol: "anthropic-messages" });
-    const options = credentialOptions(claude.credentials, [chat, gemini, anthropic]);
-    const chatOption = options.find((o) => o.value === "chat");
-    expect(chatOption?.disabled).toBeFalsy();
-    expect(chatOption?.detail).toBe("Through CubiQ's gateway");
-    expect(options.find((o) => o.value === "gem")?.disabled).toBe(true);
-    const anthropicOption = options.find((o) => o.value === "anthropic");
-    expect(anthropicOption).toBeDefined();
-    expect(anthropicOption?.disabled).toBeFalsy();
-  });
-
-  it("warns when Claude is pointed at a non-first-party provider", () => {
-    const gateway = providerView({ id: "gateway", label: "Gateway", baseURL: "https://gateway.example.com" });
-    const html = renderToStaticMarkup(
-      <CredentialRows agents={agents} providers={[gateway]} credentials={{ claude: { kind: "byok", providerId: "gateway" } }} onChange={() => {}} />,
-    );
-    expect(html).toMatch(/Remote Control/);
   });
 });
 

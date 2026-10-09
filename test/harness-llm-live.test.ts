@@ -20,9 +20,10 @@ async function listModels(): Promise<string[]> {
 function pick(ids: string[], protocol: HarnessProtocol): string | undefined {
   const env = { "openai-chat": process.env.TH_CHAT_MODEL, "openai-responses": process.env.TH_RESPONSES_MODEL, "anthropic-messages": process.env.TH_MESSAGES_MODEL }[protocol];
   if (env) return env;
-  if (protocol === "anthropic-messages") return ids.find((id) => /claude/i.test(id) && /sonnet|haiku/i.test(id)) ?? ids.find((id) => /claude/i.test(id));
+  // Cheap models first: a plan may not include the bigger ones.
+  if (protocol === "anthropic-messages") return ids.find((id) => /claude-haiku/i.test(id)) ?? ids.find((id) => /claude/i.test(id));
   if (protocol === "openai-responses") return ids.find((id) => /^(openai\/)?gpt-5/i.test(id)) ?? ids.find((id) => /gpt/i.test(id));
-  return ids.find((id) => /deepseek|qwen|glm|kimi/i.test(id)) ?? ids[0];
+  return ids.find((id) => /deepseek.*flash$/i.test(id)) ?? ids.find((id) => /deepseek|qwen|glm/i.test(id)) ?? ids[0];
 }
 
 const ADD = { name: "add", description: "Add two integers and return the sum.", parameters: { type: "object", properties: { a: { type: "integer" }, b: { type: "integer" } }, required: ["a", "b"] } };

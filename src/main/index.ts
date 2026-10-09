@@ -4,7 +4,7 @@ import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell, utilityProcess } from "electron";
-import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, CredentialChoice, DesignExportFormat, DesignSystemOption, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, ModelOption, McpServerEntry, McpServerSpec, McpServerStatus, MemoryType, OpenResult, PermissionDecision, PlanDecision, Provider, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
+import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, CredentialChoice, DesignExportFormat, DesignSystemOption, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
 import { DESIGN_SCHEME, designDirName, designUrl, entryFile, serveDesign } from "./design/serve";
@@ -18,7 +18,7 @@ import { designTools } from "./design/tools";
 import { selectorFor } from "./browser/picker";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
-import { PROVIDER_MODEL_PREFIX, injectorCompatible, providerOfModel } from "../shared/provider-rules";
+import { PROVIDER_MODEL_PREFIX, providerOfModel } from "../shared/provider-rules";
 import { warmBinaries } from "./agents/binaries";
 import { createClaudeDriver, resolvePackagedClaudeBinary } from "./agents/claude";
 import { createCodexDriver } from "./agents/codex";
@@ -46,6 +46,9 @@ import { codexInstructions, prepareCodexPlan } from "./inject/codex";
 import { opencodeVariants, opencodeVersion, withOpenCodeVariant } from "./inject/opencode";
 import { ensureOpenCodeGuard, withOpenCodeGuard } from "./inject/opencode-guard";
 import { BUILT_IN_GUARD, findPython } from "./guard";
+import { PROVIDER_AGENT_PREFIX } from "./harness/driver";
+import { ProviderAgents } from "./harness/register";
+import { SessionStore } from "./harness/session";
 import { createGuide, userGuidePath } from "./guide";
 import { buildContextPreview, mcpRow, skillsOf, toolTokens } from "./context-preview";
 import { createMemory, memoryOn, memoryPrompt } from "./memory";
@@ -412,8 +415,6 @@ async function main(): Promise<void> {
       const p = settings.providers().find((x) => x.id === c.providerId);
       return p ? catalogFor(p).claude.models : null;
     },
-    // Providers Claude can reach (Anthropic Messages directly, chat-completions through the gateway), pinned per thread.
-    extraModels: () => providerModelOptions((p) => injectorCompatible(p, "claude").ok),
   });
   const browser = new BrowserController(
     (url) => broadcast({ type: "browser-open", url }),
@@ -510,11 +511,6 @@ async function main(): Promise<void> {
   });
   // Served only on a thread's own URL (`?t=`): ACP agents' question tool, answered in the app's card.
   const threadTools: HarnessTool[] = [askUserTool((threadId: string, questions: Question[], signal?: AbortSignal) => service.askFromTool(threadId, questions, signal))];
-  /** Every saved provider's models as picker options, `unskilled-<provider>/<model>` ("TokenHarbor/DeepSeek V4 Flash"). */
-  const providerModelOptions = (include: (p: Provider) => boolean = () => true): ModelOption[] =>
-    settings.providers().filter(include).flatMap((p) =>
-      p.models.map((m) => ({ id: `${PROVIDER_MODEL_PREFIX}${p.id}/${m.id}`, label: `${p.label}/${m.name ?? m.id}`, contextWindow: p.contextWindowOverride ?? m.contextWindow, ...(m.cost && { cost: m.cost }) })),
-    );
   /** How a Codex thread on `unskilled-<provider>/<model>` reaches it: through the gateway, never with the key. */
   const codexPin = async (model: string): Promise<CodexPin | { error: string }> => {
     const providerId = providerOfModel(model);
@@ -582,7 +578,6 @@ async function main(): Promise<void> {
               const server = await getToolServer();
               return server.llmToken ? { [GATEWAY_TOKEN_VAR]: server.llmToken } : {};
             },
-            extraModels: () => providerModelOptions((p) => viaGateway(p, "codex")),
             byokModels: () => {
               const c = settings.credential("codex");
               if (c.kind !== "byok") return null;
@@ -611,8 +606,6 @@ async function main(): Promise<void> {
         extensions: extensionsFor(config.id),
         mcpRouting: (_pid, servers) => mcpRoutingFor(servers),
         ...(config.effortVia === "opencode-variants" ? { variants: () => opencodeVariants(config.command) } : {}),
-        // OpenCode speaks every provider protocol, so each saved provider's models are offered on it, pinned per thread.
-        ...(config.injector === "opencode" ? { extraModels: providerModelOptions } : {}),
         injection: (ctx) => {
           let plan = injectionFor(settings, config.id, process.env, {
             injector: config.injector ?? "acp",
@@ -775,6 +768,21 @@ async function main(): Promise<void> {
     knownSecrets,
     join(userData, "worktrees"),
   );
+  // Each saved provider is its own agent on CubiQ's own harness, kept in step with Settings.
+  const providerAgents = new ProviderAgents({
+    providers: () => settings.providers(),
+    secret: (id) => settings.providerSecret(id),
+    secretHeaders: (id) => settings.providerSecretHeaders(id),
+    sessions: new SessionStore(join(userData, "harness-sessions")),
+    outputDir: join(userData, "harness-output"),
+    guardScript,
+    guide: (cwd, design) => guide.forCwd(cwd, design),
+    memory: memoryPromptFor,
+    // The project's MCP servers through the app's router (search_tools / call_mcp_tool).
+    mcpTools: (projectId) => (mcpScopes.effective(projectId ?? null).length ? routedTools(projectId) : []),
+  });
+  const syncProviderAgents = () => service.syncDrivers(PROVIDER_AGENT_PREFIX, providerAgents.list());
+  syncProviderAgents();
   service.setDesignSystemsDir(app.isPackaged ? join(process.resourcesPath, "design-systems") : join(app.getAppPath(), "resources", "design-systems"));
   // The artifact panel: versions in the store's blobs, office files parsed in a utility process.
   const previews = new PreviewHost(utilityFork(utilityProcess, join(here, "preview-worker.js")));
@@ -1087,6 +1095,8 @@ async function main(): Promise<void> {
   const afterProviderChange = () => {
     secretsCache = null;
     service.dispose();
+    syncProviderAgents();
+    broadcast({ type: "agents" });
     for (const d of drivers) void (d.refreshModels?.({ force: true }) ?? Promise.resolve()).finally(() => broadcast({ type: "agents" }));
     const view = settings.view();
     broadcast({ type: "settings", settings: view });

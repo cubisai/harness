@@ -67,6 +67,7 @@ import {
 import type { Catalog } from "./skills/catalog";
 import { composePrompt } from "./skills/compose";
 import { mentionNote } from "./mentions";
+import { providerOfModel } from "../shared/provider-rules";
 import { memoryScopeCheck } from "./inject/memory-scope";
 import { redactDeep, redactSecrets } from "./inject/redact";
 import type { TurnDelta } from "./memory/extractor";
@@ -122,6 +123,13 @@ export class Service {
   ) {
     if (!drivers.length) throw new Error("no agent drivers");
     this.drivers = new Map(drivers.map((d) => [d.id, d]));
+  }
+
+  /** Drivers made at runtime (a saved provider's agent): add or replace these, and drop the others whose id starts with `prefix`. */
+  syncDrivers(prefix: string, drivers: AgentDriver[]): void {
+    const keep = new Set(drivers.map((d) => d.id));
+    for (const id of [...this.drivers.keys()]) if (id.startsWith(prefix) && !keep.has(id)) this.drivers.delete(id);
+    for (const d of drivers) this.drivers.set(d.id, d);
   }
 
   private driverFor(agent: string): AgentDriver {
@@ -572,7 +580,7 @@ export class Service {
 
   async send(req: SendRequest): Promise<void> {
     if (this.running.has(req.threadId)) throw new Error("This thread is already running.");
-    const thread = this.store.getThread(req.threadId);
+    let thread = this.store.getThread(req.threadId);
     const project = this.store.getProject(thread.projectId);
     const cwd = this.cwdOf(thread);
     // A folder that's been moved or deleted fails the agent with a misleading error;
@@ -588,6 +596,18 @@ export class Service {
       return;
     }
     const driver = this.driverFor(thread.agent);
+    // A saved provider is its own agent now: a thread still pinned to one of its
+    // models through another agent goes back to that agent's default model.
+    const pinnedProvider = providerOfModel(thread.model);
+    if (pinnedProvider !== null) {
+      thread = this.store.updateThread(thread.id, { model: driver.defaultModel });
+      this.broadcast({ type: "thread", thread });
+      const label = this.drivers.get(`provider-${pinnedProvider}`)?.label ?? pinnedProvider;
+      this.emit(thread.id, {
+        kind: "notice",
+        text: `${label} is its own agent now. This thread is back on ${driver.label}'s default model; pick ${label} in the model picker to use it.`,
+      });
+    }
     const compact = req.compact ?? null;
     // /compact needs an agent that compacts on request and a session to compact.
     if (compact && (!driver.capabilities.manualCompact || thread.sessionId === null)) {

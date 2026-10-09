@@ -1,10 +1,8 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import type {
-  AgentCredentials,
   CatalogProvider,
   ConnectionResult,
-  CredentialChoice,
   DiscoveredModel,
   ModelDiscovery,
   ProviderInput,
@@ -13,7 +11,6 @@ import type {
   WireProtocol,
 } from "../../../shared/types";
 import { PROVIDER_PRESETS, providerPreset, type ProviderPreset } from "../../../shared/provider-catalog";
-import { injectorCompatible, providerWarning } from "../../../shared/provider-rules";
 import { api } from "../api";
 import { useStore } from "../store";
 import { Select, type SelectOption } from "./Select";
@@ -114,70 +111,6 @@ export function ProviderList({
           </div>
         ))
       )}
-    </>
-  );
-}
-
-/** An agent that doesn't describe its credentials: an ACP agent with its own config. */
-const ACP_CREDENTIALS: AgentCredentials = { byok: true, own: "config", injector: "acp" };
-
-/**
- * The credential pick list for one agent: its own login/config first, then one
- * row per provider. An incompatible provider stays listed but disabled, with
- * the reason as its detail line; one reached through the gateway says so.
- */
-export function credentialOptions(creds: AgentCredentials, providers: ProviderView[]): SelectOption<string>[] {
-  return [
-    { value: "subscription", label: creds.own === "login" ? "Subscription login" : "Agent's own config" },
-    ...providers.map((p): SelectOption<string> => {
-      const compat = injectorCompatible(p, creds.injector);
-      const detail = !compat.ok ? compat.reason : compat.via === "gateway" ? "Through CubiQ's gateway" : undefined;
-      return { value: p.id, label: p.label, disabled: !compat.ok, detail };
-    }),
-  ];
-}
-
-/**
- * One credential row per agent above the provider list. Subscription stays a
- * first-class peer; an agent whose provider injection is unverified has no row.
- * Everything here reads the agent's credentials descriptor, never its id.
- */
-export function CredentialRows({
-  agents,
-  providers,
-  credentials,
-  onChange,
-}: {
-  agents: { id: string; label: string; credentials?: AgentCredentials }[];
-  providers: ProviderView[];
-  credentials: Record<string, CredentialChoice>;
-  onChange: (agentId: string, choice: CredentialChoice) => void;
-}) {
-  return (
-    <>
-      {agents
-        .filter((agent) => (agent.credentials ?? ACP_CREDENTIALS).byok)
-        .map((agent) => {
-          const creds = agent.credentials ?? ACP_CREDENTIALS;
-          const choice = credentials[agent.id] ?? { kind: "subscription" as const };
-          const selected = choice.kind === "byok" ? choice.providerId : "subscription";
-          const provider = choice.kind === "byok" ? providers.find((p) => p.id === choice.providerId) : undefined;
-          const warning = provider ? providerWarning(provider, creds.injector) : null;
-          return (
-            <div key={agent.id}>
-              <div className="row">
-                <span className="label">{agent.label}</span>
-                <Select
-                  value={selected}
-                  options={credentialOptions(creds, providers)}
-                  onChange={(v) => onChange(agent.id, v === "subscription" ? { kind: "subscription" } : { kind: "byok", providerId: v })}
-                  ariaLabel={`${agent.label} credentials`}
-                />
-              </div>
-              {warning && <p className="note">{warning}</p>}
-            </div>
-          );
-        })}
     </>
   );
 }
@@ -889,10 +822,9 @@ function ProviderEditor({
   );
 }
 
-/** Settings → Providers: the credential rows, the list, and the add/edit editor. */
+/** Settings → Providers: the list and the add/edit editor. */
 export function ProvidersSection() {
   const settings = useStore((s) => s.settings);
-  const agents = useStore((s) => s.agents);
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   if (!settings) return null;
@@ -905,14 +837,8 @@ export function ProvidersSection() {
         {settings.secretsEncrypted
           ? "Stored encrypted with your system keychain, and only ever passed to the agent they belong to."
           : "This system has no keychain available, so keys are stored obfuscated, not encrypted."}{" "}
-        Saving or removing a key restarts running agents.
+        Each provider shows up as its own agent in the model picker; Claude, Codex and OpenCode always use their own sign-in. Saving or removing a key restarts running agents.
       </p>
-      <CredentialRows
-        agents={agents}
-        providers={settings.providers}
-        credentials={settings.providerCredential}
-        onChange={(agentId, choice) => void api().setCredential(agentId, choice).then((s) => useStore.setState({ settings: s }))}
-      />
       <ProviderList
         providers={settings.providers}
         migratedProviders={settings.migratedProviders}

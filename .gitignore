@@ -5,3 +5,7 @@ dist/
 .DS_Store
 .ai/
 .claude/
+
+# Local test keys (never commit)
+.env
+.env.*

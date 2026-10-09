@@ -411,7 +411,8 @@ export class SettingsStore {
   }
 
   credential(agentId: string): CredentialChoice {
-    return this.data.credentials?.[agentId] ?? { kind: "subscription" };
+    // Providers are their own agents now, so every agent uses its own sign-in or config.
+    return { kind: "subscription" };
   }
 
   setCredential(agentId: string, choice: CredentialChoice): void {

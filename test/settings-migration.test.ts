@@ -57,7 +57,7 @@ describe("settings.json release gate", () => {
     const b = new SettingsStore(join(tempDir(), "settings.json"), box);
     const view = b.importData(exported);
     expect(view.providers.map((p) => p.id)).toEqual(["gw"]);
-    expect(b.credential("codex")).toEqual({ kind: "byok", providerId: "gw" });
+    expect(b.view().providerCredential.codex).toEqual({ kind: "byok", providerId: "gw" });
     expect(b.providerSecret("gw")).toBe("gw-secret-1"); // same machine: the ciphertext still opens
     expect(b.get().theme).toBe("dark");
     expect(b.get().density).toBe("compact");
