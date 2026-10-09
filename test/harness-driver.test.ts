@@ -1,13 +1,16 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import type { PermissionMode, Provider, ThreadEvent } from "../src/shared/types";
+import type { PermissionMode, PlanDecision, Provider, Question, ThreadEvent } from "../src/shared/types";
 import type { HarnessTool, TurnInput } from "../src/main/agents/types";
 import { BUILT_IN_GUARD } from "../src/main/guard";
+import { ASK_USER_TOOL } from "../src/main/questions";
 import { createProviderDriver, providerAgentId, type ProviderDriverDeps } from "../src/main/harness/driver";
+import { PLAN_MODE_NOTE, PROPOSE_PLAN_TOOL } from "../src/main/harness/plan";
 import { ProviderAgents } from "../src/main/harness/register";
+import { EXPLORE_PROMPT, TASK_TOOL } from "../src/main/harness/subagent";
 import { SessionStore, repairHistory } from "../src/main/harness/session";
 import { PRUNED_MARKER } from "../src/main/harness/context/prune";
 import type { Route } from "../src/main/harness/llm/client";
@@ -66,7 +69,16 @@ function seedSession(sessions: SessionStore, size = 40_000): string {
 
 function setup(
   answers: AssistantPart[][],
-  opts: { mode?: PermissionMode; decision?: "allow-once" | "deny"; tools?: HarnessTool[]; saved?: Provider | undefined; skills?: (cwd: string, design: boolean) => HarnessTool | null; stream?: ProviderDriverDeps["stream"] } = {},
+  opts: {
+    mode?: PermissionMode;
+    decision?: "allow-once" | "deny";
+    tools?: HarnessTool[];
+    saved?: Provider | undefined;
+    skills?: (cwd: string, design: boolean) => HarnessTool | null;
+    stream?: ProviderDriverDeps["stream"];
+    plan?: PlanDecision;
+    requestUserInput?: TurnInput["requestUserInput"];
+  } = {},
 ) {
   const cwd = tmp();
   const data = tmp();
@@ -88,6 +100,7 @@ function setup(
   });
   const events: ThreadEvent[] = [];
   const asked: string[] = [];
+  const planRequests: string[] = [];
   let session: string | null = null;
   const input = (prompt: string, sessionId: string | null = null): TurnInput => ({
     threadId: "t1",
@@ -103,11 +116,12 @@ function setup(
     onTextDelta: () => {},
     onSession: (id) => (session = id),
     requestPermission: async (r) => (asked.push(`${r.toolName}: ${r.summary}`), opts.decision ?? "allow-once"),
-    requestPlanDecision: async () => "manual",
+    requestPlanDecision: async (p) => (planRequests.push(p.plan), opts.plan ?? "manual"),
     tools: opts.tools ?? [],
     mcpServers: [],
+    ...(opts.requestUserInput ? { requestUserInput: opts.requestUserInput } : {}),
   });
-  return { driver, events, asked, input, cwd, sessions, requests: s.requests, session: () => session };
+  return { driver, events, asked, planRequests, input, cwd, sessions, requests: s.requests, session: () => session };
 }
 
 describe("provider driver", () => {
@@ -137,7 +151,7 @@ describe("provider driver", () => {
     expect(first.effort).toBe("high");
     expect(first.system.join("\n")).toContain("GUIDE TEXT");
     expect(first.system.join("\n")).toContain("MEMORY TEXT");
-    expect(first.tools.map((x) => x.name)).toEqual(["read", "edit", "write", "bash", "glob", "grep", "todowrite"]);
+    expect(first.tools.map((x) => x.name)).toEqual(["read", "edit", "write", "bash", "glob", "grep", "todowrite", TASK_TOOL]);
     expect(first.cacheKey).toBe(t.session());
 
     // Next turn resumes the stored history.
@@ -343,6 +357,174 @@ describe("provider driver", () => {
     writeFileSync(join(t.cwd, "AGENTS.md"), "PROJECT RULES\n");
     await t.driver.runTurn(t.input("hi"));
     expect(t.requests[0]!.system.join("\n")).toContain("Project instructions from AGENTS.md:\n\nPROJECT RULES");
+  });
+
+  it("runs propose_plan in plan mode and continues the same turn with the approved mode", async () => {
+    const t = setup(
+      [
+        [{ type: "tool-call", id: "c1", name: "write", input: { path: "hello.txt", content: "hi\n" } }],
+        [{ type: "tool-call", id: "c2", name: PROPOSE_PLAN_TOOL, input: { plan: "## Plan\n1. write hello" } }],
+        [{ type: "tool-call", id: "c3", name: "write", input: { path: "hello.txt", content: "hi\n" } }],
+        [{ type: "text", text: "Done." }],
+      ],
+      { mode: "plan", plan: "auto" },
+    );
+    await t.driver.runTurn(t.input("plan it"));
+    expect(t.planRequests).toEqual(["## Plan\n1. write hello"]);
+    expect(t.requests[0]!.tools.map((x) => x.name)).toContain(PROPOSE_PLAN_TOOL);
+    expect(t.requests[0]!.system.at(-1)).toBe(PLAN_MODE_NOTE);
+    // The write before approval is refused with the plan-mode reason, without a card.
+    const refused = (t.requests[1]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!;
+    expect(refused).toMatchObject({ isError: true, text: expect.stringContaining("Plan mode is read-only") });
+    // The write after approval runs in the same turn.
+    expect(readFileSync(join(t.cwd, "hello.txt"), "utf8")).toBe("hi\n");
+    const approved = (t.requests[3]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!;
+    expect(approved.isError).toBeUndefined();
+    expect(t.asked).toEqual([]);
+  });
+
+  it("keeps planning with the user's feedback and leaves the mode read-only", async () => {
+    const t = setup(
+      [
+        [{ type: "tool-call", id: "c1", name: PROPOSE_PLAN_TOOL, input: { plan: "v1" } }],
+        [{ type: "tool-call", id: "c2", name: "write", input: { path: "x.txt", content: "x" } }],
+        [{ type: "text", text: "ok" }],
+      ],
+      { mode: "plan", plan: { keep: "add tests" } },
+    );
+    await t.driver.runTurn(t.input("plan"));
+    const keep = (t.requests[1]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!;
+    expect(keep.text).toContain("add tests");
+    expect(keep.text).toContain("keep planning");
+    const refused = (t.requests[2]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!;
+    expect(refused).toMatchObject({ isError: true, text: expect.stringContaining("Plan mode is read-only") });
+    expect(existsSync(join(t.cwd, "x.txt"))).toBe(false);
+  });
+
+  it("does not offer propose_plan outside plan mode", async () => {
+    const t = setup([[{ type: "text", text: "ok" }]], { mode: "full" });
+    await t.driver.runTurn(t.input("hi"));
+    expect(t.requests[0]!.tools.map((x) => x.name)).not.toContain(PROPOSE_PLAN_TOOL);
+    expect(t.requests[0]!.system.at(-1)).not.toBe(PLAN_MODE_NOTE);
+  });
+
+  it("offers ask_user when the app can ask, and returns the answer to the model", async () => {
+    const questions: Question[] = [];
+    const t = setup(
+      [
+        [
+          {
+            type: "tool-call",
+            id: "c1",
+            name: ASK_USER_TOOL,
+            input: { questions: [{ question: "Which one?", header: "Pick", options: [{ label: "A", description: "first" }, { label: "B", description: "second" }] }] },
+          },
+        ],
+        [{ type: "text", text: "ok" }],
+      ],
+      { requestUserInput: async (q) => (questions.push(...q), { answers: { q0: ["A"] } }) },
+    );
+    await t.driver.runTurn(t.input("ask"));
+    expect(t.requests[0]!.tools.map((x) => x.name)).toContain(ASK_USER_TOOL);
+    const result = (t.requests[1]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!;
+    expect(result.text).toContain("Answer: A");
+    expect(questions.map((q) => q.question)).toEqual(["Which one?"]);
+  });
+
+  it("does not offer ask_user without a way to ask", async () => {
+    const t = setup([[{ type: "text", text: "ok" }]]);
+    await t.driver.runTurn(t.input("hi"));
+    expect(t.requests[0]!.tools.map((x) => x.name)).not.toContain(ASK_USER_TOOL);
+  });
+
+  it("runs parallel task subagents with only read-only tools and folds in their usage", async () => {
+    const childSteps = new Map<string, number>();
+    const requests: LlmRequest[] = [];
+    let mainStep = 0;
+    const userTextOf = (req: LlmRequest): string => {
+      const first = req.messages.find((m) => m.role === "user");
+      return first && first.role === "user" ? first.content.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("") : "";
+    };
+    const stream = (async function* (_r: Route, req: LlmRequest): AsyncGenerator<LlmEvent> {
+      requests.push(JSON.parse(JSON.stringify(req)) as LlmRequest);
+      // Children are identified by their prompt, since parallel children interleave.
+      if (req.system[0] === EXPLORE_PROMPT) {
+        const prompt = userTextOf(req);
+        const n = (childSteps.get(prompt) ?? 0) + 1;
+        childSteps.set(prompt, n);
+        if (n === 1) {
+          yield { type: "finish", reason: "tool-calls", message: [{ type: "tool-call", id: `r-${prompt}`, name: "read", input: { path: "f.txt" } }], usage: { ...emptyUsage(), inputTokens: 100, outputTokens: 10 } };
+          return;
+        }
+        yield { type: "finish", reason: "stop", message: [{ type: "text", text: prompt === "find A" ? "report A" : "report B" }], usage: { ...emptyUsage(), inputTokens: 200, outputTokens: 20 } };
+        return;
+      }
+      mainStep++;
+      if (mainStep === 1) {
+        yield {
+          type: "finish",
+          reason: "tool-calls",
+          message: [
+            { type: "tool-call", id: "tA", name: TASK_TOOL, input: { description: "A", prompt: "find A" } },
+            { type: "tool-call", id: "tB", name: TASK_TOOL, input: { description: "B", prompt: "find B" } },
+          ],
+          usage: { ...emptyUsage(), inputTokens: 1000, outputTokens: 100 },
+        };
+        return;
+      }
+      yield { type: "finish", reason: "stop", message: [{ type: "text", text: "all done" }], usage: { ...emptyUsage(), inputTokens: 500, outputTokens: 50 } };
+    }) as ProviderDriverDeps["stream"];
+
+    const browser: HarnessTool = { name: "browser_open", description: "Open a URL", input: { url: z.string() }, autoAllow: true, run: async () => ({ text: "opened" }) };
+    const t = setup([], { stream, tools: [browser], requestUserInput: async () => ({ answers: { q0: ["A"] } }) });
+    writeFileSync(join(t.cwd, "f.txt"), "hello\n");
+    await t.driver.runTurn(t.input("research both"));
+
+    // Both children ran, each with a read step then a report.
+    const childRequests = requests.filter((r) => r.system[0] === EXPLORE_PROMPT);
+    expect(childRequests.map(userTextOf).sort()).toEqual(["find A", "find A", "find B", "find B"]);
+    // Children get exactly the three read-only native tools — never app tools, propose_plan or task.
+    for (const r of childRequests) expect(r.tools.map((x) => x.name).sort()).toEqual(["glob", "grep", "read"]);
+
+    // Every child event hangs off the task call that started it.
+    const childEvents = t.events.filter((e) => e.parentId !== undefined);
+    expect(new Set(childEvents.map((e) => e.parentId))).toEqual(new Set(["tA", "tB"]));
+    const byA = t.events.filter((e) => e.parentId === "tA");
+    const byB = t.events.filter((e) => e.parentId === "tB");
+    expect(byA.map((e) => e.kind)).toEqual(["tool-use", "tool-result", "assistant-text"]);
+    expect(byB.map((e) => e.kind)).toEqual(["tool-use", "tool-result", "assistant-text"]);
+    expect(byA.find((e) => e.kind === "assistant-text")).toMatchObject({ text: "report A" });
+    expect(byB.find((e) => e.kind === "assistant-text")).toMatchObject({ text: "report B" });
+
+    // The main model's next request carries both reports back.
+    const mainRequests = requests.filter((r) => r.system[0] !== EXPLORE_PROMPT);
+    const reported = (mainRequests[1]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results.map((r) => r.text);
+    expect(reported.sort()).toEqual(["report A", "report B"]);
+
+    // The children's usage is folded into the turn-end total.
+    const end = t.events.at(-1) as Extract<ThreadEvent, { kind: "turn-end" }>;
+    expect(end.inputTokens).toBe(1000 + 500 + 100 + 200 + 100 + 200);
+  });
+
+  it("drops the plan-mode note from later requests once a plan is approved", async () => {
+    const t = setup(
+      [
+        [{ type: "tool-call", id: "c1", name: PROPOSE_PLAN_TOOL, input: { plan: "## Plan" } }],
+        [{ type: "text", text: "Done." }],
+      ],
+      { mode: "plan", plan: "auto" },
+    );
+    await t.driver.runTurn(t.input("plan it"));
+    expect(t.requests[0]!.system).toContain(PLAN_MODE_NOTE);
+    expect(t.requests[1]!.system).not.toContain(PLAN_MODE_NOTE);
+  });
+
+  it("offers the task tool in plan mode and in ask mode", async () => {
+    for (const mode of ["plan", "ask"] as const) {
+      const t = setup([[{ type: "text", text: "ok" }]], { mode });
+      await t.driver.runTurn(t.input("hi"));
+      expect(t.requests[0]!.tools.map((x) => x.name)).toContain(TASK_TOOL);
+    }
   });
 });
 

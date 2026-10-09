@@ -4,17 +4,20 @@
 
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import type { ModelOption, Provider } from "../../shared/types";
+import type { ModelOption, PermissionMode, Provider } from "../../shared/types";
 import { SAFE_DEFAULTS, withCapabilities } from "../agents/capabilities";
 import type { AgentDriver, HarnessTool, TurnInput } from "../agents/types";
+import { askUserTool } from "../questions";
 import { normalizeUsage } from "../usage";
 import { wireIdOf } from "../providers";
 import { routeFor, streamLlm } from "./llm/client";
-import { emptyUsage, LlmError, type Effort, type HarnessProtocol, type LlmMessage, type LlmUsage } from "./llm/types";
+import { emptyUsage, LlmError, type Effort, type HarnessProtocol, type LlmMessage, type LlmRequest, type LlmUsage } from "./llm/types";
 import { runLoop, type Authorization, type LoopTool } from "./loop";
 import { decide, refusal } from "./permissions";
+import { createProposePlanTool, PLAN_MODE_NOTE } from "./plan";
 import { systemPrompt } from "./prompt";
 import { SessionStore, repairHistory } from "./session";
+import { createTaskTool } from "./subagent";
 import { compactedHistory, splitForCompaction, summaryPrompt } from "./context/compact";
 import { estimateMessages, estimateText } from "./context/estimate";
 import { contextFiles } from "./context/files";
@@ -66,6 +69,7 @@ const CAPABILITIES = withCapabilities(SAFE_DEFAULTS, {
   liveReasoning: true,
   preToolGuard: true,
   manualCompact: true,
+  planMode: "native",
   permissionGranularity: "perTool",
   guardEnforcement: { ask: "block", "auto-edit": "block", plan: "block", full: "block" },
   seeding: "first-message",
@@ -157,6 +161,8 @@ async function runTurn(
     memory,
     contextFiles: files,
   });
+  // Plan mode's note goes last, after the environment, so the stable parts keep their cache prefix.
+  if (input.permissionMode === "plan") system.push(PLAN_MODE_NOTE);
 
   const contextSize = provider.contextWindowOverride ?? entry.contextWindow;
   const costOf = (u: LlmUsage): number | null =>
@@ -244,6 +250,20 @@ async function runTurn(
     return;
   }
 
+  // One request object for the whole turn: the loop spreads it per step, so the
+  // `system` array is shared and plan approval can splice its note out in place.
+  const request: Omit<LlmRequest, "messages" | "tools"> = {
+    model: wire,
+    system,
+    ...(entry.maxOutput ? { maxTokens: entry.maxOutput } : {}),
+    reasoning: entry.capabilities.reasoning,
+    ...(entry.capabilities.reasoning && input.effort ? { effort: input.effort as Effort } : {}),
+    cacheKey: sid,
+  };
+  // The subagent shares the turn's route and sampling options but writes its own
+  // system prompt, so its request is this one without `system`.
+  const { system: _system, ...subagentRequest } = request;
+
   let reads = readsBySession.get(sid);
   if (!reads) readsBySession.set(sid, (reads = new Map<string, number>()));
   const toolCtx = (callId: string, signal: AbortSignal, onOutput: (t: string) => void): ToolContext => ({
@@ -258,10 +278,33 @@ async function runTurn(
     platform,
   });
   const nativeLoop = nativeTools(wire).map((t) => nativeLoopTool(t, toolCtx, input));
+  // The turn's live mode: plan mode's propose_plan flips it once the user approves.
+  let mode: PermissionMode = input.permissionMode;
+  const planLoop = input.permissionMode === "plan" ? createProposePlanTool({ mode: () => mode, decide: (plan) => input.requestPlanDecision({ plan }), signal: input.signal, onApproved: (m) => {
+    mode = m;
+    // The note goes out of the shared array so later calls in the turn no longer
+    // tell the model editing is off.
+    const i = system.indexOf(PLAN_MODE_NOTE);
+    if (i >= 0) system.splice(i, 1);
+  } }) : null;
   const appTools = [...input.tools, ...deps.mcpTools(input.projectId)].map((t) => appLoopTool(t, input));
+  const askLoop = input.requestUserInput ? appLoopTool(askUserTool((_threadId, questions) => input.requestUserInput!(questions)), input) : null;
   const skill = deps.skills?.(input.cwd, Boolean(input.design)) ?? null;
   const skillLoop = skill ? appLoopTool(skill, input) : null;
-  const tools = [...nativeLoop, ...appTools, ...(skillLoop ? [skillLoop] : [])].filter((t, i, all) => all.findIndex((o) => o.definition.name === t.definition.name) === i);
+  // The task tool is read-only and runs in every mode; it hands its children the
+  // three read-only native tools only, never the app's tools or propose_plan.
+  const taskLoop = createTaskTool({
+    route,
+    request: subagentRequest,
+    tools: () => nativeLoop.filter((t) => ["read", "glob", "grep"].includes(t.definition.name)),
+    cwd: input.cwd,
+    emit: (e) => input.onEvent(e),
+    onUsage: (u) => {
+      extraUsage = addUsage(extraUsage, u);
+    },
+    ...(deps.stream ? { stream: deps.stream } : {}),
+  });
+  const tools = [...nativeLoop, ...appTools, ...(skillLoop ? [skillLoop] : []), ...(planLoop ? [planLoop] : []), ...(askLoop ? [askLoop] : []), taskLoop].filter((t, i, all) => all.findIndex((o) => o.definition.name === t.definition.name) === i);
 
   // A brand-new session's first turn gets a one-line token breakdown of what it starts with.
   if (createdNew) {
@@ -273,18 +316,18 @@ async function runTurn(
     push("Guide", estimateText(guide ?? ""));
     push("Project files", files.reduce((n, f) => n + estimateText(f.text), 0));
     push("Memory", estimateText(memory ?? ""));
-    push("Tools", estimateText(JSON.stringify(nativeLoop.map((t) => t.definition))));
+    push("Tools", estimateText(JSON.stringify([...nativeLoop, taskLoop].map((t) => t.definition))));
     push("App tools", estimateText(JSON.stringify(appTools.map((t) => t.definition))));
     push("Skills", skillLoop ? estimateText(JSON.stringify(skillLoop.definition)) : 0);
     input.onEvent({ kind: "context-breakdown", rows, total: rows.reduce((n, r) => n + r.tokens, 0), estimated: true });
   }
 
   const authorize = async (tool: LoopTool, args: Record<string, unknown>, summary: string): Promise<Authorization> => {
-    const verdict = decide(input.permissionMode, tool.access, tool.outside?.(args) ?? false);
+    const verdict = decide(mode, tool.access, tool.outside?.(args) ?? false);
     if (verdict === "allow") return { ok: true };
-    if (verdict === "deny") return { ok: false, reason: refusal(input.permissionMode, "deny") };
+    if (verdict === "deny") return { ok: false, reason: refusal(mode, "deny") };
     const decision = await input.requestPermission({ toolName: tool.displayName, summary, canAlwaysAllow: true });
-    return decision === "deny" ? { ok: false, reason: refusal(input.permissionMode, "denied-by-user") } : { ok: true };
+    return decision === "deny" ? { ok: false, reason: refusal(mode, "denied-by-user") } : { ok: true };
   };
 
   // Auto-compaction: keep the real context under this cap by pruning, then summarising.
@@ -309,14 +352,7 @@ async function runTurn(
 
   const result = await runLoop({
     route,
-    request: {
-      model: wire,
-      system,
-      ...(entry.maxOutput ? { maxTokens: entry.maxOutput } : {}),
-      reasoning: entry.capabilities.reasoning,
-      ...(entry.capabilities.reasoning && input.effort ? { effort: input.effort as Effort } : {}),
-      cacheKey: sid,
-    },
+    request,
     messages,
     tools,
     signal: input.signal,
