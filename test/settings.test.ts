@@ -267,10 +267,6 @@ describe("SettingsStore", () => {
     }
   });
 
-  it("rejects a credential pointing at an unknown provider", () => {
-    const s = new SettingsStore(fresh(), box);
-    expect(() => s.setCredential("claude", { kind: "byok", providerId: "ghost" })).toThrow(/unknown provider ghost/);
-  });
 });
 
 describe("Service defaults for new threads", () => {

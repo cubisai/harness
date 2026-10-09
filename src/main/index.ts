@@ -4,7 +4,7 @@ import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell, utilityProcess } from "electron";
-import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, CredentialChoice, DesignExportFormat, DesignSystemOption, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
+import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, DesignExportFormat, DesignSystemOption, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
 import { DESIGN_SCHEME, designDirName, designUrl, entryFile, serveDesign } from "./design/serve";
@@ -18,7 +18,6 @@ import { designTools } from "./design/tools";
 import { selectorFor } from "./browser/picker";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
-import { PROVIDER_MODEL_PREFIX, providerOfModel } from "../shared/provider-rules";
 import { warmBinaries } from "./agents/binaries";
 import { createClaudeDriver, resolvePackagedClaudeBinary } from "./agents/claude";
 import { createCodexDriver } from "./agents/codex";
@@ -36,14 +35,11 @@ import { migrateLegacyData } from "./migrate-data";
 import { startToolServer, type ToolServer } from "./mcp-http";
 import { TerminalManager } from "./terminal";
 import { Service } from "./service";
-import { catalogFor, testConnection } from "./providers";
+import { testConnection } from "./providers";
 import { discoverModels, ModelsDev, pickSmallModel } from "./models-catalog";
 import { injectionFor } from "./inject";
-import { GATEWAY_TOKEN_VAR, createGateway, viaGateway } from "./gateway/route";
-import type { CodexPin } from "./agents/codex";
 import { redactSecrets } from "./inject/redact";
-import { codexInstructions, prepareCodexPlan } from "./inject/codex";
-import { opencodeVariants, opencodeVersion, withOpenCodeVariant } from "./inject/opencode";
+import { opencodeVariants, withOpenCodeVariant } from "./inject/opencode";
 import { ensureOpenCodeGuard, withOpenCodeGuard } from "./inject/opencode-guard";
 import { BUILT_IN_GUARD, findPython } from "./guard";
 import { PROVIDER_AGENT_PREFIX } from "./harness/driver";
@@ -397,24 +393,7 @@ async function main(): Promise<void> {
     guardScript,
     memoryDir: (projectId) => (memoryOn(settings.get(), projectId) ? memory.ensure(projectId, store.getProject(projectId).path) : null),
     onLimits: limits.for("claude"),
-    // Async: a chat-completions provider needs the translation gateway, which lives on the tool server.
-    injection: async (ctx) => {
-      const pinned = ctx ? settings.providers().find((p) => p.id === ctx.providerId) : undefined;
-      const agentWide = settings.credential("claude");
-      const provider = pinned ?? (agentWide.kind === "byok" ? settings.providers().find((p) => p.id === agentWide.providerId) : undefined);
-      const gateway = provider?.wireProtocol === "openai-chat" ? await getToolServer() : null;
-      return injectionFor(settings, "claude", process.env, {
-        injector: "claude",
-        ...(ctx && { providerId: ctx.providerId, model: ctx.model }),
-        ...(gateway?.llmUrl && gateway.llmToken && { gateway: { url: gateway.llmUrl, token: gateway.llmToken } }),
-      });
-    },
-    byokModels: () => {
-      const c = settings.credential("claude");
-      if (c.kind !== "byok") return null;
-      const p = settings.providers().find((x) => x.id === c.providerId);
-      return p ? catalogFor(p).claude.models : null;
-    },
+    injection: () => injectionFor(settings, "claude", process.env),
   });
   const browser = new BrowserController(
     (url) => broadcast({ type: "browser-open", url }),
@@ -499,45 +478,11 @@ async function main(): Promise<void> {
       () => threadTools,
       undefined,
       (req, res, scope, name) => mcpGateway.handle(req, res, scope, name),
-      llmGateway,
       // `?d=` (Codex) or `?t=` (ACP) naming a design thread adds its design tools.
       (tid) => (isDesignThread(tid) ? designToolsOf(tid) : []),
     ));
-  // The translation gateway: agents reach chat-completions providers through it; keys stay here.
-  const llmGateway = createGateway({
-    providers: () => settings.providers(),
-    secret: (id) => settings.providerSecret(id),
-    secretHeaders: (id) => settings.providerSecretHeaders(id),
-  });
   // Served only on a thread's own URL (`?t=`): ACP agents' question tool, answered in the app's card.
   const threadTools: HarnessTool[] = [askUserTool((threadId: string, questions: Question[], signal?: AbortSignal) => service.askFromTool(threadId, questions, signal))];
-  /** How a Codex thread on `unskilled-<provider>/<model>` reaches it: through the gateway, never with the key. */
-  const codexPin = async (model: string): Promise<CodexPin | { error: string }> => {
-    const providerId = providerOfModel(model);
-    const provider = settings.providers().find((p) => p.id === providerId);
-    if (!provider) return { error: "The provider this thread uses no longer exists." };
-    if (!viaGateway(provider, "codex")) return { error: `Codex can't use ${provider.label}: it speaks ${provider.wireProtocol}.` };
-    if (!settings.providerSecret(provider.id)) return { error: `${provider.label} has no key saved.` };
-    const server = await getToolServer();
-    if (!server.llmUrl) return { error: `CubiQ's gateway for ${provider.label} isn't running; try again.` };
-    const id = model.slice(`${PROVIDER_MODEL_PREFIX}${provider.id}/`.length);
-    const entry = provider.models.find((m) => m.id === id);
-    const contextWindow = provider.contextWindowOverride ?? entry?.contextWindow;
-    return {
-      model: entry ? (entry.modelID ?? entry.id) : id,
-      modelProvider: `${PROVIDER_MODEL_PREFIX}${provider.id}`,
-      provider: {
-        name: provider.label,
-        base_url: `${server.llmUrl}/${provider.id}/v1`,
-        env_key: GATEWAY_TOKEN_VAR,
-        wire_api: "responses",
-        ...(provider.retries?.request !== undefined ? { request_max_retries: provider.retries.request } : {}),
-        ...(provider.retries?.stream !== undefined ? { stream_max_retries: provider.retries.stream } : {}),
-        ...(provider.retries?.streamIdleTimeoutMs !== undefined ? { stream_idle_timeout_ms: provider.retries.streamIdleTimeoutMs } : {}),
-      },
-      ...(contextWindow ? { contextWindow } : {}),
-    };
-  };
   const drivers = [
     driver,
     // Codex when it's installed: the same model-invoked skills as an extra skills root, and the browser tools over MCP.
@@ -563,27 +508,7 @@ async function main(): Promise<void> {
                 : ensureModelSkillsDir(forAgent(skills.global(), CODEX_CAPABILITIES.skillsDelivery), modelSkillsDir),
             toolServer: getToolServer,
             onLimits: limits.for("codex"),
-            injection: () =>
-              prepareCodexPlan(
-                injectionFor(settings, "codex", process.env, {
-                  injector: "codex",
-                  codexCatalogDir: join(userData, "codex-catalogs"),
-                  codexInstructions: () => codexInstructions("codex"),
-                }),
-                "codex",
-              ),
-            // A thread on a saved provider's model defines that provider in its own config, pointed at the gateway.
-            pin: async (model) => codexPin(model),
-            gatewayEnv: async (): Promise<Record<string, string>> => {
-              const server = await getToolServer();
-              return server.llmToken ? { [GATEWAY_TOKEN_VAR]: server.llmToken } : {};
-            },
-            byokModels: () => {
-              const c = settings.credential("codex");
-              if (c.kind !== "byok") return null;
-              const p = settings.providers().find((x) => x.id === c.providerId);
-              return p ? catalogFor(p).codex.models.map((m) => ({ id: String(m.slug), label: String(m.display_name) })) : null;
-            },
+            injection: () => injectionFor(settings, "codex", process.env),
           }),
         ]
       : []),
@@ -607,14 +532,7 @@ async function main(): Promise<void> {
         mcpRouting: (_pid, servers) => mcpRoutingFor(servers),
         ...(config.effortVia === "opencode-variants" ? { variants: () => opencodeVariants(config.command) } : {}),
         injection: (ctx) => {
-          let plan = injectionFor(settings, config.id, process.env, {
-            injector: config.injector ?? "acp",
-            keyVar: config.keyVar,
-            providerEnvOnly: config.providerEnvOnly,
-            agentLabel: config.label,
-            ...(ctx?.providerId && { providerId: ctx.providerId }),
-            ...(config.injector === "opencode" ? { opencodeVersion: () => opencodeVersion(config.command) } : {}),
-          });
+          let plan = injectionFor(settings, config.id, process.env);
           if (python && config.guardPlugin === "opencode") {
             plan = withOpenCodeGuard(plan, { pluginUrl: ensureOpenCodeGuard(join(userData, "opencode")), script: guardScript, python });
           }
@@ -1144,10 +1062,6 @@ async function main(): Promise<void> {
   ipcMain.handle("providers:catalog", async (_e, query: unknown): Promise<CatalogProvider[]> => {
     await modelsDev.load();
     return modelsDev.catalog(typeof query === "string" ? query.slice(0, 100) : "");
-  });
-  ipcMain.handle("providers:setCredential", (_e, agentId: string, choice: CredentialChoice) => {
-    settings.setCredential(agentId, choice);
-    return afterProviderChange();
   });
   ipcMain.handle("app:open-data-folder", () => shell.openPath(userData));
   ipcMain.handle("app:about", (): AboutInfo => {

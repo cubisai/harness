@@ -47,9 +47,8 @@ export function smokeProviders(dir: string): SmokeResult {
   settings.saveProvider({ id: "smoke-responses", label: "Smoke Responses", wireProtocol: "openai-responses", baseURL: "https://gw.example.com/v1", models: [model] }, "smoke-key-b");
   settings.saveProvider({ id: "smoke-chat", label: "Smoke Chat", wireProtocol: "openai-chat", baseURL: "https://gw.example.com/v1", models: [model] }, "smoke-key-c");
   settings.saveProvider({ id: "smoke-gemini", label: "Smoke Gemini", wireProtocol: "gemini", baseURL: "https://generativelanguage.googleapis.com", models: [model] }, "smoke-key-d");
-  settings.setCredential("claude", { kind: "byok", providerId: "smoke-anthropic" });
 
-  const claude = injectionFor(settings, "claude", process.env, { injector: "claude" });
+  const claude = injectionFor(settings, "claude", process.env);
   if (claude.byok || "ANTHROPIC_API_KEY" in claude.env) return fail("claude picked up a provider key");
 
   const agents = new ProviderAgents({

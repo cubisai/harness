@@ -12,7 +12,6 @@ import type { ToolDiff } from "../../shared/tools";
 import { forClaude } from "../mcp/servers";
 import { checkCommand } from "../guard";
 import type { InjectionPlan } from "../inject";
-import { staleKeyNotice } from "../inject/claude";
 import { MEMORY_READ_TOOL } from "../memory/tool";
 import { normalizeUsage } from "../usage";
 import { PLUGIN_NAME } from "../skills/plugin";
@@ -232,8 +231,6 @@ export interface ClaudeDriverConfig {
    * A thread on a provider's model (`unskilled-<provider>/…`) passes that provider and model.
    */
   injection?: (ctx?: { providerId: string; model: string }) => InjectionPlan | Promise<InjectionPlan>;
-  /** The BYOK provider's models, or null on subscription. */
-  byokModels?: () => ModelOption[] | null;
   /** Saved providers' models Claude can reach (directly or through the gateway), listed after its own. */
   extraModels?: () => ModelOption[];
   /** The harness guide for this turn's cwd, appended to Claude Code's own system prompt. */
@@ -261,7 +258,6 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
   // Both are once-per-driver, not once-per-turn: the same warning or the same
   // project does not need saying again on the next message.
   const shownWarnings = new Set<string>();
-  const checkedProjects = new Set<string>();
 
   /** The binary for this query() attempt: the installed CLI unless the driver opted out. */
   const claudePath = async (): Promise<string | undefined> =>
@@ -330,7 +326,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
     skillsDelivery: CLAUDE_CAPABILITIES.skillsDelivery,
     skillCallPrefix: `${PLUGIN_NAME}:`,
     models: () => {
-      const own = config.byokModels?.() ?? models;
+      const own = models;
       const extra = (config.extraModels?.() ?? []).filter((m) => !own.some((o) => o.id === m.id));
       return extra.length ? [...own, ...extra] : own;
     },
@@ -426,11 +422,6 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
       if (plan?.warning && !shownWarnings.has(plan.warning)) {
         shownWarnings.add(plan.warning);
         input.onEvent({ kind: "notice", text: plan.warning });
-      }
-      if (plan?.byok && !checkedProjects.has(input.cwd)) {
-        checkedProjects.add(input.cwd);
-        const stale = await staleKeyNotice(input.cwd);
-        if (stale) input.onEvent({ kind: "notice", text: stale });
       }
 
       const guideText = config.guide?.(input.cwd, input.design) ?? "";

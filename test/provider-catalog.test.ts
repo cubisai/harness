@@ -1,23 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Provider } from "../src/shared/types";
-import { PROVIDER_PRESETS, providerPreset, type ProviderPreset } from "../src/shared/provider-catalog";
-import { injectAcp } from "../src/main/inject/acp";
-import { injectOpenCode } from "../src/main/inject/opencode";
+import { PROVIDER_PRESETS, providerPreset } from "../src/shared/provider-catalog";
 import { isProviderId } from "../src/main/providers";
-
-const KEY = "test-preset-key";
-
-/** One provider built exactly as the editor's preset picker would. */
-function providerFor(preset: ProviderPreset): Provider {
-  return {
-    id: preset.id,
-    label: preset.label,
-    wireProtocol: preset.wireProtocol,
-    baseURL: preset.baseURL,
-    secret: { kind: "safeStorage", ciphertext: "x" },
-    models: [{ id: "m", capabilities: { tools: true, vision: false, reasoning: false }, contextWindow: 128000, maxOutput: 8192 }],
-  };
-}
 
 describe("PROVIDER_PRESETS", () => {
   it("has unique ids that are all valid provider ids", () => {
@@ -50,16 +33,6 @@ describe("PROVIDER_PRESETS", () => {
     for (const preset of PROVIDER_PRESETS.filter((p) => !p.local && p.id !== "pgsgrove")) {
       expect(preset.keyVar, preset.id).toBeDefined();
       expect(preset.keyVar, preset.id).toMatch(/^[A-Z][A-Z0-9_]*_KEY$/);
-    }
-  });
-
-  it("injects without error into OpenCode and a generic ACP agent", () => {
-    for (const preset of PROVIDER_PRESETS) {
-      const provider = providerFor(preset);
-      const opencode = injectOpenCode(provider, KEY, {}, { version: "1.18.32" });
-      expect(opencode.error, preset.id).toBeUndefined();
-      const acp = injectAcp({ label: "Acme" }, provider, KEY, {});
-      expect(acp.error, preset.id).toBeUndefined();
     }
   });
 

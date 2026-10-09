@@ -150,7 +150,6 @@ describe("tool server", () => {
       () => [ask],
       undefined,
       undefined,
-      undefined,
       (tid) => (tid === "design1" ? [shot] : []),
     );
     closeAfter(() => void server.close());

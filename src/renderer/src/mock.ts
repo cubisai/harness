@@ -328,11 +328,7 @@ export function installMock(): void {
       return view;
     },
     removeProvider: async (id) => {
-      const providerCredential: SettingsView["providerCredential"] = {};
-      for (const [agent, choice] of Object.entries(settings.providerCredential)) {
-        providerCredential[agent] = choice.kind === "byok" && choice.providerId === id ? { kind: "subscription" } : choice;
-      }
-      settings = { ...settings, providers: settings.providers.filter((p) => p.id !== id), providerCredential };
+      settings = { ...settings, providers: settings.providers.filter((p) => p.id !== id) };
       return settings;
     },
     setProviderSecret: async (id, value) => {
@@ -367,7 +363,6 @@ export function installMock(): void {
       const q = query.trim().toLowerCase();
       return all.filter((p) => !q || p.id.includes(q) || p.name.toLowerCase().includes(q));
     },
-    setCredential: async (agentId, choice) => (settings = { ...settings, providerCredential: { ...settings.providerCredential, [agentId]: choice } }),
     openDataFolder: async () => {},
     listLimits: async () =>
       scene === "limits"

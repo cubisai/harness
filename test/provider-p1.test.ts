@@ -1,9 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { CredentialChoice, Provider, ProviderInput, Settings } from "../src/shared/types";
+import type { Provider, ProviderInput } from "../src/shared/types";
 import { anthropicAuthStyle, providerOfModel } from "../src/shared/provider-rules";
-import { type InjectionSource, injectionFor } from "../src/main/inject";
 import { ENV_REF, headerPlan, resolvedHeaders } from "../src/main/inject/headers";
 import { catalogFor, upstreamMessage } from "../src/main/providers";
 import { SettingsStore, type SecretBox } from "../src/main/settings";
@@ -35,21 +34,6 @@ function provider(patch: Partial<Provider> = {}): Provider {
   };
 }
 
-function settings(): Settings {
-  return { theme: "system", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {} };
-}
-
-function source(p: Provider, secretHeaders: Record<string, string> = {}): InjectionSource {
-  return {
-    credential: (): CredentialChoice => ({ kind: "byok", providerId: p.id }),
-    providers: () => [p],
-    providerSecret: () => KEY,
-    providerSecretHeaders: () => secretHeaders,
-    secretEnvNames: () => [],
-    get: settings,
-  };
-}
-
 describe("anthropicAuthStyle", () => {
   it("defaults to X-Api-Key on api.anthropic.com and Bearer elsewhere, unless chosen", () => {
     expect(anthropicAuthStyle({ baseURL: "https://api.anthropic.com" })).toBe("x-api-key");
@@ -68,55 +52,6 @@ describe("headerPlan", () => {
     expect(resolvedHeaders(plan, { MY_VAR: "from-env" })).toEqual({ "X-A": "1", "X-Env": "from-env", "X-Secret": SECRET_HEADER });
     expect(resolvedHeaders(plan, {})).not.toHaveProperty("X-Env");
     expect(ENV_REF.test("prefix ${env:X}")).toBe(false);
-  });
-});
-
-describe("Claude injection (P1)", () => {
-  it("follows the auth style", () => {
-    const bearer = injectionFor(source(provider()), "claude", {}, { injector: "claude" });
-    expect(bearer.env.ANTHROPIC_AUTH_TOKEN).toBe(KEY);
-    expect(bearer.env.ANTHROPIC_API_KEY).toBeUndefined();
-    const xKey = injectionFor(source(provider({ authStyle: "x-api-key" })), "claude", {}, { injector: "claude" });
-    expect(xKey.env.ANTHROPIC_API_KEY).toBe(KEY);
-    expect(xKey.env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
-  });
-
-  it("sets the small/fast model and the haiku slot unless a haiku alias is pinned", () => {
-    const plan = injectionFor(source(provider({ smallModel: "cheap" })), "claude", {}, { injector: "claude" });
-    expect(plan.env.ANTHROPIC_SMALL_FAST_MODEL).toBe("vendor/cheap-1");
-    expect(plan.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("vendor/cheap-1");
-    const pinned = provider({ smallModel: "cheap" });
-    pinned.models[0]!.alias = "haiku";
-    expect(injectionFor(source(pinned), "claude", {}, { injector: "claude" }).env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("big");
-    expect(injectionFor(source(provider({ smallModel: "gone" })), "claude", {}, { injector: "claude" }).env.ANTHROPIC_SMALL_FAST_MODEL).toBeUndefined();
-  });
-
-  it("sends secret and env headers resolved, and never shows a secret header in a serialized plan", () => {
-    const plan = injectionFor(source(provider({ headers: { "X-Env": "${env:MY_VAR}" } }), { "X-Secret": SECRET_HEADER }), "claude", { MY_VAR: "v" }, { injector: "claude" });
-    expect(plan.env.ANTHROPIC_CUSTOM_HEADERS).toBe(`X-Env: v\nX-Secret: ${SECRET_HEADER}`);
-    expect(JSON.stringify(plan)).not.toContain(SECRET_HEADER);
-  });
-});
-
-describe("Codex injection (P1)", () => {
-  const responses = (patch: Partial<Provider> = {}) => provider({ wireProtocol: "openai-responses", ...patch });
-  const plan = (p: Provider, secretHeaders?: Record<string, string>) =>
-    injectionFor(source(p, secretHeaders), "codex", { PATH: "/usr/bin" }, { injector: "codex", codexCatalogDir: tempDir(), codexInstructions: () => "x" });
-
-  it("puts secret and env headers in env_http_headers, never their values in argv", () => {
-    const p = plan(responses({ headers: { "X-A": "1", "X-Env": "${env:MY_VAR}" } }), { "X-Secret": SECRET_HEADER });
-    const table = p.args!.at(-1)!;
-    expect(table).toContain(`http_headers={ "X-A"="1" }`);
-    expect(table).toContain(`env_http_headers={ "X-Env"="MY_VAR", "X-Secret"="UNSKILLED_GW_HEADER_1" }`);
-    expect(p.args!.join(" ")).not.toContain(SECRET_HEADER);
-    expect(p.env.UNSKILLED_GW_HEADER_1).toBe(SECRET_HEADER);
-    expect(JSON.stringify(p)).not.toContain(SECRET_HEADER);
-  });
-
-  it("writes the context override into the catalog", () => {
-    const p = plan(responses({ contextWindowOverride: 64_000 }));
-    const contents = JSON.parse(p.files![0]!.contents) as { models: { context_window: number }[] };
-    expect(contents.models.map((m) => m.context_window)).toEqual([64_000, 64_000]);
   });
 });
 
@@ -176,16 +111,5 @@ describe("per-thread provider (P1d)", () => {
     expect(providerOfModel("anthropic/claude")).toBeNull();
     expect(providerOfModel("unskilled-/x")).toBeNull();
     expect(providerOfModel(null)).toBeNull();
-  });
-
-  it("lets a thread's provider win over the agent's subscription", () => {
-    const p = provider({ wireProtocol: "openai-chat", baseURL: "https://gw.example.com/v1" });
-    const sub: InjectionSource = { ...source(p), credential: () => ({ kind: "subscription" }) };
-    const opts = { injector: "opencode" as const, opencodeVersion: () => "1.18.0" };
-    expect(injectionFor(sub, "opencode", { PATH: "/usr/bin" }, opts).byok).toBe(false);
-    const pinned = injectionFor(sub, "opencode", { PATH: "/usr/bin" }, { ...opts, providerId: "gw" });
-    expect(pinned.byok).toBe(true);
-    expect(pinned.env.UNSKILLED_GW_KEY).toBe(KEY);
-    expect(injectionFor(sub, "opencode", {}, { ...opts, providerId: "gone" }).error).toMatch(/no longer exists/);
   });
 });

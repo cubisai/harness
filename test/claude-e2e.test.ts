@@ -4,10 +4,9 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { Provider, ThreadEvent } from "../src/shared/types";
+import type { ThreadEvent } from "../src/shared/types";
 import { createClaudeDriver } from "../src/main/agents/claude";
 import type { LimitsPatch } from "../src/main/agents/limits";
-import { injectionFor, type InjectionSource } from "../src/main/inject";
 import { ensurePlugin } from "../src/main/skills/plugin";
 import { catalog, closeAfter } from "./helpers";
 
@@ -172,77 +171,5 @@ describe("Claude end to end (real Claude Code, fake API)", () => {
     expect(turn).toBeDefined();
     expect(JSON.stringify(turn.system ?? "")).not.toContain("CHECKPOINT-MARKER-7");
     expect(JSON.stringify(turn.messages).split("CHECKPOINT-MARKER-7").length - 1).toBe(1);
-  }, 90_000);
-
-  // A whole turn driven by a plan instead of process.env: nothing in our own
-  // environment points at the fake, so only the injected base URL and bearer
-  // token can get the request there.
-  it("runs a turn through an injected BYOK gateway provider", async () => {
-    const { server, headers } = fakeAnthropic();
-    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-    closeAfter(() => void server.close());
-    const key = "test-gateway-token";
-    const baseURL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-    // No ANTHROPIC_* anywhere: the plan is the only thing that can reach the fake.
-    const inherited = Object.keys(process.env).filter((k) => k.startsWith("CLAUDE") || k.startsWith("ANTHROPIC_"));
-    setEnv({
-      ...Object.fromEntries(inherited.map((k) => [k, undefined])),
-      CLAUDE_CONFIG_DIR: mkdtempSync(join(tmpdir(), "unskilled-claude-config-")),
-      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-    });
-
-    const gateway: Provider = {
-      id: "gw",
-      label: "Gateway",
-      wireProtocol: "anthropic-messages",
-      baseURL,
-      secret: { kind: "safeStorage", ciphertext: "opaque" },
-      models: [{ id: "sonnet", modelID: "claude-sonnet-5", capabilities: { tools: true, vision: true, reasoning: false }, contextWindow: 200_000, maxOutput: 8_192 }],
-    };
-    const planSource: InjectionSource = {
-      credential: () => ({ kind: "byok", providerId: "gw" }),
-      providers: () => [gateway],
-      providerSecret: () => key,
-      secretEnvNames: () => [],
-      get: () => ({
-        theme: "system",
-        defaultAgent: null,
-        defaultPermissionMode: "ask",
-        autoUpdate: true,
-        editor: null,
-        providerInjection: {},
-      }),
-    };
-
-    const pluginRoot = mkdtempSync(join(tmpdir(), "unskilled-plugin-"));
-    const driver = createClaudeDriver({
-      pluginDir: () => ensurePlugin(catalog().modelSkills, join(pluginRoot, "skilled-plugin")),
-      guardScript: join(__dirname, "missing-guard.py"), // Bash never runs in this turn
-      injection: () => injectionFor(planSource, "claude", process.env, { injector: "claude" }),
-    });
-    const events: ThreadEvent[] = [];
-    let text = "";
-    await driver.runTurn({
-      threadId: "t",
-      cwd: mkdtempSync(join(tmpdir(), "unskilled-claude-cwd-")),
-      prompt: "hi",
-      sessionId: null,
-      model: "sonnet",
-      permissionMode: "ask",
-      signal: new AbortController().signal,
-      tools: [],
-      mcpServers: [],
-      onEvent: (e) => events.push(e),
-      onTextDelta: (d) => (text += d),
-      onSession: () => {},
-      requestPermission: async () => "deny",
-      requestPlanDecision: async () => ({ keep: "" }),
-    });
-
-    expect(events.filter((e) => e.kind === "error")).toEqual([]);
-    expect(text).toBe("Hello.");
-    expect(headers.length).toBeGreaterThan(0);
-    expect(headers.every((h) => h.authorization === `Bearer ${key}`)).toBe(true);
-    expect(headers.every((h) => h["x-api-key"] === undefined)).toBe(true);
   }, 90_000);
 });

@@ -50,7 +50,6 @@ const api: UnskilledApi = {
   testProvider: (target, modelId, secret, headerValues) => ipcRenderer.invoke("providers:test", target, modelId, secret, headerValues),
   discoverProviderModels: (input, secret, headerValues) => ipcRenderer.invoke("providers:discover", input, secret, headerValues),
   searchProviderCatalog: (query) => ipcRenderer.invoke("providers:catalog", query),
-  setCredential: (agentId, choice) => ipcRenderer.invoke("providers:setCredential", agentId, choice),
   openDataFolder: () => ipcRenderer.invoke("app:open-data-folder"),
   updateStatus: () => ipcRenderer.invoke("app:update-status"),
   aboutInfo: () => ipcRenderer.invoke("app:about"),

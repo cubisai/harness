@@ -7,7 +7,6 @@ import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/proto
 import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { HarnessTool, ToolOutput } from "./agents/types";
 import { parseGatewayPath } from "./mcp/gateway";
-import { parseLlmPath } from "./gateway/route";
 
 export const TOOL_SERVER_NAME = "cubiq";
 
@@ -19,10 +18,6 @@ export interface ToolServer {
   routedUrl: string;
   /** Sent as `Authorization: Bearer <token>`; requests without it are refused. */
   token: string;
-  /** The translation gateway's base (`…/llm`), when the server has one; a provider's route is `<llmUrl>/<providerId>`. */
-  llmUrl?: string;
-  /** The gateway's own Bearer token: it opens `/llm/` only, never the tool routes. */
-  llmToken?: string;
   close(): Promise<void>;
 }
 
@@ -137,8 +132,7 @@ export function withDesign(url: string, threadId: string | undefined): string {
  * `?t=<threadId>` adds `threadTools` (ask_user), which act for that thread;
  * a call to one answers as an SSE stream carrying a progress heartbeat.
  * `/mcp-up/<scope>/<name>` hands the request to `upstream` (the gateway to
- * the user's remote servers), behind the same Bearer. `/llm/<providerId>/…`
- * goes to `llm` (the translation gateway) behind its own token. A design
+ * the user's remote servers), behind the same Bearer. A design
  * thread (named by `?d=`, or `?t=`) also gets `design(threadId)`, the design
  * tools; `?d=` alone names no caller, so it adds no thread tools.
  */
@@ -149,23 +143,10 @@ export async function startToolServer(
   threadTools?: () => HarnessTool[],
   heartbeatMs = HEARTBEAT_MS,
   upstream?: (req: IncomingMessage, res: ServerResponse, scope: string, name: string) => Promise<void>,
-  llm?: (req: IncomingMessage, res: ServerResponse, providerId: string, rest: string) => Promise<void>,
   design?: (threadId: string) => HarnessTool[],
 ): Promise<ToolServer> {
   const token = randomBytes(24).toString("hex");
-  const llmToken = llm ? randomBytes(24).toString("hex") : undefined;
   const http = createServer(async (req, res) => {
-    // The gateway has its own token, so an agent given it can't reach the tool routes (and the reverse).
-    const route = llm && llmToken ? parseLlmPath((req.url ?? "").split("?")[0] ?? "") : null;
-    if (route && llm && llmToken) {
-      // Claude Code's connectivity check carries no credentials.
-      if (route.rest !== "/api/hello" && !authorized(req, llmToken)) return void res.writeHead(401).end();
-      await llm(req, res, route.providerId, route.rest).catch(() => {
-        if (!res.headersSent) res.writeHead(500).end();
-        else res.end();
-      });
-      return;
-    }
     if (!authorized(req, token)) {
       res.writeHead(401).end();
       return;
@@ -243,7 +224,6 @@ export async function startToolServer(
     skillsUrl: `http://127.0.0.1:${port}/mcp-skills`,
     routedUrl: `http://127.0.0.1:${port}/mcp-routed`,
     token,
-    ...(llmToken ? { llmUrl: `http://127.0.0.1:${port}/llm`, llmToken } : {}),
     close: () => new Promise<void>((resolve) => http.close(() => resolve())),
   };
 }

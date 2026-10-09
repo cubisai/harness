@@ -46,9 +46,17 @@ describe("settings.json release gate", () => {
   });
 
   it("round-trips providers, credential choices and preferences through export → wipe → import", () => {
-    const a = new SettingsStore(join(tempDir(), "settings.json"), box);
-    a.saveProvider({ id: "gw", label: "Gateway", wireProtocol: "openai-responses", baseURL: "https://gw.example.com/v1", models: [] }, "gw-secret-1");
-    a.setCredential("codex", { kind: "byok", providerId: "gw" });
+    // Seed a stored provider and its codex credential choice the way the file
+    // would hold them; nothing writes a new choice via the (removed) setter.
+    const file = join(tempDir(), "settings.json");
+    writeFileSync(
+      file,
+      JSON.stringify({
+        providers: [{ id: "gw", label: "Gateway", wireProtocol: "openai-responses", baseURL: "https://gw.example.com/v1", models: [], secret: { kind: "safeStorage", ciphertext: box.encrypt("gw-secret-1") } }],
+        credentials: { codex: { kind: "byok", providerId: "gw" } },
+      }),
+    );
+    const a = new SettingsStore(file, box);
     a.update({ theme: "dark", density: "compact", antigravityAck: { version: ANTIGRAVITY_ACK_VERSION, at: 0 }, antigravity: true });
     const exported = JSON.parse(JSON.stringify(a.exportData()));
     expect(JSON.stringify(exported)).not.toContain("gw-secret-1");

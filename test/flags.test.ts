@@ -1,15 +1,12 @@
-// T9.3: the release flags are the ones that already exist — per-driver
-// providerInjection and the Antigravity opt-in — not a second flag system.
-// Everything that writes outside the app's data folder, or needs a terms
-// acknowledgement, starts off; flipping one flag moves only its own driver.
+// T9.3: the release flags are the ones that already exist — the Antigravity
+// opt-in — not a second flag system. Everything that needs a terms
+// acknowledgement starts off; flipping one flag moves only its own driver.
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ACP_PRESETS, loadAcpAgents, OPT_IN_AGENT_IDS } from "../src/main/agents/registry";
-import { type InjectionSource, GATED_DRIVERS, injectionFor } from "../src/main/inject";
 import { SettingsStore, type SecretBox } from "../src/main/settings";
 import { ANTIGRAVITY_ACK_VERSION } from "../src/shared/provider-rules";
-import type { Provider, Settings } from "../src/shared/types";
 import { tempDir } from "./helpers";
 
 const box: SecretBox = { available: false, encrypt: (s) => s, decrypt: (s) => s };
@@ -17,38 +14,14 @@ const fresh = () => new SettingsStore(join(tempDir(), "settings.json"), box);
 const optInIds = [...new Set([...OPT_IN_AGENT_IDS, ...ACP_PRESETS.filter((p) => p.optIn).map((p) => p.id)])];
 
 describe("release flags", () => {
-  it("starts with every provider-injection flag and the Antigravity opt-in off", () => {
+  it("starts with the Antigravity opt-in off", () => {
     const s = fresh().get();
-    for (const id of ["claude", "codex", "opencode", "antigravity", ...GATED_DRIVERS]) expect(s.providerInjection[id] ?? false, id).toBe(false);
     expect(s.antigravity).toBe(false);
     expect(s.antigravityAck).toBeNull();
   });
 
   it("gates exactly one agent behind the opt-in: Antigravity, whose ACP server uses its own Google sign-in", () => {
     expect(optInIds).toEqual(["antigravity"]);
-  });
-
-  it("flipping one driver's injection flag changes only that driver's plan", () => {
-    const provider: Provider = { id: "gw", label: "Gateway", wireProtocol: "openai-chat", baseURL: "https://gw.example.com", secret: { kind: "safeStorage", ciphertext: "x" }, models: [] };
-    const settings: Settings = { theme: "system", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: { "gated-a": true } };
-    const source: InjectionSource = {
-      credential: () => ({ kind: "byok", providerId: "gw" }),
-      providers: () => [provider],
-      providerSecret: () => "k",
-      secretEnvNames: () => [],
-      get: () => settings,
-    };
-    GATED_DRIVERS.add("gated-a");
-    GATED_DRIVERS.add("gated-b");
-    try {
-      const a = injectionFor(source, "gated-a", process.env, { injector: "acp" });
-      const b = injectionFor(source, "gated-b", process.env, { injector: "acp" });
-      expect(a.warning ?? "").not.toMatch(/injection for gated-a is off/);
-      expect(b.warning).toMatch(/Provider injection for gated-b is off/);
-    } finally {
-      GATED_DRIVERS.delete("gated-a");
-      GATED_DRIVERS.delete("gated-b");
-    }
   });
 });
 

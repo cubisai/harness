@@ -1046,7 +1046,6 @@ export interface UnskilledApi {
   discoverProviderModels(input: ProviderInput, secret?: string, headerValues?: Record<string, string>): Promise<ModelDiscovery>;
   /** Search models.dev's providers (cached, offline-safe) to start a new provider from one. */
   searchProviderCatalog(query: string): Promise<CatalogProvider[]>;
-  setCredential(agentId: string, choice: CredentialChoice): Promise<SettingsView>;
   /** Show the app's data folder (agents.json, the database) in the file manager. */
   openDataFolder(): Promise<void>;
   updateStatus(): Promise<AppUpdateStatus>;

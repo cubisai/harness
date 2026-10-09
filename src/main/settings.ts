@@ -414,12 +414,6 @@ export class SettingsStore {
     // Providers are their own agents now, so every agent uses its own sign-in or config.
     return { kind: "subscription" };
   }
-
-  setCredential(agentId: string, choice: CredentialChoice): void {
-    if (choice.kind === "byok" && !this.findProvider(choice.providerId)) throw new Error(`unknown provider ${choice.providerId}`);
-    (this.data.credentials ??= {})[agentId] = choice;
-    this.write();
-  }
 }
 
 /** A URL's host, or null when it doesn't parse. */

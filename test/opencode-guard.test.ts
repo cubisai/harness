@@ -4,12 +4,11 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import type { Provider, ThreadEvent } from "../src/shared/types";
-import { DEFAULT_MODEL, createAcpDriver } from "../src/main/agents/acp/driver";
+import type { ThreadEvent } from "../src/shared/types";
+import { createAcpDriver, DEFAULT_MODEL } from "../src/main/agents/acp/driver";
 import { ACP_PRESETS, onPath } from "../src/main/agents/registry";
 import { findPython } from "../src/main/guard";
-import { type InjectionPlan, type InjectionSource, injectionFor } from "../src/main/inject";
-import { opencodeVersion } from "../src/main/inject/opencode";
+import { type InjectionPlan } from "../src/main/inject";
 import { ensureOpenCodeGuard, withOpenCodeGuard } from "../src/main/inject/opencode-guard";
 import { closeAfter, fixturesDir, tempDir } from "./helpers";
 
@@ -84,27 +83,6 @@ describe.skipIf(!findPython())("the generated OpenCode guard plugin", () => {
 });
 
 const KEY = "test-opencode-guard-key";
-
-function provider(baseURL: string): Provider {
-  return {
-    id: "gw",
-    label: "GW",
-    wireProtocol: "openai-chat",
-    baseURL,
-    secret: { kind: "safeStorage", ciphertext: "x" },
-    models: [{ id: "picked", modelID: "vendor/wire-1", name: "Picked", capabilities: { tools: true, vision: false, reasoning: false }, contextWindow: 128_000, maxOutput: 8_192 }],
-  };
-}
-
-function source(p: Provider): InjectionSource {
-  return {
-    credential: () => ({ kind: "byok", providerId: p.id }),
-    providers: () => [p],
-    providerSecret: () => KEY,
-    secretEnvNames: () => [],
-    get: () => ({ theme: "system", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: false, editor: null, providerInjection: {} }),
-  };
-}
 
 /** A fake chat endpoint: the first request with tools answers a bash tool call, the rest say done. */
 function startFakeToolChat(): Promise<{ server: Server; url: string; bodies: unknown[] }> {
@@ -182,17 +160,35 @@ describe.skipIf(!onPath("opencode") || !findPython())("OpenCode guard plugin end
     closeAfter(() => void fake.server.close());
 
     const preset = ACP_PRESETS.find((p) => p.id === "opencode")!;
-    const injected = source(provider(fake.url));
     const pluginUrl = ensureOpenCodeGuard(tempDir());
     const driver = createAcpDriver(preset, {
       clientVersion: "test",
       guardScript: GUARD,
-      injection: () =>
-        withOpenCodeGuard(injectionFor(injected, "opencode", process.env, { injector: "opencode", opencodeVersion: () => opencodeVersion(preset.command) }), {
+      injection: () => {
+        // The provider is its own native agent now, so the injection plan is
+        // built by hand: point OpenCode at the fake server via OPENCODE_CONFIG_CONTENT.
+        const config = {
+          $schema: "https://opencode.ai/config.json",
+          provider: {
+            gw: {
+              npm: "@ai-sdk/openai-compatible",
+              name: "GW",
+              options: { baseURL: fake.url, apiKey: KEY },
+              models: { "vendor/wire-1": { name: "Picked" } },
+            },
+          },
+          model: "gw/vendor/wire-1",
+        };
+        const plan: InjectionPlan = {
+          env: { ...process.env, OPENCODE_CONFIG_CONTENT: JSON.stringify(config) },
+          byok: false,
+        };
+        return withOpenCodeGuard(plan, {
           pluginUrl,
           script: GUARD,
           python: findPython()!,
-        }),
+        });
+      },
     });
     closeAfter(() => driver.dispose?.());
 

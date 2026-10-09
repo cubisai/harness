@@ -1,110 +1,10 @@
-// OpenCode's injector: `opencode acp` reads its whole provider config from the
-// OPENCODE_CONFIG_CONTENT env var and the key from its own env var, referenced
-// there as `{env:VAR}`, so nothing is written anywhere. The key lives only in
-// the child process environment (and on Linux is readable via /proc/<pid>/environ
-// by processes that may read it); never log the env object.
+// OpenCode's provider-injection helpers. The injector itself was removed when
+// providers became native agents; what remains are the pieces still used by the
+// service and settings: parsing OpenCode's model variants, reading them from a
+// running binary, and folding a picked variant into an injection plan.
 
-import type { Provider } from "../../shared/types";
-import { anthropicAuthStyle } from "../../shared/provider-rules";
-import { execCommandSync, killTree, spawnCommand } from "../winspawn";
-import { catalogFor } from "../providers";
-import { headerPlan } from "./headers";
-import { providerKeyVar } from "./keys";
+import { killTree, spawnCommand } from "../winspawn";
 import type { InjectedEnv, InjectionPlan } from ".";
-
-/** The AI-SDK package each wire protocol is spoken through. */
-const NPM_BY_PROTOCOL: Record<Provider["wireProtocol"], string> = {
-  "openai-chat": "@ai-sdk/openai-compatible",
-  "openai-responses": "@ai-sdk/openai",
-  "anthropic-messages": "@ai-sdk/anthropic",
-  gemini: "@ai-sdk/google",
-};
-
-/** The AI-SDK package and base URL OpenCode should use for a provider's wire protocol. */
-export function opencodePackage(provider: Provider): { npm: string; baseURL: string } {
-  const npm = NPM_BY_PROTOCOL[provider.wireProtocol];
-  const base = provider.baseURL.replace(/\/+$/, "");
-  // Raw mode sends the URL exactly as typed, whatever the protocol.
-  if (provider.pathMode === "raw") return { npm, baseURL: provider.baseURL };
-  switch (provider.wireProtocol) {
-    case "openai-chat":
-    case "openai-responses":
-      return { npm, baseURL: base };
-    case "anthropic-messages":
-      return { npm, baseURL: base.endsWith("/v1") ? base : `${base}/v1` };
-    case "gemini":
-      return { npm, baseURL: base.endsWith("/v1beta") ? base : `${base}/v1beta` };
-  }
-}
-
-/**
- * The plan for one OpenCode turn on a BYOK provider: a v1 config in
- * OPENCODE_CONFIG_CONTENT, the key in the env var the config references.
- */
-export function injectOpenCode(
-  provider: Provider,
-  secret: string | null,
-  base: InjectedEnv,
-  opts: { version: string | null; secretHeaders?: Record<string, string> },
-): InjectionPlan {
-  const major = opts.version === null ? null : Number.parseInt(opts.version, 10);
-  if (major !== 1) {
-    return {
-      env: base,
-      byok: true,
-      error: `OpenCode ${opts.version ?? "(version unknown)"} uses a config format this app hasn't been verified against (1.x only).`,
-    };
-  }
-  if (!secret) return { env: base, byok: true, error: `${provider.label} has no key saved.` };
-  if (provider.models.length === 0) return { env: base, byok: true, error: `${provider.label} lists no models for OpenCode.` };
-
-  const providerKey = `unskilled-${provider.id}`;
-  const keyVar = providerKeyVar(provider.id);
-  const model = `${providerKey}/${provider.models[0]!.id}`;
-  const smallModel = provider.smallModel && provider.models.some((m) => m.id === provider.smallModel)
-    ? `${providerKey}/${provider.smallModel}`
-    : model;
-  const { npm, baseURL } = opencodePackage(provider);
-
-  // Headers travel as literal values or `{env:VAR}` refs; a secret header gets
-  // a var of its own, so its value never enters the config.
-  const plan = headerPlan(provider, opts.secretHeaders);
-  const headers: Record<string, string> = { ...plan.literal };
-  for (const [header, envVar] of Object.entries(plan.fromEnv)) headers[header] = `{env:${envVar}}`;
-  if (provider.wireProtocol === "anthropic-messages" && anthropicAuthStyle(provider) === "bearer") {
-    headers.Authorization = `Bearer {env:${keyVar}}`;
-  }
-
-  const queryParams = provider.queryParams && Object.keys(provider.queryParams).length > 0 ? provider.queryParams : null;
-  const queryUnsupported = queryParams !== null && provider.wireProtocol !== "openai-chat";
-  const options: Record<string, unknown> = {
-    baseURL,
-    apiKey: `{env:${keyVar}}`,
-    ...(Object.keys(headers).length > 0 ? { headers } : {}),
-    ...(queryParams !== null && !queryUnsupported ? { queryParams } : {}),
-  };
-  const config = {
-    $schema: "https://opencode.ai/config.json",
-    model,
-    // OpenCode then offers only this provider, so its own models (and a picked
-    // one) can't bypass the key.
-    enabled_providers: [providerKey],
-    small_model: smallModel,
-    provider: {
-      [providerKey]: {
-        npm,
-        name: provider.label,
-        options,
-        models: catalogFor(provider).opencode.models,
-      },
-    },
-  };
-  const env: InjectedEnv = { ...base, ...provider.env, ...plan.secretVars, [keyVar]: secret, OPENCODE_CONFIG_CONTENT: JSON.stringify(config) };
-  const warning = queryUnsupported
-    ? `OpenCode sends query parameters only to chat-completions providers, so ${provider.label}'s are left out.`
-    : undefined;
-  return { env, files: [], byok: true, ...(warning ? { warning } : {}) };
-}
 
 /**
  * Parse `opencode models --verbose`: each model is a `<provider>/<model>` line
@@ -226,24 +126,4 @@ export function withOpenCodeVariant(
   config.agent = agents;
   out.env.OPENCODE_CONFIG_CONTENT = JSON.stringify(config);
   return out;
-}
-
-const versionCache = new Map<string, string>();
-
-/**
- * `opencode --version`, cached per command since it never changes for a given
- * binary. Only a successful answer is cached: a slow cold start (e.g. under
- * load) returns null this once and is asked again next time, rather than
- * disabling injection until the app restarts.
- */
-export function opencodeVersion(command: string): string | null {
-  const cached = versionCache.get(command);
-  if (cached !== undefined) return cached;
-  try {
-    const version = execCommandSync(command, ["--version"], { timeout: 30_000, stdio: ["ignore", "pipe", "pipe"] }).trim();
-    if (version) versionCache.set(command, version);
-    return version || null;
-  } catch {
-    return null; // Not installed, not executable, too slow, or no --version: reported as unknown.
-  }
 }

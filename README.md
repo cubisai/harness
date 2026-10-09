@@ -63,7 +63,7 @@ Settings (⌘, or the gear in the sidebar) is one sheet with a list of groups on
 
 - **Appearance:** System, Light, or Dark; Motion (Instant by default, Subtle, or Full; your system's reduce-motion setting always wins); Density (Comfortable or Compact rows).
 - **Threads:** the agent and permission mode a new thread starts with, and the editor files open in.
-- **Agents & Providers:** each agent's credentials and the provider list, and the installed agents. Keys are encrypted with the OS keychain (Electron `safeStorage`), never sent to the window, and passed only to the agent they belong to; saving or removing one restarts running agents.
+- **Agents & Providers:** the installed agents and the provider list. A saved provider (an OpenAI-compatible, Responses or Anthropic endpoint with your key) becomes its own agent in the model picker, next to Claude, Codex and OpenCode, and runs on CubiQ's own agent loop; Claude, Codex and OpenCode always use their own sign-in or config. Keys are encrypted with the OS keychain (Electron `safeStorage`), never sent to the window, and used only by the app to call that provider.
 - **Skills & MCP:** the skill count, with shortcuts into the Library.
 - **Data & Security:** where keys are kept, and the data folder.
 - **Updates:** the version, and whether new ones download by themselves (on by default).

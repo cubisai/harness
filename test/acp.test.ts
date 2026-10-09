@@ -1019,25 +1019,11 @@ describe("ACP driver credential injection", () => {
   function injectedDriver(src: InjectionSource) {
     const d = createAcpDriver(
       { id: "custom-mock", label: "Mock", command: process.execPath, args: [MOCK] },
-      { clientVersion: "test", injection: () => injectionFor(src, "custom-mock", process.env, { agentLabel: "Mock" }) },
+      { clientVersion: "test", injection: () => injectionFor(src, "custom-mock", process.env) },
     );
     closeAfter(() => d.dispose?.());
     return d;
   }
-
-  it("spawns a BYOK ACP agent with the key, and shows its guess notice once", async () => {
-    const d = injectedDriver(source({ kind: "byok", providerId: "test-gateway" }));
-    const first = turn("env:OPENAI_API_KEY");
-    await d.runTurn(first.input);
-    expect(first.deltas.join("")).toContain("OPENAI_API_KEY=present");
-    const second = turn("env:OPENAI_API_KEY");
-    await d.runTurn(second.input);
-    expect(second.deltas.join("")).toContain("OPENAI_API_KEY=present");
-    const notices = [...first.events, ...second.events].filter(
-      (e): e is { kind: "notice"; text: string } => e.kind === "notice" && /may not reach it/.test(e.text),
-    );
-    expect(notices).toHaveLength(1);
-  });
 
   it("keeps a planted key out of a subscription ACP agent", async () => {
     const d = injectedDriver(source({ kind: "subscription" }, ["OPENAI_API_KEY"]));
