@@ -23,7 +23,6 @@ export function installMock(): void {
     defaultPermissionMode: "ask",
     autoUpdate: true,
     editor: null,
-    providerInjection: {},
     providers: [
       {
         id: "deepseek",

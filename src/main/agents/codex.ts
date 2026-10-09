@@ -73,8 +73,6 @@ export interface CodexConfig {
   clientVersion: string;
   /** Where to write the model catalog without the async question tools; none: Codex uses its own. */
   catalogDir?: () => string | null;
-  /** Saved providers' models Codex can reach, listed after its own. */
-  extraModels?: () => ModelOption[];
   /** Model-invoked skills for a project (the app-wide set without one), registered as Codex's extra skills root; `design` adds the design-only ones. */
   skillsDir?: (cwd?: string, design?: boolean) => string | null;
   /** The harness's tools over HTTP MCP (the browser pane's), attached per thread. */
@@ -975,11 +973,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     skillCallPrefix: "",
     /** The Codex copy a bare command resolves to at spawn time, and the others found. */
     binary: () => (config.command.includes("/") || config.command.includes("\\") ? undefined : (binaryInfo(config.command) ?? undefined)),
-    models: () => {
-      const own = [{ id: CODEX_DEFAULT_MODEL, label: "Codex default", ...defaultWindows }, ...models];
-      const extra = (config.extraModels?.() ?? []).filter((m) => !own.some((o) => o.id === m.id));
-      return extra.length ? [...own, ...extra] : own;
-    },
+    models: () => [{ id: CODEX_DEFAULT_MODEL, label: "Codex default", ...defaultWindows }, ...models],
     refreshModels,
     // Read account limits on demand. Never starts the app-server just to
     // probe: with none running there is nothing to ask, so return null.

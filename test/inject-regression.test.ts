@@ -22,7 +22,7 @@ describe("injectionFor subscription", () => {
       providers: () => [],
       providerSecret: () => null,
       secretEnvNames: () => ["OPENAI_API_KEY", "MY_PROVIDER_KEY"],
-      get: () => ({ theme: "system", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: false, editor: null, providerInjection: {} }),
+      get: () => ({ theme: "system", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: false, editor: null }),
     };
     const plan = injectionFor(source, "claude", {
       PATH: "/usr/bin",

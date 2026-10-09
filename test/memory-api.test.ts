@@ -15,7 +15,6 @@ function fakeSettings(initial: Partial<Settings> = {}) {
     defaultPermissionMode: "ask",
     autoUpdate: true,
     editor: null,
-    providerInjection: {},
     ...initial,
   } as Settings;
   return {

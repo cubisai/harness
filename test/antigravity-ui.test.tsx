@@ -6,7 +6,7 @@ import { ANTIGRAVITY_ACK_VERSION } from "../src/shared/provider-rules";
 import type { SettingsView } from "../src/shared/types";
 
 const settings = (patch: Partial<SettingsView> = {}) =>
-  ({ theme: "system", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {}, providers: [], providerCredential: {}, migratedProviders: [], secretsEncrypted: true, ...patch }) as SettingsView;
+  ({ theme: "system", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providers: [], providerCredential: {}, migratedProviders: [], secretsEncrypted: true, ...patch }) as SettingsView;
 
 describe("Antigravity in the UI", () => {
   it("shows the exact amber chip text", () => {

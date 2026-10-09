@@ -1,5 +1,7 @@
 # Milestone 4 — Implementation Spec
 
+> Superseded 2026-10-09: phases 1–2's provider injection (BYOK credentials, `unskilled-` models, the translation gateway) were removed; each saved provider is now its own native agent (`src/main/harness/`). See HANDOFF.md.
+
 The engineering plan in [`../plan/docs/M4-centralized-harness-plan.md`](../plan/docs/M4-centralized-harness-plan.md) (10 chapters) turned into **executable phases**. The plan explains *why*; this folder is the *what to build, in what order, with what acceptance criteria*.
 
 **Status:** not started. Every phase below is unstarted unless its checkbox says otherwise.

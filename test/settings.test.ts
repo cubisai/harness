@@ -42,23 +42,9 @@ describe("SettingsStore", () => {
   it("starts from defaults and persists updates", () => {
     const file = fresh();
     const s = new SettingsStore(file, box);
-    expect(s.get()).toEqual({ theme: "system", motion: "full", density: "comfortable", zoom: 1, antigravity: false, antigravityAck: null, defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {}, paneLayout: DEFAULT_LAYOUT, memory: { enabled: true, disabledProjects: [] } });
+    expect(s.get()).toEqual({ theme: "system", motion: "full", density: "comfortable", zoom: 1, antigravity: false, antigravityAck: null, defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, paneLayout: DEFAULT_LAYOUT, memory: { enabled: true, disabledProjects: [] } });
     s.update({ theme: "dark", defaultAgent: "codex", defaultPermissionMode: "auto-edit", autoUpdate: false, editor: "zed" });
-    expect(new SettingsStore(file, box).get()).toEqual({ theme: "dark", motion: "full", density: "comfortable", zoom: 1, antigravity: false, antigravityAck: null, defaultAgent: "codex", defaultPermissionMode: "auto-edit", autoUpdate: false, editor: "zed", providerInjection: {}, paneLayout: DEFAULT_LAYOUT, memory: { enabled: true, disabledProjects: [] } });
-  });
-
-  it("keeps only boolean per-agent injection flags", () => {
-    const file = fresh();
-    const s = new SettingsStore(file, box);
-    s.update({ providerInjection: { codex: true, bad: "x" } as never });
-    expect(s.get().providerInjection).toEqual({ codex: true });
-    expect(new SettingsStore(file, box).get().providerInjection).toEqual({ codex: true });
-  });
-
-  it("ignores a providerInjection that is not a plain object", () => {
-    const s = new SettingsStore(fresh(), box);
-    s.update({ providerInjection: ["codex"] as never });
-    expect(s.get().providerInjection).toEqual({});
+    expect(new SettingsStore(file, box).get()).toEqual({ theme: "dark", motion: "full", density: "comfortable", zoom: 1, antigravity: false, antigravityAck: null, defaultAgent: "codex", defaultPermissionMode: "auto-edit", autoUpdate: false, editor: "zed", paneLayout: DEFAULT_LAYOUT, memory: { enabled: true, disabledProjects: [] } });
   });
 
   it("ignores invalid values", () => {

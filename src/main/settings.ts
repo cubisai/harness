@@ -30,7 +30,7 @@ export interface SecretBox {
   decrypt(b64: string): string;
 }
 
-const DEFAULTS: Settings = { theme: "system", motion: "full", density: "comfortable", zoom: 1, antigravity: false, antigravityAck: null, defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {}, paneLayout: { ...DEFAULT_LAYOUT }, memory: { enabled: true, disabledProjects: [] } };
+const DEFAULTS: Settings = { theme: "system", motion: "full", density: "comfortable", zoom: 1, antigravity: false, antigravityAck: null, defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, paneLayout: { ...DEFAULT_LAYOUT }, memory: { enabled: true, disabledProjects: [] } };
 
 /** A settings export file. */
 export interface SettingsExport {
@@ -167,13 +167,6 @@ export class SettingsStore {
     }
     if (typeof patch.autoUpdate === "boolean") next.autoUpdate = patch.autoUpdate;
     if (patch.editor !== undefined) next.editor = typeof patch.editor === "string" ? patch.editor : null;
-    if (patch.providerInjection && typeof patch.providerInjection === "object" && !Array.isArray(patch.providerInjection)) {
-      // Only agent ids mapped to booleans; the renderer chooses the keys, so
-      // anything else in the object is dropped rather than persisted.
-      const injection: Record<string, boolean> = {};
-      for (const [agentId, on] of Object.entries(patch.providerInjection)) if (typeof on === "boolean") injection[agentId] = on;
-      next.providerInjection = injection;
-    }
     if (patch.paneLayout !== undefined) next.paneLayout = sanitizeLayout(patch.paneLayout);
     if (patch.skills && typeof patch.skills === "object" && Array.isArray(patch.skills.disabled)) {
       // Only `${origin}:${name}` strings; a wild renderer payload can't grow this unbounded.

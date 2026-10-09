@@ -12,7 +12,6 @@ const settings: SettingsView = {
   defaultPermissionMode: "ask",
   autoUpdate: true,
   editor: null,
-  providerInjection: {},
   paneLayout: DEFAULT_LAYOUT,
   providers: [],
   providerCredential: {},

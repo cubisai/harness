@@ -187,8 +187,6 @@ export interface Settings {
   autoUpdate: boolean;
   /** The editor "Open in editor" uses; null = the first one found. */
   editor: string | null;
-  /** Per agent id: allow BYOK injection for drivers that write outside the app data folder. Absent = off. */
-  providerInjection: Record<string, boolean>;
   /** Panel sizes and which panels are collapsed; SettingsStore.get() always fills it in. */
   paneLayout?: PaneLayout;
   /** Skills the user turned off, as `${origin}:${name}`. */

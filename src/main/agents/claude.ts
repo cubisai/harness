@@ -5,7 +5,6 @@ import { dirname, join } from "node:path";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
 import type { EffortLevel, HookCallback, ModelInfo, ModelUsage, Options, PermissionResult, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { McpServerEntry, ModelOption, ModelPricing, PermissionMode, PlanEntry, ThreadEvent } from "../../shared/types";
-import { providerOfModel } from "../../shared/provider-rules";
 import { canonicalTool, clipSummary, type EditResult, type RunPayload, type RunResult } from "../../shared/tools";
 import { diffSummary, unifiedDiff } from "../../shared/diff";
 import type { ToolDiff } from "../../shared/tools";
@@ -226,13 +225,8 @@ export interface ClaudeDriverConfig {
   guardScript?: string;
   /** Plan rate limits, as Claude reports them during turns (claude.ai logins only). */
   onLimits?: LimitsListener;
-  /**
-   * The credential plan for the next turn; absent = inherit process.env (tests).
-   * A thread on a provider's model (`unskilled-<provider>/…`) passes that provider and model.
-   */
-  injection?: (ctx?: { providerId: string; model: string }) => InjectionPlan | Promise<InjectionPlan>;
-  /** Saved providers' models Claude can reach (directly or through the gateway), listed after its own. */
-  extraModels?: () => ModelOption[];
+  /** The credential plan for the next turn; absent = inherit process.env (tests). */
+  injection?: () => InjectionPlan | Promise<InjectionPlan>;
   /** The harness guide for this turn's cwd, appended to Claude Code's own system prompt. */
   guide?: (cwd: string, design?: string) => string;
   /** Prefer the user's installed, self-updating Claude Code CLI over the SDK's bundled binary (default true). */
@@ -325,11 +319,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
     credentials: { byok: true, own: "login", injector: "claude" },
     skillsDelivery: CLAUDE_CAPABILITIES.skillsDelivery,
     skillCallPrefix: `${PLUGIN_NAME}:`,
-    models: () => {
-      const own = models;
-      const extra = (config.extraModels?.() ?? []).filter((m) => !own.some((o) => o.id === m.id));
-      return extra.length ? [...own, ...extra] : own;
-    },
+    models: () => models,
     refreshModels,
     /** Which Claude Code binary actually runs, and the other installs found. Cached only: undefined until warmed. */
     binary: () => {
@@ -411,10 +401,8 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
       // A design thread's skills keep their scaffolds and scripts outside the project; reading them shouldn't ask (Claude asks for paths outside its directories even in Full access).
       const skillRoots = input.design ? [...(pluginPath ? [pluginPath] : []), ...(config.skillDirs?.() ?? [])] : [];
 
-      // A provider's model pins that provider to this turn; the SDK runs its wire id.
-      const providerId = providerOfModel(input.model);
-      const plan = await config.injection?.(providerId ? { providerId, model: input.model } : undefined);
-      const model = plan?.model ?? input.model;
+      const plan = await config.injection?.();
+      const model = input.model;
       if (plan?.error) {
         input.onEvent({ kind: "error", message: plan.error });
         return;
@@ -502,7 +490,6 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
       };
 
       const turn = newTurnState();
-      if (plan && "pricing" in plan) turn.pricing = plan.pricing;
 
       // One query() attempt. "aborted" means the turn was stopped (the caller returns);
       // "lost" means the stored session couldn't be reopened and the caller should seed a new one.
@@ -620,8 +607,6 @@ export interface TurnState {
   contextInputTokens: number | null;
   /** The model the turn's main thread last reported, for the context window lookup. */
   model: string | null;
-  /** A pinned provider model's prices (null: unknown), in place of Claude Code's own estimate; undefined keeps Claude's. */
-  pricing?: ModelPricing | null;
 }
 
 /** A turn's cost from its token counts at a provider's per-1M prices; null when the prices are unknown. */
@@ -855,7 +840,7 @@ export function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnS
       return;
     }
     case "result": {
-      input.onEvent(turnEndFromResult(message, turn.contextInputTokens, turn.model, turn.pricing));
+      input.onEvent(turnEndFromResult(message, turn.contextInputTokens, turn.model));
       if (message.subtype !== "success") {
         input.onEvent({ kind: "error", message: `The turn ended early (${message.subtype}).` });
       }

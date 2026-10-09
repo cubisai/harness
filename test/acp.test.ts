@@ -428,46 +428,6 @@ describe("ACP driver", () => {
     expect(off.events.filter((e) => e.kind === "notice")).toEqual([]);
   });
 
-  it("pins a provider per thread: a provider model respawns with it, resumes the session, and lists saved providers' models", async () => {
-    const providers: (string | null)[] = [];
-    const d = createAcpDriver(
-      { id: "mock", label: "Mock", command: process.execPath, args: [MOCK] },
-      {
-        clientVersion: "test",
-        extraModels: () => [
-          { id: "unskilled-th/fast", label: "TokenHarbor/Fast" },
-          { id: "mock-small", label: "Mock Small (again)", cost: { input: 0.1, output: 0.4 } },
-        ],
-        injection: (ctx) => {
-          providers.push(ctx?.providerId ?? null);
-          return { env: {}, byok: Boolean(ctx?.providerId) };
-        },
-      },
-    );
-    closeAfter(() => d.dispose?.());
-
-    // The mock resumes this session id in a new process, as OpenCode resumes its stored sessions.
-    const own = turn("one", { sessionId: "resumable-session", model: "mock-small" });
-    await d.runTurn(own.input);
-    expect(own.deltas.join("")).toBe("Hello, one (mock-small)");
-    // Saved providers' models follow the agent's own; one it already lists isn't repeated.
-    expect(d.models().map((m) => m.id)).toEqual(["default", "mock-small", "mock-large", "unskilled-th/fast"]);
-    // The agent's own copy keeps the saved model's price.
-    expect(d.models().find((m) => m.id === "mock-small")?.cost).toEqual({ input: 0.1, output: 0.4 });
-
-    const pinned = turn("two", { sessionId: own.sessions[0]!, model: "unskilled-th/fast" });
-    await d.runTurn(pinned.input);
-    expect(providers).toEqual([null, "th"]);
-    expect(pinned.sessions).toEqual(["resumable-session"]);
-    expect(pinned.deltas.join("")).toBe("Hello, two (unskilled-th/fast)");
-    expect(pinned.events.filter((e) => e.kind === "notice").map((e) => (e as { text: string }).text)).toEqual(["Mock restarted to switch provider; the conversation continues."]);
-
-    // Same provider: the process stays.
-    const again = turn("three", { sessionId: own.sessions[0]!, model: "unskilled-th/fast" });
-    await d.runTurn(again.input);
-    expect(providers).toEqual([null, "th"]);
-  });
-
   it("changes nothing for an effort the model doesn't list", async () => {
     let spawns = 0;
     const d = createAcpDriver(
@@ -1012,7 +972,7 @@ describe("ACP driver credential injection", () => {
       providers: () => [provider],
       providerSecret: () => KEY,
       secretEnvNames: () => secretEnvNames,
-      get: (): Settings => ({ theme: "system", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {} }),
+      get: (): Settings => ({ theme: "system", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null }),
     };
   }
 

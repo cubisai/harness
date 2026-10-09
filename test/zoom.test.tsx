@@ -73,7 +73,7 @@ describe("applyZoom", () => {
 
 describe("Settings › Text size", () => {
   const view = (zoom?: number) =>
-    renderToStaticMarkup(<SettingsGroupContent group="appearance" settings={{ theme: "system", zoom, defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providerInjection: {}, providers: [], providerCredential: {}, migratedProviders: [], secretsEncrypted: true } as SettingsView} />);
+    renderToStaticMarkup(<SettingsGroupContent group="appearance" settings={{ theme: "system", zoom, defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, providers: [], providerCredential: {}, migratedProviders: [], secretsEncrypted: true } as SettingsView} />);
   it("is a Smaller ↔ Larger slider, a stop per step, resting on 100% with no Reset", () => {
     const html = view();
     expect(html).toMatch(/type="range"[^>]*min="0"[^>]*max="5"/);
