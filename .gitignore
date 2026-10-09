@@ -4,7 +4,9 @@ dist/
 *.tsbuildinfo
 .DS_Store
 .ai/
-.claude/
+.claude/*
+# The repo's design skills are shared; local settings and commands stay ignored.
+!.claude/skills/
 
 # Local test keys (never commit)
 .env

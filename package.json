@@ -24,6 +24,8 @@
     "prebuild": "bun run fix:node-pty",
     "build": "electron-vite build",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "design:docs": "node scripts/design-docs.mjs",
+    "design:check": "node scripts/design-check.mjs",
     "test": "vitest run",
     "smoke": "electron . --smoke",
     "dist": "bun run build && electron-builder --publish never",
