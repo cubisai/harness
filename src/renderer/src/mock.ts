@@ -608,6 +608,7 @@ export function installMock(): void {
     designWatch: async () => {},
     designUnwatch: async () => {},
     designReveal: async () => {},
+    designExport: async () => null,
     designSystems: async () => [
       { id: "clean", name: "Clean", description: "Neutral and calm: white surfaces, one blue accent, soft radii.", swatches: ["#ffffff", "#18181b", "#2563eb", "#0e7490"], source: "builtin" },
       { id: "dashboard", name: "Dashboard", description: "Dense and data-first.", swatches: ["#f6f7f9", "#111827", "#4f46e5", "#0e7490"], source: "builtin" },

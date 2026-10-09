@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { forCodex, mcpChangeNotice } from "../mcp/servers";
-import { withProject } from "../mcp-http";
+import { withDesign, withProject } from "../mcp-http";
 import { normalizeUsage } from "../usage";
 import type { InjectionPlan } from "../inject";
 import { RpcError, StdioRpc } from "./rpc";
@@ -914,7 +914,9 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     const conn = rpc!;
     const withTools = input.tools.length > 0 && Boolean(config.toolServer);
     const server = withTools ? await config.toolServer!() : null;
-    let threadConfig = codexToolConfig(server ? { ...server, url: withProject(server.url, input.projectId) } : null, input.tools, input.permissionMode, input.mcpServers);
+    // A design thread's URL also names it (`&d=`), which adds the design tools; a chat thread's URL is unchanged.
+    const toolUrl = server ? withDesign(withProject(server.url, input.projectId), input.design ? input.threadId : undefined) : "";
+    let threadConfig = codexToolConfig(server ? { ...server, url: toolUrl } : null, input.tools, input.permissionMode, input.mcpServers);
     const memory = input.projectId ? config.memory?.(input.projectId) ?? null : null;
     // CubiQ memory is on: Codex's own memories would duplicate it, so turn them off.
     if (memory !== null) threadConfig = { ...(threadConfig ?? {}), memories: { use_memories: false, generate_memories: false } };

@@ -103,6 +103,8 @@ The `/` menu works the same for every agent, since the app composes the skill's 
 
 The Browser tab (⌘⇧B) is a real Chromium page beside the thread: open your dev server there, and the agent can drive the same page. The agent always has seven tools: `browser_open`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_eval`, `browser_logs`, and `browser_screenshot`. Until you open the tab they answer "Browser pane not open"; they're always offered because adding tools mid-conversation would invalidate the prompt cache and reload the session.
 
+A design thread (Chat | Design in the sidebar) also gets three tools of its own — `design_screenshot` (render the page off screen at a width), `design_lint` (4px grid, token colours, contrast, 44×44 targets, with selectors) and `design_critique_save` (the critique as a versioned artifact beside the canvas). Chat threads never see them.
+
 - Snapshots are text with element refs (`[e3] button "Sign in"`), a fraction of a screenshot's tokens. Screenshots are saved to files, and the model sees the image only when it asks.
 - Clicks are real mouse events through the Chrome DevTools Protocol. Console errors, uncaught exceptions, and failed or 4xx/5xx requests are captured as they happen.
 - `verify-in-browser` picks these tools up automatically, so a UI check runs where you can watch it.

@@ -3,7 +3,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { HarnessTool, ToolContext } from "../src/main/agents/types";
-import { startToolServer, withProject, withThread } from "../src/main/mcp-http";
+import { startToolServer, withDesign, withProject, withThread } from "../src/main/mcp-http";
 import { closeAfter } from "./helpers";
 
 const echo: HarnessTool = {
@@ -138,6 +138,41 @@ describe("tool server", () => {
     closeAfter(() => void server.close());
     const res = await fetch(server.url, { method: "POST", body: "{}", headers: { "content-type": "application/json" } });
     expect(res.status).toBe(401);
+  });
+
+  it("adds a design thread's tools when ?d= or ?t= names it, on every path, without thread tools for ?d=", async () => {
+    const shot: HarnessTool = { ...echo, name: "design_screenshot" };
+    const ask: HarnessTool = { ...echo, name: "ask_user" };
+    const server = await startToolServer(
+      () => [echo],
+      () => [skill],
+      undefined,
+      () => [ask],
+      undefined,
+      undefined,
+      undefined,
+      (tid) => (tid === "design1" ? [shot] : []),
+    );
+    closeAfter(() => void server.close());
+    const names = async (url: string) => {
+      const client = await connect(url, server.token);
+      const { tools } = await client.listTools();
+      await client.close();
+      return tools.map((t) => t.name);
+    };
+    // Chat: unchanged on every path, with or without a thread.
+    expect(await names(server.url)).toEqual(["echo"]);
+    expect(await names(withThread(server.url, "chat1"))).toEqual(["echo", "ask_user"]);
+    expect(await names(withDesign(server.url, "chat1"))).toEqual(["echo"]);
+    expect(await names(withThread(server.skillsUrl, "chat1"))).toEqual(["echo", "skill", "ask_user"]);
+    // Design: Codex's ?d= adds the design tools but no ask_user; ACP's ?t= adds both.
+    expect(await names(withDesign(withProject(server.url, "p1"), "design1"))).toEqual(["echo", "design_screenshot"]);
+    expect(await names(withThread(server.skillsUrl, "design1"))).toEqual(["echo", "design_screenshot", "skill", "ask_user"]);
+  });
+
+  it("withDesign adds ?d= only for a design thread", () => {
+    expect(withDesign("http://127.0.0.1:1/mcp?p=x", undefined)).toBe("http://127.0.0.1:1/mcp?p=x");
+    expect(withDesign("http://127.0.0.1:1/mcp?p=x", "t1")).toBe("http://127.0.0.1:1/mcp?p=x&d=t1");
   });
 
   it("withProject adds ?p= only when there is a project", () => {

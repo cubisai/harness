@@ -687,6 +687,12 @@ export class Store {
     return this.getThread(id);
   }
 
+  /** The thread's newest event seq, or 0 before any. */
+  lastSeq(threadId: string): number {
+    const last = this.db.prepare("SELECT MAX(seq) AS seq FROM events WHERE thread_id = ?").get(threadId) as unknown as { seq: number | null };
+    return last.seq ?? 0;
+  }
+
   listEvents(threadId: string): StoredEvent[] {
     return this.db
       .prepare("SELECT seq, payload, created_at, provenance FROM events WHERE thread_id = ? ORDER BY seq")

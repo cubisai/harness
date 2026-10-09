@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { FolderOpen, Grid3x3 } from "lucide-react";
-import type { DesignEntry } from "../../../shared/types";
+import { Download, FolderOpen, Grid3x3 } from "lucide-react";
+import type { DesignEntry, DesignExportFormat } from "../../../shared/types";
 import { api } from "../api";
+import { fileManagerName } from "../components/OpenIn";
 import { Select } from "../components/Select";
-import { IconRefresh, IconTarget } from "../icons";
+import { IconClose, IconRefresh, IconTarget } from "../icons";
+import "../styles/artifact.css";
 import { useStore } from "../store";
 import { VIEWPORTS, ZOOMS, frameLayout, pickChipText, readBridgeMessage, type Viewport, type Zoom } from "./frame";
 
@@ -28,6 +30,10 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const scroll = useRef({ x: 0, y: 0 });
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState<DesignExportFormat | null>(null);
+  const [exported, setExported] = useState<{ path: string } | { error: string } | null>(null);
+  const exportRef = useRef<HTMLDivElement>(null);
 
   // Watch the folder while the canvas is open; the main process counts watches per window.
   useEffect(() => {
@@ -39,6 +45,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   useEffect(() => {
     setVersion(0);
     setPicking(false);
+    setExported(null);
     scroll.current = { x: 0, y: 0 };
   }, [threadId]);
 
@@ -95,6 +102,26 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     return () => window.removeEventListener("message", onMessage);
   }, [entry, picking, post]);
 
+  // The Export menu closes on a click outside it or Esc.
+  useEffect(() => {
+    if (!exportOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!exportRef.current?.contains(e.target as Node)) setExportOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setExportOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, [exportOpen]);
+
   const togglePick = () => {
     const on = !picking;
     setPicking(on);
@@ -120,6 +147,22 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   const frameKey = version ? `v${version}` : `live-${reload}-${manual}`;
   const layout = frameLayout(viewport, zoom, stage);
   const fit = viewport === "fit";
+  // Exports lay the page out at the viewport on screen; Fit exports at desktop width.
+  const exportWidth = VIEWPORTS.find((v) => v.value === viewport)?.size?.width ?? 1440;
+
+  const runExport = async (format: DesignExportFormat) => {
+    setExportOpen(false);
+    if (!entry) return;
+    setExporting(format);
+    try {
+      const path = await api().designExport(threadId, format, { rel: entry.rel, version: version || null, width: exportWidth });
+      if (path) setExported({ path });
+    } catch (err) {
+      setExported({ error: err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err) });
+    } finally {
+      setExporting(null);
+    }
+  };
 
   return (
     <section className="design-canvas" aria-label="Design canvas">
@@ -157,8 +200,52 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           <button className="icon-button" title="Open the design folder" onClick={() => void api().designReveal(threadId)}>
             <FolderOpen size={16} strokeWidth={1.75} aria-hidden />
           </button>
+          <div className="artifact-menu-wrap" ref={exportRef}>
+            <button
+              className={`icon-button${exportOpen ? " active" : ""}`}
+              title={exporting ? `Exporting ${exporting.toUpperCase()}…` : version ? `Export v${version}` : "Export"}
+              aria-label="Export"
+              aria-haspopup="menu"
+              aria-expanded={exportOpen}
+              onClick={() => setExportOpen(!exportOpen)}
+              disabled={!entry || exporting !== null}
+            >
+              <Download size={16} strokeWidth={1.75} aria-hidden />
+            </button>
+            {exportOpen && (
+              <div className="artifact-menu design-export-menu" role="menu">
+                <button role="menuitem" onClick={() => void runExport("html")}>
+                  <span className="artifact-menu-label">HTML</span>
+                  <span className="design-export-sub">One file, works offline</span>
+                </button>
+                <button role="menuitem" onClick={() => void runExport("png")}>
+                  <span className="artifact-menu-label">PNG</span>
+                  <span className="design-export-sub">Full page, {exportWidth} wide</span>
+                </button>
+                <button role="menuitem" onClick={() => void runExport("pdf")}>
+                  <span className="artifact-menu-label">PDF</span>
+                  <span className="design-export-sub">Slides print one per page</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
+      {exported && (
+        <div className={`design-version-bar${"error" in exported ? " error" : ""}`} role="status">
+          <span title={"path" in exported ? exported.path : exported.error}>
+            {"path" in exported ? `Exported ${exported.path.split(/[\\/]/).pop()}` : `Export failed: ${exported.error}`}
+          </span>
+          {"path" in exported && (
+            <button className="button ghost" onClick={() => void api().revealPath(exported.path)}>
+              Show in {fileManagerName()}
+            </button>
+          )}
+          <button className="icon-button" aria-label="Dismiss" title="Dismiss" onClick={() => setExported(null)}>
+            <IconClose />
+          </button>
+        </div>
+      )}
       {version !== 0 && (
         <div className="design-version-bar">
           <span>

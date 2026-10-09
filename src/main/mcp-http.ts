@@ -116,6 +116,14 @@ export function withThread(url: string, threadId: string | undefined): string {
   return u.toString();
 }
 
+/** A tool-server URL that names a design thread (`?d=`) without naming the caller, which adds its design tools. */
+export function withDesign(url: string, threadId: string | undefined): string {
+  if (!threadId) return url;
+  const u = new URL(url);
+  u.searchParams.set("d", threadId);
+  return u.toString();
+}
+
 /**
  * The harness's own tools (the browser pane's) as a Streamable HTTP MCP
  * server on 127.0.0.1, for agents that take tools over MCP rather than
@@ -130,7 +138,9 @@ export function withThread(url: string, threadId: string | undefined): string {
  * a call to one answers as an SSE stream carrying a progress heartbeat.
  * `/mcp-up/<scope>/<name>` hands the request to `upstream` (the gateway to
  * the user's remote servers), behind the same Bearer. `/llm/<providerId>/…`
- * goes to `llm` (the translation gateway) behind its own token.
+ * goes to `llm` (the translation gateway) behind its own token. A design
+ * thread (named by `?d=`, or `?t=`) also gets `design(threadId)`, the design
+ * tools; `?d=` alone names no caller, so it adds no thread tools.
  */
 export async function startToolServer(
   tools: () => HarnessTool[],
@@ -140,6 +150,7 @@ export async function startToolServer(
   heartbeatMs = HEARTBEAT_MS,
   upstream?: (req: IncomingMessage, res: ServerResponse, scope: string, name: string) => Promise<void>,
   llm?: (req: IncomingMessage, res: ServerResponse, providerId: string, rest: string) => Promise<void>,
+  design?: (threadId: string) => HarnessTool[],
 ): Promise<ToolServer> {
   const token = randomBytes(24).toString("hex");
   const llmToken = llm ? randomBytes(24).toString("hex") : undefined;
@@ -172,6 +183,7 @@ export async function startToolServer(
     const query = new URL(req.url ?? "/", "http://127.0.0.1").searchParams;
     const projectId = query.get("p") ?? undefined;
     const threadId = query.get("t") ?? undefined;
+    const designId = query.get("d") ?? threadId;
     if (req.method !== "POST") {
       // Stateless servers have no server-initiated stream to offer.
       res.writeHead(405, { Allow: "POST" }).end();
@@ -183,12 +195,14 @@ export async function startToolServer(
       return;
     }
     const server = new McpServer({ name: TOOL_SERVER_NAME, version: "1.0.0" });
+    // Empty for anything but a design thread, so a chat thread's list is unchanged.
+    const base = [...tools(), ...(designId ? (design?.(designId) ?? []) : [])];
     const list =
       path === "/mcp-skills"
-        ? [...tools(), ...(extra?.(projectId, threadId) ?? [])]
+        ? [...base, ...(extra?.(projectId, threadId) ?? [])]
         : path === "/mcp-routed"
-          ? [...tools(), ...(extra?.(projectId, threadId) ?? []), ...(routed?.(projectId) ?? [])]
-          : [...tools()];
+          ? [...base, ...(extra?.(projectId, threadId) ?? []), ...(routed?.(projectId) ?? [])]
+          : base;
     const waiting = threadId ? (threadTools?.() ?? []) : [];
     list.push(...waiting);
     const waitingNames = new Set(waiting.map((t) => t.name));

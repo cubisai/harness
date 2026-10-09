@@ -2,6 +2,7 @@ import { mkdirSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  CRITIQUE_ARTIFACT,
   PLAN_ARTIFACT,
   PREVIEWABLE,
   artifactDiff,
@@ -12,6 +13,7 @@ import {
   listArtifacts,
   readArtifact,
   recordPlan,
+  recordPseudo,
   recordTurnArtifacts,
   resolveInside,
   type ArtifactDeps,
@@ -384,5 +386,23 @@ describe("opensByItself", () => {
     const { opensByItself } = await import("../src/shared/artifact-kind");
     expect(["deck.pptx", "report.docx", "data.xlsx", "page.html", "chart.svg", "a.pdf", "shot.png", "t.csv"].every(opensByItself)).toBe(true);
     expect(["notes/limits.md", "src/a.ts", "README", "x.txt"].some(opensByItself)).toBe(false);
+  });
+});
+
+describe("critique artifact", () => {
+  it("is stored like the plan, under its own path, named Critique in diffs", async () => {
+    const root = tempDir();
+    const { deps } = fakeDeps({ gitHead: async () => "git" });
+    expect(recordPseudo(deps, CRITIQUE_ARTIFACT, { threadId: "t", text: "# A\n", turnSeq: 1 })?.version).toBe(1);
+    expect(recordPseudo(deps, CRITIQUE_ARTIFACT, { threadId: "t", text: "# A\n", turnSeq: 2 })).toBeNull();
+    expect(recordPseudo(deps, CRITIQUE_ARTIFACT, { threadId: "t", text: "# B\n", turnSeq: 3 })?.version).toBe(2);
+    expect(await readArtifact(deps, { threadId: "t", root, path: CRITIQUE_ARTIFACT })).toMatchObject({ ok: true, kind: "md", text: "# B\n", path: CRITIQUE_ARTIFACT });
+    expect(await readArtifact(deps, { threadId: "other", root, path: CRITIQUE_ARTIFACT })).toEqual({ ok: false, error: "No critique yet" });
+    const diff = await artifactDiff(deps, { threadId: "t", root, path: CRITIQUE_ARTIFACT });
+    expect(diff).toContain("+# B");
+    expect(diff).toContain("Critique");
+    expect(diff).not.toContain(CRITIQUE_ARTIFACT);
+    // The plan's own record is untouched.
+    expect(await readArtifact(deps, { threadId: "t", root, path: PLAN_ARTIFACT })).toEqual({ ok: false, error: "No plan yet" });
   });
 });

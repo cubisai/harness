@@ -90,6 +90,7 @@ const api: UnskilledApi = {
   designWatch: (threadId) => ipcRenderer.invoke("design:watch", threadId),
   designUnwatch: (threadId) => ipcRenderer.invoke("design:unwatch", threadId),
   designReveal: (threadId) => ipcRenderer.invoke("design:reveal", threadId),
+  designExport: (threadId, format, opts) => ipcRenderer.invoke("design:export", threadId, format, opts),
   designSystems: (projectId) => ipcRenderer.invoke("design:systems", projectId),
   readArtifact: (threadId, path, version) => ipcRenderer.invoke("artifacts:read", threadId, path, version),
   artifactDiff: (threadId, path, version) => ipcRenderer.invoke("artifacts:diff", threadId, path, version),

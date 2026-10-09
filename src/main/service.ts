@@ -32,6 +32,7 @@ import type {
   Usage,
 } from "../shared/types";
 import { bindingKey } from "../shared/bindings";
+import { CRITIQUE_ARTIFACT } from "../shared/artifact-kind";
 import { designDirName } from "./design/serve";
 import { listDesignSystems, materializeSystem, resolveDesignSystem } from "./design/systems";
 import { skillsOf } from "../shared/skill-list";
@@ -48,7 +49,7 @@ import {
   toolSetOf,
 } from "./cache-policy";
 import { Approvals } from "./approvals";
-import { artifactDiff, listArtifacts, opensByItself, readArtifact, recordPlan, recordTurnArtifacts, type ArtifactDeps } from "./artifacts";
+import { artifactDiff, listArtifacts, opensByItself, readArtifact, recordPlan, recordPseudo, recordTurnArtifacts, type ArtifactDeps } from "./artifacts";
 import { runCheck, tailOf } from "./check";
 import type { Store } from "./db";
 import { branchLabel, createWorktree, gitState, listProjectFiles, removeWorktree, workingTreeDiff, worktreeBranch } from "./git";
@@ -108,8 +109,8 @@ export class Service {
     private catalogFor: (cwd: string | null) => Catalog,
     drivers: AgentDriver[],
     private broadcast: (update: LiveUpdate) => void,
-    /** Tools the harness offers the agent this turn (the browser pane's, once it's open). */
-    private harnessTools: () => HarnessTool[] = () => [],
+    /** Tools the harness offers the agent this turn (the browser pane's, once it's open; a design thread's add the design tools). */
+    private harnessTools: (thread?: Thread) => HarnessTool[] = () => [],
     /** Defaults for new threads, from the user's settings. */
     private defaults: () => { agent: string | null; permissionMode: PermissionMode } = () => ({ agent: null, permissionMode: "ask" }),
     /** The MCP servers the thread's project gets, for every agent. */
@@ -388,7 +389,7 @@ export class Service {
         design: designOf(thread),
         model: thread.model,
         permissionMode: thread.permissionMode,
-        tools: this.harnessTools(),
+        tools: this.harnessTools(thread),
         mcpServers: this.mcpServers(thread.projectId),
         items,
         onSession,
@@ -417,7 +418,7 @@ export class Service {
           effort: thread.effort,
           permissionMode: thread.permissionMode,
           signal: controller.signal,
-          tools: this.harnessTools(),
+          tools: this.harnessTools(thread),
           mcpServers: this.mcpServers(thread.projectId),
           provenance,
           onEvent: (event) => {
@@ -643,7 +644,7 @@ export class Service {
       // prefix changed under a session); a servers-only change is the
       // drivers' expected session rebuild. The fingerprint only moves when a
       // queued change drains, at this turn's boundary.
-      const set = toolSetOf(this.harnessTools(), this.mcpServers(thread.projectId));
+      const set = toolSetOf(this.harnessTools(thread), this.mcpServers(thread.projectId));
       const previousSet = pinnedSet(thread.id);
       const toolsChanged = previousSet !== null && stableStringify(previousSet.tools) !== stableStringify(set.tools);
       if (pinnedFingerprint(thread.id) === null) {
@@ -680,7 +681,7 @@ export class Service {
         contextWindow: thread.contextWindow ?? null,
         permissionMode: thread.permissionMode,
         signal: controller.signal,
-        tools: this.harnessTools(),
+        tools: this.harnessTools(thread),
         mcpServers: this.mcpServers(thread.projectId),
         provenance,
         onSessionRebuilt: () => {
@@ -1075,6 +1076,19 @@ export class Service {
       // A failed copy leaves the last system in place; never fail the turn over it.
       return "";
     }
+  }
+
+  /**
+   * Save a design critique (design_critique_save) as the next version of the
+   * thread's Critique artifact and tell the renderer; unchanged text adds none.
+   */
+  saveCritique(threadId: string, markdown: string): { version: number } | null {
+    const thread = this.store.getThread(threadId);
+    if (thread.kind !== "design") throw new Error("Only a design thread has a critique.");
+    if (!this.artifacts) throw new Error("Artifacts are off.");
+    const saved = recordPseudo(this.artifacts, CRITIQUE_ARTIFACT, { threadId, text: markdown, turnSeq: this.store.lastSeq(threadId) });
+    if (saved) this.broadcast({ type: "artifact-ready", threadId, path: CRITIQUE_ARTIFACT, files: [CRITIQUE_ARTIFACT] });
+    return saved ? { version: saved.version } : null;
   }
 
   /** A stored turn-end version of a file in a design thread's folder (`rel` is inside that folder). */

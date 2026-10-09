@@ -11,8 +11,9 @@ Review the design at the design folder's `index.html` (or the page the user name
 ## 1. Look
 
 1. Read the page source and `system/DESIGN.md`.
-2. If you have a screenshot tool (`design_screenshot`) or browser tools, look at it at 390 and 1440 wide; otherwise reason from the source and say so.
-3. Read `references/rubric.md` from this skill's folder.
+2. Call `design_screenshot` at width 390 and at 1440 (add `fullPage: true` for long pages) and look at both. Without that tool, use browser tools, or reason from the source and say so.
+3. Call `design_lint` (at 1440, and 390 for mobile designs). Its contrast, target, spacing and color findings are facts: carry them into your findings with their selectors.
+4. Read `references/rubric.md` from this skill's folder.
 
 ## 2. Score
 
@@ -32,6 +33,8 @@ Then the findings:
 
 Keep it to the 10 most useful findings. Quote selectors so the user can pick them in the canvas.
 
+Save the table and findings with `design_critique_save` (the user sees it as the thread's **Critique**, one version per round), then give a 2–3 line summary in the chat instead of repeating it.
+
 ## 3. Fix (when the user agrees, or asked "critique and fix")
 
-Apply Blockers and Majors first, then Minors, in place in the design files. Do at most **2 rounds** of review-then-fix; after the second, list what's left instead of looping. End with the new scores in one line.
+Apply Blockers and Majors first, then Minors, in place in the design files. Then look again: screenshot, `design_lint`, re-score, and save that round's critique with `design_critique_save`. Do at most **2 rounds** of review-then-fix; after the second, list what's left instead of looping. End with the new scores in one line.

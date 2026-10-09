@@ -3,9 +3,9 @@ import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { LiveUpdate, PlanDecision, ThreadEvent } from "../src/shared/types";
-import type { AgentDriver, TurnInput } from "../src/main/agents/types";
+import type { AgentDriver, HarnessTool, TurnInput } from "../src/main/agents/types";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
-import { PLAN_ARTIFACT } from "../src/shared/artifact-kind";
+import { CRITIQUE_ARTIFACT, PLAN_ARTIFACT } from "../src/shared/artifact-kind";
 import { Store } from "../src/main/db";
 import type { TurnDelta } from "../src/main/memory/extractor";
 import { Service, titleFrom } from "../src/main/service";
@@ -208,6 +208,53 @@ describe("Service.send", () => {
     expect(latest.ok && latest.text).toBe("# Plan two");
     const first = await service.readArtifact(thread.id, PLAN_ARTIFACT, 1);
     expect(first.ok && first.text).toBe("# Plan one");
+  });
+
+  it("asks for each turn's tools with the thread, so only a design thread can get the design tools", async () => {
+    const store = new Store(join(tempDir(), "t.db"));
+    closeAfter(() => store.close());
+    const chatTools: HarnessTool[] = [];
+    const designList: HarnessTool[] = [];
+    const seen: string[] = [];
+    const got: HarnessTool[][] = [];
+    const driver = fakeDriver(async (input) => void got.push(input.tools));
+    const service = new Service(store, () => catalog(), [driver], () => {}, (thread) => {
+      seen.push(thread?.kind ?? "none");
+      return thread?.kind === "design" ? designList : chatTools;
+    });
+    const project = store.addProject(tempDir());
+    const chat = service.createThread(project.id);
+    const design = service.createThread(project.id, undefined, "design");
+    await service.send({ threadId: chat.id, text: "a" });
+    await service.send({ threadId: design.id, text: "b" });
+    expect(got[0]).toBe(chatTools);
+    expect(got[1]).toBe(designList);
+    expect(seen).not.toContain("none");
+  });
+
+  it("saves a design thread's critique as versions of its Critique artifact, and refuses a chat thread", () => {
+    const { service, store, updates } = setup(async () => {});
+    service.setArtifacts({
+      addVersion: (threadId, path, sha, bytes, turnSeq) => store.addArtifactVersion(threadId, path, sha, bytes, turnSeq),
+      listVersions: (threadId) => store.listArtifactVersions(threadId),
+      writeBlob: (sha, content) => store.writeBlobBytes(sha, content),
+      readBlob: (sha) => store.readBlobBytes(sha),
+      gitHead: async () => null,
+      preview: async () => ({ ok: false, error: "none" }),
+      fileUrl: () => "",
+    });
+    const project = store.addProject(tempDir());
+    const chat = service.createThread(project.id);
+    const design = service.createThread(project.id, undefined, "design");
+    expect(() => service.saveCritique(chat.id, "# no")).toThrow(/design thread/);
+    expect(service.saveCritique(design.id, "# Round 1\n")).toEqual({ version: 1 });
+    expect(service.saveCritique(design.id, "# Round 1\n")).toBeNull();
+    expect(service.saveCritique(design.id, "# Round 2\n")).toEqual({ version: 2 });
+    expect(service.listArtifacts(design.id)).toEqual([expect.objectContaining({ path: CRITIQUE_ARTIFACT, kind: "md" })]);
+    expect(updates.filter((u) => u.type === "artifact-ready")).toEqual([
+      { type: "artifact-ready", threadId: design.id, path: CRITIQUE_ARTIFACT, files: [CRITIQUE_ARTIFACT] },
+      { type: "artifact-ready", threadId: design.id, path: CRITIQUE_ARTIFACT, files: [CRITIQUE_ARTIFACT] },
+    ]);
   });
 
   it("resolves a pending plan with keep-on-empty when interrupted", async () => {

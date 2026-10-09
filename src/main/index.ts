@@ -4,12 +4,17 @@ import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell, utilityProcess } from "electron";
-import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, CredentialChoice, DesignSystemOption, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, ModelOption, McpServerEntry, McpServerSpec, McpServerStatus, MemoryType, OpenResult, PermissionDecision, PlanDecision, Provider, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
+import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, CredentialChoice, DesignExportFormat, DesignSystemOption, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, ModelOption, McpServerEntry, McpServerSpec, McpServerStatus, MemoryType, OpenResult, PermissionDecision, PlanDecision, Provider, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
 import { DESIGN_SCHEME, designDirName, designUrl, entryFile, serveDesign } from "./design/serve";
 import { DesignWatcher } from "./design/watch";
 import { bridgeScript } from "./design/bridge";
+import { buildDesignExport, exportFileName, pageTitleSource, type DesignExportDeps } from "./design/export";
+import { lintScript } from "./design/lint";
+import { electronShotWindow } from "./design/shot-window";
+import { Shooter } from "./design/shooter";
+import { designTools } from "./design/tools";
 import { selectorFor } from "./browser/picker";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
@@ -445,8 +450,39 @@ async function main(): Promise<void> {
   });
   for (const p of problems) console.warn(p);
   const modelSkillsDir = join(userData, "harness-skills");
+  // Renders design pages off screen for the design tools and Export; its window exists only while used.
+  const shooter = new Shooter(electronShotWindow);
+  const designLintJs = lintScript(selectorFor);
+  // Each design thread's own tools (bound to it), made once so its list keeps the same identity.
+  const designToolLists = new Map<string, HarnessTool[]>();
+  const designToolsOf = (threadId: string): HarnessTool[] => {
+    let list = designToolLists.get(threadId);
+    if (!list) {
+      list = designTools(
+        {
+          root: (id) => service.designRoot(id),
+          folder: (id) => designDirName(id),
+          url: (id, rel) => designUrl(id, rel),
+          screenshot: (url, opts) => shooter.screenshot(url, opts),
+          evaluate: (url, width, height, script) => shooter.evaluate(url, width, height, script),
+          lintScript: designLintJs,
+          saveCritique: (id, markdown) => service.saveCritique(id, markdown),
+        },
+        threadId,
+      );
+      designToolLists.set(threadId, list);
+    }
+    return list;
+  };
+  const designThreadTools = new Map<string, HarnessTool[]>();
   // Always offered: adding them when the tab opens would rewrite the prompt prefix and reload the session.
-  const harnessTools = () => allTools;
+  // A design thread also gets the design tools (its kind never changes, so its list is stable too); a chat thread's is untouched.
+  const harnessTools = (thread?: Thread): HarnessTool[] => {
+    if (thread?.kind !== "design") return allTools;
+    let list = designThreadTools.get(thread.id);
+    if (!list) designThreadTools.set(thread.id, (list = [...allTools, ...designToolsOf(thread.id)]));
+    return list;
+  };
   // Started on first use, for Codex and ACP agents, which take tools over MCP.
   let toolServer: Promise<ToolServer> | null = null;
   // `/mcp-skills` adds the skill tool for agents in "tool" delivery mode.
@@ -463,6 +499,8 @@ async function main(): Promise<void> {
       undefined,
       (req, res, scope, name) => mcpGateway.handle(req, res, scope, name),
       llmGateway,
+      // `?d=` (Codex) or `?t=` (ACP) naming a design thread adds its design tools.
+      (tid) => (isDesignThread(tid) ? designToolsOf(tid) : []),
     ));
   // The translation gateway: agents reach chat-completions providers through it; keys stay here.
   const llmGateway = createGateway({
@@ -816,6 +854,30 @@ async function main(): Promise<void> {
     else mine.set(threadId, n - 1);
     designWatcher.unwatch(threadId);
   });
+  const designExportDeps: DesignExportDeps = {
+    root: (threadId) => service.designRoot(threadId),
+    readVersion: (threadId, rel, version) => service.readDesignVersion(threadId, rel, version),
+    url: (threadId, rel, version) => designUrl(threadId, rel, version),
+    screenshot: (url, opts) => shooter.screenshot(url, opts),
+    pdf: (url, width) => shooter.pdf(url, width),
+  };
+  // Export the page on the canvas (the version on screen) as one html file, a full-page PNG or a PDF.
+  ipcMain.handle("design:export", async (event, threadId: string, format: DesignExportFormat, opts: { rel: string; version: number | null; width: number }) => {
+    if (format !== "html" && format !== "png" && format !== "pdf") throw new Error("Unknown export format.");
+    if (typeof opts?.rel !== "string" || !service.designRoot(threadId)) throw new Error("Not a design thread.");
+    const input = { threadId, format, rel: opts.rel, version: typeof opts.version === "number" && opts.version > 0 ? opts.version : null, width: Number(opts.width) || 1440 };
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    const names: Record<DesignExportFormat, string> = { html: "HTML page", png: "PNG image", pdf: "PDF document" };
+    const options: Electron.SaveDialogOptions = {
+      title: "Export design",
+      defaultPath: join(app.getPath("downloads"), exportFileName(pageTitleSource(designExportDeps, input), threadId, format, input.version)),
+      filters: [{ name: names[format], extensions: [format] }],
+    };
+    const res = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options);
+    if (res.canceled || !res.filePath) return null;
+    writeFileSync(res.filePath, await buildDesignExport(designExportDeps, input));
+    return res.filePath;
+  });
   ipcMain.handle("design:reveal", async (_e, threadId: string) => {
     const root = service.designRoot(threadId);
     if (!root) return;
@@ -1140,7 +1202,7 @@ async function main(): Promise<void> {
     return buildContextPreview({
       guideParts: cwd ? guide.partsForCwd(cwd) : [],
       // An agent that keeps the shared memory itself doesn't need the read tool.
-      tools: harnessTools().filter((t) => !(thread && drivers.find((d) => d.id === thread.agent)?.capabilities.nativeMemory && t.name === MEMORY_READ_TOOL)),
+      tools: harnessTools(thread ?? undefined).filter((t) => !(thread && drivers.find((d) => d.id === thread.agent)?.capabilities.nativeMemory && t.name === MEMORY_READ_TOOL)),
       skills: thread && delivery ? skillsInputFor(delivery, cwd, thread.kind === "design") : null,
       mcp: servers.map((s) => ({ name: s.name, listed: mcpTools.peek(s.spec), deferred })),
       memoryIndex: pid && memoryOn(settings.get(), pid) ? (({ lines, tokens }) => ({ lines, tokens }))(memory.store.index(pid)) : null,
@@ -1438,6 +1500,7 @@ async function main(): Promise<void> {
     service.dispose();
     previews.dispose();
     designWatcher.closeAll();
+    shooter.close();
     terminals.dispose();
     void toolServer?.then((s) => s.close());
     void mcpPool.closeAll();

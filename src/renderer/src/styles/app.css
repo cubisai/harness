@@ -516,6 +516,11 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
   flex-shrink: 0;
 }
 .design-version-bar span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.design-version-bar.error span { color: var(--danger); }
+/* Export menu: format on the left, what you get on the right. */
+.design-export-menu { min-width: 240px; }
+.design-export-menu button { justify-content: space-between; }
+.design-export-sub { color: var(--text-tertiary); font-size: 11px; white-space: nowrap; }
 /* Fit: the page fills the stage. A sized viewport sits centred with room around it and scrolls when larger. */
 .design-stage { flex: 1; min-height: 0; min-width: 0; display: flex; overflow: auto; padding: 24px; }
 .design-stage.fit { padding: 0; overflow: hidden; }

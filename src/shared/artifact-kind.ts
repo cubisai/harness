@@ -55,3 +55,16 @@ export const PLAN_ARTIFACT = "cubiq:plan.md";
 export function isPlanArtifact(path: string): boolean {
   return path === PLAN_ARTIFACT;
 }
+
+/** A design thread's critiques (design_critique_save), stored the same way as the plan. */
+export const CRITIQUE_ARTIFACT = "cubiq:critique.md";
+
+/** Artifacts that live only in the version store: the plan and the design critique. */
+export function isPseudoArtifact(path: string): boolean {
+  return path === PLAN_ARTIFACT || path === CRITIQUE_ARTIFACT;
+}
+
+/** The name a pseudo-artifact shows in the panel, or null for a real file. */
+export function pseudoArtifactLabel(path: string): string | null {
+  return path === PLAN_ARTIFACT ? "Plan" : path === CRITIQUE_ARTIFACT ? "Critique" : null;
+}

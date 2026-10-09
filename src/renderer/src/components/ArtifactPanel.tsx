@@ -3,7 +3,7 @@ import type { JSX, ReactNode } from "react";
 import { parseUnifiedDiff } from "../../../shared/diff";
 import type { ArtifactContent, ArtifactFile, ArtifactKind, DiffHunk, SheetPreview, SlidePreview } from "../../../shared/types";
 import { api } from "../api";
-import { artifactKind, isPlanArtifact } from "../../../shared/artifact-kind";
+import { artifactKind, isPseudoArtifact, pseudoArtifactLabel } from "../../../shared/artifact-kind";
 import { IconChevron, IconCopy, IconOpen } from "../icons";
 import { Markdown } from "../markdown";
 import "../styles/artifact.css";
@@ -54,9 +54,9 @@ function basename(path: string): string {
   return i < 0 ? path : path.slice(i + 1);
 }
 
-/** The name the panel shows: the file name, or "Plan" for the thread's plan proposals. */
+/** The name the panel shows: the file name, or "Plan"/"Critique" for the store-only artifacts. */
 function displayName(path: string): string {
-  return isPlanArtifact(path) ? "Plan" : basename(path);
+  return pseudoArtifactLabel(path) ?? basename(path);
 }
 
 function dirname(path: string): string {
@@ -385,8 +385,8 @@ class ArtifactErrorBoundary extends Component<{ children: ReactNode; onOpenInEdi
 export function ArtifactPanel(props: ArtifactPanelProps): JSX.Element {
   const { threadId, files, path, onSelectPath, onClose, onOpenInEditor, onReveal, fileManager } = props;
   const file = files.find((f) => f.path === path) ?? null;
-  // The plan lives only in the version store: no file to open elsewhere.
-  const plan = isPlanArtifact(path);
+  // The plan and the critique live only in the version store: no file to open elsewhere.
+  const plan = isPseudoArtifact(path);
   // From the path itself: the thread's file list loads after the panel opens.
   const kind: ArtifactKind = file?.kind ?? artifactKind(path);
   const versions = [...(file?.versions ?? [])].sort((a, b) => b.version - a.version);
@@ -487,7 +487,7 @@ export function ArtifactPanel(props: ArtifactPanelProps): JSX.Element {
   return (
     <div className="artifact">
       <div className="artifact-head" ref={headerRef}>
-        <div className="artifact-name" title={plan ? "The agent's plan, one version per round" : path}>
+        <div className="artifact-name" title={plan ? `The agent's ${displayName(path).toLowerCase()}, one version per round` : path}>
           {displayName(path)}
         </div>
         <div className="artifact-head-actions">

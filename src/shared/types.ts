@@ -785,6 +785,9 @@ export interface DesignSystemOption {
   source: "project" | "projectFolder" | "builtin";
 }
 
+/** What a design page exports as (canvas toolbar › Export). */
+export type DesignExportFormat = "html" | "png" | "pdf";
+
 export interface DesignEntry {
   /** The design folder, relative to the thread's working folder ("designs/<id8>"). */
   dir: string;
@@ -1115,6 +1118,8 @@ export interface UnskilledApi {
   designUnwatch(threadId: string): Promise<void>;
   /** Show a design thread's folder in Finder / Explorer. */
   designReveal(threadId: string): Promise<void>;
+  /** Export a design page (the version on screen) through a save dialog; the saved path, or null when cancelled. */
+  designExport(threadId: string, format: DesignExportFormat, opts: { rel: string; version: number | null; width: number }): Promise<string | null>;
   /** The design systems a project's design threads can use: its DESIGN.md, its .agents/design-systems, then the built-ins. */
   designSystems(projectId: string | null): Promise<DesignSystemOption[]>;
   /** A thread file's content for the panel: the file on disk, or a saved version. */

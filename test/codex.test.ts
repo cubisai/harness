@@ -1222,6 +1222,17 @@ describe("Codex shared memory", () => {
     }
   });
 
+  it("names a design thread on the tool server URL (&d=), and only a design thread", async () => {
+    const { d, sent } = probeDriver(() => null, { toolServer: async () => ({ url: "http://127.0.0.1:1234/mcp", token: "tok" }) });
+    try {
+      const design = turn("hi", { projectId: "p7", tools: [safeTool], design: "designs/abcd1234" });
+      await d.runTurn(design.input);
+      expect(sent().params.config?.mcp_servers?.cubiq?.url).toBe(`http://127.0.0.1:1234/mcp?p=p7&d=${design.input.threadId}`);
+    } finally {
+      delete process.env.GUIDE_PROBE;
+    }
+  });
+
   it("carries the calling project on the tool server URL", async () => {
     const { d, sent } = probeDriver(() => null, { toolServer: async () => ({ url: "http://127.0.0.1:1234/mcp", token: "tok" }) });
     try {
