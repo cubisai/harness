@@ -800,6 +800,8 @@ export interface DesignEntry {
   url: string;
   /** Every page in the design folder (index first, then pages, then `variant-*.html`), with their URLs. */
   pages: { rel: string; url: string }[];
+  /** Whether the design has a developer handoff (`handoff.md`) beside its pages. */
+  handoff: boolean;
 }
 
 export interface ArtifactFile {

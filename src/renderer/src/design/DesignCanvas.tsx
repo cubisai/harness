@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Columns2, Download, FolderOpen, Grid3x3 } from "lucide-react";
+import { Columns2, Download, FolderOpen, Grid3x3, Hammer } from "lucide-react";
 import type { DesignEntry, DesignExportFormat } from "../../../shared/types";
 import { api } from "../api";
 import { fileManagerName } from "../components/OpenIn";
@@ -356,6 +356,14 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     }
   };
 
+  // Real app tier: hand the design to a chat thread that builds it in the codebase (writing the handoff first).
+  const hasHandoff = !!entry?.handoff;
+  const buildInCode = async () => {
+    if (hasHandoff) return void useStore.getState().buildDesignInCode(threadId);
+    const ok = await useStore.getState().send("Write the developer handoff for this design.", ["design-handoff"], threadId);
+    if (ok) setNotice({ text: "Writing the handoff first. Choose Build in code again once handoff.md is there." });
+  };
+
   const rel = entry?.rel ?? null;
   const pageOverrides = (rel && overrides[rel]) || {};
   const tweakValues: TweakValues = tweaks ? { ...tweaks.base, ...pageOverrides } : {};
@@ -518,6 +526,17 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           <button className="icon-button" title="Reload" onClick={() => setManual((n) => n + 1)} disabled={!entry}>
             <IconRefresh />
           </button>
+          {tier === "real-app" && entry && (
+            <button
+              className="icon-button"
+              title={hasHandoff ? "Build in code: a chat thread implements this design in the codebase" : "Build in code: write the developer handoff first"}
+              aria-label="Build in code"
+              disabled={agentRunning}
+              onClick={() => void buildInCode()}
+            >
+              <Hammer size={16} strokeWidth={1.75} aria-hidden />
+            </button>
+          )}
           <button className="icon-button" title="Open the design folder" onClick={() => void api().designReveal(threadId)}>
             <FolderOpen size={16} strokeWidth={1.75} aria-hidden />
           </button>

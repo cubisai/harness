@@ -38,5 +38,5 @@ export function compareCells(pages: DesignEntry["pages"]): CompareCell[] {
 /** True when two entries show the same page with the same page list (so the canvas needn't re-render). */
 export function sameEntry(a: DesignEntry | null, b: DesignEntry | null): boolean {
   if (!a || !b) return a === b;
-  return a.url === b.url && a.pages.length === b.pages.length && a.pages.every((p, i) => p.rel === b.pages[i]!.rel);
+  return a.url === b.url && a.handoff === b.handoff && a.pages.length === b.pages.length && a.pages.every((p, i) => p.rel === b.pages[i]!.rel);
 }

@@ -3,7 +3,7 @@ import { COMPARE_MAX, compareCells, pageOptions, sameEntry } from "../src/render
 import type { DesignEntry } from "../src/shared/types";
 
 const pages = (...rels: string[]): DesignEntry["pages"] => rels.map((rel) => ({ rel, url: `cubiq-design://d/t1/${rel}` }));
-const entry = (rel: string, list: DesignEntry["pages"]): DesignEntry => ({ dir: "designs/t1", rel, url: `cubiq-design://d/t1/${rel}`, pages: list });
+const entry = (rel: string, list: DesignEntry["pages"], handoff = false): DesignEntry => ({ dir: "designs/t1", rel, url: `cubiq-design://d/t1/${rel}`, pages: list, handoff });
 
 describe("design page switcher and compare view", () => {
   it("labels variants as options and keeps pages by file name", () => {
@@ -35,6 +35,8 @@ describe("design page switcher and compare view", () => {
     expect(sameEntry(a, entry("index.html", pages("index.html")))).toBe(true);
     expect(sameEntry(a, entry("index.html", pages("index.html", "variant-a.html")))).toBe(false);
     expect(sameEntry(a, entry("pricing.html", pages("index.html")))).toBe(false);
+    // A handoff appearing beside the pages is a change (the Build in code button follows it).
+    expect(sameEntry(a, entry("index.html", pages("index.html"), true))).toBe(false);
     expect(sameEntry(null, null)).toBe(true);
     expect(sameEntry(a, null)).toBe(false);
   });

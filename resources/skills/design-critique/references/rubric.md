@@ -1,6 +1,8 @@
 # Design critique rubric
 
-Score each area 1–5: 5 = nothing to fix, 4 = polish only, 3 = noticeable issues, 2 = several major issues, 1 = broken.
+The checks behind the five lenses in SKILL.md. Score each lens 0–10: 10 = nothing to fix, 8 = polish only, 6 = noticeable issues, 4 = several major issues, 2 = broken.
+
+Which checks feed which lens: **Brief fit** = the request itself plus States; **Tokens & brand** = 8pt spacing, Contrast and color (palette), Token adherence; **Accessibility** = Contrast (ratios), Accessibility; **Copy** = Copy; **Layout** = Hierarchy, Alignment and layout.
 
 ## Hierarchy
 - One clear focal point per view; the primary action is the most prominent control.

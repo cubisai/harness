@@ -31,7 +31,7 @@ import { DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
 import { IDLE, takeOverReducer, type TakeOverState } from "./takeover";
 import { threadSeen, turnEnded, type FinishedTurn } from "./inbox";
 import { threadKind } from "./sections";
-import { designDirName } from "../../shared/design";
+import { buildInCodePrompt, designDirName, handoffPath } from "../../shared/design";
 import type { SelectedElement } from "../../shared/selection";
 import type { PrototypeTier } from "../../shared/tiers";
 
@@ -216,6 +216,8 @@ interface State {
   setPrototypeTier(threadId: string, tier: PrototypeTier): Promise<void>;
   /** Start `text` as a new thread in the open project without leaving the current one; it reports through the Message Center. */
   sendInBackground(text: string, skills?: string[], opts?: { worktree?: boolean }, mentions?: string[]): Promise<void>;
+  /** Start a chat thread (same project and agent, in the background) that builds a design thread's design into the codebase. */
+  buildDesignInCode(designThreadId: string): Promise<void>;
   /** From the project's start screen: open a new thread and send `text` in it. */
   startThread(text: string, skills?: string[], mentions?: string[]): Promise<void>;
   /** Add skills for the composer to pick up (deduped, in order). */
@@ -820,6 +822,25 @@ export const useStore = create<State>((set, get) => ({
       draft: {},
       lastAgent: thread.agent,
     }));
+  },
+
+  async buildDesignInCode(designThreadId) {
+    const design = findThread(get().threads, designThreadId);
+    if (!design || design.kind !== "design") return;
+    let thread: Thread;
+    try {
+      thread = await api().createThread(design.projectId, design.agent, { kind: "chat" });
+    } catch (err) {
+      get().showNotice(ipcErrorText(err));
+      return;
+    }
+    set((s) => ({
+      threads: { ...s.threads, [design.projectId]: upsertThread(s.threads[design.projectId], thread) },
+      events: { ...s.events, [thread.id]: [] },
+    }));
+    const dir = designDirName(designThreadId);
+    const ok = await get().send(buildInCodePrompt(dir), undefined, thread.id, [handoffPath(dir)]);
+    if (ok) get().showNotice("Building it in a new chat thread. The Message Center says when it's done.");
   },
 
   async sendInBackground(text, skills, opts, mentions) {

@@ -759,7 +759,13 @@ async function main(): Promise<void> {
     const pages = listDesignPages(root);
     const rel = typeof want === "string" && pages.includes(want) ? want : entryFile(root);
     if (!rel) return null;
-    return { dir: designDirName(threadId), rel, url: designUrl(threadId, rel), pages: pages.map((p) => ({ rel: p, url: designUrl(threadId, p) })) };
+    return {
+      dir: designDirName(threadId),
+      rel,
+      url: designUrl(threadId, rel),
+      pages: pages.map((p) => ({ rel: p, url: designUrl(threadId, p) })),
+      handoff: existsSync(join(root, "handoff.md")),
+    };
   });
   ipcMain.handle("design:promote", (_e, threadId: string, rel: string) => {
     if (typeof rel !== "string") throw new Error("Not a variant.");
