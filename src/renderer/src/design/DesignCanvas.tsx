@@ -12,6 +12,7 @@ import { announceSelection, elementLabel, selectionKey, type SelectedElement } f
 import { compareCells, pageOptions, sameEntry, type CompareCell } from "./pages";
 import { currentTweakValues, parseTweaks, tweakTarget, tweakValue, type Tweak, type TweakValues } from "../../../shared/tweaks";
 import { TweaksPanel } from "./TweaksPanel";
+import { DEFAULT_TIER, tierFeatures, tierOf } from "../../../shared/tiers";
 
 const ipcError = (err: unknown): string => (err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err));
 
@@ -54,6 +55,15 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   const [keeping, setKeeping] = useState(false);
   // The canvas selection lives in the store (the composer shows it as chips); the frame draws it.
   const selection = useStore((s) => s.designSelection[threadId]);
+  // The thread's prototype tier decides which canvas tools show.
+  const tier = useStore((s) => {
+    for (const list of Object.values(s.threads)) {
+      const t = list.find((x) => x.id === threadId);
+      if (t) return tierOf(t);
+    }
+    return DEFAULT_TIER;
+  });
+  const features = tierFeatures(tier);
   const setSelection = useStore((s) => s.setDesignSelection);
   const selected = selection?.elements ?? [];
   const selectedKey = selectionKey(selected);
@@ -132,7 +142,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           scroll.current = { x: 0, y: 0 };
           setPage(to.rel);
         } else if (scroll.current.x || scroll.current.y) post({ type: "restore-scroll", ...scroll.current });
-        if (picking) post({ type: "pick", on: true });
+        if (picking) post({ type: "pick", on: true, edit: features.textEdit });
         // A reload (the agent rewrote the page): find the selection again; anything gone is dropped and reported.
         const sel = useStore.getState().designSelection[threadId];
         if (sel && entry && sel.page === (to?.rel ?? entry.rel) && version === 0) {
@@ -177,7 +187,12 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [entry, picking, post, threadId, version, setSelection]);
+  }, [entry, picking, post, threadId, version, setSelection, features.textEdit]);
+
+  // A tier switch while selecting turns in-place editing on or off right away.
+  useEffect(() => {
+    if (picking) post({ type: "pick", on: true, edit: features.textEdit });
+  }, [features.textEdit]);
 
   // A change made outside the frame (a chip removed in the composer, the selection cleared after sending) is drawn there.
   useEffect(() => {
@@ -226,7 +241,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   const togglePick = () => {
     const on = !picking;
     setPicking(on);
-    post({ type: "pick", on });
+    post({ type: "pick", on, edit: features.textEdit });
   };
 
   // Esc in the app (focus outside the frame) works like Esc in it: first it clears the selection, then it stops selecting.
@@ -269,7 +284,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   const pageOverrides = (rel && overrides[rel]) || {};
   const tweakValues: TweakValues = tweaks ? { ...tweaks.base, ...pageOverrides } : {};
   const tweaksDirty = !!tweaks && Object.entries(pageOverrides).some(([id, v]) => id in tweaks.base && tweaks.base[id] !== v);
-  const showTweaks = !!tweaks && !!entry && version === 0 && !comparing;
+  const showTweaks = features.tweaks && !!tweaks && !!entry && version === 0 && !comparing;
 
   const changeTweak = (t: Tweak, raw: string) => {
     const v = tweakValue(t, raw);
@@ -403,7 +418,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           )}
           <button
             className={`icon-button${picking ? " active" : ""}`}
-            title={picking ? "Selecting: click an element, Shift-click for more, double-click text to edit it (Esc clears, then stops)" : "Select elements to change"}
+            title={picking ? `Selecting: click an element, Shift-click for more, ${features.textEdit ? "double-click text to edit it " : ""}(Esc clears, then stops)` : "Select elements to change"}
             aria-label={selected.length ? `Select elements (${selected.length} selected)` : "Select elements"}
             aria-pressed={picking}
             onClick={togglePick}

@@ -33,6 +33,7 @@ import { threadSeen, turnEnded, type FinishedTurn } from "./inbox";
 import { threadKind } from "./sections";
 import { designDirName } from "../../shared/design";
 import type { SelectedElement } from "../../shared/selection";
+import type { PrototypeTier } from "../../shared/tiers";
 
 /** A design thread's canvas selection: the page it is on and its elements. */
 export interface DesignSelection {
@@ -211,6 +212,8 @@ interface State {
   newThread(skills?: string[], opts?: { worktree?: boolean; designSystem?: string }): Promise<void>;
   /** Pick a design thread's design system; the next turn copies it into the design folder. */
   setDesignSystem(threadId: string, id: string): Promise<void>;
+  /** Change a design thread's prototype tier. */
+  setPrototypeTier(threadId: string, tier: PrototypeTier): Promise<void>;
   /** Start `text` as a new thread in the open project without leaving the current one; it reports through the Message Center. */
   sendInBackground(text: string, skills?: string[], opts?: { worktree?: boolean }, mentions?: string[]): Promise<void>;
   /** From the project's start screen: open a new thread and send `text` in it. */
@@ -885,6 +888,14 @@ export const useStore = create<State>((set, get) => ({
   async setDesignSystem(threadId, id) {
     try {
       get().apply({ type: "thread", thread: await api().setDesignSystem(threadId, id) });
+    } catch (err) {
+      get().showNotice(ipcErrorText(err));
+    }
+  },
+
+  async setPrototypeTier(threadId, tier) {
+    try {
+      get().apply({ type: "thread", thread: await api().setPrototypeTier(threadId, tier) });
     } catch (err) {
       get().showNotice(ipcErrorText(err));
     }

@@ -32,7 +32,7 @@ export type BridgeMessage =
 /** Messages the canvas sends down into the design page. */
 export type CanvasMessage =
   | { source: "cubiq-canvas"; type: "restore-scroll"; x: number; y: number }
-  | { source: "cubiq-canvas"; type: "pick"; on: boolean }
+  | { source: "cubiq-canvas"; type: "pick"; on: boolean; edit?: boolean }
   | { source: "cubiq-canvas"; type: "set-selection"; targets: { id?: string; selector: string; tag: string; text: string }[] }
   | { source: "cubiq-canvas"; type: "clear-selection" }
   | { source: "cubiq-canvas"; type: "set-tweak"; attr?: string; var?: string; value: string };
@@ -204,6 +204,8 @@ export function designBridge(
   // Select mode: a hover highlight plus click/keyboard selection; the page never
   // sees the gestures. The mode stays on across clicks until Esc leaves it.
   let stopSelect: (() => void) | null = null;
+  // In-place text editing is on unless the canvas says otherwise (the Quick tier turns it off).
+  let allowEdit = true;
   let hovered: Element | null = null;
   const startSelect = (): void => {
     if (stopSelect) return;
@@ -295,6 +297,10 @@ export function designBridge(
     const onDblClick = (e: MouseEvent): void => {
       if (insideEdit(e)) return;
       swallow(e);
+      if (!allowEdit) {
+        post("edit-refused", { reason: "Text editing is off in the Quick tier; ask the agent, or switch the tier." });
+        return;
+      }
       const el = document.elementFromPoint(e.clientX, e.clientY);
       if (!el || el === box || el === tip) return;
       const r = editableText(el);
@@ -353,6 +359,7 @@ export function designBridge(
       x?: unknown;
       y?: unknown;
       on?: unknown;
+      edit?: unknown;
       attr?: unknown;
       var?: unknown;
       value?: unknown;
@@ -366,6 +373,7 @@ export function designBridge(
       restore();
       if (document.readyState === "loading") window.addEventListener("load", restore, { once: true });
     } else if (data.type === "pick") {
+      allowEdit = data.edit !== false;
       if (data.on) startSelect();
       else stopSelect?.();
     } else if (data.type === "set-selection") {

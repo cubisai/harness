@@ -1,6 +1,8 @@
 // The contract between the main process and the renderer. Everything that
 // crosses the preload bridge is one of these types.
 
+import type { PrototypeTier } from "./tiers";
+
 export type Invocation = "model" | "user";
 
 /** Where a skill was found: the standard folders, or the legacy skills.json root. */
@@ -445,6 +447,8 @@ export interface Thread {
   kind?: ThreadKind;
   /** A design thread's design system id (see DesignSystemOption); absent = the default. */
   designSystem?: string;
+  /** A design thread's prototype tier; absent = working (and always absent on chat threads). */
+  prototypeTier?: PrototypeTier;
 }
 
 /**
@@ -989,6 +993,8 @@ export interface UnskilledApi {
   createThread(projectId: string, agent?: string, opts?: { worktree?: boolean; kind?: ThreadKind; designSystem?: string }): Promise<Thread>;
   /** Pick a design thread's design system (null = the default); the next turn copies it into the design folder. */
   setDesignSystem(threadId: string, id: string | null): Promise<Thread>;
+  /** Pick a design thread's prototype tier (null = Working); the next turn tells the agent. */
+  setPrototypeTier(threadId: string, tier: PrototypeTier | null): Promise<Thread>;
   updateThread(threadId: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "contextWindow" | "permissionMode" | "agent" | "pinned" | "archived">>): Promise<Thread>;
   deleteThread(threadId: string): Promise<void>;
   /** Move a thread to another agent; a refused switch changes nothing. */

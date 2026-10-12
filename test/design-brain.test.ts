@@ -178,7 +178,9 @@ describe("Service design systems", () => {
     const dir = join(projectDir, "designs", thread.id.slice(0, 8), "system");
     expect(readFileSync(join(dir, ".system"), "utf8")).toBe("editorial");
     expect(readFileSync(join(dir, "tokens.css"), "utf8")).toBe(readFileSync(join(RESOURCES, "design-systems", "editorial", "tokens.css"), "utf8"));
-    expect(prompts[0]).toBe("a landing page");
+    // The first turn also says the prototype tier (once); the system is never named until it changes.
+    expect(prompts[0]!.startsWith("a landing page\n\n(CubiQ: Prototype tier: Working.")).toBe(true);
+    expect(prompts[0]).not.toContain("design system is now");
 
     service.setDesignSystem(thread.id, "mono");
     await service.send({ threadId: thread.id, text: "again" });

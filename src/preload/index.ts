@@ -13,6 +13,7 @@ const api: UnskilledApi = {
   listThreads: (projectId) => ipcRenderer.invoke("threads:list", projectId),
   createThread: (projectId, agent, opts) => ipcRenderer.invoke("threads:create", projectId, agent, opts),
   setDesignSystem: (threadId, id) => ipcRenderer.invoke("threads:set-design-system", threadId, id),
+  setPrototypeTier: (threadId, tier) => ipcRenderer.invoke("threads:set-prototype-tier", threadId, tier),
   updateThread: (threadId, patch) => ipcRenderer.invoke("threads:update", threadId, patch),
   deleteThread: (threadId) => ipcRenderer.invoke("threads:delete", threadId),
   switchAgent: (threadId, agent, mode, model) => ipcRenderer.invoke("threads:switch", threadId, agent, mode, model),

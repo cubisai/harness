@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type {
   AgentInfo,
@@ -34,6 +34,7 @@ import type {
 import { bindingKey } from "../shared/bindings";
 import { CRITIQUE_ARTIFACT } from "../shared/artifact-kind";
 import type { TweakValues } from "../shared/tweaks";
+import { tierNote, tierOf, type PrototypeTier } from "../shared/tiers";
 import { designDirName } from "./design/serve";
 import { listDesignPages, promoteVariant } from "./design/pages";
 import { saveRef } from "./design/refs";
@@ -631,7 +632,7 @@ export class Service {
     const provenance: Provenance = { agent: thread.agent, model: thread.model, provider: null, instanceId: null };
     const skills = skillsOf(req);
     // A design thread's system is copied into its folder before each turn; a switch is said once, in this prompt.
-    const systemNote = compact ? "" : this.prepareDesignSystem(thread);
+    const systemNote = compact ? "" : this.prepareDesignSystem(thread) + this.prepareDesignTier(thread);
     const prompt = compact
       ? `/compact${compact.focus ? ` ${compact.focus}` : ""}`
       : composePrompt(this.catalogFor(cwd), req.text, skills, driver.skillsDelivery) + mentionNote(cwd, req.mentions) + systemNote;
@@ -1072,6 +1073,39 @@ export class Service {
     const thread = this.store.getThread(threadId);
     if (thread.kind !== "design") throw new Error("Only a design thread has a design system.");
     return this.store.setDesignSystem(threadId, id);
+  }
+
+  /** Pick a design thread's prototype tier (null = Working); the next turn tells the agent, once. */
+  setPrototypeTier(threadId: string, tier: PrototypeTier | null): Thread {
+    const thread = this.store.getThread(threadId);
+    if (thread.kind !== "design") throw new Error("Only a design thread has a prototype tier.");
+    return this.store.setPrototypeTier(threadId, tier);
+  }
+
+  /**
+   * The tier's instructions for this turn: said on a design thread's first
+   * turn and again after a switch, never otherwise (a `.tier` marker in the
+   * design folder remembers the last one said), so the guide stays stable.
+   */
+  private prepareDesignTier(thread: Thread): string {
+    const root = this.designRoot(thread.id);
+    if (!root) return "";
+    const tier = tierOf(thread);
+    const marker = join(root, ".tier");
+    let said = "";
+    try {
+      said = readFileSync(marker, "utf8").trim();
+    } catch {
+      // First turn: nothing said yet.
+    }
+    if (said === tier) return "";
+    try {
+      mkdirSync(root, { recursive: true });
+      writeFileSync(marker, tier);
+    } catch {
+      // Unwritable folder: say it this turn anyway.
+    }
+    return `\n\n(CubiQ: ${tierNote(tier)})`;
   }
 
   /**

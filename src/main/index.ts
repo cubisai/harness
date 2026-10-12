@@ -10,6 +10,7 @@ import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
 import { DESIGN_SCHEME, designDirName, designUrl, entryFile, serveDesign } from "./design/serve";
 import { DesignWatcher } from "./design/watch";
 import { listDesignPages } from "./design/pages";
+import { readTier } from "../shared/tiers";
 import { bridgeScript } from "./design/bridge";
 import { buildDesignExport, exportFileName, pageTitleSource, type DesignExportDeps } from "./design/export";
 import { lintScript } from "./design/lint";
@@ -1209,6 +1210,7 @@ async function main(): Promise<void> {
       ? service.createWorktreeThread(projectId, agent, kind, designSystem)
       : service.createThread(projectId, agent, kind, designSystem);
   });
+  ipcMain.handle("threads:set-prototype-tier", (_e, threadId: string, tier: unknown) => service.setPrototypeTier(threadId, readTier(tier)));
   ipcMain.handle("threads:set-design-system", (_e, threadId: string, id: unknown) =>
     service.setDesignSystem(threadId, typeof id === "string" && /^[\w:.-]{1,80}$/.test(id) ? id : null),
   );

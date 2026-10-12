@@ -305,6 +305,23 @@ describe("Service.send", () => {
     expect(() => service.promoteDesignVariant(design.id, "pricing.html")).toThrow("Not a variant.");
   });
 
+  it("tells a design thread's agent its tier on the first turn and after a switch, never otherwise", async () => {
+    const prompts: string[] = [];
+    const { service, store } = setup(async (input) => {
+      prompts.push(input.prompt);
+    });
+    const project = store.addProject(tempDir());
+    const chat = service.createThread(project.id);
+    const design = service.createThread(project.id, undefined, "design");
+    expect(() => service.setPrototypeTier(chat.id, "quick")).toThrow(/design thread/);
+    await service.send({ threadId: design.id, text: "one" });
+    await service.send({ threadId: design.id, text: "two" });
+    expect(service.setPrototypeTier(design.id, "quick").prototypeTier).toBe("quick");
+    await service.send({ threadId: design.id, text: "three" });
+    await service.send({ threadId: chat.id, text: "chat" });
+    expect(prompts.map((p) => /Prototype tier: (\w+)/.exec(p)?.[1] ?? null)).toEqual(["Working", null, "Quick", null]);
+  });
+
   it("writes an in-place text edit into a design page with versions, and refuses when it isn't safe", () => {
     const { service, store, updates } = setup(async () => {});
     service.setArtifacts({

@@ -250,6 +250,16 @@ export function installMock(): void {
       threads[pid] = [th, ...(threads[pid] ?? [])];
       return th;
     },
+    setPrototypeTier: async (id, tier) => {
+      for (const list of Object.values(threads)) {
+        const i = list.findIndex((x) => x.id === id);
+        if (i >= 0) {
+          const { prototypeTier: _old, ...rest } = list[i]!;
+          return (list[i] = tier ? { ...rest, prototypeTier: tier } : rest);
+        }
+      }
+      throw new Error("no thread");
+    },
     setDesignSystem: async (id, system) => {
       for (const list of Object.values(threads)) {
         const i = list.findIndex((x) => x.id === id);

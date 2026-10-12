@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { basename, dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { bindingKey } from "../shared/bindings";
+import { readTier } from "../shared/tiers";
+import type { PrototypeTier } from "../shared/tiers";
 import type {
   ArtifactVersion,
   PermissionMode,
@@ -203,6 +205,8 @@ export class Store {
       { applied: () => this.hasColumn("threads", "kind"), sql: "ALTER TABLE threads ADD COLUMN kind TEXT NOT NULL DEFAULT 'chat'" },
       // 21: a design thread's chosen design system (null = the default: the project's DESIGN.md, else Clean).
       { applied: () => this.hasColumn("threads", "design_system"), sql: "ALTER TABLE threads ADD COLUMN design_system TEXT" },
+      // 22: a design thread's prototype tier (null = the default: working).
+      { applied: () => this.hasColumn("threads", "prototype_tier"), sql: "ALTER TABLE threads ADD COLUMN prototype_tier TEXT" },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;
@@ -348,6 +352,12 @@ export class Store {
   /** A design thread's design system (null = the default). Not activity: the thread keeps its place. */
   setDesignSystem(id: string, designSystem: string | null): Thread {
     this.db.prepare("UPDATE threads SET design_system = ? WHERE id = ?").run(designSystem, id);
+    return this.getThread(id);
+  }
+
+  /** A design thread's prototype tier (null = the default: working). Not activity: the thread keeps its place. */
+  setPrototypeTier(id: string, tier: PrototypeTier | null): Thread {
+    this.db.prepare("UPDATE threads SET prototype_tier = ? WHERE id = ?").run(tier, id);
     return this.getThread(id);
   }
 
@@ -642,7 +652,7 @@ export class Store {
     try {
       this.db
         .prepare(
-          "INSERT INTO threads (id, project_id, agent, title, session_id, bindings, model, effort, permission_mode, created_at, updated_at, kind, design_system) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO threads (id, project_id, agent, title, session_id, bindings, model, effort, permission_mode, created_at, updated_at, kind, design_system, prototype_tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .run(
           id,
@@ -658,6 +668,7 @@ export class Store {
           Date.now(),
           thread.kind === "design" ? "design" : "chat",
           thread.kind === "design" ? (thread.designSystem ?? null) : null,
+          thread.kind === "design" ? (thread.prototypeTier ?? null) : null,
         );
       const insert = this.db.prepare(
         `INSERT INTO events (thread_id, seq, payload, created_at, provenance, message_id, turn_id, item_id, parent_id, payload_ref, payload_bytes)
@@ -727,7 +738,7 @@ export class Store {
 }
 
 const THREAD_COLS =
-  "id, project_id, agent, title, session_id, bindings, model, effort, context_window, permission_mode, created_at, updated_at, pinned, archived, branch, worktree_path, kind, design_system, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
+  "id, project_id, agent, title, session_id, bindings, model, effort, context_window, permission_mode, created_at, updated_at, pinned, archived, branch, worktree_path, kind, design_system, prototype_tier, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
 
 export interface LedgerTarget {
   threadId: string;
@@ -784,6 +795,7 @@ interface ThreadRow {
   worktree_path: string | null;
   kind: string | null;
   design_system: string | null;
+  prototype_tier: string | null;
   project_path: string | null;
 }
 
@@ -837,5 +849,6 @@ function toThread(r: ThreadRow): Thread {
     worktreePath: r.worktree_path,
     kind: r.kind === "design" ? "design" : "chat",
     ...(r.kind === "design" && r.design_system ? { designSystem: r.design_system } : {}),
+    ...(r.kind === "design" && readTier(r.prototype_tier) ? { prototypeTier: readTier(r.prototype_tier)! } : {}),
   };
 }
