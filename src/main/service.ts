@@ -35,9 +35,11 @@ import { bindingKey } from "../shared/bindings";
 import { CRITIQUE_ARTIFACT } from "../shared/artifact-kind";
 import type { TweakValues } from "../shared/tweaks";
 import { tierNote, tierOf, type PrototypeTier } from "../shared/tiers";
+import type { CommentTarget, DesignComment } from "../shared/comments";
 import { designDirName } from "./design/serve";
 import { listDesignPages, promoteVariant } from "./design/pages";
 import { saveRef } from "./design/refs";
+import { addComment, deleteComment, loadComments, saveComments, updateComment } from "./design/comments";
 import { applyTextEdit } from "./design/textedit";
 import { keepTweaks } from "./design/tweaks";
 import { listDesignSystems, materializeSystem, resolveDesignSystem } from "./design/systems";
@@ -1218,6 +1220,43 @@ export class Service {
     writeFileSync(file, after);
     this.recordDesignPage(threadId, root, dir, rel);
     if (this.artifacts) this.broadcast({ type: "artifact-ready", threadId, path: `${dir}/${rel}`, files: [`${dir}/${rel}`] });
+  }
+
+  /** A design thread's folder, or an error for any other thread. */
+  private designRootOf(threadId: string, what: string): string {
+    const root = this.designRoot(threadId);
+    if (!root) throw new Error(`Only a design thread has ${what}.`);
+    return root;
+  }
+
+  /** A design thread's comments (kept in its design folder as comments.json). */
+  designComments(threadId: string): DesignComment[] {
+    return loadComments(this.designRootOf(threadId, "comments"));
+  }
+
+  /** Add a comment on an element of a design page; the full list after. */
+  addDesignComment(threadId: string, input: { page: string; target: CommentTarget; label: string; text: string }): DesignComment[] {
+    const root = this.designRootOf(threadId, "comments");
+    if (!listDesignPages(root).includes(input.page)) throw new Error("No such page.");
+    const list = addComment(loadComments(root), input);
+    saveComments(root, list);
+    return list;
+  }
+
+  /** Resolve, reopen or mark sent one of a design thread's comments; the full list after. */
+  updateDesignComment(threadId: string, id: string, patch: { resolved?: boolean; sent?: boolean }): DesignComment[] {
+    const root = this.designRootOf(threadId, "comments");
+    const list = updateComment(loadComments(root), id, patch);
+    saveComments(root, list);
+    return list;
+  }
+
+  /** Delete one of a design thread's comments; the full list after. */
+  deleteDesignComment(threadId: string, id: string): DesignComment[] {
+    const root = this.designRootOf(threadId, "comments");
+    const list = deleteComment(loadComments(root), id);
+    saveComments(root, list);
+    return list;
   }
 
   /** Save a design page as it is on disk as the next version (unchanged content adds none). */

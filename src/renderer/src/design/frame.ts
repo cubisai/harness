@@ -44,6 +44,7 @@ export type BridgeMessage =
   | { type: "selection"; elements: SelectedElement[]; lost: number }
   | { type: "text-edit"; id: string; before: string; after: string }
   | { type: "edit-refused"; reason: string }
+  | { type: "pins"; missing: number[] }
   | { type: "pick-cancel" }
   | { type: "tweaks"; manifest: string; attrs: Record<string, string>; vars: Record<string, string> };
 
@@ -66,6 +67,11 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
   if (d.type === "text-edit") {
     if (!str(d.id, 64) || !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(d.id) || !str(d.before, 4000) || !str(d.after, 2000)) return null;
     return { type: "text-edit", id: d.id, before: d.before, after: d.after };
+  }
+  if (d.type === "pins") {
+    if (!Array.isArray(d.missing) || d.missing.length > 100) return null;
+    const missing = d.missing.filter((n): n is number => typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= 999);
+    return { type: "pins", missing };
   }
   if (d.type === "edit-refused") return str(d.reason, 200) && d.reason ? { type: "edit-refused", reason: d.reason } : null;
   if (d.type === "selection") {

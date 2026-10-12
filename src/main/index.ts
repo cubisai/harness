@@ -11,6 +11,7 @@ import { DESIGN_SCHEME, designDirName, designUrl, entryFile, serveDesign } from 
 import { DesignWatcher } from "./design/watch";
 import { listDesignPages } from "./design/pages";
 import { readTier } from "../shared/tiers";
+import { readTarget } from "../shared/comments";
 import { bridgeScript } from "./design/bridge";
 import { buildDesignExport, exportFileName, pageTitleSource, type DesignExportDeps } from "./design/export";
 import { lintScript } from "./design/lint";
@@ -763,6 +764,23 @@ async function main(): Promise<void> {
   ipcMain.handle("design:promote", (_e, threadId: string, rel: string) => {
     if (typeof rel !== "string") throw new Error("Not a variant.");
     service.promoteDesignVariant(threadId, rel);
+  });
+  ipcMain.handle("design:comments", (_e, threadId: string) => service.designComments(threadId));
+  ipcMain.handle("design:comment-add", (_e, threadId: string, input: { page?: unknown; target?: unknown; label?: unknown; text?: unknown }) => {
+    const target = readTarget(input?.target);
+    if (!target || typeof input.page !== "string" || typeof input.label !== "string" || typeof input.text !== "string") throw new Error("Bad comment.");
+    return service.addDesignComment(threadId, { page: input.page, target, label: input.label.slice(0, 80), text: input.text });
+  });
+  ipcMain.handle("design:comment-update", (_e, threadId: string, id: unknown, patch: { resolved?: unknown; sent?: unknown }) => {
+    if (typeof id !== "string") throw new Error("No such comment.");
+    return service.updateDesignComment(threadId, id, {
+      ...(typeof patch?.resolved === "boolean" ? { resolved: patch.resolved } : {}),
+      ...(patch?.sent === true ? { sent: true } : {}),
+    });
+  });
+  ipcMain.handle("design:comment-delete", (_e, threadId: string, id: unknown) => {
+    if (typeof id !== "string") throw new Error("No such comment.");
+    return service.deleteDesignComment(threadId, id);
   });
   ipcMain.handle("design:edit-text", (_e, threadId: string, rel: string, edit: { id?: unknown; before?: unknown; after?: unknown }) => {
     if (typeof rel !== "string" || !edit || typeof edit.id !== "string" || typeof edit.before !== "string" || typeof edit.after !== "string")

@@ -2,6 +2,7 @@
 // crosses the preload bridge is one of these types.
 
 import type { PrototypeTier } from "./tiers";
+import type { CommentTarget, DesignComment } from "./comments";
 
 export type Invocation = "model" | "user";
 
@@ -1126,6 +1127,13 @@ export interface UnskilledApi {
   designSaveRef(threadId: string, bytes: Uint8Array): Promise<string>;
   /** Write an in-place text edit into a design page; refuses (throws) unless that `data-agent-id` is unique, text-only and unchanged. */
   designEditText(threadId: string, rel: string, edit: { id: string; before: string; after: string }): Promise<void>;
+  /** A design thread's comments (all pages), from its design folder. */
+  designComments(threadId: string): Promise<DesignComment[]>;
+  /** Add a comment on one element of a design page; the full list after. */
+  designCommentAdd(threadId: string, input: { page: string; target: CommentTarget; label: string; text: string }): Promise<DesignComment[]>;
+  /** Resolve or reopen a comment, or mark it sent to the agent; the full list after. */
+  designCommentUpdate(threadId: string, id: string, patch: { resolved?: boolean; sent?: boolean }): Promise<DesignComment[]>;
+  designCommentDelete(threadId: string, id: string): Promise<DesignComment[]>;
   /** Watch an open design thread's folder (creating it), so changes push `design-changed`; counted per call. */
   designWatch(threadId: string): Promise<void>;
   designUnwatch(threadId: string): Promise<void>;

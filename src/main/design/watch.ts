@@ -7,7 +7,16 @@ export interface WatchHandle {
   on?(event: "error", cb: () => void): unknown;
 }
 
-export type DesignWatchFn = (dir: string, listener: () => void) => WatchHandle;
+/** The listener gets the changed file's path relative to the folder, when the platform reports it. */
+export type DesignWatchFn = (dir: string, listener: (file?: string) => void) => WatchHandle;
+
+/** Files CubiQ itself keeps at the top of a design folder: writing them is bookkeeping, not a design change. */
+export const UNWATCHED = new Set(["comments.json", ".tier"]);
+
+/** Whether a reported change is CubiQ's own bookkeeping (no reload for it). */
+export function ignoredChange(file: string | undefined): boolean {
+  return file !== undefined && UNWATCHED.has(file.replace(/\\/g, "/"));
+}
 
 export interface DesignWatcherOptions {
   onChange(threadId: string): void;
@@ -38,7 +47,7 @@ export class DesignWatcher {
   constructor(opts: DesignWatcherOptions) {
     this.onChange = opts.onChange;
     this.debounceMs = opts.debounceMs ?? 150;
-    this.watchFn = opts.watchFn ?? ((dir, listener) => fsWatch(dir, { recursive: true }, () => listener()));
+    this.watchFn = opts.watchFn ?? ((dir, listener) => fsWatch(dir, { recursive: true }, (_event, file) => listener(file ?? undefined)));
   }
 
   /** Whether a thread's folder is currently watched. */
@@ -58,7 +67,9 @@ export class DesignWatcher {
     try {
       created = firstCreated(dir);
       mkdirSync(dir, { recursive: true });
-      handle = this.watchFn(dir, () => this.bump(threadId));
+      handle = this.watchFn(dir, (file) => {
+        if (!ignoredChange(file)) this.bump(threadId);
+      });
     } catch (err) {
       console.warn(`DesignWatcher: can't watch ${dir}`, err);
       if (created) removeEmpty(dir, created);

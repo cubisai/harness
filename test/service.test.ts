@@ -305,6 +305,27 @@ describe("Service.send", () => {
     expect(() => service.promoteDesignVariant(design.id, "pricing.html")).toThrow("Not a variant.");
   });
 
+  it("keeps a design thread's comments in its folder: add, resolve, mark sent, delete; refuses chat threads and unknown pages", () => {
+    const { service, store } = setup(async () => {});
+    const project = store.addProject(tempDir());
+    const chat = service.createThread(project.id);
+    const design = service.createThread(project.id, undefined, "design");
+    expect(() => service.designComments(chat.id)).toThrow(/design thread/);
+    const root = service.designRoot(design.id)!;
+    mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, "index.html"), "<p>x</p>");
+    expect(service.designComments(design.id)).toEqual([]);
+    const target = { id: "cta-buy", selector: "main > button", tag: "button", text: "Buy now" };
+    expect(() => service.addDesignComment(design.id, { page: "nope.html", target, label: "button", text: "x" })).toThrow("No such page.");
+    const [c] = service.addDesignComment(design.id, { page: "index.html", target, label: 'button "Buy now"', text: "  make it green " });
+    expect(c).toMatchObject({ page: "index.html", text: "make it green", target });
+    expect(existsSync(join(root, "comments.json"))).toBe(true);
+    expect(service.updateDesignComment(design.id, c!.id, { sent: true })[0]!.sentAt).toBeTypeOf("number");
+    expect(service.updateDesignComment(design.id, c!.id, { resolved: true })[0]!.resolved).toBe(true);
+    expect(service.designComments(design.id)).toHaveLength(1);
+    expect(service.deleteDesignComment(design.id, c!.id)).toEqual([]);
+  });
+
   it("tells a design thread's agent its tier on the first turn and after a switch, never otherwise", async () => {
     const prompts: string[] = [];
     const { service, store } = setup(async (input) => {

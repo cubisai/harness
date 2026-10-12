@@ -84,6 +84,37 @@ describe("DesignWatcher", () => {
     }
   });
 
+  it("doesn't reload for CubiQ's own bookkeeping files (comments, tier marker)", () => {
+    vi.useFakeTimers();
+    try {
+      let listener: (file?: string) => void = () => {};
+      const onChange = vi.fn();
+      const watcher = new DesignWatcher({
+        onChange,
+        watchFn: (_dir, l) => {
+          listener = l;
+          return { close: () => {} };
+        },
+      });
+      watcher.watch("t", tempDir());
+      listener("comments.json");
+      listener(".tier");
+      vi.advanceTimersByTime(1000);
+      expect(onChange).not.toHaveBeenCalled();
+      // A page, a nested comments.json, or a change with no name still reloads.
+      listener("index.html");
+      vi.advanceTimersByTime(1000);
+      listener("sub\\comments.json");
+      vi.advanceTimersByTime(1000);
+      listener();
+      vi.advanceTimersByTime(1000);
+      expect(onChange).toHaveBeenCalledTimes(3);
+      watcher.closeAll();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("creates the watched folder on first watch", () => {
     const dir = join(tempDir(), "nested", "design");
     const watcher = new DesignWatcher({ onChange: () => {}, watchFn: () => ({ close: () => {} }) });

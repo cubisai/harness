@@ -13,6 +13,8 @@ import { compareCells, pageOptions, sameEntry, type CompareCell } from "./pages"
 import { currentTweakValues, parseTweaks, tweakTarget, tweakValue, type Tweak, type TweakValues } from "../../../shared/tweaks";
 import { TweaksPanel } from "./TweaksPanel";
 import { DEFAULT_TIER, tierFeatures, tierOf } from "../../../shared/tiers";
+import { commentsMessage, type DesignComment } from "../../../shared/comments";
+import { CommentsPanel } from "./CommentsPanel";
 
 const ipcError = (err: unknown): string => (err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err));
 
@@ -64,6 +66,14 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     return DEFAULT_TIER;
   });
   const features = tierFeatures(tier);
+  // Comments (Real app tier): kept in the design folder; this page's open ones are pinned in the frame.
+  const [comments, setComments] = useState<DesignComment[]>([]);
+  const [pinMissing, setPinMissing] = useState<number[]>([]);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [commentDraft, setCommentDraft] = useState<string | null>(null);
+  const [sendingComments, setSendingComments] = useState(false);
+  const agentRunning = useStore((s) => Boolean(s.running[threadId]));
+  const pinsRef = useRef<{ n: number; target: DesignComment["target"] }[]>([]);
   const setSelection = useStore((s) => s.setDesignSelection);
   const selected = selection?.elements ?? [];
   const selectedKey = selectionKey(selected);
@@ -91,8 +101,23 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     setTweaks(null);
     setOverrides({});
     setTweaksOpen(false);
+    setCommentsOpen(false);
+    setCommentDraft(null);
+    setPinMissing([]);
     scroll.current = { x: 0, y: 0 };
   }, [threadId]);
+
+  // The thread's comments, read again whenever its folder changes.
+  useEffect(() => {
+    let live = true;
+    void api()
+      .designComments(threadId)
+      .then((list) => live && setComments(list))
+      .catch(() => live && setComments([]));
+    return () => {
+      live = false;
+    };
+  }, [threadId, reload]);
 
   // Which page to show: asked again whenever the folder changes (the agent may have just written the first one).
   useEffect(() => {
@@ -143,6 +168,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           setPage(to.rel);
         } else if (scroll.current.x || scroll.current.y) post({ type: "restore-scroll", ...scroll.current });
         if (picking) post({ type: "pick", on: true, edit: features.textEdit });
+        if (pinsRef.current.length) post({ type: "set-pins", pins: pinsRef.current });
         // A reload (the agent rewrote the page): find the selection again; anything gone is dropped and reported.
         const sel = useStore.getState().designSelection[threadId];
         if (sel && entry && sel.page === (to?.rel ?? entry.rel) && version === 0) {
@@ -172,6 +198,8 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
             setNotice({ text: ipcError(err), error: true });
             setManual((n) => n + 1);
           });
+      } else if (msg.type === "pins") {
+        setPinMissing(msg.missing);
       } else if (msg.type === "edit-refused") {
         setNotice({ text: msg.reason });
       } else if (msg.type === "selection") {
@@ -279,6 +307,54 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     frame.dataset.src = src;
     frame.src = src;
   }, [src, frameKey, comparing]);
+
+  const pageComments = features.comments && entry ? comments.filter((c) => c.page === entry.rel && !c.resolved) : [];
+  const pins = version === 0 && !comparing ? pageComments.map((c, i) => ({ n: i + 1, target: c.target })) : [];
+  const pinsKey = JSON.stringify(pins);
+  // Pins follow the comments (and go away outside the Real app tier); a reload gets them again on ready.
+  useEffect(() => {
+    pinsRef.current = JSON.parse(pinsKey) as typeof pins;
+    post({ type: "set-pins", pins: pinsRef.current });
+    if (!pinsRef.current.length) setPinMissing([]);
+  }, [pinsKey, post]);
+
+  const addComment = async () => {
+    const el = selected[0];
+    const text = commentDraft?.trim() ?? "";
+    if (!entry || !el || !text) return;
+    try {
+      setComments(await api().designCommentAdd(threadId, { page: entry.rel, target: { id: el.id, selector: el.selector, tag: el.tag, text: el.text }, label: elementLabel(el), text }));
+      setCommentDraft(null);
+    } catch (err) {
+      setNotice({ text: `Couldn't add the comment: ${ipcError(err)}`, error: true });
+    }
+  };
+  const changeComment = async (run: () => Promise<DesignComment[]>) => {
+    try {
+      setComments(await run());
+    } catch (err) {
+      setNotice({ text: ipcError(err), error: true });
+    }
+  };
+  // The unsent comments go out as one message; they stay open (pinned) until resolved.
+  const sendComments = async () => {
+    if (!entry) return;
+    const unsent = pageComments.filter((c) => !c.sentAt);
+    if (!unsent.length) return;
+    setSendingComments(true);
+    try {
+      const ok = await useStore.getState().send(commentsMessage(`${entry.dir}/${entry.rel}`, unsent), undefined, threadId);
+      if (!ok) return;
+      let list = comments;
+      for (const c of unsent) list = await api().designCommentUpdate(threadId, c.id, { sent: true });
+      setComments(list);
+      setCommentsOpen(false);
+    } catch (err) {
+      setNotice({ text: `Couldn't send the comments: ${ipcError(err)}`, error: true });
+    } finally {
+      setSendingComments(false);
+    }
+  };
 
   const rel = entry?.rel ?? null;
   const pageOverrides = (rel && overrides[rel]) || {};
@@ -398,6 +474,18 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
               onKeep={() => void keepTweaks()}
             />
           )}
+          {features.comments && entry && version === 0 && !comparing && (
+            <CommentsPanel
+              comments={pageComments}
+              missing={pinMissing}
+              open={commentsOpen}
+              busy={agentRunning || sendingComments}
+              onOpen={setCommentsOpen}
+              onResolve={(c) => void changeComment(() => api().designCommentUpdate(threadId, c.id, { resolved: true }))}
+              onDelete={(c) => void changeComment(() => api().designCommentDelete(threadId, c.id))}
+              onSend={() => void sendComments()}
+            />
+          )}
           {cells.length > 0 && (
             <button
               className={`icon-button${comparing ? " active" : ""}`}
@@ -504,10 +592,46 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
             <span className="design-crumb current">{selected.length} elements selected</span>
           )}
           <span className="grow" />
+          {features.comments && selected.length === 1 && commentDraft === null && (
+            <button className="button ghost" onClick={() => setCommentDraft("")}>
+              Comment
+            </button>
+          )}
           <button className="button ghost" onClick={clearSelection}>
             Clear
           </button>
         </nav>
+      )}
+      {commentDraft !== null && selected.length === 1 && !comparing && version === 0 && (
+        <form
+          className="design-comment-new"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void addComment();
+          }}
+        >
+          <input
+            autoFocus
+            className="design-comment-input"
+            aria-label={`Comment on ${elementLabel(selected[0]!)}`}
+            placeholder={`Comment on ${elementLabel(selected[0]!)}`}
+            value={commentDraft}
+            maxLength={1000}
+            onChange={(e) => setCommentDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.stopPropagation();
+                setCommentDraft(null);
+              }
+            }}
+          />
+          <button type="submit" className="button" disabled={!commentDraft.trim()}>
+            Add
+          </button>
+          <button type="button" className="button ghost" onClick={() => setCommentDraft(null)}>
+            Cancel
+          </button>
+        </form>
       )}
       {notice && (
         <div className={`design-version-bar${notice.error ? " error" : ""}`} role="status">

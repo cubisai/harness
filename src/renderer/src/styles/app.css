@@ -559,6 +559,21 @@ button.design-crumb:hover { background: var(--bg-hover); color: var(--text); }
 .design-crumb-sep { color: var(--text-tertiary); }
 .design-crumbs .grow { flex: 1; }
 .design-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* Comments (Real app tier): the inline composer under the breadcrumb, and the list in the toolbar popover. */
+.design-comment-new { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 12px; border-bottom: 1px solid var(--hairline); background: var(--bg); }
+.design-comment-input { flex: 1; min-width: 0; height: 28px; padding: 0 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-s); background: var(--bg); color: var(--text); font: inherit; font-size: 12.5px; }
+.design-comment-input:focus { outline: 2px solid var(--focus); outline-offset: 2px; }
+.design-comments { width: min(360px, 80vw); }
+.design-comments-empty { margin: 0; padding: 8px 12px; font-size: 12.5px; color: var(--text-tertiary); }
+.design-comments-list { margin: 0; padding: 0 4px; list-style: none; display: grid; gap: 2px; }
+.design-comment { display: flex; align-items: flex-start; gap: 8px; min-width: 0; padding: 8px; border-radius: var(--radius-m); }
+.design-comment:hover { background: var(--bg-hover); }
+.design-comment-n { flex-shrink: 0; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--primary); color: var(--on-primary); font: 600 11px/20px var(--mono); text-align: center; }
+.design-comment-body { flex: 1; min-width: 0; }
+.design-comment-meta { font-size: 11.5px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.design-comment-gone { color: var(--danger); }
+.design-comment-text { font-size: 12.5px; color: var(--text); overflow-wrap: anywhere; }
+.design-comment-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 /* Tweaks: the page's own live controls, in a popover under the toolbar. */
 .design-tweaks-toggle { position: relative; }
 .design-tweaks-dot { position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--text); }

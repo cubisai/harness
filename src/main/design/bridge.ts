@@ -27,7 +27,8 @@ export type BridgeMessage =
   | { source: "cubiq-design"; type: "text-edit"; id: string; before: string; after: string }
   | { source: "cubiq-design"; type: "edit-refused"; reason: string }
   | { source: "cubiq-design"; type: "pick-cancel" }
-  | { source: "cubiq-design"; type: "tweaks"; manifest: string; attrs: Record<string, string>; vars: Record<string, string> };
+  | { source: "cubiq-design"; type: "tweaks"; manifest: string; attrs: Record<string, string>; vars: Record<string, string> }
+  | { source: "cubiq-design"; type: "pins"; missing: number[] };
 
 /** Messages the canvas sends down into the design page. */
 export type CanvasMessage =
@@ -35,7 +36,8 @@ export type CanvasMessage =
   | { source: "cubiq-canvas"; type: "pick"; on: boolean; edit?: boolean }
   | { source: "cubiq-canvas"; type: "set-selection"; targets: { id?: string; selector: string; tag: string; text: string }[] }
   | { source: "cubiq-canvas"; type: "clear-selection" }
-  | { source: "cubiq-canvas"; type: "set-tweak"; attr?: string; var?: string; value: string };
+  | { source: "cubiq-canvas"; type: "set-tweak"; attr?: string; var?: string; value: string }
+  | { source: "cubiq-canvas"; type: "set-pins"; pins: { n: number; target: { id?: string; selector: string; tag: string; text: string } }[] };
 
 /** Snap an element to its nearest interactive ancestor, or itself when there is none. */
 export function snapTarget(el: Element): Element {
@@ -170,13 +172,16 @@ export function designBridge(
   );
 
   // Persistent selection: at most 8 elements, each drawn with an outline kept in
-  // place by a requestAnimationFrame loop that runs only while something is selected.
+  // place by a requestAnimationFrame loop that also positions comment pins and
+  // runs only while something is selected or pinned.
   const MAX_SELECTION = 8;
   let selected: Element[] = [];
   const outlines = new Map<Element, HTMLDivElement>();
+  // Comment pins: numbered dots dropped by the canvas onto resolved elements.
+  let pins: { n: number; el: Element; dot: HTMLDivElement }[] = [];
   let frame = 0;
   const step = (): void => {
-    frame = selected.length > 0 ? requestAnimationFrame(step) : 0;
+    frame = selected.length > 0 || pins.length > 0 ? requestAnimationFrame(step) : 0;
     outlines.forEach((outline, el) => {
       if (!el.isConnected) {
         outline.style.display = "none";
@@ -185,6 +190,14 @@ export function designBridge(
       const r = el.getBoundingClientRect();
       Object.assign(outline.style, { display: "block", left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
     });
+    for (const pin of pins) {
+      if (!pin.el.isConnected) {
+        pin.dot.style.display = "none";
+        continue;
+      }
+      const r = pin.el.getBoundingClientRect();
+      Object.assign(pin.dot.style, { display: "block", left: `${Math.max(2, r.left - 10)}px`, top: `${Math.max(2, r.top - 10)}px` });
+    }
   };
   const redraw = (): void => {
     outlines.forEach((outline) => outline.remove());
@@ -195,7 +208,41 @@ export function designBridge(
       document.documentElement.append(outline);
       outlines.set(el, outline);
     }
-    if (frame === 0 && selected.length > 0) frame = requestAnimationFrame(step);
+    if (frame === 0 && (selected.length > 0 || pins.length > 0)) frame = requestAnimationFrame(step);
+  };
+  const setPins = (raw: unknown): void => {
+    for (const pin of pins) pin.dot.remove();
+    pins = [];
+    const list = Array.isArray(raw) ? raw : [];
+    const missing: number[] = [];
+    let taken = 0;
+    for (const entry of list) {
+      if (taken >= 100) break;
+      if (!entry || typeof entry !== "object") continue;
+      const item = entry as Record<string, unknown>;
+      const n = item.n;
+      const t = item.target;
+      if (typeof n !== "number" || !Number.isInteger(n) || n < 1 || n > 999) continue;
+      if (!t || typeof t !== "object") continue;
+      const target = t as Record<string, unknown>;
+      if (typeof target.selector !== "string" || typeof target.tag !== "string" || typeof target.text !== "string") continue;
+      taken++;
+      const ref: SelectionTarget = { selector: target.selector, tag: target.tag, text: target.text };
+      if (typeof target.id === "string") ref.id = target.id;
+      const el = resolveTarget(document, ref);
+      if (!el) {
+        missing.push(n);
+        continue;
+      }
+      const dot = document.createElement("div");
+      dot.style.cssText =
+        "position:fixed;pointer-events:none;z-index:2147483646;min-width:20px;height:20px;padding:0 6px;box-sizing:border-box;border-radius:10px;background:#0B0D10;color:#F7F8FA;font:600 11px/20px ui-monospace,Menlo,monospace;text-align:center;box-shadow:0 0 0 2px #F7F8FA";
+      dot.textContent = String(n);
+      document.documentElement.append(dot);
+      pins.push({ n, el, dot });
+    }
+    if (frame === 0 && pins.length > 0) frame = requestAnimationFrame(step);
+    post("pins", { missing });
   };
   const report = (lost: number): void => {
     post("selection", { elements: selected.map((el) => describeElement(el, selectorFor)), lost });
@@ -364,6 +411,7 @@ export function designBridge(
       var?: unknown;
       value?: unknown;
       targets?: unknown;
+      pins?: unknown;
     } | null;
     if (!data || data.source !== "cubiq-canvas") return;
     if (data.type === "restore-scroll") {
@@ -408,6 +456,8 @@ export function designBridge(
       } else if (typeof data.var === "string" && /^--[a-z0-9-]{1,48}$/i.test(data.var) && /^[#a-z0-9.%-]*$/i.test(value)) {
         document.documentElement.style.setProperty(data.var, value);
       }
+    } else if (data.type === "set-pins") {
+      setPins(data.pins);
     }
   });
 }
