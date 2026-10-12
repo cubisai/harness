@@ -87,6 +87,7 @@ const api: UnskilledApi = {
   listArtifacts: (threadId) => ipcRenderer.invoke("artifacts:list", threadId),
   designEntry: (threadId, rel) => ipcRenderer.invoke("design:entry", threadId, rel ?? null),
   designPromote: (threadId, rel) => ipcRenderer.invoke("design:promote", threadId, rel),
+  designKeepTweaks: (threadId, rel, values) => ipcRenderer.invoke("design:keep-tweaks", threadId, rel, values),
   designWatch: (threadId) => ipcRenderer.invoke("design:watch", threadId),
   designUnwatch: (threadId) => ipcRenderer.invoke("design:unwatch", threadId),
   designReveal: (threadId) => ipcRenderer.invoke("design:reveal", threadId),

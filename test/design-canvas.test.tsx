@@ -31,6 +31,16 @@ describe("design frame", () => {
     expect(readBridgeMessage("ready")).toBeNull();
   });
 
+  it("accepts a tweaks message but rejects oversized manifests and bad maps", () => {
+    const tweaks = { source: "cubiq-design", type: "tweaks", manifest: '{"tweaks":[]}', attrs: { "data-theme": "dusk" }, vars: { "--color-accent": "#3b5bdb" } };
+    expect(readBridgeMessage(tweaks)).toEqual({ type: "tweaks", manifest: '{"tweaks":[]}', attrs: { "data-theme": "dusk" }, vars: { "--color-accent": "#3b5bdb" } });
+    expect(readBridgeMessage({ ...tweaks, manifest: "x".repeat(8001) })).toBeNull();
+    expect(readBridgeMessage({ ...tweaks, attrs: [] })).toBeNull();
+    expect(readBridgeMessage({ ...tweaks, vars: null })).toBeNull();
+    expect(readBridgeMessage({ ...tweaks, attrs: { "data-theme": 5 } })).toBeNull();
+    expect(readBridgeMessage({ ...tweaks, vars: { "--x": "y".repeat(65) } })).toBeNull();
+  });
+
   it("reads the ready path and maps a frame's location back to a page", () => {
     expect(readBridgeMessage({ source: "cubiq-design", type: "ready", path: "/t1/index.html" })).toEqual({ type: "ready", path: "/t1/index.html" });
     expect(readBridgeMessage({ source: "cubiq-design", type: "ready", path: 5 })).toEqual({ type: "ready" });

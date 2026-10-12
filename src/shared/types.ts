@@ -1114,6 +1114,8 @@ export interface UnskilledApi {
   designEntry(threadId: string, rel?: string | null): Promise<DesignEntry | null>;
   /** Make a design's `variant-*.html` its `index.html`; the old and new index are saved as versions. */
   designPromote(threadId: string, rel: string): Promise<void>;
+  /** Write the canvas's tweak values into a design page (Keep), saving versions; false when nothing changed. */
+  designKeepTweaks(threadId: string, rel: string, values: Record<string, string>): Promise<boolean>;
   /** Watch an open design thread's folder (creating it), so changes push `design-changed`; counted per call. */
   designWatch(threadId: string): Promise<void>;
   designUnwatch(threadId: string): Promise<void>;

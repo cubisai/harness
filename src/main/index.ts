@@ -763,6 +763,12 @@ async function main(): Promise<void> {
     if (typeof rel !== "string") throw new Error("Not a variant.");
     service.promoteDesignVariant(threadId, rel);
   });
+  ipcMain.handle("design:keep-tweaks", (_e, threadId: string, rel: string, values: Record<string, string>) => {
+    if (typeof rel !== "string" || !values || typeof values !== "object" || Array.isArray(values)) throw new Error("Bad tweak values.");
+    const clean: Record<string, string> = {};
+    for (const [k, v] of Object.entries(values).slice(0, 32)) if (typeof v === "string" && v.length <= 64) clean[k] = v;
+    return service.keepDesignTweaks(threadId, rel, clean);
+  });
   ipcMain.handle("design:watch", (e, threadId: string) => {
     const root = service.designRoot(threadId);
     if (!root) return;

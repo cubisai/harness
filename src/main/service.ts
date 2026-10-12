@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type {
   AgentInfo,
@@ -33,8 +33,10 @@ import type {
 } from "../shared/types";
 import { bindingKey } from "../shared/bindings";
 import { CRITIQUE_ARTIFACT } from "../shared/artifact-kind";
+import type { TweakValues } from "../shared/tweaks";
 import { designDirName } from "./design/serve";
-import { promoteVariant } from "./design/pages";
+import { listDesignPages, promoteVariant } from "./design/pages";
+import { keepTweaks } from "./design/tweaks";
 import { listDesignSystems, materializeSystem, resolveDesignSystem } from "./design/systems";
 import { skillsOf } from "../shared/skill-list";
 import type { AgentDriver, HarnessTool, ModelSwitch, SessionSeed } from "./agents/types";
@@ -1122,16 +1124,39 @@ export class Service {
     const root = this.designRoot(threadId);
     const dir = designOf(thread);
     if (!root || !dir) throw new Error("Only a design thread has variants.");
-    const artifacts = this.artifacts;
-    const turnSeq = this.store.lastSeq(threadId);
-    promoteVariant(root, rel, (page) => {
-      if (!artifacts) return;
-      const buf = readFileSync(join(root, page));
-      const sha256 = createHash("sha256").update(buf).digest("hex");
-      artifacts.writeBlob(sha256, buf);
-      artifacts.addVersion(threadId, `${dir}/${page}`, sha256, buf.length, turnSeq);
-    });
-    if (artifacts) this.broadcast({ type: "artifact-ready", threadId, path: `${dir}/index.html`, files: [`${dir}/index.html`] });
+    promoteVariant(root, rel, (page) => this.recordDesignPage(threadId, root, dir, page));
+    if (this.artifacts) this.broadcast({ type: "artifact-ready", threadId, path: `${dir}/index.html`, files: [`${dir}/index.html`] });
+  }
+
+  /**
+   * Write the canvas's tweak values into a design page (Keep): its manifest
+   * defaults, `<html>` attributes and vars block. Saved as versions before and
+   * after; false when nothing changed.
+   */
+  keepDesignTweaks(threadId: string, rel: string, values: TweakValues): boolean {
+    const thread = this.store.getThread(threadId);
+    const root = this.designRoot(threadId);
+    const dir = designOf(thread);
+    if (!root || !dir) throw new Error("Only a design thread has tweaks.");
+    if (!listDesignPages(root).includes(rel)) throw new Error("No such page.");
+    const file = join(root, rel);
+    const before = readFileSync(file, "utf8");
+    const after = keepTweaks(before, values);
+    if (after === before) return false;
+    this.recordDesignPage(threadId, root, dir, rel);
+    writeFileSync(file, after);
+    this.recordDesignPage(threadId, root, dir, rel);
+    if (this.artifacts) this.broadcast({ type: "artifact-ready", threadId, path: `${dir}/${rel}`, files: [`${dir}/${rel}`] });
+    return true;
+  }
+
+  /** Save a design page as it is on disk as the next version (unchanged content adds none). */
+  private recordDesignPage(threadId: string, root: string, dir: string, rel: string): void {
+    if (!this.artifacts) return;
+    const buf = readFileSync(join(root, rel));
+    const sha256 = createHash("sha256").update(buf).digest("hex");
+    this.artifacts.writeBlob(sha256, buf);
+    this.artifacts.addVersion(threadId, `${dir}/${rel}`, sha256, buf.length, this.store.lastSeq(threadId));
   }
 
   /** A stored turn-end version of a file in a design thread's folder (`rel` is inside that folder). */

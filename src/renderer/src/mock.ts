@@ -600,6 +600,7 @@ export function installMock(): void {
     },
     designEntry: async () => null,
     designPromote: async () => {},
+    designKeepTweaks: async () => false,
     designWatch: async () => {},
     designUnwatch: async () => {},
     designReveal: async () => {},

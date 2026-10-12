@@ -6,12 +6,14 @@ export type BridgeMessage =
   | { source: "cubiq-design"; type: "ready"; path?: string }
   | { source: "cubiq-design"; type: "scroll"; x: number; y: number }
   | { source: "cubiq-design"; type: "picked"; element: PickedElement }
-  | { source: "cubiq-design"; type: "pick-cancel" };
+  | { source: "cubiq-design"; type: "pick-cancel" }
+  | { source: "cubiq-design"; type: "tweaks"; manifest: string; attrs: Record<string, string>; vars: Record<string, string> };
 
 /** Messages the canvas sends down into the design page. */
 export type CanvasMessage =
   | { source: "cubiq-canvas"; type: "restore-scroll"; x: number; y: number }
-  | { source: "cubiq-canvas"; type: "pick"; on: boolean };
+  | { source: "cubiq-canvas"; type: "pick"; on: boolean }
+  | { source: "cubiq-canvas"; type: "set-tweak"; attr?: string; var?: string; value: string };
 
 /**
  * The canvas bridge injected into a design page: scroll reporting, scroll
@@ -23,7 +25,40 @@ export function designBridge(selectorFor: (el: Element) => string): void {
     parent.postMessage({ source: "cubiq-design", type, ...(data ?? {}) }, "*");
   };
 
-  const announceReady = (): void => post("ready", { path: location.pathname });
+  const reportTweaks = (): void => {
+    const el = document.getElementById("cubiq-tweaks");
+    if (!el) return;
+    const text = (el.textContent || "").slice(0, 8000);
+    const root = document.documentElement;
+    const attrs: Record<string, string> = {};
+    const names = root.getAttributeNames();
+    for (let i = 0; i < names.length && Object.keys(attrs).length < 32; i++) {
+      const name = names[i];
+      if (name && name.indexOf("data-") === 0) attrs[name] = (root.getAttribute(name) || "").slice(0, 64);
+    }
+    const vars: Record<string, string> = {};
+    let parsed: unknown = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = null;
+    }
+    const box = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+    const list = Array.isArray(parsed) ? parsed : Array.isArray(box?.tweaks) ? (box?.tweaks as unknown[]) : [];
+    for (let i = 0; i < list.length && Object.keys(vars).length < 12; i++) {
+      const entry = list[i];
+      if (!entry || typeof entry !== "object") continue;
+      const name = (entry as Record<string, unknown>).var;
+      if (typeof name !== "string" || !/^--[a-z0-9-]{1,48}$/i.test(name)) continue;
+      vars[name] = getComputedStyle(root).getPropertyValue(name).trim().slice(0, 64);
+    }
+    post("tweaks", { manifest: text, attrs, vars });
+  };
+
+  const announceReady = (): void => {
+    post("ready", { path: location.pathname });
+    reportTweaks();
+  };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", announceReady, { once: true });
   else announceReady();
 
@@ -114,7 +149,7 @@ export function designBridge(selectorFor: (el: Element) => string): void {
   // Commands from the canvas.
   window.addEventListener("message", (event: MessageEvent) => {
     if (event.source !== parent) return;
-    const data = event.data as { source?: unknown; type?: unknown; x?: unknown; y?: unknown; on?: unknown } | null;
+    const data = event.data as { source?: unknown; type?: unknown; x?: unknown; y?: unknown; on?: unknown; attr?: unknown; var?: unknown; value?: unknown } | null;
     if (!data || data.source !== "cubiq-canvas") return;
     if (data.type === "restore-scroll") {
       const x = typeof data.x === "number" ? data.x : 0;
@@ -125,6 +160,14 @@ export function designBridge(selectorFor: (el: Element) => string): void {
     } else if (data.type === "pick") {
       if (data.on) startPick();
       else stopPick?.();
+    } else if (data.type === "set-tweak") {
+      const value = typeof data.value === "string" && data.value.length <= 64 ? data.value : null;
+      if (value === null) return;
+      if (typeof data.attr === "string" && /^data-[a-z0-9-]{1,40}$/.test(data.attr) && /^[a-z0-9-]*$/i.test(value)) {
+        document.documentElement.setAttribute(data.attr, value);
+      } else if (typeof data.var === "string" && /^--[a-z0-9-]{1,48}$/i.test(data.var) && /^[#a-z0-9.%-]*$/i.test(value)) {
+        document.documentElement.style.setProperty(data.var, value);
+      }
     }
   });
 }

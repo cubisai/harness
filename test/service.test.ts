@@ -305,6 +305,35 @@ describe("Service.send", () => {
     expect(() => service.promoteDesignVariant(design.id, "pricing.html")).toThrow("Not a variant.");
   });
 
+  it("keeps a design page's tweak values in the file, saving versions, and refuses other threads and pages", () => {
+    const { service, store, updates } = setup(async () => {});
+    service.setArtifacts({
+      addVersion: (threadId, path, sha, bytes, turnSeq) => store.addArtifactVersion(threadId, path, sha, bytes, turnSeq),
+      listVersions: (threadId) => store.listArtifactVersions(threadId),
+      writeBlob: (sha, content) => store.writeBlobBytes(sha, content),
+      readBlob: (sha) => store.readBlobBytes(sha),
+      gitHead: async () => null,
+      preview: async () => ({ ok: false, error: "none" }),
+      fileUrl: () => "",
+    });
+    const project = store.addProject(tempDir());
+    const chat = service.createThread(project.id);
+    const design = service.createThread(project.id, undefined, "design");
+    expect(() => service.keepDesignTweaks(chat.id, "index.html", {})).toThrow(/design thread/);
+    const root = service.designRoot(design.id)!;
+    mkdirSync(root, { recursive: true });
+    const manifest = `<script type="application/json" id="cubiq-tweaks">{"tweaks":[{"id":"theme","type":"choice","options":["light","dusk"],"default":"light"}]}</script>`;
+    writeFileSync(join(root, "index.html"), `<html data-theme="light"><head>${manifest}</head><body></body></html>`);
+    expect(() => service.keepDesignTweaks(design.id, "missing.html", { theme: "dusk" })).toThrow("No such page.");
+    expect(service.keepDesignTweaks(design.id, "index.html", { theme: "dusk" })).toBe(true);
+    expect(readFileSync(join(root, "index.html"), "utf8")).toContain(`<html data-theme="dusk">`);
+    // Keeping the same values again changes nothing and adds no version.
+    expect(service.keepDesignTweaks(design.id, "index.html", { theme: "dusk" })).toBe(false);
+    const path = `designs/${design.id.slice(0, 8)}/index.html`;
+    expect(store.listArtifactVersions(design.id).find((v) => v.path === path)!.versions).toHaveLength(2);
+    expect(updates.filter((u) => u.type === "artifact-ready")).toEqual([{ type: "artifact-ready", threadId: design.id, path, files: [path] }]);
+  });
+
   it("resolves a pending plan with keep-on-empty when interrupted", async () => {
     let decision: PlanDecision | null = null;
     const { service, thread } = setup(async (input) => {

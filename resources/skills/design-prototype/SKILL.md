@@ -36,6 +36,24 @@ Before you finish, every interactive element has:
 - [ ] empty, loading and error variants where data appears (show them in a "States" section or behind a toggle when there's no natural place)
 - [ ] text contrast ≥ 4.5:1 (tokens already pass; don't put muted text on `surface-2` at small sizes without checking)
 
+## Tweaks
+
+Give the page 2–5 tweaks the user can change live in the canvas without a new turn: theme, density, accent, radius, a layout switch. Declare them in `<head>`:
+
+```html
+<script type="application/json" id="cubiq-tweaks">{"tweaks":[
+  {"id":"theme","label":"Theme","type":"choice","options":["light","dusk"],"default":"light"},
+  {"id":"density","label":"Density","type":"choice","options":["comfy","compact"],"default":"comfy"},
+  {"id":"badges","label":"Badges","type":"toggle","default":true},
+  {"id":"accent","label":"Accent","type":"color","var":"--color-accent","default":"#3b5bdb"},
+  {"id":"radius","label":"Radius","type":"range","var":"--radius-md","min":0,"max":24,"step":4,"unit":"px","default":8}
+]}</script>
+```
+
+- `choice` and `toggle` set `data-<id>` on `<html>` (a toggle is `on`/`off`). Write the defaults there too (`<html data-theme="light" data-density="comfy" data-badges="on">`) and style every value: `[data-theme="dusk"] { --color-bg: …; }`, `[data-density="compact"] main { … }`, `[data-badges="off"] .badge { display: none; }`.
+- `color` and `range` set that CSS variable on `:root`; use the variable in your CSS.
+- Ids are lowercase-kebab and options lowercase words. When the user clicks Keep, CubiQ writes the chosen values into the file; don't fight them on the next edit.
+
 ## Options and flows
 
 - Asked for options, directions or variations: write 2–4 files `variant-a.html`, `variant-b.html`, … beside `index.html`, each a complete page from the same scaffold and tokens, and differing in layout and hierarchy (not only colour). Leave `index.html` as it is unless asked; the user promotes one from the canvas. Say in one line what each option tries.

@@ -9,6 +9,8 @@ import "../styles/artifact.css";
 import { useStore } from "../store";
 import { VIEWPORTS, ZOOMS, frameLayout, pageFromPath, pickChipText, readBridgeMessage, type Viewport, type Zoom } from "./frame";
 import { compareCells, pageOptions, sameEntry, type CompareCell } from "./pages";
+import { currentTweakValues, parseTweaks, tweakTarget, tweakValue, type Tweak, type TweakValues } from "../../../shared/tweaks";
+import { TweaksPanel } from "./TweaksPanel";
 
 const ipcError = (err: unknown): string => (err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err));
 
@@ -42,6 +44,13 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   const [compare, setCompare] = useState(false);
   const [promoting, setPromoting] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
+  // The page's declared tweaks with the values it loaded with, and the user's unkept changes per page.
+  const [tweaks, setTweaks] = useState<{ list: Tweak[]; base: TweakValues } | null>(null);
+  const [overrides, setOverrides] = useState<Record<string, TweakValues>>({});
+  const overridesRef = useRef(overrides);
+  overridesRef.current = overrides;
+  const [tweaksOpen, setTweaksOpen] = useState(false);
+  const [keeping, setKeeping] = useState(false);
   const options = entry ? pageOptions(entry.pages) : [];
   const cells = entry ? compareCells(entry.pages) : [];
   const comparing = compare && cells.length > 0 && version === 0;
@@ -60,6 +69,9 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     setPage(null);
     setCompare(false);
     setNotice(null);
+    setTweaks(null);
+    setOverrides({});
+    setTweaksOpen(false);
     scroll.current = { x: 0, y: 0 };
   }, [threadId]);
 
@@ -100,6 +112,8 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
       const msg = readBridgeMessage(e.data);
       if (!msg) return;
       if (msg.type === "ready") {
+        // A fresh load: its tweaks (if any) arrive right after.
+        setTweaks(null);
         // A link inside the page went to another page of the design: follow it (title, versions, export) without
         // loading it a second time.
         const at = msg.path ? pageFromPath(msg.path, threadId) : null;
@@ -110,6 +124,17 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           setPage(to.rel);
         } else if (scroll.current.x || scroll.current.y) post({ type: "restore-scroll", ...scroll.current });
         if (picking) post({ type: "pick", on: true });
+      } else if (msg.type === "tweaks") {
+        const list = parseTweaks(msg.manifest);
+        if (!list.length) return setTweaks(null);
+        const base = currentTweakValues(list, msg.attrs, msg.vars);
+        setTweaks({ list, base });
+        // The page reloaded (the agent wrote, or Reload): put this page's unkept changes back.
+        const mine = entry ? overridesRef.current[entry.rel] : undefined;
+        for (const t of list) {
+          const v = mine?.[t.id] !== undefined ? tweakValue(t, mine[t.id]) : null;
+          if (v !== null && v !== base[t.id]) post({ type: "set-tweak", ...tweakTarget(t, v) });
+        }
       } else if (msg.type === "scroll") {
         scroll.current = { x: msg.x, y: msg.y };
       } else if (msg.type === "picked") {
@@ -181,6 +206,46 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     frame.src = src;
   }, [src, frameKey, comparing]);
 
+  const rel = entry?.rel ?? null;
+  const pageOverrides = (rel && overrides[rel]) || {};
+  const tweakValues: TweakValues = tweaks ? { ...tweaks.base, ...pageOverrides } : {};
+  const tweaksDirty = !!tweaks && Object.entries(pageOverrides).some(([id, v]) => id in tweaks.base && tweaks.base[id] !== v);
+  const showTweaks = !!tweaks && !!entry && version === 0 && !comparing;
+
+  const changeTweak = (t: Tweak, raw: string) => {
+    const v = tweakValue(t, raw);
+    if (v === null || !rel) return;
+    setOverrides((o) => ({ ...o, [rel]: { ...o[rel], [t.id]: v } }));
+    post({ type: "set-tweak", ...tweakTarget(t, v) });
+  };
+  const resetTweaks = () => {
+    if (!rel) return;
+    setOverrides((o) => {
+      const next = { ...o };
+      delete next[rel];
+      return next;
+    });
+    setManual((n) => n + 1);
+  };
+  const keepTweaks = async () => {
+    if (!rel) return;
+    setKeeping(true);
+    try {
+      await api().designKeepTweaks(threadId, rel, tweakValues);
+      setOverrides((o) => {
+        const next = { ...o };
+        delete next[rel];
+        return next;
+      });
+      setTweaksOpen(false);
+      setNotice({ text: `Kept the tweaks in ${rel}. The previous page is saved as a version.` });
+    } catch (err) {
+      setNotice({ text: `Couldn't keep the tweaks: ${ipcError(err)}`, error: true });
+    } finally {
+      setKeeping(false);
+    }
+  };
+
   const promote = async (cell: CompareCell) => {
     setPromoting(cell.rel);
     try {
@@ -246,6 +311,19 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           <button className={`icon-button${grid ? " active" : ""}`} title="8px grid" aria-pressed={grid} onClick={() => setGrid(!grid)}>
             <Grid3x3 size={16} strokeWidth={1.75} aria-hidden />
           </button>
+          {showTweaks && (
+            <TweaksPanel
+              tweaks={tweaks.list}
+              values={tweakValues}
+              dirty={tweaksDirty}
+              keeping={keeping}
+              open={tweaksOpen}
+              onOpen={setTweaksOpen}
+              onChange={changeTweak}
+              onReset={resetTweaks}
+              onKeep={() => void keepTweaks()}
+            />
+          )}
           {cells.length > 0 && (
             <button
               className={`icon-button${comparing ? " active" : ""}`}

@@ -28,6 +28,10 @@ The deck is one HTML page with one `<section class="slide">` per slide. The user
 
 →/Space/PageDown next, ←/PageUp back, Home/End, **O** overview grid, `#3` in the URL opens slide 3, a slide counter bottom right. Printing (Cmd/Ctrl+P → Save as PDF) gives one 1920×1080 page per slide; check nothing relies on hover.
 
+## Tweaks
+
+Declare 2–3 tweaks for the deck (e.g. a `theme` choice and an `accent` color) with the same `<script type="application/json" id="cubiq-tweaks">` manifest as `design-prototype` describes: `choice`/`toggle` set `data-<id>` on `<html>`, `color`/`range` set a CSS variable on `:root`.
+
 ## 4. Finish
 
 Say how many slides you made and the story in one line; suggest the Slide viewport and the O key. Don't paste the HTML.

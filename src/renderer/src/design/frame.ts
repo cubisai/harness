@@ -48,10 +48,16 @@ export type BridgeMessage =
   | { type: "ready"; path?: string }
   | { type: "scroll"; x: number; y: number }
   | { type: "picked"; element: PickedElement }
-  | { type: "pick-cancel" };
+  | { type: "pick-cancel" }
+  | { type: "tweaks"; manifest: string; attrs: Record<string, string>; vars: Record<string, string> };
 
 const num = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const str = (v: unknown, max: number): v is string => typeof v === "string" && v.length <= max;
+const strMap = (v: unknown, maxKeys: number): v is Record<string, string> => {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return false;
+  const entries = Object.entries(v as Record<string, unknown>);
+  return entries.length <= maxKeys && entries.every(([k, val]) => str(k, 64) && str(val, 64));
+};
 
 /** A message from the design page's bridge, checked field by field (the page is untrusted); null otherwise. */
 export function readBridgeMessage(data: unknown): BridgeMessage | null {
@@ -67,6 +73,10 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
     if (!e || !r || !str(e.selector, 2000) || !e.selector || !str(e.tag, 64) || !str(e.text, 300) || !str(e.html, 1200)) return null;
     if (!num(r.x) || !num(r.y) || !num(r.width) || !num(r.height)) return null;
     return { type: "picked", element: { selector: e.selector, tag: e.tag, text: e.text, html: e.html, rect: { x: r.x, y: r.y, width: r.width, height: r.height } } };
+  }
+  if (d.type === "tweaks") {
+    if (!str(d.manifest, 8000) || !strMap(d.attrs, 32) || !strMap(d.vars, 32)) return null;
+    return { type: "tweaks", manifest: d.manifest, attrs: d.attrs, vars: d.vars };
   }
   return null;
 }
