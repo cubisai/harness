@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { selectorFor } from "../src/main/browser/picker";
-import { bridgeScript, describeElement, resolveTarget, snapTarget, type SelectionTarget } from "../src/main/design/bridge";
+import { bridgeScript, describeElement, editableText, resolveTarget, snapTarget, type SelectionTarget } from "../src/main/design/bridge";
 
 /** A minimal fake element: only the DOM surface the bridge helpers touch. */
 interface Fake {
@@ -151,6 +151,24 @@ describe("resolveTarget", () => {
     const doc = fakeDoc([], {});
     expect(resolveTarget(doc, { selector: "::invalid", tag: "div", text: "" })).toBeNull();
     expect(resolveTarget(doc, { selector: ".none", tag: "div", text: "" })).toBeNull();
+  });
+});
+
+describe("editableText", () => {
+  const node = (init: Partial<Fake> & { tag: string }, children: unknown[] = []): Element => {
+    const el = make(init);
+    (el as unknown as { children: unknown[] }).children = children;
+    return asElement(el);
+  };
+
+  it("returns the id and text of a leaf element", () => {
+    expect(editableText(node({ tag: "p", attrs: { "data-agent-id": "hero" }, text: "Hello" }))).toEqual({ ok: true, id: "hero", text: "Hello" });
+  });
+
+  it("refuses a missing id, an invalid id, and an element with children", () => {
+    expect(editableText(node({ tag: "p", text: "Hello" }))).toEqual({ ok: false, reason: "That text has no stable id; ask the agent to change it." });
+    expect(editableText(node({ tag: "p", attrs: { "data-agent-id": "Bad Id!" }, text: "Hello" }))).toEqual({ ok: false, reason: "That text has no stable id; ask the agent to change it." });
+    expect(editableText(node({ tag: "p", attrs: { "data-agent-id": "hero" }, text: "Hello" }, [{}]))).toEqual({ ok: false, reason: "That element holds more than text; ask the agent to change it." });
   });
 });
 

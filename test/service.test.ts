@@ -305,6 +305,34 @@ describe("Service.send", () => {
     expect(() => service.promoteDesignVariant(design.id, "pricing.html")).toThrow("Not a variant.");
   });
 
+  it("writes an in-place text edit into a design page with versions, and refuses when it isn't safe", () => {
+    const { service, store, updates } = setup(async () => {});
+    service.setArtifacts({
+      addVersion: (threadId, path, sha, bytes, turnSeq) => store.addArtifactVersion(threadId, path, sha, bytes, turnSeq),
+      listVersions: (threadId) => store.listArtifactVersions(threadId),
+      writeBlob: (sha, content) => store.writeBlobBytes(sha, content),
+      readBlob: (sha) => store.readBlobBytes(sha),
+      gitHead: async () => null,
+      preview: async () => ({ ok: false, error: "none" }),
+      fileUrl: () => "",
+    });
+    const project = store.addProject(tempDir());
+    const chat = service.createThread(project.id);
+    const design = service.createThread(project.id, undefined, "design");
+    expect(() => service.editDesignText(chat.id, "index.html", { id: "x", before: "a", after: "b" })).toThrow(/design thread/);
+    const root = service.designRoot(design.id)!;
+    mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, "index.html"), `<main><button data-agent-id="cta-buy">Buy now</button><p>keep</p></main>`);
+    service.editDesignText(design.id, "index.html", { id: "cta-buy", before: "Buy now", after: "Start free trial" });
+    expect(readFileSync(join(root, "index.html"), "utf8")).toBe(`<main><button data-agent-id="cta-buy">Start free trial</button><p>keep</p></main>`);
+    const path = `designs/${design.id.slice(0, 8)}/index.html`;
+    expect(store.listArtifactVersions(design.id).find((v) => v.path === path)!.versions).toHaveLength(2);
+    expect(updates.filter((u) => u.type === "artifact-ready")).toHaveLength(1);
+    // The page moved on (stale before): refused, file untouched.
+    expect(() => service.editDesignText(design.id, "index.html", { id: "cta-buy", before: "Buy now", after: "x" })).toThrow(/changed since/);
+    expect(() => service.editDesignText(design.id, "missing.html", { id: "cta-buy", before: "a", after: "b" })).toThrow("No such page.");
+  });
+
   it("saves a reference image into a design thread's refs folder and refuses a chat thread", () => {
     const { service, store } = setup(async () => {});
     const project = store.addProject(tempDir());

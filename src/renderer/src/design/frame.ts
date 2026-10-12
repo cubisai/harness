@@ -42,6 +42,8 @@ export type BridgeMessage =
   | { type: "ready"; path?: string }
   | { type: "scroll"; x: number; y: number }
   | { type: "selection"; elements: SelectedElement[]; lost: number }
+  | { type: "text-edit"; id: string; before: string; after: string }
+  | { type: "edit-refused"; reason: string }
   | { type: "pick-cancel" }
   | { type: "tweaks"; manifest: string; attrs: Record<string, string>; vars: Record<string, string> };
 
@@ -61,6 +63,11 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
   if (d.type === "pick-cancel") return { type: "pick-cancel" };
   if (d.type === "ready") return str(d.path, 2000) ? { type: "ready", path: d.path } : { type: "ready" };
   if (d.type === "scroll") return num(d.x) && num(d.y) ? { type: "scroll", x: d.x, y: d.y } : null;
+  if (d.type === "text-edit") {
+    if (!str(d.id, 64) || !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(d.id) || !str(d.before, 4000) || !str(d.after, 2000)) return null;
+    return { type: "text-edit", id: d.id, before: d.before, after: d.after };
+  }
+  if (d.type === "edit-refused") return str(d.reason, 200) && d.reason ? { type: "edit-refused", reason: d.reason } : null;
   if (d.type === "selection") {
     if (!Array.isArray(d.elements) || d.elements.length > MAX_SELECTED) return null;
     const elements: SelectedElement[] = [];

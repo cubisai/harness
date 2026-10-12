@@ -24,6 +24,8 @@ export type BridgeMessage =
   | { source: "cubiq-design"; type: "ready"; path?: string }
   | { source: "cubiq-design"; type: "scroll"; x: number; y: number }
   | { source: "cubiq-design"; type: "selection"; elements: unknown[]; lost: number }
+  | { source: "cubiq-design"; type: "text-edit"; id: string; before: string; after: string }
+  | { source: "cubiq-design"; type: "edit-refused"; reason: string }
   | { source: "cubiq-design"; type: "pick-cancel" }
   | { source: "cubiq-design"; type: "tweaks"; manifest: string; attrs: Record<string, string>; vars: Record<string, string> };
 
@@ -87,6 +89,14 @@ export function resolveTarget(doc: Document, target: SelectionTarget): Element |
   return el;
 }
 
+/** A design page element's own text when it is a leaf with a stable id, or why it cannot be edited in place. */
+export function editableText(el: Element): { ok: true; id: string; text: string } | { ok: false; reason: string } {
+  const id = el.getAttribute("data-agent-id");
+  if (!id || !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(id)) return { ok: false, reason: "That text has no stable id; ask the agent to change it." };
+  if (el.children.length > 0) return { ok: false, reason: "That element holds more than text; ask the agent to change it." };
+  return { ok: true, id, text: el.textContent ?? "" };
+}
+
 /**
  * The canvas bridge injected into a design page: scroll reporting, scroll
  * restore, and a persistent element selection. Runs inside the page (serialized
@@ -97,6 +107,7 @@ export function designBridge(
   describeElement: (el: Element, selectorFor: (el: Element) => string) => DescribedElement,
   snapTarget: (el: Element) => Element,
   resolveTarget: (doc: Document, target: SelectionTarget) => Element | null,
+  editableText: (el: Element) => { ok: true; id: string; text: string } | { ok: false; reason: string },
 ): void {
   const post = (type: string, data?: Record<string, unknown>): void => {
     parent.postMessage({ source: "cubiq-design", type, ...(data ?? {}) }, "*");
@@ -220,7 +231,53 @@ export function designBridge(
       e.stopPropagation();
       e.stopImmediatePropagation();
     };
+
+    // In-place text editing: one leaf element at a time, committed with Enter or a
+    // click elsewhere, cancelled with Escape.
+    let editing: { el: Element; id: string; before: string } | null = null;
+    const insideEdit = (e: Event): boolean => editing !== null && e.target instanceof Node && editing.el.contains(e.target);
+    const onEditKey = (e: KeyboardEvent): void => {
+      if (!editing || e.target !== editing.el) return;
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        commitEdit();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        cancelEdit();
+      }
+    };
+    const onEditBlur = (e: FocusEvent): void => {
+      if (editing && e.target === editing.el) commitEdit();
+    };
+    const commitEdit = (): void => {
+      const edit = editing;
+      if (!edit) return;
+      editing = null;
+      const after = edit.el.textContent ?? "";
+      edit.el.removeAttribute("contenteditable");
+      (edit.el as HTMLElement).removeEventListener("keydown", onEditKey, true);
+      (edit.el as HTMLElement).removeEventListener("blur", onEditBlur);
+      if (after.replace(/\s+/g, " ").trim() !== edit.before.replace(/\s+/g, " ").trim()) post("text-edit", { id: edit.id, before: edit.before, after: after.slice(0, 2000) });
+    };
+    const cancelEdit = (): void => {
+      const edit = editing;
+      if (!edit) return;
+      editing = null;
+      edit.el.textContent = edit.before;
+      edit.el.removeAttribute("contenteditable");
+      (edit.el as HTMLElement).removeEventListener("keydown", onEditKey, true);
+      (edit.el as HTMLElement).removeEventListener("blur", onEditBlur);
+    };
+
+    // Mousedown/mouseup stay swallowed unless the gesture is inside the editor.
+    const onPointer = (e: Event): void => {
+      if (insideEdit(e)) return;
+      swallow(e);
+    };
     const onClick = (e: MouseEvent): void => {
+      if (insideEdit(e)) return;
+      commitEdit();
       swallow(e);
       const t = hovered;
       if (!t) return;
@@ -235,7 +292,25 @@ export function designBridge(
       redraw();
       report(0);
     };
+    const onDblClick = (e: MouseEvent): void => {
+      if (insideEdit(e)) return;
+      swallow(e);
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      if (!el || el === box || el === tip) return;
+      const r = editableText(el);
+      if (!r.ok) {
+        post("edit-refused", { reason: r.reason });
+        return;
+      }
+      editing = { el, id: r.id, before: r.text };
+      el.setAttribute("contenteditable", "plaintext-only");
+      (el as HTMLElement).focus();
+      document.getSelection()?.selectAllChildren(el);
+      (el as HTMLElement).addEventListener("keydown", onEditKey, true);
+      (el as HTMLElement).addEventListener("blur", onEditBlur);
+    };
     const onKey = (e: KeyboardEvent): void => {
+      if (insideEdit(e)) return;
       if (e.key !== "Escape") return;
       swallow(e);
       if (selected.length > 0) {
@@ -248,10 +323,12 @@ export function designBridge(
       }
     };
     const stop = (): void => {
+      commitEdit();
       document.removeEventListener("mousemove", onMove, true);
       document.removeEventListener("click", onClick, true);
-      document.removeEventListener("mousedown", swallow, true);
-      document.removeEventListener("mouseup", swallow, true);
+      document.removeEventListener("dblclick", onDblClick, true);
+      document.removeEventListener("mousedown", onPointer, true);
+      document.removeEventListener("mouseup", onPointer, true);
       document.removeEventListener("keydown", onKey, true);
       box.remove();
       tip.remove();
@@ -260,8 +337,9 @@ export function designBridge(
     };
     document.addEventListener("mousemove", onMove, true);
     document.addEventListener("click", onClick, true);
-    document.addEventListener("mousedown", swallow, true);
-    document.addEventListener("mouseup", swallow, true);
+    document.addEventListener("dblclick", onDblClick, true);
+    document.addEventListener("mousedown", onPointer, true);
+    document.addEventListener("mouseup", onPointer, true);
     document.addEventListener("keydown", onKey, true);
     stopSelect = stop;
   };
@@ -328,5 +406,5 @@ export function designBridge(
 
 /** The bridge as one script body, embedding the page-side helpers it needs. */
 export function bridgeScript(selectorFor: (el: Element) => string): string {
-  return `(${designBridge.toString()})(${selectorFor.toString()}, ${describeElement.toString()}, ${snapTarget.toString()}, ${resolveTarget.toString()});`;
+  return `(${designBridge.toString()})(${selectorFor.toString()}, ${describeElement.toString()}, ${snapTarget.toString()}, ${resolveTarget.toString()}, ${editableText.toString()});`;
 }

@@ -763,6 +763,11 @@ async function main(): Promise<void> {
     if (typeof rel !== "string") throw new Error("Not a variant.");
     service.promoteDesignVariant(threadId, rel);
   });
+  ipcMain.handle("design:edit-text", (_e, threadId: string, rel: string, edit: { id?: unknown; before?: unknown; after?: unknown }) => {
+    if (typeof rel !== "string" || !edit || typeof edit.id !== "string" || typeof edit.before !== "string" || typeof edit.after !== "string")
+      throw new Error("Bad text edit.");
+    service.editDesignText(threadId, rel, { id: edit.id, before: edit.before, after: edit.after });
+  });
   ipcMain.handle("design:save-ref", (_e, threadId: string, bytes: Uint8Array) => {
     if (!(bytes instanceof Uint8Array)) throw new Error("Not an image (png, jpg, webp or gif).");
     return service.saveDesignRef(threadId, bytes);

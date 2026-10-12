@@ -1118,6 +1118,8 @@ export interface UnskilledApi {
   designKeepTweaks(threadId: string, rel: string, values: Record<string, string>): Promise<boolean>;
   /** Save a pasted reference image (png/jpg/webp/gif, ≤ 10 MB) into a design thread's `refs/`; its path relative to the thread's folder. */
   designSaveRef(threadId: string, bytes: Uint8Array): Promise<string>;
+  /** Write an in-place text edit into a design page; refuses (throws) unless that `data-agent-id` is unique, text-only and unchanged. */
+  designEditText(threadId: string, rel: string, edit: { id: string; before: string; after: string }): Promise<void>;
   /** Watch an open design thread's folder (creating it), so changes push `design-changed`; counted per call. */
   designWatch(threadId: string): Promise<void>;
   designUnwatch(threadId: string): Promise<void>;

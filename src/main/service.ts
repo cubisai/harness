@@ -37,6 +37,7 @@ import type { TweakValues } from "../shared/tweaks";
 import { designDirName } from "./design/serve";
 import { listDesignPages, promoteVariant } from "./design/pages";
 import { saveRef } from "./design/refs";
+import { applyTextEdit } from "./design/textedit";
 import { keepTweaks } from "./design/tweaks";
 import { listDesignSystems, materializeSystem, resolveDesignSystem } from "./design/systems";
 import { skillsOf } from "../shared/skill-list";
@@ -1161,6 +1162,28 @@ export class Service {
     const dir = designOf(thread);
     if (!root || !dir) throw new Error("Only a design thread takes reference images.");
     return `${dir}/${saveRef(root, bytes)}`;
+  }
+
+  /**
+   * Write an in-place text edit from the canvas into a design page: only when
+   * exactly one element has that `data-agent-id`, it holds only text, and its
+   * text is still `before` (else the refusal says to ask the agent). Saved as
+   * versions before and after.
+   */
+  editDesignText(threadId: string, rel: string, edit: { id: string; before: string; after: string }): void {
+    const thread = this.store.getThread(threadId);
+    const root = this.designRoot(threadId);
+    const dir = designOf(thread);
+    if (!root || !dir) throw new Error("Only a design thread has pages to edit.");
+    if (!listDesignPages(root).includes(rel)) throw new Error("No such page.");
+    const file = join(root, rel);
+    const before = readFileSync(file, "utf8");
+    const after = applyTextEdit(before, edit.id, edit.before, edit.after);
+    if (after === before) return;
+    this.recordDesignPage(threadId, root, dir, rel);
+    writeFileSync(file, after);
+    this.recordDesignPage(threadId, root, dir, rel);
+    if (this.artifacts) this.broadcast({ type: "artifact-ready", threadId, path: `${dir}/${rel}`, files: [`${dir}/${rel}`] });
   }
 
   /** Save a design page as it is on disk as the next version (unchanged content adds none). */

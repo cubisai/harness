@@ -152,6 +152,18 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
         }
       } else if (msg.type === "scroll") {
         scroll.current = { x: msg.x, y: msg.y };
+      } else if (msg.type === "text-edit") {
+        // An in-place edit: written into the file only when it's unambiguous; otherwise the page goes back to the file.
+        if (!entry || version !== 0) return;
+        const rel = entry.rel;
+        void api()
+          .designEditText(threadId, rel, { id: msg.id, before: msg.before, after: msg.after })
+          .catch((err: unknown) => {
+            setNotice({ text: ipcError(err), error: true });
+            setManual((n) => n + 1);
+          });
+      } else if (msg.type === "edit-refused") {
+        setNotice({ text: msg.reason });
       } else if (msg.type === "selection") {
         if (!entry) return;
         fromFrame.current = selectionKey(msg.elements);
@@ -391,7 +403,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           )}
           <button
             className={`icon-button${picking ? " active" : ""}`}
-            title={picking ? "Selecting: click an element, Shift-click for more (Esc clears, then stops)" : "Select elements to change"}
+            title={picking ? "Selecting: click an element, Shift-click for more, double-click text to edit it (Esc clears, then stops)" : "Select elements to change"}
             aria-label={selected.length ? `Select elements (${selected.length} selected)` : "Select elements"}
             aria-pressed={picking}
             onClick={togglePick}

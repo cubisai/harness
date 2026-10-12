@@ -36,6 +36,19 @@ describe("design frame", () => {
     expect(readBridgeMessage({ ...msg, lost: 3.5 })).toEqual({ type: "selection", elements: [selected], lost: 0 });
   });
 
+  it("accepts an in-place text edit and a refusal, and rejects bad ones", () => {
+    const edit = { source: "cubiq-design", type: "text-edit", id: "cta-buy", before: "Buy now", after: "Start free trial" };
+    expect(readBridgeMessage(edit)).toEqual({ type: "text-edit", id: "cta-buy", before: "Buy now", after: "Start free trial" });
+    expect(readBridgeMessage({ ...edit, id: "bad id" })).toBeNull();
+    expect(readBridgeMessage({ ...edit, after: "x".repeat(2001) })).toBeNull();
+    expect(readBridgeMessage({ ...edit, before: 5 })).toBeNull();
+    expect(readBridgeMessage({ source: "cubiq-design", type: "edit-refused", reason: "That text has no stable id; ask the agent to change it." })).toEqual({
+      type: "edit-refused",
+      reason: "That text has no stable id; ask the agent to change it.",
+    });
+    expect(readBridgeMessage({ source: "cubiq-design", type: "edit-refused", reason: "" })).toBeNull();
+  });
+
   it("accepts a tweaks message but rejects oversized manifests and bad maps", () => {
     const tweaks = { source: "cubiq-design", type: "tweaks", manifest: '{"tweaks":[]}', attrs: { "data-theme": "dusk" }, vars: { "--color-accent": "#3b5bdb" } };
     expect(readBridgeMessage(tweaks)).toEqual({ type: "tweaks", manifest: '{"tweaks":[]}', attrs: { "data-theme": "dusk" }, vars: { "--color-accent": "#3b5bdb" } });
