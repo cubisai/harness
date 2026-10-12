@@ -7,7 +7,8 @@ import { Select } from "../components/Select";
 import { IconClose, IconRefresh, IconTarget } from "../icons";
 import "../styles/artifact.css";
 import { useStore } from "../store";
-import { VIEWPORTS, ZOOMS, frameLayout, pageFromPath, pickChipText, readBridgeMessage, type Viewport, type Zoom } from "./frame";
+import { VIEWPORTS, ZOOMS, frameLayout, pageFromPath, readBridgeMessage, type Viewport, type Zoom } from "./frame";
+import { announceSelection, elementLabel, selectionKey, type SelectedElement } from "../../../shared/selection";
 import { compareCells, pageOptions, sameEntry, type CompareCell } from "./pages";
 import { currentTweakValues, parseTweaks, tweakTarget, tweakValue, type Tweak, type TweakValues } from "../../../shared/tweaks";
 import { TweaksPanel } from "./TweaksPanel";
@@ -51,6 +52,14 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   overridesRef.current = overrides;
   const [tweaksOpen, setTweaksOpen] = useState(false);
   const [keeping, setKeeping] = useState(false);
+  // The canvas selection lives in the store (the composer shows it as chips); the frame draws it.
+  const selection = useStore((s) => s.designSelection[threadId]);
+  const setSelection = useStore((s) => s.setDesignSelection);
+  const selected = selection?.elements ?? [];
+  const selectedKey = selectionKey(selected);
+  // What the frame last reported, so a change made here (a chip's ×) is sent down once and no echo loops back.
+  const fromFrame = useRef("");
+  const [announcement, setAnnouncement] = useState("");
   const options = entry ? pageOptions(entry.pages) : [];
   const cells = entry ? compareCells(entry.pages) : [];
   const comparing = compare && cells.length > 0 && version === 0;
@@ -124,6 +133,12 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           setPage(to.rel);
         } else if (scroll.current.x || scroll.current.y) post({ type: "restore-scroll", ...scroll.current });
         if (picking) post({ type: "pick", on: true });
+        // A reload (the agent rewrote the page): find the selection again; anything gone is dropped and reported.
+        const sel = useStore.getState().designSelection[threadId];
+        if (sel && entry && sel.page === (to?.rel ?? entry.rel) && version === 0) {
+          fromFrame.current = "";
+          post({ type: "set-selection", targets: sel.elements.map(({ id, selector, tag, text }) => ({ id, selector, tag, text })) });
+        }
       } else if (msg.type === "tweaks") {
         const list = parseTweaks(msg.manifest);
         if (!list.length) return setTweaks(null);
@@ -137,17 +152,44 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
         }
       } else if (msg.type === "scroll") {
         scroll.current = { x: msg.x, y: msg.y };
-      } else if (msg.type === "picked") {
-        setPicking(false);
-        const page = entry ? `${entry.dir}/${entry.rel}` : "the design";
-        useStore.setState((s) => ({ composerInsert: { text: pickChipText(msg.element, page), nonce: (s.composerInsert?.nonce ?? 0) + 1 } }));
+      } else if (msg.type === "selection") {
+        if (!entry) return;
+        fromFrame.current = selectionKey(msg.elements);
+        setSelection(threadId, { page: entry.rel, elements: msg.elements });
+        setAnnouncement(announceSelection(msg.elements));
+        if (msg.lost > 0)
+          setNotice({ text: `${msg.lost === 1 ? "A selected element is" : `${msg.lost} selected elements are`} no longer on the page, so the selection dropped ${msg.lost === 1 ? "it" : "them"}.` });
       } else {
         setPicking(false);
       }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [entry, picking, post, threadId, version]);
+  }, [entry, picking, post, threadId, version, setSelection]);
+
+  // A change made outside the frame (a chip removed in the composer, the selection cleared after sending) is drawn there.
+  useEffect(() => {
+    if (selectedKey === fromFrame.current) return;
+    fromFrame.current = selectedKey;
+    const els = useStore.getState().designSelection[threadId]?.elements ?? [];
+    post(els.length ? { type: "set-selection", targets: els.map(({ id, selector, tag, text }) => ({ id, selector, tag, text })) } : { type: "clear-selection" });
+  }, [selectedKey, threadId, post]);
+
+  // A selection belongs to one page: moving to another page (or another version) lets it go.
+  useEffect(() => {
+    if (selection && entry && (selection.page !== entry.rel || version !== 0)) setSelection(threadId, null);
+  }, [selection, entry, version, threadId, setSelection]);
+
+  const clearSelection = () => {
+    setSelection(threadId, null);
+    setAnnouncement(announceSelection([]));
+  };
+  // A breadcrumb step selects that ancestor instead.
+  const selectAncestor = (step: SelectedElement["path"][number]) => {
+    const [tag = "div", id] = step.label.split(" ");
+    fromFrame.current = "";
+    post({ type: "set-selection", targets: [{ id, selector: step.selector, tag, text: "" }] });
+  };
 
   // The Export menu closes on a click outside it or Esc.
   useEffect(() => {
@@ -175,17 +217,22 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     post({ type: "pick", on });
   };
 
-  // Esc in the app (focus outside the frame) also ends picking.
+  // Esc in the app (focus outside the frame) works like Esc in it: first it clears the selection, then it stops selecting.
   useEffect(() => {
     if (!picking) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      if (useStore.getState().designSelection[threadId]) {
+        useStore.getState().setDesignSelection(threadId, null);
+        setAnnouncement(announceSelection([]));
+        return;
+      }
       setPicking(false);
       post({ type: "pick", on: false });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [picking, post]);
+  }, [picking, post, threadId]);
 
   const path = entry ? `${entry.dir}/${entry.rel}` : null;
   const versions = (files?.find((f) => f.path === path)?.versions ?? []).slice().sort((a, b) => b.version - a.version);
@@ -344,12 +391,14 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           )}
           <button
             className={`icon-button${picking ? " active" : ""}`}
-            title={picking ? "Picking: click an element (Esc to stop)" : "Pick an element to comment on"}
+            title={picking ? "Selecting: click an element, Shift-click for more (Esc clears, then stops)" : "Select elements to change"}
+            aria-label={selected.length ? `Select elements (${selected.length} selected)` : "Select elements"}
             aria-pressed={picking}
             onClick={togglePick}
             disabled={!entry || version !== 0 || comparing}
           >
             <IconTarget />
+            {selected.length > 0 && <span className="design-select-count">{selected.length}</span>}
           </button>
           <button className="icon-button" title="Reload" onClick={() => setManual((n) => n + 1)} disabled={!entry}>
             <IconRefresh />
@@ -402,6 +451,36 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
             <IconClose />
           </button>
         </div>
+      )}
+      <div className="design-live" aria-live="polite">
+        {announcement}
+      </div>
+      {selected.length > 0 && !comparing && version === 0 && (
+        <nav className="design-crumbs" aria-label="Selection">
+          {selected.length === 1 ? (
+            <>
+              {selected[0]!.path.map((step) => (
+                <span key={step.selector} className="design-crumb-step">
+                  <button className="design-crumb" title={`Select ${step.label}`} onClick={() => selectAncestor(step)}>
+                    {step.label}
+                  </button>
+                  <span className="design-crumb-sep" aria-hidden>
+                    ›
+                  </span>
+                </span>
+              ))}
+              <span className="design-crumb current" title={selected[0]!.selector}>
+                {elementLabel(selected[0]!)}
+              </span>
+            </>
+          ) : (
+            <span className="design-crumb current">{selected.length} elements selected</span>
+          )}
+          <span className="grow" />
+          <button className="button ghost" onClick={clearSelection}>
+            Clear
+          </button>
+        </nav>
       )}
       {notice && (
         <div className={`design-version-bar${notice.error ? " error" : ""}`} role="status">

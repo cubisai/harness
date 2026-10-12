@@ -1,13 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { selectorFor, startPicker } from "../src/main/browser/picker";
 import { bridgeScript } from "../src/main/design/bridge";
-import { chipLabel } from "../src/renderer/src/composer";
-import { frameLayout, pageFromPath, pickChipText, readBridgeMessage } from "../src/renderer/src/design/frame";
+import { frameLayout, pageFromPath, readBridgeMessage } from "../src/renderer/src/design/frame";
 import { DEFAULT_LAYOUT, DESIGN_FLOOR, clampLayout } from "../src/renderer/src/layout";
 import { useStore } from "../src/renderer/src/store";
 import type { Thread } from "../src/shared/types";
 
-const element = { selector: "main > button:nth-of-type(2)", tag: "button", text: "Get started", html: "<button>Get started</button>", rect: { x: 10.4, y: 20.6, width: 120, height: 44 } };
+const selected = { selector: "main > button:nth-of-type(2)", tag: "button", text: "Get started", html: "<button>Get started</button>", rect: { x: 10.4, y: 20.6, width: 120, height: 44 }, path: [] };
 
 describe("design frame", () => {
   it("fills the stage on Fit and scales a preset down to fit, never up", () => {
@@ -22,13 +21,19 @@ describe("design frame", () => {
   it("accepts only well-formed bridge messages", () => {
     expect(readBridgeMessage({ source: "cubiq-design", type: "ready" })).toEqual({ type: "ready" });
     expect(readBridgeMessage({ source: "cubiq-design", type: "scroll", x: 0, y: 120 })).toEqual({ type: "scroll", x: 0, y: 120 });
-    expect(readBridgeMessage({ source: "cubiq-design", type: "picked", element })).toEqual({ type: "picked", element });
     expect(readBridgeMessage({ source: "other", type: "ready" })).toBeNull();
     expect(readBridgeMessage({ source: "cubiq-design", type: "scroll", x: "1", y: 2 })).toBeNull();
-    expect(readBridgeMessage({ source: "cubiq-design", type: "picked", element: { ...element, text: "x".repeat(301) } })).toBeNull();
-    expect(readBridgeMessage({ source: "cubiq-design", type: "picked", element: { ...element, rect: { x: 1 } } })).toBeNull();
     expect(readBridgeMessage({ source: "cubiq-design", type: "navigate", url: "https://example.com" })).toBeNull();
     expect(readBridgeMessage("ready")).toBeNull();
+  });
+
+  it("accepts a selection message, drops invalid elements and defaults a bad lost count", () => {
+    const msg = { source: "cubiq-design", type: "selection", elements: [selected], lost: 0 };
+    expect(readBridgeMessage(msg)).toEqual({ type: "selection", elements: [selected], lost: 0 });
+    expect(readBridgeMessage({ ...msg, elements: [selected, { ...selected, tag: "" }] })).toEqual({ type: "selection", elements: [selected], lost: 0 });
+    expect(readBridgeMessage({ ...msg, elements: "x" })).toBeNull();
+    expect(readBridgeMessage({ ...msg, lost: -1 })).toEqual({ type: "selection", elements: [selected], lost: 0 });
+    expect(readBridgeMessage({ ...msg, lost: 3.5 })).toEqual({ type: "selection", elements: [selected], lost: 0 });
   });
 
   it("accepts a tweaks message but rejects oversized manifests and bad maps", () => {
@@ -50,14 +55,6 @@ describe("design frame", () => {
     expect(pageFromPath("/t1/", "t1")).toBeNull();
     expect(pageFromPath("/t1/../x.html", "t1")).toBeNull();
     expect(pageFromPath("/t1/%E0%A4%A.html", "t1")).toBeNull();
-  });
-
-  it("turns a pick into a chip that shows the selector", () => {
-    const text = pickChipText(element, "designs/abcd1234/index.html");
-    expect(text.split("\n")[0]).toBe("Element `main > button:nth-of-type(2)` in designs/abcd1234/index.html");
-    expect(text).toContain('Text: "Get started"');
-    expect(text).toContain("Box: 120×44 at 10,21");
-    expect(chipLabel(text)).toBe("main > button:nth-of-type(2)");
   });
 
   it("ships page scripts that are plain, self-contained JavaScript", () => {

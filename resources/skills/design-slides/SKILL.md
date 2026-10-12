@@ -22,6 +22,7 @@ The deck is one HTML page with one `<section class="slide">` per slide. The user
 - **One idea per slide**; the heading states the takeaway ("Churn fell 18% after onboarding v2"), not the topic ("Churn").
 - **Charts**: inline SVG, the system's colors, direct labels, no legends when you can label lines. **Images**: inline SVG or `data:` URIs (no network).
 - **Layouts** to mix: title, section divider (full `primary` background, `on-primary` text), statement (one big line), two-column (text + visual), big number, chart, quote, comparison table, closing/CTA.
+- Put a short kebab `data-agent-id` on every screen/slide root, component root and interactive element, and keep the ids when you rewrite. If the message has a `Selected in …` block, change only those elements.
 - Speaker notes, when asked: `<aside class="notes" hidden>…</aside>` inside the slide.
 
 ## 3. Runtime (already in deck.js)

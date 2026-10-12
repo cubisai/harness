@@ -1,5 +1,7 @@
 // The design canvas's pure parts: frame sizes, zoom, and the bridge messages. No React, no DOM.
 
+import { MAX_SELECTED, readSelected, type SelectedElement } from "../../../shared/selection";
+
 export type Viewport = "fit" | "mobile" | "tablet" | "desktop" | "slide";
 export type Zoom = "fit" | 0.5 | 0.75 | 1 | 1.5;
 
@@ -36,18 +38,10 @@ export function frameLayout(viewport: Viewport, zoom: Zoom, stage: { width: numb
   return { ...size, scale };
 }
 
-export interface PickedElement {
-  selector: string;
-  tag: string;
-  text: string;
-  html: string;
-  rect: { x: number; y: number; width: number; height: number };
-}
-
 export type BridgeMessage =
   | { type: "ready"; path?: string }
   | { type: "scroll"; x: number; y: number }
-  | { type: "picked"; element: PickedElement }
+  | { type: "selection"; elements: SelectedElement[]; lost: number }
   | { type: "pick-cancel" }
   | { type: "tweaks"; manifest: string; attrs: Record<string, string>; vars: Record<string, string> };
 
@@ -67,12 +61,16 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
   if (d.type === "pick-cancel") return { type: "pick-cancel" };
   if (d.type === "ready") return str(d.path, 2000) ? { type: "ready", path: d.path } : { type: "ready" };
   if (d.type === "scroll") return num(d.x) && num(d.y) ? { type: "scroll", x: d.x, y: d.y } : null;
-  if (d.type === "picked") {
-    const e = d.element as Record<string, unknown> | null | undefined;
-    const r = e?.rect as Record<string, unknown> | null | undefined;
-    if (!e || !r || !str(e.selector, 2000) || !e.selector || !str(e.tag, 64) || !str(e.text, 300) || !str(e.html, 1200)) return null;
-    if (!num(r.x) || !num(r.y) || !num(r.width) || !num(r.height)) return null;
-    return { type: "picked", element: { selector: e.selector, tag: e.tag, text: e.text, html: e.html, rect: { x: r.x, y: r.y, width: r.width, height: r.height } } };
+  if (d.type === "selection") {
+    if (!Array.isArray(d.elements) || d.elements.length > MAX_SELECTED) return null;
+    const elements: SelectedElement[] = [];
+    for (const raw of d.elements) {
+      const el = readSelected(raw);
+      if (el) elements.push(el);
+    }
+    const rawLost = d.lost;
+    const lost = typeof rawLost === "number" && Number.isInteger(rawLost) && rawLost >= 0 && rawLost <= MAX_SELECTED ? rawLost : 0;
+    return { type: "selection", elements, lost };
   }
   if (d.type === "tweaks") {
     if (!str(d.manifest, 8000) || !strMap(d.attrs, 32) || !strMap(d.vars, 32)) return null;
@@ -98,14 +96,4 @@ export function pageFromPath(pathname: string, threadId: string): string | null 
     if (s === "" || s === "." || s === ".." || s.includes("\\") || s.includes("\0")) return null;
   }
   return rest.join("/");
-}
-
-/** What a picked element puts in the message box: the browser pick's format, so the chip shows its selector. */
-export function pickChipText(el: PickedElement, page: string): string {
-  const r = el.rect;
-  const lines = [`Element \`${el.selector}\` in ${page}`];
-  if (el.text) lines.push(`Text: "${el.text}"`);
-  lines.push("```html", el.html + (el.html.length >= 1200 ? "…" : ""), "```");
-  lines.push(`Box: ${Math.round(r.width)}×${Math.round(r.height)} at ${Math.round(r.x)},${Math.round(r.y)}`);
-  return lines.join("\n");
 }

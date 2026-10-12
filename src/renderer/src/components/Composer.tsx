@@ -5,6 +5,8 @@ import { IconArrowUp, IconStop } from "../icons";
 import { api } from "../api";
 import { chipLabel, commandQuery, composeMessage, skillQueryAt, toggleSkill } from "../composer";
 import { MAX_REFS, imageFiles, refLabel, refThumb, withRefs } from "../design/refs";
+import { elementLabel, withScope } from "../../../shared/selection";
+import { designDirName } from "../../../shared/design";
 import { matchCommands, type ComposerCommand } from "../commands";
 import { folderPaths, mentionQueryAt, mentionsIn, rankMentions } from "../mentions";
 import { nextMode } from "../modes";
@@ -52,6 +54,8 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
   // Reference images pasted or dropped into a design thread: saved in its design folder, sent as mentions.
   const [refs, setRefs] = useState<{ path: string; thumb: string }[]>([]);
   const [addingRefs, setAddingRefs] = useState(false);
+  // Elements selected on a design thread's canvas: chips here, and a "change only these" block on the next message.
+  const selection = useStore((s) => (threadId ? s.designSelection[threadId] : undefined));
   const area = useRef<HTMLTextAreaElement>(null);
   const pendingCaret = useRef<number | null>(null);
   /** listFiles results by project id, with when they were fetched, so the picker doesn't refetch per keystroke. */
@@ -269,10 +273,13 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
       return;
     }
     const refPaths = refs.map((r) => r.path);
-    const body = withRefs(composeMessage(text, chips), refPaths);
-    if (!body && !picked.length) return;
+    const message = withRefs(composeMessage(text, chips), refPaths);
+    if (!message && !picked.length) return;
+    // The selection scopes a real request; on its own it isn't one.
+    const body = withScope(message, selection && threadId ? `${designDirName(threadId)}/${selection.page}` : null, selection?.elements ?? []);
     const mentions = [...mentionsIn(text, knownSet), ...refPaths];
     const names = picked.map((p) => p.name);
+    if (selection && threadId) useStore.getState().setDesignSelection(threadId, null);
     if (!threadId) void startThread(body, names, mentions);
     else if (running) enqueue(threadId, body, names, mentions);
     else
@@ -502,7 +509,7 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
         )}
         {/* Skill and context chips sit inline before the text, each with its own ×. */}
         <div
-          className={`composer-input${picked.length || chips.length || refs.length ? " has-chips" : ""}`}
+          className={`composer-input${picked.length || chips.length || refs.length || selection ? " has-chips" : ""}`}
           onDragOver={(e) => {
             if (designKind && Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
           }}
@@ -510,6 +517,18 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
             if (takeImages(e.dataTransfer.files)) e.preventDefault();
           }}
         >
+          {selection?.elements.map((el, i) => (
+            <span key={el.id ?? el.selector} className="skill-chip context-chip select-chip" title={el.selector}>
+              <span className="chip-label">{elementLabel(el)}</span>
+              <button
+                className="chip-x"
+                aria-label={`Unselect ${elementLabel(el)}`}
+                onClick={() => threadId && useStore.getState().setDesignSelection(threadId, { page: selection.page, elements: selection.elements.filter((_, j) => j !== i) })}
+              >
+                ×
+              </button>
+            </span>
+          ))}
           {refs.map((r) => (
             <span key={r.path} className="skill-chip context-chip ref-chip" title={r.path}>
               {r.thumb && <img className="ref-thumb" src={r.thumb} alt="" />}

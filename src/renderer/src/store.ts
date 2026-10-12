@@ -32,6 +32,13 @@ import { IDLE, takeOverReducer, type TakeOverState } from "./takeover";
 import { threadSeen, turnEnded, type FinishedTurn } from "./inbox";
 import { threadKind } from "./sections";
 import { designDirName } from "../../shared/design";
+import type { SelectedElement } from "../../shared/selection";
+
+/** A design thread's canvas selection: the page it is on and its elements. */
+export interface DesignSelection {
+  page: string;
+  elements: SelectedElement[];
+}
 
 /** The right panel's tabs. Changes and Files need a project; Browser works without one; File shows an artifact. */
 export type InspectorTab = "changes" | "browser" | "files" | "artifact";
@@ -175,6 +182,10 @@ interface State {
   composerInsert: { text: string; nonce: number } | null;
   /** Bumped when an open design thread's folder changes, so its canvas reloads. */
   designReload: Record<string, number>;
+  /** Each design thread's selected elements on its canvas (one page): chips in the composer, scope for the next message. */
+  designSelection: Record<string, DesignSelection>;
+  /** Set (or clear, with null or no elements) a design thread's selection. */
+  setDesignSelection(threadId: string, selection: DesignSelection | null): void;
   /** Text to put back in the message box (Edit on a sent message); consumed by the composer. */
   composerDraft: { text: string; nonce: number } | null;
   setComposerDraft(text: string): void;
@@ -540,6 +551,15 @@ export const useStore = create<State>((set, get) => ({
   browserLoaded: false,
   composerInsert: null,
   designReload: {},
+  designSelection: {},
+  setDesignSelection(threadId, selection) {
+    set((s) => {
+      const next = { ...s.designSelection };
+      if (selection && selection.elements.length) next[threadId] = selection;
+      else delete next[threadId];
+      return { designSelection: next };
+    });
+  },
   composerDraft: null,
   setComposerDraft(text) {
     set((s) => ({ composerDraft: { text, nonce: (s.composerDraft?.nonce ?? 0) + 1 } }));
