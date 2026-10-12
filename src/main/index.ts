@@ -9,6 +9,7 @@ import type { HarnessTool } from "./agents/types";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
 import { DESIGN_SCHEME, designDirName, designUrl, entryFile, serveDesign } from "./design/serve";
 import { DesignWatcher } from "./design/watch";
+import { listDesignPages } from "./design/pages";
 import { bridgeScript } from "./design/bridge";
 import { buildDesignExport, exportFileName, pageTitleSource, type DesignExportDeps } from "./design/export";
 import { lintScript } from "./design/lint";
@@ -750,10 +751,17 @@ async function main(): Promise<void> {
     for (const [threadId, n] of designWatches.get(senderId) ?? []) for (let i = 0; i < n; i++) designWatcher.unwatch(threadId);
     designWatches.delete(senderId);
   };
-  ipcMain.handle("design:entry", (_e, threadId: string) => {
+  ipcMain.handle("design:entry", (_e, threadId: string, want?: string | null) => {
     const root = service.designRoot(threadId);
-    const rel = root ? entryFile(root) : null;
-    return root && rel ? { dir: designDirName(threadId), rel, url: designUrl(threadId, rel) } : null;
+    if (!root) return null;
+    const pages = listDesignPages(root);
+    const rel = typeof want === "string" && pages.includes(want) ? want : entryFile(root);
+    if (!rel) return null;
+    return { dir: designDirName(threadId), rel, url: designUrl(threadId, rel), pages: pages.map((p) => ({ rel: p, url: designUrl(threadId, p) })) };
+  });
+  ipcMain.handle("design:promote", (_e, threadId: string, rel: string) => {
+    if (typeof rel !== "string") throw new Error("Not a variant.");
+    service.promoteDesignVariant(threadId, rel);
   });
   ipcMain.handle("design:watch", (e, threadId: string) => {
     const root = service.designRoot(threadId);

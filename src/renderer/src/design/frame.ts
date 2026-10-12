@@ -45,7 +45,7 @@ export interface PickedElement {
 }
 
 export type BridgeMessage =
-  | { type: "ready" }
+  | { type: "ready"; path?: string }
   | { type: "scroll"; x: number; y: number }
   | { type: "picked"; element: PickedElement }
   | { type: "pick-cancel" };
@@ -58,7 +58,8 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
   if (!data || typeof data !== "object") return null;
   const d = data as Record<string, unknown>;
   if (d.source !== "cubiq-design") return null;
-  if (d.type === "ready" || d.type === "pick-cancel") return { type: d.type };
+  if (d.type === "pick-cancel") return { type: "pick-cancel" };
+  if (d.type === "ready") return str(d.path, 2000) ? { type: "ready", path: d.path } : { type: "ready" };
   if (d.type === "scroll") return num(d.x) && num(d.y) ? { type: "scroll", x: d.x, y: d.y } : null;
   if (d.type === "picked") {
     const e = d.element as Record<string, unknown> | null | undefined;
@@ -68,6 +69,25 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
     return { type: "picked", element: { selector: e.selector, tag: e.tag, text: e.text, html: e.html, rect: { x: r.x, y: r.y, width: r.width, height: r.height } } };
   }
   return null;
+}
+
+/** The design page a frame's `location.pathname` names, or null when it is not this thread's own path. */
+export function pageFromPath(pathname: string, threadId: string): string | null {
+  const parts = pathname.replace(/^\/+/, "").split("/");
+  const segs: string[] = [];
+  for (const part of parts) {
+    try {
+      segs.push(decodeURIComponent(part));
+    } catch {
+      return null;
+    }
+  }
+  if (segs[0] !== threadId || segs.length < 2) return null;
+  const rest = segs.slice(1);
+  for (const s of rest) {
+    if (s === "" || s === "." || s === ".." || s.includes("\\") || s.includes("\0")) return null;
+  }
+  return rest.join("/");
 }
 
 /** What a picked element puts in the message box: the browser pick's format, so the chip shows its selector. */

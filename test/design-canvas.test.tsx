@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { selectorFor, startPicker } from "../src/main/browser/picker";
 import { bridgeScript } from "../src/main/design/bridge";
 import { chipLabel } from "../src/renderer/src/composer";
-import { frameLayout, pickChipText, readBridgeMessage } from "../src/renderer/src/design/frame";
+import { frameLayout, pageFromPath, pickChipText, readBridgeMessage } from "../src/renderer/src/design/frame";
 import { DEFAULT_LAYOUT, DESIGN_FLOOR, clampLayout } from "../src/renderer/src/layout";
 import { useStore } from "../src/renderer/src/store";
 import type { Thread } from "../src/shared/types";
@@ -29,6 +29,17 @@ describe("design frame", () => {
     expect(readBridgeMessage({ source: "cubiq-design", type: "picked", element: { ...element, rect: { x: 1 } } })).toBeNull();
     expect(readBridgeMessage({ source: "cubiq-design", type: "navigate", url: "https://example.com" })).toBeNull();
     expect(readBridgeMessage("ready")).toBeNull();
+  });
+
+  it("reads the ready path and maps a frame's location back to a page", () => {
+    expect(readBridgeMessage({ source: "cubiq-design", type: "ready", path: "/t1/index.html" })).toEqual({ type: "ready", path: "/t1/index.html" });
+    expect(readBridgeMessage({ source: "cubiq-design", type: "ready", path: 5 })).toEqual({ type: "ready" });
+    expect(pageFromPath("/t1/pricing.html", "t1")).toBe("pricing.html");
+    expect(pageFromPath("/t1/a%20b.html", "t1")).toBe("a b.html");
+    expect(pageFromPath("/t2/x.html", "t1")).toBeNull();
+    expect(pageFromPath("/t1/", "t1")).toBeNull();
+    expect(pageFromPath("/t1/../x.html", "t1")).toBeNull();
+    expect(pageFromPath("/t1/%E0%A4%A.html", "t1")).toBeNull();
   });
 
   it("turns a pick into a chip that shows the selector", () => {

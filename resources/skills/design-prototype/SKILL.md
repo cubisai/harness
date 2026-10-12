@@ -36,6 +36,11 @@ Before you finish, every interactive element has:
 - [ ] empty, loading and error variants where data appears (show them in a "States" section or behind a toggle when there's no natural place)
 - [ ] text contrast ≥ 4.5:1 (tokens already pass; don't put muted text on `surface-2` at small sizes without checking)
 
+## Options and flows
+
+- Asked for options, directions or variations: write 2–4 files `variant-a.html`, `variant-b.html`, … beside `index.html`, each a complete page from the same scaffold and tokens, and differing in layout and hierarchy (not only colour). Leave `index.html` as it is unless asked; the user promotes one from the canvas. Say in one line what each option tries.
+- Several screens: one page per screen in the design folder, linked with relative `<a href="checkout.html">`. Keep shared CSS in one file beside them.
+
 ## 4. Finish
 
 Say in one or two lines what you built and what to try (e.g. "Open the pricing toggle; resize to Mobile"). Don't paste the HTML into the chat. If the user picked an element in the canvas, the message names its selector: change that element.

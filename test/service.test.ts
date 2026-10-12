@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { LiveUpdate, PlanDecision, ThreadEvent } from "../src/shared/types";
@@ -273,6 +273,36 @@ describe("Service.send", () => {
       { type: "artifact-ready", threadId: design.id, path: CRITIQUE_ARTIFACT, files: [CRITIQUE_ARTIFACT] },
       { type: "artifact-ready", threadId: design.id, path: CRITIQUE_ARTIFACT, files: [CRITIQUE_ARTIFACT] },
     ]);
+  });
+
+  it("promotes a design variant to index.html, saving the old and new index as versions, and refuses a chat thread", () => {
+    const { service, store, updates } = setup(async () => {});
+    service.setArtifacts({
+      addVersion: (threadId, path, sha, bytes, turnSeq) => store.addArtifactVersion(threadId, path, sha, bytes, turnSeq),
+      listVersions: (threadId) => store.listArtifactVersions(threadId),
+      writeBlob: (sha, content) => store.writeBlobBytes(sha, content),
+      readBlob: (sha) => store.readBlobBytes(sha),
+      gitHead: async () => null,
+      preview: async () => ({ ok: false, error: "none" }),
+      fileUrl: () => "",
+    });
+    const project = store.addProject(tempDir());
+    const chat = service.createThread(project.id);
+    const design = service.createThread(project.id, undefined, "design");
+    expect(() => service.promoteDesignVariant(chat.id, "variant-a.html")).toThrow(/design thread/);
+    const root = service.designRoot(design.id)!;
+    mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, "index.html"), "<p>old</p>");
+    writeFileSync(join(root, "variant-a.html"), "<p>new</p>");
+    service.promoteDesignVariant(design.id, "variant-a.html");
+    expect(readFileSync(join(root, "index.html"), "utf8")).toBe("<p>new</p>");
+    expect(existsSync(join(root, "variant-a.html"))).toBe(true);
+    const path = `designs/${design.id.slice(0, 8)}/index.html`;
+    const versions = store.listArtifactVersions(design.id).find((v) => v.path === path)!.versions;
+    expect(versions).toHaveLength(2);
+    expect(service.readDesignVersion(design.id, "index.html", 1)!.toString()).toBe("<p>old</p>");
+    expect(updates.filter((u) => u.type === "artifact-ready")).toEqual([{ type: "artifact-ready", threadId: design.id, path, files: [path] }]);
+    expect(() => service.promoteDesignVariant(design.id, "pricing.html")).toThrow("Not a variant.");
   });
 
   it("resolves a pending plan with keep-on-empty when interrupted", async () => {

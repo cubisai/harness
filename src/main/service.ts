@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type {
@@ -34,6 +34,7 @@ import type {
 import { bindingKey } from "../shared/bindings";
 import { CRITIQUE_ARTIFACT } from "../shared/artifact-kind";
 import { designDirName } from "./design/serve";
+import { promoteVariant } from "./design/pages";
 import { listDesignSystems, materializeSystem, resolveDesignSystem } from "./design/systems";
 import { skillsOf } from "../shared/skill-list";
 import type { AgentDriver, HarnessTool, ModelSwitch, SessionSeed } from "./agents/types";
@@ -1109,6 +1110,28 @@ export class Service {
     const saved = recordPseudo(this.artifacts, CRITIQUE_ARTIFACT, { threadId, text: markdown, turnSeq: this.store.lastSeq(threadId) });
     if (saved) this.broadcast({ type: "artifact-ready", threadId, path: CRITIQUE_ARTIFACT, files: [CRITIQUE_ARTIFACT] });
     return saved ? { version: saved.version } : null;
+  }
+
+  /**
+   * Make a variant (`variant-*.html`) the design's `index.html`. The old and new
+   * index are both saved as versions first and after, so the switch can be undone
+   * from the canvas's version menu.
+   */
+  promoteDesignVariant(threadId: string, rel: string): void {
+    const thread = this.store.getThread(threadId);
+    const root = this.designRoot(threadId);
+    const dir = designOf(thread);
+    if (!root || !dir) throw new Error("Only a design thread has variants.");
+    const artifacts = this.artifacts;
+    const turnSeq = this.store.lastSeq(threadId);
+    promoteVariant(root, rel, (page) => {
+      if (!artifacts) return;
+      const buf = readFileSync(join(root, page));
+      const sha256 = createHash("sha256").update(buf).digest("hex");
+      artifacts.writeBlob(sha256, buf);
+      artifacts.addVersion(threadId, `${dir}/${page}`, sha256, buf.length, turnSeq);
+    });
+    if (artifacts) this.broadcast({ type: "artifact-ready", threadId, path: `${dir}/index.html`, files: [`${dir}/index.html`] });
   }
 
   /** A stored turn-end version of a file in a design thread's folder (`rel` is inside that folder). */

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Download, FolderOpen, Grid3x3 } from "lucide-react";
+import { Columns2, Download, FolderOpen, Grid3x3 } from "lucide-react";
 import type { DesignEntry, DesignExportFormat } from "../../../shared/types";
 import { api } from "../api";
 import { fileManagerName } from "../components/OpenIn";
@@ -7,7 +7,10 @@ import { Select } from "../components/Select";
 import { IconClose, IconRefresh, IconTarget } from "../icons";
 import "../styles/artifact.css";
 import { useStore } from "../store";
-import { VIEWPORTS, ZOOMS, frameLayout, pickChipText, readBridgeMessage, type Viewport, type Zoom } from "./frame";
+import { VIEWPORTS, ZOOMS, frameLayout, pageFromPath, pickChipText, readBridgeMessage, type Viewport, type Zoom } from "./frame";
+import { compareCells, pageOptions, sameEntry, type CompareCell } from "./pages";
+
+const ipcError = (err: unknown): string => (err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err));
 
 /**
  * A design thread's canvas: the agent's page in a sandboxed frame (scripts on, no network, no app access), reloaded
@@ -34,6 +37,14 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   const [exporting, setExporting] = useState<DesignExportFormat | null>(null);
   const [exported, setExported] = useState<{ path: string } | { error: string } | null>(null);
   const exportRef = useRef<HTMLDivElement>(null);
+  // The page asked for (null = the entry file), the side-by-side view, and the last promote's outcome.
+  const [page, setPage] = useState<string | null>(null);
+  const [compare, setCompare] = useState(false);
+  const [promoting, setPromoting] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
+  const options = entry ? pageOptions(entry.pages) : [];
+  const cells = entry ? compareCells(entry.pages) : [];
+  const comparing = compare && cells.length > 0 && version === 0;
 
   // Watch the folder while the canvas is open; the main process counts watches per window.
   useEffect(() => {
@@ -46,6 +57,9 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     setVersion(0);
     setPicking(false);
     setExported(null);
+    setPage(null);
+    setCompare(false);
+    setNotice(null);
     scroll.current = { x: 0, y: 0 };
   }, [threadId]);
 
@@ -53,17 +67,17 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   useEffect(() => {
     let live = true;
     void api()
-      .designEntry(threadId)
+      .designEntry(threadId, page)
       .then((e) => {
         if (!live) return;
-        setEntry((prev) => (prev && e && prev.url === e.url ? prev : e));
+        setEntry((prev) => (sameEntry(prev, e) ? prev : e));
         setLoaded(true);
       })
       .catch(() => live && setLoaded(true));
     return () => {
       live = false;
     };
-  }, [threadId, reload, manual]);
+  }, [threadId, reload, manual, page]);
 
   useLayoutEffect(() => {
     const el = stageRef.current;
@@ -73,7 +87,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [entry !== null]);
+  }, [entry !== null, comparing]);
 
   const post = useCallback((msg: Record<string, unknown>) => {
     frameRef.current?.contentWindow?.postMessage({ source: "cubiq-canvas", ...msg }, "*");
@@ -86,7 +100,15 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
       const msg = readBridgeMessage(e.data);
       if (!msg) return;
       if (msg.type === "ready") {
-        if (scroll.current.x || scroll.current.y) post({ type: "restore-scroll", ...scroll.current });
+        // A link inside the page went to another page of the design: follow it (title, versions, export) without
+        // loading it a second time.
+        const at = msg.path ? pageFromPath(msg.path, threadId) : null;
+        const to = at && entry && at !== entry.rel && version === 0 ? entry.pages.find((p) => p.rel === at) : undefined;
+        if (to) {
+          if (frameRef.current) frameRef.current.dataset.src = to.url;
+          scroll.current = { x: 0, y: 0 };
+          setPage(to.rel);
+        } else if (scroll.current.x || scroll.current.y) post({ type: "restore-scroll", ...scroll.current });
         if (picking) post({ type: "pick", on: true });
       } else if (msg.type === "scroll") {
         scroll.current = { x: msg.x, y: msg.y };
@@ -100,7 +122,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [entry, picking, post]);
+  }, [entry, picking, post, threadId, version]);
 
   // The Export menu closes on a click outside it or Esc.
   useEffect(() => {
@@ -150,6 +172,29 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   // Exports lay the page out at the viewport on screen; Fit exports at desktop width.
   const exportWidth = VIEWPORTS.find((v) => v.value === viewport)?.size?.width ?? 1440;
 
+  // The frame's address is set by hand, so a page the frame reached by a link isn't loaded again when the canvas
+  // follows it (a remount is a new frame, so it always loads).
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame || !src || frame.dataset.src === src) return;
+    frame.dataset.src = src;
+    frame.src = src;
+  }, [src, frameKey, comparing]);
+
+  const promote = async (cell: CompareCell) => {
+    setPromoting(cell.rel);
+    try {
+      await api().designPromote(threadId, cell.rel);
+      setCompare(false);
+      setPage("index.html");
+      setNotice({ text: `${cell.label} is now index.html. The previous page is saved as a version.` });
+    } catch (err) {
+      setNotice({ text: `Couldn't use ${cell.label}: ${ipcError(err)}`, error: true });
+    } finally {
+      setPromoting(null);
+    }
+  };
+
   const runExport = async (format: DesignExportFormat) => {
     setExportOpen(false);
     if (!entry) return;
@@ -158,7 +203,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
       const path = await api().designExport(threadId, format, { rel: entry.rel, version: version || null, width: exportWidth });
       if (path) setExported({ path });
     } catch (err) {
-      setExported({ error: err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err) });
+      setExported({ error: ipcError(err) });
     } finally {
       setExporting(null);
     }
@@ -167,9 +212,25 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   return (
     <section className="design-canvas" aria-label="Design canvas">
       <header className="design-canvas-head drag">
-        <span className="design-canvas-title" title={path ?? undefined}>
-          {entry ? entry.rel : "Canvas"}
-        </span>
+        {entry && options.length > 1 && !comparing ? (
+          <span className="design-canvas-title">
+            <Select<string>
+              value={entry.rel}
+              options={options}
+              onChange={(rel) => {
+                setVersion(0);
+                scroll.current = { x: 0, y: 0 };
+                setPage(rel);
+              }}
+              ariaLabel="Page"
+              className="ghost-select"
+            />
+          </span>
+        ) : (
+          <span className="design-canvas-title" title={path ?? undefined}>
+            {comparing ? `Comparing ${cells.length}` : entry ? entry.rel : "Canvas"}
+          </span>
+        )}
         <div className="design-tools">
           <Select<Viewport> value={viewport} options={VIEWPORTS.map(({ value, label, detail }) => ({ value, label, detail }))} onChange={setViewport} ariaLabel="Viewport" className="ghost-select" />
           {!fit && <Select<Zoom> value={zoom} options={ZOOMS} onChange={setZoom} ariaLabel="Zoom" className="ghost-select" />}
@@ -185,12 +246,30 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           <button className={`icon-button${grid ? " active" : ""}`} title="8px grid" aria-pressed={grid} onClick={() => setGrid(!grid)}>
             <Grid3x3 size={16} strokeWidth={1.75} aria-hidden />
           </button>
+          {cells.length > 0 && (
+            <button
+              className={`icon-button${comparing ? " active" : ""}`}
+              title={comparing ? "Back to one page" : "Compare options side by side"}
+              aria-label="Compare options"
+              aria-pressed={comparing}
+              onClick={() => {
+                if (!comparing && picking) {
+                  setPicking(false);
+                  post({ type: "pick", on: false });
+                }
+                setVersion(0);
+                setCompare(!comparing);
+              }}
+            >
+              <Columns2 size={16} strokeWidth={1.75} aria-hidden />
+            </button>
+          )}
           <button
             className={`icon-button${picking ? " active" : ""}`}
             title={picking ? "Picking: click an element (Esc to stop)" : "Pick an element to comment on"}
             aria-pressed={picking}
             onClick={togglePick}
-            disabled={!entry || version !== 0}
+            disabled={!entry || version !== 0 || comparing}
           >
             <IconTarget />
           </button>
@@ -246,6 +325,14 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           </button>
         </div>
       )}
+      {notice && (
+        <div className={`design-version-bar${notice.error ? " error" : ""}`} role="status">
+          <span title={notice.text}>{notice.text}</span>
+          <button className="icon-button" aria-label="Dismiss" title="Dismiss" onClick={() => setNotice(null)}>
+            <IconClose />
+          </button>
+        </div>
+      )}
       {version !== 0 && (
         <div className="design-version-bar">
           <span>
@@ -256,7 +343,24 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           </button>
         </div>
       )}
-      {entry && src ? (
+      {comparing ? (
+        <div className="design-compare" role="list" aria-label="Options side by side">
+          {cells.map((cell) => (
+            <CompareFrame
+              key={`${cell.rel}-${reload}-${manual}`}
+              cell={cell}
+              size={VIEWPORTS.find((v) => v.value === viewport)?.size ?? { width: 1440, height: 900 }}
+              busy={promoting !== null}
+              onOpen={() => {
+                setCompare(false);
+                scroll.current = { x: 0, y: 0 };
+                setPage(cell.rel);
+              }}
+              onUse={() => void promote(cell)}
+            />
+          ))}
+        </div>
+      ) : entry && src ? (
         <div className={`design-stage${fit ? " fit" : ""}`} ref={stageRef}>
           <div
             className="design-frame-box"
@@ -267,7 +371,6 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
               ref={frameRef}
               className="design-frame"
               title={`Design: ${entry.rel}`}
-              src={src}
               sandbox="allow-scripts"
               style={fit ? undefined : { width: layout.width, height: layout.height, transform: `scale(${layout.scale})` }}
             />
@@ -285,5 +388,52 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * One option in the compare view: the page in its own sandboxed frame, laid out at the canvas's viewport (Fit =
+ * desktop) and scaled down to the cell, with Open and, for a variant, Use this.
+ */
+function CompareFrame({ cell, size, busy, onOpen, onUse }: { cell: CompareCell; size: { width: number; height: number }; busy: boolean; onOpen: () => void; onUse: () => void }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const measure = () => setWidth(el.clientWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const scale = width > 0 ? Math.min(1, width / size.width) : 0;
+  return (
+    <div className="design-compare-cell" role="listitem" aria-label={cell.label}>
+      <div className="design-compare-head">
+        <span className="design-compare-label" title={cell.rel}>
+          {cell.label}
+        </span>
+        <button className="button ghost" onClick={onOpen}>
+          Open
+        </button>
+        {cell.variant && (
+          <button className="button ghost" onClick={onUse} disabled={busy} title={`Make ${cell.rel} the design's index.html`}>
+            Use this
+          </button>
+        )}
+      </div>
+      <div className="design-compare-frame" ref={boxRef} style={{ aspectRatio: `${size.width} / ${size.height}` }}>
+        {scale > 0 && (
+          <iframe
+            className="design-frame"
+            title={`Design: ${cell.rel}`}
+            src={cell.url}
+            sandbox="allow-scripts"
+            style={{ width: size.width, height: size.height, transform: `scale(${scale})` }}
+          />
+        )}
+      </div>
+    </div>
   );
 }

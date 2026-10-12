@@ -793,6 +793,8 @@ export interface DesignEntry {
   rel: string;
   /** Its `cubiq-design:` URL (the latest file; add `?v=N` for a stored version). */
   url: string;
+  /** Every page in the design folder (index first, then pages, then `variant-*.html`), with their URLs. */
+  pages: { rel: string; url: string }[];
 }
 
 export interface ArtifactFile {
@@ -1109,7 +1111,9 @@ export interface UnskilledApi {
   /** The files agents wrote in this thread, with their versions; most recently written first. */
   listArtifacts(threadId: string): Promise<ArtifactFile[]>;
   /** A design thread's page for the canvas: its folder (relative to the thread's), entry file and `cubiq-design:` URL; null before the agent writes one. */
-  designEntry(threadId: string): Promise<DesignEntry | null>;
+  designEntry(threadId: string, rel?: string | null): Promise<DesignEntry | null>;
+  /** Make a design's `variant-*.html` its `index.html`; the old and new index are saved as versions. */
+  designPromote(threadId: string, rel: string): Promise<void>;
   /** Watch an open design thread's folder (creating it), so changes push `design-changed`; counted per call. */
   designWatch(threadId: string): Promise<void>;
   designUnwatch(threadId: string): Promise<void>;

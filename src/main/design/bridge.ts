@@ -3,7 +3,7 @@ import type { PickedElement } from "../browser/picker";
 
 /** Messages the design page sends up to the canvas. */
 export type BridgeMessage =
-  | { source: "cubiq-design"; type: "ready" }
+  | { source: "cubiq-design"; type: "ready"; path?: string }
   | { source: "cubiq-design"; type: "scroll"; x: number; y: number }
   | { source: "cubiq-design"; type: "picked"; element: PickedElement }
   | { source: "cubiq-design"; type: "pick-cancel" };
@@ -23,7 +23,7 @@ export function designBridge(selectorFor: (el: Element) => string): void {
     parent.postMessage({ source: "cubiq-design", type, ...(data ?? {}) }, "*");
   };
 
-  const announceReady = (): void => post("ready");
+  const announceReady = (): void => post("ready", { path: location.pathname });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", announceReady, { once: true });
   else announceReady();
 
