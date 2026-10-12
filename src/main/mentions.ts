@@ -31,7 +31,8 @@ export function mentionNote(projectPath: string, mentions: string[] | undefined)
     if (seen.has(path)) continue;
     seen.add(path);
     const folder = stat.isDirectory();
-    lines.push(`- ${path}${folder ? "/" : ""} (${folder ? "folder" : "file"})`);
+    const image = !folder && /\.(png|jpe?g|webp|gif)$/i.test(path);
+    lines.push(`- ${path}${folder ? "/" : ""} (${folder ? "folder" : image ? "image: open it to see it" : "file"})`);
   }
   if (!lines.length) return "";
   return `\n\nThe user mentioned these (paths relative to the project root; read them as needed):\n${lines.join("\n")}`;

@@ -13,6 +13,7 @@ You are building a high-fidelity, clickable prototype that the user watches appe
 1. Read `system/DESIGN.md` in the design folder (the guide names it). Note its colors, type, radii and the component rules.
 2. If `index.html` doesn't exist yet, copy `assets/index.html` from this skill's folder into the design folder and build from it. It links `system/tokens.css` and sets a small base (box-sizing, body font and color, focus ring).
 3. If the request is vague, pick a sensible concrete product and content yourself and say so in one line at the end; don't stop to ask unless the choice changes everything.
+4. If the message names a reference image (`refs/ref-1.png` in the design folder), open it with your file or image tool before you design. Take its layout, hierarchy, density, palette and type feel; don't copy its text, logos or photos, and still use the active system's tokens. Say in one line what you took from it.
 
 ## 2. Build
 

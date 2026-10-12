@@ -305,6 +305,20 @@ describe("Service.send", () => {
     expect(() => service.promoteDesignVariant(design.id, "pricing.html")).toThrow("Not a variant.");
   });
 
+  it("saves a reference image into a design thread's refs folder and refuses a chat thread", () => {
+    const { service, store } = setup(async () => {});
+    const project = store.addProject(tempDir());
+    const chat = service.createThread(project.id);
+    const design = service.createThread(project.id, undefined, "design");
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    expect(() => service.saveDesignRef(chat.id, png)).toThrow(/design thread/);
+    const dir = `designs/${design.id.slice(0, 8)}`;
+    expect(service.saveDesignRef(design.id, png)).toBe(`${dir}/refs/ref-1.png`);
+    expect(service.saveDesignRef(design.id, png)).toBe(`${dir}/refs/ref-2.png`);
+    expect([...readFileSync(join(project.path, dir, "refs", "ref-1.png"))]).toEqual([...png]);
+    expect(() => service.saveDesignRef(design.id, new Uint8Array([1, 2, 3]))).toThrow("Not an image");
+  });
+
   it("keeps a design page's tweak values in the file, saving versions, and refuses other threads and pages", () => {
     const { service, store, updates } = setup(async () => {});
     service.setArtifacts({

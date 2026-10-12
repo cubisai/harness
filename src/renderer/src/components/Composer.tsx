@@ -4,6 +4,7 @@ import type { PermissionMode, SkillEntry } from "../../../shared/types";
 import { IconArrowUp, IconStop } from "../icons";
 import { api } from "../api";
 import { chipLabel, commandQuery, composeMessage, skillQueryAt, toggleSkill } from "../composer";
+import { MAX_REFS, imageFiles, refLabel, refThumb, withRefs } from "../design/refs";
 import { matchCommands, type ComposerCommand } from "../commands";
 import { folderPaths, mentionQueryAt, mentionsIn, rankMentions } from "../mentions";
 import { nextMode } from "../modes";
@@ -48,6 +49,9 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
   const [caret, setCaret] = useState(0);
   const [knownFiles, setKnownFiles] = useState<string[]>([]);
   const [mentionDismissed, setMentionDismissed] = useState(false);
+  // Reference images pasted or dropped into a design thread: saved in its design folder, sent as mentions.
+  const [refs, setRefs] = useState<{ path: string; thumb: string }[]>([]);
+  const [addingRefs, setAddingRefs] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
   const pendingCaret = useRef<number | null>(null);
   /** listFiles results by project id, with when they were fetched, so the picker doesn't refetch per keystroke. */
@@ -128,8 +132,39 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
     setText("");
     setCaret(0);
     setChips([]);
+    setRefs([]);
     setPicked(entriesOf(useStore.getState().takePendingSkills()));
   }, [threadId]);
+
+  /** Save pasted or dropped images as the design's references; true when the event was ours to handle. */
+  const takeImages = (files: ArrayLike<File> | null | undefined): boolean => {
+    if (!designKind) return false;
+    const images = imageFiles(files);
+    if (!images.length) return false;
+    if (!threadId) {
+      useStore.getState().showNotice("Send a first message to start the design, then add reference images.");
+      return true;
+    }
+    const room = MAX_REFS - refs.length;
+    if (room <= 0) {
+      useStore.getState().showNotice(`At most ${MAX_REFS} reference images per message.`);
+      return true;
+    }
+    setAddingRefs(true);
+    void (async () => {
+      for (const file of images.slice(0, room)) {
+        try {
+          const path = await api().designSaveRef(threadId, new Uint8Array(await file.arrayBuffer()));
+          const thumb = await refThumb(file);
+          setRefs((list) => [...list, { path, thumb }]);
+        } catch (err) {
+          useStore.getState().showNotice(`Couldn't add the image: ${err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err)}`);
+        }
+      }
+      setAddingRefs(false);
+    })();
+    return true;
+  };
 
   // Skills picked from the command palette or the Library while this thread is open join the chips.
   const pendingSkills = useStore((s) => s.pendingSkills);
@@ -233,9 +268,10 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
       setCaret(0);
       return;
     }
-    const body = composeMessage(text, chips);
+    const refPaths = refs.map((r) => r.path);
+    const body = withRefs(composeMessage(text, chips), refPaths);
     if (!body && !picked.length) return;
-    const mentions = mentionsIn(text, knownSet);
+    const mentions = [...mentionsIn(text, knownSet), ...refPaths];
     const names = picked.map((p) => p.name);
     if (!threadId) void startThread(body, names, mentions);
     else if (running) enqueue(threadId, body, names, mentions);
@@ -245,6 +281,7 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
       });
     setText("");
     setChips([]);
+    setRefs([]);
     setPicked([]);
     setCaret(0);
   };
@@ -259,12 +296,14 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
       setCaret(0);
       return;
     }
-    const body = composeMessage(text, chips);
+    const refPaths = refs.map((r) => r.path);
+    const body = withRefs(composeMessage(text, chips), refPaths);
     if (!body && !picked.length) return;
-    const mentions = mentionsIn(text, knownSet);
+    const mentions = [...mentionsIn(text, knownSet), ...refPaths];
     void sendInBackground(body, picked.map((p) => p.name), undefined, mentions);
     setText("");
     setChips([]);
+    setRefs([]);
     setPicked([]);
     setCaret(0);
   };
@@ -390,7 +429,7 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
     area.current?.focus();
   };
 
-  const canSend = Boolean(text.trim() || picked.length || chips.length);
+  const canSend = Boolean(text.trim() || picked.length || chips.length || refs.length) && !addingRefs;
 
   return (
     <div className="composer-wrap">
@@ -462,7 +501,25 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
           </div>
         )}
         {/* Skill and context chips sit inline before the text, each with its own ×. */}
-        <div className={`composer-input${picked.length || chips.length ? " has-chips" : ""}`}>
+        <div
+          className={`composer-input${picked.length || chips.length || refs.length ? " has-chips" : ""}`}
+          onDragOver={(e) => {
+            if (designKind && Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
+          }}
+          onDrop={(e) => {
+            if (takeImages(e.dataTransfer.files)) e.preventDefault();
+          }}
+        >
+          {refs.map((r) => (
+            <span key={r.path} className="skill-chip context-chip ref-chip" title={r.path}>
+              {r.thumb && <img className="ref-thumb" src={r.thumb} alt="" />}
+              <span className="chip-label">{refLabel(r.path)}</span>
+              <button className="chip-x" aria-label={`Remove ${refLabel(r.path)}`} onClick={() => setRefs((list) => list.filter((x) => x.path !== r.path))}>
+                ×
+              </button>
+            </span>
+          ))}
+          {addingRefs && <span className="skill-chip context-chip ref-chip">Adding image…</span>}
           {picked.map((p) => (
             <span key={p.name} className="skill-chip" title={p.description}>
               ${p.name}
@@ -489,6 +546,9 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
               setCaret(e.target.selectionStart ?? e.target.value.length);
             }}
             onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
+            onPaste={(e) => {
+              if (takeImages(e.clipboardData.files)) e.preventDefault();
+            }}
             onKeyDown={onKeyDown}
           />
         </div>

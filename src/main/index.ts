@@ -763,6 +763,10 @@ async function main(): Promise<void> {
     if (typeof rel !== "string") throw new Error("Not a variant.");
     service.promoteDesignVariant(threadId, rel);
   });
+  ipcMain.handle("design:save-ref", (_e, threadId: string, bytes: Uint8Array) => {
+    if (!(bytes instanceof Uint8Array)) throw new Error("Not an image (png, jpg, webp or gif).");
+    return service.saveDesignRef(threadId, bytes);
+  });
   ipcMain.handle("design:keep-tweaks", (_e, threadId: string, rel: string, values: Record<string, string>) => {
     if (typeof rel !== "string" || !values || typeof values !== "object" || Array.isArray(values)) throw new Error("Bad tweak values.");
     const clean: Record<string, string> = {};

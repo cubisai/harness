@@ -601,6 +601,7 @@ export function installMock(): void {
     designEntry: async () => null,
     designPromote: async () => {},
     designKeepTweaks: async () => false,
+    designSaveRef: async () => "designs/mock/refs/ref-1.png",
     designWatch: async () => {},
     designUnwatch: async () => {},
     designReveal: async () => {},

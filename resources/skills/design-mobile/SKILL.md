@@ -10,9 +10,10 @@ You are designing phone screens the user watches in CubiQ's canvas. Show them as
 
 ## 1. Start
 
-1. Read `system/DESIGN.md` in the design folder and follow it.
-2. If `index.html` doesn't exist yet, copy `assets/index.html` from this skill's folder into the design folder. It lays out `.phone` frames (390×844, rounded, with a status bar and home indicator) in a row that wraps.
-3. Decide the platform: iOS unless the user says Android. Name it in your final line.
+1. If the message names a reference image (`refs/ref-<n>.png` in the design folder), open it with your file or image tool first and work from it.
+2. Read `system/DESIGN.md` in the design folder and follow it.
+3. If `index.html` doesn't exist yet, copy `assets/index.html` from this skill's folder into the design folder. It lays out `.phone` frames (390×844, rounded, with a status bar and home indicator) in a row that wraps.
+4. Decide the platform: iOS unless the user says Android. Name it in your final line.
 
 ## 2. Each screen
 

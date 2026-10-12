@@ -15,6 +15,7 @@ Then build a one-page specimen at the design folder's `index.html` (linking `../
 
 ## 1. Gather
 
+- If the message names a reference image (`refs/ref-<n>.png` in the design folder), open it with your file or image tool first and work from it.
 - **Website** (URL): fetch it with your web or browser tools if you have them. Read the CSS: custom properties, the most-used colors (count them), font families, font sizes, line heights, paddings/gaps, radii, shadows, breakpoints. Ignore one-offs.
 - **Screenshot**: estimate from the image; sample colors from large flat areas; infer the type scale from relative sizes. Say the values are estimates.
 - **Codebase**: look for an existing theme (`tailwind.config.*`, CSS custom properties, `theme.ts`, SCSS variables, a `DESIGN.md`), and the most-used values in components.

@@ -1116,6 +1116,8 @@ export interface UnskilledApi {
   designPromote(threadId: string, rel: string): Promise<void>;
   /** Write the canvas's tweak values into a design page (Keep), saving versions; false when nothing changed. */
   designKeepTweaks(threadId: string, rel: string, values: Record<string, string>): Promise<boolean>;
+  /** Save a pasted reference image (png/jpg/webp/gif, ≤ 10 MB) into a design thread's `refs/`; its path relative to the thread's folder. */
+  designSaveRef(threadId: string, bytes: Uint8Array): Promise<string>;
   /** Watch an open design thread's folder (creating it), so changes push `design-changed`; counted per call. */
   designWatch(threadId: string): Promise<void>;
   designUnwatch(threadId: string): Promise<void>;

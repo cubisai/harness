@@ -17,6 +17,12 @@ describe("mentionNote", () => {
     );
   });
 
+  it("labels a mentioned image file as an image", () => {
+    const root = tempDir();
+    writeFileSync(join(root, "shot.png"), "");
+    expect(mentionNote(root, ["shot.png"])).toBe(`${HEADER}\n- shot.png (image: open it to see it)`);
+  });
+
   it("normalises backslash separators", () => {
     const root = tempDir();
     mkdirSync(join(root, "src"), { recursive: true });
