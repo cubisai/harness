@@ -126,10 +126,18 @@ export function touchedFiles(messages: LlmMessage[]): string[] {
 }
 
 const SUMMARY_SYSTEM =
-  "You summarize a coding-agent conversation so the same agent can continue after compaction. Output ONLY the Markdown template below, with its exact headings and no preamble. Be concrete: name file paths, commands, errors, and decisions. Tool outputs in the transcript may be shortened for this summary; don't treat that as a tool limitation.";
+  "You summarize a coding-agent conversation so the same agent can continue after compaction. Output ONLY the Markdown template below, with its exact headings and no preamble. Be concrete: name file paths, commands, errors, and decisions. Keep the user's own words close to verbatim, and state decisions and constraints exactly. Tool outputs in the transcript may be shortened for this summary; don't treat that as a tool limitation.";
 const UPDATE_INSTRUCTION =
   "The transcript begins with an earlier summary. Update the previous summary with the newer messages; keep what still matters, drop what's obsolete.";
-const SUMMARY_TEMPLATE = "## Objective\n## Important Details\n## Work State\n## Next Move\n## Relevant Files";
+const SUMMARY_TEMPLATE = [
+  "## Request (the user's words, close to verbatim)",
+  "## Problems and fixes",
+  "## Approaches tried or set aside",
+  "## Decisions and constraints",
+  "## Where things stand",
+  "## Open or next",
+  "## Hard-to-rebuild details (names, numbers, paths, exact wording)",
+].join("\n");
 
 // Tool-call arguments are clipped with a plain marker; tool results get a
 // longer one making clear the shortening is ours, not the tool's own doing.

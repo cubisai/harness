@@ -36,7 +36,7 @@ const provider = (over: Partial<Provider> = {}): Provider => ({
   ...over,
 });
 
-const SUMMARY_ANSWER = "## Objective\nx";
+const SUMMARY_ANSWER = "## Request\nx";
 
 function scripted(...answers: AssistantPart[][]) {
   const requests: LlmRequest[] = [];

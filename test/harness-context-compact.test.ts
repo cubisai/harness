@@ -167,9 +167,18 @@ describe("summaryPrompt", () => {
 
   it("carries the exact template and the update instruction only after a summary", () => {
     const fresh = summaryPrompt([user(text("go")), assistant(say("hi"))]);
-    for (const heading of ["## Objective", "## Important Details", "## Work State", "## Next Move", "## Relevant Files"]) {
+    for (const heading of [
+      "## Request",
+      "## Problems and fixes",
+      "## Approaches tried or set aside",
+      "## Decisions and constraints",
+      "## Where things stand",
+      "## Open or next",
+      "## Hard-to-rebuild details",
+    ]) {
       expect(fresh.system).toContain(heading);
     }
+    expect(fresh.system).toContain("Keep the user's own words close to verbatim");
     expect(fresh.system).not.toContain("Update the previous summary");
 
     const updating = summaryPrompt([summaryMessage("old"), user(text("go"))]);
