@@ -716,6 +716,103 @@ describe("the project check gate", () => {
   });
 });
 
+describe("the evidence gate", () => {
+  /** A git repo holding a committed source file and test file, as the project. */
+  const setupRepo = (script: (input: TurnInput) => Promise<void>, extra?: (dir: string) => void) => {
+    const store = new Store(join(tempDir(), "t.db"));
+    closeAfter(() => store.close());
+    const dir = tempDir();
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: dir });
+    git("init", "-q", "-b", "main");
+    git("config", "user.email", "t@example.com");
+    git("config", "user.name", "t");
+    mkdirSync(join(dir, "src"));
+    writeFileSync(join(dir, "src", "math.ts"), "export const add = (a: number, b: number) => a - b;\n");
+    writeFileSync(join(dir, "src", "math.test.ts"), "it('adds', () => expect(add(1, 2)).toBe(3));\n");
+    git("add", ".");
+    git("commit", "-qm", "init");
+    extra?.(dir);
+    const driver = fakeDriver(script);
+    const service = new Service(store, () => catalog(), [driver], () => {});
+    const thread = service.createThread(store.addProject(dir).id);
+    return { store, service, thread, dir };
+  };
+  const notices = (store: Store, threadId: string) =>
+    store
+      .listEvents(threadId)
+      .map((e) => e.event)
+      .filter((e): e is Extract<ThreadEvent, { kind: "notice" }> => e.kind === "notice")
+      .map((e) => e.text);
+  const say = (input: TurnInput, text: string) => input.onEvent({ kind: "assistant-text", text });
+
+  it("stays silent for an honest turn", async () => {
+    const { store, service, thread } = setupRepo(async (input) => {
+      writeFileSync(join(input.cwd, "src", "math.ts"), "export const add = (a: number, b: number) => a + b;\n");
+      input.onEvent({ kind: "tool-use", toolUseId: "r1", name: "Run", summary: "npm test", payload: { command: "npm test" } });
+      say(input, "Fixed add(). All tests pass.");
+    });
+    await service.send({ threadId: thread.id, text: "fix add" });
+    expect(notices(store, thread.id)).toEqual([]);
+  });
+
+  it("flags a skip added to an existing test and a pass claim with no test run", async () => {
+    const { store, service, thread } = setupRepo(async (input) => {
+      writeFileSync(join(input.cwd, "src", "math.test.ts"), "it.skip('adds', () => expect(add(1, 2)).toBe(3));\n");
+      say(input, "Done. All tests pass.");
+    });
+    await service.send({ threadId: thread.id, text: "make the build green" });
+    expect(notices(store, thread.id)).toEqual(["Worth a second look: Added .skip/.only in src/math.test.ts. Says tests or checks pass, but none ran this turn."]);
+  });
+
+  it("flags a deleted test file, and reads an Edit's own diff", async () => {
+    const { store, service, thread } = setupRepo(async (input) => {
+      rmSync(join(input.cwd, "src", "math.test.ts"));
+      writeFileSync(join(input.cwd, "src", "other.test.ts"), "it('x', () => {});\n");
+      input.onEvent({ kind: "tool-use", toolUseId: "e1", name: "Edit", summary: "other.test.ts" });
+      const unified = "--- /dev/null\n+++ b/src/other.test.ts\n@@ -0,0 +1 @@\n+expect(true).toBe(true);";
+      input.onEvent({ kind: "tool-result", toolUseId: "e1", isError: false, summary: "+1", payload: { diff: [{ path: join(input.cwd, "src", "other.test.ts"), unified }] } });
+    });
+    await service.send({ threadId: thread.id, text: "clean up" });
+    expect(notices(store, thread.id)).toEqual(["Worth a second look: Deleted test files: src/math.test.ts. Added trivial assert in src/other.test.ts."]);
+  });
+
+  it("expects test edits when the user asked about tests, and doesn't re-flag an earlier skip", async () => {
+    const { store, service, thread } = setupRepo(
+      async (input) => {
+        writeFileSync(join(input.cwd, "src", "math.test.ts"), "it.skip('adds', () => expect(add(1, 2)).toBe(3));\nit('adds 0', () => expect(add(0, 0)).toBe(0));\n");
+      },
+      // The user's own uncommitted skip, there before the turn.
+      (dir) => writeFileSync(join(dir, "src", "math.test.ts"), "it.skip('adds', () => expect(add(1, 2)).toBe(3));\n"),
+    );
+    await service.send({ threadId: thread.id, text: "add a test for zero" });
+    expect(notices(store, thread.id)).toEqual([]);
+  });
+
+  it("flags edits to existing tests the request didn't ask for", async () => {
+    const { store, service, thread } = setupRepo(async (input) => {
+      writeFileSync(join(input.cwd, "src", "math.test.ts"), "it('adds', () => expect(add(1, 2)).toBe(-1));\n");
+    });
+    await service.send({ threadId: thread.id, text: "fix add" });
+    expect(notices(store, thread.id)).toEqual(["Worth a second look: Changed existing tests: src/math.test.ts. Check they weren't loosened to pass."]);
+  });
+
+  it("counts the project's passing check as the evidence", async () => {
+    const { store, service, thread } = setupRepo(async (input) => {
+      writeFileSync(join(input.cwd, "src", "math.ts"), "export const add = (a: number, b: number) => a + b;\n");
+      say(input, "Fixed. Tests pass.");
+    });
+    store.setCheckCommand(thread.projectId, `"${process.execPath}" -e "process.exit(0)"`);
+    await service.send({ threadId: thread.id, text: "fix add" });
+    expect(notices(store, thread.id)).toEqual([]);
+  });
+
+  it("works outside git from the claim alone", async () => {
+    const { store, service, thread } = setup(async (input) => say(input, "All tests pass."));
+    await service.send({ threadId: thread.id, text: "go" });
+    expect(notices(store, thread.id)).toEqual(["Worth a second look: Says tests or checks pass, but none ran this turn."]);
+  });
+});
+
 describe("titleFrom", () => {
   it("uses the first line, prefixed with the skill", () => {
     expect(titleFrom("Fix the bug\nmore", undefined)).toBe("Fix the bug");

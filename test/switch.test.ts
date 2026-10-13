@@ -135,7 +135,8 @@ describe("Service.switchAgent", () => {
     const b = fake("b", script);
     const { service, thread, updates } = setup([a, b]);
     const first = service.send({ threadId: thread.id, text: "one" });
-    await new Promise((r) => setTimeout(r, 10));
+    // The turn snapshots the working tree first, so wait for the request itself.
+    await vi.waitFor(() => expect(updates.some((u) => u.type === "permission")).toBe(true), { timeout: 5000 });
     const req = updates.find((u) => u.type === "permission") as Extract<LiveUpdate, { type: "permission" }>;
     service.respondPermission(req.request.requestId, "allow-always");
     await first;

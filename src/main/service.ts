@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import type {
   AgentInfo,
   ArtifactContent,
@@ -59,8 +59,9 @@ import {
 import { Approvals } from "./approvals";
 import { artifactDiff, listArtifacts, opensByItself, readArtifact, recordPlan, recordPseudo, recordTurnArtifacts, type ArtifactDeps } from "./artifacts";
 import { runCheck, tailOf } from "./check";
+import { evidenceFlags, isTestPath, markerCounts, newMarkers, addedLines as diffAddedLines } from "./evidence";
 import type { Store } from "./db";
-import { branchLabel, createWorktree, gitState, listProjectFiles, removeWorktree, workingTreeDiff, worktreeBranch } from "./git";
+import { addedSinceHead, branchLabel, createWorktree, dirtyPaths, hasGitDir, isTracked, listProjectFiles, removeWorktree, workingTreeDiff, worktreeBranch } from "./git";
 import {
   bloatSignal,
   buildCheckpoint,
@@ -653,8 +654,9 @@ export class Service {
     let followUp: SendRequest | null = null;
     try {
       // Snapshot the working tree before the turn, so an edit the agent reports
-      // (or a path git now sees) is what triggers the check.
-      const before = checkCommand ? await dirtySet(cwd) : null;
+      // (or a path git now sees) is what triggers the check and the evidence gate.
+      const before = compact ? null : await dirtySet(cwd);
+      const testsBefore = before ? await testMarkersOf(cwd, [...before].map(dirtyPath).filter(isTestPath)) : new Map<string, Map<string, number>>();
       if (!this.scopeChecked.has(project.id)) {
         this.scopeChecked.add(project.id);
         for (const text of memoryScopeCheck(cwd)) this.emit(thread.id, { kind: "notice", text });
@@ -687,6 +689,9 @@ export class Service {
       // The agent reported an edit this turn: a tool-result for an Edit tool-use, or a path git changed.
       const editIds = new Set<string>();
       let edited = false;
+      // What the evidence gate reads: the turn's commands and its edits' diffs.
+      const commands: string[] = [];
+      const editDiffs: { path: string; unified: string }[] = [];
       const live = (delta: LiveDelta) => this.broadcast({ type: "delta", threadId: thread.id, delta });
       const scrub = (text: string) => redactSecrets(text, this.secrets());
       const catchUp = compact ? null : await this.catchUp(thread.id, driver, userEvent.seq);
@@ -724,7 +729,14 @@ export class Service {
           if (event.kind === "assistant-text" || event.kind === "tool-use" || event.kind === "thinking" || event.kind === "error" || event.kind === "plan") answered = true;
           // An Edit that completed is what makes a file change count even outside git.
           if (event.kind === "tool-use" && event.name === "Edit") editIds.add(event.toolUseId);
-          if (event.kind === "tool-result" && !event.isError && editIds.has(event.toolUseId)) edited = true;
+          if (event.kind === "tool-result" && !event.isError && editIds.has(event.toolUseId)) {
+            edited = true;
+            editDiffs.push(...diffsOf(event.payload));
+          }
+          if (event.kind === "tool-use") {
+            const command = (event.payload as { command?: unknown } | undefined)?.command;
+            if (typeof command === "string") commands.push(command);
+          }
           // A model that returns nothing at all would otherwise leave the thread silent.
           if (event.kind === "turn-end" && !answered && !controller.signal.aborted) {
             this.emit(thread.id, { kind: "notice", text: `${driver.label} ended the turn without a reply from ${thread.model === "default" ? "its default model" : thread.model}. The model may be unavailable right now; try again or pick another.` }, provenance);
@@ -827,10 +839,12 @@ export class Service {
           // Background extraction is best-effort.
         }
       }
+      const after = before && !controller.signal.aborted ? await dirtySet(cwd) : null;
+      let checkPassed = false;
       // The verification gate: only a turn that changed files runs it.
       if (checkCommand && !controller.signal.aborted && !compact) {
         // A fix round always re-checks: it exists to make the check pass.
-        const changed = round > 0 || edited || !sameSet(before!, await dirtySet(cwd));
+        const changed = round > 0 || edited || !sameSet(before!, after!);
         if (changed) {
           this.emit(thread.id, { kind: "check", command: checkCommand, ok: null, exitCode: null, timedOut: false, durationMs: 0, tail: "", round });
           const r = await runCheck(checkCommand, cwd, { signal: controller.signal });
@@ -839,6 +853,7 @@ export class Service {
           else {
             const tail = redactSecrets(r.tail, this.secrets());
             this.emit(thread.id, { kind: "check", command: checkCommand, ...r, tail, round });
+            checkPassed = r.ok === true;
             if (!r.ok) {
               if (round < maxRounds) {
                 followUp = {
@@ -852,6 +867,17 @@ export class Service {
               }
             }
           }
+        }
+      }
+      // The evidence gate: a notice when the turn's "done" deserves a second look.
+      if (before && after && !controller.signal.aborted) {
+        try {
+          const last = [...this.store.listEvents(thread.id)].reverse().find((e) => e.event.kind === "assistant-text" && e.seq > userEvent.seq);
+          const answer = last && last.event.kind === "assistant-text" ? last.event.text : "";
+          const flags = await turnEvidence(cwd, { before, after, testsBefore, editDiffs, commands, answer, request: req.text, checkPassed });
+          if (flags.length) this.emit(thread.id, { kind: "notice", text: `Worth a second look: ${flags.join(" ")}` });
+        } catch {
+          // Best-effort: a git hiccup never fails the turn.
         }
       }
     } finally {
@@ -1334,9 +1360,10 @@ function formatK(n: number): string {
  */
 async function dirtySet(cwd: string): Promise<Set<string>> {
   try {
-    const state = await gitState(cwd);
+    // One git call, and none outside a repository: this runs before every turn.
+    if (!hasGitDir(cwd)) return new Set();
     const out = new Set<string>();
-    for (const path of (state?.dirty ?? []).slice(0, 500)) {
+    for (const path of (await dirtyPaths(cwd)).slice(0, 500)) {
       try {
         const st = statSync(join(cwd, path));
         out.add(`${path}|${st.mtimeMs}|${st.size}`);
@@ -1348,6 +1375,65 @@ async function dirtySet(cwd: string): Promise<Set<string>> {
   } catch {
     return new Set();
   }
+}
+
+/** The path of a dirtySet entry ("path|mtime|size" or "path|gone"). */
+function dirtyPath(entry: string): string {
+  return entry.replace(/\|(?:gone|[\d.]+\|\d+)$/, "");
+}
+
+/** The diffs in an Edit tool-result payload ({ diff: [{ path, unified }] }), if any. */
+function diffsOf(payload: unknown): { path: string; unified: string }[] {
+  const diff = (payload as { diff?: unknown } | undefined)?.diff;
+  if (!Array.isArray(diff)) return [];
+  return diff.filter((d): d is { path: string; unified: string } => typeof d?.path === "string" && typeof d?.unified === "string");
+}
+
+/** Skip/only/trivial-assert counts in each test file's changes against HEAD (at most 20 files). */
+async function testMarkersOf(cwd: string, paths: string[]): Promise<Map<string, Map<string, number>>> {
+  const out = new Map<string, Map<string, number>>();
+  for (const p of paths.slice(0, 20)) out.set(p, markerCounts(await addedSinceHead(cwd, p)));
+  return out;
+}
+
+/** The evidence-gate flags for a finished turn, from the working tree before and after it. */
+async function turnEvidence(
+  cwd: string,
+  t: {
+    before: Set<string>;
+    after: Set<string>;
+    testsBefore: Map<string, Map<string, number>>;
+    editDiffs: { path: string; unified: string }[];
+    commands: string[];
+    answer: string;
+    request: string;
+    checkPassed: boolean;
+  },
+): Promise<string[]> {
+  const rel = (p: string) => (isAbsolute(p) ? relative(cwd, p) : p).replace(/\\/g, "/");
+  const byPath = new Map<string, string[]>();
+  for (const d of t.editDiffs) {
+    const p = rel(d.path);
+    if (!p.startsWith("..") && isTestPath(p)) byPath.set(p, [...(byPath.get(p) ?? []), ...diffAddedLines(d.unified)]);
+  }
+  const beforePaths = new Set([...t.before].map(dirtyPath));
+  const changed = new Set([...t.after].filter((e) => !t.before.has(e)).map(dirtyPath).filter(isTestPath));
+  for (const p of byPath.keys()) changed.add(p);
+  const deletedTests: string[] = [];
+  const editedTests: string[] = [];
+  const weakened: { path: string; labels: string[] }[] = [];
+  for (const p of [...changed].slice(0, 20)) {
+    if (t.after.has(`${p}|gone`)) {
+      deletedTests.push(p);
+      continue;
+    }
+    if (beforePaths.has(p) || (await isTracked(cwd, p))) editedTests.push(p);
+    // An Edit's own diff is exactly this turn's lines; otherwise compare against HEAD, before and after.
+    const lines = byPath.get(p);
+    const labels = lines ? newMarkers(new Map(), markerCounts(lines)) : newMarkers(t.testsBefore.get(p) ?? new Map(), markerCounts(await addedSinceHead(cwd, p)));
+    if (labels.length) weakened.push({ path: p, labels });
+  }
+  return evidenceFlags({ editedTests, deletedTests, weakened, request: t.request, answer: t.answer, commands: t.commands, checkPassed: t.checkPassed });
 }
 
 /** Whether two sets hold the same members. */

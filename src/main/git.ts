@@ -1,10 +1,11 @@
 import { execFile } from "node:child_process";
-import type { Dirent } from "node:fs";
+import { existsSync, type Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { parseUnifiedDiff } from "../shared/diff";
 import type { DiffFile, GitState } from "../shared/types";
+import { addedLines } from "./evidence";
 
 // The diff parser lives in shared (the renderer and adapters read it too);
 // re-exported so existing imports of src/main/git keep working.
@@ -20,6 +21,32 @@ export async function headContent(cwd: string, relPath: string): Promise<string 
     return (await run("git", ["show", `HEAD:./${relPath}`], { cwd, maxBuffer: 4 * 1024 * 1024 })).stdout;
   } catch {
     return null;
+  }
+}
+
+/** Whether git tracks `relPath` (relative to `cwd`). False outside a repository. */
+export async function isTracked(cwd: string, relPath: string): Promise<boolean> {
+  try {
+    await run("git", ["ls-files", "--error-unmatch", "--", relPath], { cwd });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The lines a working-tree file adds against HEAD: all of them when it's untracked. Empty when unreadable. */
+export async function addedSinceHead(cwd: string, relPath: string): Promise<string[]> {
+  if (await isTracked(cwd, relPath)) {
+    try {
+      return addedLines((await run("git", ["diff", "-U0", "HEAD", "--", relPath], { cwd, maxBuffer: 4 * 1024 * 1024 })).stdout);
+    } catch {
+      // No commits yet: everything staged counts as added.
+    }
+  }
+  try {
+    return (await readFile(join(cwd, relPath), "utf8")).split("\n");
+  } catch {
+    return [];
   }
 }
 
@@ -138,6 +165,19 @@ export async function gitState(cwd: string): Promise<GitState | null> {
   } catch {
     // Detached, unborn, or otherwise unreadable.
   }
+  return { head, branch, dirty: await dirtyPaths(cwd) };
+}
+
+/** Whether `cwd` or a parent holds a `.git` entry: a cheap filesystem check before spawning git. */
+export function hasGitDir(cwd: string): boolean {
+  for (let dir = resolve(cwd); ; dir = dirname(dir)) {
+    if (existsSync(join(dir, ".git"))) return true;
+    if (dirname(dir) === dir) return false;
+  }
+}
+
+/** The working tree's changed and untracked paths, from one `git status`. Throws outside a work tree. */
+export async function dirtyPaths(cwd: string): Promise<string[]> {
   const entries = (await run("git", ["status", "--porcelain", "-z"], { cwd })).stdout.split("\0");
   const dirty: string[] = [];
   for (let i = 0; i < entries.length; i++) {
@@ -147,7 +187,7 @@ export async function gitState(cwd: string): Promise<GitState | null> {
     // A rename/copy entry is followed by the old path in its own NUL entry.
     if (entry[0] === "R" || entry[0] === "C") i++;
   }
-  return { head, branch, dirty };
+  return dirty;
 }
 
 /**
