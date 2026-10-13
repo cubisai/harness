@@ -4,6 +4,7 @@
 // (characters / 4) so this stays dependency-free and cheap.
 
 import type { AssistantPart, LlmMessage, UserPart } from "../llm/types";
+import { unbindThinking } from "./binding";
 
 export const KEEP_RECENT_TOKENS = 8_000;
 export const TOOL_OUTPUT_CHARS = 2_000;
@@ -209,8 +210,11 @@ export function summaryPrompt(
 
 /** Rebuild history as the summary turn followed by the kept tail. The tail may
  *  start mid-turn (at an assistant step after a tool batch), which is still a
- *  valid user-then-assistant alternation, so it is kept as-is. */
+ *  valid user-then-assistant alternation, so it keeps its order; only its
+ *  signed thinking is dropped. */
 export function compactedHistory(summary: string, tail: LlmMessage[]): LlmMessage[] {
   const text = `${SUMMARY_OPEN}\nThis conversation was compacted. Summary of the earlier part:\n\n${summary.trim()}\n${SUMMARY_CLOSE}`;
-  return [{ role: "user", content: [{ type: "text", text }] }, ...tail];
+  // The kept tail's signed thinking was produced against the history the summary
+  // replaces, so none of it can be replayed (see binding.ts).
+  return [{ role: "user", content: [{ type: "text", text }] }, ...unbindThinking(tail)];
 }

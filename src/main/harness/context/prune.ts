@@ -1,8 +1,11 @@
 // Shrinks the context window by clearing the text of old tool results, which
 // are usually the biggest and least reusable part of a long transcript. The
 // newest results are protected so the model can still see what it just ran.
+// Clearing a result rewrites history, so any signed thinking after the first
+// cleared message can't be replayed any more (see binding.ts).
 
 import type { LlmMessage, ToolResult } from "../llm/types";
+import { unbindThinking } from "./binding";
 import { estimateMessage, estimateText } from "./estimate";
 
 export const PRUNED_MARKER = "[Old tool output cleared to save context. Run the tool again if you need it.]";
@@ -80,5 +83,6 @@ export function pruneToolOutputs(
     };
   });
 
-  return { messages: out, saved, pruned: candidates.length };
+  const first = Math.min(...byMessage.keys());
+  return { messages: unbindThinking(out, first), saved, pruned: candidates.length };
 }

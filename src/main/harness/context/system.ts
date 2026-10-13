@@ -1,7 +1,7 @@
 // The native agent's system prompt: a short, stable base plus the model
 // family's notes (one cache prefix for every turn), then the app's guide,
 // the project's instruction files and memory, then the environment last
-// because it carries the date.
+// because it carries the date (the session's start day, so it stays fixed).
 
 import { patchesNatively } from "../tools";
 
@@ -79,7 +79,7 @@ export function systemPrompt(p: PromptParts): string[] {
     `- Working folder: ${p.cwd}`,
     `- Platform: ${p.platform}; bash tool shell: ${p.shell}`,
     `- Model: ${p.model}`,
-    `- Today: ${date}`,
+    `- Date: ${date} (when this session started)`,
   ].join("\n");
   const files = (p.contextFiles ?? []).map((f) => `Project instructions from ${f.name}:\n\n${f.text}`);
   return [`${BASE}\n\n${FAMILY[familyOf(p.modelId ?? p.model)]}`, p.guide?.trim() || "", ...files, p.memory?.trim() || "", env].filter(Boolean);

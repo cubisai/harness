@@ -92,7 +92,7 @@ describe("systemPrompt", () => {
   it("keeps the env block last", () => {
     const out = systemPrompt(parts({ guide: "g", memory: "m", date: new Date("2026-10-09") }));
     expect(out.at(-1)).toMatch(/^Environment:/);
-    expect(out.at(-1)).toContain("Today: 2026-10-09");
+    expect(out.at(-1)).toContain("Date: 2026-10-09 (when this session started)");
   });
 
   it("includes the notes for the model's family", () => {

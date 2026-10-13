@@ -18,6 +18,7 @@ import { createProposePlanTool, PLAN_MODE_NOTE } from "./plan";
 import { systemPrompt } from "./prompt";
 import { SessionStore, repairHistory } from "./session";
 import { createTaskTool } from "./subagent";
+import { prefixKey, unbindThinking } from "./context/binding";
 import { compactedHistory, splitForCompaction, summaryPrompt } from "./context/compact";
 import { estimateMessages, estimateText } from "./context/estimate";
 import { contextFiles } from "./context/files";
@@ -151,18 +152,6 @@ async function runTurn(
   const guide = deps.guide(input.cwd, input.design);
   const memory = input.projectId ? deps.memory(input.projectId) : null;
   const files = contextFiles(input.cwd);
-  const system = systemPrompt({
-    cwd: input.cwd,
-    platform,
-    shell,
-    model: entry.name ?? entry.id,
-    modelId: wire,
-    guide,
-    memory,
-    contextFiles: files,
-  });
-  // Plan mode's note goes last, after the environment, so the stable parts keep their cache prefix.
-  if (input.permissionMode === "plan") system.push(PLAN_MODE_NOTE);
 
   const contextSize = provider.contextWindowOverride ?? entry.contextWindow;
   const costOf = (u: LlmUsage): number | null =>
@@ -208,6 +197,26 @@ async function runTurn(
     messages.push(userMessage);
     deps.sessions.append(sid, userMessage);
   }
+
+  // The session's date is frozen when it starts, so the prompt doesn't change at midnight.
+  let meta = deps.sessions.meta(sid);
+  if (!meta.startedOn) {
+    meta = { ...meta, startedOn: new Date().toISOString().slice(0, 10) };
+    deps.sessions.setMeta(sid, meta);
+  }
+  const system = systemPrompt({
+    cwd: input.cwd,
+    platform,
+    shell,
+    model: entry.name ?? entry.id,
+    modelId: wire,
+    guide,
+    memory,
+    contextFiles: files,
+    date: new Date(`${meta.startedOn}T00:00:00Z`),
+  });
+  // Plan mode's note goes last, after the environment, so the stable parts keep their cache prefix.
+  if (input.permissionMode === "plan") system.push(PLAN_MODE_NOTE);
 
   // Summarise the head of the history into one message, keep the tail verbatim.
   const compact = async (trigger: "manual" | "auto" | "unknown", focus: string | null): Promise<boolean> => {
@@ -334,21 +343,39 @@ async function runTurn(
   const definitions = tools.map((t) => t.definition);
   const overhead = estimateText(system.join("\n")) + estimateText(JSON.stringify(definitions));
   const limit = contextSize > 0 ? Math.max(Math.floor(contextSize * 0.75), contextSize - 20_000) : null;
-  const prepareFor = (cap: number) =>
-    async (msgs: LlmMessage[], last: LlmUsage | null): Promise<void> => {
-      // The previous call's real context is only good for deciding whether to
-      // act: it was measured before pruning, so it can't judge the result.
-      if (Math.max(estimateMessages(msgs) + overhead, last ? contextOf(last) : 0) <= cap) return;
-      const pruned = pruneToolOutputs(msgs);
-      if (pruned.pruned > 0) {
-        msgs.splice(0, msgs.length, ...pruned.messages);
-        deps.sessions.replace(sid, msgs);
-      }
-      if (estimateMessages(msgs) + overhead <= cap) return;
-      // Don't auto-compact again until the history grows past the last summary.
-      if (compactedAt !== null && estimateMessages(msgs) < compactedAt + Math.floor(cap * 0.2)) return;
-      await compact("auto", null);
-    };
+  const shrink = async (msgs: LlmMessage[], last: LlmUsage | null, cap: number): Promise<void> => {
+    // The previous call's real context is only good for deciding whether to
+    // act: it was measured before pruning, so it can't judge the result.
+    if (Math.max(estimateMessages(msgs) + overhead, last ? contextOf(last) : 0) <= cap) return;
+    const pruned = pruneToolOutputs(msgs);
+    if (pruned.pruned > 0) {
+      msgs.splice(0, msgs.length, ...pruned.messages);
+      deps.sessions.replace(sid, msgs);
+    }
+    if (estimateMessages(msgs) + overhead <= cap) return;
+    // Don't auto-compact again until the history grows past the last summary.
+    if (compactedAt !== null && estimateMessages(msgs) < compactedAt + Math.floor(cap * 0.2)) return;
+    await compact("auto", null);
+  };
+  // When the system prompt or tool list differs from the last request (new memory,
+  // the plan note leaving, a guide edit), earlier signed thinking is bound to the
+  // old prefix and must not be replayed (binding.ts). A session with no recorded
+  // key (one from before this check) counts as changed.
+  const guardPrefix = (msgs: LlmMessage[]): void => {
+    const key = prefixKey(system, definitions);
+    if (meta.prefixKey === key) return;
+    const next = unbindThinking(msgs);
+    if (next !== msgs) {
+      msgs.splice(0, msgs.length, ...next);
+      deps.sessions.replace(sid, msgs);
+    }
+    meta = { ...meta, prefixKey: key };
+    deps.sessions.setMeta(sid, meta);
+  };
+  const prepare = async (msgs: LlmMessage[], last: LlmUsage | null): Promise<void> => {
+    if (limit !== null) await shrink(msgs, last, limit);
+    guardPrefix(msgs);
+  };
 
   const result = await runLoop({
     route,
@@ -376,7 +403,7 @@ async function runTurn(
         }),
     },
     onMessage: (m) => deps.sessions.append(sid, m),
-    ...(limit !== null ? { prepare: prepareFor(limit) } : {}),
+    prepare,
     onOverflow: () => compact("auto", null),
     ...(deps.stream ? { stream: deps.stream } : {}),
   });

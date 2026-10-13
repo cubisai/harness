@@ -9,6 +9,14 @@ import type { LlmMessage } from "./llm/types";
 
 const SESSION_ID = /^[a-zA-Z0-9-]{8,64}$/;
 
+/** What a session keeps beside its history so its prompt prefix stays the same across turns. */
+export interface SessionMeta {
+  /** The day the session started (YYYY-MM-DD): the prompt's date, frozen so it doesn't change the prefix at midnight. */
+  startedOn?: string;
+  /** The system + tools fingerprint of the last request (binding.ts prefixKey). */
+  prefixKey?: string;
+}
+
 export class SessionStore {
   constructor(private readonly dir: string) {}
 
@@ -44,6 +52,27 @@ export class SessionStore {
 
   append(id: string, message: LlmMessage): void {
     appendFileSync(this.file(id), `${JSON.stringify(message)}\n`);
+  }
+
+  /** The session's sidecar metadata; {} when there is none or it's unreadable. */
+  meta(id: string): SessionMeta {
+    try {
+      const value = JSON.parse(readFileSync(this.metaFile(id), "utf8")) as unknown;
+      return value && typeof value === "object" ? (value as SessionMeta) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  setMeta(id: string, meta: SessionMeta): void {
+    const path = this.metaFile(id);
+    const tmp = `${path}.tmp`;
+    writeFileSync(tmp, JSON.stringify(meta));
+    renameSync(tmp, path);
+  }
+
+  private metaFile(id: string): string {
+    return this.file(id).replace(/\.jsonl$/, ".meta.json");
   }
 
   /** Replace the whole history (compaction), atomically. */
