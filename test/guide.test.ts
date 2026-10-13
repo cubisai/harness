@@ -74,6 +74,13 @@ describe("createGuide", () => {
     expect(estimateTokens(text)).toBeLessThanOrEqual(600);
   });
 
+  it("asks every agent for evidence, honest tests and real packages", () => {
+    const text = readFileSync(join(__dirname, "..", "resources", "CUBIQ.md"), "utf8");
+    for (const line of ["read a file before describing or changing it", "fix the code, not the tests", "check that a package exists", "claim only checks you ran"]) {
+      expect(text).toContain(line);
+    }
+  });
+
   it("serves the cached text while the mtime is unchanged", () => {
     const root = tempDir();
     const bundled = join(root, "CUBIQ.md");
