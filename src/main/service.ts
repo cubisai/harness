@@ -1033,7 +1033,13 @@ export class Service {
   private recordArtifacts(threadId: string, root: string, turnSeq: number, turnStartedAt: number): void {
     if (!this.artifacts) return;
     try {
-      const { files } = recordTurnArtifacts(this.artifacts, { threadId, root, events: this.store.listEvents(threadId), turnSeq, turnStartedAt });
+      // Another design thread in this project may be writing its own folder at the same time: not this turn's work.
+      const thread = this.store.getThread(threadId);
+      const skipDirs = this.store
+        .listThreads(thread.projectId)
+        .filter((t) => t.id !== threadId)
+        .flatMap((t) => designOf(t) ?? []);
+      const { files } = recordTurnArtifacts(this.artifacts, { threadId, root, events: this.store.listEvents(threadId), turnSeq, turnStartedAt, skipDirs });
       const path = files.filter(opensByItself).at(-1);
       if (path) this.broadcast({ type: "artifact-ready", threadId, path, files });
     } catch (err) {

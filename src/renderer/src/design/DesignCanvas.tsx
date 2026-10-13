@@ -10,7 +10,7 @@ import { useStore } from "../store";
 import { VIEWPORTS, ZOOMS, frameLayout, pageFromPath, readBridgeMessage, type Viewport, type Zoom } from "./frame";
 import { announceSelection, elementLabel, selectionKey, type SelectedElement } from "../../../shared/selection";
 import { compareCells, pageOptions, sameEntry, type CompareCell } from "./pages";
-import { currentTweakValues, parseTweaks, tweakTarget, tweakValue, type Tweak, type TweakValues } from "../../../shared/tweaks";
+import { changedTweaks, currentTweakValues, parseTweaks, tweakTarget, tweakValue, type Tweak, type TweakValues } from "../../../shared/tweaks";
 import { TweaksPanel } from "./TweaksPanel";
 import { DEFAULT_TIER, tierFeatures, tierOf } from "../../../shared/tiers";
 import { commentsMessage, type DesignComment } from "../../../shared/comments";
@@ -359,7 +359,11 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   // Real app tier: hand the design to a chat thread that builds it in the codebase (writing the handoff first).
   const hasHandoff = !!entry?.handoff;
   const buildInCode = async () => {
-    if (hasHandoff) return void useStore.getState().buildDesignInCode(threadId);
+    if (hasHandoff) {
+      // The "handoff first" notice is done with; the store's own toast confirms the build.
+      setNotice(null);
+      return void useStore.getState().buildDesignInCode(threadId);
+    }
     const ok = await useStore.getState().send("Write the developer handoff for this design.", ["design-handoff"], threadId);
     if (ok) setNotice({ text: "Writing the handoff first. Choose Build in code again once handoff.md is there." });
   };
@@ -367,7 +371,8 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   const rel = entry?.rel ?? null;
   const pageOverrides = (rel && overrides[rel]) || {};
   const tweakValues: TweakValues = tweaks ? { ...tweaks.base, ...pageOverrides } : {};
-  const tweaksDirty = !!tweaks && Object.entries(pageOverrides).some(([id, v]) => id in tweaks.base && tweaks.base[id] !== v);
+  const tweakChanges = tweaks ? changedTweaks(tweaks.base, pageOverrides) : {};
+  const tweaksDirty = Object.keys(tweakChanges).length > 0;
   const showTweaks = features.tweaks && !!tweaks && !!entry && version === 0 && !comparing;
 
   const changeTweak = (t: Tweak, raw: string) => {
@@ -389,7 +394,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     if (!rel) return;
     setKeeping(true);
     try {
-      await api().designKeepTweaks(threadId, rel, tweakValues);
+      await api().designKeepTweaks(threadId, rel, tweakChanges);
       setOverrides((o) => {
         const next = { ...o };
         delete next[rel];

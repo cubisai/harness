@@ -3,6 +3,7 @@ import {
   MAX_TWEAKS,
   TWEAKS_ID,
   TWEAK_UNITS,
+  changedTweaks,
   currentTweakValues,
   defaultValue,
   parseTweaks,
@@ -227,5 +228,23 @@ describe("keepTweaks", () => {
     const out = keepTweaks(html, { theme: "dusk" });
     expect(out).toContain("\\u003c/script>");
     expect(out.split("</script>")).toHaveLength(2);
+  });
+});
+
+describe("changedTweaks", () => {
+  it("keeps only overrides that differ from the page's values", () => {
+    expect(changedTweaks({ theme: "light", accent: "#3b5bdb" }, { theme: "light", accent: "#112233", ghost: "x" })).toEqual({ accent: "#112233" });
+    expect(changedTweaks({ theme: "light" }, {})).toEqual({});
+  });
+
+  it("never pins a value the page set on itself after load (Keep after changing only the accent)", () => {
+    // At load the page had flipped itself to dusk for a moment; the panel's base caught that.
+    const base = currentTweakValues(readTweaks(PAGE), { "data-theme": "dusk", "data-badges": "on" }, { "--color-accent": "#3b5bdb" });
+    const out = keepTweaks(PAGE, changedTweaks(base, { ...base, accent: "#112233" }));
+    const [theme, , accent] = readTweaks(out);
+    expect(theme).toMatchObject({ id: "theme", default: "light" });
+    expect(accent).toMatchObject({ id: "accent", default: "#112233" });
+    expect(out).toContain('data-theme="light"');
+    expect(out).not.toContain(`data-theme="dusk"`);
   });
 });

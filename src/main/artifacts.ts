@@ -68,9 +68,11 @@ const SCAN_MAX_FILES = 20;
  * Deliverables (the kinds that open by themselves: docx, pdf, images…) under
  * `root` modified at or after `sinceMs`, oldest first. These are the files an
  * agent wrote with a command, a script or a skill, which no Edit tool-use
- * names. The walk is bounded and skips dot-folders and build output; never throws.
+ * names. The walk is bounded and skips dot-folders, build output and the
+ * `skipDirs` (relative, "/"-separated: other threads' design folders); never throws.
  */
-export function filesWrittenSince(root: string, sinceMs: number): string[] {
+export function filesWrittenSince(root: string, sinceMs: number, skipDirs: readonly string[] = []): string[] {
+  const skip = new Set(skipDirs);
   const found: { rel: string; mtime: number }[] = [];
   let entries = 0;
   const walk = (dir: string, rel: string, depth: number): void => {
@@ -84,7 +86,7 @@ export function filesWrittenSince(root: string, sinceMs: number): string[] {
       if (++entries > SCAN_MAX_ENTRIES) return;
       const childRel = rel ? `${rel}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
-        if (depth < SCAN_MAX_DEPTH && !entry.name.startsWith(".") && !SCAN_SKIP.has(entry.name)) walk(join(dir, entry.name), childRel, depth + 1);
+        if (depth < SCAN_MAX_DEPTH && !entry.name.startsWith(".") && !SCAN_SKIP.has(entry.name) && !skip.has(childRel)) walk(join(dir, entry.name), childRel, depth + 1);
       } else if (entry.isFile() && opensByItself(entry.name)) {
         try {
           const mtime = statSync(join(dir, entry.name)).mtimeMs;
@@ -145,19 +147,20 @@ export interface ArtifactDeps {
 /**
  * Save a version of every file an agent edited this turn, plus, when
  * `turnStartedAt` is given, every deliverable it wrote some other way (see
- * `filesWrittenSince`). Unreadable, missing, oversized or escaping files are
+ * `filesWrittenSince`; `skipDirs` keeps out what other threads in the same
+ * folder write meanwhile). Unreadable, missing, oversized or escaping files are
  * skipped; `changed` names the files that got a new version, while `files` is
  * every file that was recorded.
  */
 export function recordTurnArtifacts(
   deps: ArtifactDeps,
-  input: { threadId: string; root: string; events: StoredEvent[]; turnSeq: number; turnStartedAt?: number },
+  input: { threadId: string; root: string; events: StoredEvent[]; turnSeq: number; turnStartedAt?: number; skipDirs?: readonly string[] },
 ): { files: string[]; changed: string[] } {
   const files: string[] = [];
   const changed: string[] = [];
   const edits = editedFilesInTurn(input.events);
   const named = new Set(edits.map((p) => resolveInside(input.root, p)));
-  const written = input.turnStartedAt === undefined ? [] : filesWrittenSince(input.root, input.turnStartedAt).filter((rel) => !named.has(rel));
+  const written = input.turnStartedAt === undefined ? [] : filesWrittenSince(input.root, input.turnStartedAt, input.skipDirs).filter((rel) => !named.has(rel));
   for (const edited of [...edits, ...written]) {
     try {
       const rel = resolveInside(input.root, edited);

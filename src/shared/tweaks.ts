@@ -170,3 +170,14 @@ export function currentTweakValues(tweaks: Tweak[], attrs: Record<string, string
   }
   return out;
 }
+
+/**
+ * The tweaks the user changed: overrides that differ from the page's values. Keep writes only
+ * these, so a value the page set on itself after load (e.g. a 700 ms "loading" state) never gets
+ * pinned as a default; untouched tweaks keep their manifest defaults.
+ */
+export function changedTweaks(base: TweakValues, overrides: TweakValues): TweakValues {
+  const out: TweakValues = {};
+  for (const [id, v] of Object.entries(overrides)) if (id in base && base[id] !== v) out[id] = v;
+  return out;
+}

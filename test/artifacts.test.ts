@@ -232,6 +232,16 @@ describe("recordTurnArtifacts", () => {
     const events = [user("go"), edit("e1", "page.html"), result("e1")];
     expect(recordTurnArtifacts(deps, { threadId: "t", root, events, turnSeq: 1, turnStartedAt: Date.now() - 2000 }).files).toEqual(["page.html"]);
   });
+
+  it("doesn't record what another thread wrote in its design folder meanwhile", () => {
+    const root = tempDir();
+    mkdirSync(join(root, "designs/bbbbbbbb"), { recursive: true });
+    writeFileSync(join(root, "designs/bbbbbbbb/index.html"), "<p>theirs</p>");
+    writeFileSync(join(root, "chart.png"), "png");
+    const { deps } = fakeDeps();
+    const input = { threadId: "t", root, events: [user("go")], turnSeq: 1, turnStartedAt: Date.now() - 2000 };
+    expect(recordTurnArtifacts(deps, { ...input, skipDirs: ["designs/bbbbbbbb"] }).files).toEqual(["chart.png"]);
+  });
 });
 
 describe("filesWrittenSince", () => {
@@ -263,6 +273,17 @@ describe("filesWrittenSince", () => {
     mkdirSync(join(root, "docs"));
     writeFileSync(join(root, "docs", "kept.pdf"), "%PDF");
     expect(filesWrittenSince(root, Date.now() - 2000)).toEqual(["docs/kept.pdf"]);
+  });
+
+  it("skips the folders it is told to (other threads' designs), and only those", () => {
+    const root = tempDir();
+    for (const dir of ["designs/aaaaaaaa", "designs/bbbbbbbb/refs"]) mkdirSync(join(root, dir), { recursive: true });
+    writeFileSync(join(root, "designs/aaaaaaaa/index.html"), "<p>mine</p>");
+    writeFileSync(join(root, "designs/bbbbbbbb/index.html"), "<p>theirs</p>");
+    writeFileSync(join(root, "designs/bbbbbbbb/refs/ref-1.png"), "png");
+    const since = Date.now() - 2000;
+    expect(filesWrittenSince(root, since, ["designs/bbbbbbbb"])).toEqual(["designs/aaaaaaaa/index.html"]);
+    expect(filesWrittenSince(root, since).sort()).toEqual(["designs/aaaaaaaa/index.html", "designs/bbbbbbbb/index.html", "designs/bbbbbbbb/refs/ref-1.png"]);
   });
 
   it("returns nothing for a folder that doesn't exist", () => {

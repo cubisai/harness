@@ -1,8 +1,11 @@
-import { Check, ChevronDown } from "lucide-react";
+import { AppWindow, Check, ChevronDown, Layers, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { TIERS, tierOf } from "../../../shared/tiers";
+import { TIERS, tierOf, type PrototypeTier } from "../../../shared/tiers";
 import type { Thread } from "../../../shared/types";
 import { useStore } from "../store";
+
+/** Each tier's icon: what the chip shows when a narrow composer hides its label. */
+const TIER_ICON: Record<PrototypeTier, typeof Zap> = { quick: Zap, working: Layers, "real-app": AppWindow };
 
 /**
  * A design thread's prototype tier chip, beside its system chip: Quick, Working or Real app. The tier decides which
@@ -22,6 +25,7 @@ export function ThreadTier({ thread, running }: { thread: Thread; running: boole
   }, [open]);
   const value = tierOf(thread);
   const current = TIERS.find((t) => t.value === value) ?? TIERS[1]!;
+  const Icon = TIER_ICON[current.value];
   return (
     <div
       className="model-picker"
@@ -42,6 +46,7 @@ export function ThreadTier({ thread, running }: { thread: Thread; running: boole
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
+        <Icon size={13} aria-hidden />
         <span className="ds-chip-label">{current.label}</span>
         <ChevronDown size={12} className="chev" />
       </button>
