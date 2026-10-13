@@ -257,7 +257,8 @@ export function designBridge(
   const startSelect = (): void => {
     if (stopSelect) return;
     const box = document.createElement("div");
-    box.style.cssText = "position:fixed;pointer-events:none;z-index:2147483647;border:2px solid #0B0D10;outline:1px solid #F7F8FA;background:rgba(11,13,16,.06);border-radius:3px;display:none";
+    // Under the selection outlines and comment pins (…646), so a hovered pinned element keeps its number readable.
+    box.style.cssText = "position:fixed;pointer-events:none;z-index:2147483645;border:2px solid #0B0D10;outline:1px solid #F7F8FA;background:rgba(11,13,16,.06);border-radius:3px;display:none";
     const tip = document.createElement("div");
     tip.style.cssText =
       "position:fixed;pointer-events:none;z-index:2147483647;font:11px/1.4 ui-monospace,Menlo,monospace;background:#0B0D10;color:#F7F8FA;padding:2px 6px;border-radius:4px;display:none;max-width:60vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
@@ -273,7 +274,9 @@ export function designBridge(
       const id = target.getAttribute("data-agent-id");
       const tag = target.tagName.toLowerCase();
       tip.textContent = id ? `${tag} ${id}` : tag;
-      Object.assign(tip.style, { display: "block", left: `${Math.max(4, r.left)}px`, top: `${r.top > 24 ? r.top - 22 : r.bottom + 4}px` });
+      // A comment pin sits on the element's top-left corner: start the tip past its right edge so it never covers the number.
+      const pinned = pins.some((p) => p.el === target);
+      Object.assign(tip.style, { display: "block", left: `${Math.max(4, r.left + (pinned ? 14 : 0))}px`, top: `${r.top > 24 ? r.top - 22 : r.bottom + 4}px` });
     };
     const swallow = (e: Event): void => {
       e.preventDefault();

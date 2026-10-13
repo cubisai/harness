@@ -1,3 +1,5 @@
+import type { Thread } from "./types";
+
 /** A design thread's folder, relative to the thread's working folder: stable, since titles change. */
 export function designDirName(threadId: string): string {
   return `designs/${threadId.slice(0, 8)}`;
@@ -37,4 +39,18 @@ export function buildInCodePrompt(dir: string): string {
     "3. Keep the design's layout, hierarchy, copy and states. Where the codebase's conventions disagree, follow the codebase and say what you changed.",
     "4. Run the project's checks (typecheck, tests) and list the files you changed.",
   ].join("\n");
+}
+
+type BuildFields = Pick<Thread, "model" | "effort" | "contextWindow">;
+
+/**
+ * What a Build in code chat thread takes from its design thread: the same model, effort and context
+ * window. The permission mode stays the chat default, since this thread edits the codebase itself.
+ */
+export function buildThreadPatch(design: BuildFields, thread: BuildFields): Partial<BuildFields> {
+  const patch: Partial<BuildFields> = {};
+  if (design.model !== thread.model) patch.model = design.model;
+  if (design.effort !== thread.effort) patch.effort = design.effort;
+  if ((design.contextWindow ?? null) !== (thread.contextWindow ?? null)) patch.contextWindow = design.contextWindow ?? null;
+  return patch;
 }

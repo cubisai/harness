@@ -31,7 +31,7 @@ import { DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
 import { IDLE, takeOverReducer, type TakeOverState } from "./takeover";
 import { threadSeen, turnEnded, type FinishedTurn } from "./inbox";
 import { threadKind } from "./sections";
-import { buildInCodePrompt, designDirName, handoffPath } from "../../shared/design";
+import { buildInCodePrompt, buildThreadPatch, designDirName, handoffPath } from "../../shared/design";
 import type { SelectedElement } from "../../shared/selection";
 import type { PrototypeTier } from "../../shared/tiers";
 
@@ -830,6 +830,8 @@ export const useStore = create<State>((set, get) => ({
     let thread: Thread;
     try {
       thread = await api().createThread(design.projectId, design.agent, { kind: "chat" });
+      const patch = buildThreadPatch(design, thread);
+      if (Object.keys(patch).length) thread = await api().updateThread(thread.id, patch);
     } catch (err) {
       get().showNotice(ipcErrorText(err));
       return;

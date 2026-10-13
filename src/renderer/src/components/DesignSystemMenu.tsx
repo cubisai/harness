@@ -2,6 +2,7 @@ import { Check, ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { DesignSystemOption, Thread } from "../../../shared/types";
 import { api } from "../api";
+import { focusOption, focusSelectedOption } from "../option-keys";
 import { useStore } from "../store";
 
 /** The system a thread uses when it names none (or one that's gone): the project's own, else Clean, else the first. */
@@ -28,6 +29,11 @@ export function DesignSystemMenu({ projectId, value, disabled, onPick }: { proje
   const [open, setOpen] = useState(false);
   const [options, setOptions] = useState<DesignSystemOption[]>([]);
   const box = useRef<HTMLDivElement>(null);
+  const chip = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (open) focusSelectedOption(menu.current);
+  }, [open]);
   // Re-read on open too: a system the agent just extracted into .agents/design-systems shows up without a restart.
   useEffect(() => {
     let live = true;
@@ -54,13 +60,26 @@ export function DesignSystemMenu({ projectId, value, disabled, onPick }: { proje
       className="model-picker"
       ref={box}
       onKeyDown={(e) => {
-        if (open && e.key === "Escape") {
+        if (!open) {
+          // Arrow Down/Up on the chip opens the menu, like a select.
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            e.stopPropagation();
+            setOpen(true);
+          }
+          return;
+        }
+        if (e.key === "Escape") {
           e.stopPropagation();
           setOpen(false);
+          chip.current?.focus();
+          return;
         }
+        focusOption(e, menu.current);
       }}
     >
       <button
+        ref={chip}
         className="chip-button ds-chip"
         title={`Design system: ${current.name}`}
         aria-label={`Design system: ${current.name}`}
@@ -74,7 +93,7 @@ export function DesignSystemMenu({ projectId, value, disabled, onPick }: { proje
         <ChevronDown size={12} className="chev" />
       </button>
       {open && (
-        <div className="model-menu up ds-menu" role="listbox" aria-label="Design system">
+        <div ref={menu} className="model-menu up ds-menu" role="listbox" aria-label="Design system">
           <div className="model-group">Design system</div>
           {options.map((o) => (
             <button
@@ -84,6 +103,7 @@ export function DesignSystemMenu({ projectId, value, disabled, onPick }: { proje
               className={`model-item two-line${o.id === current.id ? " current" : ""}`}
               onClick={() => {
                 setOpen(false);
+                chip.current?.focus();
                 if (o.id !== current.id) onPick(o.id);
               }}
             >

@@ -47,7 +47,8 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   const [page, setPage] = useState<string | null>(null);
   const [compare, setCompare] = useState(false);
   const [promoting, setPromoting] = useState<string | null>(null);
-  const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
+  // `page` ties a notice to the page it's about: switching to another page drops it.
+  const [notice, setNotice] = useState<{ text: string; error?: boolean; page?: string } | null>(null);
   // The page's declared tweaks with the values it loaded with, and the user's unkept changes per page.
   const [tweaks, setTweaks] = useState<{ list: Tweak[]; base: TweakValues } | null>(null);
   const [overrides, setOverrides] = useState<Record<string, TweakValues>>({});
@@ -369,6 +370,9 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   };
 
   const rel = entry?.rel ?? null;
+  useEffect(() => {
+    setNotice((n) => (n?.page && n.page !== rel ? null : n));
+  }, [rel]);
   const pageOverrides = (rel && overrides[rel]) || {};
   const tweakValues: TweakValues = tweaks ? { ...tweaks.base, ...pageOverrides } : {};
   const tweakChanges = tweaks ? changedTweaks(tweaks.base, pageOverrides) : {};
@@ -401,7 +405,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
         return next;
       });
       setTweaksOpen(false);
-      setNotice({ text: `Kept the tweaks in ${rel}. The previous page is saved as a version.` });
+      setNotice({ text: `Kept the tweaks in ${rel}. The previous page is saved as a version.`, page: rel });
     } catch (err) {
       setNotice({ text: `Couldn't keep the tweaks: ${ipcError(err)}`, error: true });
     } finally {

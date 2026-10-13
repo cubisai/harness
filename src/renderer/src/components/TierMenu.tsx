@@ -2,6 +2,7 @@ import { AppWindow, Check, ChevronDown, Layers, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { TIERS, tierOf, type PrototypeTier } from "../../../shared/tiers";
 import type { Thread } from "../../../shared/types";
+import { focusOption, focusSelectedOption } from "../option-keys";
 import { useStore } from "../store";
 
 /** Each tier's icon: what the chip shows when a narrow composer hides its label. */
@@ -15,6 +16,11 @@ export function ThreadTier({ thread, running }: { thread: Thread; running: boole
   const setTier = useStore((s) => s.setPrototypeTier);
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  const chip = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (open) focusSelectedOption(menu.current);
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent) => {
@@ -31,13 +37,26 @@ export function ThreadTier({ thread, running }: { thread: Thread; running: boole
       className="model-picker"
       ref={box}
       onKeyDown={(e) => {
-        if (open && e.key === "Escape") {
+        if (!open) {
+          // Arrow Down/Up on the chip opens the menu, like a select.
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            e.stopPropagation();
+            setOpen(true);
+          }
+          return;
+        }
+        if (e.key === "Escape") {
           e.stopPropagation();
           setOpen(false);
+          chip.current?.focus();
+          return;
         }
+        focusOption(e, menu.current);
       }}
     >
       <button
+        ref={chip}
         className="chip-button ds-chip"
         title={`Prototype tier: ${current.label}`}
         aria-label={`Prototype tier: ${current.label}`}
@@ -51,7 +70,7 @@ export function ThreadTier({ thread, running }: { thread: Thread; running: boole
         <ChevronDown size={12} className="chev" />
       </button>
       {open && (
-        <div className="model-menu up ds-menu" role="listbox" aria-label="Prototype tier">
+        <div ref={menu} className="model-menu up ds-menu" role="listbox" aria-label="Prototype tier">
           <div className="model-group">Prototype tier</div>
           {TIERS.map((t) => (
             <button
@@ -61,6 +80,7 @@ export function ThreadTier({ thread, running }: { thread: Thread; running: boole
               className={`model-item two-line${t.value === value ? " current" : ""}`}
               onClick={() => {
                 setOpen(false);
+                chip.current?.focus();
                 if (t.value !== value) void setTier(thread.id, t.value);
               }}
             >
