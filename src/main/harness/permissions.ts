@@ -1,6 +1,7 @@
 // Which calls run, ask or are refused, per permission mode. Read-only work never
 // asks; edits ask in "ask" mode and outside the thread's folder; shell asks
-// unless the mode is "full"; plan mode is read-only.
+// unless the mode is "full"; plan mode is read-only. A web fetch asks unless the
+// mode is "full", in plan mode too: it reads, but a URL can carry data out.
 
 import type { PermissionMode } from "../../shared/types";
 import type { ToolAccess } from "./tools/types";
@@ -13,7 +14,7 @@ export function decide(mode: PermissionMode, access: ToolAccess, outside = false
     case "full":
       return "allow";
     case "plan":
-      return "deny";
+      return access === "web" ? "ask" : "deny";
     case "auto-edit":
       return access === "edit" && !outside ? "allow" : "ask";
     case "ask":

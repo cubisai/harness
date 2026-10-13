@@ -261,5 +261,7 @@ describe("decide", () => {
     expect(["ask", "auto-edit", "plan", "full"].map((m) => decide(m as never, "edit"))).toEqual(["ask", "allow", "deny", "allow"]);
     expect(["ask", "auto-edit", "plan", "full"].map((m) => decide(m as never, "shell"))).toEqual(["ask", "ask", "deny", "allow"]);
     expect(decide("auto-edit", "edit", true)).toBe("ask");
+    // A fetch reads, but a URL can carry data out: it asks unless the mode is full, plan mode included.
+    expect(["ask", "auto-edit", "plan", "full"].map((m) => decide(m as never, "web"))).toEqual(["ask", "ask", "ask", "allow"]);
   });
 });

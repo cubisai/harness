@@ -8,6 +8,7 @@ import { globTool } from "./glob";
 import { grepTool } from "./grep";
 import { readTool } from "./read";
 import { todoTool } from "./todo";
+import { webFetchTool } from "./web-fetch";
 import type { NativeTool } from "./types";
 import { writeTool } from "./write";
 
@@ -18,7 +19,7 @@ export function patchesNatively(modelId: string): boolean {
 
 /** The built-in tools for a model, in the order they're advertised. */
 export function nativeTools(modelId: string): NativeTool[] {
-  return [readTool, patchesNatively(modelId) ? applyPatchTool : editTool, writeTool, bashTool, globTool, grepTool, todoTool];
+  return [readTool, patchesNatively(modelId) ? applyPatchTool : editTool, writeTool, bashTool, globTool, grepTool, webFetchTool, todoTool];
 }
 
 export { shellFor } from "./bash";

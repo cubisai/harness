@@ -151,7 +151,7 @@ describe("provider driver", () => {
     expect(first.effort).toBe("high");
     expect(first.system.join("\n")).toContain("GUIDE TEXT");
     expect(first.system.join("\n")).toContain("MEMORY TEXT");
-    expect(first.tools.map((x) => x.name)).toEqual(["read", "edit", "write", "bash", "glob", "grep", "todowrite", TASK_TOOL]);
+    expect(first.tools.map((x) => x.name)).toEqual(["read", "edit", "write", "bash", "glob", "grep", "web_fetch", "todowrite", TASK_TOOL]);
     expect(first.cacheKey).toBe(t.session());
 
     // Next turn resumes the stored history.

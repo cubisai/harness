@@ -3,7 +3,8 @@
 // shows `display` in the thread (names the renderer already knows: Read, Edit, Run…).
 
 /** What a call can touch; permission modes allow or ask per access. */
-export type ToolAccess = "read" | "edit" | "shell" | "other";
+/** "web" reaches the network (web_fetch): a URL can carry data out, so it asks like a shell call. */
+export type ToolAccess = "read" | "edit" | "shell" | "web" | "other";
 
 export interface ToolContext {
   /** The thread's working folder; relative paths resolve against it. */
