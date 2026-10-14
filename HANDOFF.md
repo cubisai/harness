@@ -34,6 +34,15 @@ Plan: `.ai/plans/eval-framework.md` (approved; status block at top). Run with `b
   2. Run `--save-baseline` for claude, codex and opencode (smoke).
   3. Run the full suite, commit E3, update the plan status.
 - **Open finding (not fixed, user to decide):** after a denied shell call, native DeepSeek tried to write the output file directly (1 of 3 trials on `permission-deny`). The harness denial text "Don't retry it; ask them or take another approach" invites that workaround. Candidate wording: "…don't get the same result another way; ask them, or continue with the rest."
+- **After E3:**
+  - **E4 (optional):**
+    - LLM rubric grader: cheap model, one dimension per call, may answer `unknown`, calibrated on 10 hand-labelled transcripts.
+    - Graduate stable capability tasks to regression.
+    - Trend report.
+  - **Measure the permission-deny wording fix:** after the change above, run `--task permission-deny --trials 3` on both providers.
+  - **OpenCode token undercount:** its ACP usage misses some turns, so OpenCode token totals read low in the eval and in the app.
+  - **Windows CI is unconfirmed since E1:** pushing to the `windows` branch was blocked by auto mode, and the user said to skip it for now.
+  - **Older items, outside the eval:** cubiq-shop live build; H7d memory live checks.
 - **Don't commit** the other session's in-progress files (settings / Splash / assets / `shared/types.ts`).
 
 ## Where things stand
