@@ -125,9 +125,22 @@ describe("eval runner (scripted model)", () => {
   it("ends a plan-mode turn at the proposal and grades it", async () => {
     const s = scripted([[call("read", { path: "src/form.js" })], [call("propose_plan", { plan: "## Goal\nValidate email and age in submit()." })], [text("unreachable")]]);
     const r = await runTrial({ task: task("plan-proposes"), fixturesRoot: FIXTURES, driver: s.driver, model: "m" });
-    expect(r.graders.map((g) => [g.type, g.pass])).toEqual([["tool", true], ["tool", true], ["file", true], ["event", true], ["budget", true]]);
+    expect(r.graders.map((g) => [g.type, g.pass])).toEqual([["event", true], ["file", true], ["event", true], ["budget", true]]);
     expect(r.pass).toBe(true);
     expect(s.calls()).toBe(2);
+    expect(r.events).toContainEqual({ kind: "plan-proposal", text: expect.stringContaining("Validate email") });
+  });
+
+  it("fails plan-proposes when the agent answers without proposing a plan", async () => {
+    const r = await runTrial({ task: task("plan-proposes"), fixturesRoot: FIXTURES, driver: scripted([[text("Add checks for email and age.")]]).driver, model: "m" });
+    expect(r.graders[0]).toMatchObject({ type: "event", pass: false, why: "no plan proposed" });
+  });
+
+  it("writes the skill kit into each of the agent's skill folders", async () => {
+    let seen: string[] = [];
+    const s = scripted([[text("ok")]], (cwd) => (seen = [".agents/skills", ".claude/skills"].filter((d) => existsSync(join(cwd, d, "backup-ansible-infra", "SKILL.md")))));
+    await runTrial({ task: task("route-skill-1"), fixturesRoot: FIXTURES, driver: s.driver, model: "m", skillDirs: [".claude/skills"] });
+    expect(seen).toEqual([".claude/skills"]);
   });
 
   it("every task file loads and names an existing fixture", () => {

@@ -9,14 +9,8 @@
   "prompt": "Add input validation to submit() in src/form.js: email must contain @ and age must be a positive integer.",
   "graders": [
     {
-      "type": "tool",
-      "name": "Plan",
-      "min": 1
-    },
-    {
-      "type": "tool",
-      "name": "Edit",
-      "max": 0
+      "type": "event",
+      "planProposed": true
     },
     {
       "type": "file",
@@ -36,5 +30,5 @@
     "maxInputTokens": 50000,
     "timeoutMs": 150000
   },
-  "reference": "Reads src/form.js, then calls propose_plan with the change and how to verify it; no edits."
+  "reference": "Reads src/form.js, then proposes a plan (any agent's plan tool) with the change and how to verify it; project files untouched."
 }

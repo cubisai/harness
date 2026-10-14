@@ -23,6 +23,8 @@ export interface TrialOptions {
   effort?: string;
   /** USD per 1M tokens, for drivers that report no cost. */
   price?: { input: number; output: number };
+  /** Where the agent reads project skills (relative); the task's skill kit is written to each. */
+  skillDirs?: string[];
   /** Keep the trial folder (debugging). */
   keep?: boolean;
   /** Injected in tests; defaults to runCheck. */
@@ -43,6 +45,7 @@ export function compact(e: ThreadEvent): CompactEvent | null {
     case "error":
       return { kind: e.kind, text: (e.kind === "error" ? e.message : e.text).slice(0, TEXT_MAX) };
     case "notice":
+    case "plan-proposal":
       return { kind: e.kind, text: e.text.slice(0, TEXT_MAX) };
     case "turn-end":
       return { kind: e.kind };
@@ -57,12 +60,15 @@ const defaultRunCommand: GradeInput["runCommand"] = async (command, cwd, timeout
 };
 
 /** Writes the task's mock skill kit into `dir`; returns sentinel → skill name. */
-function writeSkillKit(task: Task, dir: string): Map<string, string> | undefined {
+function writeSkillKit(task: Task, dir: string, skillDirs: string[]): Map<string, string> | undefined {
   if (!task.skills) return undefined;
   const kit = generate({ skills: task.skills.kit.skills, servers: 0, tools: 0, seed: task.skills.kit.seed, serverScript: "" });
   for (const f of kit.files.filter((f) => f.path.startsWith(".agents/skills/"))) {
-    mkdirSync(dirname(join(dir, f.path)), { recursive: true });
-    writeFileSync(join(dir, f.path), f.content);
+    for (const to of skillDirs) {
+      const path = join(dir, to, f.path.slice(".agents/skills/".length));
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, f.content);
+    }
   }
   return new Map(kit.manifest.skills.map((s) => [s.sentinel, s.name]));
 }
@@ -75,7 +81,7 @@ export async function runTrial(o: TrialOptions): Promise<TrialResult> {
   const dir = join(root, "project");
   mkdirSync(dir, { recursive: true });
   if (existsSync(fixtureDir)) cpSync(fixtureDir, dir, { recursive: true });
-  const sentinels = writeSkillKit(task, dir);
+  const sentinels = writeSkillKit(task, dir, o.skillDirs ?? [".agents/skills"]);
 
   const events: ThreadEvent[] = [];
   const controller = new AbortController();
@@ -111,7 +117,9 @@ export async function runTrial(o: TrialOptions): Promise<TrialResult> {
     },
     onSession: () => {},
     requestPermission: async () => (task.permissions === "deny" ? "deny" : "allow-once"),
-    requestPlanDecision: async () => {
+    requestPlanDecision: async (p) => {
+      // Every agent's proposal reaches the graders the same way, whatever its plan tool is called.
+      events.push({ kind: "plan-proposal", text: p.plan });
       // "stop" ends the turn at the proposal: the plan itself is what's graded, and approving costs tokens.
       if (task.planDecision && task.planDecision !== "stop") return task.planDecision;
       controller.abort();
@@ -122,12 +130,14 @@ export async function runTrial(o: TrialOptions): Promise<TrialResult> {
     mcpServers: [],
   };
 
+  const driver = o.driver(dir);
   try {
-    await o.driver(dir).runTurn(input);
+    await driver.runTurn(input);
   } catch (err) {
     if (!controller.signal.aborted) thrown = err instanceof Error ? err.message : String(err);
   } finally {
     clearTimeout(timer);
+    driver.dispose?.();
   }
   const durationMs = Date.now() - started;
 

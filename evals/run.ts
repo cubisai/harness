@@ -1,6 +1,7 @@
 // Eval CLI. Keys come from the environment, e.g.
 //   bun --env-file=.env evals/run.ts --tier smoke --provider pgs [--dry]
-// Flags: --tier smoke|full, --provider th|pgs, --model <id>, --trials <n>,
+// Flags: --agent native|claude|codex|opencode (default native), --tier smoke|full,
+// --provider th|pgs (native only), --model <id>, --trials <n>,
 // --task <id>[,<id>…], --dry, --force, --keep, --save-baseline, --max-tokens <n>, --max-usd <n>,
 // --price <in>,<out> (USD per 1M tokens). Plan: .ai/plans/eval-framework.md.
 
@@ -9,13 +10,7 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BUILT_IN_GUARD } from "../src/main/guard";
-import { createProviderDriver } from "../src/main/harness/driver";
-import type { HarnessProtocol } from "../src/main/harness/llm/types";
-import { SessionStore } from "../src/main/harness/session";
-import { discoverSkills } from "../src/main/skills/discover";
-import { skillTool } from "../src/main/skills/tool";
-import type { Provider } from "../src/shared/types";
+import { AGENTS, setupAgent, type AgentId } from "./lib/agents";
 import { runTask } from "./lib/runner";
 import { cacheKey, compareBaseline, diffRuns, findCached, previousRun, readBaseline, saveBaseline, saveRun, summarize } from "./lib/store";
 import type { RunResult, Task, TaskResult, Tier } from "./lib/types";
@@ -25,11 +20,6 @@ const TASKS = join(ROOT, "evals", "tasks");
 const FIXTURES = join(ROOT, "evals", "fixtures");
 const RESULTS = join(ROOT, ".ai", "evals");
 const BASELINE = join(ROOT, "evals", "baseline.json");
-
-const PRESETS: Record<string, { envVar: string; baseURL: string; protocol: HarnessProtocol; model: string }> = {
-  th: { envVar: "TOKENHARBOR_API_KEY", baseURL: "https://tokenharbor.ai/v1", protocol: "anthropic-messages", model: "claude-haiku-5.5" },
-  pgs: { envVar: "PGS_API_KEY", baseURL: "https://api.pgsgrove.com/v1", protocol: "openai-chat", model: "deepseek-v4.1-flash" },
-};
 
 function flags(argv: string[]): Map<string, string> {
   const out = new Map<string, string>();
@@ -56,8 +46,8 @@ export function loadTasks(dir = TASKS): Task[] {
     });
 }
 
-/** The harness and skills code the result depends on: their git trees, plus uncommitted changes. */
-function harnessHash(): string {
+/** The code a result depends on: the git trees of `paths`, their uncommitted changes, and the agent's CLI version. */
+function harnessHash(paths: string[], version: string): string {
   const git = (...args: string[]) => {
     try {
       return execFileSync("git", args, { cwd: ROOT, encoding: "utf8" });
@@ -65,18 +55,16 @@ function harnessHash(): string {
       return "";
     }
   };
-  const paths = ["src/main/harness", "src/main/skills"];
   const trees = paths.map((p) => git("rev-parse", `HEAD:${p}`)).join("");
   const dirty = git("diff", "HEAD", "--", ...paths);
-  return createHash("sha256").update(trees + dirty).digest("hex").slice(0, 16);
+  return createHash("sha256").update(trees + dirty + version).digest("hex").slice(0, 16);
 }
 
 async function main(): Promise<number> {
   const f = flags(process.argv.slice(2));
   const tier = (f.get("tier") ?? "smoke") as Tier;
-  const preset = PRESETS[f.get("provider") ?? "pgs"];
-  if (!preset) throw new Error(`--provider must be one of ${Object.keys(PRESETS).join(", ")}`);
-  const model = f.get("model") ?? preset.model;
+  const agent = (f.get("agent") ?? "native") as AgentId;
+  if (!AGENTS.includes(agent)) throw new Error(`--agent must be one of ${AGENTS.join(", ")}`);
   const trials = Number(f.get("trials") ?? 1);
   const maxTokens = Number(f.get("max-tokens") ?? Infinity);
   const maxUsd = Number(f.get("max-usd") ?? Infinity);
@@ -93,35 +81,12 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  const key = process.env[preset.envVar] ?? "";
-  if (!key) throw new Error(`${preset.envVar} is not set (run with bun --env-file=.env)`);
-  const provider: Provider = {
-    id: "eval",
-    label: "eval",
-    wireProtocol: preset.protocol,
-    baseURL: preset.baseURL,
-    secret: { kind: "envRef", envVar: preset.envVar },
-    models: [{ id: model, name: model, capabilities: { tools: true, vision: false, reasoning: true }, contextWindow: 200_000, maxOutput: 8_000 }],
-  };
   const scratch = mkdtempSync(join(tmpdir(), "eval-run-"));
-  const driver = () =>
-    createProviderDriver("eval", {
-      provider: () => provider,
-      secret: () => key,
-      secretHeaders: () => ({}),
-      sessions: new SessionStore(join(scratch, "sessions")),
-      outputDir: join(scratch, "out"),
-      guardScript: BUILT_IN_GUARD,
-      guide: () => null,
-      memory: () => null,
-      mcpTools: () => [],
-      skills: (dir) => {
-        const found = discoverSkills({ origin: "project", dir: join(dir, ".agents", "skills") });
-        return found.length ? skillTool(() => found) : null;
-      },
-    });
+  const setup = setupAgent(agent, { root: ROOT, scratch, provider: f.get("provider"), model: f.get("model") });
+  const { driver, label: model, protocol, skillDirs } = setup;
+  console.log(`agent ${agent} · ${model}${setup.version ? ` · ${setup.version}` : ""}`);
 
-  const hash = harnessHash();
+  const hash = harnessHash(setup.hashPaths, setup.version);
   const startedAt = new Date().toISOString();
   const results: TaskResult[] = [];
   let spentTokens = 0;
@@ -132,9 +97,9 @@ async function main(): Promise<number> {
         console.log(`budget reached (${spentTokens} tokens, $${spentUsd.toFixed(2)}); skipping the rest`);
         break;
       }
-      const ck = cacheKey(task, join(FIXTURES, task.fixture), model, preset.protocol, hash);
+      const ck = cacheKey(task, join(FIXTURES, task.fixture), model, protocol, hash);
       const hit = f.has("force") ? null : findCached(RESULTS, ck);
-      const r = hit ?? (await runTask({ task, fixturesRoot: FIXTURES, driver, model, price, keep: f.has("keep"), trials: trialsOf(task), cacheKey: ck }));
+      const r = hit ?? (await runTask({ task, fixturesRoot: FIXTURES, driver, model: setup.model, skillDirs, price, keep: f.has("keep"), trials: trialsOf(task), cacheKey: ck }));
       results.push(r);
       if (!r.cached) {
         spentTokens += r.trials.reduce((n, t) => n + t.inputTokens + t.outputTokens, 0);
@@ -148,10 +113,11 @@ async function main(): Promise<number> {
       }
     }
   } finally {
+    setup.dispose();
     rmSync(scratch, { recursive: true, force: true });
   }
 
-  const run: RunResult = { meta: { tier, agent: "native", model, protocol: preset.protocol, harnessHash: hash, startedAt, durationMs: Date.now() - Date.parse(startedAt) }, tasks: results };
+  const run: RunResult = { meta: { tier, agent, model, protocol, harnessHash: hash, startedAt, durationMs: Date.now() - Date.parse(startedAt) }, tasks: results };
   const path = saveRun(RESULTS, run);
   console.log(`\n${summarize(run)}`);
   const diff = diffRuns(previousRun(RESULTS, tier, model, startedAt), run);

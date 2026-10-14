@@ -68,6 +68,10 @@ export class StdioRpc {
     private child: ChildProcess,
     private handlers: RpcHandlers,
   ) {
+    // A write racing the agent's exit (or close()) fails with EPIPE; with no
+    // listener that error would crash the whole process. The exit handler
+    // already reports the agent's end, so the write error itself is dropped.
+    child.stdin?.on("error", () => {});
     child.stdout!.setEncoding("utf-8");
     child.stdout!.on("data", (chunk: string) => this.onData(chunk));
     child.stderr!.setEncoding("utf-8");

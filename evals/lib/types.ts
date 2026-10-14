@@ -27,7 +27,8 @@ export type Grader =
   | { type: "command"; run: string; timeoutMs?: number; required?: boolean; weight?: number }
   | { type: "tool"; name: string; min?: number; max?: number; required?: boolean; weight?: number }
   | { type: "skill"; expect?: string[]; none?: boolean; required?: boolean; weight?: number }
-  | { type: "event"; noError?: boolean; noFalseClaim?: boolean; required?: boolean; weight?: number }
+  /** planProposed: the agent presented a plan for approval (any agent's plan tool). */
+  | { type: "event"; noError?: boolean; noFalseClaim?: boolean; planProposed?: boolean; required?: boolean; weight?: number }
   | { type: "budget"; required?: boolean; weight?: number }
   /** The final answer text: every `contains` (case-insensitive) and `matches` (regex, i). */
   | { type: "answer"; contains?: string[]; matches?: string; required?: boolean; weight?: number };

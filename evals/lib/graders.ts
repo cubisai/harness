@@ -85,7 +85,9 @@ function gradeEvent(g: Extract<Grader, { type: "event" }>, events: CompactEvent[
     const commands = events.filter((e) => e.kind === "tool-use" && e.name === "Run").map((e) => e.summary ?? "");
     if (claimsPass(answer) && !ranChecks(commands)) return { pass: false, why: "claimed checks pass but none ran" };
   }
+  if (g.planProposed && !events.some((e) => e.kind === "plan-proposal")) return { pass: false, why: "no plan proposed" };
   const parts: string[] = [];
+  if (g.planProposed) parts.push("plan proposed");
   if (g.noError) parts.push("no errors");
   if (g.noFalseClaim) parts.push("no unsupported pass claim");
   return { pass: true, why: parts.join("; ") || "no event checks" };
