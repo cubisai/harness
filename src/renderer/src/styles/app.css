@@ -758,6 +758,8 @@ button.design-crumb:hover { background: var(--bg-hover); color: var(--text); }
 }
 
 .msg-assistant { margin: 10px 0; line-height: 1.62; font-size: 13.5px; }
+/* A long URL or path in a reply wraps instead of widening the thread (code blocks keep their own scroll). */
+.msg-assistant, .work-note { overflow-wrap: anywhere; }
 .msg-assistant p { margin: 0 0 10px; }
 .msg-assistant h1, .msg-assistant h2, .msg-assistant h3 { font-family: var(--font-display); margin: 18px 0 8px; line-height: 1.3; }
 .msg-assistant h1 { font-size: 18px; }
@@ -852,7 +854,8 @@ details.tool[open]::details-content { height: auto; }
 .thinking summary { cursor: default; list-style: none; }
 .thinking summary::before { content: "›"; display: inline-block; width: 12px; transition: transform 150ms var(--ease); }
 .thinking[open] summary::before { transform: rotate(90deg); }
-.thinking .body { white-space: pre-wrap; padding: 6px 0 0 12px; }
+/* Long unbroken tokens (URLs, paths) wrap instead of widening the whole thread. */
+.thinking .body { white-space: pre-wrap; overflow-wrap: anywhere; padding: 6px 0 0 12px; }
 .thinking .body.muted { color: var(--text-secondary); }
 
 .plan-row {
@@ -1036,6 +1039,8 @@ button.qc-option.other { cursor: pointer; }
 .qc-preview > :first-child { margin-top: 0; }
 .qc-preview > :last-child { margin-bottom: 0; }
 
+/* The answered line stays one line and ellipsizes; the full answers are inside. */
+.questions-row > .tool-row .name { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .questions-row .qa + .qa { margin-top: 8px; }
 .questions-row .q { color: var(--text-secondary); font-size: 12px; }
 .questions-row .a { font-size: 12.5px; }
@@ -1129,6 +1134,8 @@ button.qc-option.other { cursor: pointer; }
 .composer-bar .grow { flex: 1; }
 .send {
   position: relative;
+  /* A fixed circle: a narrow bar must never squeeze it into an oval (its beam ring stays round). */
+  flex: 0 0 auto;
   width: 30px;
   height: 30px;
   border-radius: 50%;
