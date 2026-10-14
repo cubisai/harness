@@ -1031,13 +1031,22 @@ export class Service {
     return result;
   }
 
+  /**
+   * The model the agent's last turn actually started with: the newest turn-start
+   * event's model. Later events (a notice or a stop stored after the user picks
+   * in the model picker) carry the model picked since, so they can't say what
+   * the session was running. An agent with no turn-start on record falls back to
+   * its newest provenance, which is all such a driver ever wrote.
+   */
   private lastModel(threadId: string, agent: string): string | null {
     const events = this.store.listEvents(threadId);
+    let fallback: string | null = null;
     for (let i = events.length - 1; i >= 0; i--) {
-      const event = events[i]!;
-      if (event.provenance?.agent === agent) return event.provenance.model;
+      const { event, provenance } = events[i]!;
+      if (event.kind === "turn-start" && (provenance?.agent === agent || event.agent === agent)) return event.model;
+      if (fallback === null && provenance?.agent === agent) fallback = provenance.model;
     }
-    return null;
+    return fallback;
   }
 
   /** The newest stored turn-end for this thread and agent, to compare a cache write against. */

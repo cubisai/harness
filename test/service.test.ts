@@ -100,6 +100,26 @@ describe("Service.send", () => {
     expect(notices).toContain("th is its own agent now. This thread is back on Fake's default model; pick th in the model picker to use it.");
   });
 
+  it("switches from the model the last turn started with, not a later stored event's", async () => {
+    const switches: { threadId: string; sessionId: string; from: string; to: string }[] = [];
+    const { store, service, driver, thread } = setup(async (input) => {
+      input.onSession("session-1");
+      input.onEvent({ kind: "turn-start", turnId: "turn-1", agent: "fake", model: input.model });
+      input.onEvent({ kind: "assistant-text", text: "ok" });
+    });
+    driver.setModel = async (req) => {
+      switches.push(req);
+      return "in-place";
+    };
+    await service.send({ threadId: thread.id, text: "one" });
+    // The user picks B after the turn; the notice stored then already carries B.
+    store.appendEvent(thread.id, { kind: "notice", text: "picked B" }, { agent: "fake", model: "m2", provider: null, instanceId: null });
+    service.updateThread(thread.id, { model: "m2" });
+    await service.send({ threadId: thread.id, text: "two" });
+
+    expect(switches).toEqual([{ threadId: thread.id, sessionId: "session-1", from: "fake-1", to: "m2" }]);
+  });
+
   it("says so when a model ends the turn without any reply", async () => {
     const turnEnd = { kind: "turn-end" as const, costUsd: null, inputTokens: 10, outputTokens: 0, durationMs: 5 };
     const silent = setup(async (input) => input.onEvent(turnEnd));

@@ -3,8 +3,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { describePick, type PickedElement } from "../src/main/browser/picker";
 import { chipLabel, commandQuery, composeMessage, skillQueryAt, toggleSkill } from "../src/renderer/src/composer";
 import { Composer } from "../src/renderer/src/components/Composer";
+import { ThreadView } from "../src/renderer/src/components/ThreadView";
 import { useStore } from "../src/renderer/src/store";
-import type { SendRequest } from "../src/shared/types";
+import type { SendRequest, Thread } from "../src/shared/types";
 
 const element: PickedElement = { selector: "button.primary", tag: "button", text: "Save", html: "<button class=\"primary\">Save</button>", rect: { x: 0, y: 0, width: 1, height: 1 } };
 const picked = describePick(element, "http://localhost:3000/");
@@ -136,6 +137,86 @@ describe("queued send", () => {
       expect(sent).toEqual([{ threadId: "t-bg", text: "do it", skills: ["tdd"], mentions: ["src/a.ts"] }]);
       expect(useStore.getState().selectedThreadId).toBe("keep");
       expect(useStore.getState().threads.p!.map((t) => t.id)).toEqual(["t-bg"]);
+    });
+  });
+
+  describe("startThread routing", () => {
+    const raws = (window as unknown as { unskilled: Record<string, unknown> }).unskilled;
+    const mkThread = (id: string, projectId: string): Thread => ({
+      id,
+      projectId,
+      agent: "claude",
+      title: "New thread",
+      sessionId: null,
+      bindings: {},
+      model: "opus",
+      effort: null,
+      permissionMode: "ask",
+      createdAt: 0,
+      updatedAt: 0,
+    });
+
+    it("sends to the thread newThread created, not one picked while it awaited", async () => {
+      const original = raws.createThread;
+      let release!: (t: Thread) => void;
+      raws.createThread = () => new Promise<Thread>((resolve) => { release = resolve; });
+      try {
+        useStore.setState({ selectedProjectId: "p", selectedThreadId: null, draft: {}, threads: {}, events: {}, running: {} });
+        const started = useStore.getState().startThread("write it");
+        // The user jumps to another thread while the create is still in flight…
+        useStore.setState({ selectedThreadId: "other" });
+        release(mkThread("t-new", "p"));
+        // …and again after the new thread lands but before startThread's await resumes.
+        await Promise.resolve();
+        useStore.setState({ selectedThreadId: "other" });
+        await started;
+        expect(sent).toEqual([{ threadId: "t-new", text: "write it" }]);
+      } finally {
+        raws.createThread = original;
+      }
+    });
+
+    it("sends nothing when no thread was created", async () => {
+      useStore.setState({ selectedProjectId: null, selectedThreadId: "t", running: {} });
+      await useStore.getState().startThread("write it");
+      expect(sent).toEqual([]);
+    });
+  });
+});
+
+describe("dequeue", () => {
+  it("removes only the message at that index", () => {
+    useStore.setState({ outbox: { t: [{ text: "a" }, { text: "b" }, { text: "c" }] } });
+    useStore.getState().dequeue("t", 1);
+    expect(useStore.getState().outbox.t).toEqual([{ text: "a" }, { text: "c" }]);
+  });
+
+  it("drops the thread's key once its queue is empty", () => {
+    useStore.setState({ outbox: { t: [{ text: "only" }, { text: "two" }] } });
+    useStore.getState().dequeue("t", 0);
+    expect(useStore.getState().outbox.t).toEqual([{ text: "two" }]);
+    useStore.getState().dequeue("t", 0);
+    expect("t" in useStore.getState().outbox).toBe(false);
+  });
+});
+
+describe("queued message bubbles", () => {
+  // Server rendering reads zustand's initial state; seed it, then restore.
+  const withOutbox = (outbox: Record<string, { text: string; skills?: string[] }[]>, fn: () => void) => {
+    const state = useStore.getInitialState();
+    const saved = state.outbox;
+    try {
+      state.outbox = outbox;
+      fn();
+    } finally {
+      state.outbox = saved;
+    }
+  };
+
+  it("gives each queued message a remove button", () => {
+    withOutbox({ t: [{ text: "first" }, { text: "second" }] }, () => {
+      const html = renderToStaticMarkup(<ThreadView threadId="t" />);
+      expect(html.match(/aria-label="Remove queued message"/g) ?? []).toHaveLength(2);
     });
   });
 });

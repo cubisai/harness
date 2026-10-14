@@ -208,8 +208,8 @@ interface State {
   setCheckCommand(id: string, command: string | null, fixRounds?: number | null): Promise<void>;
   selectProject(id: string): Promise<void>;
   selectThread(id: string | null): Promise<void>;
-  /** Open a new thread; `worktree` gives it its own git worktree on a new branch; `designSystem` picks a design thread's system. */
-  newThread(skills?: string[], opts?: { worktree?: boolean; designSystem?: string }): Promise<void>;
+  /** Open a new thread, returning its id (or null when nothing was created: no project, or the create failed). `worktree` gives it its own git worktree on a new branch; `designSystem` picks a design thread's system. */
+  newThread(skills?: string[], opts?: { worktree?: boolean; designSystem?: string }): Promise<string | null>;
   /** Pick a design thread's design system; the next turn copies it into the design folder. */
   setDesignSystem(threadId: string, id: string): Promise<void>;
   /** Change a design thread's prototype tier. */
@@ -237,6 +237,8 @@ interface State {
   /** Messages sent while a turn ran, by thread: each goes out as the next turn, in order. Stop clears them; never persisted. */
   outbox: Record<string, { text: string; skills?: string[]; mentions?: string[] }[]>;
   enqueue(threadId: string, text: string, skills?: string[], mentions?: string[]): void;
+  /** Remove the queued message at `index`; drops the thread's key once its queue is empty. */
+  dequeue(threadId: string, index: number): void;
   interrupt(): Promise<void>;
   respond(requestId: string, decision: "allow-once" | "allow-always" | "deny"): Promise<void>;
   respondPlan(requestId: string, decision: PlanDecision): Promise<void>;
@@ -803,7 +805,7 @@ export const useStore = create<State>((set, get) => ({
 
   async newThread(skills, opts) {
     const projectId = get().selectedProjectId;
-    if (!projectId) return;
+    if (!projectId) return null;
     let thread: Thread;
     const draft = get().draft;
     try {
@@ -812,7 +814,7 @@ export const useStore = create<State>((set, get) => ({
       if (Object.keys(patch).length) thread = await api().updateThread(thread.id, patch);
     } catch (err) {
       get().showNotice(ipcErrorText(err));
-      return;
+      return null;
     }
     set((s) => ({
       pendingSkills: skills ?? [],
@@ -822,6 +824,7 @@ export const useStore = create<State>((set, get) => ({
       draft: {},
       lastAgent: thread.agent,
     }));
+    return thread.id;
   },
 
   async buildDesignInCode(designThreadId) {
@@ -869,8 +872,8 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async startThread(text, skills, mentions) {
-    await get().newThread();
-    const id = get().selectedThreadId;
+    // Send only to the thread newThread made: the selection can change while it awaits.
+    const id = await get().newThread();
     if (id) await get().send(text, skills, id, mentions);
   },
 
@@ -956,6 +959,18 @@ export const useStore = create<State>((set, get) => ({
         [threadId]: [...(s.outbox[threadId] ?? []), { text, ...(skills?.length ? { skills } : {}), ...(mentions?.length ? { mentions } : {}) }],
       },
     }));
+  },
+  dequeue(threadId, index) {
+    set((s) => {
+      const list = s.outbox[threadId];
+      if (!list || index < 0 || index >= list.length) return {};
+      const next = list.filter((_, i) => i !== index);
+      if (!next.length) {
+        const { [threadId]: _dropped, ...outbox } = s.outbox;
+        return { outbox };
+      }
+      return { outbox: { ...s.outbox, [threadId]: next } };
+    });
   },
 
   async send(text, skills, threadId, mentions) {

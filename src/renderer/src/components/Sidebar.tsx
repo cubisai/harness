@@ -180,7 +180,7 @@ function ProjectRow({
                   Locate folder…
                 </button>
               )}
-              <button role="menuitem" onClick={act(() => selectProject(project.id).then(() => newThread()))}>
+              <button role="menuitem" onClick={act(() => void selectProject(project.id).then(() => newThread()))}>
                 New thread
               </button>
               <button role="menuitem" onClick={act(() => openInEditor({ path: project.path }))}>

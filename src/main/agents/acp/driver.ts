@@ -16,6 +16,7 @@ import { TOOL_SERVER_NAME, withProject, withThread } from "../../mcp-http";
 import { ASK_USER_TOOL } from "../../questions";
 import { checkCommand } from "../../guard";
 import { RpcError, StdioRpc } from "../rpc";
+import { classifyOpenCodeLog } from "./opencode-log";
 import { normalizeUsage } from "../../usage";
 import type { InjectionPlan } from "../../inject";
 
@@ -251,9 +252,18 @@ interface TurnState {
   usage: { used: number; costUsd: number | null; contextUsed: number | null; size: number | null };
   /** Bumped when flushText emits an item, so the next run of chunks gets fresh keys. */
   run: number;
+  /** Model-call errors already reported this turn, so a retrying call is said once. */
+  logErrors: Set<string>;
+  /** Permission asks heard on stderr this turn, by ask id, so each is said once. */
+  askIds: Set<string>;
+  /** Pending "waiting for a permission" notices by ask id; cleared on an ACP ask or the turn's end. */
+  askTimers: Map<string, NodeJS.Timeout>;
 }
 
 const IDLE_MS = 10 * 60_000;
+
+/** How long a stderr "asking" line waits for the matching ACP permission before we call it stalled. */
+const ASK_WAIT_MS = 5_000;
 
 /** The live item key for a run of chunks; flushText bumps `run` to start a new one. */
 function itemKey(t: TurnState, kind: "text" | "thought"): string {
@@ -451,6 +461,12 @@ export function createAcpDriver(
     t.text = "";
     t.thought = "";
     if (flushed) t.run++;
+  };
+
+  /** Drop a turn's pending "waiting for a permission" notices. */
+  const clearAskTimers = (t: TurnState) => {
+    for (const timer of t.askTimers.values()) clearTimeout(timer);
+    t.askTimers.clear();
   };
 
   const onUpdate = (l: Live, update: SessionUpdate) => {
@@ -662,6 +678,9 @@ export function createAcpDriver(
         // Remember the id the agent asks under: it may differ from the id it
         // later executes under, and can arrive again as a spurious terminal update.
         t?.permissionIds.add(p.toolCall.toolCallId);
+        // An ask that reaches us over ACP is one the app can answer, so any
+        // stalled-ask notice the stderr log armed for this turn is disarmed.
+        if (t) clearAskTimers(t);
         // The git guardrail vetoes shell commands in every mode, even Full:
         // before the user is asked (or not), the command is checked.
         if (p.toolCall.kind === "execute" && deps.guardScript) {
@@ -698,6 +717,29 @@ export function createAcpDriver(
         if (!l) return;
         const url = authUrlFrom(line);
         if (url && !l.authUrl) l.authUrl = url;
+        // OpenCode's logfmt stderr is the only word on a retrying model call or
+        // a permission ask it waits on without ever sending it over ACP; while a
+        // turn is live, turn those into a notice instead of a bare spinner.
+        const t = l.turn;
+        if (!t) return;
+        const log = classifyOpenCodeLog(line);
+        if (!log) return;
+        if (log.kind === "stream-error") {
+          if (t.logErrors.has(log.error)) return;
+          t.logErrors.add(log.error);
+          t.input.onEvent({ kind: "notice", text: `OpenCode's model call failed: ${log.error.replace(/[.\s]+$/, "")}. It may keep retrying; switch the model or stop the turn.` });
+          return;
+        }
+        if (t.askIds.has(log.id)) return;
+        t.askIds.add(log.id);
+        const asked = `${log.permission}${log.patterns.length ? ` ${log.patterns.join(", ")}` : ""}`;
+        const timer = setTimeout(() => {
+          t.askTimers.delete(log.id);
+          if (l.turn !== t) return;
+          t.input.onEvent({ kind: "notice", text: `OpenCode is waiting for a permission it can't ask here: ${asked} (often a sub-agent). Stop the turn, or allow it in OpenCode's config.` });
+        }, ASK_WAIT_MS);
+        timer.unref?.();
+        t.askTimers.set(log.id, timer);
       },
       onExit: () => {
         if (live.get(threadKey) === l) live.delete(threadKey);
@@ -808,6 +850,12 @@ export function createAcpDriver(
     // reopens the session and the notice can name it.
     const signature = JSON.stringify([mcpServers, routedUsers.map((s) => [s.name, s.spec])]);
     const byName = Object.fromEntries([...mcpServers.map((m) => [m.name, m]), ...routedUsers.map((s) => [s.name, s.spec])]);
+    // The thread asked for a fresh session (e.g. back to the agent's default model,
+    // which can't be set in place) while one is still live: drop it, don't reuse it.
+    if (l.sessionId && !input.sessionId) {
+      if (caps?.sessionCapabilities?.close) await l.conn.request("session/close", { sessionId: l.sessionId }).catch(() => {});
+      l.sessionId = null;
+    }
     if (l.sessionId) {
       // The MCP servers changed mid-conversation (the user opened the
       // browser, or edited their servers): reopen the same session with them.
@@ -1111,7 +1159,8 @@ export function createAcpDriver(
             return;
           }
           input.onEvent({ kind: "turn-start", turnId: randomUUID(), agent: config.id, model: input.model });
-          const turn: TurnState = { input, text: "", thought: "", tools: new Map(), permissionIds: new Set(), planned: false, usage: { used: 0, costUsd: null, contextUsed: null, size: null }, run: 0 };
+          const turn: TurnState = { input, text: "", thought: "", tools: new Map(), permissionIds: new Set(), planned: false, usage: { used: 0, costUsd: null, contextUsed: null, size: null }, run: 0, logErrors: new Set(), askIds: new Set(), askTimers: new Map() };
+          if (l.turn) clearAskTimers(l.turn);
           current = turn;
           l.turn = turn;
           const res = await l.conn.request<{ stopReason: string }>("session/prompt", {
@@ -1134,7 +1183,8 @@ export function createAcpDriver(
         for (let round = 0; round < 6; round++) {
           // A Stop between rounds must end the run, never start another round.
           if (round > 0 && input.signal.aborted) break;
-          const turn: TurnState = { input, text: "", thought: "", tools: new Map(), permissionIds: new Set(), planned: false, usage: { used: 0, costUsd: null, contextUsed: null, size: null }, run: 0 };
+          const turn: TurnState = { input, text: "", thought: "", tools: new Map(), permissionIds: new Set(), planned: false, usage: { used: 0, costUsd: null, contextUsed: null, size: null }, run: 0, logErrors: new Set(), askIds: new Set(), askTimers: new Map() };
+          if (l.turn) clearAskTimers(l.turn);
           current = turn;
           l.turn = turn;
           let stopped = false;
@@ -1242,6 +1292,7 @@ export function createAcpDriver(
         input.onEvent({ kind: "error", message: err instanceof Error ? err.message : String(err) });
       } finally {
         input.signal.removeEventListener("abort", onAbort);
+        if (current) clearAskTimers(current);
         l.turn = null;
         l.idleTimer = setTimeout(() => {
           l.conn.close();

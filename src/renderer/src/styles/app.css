@@ -741,6 +741,11 @@ button.design-crumb:hover { background: var(--bg-hover); color: var(--text); }
   word-wrap: break-word;
 }
 .msg-user .bubble.queued { background: transparent; border: 1px dashed var(--hairline-strong); color: var(--text-secondary); }
+/* The remove control on a queued bubble: revealed with the row's other hover actions. */
+/* A queued row is one line: the × sits just left of the bubble, not under it. */
+.msg-user:has(> .queued-remove) { flex-direction: row-reverse; align-items: center; gap: 6px; }
+.msg-user .queued-remove { flex: 0 0 auto; width: 22px; height: 22px; opacity: 0; transition: opacity 120ms var(--ease); }
+.msg-user:hover .queued-remove, .msg-user:focus-within .queued-remove { opacity: 1; }
 .context-chip { display: inline-block; line-height: 20px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 11px; }
 .skill-chip {
   display: inline-flex;

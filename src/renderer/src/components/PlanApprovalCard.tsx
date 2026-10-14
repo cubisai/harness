@@ -9,7 +9,7 @@ import { useStore } from "../store";
  * for the user. It never resolves on its own; "Keep planning" opens a feedback
  * box that goes back as planning guidance.
  */
-export function PlanApprovalCardView({ request, onRespond, onOpen }: { request: PlanRequest; onRespond: (d: PlanDecision) => void; onOpen?: () => void }) {
+export function PlanApprovalCardView({ request, onRespond, onOpen, onDesign }: { request: PlanRequest; onRespond: (d: PlanDecision) => void; onOpen?: () => void; onDesign?: () => void }) {
   const [keeping, setKeeping] = useState(false);
   const [feedback, setFeedback] = useState("");
   return (
@@ -22,6 +22,7 @@ export function PlanApprovalCardView({ request, onRespond, onOpen }: { request: 
       onFeedback={setFeedback}
       onRespond={onRespond}
       onOpen={onOpen}
+      onDesign={onDesign}
     />
   );
 }
@@ -36,6 +37,7 @@ export function PlanApprovalCardBody({
   onFeedback,
   onRespond,
   onOpen,
+  onDesign,
 }: {
   request: PlanRequest;
   keeping: boolean;
@@ -46,6 +48,8 @@ export function PlanApprovalCardBody({
   onRespond(d: PlanDecision): void;
   /** Opens the plan in the File panel, where every round is a version. */
   onOpen?(): void;
+  /** Starts a design of the plan without answering the request; the plan stays pending. */
+  onDesign?(): void;
 }) {
   return (
     <div className="permission-card plan-card" role="alertdialog" aria-label="Approve the plan?">
@@ -83,6 +87,11 @@ export function PlanApprovalCardBody({
           <button className="button" onClick={onKeep}>
             Keep planning
           </button>
+          {onDesign ? (
+            <button className="button" onClick={onDesign}>
+              Design it
+            </button>
+          ) : null}
           <button className="button" onClick={() => onRespond("manual")}>
             Yes, manually approve edits
           </button>
@@ -103,6 +112,13 @@ export function PlanApprovalCard({ request }: { request: PlanRequest }) {
       request={request}
       onRespond={(d) => void respondPlan(request.requestId, d)}
       onOpen={() => openArtifact(PLAN_ARTIFACT, request.threadId)}
+      onDesign={async () => {
+        // Design reads the plan as an approved product spec; it never answers the
+        // request, so the plan stays pending and can still be approved later.
+        const s = useStore.getState();
+        await s.setThreadKind("design");
+        await s.startThread(`Design the UI for this plan. It is approved as the product spec; the build happens later in the chat thread, so design the screens only.\n\n${request.plan}`);
+      }}
     />
   );
 }

@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { CredentialChoice, McpServerEntry, PermissionDecision, PermissionMode, Provider, Settings, ThreadEvent } from "../src/shared/types";
 import { authUrlFrom, createAcpDriver, optionFor, pickPermission } from "../src/main/agents/acp/driver";
 import { type InjectionSource, injectionFor } from "../src/main/inject";
@@ -86,6 +86,63 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 
 function lostDriver() {
   const d = createAcpDriver({ id: "lossy", label: "Lossy", command: process.execPath, args: ["-e", INLINE_ACP_LOST] }, { clientVersion: "test" });
+  closeAfter(() => d.dispose?.());
+  return d;
+}
+
+// The two logfmt lines OpenCode writes to stderr with --print-logs, verbatim
+// (the stream error's request id is stripped before the notice).
+const STREAM_LOG = `timestamp=2026-10-14T04:20:13.408Z level=ERROR run=916d64b6 message="stream error" providerID=agentrouter modelID=deepseek-v4-flash session.id=ses_ec778c03fffepjzNXEi8PBiTUy small=false agent=orchestrator mode=primary error.error="AI_APICallError: sensitive words detected (request id: 20261014122012647370121gtvv5DOGFxpRF)"`;
+const ASKING_LOG = `timestamp=2026-10-14T04:04:39.232Z level=INFO run=916d64b6 message=asking id=per_138956cc0001Mnc1dt0ox059vY permission=external_directory patterns="[\\"/tmp/*\\"]"`;
+
+// An inline ACP agent that writes those logfmt lines to stderr during a turn:
+// a stream error twice, an ask that stalls, or an ask answered over ACP.
+const INLINE_ACP_LOGS = `
+const readline = require("node:readline");
+const send = (m) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...m }) + "\\n");
+const update = (sessionId, u) => send({ method: "session/update", params: { sessionId, update: u } });
+let nextId = 1000;
+const waiting = new Map();
+const ask = (method, params) => new Promise((resolve) => {
+  const id = nextId++;
+  waiting.set(id, resolve);
+  send({ id, method, params });
+});
+readline.createInterface({ input: process.stdin }).on("line", async (line) => {
+  const msg = JSON.parse(line);
+  if (msg.id !== undefined && !msg.method) {
+    waiting.get(msg.id)?.(msg.result);
+    waiting.delete(msg.id);
+    return;
+  }
+  const { id, method, params } = msg;
+  if (method === "initialize") return send({ id, result: { protocolVersion: 1, agentCapabilities: { sessionCapabilities: { resume: {}, close: {} } }, authMethods: [] } });
+  if (method === "session/new" || method === "session/resume") return send({ id, result: { sessionId: "s-1", configOptions: [] } });
+  if (method === "session/set_config_option") return send({ id, result: { configOptions: [] } });
+  if (method === "session/cancel") return;
+  if (method === "session/prompt") {
+    const text = params.prompt.map((b) => b.text ?? "").join("");
+    if (text === "log-stream") {
+      process.stderr.write(${JSON.stringify(STREAM_LOG)} + "\\n");
+      process.stderr.write(${JSON.stringify(STREAM_LOG)} + "\\n");
+    } else if (text === "log-ask-stall") {
+      process.stderr.write(${JSON.stringify(ASKING_LOG)} + "\\n");
+      await new Promise((r) => setTimeout(r, 300));
+    } else if (text === "log-ask-answered") {
+      process.stderr.write(${JSON.stringify(ASKING_LOG)} + "\\n");
+      // A beat, so the parent reads the asking line before the request lands.
+      await new Promise((r) => setTimeout(r, 50));
+      await ask("session/request_permission", { sessionId: params.sessionId, toolCall: { toolCallId: "p1", kind: "edit", title: "create a.txt" }, options: [{ optionId: "allow", name: "Allow", kind: "allow_once" }] });
+    }
+    update(params.sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "done" } });
+    return send({ id, result: { stopReason: "end_turn", usage: { inputTokens: 1, outputTokens: 1 } } });
+  }
+  send({ id, error: { code: -32601, message: method } });
+});
+`;
+
+function logsDriver() {
+  const d = createAcpDriver({ id: "logmock", label: "LogMock", command: process.execPath, args: ["-e", INLINE_ACP_LOGS] }, { clientVersion: "test" });
   closeAfter(() => d.dispose?.());
   return d;
 }
@@ -202,6 +259,21 @@ describe("ACP driver", () => {
     const second = turn("hello", { sessionId: first.sessions[0]! });
     await d.runTurn(second.input);
     expect(second.deltas.join("")).not.toContain("<harness-guide>");
+  });
+
+  it("opens a fresh session when the thread asks for one while a session is still live", async () => {
+    const d = createAcpDriver(
+      { id: "mock", label: "Mock", command: process.execPath, args: [MOCK] },
+      { clientVersion: "test", guide: () => "GUIDE" },
+    );
+    closeAfter(() => d.dispose?.());
+    const first = turn("hello");
+    await d.runTurn(first.input);
+    expect(first.deltas.join("")).toContain("<harness-guide>");
+    // No session id (e.g. a switch back to "Agent default" needs a new session): the live one isn't reused.
+    const fresh = turn("hello");
+    await d.runTurn(fresh.input);
+    expect(fresh.deltas.join("")).toContain("<harness-guide>\nGUIDE\n</harness-guide>");
   });
 
   it("sends the memory block once, right after the guide, on a new session's first prompt", async () => {
@@ -1015,7 +1087,7 @@ describe("agent registry", () => {
     writeFileSync(file, JSON.stringify({ agents: [{ id: "qwen", label: "Qwen Code", command: "qwen", args: ["--acp"] }, { id: "bad" }] }));
     const { agents, problems } = loadAcpAgents(file, (cmd) => cmd === "opencode");
     expect(agents.map((a) => a.id)).toEqual(["opencode", "qwen"]);
-    expect(agents[0]).toMatchObject({ command: "opencode", args: ["acp"] });
+    expect(agents[0]).toMatchObject({ command: "opencode", args: ["acp", "--print-logs", "--log-level", "INFO"] });
     expect(problems).toHaveLength(1);
   });
 
@@ -1078,6 +1150,59 @@ describe("ACP oneShot", () => {
     const t = turn("world");
     await d.runTurn(t.input);
     expect(t.sessions).toEqual(["s-1"]);
+  });
+});
+
+describe("ACP stderr diagnostics", () => {
+  const noticesOf = (t: ReturnType<typeof turn>): string[] =>
+    t.events.filter((e) => e.kind === "notice").map((e) => (e as { text: string }).text);
+
+  it("reports a repeated stream error once per turn", async () => {
+    const d = logsDriver();
+    const t = turn("log-stream");
+    await d.runTurn(t.input);
+    expect(noticesOf(t)).toEqual([
+      "OpenCode's model call failed: AI_APICallError: sensitive words detected. It may keep retrying; switch the model or stop the turn.",
+    ]);
+  });
+
+  it("warns when an asking line gets no permission request within 5s", async () => {
+    const realSetTimeout = globalThis.setTimeout;
+    vi.useFakeTimers();
+    try {
+      const d = logsDriver();
+      const t = turn("log-ask-stall");
+      const running = d.runTurn(t.input);
+      // Wait (real time) until the asking line has armed its 5s notice.
+      for (let i = 0; i < 400 && vi.getTimerCount() === 0; i++) await new Promise((r) => realSetTimeout(r, 5));
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
+      await vi.advanceTimersByTimeAsync(5000);
+      await running;
+      expect(noticesOf(t)).toEqual([
+        "OpenCode is waiting for a permission it can't ask here: external_directory /tmp/* (often a sub-agent). Stop the turn, or allow it in OpenCode's config.",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stays quiet when the permission request reaches us over ACP", async () => {
+    const realSetTimeout = globalThis.setTimeout;
+    vi.useFakeTimers();
+    try {
+      const d = logsDriver();
+      const t = turn("log-ask-answered");
+      const running = d.runTurn(t.input);
+      // The asking line arms the notice, then the request lands and disarms it.
+      for (let i = 0; i < 400 && vi.getTimerCount() === 0; i++) await new Promise((r) => realSetTimeout(r, 5));
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
+      for (let i = 0; i < 400 && vi.getTimerCount() !== 0; i++) await new Promise((r) => realSetTimeout(r, 5));
+      await vi.advanceTimersByTimeAsync(5000);
+      await running;
+      expect(noticesOf(t)).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

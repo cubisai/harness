@@ -1,7 +1,17 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { PlanRequest } from "../src/shared/types";
-import { PlanApprovalCardBody, PlanApprovalCardView } from "../src/renderer/src/components/PlanApprovalCard";
+import { PlanApprovalCard, PlanApprovalCardBody, PlanApprovalCardView } from "../src/renderer/src/components/PlanApprovalCard";
+
+// The wrapper reads the store imperatively; stub it so the test can invoke its onDesign directly.
+const store = vi.hoisted(() => ({
+  setThreadKind: vi.fn(async (_kind: string) => {}),
+  startThread: vi.fn(async (_text: string) => {}),
+  respondPlan: vi.fn(async () => {}),
+}));
+vi.mock("../src/renderer/src/store", () => ({
+  useStore: Object.assign(() => undefined, { getState: () => store }),
+}));
 
 const request: PlanRequest = {
   requestId: "r1",
@@ -94,5 +104,30 @@ describe("PlanApprovalCard", () => {
       .onClick!();
     expect(onOpen).toHaveBeenCalled();
     expect(buttons(PlanApprovalCardBody(props)).some((b) => b.text === "Open in panel")).toBe(false);
+  });
+
+  it("shows a secondary Design it only when onDesign is given", () => {
+    const props = { request, keeping: false, feedback: "", onKeep: () => {}, onCancel: () => {}, onFeedback: () => {}, onRespond: () => {} };
+    const onDesign = vi.fn();
+    expect(renderToStaticMarkup(<PlanApprovalCardBody {...props} onDesign={onDesign} />)).toContain('<button class="button">Design it</button>');
+    buttons(PlanApprovalCardBody({ ...props, onDesign }))
+      .find((b) => b.text === "Design it")!
+      .onClick!();
+    expect(onDesign).toHaveBeenCalled();
+    expect(buttons(PlanApprovalCardBody(props)).some((b) => b.text === "Design it")).toBe(false);
+  });
+
+  it("Design it starts a design thread seeded with the plan and leaves the request unanswered", async () => {
+    store.setThreadKind.mockClear();
+    store.startThread.mockClear();
+    store.respondPlan.mockClear();
+    const element = PlanApprovalCard({ request }) as unknown as { props: { onDesign?: () => Promise<void> } };
+    await element.props.onDesign!();
+    expect(store.setThreadKind).toHaveBeenCalledWith("design");
+    expect(store.respondPlan).not.toHaveBeenCalled();
+    const text = store.startThread.mock.calls[0]![0];
+    expect(text.startsWith("Design the UI for this plan.")).toBe(true);
+    expect(text).toContain(request.plan);
+    expect(store.setThreadKind.mock.invocationCallOrder[0]!).toBeLessThan(store.startThread.mock.invocationCallOrder[0]!);
   });
 });

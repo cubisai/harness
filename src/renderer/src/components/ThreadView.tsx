@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, Copy, Pencil, RotateCcw } from "lucide-react";
+import { ChevronRight, Copy, Pencil, RotateCcw, X } from "lucide-react";
 import { artifactKind, isPreviewable, PLAN_ARTIFACT } from "../../../shared/artifact-kind";
 import { skillsOf } from "../../../shared/skill-list";
 import type { ArtifactKind, StoredEvent, ThreadEvent } from "../../../shared/types";
@@ -188,6 +188,14 @@ export function ThreadView({ threadId }: { threadId: string }) {
               <SkillChips names={m.skills ?? []} />
               {m.text}
             </div>
+            <button
+              className="icon-button queued-remove"
+              aria-label="Remove queued message"
+              title="Remove"
+              onClick={() => useStore.getState().dequeue(threadId, i)}
+            >
+              <X size={12} />
+            </button>
           </div>
         ))}
       </div>
