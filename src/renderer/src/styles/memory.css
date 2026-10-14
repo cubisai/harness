@@ -10,6 +10,13 @@
 }
 .memory-tab .memory-switch .skill-switch { margin-left: 0; }
 
+.memory-tab .memory-group {
+  margin: 10px 10px 4px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.memory-tab .memory-empty { padding: 4px 10px; }
+
 .memory-form { display: grid; gap: 10px; }
 .memory-form .memory-row { display: grid; grid-template-columns: 96px 1fr; align-items: center; gap: 10px; }
 .memory-form .memory-row .label { color: var(--text-secondary); font-size: 13px; }

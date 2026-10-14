@@ -4,7 +4,7 @@ import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell, utilityProcess } from "electron";
-import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, DesignExportFormat, DesignSystemOption, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
+import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, DesignExportFormat, DesignSystemOption, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryScope, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
 import { DESIGN_SCHEME, designDirName, designUrl, entryFile, serveDesign } from "./design/serve";
@@ -395,7 +395,8 @@ async function main(): Promise<void> {
       ),
     skillDirs: () => [skills.dirs(null).bundled, skills.dirs(null).harness],
     guardScript,
-    memoryDir: (projectId) => (memoryOn(settings.get(), projectId) ? memory.ensure(projectId, store.getProject(projectId).path) : null),
+    // Deferred: memoryPromptFor is declared after this driver is created.
+    memory: (projectId, threadId, sessionKey) => memoryPromptFor(projectId, threadId, sessionKey),
     onLimits: limits.for("claude"),
     injection: () => injectionFor(settings, "claude", process.env),
   });
@@ -1199,16 +1200,19 @@ async function main(): Promise<void> {
       tools: harnessTools(thread ?? undefined).filter((t) => !(thread && drivers.find((d) => d.id === thread.agent)?.capabilities.nativeMemory && (t.name === MEMORY_READ_TOOL || t.name === MEMORY_WRITE_TOOL))),
       skills: thread && delivery ? skillsInputFor(delivery, cwd, thread.kind === "design") : null,
       mcp: servers.map((s) => ({ name: s.name, listed: mcpTools.peek(s.spec), deferred })),
-      memoryIndex: pid && memoryOn(settings.get(), pid) ? (({ lines, tokens }) => ({ lines, tokens }))(memory.store.index(pid)) : null,
+      memoryIndex: pid && memoryOn(settings.get(), pid) ? (({ lines, tokens }) => ({ lines, tokens }))(memory.store.blockIndex(pid)) : null,
     });
   });
   ipcMain.handle("memory:overview", (_e, projectId: string) => memoryApi.overview(projectId));
-  ipcMain.handle("memory:read", (_e, projectId: string, file: string) => memoryApi.read(projectId, file));
+  // Anything but "global" from the renderer is the project's own scope.
+  const memoryScope = (scope: unknown): MemoryScope => (scope === "global" ? "global" : "project");
+  ipcMain.handle("memory:read", (_e, projectId: string, file: string, scope?: unknown) => memoryApi.read(projectId, file, memoryScope(scope)));
   ipcMain.handle(
     "memory:write",
-    (_e, projectId: string, note: { file?: string; name: string; description: string; type: MemoryType; body: string }) => memoryApi.write(projectId, note),
+    (_e, projectId: string, note: { file?: string; name: string; description: string; type: MemoryType; body: string }, scope?: unknown) =>
+      memoryApi.write(projectId, note, memoryScope(scope)),
   );
-  ipcMain.handle("memory:delete", (_e, projectId: string, file: string) => memoryApi.remove(projectId, file));
+  ipcMain.handle("memory:delete", (_e, projectId: string, file: string, scope?: unknown) => memoryApi.remove(projectId, file, memoryScope(scope)));
   ipcMain.handle("memory:set-enabled", (_e, projectId: string | null, on: boolean) => memoryApi.setEnabled(projectId, on));
   ipcMain.handle("memory:import", (_e, projectId: string) => memoryApi.reimport(projectId));
   ipcMain.handle("app:update-status", () => updater.status());

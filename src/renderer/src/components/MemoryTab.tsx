@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Brain } from "lucide-react";
-import type { MemoryOverview, MemoryType } from "../../../shared/types";
+import type { MemoryNote, MemoryOverview, MemoryScope, MemoryType } from "../../../shared/types";
 import { api } from "../api";
 import { useStore } from "../store";
 import { Select } from "./Select";
@@ -8,12 +8,18 @@ import "../styles/memory.css";
 
 const TYPES: MemoryType[] = ["user", "feedback", "project", "reference"];
 
+const SCOPES: { value: MemoryScope; label: string }[] = [
+  { value: "project", label: "This project" },
+  { value: "global", label: "Global (all projects)" },
+];
+
 interface Draft {
   file?: string;
   name: string;
   description: string;
   type: MemoryType;
   body: string;
+  scope: MemoryScope;
 }
 
 function errorText(err: unknown): string {
@@ -65,13 +71,13 @@ export function MemoryTab({ overview: initial }: { overview?: MemoryOverview | n
 
   if (!data) return <div className="library-pad" />;
 
-  const open = async (file: string) => {
+  const open = async (scope: MemoryScope, file: string) => {
     setError(null);
     setNotice(null);
-    setSelected(file);
-    const note = await api().memoryRead(projectId, file);
+    setSelected(`${scope}:${file}`);
+    const note = await api().memoryRead(projectId, file, scope);
     if (!note) return;
-    const next: Draft = { file: note.file, name: note.name, description: note.description, type: note.type, body: note.body };
+    const next: Draft = { file: note.file, name: note.name, description: note.description, type: note.type, body: note.body, scope };
     setDraft(next);
     setSaved(next);
   };
@@ -80,7 +86,7 @@ export function MemoryTab({ overview: initial }: { overview?: MemoryOverview | n
     setError(null);
     setNotice(null);
     setSelected(null);
-    setDraft({ name: "", description: "", type: "project", body: "" });
+    setDraft({ name: "", description: "", type: "project", body: "", scope: "project" });
     setSaved(null);
     setConfirmDelete(false);
   };
@@ -89,11 +95,15 @@ export function MemoryTab({ overview: initial }: { overview?: MemoryOverview | n
     if (!draft) return;
     setError(null);
     try {
-      const file = await api().memoryWrite(projectId, draft);
+      const file = await api().memoryWrite(
+        projectId,
+        { file: draft.file, name: draft.name, description: draft.description, type: draft.type, body: draft.body },
+        draft.scope,
+      );
       const next = { ...draft, file };
       setDraft(next);
       setSaved(next);
-      setSelected(file);
+      setSelected(`${draft.scope}:${file}`);
       reload();
     } catch (err) {
       setError(errorText(err));
@@ -104,7 +114,7 @@ export function MemoryTab({ overview: initial }: { overview?: MemoryOverview | n
     if (!draft?.file) return;
     setError(null);
     try {
-      await api().memoryDelete(projectId, draft.file);
+      await api().memoryDelete(projectId, draft.file, draft.scope);
       setDraft(null);
       setSaved(null);
       setSelected(null);
@@ -128,7 +138,30 @@ export function MemoryTab({ overview: initial }: { overview?: MemoryOverview | n
 
   const on = data.enabled && data.projectOn;
   const q = query.trim().toLowerCase();
-  const shown = data.notes.filter((n) => !q || n.name.toLowerCase().includes(q) || n.description.toLowerCase().includes(q));
+  const matches = (n: MemoryNote) => !q || n.name.toLowerCase().includes(q) || n.description.toLowerCase().includes(q);
+  const global = data.global.filter(matches);
+  const notes = data.notes.filter(matches);
+  const item = (n: MemoryNote, scope: MemoryScope) => {
+    const key = `${scope}:${n.file}`;
+    return (
+      <div
+        key={key}
+        role="button"
+        tabIndex={0}
+        className={`library-item${key === selected ? " selected" : ""}`}
+        onClick={() => void open(scope, n.file)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            void open(scope, n.file);
+          }
+        }}
+      >
+        <span className="n">{n.name}</span>
+        <span className="d">{`${n.type}${n.updated ? ` · ${n.updated}` : ""} · ${n.description}`}</span>
+      </div>
+    );
+  };
   const dirty =
     draft !== null &&
     (saved === null
@@ -168,32 +201,22 @@ export function MemoryTab({ overview: initial }: { overview?: MemoryOverview | n
             onChange={(e) => void api().memorySetEnabled(projectId, e.target.checked).then(reload)}
           />
         </label>
-        <p className="note">{on ? `${data.index.lines} index lines · ~${data.index.tokens} tokens at the start of each new session` : "Off: agents use their own memory for this project."}</p>
+        <p className="note">{on ? `Agents see ${data.block.shown} of ${data.block.total} notes · ~${data.block.tokens} tokens at the start of each session` : "Off: agents use their own memory for this project."}</p>
         {notice && <p className="note">{notice}</p>}
         <input className="text-input" placeholder="Search notes" value={query} onChange={(e) => setQuery(e.target.value)} spellCheck={false} />
-        {shown.length === 0 ? (
+        <p className="memory-group">Global · about you, in every project</p>
+        {global.length === 0 ? (
+          <p className="note memory-empty">None yet.</p>
+        ) : (
+          global.map((n) => item(n, "global"))
+        )}
+        <p className="memory-group">This project</p>
+        {notes.length === 0 ? (
           <p className="note" style={{ padding: "8px 10px" }}>
             No notes yet. Agents add notes as you work, or create one.
           </p>
         ) : (
-          shown.map((n) => (
-            <div
-              key={n.file}
-              role="button"
-              tabIndex={0}
-              className={`library-item${n.file === selected ? " selected" : ""}`}
-              onClick={() => void open(n.file)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  void open(n.file);
-                }
-              }}
-            >
-              <span className="n">{n.name}</span>
-              <span className="d">{n.type} · {n.description}</span>
-            </div>
-          ))
+          notes.map((n) => item(n, "project"))
         )}
       </div>
       <div className="library-detail">
@@ -205,6 +228,17 @@ export function MemoryTab({ overview: initial }: { overview?: MemoryOverview | n
               void save();
             }}
           >
+            <div className="memory-row">
+              <span className="label">Scope</span>
+              <Select
+                className="block"
+                value={draft.scope}
+                options={SCOPES}
+                onChange={(v) => setDraft({ ...draft, scope: v, type: v === "global" && draft.type === "project" ? "user" : draft.type })}
+                ariaLabel="Scope"
+                disabled={!!draft.file}
+              />
+            </div>
             <div className="memory-row">
               <span className="label">Name</span>
               <input className="text-input" autoFocus value={draft.name} placeholder="How we name things" spellCheck={false} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />

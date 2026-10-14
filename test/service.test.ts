@@ -474,6 +474,31 @@ describe("Service.send", () => {
     expect(seen).toEqual([]);
   });
 
+  it("marks the delta wroteMemory when the agent used the memory_write tool", async () => {
+    const { service, thread } = setup(async (input) => {
+      input.onEvent({ kind: "tool-use", toolUseId: "m1", name: "mcp__cubiq__memory_write", summary: "tabs" });
+      input.onEvent({ kind: "assistant-text", text: "Noted." });
+    });
+    const seen: TurnDelta[] = [];
+    service.setTurnListener((d) => seen.push(d));
+
+    await service.send({ threadId: thread.id, text: "remember my tabs preference" });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.wroteMemory).toBe(true);
+  });
+
+  it("leaves wroteMemory false when the agent wrote no memory", async () => {
+    const { service, thread } = setup(async (input) => {
+      input.onEvent({ kind: "assistant-text", text: "Done." });
+    });
+    const seen: TurnDelta[] = [];
+    service.setTurnListener((d) => seen.push(d));
+
+    await service.send({ threadId: thread.id, text: "just answer this" });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.wroteMemory).toBeFalsy();
+  });
+
   it("remembers allow-always per agent and re-asks after a switch", async () => {
     const store = new Store(join(tempDir(), "t.db"));
     closeAfter(() => store.close());

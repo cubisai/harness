@@ -13,6 +13,8 @@ import { ProviderAgents } from "../src/main/harness/register";
 import { EXPLORE_PROMPT, TASK_TOOL } from "../src/main/harness/subagent";
 import { SessionStore, repairHistory } from "../src/main/harness/session";
 import { PRUNED_MARKER } from "../src/main/harness/context/prune";
+import { MemorySnapshots, PENDING_SESSION } from "../src/main/memory/snapshot";
+import { tempDir } from "./helpers";
 import type { Route } from "../src/main/harness/llm/client";
 import { LlmError, emptyUsage, type AssistantPart, type LlmEvent, type LlmMessage, type LlmRequest } from "../src/main/harness/llm/types";
 
@@ -78,6 +80,7 @@ function setup(
     stream?: ProviderDriverDeps["stream"];
     plan?: PlanDecision;
     requestUserInput?: TurnInput["requestUserInput"];
+    memory?: ProviderDriverDeps["memory"];
   } = {},
 ) {
   const cwd = tmp();
@@ -93,7 +96,7 @@ function setup(
     outputDir: join(data, "out"),
     guardScript: BUILT_IN_GUARD,
     guide: () => "GUIDE TEXT",
-    memory: () => "MEMORY TEXT",
+    memory: opts.memory ?? (() => "MEMORY TEXT"),
     mcpTools: () => [],
     ...(opts.skills ? { skills: opts.skills } : {}),
     stream: opts.stream ?? s.stream,
@@ -344,6 +347,25 @@ describe("provider driver", () => {
     t.events.length = 0;
     await t.driver.runTurn(t.input("again", sid));
     expect(t.events.some((e) => e.kind === "context-breakdown")).toBe(false);
+  });
+
+  it("freezes the memory block for the life of an agent session", async () => {
+    const snapshots = new MemorySnapshots(tempDir());
+    let n = 0;
+    const calls: [string, string | undefined, string | null | undefined][] = [];
+    const memory: ProviderDriverDeps["memory"] = (projectId, threadId, sessionKey) => {
+      calls.push([projectId, threadId, sessionKey]);
+      return snapshots.get(threadId!, sessionKey ?? PENDING_SESSION, () => `MEM-${++n}`);
+    };
+    const t = setup([[{ type: "text", text: "one" }], [{ type: "text", text: "two" }]], { memory });
+    await t.driver.runTurn(t.input("hi"));
+    const sid = t.session()!;
+    await t.driver.runTurn(t.input("again", sid));
+    // The block is frozen: the resumed turn reuses the first turn's, byte for byte.
+    expect(t.requests[0]!.system.join("\n")).toContain("MEM-1");
+    expect(t.requests[1]!.system).toEqual(t.requests[0]!.system);
+    // Both reads name the one session id that was settled on the first turn.
+    expect(calls).toEqual([["p1", "t1", sid], ["p1", "t1", sid]]);
   });
 
   it("appends the skills tool to the request", async () => {

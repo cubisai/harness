@@ -3,7 +3,7 @@ import type { AgentCapabilities, ModelOption } from "../src/shared/types";
 import type { AgentDriver } from "../src/main/agents/types";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
 import { applyOps, buildExtractionPrompt, createExtractor, parseOps, pickExtractorModel } from "../src/main/memory/extractor";
-import { MemoryStore } from "../src/main/memory/store";
+import { GLOBAL_SCOPE, MemoryStore } from "../src/main/memory/store";
 import { tempDir } from "./helpers";
 
 function extractorDriver(over: { oneShot: AgentDriver["oneShot"]; capabilities?: Partial<AgentCapabilities>; models?: ModelOption[] }): AgentDriver {
@@ -156,6 +156,17 @@ describe("applyOps", () => {
     const store = new MemoryStore(tempDir());
     expect(() => applyOps(store, "p1", [{ op: "update", file: "missing.md" }, { op: "delete", file: "missing.md" }])).not.toThrow();
   });
+
+  it("writes a user add to the global scope and a project add to the project", () => {
+    const store = new MemoryStore(tempDir());
+    const result = applyOps(store, "p1", [
+      { op: "add", name: "Tabs", description: "prefers tabs", type: "user", body: "Use tabs." },
+      { op: "add", name: "Build", description: "builds with bun", type: "project", body: "Use bun." },
+    ]);
+    expect(result).toEqual({ added: 2, updated: 0, deleted: 0 });
+    expect(store.list(GLOBAL_SCOPE).map((f) => f.name)).toEqual(["Tabs"]);
+    expect(store.list("p1").map((f) => f.name)).toEqual(["Build"]);
+  });
 });
 
 describe("createExtractor", () => {
@@ -176,6 +187,22 @@ describe("createExtractor", () => {
       expect(store.list("p1").map((f) => f.file)).toEqual(["tabs.md"]);
       const prompt = oneShot.mock.calls[0]![0].prompt;
       expect(prompt).toContain(second);
+      ex.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("skips a turn whose agent wrote its own memory", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new MemoryStore(tempDir());
+      const oneShot = vi.fn(async () => ADD_JSON);
+      const ex = createExtractor({ store, enabled: () => true, driverFor: () => extractorDriver({ oneShot }), log: () => {} });
+      ex.schedule({ ...base(), wroteMemory: true });
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(oneShot).not.toHaveBeenCalled();
+      expect(store.list("p1")).toEqual([]);
       ex.dispose();
     } finally {
       vi.useRealTimers();

@@ -11,6 +11,8 @@ const overview: MemoryOverview = {
     { file: "commit-style.md", name: "Commit Style", description: "Max 150 chars", type: "feedback" },
     { file: "deploy.md", name: "Deploy", description: "Run make deploy", type: "project" },
   ],
+  global: [{ file: "terse.md", name: "Terse answers", description: "Short replies", type: "user", updated: "2026-10-13" }],
+  block: { shown: 3, total: 5, tokens: 40 },
 };
 
 describe("MemoryTab", () => {
@@ -26,7 +28,7 @@ describe("MemoryTab", () => {
     return { useStore, MemoryTab };
   };
 
-  it("renders the notes, the index line and the global switch with a project", async () => {
+  it("renders the notes, the block line and the global switch with a project", async () => {
     const { useStore, MemoryTab } = await render();
     const state = useStore.getInitialState();
     const saved = state.selectedProjectId;
@@ -35,8 +37,39 @@ describe("MemoryTab", () => {
       const html = renderToStaticMarkup(<MemoryTab overview={overview} />);
       expect(html).toContain("Commit Style");
       expect(html).toContain("Deploy");
-      expect(html).toContain("index lines");
+      expect(html).toContain("Agents see 3 of 5 notes");
       expect(html).toContain("Shared memory");
+    } finally {
+      state.selectedProjectId = saved;
+    }
+  });
+
+  it("lists the global group first, with the note and its date", async () => {
+    const { useStore, MemoryTab } = await render();
+    const state = useStore.getInitialState();
+    const saved = state.selectedProjectId;
+    try {
+      state.selectedProjectId = "p1";
+      const html = renderToStaticMarkup(<MemoryTab overview={overview} />);
+      expect(html).toContain("Global · about you, in every project");
+      expect(html).toContain('<p class="memory-group">This project</p>');
+      // The group label as markup, not the switch's "This project" span above it.
+      expect(html.indexOf("Global · about you")).toBeLessThan(html.indexOf('memory-group">This project'));
+      expect(html).toContain("Terse answers");
+      expect(html).toContain("user · 2026-10-13 · Short replies");
+    } finally {
+      state.selectedProjectId = saved;
+    }
+  });
+
+  it("marks an empty global group", async () => {
+    const { useStore, MemoryTab } = await render();
+    const state = useStore.getInitialState();
+    const saved = state.selectedProjectId;
+    try {
+      state.selectedProjectId = "p1";
+      const html = renderToStaticMarkup(<MemoryTab overview={{ ...overview, global: [] }} />);
+      expect(html).toContain("None yet.");
     } finally {
       state.selectedProjectId = saved;
     }

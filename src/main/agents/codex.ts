@@ -87,8 +87,13 @@ export interface CodexConfig {
   guide?: (cwd: string, design?: string) => string;
   /** The skills listing and MCP tool schemas this project's new session carries, in estimated tokens (0 when deferred or not yet listed). */
   extensions?: (cwd: string, projectId: string | null) => { skills: number; mcp: number };
-  /** The memory block for this project's new sessions (memoryPrompt output, may be ""), or null when CubiQ memory is off. */
-  memory?: (projectId: string) => string | null;
+  /**
+   * The memory block for this project's sessions (memoryPrompt output, may be
+   * ""), or null when CubiQ memory is off. The caller freezes it per Codex
+   * session: pass null as sessionKey for a new session, or the session id when
+   * resuming, and the same block comes back for that session's later turns.
+   */
+  memory?: (projectId: string, threadId?: string, sessionKey?: string | null) => string | null;
 }
 
 /** The MCP server name the harness's tools go by, in Codex's config and its tool calls. */
@@ -389,8 +394,6 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       skillRoots = key;
     }, () => {});
   };
-  /** The memory block a new session first carried, frozen by Codex thread id (prompt-cache reads). */
-  const frozenMemory = new Map<string, string>();
   /** MCP tools the user chose "always allow" for, by thread. */
   const alwaysAllowed = new Map<string, Set<string>>();
   /** configWarning summaries from the current app-server, reset at each start. */
@@ -880,7 +883,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
 
   const openThread = async (
     input: Pick<TurnInput, "threadId" | "projectId" | "design" | "cwd" | "model" | "contextWindow" | "permissionMode" | "sessionId" | "tools" | "mcpServers" | "onEvent" | "onSession" | "onSessionRebuilt" | "onSessionLost">,
-  ): Promise<{ threadId: string; model: string | null; wire?: string }> => {
+  ): Promise<{ threadId: string; model: string | null; wire?: string; memory: string }> => {
     const policy = codexPolicy(input.permissionMode);
     const model = input.model === CODEX_DEFAULT_MODEL ? null : input.model;
     await start(input.cwd);
@@ -890,7 +893,10 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     // A design thread's URL also names it (`&d=`), which adds the design tools; a chat thread's URL is unchanged.
     const toolUrl = server ? withDesign(withProject(server.url, input.projectId), input.design ? input.threadId : undefined) : "";
     let threadConfig = codexToolConfig(server ? { ...server, url: toolUrl } : null, input.tools, input.permissionMode, input.mcpServers);
-    const memory = input.projectId ? config.memory?.(input.projectId) ?? null : null;
+    // The caller freezes the block per session: a resume passes the session id
+    // to get its original block back, a new thread passes null for a fresh one.
+    const memoryFor = (key: string | null) => (input.projectId ? config.memory?.(input.projectId, input.threadId, key) ?? null : null);
+    const memory = memoryFor(input.sessionId ?? null);
     // CubiQ memory is on: Codex's own memories would duplicate it, so turn them off.
     if (memory !== null) threadConfig = { ...(threadConfig ?? {}), memories: { use_memories: false, generate_memories: false } };
     // A context-window override rides the thread config, so changing it changes the
@@ -903,6 +909,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     let threadId = "";
     let threadModel: string | null = null;
     let seed: SessionSeed | null = null;
+    // The block actually sent this session: a resume's frozen block, or a new thread's fresh one.
+    let sentMemory = memory ?? "";
     // Codex's extra skills root is app-server wide: this project's set, before the thread loads its skills.
     await useSkillRoots(conn, input.cwd, !!input.design);
     if (input.sessionId) {
@@ -919,8 +927,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         input.onSessionRebuilt?.();
       }
       try {
-        // The block a session first carried is frozen: later turns pay cache reads, not writes.
-        const memText = frozenMemory.get(input.sessionId) ?? memory ?? "";
+        // The session's original block: later turns pay cache reads, not writes.
+        const memText = memory ?? "";
         const developerInstructions = [guideText, memText].filter(Boolean).join("\n\n");
         const res = await conn.request<{ thread: { id: string }; model?: string }>("thread/resume", {
           threadId: input.sessionId,
@@ -932,7 +940,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         });
         threadId = res.thread.id;
         threadModel = res.model ?? null;
-        if (memText && !frozenMemory.has(threadId)) frozenMemory.set(threadId, memText);
+        sentMemory = memText;
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
         if (input.onSessionLost) seed = await input.onSessionLost(reason);
@@ -940,7 +948,9 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       }
     }
     if (!threadId) {
-      const memText = memory ?? "";
+      // A new thread gets a fresh block: the one computed above when there was
+      // no session, else (a failed resume) a new one.
+      const memText = (input.sessionId ? memoryFor(null) : memory) ?? "";
       const developerInstructions = [guideText, memText].filter(Boolean).join("\n\n");
       const res = await conn.request<{ thread: { id: string }; model?: string }>("thread/start", {
         cwd: input.cwd,
@@ -951,7 +961,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       });
       threadId = res.thread.id;
       threadModel = res.model ?? null;
-      if (memText && !frozenMemory.has(threadId)) frozenMemory.set(threadId, memText);
+      sentMemory = memText;
       // A new thread catches up with the seed's history items; Codex only ever gets the inject shape.
       if (seed && "inject" in seed) {
         await seed.inject(threadId, (items) => conn.request("thread/inject_items", { threadId, items }).then(() => undefined));
@@ -960,7 +970,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     // A resume of a thread that's already loaded keeps its config, so only a first load decides.
     if (!loaded.has(threadId)) loaded.set(threadId, signature);
     input.onSession(threadId);
-    return { threadId, model: threadModel };
+    return { threadId, model: threadModel, memory: sentMemory };
   };
 
   return {
@@ -1072,7 +1082,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       const fresh = !input.sessionId;
       // Warm the extensions estimate (MCP tool listings) so the breakdown at the end of this turn has it.
       if (fresh) config.extensions?.(input.cwd, input.projectId ?? null);
-      let opened: { threadId: string; model: string | null; wire?: string };
+      let opened: { threadId: string; model: string | null; wire?: string; memory: string };
       try {
         opened = await openThread(input);
       } catch (err) {
@@ -1080,6 +1090,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         return;
       }
       const threadId = opened.threadId;
+      // The memory block this turn actually sent, for the context breakdown.
+      const turnMemory = opened.memory;
       // A pinned provider's model runs as its wire id.
       if (opened.wire) model = opened.wire;
       // The model a collaboration mode names: the picked one, else the thread's
@@ -1223,7 +1235,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
           const rows = [
             { label: "Harness tools", tokens: Math.ceil(serializedTools.length / 4) },
             { label: "Harness guide", tokens: Math.ceil((config.guide?.(input.cwd) ?? "").length / 4) },
-            { label: "Memory index", tokens: Math.ceil((frozenMemory.get(threadId) ?? "").length / 4) },
+            { label: "Memory index", tokens: Math.ceil(turnMemory.length / 4) },
             { label: "Skills", tokens: ext?.skills ?? 0 },
             { label: "MCP tools", tokens: ext?.mcp ?? 0 },
           ]

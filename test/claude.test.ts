@@ -2,10 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ModelInfo, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
-import { bundledClaudeVersion, createClaudeDriver, FIRST_RELIST_MS, fromSdk, handleMessage, harnessToolOptions, newTurnState, pickClaudeExecutable, priceUsage, resolvePackagedClaudeBinary, turnEndFromResult } from "../src/main/agents/claude";
+import { bundledClaudeVersion, createClaudeDriver, FIRST_RELIST_MS, fromSdk, handleMessage, harnessToolOptions, newTurnState, pickClaudeExecutable, priceUsage, resolvePackagedClaudeBinary, TOOL_SERVER, turnEndFromResult } from "../src/main/agents/claude";
 import { MODEL_TTL_MS } from "../src/main/agents/model-ttl";
-import { MEMORY_READ_TOOL } from "../src/main/memory/tool";
-import type { HarnessTool, TurnInput } from "../src/main/agents/types";
+import { MEMORY_READ_TOOL, MEMORY_WRITE_TOOL } from "../src/main/memory/tool";
+import type { HarnessTool, ToolContext, TurnInput } from "../src/main/agents/types";
 import type { ThreadEvent } from "../src/shared/types";
 import { tempDir } from "./helpers";
 
@@ -247,25 +247,54 @@ describe("Claude driver design threads", () => {
 });
 
 describe("Claude driver memory", () => {
-  it("points Claude's auto-memory at the shared folder", async () => {
+  it("appends the memory block after the guide and disables Claude's own auto-memory", async () => {
     sdk.calls.length = 0;
-    const d = createClaudeDriver({ pluginDir: () => null, memoryDir: () => "/tmp/mem" });
+    const calls: { projectId: string; threadId?: string; sessionKey?: string | null }[] = [];
+    const d = createClaudeDriver({
+      pluginDir: () => null,
+      guide: () => "GUIDE",
+      memory: (projectId, threadId, sessionKey) => {
+        calls.push({ projectId, threadId, sessionKey });
+        return "MEMORY";
+      },
+    });
     const { input } = turnInput();
     input.projectId = "p1";
+    input.threadId = "t1";
     await d.runTurn(input);
-    expect(sdk.calls[0]?.options.settings).toEqual({ autoMemoryEnabled: true, autoMemoryDirectory: "/tmp/mem" });
+    expect(calls).toEqual([{ projectId: "p1", threadId: "t1", sessionKey: null }]);
+    expect(sdk.calls[0]?.options.settings).toEqual({ autoMemoryEnabled: false });
+    expect(sdk.calls[0]?.options.settings).not.toHaveProperty("autoMemoryDirectory");
+    expect(sdk.calls[0]?.options.systemPrompt).toEqual({ type: "preset", preset: "claude_code", append: "GUIDE\n\nMEMORY" });
+  });
+
+  it("passes the agent session id so a resumed session keeps the block it first saw", async () => {
+    sdk.calls.length = 0;
+    const keys: (string | null | undefined)[] = [];
+    const d = createClaudeDriver({
+      pluginDir: () => null,
+      memory: (_projectId, _threadId, sessionKey) => {
+        keys.push(sessionKey);
+        return "MEMORY";
+      },
+    });
+    const { input } = turnInput();
+    input.projectId = "p1";
+    input.sessionId = "sess-1";
+    await d.runTurn(input);
+    expect(keys).toEqual(["sess-1"]);
   });
 
   it("leaves settings out when memory is off or there's no project", async () => {
     sdk.calls.length = 0;
-    const off = createClaudeDriver({ pluginDir: () => null, memoryDir: () => null });
+    const off = createClaudeDriver({ pluginDir: () => null, memory: () => null });
     const { input } = turnInput();
     input.projectId = "p1";
     await off.runTurn(input);
     expect(sdk.calls[0]?.options).not.toHaveProperty("settings");
 
     sdk.calls.length = 0;
-    const noProject = createClaudeDriver({ pluginDir: () => null, memoryDir: () => "/tmp/mem" });
+    const noProject = createClaudeDriver({ pluginDir: () => null, memory: () => "MEMORY" });
     const { input: input2 } = turnInput();
     await noProject.runTurn(input2);
     expect(sdk.calls[0]?.options).not.toHaveProperty("settings");
@@ -871,13 +900,31 @@ describe("Claude permission callback", () => {
 describe("harnessToolOptions", () => {
   const tool = (name: string, autoAllow = true): HarnessTool => ({ name, description: name, input: {}, autoAllow, run: async () => ({ text: "" }) });
 
-  it("drops memory_read: Claude reads the shared store natively", () => {
-    const opts = harnessToolOptions([tool("browser_snapshot"), tool(MEMORY_READ_TOOL), tool("browser_eval", false)]);
-    expect(opts.allowedTools).toEqual(["mcp__cubiq__browser_snapshot"]);
+  /** The in-process MCP server's registered handler for one tool, so a call can be simulated without launching Claude Code. */
+  const handlerOf = (opts: ReturnType<typeof harnessToolOptions>, name: string) =>
+    (opts.mcpServers?.[TOOL_SERVER] as unknown as { instance: { _registeredTools: Record<string, { handler: (args: unknown) => Promise<unknown> }> } }).instance._registeredTools[name]!.handler;
+
+  it("offers every tool, including memory_read and memory_write", () => {
+    const opts = harnessToolOptions([tool("browser_snapshot"), tool(MEMORY_READ_TOOL), tool(MEMORY_WRITE_TOOL), tool("browser_eval", false)]);
+    expect(opts.allowedTools).toEqual([`mcp__${TOOL_SERVER}__browser_snapshot`, `mcp__${TOOL_SERVER}__${MEMORY_READ_TOOL}`, `mcp__${TOOL_SERVER}__${MEMORY_WRITE_TOOL}`]);
   });
 
-  it("returns nothing when only memory_read is offered", () => {
-    expect(harnessToolOptions([tool(MEMORY_READ_TOOL)])).toEqual({});
+  it("passes the tool context through to each tool's run", async () => {
+    const seen: (ToolContext | undefined)[] = [];
+    const record: HarnessTool = {
+      name: MEMORY_READ_TOOL,
+      description: "read",
+      input: {},
+      autoAllow: true,
+      run: async (_args, ctx) => {
+        seen.push(ctx);
+        return { text: "" };
+      },
+    };
+    const ctx: ToolContext = { projectId: "p1", threadId: "t1" };
+    const opts = harnessToolOptions([record], ctx);
+    await handlerOf(opts, MEMORY_READ_TOOL)({});
+    expect(seen).toEqual([ctx]);
   });
 });
 

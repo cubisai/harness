@@ -1,6 +1,6 @@
 import type { ModelOption } from "../../shared/types";
 import type { AgentDriver } from "../agents/types";
-import type { MemoryStore, MemoryType } from "./store";
+import { GLOBAL_SCOPE, type MemoryStore, type MemoryType } from "./store";
 
 /** One note change the extractor asked for. */
 export interface ExtractOp {
@@ -20,6 +20,8 @@ export interface TurnDelta {
   model: string;
   user: string;
   answer: string;
+  /** The agent called memory_write this turn, so it saved its own notes. */
+  wroteMemory?: boolean;
 }
 
 const TYPES: MemoryType[] = ["user", "feedback", "project", "reference"];
@@ -175,7 +177,9 @@ export function applyOps(store: MemoryStore, projectId: string, ops: ExtractOp[]
   for (const op of ops) {
     try {
       if (op.op === "add") {
-        store.write(projectId, { name: op.name!, description: op.description!, type: op.type ?? "project", body: op.body! });
+        // A note about the user holds in every project, so it goes to the global scope.
+        const type = op.type ?? "project";
+        store.write(type === "user" ? GLOBAL_SCOPE : projectId, { name: op.name!, description: op.description!, type, body: op.body! });
         added++;
       } else if (op.op === "update" && op.file) {
         const current = store.read(projectId, op.file);
@@ -267,6 +271,9 @@ export function createExtractor(deps: {
 
   const schedule = (req: TurnDelta): void => {
     if (disposed) return;
+    // The agent saved its own notes this turn: nothing to extract, and the
+    // thread's pending extraction stays as it was.
+    if (req.wroteMemory) return;
     if (!deps.enabled(req.projectId)) return;
     const driver = deps.driverFor(req.agentId);
     if (!driver || !driver.oneShot || driver.capabilities.nativeMemory) return;

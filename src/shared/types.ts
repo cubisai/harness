@@ -210,7 +210,12 @@ export interface MemoryNote {
   name: string;
   description: string;
   type: MemoryType;
+  /** When the note was last written, "YYYY-MM-DD"; absent on older notes. */
+  updated?: string;
 }
+
+/** Where a note lives: the project's own notes, or the global notes about the user shared by every project. */
+export type MemoryScope = "project" | "global";
 
 /** The Library's view of one project's memory. */
 export interface MemoryOverview {
@@ -219,6 +224,10 @@ export interface MemoryOverview {
   dir: string;
   index: { lines: number; tokens: number };
   notes: MemoryNote[];
+  /** Notes about the user that every project shares. */
+  global: MemoryNote[];
+  /** What agents see at the start of a session: notes listed out of all (global + project), and its estimated tokens. */
+  block: { shown: number; total: number; tokens: number };
 }
 
 export interface EditorInfo {
@@ -1074,10 +1083,10 @@ export interface UnskilledApi {
   /** The harness-side context a thread (or, with no thread, a new one in the project) starts with. */
   contextPreview(threadId: string | null, projectId: string | null): Promise<ContextPreview>;
   memoryOverview(projectId: string): Promise<MemoryOverview>;
-  memoryRead(projectId: string, file: string): Promise<(MemoryNote & { body: string }) | null>;
-  /** Save a note (a new one when file is absent); returns its file. */
-  memoryWrite(projectId: string, note: { file?: string; name: string; description: string; type: MemoryType; body: string }): Promise<string>;
-  memoryDelete(projectId: string, file: string): Promise<boolean>;
+  memoryRead(projectId: string, file: string, scope?: MemoryScope): Promise<(MemoryNote & { body: string }) | null>;
+  /** Save a note (a new one when file is absent); returns its file. Scope defaults to the project. */
+  memoryWrite(projectId: string, note: { file?: string; name: string; description: string; type: MemoryType; body: string }, scope?: MemoryScope): Promise<string>;
+  memoryDelete(projectId: string, file: string, scope?: MemoryScope): Promise<boolean>;
   /** Turn memory on/off everywhere (projectId null) or for one project. */
   memorySetEnabled(projectId: string | null, on: boolean): Promise<MemoryOverview | null>;
   /** Import Claude's/Codex's native memory again (deduped); returns how many notes were added. */

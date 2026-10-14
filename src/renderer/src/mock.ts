@@ -1,4 +1,4 @@
-import type { AgentCatalogEntry, LiveUpdate, McpOverview, MemoryNote, MemoryOverview, Project, SettingsView, SkillEntry, SkillOrigin, StoredEvent, Thread, ThreadEvent, UnskilledApi } from "../../shared/types";
+import type { AgentCatalogEntry, LiveUpdate, McpOverview, MemoryNote, MemoryOverview, MemoryScope, Project, SettingsView, SkillEntry, SkillOrigin, StoredEvent, Thread, ThreadEvent, UnskilledApi } from "../../shared/types";
 
 /**
  * A fake backend for `bun run preview:ui`: the real renderer in a plain
@@ -197,14 +197,23 @@ export function installMock(): void {
   // Two sample notes, so the Memory tab has something to show in the preview.
   let memoryNotes: MemoryNote[] = [
     { file: "commit-style.md", name: "Commit Style", description: "Keep commit messages under 150 characters", type: "feedback" },
-    { file: "deploy.md", name: "Deploy", description: "Run make deploy against staging before production", type: "project" },
+    { file: "deploy.md", name: "Deploy", description: "Run make deploy against staging before production", type: "project", updated: "2026-10-12" },
   ];
+  // One global note about the user, shared by every project.
+  let globalNotes: MemoryNote[] = [{ file: "terse-answers.md", name: "Terse answers", description: "Prefers short answers without preamble", type: "user", updated: "2026-10-13" }];
+  const notesFor = (scope?: MemoryScope) => (scope === "global" ? globalNotes : memoryNotes);
+  const setNotesFor = (scope: MemoryScope | undefined, next: MemoryNote[]) => {
+    if (scope === "global") globalNotes = next;
+    else memoryNotes = next;
+  };
   const memoryView = (): MemoryOverview => ({
     enabled: true,
     projectOn: true,
     dir: "/Users/you/Library/Application Support/CubiQ/memory/projects/p1",
     index: { lines: memoryNotes.length + 1, tokens: 48 },
     notes: memoryNotes,
+    global: globalNotes,
+    block: { shown: memoryNotes.length + globalNotes.length, total: memoryNotes.length + globalNotes.length, tokens: 62 },
   });
 
   const api: UnskilledApi = {
@@ -516,20 +525,20 @@ export function installMock(): void {
       memoryIndex: null,
     }),
     memoryOverview: async () => memoryView(),
-    memoryRead: async (_projectId, file) => {
-      const note = memoryNotes.find((n) => n.file === file);
+    memoryRead: async (_projectId, file, scope) => {
+      const note = notesFor(scope).find((n) => n.file === file);
       return note ? { ...note, body: `# ${note.name}\n\n${note.description}.` } : null;
     },
-    memoryWrite: async (_projectId, note) => {
+    memoryWrite: async (_projectId, note, scope) => {
       const slug = note.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "note";
       const file = note.file ?? `${slug}.md`;
-      memoryNotes = [...memoryNotes.filter((n) => n.file !== file), { file, name: note.name, description: note.description, type: note.type }];
+      setNotesFor(scope, [...notesFor(scope).filter((n) => n.file !== file), { file, name: note.name, description: note.description, type: note.type, updated: "2026-10-14" }]);
       return file;
     },
-    memoryDelete: async (_projectId, file) => {
-      const before = memoryNotes.length;
-      memoryNotes = memoryNotes.filter((n) => n.file !== file);
-      return memoryNotes.length < before;
+    memoryDelete: async (_projectId, file, scope) => {
+      const before = notesFor(scope).length;
+      setNotesFor(scope, notesFor(scope).filter((n) => n.file !== file));
+      return notesFor(scope).length < before;
     },
     memorySetEnabled: async (projectId, _on) => (projectId === null ? null : memoryView()),
     memoryImport: async () => 0,

@@ -11,7 +11,6 @@ import type { ToolDiff } from "../../shared/tools";
 import { forClaude } from "../mcp/servers";
 import { checkCommand } from "../guard";
 import type { InjectionPlan } from "../inject";
-import { MEMORY_READ_TOOL, MEMORY_WRITE_TOOL } from "../memory/tool";
 import { normalizeUsage } from "../usage";
 import { PLUGIN_NAME } from "../skills/plugin";
 import { CLAUDE_CAPABILITIES } from "./capabilities";
@@ -20,7 +19,7 @@ import { summarizeToolInput, summarizeToolResult } from "./summarize";
 import { MODEL_TTL_MS } from "./model-ttl";
 import { newestInstallAsync, PREFERRED } from "./binaries";
 import type { BinaryResolution } from "./binaries";
-import type { AgentDriver, HarnessTool, ToolOutput, TurnInput } from "./types";
+import type { AgentDriver, HarnessTool, ToolContext, ToolOutput, TurnInput } from "./types";
 import { claudeAnnotations, claudeAnswers, fromClaudeQuestions, SKIPPED_TEXT } from "../questions";
 
 /** MCP server name for harness tools: they reach Claude as mcp__cubiq__<tool>. */
@@ -40,18 +39,17 @@ function toCallToolResult(out: ToolOutput) {
   return { content, isError: out.isError };
 }
 
-/** Harness tools as an in-process MCP server, plus the names to auto-allow. Claude keeps the shared memory natively, so the memory tools are dropped. */
-export function harnessToolOptions(tools: HarnessTool[]): Pick<Options, "mcpServers" | "allowedTools"> {
-  const offered = tools.filter((t) => t.name !== MEMORY_READ_TOOL && t.name !== MEMORY_WRITE_TOOL);
-  if (!offered.length) return {};
+/** Harness tools as an in-process MCP server, plus the names to auto-allow. Every tool is offered (memory included); ctx reaches each tool's run(). */
+export function harnessToolOptions(tools: HarnessTool[], ctx?: ToolContext): Pick<Options, "mcpServers" | "allowedTools"> {
+  if (!tools.length) return {};
   const server = createSdkMcpServer({
     name: TOOL_SERVER,
     version: "1.0.0",
-    tools: offered.map((t) => tool(t.name, t.description, t.input, async (args) => toCallToolResult(await t.run(args)))),
+    tools: tools.map((t) => tool(t.name, t.description, t.input, async (args) => toCallToolResult(await t.run(args, ctx)))),
   });
   return {
     mcpServers: { [TOOL_SERVER]: server },
-    allowedTools: offered.filter((t) => t.autoAllow).map((t) => `mcp__${TOOL_SERVER}__${t.name}`),
+    allowedTools: tools.filter((t) => t.autoAllow).map((t) => `mcp__${TOOL_SERVER}__${t.name}`),
   };
 }
 
@@ -231,8 +229,8 @@ export interface ClaudeDriverConfig {
   guide?: (cwd: string, design?: string) => string;
   /** Prefer the user's installed, self-updating Claude Code CLI over the SDK's bundled binary (default true). */
   useInstalledCli?: boolean;
-  /** The shared memory folder for this project, or null when CubiQ memory is off (Claude then uses its own). */
-  memoryDir?: (projectId: string) => string | null;
+  /** CubiQ's memory block for this thread's agent session, or null when memory is off. */
+  memory?: (projectId: string, threadId?: string, sessionKey?: string | null) => string | null;
 }
 
 /**
@@ -413,7 +411,8 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
       }
 
       const guideText = config.guide?.(input.cwd, input.design) ?? "";
-      const memoryDir = input.projectId ? config.memoryDir?.(input.projectId) ?? null : null;
+      const memoryText = input.projectId ? config.memory?.(input.projectId, input.threadId, input.sessionId ?? null) ?? null : null;
+      const systemAppend = [guideText, memoryText].filter((part): part is string => Boolean(part)).join("\n\n");
       const options: Options = {
         cwd: input.cwd,
         abortController,
@@ -431,10 +430,10 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         ...(input.effort ? { effort: input.effort as EffortLevel } : {}),
         ...(adaptiveThinking.get(input.model) === true ? { thinking: { type: "adaptive" as const, display: "summarized" as const } } : {}),
         plugins,
-        ...(guideText ? { systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: guideText } } : {}),
-        ...(memoryDir ? { settings: { autoMemoryEnabled: true, autoMemoryDirectory: memoryDir } } : {}),
+        ...(systemAppend ? { systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: systemAppend } } : {}),
+        ...(memoryText !== null ? { settings: { autoMemoryEnabled: false } } : {}),
         ...(plan ? { env: plan.env } : {}),
-        ...withUserServers(harnessToolOptions(input.tools), input.mcpServers),
+        ...withUserServers(harnessToolOptions(input.tools, { ...(input.projectId ? { projectId: input.projectId } : {}), ...(input.threadId ? { threadId: input.threadId } : {}) }), input.mcpServers),
         hooks: { PreToolUse: [{ matcher: "Bash", hooks: [guard] }] },
         canUseTool: async (toolName, toolInput, { suggestions }): Promise<PermissionResult> => {
           // Plan mode's own gate: Claude presents its plan, the user decides how

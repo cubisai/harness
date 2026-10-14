@@ -1157,8 +1157,10 @@ describe("Codex shared memory", () => {
   };
 
   type ThreadProbe = { method: string; params: { developerInstructions?: string; config?: { memories?: unknown; mcp_servers?: Record<string, { url?: string }> } } };
+  /** The (projectId, threadId, sessionKey) each memory call carried. */
+  type MemCall = [string, string | undefined, string | null | undefined];
 
-  function probeDriver(memory: (projectId: string) => string | null, extra: Record<string, unknown> = {}) {
+  function probeDriver(memory: (projectId: string, threadId?: string, sessionKey?: string | null) => string | null, extra: Record<string, unknown> = {}) {
     const probe = join(tempDir(), "thread-probe.json");
     process.env.GUIDE_PROBE = probe;
     const d = createCodexDriver({ command: process.execPath, args: ["-e", PROBE_SERVER], clientVersion: "test", guide: () => "GUIDE", memory, ...extra });
@@ -1167,22 +1169,35 @@ describe("Codex shared memory", () => {
     return { d, sent };
   }
 
+  /** A memory function that records its calls and returns `block` (a string, null, or a function of the session key). */
+  function recording(block: string | null | ((sessionKey: string | null) => string | null)): { memory: (projectId: string, threadId?: string, sessionKey?: string | null) => string | null; calls: MemCall[] } {
+    const calls: MemCall[] = [];
+    const memory = (projectId: string, threadId?: string, sessionKey?: string | null) => {
+      calls.push([projectId, threadId, sessionKey]);
+      return typeof block === "function" ? block(sessionKey ?? null) : block;
+    };
+    return { memory, calls };
+  }
+
   it("sends the memory block with the guide and turns off Codex's own memories", async () => {
-    const { d, sent } = probeDriver(() => "<harness-memory>MEM</harness-memory>");
+    const { memory, calls } = recording("<harness-memory>MEM</harness-memory>");
+    const { d, sent } = probeDriver(memory);
     try {
-      const t = turn("hi", { projectId: "p1" });
-      await d.runTurn(t.input);
+      await d.runTurn(turn("hi", { projectId: "p1" }).input);
       const start = sent();
       expect(start.method).toBe("thread/start");
       expect(start.params.developerInstructions).toBe("GUIDE\n\n<harness-memory>MEM</harness-memory>");
       expect(start.params.config?.memories).toEqual({ use_memories: false, generate_memories: false });
+      // A new thread is started with a null session key, so the block is fresh.
+      expect(calls).toContainEqual(["p1", "t", null]);
     } finally {
       delete process.env.GUIDE_PROBE;
     }
   });
 
   it("leaves Codex's own memories and developer instructions alone when memory is off", async () => {
-    const { d, sent } = probeDriver(() => null);
+    const { memory } = recording(null);
+    const { d, sent } = probeDriver(memory);
     try {
       await d.runTurn(turn("hi", { projectId: "p1" }).input);
       const start = sent();
@@ -1193,20 +1208,37 @@ describe("Codex shared memory", () => {
     }
   });
 
-  it("freezes the block per session: a resume keeps the original after the store changes", async () => {
-    let memory = "<harness-memory>FIRST</harness-memory>";
-    const { d, sent } = probeDriver(() => memory);
+  it("on resume calls memory with the session id and sends that session's block, from a fresh driver", async () => {
+    const { memory, calls } = recording((sessionKey) => (sessionKey ? `<harness-memory>${sessionKey}</harness-memory>` : "<harness-memory>FRESH</harness-memory>"));
+    // The first driver opens the session; a fresh one (as after an app restart) then resumes it.
+    const first = probeDriver(memory);
+    await first.d.runTurn(turn("hi", { projectId: "p1" }).input);
+    first.d.dispose?.();
+    calls.length = 0;
+    const { d, sent } = probeDriver(memory);
     try {
-      const first = turn("hi", { projectId: "p1" });
-      await d.runTurn(first.input);
-      expect(sent().params.developerInstructions).toContain("FIRST");
-      memory = "<harness-memory>SECOND</harness-memory>";
-      const second = turn("again", { sessionId: first.sessions[0]!, projectId: "p1" });
-      await d.runTurn(second.input);
+      await d.runTurn(turn("again", { sessionId: "probe-thread", projectId: "p1" }).input);
       const resumed = sent();
       expect(resumed.method).toBe("thread/resume");
-      expect(resumed.params.developerInstructions).toContain("FIRST");
-      expect(resumed.params.developerInstructions).not.toContain("SECOND");
+      // The resume passes the session id, and the block comes from the memory function, not in-RAM state.
+      expect(calls).toContainEqual(["p1", "t", "probe-thread"]);
+      expect(resumed.params.developerInstructions).toBe("GUIDE\n\n<harness-memory>probe-thread</harness-memory>");
+      expect(resumed.params.developerInstructions).not.toContain("FRESH");
+    } finally {
+      delete process.env.GUIDE_PROBE;
+    }
+  });
+
+  it("reflects the block sent in the context breakdown's Memory index row", async () => {
+    const block = "<harness-memory>INDEXMEM</harness-memory>";
+    const { memory } = recording(block);
+    const { d } = probeDriver(memory);
+    try {
+      const t = turn("hi", { projectId: "p1" });
+      await d.runTurn(t.input);
+      const breakdown = t.events.find((e): e is Extract<ThreadEvent, { kind: "context-breakdown" }> => e.kind === "context-breakdown");
+      expect(breakdown).toBeDefined();
+      expect(breakdown!.rows.find((r) => r.label === "Memory index")?.tokens).toBe(Math.ceil(block.length / 4));
     } finally {
       delete process.env.GUIDE_PROBE;
     }

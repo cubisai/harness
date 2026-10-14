@@ -40,7 +40,7 @@ export interface ProviderDriverDeps {
   outputDir: string;
   guardScript: string;
   guide(cwd: string, design?: string): string | null;
-  memory(projectId: string): string | null;
+  memory(projectId: string, threadId?: string, sessionKey?: string | null): string | null;
   /** The app's MCP router tools (search_tools / call_mcp_tool) for a project; empty when it has no servers. */
   mcpTools(projectId?: string): HarnessTool[];
   /** The model-invoked skills tool for this folder, or null when there are none. */
@@ -150,7 +150,6 @@ async function runTurn(
   const route = routeFor(provider, protocol, wire, deps.secret(), deps.secretHeaders(), env);
   const shell = shellFor(platform, env).name;
   const guide = deps.guide(input.cwd, input.design);
-  const memory = input.projectId ? deps.memory(input.projectId) : null;
   const files = contextFiles(input.cwd);
 
   const contextSize = provider.contextWindowOverride ?? entry.contextWindow;
@@ -204,6 +203,9 @@ async function runTurn(
     meta = { ...meta, startedOn: new Date().toISOString().slice(0, 10) };
     deps.sessions.setMeta(sid, meta);
   }
+  // Read after the session id is settled so the block is frozen per session:
+  // resuming a session gets the same block it first saw, a new one computes it.
+  const memory = input.projectId ? deps.memory(input.projectId, input.threadId, sid) : null;
   const system = systemPrompt({
     cwd: input.cwd,
     platform,

@@ -52,6 +52,8 @@ describe("memory api", () => {
       dir: store.dir("p1"),
       index: { lines: 0, tokens: 0 },
       notes: [],
+      global: [],
+      block: { shown: 0, total: 0, tokens: 0 },
     });
     expect(ensured).toEqual(["p1:/proj"]);
   });
@@ -65,6 +67,21 @@ describe("memory api", () => {
     expect(api.write("p1", { name: "Mystery", description: "", type: "bogus" as never, body: "" })).toBe("mystery.md");
     expect(api.read("p1", "mystery.md")?.type).toBe("project");
     expect(() => api.write("p1", { name: "   ", description: "", type: "project", body: "" })).toThrow();
+  });
+
+  it("reads, writes and removes global notes, and reports what agents see", () => {
+    const { api, store } = setup();
+    const file = api.write("p1", { name: "Terse", description: "short answers", type: "user", body: "no preamble" }, "global");
+    api.write("p1", { name: "Deploy", description: "staging first", type: "project", body: "make deploy" });
+    expect(store.list("p1").map((n) => n.file)).toEqual(["deploy.md"]);
+    expect(api.read("p1", file, "global")).toMatchObject({ name: "Terse", body: "no preamble" });
+    expect(api.read("p1", file)).toBeNull();
+    const view = api.overview("p1");
+    expect(view.global.map((n) => n.file)).toEqual([file]);
+    expect(view.block).toMatchObject({ shown: 2, total: 2 });
+    expect(view.block.tokens).toBeGreaterThan(0);
+    expect(api.remove("p1", file, "global")).toBe(true);
+    expect(api.overview("p1").global).toEqual([]);
   });
 
   it("removes a note", () => {

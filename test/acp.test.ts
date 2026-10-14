@@ -205,9 +205,13 @@ describe("ACP driver", () => {
   });
 
   it("sends the memory block once, right after the guide, on a new session's first prompt", async () => {
+    const calls: [string, string | undefined, string | null | undefined][] = [];
     const d = createAcpDriver(
       { id: "mock", label: "Mock", command: process.execPath, args: [MOCK] },
-      { clientVersion: "test", guide: () => "GUIDE", memory: () => "<harness-memory>MEM</harness-memory>" },
+      { clientVersion: "test", guide: () => "GUIDE", memory: (projectId, threadId, sessionKey) => {
+        calls.push([projectId, threadId, sessionKey]);
+        return "<harness-memory>MEM</harness-memory>";
+      } },
     );
     closeAfter(() => d.dispose?.());
     const first = turn("hello", { projectId: "p1" });
@@ -216,15 +220,19 @@ describe("ACP driver", () => {
     expect(firstText).toContain("<harness-guide>\nGUIDE\n</harness-guide>");
     expect(firstText).toContain("<harness-memory>MEM</harness-memory>");
     expect(firstText.indexOf("<harness-guide>")).toBeLessThan(firstText.indexOf("<harness-memory>"));
+    // A new session reads memory with a null session key.
+    expect(calls).toEqual([["p1", "thread-1", null]]);
     const second = turn("hello", { sessionId: first.sessions[0]!, projectId: "p1" });
     await d.runTurn(second.input);
     expect(second.deltas.join("")).not.toContain("<harness-memory>");
+    // The resumed session never re-reads memory.
+    expect(calls).toEqual([["p1", "thread-1", null]]);
   });
 
   it("sends no memory block when memory is off", async () => {
     const d = createAcpDriver(
       { id: "mock", label: "Mock", command: process.execPath, args: [MOCK] },
-      { clientVersion: "test", guide: () => "GUIDE", memory: () => null },
+      { clientVersion: "test", guide: () => "GUIDE", memory: (_projectId, _threadId, _sessionKey) => null },
     );
     closeAfter(() => d.dispose?.());
     const first = turn("hello", { projectId: "p1" });

@@ -1,8 +1,13 @@
-import type { MemoryNote, MemoryOverview, MemoryType, Settings } from "../../shared/types";
+import type { MemoryNote, MemoryOverview, MemoryScope, MemoryType, Settings } from "../../shared/types";
 import { importNativeMemory } from "./import";
-import type { MemoryStore } from "./store";
+import { GLOBAL_SCOPE, type MemoryStore } from "./store";
 
 const TYPES: MemoryType[] = ["user", "feedback", "project", "reference"];
+
+/** The store folder a Library call targets: the project's, or the shared global one. */
+function scopeId(projectId: string, scope?: MemoryScope): string {
+  return scope === "global" ? GLOBAL_SCOPE : projectId;
+}
 
 /** The Library's memory calls, as a plain factory so they're testable without electron. */
 export function createMemoryApi(deps: {
@@ -17,24 +22,27 @@ export function createMemoryApi(deps: {
     const s = deps.settings.get();
     const dir = deps.memory.ensure(projectId, deps.projectPath(projectId));
     const idx = deps.memory.store.index(projectId);
+    const block = deps.memory.store.blockIndex(projectId);
     return {
       enabled: s.memory?.enabled ?? true,
       projectOn: !(s.memory?.disabledProjects ?? []).includes(projectId),
       dir,
       index: { lines: idx.lines, tokens: idx.tokens },
       notes: deps.memory.store.list(projectId),
+      global: deps.memory.store.list(GLOBAL_SCOPE),
+      block: { shown: block.shown, total: block.total, tokens: block.tokens },
     };
   }
 
-  function read(projectId: string, file: string): (MemoryNote & { body: string }) | null {
-    return deps.memory.store.read(projectId, file);
+  function read(projectId: string, file: string, scope?: MemoryScope): (MemoryNote & { body: string }) | null {
+    return deps.memory.store.read(scopeId(projectId, scope), file);
   }
 
-  function write(projectId: string, note: { file?: string; name: string; description: string; type: MemoryType; body: string }): string {
+  function write(projectId: string, note: { file?: string; name: string; description: string; type: MemoryType; body: string }, scope?: MemoryScope): string {
     const name = note.name.trim();
     if (!name) throw new Error("A note needs a name.");
     const type = TYPES.includes(note.type) ? note.type : "project";
-    return deps.memory.store.write(projectId, {
+    return deps.memory.store.write(scopeId(projectId, scope), {
       name,
       description: note.description.trim(),
       type,
@@ -43,8 +51,8 @@ export function createMemoryApi(deps: {
     });
   }
 
-  function remove(projectId: string, file: string): boolean {
-    return deps.memory.store.remove(projectId, file);
+  function remove(projectId: string, file: string, scope?: MemoryScope): boolean {
+    return deps.memory.store.remove(scopeId(projectId, scope), file);
   }
 
   function setEnabled(projectId: string | null, on: boolean): MemoryOverview | null {

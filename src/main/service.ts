@@ -826,6 +826,11 @@ export class Service {
           const last = [...this.store.listEvents(thread.id)].reverse().find((e) => e.event.kind === "assistant-text" && e.seq > userEvent.seq);
           const answer = last && last.event.kind === "assistant-text" ? last.event.text : "";
           if (answer) {
+            // An agent that ran the harness memory_write tool saved its own notes,
+            // so the extractor must not duplicate them this turn.
+            const wroteMemory = this.store
+              .listEvents(thread.id)
+              .some((e) => e.seq > userEvent.seq && e.event.kind === "tool-use" && /memory_write$/.test(e.event.name));
             this.turnListener?.({
               projectId: thread.projectId,
               threadId: thread.id,
@@ -833,6 +838,7 @@ export class Service {
               model: thread.model,
               user: scrub(req.text),
               answer: scrub(answer),
+              wroteMemory,
             });
           }
         } catch {
