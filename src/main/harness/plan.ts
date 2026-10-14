@@ -10,7 +10,7 @@ export const PROPOSE_PLAN_TOOL = "propose_plan";
 
 /** The system-prompt part that turns plan mode on; it goes last, after the environment. */
 export const PLAN_MODE_NOTE =
-  "Plan mode is on: you can read and search but not edit files or run commands. Investigate what's needed, then call propose_plan once with a concrete Markdown plan: the goal, the files to change and how, and how you'll verify it. Don't ask for approval in text; the propose_plan call is the approval request. If the user asks you to keep planning, revise and call propose_plan again.";
+  "Plan mode is on: you can read and search but not edit files or run commands. If the user only asks a question, answer it (using a matching skill if one applies) without calling propose_plan or exploring beyond what the answer needs. For a change, investigate what's needed, then call propose_plan once with a concrete Markdown plan: the goal, the files to change and how, and how you'll verify it. Don't ask for approval in text; the propose_plan call is the approval request. If the user asks you to keep planning, revise and call propose_plan again.";
 
 /** The propose_plan tool: presenting a plan is the approval request. */
 export function createProposePlanTool(opts: {

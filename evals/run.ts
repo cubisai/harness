@@ -1,7 +1,7 @@
 // Eval CLI. Keys come from the environment, e.g.
 //   bun --env-file=.env evals/run.ts --tier smoke --provider pgs [--dry]
 // Flags: --tier smoke|full, --provider th|pgs, --model <id>, --trials <n>,
-// --task <id>, --dry, --force, --keep, --save-baseline, --max-tokens <n>, --max-usd <n>,
+// --task <id>[,<id>…], --dry, --force, --keep, --save-baseline, --max-tokens <n>, --max-usd <n>,
 // --price <in>,<out> (USD per 1M tokens). Plan: .ai/plans/eval-framework.md.
 
 import { execFileSync } from "node:child_process";
@@ -83,7 +83,7 @@ async function main(): Promise<number> {
   const priceArg = f.get("price")?.split(",").map(Number);
   const price = priceArg && priceArg.length === 2 ? { input: priceArg[0]!, output: priceArg[1]! } : undefined;
 
-  const tasks = loadTasks().filter((t) => (tier === "smoke" ? t.tier === "smoke" : true) && (!f.has("task") || t.id === f.get("task")));
+  const tasks = loadTasks().filter((t) => (tier === "smoke" ? t.tier === "smoke" : true) && (!f.has("task") || f.get("task")!.split(",").includes(t.id)));
   const trialsOf = (t: Task) => (t.tags.includes("regression") ? trials : 1);
 
   if (f.has("dry")) {

@@ -19,11 +19,6 @@
       "unchanged": true
     },
     {
-      "type": "tool",
-      "name": "Edit",
-      "max": 3
-    },
-    {
       "type": "event",
       "noError": true,
       "noFalseClaim": true

@@ -25,6 +25,7 @@ describe("propose_plan", () => {
     expect(tool.access).toBe("read");
     expect(tool.definition.parameters).toEqual({ type: "object", properties: { plan: { type: "string", description: "The plan in Markdown" } }, required: ["plan"] });
     expect(PLAN_MODE_NOTE).toContain("Plan mode is on");
+    expect(PLAN_MODE_NOTE).toContain("only asks a question, answer it (using a matching skill if one applies) without calling propose_plan");
   });
 
   it("summarizes with the plan's first line", () => {
