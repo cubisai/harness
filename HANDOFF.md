@@ -28,12 +28,11 @@ Plan: `.ai/plans/eval-framework.md` (approved; status block at top). Run with `b
   - Codex 6/6.
   - Claude 5/6. `plan-proposes` was a task bug: Claude writes its plan to `~/.claude/plans`. Fixed by dropping the Edit-count grader; project-unchanged still guards it.
   - OpenCode crashed on EPIPE. That was an **app bug**: `StdioRpc` had no stdin error listener, so a write racing an agent's exit crashed the process. Fixed in `src/main/agents/rpc.ts` with a test (`test/rpc.test.ts`).
-  - OpenCode and Claude smoke re-runs were still running at handoff; output is in the scratchpad `e3-*.txt`, and results in `.ai/evals/smoke-opencode-*` and `smoke-claude-*`.
+  - Re-runs after the fixes: **OpenCode 6/6, Claude 6/6** (smoke tier). OpenCode reports 0 input tokens on some turns: its ACP usage is incomplete, so its token totals undercount.
 - **Next:**
-  1. Read the OpenCode and Claude re-run results; open the transcripts of any failure.
-  2. Re-record the native baselines, which change because native now gets the guide: `--agent native --tier full --provider pgs|th --save-baseline`, about 330k cheap tokens.
-  3. Run `--save-baseline` for claude, codex and opencode (smoke).
-  4. Run the full suite, commit E3, update the plan status.
+  1. Re-record the native baselines, which change because native now gets the guide: `--agent native --tier full --provider pgs|th --save-baseline`, about 330k cheap tokens.
+  2. Run `--save-baseline` for claude, codex and opencode (smoke).
+  3. Run the full suite, commit E3, update the plan status.
 - **Open finding (not fixed, user to decide):** after a denied shell call, native DeepSeek tried to write the output file directly (1 of 3 trials on `permission-deny`). The harness denial text "Don't retry it; ask them or take another approach" invites that workaround. Candidate wording: "…don't get the same result another way; ask them, or continue with the rest."
 - **Don't commit** the other session's in-progress files (settings / Splash / assets / `shared/types.ts`).
 
