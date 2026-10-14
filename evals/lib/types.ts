@@ -28,7 +28,9 @@ export type Grader =
   | { type: "tool"; name: string; min?: number; max?: number; required?: boolean; weight?: number }
   | { type: "skill"; expect?: string[]; none?: boolean; required?: boolean; weight?: number }
   | { type: "event"; noError?: boolean; noFalseClaim?: boolean; required?: boolean; weight?: number }
-  | { type: "budget"; required?: boolean; weight?: number };
+  | { type: "budget"; required?: boolean; weight?: number }
+  /** The final answer text: every `contains` (case-insensitive) and `matches` (regex, i). */
+  | { type: "answer"; contains?: string[]; matches?: string; required?: boolean; weight?: number };
 
 export interface Task {
   id: string;
@@ -37,9 +39,11 @@ export interface Task {
   /** Folder under evals/fixtures/; `<fixture>.hidden/` (optional) is copied in after the turn. */
   fixture: string;
   prompt: string;
-  mode: "plan" | "auto-edit" | "full";
+  mode: "ask" | "plan" | "auto-edit" | "full";
   /** How the runner answers permission requests; default allow. */
   permissions?: "allow" | "deny";
+  /** How the runner answers a plan proposal: "stop" ends the turn there (default), the others approve it. */
+  planDecision?: "stop" | "auto" | "manual";
   /** Mock skill kit written into the fixture copy (scripts/mock-extensions-lib.mjs). */
   skills?: { kit: { skills: number; seed: number } };
   graders: Grader[];

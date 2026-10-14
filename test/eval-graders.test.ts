@@ -273,3 +273,34 @@ describe("score", () => {
     expect(score([gr(false, 0)])).toEqual({ pass: false, score: 1 });
   });
 });
+
+describe("answer", () => {
+  const said = (text: string): CompactEvent[] => [{ kind: "assistant-text", text }];
+
+  it("needs every contains, case-insensitively, and the regex", async () => {
+    const [hit, miss, re] = await run(
+      [
+        { type: "answer", contains: ["SRC/config/load.js"] },
+        { type: "answer", contains: ["load.js", "nowhere"] },
+        { type: "answer", matches: "denied|blocked" },
+      ],
+      { events: said("It is in src/config/load.js; the run was Blocked.") },
+    );
+    expect(hit!.pass).toBe(true);
+    expect(miss).toMatchObject({ pass: false, why: 'answer lacks "nowhere"' });
+    expect(re!.pass).toBe(true);
+  });
+
+  it("ignores tool summaries", async () => {
+    const [r] = await run([{ type: "answer", contains: ["load.js"] }], { events: [{ kind: "tool-use", name: "Read", summary: "load.js" }] });
+    expect(r!.pass).toBe(false);
+  });
+});
+
+describe("file exists on a folder", () => {
+  it("counts a directory as existing", async () => {
+    mkdirSync(join(dir, "node_modules"), { recursive: true });
+    const [r] = await run([{ type: "file", path: "node_modules", exists: false }]);
+    expect(r).toMatchObject({ pass: false, why: "node_modules exists" });
+  });
+});

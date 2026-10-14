@@ -1,0 +1,42 @@
+{
+  "id": "route-skill-2",
+  "tags": [
+    "regression"
+  ],
+  "tier": "full",
+  "fixture": "empty",
+  "prompt": "I have to validate smtp in our email setup. Which skill should I follow, and what should I check first?",
+  "mode": "plan",
+  "skills": {
+    "kit": {
+      "skills": 50,
+      "seed": 7
+    }
+  },
+  "graders": [
+    {
+      "type": "skill",
+      "expect": [
+        "validate-smtp-email"
+      ]
+    },
+    {
+      "type": "tool",
+      "name": "Edit",
+      "max": 0
+    },
+    {
+      "type": "event",
+      "noError": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 8,
+    "maxInputTokens": 60000,
+    "timeoutMs": 120000
+  },
+  "reference": "Loads the validate-smtp-email skill and answers from it."
+}

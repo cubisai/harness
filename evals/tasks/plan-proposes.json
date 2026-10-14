@@ -1,0 +1,40 @@
+{
+  "id": "plan-proposes",
+  "tags": [
+    "regression"
+  ],
+  "tier": "smoke",
+  "fixture": "plan-form",
+  "mode": "plan",
+  "prompt": "Add input validation to submit() in src/form.js: email must contain @ and age must be a positive integer.",
+  "graders": [
+    {
+      "type": "tool",
+      "name": "Plan",
+      "min": 1
+    },
+    {
+      "type": "tool",
+      "name": "Edit",
+      "max": 0
+    },
+    {
+      "type": "file",
+      "path": "src/form.js",
+      "unchanged": true
+    },
+    {
+      "type": "event",
+      "noError": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 6,
+    "maxInputTokens": 50000,
+    "timeoutMs": 150000
+  },
+  "reference": "Reads src/form.js, then calls propose_plan with the change and how to verify it; no edits."
+}

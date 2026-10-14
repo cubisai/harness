@@ -1,0 +1,12 @@
+import { readdirSync, readFileSync } from "node:fs";
+import assert from "node:assert/strict";
+const util = await import("./src/util.js");
+const { cartTotal } = await import("./src/cart.js");
+const { receiptLine } = await import("./src/receipt.js");
+assert.equal(typeof util.formatPrice, "function");
+assert.equal(util.fmtPrice, undefined);
+assert.equal(util.formatPrice(1999), "$19.99");
+assert.equal(cartTotal([{ cents: 250, qty: 2 }]), "$5.00");
+assert.equal(receiptLine({ name: "Tea", cents: 300, qty: 1 }), "Tea x1  $3.00");
+for (const f of readdirSync("src")) assert.ok(!readFileSync(`src/${f}`, "utf8").includes("fmtPrice"), `fmtPrice left in src/${f}`);
+console.log("ok");

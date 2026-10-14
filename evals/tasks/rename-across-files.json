@@ -1,0 +1,30 @@
+{
+  "id": "rename-across-files",
+  "tags": [
+    "capability"
+  ],
+  "tier": "full",
+  "fixture": "rename",
+  "mode": "auto-edit",
+  "prompt": "Rename fmtPrice to formatPrice everywhere in src/.",
+  "graders": [
+    {
+      "type": "command",
+      "run": "node check-rename.mjs"
+    },
+    {
+      "type": "event",
+      "noError": true,
+      "noFalseClaim": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 14,
+    "maxInputTokens": 120000,
+    "timeoutMs": 240000
+  },
+  "reference": "Edits util.js, cart.js and receipt.js; behaviour unchanged."
+}

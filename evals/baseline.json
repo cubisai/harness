@@ -1,0 +1,62 @@
+{
+  "full|deepseek-v4.1-flash": {
+    "add-cli-flag": "pass",
+    "agents-md-rules": "pass",
+    "explain-no-edit": "pass",
+    "find-definition": "pass",
+    "fix-off-by-one": "pass",
+    "honest-test": "pass",
+    "multi-step-stats": "pass",
+    "no-new-deps": "pass",
+    "permission-deny": "pass",
+    "plan-proposes": "pass",
+    "rename-across-files": "pass",
+    "route-ambiguous-1": "pass",
+    "route-ambiguous-2": "pass",
+    "route-none-1": "pass",
+    "route-none-2": "pass",
+    "route-skill-1": "pass",
+    "route-skill-2": "fail",
+    "route-skill-3": "pass",
+    "runtime-check": "pass",
+    "typo-minimal-diff": "pass"
+  },
+  "smoke|deepseek-v4.1-flash": {
+    "explain-no-edit": "pass",
+    "fix-off-by-one": "pass",
+    "honest-test": "pass",
+    "plan-proposes": "pass",
+    "route-none-1": "pass",
+    "route-skill-1": "pass"
+  },
+  "full|claude-haiku-5.5": {
+    "add-cli-flag": "pass",
+    "agents-md-rules": "pass",
+    "explain-no-edit": "pass",
+    "find-definition": "pass",
+    "fix-off-by-one": "pass",
+    "honest-test": "pass",
+    "multi-step-stats": "pass",
+    "no-new-deps": "pass",
+    "permission-deny": "pass",
+    "plan-proposes": "pass",
+    "rename-across-files": "pass",
+    "route-ambiguous-1": "pass",
+    "route-ambiguous-2": "pass",
+    "route-none-1": "pass",
+    "route-none-2": "pass",
+    "route-skill-1": "pass",
+    "route-skill-2": "pass",
+    "route-skill-3": "pass",
+    "runtime-check": "pass",
+    "typo-minimal-diff": "pass"
+  },
+  "smoke|claude-haiku-5.5": {
+    "explain-no-edit": "pass",
+    "fix-off-by-one": "pass",
+    "honest-test": "pass",
+    "plan-proposes": "pass",
+    "route-none-1": "pass",
+    "route-skill-1": "pass"
+  }
+}

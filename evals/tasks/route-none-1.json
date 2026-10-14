@@ -1,0 +1,35 @@
+{
+  "id": "route-none-1",
+  "tags": [
+    "regression"
+  ],
+  "tier": "smoke",
+  "fixture": "empty",
+  "prompt": "What does Array.prototype.flatMap return when the callback returns a non-array value?",
+  "mode": "plan",
+  "skills": {
+    "kit": {
+      "skills": 50,
+      "seed": 7
+    }
+  },
+  "graders": [
+    {
+      "type": "skill",
+      "none": true
+    },
+    {
+      "type": "event",
+      "noError": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 3,
+    "maxInputTokens": 40000,
+    "timeoutMs": 120000
+  },
+  "reference": "Answers directly; loads no skill."
+}

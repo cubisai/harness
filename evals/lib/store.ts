@@ -203,3 +203,36 @@ export function diffRuns(prev: RunResult | null, cur: RunResult): string {
   }
   return lines.join("\n");
 }
+
+/** Committed pass/fail per task, keyed by "<tier>|<model>"; no transcripts. */
+export type Baseline = Record<string, Record<string, "pass" | "fail">>;
+
+const baselineKey = (run: RunResult): string => `${run.meta.tier}|${run.meta.model}`;
+
+export function readBaseline(path: string): Baseline {
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as Baseline;
+  } catch {
+    return {};
+  }
+}
+
+/** Records this run's results in the baseline for its tier+model; tasks it didn't run keep their entry. */
+export function saveBaseline(path: string, run: RunResult): void {
+  const all = readBaseline(path);
+  const merged = { ...all[baselineKey(run)], ...Object.fromEntries(run.tasks.map((t) => [t.id, t.passAtK ? "pass" : "fail"] as const)) };
+  all[baselineKey(run)] = Object.fromEntries(Object.entries(merged).sort(([a], [b]) => a.localeCompare(b)));
+  writeFileSync(path, `${JSON.stringify(all, null, 2)}\n`);
+}
+
+/** Tasks that passed in the baseline and fail now, and the reverse; "" when there's no baseline. */
+export function compareBaseline(base: Baseline, run: RunResult): string {
+  const expected = base[baselineKey(run)];
+  if (!expected) return "";
+  const worse = run.tasks.filter((t) => expected[t.id] === "pass" && !t.passAtK).map((t) => t.id);
+  const better = run.tasks.filter((t) => expected[t.id] === "fail" && t.passAtK).map((t) => t.id);
+  const lines: string[] = [];
+  if (worse.length) lines.push(`below baseline: ${worse.join(", ")}`);
+  if (better.length) lines.push(`above baseline: ${better.join(", ")}`);
+  return lines.join("\n") || "matches baseline";
+}

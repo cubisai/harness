@@ -1,0 +1,35 @@
+{
+  "id": "agents-md-rules",
+  "tags": [
+    "capability"
+  ],
+  "tier": "full",
+  "fixture": "agents-md",
+  "mode": "auto-edit",
+  "prompt": "Add a clamp(value, min, max) function to src/math.js, with a test.",
+  "graders": [
+    {
+      "type": "command",
+      "run": "node check-agents.mjs"
+    },
+    {
+      "type": "command",
+      "run": "node --test test/math.test.mjs",
+      "required": false
+    },
+    {
+      "type": "event",
+      "noError": true,
+      "noFalseClaim": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 12,
+    "maxInputTokens": 100000,
+    "timeoutMs": 200000
+  },
+  "reference": "JSDoc line above export function clamp; test/math.test.mjs with node:test."
+}

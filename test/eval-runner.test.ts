@@ -122,6 +122,19 @@ describe("eval runner (scripted model)", () => {
     expect(bad.pass).toBe(false);
   });
 
+  it("ends a plan-mode turn at the proposal and grades it", async () => {
+    const s = scripted([[call("read", { path: "src/form.js" })], [call("propose_plan", { plan: "## Goal\nValidate email and age in submit()." })], [text("unreachable")]]);
+    const r = await runTrial({ task: task("plan-proposes"), fixturesRoot: FIXTURES, driver: s.driver, model: "m" });
+    expect(r.graders.map((g) => [g.type, g.pass])).toEqual([["tool", true], ["tool", true], ["file", true], ["event", true], ["budget", true]]);
+    expect(r.pass).toBe(true);
+    expect(s.calls()).toBe(2);
+  });
+
+  it("every task file loads and names an existing fixture", () => {
+    expect(tasks.size).toBeGreaterThanOrEqual(20);
+    for (const t of tasks.values()) expect(existsSync(join(FIXTURES, t.fixture)), t.id).toBe(true);
+  });
+
   it("folds trials into pass@k and pass^k", async () => {
     let trial = 0;
     const driver = (cwd: string) => (trial++ === 0 ? scripted(FIX).driver(cwd) : scripted([[text("No change needed.")]]).driver(cwd));
@@ -136,7 +149,7 @@ describe("eval runner (scripted model)", () => {
       encoding: "utf8",
       env: { ...process.env, PGS_API_KEY: "", TOKENHARBOR_API_KEY: "" },
     });
-    expect(out).toMatch(/2 tasks, 2 trials, worst case 120,000 input tokens/);
+    expect(out).toMatch(/6 tasks, 6 trials, worst case 350,000 input tokens/);
     expect(out).toContain("fix-off-by-one");
   });
 });

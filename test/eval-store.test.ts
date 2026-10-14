@@ -4,13 +4,16 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import {
   cacheKey,
+  compareBaseline,
   diffRuns,
   findCached,
   hashDir,
   listRuns,
   previousRun,
+  readBaseline,
   redact,
   runFileName,
+  saveBaseline,
   saveRun,
   summarize,
 } from "../evals/lib/store";
@@ -316,5 +319,24 @@ describe("diffRuns", () => {
     const prev = run({ tasks: [task("a", { trials: [trial({ inputTokens: 100 })] })] });
     const cur = run({ tasks: [task("a", { cached: true, trials: [trial({ inputTokens: 100 })] })] });
     expect(diffRuns(prev, cur)).not.toContain("tokens:");
+  });
+});
+
+describe("baseline", () => {
+  it("saves pass/fail per tier+model, merges partial runs, and reports changes", () => {
+    const path = join(tmp(), "baseline.json");
+    expect(readBaseline(path)).toEqual({});
+    const meta = { tier: "full" as const, model: "m" };
+    saveBaseline(path, run({ meta, tasks: [task("b"), task("a", { passAtK: false })] }));
+    saveBaseline(path, run({ meta, tasks: [task("c")] }));
+    saveBaseline(path, run({ meta: { tier: "smoke", model: "m" }, tasks: [task("a")] }));
+    const base = readBaseline(path);
+    expect(base["full|m"]).toEqual({ a: "fail", b: "pass", c: "pass" });
+    expect(Object.keys(base["full|m"]!)).toEqual(["a", "b", "c"]);
+    expect(base["smoke|m"]).toEqual({ a: "pass" });
+
+    expect(compareBaseline(base, run({ meta, tasks: [task("a"), task("b", { passAtK: false }), task("c")] }))).toBe("below baseline: b\nabove baseline: a");
+    expect(compareBaseline(base, run({ meta, tasks: [task("b"), task("c")] }))).toBe("matches baseline");
+    expect(compareBaseline(base, run({ meta: { tier: "full", model: "other" } }))).toBe("");
   });
 });

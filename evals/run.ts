@@ -1,7 +1,7 @@
 // Eval CLI. Keys come from the environment, e.g.
 //   bun --env-file=.env evals/run.ts --tier smoke --provider pgs [--dry]
 // Flags: --tier smoke|full, --provider th|pgs, --model <id>, --trials <n>,
-// --task <id>, --dry, --force, --keep, --max-tokens <n>, --max-usd <n>,
+// --task <id>, --dry, --force, --keep, --save-baseline, --max-tokens <n>, --max-usd <n>,
 // --price <in>,<out> (USD per 1M tokens). Plan: .ai/plans/eval-framework.md.
 
 import { execFileSync } from "node:child_process";
@@ -17,13 +17,14 @@ import { discoverSkills } from "../src/main/skills/discover";
 import { skillTool } from "../src/main/skills/tool";
 import type { Provider } from "../src/shared/types";
 import { runTask } from "./lib/runner";
-import { cacheKey, diffRuns, findCached, previousRun, saveRun, summarize } from "./lib/store";
+import { cacheKey, compareBaseline, diffRuns, findCached, previousRun, readBaseline, saveBaseline, saveRun, summarize } from "./lib/store";
 import type { RunResult, Task, TaskResult, Tier } from "./lib/types";
 
 const ROOT = join(import.meta.dirname, "..");
 const TASKS = join(ROOT, "evals", "tasks");
 const FIXTURES = join(ROOT, "evals", "fixtures");
 const RESULTS = join(ROOT, ".ai", "evals");
+const BASELINE = join(ROOT, "evals", "baseline.json");
 
 const PRESETS: Record<string, { envVar: string; baseURL: string; protocol: HarnessProtocol; model: string }> = {
   th: { envVar: "TOKENHARBOR_API_KEY", baseURL: "https://tokenharbor.ai/v1", protocol: "anthropic-messages", model: "claude-haiku-5.5" },
@@ -155,7 +156,16 @@ async function main(): Promise<number> {
   console.log(`\n${summarize(run)}`);
   const diff = diffRuns(previousRun(RESULTS, tier, model, startedAt), run);
   if (diff) console.log(`\n${diff}`);
+  const baseline = readBaseline(BASELINE);
+  const vsBaseline = compareBaseline(baseline, run);
+  if (vsBaseline) console.log(vsBaseline);
+  if (f.has("save-baseline")) {
+    saveBaseline(BASELINE, run);
+    console.log(`baseline saved for ${tier}|${model}`);
+  }
   console.log(`\nsaved ${path}`);
+  // With a baseline, only backsliding fails the run; without one, any failing regression task does.
+  if (baseline[`${tier}|${model}`]) return vsBaseline.includes("below baseline") ? 1 : 0;
   return results.some((r) => r.tags.includes("regression") && !r.passAtK) ? 1 : 0;
 }
 

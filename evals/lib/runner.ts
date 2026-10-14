@@ -111,7 +111,12 @@ export async function runTrial(o: TrialOptions): Promise<TrialResult> {
     },
     onSession: () => {},
     requestPermission: async () => (task.permissions === "deny" ? "deny" : "allow-once"),
-    requestPlanDecision: async () => "manual",
+    requestPlanDecision: async () => {
+      // "stop" ends the turn at the proposal: the plan itself is what's graded, and approving costs tokens.
+      if (task.planDecision && task.planDecision !== "stop") return task.planDecision;
+      controller.abort();
+      return "manual";
+    },
     requestUserInput: async () => "dismiss",
     tools: [],
     mcpServers: [],

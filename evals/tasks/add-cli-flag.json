@@ -1,0 +1,30 @@
+{
+  "id": "add-cli-flag",
+  "tags": [
+    "capability"
+  ],
+  "tier": "full",
+  "fixture": "cli-flag",
+  "mode": "auto-edit",
+  "prompt": "Add a --upper flag to cli.js that prints the output in upper case; the flag can appear anywhere. Without it, output must not change.",
+  "graders": [
+    {
+      "type": "command",
+      "run": "node check-cli.mjs"
+    },
+    {
+      "type": "event",
+      "noError": true,
+      "noFalseClaim": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 10,
+    "maxInputTokens": 80000,
+    "timeoutMs": 180000
+  },
+  "reference": "Filters --upper out of argv and upper-cases when present."
+}

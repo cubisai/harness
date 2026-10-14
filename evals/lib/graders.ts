@@ -1,7 +1,7 @@
 // Pure graders for the eval framework: score one finished trial against a
 // task's graders. Disk reads are real; the shell is injected as runCommand.
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { claimsPass, ranChecks } from "../../src/main/evidence";
 import type { CompactEvent, GradeInput, Grader, GraderResult } from "./types";
@@ -27,7 +27,7 @@ const sha256 = (path: string): string | null => {
 function gradeFile(g: Extract<Grader, { type: "file" }>, dir: string, fixtureDir: string): Verdict {
   const full = join(dir, g.path);
   const text = readText(full);
-  const exists = text !== null;
+  const exists = existsSync(full);
   if (g.exists !== undefined && exists !== g.exists) {
     return { pass: false, why: g.exists ? `${g.path} missing` : `${g.path} exists` };
   }
@@ -91,6 +91,14 @@ function gradeEvent(g: Extract<Grader, { type: "event" }>, events: CompactEvent[
   return { pass: true, why: parts.join("; ") || "no event checks" };
 }
 
+function gradeAnswer(g: Extract<Grader, { type: "answer" }>, events: CompactEvent[]): Verdict {
+  const answer = events.filter((e) => e.kind === "assistant-text").map((e) => e.text ?? "").join("\n");
+  const missing = (g.contains ?? []).filter((c) => !answer.toLowerCase().includes(c.toLowerCase()));
+  if (missing.length) return { pass: false, why: `answer lacks ${missing.map((m) => `"${m}"`).join(", ")}` };
+  if (g.matches !== undefined && !new RegExp(g.matches, "i").test(answer)) return { pass: false, why: `answer does not match /${g.matches}/i` };
+  return { pass: true, why: "answer ok" };
+}
+
 export async function grade(input: GradeInput): Promise<GraderResult[]> {
   const run = async (g: Grader): Promise<Verdict> => {
     switch (g.type) {
@@ -104,6 +112,8 @@ export async function grade(input: GradeInput): Promise<GraderResult[]> {
         return gradeSkill(g, input);
       case "event":
         return gradeEvent(g, input.events);
+      case "answer":
+        return gradeAnswer(g, input.events);
       case "budget":
         return { pass: !input.overBudget, why: input.overBudget ? "over budget" : "within budget" };
     }

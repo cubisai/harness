@@ -1,0 +1,39 @@
+{
+  "id": "multi-step-stats",
+  "tags": [
+    "capability"
+  ],
+  "tier": "full",
+  "fixture": "stats",
+  "mode": "full",
+  "prompt": "In src/stats.js add and export min, max and mean for arrays of numbers. Add tests in test/stats.test.mjs (node:test) and run them.",
+  "graders": [
+    {
+      "type": "command",
+      "run": "node check-stats.mjs"
+    },
+    {
+      "type": "command",
+      "run": "node --test test/stats.test.mjs"
+    },
+    {
+      "type": "tool",
+      "name": "Run",
+      "min": 1
+    },
+    {
+      "type": "event",
+      "noError": true,
+      "noFalseClaim": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 14,
+    "maxInputTokens": 120000,
+    "timeoutMs": 240000
+  },
+  "reference": "Three functions, a node:test file, then runs node --test."
+}
