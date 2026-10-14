@@ -7,10 +7,10 @@ export function memoryOn(settings: Settings, projectId: string): boolean {
   return (settings.memory?.enabled ?? true) && !(settings.memory?.disabledProjects ?? []).includes(projectId);
 }
 
-/** The index as a prompt block for agents without native memory, or "" when there are no facts yet. */
-export function memoryPrompt(indexText: string): string {
-  if (!indexText.trim()) return "";
-  return `<harness-memory>\nProject memory shared across agents (CubiQ). Titles only: call the memory_read tool with a file name for the full note, or with no file to list all notes. Check it before asking the user something they may have told you before.\n${indexText}\n</harness-memory>`;
+/** The memory block (global then project titles) wrapped in its instructions, or "" when there are no notes yet. */
+export function memoryPrompt(blockText: string): string {
+  if (!blockText.trim()) return "";
+  return `<harness-memory>\nCubiQ memory, shared by every agent and session. Lines are titles: memory_read gives a note (file), searches (query) or lists all.\nCheck it before asking the user something they may have told you. Save preferences, corrections and facts the code doesn't show with memory_write (scope "global" for things about the user in every project). Fix or delete a wrong note instead of adding one. Notes date from when written: check what they name still exists. No secrets.\n${blockText}\n</harness-memory>`;
 }
 
 export function createMemory(opts: { root: string; home: string; codexHome?: string }): {

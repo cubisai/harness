@@ -11,11 +11,22 @@ export interface MemoryFact {
   name: string;
   description: string;
   type: MemoryType;
+  /** When the fact was last written, "YYYY-MM-DD"; absent for older files. */
+  updated?: string;
   body: string;
 }
 
+/**
+ * The reserved scope id for notes about the user that hold in every project;
+ * stored as `store.dir(GLOBAL_SCOPE)` under the same root.
+ */
+export const GLOBAL_SCOPE = "_global";
+
 /** The index file's budget: whole lines only, plus one line for the truncation notice. */
 export const INDEX_CAP = { lines: 200, chars: 4800 };
+
+/** The memory block's per-scope budget in characters: global notes first, then the project's. */
+export const BLOCK_CAP = { global: 1200, project: 3600 };
 
 const TYPES: MemoryType[] = ["user", "feedback", "project", "reference"];
 const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/;
@@ -67,18 +78,24 @@ export function parseFact(file: string, text: string): MemoryFact {
   const bodyLines = lines.slice(bodyStart);
   if (bodyLines[0] === "") bodyLines.shift();
   const name = field(front, "name") || basename(file, ".md");
+  const updated = field(front, "updated");
   return {
     file,
     name,
     description: field(front, "description") ?? "",
     type: asType(field(front, "type")),
+    ...(updated !== undefined ? { updated } : {}),
     body: bodyLines.join("\n"),
   };
 }
 
-/** Serialize a fact in Claude Code's auto-memory format: LF endings, a JSON-quoted description. */
+/**
+ * Serialize a fact in Claude Code's auto-memory format: LF endings, a JSON-quoted
+ * description, and an `updated:` line only when the fact carries one.
+ */
 export function serializeFact(f: Omit<MemoryFact, "file">): string {
-  return `---\nname: ${f.name}\ndescription: ${JSON.stringify(f.description)}\nmetadata:\n  type: ${f.type}\n---\n\n${f.body}`;
+  const updated = f.updated ? `updated: ${f.updated}\n` : "";
+  return `---\nname: ${f.name}\ndescription: ${JSON.stringify(f.description)}\n${updated}metadata:\n  type: ${f.type}\n---\n\n${f.body}`;
 }
 
 /** A filesystem-safe slug for a fact name, avoiding `taken` (compared lowercased). */
@@ -115,7 +132,7 @@ function waitSync(ms: number): void {
 }
 
 /** Write-then-rename, retrying once on the transient Windows rename locks. */
-function atomicWrite(target: string, text: string): void {
+export function atomicWrite(target: string, text: string): void {
   const tmp = `${target}.tmp-${process.pid}`;
   writeFileSync(tmp, text);
   try {
@@ -142,7 +159,7 @@ function linkedFile(line: string): string | null {
  * Claude reads and writes it natively; this class only mirrors it.
  */
 export class MemoryStore {
-  constructor(private root: string) {}
+  constructor(private root: string, private now: () => Date = () => new Date()) {}
 
   /** The project's folder, created if needed. */
   dir(projectId: string): string {
@@ -174,19 +191,49 @@ export class MemoryStore {
   write(projectId: string, fact: { name: string; description: string; type: MemoryType; body: string; file?: string }): string {
     if (fact.file !== undefined && !validFile(fact.file)) throw new Error(`invalid memory file ${fact.file}`);
     const file = fact.file ?? slugFor(fact.name, new Set(this.list(projectId).map((f) => f.file.toLowerCase())));
-    atomicWrite(join(this.dir(projectId), file), serializeFact({ name: fact.name, description: fact.description, type: fact.type, body: fact.body }));
+    const updated = this.now().toISOString().slice(0, 10);
+    atomicWrite(join(this.dir(projectId), file), serializeFact({ name: fact.name, description: fact.description, type: fact.type, body: fact.body, updated }));
     this.rebuildIndex(projectId, file);
     return file;
   }
 
-  /** Delete a fact and drop its index line. */
+  /** Delete a fact, its usage entry, and its index line. */
   remove(projectId: string, file: string): boolean {
     if (!validFile(file)) return false;
     const path = join(this.dir(projectId), file);
     if (!existsSync(path)) return false;
     rmSync(path, { force: true });
+    const usage = this.usage(projectId);
+    if (usage[file] !== undefined) {
+      delete usage[file];
+      atomicWrite(join(this.dir(projectId), ".usage.json"), JSON.stringify(usage));
+    }
     this.rebuildIndex(projectId);
     return true;
+  }
+
+  /**
+   * Record that a fact's file was used now, for recency ordering. A no-op for
+   * a filename that isn't a valid fact file.
+   */
+  touch(scope: string, file: string): void {
+    if (!validFile(file)) return;
+    const usage = this.usage(scope);
+    usage[file] = this.now().getTime();
+    atomicWrite(join(this.dir(scope), ".usage.json"), JSON.stringify(usage));
+  }
+
+  /** The scope's usage sidecar (file -> epoch ms), or {} when missing or corrupt. */
+  usage(scope: string): Record<string, number> {
+    const path = join(this.dir(scope), ".usage.json");
+    if (!existsSync(path)) return {};
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+      return parsed as Record<string, number>;
+    } catch {
+      return {};
+    }
   }
 
   /**
@@ -243,5 +290,50 @@ export class MemoryStore {
     }
     const lines = text === "" ? 0 : text.split("\n").length;
     return { text, lines, tokens: Math.ceil(text.length / 4) };
+  }
+
+  /**
+   * The memory block agents see: global notes first, then this project's, each
+   * section capped and ordered newest-first (by `updated` or last use).
+   */
+  blockIndex(projectId: string): { text: string; lines: number; tokens: number; shown: number; total: number } {
+    const scopes = projectId === GLOBAL_SCOPE ? [GLOBAL_SCOPE] : [GLOBAL_SCOPE, projectId];
+    const sections: string[] = [];
+    let shown = 0;
+    let total = 0;
+    for (const scope of scopes) {
+      const facts = this.list(scope);
+      total += facts.length;
+      if (!facts.length) continue;
+      const usage = this.usage(scope);
+      const recency = (f: Omit<MemoryFact, "body">): number => Math.max(Date.parse(f.updated ?? "") || 0, usage[f.file] ?? 0);
+      const sorted = [...facts].sort((a, b) => {
+        const diff = recency(b) - recency(a);
+        return diff !== 0 ? diff : a.file < b.file ? -1 : a.file > b.file ? 1 : 0;
+      });
+      const header = scope === GLOBAL_SCOPE ? `Global (about the user, every project; read with scope "global"):` : "This project:";
+      // The newline joining the two sections comes out of the project's share, so the total stays ≤ 4800.
+      const cap = scope === GLOBAL_SCOPE ? BLOCK_CAP.global : BLOCK_CAP.project - (sections.length ? 1 : 0);
+      const kept: string[] = [];
+      let chars = header.length;
+      for (const f of sorted) {
+        const line = `- [${f.name}](${f.file}) — ${f.description}`;
+        const extra = 1 + line.length;
+        if (chars + extra > cap) break;
+        kept.push(line);
+        chars += extra;
+      }
+      const notice = (n: number) => `- … ${n} more (memory_read to list or search)`;
+      let section = [header, ...kept].join("\n");
+      if (sorted.length - kept.length > 0) {
+        while (kept.length && `${[header, ...kept].join("\n")}\n${notice(sorted.length - kept.length)}`.length > cap) kept.pop();
+        section = `${[header, ...kept].join("\n")}\n${notice(sorted.length - kept.length)}`;
+      }
+      shown += kept.length;
+      sections.push(section);
+    }
+    const text = sections.join("\n");
+    const lines = text === "" ? 0 : text.split("\n").length;
+    return { text, lines, tokens: Math.ceil(text.length / 4), shown, total };
   }
 }

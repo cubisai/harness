@@ -60,8 +60,8 @@ describe("memory api", () => {
     const { api } = setup();
     const file = api.write("p1", { name: "  Commit Style ", description: "  Max 150  ", type: "feedback", body: "Keep it short." });
     expect(file).toBe("commit-style.md");
-    expect(api.read("p1", file)).toEqual({ file, name: "Commit Style", description: "Max 150", type: "feedback", body: "Keep it short." });
-    expect(api.overview("p1").notes).toEqual([{ file, name: "Commit Style", description: "Max 150", type: "feedback" }]);
+    expect(api.read("p1", file)).toMatchObject({ file, name: "Commit Style", description: "Max 150", type: "feedback", body: "Keep it short." });
+    expect(api.overview("p1").notes).toMatchObject([{ file, name: "Commit Style", description: "Max 150", type: "feedback" }]);
     expect(api.write("p1", { name: "Mystery", description: "", type: "bogus" as never, body: "" })).toBe("mystery.md");
     expect(api.read("p1", "mystery.md")?.type).toBe("project");
     expect(() => api.write("p1", { name: "   ", description: "", type: "project", body: "" })).toThrow();

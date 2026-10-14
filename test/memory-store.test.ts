@@ -1,8 +1,16 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { INDEX_CAP, MemoryStore, parseFact, serializeFact, slugFor } from "../src/main/memory/store";
+import { BLOCK_CAP, GLOBAL_SCOPE, INDEX_CAP, MemoryStore, parseFact, serializeFact, slugFor } from "../src/main/memory/store";
 import { tempDir } from "./helpers";
+
+/** The fact files a memory block names, in the order they appear. */
+function blockFiles(text: string): string[] {
+  return text.split("\n").flatMap((line) => {
+    const m = /^- \[[^\]]*\]\(([^)]+)\)/.exec(line);
+    return m ? [m[1]!] : [];
+  });
+}
 
 describe("parseFact / serializeFact", () => {
   it("round-trips a fact through the wire format", () => {
@@ -30,6 +38,19 @@ describe("parseFact / serializeFact", () => {
   it("treats an unknown type as project", () => {
     expect(parseFact("x.md", '---\nname: x\ndescription: "d"\nmetadata:\n  type: mystery\n---\n\nb').type).toBe("project");
   });
+
+  it("reads an updated date and omits the key when the file has none", () => {
+    const dated = parseFact("x.md", '---\nname: x\ndescription: "d"\nupdated: 2026-10-14\nmetadata:\n  type: project\n---\n\nb');
+    expect(dated.updated).toBe("2026-10-14");
+    const plain = parseFact("x.md", '---\nname: x\ndescription: "d"\nmetadata:\n  type: project\n---\n\nb');
+    expect(plain).toEqual({ file: "x.md", name: "x", description: "d", type: "project", body: "b" });
+    expect("updated" in plain).toBe(false);
+  });
+
+  it("writes updated right after description, and leaves the old output untouched without it", () => {
+    expect(serializeFact({ name: "Plain", description: "d", type: "project", body: "b" })).toBe('---\nname: Plain\ndescription: "d"\nmetadata:\n  type: project\n---\n\nb');
+    expect(serializeFact({ name: "Plain", description: "d", type: "project", body: "b", updated: "2026-01-02" })).toBe('---\nname: Plain\ndescription: "d"\nupdated: 2026-01-02\nmetadata:\n  type: project\n---\n\nb');
+  });
 });
 
 describe("slugFor", () => {
@@ -54,11 +75,11 @@ describe("slugFor", () => {
 
 describe("MemoryStore", () => {
   it("writes, lists, and reads a fact", () => {
-    const store = new MemoryStore(tempDir());
+    const store = new MemoryStore(tempDir(), () => new Date("2026-10-14T10:00:00Z"));
     const file = store.write("p1", { name: "Commit Style", description: "Max 150 chars", type: "feedback", body: "Keep it short." });
     expect(file).toBe("commit-style.md");
-    expect(store.list("p1")).toEqual([{ file: "commit-style.md", name: "Commit Style", description: "Max 150 chars", type: "feedback" }]);
-    expect(store.read("p1", file)).toEqual({ file: "commit-style.md", name: "Commit Style", description: "Max 150 chars", type: "feedback", body: "Keep it short." });
+    expect(store.list("p1")).toEqual([{ file: "commit-style.md", name: "Commit Style", description: "Max 150 chars", type: "feedback", updated: "2026-10-14" }]);
+    expect(store.read("p1", file)).toEqual({ file: "commit-style.md", name: "Commit Style", description: "Max 150 chars", type: "feedback", updated: "2026-10-14", body: "Keep it short." });
   });
 
   it("rejects path-shaped and index filenames", () => {
@@ -133,5 +154,123 @@ describe("MemoryStore", () => {
     expect(idx.text.split("\n").pop()!.startsWith("- … ")).toBe(true);
     expect(idx.text.length).toBeLessThanOrEqual(INDEX_CAP.chars);
     expect(idx.tokens).toBe(Math.ceil(idx.text.length / 4));
+  });
+});
+
+describe("MemoryStore dated notes, global scope, usage and blockIndex", () => {
+  const clock = (iso: string) => () => new Date(iso);
+
+  it("stamps updated on write and reads it back", () => {
+    const store = new MemoryStore(tempDir(), clock("2026-10-14T10:00:00Z"));
+    const file = store.write("p1", { name: "Commit Style", description: "Max 150", type: "feedback", body: "Keep it short." });
+    expect(store.read("p1", file)?.updated).toBe("2026-10-14");
+    expect(store.list("p1")[0]?.updated).toBe("2026-10-14");
+    expect(readFileSync(join(store.dir("p1"), file), "utf8")).toContain('description: "Max 150"\nupdated: 2026-10-14\nmetadata:');
+  });
+
+  it("keeps GLOBAL_SCOPE notes in their own folder, out of a project's list", () => {
+    const store = new MemoryStore(tempDir());
+    store.write(GLOBAL_SCOPE, { name: "Terse", description: "prefers terse answers", type: "user", body: "no fluff" });
+    store.write("p1", { name: "Commit Style", description: "Max 150", type: "feedback", body: "short" });
+    expect(store.dir(GLOBAL_SCOPE).endsWith(GLOBAL_SCOPE)).toBe(true);
+    expect(store.list(GLOBAL_SCOPE).map((f) => f.file)).toEqual(["terse.md"]);
+    expect(store.list("p1").map((f) => f.file)).toEqual(["commit-style.md"]);
+  });
+
+  it("records usage timestamps and drops them when a fact is removed", () => {
+    let now = new Date("2026-10-14T10:00:00Z");
+    const store = new MemoryStore(tempDir(), () => now);
+    store.write("p1", { name: "Alpha", description: "first", type: "project", body: "a" });
+    expect(store.usage("p1")).toEqual({});
+    store.touch("p1", "alpha.md");
+    expect(store.usage("p1")).toEqual({ "alpha.md": Date.parse("2026-10-14T10:00:00Z") });
+    now = new Date("2026-10-14T11:00:00Z");
+    store.touch("p1", "alpha.md");
+    expect(store.usage("p1")["alpha.md"]).toBe(Date.parse("2026-10-14T11:00:00Z"));
+    store.touch("p1", "../bad.md");
+    expect(Object.keys(store.usage("p1"))).toEqual(["alpha.md"]);
+    expect(store.remove("p1", "alpha.md")).toBe(true);
+    expect(store.usage("p1")).toEqual({});
+  });
+
+  it("never lists the usage sidecar and treats a corrupt one as empty", () => {
+    const store = new MemoryStore(tempDir());
+    store.write("p1", { name: "Alpha", description: "first", type: "project", body: "a" });
+    store.touch("p1", "alpha.md");
+    expect(store.list("p1").map((f) => f.file)).toEqual(["alpha.md"]);
+    writeFileSync(join(store.dir("p1"), ".usage.json"), "{not json");
+    expect(store.usage("p1")).toEqual({});
+  });
+
+  it("blocks global notes first with their header, then this project's", () => {
+    const store = new MemoryStore(tempDir(), clock("2026-10-14T10:00:00Z"));
+    store.write(GLOBAL_SCOPE, { name: "Terse", description: "prefers terse answers", type: "user", body: "x" });
+    store.write("p1", { name: "Commit Style", description: "Max 150", type: "feedback", body: "y" });
+    const block = store.blockIndex("p1");
+    expect(block.text).toBe(
+      'Global (about the user, every project; read with scope "global"):\n- [Terse](terse.md) — prefers terse answers\nThis project:\n- [Commit Style](commit-style.md) — Max 150',
+    );
+    expect(block.lines).toBe(4);
+    expect(block.tokens).toBe(Math.ceil(block.text.length / 4));
+    expect(block.shown).toBe(2);
+    expect(block.total).toBe(2);
+  });
+
+  it("orders notes by recency, a later touch first and ties by filename", () => {
+    let now = new Date("2026-10-14T10:00:00Z");
+    const store = new MemoryStore(tempDir(), () => now);
+    store.write("p1", { name: "Alpha", description: "a", type: "project", body: "a" });
+    store.write("p1", { name: "Beta", description: "b", type: "project", body: "b" });
+    // Same updated date and no usage yet: filename ascending.
+    expect(blockFiles(store.blockIndex("p1").text)).toEqual(["alpha.md", "beta.md"]);
+    now = new Date("2026-10-14T11:00:00Z");
+    store.touch("p1", "alpha.md");
+    now = new Date("2026-10-14T12:00:00Z");
+    store.touch("p1", "beta.md");
+    expect(blockFiles(store.blockIndex("p1").text)).toEqual(["beta.md", "alpha.md"]);
+  });
+
+  it("orders notes by a newer updated date", () => {
+    const store = new MemoryStore(tempDir());
+    const dir = store.dir("p1");
+    writeFileSync(join(dir, "jan.md"), serializeFact({ name: "Jan", description: "old", type: "project", body: "j", updated: "2026-01-01" }));
+    writeFileSync(join(dir, "jun.md"), serializeFact({ name: "Jun", description: "new", type: "project", body: "j", updated: "2026-06-01" }));
+    expect(blockFiles(store.blockIndex("p1").text)).toEqual(["jun.md", "jan.md"]);
+  });
+
+  it("returns an empty block for an empty store", () => {
+    const store = new MemoryStore(tempDir());
+    expect(store.blockIndex("p1")).toEqual({ text: "", lines: 0, tokens: 0, shown: 0, total: 0 });
+  });
+
+  it("caps the project section, ending with the more notice", () => {
+    const store = new MemoryStore(tempDir());
+    const dir = store.dir("p1");
+    for (let i = 0; i < 200; i++) {
+      const n = String(i).padStart(3, "0");
+      writeFileSync(join(dir, `fact-${n}.md`), serializeFact({ name: `Fact ${n}`, description: "d".repeat(80), type: "project", body: "b" }));
+    }
+    const block = store.blockIndex("p1");
+    expect(block.total).toBe(200);
+    expect(block.shown).toBeLessThan(block.total);
+    expect(block.text.startsWith("This project:\n")).toBe(true);
+    expect(block.text.length).toBeLessThanOrEqual(BLOCK_CAP.project);
+    expect(block.text).toMatch(/\n- … \d+ more \(memory_read to list or search\)$/);
+    expect(block.text.length).toBeLessThanOrEqual(BLOCK_CAP.global + BLOCK_CAP.project);
+  });
+
+  it("keeps both full sections together within the old 4800-char budget", () => {
+    const store = new MemoryStore(tempDir());
+    for (const scope of [GLOBAL_SCOPE, "p1"]) {
+      const dir = store.dir(scope);
+      for (let i = 0; i < 200; i++) {
+        const n = String(i).padStart(3, "0");
+        writeFileSync(join(dir, `fact-${n}.md`), serializeFact({ name: `Fact ${n}`, description: "d".repeat(80), type: "project", body: "b" }));
+      }
+    }
+    const block = store.blockIndex("p1");
+    expect(block.total).toBe(400);
+    expect(block.text.length).toBeLessThanOrEqual(INDEX_CAP.chars);
+    expect(block.text.split("\n").filter((l) => l.includes("more (memory_read"))).toHaveLength(2);
   });
 });

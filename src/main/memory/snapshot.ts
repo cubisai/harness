@@ -1,0 +1,97 @@
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { atomicWrite } from "./store";
+
+/** One thread's frozen memory block, tied to the agent session it was first sent to. */
+export interface MemorySnapshot {
+  sessionKey: string;
+  block: string;
+  at: number;
+}
+
+/** Thread ids become file names, so they must stay a plain, bounded token. */
+const THREAD_ID = /^[A-Za-z0-9_-]{1,128}$/;
+
+/** Snapshots older than this are too stale to reuse, even for a still-live thread. */
+const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * The frozen memory block each thread was first shown, keyed by thread and tied
+ * to the agent session it went to. Keeping it byte-identical for the whole
+ * session protects the prompt cache across turns and restarts; a changed
+ * session key (or a new thread) recomputes and overwrites.
+ */
+export class MemorySnapshots {
+  constructor(private root: string, private now: () => number = () => Date.now()) {}
+
+  /** The block for this thread's session: the stored one when sessionKey matches, else compute(), store and return it. */
+  get(threadId: string, sessionKey: string, compute: () => string): string {
+    if (!THREAD_ID.test(threadId)) return compute();
+    const stored = this.read(threadId);
+    if (stored && stored.sessionKey === sessionKey) return stored.block;
+    const block = compute();
+    this.write(threadId, { sessionKey, block, at: this.now() });
+    return block;
+  }
+
+  /** Point the current snapshot at a new session key without changing the block (used once the agent reports its real session id). No-op when none stored. */
+  rekey(threadId: string, sessionKey: string): void {
+    if (!THREAD_ID.test(threadId)) return;
+    const stored = this.read(threadId);
+    if (!stored) return;
+    this.write(threadId, { sessionKey, block: stored.block, at: stored.at });
+  }
+
+  /** Forget a thread's snapshot. */
+  drop(threadId: string): void {
+    if (!THREAD_ID.test(threadId)) return;
+    rmSync(this.path(threadId), { force: true });
+  }
+
+  /** Remove snapshots of threads not in `live`, and any older than maxAgeMs (default 30 days). Returns how many were removed. */
+  prune(live: Set<string>, maxAgeMs: number = MAX_AGE_MS): number {
+    let removed = 0;
+    for (const name of this.files()) {
+      const threadId = name.slice(0, -".json".length);
+      const stored = this.read(threadId);
+      if (!stored || !live.has(threadId) || this.now() - stored.at > maxAgeMs) {
+        rmSync(join(this.dir(), name), { force: true });
+        removed++;
+      }
+    }
+    return removed;
+  }
+
+  /** The snapshots folder, created on demand. */
+  private dir(): string {
+    const d = join(this.root, "_snapshots");
+    mkdirSync(d, { recursive: true });
+    return d;
+  }
+
+  private path(threadId: string): string {
+    return join(this.dir(), `${threadId}.json`);
+  }
+
+  /** The stored snapshot, or null when the file is missing, unreadable or malformed. */
+  private read(threadId: string): MemorySnapshot | null {
+    const path = this.path(threadId);
+    if (!existsSync(path)) return null;
+    try {
+      const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<MemorySnapshot>;
+      if (typeof parsed.sessionKey !== "string" || typeof parsed.block !== "string" || typeof parsed.at !== "number") return null;
+      return { sessionKey: parsed.sessionKey, block: parsed.block, at: parsed.at };
+    } catch {
+      return null;
+    }
+  }
+
+  private write(threadId: string, snap: MemorySnapshot): void {
+    atomicWrite(this.path(threadId), JSON.stringify(snap));
+  }
+
+  /** Every `.json` file name in the folder, empty when it doesn't exist yet. */
+  private files(): string[] {
+    return readdirSync(this.dir()).filter((f) => f.endsWith(".json"));
+  }
+}

@@ -31,7 +31,7 @@ const CHEAP_HINTS = ["nano", "mini", "flash", "lite", "haiku", "small", "free", 
 const EFFORT_ORDER = ["none", "minimal", "low", "medium"];
 
 /** A secret-looking value must never be written into the shared store. */
-const SECRETISH = /(api[_-]?key|secret|password|token)\s*[:=]\s*\S{8,}|sk-[A-Za-z0-9]{16,}/i;
+export const SECRETISH = /(api[_-]?key|secret|password|token)\s*[:=]\s*\S{8,}|sk-[A-Za-z0-9]{16,}/i;
 
 const RUN_TIMEOUT_MS = 120_000;
 

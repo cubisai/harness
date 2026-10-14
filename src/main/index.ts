@@ -53,7 +53,7 @@ import { buildContextPreview, mcpRow, skillsOf, toolTokens } from "./context-pre
 import { createMemory, memoryOn, memoryPrompt } from "./memory";
 import { createMemoryApi } from "./memory/api";
 import { createExtractor } from "./memory/extractor";
-import { MEMORY_READ_TOOL, memoryReadTool } from "./memory/tool";
+import { MEMORY_READ_TOOL, MEMORY_WRITE_TOOL, memoryReadTool, memoryWriteTool } from "./memory/tool";
 import { askUserTool, questionAnswerOf } from "./questions";
 import { SettingsStore, type SecretBox } from "./settings";
 import { agentCatalog, skillDetail } from "./library";
@@ -410,9 +410,10 @@ async function main(): Promise<void> {
     },
   );
   const tools = browserTools(browser);
-  const memoryTool = memoryReadTool({ store: memory.store, enabled: (pid) => memoryOn(settings.get(), pid) });
+  const memoryEnabled = (pid: string) => memoryOn(settings.get(), pid);
+  const memoryTools = [memoryReadTool({ store: memory.store, enabled: memoryEnabled }), memoryWriteTool({ store: memory.store, enabled: memoryEnabled })];
   // A stable array identity: the tool list must not change mid-conversation.
-  const allTools = [...tools, memoryTool];
+  const allTools = [...tools, ...memoryTools];
   // The memory block for agents without native memory, or null when it's off. Never throws: memory must not block a turn.
   const memoryPromptFor = (projectId: string): string | null => {
     try {
@@ -1178,8 +1179,8 @@ async function main(): Promise<void> {
     const deferred = thread ? mcpDeferred(driver, servers) : false;
     return buildContextPreview({
       guideParts: cwd ? guide.partsForCwd(cwd) : [],
-      // An agent that keeps the shared memory itself doesn't need the read tool.
-      tools: harnessTools(thread ?? undefined).filter((t) => !(thread && drivers.find((d) => d.id === thread.agent)?.capabilities.nativeMemory && t.name === MEMORY_READ_TOOL)),
+      // An agent that keeps the shared memory itself doesn't need the memory tools.
+      tools: harnessTools(thread ?? undefined).filter((t) => !(thread && drivers.find((d) => d.id === thread.agent)?.capabilities.nativeMemory && (t.name === MEMORY_READ_TOOL || t.name === MEMORY_WRITE_TOOL))),
       skills: thread && delivery ? skillsInputFor(delivery, cwd, thread.kind === "design") : null,
       mcp: servers.map((s) => ({ name: s.name, listed: mcpTools.peek(s.spec), deferred })),
       memoryIndex: pid && memoryOn(settings.get(), pid) ? (({ lines, tokens }) => ({ lines, tokens }))(memory.store.index(pid)) : null,
