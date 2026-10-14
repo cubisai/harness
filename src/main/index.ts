@@ -53,6 +53,7 @@ import { buildContextPreview, mcpRow, skillsOf, toolTokens } from "./context-pre
 import { createMemory, memoryOn, memoryPrompt } from "./memory";
 import { createMemoryApi } from "./memory/api";
 import { createExtractor } from "./memory/extractor";
+import { MemorySnapshots, PENDING_SESSION } from "./memory/snapshot";
 import { MEMORY_READ_TOOL, MEMORY_WRITE_TOOL, memoryReadTool, memoryWriteTool } from "./memory/tool";
 import { askUserTool, questionAnswerOf } from "./questions";
 import { SettingsStore, type SecretBox } from "./settings";
@@ -414,12 +415,27 @@ async function main(): Promise<void> {
   const memoryTools = [memoryReadTool({ store: memory.store, enabled: memoryEnabled }), memoryWriteTool({ store: memory.store, enabled: memoryEnabled })];
   // A stable array identity: the tool list must not change mid-conversation.
   const allTools = [...tools, ...memoryTools];
-  // The memory block for agents without native memory, or null when it's off. Never throws: memory must not block a turn.
-  const memoryPromptFor = (projectId: string): string | null => {
+  const memorySnapshots = new MemorySnapshots(join(userData, "memory", "projects"));
+  // Snapshots of deleted threads (and stale ones), off the startup path.
+  setImmediate(() => {
+    try {
+      memorySnapshots.prune(new Set(store.listProjects().flatMap((p) => store.listThreads(p.id).map((t) => t.id))));
+    } catch {
+      // Best-effort housekeeping.
+    }
+  });
+  /**
+   * The memory block every agent gets, or null when memory is off. With a
+   * thread it's frozen per agent session (null sessionKey = a new session), so
+   * a note written mid-session never changes the prompt the cache was built on.
+   * Never throws: memory must not block a turn.
+   */
+  const memoryPromptFor = (projectId: string, threadId?: string, sessionKey?: string | null): string | null => {
     try {
       if (!memoryOn(settings.get(), projectId)) return null;
       memory.ensure(projectId, store.getProject(projectId).path);
-      return memoryPrompt(memory.store.index(projectId).text);
+      const compute = () => memoryPrompt(memory.store.blockIndex(projectId).text);
+      return threadId ? memorySnapshots.get(threadId, sessionKey ?? PENDING_SESSION, compute) : compute();
     } catch {
       return null;
     }

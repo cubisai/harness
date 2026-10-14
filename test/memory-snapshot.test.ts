@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { MemorySnapshots } from "../src/main/memory/snapshot";
+import { MemorySnapshots, PENDING_SESSION } from "../src/main/memory/snapshot";
 import { tempDir } from "./helpers";
 
 /** A compute that counts its calls, so tests can assert it ran (or didn't). */
@@ -94,5 +94,20 @@ describe("MemorySnapshots", () => {
     expect(existsSync(join(root, "_snapshots", "stale.json"))).toBe(false);
     expect(existsSync(join(root, "_snapshots", "dead.json"))).toBe(false);
     expect(existsSync(join(root, "_snapshots", "broken.json"))).toBe(false);
+  });
+
+  it("always computes for a new (pending) session, and the first real key adopts that block", () => {
+    const snaps = new MemorySnapshots(tempDir());
+    let n = 0;
+    const compute = () => `block-${++n}`;
+    expect(snaps.get("t1", "s-old", compute)).toBe("block-1");
+    // A new session recomputes even though a snapshot exists.
+    expect(snaps.get("t1", PENDING_SESSION, compute)).toBe("block-2");
+    // The agent reports its id on the next turn: same block, no recompute.
+    expect(snaps.get("t1", "s-new", compute)).toBe("block-2");
+    expect(snaps.get("t1", "s-new", compute)).toBe("block-2");
+    expect(n).toBe(2);
+    // Resuming the old session afterwards is a different session: recompute.
+    expect(snaps.get("t1", "s-old", compute)).toBe("block-3");
   });
 });

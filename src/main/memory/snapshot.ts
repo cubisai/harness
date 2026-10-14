@@ -9,6 +9,12 @@ export interface MemorySnapshot {
   at: number;
 }
 
+/**
+ * The key a brand-new session's block is stored under until the agent reports
+ * its real session id; the first get with that id adopts the block unchanged.
+ */
+export const PENDING_SESSION = "pending";
+
 /** Thread ids become file names, so they must stay a plain, bounded token. */
 const THREAD_ID = /^[A-Za-z0-9_-]{1,128}$/;
 
@@ -24,11 +30,19 @@ const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 export class MemorySnapshots {
   constructor(private root: string, private now: () => number = () => Date.now()) {}
 
-  /** The block for this thread's session: the stored one when sessionKey matches, else compute(), store and return it. */
+  /**
+   * The block for this thread's session: the stored one when sessionKey
+   * matches, else compute(), store and return it. PENDING_SESSION always
+   * computes (a new session); a real key adopts a pending block unchanged.
+   */
   get(threadId: string, sessionKey: string, compute: () => string): string {
     if (!THREAD_ID.test(threadId)) return compute();
-    const stored = this.read(threadId);
+    const stored = sessionKey === PENDING_SESSION ? null : this.read(threadId);
     if (stored && stored.sessionKey === sessionKey) return stored.block;
+    if (stored && stored.sessionKey === PENDING_SESSION) {
+      this.write(threadId, { ...stored, sessionKey });
+      return stored.block;
+    }
     const block = compute();
     this.write(threadId, { sessionKey, block, at: this.now() });
     return block;
