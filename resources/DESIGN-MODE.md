@@ -25,8 +25,8 @@ The active design system is in `{dir}/system/`:
 
 ## Skills
 
-Load the fitting skill first: `design-prototype` (page or app screen), `design-mobile` (iOS/Android), `design-slides` (deck), `design-system-extract` (DESIGN.md + tokens from a site, screenshot or codebase), `design-critique` (review), `design-handoff` (dev spec).
+Load the fitting skill first, with CubiQ's skill tool (OpenCode: `cubiq_skill`, not its built-in `skill`): `design-prototype` (page, app screen), `design-mobile` (mobile), `design-slides` (deck), `design-system-extract` (DESIGN.md + tokens from a site or codebase), `design-critique` (review), `design-handoff` (dev spec).
 
 Before finishing, check with `design_screenshot` and `design_lint`; `design_critique_save` stores a critique.
 
-When you finish, say in a line or two what you built and what to try. Don't paste the HTML into the chat.
+When done, say in a line or two what you built and what to try. Don't paste the HTML.
