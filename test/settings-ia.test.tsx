@@ -41,11 +41,17 @@ describe("Settings IA", () => {
 
   it("puts each control in exactly one group", () => {
     // Providers render only with the store's settings; their group is pinned above.
-    const controls = ["Theme", "Motion", "Density", "Agent", "Permissions", "Open files in", "Installed", "Skills", "MCP tool search", "Keys", "Data folder", "Version", "Auto-update"];
+    const controls = ["Theme", "Motion", "Density", "Splash screen", "Agent", "Permissions", "Open files in", "Installed", "Skills", "MCP tool search", "Keys", "Data folder", "Version", "Auto-update"];
     for (const label of controls) {
       const where = groupIds.filter((id) => html[id]!.includes(`class="label"`) && new RegExp(`class="label"[^>]*>${label}<`).test(html[id]!));
       expect(where, label).toHaveLength(1);
     }
     expect(html.skills).toContain("Open MCP Servers");
+  });
+
+  it("offers both splash clips and Off, with the agent clip on when unset", () => {
+    expect(html.appearance).toMatch(/class="on"[^>]*>CubiQ agent</);
+    expect(html.appearance).toContain(">Night voyage<");
+    expect(html.appearance).toContain(">Preview<");
   });
 });

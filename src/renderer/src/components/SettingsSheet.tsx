@@ -8,6 +8,7 @@ import { ZOOM_STEPS } from "../../../shared/zoom";
 import { StepSlider } from "./StepSlider";
 import { UnsupportedChip } from "./UnsupportedChip";
 import { Select, selectPopupOpen } from "./Select";
+import { SPLASHES, playSplash, splashVisible } from "./Splash";
 
 const THEMES: { id: Theme; label: string }[] = [
   { id: "system", label: "System" },
@@ -73,6 +74,8 @@ export function SettingsSheet() {
     const onKey = (e: KeyboardEvent) => {
       // An open pick list takes Escape for itself.
       if (e.key === "Escape" && selectPopupOpen()) return;
+      // A preview splash takes the key to close itself.
+      if (e.key === "Escape" && splashVisible()) return;
       if (e.key === "Escape") {
         e.stopPropagation();
         setOpen(false);
@@ -180,6 +183,19 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
                 onPick={(i) => update({ zoom: ZOOM_STEPS[i] ?? 1 })}
               />
             </div>
+          </div>
+          <div className="row">
+            <span className="label" title="The looping clip shown while CubiQ starts">Splash screen</span>
+            <div className="segmented">
+              {SPLASHES.map((o) => (
+                <button key={o.id} className={(settings.splash ?? "agent") === o.id ? "on" : ""} onClick={() => update({ splash: o.id })}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            <button className="button ghost" disabled={settings.splash === "off"} onClick={playSplash}>
+              Preview
+            </button>
           </div>
         </section>
       );

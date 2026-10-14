@@ -55,6 +55,8 @@ export type PermissionMode = "ask" | "auto-edit" | "plan" | "full";
 export type Theme = "system" | "light" | "dark";
 /** How much the UI animates. `prefers-reduced-motion: reduce` always wins and means instant. */
 export type Motion = "instant" | "subtle" | "full";
+/** The live-wallpaper clip played at launch, or none. */
+export type Splash = "agent" | "voyage" | "off";
 /** Row spacing in the sidebar and transcript. */
 export type Density = "comfortable" | "compact";
 /** @deprecated a provider id; kept one release */
@@ -200,6 +202,8 @@ export interface Settings {
   mcpRouter?: "auto" | "off";
   /** Sidebar Recent section grouped by project (true, the default when unset) or one flat list (false). */
   sidebarGroupByProject?: boolean;
+  /** The launch splash clip; unset means "agent". */
+  splash?: Splash;
 }
 
 export type MemoryType = "user" | "feedback" | "project" | "reference";

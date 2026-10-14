@@ -11,6 +11,7 @@ import { DraftDesignSystem, ThreadDesignSystem } from "./components/DesignSystem
 import { ThreadTier } from "./components/TierMenu";
 import { Inspector } from "./components/Inspector";
 import { SettingsSheet } from "./components/SettingsSheet";
+import { Splash } from "./components/Splash";
 import { MessageCenter } from "./components/MessageCenter";
 import { Sidebar } from "./components/Sidebar";
 import { CollapsedHeaderControls, PaneRail, toggleSidebar } from "./components/PaneRail";
@@ -307,6 +308,7 @@ export function App() {
       <AboutSheet />
       <ContextSheet />
       <McpSheet />
+      <Splash />
     </div>
   );
 }

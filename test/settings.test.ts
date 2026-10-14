@@ -47,6 +47,18 @@ describe("SettingsStore", () => {
     expect(new SettingsStore(file, box).get()).toEqual({ theme: "dark", motion: "full", density: "comfortable", zoom: 1, antigravity: false, antigravityAck: null, defaultAgent: "codex", defaultPermissionMode: "auto-edit", autoUpdate: false, editor: "zed", paneLayout: DEFAULT_LAYOUT, memory: { enabled: true, disabledProjects: [] } });
   });
 
+  it("keeps the splash choice unset by default and accepts only the known clips", () => {
+    const file = fresh();
+    const s = new SettingsStore(file, box);
+    expect(s.get().splash).toBeUndefined();
+    s.update({ splash: "voyage" });
+    expect(new SettingsStore(file, box).get().splash).toBe("voyage");
+    s.update({ splash: "matrix" as never });
+    expect(s.get().splash).toBe("voyage");
+    s.update({ splash: "off" });
+    expect(s.get().splash).toBe("off");
+  });
+
   it("ignores invalid values", () => {
     const s = new SettingsStore(fresh(), box);
     s.update({ theme: "neon" as never, defaultPermissionMode: "yolo" as never });
