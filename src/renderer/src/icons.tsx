@@ -5,7 +5,11 @@ import {
   ArrowRight,
   ArrowUp,
   Bell,
+  Check,
   ChevronRight,
+  ChevronUp,
+  Circle,
+  CircleDot,
   Copy,
   Crosshair,
   Ellipsis,
@@ -39,6 +43,10 @@ const icon = (Glyph: LucideIcon, fallback = 16) =>
 
 export const IconCompose = icon(SquarePen);
 export const IconBell = icon(Bell);
+export const IconCheck = icon(Check, 12);
+export const IconTodo = icon(Circle, 12);
+export const IconTodoActive = icon(CircleDot, 12);
+export const IconChevronUp = icon(ChevronUp, 14);
 export const IconMore = icon(Ellipsis, 14);
 export const IconPin = icon(Pin, 14);
 export const IconFolder = icon(Folder);

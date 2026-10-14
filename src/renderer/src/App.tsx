@@ -4,6 +4,7 @@ import { SearchDialog } from "./components/SearchDialog";
 import { Library } from "./components/Library";
 import { Composer } from "./components/Composer";
 import { RequestDock } from "./components/RequestDock";
+import { TodoDock } from "./components/TodoDock";
 import { ThreadMeters } from "./components/Meters";
 import { DraftMode, DraftModel, ThreadMode, ThreadModel } from "./components/ThreadControls";
 import { DraftDesignSystem, ThreadDesignSystem } from "./components/DesignSystemMenu";
@@ -235,6 +236,7 @@ export function App() {
             ) : (
               <>
                 <ThreadView threadId={thread.id} />
+                <TodoDock threadId={thread.id} />
                 <RequestDock threadId={thread.id} />
                 <Composer
                   threadId={thread.id}

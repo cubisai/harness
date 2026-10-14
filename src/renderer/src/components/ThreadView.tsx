@@ -9,6 +9,7 @@ import { type FileRef, parseFileRef } from "../fileref";
 import { emptyLive, liveReasoningMode, visibleItems } from "../live";
 import { Markdown } from "../markdown";
 import { relativeToThread, useStore } from "../store";
+import { dockedPlan } from "../todo";
 import { DiffView, diffsOf } from "./DiffView";
 import { ReasoningBlock } from "./ReasoningBlock";
 import { activityOf, WaitingLine } from "./WaitingLine";
@@ -98,6 +99,9 @@ export function ThreadView({ threadId }: { threadId: string }) {
         last = e.seq;
       }
     }
+    // The latest plan lives in the todo dock above the message box, not in the timeline.
+    const docked = dockedPlan(events);
+    if (docked) stale.add(docked.seq);
     return stale;
   }, [events]);
   // The current turn: everything after the last top-level user message.
@@ -155,6 +159,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
   }, []);
 
   return (
+    <>
     <div
       className="thread-scroll"
       ref={scroller}
@@ -175,13 +180,6 @@ export function ThreadView({ threadId }: { threadId: string }) {
         {textItems.map((item) => (
           <LiveText key={item.key} text={item.text} />
         ))}
-        {running && permissions.length === 0 && plans.length === 0 && !asking && (
-          <WaitingLine
-            startedAt={startedAt ?? Date.now()}
-            outputTokens={live.usage?.outputTokens ?? live.thinkingTokens ?? null}
-            activity={activityOf(turnEvents, { textStreaming: textItems.length > 0, reasoningStreaming: reasoningItems.length > 0 || live.thinkingTokens !== null })}
-          />
-        )}
         {outbox.map((m, i) => (
           <div className="msg-user" key={`queued-${i}`}>
             <div className="bubble queued" title="Queued: sends when this turn ends">
@@ -200,6 +198,17 @@ export function ThreadView({ threadId }: { threadId: string }) {
         ))}
       </div>
     </div>
+    {/* Docked below the scrolling thread, so streaming text above never moves it. */}
+    {running && permissions.length === 0 && plans.length === 0 && !asking && (
+      <div className="waiting-dock">
+        <WaitingLine
+          startedAt={startedAt ?? Date.now()}
+          outputTokens={live.usage?.outputTokens ?? live.thinkingTokens ?? null}
+          activity={activityOf(turnEvents, { textStreaming: textItems.length > 0, reasoningStreaming: reasoningItems.length > 0 || live.thinkingTokens !== null })}
+        />
+      </div>
+    )}
+    </>
   );
 }
 
@@ -392,7 +401,7 @@ export function EventRow({ stored, results, children, running, threadId }: { sto
         </div>
       );
     case "thinking":
-      if (!e.text && !e.opaque) return null;
+      if (!e.text.trim() && !e.opaque) return null;
       return <ReasoningBlock text={e.text} opaque={Boolean(e.opaque)} live={false} newest={false} tokens={null} />;
     case "tool-use":
       return (

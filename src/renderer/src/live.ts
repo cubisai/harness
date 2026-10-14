@@ -76,7 +76,8 @@ export function applyLiveEvent(state: LiveThread, stored: StoredEvent): LiveThre
 
 /** Items of one channel with flushed, non-empty text, in arrival order. */
 export function visibleItems(state: LiveThread, channel: LiveItem["channel"]): LiveItem[] {
-  return state.items.filter((it) => it.channel === channel && it.text.length > 0);
+  // Reasoning that is only whitespace (a model streaming "\n" between thoughts) has nothing to show.
+  return state.items.filter((it) => it.channel === channel && (channel === "reasoning" ? it.text.trim().length > 0 : it.text.length > 0));
 }
 
 /** Which half of a reasoning block to show: its text, or only a token count. */

@@ -15,6 +15,16 @@ describe("live stream state", () => {
     expect(items[0]?.text).toBe("Hello world");
   });
 
+  it("shows no reasoning block for whitespace-only reasoning", () => {
+    let state = emptyLive();
+    for (const id of ["r1", "r2"]) state = appendDelta(state, { kind: "reasoning-delta", itemId: id, text: "\n" } as LiveDelta);
+    state = flushPending(state);
+    expect(visibleItems(state, "reasoning")).toEqual([]);
+    expect(liveReasoningMode(state)).toBe("none");
+    state = flushPending(appendDelta(state, { kind: "reasoning-delta", itemId: "r1", text: "Now the schema." } as LiveDelta));
+    expect(visibleItems(state, "reasoning")).toHaveLength(1);
+  });
+
   it("keeps streaming text when a mid-turn tool-use lands", () => {
     let state = appendDelta(emptyLive(), { kind: "text-delta", itemId: "a", text: "hello" });
     state = flushPending(state);
