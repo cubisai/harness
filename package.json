@@ -29,7 +29,8 @@
     "test": "vitest run",
     "smoke": "electron . --smoke",
     "dist": "bun run build && electron-builder --publish never",
-    "preview:ui": "vite --config vite.preview.config.ts"
+    "preview:ui": "vite --config vite.preview.config.ts",
+    "eval": "bun --env-file=.env evals/run.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.281",

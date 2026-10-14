@@ -1,0 +1,129 @@
+// The eval contract: task files (evals/tasks/*.json), graders and stored
+// results. Plan: .ai/plans/eval-framework.md.
+
+export type Tier = "smoke" | "full";
+export type TaskTag = "capability" | "regression";
+
+export interface Budget {
+  /** Tool calls allowed in the turn before the runner aborts it. */
+  maxSteps: number;
+  /** Input tokens (uncached + cached) allowed before the runner aborts the turn. */
+  maxInputTokens: number;
+  timeoutMs: number;
+}
+
+export type Grader =
+  | {
+      type: "file";
+      path: string;
+      exists?: boolean;
+      contains?: string;
+      matches?: string;
+      /** Same bytes as the fixture's copy (sha256). */
+      unchanged?: boolean;
+      required?: boolean;
+      weight?: number;
+    }
+  | { type: "command"; run: string; timeoutMs?: number; required?: boolean; weight?: number }
+  | { type: "tool"; name: string; min?: number; max?: number; required?: boolean; weight?: number }
+  | { type: "skill"; expect?: string[]; none?: boolean; required?: boolean; weight?: number }
+  | { type: "event"; noError?: boolean; noFalseClaim?: boolean; required?: boolean; weight?: number }
+  | { type: "budget"; required?: boolean; weight?: number };
+
+export interface Task {
+  id: string;
+  tags: TaskTag[];
+  tier: Tier;
+  /** Folder under evals/fixtures/; `<fixture>.hidden/` (optional) is copied in after the turn. */
+  fixture: string;
+  prompt: string;
+  mode: "plan" | "auto-edit" | "full";
+  /** How the runner answers permission requests; default allow. */
+  permissions?: "allow" | "deny";
+  /** Mock skill kit written into the fixture copy (scripts/mock-extensions-lib.mjs). */
+  skills?: { kit: { skills: number; seed: number } };
+  graders: Grader[];
+  budget: Budget;
+  /** What a correct run does, so a 0% score is checked against the task first. */
+  reference?: string;
+}
+
+/** A thread event cut down for storage and grading: no deltas, summaries clipped to 160 chars. */
+export interface CompactEvent {
+  kind: string;
+  /** Canonical tool name (tool-use). */
+  name?: string;
+  summary?: string;
+  isError?: boolean;
+  /** assistant-text / error / notice text, clipped to 2,000 chars. */
+  text?: string;
+}
+
+export interface GradeInput {
+  task: Task;
+  events: CompactEvent[];
+  /** The trial's project folder after the turn (hidden files already copied in). */
+  dir: string;
+  /** The task's fixture folder, for `unchanged`. */
+  fixtureDir: string;
+  overBudget: boolean;
+  /** Sentinel → skill name, for `skill` graders. */
+  sentinels?: Map<string, string>;
+  /** Runs a grader command in `dir`; injected so tests need no shell. */
+  runCommand(command: string, cwd: string, timeoutMs: number): Promise<{ ok: boolean; exitCode: number | null; tail: string }>;
+}
+
+export interface GraderResult {
+  type: Grader["type"];
+  pass: boolean;
+  required: boolean;
+  weight: number;
+  /** One line: why it passed or failed. */
+  why: string;
+}
+
+export interface TrialResult {
+  pass: boolean;
+  /** Weighted share of graders passed, 0..1. */
+  score: number;
+  graders: GraderResult[];
+  overBudget: boolean;
+  /** Set when the turn failed outside the agent's control (auth, 5xx, crash). */
+  harnessError: string | null;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  steps: number;
+  toolCalls: number;
+  durationMs: number;
+  costUsd: number | null;
+  events: CompactEvent[];
+}
+
+export interface TaskResult {
+  id: string;
+  tags: TaskTag[];
+  cacheKey: string;
+  /** True when this result was reused from the cache (no model calls). */
+  cached: boolean;
+  trials: TrialResult[];
+  /** At least one trial passed. */
+  passAtK: boolean;
+  /** Every trial passed. */
+  passHatK: boolean;
+}
+
+export interface RunMeta {
+  tier: Tier;
+  agent: string;
+  model: string;
+  protocol: string;
+  harnessHash: string;
+  startedAt: string;
+  durationMs: number;
+}
+
+export interface RunResult {
+  meta: RunMeta;
+  tasks: TaskResult[];
+}
