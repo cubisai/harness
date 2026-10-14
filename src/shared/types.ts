@@ -592,11 +592,22 @@ export type ThreadEvent = (
   | { kind: "thinking"; text: string; signature?: string; opaque?: boolean }
   | { kind: "tool-use"; toolUseId: string; name: string; summary: string; payload?: unknown }
   | { kind: "tool-result"; toolUseId: string; isError: boolean; summary: string; payload?: unknown }
-  | { kind: "turn-end"; costUsd: number | null; inputTokens: number; outputTokens: number; durationMs: number; usage?: Usage }
+  | {
+      kind: "turn-end";
+      costUsd: number | null;
+      inputTokens: number;
+      outputTokens: number;
+      durationMs: number;
+      usage?: Usage;
+      /** Model calls this turn made; only agents that run the loop themselves (the native agent) report it. */
+      steps?: number;
+      /** Tool outputs cleared from history this turn to fit the context (native agent). */
+      pruned?: number;
+    }
   /** One-line-per-category token breakdown of a brand-new session's first turn. */
   | { kind: "context-breakdown"; rows: { label: string; tokens: number }[]; total: number | null; estimated: boolean }
   | { kind: "error"; message: string }
-  | { kind: "notice"; text: string }
+  | { kind: "notice"; text: string; /** The evidence gate's flags, when this notice is one. */ evidence?: string[] }
   | { kind: "turn-start"; turnId: string; agent: string; model: string }
   | { kind: "plan"; entries: PlanEntry[] }
   /** The agent presented a plan and waits for the user's decision. */

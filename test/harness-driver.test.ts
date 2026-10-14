@@ -144,7 +144,7 @@ describe("provider driver", () => {
     expect(t.events[2]).toMatchObject({ name: "Write", summary: "hello.txt" });
     expect(t.events[3]).toMatchObject({ isError: false, payload: { diff: [{ path: "hello.txt" }] } });
     const end = t.events.at(-1) as Extract<ThreadEvent, { kind: "turn-end" }>;
-    expect(end).toMatchObject({ inputTokens: 2000, outputTokens: 200, costUsd: (2000 * 1 + 200 * 2) / 1e6, usage: { contextUsed: 1000, contextSize: 128_000 } });
+    expect(end).toMatchObject({ inputTokens: 2000, outputTokens: 200, costUsd: (2000 * 1 + 200 * 2) / 1e6, usage: { contextUsed: 1000, contextSize: 128_000 }, steps: 2, pruned: 0 });
 
     const first = t.requests[0]!;
     expect(first.model).toBe("deepseek-v4");
@@ -260,6 +260,7 @@ describe("provider driver", () => {
     expect(requests.filter((r) => r.tools.length === 0)).toHaveLength(0);
     expect(t.events.some((e) => e.kind === "compaction")).toBe(false);
     expect(t.sessions.load(sid)![2]).toMatchObject({ role: "tool", results: [{ text: PRUNED_MARKER }] });
+    expect(t.events.at(-1)).toMatchObject({ kind: "turn-end", steps: 2, pruned: 1 });
   });
 
   it("auto-compacts at most once when the kept tail alone still exceeds the limit", async () => {

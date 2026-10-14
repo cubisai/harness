@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ContextPreview, StoredEvent } from "../src/shared/types";
+import type { ContextPreview, StoredEvent, Usage } from "../src/shared/types";
 
 const fakePreview: ContextPreview = {
   guide: [{ source: "bundled", path: "/app/HARNESS.md", tokens: 120 }],
@@ -17,6 +17,63 @@ const fakePreview: ContextPreview = {
   ],
   memoryIndex: null,
 };
+
+/** A turn's usage, defaulting the fields these tests don't care about. */
+const usage = (over: Partial<Usage>): Usage => ({
+  inputTokens: 0,
+  outputTokens: 0,
+  reasoningTokens: null,
+  cacheReadTokens: null,
+  cacheWriteTokens: null,
+  cacheTtl: null,
+  hitRate: null,
+  miss: false,
+  provenance: "reported",
+  ...over,
+});
+
+/** Two reporting turns, three tool calls, a compaction and two notices. */
+const statEvents: StoredEvent[] = [
+  {
+    seq: 1,
+    event: {
+      kind: "turn-end",
+      costUsd: null,
+      inputTokens: 100,
+      outputTokens: 0,
+      durationMs: 0,
+      usage: usage({ inputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 1000 }),
+      steps: 3,
+      pruned: 0,
+    },
+    createdAt: 0,
+  },
+  {
+    seq: 2,
+    event: {
+      kind: "turn-end",
+      costUsd: null,
+      inputTokens: 100,
+      outputTokens: 0,
+      durationMs: 0,
+      usage: usage({ inputTokens: 100, cacheReadTokens: 900, cacheWriteTokens: 0, hitRate: 0.9, miss: true }),
+      steps: 1,
+      pruned: 2,
+    },
+    createdAt: 0,
+  },
+  { seq: 3, event: { kind: "tool-use", toolUseId: "u1", name: "read", summary: "read a" }, createdAt: 0 },
+  { seq: 4, event: { kind: "tool-use", toolUseId: "u2", name: "read", summary: "read b" }, createdAt: 0 },
+  { seq: 5, event: { kind: "tool-use", toolUseId: "u3", name: "read", summary: "read c" }, createdAt: 0 },
+  { seq: 6, event: { kind: "compaction", trigger: "auto", preTokens: 100, postTokens: 50 }, createdAt: 0 },
+  { seq: 7, event: { kind: "notice", text: "flagged", evidence: ["a", "b"] }, createdAt: 0 },
+  { seq: 8, event: { kind: "notice", text: "ordinary" }, createdAt: 0 },
+];
+
+/** A single turn that reports nothing about cache, steps or pruning. */
+const bareTurnEvents: StoredEvent[] = [
+  { seq: 1, event: { kind: "turn-end", costUsd: null, inputTokens: 10, outputTokens: 5, durationMs: 0 }, createdAt: 0 },
+];
 
 describe("breakdownRows", () => {
   it("returns the latest context-breakdown event, or null", async () => {
@@ -39,6 +96,64 @@ describe("agentShare", () => {
     expect(agentShare({ kind: "context-breakdown", rows, total: 14707, estimated: true })).toBe(13579);
     expect(agentShare({ kind: "context-breakdown", rows, total: 100, estimated: true })).toBe(0);
     expect(agentShare({ kind: "context-breakdown", rows, total: null, estimated: true })).toBe(0);
+  });
+});
+
+describe("threadStats", () => {
+  it("rolls up turns, cache hits, steps, tools, compactions, pruning and flags", async () => {
+    const { threadStats } = await import("../src/renderer/src/components/ContextSheet");
+    expect(threadStats(statEvents)).toEqual({
+      turns: 2,
+      hitRate: { all: 900 / 2100, last: 0.9 },
+      steps: { total: 4, perTurn: 2 },
+      toolCalls: 3,
+      compactions: 1,
+      pruned: 2,
+      misses: 1,
+      evidenceFlags: 2,
+    });
+  });
+
+  it("reports nulls for a turn that says nothing about cache, steps or pruning", async () => {
+    const { threadStats } = await import("../src/renderer/src/components/ContextSheet");
+    expect(threadStats(bareTurnEvents)).toEqual({
+      turns: 1,
+      hitRate: null,
+      steps: null,
+      toolCalls: 0,
+      compactions: 0,
+      pruned: null,
+      misses: 0,
+      evidenceFlags: 0,
+    });
+  });
+});
+
+describe("threadStatRows", () => {
+  it("builds the labelled rows in order", async () => {
+    const { threadStats, threadStatRows } = await import("../src/renderer/src/components/ContextSheet");
+    expect(threadStatRows(threadStats(statEvents))).toEqual([
+      { label: "Turns", value: "2" },
+      { label: "Prompt cache hit", value: "43% all turns · 90% last turn" },
+      { label: "Model steps", value: "4 · 2.0 per turn" },
+      { label: "Tool calls", value: "3" },
+      { label: "Compactions", value: "1" },
+      { label: "Tool outputs cleared to fit", value: "2" },
+      { label: "Unexpected cache misses", value: "1" },
+      { label: "Evidence flags", value: "2" },
+    ]);
+  });
+
+  it("omits the step and pruning rows and dashes the cache hit when unreported", async () => {
+    const { threadStats, threadStatRows } = await import("../src/renderer/src/components/ContextSheet");
+    expect(threadStatRows(threadStats(bareTurnEvents))).toEqual([
+      { label: "Turns", value: "1" },
+      { label: "Prompt cache hit", value: "—" },
+      { label: "Tool calls", value: "0" },
+      { label: "Compactions", value: "0" },
+      { label: "Unexpected cache misses", value: "0" },
+      { label: "Evidence flags", value: "0" },
+    ]);
   });
 });
 
@@ -106,6 +221,18 @@ describe("ContextSheet", () => {
     expect(html).toContain("(estimated)");
     expect(html).toContain("Harness tools");
     expect(html).toContain("1,234");
+  });
+
+  it("renders the thread's telemetry", async () => {
+    const html = await render(fakePreview, statEvents);
+    expect(html).toContain("This thread");
+    expect(html).toContain("Prompt cache hit");
+    expect(html).toContain("4 · 2.0 per turn");
+  });
+
+  it("says there are no turns yet on an unrun thread", async () => {
+    const html = await render(fakePreview, []);
+    expect(html).toContain("No turns yet.");
   });
 
   it("renders nothing when closed", async () => {

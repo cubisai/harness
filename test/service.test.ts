@@ -743,6 +743,12 @@ describe("the evidence gate", () => {
       .map((e) => e.event)
       .filter((e): e is Extract<ThreadEvent, { kind: "notice" }> => e.kind === "notice")
       .map((e) => e.text);
+  const evidenceOf = (store: Store, threadId: string) =>
+    store
+      .listEvents(threadId)
+      .map((e) => e.event)
+      .filter((e): e is Extract<ThreadEvent, { kind: "notice" }> => e.kind === "notice")
+      .map((e) => e.evidence);
   const say = (input: TurnInput, text: string) => input.onEvent({ kind: "assistant-text", text });
 
   it("stays silent for an honest turn", async () => {
@@ -762,6 +768,7 @@ describe("the evidence gate", () => {
     });
     await service.send({ threadId: thread.id, text: "make the build green" });
     expect(notices(store, thread.id)).toEqual(["Worth a second look: Added .skip/.only in src/math.test.ts. Says tests or checks pass, but none ran this turn."]);
+    expect(evidenceOf(store, thread.id)).toEqual([["Added .skip/.only in src/math.test.ts.", "Says tests or checks pass, but none ran this turn."]]);
   });
 
   it("flags a deleted test file, and reads an Edit's own diff", async () => {

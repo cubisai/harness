@@ -875,7 +875,7 @@ export class Service {
           const last = [...this.store.listEvents(thread.id)].reverse().find((e) => e.event.kind === "assistant-text" && e.seq > userEvent.seq);
           const answer = last && last.event.kind === "assistant-text" ? last.event.text : "";
           const flags = await turnEvidence(cwd, { before, after, testsBefore, editDiffs, commands, answer, request: req.text, checkPassed });
-          if (flags.length) this.emit(thread.id, { kind: "notice", text: `Worth a second look: ${flags.join(" ")}` });
+          if (flags.length) this.emit(thread.id, { kind: "notice", text: `Worth a second look: ${flags.join(" ")}`, evidence: flags });
         } catch {
           // Best-effort: a git hiccup never fails the turn.
         }

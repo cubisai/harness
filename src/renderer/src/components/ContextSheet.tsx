@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { cacheStats } from "../../../shared/cache-stats";
 import type { ContextPreview, StoredEvent, ThreadEvent } from "../../../shared/types";
 import { api } from "../api";
 import { useStore } from "../store";
@@ -27,6 +28,77 @@ export function breakdownRows(events: StoredEvent[] | undefined): Extract<Thread
 export function agentShare(e: Extract<ThreadEvent, { kind: "context-breakdown" }>): number {
   if (typeof e.total !== "number") return 0;
   return Math.max(0, e.total - e.rows.reduce((sum, r) => sum + r.tokens, 0));
+}
+
+/** A thread's harness telemetry, rolled up from its events. */
+export interface ThreadStats {
+  turns: number;
+  /** Prompt-cache hit rate over every reporting turn, and the newest one's; null when none reported. */
+  hitRate: { all: number; last: number | null } | null;
+  /** Model calls, over turns that report them (native agent); null when none do. */
+  steps: { total: number; perTurn: number } | null;
+  toolCalls: number;
+  compactions: number;
+  /** Tool outputs cleared to fit the context; null when no turn reports it. */
+  pruned: number | null;
+  /** Turns that missed the prompt cache unexpectedly. */
+  misses: number;
+  /** Flags the evidence gate raised. */
+  evidenceFlags: number;
+}
+
+/** Roll a thread's events up into the sheet's "This thread" numbers. Pure. */
+export function threadStats(events: StoredEvent[]): ThreadStats {
+  let turns = 0;
+  let stepTurns = 0;
+  let steps = 0;
+  let pruned: number | null = null;
+  let toolCalls = 0;
+  let compactions = 0;
+  let misses = 0;
+  let evidenceFlags = 0;
+  for (const { event: e } of events) {
+    if (e.kind === "turn-end") {
+      turns++;
+      if (typeof e.steps === "number") {
+        stepTurns++;
+        steps += e.steps;
+      }
+      if (typeof e.pruned === "number") pruned = (pruned ?? 0) + e.pruned;
+      if (e.usage?.miss) misses++;
+    } else if (e.kind === "tool-use") toolCalls++;
+    else if (e.kind === "compaction") compactions++;
+    else if (e.kind === "notice" && e.evidence) evidenceFlags += e.evidence.length;
+  }
+  const cache = cacheStats(events, 0);
+  return {
+    turns,
+    hitRate: cache.sessionHitRate === null ? null : { all: cache.sessionHitRate, last: cache.lastHitRate },
+    steps: stepTurns > 0 ? { total: steps, perTurn: steps / stepTurns } : null,
+    toolCalls,
+    compactions,
+    pruned,
+    misses,
+    evidenceFlags,
+  };
+}
+
+const pct = (rate: number): string => `${Math.round(rate * 100)}%`;
+
+/** The "This thread" rows, label and value. */
+export function threadStatRows(s: ThreadStats): { label: string; value: string }[] {
+  const rows = [{ label: "Turns", value: s.turns.toLocaleString() }];
+  rows.push({
+    label: "Prompt cache hit",
+    value: s.hitRate ? `${pct(s.hitRate.all)} all turns${s.hitRate.last === null ? "" : ` · ${pct(s.hitRate.last)} last turn`}` : "—",
+  });
+  if (s.steps) rows.push({ label: "Model steps", value: `${s.steps.total.toLocaleString()} · ${s.steps.perTurn.toFixed(1)} per turn` });
+  rows.push({ label: "Tool calls", value: s.toolCalls.toLocaleString() });
+  rows.push({ label: "Compactions", value: s.compactions.toLocaleString() });
+  if (s.pruned !== null) rows.push({ label: "Tool outputs cleared to fit", value: s.pruned.toLocaleString() });
+  rows.push({ label: "Unexpected cache misses", value: s.misses.toLocaleString() });
+  rows.push({ label: "Evidence flags", value: s.evidenceFlags.toLocaleString() });
+  return rows;
 }
 
 /**
@@ -109,6 +181,24 @@ export function ContextSheet({ preview: initial }: { preview?: ContextPreview | 
             <p className="context-empty">Send a message to measure the first turn.</p>
           )}
         </section>
+
+        {threadId && (
+          <section>
+            <h3>This thread</h3>
+            {events && events.some((e) => e.event.kind === "turn-end") ? (
+              <ul className="context-rows">
+                {threadStatRows(threadStats(events)).map((row) => (
+                  <li key={row.label}>
+                    <span className="context-label">{row.label}</span>
+                    <span className="context-tokens">{row.value}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="context-empty">No turns yet.</p>
+            )}
+          </section>
+        )}
 
         <section>
           <h3>Added by CubiQ</h3>

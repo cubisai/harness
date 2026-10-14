@@ -343,12 +343,14 @@ async function runTurn(
   const definitions = tools.map((t) => t.definition);
   const overhead = estimateText(system.join("\n")) + estimateText(JSON.stringify(definitions));
   const limit = contextSize > 0 ? Math.max(Math.floor(contextSize * 0.75), contextSize - 20_000) : null;
+  let prunedThisTurn = 0;
   const shrink = async (msgs: LlmMessage[], last: LlmUsage | null, cap: number): Promise<void> => {
     // The previous call's real context is only good for deciding whether to
     // act: it was measured before pruning, so it can't judge the result.
     if (Math.max(estimateMessages(msgs) + overhead, last ? contextOf(last) : 0) <= cap) return;
     const pruned = pruneToolOutputs(msgs);
     if (pruned.pruned > 0) {
+      prunedThisTurn += pruned.pruned;
       msgs.splice(0, msgs.length, ...pruned.messages);
       deps.sessions.replace(sid, msgs);
     }
@@ -411,7 +413,7 @@ async function runTurn(
   if (result.stop === "stopped") input.onEvent({ kind: "notice", text: "Stopped." });
   const totalUsage = addUsage(result.usage, extraUsage);
   const usage = { ...normalizeUsage(totalUsage), ...(result.last ? { contextUsed: contextOf(result.last) } : {}), contextSize };
-  input.onEvent({ kind: "turn-end", costUsd: costOf(totalUsage), inputTokens: totalUsage.inputTokens, outputTokens: totalUsage.outputTokens, durationMs: Date.now() - started, usage });
+  input.onEvent({ kind: "turn-end", costUsd: costOf(totalUsage), inputTokens: totalUsage.inputTokens, outputTokens: totalUsage.outputTokens, durationMs: Date.now() - started, usage, steps: result.steps, pruned: prunedThisTurn });
 }
 
 /** A built-in tool in the loop; TodoWrite also updates the thread's plan. */
