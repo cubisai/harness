@@ -183,13 +183,13 @@ User asked for online research on building our own harness (context management, 
   - [x] OpenCode (Agent default): a stated preference was saved with `memory_write` to the global scope (`_global/code-style-named-exports-jsdoc.md`).
   - [x] Global note reaches a second project: a new `cubiq-shop` thread read it with `memory_read` and applied it.
   - [x] Snapshots written (`memory/projects/_snapshots/*.json`).
-  - [ ] **Claude** (Sonnet 5.5): state a preference → `memory_write` lands in CubiQ's folder (not `~/.claude/projects/*/memory`); a new Claude thread recalls it; `settings.autoMemoryEnabled` is false in practice.
-  - [ ] **Codex** (GPT-6-Luna): same write + recall; nothing under `~/.codex/memories`.
-  - [ ] **Native TokenHarbor** and **native PGS Grove**: same write + recall.
-  - [ ] Cross-agent: a note written by one agent is recalled by a *different* agent in a new thread.
-  - [ ] Cache: a second turn after a mid-session `memory_write` shows a cache read (system prompt unchanged; no thinking strip on native).
-  - [ ] Extractor: a turn where the agent called `memory_write` schedules no extraction (no duplicate note).
-  - [ ] Screenshots, light + dark: Library Memory tab (Global section, scope picker, budget line) and `/context` memory row.
+  - [x] **Claude** (Sonnet 5.5 write, Opus 5.5 recall, 2026-10-14): `memory_write` landed in CubiQ's `_global`; no `memory` dir under `~/.claude/projects/…native-proj`; a new thread recalled it via `memory_read`.
+  - [x] **Codex** (2026-10-14): recalled Claude's note, wrote its own via `memory_write`; no `~/.codex/memories`. It refused a "backup codeword" as a secret (guard works); the near-duplicate guard fired on a second codeword note.
+  - [x] **Native TokenHarbor** (DeepSeek V4.1 Flash): recall + write ok. [ ] **Native PGS Grove**: not testable here — only TokenHarbor is configured in Settings → Providers; add PGS Grove with its key and run the same prompt.
+  - [x] Cross-agent: Claude's note was recalled by Codex, OpenCode and native TokenHarbor; Codex's by OpenCode.
+  - [x] Cache: native TokenHarbor turn 2 after a `memory_write` read 10,752 cached tokens (98%, no miss).
+  - [x] Extractor: after `memory_write` turns and a wait, no duplicate or project-scope notes appeared.
+  - [x] Library Memory tab checked light + dark (Global section, scope toggles, "Agents see 7 of 7 notes"); `/context` shows the Memory row and "This thread" stats.
   - [ ] Windows CI for H2–H7 (`! git push -f origin HEAD:windows`, then the `test (windows-latest)` job) and the Windows PC gate.
 - **Live sweep fixes done (2026-10-14):** `f5b255a` (narrow composer: Send/Stop stays a 30px circle; long URLs in replies/thinking wrap; answered-questions row ellipsizes, no sideways scroll), `6aa5d1e` (design skill: photos in a local `img/`, load every page and fix console errors before finishing), `4402b99`: F1 `startThread` sends only to the thread `newThread` created; F2 per-message × on queued bubbles (`dequeue`); R1 **"Design it"** on the plan approval card (starts a design thread with the plan as brief, plan stays pending); F3/F4 OpenCode runs with `--print-logs --log-level INFO`, its logfmt stderr (`acp/opencode-log.ts`) becomes notices ("OpenCode's model call failed: …", "OpenCode is waiting for a permission it can't ask here: external_directory /tmp/* (often a sub-agent)…"), and `meaningfulStderr` keeps routine log lines out of "Agent said:"; F6 "Agent default" really switches: `Service.lastModel` reads the last `turn-start`, and the ACP driver drops a live session when the thread asks for a fresh one. All live-verified in the app; full suite 1995 passed. F5 (picker provider) and F8 (blank Design canvas) were **not bugs** — F8 only happens while agent-browser's CDP is attached (see findings file). Findings + root causes: `.ai/plans/live-sweep-findings.md`, `.ai/plans/sweep-fixes.md`.
 
