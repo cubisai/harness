@@ -1,11 +1,13 @@
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
-import { Plus } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 
 export interface GooeyItem {
   id: string;
   label: string;
   icon: ReactNode;
   onSelect(): void;
+  /** A flyout off the menu's right edge, opened on hover, focus or ArrowRight/Enter. */
+  submenu?: (close: () => void) => ReactNode;
 }
 
 /** Button size and the gap between the + and its items, in px. */
@@ -31,35 +33,68 @@ export function gooeyOffset(i: number): { x: number; y: number } {
  * out of the + that merge like liquid while they travel. The shapes are drawn
  * in an SVG under the real buttons and run through a goo filter (blur, then a
  * hard alpha threshold), so the buttons' icons stay crisp. The motion setting
- * gates the travel; without it the items just appear.
+ * gates the travel; without it the items just appear. An item may carry a
+ * submenu: a flyout off the row's right edge, opened on hover, focus or
+ * ArrowRight/Enter and closed by ArrowLeft, Escape or a click outside the menu.
  */
 export function GooeyPlus({ items, title = "Add context" }: { items: GooeyItem[]; title?: string }) {
   const [open, setOpen] = useState(false);
+  const [sub, setSub] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const first = useRef<HTMLButtonElement>(null);
+  // Returning focus to a submenu item (ArrowLeft) must not re-open its flyout.
+  const skipFocus = useRef(false);
   const filterId = `goo-${useId().replace(/:/g, "")}`;
+
+  const closeAll = () => {
+    setSub(null);
+    setOpen(false);
+  };
 
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
+    const onDown = (e: MouseEvent) => {
+      if (!box.current?.contains(e.target as Node)) closeAll();
+    };
     window.addEventListener("mousedown", onDown);
     return () => window.removeEventListener("mousedown", onDown);
   }, [open]);
 
   const pick = (item: GooeyItem) => {
-    setOpen(false);
+    closeAll();
     item.onSelect();
   };
 
   const onKey = (e: React.KeyboardEvent) => {
     const buttons = [...(box.current?.querySelectorAll<HTMLButtonElement>(".goo-item") ?? [])];
     const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
-    if (e.key === "Escape" && open) {
+    // Left is a caret move inside a flyout's search box, not "back".
+    const typing = (() => {
+      const el = e.target as HTMLElement | null;
+      return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+    })();
+    // A flyout owns Up/Down only while the focus is inside it; on the item that opened it the row still moves.
+    const inSub = !!sub && !!box.current?.querySelector(".goo-submenu")?.contains(document.activeElement);
+    if (sub && (e.key === "Escape" || (e.key === "ArrowLeft" && !typing))) {
+      // Close the flyout and hand focus back to the item that opened it.
+      const item = buttons.find((b) => b.dataset.sub === sub);
+      skipFocus.current = true;
+      setSub(null);
+      item?.focus();
+    } else if (inSub) {
+      return; // The flyout owns the rest of the keys.
+    } else if (e.key === "Escape" && open) {
+      setSub(null);
       setOpen(false);
       box.current?.querySelector<HTMLButtonElement>(".goo-main")?.focus();
-    } else if (open && (e.key === "ArrowRight" || e.key === "ArrowDown")) buttons[(at + 1) % buttons.length]?.focus();
-    else if (open && (e.key === "ArrowLeft" || e.key === "ArrowUp")) buttons[(at - 1 + buttons.length) % buttons.length]?.focus();
-    else return;
+    } else if (open && e.key === "ArrowRight" && buttons[at]?.dataset.sub) setSub(buttons[at]!.dataset.sub!);
+    else if (open && (e.key === "ArrowRight" || e.key === "ArrowDown")) {
+      setSub(null);
+      buttons[(at + 1) % buttons.length]?.focus();
+    } else if (open && (e.key === "ArrowLeft" || e.key === "ArrowUp")) {
+      setSub(null);
+      buttons[(at - 1 + buttons.length) % buttons.length]?.focus();
+    } else return;
     e.preventDefault();
     e.stopPropagation();
   };
@@ -97,6 +132,7 @@ export function GooeyPlus({ items, title = "Add context" }: { items: GooeyItem[]
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={(e) => {
+          setSub(null);
           setOpen((o) => !o);
           // Opened from the keyboard (no pointer, detail 0): focus the first item.
           if (!open && e.detail === 0) requestAnimationFrame(() => first.current?.focus({ preventScroll: true }));
@@ -115,15 +151,39 @@ export function GooeyPlus({ items, title = "Add context" }: { items: GooeyItem[]
               className="goo-item"
               title={item.label}
               aria-label={item.label}
+              data-sub={item.submenu ? item.id : undefined}
+              aria-haspopup={item.submenu ? "menu" : undefined}
+              aria-expanded={item.submenu ? sub === item.id : undefined}
               tabIndex={open ? 0 : -1}
               style={{ transform: open ? `translate(${x}px, ${y}px)` : undefined, transitionDelay: gooeyDelays(i, items.length, open).item }}
-              onClick={() => pick(item)}
+              onMouseEnter={item.submenu ? () => setSub(item.id) : undefined}
+              onFocus={() => {
+                if (skipFocus.current) {
+                  skipFocus.current = false;
+                  return;
+                }
+                if (item.submenu) setSub(item.id);
+              }}
+              onClick={() => (item.submenu ? setSub(item.id) : pick(item))}
             >
               {item.icon}
+              {item.submenu && <ChevronRight className="goo-chev" size={14} strokeWidth={1.75} aria-hidden />}
             </button>
           );
         })}
       </div>
+      {/* The flyouts sit outside the menu (role="menu") so their own lists nest correctly. */}
+      {items.map((item, i) => {
+        if (!item.submenu || !open || sub !== item.id) return null;
+        const { y } = gooeyOffset(i);
+        // Right of the whole row, not of the item: the row is behind the others, so an item-anchored
+        // flyout would cover them.
+        return (
+          <div key={`sub-${item.id}`} className="goo-submenu" style={{ left: items.length * STEP + SIZE + 4, top: y }}>
+            {item.submenu(closeAll)}
+          </div>
+        );
+      })}
     </div>
   );
 }
