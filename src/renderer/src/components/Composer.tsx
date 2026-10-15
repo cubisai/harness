@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AtSign, Check, File, Folder, Slash, Sparkles } from "lucide-react";
+import { AtSign, BriefcaseBusiness, Check, File, Folder, Slash, Sparkles } from "lucide-react";
 import type { PermissionMode, SkillEntry } from "../../../shared/types";
 import { IconArrowUp, IconStop } from "../icons";
 import { api } from "../api";
@@ -13,6 +13,7 @@ import { nextMode } from "../modes";
 import { useStore } from "../store";
 import { originLabel } from "./Library";
 import { Beam } from "./Beam";
+import { ExpertsSubmenu } from "./ExpertsSubmenu";
 import { GooeyPlus } from "./GooeyPlus";
 
 /**
@@ -575,6 +576,7 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
           <div className="composer-left">
             <GooeyPlus
               items={[
+                { id: "experts", label: "Experts", icon: <BriefcaseBusiness size={14} />, onSelect: () => {}, submenu: (close) => <ExpertsSubmenu close={close} /> },
                 { id: "mention", label: "Mention a file or folder (@)", icon: <AtSign size={14} />, onSelect: () => startTrigger("@") },
                 { id: "skill", label: "Use a skill ($)", icon: <Sparkles size={14} />, onSelect: () => startTrigger("$") },
                 { id: "command", label: "Run a command (/)", icon: <Slash size={14} />, onSelect: () => startTrigger("/") },

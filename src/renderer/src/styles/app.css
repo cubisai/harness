@@ -2234,6 +2234,84 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
   [data-motion="full"] .goo-item, [data-motion="subtle"] .goo-item { transition: transform 550ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 180ms var(--ease); }
   [data-motion="subtle"] .goo-blob, [data-motion="subtle"] .goo-item { transition-duration: 380ms, 120ms; }
 }
+/* The open + floats over the controls beside it (its flyouts open over them too). */
+.goo.open { z-index: 30; }
+/* An item with a submenu marks itself with a chevron; its flyout floats to the right. */
+.goo-chev { position: absolute; right: -3px; bottom: -3px; color: var(--text-tertiary); }
+.goo-submenu {
+  position: absolute;
+  z-index: 4;
+  min-width: 240px;
+  max-height: 360px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-l);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-float);
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+/* The Experts submenu: search, recent experts, then Browse all experts. */
+.xs-search { width: 100%; height: 28px; margin-bottom: 4px; }
+.xs-list { display: flex; flex-direction: column; gap: 1px; }
+.xs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text);
+  font-size: 12.5px;
+  text-align: left;
+  min-width: 0;
+}
+.xs-row:hover:not(:disabled), .xs-row:focus-visible { background: var(--bg-hover); }
+.xs-row:disabled { color: var(--text-tertiary); }
+.xs-avatar {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--bg-chip);
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  font-weight: 600;
+  flex: none;
+}
+.xs-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.xs-tag {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-hover);
+  color: var(--text-tertiary);
+  font-size: 10.5px;
+  font-weight: 500;
+}
+.xs-empty { margin: 6px 8px; color: var(--text-tertiary); font-size: 12.5px; }
+.xs-divider { height: 1px; margin: 4px 0; background: var(--hairline); }
+.xs-browse {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  text-align: left;
+}
+.xs-browse:hover, .xs-browse:focus-visible { background: var(--bg-hover); color: var(--text); }
+.xs-browse svg { margin-left: auto; flex: none; }
 .chip-button .chev { opacity: 0.6; flex: none; }
 .mode-chip.danger, .mode-chip.danger:hover { color: var(--danger); }
 /* A design thread's system chip: up to three swatches and the name; the menu shows each system's four. */
