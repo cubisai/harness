@@ -1,4 +1,5 @@
 import type { AgentCatalogEntry, LiveUpdate, McpOverview, MemoryNote, MemoryOverview, MemoryScope, Project, SettingsView, SkillEntry, SkillOrigin, StoredEvent, Thread, ThreadEvent, UnskilledApi } from "../../shared/types";
+import type { ExpertDef } from "../../shared/experts";
 
 /**
  * A fake backend for `bun run preview:ui`: the real renderer in a plain
@@ -256,6 +257,7 @@ export function installMock(): void {
         th.kind = "design";
         if (opts.designSystem) th.designSystem = opts.designSystem;
       }
+      if (opts?.expertId) th.expertId = opts.expertId;
       threads[pid] = [th, ...(threads[pid] ?? [])];
       return th;
     },
@@ -631,6 +633,10 @@ export function installMock(): void {
     designUnwatch: async () => {},
     designReveal: async () => {},
     designExport: async () => null,
+    listExperts: async () => mockExperts,
+    getExpert: async (id) => mockExperts.find((e) => e.id === id) ?? null,
+    importExperts: async () => ({ installed: [], candidates: [], skipped: [] }),
+    removeExpert: async () => {},
     designSystems: async () => [
       { id: "clean", name: "Clean", description: "Neutral and calm: white surfaces, one blue accent, soft radii.", swatches: ["#ffffff", "#18181b", "#2563eb", "#0e7490"], source: "builtin" },
       { id: "dashboard", name: "Dashboard", description: "Dense and data-first.", swatches: ["#f6f7f9", "#111827", "#4f46e5", "#0e7490"], source: "builtin" },
@@ -711,3 +717,17 @@ export function installMock(): void {
     }
   }, 300);
 }
+
+/** A few experts for the UI preview (the app reads resources/experts). */
+const mockExperts: ExpertDef[] = [
+  { id: "data-analyst", kind: "agent", name: "Data Analyst", profession: "Senior Data Analyst", persona: "Daniel", category: "Data & AI", avatarText: "DA", description: "Turns raw data into clear analyses, SQL and dashboards that answer a specific business question.", tags: ["analytics", "sql"], quickPrompts: ["Write SQL to compute week-over-week active users by segment", "Analyze this CSV and summarize the trends that matter"], prompt: "You are Daniel.", skills: [], source: "builtin", version: "1.0.0" },
+  { id: "frontend-developer", kind: "agent", name: "Frontend Developer", profession: "Senior Frontend Engineer", persona: "Fran", category: "Engineering", avatarText: "FD", description: "Builds accessible, fast interfaces in React and plain web platform code.", tags: ["react", "a11y"], quickPrompts: ["Build a responsive pricing table component with keyboard support"], prompt: "You are Fran.", skills: [], source: "builtin", version: "1.0.0" },
+  { id: "copywriter", kind: "agent", name: "Copywriter", profession: "Senior Copywriter", persona: "Cleo", category: "Content & Creative", avatarText: "CW", description: "Writes clear, persuasive copy for pages, emails and ads in your brand voice.", tags: ["copy", "brand"], quickPrompts: ["Rewrite this landing page hero in three tones"], prompt: "You are Cleo.", skills: [], source: "builtin", version: "1.0.0" },
+  {
+    id: "software-delivery-team", kind: "team", name: "Software Delivery Team", profession: "Engineering Lead", persona: "Dana", category: "Engineering", avatarText: "SD", description: "Takes a feature from design through implementation, review and testing to a shippable change.", tags: ["engineering", "delivery"], quickPrompts: ["Design and build a rate limiter for our public API"], prompt: "You lead the team.", skills: [], source: "builtin", version: "1.0.0",
+    members: [
+      { id: "architect", name: "Architect", profession: "Software Architect", description: "Designs the change.", prompt: "", skills: [] },
+      { id: "reviewer", name: "Reviewer", profession: "Code Reviewer", description: "Reviews it.", prompt: "", skills: [] },
+    ],
+  },
+];

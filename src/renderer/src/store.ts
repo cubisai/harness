@@ -1,3 +1,4 @@
+import type { ExpertDef } from "../../shared/experts";
 import { create } from "zustand";
 import type {
   ArtifactFile,
@@ -210,7 +211,12 @@ interface State {
   selectProject(id: string): Promise<void>;
   selectThread(id: string | null): Promise<void>;
   /** Open a new thread, returning its id (or null when nothing was created: no project, or the create failed). `worktree` gives it its own git worktree on a new branch; `designSystem` picks a design thread's system. */
-  newThread(skills?: string[], opts?: { worktree?: boolean; designSystem?: string }): Promise<string | null>;
+  newThread(skills?: string[], opts?: { worktree?: boolean; designSystem?: string; expertId?: string }): Promise<string | null>;
+  /** The expert catalogue (null until loaded). */
+  experts: ExpertDef[] | null;
+  loadExperts(): Promise<void>;
+  /** Start a new thread with an expert: its skills as chips, a design expert in a design thread, `prompt` pre-filled (not sent). */
+  summonExpert(id: string, prompt?: string): Promise<string | null>;
   /** Pick a design thread's design system; the next turn copies it into the design folder. */
   setDesignSystem(threadId: string, id: string): Promise<void>;
   /** Change a design thread's prototype tier. */
@@ -275,9 +281,13 @@ function findThread(threads: Record<string, Thread[]>, id: string): Thread | und
 }
 
 /** createThread's options: the kind being shown, and a design thread's system (an explicit one beats the draft's). */
-function createOpts(kind: ThreadKind, draft: Draft, opts?: { worktree?: boolean; designSystem?: string }): { worktree?: boolean; kind: ThreadKind; designSystem?: string } {
+function createOpts(
+  kind: ThreadKind,
+  draft: Draft,
+  opts?: { worktree?: boolean; designSystem?: string; expertId?: string },
+): { worktree?: boolean; kind: ThreadKind; designSystem?: string; expertId?: string } {
   const designSystem = kind === "design" ? (opts?.designSystem ?? draft.designSystem) : undefined;
-  return { ...(opts?.worktree !== undefined ? { worktree: opts.worktree } : {}), kind, ...(designSystem ? { designSystem } : {}) };
+  return { ...(opts?.worktree !== undefined ? { worktree: opts.worktree } : {}), kind, ...(designSystem ? { designSystem } : {}), ...(opts?.expertId ? { expertId: opts.expertId } : {}) };
 }
 
 /** The updates a freshly created thread needs to match the user's draft picks. */
@@ -572,6 +582,25 @@ export const useStore = create<State>((set, get) => ({
     });
   },
   composerDraft: null,
+  experts: null,
+  async loadExperts() {
+    try {
+      const experts = await api().listExperts();
+      set({ experts });
+    } catch {
+      set({ experts: [] });
+    }
+  },
+  async summonExpert(id, prompt) {
+    const def = get().experts?.find((e) => e.id === id) ?? (await api().getExpert(id));
+    if (!def) return null;
+    set({ libraryTab: null });
+    // A design expert works in a design thread; any other expert in a chat thread.
+    await get().setThreadKind(def.threadKind === "design" ? "design" : "chat");
+    const threadId = await get().newThread(def.skills, { expertId: def.id, ...(def.designSystem ? { designSystem: def.designSystem } : {}) });
+    if (threadId && prompt) get().setComposerDraft(prompt);
+    return threadId;
+  },
   setComposerDraft(text) {
     set((s) => ({ composerDraft: { text, nonce: (s.composerDraft?.nonce ?? 0) + 1 } }));
   },

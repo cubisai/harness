@@ -289,3 +289,10 @@ export function expertBlock(def: Pick<ExpertDef, "name" | "profession" | "prompt
     "Hand independent steps to members in parallel, keep dependent steps in order, then consolidate their outputs into one answer.",
   ].join("\n\n");
 }
+
+/** What an expert import did: what it installed, what a marketplace offers to pick from, and what it skipped. */
+export interface ExpertImportResult {
+  installed: string[];
+  candidates: { name: string; description: string; root: string }[];
+  skipped: { name: string; reason: string }[];
+}
