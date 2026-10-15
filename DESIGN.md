@@ -85,6 +85,7 @@ Full access mode shows its chip in `--danger`.
 - No liquid-metal effects in the chrome.
 - The beam is a status signal, not decoration: it runs regardless of the `motion` setting. `prefers-reduced-motion` holds it still (no spin).
 - The `motion` setting (default full since 2026-10-02) gates entrance animations (gooey, popover morph) and the Thinking slider's firefly dots (subtle and full). `prefers-reduced-motion` disables those too.
+- The launch splash is the exception: it is a wallpaper the user picks in Settings (with Off), so it plays unless Motion is Instant (then it shows the still poster); the OS reduce-motion flag doesn't still it.
 
 ## 7. Components
 
@@ -157,6 +158,6 @@ Parsing runs in an Electron `utilityProcess`, with a 25 MB cap and a 10 s timeou
 1. Light and dark (`data-theme` both ways, plus system).
 2. Narrow window: a 900px wide app with the panel open has no horizontal scroll and no clipped controls.
 3. Windows (Mica off, opaque sidebar) and macOS.
-4. Reduce-motion on: no animation.
+4. Reduce-motion on: no animation (except the launch splash the user picked; see §6).
 5. Keyboard: every control reachable, with a visible focus ring.
 6. The real app, driven and screenshotted (memory `test-app-for-real`), not just the preview.

@@ -64,8 +64,10 @@ export function Splash() {
   const [run, setRun] = useState(0);
   const timer = useRef<number | undefined>(undefined);
 
-  const still =
-    settings?.motion === "instant" || (typeof window !== "undefined" && Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches));
+  // The clip is a wallpaper the user picked (Settings → Splash, with Off), so only the app's own Motion setting stills it.
+  // The OS reduce-motion flag doesn't: macOS "Reduce motion" and Windows "Animation effects" off (Remote Desktop, VMs)
+  // otherwise left a still poster with no way to get the chosen clip back.
+  const still = settings?.motion === "instant";
 
   const dismiss = useCallback(() => {
     if (still) return setPhase("gone");
