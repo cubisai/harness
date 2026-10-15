@@ -4,6 +4,7 @@
 // History stays valid on every exit: each tool call gets a result.
 
 import type { ThreadEvent } from "../../shared/types";
+import { claimsPass, ranChecks } from "../evidence";
 import { streamLlm, type Route } from "./llm/client";
 import type { AssistantPart, LlmMessage, LlmRequest, LlmUsage, ToolCallPart, ToolDefinition, ToolResult as LlmToolResult } from "./llm/types";
 import { LlmError, emptyUsage } from "./llm/types";
@@ -43,6 +44,8 @@ export interface LoopInput {
   /** An id for this turn's live items. */
   turnId: string;
   maxSteps?: number;
+  /** Self-improve S6: opt in to in-turn nudges (a repeated failing command, an unbacked "tests pass"). */
+  nudges?: boolean;
   /** Decide (and ask the user when the mode says so) before a call runs. */
   authorize(tool: LoopTool, args: Record<string, unknown>, summary: string): Promise<Authorization>;
   emit: LoopEmitter;
@@ -69,7 +72,14 @@ export interface LoopResult {
 
 export const DEFAULT_MAX_STEPS = 100;
 const DOOM_REPEATS = 3;
+/** Self-improve S6: failures of the same call (any order) that earn the note. */
+const REPEAT_FAIL_AT = 3;
 const READ_CONCURRENCY = 8;
+
+/** Self-improve S6: appended to the third failing result of one call in a turn, when nudges are on. */
+export const REPEAT_FAIL_NOTE = "This exact command has now failed 3 times this turn. Don't run it again unchanged: read the error, change the approach, or tell the user what's blocking you.";
+/** Self-improve S6: a user message after an answer claims checks pass without one running, when nudges are on. */
+export const UNBACKED_PASS_NOTE = "You said tests or checks pass, but no test, typecheck, lint or build command ran this turn. Run the relevant check now and report its real result, or say plainly that it wasn't run.";
 
 const add = (a: LlmUsage, b: LlmUsage): LlmUsage => ({
   inputTokens: a.inputTokens + b.inputTokens,
@@ -90,6 +100,12 @@ export async function runLoop(input: LoopInput): Promise<LoopResult> {
   const byName = new Map(input.tools.map((t) => [t.definition.name, t]));
   const definitions = input.tools.map((t) => t.definition);
   const recent: string[] = [];
+  // Self-improve S6: per-turn state for the opt-in nudges — failure counts, and
+  // one flag per note so each fires at most once in the whole turn.
+  const fails = new Map<string, number>();
+  const nudge = { repeat: false };
+  const bashCommands: string[] = [];
+  let passNudged = false;
   let usage = emptyUsage();
   let last: LlmUsage | null = null;
   let overflowRetried = false;
@@ -165,10 +181,22 @@ export async function runLoop(input: LoopInput): Promise<LoopResult> {
         input.emit.event({ kind: "notice", text: "The answer stopped at the model's output limit." });
         return { stop: "length", usage, last, steps: step + 1 };
       }
+      // Self-improve S6: an answer claiming checks pass with none run gets one
+      // corrective user message, so the next step runs a real check.
+      const answer = message.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("");
+      if (input.nudges === true && !passNudged && step + 1 < maxSteps && claimsPass(answer) && !ranChecks(bashCommands)) {
+        passNudged = true;
+        append({ role: "user", content: [{ type: "text", text: UNBACKED_PASS_NOTE }] });
+        input.emit.event({ kind: "notice", text: "Nudged: the answer said checks pass, but none ran this turn." });
+        continue;
+      }
       return { stop: reason === "refusal" ? "refusal" : "done", usage, last, steps: step + 1 };
     }
 
-    const results = await runCalls(input, calls, byName, recent);
+    for (const c of calls) {
+      if (byName.get(c.name)?.definition.name === "bash" && typeof c.input.command === "string") bashCommands.push(c.input.command);
+    }
+    const results = await runCalls(input, calls, byName, recent, fails, nudge);
     append({ role: "tool", results });
     if (input.signal.aborted) return { stop: "stopped", usage, last, steps: step + 1 };
   }
@@ -186,7 +214,7 @@ function showMessage(emit: LoopEmitter, message: AssistantPart[], itemId: string
 
 type Planned = { call: ToolCallPart; tool: LoopTool | undefined };
 
-async function runCalls(input: LoopInput, calls: ToolCallPart[], byName: Map<string, LoopTool>, recent: string[]): Promise<LlmToolResult[]> {
+async function runCalls(input: LoopInput, calls: ToolCallPart[], byName: Map<string, LoopTool>, recent: string[], fails: Map<string, number>, nudge: { repeat: boolean }): Promise<LlmToolResult[]> {
   const planned: Planned[] = calls.map((call) => ({ call, tool: byName.get(call.name) }));
   for (const { call, tool } of planned) {
     const summary = tool ? safeSummary(tool, call.input) : call.name;
@@ -197,7 +225,7 @@ async function runCalls(input: LoopInput, calls: ToolCallPart[], byName: Map<str
   let i = 0;
   while (i < planned.length) {
     if (input.signal.aborted) {
-      for (; i < planned.length; i++) results[i] = finish(input, planned[i]!, { text: "Interrupted by the user.", isError: true });
+      for (; i < planned.length; i++) results[i] = finish(input, planned[i]!, { text: "Interrupted by the user.", isError: true }, fails, nudge);
       break;
     }
     // A run of read-only calls goes together; anything else runs alone.
@@ -205,7 +233,7 @@ async function runCalls(input: LoopInput, calls: ToolCallPart[], byName: Map<str
     if (planned[i]!.tool?.access === "read") while (j < planned.length && j - i < READ_CONCURRENCY && planned[j]!.tool?.access === "read") j++;
     const batch = planned.slice(i, j);
     const done = await Promise.all(batch.map((p) => runOne(input, p, recent)));
-    done.forEach((r, k) => (results[i + k] = finish(input, batch[k]!, r)));
+    done.forEach((r, k) => (results[i + k] = finish(input, batch[k]!, r, fails, nudge)));
     i = j;
   }
   return results;
@@ -241,7 +269,19 @@ async function runOne(input: LoopInput, { call, tool }: Planned, recent: string[
   }
 }
 
-function finish(input: LoopInput, { call, tool }: Planned, r: ToolResult): LlmToolResult {
+function finish(input: LoopInput, { call, tool }: Planned, r: ToolResult, fails: Map<string, number>, nudge: { repeat: boolean }): LlmToolResult {
   input.emit.event({ kind: "tool-result", toolUseId: call.id, isError: r.isError === true, summary: oneLine(r.text), payload: r.display?.result ?? r.text });
-  return { callId: call.id, name: tool?.definition.name ?? call.name, text: r.text, ...(r.isError ? { isError: true } : {}), ...(r.imagePng ? { imagePng: r.imagePng } : {}) };
+  let text = r.text;
+  if (r.isError === true) {
+    const key = `${call.name}:${JSON.stringify(call.input)}`;
+    const failed = (fails.get(key) ?? 0) + 1;
+    fails.set(key, failed);
+    // Self-improve S6: the same call failing REPEAT_FAIL_AT times (any order) gets
+    // one corrective note in the result the model reads, once per turn.
+    if (input.nudges === true && failed >= REPEAT_FAIL_AT && !nudge.repeat) {
+      nudge.repeat = true;
+      text = `${text}\n\n${REPEAT_FAIL_NOTE}`;
+    }
+  }
+  return { callId: call.id, name: tool?.definition.name ?? call.name, text, ...(r.isError ? { isError: true } : {}), ...(r.imagePng ? { imagePng: r.imagePng } : {}) };
 }

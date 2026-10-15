@@ -91,6 +91,8 @@ export interface TurnInput {
   mcpServers: McpServerEntry[];
   /** Who is running this turn, for the events it produces. */
   provenance?: Provenance;
+  /** Self-improve S6: the native agent may add one short corrective note mid-turn (a repeated failing command, an unbacked "tests pass"). Other drivers ignore it. */
+  nudges?: boolean;
 }
 
 /** What a driver needs to seed a new session with a handoff, without starting a turn. */

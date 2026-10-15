@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ThreadEvent } from "../src/shared/types";
-import { runLoop, type LoopInput, type LoopTool } from "../src/main/harness/loop";
+import { REPEAT_FAIL_NOTE, UNBACKED_PASS_NOTE, runLoop, type LoopInput, type LoopTool } from "../src/main/harness/loop";
 import { decide, refusal } from "../src/main/harness/permissions";
 import type { Route } from "../src/main/harness/llm/client";
 import { LlmError, emptyUsage, type AssistantPart, type LlmEvent, type LlmMessage, type LlmRequest } from "../src/main/harness/llm/types";
@@ -252,6 +252,70 @@ describe("runLoop", () => {
     const { input } = setup({ stream, onOverflow: async () => (overflowCalls++, true) });
     await expect(runLoop(input)).rejects.toMatchObject({ kind: "overflow" });
     expect(overflowCalls).toBe(0);
+  });
+});
+
+describe("nudges", () => {
+  // Three identical failing bash calls with a read between each, so the doom
+  // detector (identical calls in a row) never fires.
+  const repeatFail = () =>
+    script(
+      [call("a", "bash", { command: "x" })],
+      [call("b", "read", { path: "y" })],
+      [call("c", "bash", { command: "x" })],
+      [call("d", "read", { path: "y" })],
+      [call("e", "bash", { command: "x" })],
+      text("done"),
+    );
+  const repeatFailTools = (): LoopTool[] => [
+    tool("bash", "shell", async () => ({ text: "boom", isError: true })),
+    tool("read", "read"),
+  ];
+  /** The texts the loop fed back for the failing bash calls, in order. */
+  const bashTexts = (messages: LlmMessage[]) =>
+    messages
+      .filter((m): m is Extract<LlmMessage, { role: "tool" }> => m.role === "tool")
+      .map((m) => m.results[0]?.text ?? "")
+      .filter((t) => t.startsWith("boom"));
+
+  it("leaves the old behaviour alone when the flag is off", async () => {
+    const s = script(text("All tests pass."));
+    const { input, events } = setup({ stream: s.stream });
+    expect(await runLoop(input)).toMatchObject({ stop: "done", steps: 1 });
+    expect(s.requests).toHaveLength(1);
+    expect(events.filter((e) => e.kind === "notice")).toEqual([]);
+  });
+
+  it("continues with one corrective user message when the flag is on", async () => {
+    const s = script(text("All tests pass."));
+    const { input, events, messages } = setup({ stream: s.stream, nudges: true });
+    expect(await runLoop(input)).toMatchObject({ stop: "done", steps: 2 });
+    expect(s.requests).toHaveLength(2);
+    expect(s.requests[1]!.messages.at(-1)).toEqual({ role: "user", content: [{ type: "text", text: UNBACKED_PASS_NOTE }] });
+    expect(events.filter((e) => e.kind === "notice" && e.text.startsWith("Nudged:"))).toHaveLength(1);
+    // The second answer claims a pass too, but the nudge has already fired.
+    expect(messages.filter((m) => m.role === "user")).toHaveLength(2);
+  });
+
+  it("does not nudge an answer whose bash call ran a check", async () => {
+    const s = script([call("c1", "bash", { command: "npm test" })], text("All tests pass."));
+    const { input, events, messages } = setup({ stream: s.stream, tools: [tool("bash", "shell")], nudges: true });
+    expect(await runLoop(input)).toMatchObject({ stop: "done", steps: 2 });
+    expect(s.requests).toHaveLength(2);
+    expect(events.some((e) => e.kind === "notice" && e.text.startsWith("Nudged:"))).toBe(false);
+    expect(messages.map((m) => m.role)).toEqual(["user", "assistant", "tool", "assistant"]);
+  });
+
+  it("appends the repeat-fail note to the third failing result only", async () => {
+    const { input, messages } = setup({ stream: repeatFail().stream, tools: repeatFailTools(), nudges: true });
+    expect(await runLoop(input)).toMatchObject({ stop: "done", steps: 6 });
+    expect(bashTexts(messages)).toEqual(["boom", "boom", `boom\n\n${REPEAT_FAIL_NOTE}`]);
+  });
+
+  it("leaves the third failing result unchanged without the flag", async () => {
+    const { input, messages } = setup({ stream: repeatFail().stream, tools: repeatFailTools() });
+    expect(await runLoop(input)).toMatchObject({ stop: "done", steps: 6 });
+    expect(bashTexts(messages)).toEqual(["boom", "boom", "boom"]);
   });
 });
 

@@ -389,6 +389,7 @@ async function runTurn(
     signal: input.signal,
     turnId,
     authorize,
+    nudges: input.nudges === true,
     emit: {
       event: (e) => input.onEvent(e),
       textDelta: (text, itemId) => input.onTextDelta(text, itemId),
