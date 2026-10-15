@@ -11,3 +11,5 @@ dist/
 # Local test keys (never commit)
 .env
 .env.*
+# Eval fixtures may carry their own dist/ (e.g. the generated-dist task).
+!evals/fixtures/*/dist/
