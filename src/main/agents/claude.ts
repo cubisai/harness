@@ -412,7 +412,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
 
       const guideText = config.guide?.(input.cwd, input.design) ?? "";
       const memoryText = input.projectId ? config.memory?.(input.projectId, input.threadId, input.sessionId ?? null) ?? null : null;
-      const systemAppend = [guideText, memoryText].filter((part): part is string => Boolean(part)).join("\n\n");
+      const systemAppend = [guideText, input.expert, memoryText].filter((part): part is string => Boolean(part)).join("\n\n");
       const options: Options = {
         cwd: input.cwd,
         abortController,

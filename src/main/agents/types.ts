@@ -48,6 +48,8 @@ export interface TurnInput {
   projectId?: string;
   /** A design thread's folder (relative to cwd), which the guide tells the agent to build in. */
   design?: string;
+  /** The thread's expert persona block (see shared/experts.ts expertBlock), appended to the guide; absent = no expert. */
+  expert?: string;
   prompt: string;
   /** Compact the session instead of prompting (/compact); the focus steers the summary where the agent supports it. */
   compact?: { focus: string | null };
@@ -105,6 +107,8 @@ export interface SeedRequest {
   projectId?: string;
   /** A design thread's folder (relative to cwd), as in `TurnInput`. */
   design?: string;
+  /** The thread's expert persona block (see shared/experts.ts expertBlock), appended to the guide; absent = no expert. */
+  expert?: string;
   model: string;
   permissionMode: PermissionMode;
   tools: HarnessTool[];

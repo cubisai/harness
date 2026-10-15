@@ -882,7 +882,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   };
 
   const openThread = async (
-    input: Pick<TurnInput, "threadId" | "projectId" | "design" | "cwd" | "model" | "contextWindow" | "permissionMode" | "sessionId" | "tools" | "mcpServers" | "onEvent" | "onSession" | "onSessionRebuilt" | "onSessionLost">,
+    input: Pick<TurnInput, "threadId" | "projectId" | "design" | "expert" | "cwd" | "model" | "contextWindow" | "permissionMode" | "sessionId" | "tools" | "mcpServers" | "onEvent" | "onSession" | "onSessionRebuilt" | "onSessionLost">,
   ): Promise<{ threadId: string; model: string | null; wire?: string; memory: string }> => {
     const policy = codexPolicy(input.permissionMode);
     const model = input.model === CODEX_DEFAULT_MODEL ? null : input.model;
@@ -929,7 +929,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       try {
         // The session's original block: later turns pay cache reads, not writes.
         const memText = memory ?? "";
-        const developerInstructions = [guideText, memText].filter(Boolean).join("\n\n");
+        const developerInstructions = [guideText, input.expert, memText].filter(Boolean).join("\n\n");
         const res = await conn.request<{ thread: { id: string }; model?: string }>("thread/resume", {
           threadId: input.sessionId,
           cwd: input.cwd,
@@ -951,7 +951,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       // A new thread gets a fresh block: the one computed above when there was
       // no session, else (a failed resume) a new one.
       const memText = (input.sessionId ? memoryFor(null) : memory) ?? "";
-      const developerInstructions = [guideText, memText].filter(Boolean).join("\n\n");
+      const developerInstructions = [guideText, input.expert, memText].filter(Boolean).join("\n\n");
       const res = await conn.request<{ thread: { id: string }; model?: string }>("thread/start", {
         cwd: input.cwd,
         model,

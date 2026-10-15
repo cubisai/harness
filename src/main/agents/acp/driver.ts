@@ -1133,15 +1133,17 @@ export function createAcpDriver(
       // A new session's first prompt carries the harness guide and, when the
       // earlier session was lost, the seed's history prefix; only then are they dropped.
       const g = l.guidePending ? deps.guide?.(input.cwd, input.design) ?? "" : "";
+      const e = l.guidePending ? input.expert ?? "" : "";
       const m = l.guidePending && input.projectId ? deps.memory?.(input.projectId, input.threadId, null) ?? "" : "";
       const fresh = l.guidePending;
       // Warm the extensions estimate (MCP tool listings) so the breakdown at the end of this turn has it.
       if (fresh) deps.extensions?.(input.cwd, input.projectId ?? null);
-      if (g || m) l.guidePending = false;
+      if (g || e || m) l.guidePending = false;
       const h = l.historyPending;
       l.historyPending = null;
       const lead = [
         ...(g ? [{ type: "text", text: `<harness-guide>\n${g}\n</harness-guide>` }] : []),
+        ...(e ? [{ type: "text", text: e }] : []),
         ...(m ? [{ type: "text", text: m }] : []),
         ...(h ? [{ type: "text", text: `${h}\n---` }] : []),
       ];

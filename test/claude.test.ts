@@ -220,6 +220,16 @@ describe("Claude driver guide", () => {
     expect(sdk.calls).toHaveLength(1);
     expect(sdk.calls[0]?.options).not.toHaveProperty("systemPrompt");
   });
+
+  it("appends the expert block between the guide and the memory", async () => {
+    sdk.calls.length = 0;
+    const d = createClaudeDriver({ pluginDir: () => null, guide: () => "GUIDE" });
+    const { input } = turnInput();
+    input.expert = "<expert>Be terse.</expert>";
+    await d.runTurn(input);
+    expect(sdk.calls).toHaveLength(1);
+    expect(sdk.calls[0]?.options.systemPrompt).toEqual({ type: "preset", preset: "claude_code", append: "GUIDE\n\n<expert>Be terse.</expert>" });
+  });
 });
 
 describe("Claude driver design threads", () => {
