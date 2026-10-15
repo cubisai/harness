@@ -1,6 +1,33 @@
-# Handoff: eval framework E1–E4 done, OpenCode token + deny-wording fixes (2026-10-15) — see "Resume here — eval E3"; earlier: H0–H7 + live-sweep fixes done, cubiq-shop build and H7d checks open (plan `.ai/plans/harness-bp.md`)
+# Handoff: self-improve S1, S2+S3, S6 done; S4 replay + S5 Learned tab next (2026-10-15) — see "Resume here — self-improve"; before that eval E1–E4 done (see "Resume here — eval E3"); earlier: H0–H7 + live-sweep fixes done, cubiq-shop build and H7d checks open (plan `.ai/plans/harness-bp.md`)
 
 Updated 2026-10-13 on the **Mac**, branch `m4`. Read **Resume here — harness best practices (2026-10-13)** first (plan `.ai/plans/harness-bp.md`, research `plan/docs/12-harness-best-practices.md`), then **Resume here — Design v2 Mac test (2026-10-13)**, then **Resume here — Design mode v2** (plan: `.ai/plans/design-mode-v2.md`, Windows PC only), then **Resume here — native agent N2** (plan: `.ai/plans/native-agent.md`), then **Resume here — D4 done, Design mode complete**, then **Resume here — D3 done, D4 next**, then **Resume here — D2 done, D3 next**, then **Resume here — D1 done, D2 next**, then **Resume here — D1 next** (its plan), then **Resume here — P3 done**, then **Windows gate (2026-10-07)**, then **Resume here — C0 + P2 done**, then **Resume here — P1 done, next P2**, then **Resume here — MCP, providers, Design mode**, then **Resume here — Plan mode v2**, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`, `secrets-handling` (every stored credential safeStorage-encrypted; test keys only in the gitignored `.env`, never in briefs/commits).
+
+## Resume here — self-improve (2026-10-15, Mac)
+
+Plan: `.ai/plans/self-improve.md` (approved 2026-10-15, cheap models only); its **Implementation spec** section at the bottom has the evidence, modules, data, hooks and blast radius. Code: `src/main/learn/`, shared types `src/shared/learn.ts`. Off for every project unless listed in `Settings.learn.enabledProjects` (no UI to switch it on yet: S5).
+
+- **S6 `5ab9072`:** native agent nudges, only when `TurnInput.nudges` is set (the Service sets it for opted-in projects):
+  - the same failing call 3× (any order) gets one note in its tool result
+  - an answer that claims tests pass with no check run gets one corrective user message, then the loop continues
+  - written by an opencode implementer, verified and merged by Claude
+- **S1 `4384e23`:** live scorecard, zero tokens:
+  - signals: evidence flags, the check failing (or passing only after a fix round), denials, Stop, repeated failing commands, over 3× the project's healthy norm, a correcting next message, edits undone within 10 min
+  - fix rounds fold into their root turn's score
+  - stored in `turn_scores` (db migrations 23–26 add `turn_scores`, `lessons`, `learn_replays`, `learn_budget`)
+  - a health dot on the turn footer (`HealthDot`, `turn-score` LiveUpdate, `learn:scores` IPC)
+- **S2+S3 `460a5ca`:**
+  - a failed turn is frozen as a case in `<userData>/learn/<projectId>/cases/<id>/`: HEAD sha, the pre-turn dirty overlay, the prompt, and graders derived from the signal (check passes, test file unchanged, no unbacked claim, the file left as the user put it back)
+  - secret files and secret-looking content are never captured; a quarter of cases are held out (transfer checks only)
+  - a candidate lesson is drafted on the background model (`pickBackground`: Settings pick → native provider flash → the thread agent's cheap tier → any cheap model), idle-only, under the daily token cap (default 50k), deduped by token Jaccard; turns that used web/MCP/browser tools are never learned from
+  - a corrected turn waits for the next turn's answer as the contrast
+  - `draft.ts` was written by an opencode implementer on **TokenHarbor `deepseek-v4.1-flash`** (the user's choice for `/oc` from now on; see memory `oc-dispatch-mac`)
+- **Two deliberate deviations from the plan text** (both in the spec): lessons live in SQLite, not memory files, because CubiQ memory is Claude's native format and a candidate would reach Claude unverified; cases live in app data, not `.cubiq/evals/`, so they don't dirty the repo. "Save to project" will copy one there (S5).
+- **Not added on purpose:** a Claude `oneShot`. The memory extractor skips Claude only because Claude has none (no driver sets `nativeMemory`), so adding one would start extraction on every Claude turn. Background drafts on an agent without `oneShot` run as a hidden plan-mode turn in a temp folder instead (`backgroundShot`).
+- **Checks:** typecheck green; full suite 2146 passed (run 4× in a row clean after two test-timing fixes).
+- **Next:**
+  - **S4:** replay a case in a temp copy (`git clone --shared` + checkout sha + overlay + `node_modules` junction) on the background model, without and then with the lesson (k=2 each); promote when fail→pass and other cases hold; the result cache in `learn_replays`
+  - **S5:** inject active lessons relevant to the prompt (≤5, ≤800 chars, never twice per session), helpful/harmful counters, retire and re-verify, the Library → Learned tab, the Settings background-model picker and cap
+  - then the scripted end-to-end test (agent edits `dist/` → case → lesson → replay fail→pass → promoted → next turn avoids it), live turns on OpenCode, Codex and Claude, and Windows CI
 
 ## Resume here — eval E3 done (2026-10-15, Mac)
 
@@ -36,7 +63,7 @@ Plan: `.ai/plans/eval-framework.md` (approved; status block at top). Run with `b
   - **E4:** `bun run eval --trend [--tier] [--model] [--last n]` (zero tokens); 5 harder tasks (`csv-quoted`, `month-root-cause`, `async-save`, `slugify-spec`, `generated-dist`) with `<fixture>.reference/` solutions proven by `test/eval-tasks.test.ts` (graders fail on the fixture, pass on the reference); 6 always-green capability tasks retagged `regression`. Rubric grader deferred.
   - **Still saturated:** both DeepSeek and Haiku pass the 5 new tasks too (25/25 each). Next discriminating tasks need longer horizons (multi-file features, a failing CI log to diagnose, a spec with conflicting constraints).
 - **Windows CI green (2026-10-15, run 38673293246, 2078 passed)** after two fixes: the root `.gitignore` `dist/` had dropped the `generated-dist` fixture's `dist/` (now `!evals/fixtures/*/dist/`), and its grader normalises CRLF.
-- **Next (not started, user said wait):** self-improving CubiQ plan `.ai/plans/self-improve.md` (research + references inside).
+- **Next:** self-improving CubiQ, now in progress: see **Resume here — self-improve** above.
 - **Remaining:** the Windows PC gate; older items (cubiq-shop live build; H7d memory live checks).
 
 ## Where things stand
