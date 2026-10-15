@@ -1,6 +1,66 @@
-# Handoff: Design mode v2 (DM1, DM2) + Expert Center (EX1, EX2a, EX4) done; DM3 + EX2b + EX3 next in parallel (2026-10-15) — see "Resume here — Design v2 + Expert Center"; before that self-improve S1, S2+S3, S6 done, S4 + S5 open ("Resume here — self-improve")
+# Handoff: Design v2 DM1–DM3 + Expert Center EX1–EX4 done, plus expert portraits, chip and intro (2026-10-15) — see "Resume here — DM3, EX2b, EX3 + expert identity"; next: Add-expert UI, DM4, EX5 teams runtime, Windows gate
 
 Updated 2026-10-13 on the **Mac**, branch `m4`. Read **Resume here — harness best practices (2026-10-13)** first (plan `.ai/plans/harness-bp.md`, research `plan/docs/12-harness-best-practices.md`), then **Resume here — Design v2 Mac test (2026-10-13)**, then **Resume here — Design mode v2** (plan: `.ai/plans/design-mode-v2.md`, Windows PC only), then **Resume here — native agent N2** (plan: `.ai/plans/native-agent.md`), then **Resume here — D4 done, Design mode complete**, then **Resume here — D3 done, D4 next**, then **Resume here — D2 done, D3 next**, then **Resume here — D1 done, D2 next**, then **Resume here — D1 next** (its plan), then **Resume here — P3 done**, then **Windows gate (2026-10-07)**, then **Resume here — C0 + P2 done**, then **Resume here — P1 done, next P2**, then **Resume here — MCP, providers, Design mode**, then **Resume here — Plan mode v2**, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`, `secrets-handling` (every stored credential safeStorage-encrypted; test keys only in the gitignored `.env`, never in briefs/commits).
+
+## Resume here — DM3, EX2b, EX3 + expert identity (2026-10-15, Mac, session 2)
+
+Plan is still `.ai/plans/design-expert-center.md` (approved). Branch `m4`, **not pushed**. Commits this session (on top of `b5d56c4`):
+
+- **DM3 `08636e5` — Inspector:**
+  - a Properties | Code panel beside the canvas (toggle: sliders icon, left of Select; opening it also turns on Select)
+  - Properties are computed style read by the bridge (23 whitelisted keys, kept in step in `bridge.ts` and `shared/selection.ts` `STYLE_KEYS`)
+  - edits preview live in the frame (`preview-style` / `clear-preview`, originals restored)
+  - Apply clears the preview and writes "Change the selected element: font-size 32px → 20px." into the composer, scoped by the selection chip; the Code tab is read-only with Copy
+- **EX2b `9bb6517` — Expert Center:**
+  - the Library's Experts tab now has search, Experts N | Teams N, Sort (Recommended / Most used / Newest), My experts, 6 scenario cards, category chips plus Engines (the old engine cards, unchanged), and cards with Summon
+  - the detail modal has Summon, "Can help with" quick prompts, a team roster, stats and the ID
+  - usage counts live in `localStorage["cubiq.expertUsage"]` (`readUsage`/`bumpUsage` in `experts/ExpertCenter.tsx`; the submenu reuses them)
+- **EX3 `afee0ee` — "+" menu:** items can carry a `submenu`; the Experts flyout has search, 5 recent experts, Enter to pick the top match, and Browse all experts. It opens **upward** from its item (fix in `b786f46`).
+- **Fixes after the live test, `b786f46`:**
+  - opening the Inspector no longer remounts or reloads the frame (one `.design-stage-row` wrapper always)
+  - quoted commas in expert frontmatter lists (`splitList` in `shared/experts.ts`; quick prompts had been split in two)
+- **Manual-only experts, `88da8ef`** (user rule, memory `experts-manual-only`): an expert is set **only** by the user's Summon, quick prompt or "+" → Experts.
+  - restoring an exported thread now drops `expertId`
+  - audit: the catalogue reaches the renderer only over IPC; `expertBlock` is injected only for `thread.expertId`; nothing auto-picks an expert or shows the catalogue to a model
+  - keep it that way in EX5: team member subagents exist only inside a thread whose team the user summoned
+- **Expert identity, `971dece`** (WorkBuddy-style, from the user's request):
+  - portraits for all 30 experts and 12 team members: `src/renderer/src/assets/experts/<id>.svg` and `<team>--<member>.svg`
+  - they are DiceBear **Notionists** (CC0 1.0, by Zoish), generated once from the id as seed; see `LICENSE.md` there. They are not a dependency.
+  - `experts/ExpertAvatar.tsx` shows the portrait, else initials (imported experts)
+  - avatars are used on the cards, the detail header and roster, the "+" flyout, the composer chip and the intro card
+  - **ExpertChip:** in the composer bar of an expert thread; opens the detail; no × by design. In a narrow composer (≤ 420 px) it shows only the avatar and the chips drop their chevrons; the model picker keeps at least 44 px.
+  - **ExpertIntro:** at the top of an expert thread with no messages yet: avatar, name | persona, profession, description, team avatars, "Try asking" prompts (they pre-fill this thread's composer and don't summon), and an AI disclaimer
+- **Composer:** with chips (selection, skills, files), the chips get their own row and the text takes the full width under them (it was squeezed beside a chip).
+- **Checks on `m4` at `971dece`:**
+  - typecheck green, **2236 passed**, `design:check` 0 errors (the 48 warnings are the same baseline)
+  - live in the dev app: Inspector select → live preview → Apply draft, and the Code tab; Expert Center, the team detail with portraits, Escape (modal first, then the Library); the "+" → Experts flyout (search, Enter summons); the chip and intro in a narrow design chat
+  - live expert turns, Code Reviewer = "Priya, Staff Software Engineer":
+    - Claude `sonnet` and OpenCode `opencode/deepseek-v4.1-flash-free` answered as Priya
+    - Codex `gpt-6-luna` named itself "Codex" but confirmed that persona when asked: the developer instructions do arrive
+- **opencode workers:** TokenHarbor's Pass allowance ran out (`plan_allowance_exhausted`; don't switch on pay-as-you-go). The user chose **OpenCode Zen `opencode/deepseek-v4.1-flash-free`**. `.ai/tmp/dispatch.sh` uses it (no config injection); memory `oc-dispatch-mac` is updated.
+- **Worktrees:** `dm3`/`ex2b`/`ex3` are merged and removed. `uiux-p3` and `uiux-p4a` are also merged into `m4`; delete them if the user agrees.
+- **Test data in the dev app:** the project `board-proj` has two design threads; one is the user's own Design-System Architect thread.
+- **Known gaps:**
+  - a team's quick prompts in the detail open a new thread (Summon); from the intro card they only pre-fill
+  - imported experts get initials, not portraits
+  - the thread header shows no expert, only the composer chip does
+
+### What next (in order)
+
+1. **Windows gate + push:** run CI on `m4` (memory `two-machines`, `ci-windows-acp-flake`): importer path tests, the inspector, and the composer layout at narrow widths. Then push.
+2. **Add-expert UI** (EX4's missing front end), in the Expert Center:
+   - an "Add expert" button opens a dialog: paste a GitHub URL, or pick a folder or .zip → `importExperts`
+   - marketplace results show as a pick list
+   - a license badge ("No license: for your own use")
+   - Remove for imported experts
+   - give imported experts a generated portrait too (seeded by id, the same Notionists style), so they don't fall back to initials
+3. **EX5 teams runtime** (plan §EX5):
+   - Claude SDK `agents`, OpenCode `agent.<id>` subagents, and a Codex/native fallback
+   - a WorkBuddy-style team strip ("4 team members" with portraits and per-member status Done/Working) above the composer, and a right-side panel showing a member's task and output
+   - imported experts' `skills/` join the thread's skill roots
+   - **manual-only**: members never exist outside a summoned team thread
+4. **DM4:** floating tools, device chrome, restore a version; inspector write-back straight to the HTML (now Apply only drafts a message).
+5. **DM5:** the design-system editor.
 
 ## Resume here — Design v2 + Expert Center (2026-10-15, Mac)
 
