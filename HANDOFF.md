@@ -45,22 +45,53 @@ Plan is still `.ai/plans/design-expert-center.md` (approved). Branch `m4`, **not
   - imported experts get initials, not portraits
   - the thread header shows no expert, only the composer chip does
 
+### What's left of `.ai/plans/design-expert-center.md` (checked against the plan, 2026-10-15)
+
+- **DM1 Board, DM2 Flow + Present, EX1 expert model:** done.
+- **DM3 Inspector, partial:**
+  - **Apply only drafts a message.** The plan wants a `design:edit-style` IPC that patches the element by `data-agent-id` in the HTML on the working and real-app tiers (same safety model as `design:edit-text`); the quick tier keeps the scoped message. The plan's check "inspector apply writes the file" isn't met until this lands.
+  - the existing TweaksPanel isn't yet a "Tweaks" tab beside Properties | Code
+  - no Hug/Fill/Fixed sizing
+  - no **Elements** layer tree (tag + class) synced with the selection
+  - the Code tab has no syntax highlighting and no file list for the design folder
+- **DM4, not started:**
+  - a floating bottom tool bar (Select, Text edit, Comment, Draw; Draw is a pen overlay whose annotated PNG goes with the next message)
+  - device chrome (phone with notch/home bar, tablet, browser window)
+  - "Restore this version" (copies vN to a new latest version)
+- **DM5, not started:** a design-system viewer/editor (System tab: Overview, Colors with WCAG badges, Typography, Spacing, Radius, Shadows, Components); copy-on-write into `.agents/design-systems/<id>-custom/`, writing `tokens.css` + DESIGN.md with a live preview.
+- **EX2 Expert Center, nearly done:**
+  - no expert chip in the **thread header** (only the composer has it)
+  - the plan's "× removes it for the next thread only" isn't built. It's allowed under manual-only, since it's a user action.
+- **EX3 "+" submenu, partial:**
+  - no **Skills ▸** submenu
+  - picking an expert always opens a new thread. The plan says: in an empty thread it sets the expert on that thread; in a thread with messages it asks "Start a new thread with X?"
+- **EX4 importer, backend only:**
+  - the **Add expert UI** in the Expert Center: a GitHub URL (repo or `tree/<ref>/<subpath>`), a folder or a .zip → `importExperts`; a marketplace pick list; update and remove under "My experts"
+  - the detail modal should show source URL, version, author and license, and warn "No license: for your own use"
+  - a package's `skills/` should join the skill roots only for threads using that expert
+  - the plan's zh fallback is superseded by the user's rule "no Chinese names anywhere" (display fields are English-only already)
+  - also: generated Notionists portraits for imported experts (seeded by id), so they don't fall back to initials
+- **EX5 teams runtime, not started:**
+  - Claude: members as SDK `agents`
+  - OpenCode: `agent.<id>` subagents through config injection
+  - Codex/native: one-agent fallback with the notice "Teams run as one agent on Codex"
+  - a team strip above the composer with member portraits that light up from subagent events (`claude.ts:719,921`, `acp/driver.ts:556`), WorkBuddy-style: "4 team members" with per-member Done/Working and a right-side panel showing a member's task
+  - a cost note in the summon dialog (the detail already has a one-line team note)
+  - **manual-only**: members exist only inside a thread whose team the user summoned
+- **Verification still owed:**
+  - live import of `liangdabiao/workbuddy-expert-research-insight` as a team, run on Claude (only the import has been checked)
+  - Windows gate: importer path and extraction tests on win32 fixtures, and a green CI windows job
+
 ### What next (in order)
 
-1. **Windows gate + push:** run CI on `m4` (memory `two-machines`, `ci-windows-acp-flake`): importer path tests, the inspector, and the composer layout at narrow widths. Then push.
-2. **Add-expert UI** (EX4's missing front end), in the Expert Center:
-   - an "Add expert" button opens a dialog: paste a GitHub URL, or pick a folder or .zip → `importExperts`
-   - marketplace results show as a pick list
-   - a license badge ("No license: for your own use")
-   - Remove for imported experts
-   - give imported experts a generated portrait too (seeded by id, the same Notionists style), so they don't fall back to initials
-3. **EX5 teams runtime** (plan §EX5):
-   - Claude SDK `agents`, OpenCode `agent.<id>` subagents, and a Codex/native fallback
-   - a WorkBuddy-style team strip ("4 team members" with portraits and per-member status Done/Working) above the composer, and a right-side panel showing a member's task and output
-   - imported experts' `skills/` join the thread's skill roots
-   - **manual-only**: members never exist outside a summoned team thread
-4. **DM4:** floating tools, device chrome, restore a version; inspector write-back straight to the HTML (now Apply only drafts a message).
-5. **DM5:** the design-system editor.
+1. **Windows gate + push** `m4` (memories `two-machines`, `ci-windows-acp-flake`).
+2. **Finish the partial phases, in parallel worktrees** (memory `parallel-worktrees`; briefs ≤ 5 files, no shell commands for workers):
+   - **EX4-UI:** the Add-expert dialog, the license/source display, Remove/Update, portraits for imported experts
+   - **EX3-rest:** expert in an empty thread vs "Start a new thread with X?", and the Skills ▸ submenu
+   - **DM3-rest:** `design:edit-style` write-back, the Elements tree, the Tweaks tab, Hug/Fill/Fixed
+   - **EX2-rest:** the expert chip in the thread header
+3. **EX5** teams runtime (then the live team import test on Claude).
+4. **DM4**, then **DM5**.
 
 ## Resume here — Design v2 + Expert Center (2026-10-15, Mac)
 
