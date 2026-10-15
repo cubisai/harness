@@ -2,35 +2,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 import type { ExpertDef } from "../../../shared/experts";
 import { useStore } from "../store";
-
-/** Expert summons live in localStorage as an id → count map (the "recently used" order). */
-const USAGE_KEY = "cubiq.expertUsage";
-
-/** The id → summons map, or {} when storage is empty or blocked. */
-export function readExpertUsage(): Record<string, number> {
-  try {
-    const raw = localStorage.getItem(USAGE_KEY);
-    if (!raw) return {};
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-    const usage: Record<string, number> = {};
-    for (const [id, count] of Object.entries(parsed as Record<string, unknown>)) if (typeof count === "number" && Number.isFinite(count)) usage[id] = count;
-    return usage;
-  } catch {
-    return {};
-  }
-}
-
-/** Count a summon; a blocked or full store just drops the recency signal. */
-export function bumpExpertUsage(id: string): void {
-  try {
-    const usage = readExpertUsage();
-    usage[id] = (usage[id] ?? 0) + 1;
-    localStorage.setItem(USAGE_KEY, JSON.stringify(usage));
-  } catch {
-    // Storage blocked: recency is cosmetic.
-  }
-}
+import { bumpUsage, readUsage } from "./experts/ExpertCenter";
 
 /** The experts a query matches by name, profession or tag (case-insensitive). */
 export function filterExperts(experts: ExpertDef[], query: string): ExpertDef[] {
@@ -49,7 +21,7 @@ export function recentExperts(experts: ExpertDef[], usage: Record<string, number
  * start the thread. Split out so the row's click and Enter share one path.
  */
 export function chooseExpert(id: string, close: () => void): void {
-  bumpExpertUsage(id);
+  bumpUsage(id);
   close();
   void useStore.getState().summonExpert(id);
 }
@@ -74,7 +46,7 @@ export function ExpertsSubmenu({ close }: { close: () => void }): ReactNode {
 
   const shown = useMemo(() => {
     const all = experts ?? [];
-    return (query.trim() ? filterExperts(all, query) : recentExperts(all, readExpertUsage())).slice(0, 8);
+    return (query.trim() ? filterExperts(all, query) : recentExperts(all, readUsage())).slice(0, 8);
   }, [experts, query]);
 
   // Arrows move between the rows; Enter follows the focused row's button, or picks the top match from the search box.

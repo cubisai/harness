@@ -13,6 +13,11 @@ describe("parseExpertMarkdown", () => {
     expect(body).toBe("The body.");
   });
 
+  it("keeps a comma inside a quoted list item", () => {
+    const { meta } = parseExpertMarkdown('---\nquickPrompts: ["Turn this into a design, code plan and test plan", \'a, b\', c]\n---\n', "fallback");
+    expect(meta.quickPrompts).toEqual(["Turn this into a design, code plan and test plan", "a, b", "c"]);
+  });
+
   it("reads an indented dash list", () => {
     const text = "---\nname: X\ntags:\n  - one\n  - two\n---\nBody\n";
     const { meta } = parseExpertMarkdown(text, "fallback");

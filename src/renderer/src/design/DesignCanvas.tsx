@@ -806,9 +806,10 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           ))}
         </div>
       ) : entry && src ? (
-        inspectorOpen ? (
-          <div className="design-stage-row">
-            {stageEl}
+        // One wrapper either way, so opening the inspector never remounts (and reloads) the frame.
+        <div className="design-stage-row">
+          {stageEl}
+          {inspectorOpen && (
             <InspectorPanel
               threadId={threadId}
               element={selected[0] ?? null}
@@ -831,10 +832,8 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
                 useStore.getState().setComposerDraft("Change the selected element: " + changes.map((c) => `${kebab(c.prop)} ${c.from} → ${c.to}`).join("; ") + ".");
               }}
             />
-          </div>
-        ) : (
-          stageEl
-        )
+          )}
+        </div>
       ) : (
         <div className="design-canvas-empty">
           {loaded && (

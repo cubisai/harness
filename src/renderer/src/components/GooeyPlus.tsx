@@ -6,7 +6,7 @@ export interface GooeyItem {
   label: string;
   icon: ReactNode;
   onSelect(): void;
-  /** A flyout off the menu's right edge, opened on hover, focus or ArrowRight/Enter. */
+  /** A flyout above the item, opened on hover, focus or ArrowRight/Enter. */
   submenu?: (close: () => void) => ReactNode;
 }
 
@@ -34,7 +34,7 @@ export function gooeyOffset(i: number): { x: number; y: number } {
  * in an SVG under the real buttons and run through a goo filter (blur, then a
  * hard alpha threshold), so the buttons' icons stay crisp. The motion setting
  * gates the travel; without it the items just appear. An item may carry a
- * submenu: a flyout off the row's right edge, opened on hover, focus or
+ * submenu: a flyout above its item, opened on hover, focus or
  * ArrowRight/Enter and closed by ArrowLeft, Escape or a click outside the menu.
  */
 export function GooeyPlus({ items, title = "Add context" }: { items: GooeyItem[]; title?: string }) {
@@ -175,11 +175,10 @@ export function GooeyPlus({ items, title = "Add context" }: { items: GooeyItem[]
       {/* The flyouts sit outside the menu (role="menu") so their own lists nest correctly. */}
       {items.map((item, i) => {
         if (!item.submenu || !open || sub !== item.id) return null;
-        const { y } = gooeyOffset(i);
-        // Right of the whole row, not of the item: the row is behind the others, so an item-anchored
-        // flyout would cover them.
+        const { x, y } = gooeyOffset(i);
+        // Above the item: the + sits at the composer's foot, so a flyout opening downward would leave the window.
         return (
-          <div key={`sub-${item.id}`} className="goo-submenu" style={{ left: items.length * STEP + SIZE + 4, top: y }}>
+          <div key={`sub-${item.id}`} className="goo-submenu" style={{ left: x, bottom: SIZE + 6 - y }}>
             {item.submenu(closeAll)}
           </div>
         );

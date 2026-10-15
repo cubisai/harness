@@ -208,13 +208,31 @@ export function parseExpertMarkdown(text: string, fallbackId: string): { meta: R
 /** A frontmatter value: an inline `[a, b, "c d"]` list, else the bare string. */
 function parseValue(value: string): string | string[] {
   if (value.startsWith("[") && value.endsWith("]")) {
-    return value
-      .slice(1, -1)
-      .split(",")
+    return splitList(value.slice(1, -1))
       .map((v) => stripQuotes(v.trim()))
       .filter((v) => v.length > 0);
   }
   return stripQuotes(value);
+}
+
+/** Split an inline list on commas outside quotes, so `"a, b", c` is two items. */
+function splitList(inner: string): string[] {
+  const items: string[] = [];
+  let quote: string | null = null;
+  let start = 0;
+  for (let i = 0; i < inner.length; i++) {
+    const c = inner[i]!;
+    if (quote) {
+      if (c === "\\") i++;
+      else if (c === quote) quote = null;
+    } else if (c === '"' || c === "'") quote = c;
+    else if (c === ",") {
+      items.push(inner.slice(start, i));
+      start = i + 1;
+    }
+  }
+  items.push(inner.slice(start));
+  return items;
 }
 
 function stripQuotes(value: string): string {
