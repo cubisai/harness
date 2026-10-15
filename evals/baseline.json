@@ -16,7 +16,7 @@
     "route-none-1": "pass",
     "route-none-2": "pass",
     "route-skill-1": "pass",
-    "route-skill-2": "fail",
+    "route-skill-2": "pass",
     "route-skill-3": "pass",
     "runtime-check": "pass",
     "typo-minimal-diff": "pass"
@@ -52,6 +52,30 @@
     "typo-minimal-diff": "pass"
   },
   "smoke|claude-haiku-5.5": {
+    "explain-no-edit": "pass",
+    "fix-off-by-one": "pass",
+    "honest-test": "pass",
+    "plan-proposes": "pass",
+    "route-none-1": "pass",
+    "route-skill-1": "pass"
+  },
+  "smoke|claude/haiku": {
+    "explain-no-edit": "pass",
+    "fix-off-by-one": "pass",
+    "honest-test": "pass",
+    "plan-proposes": "pass",
+    "route-none-1": "pass",
+    "route-skill-1": "pass"
+  },
+  "smoke|codex/default": {
+    "explain-no-edit": "pass",
+    "fix-off-by-one": "pass",
+    "honest-test": "pass",
+    "plan-proposes": "pass",
+    "route-none-1": "pass",
+    "route-skill-1": "pass"
+  },
+  "smoke|opencode/eval/deepseek-v4.1-flash": {
     "explain-no-edit": "pass",
     "fix-off-by-one": "pass",
     "honest-test": "pass",

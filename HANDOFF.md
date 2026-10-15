@@ -1,8 +1,8 @@
-# Handoff: eval framework E1+E2 done, E3 (Claude/Codex/OpenCode) in progress (2026-10-14) — see "Resume here — eval E3"; earlier: H0–H7 + live-sweep fixes done, cubiq-shop build and H7d checks open (plan `.ai/plans/harness-bp.md`)
+# Handoff: eval framework E1–E3 done (2026-10-15) — see "Resume here — eval E3"; earlier: H0–H7 + live-sweep fixes done, cubiq-shop build and H7d checks open (plan `.ai/plans/harness-bp.md`)
 
 Updated 2026-10-13 on the **Mac**, branch `m4`. Read **Resume here — harness best practices (2026-10-13)** first (plan `.ai/plans/harness-bp.md`, research `plan/docs/12-harness-best-practices.md`), then **Resume here — Design v2 Mac test (2026-10-13)**, then **Resume here — Design mode v2** (plan: `.ai/plans/design-mode-v2.md`, Windows PC only), then **Resume here — native agent N2** (plan: `.ai/plans/native-agent.md`), then **Resume here — D4 done, Design mode complete**, then **Resume here — D3 done, D4 next**, then **Resume here — D2 done, D3 next**, then **Resume here — D1 done, D2 next**, then **Resume here — D1 next** (its plan), then **Resume here — P3 done**, then **Windows gate (2026-10-07)**, then **Resume here — C0 + P2 done**, then **Resume here — P1 done, next P2**, then **Resume here — MCP, providers, Design mode**, then **Resume here — Plan mode v2**, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`, `secrets-handling` (every stored credential safeStorage-encrypted; test keys only in the gitignored `.env`, never in briefs/commits).
 
-## Resume here — eval E3 (2026-10-14, Mac)
+## Resume here — eval E3 done (2026-10-15, Mac)
 
 Plan: `.ai/plans/eval-framework.md` (approved; status block at top). Run with `bun run eval --agent native|claude|codex|opencode --tier smoke|full [--provider pgs|th] [--trials 3] [--task a,b] [--dry] [--save-baseline]`. Results go to `.ai/evals/` (gitignored); the pass/fail baseline is in `evals/baseline.json`.
 
@@ -19,20 +19,17 @@ Plan: `.ai/plans/eval-framework.md` (approved; status block at top). Run with `b
   - `PLAN_MODE_NOTE` now says to answer plain questions without `propose_plan` or extra exploring
   - eval with 3 trials: all plan-mode tasks 3/3 on DeepSeek and Haiku
   - the first wording ("answer directly") made Haiku skip loading skills; the eval caught it and the wording was fixed
-- **E3 (this commit, not finished):**
+- **E3 done (2026-10-15):**
   - `evals/lib/agents.ts` builds the Claude, Codex and OpenCode drivers like `index.ts` does: same CUBIQ.md guide and built-in guard, the user's own logins, Claude on `haiku`
   - every agent now gets the guide, the native agent included (parity fix)
   - a plan proposal is recorded the same way for all agents (`event planProposed`)
   - the skill kit is written to each agent's skills folder (Claude reads `.claude/skills`)
-- **E3 results so far (smoke tier):**
-  - Codex 6/6.
-  - Claude 5/6. `plan-proposes` was a task bug: Claude writes its plan to `~/.claude/plans`. Fixed by dropping the Edit-count grader; project-unchanged still guards it.
-  - OpenCode crashed on EPIPE. That was an **app bug**: `StdioRpc` had no stdin error listener, so a write racing an agent's exit crashed the process. Fixed in `src/main/agents/rpc.ts` with a test (`test/rpc.test.ts`).
-  - Re-runs after the fixes: **OpenCode 6/6, Claude 6/6** (smoke tier). OpenCode reports 0 input tokens on some turns: its ACP usage is incomplete, so its token totals undercount.
-- **Next:**
-  1. Re-record the native baselines, which change because native now gets the guide: `--agent native --tier full --provider pgs|th --save-baseline`, about 330k cheap tokens.
-  2. Run `--save-baseline` for claude, codex and opencode (smoke).
-  3. Run the full suite, commit E3, update the plan status.
+  - `StdioRpc` stdin EPIPE crash fixed (`src/main/agents/rpc.ts`, `test/rpc.test.ts`)
+  - `--agent opencode --provider pgs` runs OpenCode on PGS Grove DeepSeek V4.1 Flash through an injected `eval` provider (`OPENCODE_CONFIG_CONTENT`, key as `{env:PGS_API_KEY}`). The user asked for this because OpenCode's own default (`agentrouter/deepseek-v4-flash`) began rejecting tool turns on 2026-10-15 with `sensitive words detected` (1/6, an upstream filter, not a harness bug).
+- **Baselines saved (2026-10-15):**
+  - native full: PGS DeepSeek **20/20** (route-skill-2 now passes; input tokens +369%, ≈13k→62k, from the guide), TokenHarbor Haiku **20/20** (≈337k in)
+  - smoke: Claude haiku 6/6, Codex default 6/6, OpenCode on PGS 6/6 (key `smoke|opencode/eval/deepseek-v4.1-flash`)
+  - full suite 2061 passed, typecheck green
 - **Open finding (not fixed, user to decide):** after a denied shell call, native DeepSeek tried to write the output file directly (1 of 3 trials on `permission-deny`). The harness denial text "Don't retry it; ask them or take another approach" invites that workaround. Candidate wording: "…don't get the same result another way; ask them, or continue with the rest."
 - **After E3:**
   - **E4 (optional):**
@@ -43,7 +40,6 @@ Plan: `.ai/plans/eval-framework.md` (approved; status block at top). Run with `b
   - **OpenCode token undercount:** its ACP usage misses some turns, so OpenCode token totals read low in the eval and in the app.
   - **Windows CI is unconfirmed since E1:** pushing to the `windows` branch was blocked by auto mode, and the user said to skip it for now.
   - **Older items, outside the eval:** cubiq-shop live build; H7d memory live checks.
-- **Don't commit** the other session's in-progress files (settings / Splash / assets / `shared/types.ts`).
 
 ## Where things stand
 

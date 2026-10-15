@@ -1,7 +1,7 @@
 // Eval CLI. Keys come from the environment, e.g.
 //   bun --env-file=.env evals/run.ts --tier smoke --provider pgs [--dry]
 // Flags: --agent native|claude|codex|opencode (default native), --tier smoke|full,
-// --provider th|pgs (native only), --model <id>, --trials <n>,
+// --provider th|pgs (native; opencode: pgs), --model <id>, --trials <n>,
 // --task <id>[,<id>…], --dry, --force, --keep, --save-baseline, --max-tokens <n>, --max-usd <n>,
 // --price <in>,<out> (USD per 1M tokens). Plan: .ai/plans/eval-framework.md.
 

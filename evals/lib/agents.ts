@@ -10,6 +10,7 @@ import { createCodexDriver } from "../../src/main/agents/codex";
 import { ACP_PRESETS } from "../../src/main/agents/registry";
 import type { AgentDriver } from "../../src/main/agents/types";
 import { BUILT_IN_GUARD } from "../../src/main/guard";
+import type { InjectionPlan } from "../../src/main/inject";
 import { createGuide } from "../../src/main/guide";
 import { createProviderDriver } from "../../src/main/harness/driver";
 import type { HarnessProtocol } from "../../src/main/harness/llm/types";
@@ -126,10 +127,26 @@ export function setupAgent(agent: AgentId, o: { root: string; scratch: string; p
   }
   const config = ACP_PRESETS.find((p) => p.id === "opencode")!;
   // "default" = OpenCode's own configured model (the app's "Agent default").
-  const model = o.model ?? "default";
+  // With --provider, an OpenAI-compatible preset is added as an `eval` provider
+  // through OPENCODE_CONFIG_CONTENT; the key stays an {env:} reference.
+  let model = o.model ?? "default";
+  let injection: (() => InjectionPlan) | undefined;
+  if (o.provider) {
+    const preset = PRESETS[o.provider];
+    if (!preset || preset.protocol !== "openai-chat") throw new Error(`--agent opencode --provider must be one of ${Object.entries(PRESETS).filter(([, p]) => p.protocol === "openai-chat").map(([id]) => id).join(", ")}`);
+    if (!process.env[preset.envVar]) throw new Error(`${preset.envVar} is not set (run with bun --env-file=.env)`);
+    const id = o.model ?? preset.model;
+    model = `eval/${id}`;
+    const content = JSON.stringify({
+      model,
+      provider: { eval: { npm: "@ai-sdk/openai-compatible", name: "eval", options: { baseURL: preset.baseURL, apiKey: `{env:${preset.envVar}}` }, models: { [id]: { name: id, tool_call: true } } } },
+    });
+    const env = Object.fromEntries(Object.entries(process.env).filter((e): e is [string, string] => e[1] !== undefined));
+    injection = () => ({ env: { ...env, OPENCODE_CONFIG_CONTENT: content }, byok: true });
+  }
   return {
     ...base,
-    driver: () => keep(createAcpDriver(config, { clientVersion: "eval", guardScript: BUILT_IN_GUARD, guide: forCwd })),
+    driver: () => keep(createAcpDriver(config, { clientVersion: "eval", guardScript: BUILT_IN_GUARD, guide: forCwd, injection })),
     model,
     label: `opencode/${model}`,
     skillDirs: [".agents/skills"],
