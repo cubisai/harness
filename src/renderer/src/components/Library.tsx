@@ -2,12 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Brain, BriefcaseBusiness, Plug, Puzzle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { AgentCatalogEntry, SkillDetail, SkillEntry, SkillOrigin } from "../../../shared/types";
-import { EXPERTS, type ExpertPreset } from "../../../shared/experts";
 import { api } from "../api";
-import { IconCopy } from "../icons";
 import { Markdown } from "../markdown";
 import { useStore, type LibraryTab } from "../store";
 import { CantDoList, CapabilityChips, BinaryLine } from "./Capabilities";
+import { ExpertCenter } from "./experts/ExpertCenter";
 import { McpPanel } from "./McpPanel";
 import { MemoryTab } from "./MemoryTab";
 import { Select, selectPopupOpen } from "./Select";
@@ -33,8 +32,8 @@ function LibrarySheet({ tab }: { tab: LibraryTab }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // An open pick list takes Escape for itself.
-      if (e.key === "Escape" && selectPopupOpen()) return;
+      // An open pick list, or an expert's detail modal, takes Escape for itself.
+      if (e.key === "Escape" && (selectPopupOpen() || document.querySelector(".xc-detail"))) return;
       if (e.key === "Escape" && !document.querySelector(".library .editing")) {
         e.stopPropagation();
         close();
@@ -80,10 +79,14 @@ function LibrarySheet({ tab }: { tab: LibraryTab }) {
 
 // ---------- 1. EXPERTS TAB ----------
 
+/** The Experts tab: the catalogue, plus the Library's own engine cards. */
 function ExpertsTab() {
+  return <ExpertCenter engines={(query) => <EnginesSection query={query} />} />;
+}
+
+/** The base engines (Claude, Codex, …): unchanged cards, shown under the Engines category. */
+function EnginesSection({ query }: { query: string }) {
   const [agents, setAgents] = useState<AgentCatalogEntry[] | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState("All");
-  const [search, setSearch] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
   const hasProject = useStore((s) => Boolean(s.selectedProjectId));
   const running = useStore((s) => s.agents);
@@ -92,23 +95,11 @@ function ExpertsTab() {
     void api().listAgentCatalog().then(setAgents);
   }, []);
 
-  const categories = ["All", "Design", "Engineering", "Data & AI", "Project & Quality", "Engines"];
-
-  const filteredPersonas = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return EXPERTS.filter((p) => {
-      const matchCat = selectedCategory === "All" || p.category === selectedCategory;
-      const matchQ = !q || p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q) || p.persona.toLowerCase().includes(q);
-      return matchCat && matchQ;
-    });
-  }, [selectedCategory, search]);
-
-  const filteredEngines = useMemo(() => {
-    const q = search.trim().toLowerCase();
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
     if (!agents) return [];
-    if (selectedCategory !== "All" && selectedCategory !== "Engines") return [];
     return agents.filter((a) => !q || a.label.toLowerCase().includes(q) || a.skills.toLowerCase().includes(q));
-  }, [agents, selectedCategory, search]);
+  }, [agents, query]);
 
   const copy = (text: string) => {
     void navigator.clipboard?.writeText(text);
@@ -116,115 +107,60 @@ function ExpertsTab() {
     setTimeout(() => setCopied(null), 1500);
   };
 
-  // A design expert opens a design thread with its skills as chips and its system picked; the others (and engines) a plain thread.
-  const startThreadWithExpert = async (expert: ExpertPreset | null) => {
+  const startThread = async () => {
     const s = useStore.getState();
     useStore.setState({ libraryTab: null });
-    if (expert?.kind !== "design") {
-      await s.newThread();
-      return;
-    }
-    await s.setThreadKind("design");
-    await s.newThread(expert.skills, expert.designSystem ? { designSystem: expert.designSystem } : undefined);
+    await s.newThread();
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-      <div className="library-toolbar">
-        <input
-          className="text-input library-search-input"
-          placeholder="Search expert title, persona, or specialty…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          spellCheck={false}
-        />
-      </div>
-
-      <div className="category-pills">
-        {categories.map((c) => (
-          <button key={c} className={`category-pill${selectedCategory === c ? " on" : ""}`} onClick={() => setSelectedCategory(c)}>
-            {c}
-          </button>
-        ))}
-      </div>
-
-      <div className="wb-content-pad">
-        <div className="wb-grid">
-          {filteredPersonas.map((p) => (
-            <div key={p.id} className="wb-card">
-              <div className="wb-card-header">
-                <div className="wb-avatar">
-                  {p.avatarText}
-                </div>
-                <div className="wb-card-meta">
-                  <h4 className="wb-card-title">{p.name}</h4>
-                  <div className="wb-card-sub">{p.persona} · {p.category}</div>
-                </div>
+    <div className="wb-grid">
+      {filtered.map((a) => {
+        const binary = running.find((r) => r.id === a.id)?.binary;
+        return (
+          <div key={a.id} className={`wb-card${a.installed ? "" : " missing"}`}>
+            <div className="wb-card-header">
+              <div className="wb-avatar" style={{ background: a.installed ? "#4f46e5" : "#64748b" }}>
+                {a.label.slice(0, 2).toUpperCase()}
               </div>
-              <p className="wb-card-desc">{p.description}</p>
-              <div className="wb-card-footer">
-                <div className="wb-tags">
-                  {p.tags.map((t) => (
-                    <span key={t} className="wb-tag">{t}</span>
-                  ))}
-                </div>
-                {hasProject && (
-                  <button className="button primary wb-action-btn" onClick={() => void startThreadWithExpert(p)}>
-                    {p.kind === "design" ? "Start design" : "Start Thread"}
-                  </button>
-                )}
+              <div className="wb-card-meta">
+                <h4 className="wb-card-title">{a.label}</h4>
+                <div className="wb-card-sub">Base Engine · {a.kind}</div>
               </div>
             </div>
-          ))}
-
-          {filteredEngines.map((a) => {
-            const binary = running.find((r) => r.id === a.id)?.binary;
-            return (
-            <div key={a.id} className={`wb-card${a.installed ? "" : " missing"}`}>
-              <div className="wb-card-header">
-                <div className="wb-avatar" style={{ background: a.installed ? "#4f46e5" : "#64748b" }}>
-                  {a.label.slice(0, 2).toUpperCase()}
-                </div>
-                <div className="wb-card-meta">
-                  <h4 className="wb-card-title">{a.label}</h4>
-                  <div className="wb-card-sub">Base Engine · {a.kind}</div>
-                </div>
+            {a.unsupported && <UnsupportedChip note={a.unsupported} />}
+            <p className="wb-card-desc">{a.skills || a.mcp || "AI Coding Agent"}</p>
+            {a.capabilities && (
+              <>
+                <CapabilityChips capabilities={a.capabilities} />
+                <CantDoList capabilities={a.capabilities} />
+              </>
+            )}
+            {binary && <BinaryLine binary={binary} />}
+            <div className="wb-card-footer">
+              <div className="wb-tags">
+                <span className="wb-tag">{a.installed ? "Installed" : "Not Installed"}</span>
+                {a.optIn && !running.some((r) => r.id === a.id) && (
+                  <span className="wb-tag" title="Settings → Agents & Providers">
+                    Off until you opt in
+                  </span>
+                )}
               </div>
-              {a.unsupported && <UnsupportedChip note={a.unsupported} />}
-              <p className="wb-card-desc">{a.skills || a.mcp || "AI Coding Agent"}</p>
-              {a.capabilities && (
-                <>
-                  <CapabilityChips capabilities={a.capabilities} />
-                  <CantDoList capabilities={a.capabilities} />
-                </>
+              {!a.installed && a.install ? (
+                <button className="button ghost wb-action-btn" onClick={() => copy(a.install!)}>
+                  {copied === a.install ? "Copied" : "Copy Install"}
+                </button>
+              ) : (
+                hasProject && (
+                  <button className="button ghost wb-action-btn" onClick={() => void startThread()}>
+                    Start Thread
+                  </button>
+                )
               )}
-              {binary && <BinaryLine binary={binary} />}
-              <div className="wb-card-footer">
-                <div className="wb-tags">
-                  <span className="wb-tag">{a.installed ? "Installed" : "Not Installed"}</span>
-                  {a.optIn && !running.some((r) => r.id === a.id) && (
-                    <span className="wb-tag" title="Settings → Agents & Providers">
-                      Off until you opt in
-                    </span>
-                  )}
-                </div>
-                {!a.installed && a.install ? (
-                  <button className="button ghost wb-action-btn" onClick={() => copy(a.install!)}>
-                    {copied === a.install ? "Copied" : "Copy Install"}
-                  </button>
-                ) : (
-                  hasProject && (
-                    <button className="button ghost wb-action-btn" onClick={() => void startThreadWithExpert(null)}>
-                      Start Thread
-                    </button>
-                  )
-                )}
-              </div>
             </div>
-            );
-          })}
-        </div>
-      </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
