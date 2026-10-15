@@ -50,6 +50,7 @@ import { ProviderAgents } from "./harness/register";
 import { SessionStore } from "./harness/session";
 import { createGuide, userGuidePath } from "./guide";
 import { createExpertCatalog } from "./experts/catalog";
+import { importExperts, removeImportedExpert } from "./experts/importer";
 import { EXPERT_ID_RE } from "../shared/experts";
 import { buildContextPreview, mcpRow, skillsOf, toolTokens } from "./context-preview";
 import { createMemory, memoryOn, memoryPrompt } from "./memory";
@@ -1314,6 +1315,16 @@ async function main(): Promise<void> {
   ipcMain.handle("design:systems", (_e, projectId: string | null): DesignSystemOption[] => service.designSystems(projectId)),
   ipcMain.handle("experts:list", () => experts.list());
   ipcMain.handle("experts:get", (_e, id: unknown) => (typeof id === "string" && EXPERT_ID_RE.test(id) ? experts.get(id) : null));
+  // Install from a GitHub link, a folder or a .zip into the user's experts folder (nothing in a package is run).
+  ipcMain.handle("experts:import", (_e, source: unknown, pick: unknown) => {
+    if (typeof source !== "string" || source.length > 2000) throw new Error("Paste a GitHub link, or pick a folder or a .zip.");
+    const names = Array.isArray(pick) ? pick.filter((n): n is string => typeof n === "string" && n.length <= 200).slice(0, 100) : undefined;
+    return importExperts(source.trim(), { userDir: join(userData, "experts"), ...(names ? { pick: names } : {}) });
+  });
+  ipcMain.handle("experts:remove", (_e, id: unknown) => {
+    if (typeof id !== "string") throw new Error("Invalid expert id.");
+    removeImportedExpert(join(userData, "experts"), id);
+  });
   ipcMain.handle("threads:update", (_e, id: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "contextWindow" | "permissionMode" | "agent" | "pinned" | "archived">>) =>
     service.updateThread(id, pick(patch, ["title", "model", "effort", "contextWindow", "permissionMode", "agent", "pinned", "archived"])),
   );
