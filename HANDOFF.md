@@ -1,6 +1,58 @@
-# Handoff: self-improve S1, S2+S3, S6 done; S4 replay + S5 Learned tab next (2026-10-15) — see "Resume here — self-improve"; before that eval E1–E4 done (see "Resume here — eval E3"); earlier: H0–H7 + live-sweep fixes done, cubiq-shop build and H7d checks open (plan `.ai/plans/harness-bp.md`)
+# Handoff: Design mode v2 (DM1, DM2) + Expert Center (EX1, EX2a, EX4) done; DM3 + EX2b + EX3 next in parallel (2026-10-15) — see "Resume here — Design v2 + Expert Center"; before that self-improve S1, S2+S3, S6 done, S4 + S5 open ("Resume here — self-improve")
 
 Updated 2026-10-13 on the **Mac**, branch `m4`. Read **Resume here — harness best practices (2026-10-13)** first (plan `.ai/plans/harness-bp.md`, research `plan/docs/12-harness-best-practices.md`), then **Resume here — Design v2 Mac test (2026-10-13)**, then **Resume here — Design mode v2** (plan: `.ai/plans/design-mode-v2.md`, Windows PC only), then **Resume here — native agent N2** (plan: `.ai/plans/native-agent.md`), then **Resume here — D4 done, Design mode complete**, then **Resume here — D3 done, D4 next**, then **Resume here — D2 done, D3 next**, then **Resume here — D1 done, D2 next**, then **Resume here — D1 next** (its plan), then **Resume here — P3 done**, then **Windows gate (2026-10-07)**, then **Resume here — C0 + P2 done**, then **Resume here — P1 done, next P2**, then **Resume here — MCP, providers, Design mode**, then **Resume here — Plan mode v2**, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`, `secrets-handling` (every stored credential safeStorage-encrypted; test keys only in the gitignored `.env`, never in briefs/commits).
+
+## Resume here — Design v2 + Expert Center (2026-10-15, Mac)
+
+Plan: `.ai/plans/design-expert-center.md` (approved: run both tracks in parallel; "clone" experts via an importer plus our own original built-ins; **show no Chinese names anywhere**). References used: Figma Make edit mode, two Claude design artifacts (a design-system viewer and a multi-artboard canvas), WorkBuddy 5.7.6 screenshots and app bundle, and the CodeBuddy expert-package repos. Their licenses: only `techflag/workdsh` is MIT, the rest have none, so **nothing from them is bundled**.
+
+- **DM1 `678cc79` — Board view:**
+  - every design page as labelled artboards on a pannable, zoomable board (⌘/Ctrl+wheel zoom 5–200 %, drag or Space-drag to pan, Fit)
+  - sections come from file names `<section>--<NN>-<name>.html`: one row per section, numbered flow steps in order, artboard size from the section name (`mobile`/`phone`, `tablet`, `slide`/`deck`, else desktop)
+  - labels counter-scale so they stay readable; `fitBoard` widens the section gap so labels never overlap
+  - skills `design-mobile` / `design-prototype` teach the naming
+  - `DESIGN-MODE.md` is at its 700-token budget (test), so the naming lives in the skills only
+  - code: `src/renderer/src/design/{Board.tsx,board-layout.ts}`
+- **DM2 `7a4d24a` — Flow + Present:**
+  - `design:entry` returns `links` (relative `href`/`data-goto` between pages)
+  - the Board's Flow toggle draws arrows routed around the board (`flowPath`)
+  - **Present** is a full-canvas clickable prototype with a device frame for mobile, ←/→/Esc, and following in-frame link clicks through the bridge's `ready` message (the frame is cross-origin)
+  - live-tested in the app, except that the in-frame link click can't be driven by CDP synthetic input (the old Focus canvas behaves the same)
+- **EX1 — the expert model:**
+  - `c0a8558` (EX1a+c):
+    - `ExpertDef` / `expertBlock` in `src/shared/experts.ts`, with the legacy `EXPERTS` kept for old tests
+    - catalogue `src/main/experts/catalog.ts`: bundled `resources/experts/*.md` and `<id>/expert.md` + `members/*.md`; imported experts in `<userData>/experts/` override bundled ones
+    - db migration 27 adds `threads.expert_id`
+    - IPC `experts:list` / `experts:get`; `threads:create` accepts `expertId`
+    - 22 original experts and 3 teams, written by opencode, all English
+  - `3efae44` (EX1b): every engine appends the `<expert>` block to its instructions (Claude `systemPrompt.append`, Codex `developerInstructions`, OpenCode/ACP first prompt, native guide). Byte-identical when a thread has no expert.
+  - `bcb3402` (EX2a):
+    - preload / mock / `UnskilledApi` (`listExperts`, `getExpert`, `importExperts`, `removeExpert`)
+    - store `experts`, `loadExperts()`, `summonExpert(id, prompt?)`: closes the Library, opens a design thread for a design expert, adds skill chips, pre-fills the prompt
+    - the 5 old design presets (UI Designer, Mobile Designer, Slide Designer, Design-System Architect, UX Critic) ported into the catalogue, so 30 bundled in total
+- **EX4 `e11c188` + `b3b0913` — importer:**
+  - `src/main/experts/importer.ts` reads a GitHub URL (zipball through the API, `tree/<ref>/<subpath>`), a folder or a .zip
+  - formats: CodeBuddy `plugin.json` (agent or team), `marketplace.json` (lists candidates, then `pick`), or bare `agents/*.md`
+  - converts to CubiQ's format with `---` frontmatter; `sourceUrl`, `author` and `license` are recorded (`none` when absent)
+  - guards: 50 MB download, 3000 files / 150 MB, no `..`, absolute paths or backslashes, atomic rename into `<userData>/experts/<id>`, nothing run
+  - **display fields are English-only**: CJK values fall back to a title from the id, and member ids come from agent names. Prompt bodies stay as written (the model reads them; they're never shown as names).
+  - live-verified: `liangdabiao/workbuddy-expert-research-insight` (team, 4 members) and WorkBuddy's own cached marketplace at `~/.workbuddy-ai/plugins/marketplaces/experts`, which lists 3 and installs a pick
+  - known gap: a multi-agent package that isn't a team (WorkBuddy `design-experts`) imports as one expert, its first agent
+  - IPC `experts:import` / `experts:remove` are wired; **no UI yet**
+- **Checks on `m4` after merging all branches:** typecheck green, full suite **2199 passed**, `design:check` 0 errors. Not pushed: Windows CI not run yet. Live-tested: the Board, Flow and Present in the app (DM1/DM2). The expert prompt reaching each engine is unit-tested only. The live turn on OpenCode, Codex and Claude with a summoned expert is still to do (memory `test-app-for-real`), best once EX2b gives a Summon button.
+- **Next (parallel; briefs ready in `.ai/plans/design-expert-center-briefs/`; copy them to `.ai/tmp/` and run `dispatch.sh <worktree> <name> <delay>`, staggered 20 s, one worktree each):**
+  - **DM3** Inspector panel: Properties from computed style with a live preview in the frame, Apply → composer draft; a Code tab
+  - **EX2b** Expert Center UI: scenario cards, Experts | Teams, categories, sort, the detail modal with Summon and "Can help with", Engines kept
+  - **EX3** "+" menu with an Experts submenu
+  - then: an **Add expert** dialog in the Expert Center (paste a URL or pick a folder/zip → `importExperts`; marketplace pick list; the license badge "No license: for your own use"; remove)
+  - then: DM4 (floating tools, device chrome, restore a version), DM5 (design-system editor), EX5 (teams runtime: Claude SDK `agents`, OpenCode `agent.<id>` subagents, Codex/native fallback, team strip)
+  - imported experts' `skills/` don't yet join the skill roots for their threads (do with EX5)
+- **Lessons this session** (saved to memory `oc-dispatch-mac` and `parallel-worktrees`):
+  - tell implementers **not to run shell commands**: one rejected `tsc` aborted DM1's worker with a false "nothing changed" report
+  - never name sibling files that differ only by case (`Board.tsx`/`board.ts`)
+  - a 25-file content brief returned garbage; split into ≤ 11-file batches it worked
+  - say "`---` fenced frontmatter" explicitly in briefs
+- **Test data left in the dev app:** the project `board-proj` (scratch folder) with one design thread; safe to delete from the sidebar.
 
 ## Resume here — self-improve (2026-10-15, Mac)
 
