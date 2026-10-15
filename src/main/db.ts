@@ -729,7 +729,8 @@ export class Store {
           thread.kind === "design" ? "design" : "chat",
           thread.kind === "design" ? (thread.designSystem ?? null) : null,
           thread.kind === "design" ? (thread.prototypeTier ?? null) : null,
-          thread.expertId ?? null,
+          // An expert is only ever set by the user summoning it, so an imported thread starts without one.
+          null,
         );
       const insert = this.db.prepare(
         `INSERT INTO events (thread_id, seq, payload, created_at, provenance, message_id, turn_id, item_id, parent_id, payload_ref, payload_bytes)

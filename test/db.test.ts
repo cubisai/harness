@@ -338,6 +338,15 @@ describe("Store migrations", () => {
     const older = store.restoreThread(p.id, { thread: withoutKind, events: [] });
     expect(older.kind).toBe("chat");
   });
+
+  it("restores a thread without its expert: experts are only ever summoned by the user", () => {
+    const store = new Store(join(tempDir(), "expert-restore.db"));
+    const p = store.addProject("/tmp/p");
+    const withExpert = store.createThread(p.id, "claude", "m", "ask", "chat", null, "code-reviewer");
+    expect(store.getThread(withExpert.id).expertId).toBe("code-reviewer");
+    const restored = store.restoreThread(p.id, { thread: store.getThread(withExpert.id), events: [] });
+    expect(store.getThread(restored.id).expertId).toBeUndefined();
+  });
 });
 
 describe("Store design systems (migration 21)", () => {
