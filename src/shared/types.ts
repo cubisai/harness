@@ -1005,7 +1005,9 @@ export type LiveUpdate =
   /** Something in an open design thread's folder changed (debounced): the canvas reloads. */
   | { type: "design-changed"; threadId: string }
   /** Self-improve: a turn's health changed (scored, or a later correction/revert). */
-  | { type: "turn-score"; score: TurnScore };
+  | { type: "turn-score"; score: TurnScore }
+  /** Self-improve: a project's lessons or cases changed (the Learned tab refetches). */
+  | { type: "learn-changed"; projectId: string };
 
 /** The API the preload script exposes as `window.unskilled`. */
 export interface UnskilledApi {

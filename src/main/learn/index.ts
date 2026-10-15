@@ -1,11 +1,19 @@
 // Self-improving CubiQ (plan .ai/plans/self-improve.md). The learner scores
-// every turn of an opted-in project (S1, zero tokens). Off by default per
-// project; every entry point is a no-op for a project that isn't opted in.
+// every turn of an opted-in project (S1, zero tokens); a failed turn is frozen
+// as an eval case (S3) and drafted into a candidate lesson on the cheap
+// background model (S2), idle-only and under the project's daily token cap.
+// Off by default per project; every entry point is a no-op for a project that
+// isn't opted in.
 
+import { randomUUID } from "node:crypto";
 import type { Thread } from "../../shared/types";
 import type { LiveUpdate } from "../../shared/types";
-import { LEARN_DEFAULTS, type LearnSettings, type TurnScore, type TurnSignal } from "../../shared/learn";
+import { LEARN_DEFAULTS, type LearnSettings, type Lesson, type TurnScore, type TurnSignal } from "../../shared/learn";
+import type { AgentDriver } from "../agents/types";
+import { backgroundShot, estimateTokens, pickBackground } from "./background";
+import { captureCase } from "./cases";
 import type { LearnDb, ScoreRow } from "./db";
+import { buildDraftPrompt, findDuplicate, parseLesson, pulledOutsideContent } from "./draft";
 import { healthOf, isCorrection, mergeSignals, roundSignals } from "./signals";
 import { fileBytes, preBytes, sha256, snapshotPre, type PreTurn } from "./snapshot";
 
@@ -53,10 +61,35 @@ export interface LearnerDeps {
   db: LearnDb;
   settings: () => LearnSettings | undefined;
   broadcast: (u: LiveUpdate) => void;
+  /** The agents background work can run on. */
+  drivers?: () => AgentDriver[];
+  /** True while any thread's turn runs: background work waits. */
+  busy?: () => boolean;
+  /** Where a project's captured cases live. */
+  casesRoot?: (projectId: string) => string;
+  /** The project's check command, for a failed-check grader. */
+  checkCommand?: (projectId: string) => string | null;
+  /** One-line notes the project already keeps (memory), so a lesson doesn't repeat one. */
+  existing?: (projectId: string) => string[];
   now?: () => number;
   /** How long after a turn its edits count as reverted when undone (default 10 min). */
   revertWindowMs?: number;
+  /** How long a failed turn waits before it's drafted (default 30 s): a correction or revert may still come. */
+  debounceMs?: number;
   log?: (msg: string) => void;
+}
+
+/** A finished turn kept for drafting: its record (fix rounds merged) and the tree before it. */
+interface Recent {
+  rec: TurnRecord;
+  pre: PreTurn | null;
+}
+
+interface DraftJob {
+  key: string;
+  projectId: string;
+  contrast: string | null;
+  caseId: string | null;
 }
 
 interface Watch {
@@ -69,6 +102,13 @@ interface Watch {
 
 /** At most this many changed paths are watched for a revert per turn. */
 const WATCH_PATHS = 20;
+/** Finished turns kept for drafting, and how many of them keep their pre-turn tree. */
+const RECENT_TURNS = 30;
+const RECENT_TREES = 5;
+const DRAFT_TIMEOUT_MS = 120_000;
+
+const keyOf = (threadId: string, userSeq: number): string => `${threadId}:${userSeq}`;
+const today = (t: number): string => new Date(t).toISOString().slice(0, 10);
 
 const view = (r: ScoreRow): TurnScore => ({ threadId: r.threadId, userSeq: r.userSeq, health: r.health, signals: r.signals });
 
@@ -79,7 +119,190 @@ export function createLearner(deps: LearnerDeps): Learner {
   const settings = (): LearnSettings => ({ ...LEARN_DEFAULTS, ...deps.settings() });
   const watches = new Map<string, Watch[]>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
+  const recent = new Map<string, Recent>();
+  /** Turns already sent to the drafter (one lesson attempt per turn). */
+  const learned = new Set<string>();
+  /** A corrected turn waits for the thread's next turn, whose answer (when healthy) is the contrast. */
+  const awaitingContrast = new Map<string, string>();
+  const jobs: DraftJob[] = [];
+  let jobTimer: ReturnType<typeof setTimeout> | null = null;
+  let working = false;
+  const controller = new AbortController();
   let disposed = false;
+  const debounceMs = deps.debounceMs ?? 30_000;
+
+  const later = (ms: number, fn: () => void): void => {
+    const timer = setTimeout(() => {
+      timers.delete(timer);
+      if (!disposed) fn();
+    }, ms);
+    timer.unref?.();
+    timers.add(timer);
+  };
+
+  const learnChanged = (projectId: string) => deps.broadcast({ type: "learn-changed", projectId });
+
+  /** Background tokens the project may still spend today. */
+  const budgetLeft = (projectId: string): number => settings().dailyTokens - deps.db.spent(projectId, today(now()));
+
+  const remember = (rec: TurnRecord, pre: PreTurn | null): void => {
+    const key = keyOf(rec.thread.id, rec.rootSeq);
+    const prior = recent.get(key);
+    // A fix round keeps its root's request and pre-turn tree; the rest is the latest round's, with commands and changes added up.
+    const merged: Recent = prior
+      ? {
+          rec: {
+            ...rec,
+            request: prior.rec.request,
+            commands: [...prior.rec.commands, ...rec.commands],
+            failedCommands: [...prior.rec.failedCommands, ...rec.failedCommands],
+            toolNames: [...prior.rec.toolNames, ...rec.toolNames],
+            changed: [...new Set([...prior.rec.changed, ...rec.changed])],
+            evidence: [...new Set([...prior.rec.evidence, ...rec.evidence])],
+          },
+          pre: prior.pre,
+        }
+      : { rec, pre };
+    recent.delete(key);
+    recent.set(key, merged);
+    const keys = [...recent.keys()];
+    for (const k of keys.slice(0, Math.max(0, keys.length - RECENT_TURNS))) recent.delete(k);
+    for (const k of keys.slice(0, Math.max(0, keys.length - RECENT_TREES))) {
+      const r = recent.get(k);
+      if (r?.pre) recent.set(k, { ...r, pre: null });
+    }
+  };
+
+  /** A failed turn: freeze it as a case (when a grader applies) and queue its lesson draft. Never rejects. */
+  const learn = (key: string, contrast: string | null, reverted?: string[]): Promise<void> =>
+    capture(key, contrast, reverted).catch((err) => log(`learn: capture failed (${key}): ${err instanceof Error ? err.message : String(err)}`));
+
+  const capture = async (key: string, contrast: string | null, reverted?: string[]): Promise<void> => {
+    if (disposed) return;
+    const info = recent.get(key);
+    if (!info || learned.has(key)) return;
+    const { rec, pre } = info;
+    const projectId = rec.thread.projectId;
+    if (!enabled(projectId)) return;
+    const row = deps.db.getScore(rec.thread.id, rec.rootSeq);
+    if (!row || row.health !== "fail") return;
+    learned.add(key);
+    // Content from outside the repo (web, MCP, the browser) can carry instructions: never learn from it.
+    if (pulledOutsideContent(rec.toolNames)) {
+      log(`learn: skipped ${key}: the turn pulled web or MCP content`);
+      return;
+    }
+    let caseId: string | null = null;
+    if (pre && deps.casesRoot) {
+      const c = await captureCase(deps.casesRoot(projectId), {
+        projectId,
+        threadId: rec.thread.id,
+        userSeq: rec.rootSeq,
+        prompt: rec.request,
+        mode: rec.thread.permissionMode,
+        agent: rec.thread.agent,
+        model: rec.thread.model,
+        signals: row.signals,
+        pre,
+        changed: rec.changed,
+        checkCommand: deps.checkCommand?.(projectId) ?? null,
+        ...(reverted ? { reverted } : {}),
+        preBytes: (rel) => preBytes(rec.cwd, pre, rel),
+        now,
+      });
+      if (c) {
+        learnChanged(projectId);
+        // A held-out case only ever checks other lessons for regressions; nothing is drafted from it.
+        if (c.heldOut) return;
+        caseId = c.id;
+      }
+    }
+    jobs.push({ key, projectId, contrast, caseId });
+    schedule(debounceMs);
+  };
+
+  const schedule = (ms: number): void => {
+    if (jobTimer || disposed) return;
+    jobTimer = setTimeout(() => {
+      jobTimer = null;
+      void runJobs();
+    }, ms);
+    jobTimer.unref?.();
+  };
+
+  /** Drain the draft queue one job at a time, never while a turn runs. */
+  const runJobs = async (): Promise<void> => {
+    if (working || disposed) return;
+    if (deps.busy?.()) return schedule(debounceMs);
+    const job = jobs.shift();
+    if (!job) return;
+    working = true;
+    try {
+      await draft(job);
+    } catch (err) {
+      log(`learn: draft failed (${job.key}): ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      working = false;
+      if (jobs.length) schedule(1000);
+    }
+  };
+
+  const draft = async (job: DraftJob): Promise<void> => {
+    const info = recent.get(job.key);
+    if (!info || !enabled(job.projectId)) return;
+    const { rec } = info;
+    const row = deps.db.getScore(rec.thread.id, rec.rootSeq);
+    if (!row) return;
+    const bg = pickBackground({ learn: settings(), projectId: job.projectId, drivers: deps.drivers?.() ?? [], thread: { agent: rec.thread.agent, model: rec.thread.model } });
+    if (!bg) return log(`learn: no background model can run for ${job.projectId}`);
+    const lessons = deps.db.lessons(job.projectId).filter((l) => l.status !== "dropped");
+    const prompt = buildDraftPrompt({
+      request: rec.request,
+      answer: rec.answer,
+      signals: row.signals,
+      commands: rec.commands,
+      checkTail: rec.check && !rec.check.ok ? rec.check.tail : null,
+      contrast: job.contrast,
+      existing: [...lessons.map((l) => l.rule), ...(deps.existing?.(job.projectId) ?? [])].slice(0, 40),
+    });
+    if (estimateTokens(prompt) * 2 > budgetLeft(job.projectId)) return log(`learn: daily budget spent for ${job.projectId}`);
+    const timeout = AbortSignal.timeout(DRAFT_TIMEOUT_MS);
+    const { text, tokens } = await backgroundShot(bg, prompt, AbortSignal.any([controller.signal, timeout]));
+    deps.db.spend(job.projectId, today(now()), tokens);
+    const drafted = parseLesson(text);
+    if (!drafted) return;
+    const dup = findDuplicate(drafted.rule, lessons);
+    if (dup) {
+      // The same lesson again: it gains this turn's case when it had none, never a second copy.
+      const existing = lessons.find((l) => l.id === dup)!;
+      if (!existing.caseId && job.caseId) deps.db.updateLesson(dup, { caseId: job.caseId });
+      learnChanged(job.projectId);
+      return;
+    }
+    const t = now();
+    const lesson: Lesson = {
+      id: randomUUID(),
+      projectId: job.projectId,
+      rule: drafted.rule,
+      why: drafted.why,
+      scope: drafted.scope,
+      status: "candidate",
+      helpful: 0,
+      harmful: 0,
+      relevant: 0,
+      tries: 0,
+      pinned: false,
+      caseId: job.caseId,
+      provenance: { threadId: rec.thread.id, userSeq: rec.rootSeq, signals: row.signals.map((s) => s.kind), agent: rec.thread.agent, model: rec.thread.model },
+      verified: null,
+      note: job.caseId ? "Waiting to be verified by a replay." : "No case to verify it against: stays a candidate.",
+      createdAt: t,
+      updatedAt: t,
+    };
+    deps.db.putLesson(lesson);
+    log(`learn: drafted a candidate lesson for ${job.projectId} on ${bg.label}`);
+    learnChanged(job.projectId);
+  };
   let chain: Promise<void> = Promise.resolve();
 
   const enabled = (projectId: string): boolean => !disposed && settings().enabledProjects.includes(projectId);
@@ -91,6 +314,16 @@ export function createLearner(deps: LearnerDeps): Learner {
     const signals = mergeSignals(cur.signals, add);
     const row = deps.db.putScore({ ...cur, signals, health: healthOf(signals) });
     deps.broadcast({ type: "turn-score", score: view(row) });
+  };
+
+  /** Hold a corrected turn's draft for the next turn's contrast; draft it anyway after 3 minutes. */
+  const awaitContrast = (threadId: string, key: string): void => {
+    awaitingContrast.set(threadId, key);
+    later(3 * 60_000, () => {
+      if (awaitingContrast.get(threadId) !== key) return;
+      awaitingContrast.delete(threadId);
+      void learn(key, null);
+    });
   };
 
   /** Mark watched turns whose edits are back to their pre-turn bytes; drop expired watches. */
@@ -111,6 +344,7 @@ export function createLearner(deps: LearnerDeps): Learner {
       if (reverted.length) {
         const names = reverted.map((p) => p.rel).slice(0, 3).join(", ");
         addSignals(w.threadId, w.userSeq, [{ kind: "reverted", level: "fail", detail: `Its edits were undone: ${names}` }]);
+        void learn(keyOf(w.threadId, w.userSeq), null, reverted.map((p) => p.rel));
         continue;
       }
       keep.push(w);
@@ -140,12 +374,7 @@ export function createLearner(deps: LearnerDeps): Learner {
     const list = (watches.get(projectId) ?? []).filter((w) => !same(w));
     list.push({ threadId: rec.thread.id, userSeq: rec.rootSeq, cwd: rec.cwd, paths: merged, until: now() + windowMs });
     watches.set(projectId, list);
-    const timer = setTimeout(() => {
-      timers.delete(timer);
-      if (!disposed) checkReverts(projectId);
-    }, windowMs);
-    timer.unref?.();
-    timers.add(timer);
+    later(windowMs, () => checkReverts(projectId));
   };
 
   const score = async (rec: TurnRecord, pre: PreTurn | null): Promise<void> => {
@@ -181,6 +410,17 @@ export function createLearner(deps: LearnerDeps): Learner {
       });
       deps.broadcast({ type: "turn-score", score: view(row) });
       if (pre && rec.changed.length) await watch(rec, pre);
+      remember(rec, pre);
+      if (rec.final) {
+        // This turn answers a correction: its answer, when it went well, shows what was wanted.
+        const corrected = awaitingContrast.get(rec.thread.id);
+        if (corrected && corrected !== keyOf(rec.thread.id, rec.rootSeq)) {
+          awaitingContrast.delete(rec.thread.id);
+          await learn(corrected, row.health === "ok" ? rec.answer : null);
+        }
+        // A turn that failed on its own (a correction or revert can still arrive and add a contrast first).
+        if (row.health === "fail") await learn(keyOf(rec.thread.id, rec.rootSeq), null);
+      }
     } catch (err) {
       log(`learn: scoring failed: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -203,6 +443,7 @@ export function createLearner(deps: LearnerDeps): Learner {
         if (!last || last.signals.some((s) => s.kind === "correction")) return;
         const line = text.trim().split("\n")[0] ?? "";
         addSignals(thread.id, last.userSeq, [{ kind: "correction", level: "fail", detail: `You corrected it: "${line.length > 80 ? `${line.slice(0, 79)}…` : line}"` }]);
+        awaitContrast(thread.id, keyOf(thread.id, last.userSeq));
       } catch (err) {
         log(`learn: correction check failed: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -224,6 +465,8 @@ export function createLearner(deps: LearnerDeps): Learner {
 
     dispose() {
       disposed = true;
+      controller.abort();
+      if (jobTimer) clearTimeout(jobTimer);
       for (const t of timers) clearTimeout(t);
       timers.clear();
       watches.clear();

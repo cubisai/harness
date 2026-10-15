@@ -170,7 +170,7 @@ describe("the scorecard in Service.send", () => {
     await service.send({ threadId: thread.id, text: "fix add" });
     const second = service.send({ threadId: thread.id, text: "build it" });
     // Deny the permission card the second turn raises.
-    await new Promise((r) => setTimeout(r, 50));
+    for (let i = 0; i < 200 && !service.pendingState().permissions.length; i++) await new Promise((r) => setTimeout(r, 10));
     const pending = service.pendingState().permissions[0]!;
     service.respondPermission(pending.requestId, "deny");
     await second;
@@ -191,7 +191,9 @@ describe("the scorecard in Service.send", () => {
     // Fails until the fix round writes fix1.ts.
     store.setCheckCommand(thread.projectId, `"${process.execPath}" -e "process.exit(require('fs').existsSync('src/fix1.ts') ? 0 : 3)"`, 1);
     await service.send({ threadId: thread.id, text: "add fix" });
-    for (let i = 0; i < 50 && service.isRunning(thread.id); i++) await new Promise((r) => setTimeout(r, 50));
+    // The fix round starts after the first send returns: wait until its score lands and the thread is idle.
+    for (let i = 0; i < 300 && (service.isRunning(thread.id) || !db.threadScores(thread.id)[0]?.signals.some((s) => s.kind === "check-fixed")); i++) await new Promise((r) => setTimeout(r, 50));
+    for (let i = 0; i < 100 && service.isRunning(thread.id); i++) await new Promise((r) => setTimeout(r, 20));
     await settle(learner);
     const rows = db.threadScores(thread.id);
     expect(rows).toHaveLength(1);

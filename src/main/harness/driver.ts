@@ -110,6 +110,26 @@ export function createProviderDriver(providerId: string, deps: ProviderDriverDep
     credentials: { byok: false, own: "config", injector: "acp" },
     skillsDelivery: { mode: "tool", prefix: "", reads: [] },
     skillCallPrefix: "",
+    // One hidden call with no tools, for background work (self-improve's lesson drafts).
+    async oneShot(req) {
+      const provider = current();
+      if (!provider) throw new Error("This provider was removed in Settings.");
+      const protocol = protocolOf(provider);
+      if (!protocol) throw new Error(`${provider.label} speaks the Gemini protocol, which CubiQ's own agent doesn't support yet.`);
+      const entry = provider.models.find((m) => m.id === req.model) ?? provider.models[0];
+      if (!entry) throw new Error(`${provider.label} has no models saved.`);
+      const wire = wireIdOf(entry, entry.id);
+      const route = routeFor(provider, protocol, wire, deps.secret(), deps.secretHeaders(), deps.env ?? process.env);
+      let text = "";
+      for await (const e of (deps.stream ?? streamLlm)(
+        route,
+        { model: wire, system: [], messages: [{ role: "user", content: [{ type: "text", text: req.prompt }] }], tools: [], maxTokens: Math.min(entry.maxOutput ?? 4_000, 4_000), reasoning: false, cache: "none" },
+        { signal: req.signal },
+      )) {
+        if (e.type === "finish") text = e.message.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
+      }
+      return text;
+    },
     async runTurn(input) {
       const started = Date.now();
       const turnId = randomUUID();

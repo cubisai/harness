@@ -146,6 +146,11 @@ export class Service {
     for (const d of drivers) this.drivers.set(d.id, d);
   }
 
+  /** Every agent driver, runtime provider agents included (self-improve's background model picks from these). */
+  allDrivers(): AgentDriver[] {
+    return [...this.drivers.values()];
+  }
+
   private driverFor(agent: string): AgentDriver {
     const d = this.drivers.get(agent);
     if (!d) throw new Error(`The agent "${agent}" isn't available. Install it or pick another agent for this thread.`);

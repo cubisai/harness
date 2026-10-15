@@ -892,7 +892,16 @@ async function main(): Promise<void> {
   service.setTurnListener((d) => extractor.schedule(d));
   // Self-improve: scores turns of opted-in projects (off for every project by default).
   const learnDb = new LearnDb(store.sql);
-  const learner = createLearner({ db: learnDb, settings: () => settings.get().learn, broadcast });
+  const learner = createLearner({
+    db: learnDb,
+    settings: () => settings.get().learn,
+    broadcast,
+    drivers: () => service.allDrivers(),
+    busy: () => service.pendingState().running.length > 0,
+    casesRoot: (projectId) => join(userData, "learn", projectId, "cases"),
+    checkCommand: (projectId) => store.getProject(projectId).checkCommand?.trim() || null,
+    existing: (projectId) => memory.store.list(projectId).map((n) => n.description),
+  });
   service.setLearner(learner);
   ipcMain.handle("learn:scores", (_e, threadId: string) => learner.scores(threadId));
 
