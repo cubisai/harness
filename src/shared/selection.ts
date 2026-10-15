@@ -4,6 +4,36 @@
 /** The most elements one selection may carry; the page's bridge caps itself at this too. */
 export const MAX_SELECTED = 8;
 
+/**
+ * The computed-style keys the inspector reads from a selected element. The page's bridge fills exactly these
+ * (it duplicates the list, since its helpers are serialized into the page and cannot import this module).
+ */
+export const STYLE_KEYS: readonly string[] = [
+  "display",
+  "flexDirection",
+  "flexWrap",
+  "justifyContent",
+  "alignItems",
+  "gap",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+  "width",
+  "height",
+  "fontSize",
+  "fontWeight",
+  "lineHeight",
+  "letterSpacing",
+  "color",
+  "backgroundColor",
+  "borderRadius",
+  "borderWidth",
+  "borderColor",
+  "opacity",
+  "boxShadow",
+];
+
 /** One element the user selected in the design canvas. */
 export interface SelectedElement {
   /** The element's `data-agent-id`, when it has one. */
@@ -15,12 +45,31 @@ export interface SelectedElement {
   rect: { x: number; y: number; width: number; height: number };
   /** Up to four ancestors, outermost first, for a breadcrumb. */
   path: { label: string; selector: string }[];
+  /** The element's computed style, limited to STYLE_KEYS, when the page reported one. */
+  style?: Record<string, string>;
 }
 
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
 
 const isStr = (v: unknown, min: number, max: number): v is string => typeof v === "string" && v.length >= min && v.length <= max;
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+/**
+ * Read an untrusted computed-style map: a plain object of at most 24 STYLE_KEYS with string values of at most 120
+ * characters. Anything off returns null, which drops just the style, never the element.
+ */
+function readStyle(raw: unknown): Record<string, string> | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const entries = Object.entries(raw as Record<string, unknown>);
+  if (entries.length > 24) return null;
+  const style: Record<string, string> = {};
+  for (const [key, value] of entries) {
+    if (!STYLE_KEYS.includes(key)) return null;
+    if (typeof value !== "string" || value.length > 120) return null;
+    style[key] = value;
+  }
+  return style;
+}
 
 /** Validates one untrusted bridge element field by field; a fresh object, or null when anything is off. */
 export function readSelected(raw: unknown): SelectedElement | null {
@@ -51,6 +100,10 @@ export function readSelected(raw: unknown): SelectedElement | null {
     path,
   };
   if (r.id !== undefined) el.id = r.id;
+  if (r.style !== undefined) {
+    const style = readStyle(r.style);
+    if (style) el.style = style;
+  }
   return el;
 }
 

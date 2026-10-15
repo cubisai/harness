@@ -573,6 +573,29 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-present-device { position: relative; flex-shrink: 0; box-sizing: content-box; overflow: hidden; border: 1px solid var(--hairline-strong); border-radius: var(--radius-l); background: var(--bg); }
 .design-present-device.mobile { border-width: 10px; border-radius: 44px; }
 .design-present-device .design-frame { position: absolute; top: 0; left: 0; }
+/* Inspector (design mode): the selected element's properties and the page's code, beside the stage. */
+.design-stage-row { display: flex; flex: 1; min-height: 0; min-width: 0; }
+.design-inspector { width: 280px; flex-shrink: 0; min-height: 0; overflow-y: auto; border-left: 1px solid var(--hairline); background: var(--bg-elevated); }
+.design-inspector-tabs { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--hairline); background: var(--bg-elevated); }
+.design-inspector-empty { margin: 0; padding: 12px; font-size: 12.5px; color: var(--text-secondary); }
+.design-inspector-head { display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 10px 12px 4px; }
+.design-inspector-tag { flex-shrink: 0; font: 600 12.5px var(--mono); color: var(--text); }
+.design-inspector-label { min-width: 0; font-size: 12.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.design-inspector-group { padding: 6px 12px 10px; }
+.design-inspector-group h3 { margin: 0 0 4px; font-size: 11.5px; font-weight: 600; color: var(--text-tertiary); }
+.design-inspector-row { display: flex; align-items: center; gap: 8px; min-height: 34px; }
+.design-inspector-row-label { flex-shrink: 0; width: 92px; font-size: 11.5px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.design-inspector-row .text-input { height: 28px; padding: 0 8px; font-size: 12.5px; font-family: var(--mono); }
+.design-inspector-swatch { flex-shrink: 0; width: 14px; height: 14px; border-radius: var(--radius-s); border: 1px solid var(--hairline-strong); }
+.design-inspector-dot { flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
+.design-inspector-pad { display: flex; gap: 4px; flex: 1; min-width: 0; }
+.design-inspector-pad label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 10.5px; color: var(--text-tertiary); }
+.design-inspector-pad .text-input { flex: none; height: 28px; padding: 0 6px; font-size: 12.5px; font-family: var(--mono); }
+.design-inspector-code-head { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--hairline); background: var(--bg-elevated); }
+.design-inspector-code-path { flex: 1; min-width: 0; font: 11.5px var(--mono); color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.design-inspector-code { margin: 0; padding: 10px 12px; font: 11.5px/1.5 var(--mono); color: var(--text); white-space: pre; overflow: auto; }
+.design-inspector-foot { position: sticky; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--hairline); background: var(--bg-elevated); }
+.design-inspector-foot .grow { flex: 1; }
 /* Selection: a count on the Select button, a breadcrumb bar for one element, and a spoken summary. */
 .design-tools .icon-button { position: relative; }
 .design-select-count { position: absolute; top: 1px; right: 0; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: var(--primary); color: var(--on-primary); font: 600 10px/14px var(--mono); font-variant-numeric: tabular-nums; }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Columns2, Download, FolderOpen, Grid3x3, Hammer, LayoutGrid, Play, Workflow } from "lucide-react";
+import { Columns2, Download, FolderOpen, Grid3x3, Hammer, LayoutGrid, Play, SlidersHorizontal, Workflow } from "lucide-react";
 import type { DesignEntry, DesignExportFormat } from "../../../shared/types";
 import { api } from "../api";
 import { fileManagerName } from "../components/OpenIn";
@@ -18,8 +18,12 @@ import { CommentsPanel } from "./CommentsPanel";
 import { flowOrder } from "./board-layout";
 import { Board } from "./Board";
 import { Present } from "./Present";
+import { InspectorPanel } from "./InspectorPanel";
 
 const ipcError = (err: unknown): string => (err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err));
+
+/** `backgroundColor` → `background-color`, for the Apply message's human-readable change list. */
+const kebab = (prop: string): string => prop.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 
 /**
  * A design thread's canvas: the agent's page in a sandboxed frame (scripts on, no network, no app access), reloaded
@@ -51,6 +55,8 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   const [compare, setCompare] = useState(false);
   const [board, setBoard] = useState(false);
   const [flow, setFlow] = useState(false);
+  // The inspector: the selected element's properties and the page's code, beside the stage.
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   // The page the Present overlay starts on (null = not presenting).
   const [present, setPresent] = useState<string | null>(null);
   const [promoting, setPromoting] = useState<string | null>(null);
@@ -107,6 +113,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     setCompare(false);
     setBoard(false);
     setFlow(false);
+    setInspectorOpen(false);
     setPresent(null);
     setNotice(null);
     setTweaks(null);
@@ -154,7 +161,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [entry !== null, comparing]);
+  }, [entry !== null, comparing, inspectorOpen]);
 
   const post = useCallback((msg: Record<string, unknown>) => {
     frameRef.current?.contentWindow?.postMessage({ source: "cubiq-canvas", ...msg }, "*");
@@ -451,6 +458,25 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     }
   };
 
+  const stageEl = entry && src ? (
+    <div className={`design-stage${fit ? " fit" : ""}`} ref={stageRef}>
+      <div
+        className="design-frame-box"
+        style={fit ? undefined : { width: layout.width * layout.scale, height: layout.height * layout.scale }}
+      >
+        <iframe
+          key={frameKey}
+          ref={frameRef}
+          className="design-frame"
+          title={`Design: ${entry.rel}`}
+          sandbox="allow-scripts"
+          style={fit ? undefined : { width: layout.width, height: layout.height, transform: `scale(${layout.scale})` }}
+        />
+        {grid && <div className="design-grid" style={{ backgroundSize: `${8 * layout.scale}px ${8 * layout.scale}px` }} aria-hidden />}
+      </div>
+    </div>
+  ) : null;
+
   return (
     <section className="design-canvas" aria-label="Design canvas">
       <header className="design-canvas-head drag">
@@ -575,6 +601,20 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
               }}
             >
               <Columns2 size={16} strokeWidth={1.75} aria-hidden />
+            </button>
+          )}
+          {entry && version === 0 && !board && !comparing && (
+            <button
+              className={`icon-button${inspectorOpen ? " active" : ""}`}
+              aria-label="Inspector"
+              title="Inspector: properties and code"
+              aria-pressed={inspectorOpen}
+              onClick={() => {
+                if (!inspectorOpen && !picking) togglePick();
+                setInspectorOpen(!inspectorOpen);
+              }}
+            >
+              <SlidersHorizontal size={16} strokeWidth={1.75} aria-hidden />
             </button>
           )}
           <button
@@ -766,22 +806,35 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           ))}
         </div>
       ) : entry && src ? (
-        <div className={`design-stage${fit ? " fit" : ""}`} ref={stageRef}>
-          <div
-            className="design-frame-box"
-            style={fit ? undefined : { width: layout.width * layout.scale, height: layout.height * layout.scale }}
-          >
-            <iframe
-              key={frameKey}
-              ref={frameRef}
-              className="design-frame"
-              title={`Design: ${entry.rel}`}
-              sandbox="allow-scripts"
-              style={fit ? undefined : { width: layout.width, height: layout.height, transform: `scale(${layout.scale})` }}
+        inspectorOpen ? (
+          <div className="design-stage-row">
+            {stageEl}
+            <InspectorPanel
+              threadId={threadId}
+              element={selected[0] ?? null}
+              pageRel={entry.rel}
+              designDir={entry.dir}
+              reloadKey={`${reload}-${manual}`}
+              onPreview={(prop, value) => {
+                const el = selected[0];
+                if (!el) return;
+                post({
+                  type: "preview-style",
+                  target: { ...(el.id ? { id: el.id } : {}), selector: el.selector, tag: el.tag, text: el.text },
+                  prop,
+                  value,
+                });
+              }}
+              onClearPreview={() => post({ type: "clear-preview" })}
+              onApply={(changes) => {
+                post({ type: "clear-preview" });
+                useStore.getState().setComposerDraft("Change the selected element: " + changes.map((c) => `${kebab(c.prop)} ${c.from} → ${c.to}`).join("; ") + ".");
+              }}
             />
-            {grid && <div className="design-grid" style={{ backgroundSize: `${8 * layout.scale}px ${8 * layout.scale}px` }} aria-hidden />}
           </div>
-        </div>
+        ) : (
+          stageEl
+        )
       ) : (
         <div className="design-canvas-empty">
           {loaded && (

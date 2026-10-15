@@ -9,6 +9,8 @@ export interface DescribedElement {
   html: string;
   rect: { x: number; y: number; width: number; height: number };
   path: { label: string; selector: string }[];
+  /** The element's computed style, limited to the inspector's keys (see STYLE_KEYS in shared/selection.ts). */
+  style?: Record<string, string>;
 }
 
 /** A reference the canvas sends down for the design page to resolve back to an element. */
@@ -37,7 +39,9 @@ export type CanvasMessage =
   | { source: "cubiq-canvas"; type: "set-selection"; targets: { id?: string; selector: string; tag: string; text: string }[] }
   | { source: "cubiq-canvas"; type: "clear-selection" }
   | { source: "cubiq-canvas"; type: "set-tweak"; attr?: string; var?: string; value: string }
-  | { source: "cubiq-canvas"; type: "set-pins"; pins: { n: number; target: { id?: string; selector: string; tag: string; text: string } }[] };
+  | { source: "cubiq-canvas"; type: "set-pins"; pins: { n: number; target: { id?: string; selector: string; tag: string; text: string } }[] }
+  | { source: "cubiq-canvas"; type: "preview-style"; target: { id?: string; selector: string; tag: string; text: string }; prop: string; value: string }
+  | { source: "cubiq-canvas"; type: "clear-preview" };
 
 /** Snap an element to its nearest interactive ancestor, or itself when there is none. */
 export function snapTarget(el: Element): Element {
@@ -68,6 +72,44 @@ export function describeElement(el: Element, selectorFor: (el: Element) => strin
     path,
   };
   if (id) described.id = id;
+  // The element's computed style, for the inspector. Keep these keys in step with STYLE_KEYS in shared/selection.ts
+  // (this function is serialized into the page, so it cannot import them).
+  try {
+    const computed = getComputedStyle(el);
+    const keys = [
+      "display",
+      "flexDirection",
+      "flexWrap",
+      "justifyContent",
+      "alignItems",
+      "gap",
+      "paddingTop",
+      "paddingRight",
+      "paddingBottom",
+      "paddingLeft",
+      "width",
+      "height",
+      "fontSize",
+      "fontWeight",
+      "lineHeight",
+      "letterSpacing",
+      "color",
+      "backgroundColor",
+      "borderRadius",
+      "borderWidth",
+      "borderColor",
+      "opacity",
+      "boxShadow",
+    ];
+    const style: Record<string, string> = {};
+    for (const key of keys) {
+      const cssName = key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+      style[key] = computed.getPropertyValue(cssName).trim().slice(0, 120);
+    }
+    described.style = style;
+  } catch {
+    // No computed style here (a non-DOM host): describe the element without it.
+  }
   return described;
 }
 
@@ -400,6 +442,36 @@ export function designBridge(
     stopSelect = stop;
   };
 
+  // Live style previews from the inspector: the prop's original inline value is remembered the first time it is
+  // touched, so clear-preview can put the page back exactly. Keep these keys in step with STYLE_KEYS in
+  // shared/selection.ts (this function is serialized into the page, so it cannot import them).
+  const STYLE_PROPS = [
+    "display",
+    "flexDirection",
+    "flexWrap",
+    "justifyContent",
+    "alignItems",
+    "gap",
+    "paddingTop",
+    "paddingRight",
+    "paddingBottom",
+    "paddingLeft",
+    "width",
+    "height",
+    "fontSize",
+    "fontWeight",
+    "lineHeight",
+    "letterSpacing",
+    "color",
+    "backgroundColor",
+    "borderRadius",
+    "borderWidth",
+    "borderColor",
+    "opacity",
+    "boxShadow",
+  ];
+  const previewOriginals = new Map<Element, Map<string, string>>();
+
   // Commands from the canvas.
   window.addEventListener("message", (event: MessageEvent) => {
     if (event.source !== parent) return;
@@ -415,6 +487,8 @@ export function designBridge(
       value?: unknown;
       targets?: unknown;
       pins?: unknown;
+      target?: unknown;
+      prop?: unknown;
     } | null;
     if (!data || data.source !== "cubiq-canvas") return;
     if (data.type === "restore-scroll") {
@@ -461,6 +535,33 @@ export function designBridge(
       }
     } else if (data.type === "set-pins") {
       setPins(data.pins);
+    } else if (data.type === "preview-style") {
+      if (typeof data.prop !== "string" || STYLE_PROPS.indexOf(data.prop) < 0) return;
+      if (typeof data.value !== "string" || data.value.length > 120 || !/^[#(),.%\w\s-]*$/.test(data.value)) return;
+      const raw = data.target;
+      if (!raw || typeof raw !== "object") return;
+      const target = raw as Record<string, unknown>;
+      if (typeof target.selector !== "string" || typeof target.tag !== "string" || typeof target.text !== "string") return;
+      const ref: SelectionTarget = { selector: target.selector, tag: target.tag, text: target.text };
+      if (typeof target.id === "string") ref.id = target.id;
+      const el = resolveTarget(document, ref);
+      if (!el) return;
+      let mine = previewOriginals.get(el);
+      if (!mine) {
+        mine = new Map<string, string>();
+        previewOriginals.set(el, mine);
+      }
+      const st = (el as HTMLElement).style as unknown as Record<string, string>;
+      if (!mine.has(data.prop)) mine.set(data.prop, st[data.prop] ?? "");
+      st[data.prop] = data.value;
+    } else if (data.type === "clear-preview") {
+      previewOriginals.forEach((props, el) => {
+        const st = (el as HTMLElement).style as unknown as Record<string, string>;
+        props.forEach((value, prop) => {
+          st[prop] = value;
+        });
+      });
+      previewOriginals.clear();
     }
   });
 }
