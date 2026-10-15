@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ThreadEvent } from "../src/shared/types";
 import { runLoop, type LoopInput, type LoopTool } from "../src/main/harness/loop";
-import { decide } from "../src/main/harness/permissions";
+import { decide, refusal } from "../src/main/harness/permissions";
 import type { Route } from "../src/main/harness/llm/client";
 import { LlmError, emptyUsage, type AssistantPart, type LlmEvent, type LlmMessage, type LlmRequest } from "../src/main/harness/llm/types";
 import { ToolError } from "../src/main/harness/tools/types";
@@ -263,5 +263,19 @@ describe("decide", () => {
     expect(decide("auto-edit", "edit", true)).toBe("ask");
     // A fetch reads, but a URL can carry data out: it asks unless the mode is full, plan mode included.
     expect(["ask", "auto-edit", "plan", "full"].map((m) => decide(m as never, "web"))).toEqual(["ask", "ask", "ask", "allow"]);
+  });
+});
+
+describe("refusal", () => {
+  it("tells the model not to work around a user's denial", () => {
+    const text = refusal("ask", "denied-by-user");
+    expect(text).toMatch(/don't retry/i);
+    expect(text).toMatch(/don't get the same result another way/i);
+    expect(text).not.toMatch(/another approach/i);
+  });
+
+  it("keeps the mode refusals", () => {
+    expect(refusal("plan", "deny")).toMatch(/^Plan mode is read-only/);
+    expect(refusal("ask", "deny")).toBe("This call isn't allowed in the current mode.");
   });
 });
