@@ -2413,6 +2413,12 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 .turn-foot { display: flex; align-items: center; gap: 2px; margin: 4px 0 18px; opacity: 0; transition: opacity 120ms var(--ease); }
 .turn-foot.last, .turn-foot:hover, .turn-foot:focus-within { opacity: 1; }
 .turn-foot .turn-meta { margin: 0 0 0 6px; }
+/* A flagged turn's footer stays visible, so its health dot can be seen without hovering. */
+.turn-foot.flagged { opacity: 1; }
+/* Self-improve's score for the turn (DESIGN.md §2 semantic colours; the tooltip says why). */
+.health-dot { width: 6px; height: 6px; border-radius: 50%; align-self: center; flex: none; background: var(--success); }
+.health-dot.warn { background: var(--warning); }
+.health-dot.fail { background: var(--danger); }
 
 .work { margin: 6px 0 10px; }
 .work > summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 2px 6px 2px 2px; border-radius: var(--radius-s); color: var(--text-secondary); font-size: 12.5px; cursor: default; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

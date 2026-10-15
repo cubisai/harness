@@ -10,6 +10,7 @@ import { DEFAULT_LAYOUT } from "../src/shared/layout";
 import type { AgentDriver } from "../src/main/agents/types";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
 import { catalog, closeAfter, fixturesDir, tempDir } from "./helpers";
+import { LEARN_DEFAULTS } from "../src/shared/learn";
 
 /** Reversible, and visibly not plaintext, so the tests can tell a stored key was encoded. */
 const box: SecretBox = {
@@ -42,9 +43,9 @@ describe("SettingsStore", () => {
   it("starts from defaults and persists updates", () => {
     const file = fresh();
     const s = new SettingsStore(file, box);
-    expect(s.get()).toEqual({ theme: "system", motion: "full", density: "comfortable", zoom: 1, antigravity: false, antigravityAck: null, defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, paneLayout: DEFAULT_LAYOUT, memory: { enabled: true, disabledProjects: [] } });
+    expect(s.get()).toEqual({ theme: "system", motion: "full", density: "comfortable", zoom: 1, antigravity: false, antigravityAck: null, defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, paneLayout: DEFAULT_LAYOUT, memory: { enabled: true, disabledProjects: [] }, learn: LEARN_DEFAULTS });
     s.update({ theme: "dark", defaultAgent: "codex", defaultPermissionMode: "auto-edit", autoUpdate: false, editor: "zed" });
-    expect(new SettingsStore(file, box).get()).toEqual({ theme: "dark", motion: "full", density: "comfortable", zoom: 1, antigravity: false, antigravityAck: null, defaultAgent: "codex", defaultPermissionMode: "auto-edit", autoUpdate: false, editor: "zed", paneLayout: DEFAULT_LAYOUT, memory: { enabled: true, disabledProjects: [] } });
+    expect(new SettingsStore(file, box).get()).toEqual({ theme: "dark", motion: "full", density: "comfortable", zoom: 1, antigravity: false, antigravityAck: null, defaultAgent: "codex", defaultPermissionMode: "auto-edit", autoUpdate: false, editor: "zed", paneLayout: DEFAULT_LAYOUT, memory: { enabled: true, disabledProjects: [] }, learn: LEARN_DEFAULTS });
   });
 
   it("keeps the splash choice unset by default and accepts only the known clips", () => {

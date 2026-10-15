@@ -14,6 +14,7 @@ import type {
 } from "../shared/types";
 import { DEFAULT_LAYOUT, sanitizeLayout } from "../shared/layout";
 import { isZoom } from "../shared/zoom";
+import { LEARN_DEFAULTS, type LearnSettings } from "../shared/learn";
 import { LEGACY_ENV, LEGACY_PROVIDERS, isProviderId, type LegacyProviderId } from "./providers";
 import { headerPlan, resolvedHeaders } from "./inject/headers";
 import { protocolKeyVar } from "./inject/keys";
@@ -142,7 +143,7 @@ export class SettingsStore {
 
   get(): Settings & { paneLayout: PaneLayout } {
     const stored = this.data.settings;
-    return { ...DEFAULTS, ...stored, paneLayout: sanitizeLayout({ ...DEFAULT_LAYOUT, ...stored?.paneLayout }), memory: { ...DEFAULTS.memory!, ...stored?.memory } };
+    return { ...DEFAULTS, ...stored, paneLayout: sanitizeLayout({ ...DEFAULT_LAYOUT, ...stored?.paneLayout }), memory: { ...DEFAULTS.memory!, ...stored?.memory }, learn: sanitizeLearn(stored?.learn) };
   }
 
   view(): SettingsView {
@@ -179,6 +180,7 @@ export class SettingsStore {
       const disabledProjects = [...new Set(list.filter((s): s is string => typeof s === "string"))].slice(0, 500);
       next.memory = { enabled, disabledProjects };
     }
+    if (patch.learn && typeof patch.learn === "object" && !Array.isArray(patch.learn)) next.learn = sanitizeLearn({ ...next.learn, ...patch.learn });
     if (patch.mcpRouter === "auto" || patch.mcpRouter === "off") next.mcpRouter = patch.mcpRouter;
     if (typeof patch.sidebarGroupByProject === "boolean") next.sidebarGroupByProject = patch.sidebarGroupByProject;
     if (patch.splash && ["agent", "voyage", "off"].includes(patch.splash)) next.splash = patch.splash;
@@ -417,4 +419,25 @@ function hostOf(url: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** A background model pick, or null when the value isn't one. */
+function modelPick(value: unknown): { agent: string; model: string } | null {
+  const v = value as { agent?: unknown; model?: unknown } | null;
+  return v && typeof v.agent === "string" && v.agent && typeof v.model === "string" && v.model ? { agent: v.agent.slice(0, 200), model: v.model.slice(0, 200) } : null;
+}
+
+/** Self-improve settings with every field valid: off for any project not listed, the cap within 1k–5M. */
+export function sanitizeLearn(value: Partial<LearnSettings> | undefined): LearnSettings {
+  const v = value ?? {};
+  const projects = Array.isArray(v.enabledProjects) ? v.enabledProjects.filter((s): s is string => typeof s === "string") : [];
+  const cap = typeof v.dailyTokens === "number" && Number.isFinite(v.dailyTokens) ? Math.round(Math.min(5_000_000, Math.max(1000, v.dailyTokens))) : LEARN_DEFAULTS.dailyTokens;
+  const byProject: LearnSettings["backgroundByProject"] = {};
+  if (v.backgroundByProject && typeof v.backgroundByProject === "object") {
+    for (const [id, pick] of Object.entries(v.backgroundByProject).slice(0, 500)) {
+      const p = modelPick(pick);
+      if (p) byProject[id] = p;
+    }
+  }
+  return { enabledProjects: [...new Set(projects)].slice(0, 500), dailyTokens: cap, background: modelPick(v.background), backgroundByProject: byProject };
 }

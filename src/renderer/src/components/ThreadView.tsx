@@ -3,6 +3,7 @@ import { ChevronRight, Copy, Pencil, RotateCcw, X } from "lucide-react";
 import { artifactKind, isPreviewable, PLAN_ARTIFACT } from "../../../shared/artifact-kind";
 import { skillsOf } from "../../../shared/skill-list";
 import type { ArtifactKind, StoredEvent, ThreadEvent } from "../../../shared/types";
+import type { TurnScore } from "../../../shared/learn";
 import { prettyTool, type RunResult } from "../../../shared/tools";
 import { displayOrder } from "../event-order";
 import { type FileRef, parseFileRef } from "../fileref";
@@ -330,8 +331,9 @@ function ChangesCard({ changes }: { changes: TurnChanges }) {
 function TurnFooter({ seg, threadId, running, last }: { seg: Extract<Segment, { kind: "turn-end" }>; threadId: string; running: boolean; last: boolean }) {
   const e = seg.stored.event as Extract<ThreadEvent, { kind: "turn-end" }>;
   const [copied, setCopied] = useState(false);
+  const score = useStore((s) => (seg.userSeq === null ? undefined : s.turnScores[threadId]?.[seg.userSeq]));
   return (
-    <div className={`turn-foot${last ? " last" : ""}`}>
+    <div className={`turn-foot${last ? " last" : ""}${score && score.health !== "ok" ? " flagged" : ""}`}>
       {seg.answer && (
         <button
           className="foot-button"
@@ -357,6 +359,7 @@ function TurnFooter({ seg, threadId, running, last }: { seg: Extract<Segment, { 
         </button>
       )}
       <span className="turn-meta">
+        {score && <HealthDot score={score} />}
         <span>{formatTokens(e.inputTokens)} in</span>
         <span>{formatTokens(e.outputTokens)} out</span>
         {e.costUsd !== null && <span>${e.costUsd.toFixed(e.costUsd < 1 ? 3 : 2)}</span>}
@@ -364,6 +367,14 @@ function TurnFooter({ seg, threadId, running, last }: { seg: Extract<Segment, { 
       </span>
     </div>
   );
+}
+
+const HEALTH_LABEL = { ok: "Healthy turn", warn: "Worth a look", fail: "Something went wrong" } as const;
+
+/** Self-improve's score for a turn: a small dot whose tooltip lists why. */
+export function HealthDot({ score }: { score: TurnScore }) {
+  const label = [HEALTH_LABEL[score.health], ...score.signals.map((s) => s.detail)].join("\n");
+  return <span className={`health-dot ${score.health}`} role="img" aria-label={label.replace(/\n/g, ". ")} title={label} />;
 }
 
 /** Your message: a compact bubble, with Copy, Edit (back into the message box) and the time on hover. */

@@ -207,6 +207,58 @@ export class Store {
       { applied: () => this.hasColumn("threads", "design_system"), sql: "ALTER TABLE threads ADD COLUMN design_system TEXT" },
       // 22: a design thread's prototype tier (null = the default: working).
       { applied: () => this.hasColumn("threads", "prototype_tier"), sql: "ALTER TABLE threads ADD COLUMN prototype_tier TEXT" },
+      // 23-26: self-improve (src/main/learn): turn scores, lessons, the replay cache and the background token budget.
+      {
+        applied: () => this.hasTable("turn_scores"),
+        sql: `CREATE TABLE turn_scores (
+          thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+          user_seq INTEGER NOT NULL,
+          project_id TEXT NOT NULL,
+          agent TEXT NOT NULL,
+          model TEXT NOT NULL,
+          session_id TEXT,
+          health TEXT NOT NULL,
+          signals TEXT NOT NULL,
+          injected TEXT NOT NULL DEFAULT '[]',
+          steps INTEGER NOT NULL DEFAULT 0,
+          tokens INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          PRIMARY KEY (thread_id, user_seq)
+        );
+        CREATE INDEX turn_scores_project ON turn_scores (project_id, created_at)`,
+      },
+      {
+        applied: () => this.hasTable("lessons"),
+        sql: `CREATE TABLE lessons (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          rule TEXT NOT NULL,
+          why TEXT NOT NULL,
+          scope TEXT NOT NULL,
+          status TEXT NOT NULL,
+          helpful INTEGER NOT NULL DEFAULT 0,
+          harmful INTEGER NOT NULL DEFAULT 0,
+          relevant INTEGER NOT NULL DEFAULT 0,
+          tries INTEGER NOT NULL DEFAULT 0,
+          pinned INTEGER NOT NULL DEFAULT 0,
+          case_id TEXT,
+          provenance TEXT NOT NULL,
+          verified TEXT,
+          note TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX lessons_project ON lessons (project_id, status)`,
+      },
+      {
+        applied: () => this.hasTable("learn_replays"),
+        sql: "CREATE TABLE learn_replays (key TEXT PRIMARY KEY, case_id TEXT NOT NULL, lesson_id TEXT, pass INTEGER NOT NULL, tokens INTEGER NOT NULL, created_at INTEGER NOT NULL)",
+      },
+      {
+        applied: () => this.hasTable("learn_budget"),
+        sql: "CREATE TABLE learn_budget (project_id TEXT NOT NULL, day TEXT NOT NULL, tokens INTEGER NOT NULL, PRIMARY KEY (project_id, day))",
+      },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;
@@ -226,6 +278,11 @@ export class Store {
 
   private hasTable(table: string): boolean {
     return !!this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
+  }
+
+  /** The connection itself, for a module that owns its own tables (self-improve's, created by the migrations above). */
+  get sql(): DatabaseSync {
+    return this.db;
   }
 
   close(): void {

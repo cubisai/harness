@@ -53,6 +53,8 @@ import { buildContextPreview, mcpRow, skillsOf, toolTokens } from "./context-pre
 import { createMemory, memoryOn, memoryPrompt } from "./memory";
 import { createMemoryApi } from "./memory/api";
 import { createExtractor } from "./memory/extractor";
+import { createLearner } from "./learn";
+import { LearnDb } from "./learn/db";
 import { MemorySnapshots, PENDING_SESSION } from "./memory/snapshot";
 import { MEMORY_READ_TOOL, MEMORY_WRITE_TOOL, memoryReadTool, memoryWriteTool } from "./memory/tool";
 import { askUserTool, questionAnswerOf } from "./questions";
@@ -888,6 +890,11 @@ async function main(): Promise<void> {
     driverFor: (id) => drivers.find((d) => d.id === id),
   });
   service.setTurnListener((d) => extractor.schedule(d));
+  // Self-improve: scores turns of opted-in projects (off for every project by default).
+  const learnDb = new LearnDb(store.sql);
+  const learner = createLearner({ db: learnDb, settings: () => settings.get().learn, broadcast });
+  service.setLearner(learner);
+  ipcMain.handle("learn:scores", (_e, threadId: string) => learner.scores(threadId));
 
   // The Library: skills, agents, and MCP servers, as the agents will see them.
   const catalogOfAgents = () =>
@@ -1496,6 +1503,7 @@ async function main(): Promise<void> {
   app.on("before-quit", () => {
     updater.stop();
     extractor.dispose();
+    learner.dispose();
     service.dispose();
     previews.dispose();
     designWatcher.closeAll();

@@ -7,8 +7,8 @@ export type Segment =
   | { kind: "event"; stored: StoredEvent }
   /** Consecutive tool calls (and the thinking between them). `done` = something came after, so it folds. */
   | { kind: "work"; key: number; items: StoredEvent[]; startedAt: number; endedAt: number; done: boolean }
-  /** A turn's end: its final answer (for Copy), the message that started it (for Retry), and what it changed. */
-  | { kind: "turn-end"; stored: StoredEvent; answer: string; prompt: { text: string; skills?: string[] } | null; changes: TurnChanges | null };
+  /** A turn's end: its final answer (for Copy), the message that started it (for Retry, and its seq for the turn's score), and what it changed. */
+  | { kind: "turn-end"; stored: StoredEvent; answer: string; prompt: { text: string; skills?: string[] } | null; userSeq: number | null; changes: TurnChanges | null };
 
 export interface TurnChanges {
   files: string[];
@@ -34,6 +34,7 @@ export function segmentEvents(events: StoredEvent[], running: boolean): Segment[
   let run: StoredEvent[] = [];
   let answer: string[] = [];
   let prompt: { text: string; skills?: string[] } | null = null;
+  let userSeq: number | null = null;
   let edits = new Map<string, { additions: number; deletions: number }>();
   let statKnown = false;
   const results = new Map<string, { summary?: string; isError: boolean }>();
@@ -83,6 +84,7 @@ export function segmentEvents(events: StoredEvent[], running: boolean): Segment[
     if (ev.kind === "user") {
       const skills = skillsOf(ev);
       prompt = { text: ev.text, ...(skills.length ? { skills } : {}) };
+      userSeq = e.seq;
       answer = [];
       edits = new Map();
       statKnown = false;
@@ -97,7 +99,7 @@ export function segmentEvents(events: StoredEvent[], running: boolean): Segment[
             deletions: statKnown ? [...edits.values()].reduce((n, s) => n + s.deletions, 0) : null,
           }
         : null;
-      out.push({ kind: "turn-end", stored: e, answer: answer.join("\n\n"), prompt, changes });
+      out.push({ kind: "turn-end", stored: e, answer: answer.join("\n\n"), prompt, userSeq, changes });
       answer = [];
       edits = new Map();
       statKnown = false;

@@ -524,6 +524,7 @@ export function installMock(): void {
       mcp: [{ name: "github", tools: 26, tokens: 5120, deferred: false }],
       memoryIndex: null,
     }),
+    learnScores: async () => [],
     memoryOverview: async () => memoryView(),
     memoryRead: async (_projectId, file, scope) => {
       const note = notesFor(scope).find((n) => n.file === file);

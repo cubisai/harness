@@ -3,6 +3,7 @@
 
 import type { PrototypeTier } from "./tiers";
 import type { CommentTarget, DesignComment } from "./comments";
+import type { LearnCase, LearnOverview, LearnSettings, Lesson, TurnScore } from "./learn";
 
 export type Invocation = "model" | "user";
 
@@ -204,6 +205,8 @@ export interface Settings {
   sidebarGroupByProject?: boolean;
   /** The launch splash clip; unset means "agent". */
   splash?: Splash;
+  /** Self-improve (scorecard, lessons, verified promotion): off unless a project is listed. SettingsStore.get() always fills it in. */
+  learn?: LearnSettings;
 }
 
 export type MemoryType = "user" | "feedback" | "project" | "reference";
@@ -1000,7 +1003,9 @@ export type LiveUpdate =
   /** A turn finished having written previewable files: open the panel on `path` (the last one). */
   | { type: "artifact-ready"; threadId: string; path: string; files: string[] }
   /** Something in an open design thread's folder changed (debounced): the canvas reloads. */
-  | { type: "design-changed"; threadId: string };
+  | { type: "design-changed"; threadId: string }
+  /** Self-improve: a turn's health changed (scored, or a later correction/revert). */
+  | { type: "turn-score"; score: TurnScore };
 
 /** The API the preload script exposes as `window.unskilled`. */
 export interface UnskilledApi {
@@ -1095,6 +1100,8 @@ export interface UnskilledApi {
   memorySetEnabled(projectId: string | null, on: boolean): Promise<MemoryOverview | null>;
   /** Import Claude's/Codex's native memory again (deduped); returns how many notes were added. */
   memoryImport(projectId: string): Promise<number>;
+  /** Self-improve: a thread's turn scores (empty when its project isn't opted in). */
+  learnScores(threadId: string): Promise<TurnScore[]>;
   /** Rate limits reported so far, by agent. */
   listLimits(): Promise<AgentLimits[]>;
   /** Every skill discovered for the project (or globally): the whole list, shadowed and disabled included. */

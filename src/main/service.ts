@@ -80,6 +80,7 @@ import { providerOfModel } from "../shared/provider-rules";
 import { memoryScopeCheck } from "./inject/memory-scope";
 import { redactDeep, redactSecrets } from "./inject/redact";
 import type { TurnDelta } from "./memory/extractor";
+import type { Learner } from "./learn";
 import { answersMessage } from "./questions";
 
 /**
@@ -111,6 +112,10 @@ export class Service {
   private pendingCatchUp = new Map<string, { afterSeq: number }>();
   /** Called after each finished, non-aborted turn, for background memory extraction. */
   private turnListener: ((d: TurnDelta) => void) | null = null;
+  /** Self-improve: scores turns of opted-in projects (null = off everywhere). */
+  private learner: Learner | null = null;
+  /** Each thread's last user message seq, so an automatic fix round scores as part of the turn it fixes. */
+  private rootSeqs = new Map<string, number>();
 
   private drivers: Map<string, AgentDriver>;
 
@@ -577,6 +582,10 @@ export class Service {
     this.turnListener = fn;
   }
 
+  setLearner(learner: Learner | null): void {
+    this.learner = learner;
+  }
+
   isRunning(threadId: string): boolean {
     return this.running.has(threadId);
   }
@@ -647,6 +656,12 @@ export class Service {
       this.broadcast({ type: "thread", thread: this.store.updateThread(thread.id, { title }) });
     }
 
+    // Self-improve sees only opted-in projects' real turns; everything it adds is skipped otherwise.
+    const learner = !compact && this.learner?.enabled(thread.projectId) ? this.learner : null;
+    if (round === 0) this.rootSeqs.set(thread.id, userEvent.seq);
+    const rootSeq = this.rootSeqs.get(thread.id) ?? userEvent.seq;
+    if (learner && round === 0) learner.onUserMessage({ thread, seq: userEvent.seq, text: req.text });
+
     const controller = new AbortController();
     this.running.set(thread.id, controller);
     this.broadcast({ type: "running", threadId: thread.id, running: true });
@@ -656,6 +671,7 @@ export class Service {
       // Snapshot the working tree before the turn, so an edit the agent reports
       // (or a path git now sees) is what triggers the check and the evidence gate.
       const before = compact ? null : await dirtySet(cwd);
+      const pre = learner ? await learner.beforeTurn({ thread, cwd }) : null;
       const testsBefore = before ? await testMarkersOf(cwd, [...before].map(dirtyPath).filter(isTestPath)) : new Map<string, Map<string, number>>();
       if (!this.scopeChecked.has(project.id)) {
         this.scopeChecked.add(project.id);
@@ -692,6 +708,13 @@ export class Service {
       // What the evidence gate reads: the turn's commands and its edits' diffs.
       const commands: string[] = [];
       const editDiffs: { path: string; unified: string }[] = [];
+      // What the scorecard reads besides: failing commands, tools used, denials and the turn's size.
+      const commandOf = new Map<string, string>();
+      const failedCommands: string[] = [];
+      const toolNames: string[] = [];
+      let denied = 0;
+      let toolCalls = 0;
+      let turnTokens = 0;
       const live = (delta: LiveDelta) => this.broadcast({ type: "delta", threadId: thread.id, delta });
       const scrub = (text: string) => redactSecrets(text, this.secrets());
       const catchUp = compact ? null : await this.catchUp(thread.id, driver, userEvent.seq);
@@ -717,6 +740,7 @@ export class Service {
         tools: this.harnessTools(thread),
         mcpServers: this.mcpServers(thread.projectId),
         provenance,
+        ...(learner ? { nudges: true } : {}),
         onSessionRebuilt: () => {
           rebuilt = true;
         },
@@ -736,7 +760,17 @@ export class Service {
           if (event.kind === "tool-use") {
             const command = (event.payload as { command?: unknown } | undefined)?.command;
             if (typeof command === "string") commands.push(command);
+            if (learner) {
+              toolCalls++;
+              toolNames.push(event.name);
+              if (typeof command === "string") commandOf.set(event.toolUseId, command);
+            }
           }
+          if (learner && event.kind === "tool-result" && event.isError) {
+            const command = commandOf.get(event.toolUseId);
+            if (command !== undefined) failedCommands.push(command);
+          }
+          if (learner && event.kind === "turn-end") turnTokens += event.inputTokens + event.outputTokens;
           // A model that returns nothing at all would otherwise leave the thread silent.
           if (event.kind === "turn-end" && !answered && !controller.signal.aborted) {
             this.emit(thread.id, { kind: "notice", text: `${driver.label} ended the turn without a reply from ${thread.model === "default" ? "its default model" : thread.model}. The model may be unavailable right now; try again or pick another.` }, provenance);
@@ -782,6 +816,7 @@ export class Service {
           return new Promise<PermissionDecision>((resolve) => {
             const requestId = randomUUID();
             const done = (d: PermissionDecision) => {
+              if (d === "deny" && !controller.signal.aborted) denied++;
               this.pendingPermissions.delete(requestId);
               this.permissionRequests.delete(requestId);
               if (d === "allow-always" && p.canAlwaysAllow) approvals.remember(thread.agent, p.toolName, p.summary);
@@ -847,6 +882,8 @@ export class Service {
       }
       const after = before && !controller.signal.aborted ? await dirtySet(cwd) : null;
       let checkPassed = false;
+      let checkRow: { command: string; ok: boolean; tail: string } | null = null;
+      let evidence: string[] = [];
       // The verification gate: only a turn that changed files runs it.
       if (checkCommand && !controller.signal.aborted && !compact) {
         // A fix round always re-checks: it exists to make the check pass.
@@ -860,6 +897,7 @@ export class Service {
             const tail = redactSecrets(r.tail, this.secrets());
             this.emit(thread.id, { kind: "check", command: checkCommand, ...r, tail, round });
             checkPassed = r.ok === true;
+            checkRow = { command: checkCommand, ok: checkPassed, tail };
             if (!r.ok) {
               if (round < maxRounds) {
                 followUp = {
@@ -881,9 +919,42 @@ export class Service {
           const last = [...this.store.listEvents(thread.id)].reverse().find((e) => e.event.kind === "assistant-text" && e.seq > userEvent.seq);
           const answer = last && last.event.kind === "assistant-text" ? last.event.text : "";
           const flags = await turnEvidence(cwd, { before, after, testsBefore, editDiffs, commands, answer, request: req.text, checkPassed });
+          evidence = flags;
           if (flags.length) this.emit(thread.id, { kind: "notice", text: `Worth a second look: ${flags.join(" ")}`, evidence: flags });
         } catch {
           // Best-effort: a git hiccup never fails the turn.
+        }
+      }
+      if (learner) {
+        try {
+          const last = [...this.store.listEvents(thread.id)].reverse().find((e) => e.event.kind === "assistant-text" && e.seq > userEvent.seq);
+          const rel = (p: string) => (isAbsolute(p) ? relative(cwd, p) : p).replace(/\\/g, "/");
+          const changed = before && after ? [...new Set([...[...after].filter((e) => !before.has(e)).map(dirtyPath), ...editDiffs.map((d) => rel(d.path))])].filter((p) => !p.startsWith("..")) : [];
+          learner.afterTurn(
+            {
+              thread: this.store.getThread(thread.id),
+              cwd,
+              rootSeq,
+              round,
+              final: !followUp?.checkRound,
+              request: scrub(req.text),
+              answer: last && last.event.kind === "assistant-text" ? scrub(last.event.text) : "",
+              commands,
+              failedCommands,
+              toolNames,
+              denied,
+              stopped: controller.signal.aborted,
+              evidence,
+              check: checkRow,
+              steps: toolCalls,
+              tokens: turnTokens,
+              changed,
+              injected: [],
+            },
+            pre,
+          );
+        } catch {
+          // Scoring is best-effort and never touches the turn.
         }
       }
     } finally {

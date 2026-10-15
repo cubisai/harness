@@ -34,6 +34,7 @@ import { threadKind } from "./sections";
 import { buildInCodePrompt, buildThreadPatch, designDirName, handoffPath } from "../../shared/design";
 import type { SelectedElement } from "../../shared/selection";
 import type { PrototypeTier } from "../../shared/tiers";
+import type { TurnScore } from "../../shared/learn";
 
 /** A design thread's canvas selection: the page it is on and its elements. */
 export interface DesignSelection {
@@ -249,6 +250,8 @@ interface State {
   artifact: { threadId: string; path: string } | null;
   /** The files agents wrote, by thread, as last listed. */
   artifactFiles: Record<string, ArtifactFile[]>;
+  /** Self-improve turn scores, by thread then user message seq (only opted-in projects have any). */
+  turnScores: Record<string, Record<number, TurnScore>>;
   /** Show a thread file in the panel (path relative to the thread's folder, or absolute inside it). */
   openArtifact(path: string, threadId?: string): void;
   closeArtifact(): void;
@@ -549,6 +552,7 @@ export const useStore = create<State>((set, get) => ({
   inspectorTab: "changes",
   artifact: null,
   artifactFiles: {},
+  turnScores: {},
   browserMounted: false,
   terminals: [],
   browserUrl: null,
@@ -795,6 +799,12 @@ export const useStore = create<State>((set, get) => ({
       void Promise.resolve()
         .then(() => api().listArtifacts(id))
         .then((files) => set((x) => ({ artifactFiles: { ...x.artifactFiles, [id]: files } })))
+        .catch(() => {});
+    }
+    if (id && !get().turnScores[id]) {
+      void Promise.resolve()
+        .then(() => api().learnScores(id))
+        .then((list) => set((x) => ({ turnScores: { ...x.turnScores, [id]: Object.fromEntries(list.map((sc) => [sc.userSeq, sc])) } })))
         .catch(() => {});
     }
     if (id && !get().events[id]) {
@@ -1116,6 +1126,11 @@ export const useStore = create<State>((set, get) => ({
             .then((files) => set((x) => ({ artifactFiles: { ...x.artifactFiles, [update.threadId]: files } })))
             .catch(() => {});
         return;
+      case "turn-score": {
+        const sc = update.score;
+        set((s) => ({ turnScores: { ...s.turnScores, [sc.threadId]: { ...s.turnScores[sc.threadId], [sc.userSeq]: sc } } }));
+        return;
+      }
       case "design-changed":
         set((s) => ({ designReload: { ...s.designReload, [update.threadId]: (s.designReload[update.threadId] ?? 0) + 1 } }));
         return;

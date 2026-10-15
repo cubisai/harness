@@ -61,6 +61,7 @@ const api: UnskilledApi = {
   memoryDelete: (projectId, file, scope) => ipcRenderer.invoke("memory:delete", projectId, file, scope),
   memorySetEnabled: (projectId, on) => ipcRenderer.invoke("memory:set-enabled", projectId, on),
   memoryImport: (projectId) => ipcRenderer.invoke("memory:import", projectId),
+  learnScores: (threadId) => ipcRenderer.invoke("learn:scores", threadId),
   listLimits: () => ipcRenderer.invoke("limits:list"),
   listAllSkills: (projectId) => ipcRenderer.invoke("library:skills", projectId),
   getSkillDetail: (name, projectId) => ipcRenderer.invoke("library:skill", name, projectId),
