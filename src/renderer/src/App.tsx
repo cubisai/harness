@@ -18,6 +18,7 @@ import { CollapsedHeaderControls, PaneRail, toggleSidebar } from "./components/P
 import { TerminalDrawer } from "./components/TerminalDrawer";
 import { Splitter } from "./components/Splitter";
 import { SwitchDialogHost } from "./components/SwitchDialog";
+import { ExpertChip } from "./components/experts/ExpertChip";
 import { AboutSheet } from "./components/AboutSheet";
 import { ContextSheet } from "./components/ContextSheet";
 import { McpSheet } from "./components/McpSheet";
@@ -236,7 +237,7 @@ export function App() {
               </>
             ) : (
               <>
-                <ThreadView threadId={thread.id} />
+                <ThreadView threadId={thread.id} expertId={thread.expertId} />
                 <TodoDock threadId={thread.id} />
                 <RequestDock threadId={thread.id} />
                 <Composer
@@ -247,9 +248,13 @@ export function App() {
                         <ThreadMode thread={thread} running={running} />
                         <ThreadDesignSystem thread={thread} running={running} />
                         <ThreadTier thread={thread} running={running} />
+                        {thread.expertId && <ExpertChip expertId={thread.expertId} />}
                       </>
                     ) : (
-                      <ThreadMode thread={thread} running={running} />
+                      <>
+                        <ThreadMode thread={thread} running={running} />
+                        {thread.expertId && <ExpertChip expertId={thread.expertId} />}
+                      </>
                     )
                   }
                   model={<ThreadModel thread={thread} running={running} />}

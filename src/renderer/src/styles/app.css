@@ -673,7 +673,10 @@ button.design-crumb:hover { background: var(--bg-hover); color: var(--text); }
   .composer .composer-actions .model-picker { min-width: 0; }
   /* The context ring is a .model-picker too, but it can't shrink: its button would spill over Send. */
   .composer .composer-actions .context-ring { flex: 0 0 auto; }
-  .composer .mode-chip .mode-chip-label, .composer .ds-chip .ds-chip-label, .composer .model-picker-effort { display: none; }
+  .composer .mode-chip .mode-chip-label, .composer .ds-chip .ds-chip-label, .composer .model-picker-effort, .composer .expert-chip-name { display: none; }
+  /* An expert thread adds the expert's portrait: the chips drop their chevrons so the model name keeps a little room. */
+  .composer:has(.expert-chip) .mode-chip .chev, .composer:has(.expert-chip) .ds-chip .chev { display: none; }
+  .composer .composer-actions .model-picker:not(.context-ring) { min-width: 44px; }
   .composer .model-picker-button { max-width: 100%; }
   .composer textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
@@ -1161,7 +1164,8 @@ button.qc-option.other { cursor: pointer; }
 .composer-input { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
 .composer .composer-input textarea { flex: 1 1 160px; width: auto; min-width: 0; }
 .composer-input.has-chips { padding: 10px 12px 0; }
-.composer .composer-input.has-chips textarea { padding: 2px 4px 6px; }
+/* Chips sit on their own row and the text takes the full width under them, so a chip never squeezes the text. */
+.composer .composer-input.has-chips textarea { flex-basis: 100%; padding: 2px 4px 6px; }
 .composer-input .skill-chip { margin-right: 0; max-width: 100%; min-width: 0; }
 .composer-input .context-chip { display: inline-flex; }
 .composer-input .context-chip .chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
@@ -2308,6 +2312,131 @@ button.hunk:hover { color: var(--text); }
 }
 .xc-note { font-size: 11.5px; color: var(--text-tertiary); margin: 8px 0 0; }
 .xc-detail-id { font: 11.5px var(--mono); color: var(--text-tertiary); margin: 14px 0 0; }
+
+/* ---------- summoned expert: composer chip and thread intro ---------- */
+
+.expert-chip-avatar {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--bg-chip);
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  font-weight: 600;
+  flex: none;
+}
+.expert-chip-team { color: var(--text-tertiary); }
+.expert-chip { min-width: 0; }
+.expert-chip-name { min-width: 0; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A bundled portrait fills the same box as the initials it replaces; it carries its own round background. */
+img.expert-avatar-img { display: block; padding: 0; border: 0; border-radius: 999px; background: none; object-fit: cover; }
+img.expert-intro-member.expert-avatar-img { border: 1px solid var(--bg-elevated); }
+.xc-team-row { display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 10px; align-items: start; }
+.xc-team-row > :not(.xc-team-avatar) { grid-column: 2; }
+.xc-team-avatar { grid-row: span 2; width: 28px; height: 28px; border-radius: 999px; display: grid; place-items: center; background: var(--bg-chip); color: var(--text-secondary); font-size: 10.5px; font-weight: 600; }
+
+.expert-intro {
+  max-width: 640px;
+  margin: 24px auto 0;
+  padding: 16px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-l);
+  background: var(--bg-elevated);
+}
+.expert-intro-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.expert-intro-avatar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: var(--bg-chip);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  flex: none;
+}
+.expert-intro-title { min-width: 0; }
+.expert-intro-title h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.expert-intro-persona { font-weight: 400; color: var(--text-secondary); }
+.expert-intro-profession {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.expert-intro-desc {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.expert-intro-team {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.expert-intro-members { display: flex; }
+.expert-intro-member {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid var(--bg-elevated);
+  background: var(--bg-chip);
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.expert-intro-member + .expert-intro-member { margin-left: -6px; }
+.expert-intro-team-line { font-size: 12.5px; color: var(--text-secondary); }
+.expert-intro-team-note { margin: 6px 0 0; font-size: 11.5px; color: var(--text-tertiary); }
+.expert-intro-prompts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 16px;
+}
+.expert-intro-prompts h4 {
+  margin: 0 0 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.expert-intro-prompt {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-m);
+  padding: 8px 12px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background 120ms var(--ease);
+}
+.expert-intro-prompt:hover { background: var(--bg-hover); }
+.expert-intro-note { margin: 16px 0 0; font-size: 11.5px; color: var(--text-tertiary); }
 
 /* ---------- files tab ---------- */
 

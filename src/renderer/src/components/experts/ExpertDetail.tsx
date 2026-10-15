@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Lightbulb, MessageSquare, X } from "lucide-react";
 import type { ExpertDef } from "../../../../shared/experts";
+import { ExpertAvatar, initials, memberAvatarId } from "./ExpertAvatar";
 
 /** What the detail modal needs: the def, its usage count and the three actions. */
 export interface ExpertDetailProps {
@@ -57,7 +58,7 @@ export function ExpertDetailContent({ def, used, canSummon, onClose, onSummon, o
   return (
     <>
       <div className="xc-detail-head">
-        <div className="xc-detail-avatar">{def.avatarText}</div>
+        <ExpertAvatar id={def.id} text={def.avatarText} className="xc-detail-avatar" />
         <div className="xc-detail-title">
           <h3>
             {def.name}
@@ -109,6 +110,7 @@ export function ExpertDetailContent({ def, used, canSummon, onClose, onSummon, o
           <h4>Team</h4>
           <div className="xc-team">
             <div className="xc-team-row">
+              <ExpertAvatar id={def.id} text={def.avatarText} className="xc-team-avatar" />
               <div className="xc-team-name">
                 {def.persona}
                 {def.persona && def.profession ? <span className="xc-team-prof"> · {def.profession}</span> : null}
@@ -116,6 +118,7 @@ export function ExpertDetailContent({ def, used, canSummon, onClose, onSummon, o
             </div>
             {members.map((m) => (
               <div key={m.id} className="xc-team-row">
+                <ExpertAvatar id={memberAvatarId(def.id, m.id)} text={initials(m.name)} className="xc-team-avatar" />
                 <div className="xc-team-name">
                   {m.name}
                   {m.profession ? <span className="xc-team-prof"> · {m.profession}</span> : null}

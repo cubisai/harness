@@ -12,6 +12,7 @@ import { Markdown } from "../markdown";
 import { relativeToThread, useStore } from "../store";
 import { dockedPlan } from "../todo";
 import { DiffView, diffsOf } from "./DiffView";
+import { ExpertIntro } from "./experts/ExpertChip";
 import { ReasoningBlock } from "./ReasoningBlock";
 import { activityOf, WaitingLine } from "./WaitingLine";
 import { useSmoothText } from "../hooks/useSmoothText";
@@ -52,7 +53,7 @@ function SkillChips({ names }: { names: string[] }) {
   );
 }
 
-export function ThreadView({ threadId }: { threadId: string }) {
+export function ThreadView({ threadId, expertId }: { threadId: string; expertId?: string }) {
   const events = useStore((s) => s.events[threadId]) ?? EMPTY;
   const live = useStore((s) => s.live[threadId]) ?? EMPTY_LIVE;
   const running = useStore((s) => Boolean(s.running[threadId]));
@@ -170,6 +171,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
       }}
     >
       <div className="thread-inner" ref={inner}>
+        {expertId && events.length === 0 && <ExpertIntro expertId={expertId} />}
         {segments.map((seg, i) => (
           <SegmentRow key={segmentKey(seg)} seg={seg} results={results} children={children} running={running} threadId={threadId} last={i === lastTurnEnd} />
         ))}

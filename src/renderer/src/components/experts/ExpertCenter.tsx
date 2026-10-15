@@ -4,6 +4,7 @@ import { ChevronRight } from "lucide-react";
 import type { ExpertDef } from "../../../../shared/experts";
 import { useStore } from "../../store";
 import { Select, type SelectOption } from "../Select";
+import { ExpertAvatar } from "./ExpertAvatar";
 import { ExpertDetail } from "./ExpertDetail";
 
 /** Where the summon counts live; a JSON map of expert id → times summoned. */
@@ -140,7 +141,7 @@ export function ExpertCard({ def, canSummon, onOpen, onSummon }: ExpertCardProps
       }}
     >
       <div className="wb-card-header">
-        <div className="wb-avatar">{def.avatarText}</div>
+        <ExpertAvatar id={def.id} text={def.avatarText} className="wb-avatar" />
         <div className="wb-card-meta">
           <h4 className="wb-card-title">{def.name}</h4>
           <div className="wb-card-sub">

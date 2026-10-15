@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 import type { ExpertDef } from "../../../shared/experts";
 import { useStore } from "../store";
+import { ExpertAvatar } from "./experts/ExpertAvatar";
 import { bumpUsage, readUsage } from "./experts/ExpertCenter";
 
 /** The experts a query matches by name, profession or tag (case-insensitive). */
@@ -87,9 +88,7 @@ export function ExpertsSubmenu({ close }: { close: () => void }): ReactNode {
             disabled={!hasProject}
             onClick={() => chooseExpert(e.id, close)}
           >
-            <span className="xs-avatar" aria-hidden>
-              {e.avatarText}
-            </span>
+            <ExpertAvatar id={e.id} text={e.avatarText} className="xs-avatar" />
             <span className="xs-name">{e.name}</span>
             {e.kind === "team" && <span className="xs-tag">Team</span>}
           </button>
