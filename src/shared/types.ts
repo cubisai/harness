@@ -466,6 +466,8 @@ export interface Thread {
   designSystem?: string;
   /** A design thread's prototype tier; absent = working (and always absent on chat threads). */
   prototypeTier?: PrototypeTier;
+  /** The expert this thread was summoned with (ExpertDef id); absent = none. */
+  expertId?: string;
 }
 
 /**

@@ -1,0 +1,121 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { createExpertCatalog } from "../src/main/experts/catalog";
+import { expertBlock, expertFromMarkdown, parseExpertMarkdown } from "../src/shared/experts";
+import { tempDir } from "./helpers";
+
+describe("parseExpertMarkdown", () => {
+  it("reads an inline list, stripping quotes", () => {
+    const { meta, body } = parseExpertMarkdown('---\nid: ui\ntags: [a, b, "c d"]\n---\nThe body.\n', "fallback");
+    expect(meta.id).toBe("ui");
+    expect(meta.tags).toEqual(["a", "b", "c d"]);
+    expect(body).toBe("The body.");
+  });
+
+  it("reads an indented dash list", () => {
+    const text = "---\nname: X\ntags:\n  - one\n  - two\n---\nBody\n";
+    const { meta } = parseExpertMarkdown(text, "fallback");
+    expect(meta.tags).toEqual(["one", "two"]);
+  });
+
+  it("handles CRLF line endings", () => {
+    const { meta, body } = parseExpertMarkdown("---\r\nid: crlf\r\nname: CRLF\r\n---\r\nBody here.\r\n", "fallback");
+    expect(meta.id).toBe("crlf");
+    expect(body).toBe("Body here.");
+  });
+
+  it("treats text with no frontmatter as all body", () => {
+    const { meta, body } = parseExpertMarkdown("Just markdown.\n\nMore.", "fallback");
+    expect(meta).toEqual({});
+    expect(body).toBe("Just markdown.\n\nMore.");
+  });
+});
+
+describe("expertFromMarkdown", () => {
+  const good = '---\nname: Ada\n---\nYou are Ada.';
+
+  it("rejects a bad id", () => {
+    expect(expertFromMarkdown("---\nid: Bad_ID!\nname: Ada\n---\nBody", "fallback", "builtin")).toBeNull();
+  });
+
+  it("rejects a missing name", () => {
+    expect(expertFromMarkdown("---\nid: ada\n---\nBody", "fallback", "builtin")).toBeNull();
+  });
+
+  it("rejects an empty body", () => {
+    expect(expertFromMarkdown("---\nid: ada\nname: Ada\n---\n\n", "fallback", "builtin")).toBeNull();
+  });
+
+  it("falls back to the given id and defaults the rest", () => {
+    const def = expertFromMarkdown(good, "fallback", "builtin");
+    expect(def).toMatchObject({ id: "fallback", name: "Ada", kind: "agent", category: "General", avatarText: "AD", version: "1.0.0", source: "builtin" });
+    expect(def?.prompt).toBe("You are Ada.");
+  });
+});
+
+describe("createExpertCatalog", () => {
+  it("lists a bundled single file", () => {
+    const dir = tempDir();
+    writeFileSync(join(dir, "solo.md"), "---\nname: Solo\nprofession: Writer\n---\nWrite.\n");
+    const catalog = createExpertCatalog({ bundledDir: dir, userDir: join(dir, "user") });
+    const list = catalog.list();
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ id: "solo", name: "Solo", source: "builtin" });
+    expect(list[0]!.path).toBe(join(dir, "solo.md"));
+    expect(catalog.get("solo")?.name).toBe("Solo");
+  });
+
+  it("lists a bundled team folder with two members", () => {
+    const dir = tempDir();
+    const team = join(dir, "crew");
+    mkdirSync(join(team, "members"), { recursive: true });
+    writeFileSync(join(team, "expert.md"), "---\nname: Crew\nkind: team\n---\nLead the crew.\n");
+    writeFileSync(join(team, "members", "writer.md"), "---\nname: Wren\nprofession: Writer\ndescription: Writes.\nskills: [prose]\n---\nWrite it.\n");
+    writeFileSync(join(team, "members", "editor.md"), "---\nname: Ed\nprofession: Editor\ndescription: Edits.\n---\nEdit it.\n");
+    const catalog = createExpertCatalog({ bundledDir: dir, userDir: join(dir, "user") });
+    const def = catalog.get("crew");
+    expect(def?.kind).toBe("team");
+    expect(def?.members?.map((m) => m.id).sort()).toEqual(["editor", "writer"]);
+    expect(def?.members?.find((m) => m.id === "writer")).toMatchObject({ name: "Wren", profession: "Writer", prompt: "Write it.", skills: ["prose"] });
+  });
+
+  it("lets an imported expert override a bundled id", () => {
+    const bundled = tempDir();
+    const user = tempDir();
+    writeFileSync(join(bundled, "shared.md"), "---\nname: Bundled\n---\nBundled body.\n");
+    mkdirSync(join(user, "shared"), { recursive: true });
+    writeFileSync(join(user, "shared", "expert.md"), "---\nname: Imported\n---\nImported body.\n");
+    const catalog = createExpertCatalog({ bundledDir: bundled, userDir: user });
+    const list = catalog.list();
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ id: "shared", name: "Imported", source: "imported" });
+  });
+
+  it("returns null for an unknown id", () => {
+    const dir = tempDir();
+    const catalog = createExpertCatalog({ bundledDir: dir, userDir: join(dir, "user") });
+    expect(catalog.get("nope")).toBeNull();
+    expect(catalog.list()).toEqual([]);
+  });
+});
+
+describe("expertBlock", () => {
+  it("wraps the prompt and escapes quotes in attributes", () => {
+    const block = expertBlock({ name: 'Ada "The" One', profession: "Writer", prompt: "You write.", kind: "agent", members: undefined });
+    expect(block).toBe('<expert name="Ada &quot;The&quot; One" role="Writer">\nYou write.\n</expert>');
+  });
+
+  it("lists team members and the consolidation line", () => {
+    const block = expertBlock({
+      name: "Crew",
+      profession: "Lead",
+      prompt: "Lead.",
+      kind: "team",
+      members: [{ id: "writer", name: "Wren", profession: "Writer", description: "Writes.", prompt: "p", skills: [] }],
+    });
+    expect(block).toContain("## Your team");
+    expect(block).toContain("- `writer` — Wren, Writer: Writes.");
+    expect(block).toContain("Hand independent steps to members in parallel");
+  });
+});

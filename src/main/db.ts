@@ -259,6 +259,8 @@ export class Store {
         applied: () => this.hasTable("learn_budget"),
         sql: "CREATE TABLE learn_budget (project_id TEXT NOT NULL, day TEXT NOT NULL, tokens INTEGER NOT NULL, PRIMARY KEY (project_id, day))",
       },
+      // 27: the expert a thread was summoned with (an ExpertDef id); null = none.
+      { applied: () => this.hasColumn("threads", "expert_id"), sql: "ALTER TABLE threads ADD COLUMN expert_id TEXT" },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;
@@ -352,7 +354,7 @@ export class Store {
       .map((r) => toThread(r as unknown as ThreadRow));
   }
 
-  createThread(projectId: string, agent: string, model: string, permissionMode: PermissionMode, kind: ThreadKind = "chat", designSystem: string | null = null): Thread {
+  createThread(projectId: string, agent: string, model: string, permissionMode: PermissionMode, kind: ThreadKind = "chat", designSystem: string | null = null, expertId: string | null = null): Thread {
     const now = Date.now();
     const thread: Thread = {
       id: randomUUID(),
@@ -368,12 +370,13 @@ export class Store {
       updatedAt: now,
       kind,
       ...(kind === "design" && designSystem ? { designSystem } : {}),
+      ...(expertId ? { expertId } : {}),
     };
     this.db
       .prepare(
-        "INSERT INTO threads (id, project_id, agent, title, session_id, model, effort, permission_mode, created_at, updated_at, kind, design_system) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO threads (id, project_id, agent, title, session_id, model, effort, permission_mode, created_at, updated_at, kind, design_system, expert_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
-      .run(thread.id, projectId, agent, thread.title, null, model, null, permissionMode, now, now, kind, thread.designSystem ?? null);
+      .run(thread.id, projectId, agent, thread.title, null, model, null, permissionMode, now, now, kind, thread.designSystem ?? null, thread.expertId ?? null);
     return thread;
   }
 
@@ -709,7 +712,7 @@ export class Store {
     try {
       this.db
         .prepare(
-          "INSERT INTO threads (id, project_id, agent, title, session_id, bindings, model, effort, permission_mode, created_at, updated_at, kind, design_system, prototype_tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO threads (id, project_id, agent, title, session_id, bindings, model, effort, permission_mode, created_at, updated_at, kind, design_system, prototype_tier, expert_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .run(
           id,
@@ -726,6 +729,7 @@ export class Store {
           thread.kind === "design" ? "design" : "chat",
           thread.kind === "design" ? (thread.designSystem ?? null) : null,
           thread.kind === "design" ? (thread.prototypeTier ?? null) : null,
+          thread.expertId ?? null,
         );
       const insert = this.db.prepare(
         `INSERT INTO events (thread_id, seq, payload, created_at, provenance, message_id, turn_id, item_id, parent_id, payload_ref, payload_bytes)
@@ -795,7 +799,7 @@ export class Store {
 }
 
 const THREAD_COLS =
-  "id, project_id, agent, title, session_id, bindings, model, effort, context_window, permission_mode, created_at, updated_at, pinned, archived, branch, worktree_path, kind, design_system, prototype_tier, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
+  "id, project_id, agent, title, session_id, bindings, model, effort, context_window, permission_mode, created_at, updated_at, pinned, archived, branch, worktree_path, kind, design_system, prototype_tier, expert_id, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
 
 export interface LedgerTarget {
   threadId: string;
@@ -853,6 +857,7 @@ interface ThreadRow {
   kind: string | null;
   design_system: string | null;
   prototype_tier: string | null;
+  expert_id: string | null;
   project_path: string | null;
 }
 
@@ -907,5 +912,6 @@ function toThread(r: ThreadRow): Thread {
     kind: r.kind === "design" ? "design" : "chat",
     ...(r.kind === "design" && r.design_system ? { designSystem: r.design_system } : {}),
     ...(r.kind === "design" && readTier(r.prototype_tier) ? { prototypeTier: readTier(r.prototype_tier)! } : {}),
+    ...(r.expert_id ? { expertId: r.expert_id } : {}),
   };
 }
