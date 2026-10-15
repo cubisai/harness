@@ -1,0 +1,30 @@
+{
+  "id": "slugify-spec",
+  "tags": [
+    "capability"
+  ],
+  "tier": "full",
+  "fixture": "slugify",
+  "mode": "auto-edit",
+  "prompt": "Implement slugify in src/slugify.js so it follows every rule in README.md.",
+  "graders": [
+    {
+      "type": "command",
+      "run": "node --test test/slugify-hidden.test.mjs"
+    },
+    {
+      "type": "event",
+      "noError": true,
+      "noFalseClaim": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 10,
+    "maxInputTokens": 80000,
+    "timeoutMs": 180000
+  },
+  "reference": "NFD + strip combining marks, lowercase, [^a-z0-9]+ → \"-\", trim dashes, cut at the last \"-\" in the first 41 chars (else 40), empty → \"untitled\"."
+}

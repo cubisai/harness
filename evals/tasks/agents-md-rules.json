@@ -1,7 +1,7 @@
 {
   "id": "agents-md-rules",
   "tags": [
-    "capability"
+    "regression"
   ],
   "tier": "full",
   "fixture": "agents-md",

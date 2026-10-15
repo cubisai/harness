@@ -3,7 +3,8 @@
 // Flags: --agent native|claude|codex|opencode (default native), --tier smoke|full,
 // --provider th|pgs (native; opencode: pgs), --model <id>, --trials <n>,
 // --task <id>[,<id>…], --dry, --force, --keep, --save-baseline, --max-tokens <n>, --max-usd <n>,
-// --price <in>,<out> (USD per 1M tokens). Plan: .ai/plans/eval-framework.md.
+// --price <in>,<out> (USD per 1M tokens), --trend [--last <n>]
+// (zero tokens: pass/token history per tier+model from .ai/evals). Plan: .ai/plans/eval-framework.md.
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -12,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AGENTS, setupAgent, type AgentId } from "./lib/agents";
 import { runTask } from "./lib/runner";
-import { cacheKey, compareBaseline, diffRuns, findCached, previousRun, readBaseline, saveBaseline, saveRun, summarize } from "./lib/store";
+import { cacheKey, compareBaseline, diffRuns, findCached, listRuns, previousRun, readBaseline, saveBaseline, saveRun, summarize, trend } from "./lib/store";
 import type { RunResult, Task, TaskResult, Tier } from "./lib/types";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -62,6 +63,10 @@ function harnessHash(paths: string[], version: string): string {
 
 async function main(): Promise<number> {
   const f = flags(process.argv.slice(2));
+  if (f.has("trend")) {
+    console.log(trend(listRuns(RESULTS), { tier: f.get("tier"), model: f.get("model"), last: f.has("last") ? Number(f.get("last")) : undefined }));
+    return 0;
+  }
   const tier = (f.get("tier") ?? "smoke") as Tier;
   const agent = (f.get("agent") ?? "native") as AgentId;
   if (!AGENTS.includes(agent)) throw new Error(`--agent must be one of ${AGENTS.join(", ")}`);

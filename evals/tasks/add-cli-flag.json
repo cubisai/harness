@@ -1,7 +1,7 @@
 {
   "id": "add-cli-flag",
   "tags": [
-    "capability"
+    "regression"
   ],
   "tier": "full",
   "fixture": "cli-flag",

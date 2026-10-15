@@ -169,6 +169,77 @@ export function summarize(run: RunResult): string {
   return lines.join("\n");
 }
 
+/** Pass/token/cache aggregates for a trend line (same rules as summarize). */
+function runStats(run: RunResult): { passed: number; total: number; passHat: number; inTok: number; cacheRead: number } {
+  let passed = 0;
+  let passHat = 0;
+  let inTok = 0;
+  let cacheRead = 0;
+  for (const task of run.tasks) {
+    if (task.passAtK) passed++;
+    if (task.passHatK) passHat++;
+    // Cached tasks count toward pass totals but not toward token totals.
+    if (task.cached) continue;
+    const taskIn = task.trials.reduce((s, t) => s + t.inputTokens, 0);
+    inTok += taskIn;
+    cacheRead += task.trials.reduce((s, t) => s + t.cacheReadTokens, 0);
+  }
+  return { passed, total: run.tasks.length, passHat, inTok, cacheRead };
+}
+
+/** Zero-token pass/token history per tier+model from the saved run files. */
+export function trend(runs: RunResult[], o: { tier?: string; model?: string; last?: number } = {}): string {
+  const filtered = runs.filter((r) => (o.tier === undefined || r.meta.tier === o.tier) && (o.model === undefined || r.meta.model === o.model));
+  if (filtered.length === 0) return "no runs";
+
+  const byKey = new Map<string, RunResult[]>();
+  for (const run of filtered) {
+    const key = `${run.meta.tier}|${run.meta.model}`;
+    const list = byKey.get(key);
+    if (list) list.push(run);
+    else byKey.set(key, [run]);
+  }
+
+  const lines: string[] = [];
+  const keys = [...byKey.keys()].sort();
+  for (const key of keys) {
+    // Runs arrive newest-first; keep the newest `last`, then reverse to oldest→newest.
+    const group = byKey.get(key)!.slice(0, o.last ?? 10).reverse();
+    const [tier, model] = key.split("|");
+    lines.push(`${tier} · ${model} (${group.length} runs)`);
+    for (const run of group) {
+      const s = runStats(run);
+      const denom = s.inTok + s.cacheRead;
+      const hit = denom === 0 ? 0 : Math.round((s.cacheRead / denom) * 100);
+      lines.push(
+        `  ${run.meta.startedAt.slice(0, 16).replace("T", " ")}  ${s.passed}/${s.total} pass  pass^k ${s.passHat}/${s.total}  ` +
+          `in ${s.inTok} tok  cache-hit ${hit}%  ${run.meta.harnessHash.slice(0, 7)}`,
+      );
+    }
+
+    // Flipped tasks: pass/fail per run (only among runs containing the task), duplicates collapsed.
+    const byId = new Map<string, string[]>();
+    for (const run of group) {
+      for (const task of run.tasks) {
+        const seq = byId.get(task.id);
+        if (seq) seq.push(task.passAtK ? "P" : "F");
+        else byId.set(task.id, [task.passAtK ? "P" : "F"]);
+      }
+    }
+    const flipped: string[] = [];
+    for (const [id, seq] of byId) {
+      const collapsed: string[] = [];
+      for (const v of seq) if (collapsed[collapsed.length - 1] !== v) collapsed.push(v);
+      if (collapsed.length > 1) flipped.push(`${id} (${collapsed.join("→")})`);
+    }
+    if (flipped.length) lines.push(`  flipped: ${flipped.join(", ")}`);
+    lines.push("");
+  }
+  // Drop the trailing blank line between groups.
+  lines.pop();
+  return lines.join("\n");
+}
+
 /** Newly failing / passing tasks and the input-token delta vs the previous run. */
 export function diffRuns(prev: RunResult | null, cur: RunResult): string {
   if (!prev) return "";

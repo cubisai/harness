@@ -16,6 +16,7 @@ import {
   saveBaseline,
   saveRun,
   summarize,
+  trend,
 } from "../evals/lib/store";
 import type { RunMeta, RunResult, Task, TaskResult, TrialResult } from "../evals/lib/types";
 
@@ -338,5 +339,117 @@ describe("baseline", () => {
     expect(compareBaseline(base, run({ meta, tasks: [task("a"), task("b", { passAtK: false }), task("c")] }))).toBe("below baseline: b\nabove baseline: a");
     expect(compareBaseline(base, run({ meta, tasks: [task("b"), task("c")] }))).toBe("matches baseline");
     expect(compareBaseline(base, run({ meta: { tier: "full", model: "other" } }))).toBe("");
+  });
+});
+
+describe("trend", () => {
+  it("groups by tier+model, sorts runs oldest→newest, and reports pass/token/cache per run", () => {
+    // Inputs are newest-first (as listRuns returns). smoke m1 has two runs of
+    // three tasks (a: pass, b: pass, c: fail); full m2 has one run.
+    const m1Tasks = [
+      task("a", { passAtK: true, passHatK: true, trials: [trial({ inputTokens: 100, cacheReadTokens: 100 })] }),
+      task("b", { passAtK: true, passHatK: false, trials: [trial({ inputTokens: 200 })] }),
+      task("c", { passAtK: false, passHatK: false, trials: [trial({ pass: false, score: 0, inputTokens: 0 })] }),
+    ];
+    const runs = [
+      run({
+        meta: { startedAt: "2026-02-03T00:00:00.000Z", tier: "full", harnessHash: "f00f00", model: "m2" },
+        tasks: [task("d", { trials: [trial({ inputTokens: 50 })] })],
+      }),
+      run({ meta: { startedAt: "2026-02-02T00:00:00.000Z", harnessHash: "abc12345", model: "m1" }, tasks: m1Tasks }),
+      run({
+        meta: { startedAt: "2026-02-01T00:00:00.000Z", harnessHash: "deadbeef", model: "m1" },
+        tasks: [
+          task("a", { passAtK: false, passHatK: false, trials: [trial({ pass: false, score: 0, inputTokens: 100, cacheReadTokens: 100 })] }),
+          task("b", { passAtK: true, passHatK: false, trials: [trial({ inputTokens: 200 })] }),
+          task("c", { passAtK: false, passHatK: false, trials: [trial({ pass: false, score: 0, inputTokens: 0 })] }),
+        ],
+      }),
+    ];
+
+    const text = trend(runs);
+    expect(text).toContain("full · m2 (1 runs)");
+    expect(text).toContain("smoke · m1 (2 runs)");
+    // isolate the smoke group's per-run lines (the indented ones after its header)
+    const lines = text.split("\n");
+    const smokeHeader = lines.findIndex((l) => l === "smoke · m1 (2 runs)");
+    const smokeLines = lines.slice(smokeHeader + 1).filter((l) => l.startsWith("  ") && l.includes(" pass "));
+    const dates = smokeLines.map((l) => l.trim().slice(0, 16));
+    // oldest→newest within the group
+    expect(dates).toEqual(["2026-02-01 00:00", "2026-02-02 00:00"]);
+    // per-run line carries pass, token and cache-hit
+    expect(text).toContain("2/3 pass");
+    expect(text).toContain("pass^k 1/3");
+    expect(text).toContain("in 300 tok");
+    expect(text).toContain("cache-hit 25%");
+    // harness hash is trimmed to 7 chars
+    expect(text).toContain("deadbee");
+  });
+
+  it("lists flipped tasks (P→F→P) with duplicates collapsed, omitting always-pass ones", () => {
+    const runs = [
+      run({
+        meta: { startedAt: "2026-01-01T00:00:00.000Z", model: "m" },
+        tasks: [task("t1", { passAtK: true }), task("always", { passAtK: true })],
+      }),
+      run({
+        meta: { startedAt: "2026-01-02T00:00:00.000Z", model: "m" },
+        tasks: [task("t1", { passAtK: false }), task("always", { passAtK: true })],
+      }),
+      run({
+        meta: { startedAt: "2026-01-03T00:00:00.000Z", model: "m" },
+        tasks: [task("t1", { passAtK: true }), task("always", { passAtK: true })],
+      }),
+    ];
+    const text = trend(runs);
+    expect(text).toContain("flipped: t1 (P→F→P)");
+    expect(text).not.toContain("always");
+  });
+
+  it("keeps only the newest run per group when last is 1", () => {
+    const runs = [
+      run({ meta: { startedAt: "2026-01-02T00:00:00.000Z", model: "m" } }),
+      run({ meta: { startedAt: "2026-01-01T00:00:00.000Z", model: "m" } }),
+    ];
+    const text = trend(runs, { last: 1 });
+    expect(text).toContain("(1 runs)");
+    expect(text).toContain("2026-01-02 00:00");
+    expect(text).not.toContain("2026-01-01 00:00");
+  });
+
+  it("filters by tier and model", () => {
+    const runs = [
+      run({ meta: { tier: "smoke", model: "m1" } }),
+      run({ meta: { tier: "smoke", model: "m2" } }),
+      run({ meta: { tier: "full", model: "m1" } }),
+    ];
+    expect(trend(runs, { tier: "smoke" })).toContain("m1");
+    expect(trend(runs, { tier: "smoke" })).toContain("m2");
+    expect(trend(runs, { tier: "smoke" })).not.toContain("full");
+    expect(trend(runs, { model: "m1" })).toContain("smoke");
+    expect(trend(runs, { model: "m1" })).toContain("full");
+    expect(trend(runs, { tier: "smoke", model: "m2" })).toContain("m2");
+    expect(trend(runs, { tier: "smoke", model: "m2" })).not.toContain("m1");
+  });
+
+  it("returns 'no runs' when empty or nothing matches the filter", () => {
+    expect(trend([])).toBe("no runs");
+    expect(trend([run()], { tier: "full" })).toBe("no runs");
+  });
+
+  it("excludes cached tasks from token totals but counts them in pass totals", () => {
+    const runs = [
+      run({
+        meta: { startedAt: "2026-01-01T00:00:00.000Z", model: "m" },
+        tasks: [
+          task("fresh", { passAtK: true, trials: [trial({ inputTokens: 100 })] }),
+          task("cached", { passAtK: true, cached: true, trials: [trial({ inputTokens: 999 })] }),
+        ],
+      }),
+    ];
+    const text = trend(runs);
+    expect(text).toContain("2/2 pass");
+    expect(text).toContain("in 100 tok");
+    expect(text).not.toContain("in 1099 tok");
   });
 });

@@ -1,6 +1,6 @@
 {
   "id": "fix-off-by-one",
-  "tags": ["capability"],
+  "tags": ["regression"],
   "tier": "smoke",
   "fixture": "off-by-one",
   "prompt": "range(a, b) in src/range.js should return every integer from a to b inclusive, but it drops the last one. Fix it.",

@@ -1,7 +1,7 @@
 {
   "id": "runtime-check",
   "tags": [
-    "capability"
+    "regression"
   ],
   "tier": "full",
   "fixture": "runtime-check",

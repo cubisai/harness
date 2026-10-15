@@ -1,7 +1,7 @@
 {
   "id": "multi-step-stats",
   "tags": [
-    "capability"
+    "regression"
   ],
   "tier": "full",
   "fixture": "stats",

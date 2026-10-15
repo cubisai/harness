@@ -1,4 +1,4 @@
-# Handoff: eval framework E1–E3 done (2026-10-15) — see "Resume here — eval E3"; earlier: H0–H7 + live-sweep fixes done, cubiq-shop build and H7d checks open (plan `.ai/plans/harness-bp.md`)
+# Handoff: eval framework E1–E4 done, OpenCode token + deny-wording fixes (2026-10-15) — see "Resume here — eval E3"; earlier: H0–H7 + live-sweep fixes done, cubiq-shop build and H7d checks open (plan `.ai/plans/harness-bp.md`)
 
 Updated 2026-10-13 on the **Mac**, branch `m4`. Read **Resume here — harness best practices (2026-10-13)** first (plan `.ai/plans/harness-bp.md`, research `plan/docs/12-harness-best-practices.md`), then **Resume here — Design v2 Mac test (2026-10-13)**, then **Resume here — Design mode v2** (plan: `.ai/plans/design-mode-v2.md`, Windows PC only), then **Resume here — native agent N2** (plan: `.ai/plans/native-agent.md`), then **Resume here — D4 done, Design mode complete**, then **Resume here — D3 done, D4 next**, then **Resume here — D2 done, D3 next**, then **Resume here — D1 done, D2 next**, then **Resume here — D1 next** (its plan), then **Resume here — P3 done**, then **Windows gate (2026-10-07)**, then **Resume here — C0 + P2 done**, then **Resume here — P1 done, next P2**, then **Resume here — MCP, providers, Design mode**, then **Resume here — Plan mode v2**, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`, `secrets-handling` (every stored credential safeStorage-encrypted; test keys only in the gitignored `.env`, never in briefs/commits).
 
@@ -30,16 +30,12 @@ Plan: `.ai/plans/eval-framework.md` (approved; status block at top). Run with `b
   - native full: PGS DeepSeek **20/20** (route-skill-2 now passes; input tokens +369%, ≈13k→62k, from the guide), TokenHarbor Haiku **20/20** (≈337k in)
   - smoke: Claude haiku 6/6, Codex default 6/6, OpenCode on PGS 6/6 (key `smoke|opencode/eval/deepseek-v4.1-flash`)
   - full suite 2061 passed, typecheck green
-- **Open finding (not fixed, user to decide):** after a denied shell call, native DeepSeek tried to write the output file directly (1 of 3 trials on `permission-deny`). The harness denial text "Don't retry it; ask them or take another approach" invites that workaround. Candidate wording: "…don't get the same result another way; ask them, or continue with the rest."
-- **After E3:**
-  - **E4 (optional):**
-    - LLM rubric grader: cheap model, one dimension per call, may answer `unknown`, calibrated on 10 hand-labelled transcripts.
-    - Graduate stable capability tasks to regression.
-    - Trend report.
-  - **Measure the permission-deny wording fix:** after the change above, run `--task permission-deny --trials 3` on both providers.
-  - **OpenCode token undercount:** its ACP usage misses some turns, so OpenCode token totals read low in the eval and in the app.
-  - **Windows CI is unconfirmed since E1:** pushing to the `windows` branch was blocked by auto mode, and the user said to skip it for now.
-  - **Older items, outside the eval:** cubiq-shop live build; H7d memory live checks.
+- **Post-E3 round (2026-10-15, plan `.ai/plans/e4-fixes.md`):**
+  - **Deny wording fixed:** `refusal()` now says "don't get the same result another way; tell them it was blocked, or continue with the rest". `permission-deny` ×3: DeepSeek 3/3 (was 2/3), Haiku 3/3.
+  - **OpenCode tokens fixed:** OpenCode's ACP usage is its last model call only (verified in the 1.19.0 binary: `cC(messages)`). The ACP driver now runs `opencode export <session>` after the turn (preset `turnUsageVia: "opencode-export"`, 3 s cap, temp-file stdout because OpenCode drops pipe output past 64 KB when the reader lags) and sums every call. Live: 5 calls → in 15,109 / cache 54,909 / out 478, matching the export (before: last call's 110). Upstream issue not filed yet.
+  - **E4:** `bun run eval --trend [--tier] [--model] [--last n]` (zero tokens); 5 harder tasks (`csv-quoted`, `month-root-cause`, `async-save`, `slugify-spec`, `generated-dist`) with `<fixture>.reference/` solutions proven by `test/eval-tasks.test.ts` (graders fail on the fixture, pass on the reference); 6 always-green capability tasks retagged `regression`. Rubric grader deferred.
+  - **Still saturated:** both DeepSeek and Haiku pass the 5 new tasks too (25/25 each). Next discriminating tasks need longer horizons (multi-file features, a failing CI log to diagnose, a spec with conflicting constraints).
+- **Remaining:** Windows CI since E1 (`git push -f origin HEAD:windows`, needs the user's OK); the Windows PC gate; older items (cubiq-shop live build; H7d memory live checks).
 
 ## Where things stand
 

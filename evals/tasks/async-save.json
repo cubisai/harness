@@ -1,0 +1,30 @@
+{
+  "id": "async-save",
+  "tags": [
+    "capability"
+  ],
+  "tier": "full",
+  "fixture": "async-save",
+  "mode": "auto-edit",
+  "prompt": "saveAll in src/save.js resolves before its files are written (with the wrong count), and a failed write is never reported. Fix it so it resolves with the count only after every write has finished, and rejects if any write fails.",
+  "graders": [
+    {
+      "type": "command",
+      "run": "node --test test/save-hidden.test.mjs"
+    },
+    {
+      "type": "event",
+      "noError": true,
+      "noFalseClaim": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 10,
+    "maxInputTokens": 80000,
+    "timeoutMs": 180000
+  },
+  "reference": "Replace forEach(async) with await Promise.all(items.map(writeFile…)) (or a for…of with await) and return the count."
+}

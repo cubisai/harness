@@ -1,7 +1,7 @@
 {
   "id": "rename-across-files",
   "tags": [
-    "capability"
+    "regression"
   ],
   "tier": "full",
   "fixture": "rename",
