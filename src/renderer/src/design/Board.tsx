@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Maximize2, Play } from "lucide-react";
-import { BOARD_HEADER, BOARD_TITLE_BAND, boardLayout, boardSections, clampZoom, fitBoard, zoomAt, type BoardFrame } from "./board-layout";
+import { BOARD_HEADER, BOARD_TITLE_BAND, boardLayout, boardSections, clampZoom, fitBoard, zoomAt, type BoardFrame, flowPath } from "./board-layout";
 
 /** The margin around the stage within which a frame's iframe is rendered (others are placeholders). */
 const LAZY_MARGIN = 400;
@@ -17,7 +17,21 @@ interface View {
  * The board: every page of a design at once, laid out as labelled artboards on one pannable, zoomable canvas. Frames
  * off screen stay as placeholders, so a design with many pages doesn't pay for them all.
  */
-export function Board({ pages, onFocus, reloadKey }: { pages: { rel: string; url: string }[]; onFocus: (rel: string) => void; reloadKey: string }) {
+export function Board({
+  pages,
+  links,
+  flow,
+  onFocus,
+  onPresent,
+  reloadKey,
+}: {
+  pages: { rel: string; url: string }[];
+  links?: { from: string; to: string }[];
+  flow: boolean;
+  onFocus: (rel: string) => void;
+  onPresent: (rel: string) => void;
+  reloadKey: string;
+}) {
   const stageRef = useRef<HTMLDivElement>(null);
   const [stage, setStage] = useState({ width: 0, height: 0 });
   const [view, setView] = useState<View>({ x: 0, y: 0, zoom: 1 });
@@ -28,6 +42,15 @@ export function Board({ pages, onFocus, reloadKey }: { pages: { rel: string; url
   // Set when the board is fitted, so section labels have room at that zoom.
   const [sectionGap, setSectionGap] = useState(120);
   const board = boardLayout(sections, 48, sectionGap);
+
+  // Where each frame sits on the board (frame x/y + its section origin), for the flow arrows.
+  const places = new Map<string, BoardFrame>();
+  for (const s of board.sections) for (const f of s.frames) places.set(f.page.rel, { ...f, x: s.x + f.x, y: s.y + f.y });
+  // A link is drawn only when both of its pages are on the board; the arrow runs right-to-left, or bottom-to-top
+  // when the target sits left of the source.
+  const arrows = (links ?? [])
+    .map((l) => ({ from: places.get(l.from), to: places.get(l.to) }))
+    .filter((a): a is { from: BoardFrame; to: BoardFrame } => !!a.from && !!a.to && a.from.page.rel !== a.to.page.rel);
 
   // Measure the stage (CompareFrame does the same).
   useLayoutEffect(() => {
@@ -127,6 +150,25 @@ export function Board({ pages, onFocus, reloadKey }: { pages: { rel: string; url
   return (
     <div className="design-board" ref={stageRef} role="region" aria-label="Board: every page" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag}>
       <div className="design-board-content" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`, transformOrigin: "0 0" }}>
+        {flow && arrows.length > 0 && (
+          <svg
+            className="design-board-flow"
+            width={board.width}
+            height={board.height}
+            viewBox={`0 0 ${board.width} ${board.height}`}
+            aria-hidden
+          >
+            <defs>
+              <marker id="design-board-arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" />
+              </marker>
+            </defs>
+            {arrows.map((a) => {
+              const d = flowPath(a.from, a.to, view.zoom);
+              return <path key={`${a.from.page.rel}->${a.to.page.rel}`} d={d} fill="none" strokeWidth={2 / view.zoom} markerEnd="url(#design-board-arrowhead)" />;
+            })}
+          </svg>
+        )}
         {board.sections.map((section) => (
           <div key={section.title}>
             {/* Titles and frame headers keep their on-screen size at any zoom (scaled by 1/zoom), like a design tool. */}
@@ -149,7 +191,7 @@ export function Board({ pages, onFocus, reloadKey }: { pages: { rel: string; url
                     {/* Too narrow on screen for the buttons: the label alone (double-click the frame opens it). */}
                     {frame.width * view.zoom >= HEAD_BUTTONS_MIN && (
                       <>
-                        <button className="button ghost" aria-label={`Present ${frame.page.label}`} onClick={() => onFocus(frame.page.rel)}>
+                        <button className="button ghost" aria-label={`Present ${frame.page.label}`} onClick={() => onPresent(frame.page.rel)}>
                           <Play size={16} strokeWidth={1.75} aria-hidden />
                         </button>
                         <button className="button ghost" aria-label={`Open ${frame.page.label}`} onClick={() => onFocus(frame.page.rel)}>

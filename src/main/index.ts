@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
@@ -779,11 +779,37 @@ async function main(): Promise<void> {
     const pages = listDesignPages(root);
     const rel = typeof want === "string" && pages.includes(want) ? want : entryFile(root);
     if (!rel) return null;
+    const inPages = new Set(pages);
+    const links: { from: string; to: string }[] = [];
+    const seen = new Set<string>();
+    for (const from of pages) {
+      if (links.length >= 200) break;
+      let html: string;
+      try {
+        const file = join(root, from);
+        if (statSync(file).size > 2 * 1024 * 1024) continue;
+        html = readFileSync(file, "utf8");
+      } catch {
+        continue;
+      }
+      for (const m of html.matchAll(/(?:href|data-goto)\s*=\s*(["'])(.*?)\1/gi)) {
+        const raw = m[2] ?? "";
+        if (/^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("//")) continue;
+        const to = raw.replace(/[#?].*$/, "").replace(/^\.\//, "");
+        if (!to || to.startsWith("../") || !inPages.has(to) || to === from) continue;
+        const key = `${from}\n${to}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        links.push({ from, to });
+        if (links.length >= 200) break;
+      }
+    }
     return {
       dir: designDirName(threadId),
       rel,
       url: designUrl(threadId, rel),
       pages: pages.map((p) => ({ rel: p, url: designUrl(threadId, p) })),
+      links,
       handoff: existsSync(join(root, "handoff.md")),
     };
   });

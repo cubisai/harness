@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { BOARD_HEADER, BOARD_LABEL_ROOM, BOARD_SIZES, BOARD_TITLE_BAND, boardLayout, boardSections, clampZoom, fitBoard, fitView, parsePage, zoomAt } from "../src/renderer/src/design/board-layout";
+import { BOARD_HEADER, BOARD_LABEL_ROOM, BOARD_SIZES, BOARD_TITLE_BAND, boardLayout, boardSections, clampZoom, fitBoard, fitView, flowOrder, parsePage, zoomAt } from "../src/renderer/src/design/board-layout";
+import { flowPath } from "../src/renderer/src/design/board-layout";
 
 const pair = (rel: string) => ({ rel, url: `cubiq-design://d/t1/${rel}` });
 
@@ -86,6 +87,19 @@ describe("design board layout", () => {
   });
 });
 
+describe("design board flow order", () => {
+  it("flattens sections top-to-bottom and frames left-to-right", () => {
+    const order = flowOrder([
+      pair("index.html"),
+      pair("mobile-flow--02-confirm.html"),
+      pair("variant-a.html"),
+      pair("mobile-flow--01-create.html"),
+      pair("pricing.html"),
+    ]);
+    expect(order).toEqual(["index.html", "pricing.html", "mobile-flow--01-create.html", "mobile-flow--02-confirm.html", "variant-a.html"]);
+  });
+});
+
 describe("design board view maths", () => {
   it("keeps zoom within 5% and 200%", () => {
     expect(clampZoom(0)).toBe(0.05);
@@ -120,5 +134,20 @@ describe("design board view maths", () => {
     expect((sectionGap + BOARD_TITLE_BAND + BOARD_HEADER) * view.zoom).toBeGreaterThanOrEqual(BOARD_LABEL_ROOM * 0.95);
     // A roomy stage keeps the default gap.
     expect(fitBoard(boardSections([pair("index.html")]), { width: 4000, height: 3000 }).sectionGap).toBe(120);
+  });
+
+  it("routes flow arrows around the board instead of through it", () => {
+    const a = { x: 0, y: 0, width: 100, height: 200 };
+    const right = { x: 150, y: 0, width: 100, height: 200 };
+    const below = { x: 0, y: 400, width: 100, height: 200 };
+    // Forward along a row: right edge to left edge.
+    expect(flowPath(a, right, 1).startsWith("M 100 100")).toBe(true);
+    expect(flowPath(a, right, 1).endsWith("150 100")).toBe(true);
+    // Back along a row: top to top, arcing above both.
+    expect(flowPath(right, a, 1)).toBe("M 200 0 C 200 -96, 50 -96, 50 0");
+    // Down: bottom-middle to top-middle.
+    expect(flowPath(a, below, 1)).toBe("M 50 200 C 50 264, 50 336, 50 400");
+    // Up to an earlier section: around the left margin, a constant 160px on screen at any zoom.
+    expect(flowPath(below, a, 0.5)).toBe("M 0 500 C -320 500, -320 100, 0 100");
   });
 });

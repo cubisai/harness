@@ -100,6 +100,11 @@ export function boardSections(pages: { rel: string; url: string }[]): { title: s
   });
 }
 
+/** The board's pages in the order a viewer steps through them: sections top-to-bottom, frames left-to-right. */
+export function flowOrder(pages: { rel: string; url: string }[]): string[] {
+  return boardSections(pages).flatMap((s) => s.pages.map((p) => p.rel));
+}
+
 export interface BoardFrame {
   page: BoardPage;
   x: number;
@@ -191,4 +196,41 @@ export function fitBoard(
     view = fitView(boardLayout(sections, 48, sectionGap), stage);
   }
   return { sectionGap, view };
+}
+
+interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The SVG path of a flow arrow between two artboards, routed so it doesn't cut through the board: forward along a row
+ * goes right-edge to left-edge; back along a row arcs over the top; down to a later section goes bottom to top; up
+ * to an earlier section loops around the board's left margin. `zoom` keeps the bends a constant size on screen.
+ */
+export function flowPath(from: Rect, to: Rect, zoom: number): string {
+  const z = Math.max(0.05, zoom);
+  const fc = { x: from.x + from.width / 2, y: from.y + from.height / 2 };
+  const tc = { x: to.x + to.width / 2, y: to.y + to.height / 2 };
+  const sameRow = Math.abs(fc.y - tc.y) < Math.min(from.height, to.height) / 2;
+  if (sameRow && to.x >= from.x + from.width) {
+    const a = { x: from.x + from.width, y: fc.y };
+    const b = { x: to.x, y: tc.y };
+    const k = Math.max(24 / z, (b.x - a.x) / 2);
+    return `M ${a.x} ${a.y} C ${a.x + k} ${a.y}, ${b.x - k} ${b.y}, ${b.x} ${b.y}`;
+  }
+  if (sameRow) {
+    const lift = Math.min(from.y, to.y) - 96 / z;
+    return `M ${fc.x} ${from.y} C ${fc.x} ${lift}, ${tc.x} ${lift}, ${tc.x} ${to.y}`;
+  }
+  if (to.y >= from.y + from.height) {
+    const a = { x: fc.x, y: from.y + from.height };
+    const b = { x: tc.x, y: to.y };
+    const k = 64 / z;
+    return `M ${a.x} ${a.y} C ${a.x} ${a.y + k}, ${b.x} ${b.y - k}, ${b.x} ${b.y}`;
+  }
+  const left = Math.min(from.x, to.x) - 160 / z;
+  return `M ${from.x} ${fc.y} C ${left} ${fc.y}, ${left} ${tc.y}, ${to.x} ${tc.y}`;
 }

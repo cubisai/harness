@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Columns2, Download, FolderOpen, Grid3x3, Hammer, LayoutGrid } from "lucide-react";
+import { Columns2, Download, FolderOpen, Grid3x3, Hammer, LayoutGrid, Play, Workflow } from "lucide-react";
 import type { DesignEntry, DesignExportFormat } from "../../../shared/types";
 import { api } from "../api";
 import { fileManagerName } from "../components/OpenIn";
@@ -15,7 +15,9 @@ import { TweaksPanel } from "./TweaksPanel";
 import { DEFAULT_TIER, tierFeatures, tierOf } from "../../../shared/tiers";
 import { commentsMessage, type DesignComment } from "../../../shared/comments";
 import { CommentsPanel } from "./CommentsPanel";
+import { flowOrder } from "./board-layout";
 import { Board } from "./Board";
+import { Present } from "./Present";
 
 const ipcError = (err: unknown): string => (err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err));
 
@@ -48,6 +50,9 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   const [page, setPage] = useState<string | null>(null);
   const [compare, setCompare] = useState(false);
   const [board, setBoard] = useState(false);
+  const [flow, setFlow] = useState(false);
+  // The page the Present overlay starts on (null = not presenting).
+  const [present, setPresent] = useState<string | null>(null);
   const [promoting, setPromoting] = useState<string | null>(null);
   // `page` ties a notice to the page it's about: switching to another page drops it.
   const [notice, setNotice] = useState<{ text: string; error?: boolean; page?: string } | null>(null);
@@ -101,6 +106,8 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     setPage(null);
     setCompare(false);
     setBoard(false);
+    setFlow(false);
+    setPresent(null);
     setNotice(null);
     setTweaks(null);
     setOverrides({});
@@ -487,6 +494,30 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
               <LayoutGrid size={16} strokeWidth={1.75} aria-hidden />
             </button>
           )}
+          {board && entry && version === 0 && (
+            <>
+              <button
+                className={`icon-button${flow ? " active" : ""}`}
+                aria-pressed={flow}
+                aria-label="Show flow arrows"
+                title="Flow: arrows between linked screens"
+                onClick={() => setFlow(!flow)}
+              >
+                <Workflow size={16} strokeWidth={1.75} aria-hidden />
+              </button>
+              <button
+                className="icon-button"
+                aria-label="Present"
+                title="Present from the first screen"
+                onClick={() => {
+                  const first = flowOrder(entry.pages)[0];
+                  if (first) setPresent(first);
+                }}
+              >
+                <Play size={16} strokeWidth={1.75} aria-hidden />
+              </button>
+            </>
+          )}
           {!board && (
             <Select<Viewport> value={viewport} options={VIEWPORTS.map(({ value, label, detail }) => ({ value, label, detail }))} onChange={setViewport} ariaLabel="Viewport" className="ghost-select" />
           )}
@@ -707,12 +738,15 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
       {board && entry && version === 0 ? (
         <Board
           pages={entry.pages}
+          links={entry.links}
+          flow={flow}
           reloadKey={`${reload}-${manual}`}
           onFocus={(rel) => {
             setBoard(false);
             scroll.current = { x: 0, y: 0 };
             setPage(rel);
           }}
+          onPresent={setPresent}
         />
       ) : comparing ? (
         <div className="design-compare" role="list" aria-label="Options side by side">
@@ -758,6 +792,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           )}
         </div>
       )}
+      {present && entry && <Present pages={entry.pages} links={entry.links} start={present} onExit={() => setPresent(null)} />}
     </section>
   );
 }

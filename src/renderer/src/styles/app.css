@@ -488,7 +488,7 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 
 /* ---------- design canvas ---------- */
 
-.design-canvas { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg-subtle); border-left: 1px solid var(--hairline); }
+.design-canvas { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; background: var(--bg-subtle); border-left: 1px solid var(--hairline); }
 .design-canvas-head {
   height: var(--titlebar);
   display: flex;
@@ -560,6 +560,19 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-board-placeholder { display: grid; place-items: center; background: var(--bg); color: var(--text-tertiary); font-size: 12.5px; }
 .design-board-zoom { position: absolute; right: 12px; bottom: 12px; z-index: 20; display: flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--hairline); border-radius: var(--radius-l); background: var(--bg-elevated); box-shadow: var(--shadow-float); }
 .design-board-zoom-value { min-width: 44px; text-align: center; font: 500 12px var(--mono); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+/* Flow: an SVG layer over the frames, its links drawn from one artboard to the next (never takes a click). */
+.design-board-flow { position: absolute; top: 0; left: 0; pointer-events: none; overflow: visible; }
+.design-board-flow path { stroke: var(--text-tertiary); }
+.design-board-flow marker path { stroke: none; fill: var(--text-tertiary); }
+/* Present: a full-bleed clickable prototype over the canvas, one page at a time, scaled to fit. */
+.design-present { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column; background: var(--bg); }
+.design-present-bar { display: flex; align-items: center; gap: 2px; height: 40px; padding: 0 8px 0 14px; border-bottom: 1px solid var(--hairline); background: var(--bg); flex-shrink: 0; }
+.design-present-label { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 500; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.design-present-count { min-width: 44px; text-align: center; font: 500 12px var(--mono); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.design-present-stage { flex: 1; min-height: 0; min-width: 0; display: grid; place-items: center; padding: 32px; overflow: hidden; }
+.design-present-device { position: relative; flex-shrink: 0; box-sizing: content-box; overflow: hidden; border: 1px solid var(--hairline-strong); border-radius: var(--radius-l); background: var(--bg); }
+.design-present-device.mobile { border-width: 10px; border-radius: 44px; }
+.design-present-device .design-frame { position: absolute; top: 0; left: 0; }
 /* Selection: a count on the Select button, a breadcrumb bar for one element, and a spoken summary. */
 .design-tools .icon-button { position: relative; }
 .design-select-count { position: absolute; top: 1px; right: 0; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: var(--primary); color: var(--on-primary); font: 600 10px/14px var(--mono); font-variant-numeric: tabular-nums; }

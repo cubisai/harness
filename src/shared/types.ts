@@ -827,6 +827,8 @@ export interface DesignEntry {
   url: string;
   /** Every page in the design folder (index first, then pages, then `variant-*.html`), with their URLs. */
   pages: { rel: string; url: string }[];
+  /** Page-to-page links (relative <a href> / data-goto between pages), for the board's flow arrows and Present. */
+  links?: { from: string; to: string }[];
   /** Whether the design has a developer handoff (`handoff.md`) beside its pages. */
   handoff: boolean;
 }
