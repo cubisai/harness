@@ -49,6 +49,8 @@ import { PROVIDER_AGENT_PREFIX } from "./harness/driver";
 import { ProviderAgents } from "./harness/register";
 import { SessionStore } from "./harness/session";
 import { createGuide, userGuidePath } from "./guide";
+import { createExpertCatalog } from "./experts/catalog";
+import { EXPERT_ID_RE } from "../shared/experts";
 import { buildContextPreview, mcpRow, skillsOf, toolTokens } from "./context-preview";
 import { createMemory, memoryOn, memoryPrompt } from "./memory";
 import { createMemoryApi } from "./memory/api";
@@ -381,6 +383,11 @@ async function main(): Promise<void> {
     global: userGuidePath(userData),
     designMode: app.isPackaged ? join(process.resourcesPath, "DESIGN-MODE.md") : join(app.getAppPath(), "resources", "DESIGN-MODE.md"),
   });
+  // The expert catalogue: bundled personas shipped with the app, plus the user's imported ones.
+  const experts = createExpertCatalog({
+    bundledDir: app.isPackaged ? join(process.resourcesPath, "experts") : join(app.getAppPath(), "resources", "experts"),
+    userDir: join(userData, "experts"),
+  });
   const driver = createClaudeDriver({
     guide: (cwd, design) => guide.forCwd(cwd, design),
     pluginDir: (cwd, design) =>
@@ -708,6 +715,7 @@ async function main(): Promise<void> {
     (projectId) => mcpScopes.effective(projectId),
     knownSecrets,
     join(userData, "worktrees"),
+    experts,
   );
   // Each saved provider is its own agent on CubiQ's own harness, kept in step with Settings.
   const providerAgents = new ProviderAgents({
@@ -1289,19 +1297,23 @@ async function main(): Promise<void> {
     store.setCheckCommand(projectId, command, fixRounds),
   );
   ipcMain.handle("threads:list", (_e, projectId: string) => store.listThreads(projectId));
-  ipcMain.handle("threads:create", (_e, projectId: string, agent?: string, opts?: { worktree?: boolean; kind?: unknown; designSystem?: unknown }) => {
+  ipcMain.handle("threads:create", (_e, projectId: string, agent?: string, opts?: { worktree?: boolean; kind?: unknown; designSystem?: unknown; expertId?: unknown }) => {
     const kind: ThreadKind = opts?.kind === "design" ? "design" : "chat";
     // Only a design thread keeps a system, and only an id the picker could offer (checked again at each turn).
     const designSystem = kind === "design" && typeof opts?.designSystem === "string" && /^[\w:.-]{1,80}$/.test(opts.designSystem) ? opts.designSystem : null;
+    // Only an expert the catalogue knows; anything else (unknown id, bad shape) is no expert.
+    const expertId = typeof opts?.expertId === "string" && EXPERT_ID_RE.test(opts.expertId) && experts.get(opts.expertId) ? opts.expertId : null;
     return opts?.worktree
-      ? service.createWorktreeThread(projectId, agent, kind, designSystem)
-      : service.createThread(projectId, agent, kind, designSystem);
+      ? service.createWorktreeThread(projectId, agent, kind, designSystem, expertId)
+      : service.createThread(projectId, agent, kind, designSystem, expertId);
   });
   ipcMain.handle("threads:set-prototype-tier", (_e, threadId: string, tier: unknown) => service.setPrototypeTier(threadId, readTier(tier)));
   ipcMain.handle("threads:set-design-system", (_e, threadId: string, id: unknown) =>
     service.setDesignSystem(threadId, typeof id === "string" && /^[\w:.-]{1,80}$/.test(id) ? id : null),
   );
   ipcMain.handle("design:systems", (_e, projectId: string | null): DesignSystemOption[] => service.designSystems(projectId)),
+  ipcMain.handle("experts:list", () => experts.list());
+  ipcMain.handle("experts:get", (_e, id: unknown) => (typeof id === "string" && EXPERT_ID_RE.test(id) ? experts.get(id) : null));
   ipcMain.handle("threads:update", (_e, id: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "contextWindow" | "permissionMode" | "agent" | "pinned" | "archived">>) =>
     service.updateThread(id, pick(patch, ["title", "model", "effort", "contextWindow", "permissionMode", "agent", "pinned", "archived"])),
   );

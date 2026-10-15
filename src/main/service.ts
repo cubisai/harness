@@ -32,6 +32,7 @@ import type {
   Usage,
 } from "../shared/types";
 import { bindingKey } from "../shared/bindings";
+import { expertBlock, type ExpertDef } from "../shared/experts";
 import { CRITIQUE_ARTIFACT } from "../shared/artifact-kind";
 import type { TweakValues } from "../shared/tweaks";
 import { tierNote, tierOf, type PrototypeTier } from "../shared/tiers";
@@ -134,6 +135,8 @@ export class Service {
     private secrets: () => string[] = () => [],
     /** Where threads' own worktrees go (the app's data folder); null turns worktree threads off. */
     private worktreesDir: string | null = null,
+    /** The expert catalogue: a thread's expertId resolves to a persona injected into its turns. */
+    private experts: { get(id: string): ExpertDef | null } | null = null,
   ) {
     if (!drivers.length) throw new Error("no agent drivers");
     this.drivers = new Map(drivers.map((d) => [d.id, d]));
@@ -198,23 +201,23 @@ export class Service {
     });
   }
 
-  createThread(projectId: string, agent?: string, kind: ThreadKind = "chat", designSystem: string | null = null): Thread {
+  createThread(projectId: string, agent?: string, kind: ThreadKind = "chat", designSystem: string | null = null, expertId: string | null = null): Thread {
     this.store.getProject(projectId);
     const d = this.defaults();
     const wanted = agent ?? d.agent;
     // A default agent that's no longer installed falls back to the first one.
     const driver = (wanted && this.drivers.get(wanted)) || [...this.drivers.values()][0]!;
-    return this.store.createThread(projectId, driver.id, driver.defaultModel, d.permissionMode, kind, designSystem);
+    return this.store.createThread(projectId, driver.id, driver.defaultModel, d.permissionMode, kind, designSystem, expertId);
   }
 
   /**
    * A thread with its own git worktree on a new branch, so its edits stay off
    * the project's checkout. Nothing is left behind when the worktree can't be made.
    */
-  async createWorktreeThread(projectId: string, agent?: string, kind: ThreadKind = "chat", designSystem: string | null = null): Promise<Thread> {
+  async createWorktreeThread(projectId: string, agent?: string, kind: ThreadKind = "chat", designSystem: string | null = null, expertId: string | null = null): Promise<Thread> {
     if (!this.worktreesDir) throw new Error("Worktree threads aren't available here.");
     const project = this.store.getProject(projectId);
-    const thread = this.createThread(projectId, agent, kind, designSystem);
+    const thread = this.createThread(projectId, agent, kind, designSystem, expertId);
     const branch = worktreeBranch(project.name, thread.id);
     const dir = join(this.worktreesDir, thread.id);
     try {
@@ -261,6 +264,13 @@ export class Service {
   /** Where a thread's tools run: its own worktree, or the project folder. */
   cwdOf(thread: Thread): string {
     return thread.worktreePath ?? this.store.getProject(thread.projectId).path;
+  }
+
+  /** The `<expert>` block for a thread's expert persona, or undefined when it has none we can resolve. */
+  private expertOf(thread: Thread): string | undefined {
+    if (!thread.expertId || !this.experts) return undefined;
+    const def = this.experts.get(thread.expertId);
+    return def ? expertBlock(def) : undefined;
   }
 
   /**
@@ -414,6 +424,7 @@ export class Service {
         cwd,
         projectId: thread.projectId,
         design: designOf(thread),
+        ...(this.expertOf(thread) ? { expert: this.expertOf(thread) } : {}),
         model: thread.model,
         permissionMode: thread.permissionMode,
         tools: this.harnessTools(thread),
@@ -439,6 +450,7 @@ export class Service {
           cwd,
           projectId: thread.projectId,
           design: designOf(thread),
+          ...(this.expertOf(thread) ? { expert: this.expertOf(thread) } : {}),
           prompt,
           sessionId: null,
           model: thread.model,
@@ -734,6 +746,7 @@ export class Service {
         cwd,
         projectId: thread.projectId,
         design: designOf(thread),
+        ...(this.expertOf(thread) ? { expert: this.expertOf(thread) } : {}),
         prompt: turnPrompt,
         ...(compact ? { compact } : {}),
         sessionId: current.sessionId,

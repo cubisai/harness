@@ -1208,6 +1208,30 @@ describe("Codex shared memory", () => {
     }
   });
 
+  it("appends the expert block between the guide and the memory", async () => {
+    const { memory } = recording("<harness-memory>MEM</harness-memory>");
+    const { d, sent } = probeDriver(memory);
+    try {
+      await d.runTurn(turn("hi", { projectId: "p1", expert: "<expert>Be terse.</expert>" }).input);
+      const start = sent();
+      expect(start.method).toBe("thread/start");
+      expect(start.params.developerInstructions).toBe("GUIDE\n\n<expert>Be terse.</expert>\n\n<harness-memory>MEM</harness-memory>");
+    } finally {
+      delete process.env.GUIDE_PROBE;
+    }
+  });
+
+  it("sends the guide unchanged when there's no expert", async () => {
+    const { memory } = recording(null);
+    const { d, sent } = probeDriver(memory);
+    try {
+      await d.runTurn(turn("hi", { projectId: "p1" }).input);
+      expect(sent().params.developerInstructions).toBe("GUIDE");
+    } finally {
+      delete process.env.GUIDE_PROBE;
+    }
+  });
+
   it("on resume calls memory with the session id and sends that session's block, from a fresh driver", async () => {
     const { memory, calls } = recording((sessionKey) => (sessionKey ? `<harness-memory>${sessionKey}</harness-memory>` : "<harness-memory>FRESH</harness-memory>"));
     // The first driver opens the session; a fresh one (as after an app restart) then resumes it.

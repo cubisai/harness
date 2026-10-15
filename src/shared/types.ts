@@ -2,6 +2,7 @@
 // crosses the preload bridge is one of these types.
 
 import type { PrototypeTier } from "./tiers";
+import type { ExpertDef, ExpertImportResult } from "./experts";
 import type { CommentTarget, DesignComment } from "./comments";
 import type { LearnCase, LearnOverview, LearnSettings, Lesson, TurnScore } from "./learn";
 
@@ -466,6 +467,8 @@ export interface Thread {
   designSystem?: string;
   /** A design thread's prototype tier; absent = working (and always absent on chat threads). */
   prototypeTier?: PrototypeTier;
+  /** The expert this thread was summoned with (ExpertDef id); absent = none. */
+  expertId?: string;
 }
 
 /**
@@ -1026,7 +1029,7 @@ export interface UnskilledApi {
   /** Set a project's post-turn check command; null/empty turns it off. */
   setCheckCommand(projectId: string, command: string | null, fixRounds?: number | null): Promise<Project>;
   listThreads(projectId: string): Promise<Thread[]>;
-  createThread(projectId: string, agent?: string, opts?: { worktree?: boolean; kind?: ThreadKind; designSystem?: string }): Promise<Thread>;
+  createThread(projectId: string, agent?: string, opts?: { worktree?: boolean; kind?: ThreadKind; designSystem?: string; expertId?: string }): Promise<Thread>;
   /** Pick a design thread's design system (null = the default); the next turn copies it into the design folder. */
   setDesignSystem(threadId: string, id: string | null): Promise<Thread>;
   /** Pick a design thread's prototype tier (null = Working); the next turn tells the agent. */
@@ -1180,6 +1183,13 @@ export interface UnskilledApi {
   designExport(threadId: string, format: DesignExportFormat, opts: { rel: string; version: number | null; width: number }): Promise<string | null>;
   /** The design systems a project's design threads can use: its DESIGN.md, its .agents/design-systems, then the built-ins. */
   designSystems(projectId: string | null): Promise<DesignSystemOption[]>;
+  /** The expert catalogue: bundled experts and teams, then the user's imported ones. */
+  listExperts(): Promise<ExpertDef[]>;
+  getExpert(id: string): Promise<ExpertDef | null>;
+  /** Install expert packages from a GitHub link, a folder or a .zip; a marketplace without `pick` only lists candidates. */
+  importExperts(source: string, pick?: string[]): Promise<ExpertImportResult>;
+  /** Remove an imported expert (bundled ones can't be removed). */
+  removeExpert(id: string): Promise<void>;
   /** A thread file's content for the panel: the file on disk, or a saved version. */
   readArtifact(threadId: string, path: string, version?: number | null): Promise<ArtifactContent>;
   /** Unified diff of a version against the one before it (or against git HEAD / empty for the first); null when not text. */
