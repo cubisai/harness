@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Columns2, Download, FolderOpen, Grid3x3, Hammer } from "lucide-react";
+import { Columns2, Download, FolderOpen, Grid3x3, Hammer, LayoutGrid } from "lucide-react";
 import type { DesignEntry, DesignExportFormat } from "../../../shared/types";
 import { api } from "../api";
 import { fileManagerName } from "../components/OpenIn";
@@ -15,6 +15,7 @@ import { TweaksPanel } from "./TweaksPanel";
 import { DEFAULT_TIER, tierFeatures, tierOf } from "../../../shared/tiers";
 import { commentsMessage, type DesignComment } from "../../../shared/comments";
 import { CommentsPanel } from "./CommentsPanel";
+import { Board } from "./Board";
 
 const ipcError = (err: unknown): string => (err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err));
 
@@ -46,6 +47,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   // The page asked for (null = the entry file), the side-by-side view, and the last promote's outcome.
   const [page, setPage] = useState<string | null>(null);
   const [compare, setCompare] = useState(false);
+  const [board, setBoard] = useState(false);
   const [promoting, setPromoting] = useState<string | null>(null);
   // `page` ties a notice to the page it's about: switching to another page drops it.
   const [notice, setNotice] = useState<{ text: string; error?: boolean; page?: string } | null>(null);
@@ -98,6 +100,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     setExported(null);
     setPage(null);
     setCompare(false);
+    setBoard(false);
     setNotice(null);
     setTweaks(null);
     setOverrides({});
@@ -444,7 +447,9 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   return (
     <section className="design-canvas" aria-label="Design canvas">
       <header className="design-canvas-head drag">
-        {entry && options.length > 1 && !comparing ? (
+        {board && entry && version === 0 ? (
+          <span className="design-canvas-title">Board · {entry.pages.length} pages</span>
+        ) : entry && options.length > 1 && !comparing ? (
           <span className="design-canvas-title">
             <Select<string>
               value={entry.rel}
@@ -464,8 +469,28 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           </span>
         )}
         <div className="design-tools">
-          <Select<Viewport> value={viewport} options={VIEWPORTS.map(({ value, label, detail }) => ({ value, label, detail }))} onChange={setViewport} ariaLabel="Viewport" className="ghost-select" />
-          {!fit && <Select<Zoom> value={zoom} options={ZOOMS} onChange={setZoom} ariaLabel="Zoom" className="ghost-select" />}
+          {entry && entry.pages.length > 1 && version === 0 && (
+            <button
+              className={`icon-button${board ? " active" : ""}`}
+              aria-pressed={board}
+              title={board ? "Back to one page" : "Board: see every page"}
+              aria-label="Board view"
+              onClick={() => {
+                if (!board && picking) {
+                  setPicking(false);
+                  post({ type: "pick", on: false });
+                }
+                if (!board) setCompare(false);
+                setBoard(!board);
+              }}
+            >
+              <LayoutGrid size={16} strokeWidth={1.75} aria-hidden />
+            </button>
+          )}
+          {!board && (
+            <Select<Viewport> value={viewport} options={VIEWPORTS.map(({ value, label, detail }) => ({ value, label, detail }))} onChange={setViewport} ariaLabel="Viewport" className="ghost-select" />
+          )}
+          {!board && !fit && <Select<Zoom> value={zoom} options={ZOOMS} onChange={setZoom} ariaLabel="Zoom" className="ghost-select" />}
           {versions.length > 0 && (
             <Select<number>
               value={version}
@@ -679,7 +704,17 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           </button>
         </div>
       )}
-      {comparing ? (
+      {board && entry && version === 0 ? (
+        <Board
+          pages={entry.pages}
+          reloadKey={`${reload}-${manual}`}
+          onFocus={(rel) => {
+            setBoard(false);
+            scroll.current = { x: 0, y: 0 };
+            setPage(rel);
+          }}
+        />
+      ) : comparing ? (
         <div className="design-compare" role="list" aria-label="Options side by side">
           {cells.map((cell) => (
             <CompareFrame

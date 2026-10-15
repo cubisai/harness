@@ -1,0 +1,190 @@
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Maximize2, Play } from "lucide-react";
+import { BOARD_HEADER, BOARD_TITLE_BAND, boardLayout, boardSections, clampZoom, fitBoard, zoomAt, type BoardFrame } from "./board-layout";
+
+/** The margin around the stage within which a frame's iframe is rendered (others are placeholders). */
+const LAZY_MARGIN = 400;
+/** The on-screen frame width below which its header shows only the label. */
+const HEAD_BUTTONS_MIN = 120;
+
+interface View {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+/**
+ * The board: every page of a design at once, laid out as labelled artboards on one pannable, zoomable canvas. Frames
+ * off screen stay as placeholders, so a design with many pages doesn't pay for them all.
+ */
+export function Board({ pages, onFocus, reloadKey }: { pages: { rel: string; url: string }[]; onFocus: (rel: string) => void; reloadKey: string }) {
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [stage, setStage] = useState({ width: 0, height: 0 });
+  const [view, setView] = useState<View>({ x: 0, y: 0, zoom: 1 });
+  const [space, setSpace] = useState(false);
+  const drag = useRef<{ x: number; y: number; viewX: number; viewY: number } | null>(null);
+
+  const sections = boardSections(pages);
+  // Set when the board is fitted, so section labels have room at that zoom.
+  const [sectionGap, setSectionGap] = useState(120);
+  const board = boardLayout(sections, 48, sectionGap);
+
+  // Measure the stage (CompareFrame does the same).
+  useLayoutEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const measure = () => setStage({ width: el.clientWidth, height: el.clientHeight });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Fit the whole board on mount, and again when the stage size or the set of pages changes (not on every
+  // rewrite of a page, so the agent's edits keep the user's pan and zoom).
+  const pageKey = pages.map((p) => p.rel).join("\n");
+  const fit = useCallback(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const fitted = fitBoard(sections, { width: el.clientWidth, height: el.clientHeight });
+    setSectionGap(fitted.sectionGap);
+    setView(fitted.view);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `sections` follows `pageKey`
+  }, [pageKey]);
+  useEffect(() => {
+    fit();
+  }, [fit]);
+  useEffect(() => {
+    if (stage.width > 0 && stage.height > 0) fit();
+  }, [stage.width, stage.height]);
+
+  // Space held turns a left-drag on the background into a pan, like a design tool.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== "Space") return;
+      setSpace(e.type === "keydown");
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKey);
+    };
+  }, []);
+
+  // Wheel: ctrl/meta zooms around the cursor; otherwise it pans. Non-passive so preventDefault works.
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) {
+        const rect = el.getBoundingClientRect();
+        setView((v) => zoomAt(v, Math.exp(-e.deltaY * 0.01), e.clientX - rect.left, e.clientY - rect.top));
+      } else {
+        setView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
+      }
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    const onBackground = e.target === e.currentTarget || (e.target as HTMLElement).classList.contains("design-board-content");
+    const middle = e.button === 1;
+    const leftPan = e.button === 0 && (space || onBackground);
+    if (!middle && !leftPan) return;
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    drag.current = { x: e.clientX, y: e.clientY, viewX: view.x, viewY: view.y };
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    setView((v) => ({ ...v, x: d.viewX + (e.clientX - d.x), y: d.viewY + (e.clientY - d.y) }));
+  };
+  const endDrag = (e: React.PointerEvent) => {
+    if (!drag.current) return;
+    drag.current = null;
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      /* pointer already released */
+    }
+  };
+
+  // What the stage currently shows, in board coordinates, padded so frames just off screen still render.
+  const visible = {
+    left: -view.x / view.zoom - LAZY_MARGIN,
+    top: -view.y / view.zoom - LAZY_MARGIN,
+    right: (stage.width - view.x) / view.zoom + LAZY_MARGIN,
+    bottom: (stage.height - view.y) / view.zoom + LAZY_MARGIN,
+  };
+  const isVisible = (f: BoardFrame) => f.x < visible.right && f.x + f.width > visible.left && f.y < visible.bottom && f.y + f.height > visible.top;
+
+  const step = (factor: number) => setView((v) => zoomAt(v, factor, stage.width / 2, stage.height / 2));
+
+  return (
+    <div className="design-board" ref={stageRef} role="region" aria-label="Board: every page" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag}>
+      <div className="design-board-content" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`, transformOrigin: "0 0" }}>
+        {board.sections.map((section) => (
+          <div key={section.title}>
+            {/* Titles and frame headers keep their on-screen size at any zoom (scaled by 1/zoom), like a design tool. */}
+            <div
+              className="design-board-section-title"
+              style={{ left: section.x, top: section.y + BOARD_TITLE_BAND + BOARD_HEADER, transform: `scale(${1 / view.zoom}) translateY(calc(-100% - ${BOARD_HEADER + 4}px))` }}
+            >
+              {section.title}
+            </div>
+            {section.frames.map((frame) => {
+              const x = section.x + frame.x;
+              const y = section.y + frame.y;
+              const shown = isVisible({ ...frame, x, y });
+              return (
+                <div key={frame.page.rel} className="design-board-frame-wrap" style={{ left: x, top: y, width: frame.width }} role="group" aria-label={frame.page.label} onDoubleClick={() => onFocus(frame.page.rel)}>
+                  <div className="design-board-frame-head" style={{ width: frame.width * view.zoom, transform: `scale(${1 / view.zoom}) translateY(-100%)` }}>
+                    <span className="design-board-frame-label" title={frame.page.rel}>
+                      {frame.page.label}
+                    </span>
+                    {/* Too narrow on screen for the buttons: the label alone (double-click the frame opens it). */}
+                    {frame.width * view.zoom >= HEAD_BUTTONS_MIN && (
+                      <>
+                        <button className="button ghost" aria-label={`Present ${frame.page.label}`} onClick={() => onFocus(frame.page.rel)}>
+                          <Play size={16} strokeWidth={1.75} aria-hidden />
+                        </button>
+                        <button className="button ghost" aria-label={`Open ${frame.page.label}`} onClick={() => onFocus(frame.page.rel)}>
+                          <Maximize2 size={16} strokeWidth={1.75} aria-hidden />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  <div className="design-board-frame">
+                    {shown ? (
+                      <iframe key={`${frame.page.rel}-${reloadKey}`} className="design-frame" sandbox="allow-scripts" src={frame.page.url} title={`Design: ${frame.page.rel}`} style={{ width: frame.width, height: frame.height }} />
+                    ) : (
+                      <div className="design-board-placeholder" style={{ width: frame.width, height: frame.height }}>
+                        {frame.page.label}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      <div className="design-board-zoom">
+        <button className="icon-button" aria-label="Zoom out" onClick={() => step(1 / 1.2)}>
+          −
+        </button>
+        <span className="design-board-zoom-value">{Math.round(clampZoom(view.zoom) * 100)}%</span>
+        <button className="icon-button" aria-label="Zoom in" onClick={() => step(1.2)}>
+          +
+        </button>
+        <button className="button ghost" onClick={fit}>
+          Fit
+        </button>
+      </div>
+    </div>
+  );
+}

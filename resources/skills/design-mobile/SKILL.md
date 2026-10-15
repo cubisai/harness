@@ -31,6 +31,8 @@ You are designing phone screens the user watches in CubiQ's canvas. Show them as
 
 For a flow, lay screens left to right in order and add a short caption under each frame (`.caption`). Link them with `<a href="#screen-id">` for click-through when the user asks for a prototype.
 
+For a flow of four or more screens, or when the user wants to see each screen on its own, write one page per screen instead, named `mobile-flow--01-<name>.html`, `mobile-flow--02-<name>.html`, … (one `.phone` frame filling each page, no backdrop), linked with relative `<a href>`. CubiQ's Board view shows them as numbered artboards side by side.
+
 ## 4. Finish
 
 States: show empty, loading (skeletons) and error for data screens, and pressed/disabled for buttons. Then say in a line which screens you made and what to look at; don't paste the HTML.
