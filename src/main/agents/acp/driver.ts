@@ -17,6 +17,7 @@ import { ASK_USER_TOOL } from "../../questions";
 import { checkCommand } from "../../guard";
 import { RpcError, StdioRpc } from "../rpc";
 import { classifyOpenCodeLog } from "./opencode-log";
+import { exportTurnUsage } from "./opencode-usage";
 import { normalizeUsage } from "../../usage";
 import type { InjectionPlan } from "../../inject";
 
@@ -54,6 +55,8 @@ export interface AcpAgentConfig {
   guardPlugin?: "opencode";
   /** Reasoning levels come per-model as OpenCode config variants, not a session thought_level option. */
   effortVia?: "opencode-variants";
+  /** Turn token usage comes from `opencode export`, summed over every model call, not the last one. */
+  turnUsageVia?: "opencode-export";
   /** Hidden until the user opts in and acknowledges the risk in Settings (preset-only). */
   optIn?: boolean;
   /** Shown as "Unsupported · <this>" wherever the agent appears (preset-only). */
@@ -174,6 +177,10 @@ interface Live {
   init: InitializeResult;
   /** The thread this process belongs to, so its config options are remembered per thread. */
   threadKey: string;
+  /** The command the agent process was spawned with. */
+  command: string;
+  /** The environment the agent process was spawned with. */
+  env: NodeJS.ProcessEnv;
   sessionId: string | null;
   configOptions: ConfigOption[];
   /** Whether this session was opened with the harness's tool server attached. */
@@ -665,9 +672,10 @@ export function createAcpDriver(
       const dir = deps.skillsDir();
       if (dir) env[config.skillsDirEnv] = dir;
     }
+    const command = bare ? await resolvedCommandAsync(config.command) : config.command;
     // eslint-disable-next-line prefer-const
     let l: Live;
-    const conn = StdioRpc.spawn(bare ? await resolvedCommandAsync(config.command) : config.command, config.args, { cwd: input.cwd, env }, {
+    const conn = StdioRpc.spawn(command, config.args, { cwd: input.cwd, env }, {
       onNotification: (method, params) => {
         if (method === "session/update") onUpdate(l, (params as { update: SessionUpdate }).update);
       },
@@ -751,7 +759,7 @@ export function createAcpDriver(
       clientInfo: { name: "cubiq", version: deps.clientVersion },
     });
     applyInitialize(init, input);
-    l = { conn, init, threadKey, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, variantKey: wantedKey, droppedNotified: new Set(), guidePending: false, historyPending: null, turn: null, modes: null, planModeId: null, defaultModeId: null, authUrl: null };
+    l = { conn, init, threadKey, command, env, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, variantKey: wantedKey, droppedNotified: new Set(), guidePending: false, historyPending: null, turn: null, modes: null, planModeId: null, defaultModeId: null, authUrl: null };
     // No proactive authenticate: the server infers the method from its own
     // settings and refreshes the token itself, so calling it here only ever
     // launched a browser (including during the startup model probe). A signed-out
@@ -1256,6 +1264,12 @@ export function createAcpDriver(
             continue;
           }
           break;
+        }
+        // OpenCode's prompt usage is its last model call only; the export sums
+        // every call this turn made (any failure keeps the reported numbers).
+        if (config.turnUsageVia === "opencode-export" && l.sessionId) {
+          const sum = await exportTurnUsage({ command: l.command, env: l.env, sessionId: l.sessionId, sinceMs: started });
+          if (sum) lastUsage = { ...normalizeUsage({ inputTokens: sum.input, outputTokens: sum.output, reasoningTokens: sum.reasoning, cacheReadTokens: sum.cacheRead, cacheWriteTokens: sum.cacheWrite, provenance: "reported" }), contextUsed: lastUsage.contextUsed, contextSize: lastUsage.contextSize };
         }
         if (fresh) {
           const serializedTools = (() => {

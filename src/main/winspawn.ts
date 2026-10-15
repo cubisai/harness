@@ -57,7 +57,7 @@ export function launchSpec(command: string, args: string[], env: NodeJS.ProcessE
 export function spawnCommand(
   command: string,
   args: string[],
-  opts: { cwd?: string; env?: NodeJS.ProcessEnv; stdio: ("pipe" | "ignore")[] },
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv; stdio: ("pipe" | "ignore" | number)[] },
 ): ChildProcess {
   const launch = launchSpec(command, args, opts.env ?? process.env);
   return spawn(launch.command, launch.args, { ...opts, windowsHide: true, windowsVerbatimArguments: launch.viaCmd });

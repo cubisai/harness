@@ -39,6 +39,7 @@ export const ACP_PRESETS: AcpAgentConfig[] = [
     injector: "opencode",
     guardPlugin: "opencode",
     effortVia: "opencode-variants",
+    turnUsageVia: "opencode-export",
     install: "npm install -g opencode-ai",
     homepage: "https://opencode.ai/docs/acp/",
   },
