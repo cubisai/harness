@@ -35,7 +35,9 @@ Plan: `.ai/plans/eval-framework.md` (approved; status block at top). Run with `b
   - **OpenCode tokens fixed:** OpenCode's ACP usage is its last model call only (verified in the 1.19.0 binary: `cC(messages)`). The ACP driver now runs `opencode export <session>` after the turn (preset `turnUsageVia: "opencode-export"`, 3 s cap, temp-file stdout because OpenCode drops pipe output past 64 KB when the reader lags) and sums every call. Live: 5 calls → in 15,109 / cache 54,909 / out 478, matching the export (before: last call's 110). Upstream issue not filed yet.
   - **E4:** `bun run eval --trend [--tier] [--model] [--last n]` (zero tokens); 5 harder tasks (`csv-quoted`, `month-root-cause`, `async-save`, `slugify-spec`, `generated-dist`) with `<fixture>.reference/` solutions proven by `test/eval-tasks.test.ts` (graders fail on the fixture, pass on the reference); 6 always-green capability tasks retagged `regression`. Rubric grader deferred.
   - **Still saturated:** both DeepSeek and Haiku pass the 5 new tasks too (25/25 each). Next discriminating tasks need longer horizons (multi-file features, a failing CI log to diagnose, a spec with conflicting constraints).
-- **Remaining:** Windows CI since E1 (`git push -f origin HEAD:windows`, needs the user's OK); the Windows PC gate; older items (cubiq-shop live build; H7d memory live checks).
+- **Windows CI green (2026-10-15, run 38673293246, 2078 passed)** after two fixes: the root `.gitignore` `dist/` had dropped the `generated-dist` fixture's `dist/` (now `!evals/fixtures/*/dist/`), and its grader normalises CRLF.
+- **Next (not started, user said wait):** self-improving CubiQ plan `.ai/plans/self-improve.md` (research + references inside).
+- **Remaining:** the Windows PC gate; older items (cubiq-shop live build; H7d memory live checks).
 
 ## Where things stand
 
