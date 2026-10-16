@@ -85,4 +85,38 @@ describe("reasoning display", () => {
     expect(liveReasoningMode(flushed)).toBe("text");
     expect(liveReasoningMode(flushed)).not.toBe("tokens");
   });
+
+  it("keeps a subagent's deltas under its Agent call, out of the top level", () => {
+    let state = emptyLive();
+    state = appendDelta(state, { kind: "text-delta", itemId: "0", text: "top" });
+    state = appendDelta(state, { kind: "text-delta", itemId: "0", text: "child", parentId: "a1" });
+    state = appendDelta(state, { kind: "reasoning-delta", itemId: "0", text: "child thinks", parentId: "a1" });
+    state = flushPending(state);
+    expect(visibleItems(state, "text").map((it) => it.text)).toEqual(["top"]);
+    expect(visibleItems(state, "text", "a1").map((it) => it.text)).toEqual(["child"]);
+    expect(visibleItems(state, "reasoning")).toEqual([]);
+    expect(liveReasoningMode(state)).toBe("none");
+    expect(visibleItems(state, "reasoning", "a1").map((it) => it.text)).toEqual(["child thinks"]);
+  });
+
+  it("ends a level's items without touching the other level", () => {
+    let state = emptyLive();
+    state = appendDelta(state, { kind: "text-delta", itemId: "t", text: "top" });
+    state = appendDelta(state, { kind: "text-delta", itemId: "c", text: "child", parentId: "a1" });
+    state = appendDelta({ ...state, thinkingTokens: 40 }, { kind: "reasoning-delta", itemId: "c", text: "hm", parentId: "a1" });
+    state = flushPending(state);
+    // A top-level reply with no item id ends the top level's text only.
+    const top = applyLiveEvent(state, stored(1, { kind: "assistant-text", text: "top" }));
+    expect(visibleItems(top, "text")).toEqual([]);
+    expect(visibleItems(top, "text", "a1")).toHaveLength(1);
+    // The subagent's own reply and thinking end its items; the top-level token counter stays.
+    let child = applyLiveEvent(state, stored(2, { kind: "assistant-text", text: "child", itemId: "c", parentId: "a1" }));
+    child = applyLiveEvent(child, stored(3, { kind: "thinking", text: "hm", parentId: "a1" }));
+    expect(visibleItems(child, "text", "a1")).toEqual([]);
+    expect(visibleItems(child, "reasoning", "a1")).toEqual([]);
+    expect(visibleItems(child, "text")).toHaveLength(1);
+    expect(child.thinkingTokens).toBe(40);
+    // A late delta for an ended child item is dropped.
+    expect(visibleItems(flushPending(appendDelta(child, { kind: "text-delta", itemId: "c", text: "late", parentId: "a1" })), "text", "a1")).toEqual([]);
+  });
 });

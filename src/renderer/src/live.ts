@@ -7,6 +7,8 @@ export interface LiveItem {
   text: string;
   pending: string;
   opaque: boolean;
+  /** The Agent call a subagent's item belongs to; absent at the top level. */
+  parentId?: string;
 }
 
 /** A thread's live-only stream; `done` holds keys whose terminal event already landed. */
@@ -30,9 +32,10 @@ export const LIVE_ITEM_CAP = 64_000;
  * moves it onto `text`, so a burst of tokens costs one store write.
  */
 export function appendDelta(state: LiveThread, delta: LiveDelta): LiveThread {
-  if (delta.kind === "text-delta") return appendItem(state, `text:${delta.itemId}`, "text", delta.text, false);
-  if (delta.kind === "reasoning-delta") return appendItem(state, `reasoning:${delta.itemId}`, "reasoning", delta.text, delta.opaque ?? false);
-  if (delta.kind === "tool-output-delta") return appendItem(state, `tool:${delta.toolUseId}`, "tool-output", delta.text, false);
+  if (delta.kind === "text-delta") return appendItem(state, itemKey("text", delta.itemId, delta.parentId), "text", delta.text, false, delta.parentId);
+  if (delta.kind === "reasoning-delta") return appendItem(state, itemKey("reasoning", delta.itemId, delta.parentId), "reasoning", delta.text, delta.opaque ?? false, delta.parentId);
+  // Tool use ids are unique across a thread, so a subagent's tool output keeps the plain key.
+  if (delta.kind === "tool-output-delta") return appendItem(state, `tool:${delta.toolUseId}`, "tool-output", delta.text, false, delta.parentId);
   if (delta.kind === "thinking-progress") return { ...state, thinkingTokens: delta.estimatedTokens };
   if (delta.kind === "usage-update") {
     const { kind: _kind, ...fields } = delta;
@@ -60,12 +63,14 @@ export function flushPending(state: LiveThread): LiveThread {
 export function applyLiveEvent(state: LiveThread, stored: StoredEvent): LiveThread {
   const e = stored.event;
   switch (e.kind) {
-    // Some agents have no item ids; a missing id ends every item in the channel.
+    // Some agents have no item ids; a missing id ends every item in the channel at the event's level
+    // (the top level, or one subagent's), never another subagent's.
     case "assistant-text":
-      return e.itemId ? removeKey(state, `text:${e.itemId}`) : removeChannel(state, "text");
+      return e.itemId ? removeKey(state, itemKey("text", e.itemId, e.parentId)) : removeChannel(state, "text", e.parentId);
     case "thinking": {
-      const next = e.itemId ? removeKey(state, `reasoning:${e.itemId}`) : removeChannel(state, "reasoning");
-      return { ...next, thinkingTokens: null };
+      const next = e.itemId ? removeKey(state, itemKey("reasoning", e.itemId, e.parentId)) : removeChannel(state, "reasoning", e.parentId);
+      // The opaque token counter belongs to the top-level turn.
+      return e.parentId ? next : { ...next, thinkingTokens: null };
     }
     case "tool-result":
       return removeKey(state, `tool:${e.toolUseId}`);
@@ -74,10 +79,13 @@ export function applyLiveEvent(state: LiveThread, stored: StoredEvent): LiveThre
   }
 }
 
-/** Items of one channel with flushed, non-empty text, in arrival order. */
-export function visibleItems(state: LiveThread, channel: LiveItem["channel"]): LiveItem[] {
+/**
+ * Items of one channel with flushed, non-empty text, in arrival order: the top
+ * level's, or with `parentId` one subagent's.
+ */
+export function visibleItems(state: LiveThread, channel: LiveItem["channel"], parentId?: string): LiveItem[] {
   // Reasoning that is only whitespace (a model streaming "\n" between thoughts) has nothing to show.
-  return state.items.filter((it) => it.channel === channel && (channel === "reasoning" ? it.text.trim().length > 0 : it.text.length > 0));
+  return state.items.filter((it) => it.channel === channel && it.parentId === parentId && (channel === "reasoning" ? it.text.trim().length > 0 : it.text.length > 0));
 }
 
 /** Which half of a reasoning block to show: its text, or only a token count. */
@@ -96,7 +104,12 @@ export function liveReasoningMode(state: LiveThread): "text" | "tokens" | "none"
   return "none";
 }
 
-function appendItem(state: LiveThread, key: string, channel: LiveItem["channel"], text: string, opaque: boolean): LiveThread {
+/** A text or reasoning item's key; a subagent's is scoped by its Agent call, since item ids may repeat. */
+function itemKey(channel: "text" | "reasoning", itemId: string, parentId: string | undefined): string {
+  return parentId ? `${channel}:${parentId}:${itemId}` : `${channel}:${itemId}`;
+}
+
+function appendItem(state: LiveThread, key: string, channel: LiveItem["channel"], text: string, opaque: boolean, parentId?: string): LiveThread {
   if (state.done.includes(key)) return state;
   const items = state.items.slice();
   const i = items.findIndex((it) => it.key === key);
@@ -104,7 +117,7 @@ function appendItem(state: LiveThread, key: string, channel: LiveItem["channel"]
     const item = items[i]!;
     items[i] = { ...item, pending: item.pending + text, opaque: item.opaque || opaque };
   } else {
-    items.push({ key, channel, text: "", pending: text, opaque });
+    items.push({ key, channel, text: "", pending: text, opaque, ...(parentId ? { parentId } : {}) });
   }
   return { ...state, items };
 }
@@ -114,8 +127,8 @@ function removeKey(state: LiveThread, key: string): LiveThread {
   return { ...state, items: state.items.filter((it) => it.key !== key), done: [...state.done, key] };
 }
 
-function removeChannel(state: LiveThread, channel: LiveItem["channel"]): LiveThread {
-  const keys = state.items.filter((it) => it.channel === channel).map((it) => it.key);
+function removeChannel(state: LiveThread, channel: LiveItem["channel"], parentId?: string): LiveThread {
+  const keys = state.items.filter((it) => it.channel === channel && it.parentId === parentId).map((it) => it.key);
   if (!keys.length) return state;
   const drop = new Set(keys);
   return { ...state, items: state.items.filter((it) => !drop.has(it.key)), done: [...state.done, ...keys] };

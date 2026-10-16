@@ -14,6 +14,7 @@ import { dockedPlan } from "../todo";
 import { DiffView, diffsOf } from "./DiffView";
 import { ExpertIntro } from "./experts/ExpertChip";
 import { ReasoningBlock } from "./ReasoningBlock";
+import { SubagentCard } from "./SubagentCard";
 import { activityOf, WaitingLine } from "./WaitingLine";
 import { useSmoothText } from "../hooks/useSmoothText";
 import { segmentEvents, type Segment, type TurnChanges, workDuration, workSummary } from "../turns";
@@ -524,7 +525,7 @@ export function EventRow({ stored, results, children, running, threadId }: { sto
   }
 }
 
-function ToolEventRow({
+export function ToolEventRow({
   tool,
   result,
   children,
@@ -541,7 +542,10 @@ function ToolEventRow({
   threadId?: string;
   startedAt?: number;
 }) {
-  const open = useStore((s) => (threadId ? Boolean(s.disclosures[threadId]?.[tool.toolUseId]) : false));
+  const stored = useStore((s) => (threadId ? s.disclosures[threadId]?.[tool.toolUseId] : undefined));
+  // A subagent opens itself while it runs, collapses on success and stays open on error;
+  // an explicit toggle always wins over that default.
+  const open = stored ?? (prettyTool(tool.name) === "Agent" ? (!result ? running : Boolean(result.isError)) : false);
   return (
     <ToolRow
       tool={tool}
@@ -558,7 +562,7 @@ function ToolEventRow({
 }
 
 /** Seconds since `startedAt`, ticking once a second while `active`; null when inactive. */
-function useRunningTimer(startedAt: number | undefined, active: boolean): number | null {
+export function useRunningTimer(startedAt: number | undefined, active: boolean): number | null {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!active || startedAt === undefined) return;
@@ -569,17 +573,7 @@ function useRunningTimer(startedAt: number | undefined, active: boolean): number
   return active && startedAt !== undefined ? Math.max(0, Math.floor((now - startedAt) / 1000)) : null;
 }
 
-export function ToolRow({
-  tool,
-  result,
-  children,
-  results,
-  running,
-  open,
-  startedAt,
-  threadId,
-  onToggle,
-}: {
+export function ToolRow(props: {
   tool: ToolEvent;
   result?: ResultEvent;
   children?: StoredEvent[];
@@ -590,6 +584,9 @@ export function ToolRow({
   threadId?: string;
   onToggle(open: boolean): void;
 }) {
+  // A subagent renders as its own card; every other tool keeps the plain row.
+  if (prettyTool(props.tool.name) === "Agent") return <SubagentCard {...props} />;
+  const { tool, result, children, results, running, open, threadId, onToggle } = props;
   const state = result ? (result.isError ? "error" : "done") : running ? "pending" : "";
   // File tools name the file they touched; open it from the row.
   const fileRef = FILE_TOOLS.has(tool.name) ? parseFileRef(tool.summary.split(", ")[0] ?? "") : null;
@@ -598,19 +595,10 @@ export function ToolRow({
   const run = runResultOf(result?.payload);
   const hasInput = tool.payload !== undefined && diffs === null;
   const hasOutput = result?.payload !== undefined && diffs === null && run === null;
-  // A Run's input is its command, an Agent's is its prompt: show those as text, not JSON.
+  // A Run's input is its command; a payload carrying a prompt shows that as text, not JSON.
   const command = runPayloadOf(tool.payload);
   const agent = command === null ? agentPromptOf(tool.payload) : null;
-  // While an Agent runs, its newest child step stands in for a result summary.
-  // Count tool calls only: each step's result and the subagent's text are children too.
-  const toolSteps = children?.filter((c) => c.event.kind === "tool-use") ?? [];
-  const lastStep = !result ? toolSteps[toolSteps.length - 1]?.event : undefined;
-  const steps =
-    lastStep && lastStep.kind === "tool-use"
-      ? `${toolSteps.length} ${toolSteps.length === 1 ? "step" : "steps"} · ${prettyTool(lastStep.name)} ${lastStep.summary}`
-      : "";
-  const elapsed = useRunningTimer(startedAt, prettyTool(tool.name) === "Agent" && !result && running);
-  const resultNote = result?.summary ?? [steps, elapsed !== null ? `running ${elapsed}s` : ""].filter(Boolean).join(" · ");
+  const resultNote = result?.summary ?? "";
   return (
     <details className="tool" open={open} onToggle={(e) => onToggle(e.currentTarget.open)}>
       <summary className="tool-row" title={result?.summary ?? tool.summary}>
@@ -715,7 +703,7 @@ function runPayloadOf(v: unknown): string | null {
 }
 
 /** An Agent tool input's prompt (and subagent kind), or null for any other payload. */
-function agentPromptOf(v: unknown): { prompt: string; subagent?: string } | null {
+export function agentPromptOf(v: unknown): { prompt: string; subagent?: string } | null {
   if (!v || typeof v !== "object" || Array.isArray(v)) return null;
   const p = v as { prompt?: unknown; subagent_type?: unknown };
   if (typeof p.prompt !== "string") return null;
@@ -741,7 +729,7 @@ export function payloadText(v: unknown): string {
 const FILE_TOOLS = new Set(["Read", "Edit", "Write", "MultiEdit", "NotebookEdit"]);
 
 /** A file named in a reply or a tool row opens in the panel; with no thread open, in the editor. */
-function openRef(ref: FileRef): void {
+export function openRef(ref: FileRef): void {
   const s = useStore.getState();
   if (s.selectedThreadId) s.openArtifact(ref.path);
   else void s.openInEditor(ref);

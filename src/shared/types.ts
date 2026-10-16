@@ -650,11 +650,12 @@ export type ThreadEvent = (
  * only accepts `ThreadEvent`, so this is a compile-time guarantee.
  */
 export type LiveDelta =
-  | { kind: "text-delta"; itemId: string; text: string }
-  | { kind: "reasoning-delta"; itemId: string; text: string; opaque?: boolean }
+  /** `parentId` (here and on reasoning/tool output) = the Agent call a subagent's delta belongs to. */
+  | { kind: "text-delta"; itemId: string; text: string; parentId?: string }
+  | { kind: "reasoning-delta"; itemId: string; text: string; opaque?: boolean; parentId?: string }
   | { kind: "reasoning-summary"; itemId: string; index: number; text: string }
   | { kind: "tool-input-delta"; toolUseId: string; text: string }
-  | { kind: "tool-output-delta"; toolUseId: string; text: string }
+  | { kind: "tool-output-delta"; toolUseId: string; text: string; parentId?: string }
   | { kind: "plan-delta"; entries: PlanEntry[] }
   | {
       kind: "usage-update";

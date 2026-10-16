@@ -1030,6 +1030,9 @@ details.tool[open]::details-content { height: auto; }
 .tool-empty { color: var(--text-tertiary); font-size: 12px; }
 .tool-steps { display: flex; flex-direction: column; gap: 2px; }
 .tool-step-text { color: var(--text-secondary); font-size: 12px; margin: 2px 0; }
+.subagent-card .subagent-type { color: var(--text-tertiary); }
+.subagent-card .tool-steps > .newest { border-left: 2px solid var(--signal-line); padding-left: 6px; }
+.subagent-card .result { font-variant-numeric: tabular-nums; }
 .tool-diff { font: 11.5px/1.5 var(--mono); }
 .tool-diff + .tool-diff { margin-top: 8px; }
 .tool-diff-path { font-weight: 600; margin-bottom: 4px; }
