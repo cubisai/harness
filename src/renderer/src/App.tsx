@@ -19,6 +19,7 @@ import { TerminalDrawer } from "./components/TerminalDrawer";
 import { Splitter } from "./components/Splitter";
 import { SwitchDialogHost } from "./components/SwitchDialog";
 import { ExpertChip } from "./components/experts/ExpertChip";
+import { TeamStrip } from "./components/experts/TeamStrip";
 import { AboutSheet } from "./components/AboutSheet";
 import { ContextSheet } from "./components/ContextSheet";
 import { McpSheet } from "./components/McpSheet";
@@ -241,6 +242,7 @@ export function App() {
                 <ThreadView threadId={thread.id} expertId={thread.expertId} />
                 <TodoDock threadId={thread.id} />
                 <RequestDock threadId={thread.id} />
+                {thread.expertId && <TeamStrip threadId={thread.id} expertId={thread.expertId} />}
                 <Composer
                   threadId={thread.id}
                   mode={

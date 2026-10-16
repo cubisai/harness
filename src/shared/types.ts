@@ -909,6 +909,8 @@ export interface AgentCapabilities {
   mcpRouter?: boolean;
   /** The user can compact the session on request (/compact). ACP agents also need to advertise a compact command. */
   manualCompact?: boolean;
+  /** An expert team's members run as this agent's own subagents (Claude SDK agents, OpenCode config agents); otherwise the lead plays every role. */
+  subagentTeams?: boolean;
 }
 
 /** How an agent's credential row behaves in Settings: data from its driver, never its id. */

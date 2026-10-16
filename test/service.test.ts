@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { LiveUpdate, PlanDecision, ThreadEvent } from "../src/shared/types";
+import type { ExpertDef } from "../src/shared/experts";
 import type { AgentDriver, HarnessTool, TurnInput } from "../src/main/agents/types";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
 import { CRITIQUE_ARTIFACT, PLAN_ARTIFACT } from "../src/shared/artifact-kind";
@@ -372,6 +373,38 @@ describe("Service.send", () => {
     const used = service.createThread(project.id);
     await service.send({ threadId: used.id, text: "hi" });
     expect(() => service.setThreadExpert(used.id, "code-review")).toThrow(/already has messages/);
+  });
+
+  it("gives a team thread's turns its members as subagents, and says once that this agent runs the team as one", async () => {
+    const store = new Store(join(tempDir(), "t.db"));
+    closeAfter(() => store.close());
+    const inputs: TurnInput[] = [];
+    const driver = fakeDriver(async (input) => {
+      inputs.push(input);
+      input.onSession(`s-${input.threadId}`);
+    });
+    const member = { id: "analyst", name: "Ana", profession: "Analyst", description: "Finds facts.", prompt: "Research.", skills: [] };
+    const defs: Record<string, ExpertDef> = {
+      crew: { id: "crew", kind: "team", name: "Crew", profession: "Lead", persona: "", category: "General", avatarText: "CR", description: "", tags: [], quickPrompts: [], prompt: "Lead.", skills: [], members: [member], source: "imported", version: "1" },
+      solo: { id: "solo", kind: "agent", name: "Solo", profession: "Writer", persona: "", category: "General", avatarText: "SO", description: "", tags: [], quickPrompts: [], prompt: "Write.", skills: [], source: "builtin", version: "1" },
+    };
+    const service = new Service(store, () => catalog(), [driver], () => {}, undefined, undefined, undefined, undefined, null, { get: (id) => defs[id] ?? null });
+    const project = store.addProject(tempDir());
+    const team = service.createThread(project.id);
+    service.setThreadExpert(team.id, "crew");
+    await service.send({ threadId: team.id, text: "one" });
+    await service.send({ threadId: team.id, text: "two" });
+    expect(inputs[0]!.team).toEqual([{ id: "analyst", description: "Ana, Analyst: Finds facts.", prompt: "Research." }]);
+    expect(inputs[0]!.expert).toContain("## Your team");
+    const notices = store.listEvents(team.id).filter((e) => e.event.kind === "notice");
+    expect(notices).toHaveLength(1);
+    expect(notices[0]!.event).toMatchObject({ text: expect.stringContaining("runs as one agent on Fake") });
+    // A single expert: no team, no notice.
+    const solo = service.createThread(project.id);
+    service.setThreadExpert(solo.id, "solo");
+    await service.send({ threadId: solo.id, text: "hi" });
+    expect(inputs[2]!.team).toBeUndefined();
+    expect(store.listEvents(solo.id).some((e) => e.event.kind === "notice")).toBe(false);
   });
 
   it("writes an in-place text edit into a design page with versions, and refuses when it isn't safe", () => {

@@ -42,7 +42,7 @@ import { testConnection } from "./providers";
 import { discoverModels, ModelsDev, pickSmallModel } from "./models-catalog";
 import { injectionFor } from "./inject";
 import { redactSecrets } from "./inject/redact";
-import { opencodeVariants, withOpenCodeVariant } from "./inject/opencode";
+import { opencodeVariants, withOpenCodeTeam, withOpenCodeVariant } from "./inject/opencode";
 import { ensureOpenCodeGuard, withOpenCodeGuard } from "./inject/opencode-guard";
 import { BUILT_IN_GUARD, findPython } from "./guard";
 import { PROVIDER_AGENT_PREFIX } from "./harness/driver";
@@ -569,6 +569,8 @@ async function main(): Promise<void> {
           }
           // After the guard, so both the plugin and the variant survive.
           if (ctx?.effort) plan = withOpenCodeVariant(plan, ctx.effort);
+          // An expert team's members, as this thread's subagents (OpenCode only; other ACP agents run the team as one agent).
+          if (ctx?.team?.length && config.injector === "opencode") plan = withOpenCodeTeam(plan, ctx.team);
           return plan;
         },
       });

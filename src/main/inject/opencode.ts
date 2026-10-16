@@ -5,6 +5,7 @@
 
 import { killTree, spawnCommand } from "../winspawn";
 import type { InjectedEnv, InjectionPlan } from ".";
+import type { TeamAgent } from "../../shared/experts";
 
 /**
  * Parse `opencode models --verbose`: each model is a `<provider>/<model>` line
@@ -123,6 +124,39 @@ export function withOpenCodeVariant(
   const agents = (config.agent && typeof config.agent === "object" ? config.agent : {}) as Record<string, unknown>;
   const existing = (agents[pick.agent] && typeof agents[pick.agent] === "object" ? agents[pick.agent] : {}) as Record<string, unknown>;
   agents[pick.agent] = { ...existing, model: pick.model, variant: pick.variant };
+  config.agent = agents;
+  out.env.OPENCODE_CONFIG_CONTENT = JSON.stringify(config);
+  return out;
+}
+
+/**
+ * Add an expert team's members to an OpenCode injection plan as subagents
+ * (`agent.<id>` with `mode: "subagent"`), so the lead can hand them steps with
+ * its task tool. Only for the thread that summoned the team: the plan feeds
+ * that thread's own process. Other config keys and agents are kept; a member
+ * never overrides an agent already in the config.
+ */
+export function withOpenCodeTeam(plan: InjectionPlan | undefined, team: TeamAgent[], env: NodeJS.ProcessEnv = process.env): InjectionPlan {
+  let out = plan;
+  if (!out) {
+    const base: InjectedEnv = {};
+    for (const [name, value] of Object.entries(env)) if (value !== undefined) base[name] = value;
+    out = { env: base, byok: false };
+  }
+  let config: Record<string, unknown> = {};
+  const raw = out.env.OPENCODE_CONFIG_CONTENT;
+  if (raw !== undefined) {
+    try {
+      config = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      config = {};
+    }
+  }
+  const agents = (config.agent && typeof config.agent === "object" ? config.agent : {}) as Record<string, unknown>;
+  for (const m of team) {
+    if (agents[m.id] !== undefined) continue;
+    agents[m.id] = { mode: "subagent", description: m.description, prompt: m.prompt };
+  }
   config.agent = agents;
   out.env.OPENCODE_CONFIG_CONTENT = JSON.stringify(config);
   return out;

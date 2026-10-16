@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { CredentialChoice, McpServerEntry, PermissionDecision, PermissionMode, Provider, Settings, ThreadEvent } from "../src/shared/types";
 import { authUrlFrom, createAcpDriver, optionFor, pickPermission } from "../src/main/agents/acp/driver";
 import { type InjectionSource, injectionFor } from "../src/main/inject";
-import { withOpenCodeVariant } from "../src/main/inject/opencode";
+import { withOpenCodeTeam, withOpenCodeVariant } from "../src/main/inject/opencode";
 import { antigravityAcpCommand, loadAcpAgents, onPath } from "../src/main/agents/registry";
 import type { TurnInput } from "../src/main/agents/types";
 import { closeAfter, tempDir } from "./helpers";
@@ -488,6 +488,26 @@ describe("ACP driver", () => {
       { id: "mock-small", label: "Mock Small", efforts: ["low", "medium", "high"] },
       { id: "mock-large", label: "Mock Large", efforts: ["low", "high"] },
     ]);
+  });
+
+  it("hands a thread's team to the injection, so its process gets the members as subagents", async () => {
+    const seen: unknown[] = [];
+    const d = createAcpDriver(
+      { id: "mock", label: "Mock", command: process.execPath, args: [MOCK], env: { MOCK_ACP_OPENCODE: "1" } },
+      {
+        clientVersion: "test",
+        injection: (ctx) => {
+          seen.push(ctx?.team ?? null);
+          return ctx?.team ? withOpenCodeTeam(undefined, ctx.team, {}) : { env: {}, byok: false };
+        },
+      },
+    );
+    closeAfter(() => d.dispose?.());
+    const team = [{ id: "analyst", description: "Ana, Analyst", prompt: "Research." }];
+    const first = turn("config", { team });
+    await d.runTurn(first.input);
+    expect(JSON.parse(first.deltas.join(""))).toEqual({ analyst: { mode: "subagent", description: "Ana, Analyst", prompt: "Research." } });
+    expect(seen).toEqual([team]);
   });
 
   it("respawns on a changed variant, resumes the session, and says so once", async () => {

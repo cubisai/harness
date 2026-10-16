@@ -1,6 +1,7 @@
 import type { ZodRawShape, z } from "zod";
 import type { AgentCapabilities, AgentCredentials, AgentInfo, LiveDelta, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, PlanDecision, Provenance, Question, QuestionAnswer, SkillsDelivery, ThreadEvent } from "../../shared/types";
 import type { LimitsPatch } from "./limits";
+import type { TeamAgent } from "../../shared/experts";
 
 export type { AgentCapabilities, SkillsDelivery } from "../../shared/types";
 
@@ -50,6 +51,8 @@ export interface TurnInput {
   design?: string;
   /** The thread's expert persona block (see shared/experts.ts expertBlock), appended to the guide; absent = no expert. */
   expert?: string;
+  /** The expert team's members as subagents (Claude SDK agents, OpenCode agents); absent = no team. Fixed for a thread. */
+  team?: TeamAgent[];
   prompt: string;
   /** Compact the session instead of prompting (/compact); the focus steers the summary where the agent supports it. */
   compact?: { focus: string | null };

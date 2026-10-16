@@ -316,6 +316,37 @@ export function expertBlock(def: Pick<ExpertDef, "name" | "profession" | "prompt
   ].join("\n\n");
 }
 
+/** A team member as an engine subagent: Claude SDK `agents`, OpenCode `agent.<id>`. */
+export interface TeamAgent {
+  id: string;
+  description: string;
+  prompt: string;
+}
+
+/**
+ * Agent names the engines define themselves (Claude's built-ins, OpenCode's
+ * primary and hidden agents). A member with one of these ids would replace
+ * the engine's own agent, so it stays a role in the lead's prompt only.
+ */
+const RESERVED_AGENT_IDS = new Set(["general-purpose", "explore", "plan", "statusline-setup", "output-style-setup", "build", "general", "compaction", "title", "summary"]);
+
+/**
+ * A team's members as subagents, in order: none for a single expert. Members
+ * with a bad or reserved id are left out (the lead still sees their role).
+ */
+export function teamAgents(def: Pick<ExpertDef, "kind" | "members">): TeamAgent[] {
+  if (def.kind !== "team" || !def.members?.length) return [];
+  const seen = new Set<string>();
+  const out: TeamAgent[] = [];
+  for (const m of def.members) {
+    if (!EXPERT_ID_RE.test(m.id) || RESERVED_AGENT_IDS.has(m.id) || seen.has(m.id) || !m.prompt.trim()) continue;
+    seen.add(m.id);
+    const what = [m.name, m.profession].filter(Boolean).join(", ");
+    out.push({ id: m.id, description: m.description ? `${what}: ${m.description}` : what, prompt: m.prompt.slice(0, EXPERT_PROMPT_MAX) });
+  }
+  return out;
+}
+
 /** What an expert import did: what it installed, what a marketplace offers to pick from, and what it skipped. */
 export interface ExpertImportResult {
   installed: string[];

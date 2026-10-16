@@ -79,6 +79,10 @@ export function ExpertDetailContent({ def, used, canSummon, onClose, onSummon, o
         </button>
       </div>
 
+      {team && (
+        <p className="xc-cost-note">A team uses several model calls per task. Members work as subagents on Claude and OpenCode; other agents run the team as one agent.</p>
+      )}
+
       {def.description ? <p className="xc-detail-desc">{def.description}</p> : null}
       {def.tags.length > 0 && (
         <div className="wb-tags xc-detail-tags">

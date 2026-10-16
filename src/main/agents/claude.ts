@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
 import type { EffortLevel, HookCallback, ModelInfo, ModelUsage, Options, PermissionResult, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { McpServerEntry, ModelOption, ModelPricing, PermissionMode, PlanEntry, ThreadEvent } from "../../shared/types";
-import { canonicalTool, clipSummary, type EditResult, type RunPayload, type RunResult } from "../../shared/tools";
+import { canonicalTool, clipAgentSummary, clipSummary, type EditResult, type RunPayload, type RunResult } from "../../shared/tools";
 import { diffSummary, unifiedDiff } from "../../shared/diff";
 import type { ToolDiff } from "../../shared/tools";
 import { forClaude } from "../mcp/servers";
@@ -430,6 +430,8 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         ...(input.effort ? { effort: input.effort as EffortLevel } : {}),
         ...(adaptiveThinking.get(input.model) === true ? { thinking: { type: "adaptive" as const, display: "summarized" as const } } : {}),
         plugins,
+        // An expert team's members, as subagents the lead hands steps to (Agent tool, subagent_type = member id).
+        ...(input.team?.length ? { agents: Object.fromEntries(input.team.map((m) => [m.id, { description: m.description, prompt: m.prompt }])) } : {}),
         ...(systemAppend ? { systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: systemAppend } } : {}),
         ...(memoryText !== null ? { settings: { autoMemoryEnabled: false } } : {}),
         ...(plan ? { env: plan.env } : {}),
@@ -919,7 +921,7 @@ function emitAssistantBlock(block: AssistantBlock, itemId: string, input: TurnIn
   }
   const summary =
     isAgent && typeof toolInput.description === "string" && typeof toolInput.subagent_type === "string"
-      ? clipSummary(`${toolInput.description} · ${toolInput.subagent_type}`)
+      ? clipAgentSummary(toolInput.description, toolInput.subagent_type)
       : summarizeToolInput(block.name, toolInput);
   input.onEvent({
     kind: "tool-use",

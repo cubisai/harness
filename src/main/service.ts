@@ -32,7 +32,7 @@ import type {
   Usage,
 } from "../shared/types";
 import { bindingKey } from "../shared/bindings";
-import { expertBlock, type ExpertDef } from "../shared/experts";
+import { expertBlock, teamAgents, type ExpertDef, type TeamAgent } from "../shared/experts";
 import { CRITIQUE_ARTIFACT } from "../shared/artifact-kind";
 import type { TweakValues } from "../shared/tweaks";
 import { tierFeatures, tierNote, tierOf, type PrototypeTier } from "../shared/tiers";
@@ -266,11 +266,30 @@ export class Service {
     return thread.worktreePath ?? this.store.getProject(thread.projectId).path;
   }
 
-  /** The `<expert>` block for a thread's expert persona, or undefined when it has none we can resolve. */
-  private expertOf(thread: Thread): string | undefined {
-    if (!thread.expertId || !this.experts) return undefined;
+  /**
+   * A turn's expert fields: the `<expert>` block for the thread's expert
+   * persona and, for a team, its members as subagents; empty when the thread
+   * has no expert we can resolve.
+   */
+  private expertInput(thread: Thread): { expert?: string; team?: TeamAgent[] } {
+    if (!thread.expertId || !this.experts) return {};
     const def = this.experts.get(thread.expertId);
-    return def ? expertBlock(def) : undefined;
+    if (!def) return {};
+    const team = teamAgents(def);
+    return { expert: expertBlock(def), ...(team.length ? { team } : {}) };
+  }
+
+  /**
+   * Teams run members as subagents only on agents that can (subagentTeams);
+   * elsewhere the lead works through the roles itself. Said once per thread and agent.
+   */
+  private noteTeamFallback(thread: Thread, driver: AgentDriver): void {
+    if (driver.capabilities.subagentTeams) return;
+    const def = thread.expertId && this.experts ? this.experts.get(thread.expertId) : null;
+    if (!def || !teamAgents(def).length) return;
+    const text = `The ${def.name} team runs as one agent on ${driver.label}: the lead works through its members' roles itself. Claude and OpenCode run members as subagents.`;
+    if (this.store.listEvents(thread.id).some((e) => e.event.kind === "notice" && e.event.text === text)) return;
+    this.emit(thread.id, { kind: "notice", text });
   }
 
   /**
@@ -424,7 +443,7 @@ export class Service {
         cwd,
         projectId: thread.projectId,
         design: designOf(thread),
-        ...(this.expertOf(thread) ? { expert: this.expertOf(thread) } : {}),
+        ...this.expertInput(thread),
         model: thread.model,
         permissionMode: thread.permissionMode,
         tools: this.harnessTools(thread),
@@ -450,7 +469,7 @@ export class Service {
           cwd,
           projectId: thread.projectId,
           design: designOf(thread),
-          ...(this.expertOf(thread) ? { expert: this.expertOf(thread) } : {}),
+          ...this.expertInput(thread),
           prompt,
           sessionId: null,
           model: thread.model,
@@ -739,6 +758,7 @@ export class Service {
       if (!catchUp && !switched && current.sessionId === null && this.store.listEvents(thread.id).length > 1) {
         this.emit(thread.id, { kind: "notice", text: `Now talking to ${driver.label}. It starts without the earlier messages above.` });
       }
+      this.noteTeamFallback(thread, driver);
       // Files the turn writes by command are found by mtime; 2 s of slack covers coarse filesystem clocks.
       const turnStartedAt = Date.now() - 2000;
       await driver.runTurn({
@@ -746,7 +766,7 @@ export class Service {
         cwd,
         projectId: thread.projectId,
         design: designOf(thread),
-        ...(this.expertOf(thread) ? { expert: this.expertOf(thread) } : {}),
+        ...this.expertInput(thread),
         prompt: turnPrompt,
         ...(compact ? { compact } : {}),
         sessionId: current.sessionId,

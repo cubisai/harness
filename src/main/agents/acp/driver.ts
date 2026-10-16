@@ -1,9 +1,10 @@
 import type { AgentCapabilities, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, PlanEntry } from "../../../shared/types";
+import type { TeamAgent } from "../../../shared/experts";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { clipSummary } from "../../../shared/tools";
+import { clipAgentSummary, clipSummary } from "../../../shared/tools";
 import type { EditResult, RunPayload, RunResult, ToolDiff } from "../../../shared/tools";
 import { diffSummary, unifiedDiff } from "../../../shared/diff";
 import { summarizeToolResult } from "../summarize";
@@ -295,7 +296,8 @@ export function createAcpDriver(
      */
     mcpRouting?: (projectId: string | null, servers: McpServerEntry[]) => Promise<boolean>;
     /** The credential plan for the next agent process; absent = inherit process.env. */
-    injection?: (ctx?: { effort?: { agent: string; model: string; variant: string } }) => InjectionPlan;
+    /** `team`: the thread's expert team members, injected as subagents for this thread's process only. */
+    injection?: (ctx?: { effort?: { agent: string; model: string; variant: string }; team?: TeamAgent[] }) => InjectionPlan;
     /** Per-model reasoning variants, for agents that carry them outside a thought_level option. */
     variants?: () => Promise<Record<string, string[]>>;
     /** The git-guardrails script: an execute permission call is vetoed in every mode. */
@@ -660,7 +662,8 @@ export function createAcpDriver(
       }
     }
 
-    const ctx = wanted ? { effort: wanted } : undefined;
+    // A thread's process is its own, so its team's subagents never reach another thread.
+    const ctx = wanted || input.team?.length ? { ...(wanted ? { effort: wanted } : {}), ...(input.team?.length ? { team: input.team } : {}) } : undefined;
     const plan = deps.injection?.(ctx);
     if (plan?.error) throw new Error(plan.error);
     if (plan?.warning && !shownNotices.has(plan.warning)) {
@@ -1409,7 +1412,7 @@ export function toolUsePayload(kind: ToolKind | null | undefined, rawInput: unkn
 /** A subagent call's summary: what it was asked to find, and by which agent kind. */
 function subagentSummary(raw: Record<string, unknown>, title: string | null | undefined): string {
   const description = typeof raw.description === "string" ? raw.description : title ?? "";
-  return clipSummary(`${description} · ${raw.subagent_type as string}`);
+  return clipAgentSummary(description, raw.subagent_type as string);
 }
 
 /**

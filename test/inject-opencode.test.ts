@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { InjectionPlan } from "../src/main/inject";
-import { parseOpenCodeVariants, withOpenCodeVariant } from "../src/main/inject/opencode";
+import { parseOpenCodeVariants, withOpenCodeTeam, withOpenCodeVariant } from "../src/main/inject/opencode";
 
 describe("parseOpenCodeVariants", () => {
   const fixture = readFileSync(join(__dirname, "fixtures", "opencode-models.txt"), "utf8");
@@ -58,5 +58,33 @@ describe("withOpenCodeVariant", () => {
     withOpenCodeVariant(plan, pick);
     const config = JSON.parse(plan.env.OPENCODE_CONFIG_CONTENT!) as { agent: Record<string, Record<string, unknown>> };
     expect(config.agent.build).toEqual({ temperature: 0.2, description: "keep me", model: pick.model, variant: "high" });
+  });
+});
+
+describe("withOpenCodeTeam", () => {
+  const team = [
+    { id: "analyst", description: "Ana, Analyst: Finds facts.", prompt: "Research." },
+    { id: "writer", description: "Wren, Writer", prompt: "Write." },
+  ];
+
+  it("adds each member as a subagent and keeps the rest of the config", () => {
+    const plan: InjectionPlan = { env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ plugin: ["p"], agent: { build: { variant: "high" } } }) }, byok: false };
+    const out = withOpenCodeTeam(plan, team);
+    expect(JSON.parse(out.env.OPENCODE_CONFIG_CONTENT!)).toEqual({
+      plugin: ["p"],
+      agent: {
+        build: { variant: "high" },
+        analyst: { mode: "subagent", description: "Ana, Analyst: Finds facts.", prompt: "Research." },
+        writer: { mode: "subagent", description: "Wren, Writer", prompt: "Write." },
+      },
+    });
+  });
+
+  it("creates a plan from the env when none exists, and never overrides a configured agent", () => {
+    const out = withOpenCodeTeam(undefined, team, { PATH: "/bin", OPENCODE_CONFIG_CONTENT: JSON.stringify({ agent: { writer: { model: "x" } } }) });
+    expect(out.env.PATH).toBe("/bin");
+    const agent = (JSON.parse(out.env.OPENCODE_CONFIG_CONTENT!) as { agent: Record<string, unknown> }).agent;
+    expect(agent.writer).toEqual({ model: "x" });
+    expect(agent.analyst).toMatchObject({ mode: "subagent" });
   });
 });

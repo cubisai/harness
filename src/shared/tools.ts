@@ -43,6 +43,16 @@ export function clipSummary(text: string, max = SUMMARY_MAX): string {
   return one.length > max ? `${one.slice(0, max - 1)}…` : one;
 }
 
+/**
+ * A subagent call's summary, "<description> · <agent type>": only the
+ * description is clipped, so the agent type (a team member's id, which the
+ * team strip matches on) always survives.
+ */
+export function clipAgentSummary(description: string, agentType: string): string {
+  const type = agentType.replace(/\s+/g, " ").trim();
+  return `${clipSummary(description, Math.max(16, SUMMARY_MAX - type.length - 3))} · ${type}`;
+}
+
 /** One file's edit, as a git-style unified diff text. */
 export interface ToolDiff {
   path: string;

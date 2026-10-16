@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createExpertCatalog } from "../src/main/experts/catalog";
-import { expertBlock, expertFromMarkdown, parseExpertMarkdown } from "../src/shared/experts";
+import { expertBlock, expertFromMarkdown, parseExpertMarkdown, teamAgents } from "../src/shared/experts";
 import { tempDir } from "./helpers";
 
 describe("parseExpertMarkdown", () => {
@@ -129,5 +129,26 @@ describe("expertBlock", () => {
     expect(block).toContain("## Your team");
     expect(block).toContain("- `writer` — Wren, Writer: Writes.");
     expect(block).toContain("Hand independent steps to members in parallel");
+  });
+});
+
+describe("teamAgents", () => {
+  const member = (id: string, extra: Partial<{ description: string; prompt: string }> = {}) => ({ id, name: `N-${id}`, profession: "Analyst", description: "Finds facts.", prompt: "Research.", skills: [], ...extra });
+
+  it("turns a team's members into subagents, in order", () => {
+    expect(teamAgents({ kind: "team", members: [member("analyst"), member("writer", { description: "" })] })).toEqual([
+      { id: "analyst", description: "N-analyst, Analyst: Finds facts.", prompt: "Research." },
+      { id: "writer", description: "N-writer, Analyst", prompt: "Research." },
+    ]);
+  });
+
+  it("has none for a single expert or a team without members", () => {
+    expect(teamAgents({ kind: "agent", members: [member("analyst")] })).toEqual([]);
+    expect(teamAgents({ kind: "team", members: undefined })).toEqual([]);
+  });
+
+  it("leaves out engine agent names, bad and duplicate ids, and empty prompts", () => {
+    const team = [member("general-purpose"), member("build"), member("Bad Id"), member("analyst"), member("analyst"), member("blank", { prompt: "  " })];
+    expect(teamAgents({ kind: "team", members: team }).map((a) => a.id)).toEqual(["analyst"]);
   });
 });

@@ -229,6 +229,17 @@ describe("Claude driver guide", () => {
     await d.runTurn(input);
     expect(sdk.calls).toHaveLength(1);
     expect(sdk.calls[0]?.options.systemPrompt).toEqual({ type: "preset", preset: "claude_code", append: "GUIDE\n\n<expert>Be terse.</expert>" });
+    expect(sdk.calls[0]?.options).not.toHaveProperty("agents");
+  });
+
+  it("passes an expert team's members as SDK subagents", async () => {
+    sdk.calls.length = 0;
+    const d = createClaudeDriver({ pluginDir: () => null, guide: () => "GUIDE" });
+    const { input } = turnInput();
+    input.expert = "<expert>Lead.</expert>";
+    input.team = [{ id: "analyst", description: "Ana, Analyst", prompt: "Research." }];
+    await d.runTurn(input);
+    expect(sdk.calls[0]?.options.agents).toEqual({ analyst: { description: "Ana, Analyst", prompt: "Research." } });
   });
 });
 
