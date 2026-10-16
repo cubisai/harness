@@ -1,6 +1,7 @@
 import { lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, posix, resolve, sep } from "node:path";
 import JSZip from "jszip";
+import { englishPass, type EnglishResult, type Translate } from "./english";
 
 /**
  * Install "expert packages" (the CodeBuddy/WorkBuddy plugin format) from a
@@ -41,6 +42,8 @@ export interface ImportResult {
   installed: string[];
   candidates: ImportCandidate[];
   skipped: { name: string; reason: string }[];
+  /** What the English pass had to drop per installed expert, when it dropped anything. */
+  notes?: string[];
 }
 
 interface Localized {
@@ -123,10 +126,13 @@ function sourceUrlOf(source: ImportSource): string {
 
 /**
  * Install expert packages. Returns the ids installed, the marketplace
- * candidates offered (when a pick is needed) and anything skipped with a
- * reason. Throws on an unusable source.
+ * candidates offered (when a pick is needed), anything skipped with a reason
+ * and, in `notes`, what the English pass had to drop. Throws on an unusable
+ * source: an English pass runs on every package before it is written, so text
+ * still carrying CJK after the optional `translate` is dropped, and a Chinese
+ * `expert.md` fails its package.
  */
-export async function importExperts(input: string, opts: { userDir: string; pick?: string[]; fetch?: typeof fetch; maxBytes?: number }): Promise<ImportResult> {
+export async function importExperts(input: string, opts: { userDir: string; pick?: string[]; fetch?: typeof fetch; maxBytes?: number; translate?: Translate }): Promise<ImportResult> {
   const source = parseSource(input);
   if (!source) throw new Error("Paste a GitHub link, or pick a folder or a .zip.");
 
@@ -140,6 +146,7 @@ export async function importExperts(input: string, opts: { userDir: string; pick
     if (!opts.pick) return { installed: [], candidates, skipped: [] };
     const installed: string[] = [];
     const skipped: { name: string; reason: string }[] = [];
+    const notes: string[] = [];
     for (const name of opts.pick) {
       // By its marketplace name, or by the expert id it installs as (an update re-picks by id).
       const candidate = candidates.find((c) => c.name === name || slugify(c.name) === name);
@@ -149,30 +156,49 @@ export async function importExperts(input: string, opts: { userDir: string; pick
       }
       try {
         const built = buildPackage({ tree, pkgRoot: candidate.root, plugin: readPlugin(tree, candidate.root), sourceUrl, license: detectLicense(tree, [candidate.root, ""]) });
-        writeAtomic(opts.userDir, built.id, built.files);
+        const pass = await englishPass(built.files, { translate: opts.translate });
+        writeAtomic(opts.userDir, built.id, pass.files);
         installed.push(built.id);
+        const note = passNote(built.id, pass);
+        if (note) notes.push(note);
       } catch (error) {
         skipped.push({ name, reason: errorText(error) });
       }
     }
-    return { installed, candidates, skipped };
+    return { installed, candidates, skipped, ...(notes.length ? { notes } : {}) };
   }
 
   // A plugin root installs one expert.
   if (tree.has(PLUGIN_MANIFEST)) {
     const built = buildPackage({ tree, pkgRoot: "", plugin: readPlugin(tree, ""), sourceUrl, license: detectLicense(tree, [""]) });
-    writeAtomic(opts.userDir, built.id, built.files);
-    return { installed: [built.id], candidates: [], skipped: [] };
+    const pass = await englishPass(built.files, { translate: opts.translate });
+    writeAtomic(opts.userDir, built.id, pass.files);
+    const note = passNote(built.id, pass);
+    return { installed: [built.id], candidates: [], skipped: [], ...(note ? { notes: [note] } : {}) };
   }
 
   // A bare root: each agents/*.md is a single expert.
   const installed: string[] = [];
   const skipped: { name: string; reason: string }[] = [];
+  const notes: string[] = [];
   for (const built of buildBareAgents(tree, sourceUrl)) {
-    writeAtomic(opts.userDir, built.id, built.files);
-    installed.push(built.id);
+    try {
+      const pass = await englishPass(built.files, { translate: opts.translate });
+      writeAtomic(opts.userDir, built.id, pass.files);
+      installed.push(built.id);
+      const note = passNote(built.id, pass);
+      if (note) notes.push(note);
+    } catch (error) {
+      skipped.push({ name: built.id, reason: errorText(error) });
+    }
   }
-  return { installed, candidates: [], skipped };
+  return { installed, candidates: [], skipped, ...(notes.length ? { notes } : {}) };
+}
+
+/** The per-expert note about what the English pass dropped, or null when it dropped nothing. */
+function passNote(id: string, pass: Pick<EnglishResult, "dropped" | "partialSkills">): string | null {
+  if (!pass.dropped.length && !pass.partialSkills.length) return null;
+  return `${id}: dropped ${pass.dropped.length} untranslatable file(s); partial skills: ${pass.partialSkills.join(", ") || "none"}`;
 }
 
 /** Delete one imported expert folder. A no-op when it is already gone. */
@@ -483,7 +509,6 @@ function buildPackage(input: { tree: Map<string, Uint8Array>; pkgRoot: string; p
   if (!ID_RE.test(id)) throw new Error("Package has no usable name.");
 
   const quickPrompts = dedupe([plugin.defaultInitPrompt, ...plugin.quickPrompts]).slice(0, 6);
-  const skills = skillRefs(tree, pkgPrefix, plugin).map((ref) => posix.basename(ref));
 
   const files = new Map<string, Uint8Array>();
   files.set(
@@ -501,7 +526,8 @@ function buildPackage(input: { tree: Map<string, Uint8Array>; pkgRoot: string; p
           description: plugin.displayDescription || plugin.description,
           tags: plugin.tags,
           quickPrompts,
-          skills,
+          // The package's own skills are private to the expert (copied below), not global skills.
+          skills: [],
           version: plugin.version,
           sourceUrl: input.sourceUrl,
           author: plugin.author,
@@ -657,10 +683,10 @@ function renderExpert(raw: ExpertMeta, body: string): string {
   return text.endsWith("\n") ? text : `${text}\n`;
 }
 
-/** A team member file: name, profession, description, then the body. */
+/** A team member file: name, profession, description, then the body. Description and profession stay raw for the English pass to translate. */
 function renderMember(agent: AgentFile): string {
   const name = displayName(agent.displayName, titleFromId(slugify(agent.name) || "member"));
-  const lines = [`name: ${oneLine(name)}`, `profession: ${oneLine(english(agent.profession))}`, `description: ${oneLine(english(agent.description))}`];
+  const lines = [`name: ${oneLine(name)}`, `profession: ${oneLine(agent.profession)}`, `description: ${oneLine(agent.description)}`];
   const text = `---\n${lines.join("\n")}\n---\n\n${agent.body}`;
   return text.endsWith("\n") ? text : `${text}\n`;
 }

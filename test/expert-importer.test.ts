@@ -1,15 +1,39 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import JSZip from "jszip";
 import { afterEach, describe, expect, it } from "vitest";
+import type { Translate } from "../src/main/experts/english";
 import { importExperts, parseSource, removeImportedExpert } from "../src/main/experts/importer";
 
 const dirs: string[] = [];
 
+/** Han, kana, hangul and CJK/full-width punctuation — nothing installed may carry these. */
+const CJK = /[\u3000-\u303f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/;
+/** One or more CJK characters, for a stand-in translator. */
+const CJK_RUN = /[\u3000-\u303f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]+/g;
+
+/** A stand-in translator: every CJK run becomes "Text". */
+const translateCjk: Translate = async (items) => items.map((item) => item.text.replace(CJK_RUN, "Text"));
+
 afterEach(() => {
   while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });
 });
+
+/** Every file under `dir`, recursively, as [relative path, text]. */
+function readAll(dir: string): [string, string][] {
+  const out: [string, string][] = [];
+  const stack = [""];
+  while (stack.length) {
+    const rel = stack.pop()!;
+    for (const entry of readdirSync(rel ? join(dir, rel) : dir, { withFileTypes: true })) {
+      const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) stack.push(childRel);
+      else out.push([childRel, readFileSync(join(dir, childRel), "utf-8")]);
+    }
+  }
+  return out;
+}
 
 function tempDir(): string {
   const d = mkdtempSync(join(tmpdir(), "cubiq-imp-"));
@@ -38,12 +62,12 @@ function agentPlugin(root: string): void {
       skills: ["./skills/review"],
       expertType: "agent",
       agentName: "Wen",
-      displayName: { en: "Wen Reviewer", zh: "文" },
-      profession: { en: "Code Reviewer", zh: "代码审查员" },
-      displayDescription: { en: "Reads every line.", zh: "逐行阅读。" },
+      displayName: { en: "Wen Reviewer", zh: "\u6587" },
+      profession: { en: "Code Reviewer", zh: "\u4ee3\u7801\u5ba1\u67e5\u5458" },
+      displayDescription: { en: "Reads every line.", zh: "\u9010\u884c\u9605\u8bfb\u3002" },
       avatar: "avatars/wen.png",
       categoryId: "02-Engineering",
-      defaultInitPrompt: { en: "Review my diff", zh: "审查我的改动" },
+      defaultInitPrompt: { en: "Review my diff", zh: "\u5ba1\u67e5\u6211\u7684\u6539\u52a8" },
       tags: [{ en: "review" }, { en: "quality" }],
       quickPrompts: [{ en: "Review my diff" }, { en: "Check the tests" }],
     }),
@@ -51,7 +75,7 @@ function agentPlugin(root: string): void {
   put(
     root,
     "agents/wen.md",
-    ["---", "name: Wen", "description: Lead reviewer", "displayName:", '  en: "Wen"', '  zh: "文"', "profession:", '  en: "Code Reviewer"', "maxTurns: 30", "---", "You are Wen, a reviewer."].join("\n"),
+    ["---", "name: Wen", "description: Lead reviewer", "displayName:", '  en: "Wen"', '  zh: "\u6587"', "profession:", '  en: "Code Reviewer"', "maxTurns: 30", "---", "You are Wen, a reviewer."].join("\n"),
   );
   put(root, "skills/review/SKILL.md", "---\nname: review\ndescription: Review a diff.\n---\nDo the review.");
   put(root, "skills/review/references/checklist.md", "- be kind");
@@ -120,7 +144,8 @@ describe("folder import", () => {
     expect(expert).toContain("description: Reads every line.");
     expect(expert).toContain('tags: ["review","quality"]');
     expect(expert).toContain('quickPrompts: ["Review my diff","Check the tests"]');
-    expect(expert).toContain('skills: ["review"]');
+    // The package's own skills are private to the expert, so its expert.md lists none.
+    expect(expert).toContain("skills: []");
     expect(expert).toContain("version: 1.2.0");
     expect(expert).toContain("author: Acme");
     expect(expert.endsWith("You are Wen, a reviewer.\n")).toBe(true);
@@ -165,10 +190,13 @@ describe("team import", () => {
     const expert = readFileSync(join(userDir, "growth-team", "expert.md"), "utf-8");
     expect(expert).toContain("kind: team");
     expect(expert).toContain("category: Data & AI");
+    expect(expert).toContain("skills: []");
     expect(expert.endsWith("Lead body.\n")).toBe(true);
     const member = readFileSync(join(userDir, "growth-team", "members", "member.md"), "utf-8");
     expect(member).toContain("name: Member One");
     expect(member).toContain("profession: Analyst");
+    // The English pass fills an empty description from the member's body.
+    expect(member).toContain("description: Member body.");
     expect(member.endsWith("Member body.\n")).toBe(true);
   });
 });
@@ -334,25 +362,48 @@ describe("English-only display fields", () => {
         agentName: "crew-lead",
         agents: ["./agents/crew-lead.md", "./agents/fact-checker.md"],
         teamInfo: { leadAgent: "crew-lead", memberAgents: ["fact-checker"] },
-        displayName: { zh: "研究小队" },
-        profession: { zh: "研究团队" },
-        tags: [{ zh: "深度调研" }, { en: "Research" }],
-        quickPrompts: [{ zh: "帮我调研" }, { en: "Research this market" }],
+        displayName: { zh: "\u7814\u7a76\u5c0f\u961f" },
+        profession: { zh: "\u7814\u7a76\u56e2\u961f" },
+        tags: [{ zh: "\u6df1\u5ea6\u8c03\u7814" }, { en: "Research" }],
+        quickPrompts: [{ zh: "\u5e2e\u6211\u8c03\u7814" }, { en: "Research this market" }],
       }),
     );
-    writeFileSync(join(root, "agents", "crew-lead.md"), "---\nname: crew-lead\ndisplayName:\n  zh: \"闻研判\"\n---\nLead body.\n");
-    writeFileSync(join(root, "agents", "fact-checker.md"), "---\nname: fact-checker\ndisplayName:\n  zh: \"卞辨真\"\nprofession:\n  zh: \"交叉核验员\"\n---\nMember body.\n");
-    const res = await importExperts(root, { userDir });
+    writeFileSync(join(root, "agents", "crew-lead.md"), "---\nname: crew-lead\ndisplayName:\n  zh: \"\u95fb\u7814\u5224\"\n---\nLead body.\n");
+    writeFileSync(join(root, "agents", "fact-checker.md"), "---\nname: fact-checker\ndisplayName:\n  zh: \"\u535e\u8fa8\u771f\"\nprofession:\n  zh: \"\u4ea4\u53c9\u6838\u9a8c\u5458\"\n---\nMember body.\n");
+    const res = await importExperts(root, { userDir, translate: translateCjk });
     expect(res.installed).toEqual(["research-crew"]);
     const expert = readFileSync(join(userDir, "research-crew", "expert.md"), "utf-8");
     const front = expert.split("---")[1] ?? "";
-    expect(front).not.toMatch(/[\u4e00-\u9fff]/);
+    expect(front).not.toMatch(CJK);
     expect(front).toContain("name: Research crew");
     expect(front).toContain('tags: ["Research"]');
     expect(front).toContain('quickPrompts: ["Research this market"]');
+    expect(front).toContain("skills: []");
     const member = readFileSync(join(userDir, "research-crew", "members", "fact-checker.md"), "utf-8");
-    expect(member.split("---")[1]).not.toMatch(/[\u4e00-\u9fff]/);
+    const memberFront = member.split("---")[1] ?? "";
+    expect(memberFront).not.toMatch(CJK);
     expect(member).toContain("name: Fact checker");
+    expect(memberFront).toContain("profession: Text");
+    expect(memberFront).toMatch(/description: .+/);
+    // Nothing the import wrote may carry any CJK text.
+    const offenders = readAll(userDir)
+      .filter(([, text]) => CJK.test(text))
+      .map(([rel]) => rel);
+    expect(offenders).toEqual([]);
+  });
+
+  it("notes what the English pass had to drop", async () => {
+    const src = tempDir();
+    const userDir = tempDir();
+    agentPlugin(src);
+    put(src, "skills/review/references/notes.md", "\u4e2d\u6587\u7b14\u8bb0");
+    // An identity translator leaves the CJK in place, so the gate drops the file.
+    const identity: Translate = async (items) => items.map((item) => item.text);
+    const result = await importExperts(src, { userDir, translate: identity });
+    expect(result.installed).toEqual(["code-reviewer"]);
+    expect(result.notes).toEqual(["code-reviewer: dropped 1 untranslatable file(s); partial skills: review"]);
+    expect(existsSync(join(userDir, "code-reviewer", "skills", "review", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(userDir, "code-reviewer", "skills", "review", "references", "notes.md"))).toBe(false);
   });
 });
 

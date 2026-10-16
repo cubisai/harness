@@ -209,6 +209,33 @@ export function claudeExecutableAsync(now: number = Date.now()): Promise<string 
   return resolving.then(() => executable?.value);
 }
 
+/**
+ * One tool-less Claude call on the user's login: `system` and `user` in, the
+ * final text out. No settings, CLAUDE.md, skills or session are loaded, so
+ * the cost is just the two messages. Used for one-time chores such as
+ * translating an imported expert; throws on an error result.
+ */
+export async function claudeOneShot(system: string, user: string, model = "haiku"): Promise<string> {
+  const q = query({
+    prompt: user,
+    options: {
+      model,
+      systemPrompt: system,
+      tools: [],
+      settingSources: [],
+      maxTurns: 1,
+      persistSession: false,
+      pathToClaudeCodeExecutable: await claudeExecutableAsync(),
+    },
+  });
+  for await (const message of q) {
+    if (message.type !== "result") continue;
+    if (message.subtype !== "success") throw new Error(`Claude call failed: ${message.subtype}`);
+    return message.result;
+  }
+  throw new Error("Claude returned no result.");
+}
+
 /** The newest install resolution cached by the last `claudeExecutableAsync` refresh. */
 function claudeInstall(): BinaryResolution | null {
   return executable?.found ?? null;

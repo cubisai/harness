@@ -22,7 +22,7 @@ import { selectorFor } from "./browser/picker";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
 import { warmBinaries } from "./agents/binaries";
-import { createClaudeDriver, resolvePackagedClaudeBinary } from "./agents/claude";
+import { claudeOneShot, createClaudeDriver, resolvePackagedClaudeBinary } from "./agents/claude";
 import { createCodexDriver } from "./agents/codex";
 import { acpCapabilities, CLAUDE_CAPABILITIES, CODEX_CAPABILITIES } from "./agents/capabilities";
 import { LimitsTracker } from "./agents/limits";
@@ -51,6 +51,7 @@ import { SessionStore } from "./harness/session";
 import { createGuide, userGuidePath } from "./guide";
 import { createExpertCatalog } from "./experts/catalog";
 import { importExperts, removeImportedExpert } from "./experts/importer";
+import { makeTranslate } from "./experts/translate";
 import { EXPERT_ID_RE } from "../shared/experts";
 import { buildContextPreview, mcpRow, skillsOf, toolTokens } from "./context-preview";
 import { createMemory, memoryOn, memoryPrompt } from "./memory";
@@ -1374,7 +1375,9 @@ async function main(): Promise<void> {
   ipcMain.handle("experts:import", (_e, source: unknown, pick: unknown) => {
     if (typeof source !== "string" || source.length > 2000) throw new Error("Paste a GitHub link, or pick a folder or a .zip.");
     const names = Array.isArray(pick) ? pick.filter((n): n is string => typeof n === "string" && n.length <= 200).slice(0, 100) : undefined;
-    return importExperts(source.trim(), { userDir: join(userData, "experts"), ...(names ? { pick: names } : {}) });
+    // Packages in another language are translated to English once, here, with a small Claude model (nothing non-English is installed).
+    const translate = makeTranslate((system, user) => claudeOneShot(system, user, "haiku"));
+    return importExperts(source.trim(), { userDir: join(userData, "experts"), translate, ...(names ? { pick: names } : {}) });
   });
   // The folder or .zip an expert is imported from, through the system picker; null when cancelled.
   ipcMain.handle("experts:pick-source", async (event, kind: unknown) => {
