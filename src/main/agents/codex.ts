@@ -882,7 +882,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   };
 
   const openThread = async (
-    input: Pick<TurnInput, "threadId" | "projectId" | "design" | "expert" | "cwd" | "model" | "contextWindow" | "permissionMode" | "sessionId" | "tools" | "mcpServers" | "onEvent" | "onSession" | "onSessionRebuilt" | "onSessionLost">,
+    input: Pick<TurnInput, "threadId" | "projectId" | "design" | "expert" | "team" | "cwd" | "model" | "contextWindow" | "permissionMode" | "sessionId" | "tools" | "mcpServers" | "onEvent" | "onSession" | "onSessionRebuilt" | "onSessionLost">,
   ): Promise<{ threadId: string; model: string | null; wire?: string; memory: string }> => {
     const policy = codexPolicy(input.permissionMode);
     const model = input.model === CODEX_DEFAULT_MODEL ? null : input.model;
@@ -890,8 +890,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     const conn = rpc!;
     const withTools = input.tools.length > 0 && Boolean(config.toolServer);
     const server = withTools ? await config.toolServer!() : null;
-    // A design thread's URL also names it (`&d=`), which adds the design tools; a chat thread's URL is unchanged.
-    const toolUrl = server ? withDesign(withProject(server.url, input.projectId), input.design ? input.threadId : undefined) : "";
+    // A design or team thread's URL also names it (`&d=`), which adds its design tools or team channel; a chat thread's URL is unchanged.
+    const toolUrl = server ? withDesign(withProject(server.url, input.projectId), input.design || input.team?.length ? input.threadId : undefined) : "";
     let threadConfig = codexToolConfig(server ? { ...server, url: toolUrl } : null, input.tools, input.permissionMode, input.mcpServers);
     // The caller freezes the block per session: a resume passes the session id
     // to get its original block back, a new thread passes null for a fresh one.

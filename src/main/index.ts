@@ -51,8 +51,9 @@ import { SessionStore } from "./harness/session";
 import { createGuide, userGuidePath } from "./guide";
 import { createExpertCatalog } from "./experts/catalog";
 import { importExperts, removeImportedExpert } from "./experts/importer";
+import { teamTools } from "./experts/team";
 import { makeTranslate } from "./experts/translate";
-import { EXPERT_ID_RE } from "../shared/experts";
+import { EXPERT_ID_RE, teamAgents } from "../shared/experts";
 import { buildContextPreview, mcpRow, skillsOf, toolTokens } from "./context-preview";
 import { createMemory, memoryOn, memoryPrompt } from "./memory";
 import { createMemoryApi } from "./memory/api";
@@ -496,13 +497,35 @@ async function main(): Promise<void> {
     return list;
   };
   const designThreadTools = new Map<string, HarnessTool[]>();
+  /** Where a team thread's members leave results and notes: the app's data folder, never the project. */
+  const teamRunDir = (threadId: string) => join(userData, "team-runs", threadId);
+  const teamToolLists = new Map<string, { expertId: string; tools: HarnessTool[] }>();
+  /** A thread's team channel (team_write/read/post/board) when its expert is a team; none for every other thread. */
+  const teamToolsOf = (threadId: string | undefined): HarnessTool[] => {
+    if (!threadId) return [];
+    let expertId: string | null;
+    try {
+      expertId = store.getThread(threadId).expertId ?? null;
+    } catch {
+      return [];
+    }
+    const members = expertId ? teamAgents(experts.get(expertId) ?? { kind: "agent" }).map((m) => m.id) : [];
+    if (!expertId || !members.length) return [];
+    const hit = teamToolLists.get(threadId);
+    if (hit?.expertId === expertId) return hit.tools;
+    const list = teamTools({ dir: teamRunDir(threadId), members, onNote: (note) => service.teamNote(threadId, note) });
+    teamToolLists.set(threadId, { expertId, tools: list });
+    return list;
+  };
   // Always offered: adding them when the tab opens would rewrite the prompt prefix and reload the session.
   // A design thread also gets the design tools (its kind never changes, so its list is stable too); a chat thread's is untouched.
+  // A team thread also gets its team channel.
   const harnessTools = (thread?: Thread): HarnessTool[] => {
-    if (thread?.kind !== "design") return allTools;
+    const team = teamToolsOf(thread?.id);
+    if (thread?.kind !== "design") return team.length ? [...allTools, ...team] : allTools;
     let list = designThreadTools.get(thread.id);
     if (!list) designThreadTools.set(thread.id, (list = [...allTools, ...designToolsOf(thread.id)]));
-    return list;
+    return team.length ? [...list, ...team] : list;
   };
   // Started on first use, for Codex and ACP agents, which take tools over MCP.
   let toolServer: Promise<ToolServer> | null = null;
@@ -519,8 +542,8 @@ async function main(): Promise<void> {
       () => threadTools,
       undefined,
       (req, res, scope, name) => mcpGateway.handle(req, res, scope, name),
-      // `?d=` (Codex) or `?t=` (ACP) naming a design thread adds its design tools.
-      (tid) => (isDesignThread(tid) ? designToolsOf(tid) : []),
+      // `?d=` (Codex) or `?t=` (ACP) naming a design thread adds its design tools; a team thread's adds its team channel.
+      (tid) => [...(isDesignThread(tid) ? designToolsOf(tid) : []), ...teamToolsOf(tid)],
     ));
   // Served only on a thread's own URL (`?t=`): ACP agents' question tool, answered in the app's card.
   const threadTools: HarnessTool[] = [askUserTool((threadId: string, questions: Question[], signal?: AbortSignal) => service.askFromTool(threadId, questions, signal))];
@@ -1397,7 +1420,12 @@ async function main(): Promise<void> {
   ipcMain.handle("threads:update", (_e, id: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "contextWindow" | "permissionMode" | "agent" | "pinned" | "archived">>) =>
     service.updateThread(id, pick(patch, ["title", "model", "effort", "contextWindow", "permissionMode", "agent", "pinned", "archived"])),
   );
-  ipcMain.handle("threads:delete", (_e, id: string) => service.deleteThread(id));
+  ipcMain.handle("threads:delete", async (_e, id: string) => {
+    await service.deleteThread(id);
+    // Its team workspace goes with it.
+    teamToolLists.delete(id);
+    rmSync(teamRunDir(id), { recursive: true, force: true });
+  });
   ipcMain.handle("threads:switch", (_e, id: string, agent: string, mode: SwitchMode, model?: string) => service.switchAgent(id, agent, mode, model));
   ipcMain.handle("threads:export", async (event, id: string) => {
     const owner = BrowserWindow.fromWebContents(event.sender);

@@ -78,6 +78,8 @@ interface AgentFile {
   description: string;
   displayName: string;
   profession: string;
+  /** The agent's `maxTurns`, as written ("" when absent). */
+  maxTurns: string;
   body: string;
 }
 
@@ -458,6 +460,7 @@ function parseAgent(text: string, fallbackName: string): AgentFile {
     description: scalars.get("description") ?? "",
     displayName,
     profession: read("profession"),
+    maxTurns: scalars.get("maxturns") ?? "",
     body,
   };
 }
@@ -687,6 +690,7 @@ function renderExpert(raw: ExpertMeta, body: string): string {
 function renderMember(agent: AgentFile): string {
   const name = displayName(agent.displayName, titleFromId(slugify(agent.name) || "member"));
   const lines = [`name: ${oneLine(name)}`, `profession: ${oneLine(agent.profession)}`, `description: ${oneLine(agent.description)}`];
+  if (/^\d{1,3}$/.test(agent.maxTurns)) lines.push(`maxTurns: ${agent.maxTurns}`);
   const text = `---\n${lines.join("\n")}\n---\n\n${agent.body}`;
   return text.endsWith("\n") ? text : `${text}\n`;
 }

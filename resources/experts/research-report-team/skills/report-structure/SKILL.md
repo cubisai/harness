@@ -43,5 +43,5 @@ Run the checks in order; anything that fails is fixed in place, and if you cut o
 - Do not answer questions the lead never asked; out-of-scope material goes to Limits' open questions.
 
 ## Output
-- Write the finished report (per the template) to a Markdown file in the team workspace or the project, at the path given in the brief from the lead.
-- Reply to the lead with at most 200 words plus that file path and any open questions.
+- Write the finished report (per the template) with the `team_write` tool (name `<your-id>-<step>`), or to the project path the brief names.
+- Reply to the lead with at most 200 words plus that file name and any open questions.

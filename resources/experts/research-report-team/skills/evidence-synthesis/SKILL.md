@@ -43,5 +43,5 @@ Use after the researcher's sourced evidence is in and before fact-checking runs,
 - Do not turn assumed items into sourced ones; hand them back labeled assumed.
 
 ## Output
-- Write the full result (grouped evidence, per-sub-question shapes and conflicts, answers with strength and counts, assumptions, what would change the conclusion) to a Markdown file in the team workspace or the project, at the path given in the brief from the lead.
-- Reply to the lead with at most 200 words plus that file path and any open questions.
+- Write the full result (grouped evidence, per-sub-question shapes and conflicts, answers with strength and counts, assumptions, what would change the conclusion) with the `team_write` tool (name `<your-id>-<step>`), or to the project path the brief names.
+- Reply to the lead with at most 200 words plus that file name and any open questions.

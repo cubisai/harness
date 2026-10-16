@@ -161,3 +161,11 @@ describe("cjkChars", () => {
     expect(cjkChars(files)).toBe(2);
   });
 });
+
+describe("englishPass maxTurns", () => {
+  it("keeps a member's maxTurns when it re-renders the frontmatter", async () => {
+    const files = new Map<string, Uint8Array>([["members/a.md", enc("---\nname: A\nprofession: P\ndescription: D\nmaxTurns: 100\n---\n\nDo A.")]]);
+    const out = new TextDecoder().decode((await englishPass(files, {})).files.get("members/a.md")!);
+    expect(out).toContain("maxTurns: 100");
+  });
+});

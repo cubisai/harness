@@ -155,7 +155,7 @@ function readCursors(dir: string): Record<string, number> {
 function peerNotes(notes: TeamNote[]): TeamNote[] {
   let start = 0;
   for (let i = notes.length - 1; i >= 0; i--) {
-    if (notes[i].from === "lead") {
+    if (notes[i]!.from === "lead") {
       start = i + 1;
       break;
     }

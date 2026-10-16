@@ -289,6 +289,11 @@ export class Service {
     return { expert: expertBlock(def, bound.lead), ...(team.length ? { team } : {}), ...(root ? { expertRoot: root } : {}) };
   }
 
+  /** A note on a team thread's channel (team_post), shown in the thread as it happens. */
+  teamNote(threadId: string, note: { from: string; to: string; text: string }): void {
+    this.emit(threadId, { kind: "notice", text: `Team note · ${note.from} → ${note.to}: ${note.text}` });
+  }
+
   /**
    * Teams run members as subagents only on agents that can (subagentTeams);
    * elsewhere the lead works through the roles itself. Said once per thread and agent.

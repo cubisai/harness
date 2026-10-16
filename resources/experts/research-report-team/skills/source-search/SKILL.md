@@ -43,5 +43,5 @@ Use before any drafting or analysis starts, once the lead hands over a brief wit
 - Do not range outside the lead's scope; a tempting tangent goes in the gaps list as out-of-scope.
 
 ## Output
-- Write the full result (sub-question plan, evidence list with quotes, known/assumed split, gaps) to a Markdown file in the team workspace or the project, at the path given in the brief from the lead.
-- Reply to the lead with at most 200 words plus that file path and any open questions.
+- Write the full result (sub-question plan, evidence list with quotes, known/assumed split, gaps) with the `team_write` tool (name `<your-id>-<step>`), or to the project path the brief names.
+- Reply to the lead with at most 200 words plus that file name and any open questions.

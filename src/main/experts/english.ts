@@ -202,6 +202,8 @@ function bindMember(text: string, id: string, packageSkills: Set<string>): strin
   const description = oneLine(value("description")) || firstParagraph(body) || profession;
   const lines = [`name: ${name}`, `profession: ${profession}`, `description: ${description}`];
   if (skills.length) lines.push(`skills: [${skills.join(", ")}]`);
+  const maxTurns = oneLine(value("maxTurns"));
+  if (/^\d{1,3}$/.test(maxTurns)) lines.push(`maxTurns: ${maxTurns}`);
   return `---\n${lines.join("\n")}\n---\n\n${body}\n`;
 }
 
