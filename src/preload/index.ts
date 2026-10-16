@@ -92,6 +92,7 @@ const api: UnskilledApi = {
   designKeepTweaks: (threadId, rel, values) => ipcRenderer.invoke("design:keep-tweaks", threadId, rel, values),
   designSaveRef: (threadId, bytes) => ipcRenderer.invoke("design:save-ref", threadId, bytes),
   designEditText: (threadId, rel, edit) => ipcRenderer.invoke("design:edit-text", threadId, rel, edit),
+  designEditStyle: (threadId, rel, edit) => ipcRenderer.invoke("design:edit-style", threadId, rel, edit),
   designComments: (threadId) => ipcRenderer.invoke("design:comments", threadId),
   designCommentAdd: (threadId, input) => ipcRenderer.invoke("design:comment-add", threadId, input),
   designCommentUpdate: (threadId, id, patch) => ipcRenderer.invoke("design:comment-update", threadId, id, patch),

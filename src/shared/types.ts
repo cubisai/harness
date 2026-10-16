@@ -1167,6 +1167,8 @@ export interface UnskilledApi {
   designSaveRef(threadId: string, bytes: Uint8Array): Promise<string>;
   /** Write an in-place text edit into a design page; refuses (throws) unless that `data-agent-id` is unique, text-only and unchanged. */
   designEditText(threadId: string, rel: string, edit: { id: string; before: string; after: string }): Promise<void>;
+  /** Write inspector style changes into the `style` of the page element with that data-agent-id (Working and Real app tiers). */
+  designEditStyle(threadId: string, rel: string, edit: { id: string; changes: { prop: string; value: string }[] }): Promise<void>;
   /** A design thread's comments (all pages), from its design folder. */
   designComments(threadId: string): Promise<DesignComment[]>;
   /** Add a comment on one element of a design page; the full list after. */

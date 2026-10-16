@@ -11,7 +11,7 @@ import { VIEWPORTS, ZOOMS, frameLayout, pageFromPath, readBridgeMessage, type Vi
 import { announceSelection, elementLabel, selectionKey, type SelectedElement } from "../../../shared/selection";
 import { compareCells, pageOptions, sameEntry, type CompareCell } from "./pages";
 import { changedTweaks, currentTweakValues, parseTweaks, tweakTarget, tweakValue, type Tweak, type TweakValues } from "../../../shared/tweaks";
-import { TweaksPanel } from "./TweaksPanel";
+import { TweaksBody, TweaksPanel } from "./TweaksPanel";
 import { DEFAULT_TIER, tierFeatures, tierOf } from "../../../shared/tiers";
 import { commentsMessage, type DesignComment } from "../../../shared/comments";
 import { CommentsPanel } from "./CommentsPanel";
@@ -560,7 +560,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           <button className={`icon-button${grid ? " active" : ""}`} title="8px grid" aria-pressed={grid} onClick={() => setGrid(!grid)}>
             <Grid3x3 size={16} strokeWidth={1.75} aria-hidden />
           </button>
-          {showTweaks && (
+          {showTweaks && !inspectorOpen && (
             <TweaksPanel
               tweaks={tweaks.list}
               values={tweakValues}
@@ -827,10 +827,37 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
                 });
               }}
               onClearPreview={() => post({ type: "clear-preview" })}
+              writes={features.textEdit && Boolean(selected[0]?.id)}
               onApply={(changes) => {
                 post({ type: "clear-preview" });
-                useStore.getState().setComposerDraft("Change the selected element: " + changes.map((c) => `${kebab(c.prop)} ${c.from} → ${c.to}`).join("; ") + ".");
+                const draft = () =>
+                  useStore.getState().setComposerDraft("Change the selected element: " + changes.map((c) => `${kebab(c.prop)} ${c.from} → ${c.to}`).join("; ") + ".");
+                const id = selected[0]?.id;
+                // Working and Real app write the styles straight into the page; Quick (or an element with no id) asks the agent.
+                if (!features.textEdit || !id) return draft();
+                void api()
+                  .designEditStyle(threadId, entry.rel, { id, changes: changes.map((c) => ({ prop: c.prop, value: c.to })) })
+                  .catch((err) => {
+                    setNotice({ text: `${ipcError(err)} The change is in the composer instead.`, error: true });
+                    draft();
+                  });
               }}
+              elements={null}
+              tweaks={
+                showTweaks ? (
+                  <div className="design-tweaks">
+                    <TweaksBody
+                      tweaks={tweaks.list}
+                      values={tweakValues}
+                      dirty={tweaksDirty}
+                      keeping={keeping}
+                      onChange={changeTweak}
+                      onReset={resetTweaks}
+                      onKeep={() => void keepTweaks()}
+                    />
+                  </div>
+                ) : null
+              }
             />
           )}
         </div>

@@ -848,6 +848,16 @@ async function main(): Promise<void> {
       throw new Error("Bad text edit.");
     service.editDesignText(threadId, rel, { id: edit.id, before: edit.before, after: edit.after });
   });
+  ipcMain.handle("design:edit-style", (_e, threadId: string, rel: string, edit: { id?: unknown; changes?: unknown }) => {
+    const changes = Array.isArray(edit?.changes) ? (edit.changes as unknown[]) : null;
+    if (typeof rel !== "string" || typeof edit?.id !== "string" || !changes || changes.length > 32) throw new Error("Bad style edit.");
+    const list = changes.map((c) => {
+      const o = (c ?? {}) as { prop?: unknown; value?: unknown };
+      if (typeof o.prop !== "string" || typeof o.value !== "string") throw new Error("Bad style edit.");
+      return { prop: o.prop, value: o.value };
+    });
+    service.editDesignStyle(threadId, rel, { id: edit.id, changes: list });
+  });
   ipcMain.handle("design:save-ref", (_e, threadId: string, bytes: Uint8Array) => {
     if (!(bytes instanceof Uint8Array)) throw new Error("Not an image (png, jpg, webp or gif).");
     return service.saveDesignRef(threadId, bytes);

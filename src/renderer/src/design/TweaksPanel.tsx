@@ -65,26 +65,51 @@ export function TweaksPanel({
       </button>
       {open && (
         <div className="design-tweaks" role="dialog" aria-label="Tweaks">
-          {tweaks.map((t) => (
-            <div key={t.id} className="design-tweak-row">
-              <span className="design-tweak-label" id={`tweak-${t.id}`}>
-                {t.label}
-              </span>
-              <TweakControl tweak={t} value={values[t.id] ?? ""} onChange={(raw) => onChange(t, raw)} />
-            </div>
-          ))}
-          <div className="design-tweaks-foot">
-            <span className="design-tweaks-hint">{dirty ? "Not kept yet" : "Live in the canvas"}</span>
-            <button className="button ghost" onClick={onReset} disabled={!dirty || keeping}>
-              Reset
-            </button>
-            <button className="button" onClick={onKeep} disabled={!dirty || keeping} title="Write these values into the page">
-              {keeping ? "Keeping…" : "Keep"}
-            </button>
-          </div>
+          <TweaksBody tweaks={tweaks} values={values} dirty={dirty} keeping={keeping} onChange={onChange} onReset={onReset} onKeep={onKeep} />
         </div>
       )}
     </div>
+  );
+}
+
+/** The tweak controls with Reset and Keep: the popover's body, and the inspector's Tweaks tab. */
+export function TweaksBody({
+  tweaks,
+  values,
+  dirty,
+  keeping,
+  onChange,
+  onReset,
+  onKeep,
+}: {
+  tweaks: Tweak[];
+  values: TweakValues;
+  dirty: boolean;
+  keeping: boolean;
+  onChange: (tweak: Tweak, raw: string) => void;
+  onReset: () => void;
+  onKeep: () => void;
+}) {
+  return (
+    <>
+      {tweaks.map((t) => (
+        <div key={t.id} className="design-tweak-row">
+          <span className="design-tweak-label" id={`tweak-${t.id}`}>
+            {t.label}
+          </span>
+          <TweakControl tweak={t} value={values[t.id] ?? ""} onChange={(raw) => onChange(t, raw)} />
+        </div>
+      ))}
+      <div className="design-tweaks-foot">
+        <span className="design-tweaks-hint">{dirty ? "Not kept yet" : "Live in the canvas"}</span>
+        <button className="button ghost" onClick={onReset} disabled={!dirty || keeping}>
+          Reset
+        </button>
+        <button className="button" onClick={onKeep} disabled={!dirty || keeping} title="Write these values into the page">
+          {keeping ? "Keeping…" : "Keep"}
+        </button>
+      </div>
+    </>
   );
 }
 

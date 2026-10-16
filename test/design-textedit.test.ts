@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_EDIT_CHARS, applyTextEdit, decodeEntities, escapeText } from "../src/main/design/textedit";
+import { MAX_EDIT_CHARS, applyStyleEdit, applyTextEdit, decodeEntities, escapeText } from "../src/main/design/textedit";
 
 describe("decodeEntities", () => {
   it("decodes the named entities", () => {
@@ -114,5 +114,44 @@ describe("applyTextEdit", () => {
     expect(() => applyTextEdit(html, "x", "the id", "new")).toThrow(
       "That text's id isn't unique in the page; ask the agent to change it.",
     );
+  });
+});
+
+describe("applyStyleEdit", () => {
+  it("adds a style attribute when the element has none", () => {
+    expect(applyStyleEdit(`<h1 data-agent-id="t" class="a">Hi</h1>`, "t", [{ prop: "fontSize", value: "20px" }])).toBe(
+      `<h1 data-agent-id="t" class="a" style="font-size: 20px">Hi</h1>`,
+    );
+  });
+
+  it("merges into an existing style, keeping other declarations and the quote style", () => {
+    const html = `<div style='color: red; padding-top: 4px' data-agent-id="box"><p>x</p></div>`;
+    expect(applyStyleEdit(html, "box", [{ prop: "paddingTop", value: "8px" }, { prop: "backgroundColor", value: "rgb(1, 2, 3)" }])).toBe(
+      `<div style='color: red; padding-top: 8px; background-color: rgb(1, 2, 3)' data-agent-id="box"><p>x</p></div>`,
+    );
+  });
+
+  it("removes a declaration on an empty value, and the attribute when nothing is left", () => {
+    expect(applyStyleEdit(`<p style="opacity: 0.5" data-agent-id="p">x</p>`, "p", [{ prop: "opacity", value: "" }])).toBe(`<p data-agent-id="p">x</p>`);
+  });
+
+  it("handles a self-closing tag", () => {
+    expect(applyStyleEdit(`<img src="a.png" data-agent-id="i" />`, "i", [{ prop: "width", value: "120px" }])).toBe(
+      `<img src="a.png" data-agent-id="i" style="width: 120px"/>`,
+    );
+  });
+
+  it("refuses keys outside the inspector's list and values that could escape the declaration", () => {
+    const html = `<p data-agent-id="p">x</p>`;
+    expect(() => applyStyleEdit(html, "p", [{ prop: "position", value: "fixed" }])).toThrow(/can't write position/);
+    for (const value of ["red; position: fixed", 'red" onclick="x', "url(http)", "expression(alert)", "a{b}"]) {
+      expect(() => applyStyleEdit(html, "p", [{ prop: "color", value }])).toThrow(/can't be written/);
+    }
+  });
+
+  it("refuses a missing, duplicated or invalid id", () => {
+    expect(() => applyStyleEdit(`<p>x</p>`, "p", [{ prop: "color", value: "red" }])).toThrow(/isn't unique/);
+    expect(() => applyStyleEdit(`<p data-agent-id="p">a</p><p data-agent-id="p">b</p>`, "p", [{ prop: "color", value: "red" }])).toThrow(/isn't unique/);
+    expect(() => applyStyleEdit(`<p data-agent-id="p">x</p>`, "bad id", [{ prop: "color", value: "red" }])).toThrow(/no stable id/);
   });
 });

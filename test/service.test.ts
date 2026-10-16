@@ -400,6 +400,14 @@ describe("Service.send", () => {
     // The page moved on (stale before): refused, file untouched.
     expect(() => service.editDesignText(design.id, "index.html", { id: "cta-buy", before: "Buy now", after: "x" })).toThrow(/changed since/);
     expect(() => service.editDesignText(design.id, "missing.html", { id: "cta-buy", before: "a", after: "b" })).toThrow("No such page.");
+
+    // Style edits: written with versions on Working, refused on Quick (that tier sends the change to the agent).
+    service.editDesignStyle(design.id, "index.html", { id: "cta-buy", changes: [{ prop: "fontSize", value: "20px" }] });
+    expect(readFileSync(join(root, "index.html"), "utf8")).toContain(`<button data-agent-id="cta-buy" style="font-size: 20px">`);
+    expect(store.listArtifactVersions(design.id).find((v) => v.path === path)!.versions).toHaveLength(3);
+    service.setPrototypeTier(design.id, "quick");
+    expect(() => service.editDesignStyle(design.id, "index.html", { id: "cta-buy", changes: [{ prop: "color", value: "red" }] })).toThrow(/Quick tier/);
+    expect(() => service.editDesignStyle(chat.id, "index.html", { id: "cta-buy", changes: [] })).toThrow(/design thread/);
   });
 
   it("saves a reference image into a design thread's refs folder and refuses a chat thread", () => {

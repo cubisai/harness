@@ -35,13 +35,13 @@ import { bindingKey } from "../shared/bindings";
 import { expertBlock, type ExpertDef } from "../shared/experts";
 import { CRITIQUE_ARTIFACT } from "../shared/artifact-kind";
 import type { TweakValues } from "../shared/tweaks";
-import { tierNote, tierOf, type PrototypeTier } from "../shared/tiers";
+import { tierFeatures, tierNote, tierOf, type PrototypeTier } from "../shared/tiers";
 import type { CommentTarget, DesignComment } from "../shared/comments";
 import { designDirName } from "./design/serve";
 import { listDesignPages, promoteVariant } from "./design/pages";
 import { saveRef } from "./design/refs";
 import { addComment, deleteComment, loadComments, saveComments, updateComment } from "./design/comments";
-import { applyTextEdit } from "./design/textedit";
+import { applyStyleEdit, applyTextEdit } from "./design/textedit";
 import { keepTweaks } from "./design/tweaks";
 import { listDesignSystems, materializeSystem, resolveDesignSystem } from "./design/systems";
 import { skillsOf } from "../shared/skill-list";
@@ -1360,6 +1360,28 @@ export class Service {
     const file = join(root, rel);
     const before = readFileSync(file, "utf8");
     const after = applyTextEdit(before, edit.id, edit.before, edit.after);
+    if (after === before) return;
+    this.recordDesignPage(threadId, root, dir, rel);
+    writeFileSync(file, after);
+    this.recordDesignPage(threadId, root, dir, rel);
+    if (this.artifacts) this.broadcast({ type: "artifact-ready", threadId, path: `${dir}/${rel}`, files: [`${dir}/${rel}`] });
+  }
+
+  /**
+   * Write the inspector's style changes into a design page: into the `style` attribute of the one element with that
+   * `data-agent-id` (see applyStyleEdit). Working and Real app tiers only; on Quick the change goes to the agent as a
+   * message instead. Saved as versions before and after, like a text edit.
+   */
+  editDesignStyle(threadId: string, rel: string, edit: { id: string; changes: { prop: string; value: string }[] }): void {
+    const thread = this.store.getThread(threadId);
+    const root = this.designRoot(threadId);
+    const dir = designOf(thread);
+    if (!root || !dir) throw new Error("Only a design thread has pages to edit.");
+    if (!tierFeatures(tierOf(thread)).textEdit) throw new Error("The Quick tier sends style changes to the agent.");
+    if (!listDesignPages(root).includes(rel)) throw new Error("No such page.");
+    const file = join(root, rel);
+    const before = readFileSync(file, "utf8");
+    const after = applyStyleEdit(before, edit.id, edit.changes);
     if (after === before) return;
     this.recordDesignPage(threadId, root, dir, rel);
     writeFileSync(file, after);
