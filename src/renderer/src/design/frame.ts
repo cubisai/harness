@@ -1,6 +1,7 @@
 // The design canvas's pure parts: frame sizes, zoom, and the bridge messages. No React, no DOM.
 
 import { MAX_SELECTED, readSelected, type SelectedElement } from "../../../shared/selection";
+import type { DesignDevice } from "../../../shared/types";
 
 export type Viewport = "fit" | "mobile" | "tablet" | "desktop" | "slide";
 export type Zoom = "fit" | 0.5 | 0.75 | 1 | 1.5;
@@ -9,6 +10,14 @@ export type Zoom = "fit" | 0.5 | 0.75 | 1 | 1.5;
 export type DeviceKind = "phone" | "tablet" | "browser";
 
 const DEVICE_OF: Partial<Record<Viewport, DeviceKind>> = { mobile: "phone", tablet: "tablet", desktop: "browser" };
+
+/**
+ * The viewport a page opens in before the user picks one: the phone, tablet or slide it declares
+ * (`<meta name="cubiq-device">`, or a one-screen phone page), else Fit. A desktop page stays Fit, as before.
+ */
+export function viewportForDevice(device: DesignDevice | undefined): Viewport {
+  return device === "mobile" || device === "tablet" || device === "slide" ? device : "fit";
+}
 
 /** The device a viewport is shown in, or null when it has none. */
 export function deviceFor(viewport: Viewport): DeviceKind | null {

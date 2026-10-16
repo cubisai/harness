@@ -3,6 +3,7 @@ import { Copy } from "lucide-react";
 import { elementLabel, type SelectedElement } from "../../../shared/selection";
 import { api } from "../api";
 import { Select } from "../components/Select";
+import { ColorSwatch } from "./ColorSwatch";
 import { highlight, langOf } from "./highlight";
 import { SystemPanel } from "./SystemPanel";
 
@@ -268,12 +269,12 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-/** One property row: its label, an optional colour swatch, a mono text input and a dot while it differs from the page. */
+/** One property row: its label, a colour picker for colours, a mono text input and a dot while it differs from the page. */
 function PropRow({ prop, value, changed, onInput }: { prop: string; value: string; changed: boolean; onInput: (prop: string, value: string) => void }) {
   return (
     <div className="design-inspector-row">
       <span className="design-inspector-row-label">{propLabel(prop)}</span>
-      {COLOUR_FIELDS.has(prop) && <span className="design-inspector-swatch" style={{ background: value }} aria-hidden />}
+      {COLOUR_FIELDS.has(prop) && <ColorSwatch value={value} label={propLabel(prop)} onInput={(v) => onInput(prop, v)} />}
       <input className="text-input" value={value} aria-label={propLabel(prop)} spellCheck={false} onChange={(e) => onInput(prop, e.target.value)} />
       {changed && <span className="design-inspector-dot" aria-hidden />}
     </div>

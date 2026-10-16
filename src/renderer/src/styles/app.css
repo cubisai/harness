@@ -233,7 +233,9 @@ button { cursor: default; }
 }
 
 .drag { -webkit-app-region: drag; }
-.no-drag, .drag button, .drag select, .drag input { -webkit-app-region: no-drag; }
+/* app-region is inherited, so a popup opened from a drag header (a Select list, a menu) would be window-drag area
+   too: macOS turns a left click there into a window move and only a right click reached the page. */
+.no-drag, .drag button, .drag select, .drag input, .drag [role="listbox"], .drag [role="menu"], .drag .select-popup, .drag .artifact-menu { -webkit-app-region: no-drag; }
 
 /* ---------- splitters ---------- */
 
@@ -244,6 +246,8 @@ button { cursor: default; }
 .splitter-sidebar { width: 11px; left: calc(var(--sidebar-w) - 5px); }
 .splitter-sidebar.splitter-vertical::after { left: 5px; }
 .splitter-inspector { right: calc(var(--inspector-w) - 14px); }
+/* A design thread's chat | canvas edge (the canvas draws the 1px line). */
+.splitter-design { left: calc(var(--sidebar-w) + var(--design-chat-w) - 13px); }
 .app:not(.with-inspector) .splitter-inspector { right: -13px; }
 .splitter::after { content: ""; position: absolute; background: transparent; transition: background 120ms var(--ease); }
 .splitter-vertical::after { top: 0; bottom: 0; left: 13px; width: 1px; }
@@ -523,9 +527,13 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 }
 .platform-win32 .app:not(.with-inspector) .design-canvas-head, .platform-linux .app:not(.with-inspector) .design-canvas-head { padding-right: calc(150px / var(--zoom, 1)); }
 .design-canvas-title { flex: 1 1 auto; font-size: 12.5px; font-weight: 500; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-/* The tools keep their size; the file name gives way first. */
-.design-tools { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+/* The file name gives way first; then the pickers (Viewport, Zoom, Version) shrink with an ellipsis, so the tools
+   never run past the canvas. Icon buttons keep their size, and a page picker keeps room for a few letters. */
+.design-tools { display: flex; align-items: center; gap: 2px; flex: 0 1 auto; min-width: 0; }
 .design-tools .select { height: 28px; font-size: 12.5px; flex-shrink: 0; }
+.design-tools .select-button { flex-shrink: 1; min-width: 52px; }
+.design-tools .icon-button, .design-tools .artifact-menu-wrap { flex-shrink: 0; }
+.design-canvas-title:has(.select-button) { min-width: 80px; }
 .design-version-bar {
   display: flex;
   align-items: center;
@@ -543,6 +551,7 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-export-menu { min-width: 240px; }
 .design-export-menu button { justify-content: space-between; }
 .design-export-sub { color: var(--text-tertiary); font-size: 11px; white-space: nowrap; }
+.design-menu-sep { height: 1px; margin: 4px 6px; background: var(--hairline); }
 /* Fit: the page fills the stage. A sized viewport sits centred with room around it and scrolls when larger. */
 .design-stage { flex: 1; min-height: 0; min-width: 0; display: flex; overflow: auto; padding: 24px; }
 .design-stage.fit { padding: 0; overflow: hidden; }
@@ -636,8 +645,8 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .device-address { flex: 0 1 360px; min-width: 0; margin: 0 auto; padding: 4px 12px; border-radius: var(--radius-s); background: var(--bg); font-size: 11.5px; color: var(--text-tertiary); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .device-spacer { flex-shrink: 0; width: 44px; }
 .design-stage.device-phone, .design-stage.device-tablet, .design-stage.device-browser { padding: 32px; }
-.design-inspector { width: 280px; flex-shrink: 0; min-height: 0; overflow-y: auto; border-left: 1px solid var(--hairline); background: var(--bg-elevated); }
-.design-inspector-tabs { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--hairline); background: var(--bg-elevated); }
+.design-inspector { width: 300px; flex-shrink: 0; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; border-left: 1px solid var(--hairline); background: var(--bg-elevated); }
+.design-inspector-tabs { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; padding: 8px; border-bottom: 1px solid var(--hairline); background: var(--bg-elevated); }
 .design-inspector-empty { margin: 0; padding: 12px; font-size: 12.5px; color: var(--text-secondary); }
 .design-inspector-head { display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 10px 12px 4px; }
 .design-inspector-tag { flex-shrink: 0; font: 600 12.5px var(--mono); color: var(--text); }
@@ -648,6 +657,12 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-inspector-row-label { flex-shrink: 0; width: 92px; font-size: 11.5px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .design-inspector-row .text-input { height: 28px; padding: 0 8px; font-size: 12.5px; font-family: var(--mono); }
 .design-inspector-swatch { flex-shrink: 0; width: 14px; height: 14px; border-radius: var(--radius-s); border: 1px solid var(--hairline-strong); }
+/* The swatch that opens the system colour picker (the text input beside it stays for typing). */
+.design-color-swatch { flex-shrink: 0; width: 18px; height: 18px; padding: 0; border: 1px solid var(--hairline-strong); border-radius: var(--radius-s); background: none; cursor: pointer; }
+.design-color-swatch::-webkit-color-swatch-wrapper { padding: 0; }
+.design-color-swatch::-webkit-color-swatch { border: none; border-radius: calc(var(--radius-s) - 1px); }
+.design-color-swatch:hover { border-color: var(--text-tertiary); }
+.design-color-swatch:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .design-inspector-dot { flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
 .design-inspector-pad { display: flex; gap: 4px; flex: 1; min-width: 0; }
 .design-inspector-pad label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 10.5px; color: var(--text-tertiary); }
@@ -667,9 +682,11 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-inspector-foot { position: sticky; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--hairline); background: var(--bg-elevated); }
 .design-inspector-foot .grow { flex: 1; }
 .design-inspector-hint { min-width: 0; font-size: 11.5px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* Five tabs share the panel's width evenly. */
+/* Five tabs share the panel's width. */
 .design-inspector-tabs .segmented { flex: 1; min-width: 0; }
-.design-inspector-tabs .segmented button { flex: 1; min-width: 0; padding: 0 4px; font-size: 11.5px; }
+/* Each tab is as wide as its label (equal shares were narrower than "Properties"; the five need ~255px, hence the
+   300px panel); a narrower panel ellipsizes rather than overlapping. */
+.design-inspector-tabs .segmented button { flex: 1 1 auto; min-width: 0; padding: 0 4px; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Width and height: a Hug | Fill | Fixed switch above the value. */
 .design-inspector-size { padding-top: 4px; }
 .design-inspector-sizing { margin-left: 100px; }
@@ -693,8 +710,8 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .sys-color-cells { display: flex; gap: 6px; min-width: 0; }
 .sys-color-cells > div { flex: 1 1 0; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; }
 /* The value keeps the cell's width; an ink token's contrast badge drops onto its own line under it. */
-.design-inspector .sys-color-cells .sys-input { flex: 1 1 calc(100% - 22px); }
-.sys-color-cells .sys-badge { margin-left: 18px; }
+.design-inspector .sys-color-cells .sys-input { flex: 1 1 calc(100% - 26px); }
+.sys-color-cells .sys-badge { margin-left: 22px; }
 .sys-name { flex: 1 1 auto; min-width: 0; font-size: 11.5px; font-family: var(--mono); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .design-inspector .sys-input { height: 26px; padding: 0 6px; font: 11.5px var(--mono); min-width: 0; flex: 1; }
 .design-inspector .sys-input.inherited { color: var(--text-tertiary); }

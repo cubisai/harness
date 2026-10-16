@@ -70,16 +70,23 @@ export function keepTweaks(html: string, values: TweakValues): string {
   const innerEnd = manifest.end - SCRIPT_CLOSE.length;
   let out = html.slice(0, innerStart) + JSON.stringify({ tweaks: updated }).replace(/</g, "\\u003c") + html.slice(innerEnd);
 
-  // (b) Pin every choice/toggle onto the first <html> tag as a data- attribute.
+  // Only the tweaks the user chose are pinned: an untouched one keeps whatever the page itself sets, so Keep
+  // never repaints it with a manifest default that differs from the page's own CSS.
+  const chosen = (t: Tweak): boolean => tweakValue(t, values[t.id]) !== null;
+
+  // (b) Pin each chosen choice/toggle onto the first <html> tag as a data- attribute.
   for (const t of updated) {
-    if (t.type === "choice" || t.type === "toggle") out = setHtmlAttr(out, t.id, defaultValue(t));
+    if ((t.type === "choice" || t.type === "toggle") && chosen(t)) out = setHtmlAttr(out, t.id, defaultValue(t));
   }
 
-  // (c) Write color/range variables into a single <style id="cubiq-tweak-vars"> block.
+  // (c) Write color/range variables into a single <style id="cubiq-tweak-vars"> block: the chosen ones, plus
+  // any an earlier Keep already wrote there.
   const varTweaks = updated.filter((t): t is Extract<Tweak, { type: "color" } | { type: "range" }> => t.type === "color" || t.type === "range");
-  const css = "html:root{" + varTweaks.map((t) => `${t.var}:${tweakTarget(t, defaultValue(t)).value}`).join(";") + "}";
+  const kept = VARS_STYLE_RE.exec(out)?.[0] ?? "";
+  const pinned = varTweaks.filter((t) => chosen(t) || new RegExp(`[{;]\\s*${escapeRe(t.var)}\\s*:`).test(kept));
+  const css = "html:root{" + pinned.map((t) => `${t.var}:${tweakTarget(t, defaultValue(t)).value}`).join(";") + "}";
   const block = `<style id="cubiq-tweak-vars">${css}</style>`;
-  if (varTweaks.length === 0) {
+  if (pinned.length === 0) {
     out = out.replace(VARS_STYLE_RE, "");
   } else {
     const existing = VARS_STYLE_RE.exec(out);

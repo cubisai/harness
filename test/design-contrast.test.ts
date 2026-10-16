@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contrastLabel, contrastRatio, groundFor, isColorToken, parseColor } from "../src/renderer/src/design/contrast";
+import { contrastLabel, contrastRatio, groundFor, isColorToken, parseColor, alphaOf, pickedColor, toHexColor } from "../src/renderer/src/design/contrast";
 
 describe("parseColor", () => {
   it("parses hex in short and long form, ignoring alpha", () => {
@@ -57,5 +57,28 @@ describe("isColorToken", () => {
     expect(isColorToken("--accent", "#f00")).toBe(true);
     expect(isColorToken("--color-bg", "var(--x)")).toBe(true);
     expect(isColorToken("--space-4", "16px")).toBe(false);
+  });
+});
+
+describe("colour picker values", () => {
+  it("turns any colour parseColor reads into #rrggbb, else null", () => {
+    expect(toHexColor("rgb(244, 241, 255)")).toBe("#f4f1ff");
+    expect(toHexColor("#0E7")).toBe("#00ee77");
+    expect(toHexColor("rgba(0, 0, 0, 0)")).toBe("#000000");
+    expect(toHexColor("var(--x)")).toBeNull();
+  });
+
+  it("reads alpha from hex and rgb forms", () => {
+    expect(alphaOf("#ff000080")).toBeCloseTo(128 / 255);
+    expect(alphaOf("rgba(0, 0, 0, 0.5)")).toBe(0.5);
+    expect(alphaOf("rgb(0 0 0 / 25%)")).toBe(0.25);
+    expect(alphaOf("rgb(1, 2, 3)")).toBe(1);
+  });
+
+  it("keeps a see-through value's alpha when the picker sets a new colour", () => {
+    expect(pickedColor("#112233", "rgb(244, 241, 255)")).toBe("#112233");
+    expect(pickedColor("#112233", "rgba(0, 0, 0, 0.5)")).toBe("#11223380");
+    // An unset (transparent) background takes the pick as it is.
+    expect(pickedColor("#112233", "rgba(0, 0, 0, 0)")).toBe("#112233");
   });
 });

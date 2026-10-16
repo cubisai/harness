@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import { Columns2, Download, Eraser, FolderOpen, Grid3x3, Hammer, LayoutGrid, MessageSquarePlus, MousePointer2, Pencil, Play, SlidersHorizontal, Smartphone, Type, Undo2, Workflow } from "lucide-react";
+import { Columns2, Download, Eraser, FolderOpen, Grid3x3, Hammer, LayoutGrid, MessageSquarePlus, MousePointer2, PanelRight, Pencil, Play, Smartphone, Type, Undo2, Workflow } from "lucide-react";
 import type { DesignEntry, DesignExportFormat } from "../../../shared/types";
 import { api } from "../api";
 import { fileManagerName } from "../components/OpenIn";
 import { Select } from "../components/Select";
-import { IconClose, IconRefresh, IconTarget } from "../icons";
+import { IconClose, IconMore, IconRefresh, IconTarget } from "../icons";
 import "../styles/artifact.css";
 import { useStore } from "../store";
-import { VIEWPORTS, ZOOMS, deviceFor, frameLayout, pageFromPath, readBridgeMessage, type OutlineNode, type Viewport, type Zoom } from "./frame";
+import { VIEWPORTS, ZOOMS, deviceFor, frameLayout, pageFromPath, readBridgeMessage, viewportForDevice, type OutlineNode, type Viewport, type Zoom } from "./frame";
 import { DrawOverlay, type Stroke } from "./DrawOverlay";
 import { announceSelection, elementLabel, selectionKey, type SelectedElement } from "../../../shared/selection";
 import { compareCells, pageOptions, sameEntry, type CompareCell } from "./pages";
@@ -32,6 +32,9 @@ const kebab = (prop: string): string => prop.replace(/[A-Z]/g, (c) => `-${c.toLo
  * as its folder changes, with viewport, zoom, an 8px grid, saved versions and pick-to-comment. Loaded only when a
  * design thread opens, so the Chat bundle stays as it was.
  */
+/** Below this header width (px) the grid, reload and folder tools fold into the Export menu. */
+const COMPACT_HEAD = 640;
+
 /** Extra room the device chrome needs around a frame (both sides together, in stage px, beyond the usual padding). */
 const DEVICE_CHROME = { none: { width: 0, height: 0 }, phone: { width: 40, height: 40 }, tablet: { width: 56, height: 56 }, browser: { width: 18, height: 54 } } as const;
 
@@ -40,7 +43,9 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   const files = useStore((s) => s.artifactFiles[threadId]);
   const [entry, setEntry] = useState<DesignEntry | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [viewport, setViewport] = useState<Viewport>("fit");
+  // The viewport the user picked (null = none yet: the page's declared device decides, see viewportForDevice).
+  const [viewportPick, setViewport] = useState<Viewport | null>(null);
+  const viewport = viewportPick ?? viewportForDevice(entry?.pages.find((p) => p.rel === entry.rel)?.device);
   const [zoom, setZoom] = useState<Zoom>("fit");
   const [grid, setGrid] = useState(false);
   const [picking, setPicking] = useState(false);
@@ -130,6 +135,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     setTool(null);
     setStrokes([]);
     setDevice(false);
+    setViewport(null);
     setExported(null);
     setPage(null);
     setCompare(false);
@@ -187,6 +193,21 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     stageObserver.current = new ResizeObserver(measure);
     stageObserver.current.observe(el);
   }, []);
+
+  // The header's width: below COMPACT_HEAD the grid, reload and folder tools fold into the Export menu ("More"), so
+  // the tools never run past the canvas into the panel beside it.
+  const [headWidth, setHeadWidth] = useState(0);
+  const headObserver = useRef<ResizeObserver | null>(null);
+  const headRef = useCallback((el: HTMLElement | null) => {
+    headObserver.current?.disconnect();
+    headObserver.current = null;
+    if (!el) return;
+    const measure = () => setHeadWidth(el.clientWidth);
+    measure();
+    headObserver.current = new ResizeObserver(measure);
+    headObserver.current.observe(el);
+  }, []);
+  const compactHead = headWidth > 0 && headWidth < COMPACT_HEAD;
 
   const post = useCallback((msg: Record<string, unknown>) => {
     frameRef.current?.contentWindow?.postMessage({ source: "cubiq-canvas", ...msg }, "*");
@@ -384,17 +405,22 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   const src = entry ? (version ? `${entry.url}?v=${version}` : entry.url) : null;
   // The latest file remounts on every change; a saved version stays put.
   const frameKey = version ? `v${version}` : `live-${reload}-${manual}`;
-  // A device frame hides the page's scrollbars (a reload asks again on ready).
+  // A device frame, and the phone and tablet viewports, hide the page's scrollbars (a reload asks again on ready).
+  // Phones and tablets draw overlay scrollbars; classic ones take room, so a page exactly the viewport's size could
+  // keep both bars up, each one making the other overflow. The page still scrolls.
   const deviceRef = useRef(false);
   const deviceOn = device && deviceFor(viewport) !== null;
+  const hideBars = deviceOn || viewport === "mobile" || viewport === "tablet";
   useEffect(() => {
-    deviceRef.current = deviceOn;
-    post({ type: "device-chrome", on: deviceOn });
-  }, [deviceOn, post]);
+    deviceRef.current = hideBars;
+    post({ type: "device-chrome", on: hideBars });
+  }, [hideBars, post]);
 
   // The device chrome (bezel, browser bar) takes room the frame can't use when it fits to the stage.
   const chrome = device ? DEVICE_CHROME[deviceFor(viewport) ?? "none"] : DEVICE_CHROME.none;
-  const layout = frameLayout(viewport, zoom, { width: stage.width - chrome.width, height: stage.height - chrome.height }, device && deviceFor(viewport) !== null);
+  // A page that declares its device (one phone screen, a slide) fits whole until the user picks a viewport.
+  const whole = (device && deviceFor(viewport) !== null) || (viewportPick === null && viewport !== "fit");
+  const layout = frameLayout(viewport, zoom, { width: stage.width - chrome.width, height: stage.height - chrome.height }, whole);
   const fit = viewport === "fit";
   // The device chrome to draw: only when toggled on and the viewport has a device (not Fit or Slide).
   const kind = device ? deviceFor(viewport) : null;
@@ -620,7 +646,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
 
   return (
     <section className="design-canvas" aria-label="Design canvas">
-      <header className="design-canvas-head drag">
+      <header className="design-canvas-head drag" ref={headRef}>
         {board && entry && version === 0 ? (
           <span className="design-canvas-title">Board · {entry.pages.length} pages</span>
         ) : entry && options.length > 1 && !comparing ? (
@@ -708,9 +734,11 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
               className="ghost-select"
             />
           )}
-          <button className={`icon-button${grid ? " active" : ""}`} title="8px grid" aria-pressed={grid} onClick={() => setGrid(!grid)}>
-            <Grid3x3 size={16} strokeWidth={1.75} aria-hidden />
-          </button>
+          {!compactHead && (
+            <button className={`icon-button${grid ? " active" : ""}`} title="8px grid" aria-pressed={grid} onClick={() => setGrid(!grid)}>
+              <Grid3x3 size={16} strokeWidth={1.75} aria-hidden />
+            </button>
+          )}
           {showTweaks && !inspectorOpen && (
             <TweaksPanel
               tweaks={tweaks.list}
@@ -765,7 +793,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
                 setInspectorOpen(!inspectorOpen);
               }}
             >
-              <SlidersHorizontal size={16} strokeWidth={1.75} aria-hidden />
+              <PanelRight size={16} strokeWidth={1.75} aria-hidden />
             </button>
           )}
           <button
@@ -779,9 +807,11 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
             <IconTarget />
             {selected.length > 0 && <span className="design-select-count">{selected.length}</span>}
           </button>
-          <button className="icon-button" title="Reload" onClick={() => setManual((n) => n + 1)} disabled={!entry}>
-            <IconRefresh />
-          </button>
+          {!compactHead && (
+            <button className="icon-button" title="Reload" onClick={() => setManual((n) => n + 1)} disabled={!entry}>
+              <IconRefresh />
+            </button>
+          )}
           {tier === "real-app" && entry && (
             <button
               className="icon-button"
@@ -793,23 +823,55 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
               <Hammer size={16} strokeWidth={1.75} aria-hidden />
             </button>
           )}
-          <button className="icon-button" title="Open the design folder" onClick={() => void api().designReveal(threadId)}>
-            <FolderOpen size={16} strokeWidth={1.75} aria-hidden />
-          </button>
+          {!compactHead && (
+            <button className="icon-button" title="Open the design folder" onClick={() => void api().designReveal(threadId)}>
+              <FolderOpen size={16} strokeWidth={1.75} aria-hidden />
+            </button>
+          )}
           <div className="artifact-menu-wrap" ref={exportRef}>
             <button
               className={`icon-button${exportOpen ? " active" : ""}`}
-              title={exporting ? `Exporting ${exporting.toUpperCase()}…` : version ? `Export v${version}` : "Export"}
-              aria-label="Export"
+              title={exporting ? `Exporting ${exporting.toUpperCase()}…` : compactHead ? "More: grid, reload, folder, export" : version ? `Export v${version}` : "Export"}
+              aria-label={compactHead ? "More" : "Export"}
               aria-haspopup="menu"
               aria-expanded={exportOpen}
               onClick={() => setExportOpen(!exportOpen)}
-              disabled={!entry || exporting !== null}
+              disabled={compactHead ? exporting !== null : !entry || exporting !== null}
             >
-              <Download size={16} strokeWidth={1.75} aria-hidden />
+              {compactHead ? <IconMore /> : <Download size={16} strokeWidth={1.75} aria-hidden />}
             </button>
             {exportOpen && (
               <div className="artifact-menu design-export-menu" role="menu">
+                {compactHead && (
+                  <>
+                    <button role="menuitemcheckbox" aria-checked={grid} onClick={() => setGrid(!grid)}>
+                      <span className="artifact-menu-label">8px grid</span>
+                      <span className="design-export-sub">{grid ? "On" : "Off"}</span>
+                    </button>
+                    <button
+                      role="menuitem"
+                      disabled={!entry}
+                      onClick={() => {
+                        setExportOpen(false);
+                        setManual((n) => n + 1);
+                      }}
+                    >
+                      <span className="artifact-menu-label">Reload</span>
+                    </button>
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setExportOpen(false);
+                        void api().designReveal(threadId);
+                      }}
+                    >
+                      <span className="artifact-menu-label">Open the design folder</span>
+                    </button>
+                    {entry && <div className="design-menu-sep" role="separator" />}
+                  </>
+                )}
+                {entry && (
+                  <>
                 <button role="menuitem" onClick={() => void runExport("html")}>
                   <span className="artifact-menu-label">HTML</span>
                   <span className="design-export-sub">One file, works offline</span>
@@ -822,6 +884,8 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
                   <span className="artifact-menu-label">PDF</span>
                   <span className="design-export-sub">Slides print one per page</span>
                 </button>
+                  </>
+                )}
               </div>
             )}
           </div>

@@ -66,3 +66,38 @@ export function groundFor(name: string): string | null {
 export function isColorToken(name: string, value: string): boolean {
   return name.startsWith("--color-") || parseColor(value) !== null;
 }
+
+const hex2 = (n: number): string => n.toString(16).padStart(2, "0");
+
+/** A colour as the `#rrggbb` a native colour input takes, or null when `parseColor` can't read it. */
+export function toHexColor(value: string): string | null {
+  const c = parseColor(value);
+  return c ? `#${hex2(c.r)}${hex2(c.g)}${hex2(c.b)}` : null;
+}
+
+/** A colour's alpha (0–1): from a 4- or 8-digit hex, or the rgb/rgba functions' fourth or slashed value, else 1. */
+export function alphaOf(value: string): number {
+  const s = value.trim();
+  const hex = HEX_RE.exec(s)?.[1];
+  if (hex?.length === 4) return parseInt(hex[3]! + hex[3]!, 16) / 255;
+  if (hex?.length === 8) return parseInt(hex.slice(6, 8), 16) / 255;
+  const rgb = RGB_RE.exec(s)?.[1];
+  if (!rgb) return 1;
+  const slash = rgb.split("/")[1];
+  const raw = slash ?? rgb.split(",")[3];
+  if (raw === undefined) return 1;
+  const a = raw.trim().endsWith("%") ? parseFloat(raw) / 100 : parseFloat(raw);
+  return Number.isFinite(a) ? Math.min(1, Math.max(0, a)) : 1;
+}
+
+/**
+ * The value to write when the colour picker (which has no alpha) picks `hex` over `previous`: the hex itself,
+ * or `#rrggbbaa` keeping a see-through previous value's alpha. A fully transparent previous value (an unset
+ * background reads as transparent black) gives the opaque pick, or it would stay invisible.
+ */
+export function pickedColor(hex: string, previous: string): string {
+  const a = alphaOf(previous);
+  const opaque = toHexColor(hex);
+  if (!opaque || a >= 1 || a <= 0) return hex;
+  return `${opaque}${hex2(Math.round(a * 255))}`;
+}

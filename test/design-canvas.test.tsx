@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { selectorFor, startPicker } from "../src/main/browser/picker";
 import { bridgeScript } from "../src/main/design/bridge";
-import { frameLayout, pageFromPath, readBridgeMessage } from "../src/renderer/src/design/frame";
+import { frameLayout, pageFromPath, readBridgeMessage, viewportForDevice } from "../src/renderer/src/design/frame";
 import { DEFAULT_LAYOUT, DESIGN_FLOOR, clampLayout } from "../src/renderer/src/layout";
 import { useStore } from "../src/renderer/src/store";
 import type { Thread } from "../src/shared/types";
@@ -16,6 +16,17 @@ describe("design frame", () => {
     // A slide fits both ways.
     expect(frameLayout("slide", "fit", { width: 2000, height: 600 }).scale).toBeCloseTo((600 - 48) / 1080);
     expect(frameLayout("tablet", 0.5, { width: 100, height: 100 })).toEqual({ width: 768, height: 1024, scale: 0.5 });
+  });
+
+  it("opens a page in the device it declares and fits the whole phone", () => {
+    expect(viewportForDevice("mobile")).toBe("mobile");
+    expect(viewportForDevice("tablet")).toBe("tablet");
+    expect(viewportForDevice("slide")).toBe("slide");
+    // A desktop page, or one that declares nothing, keeps Fit as before.
+    expect(viewportForDevice("desktop")).toBe("fit");
+    expect(viewportForDevice(undefined)).toBe("fit");
+    // A 390 × 844 phone in a short stage scales down to show all of it.
+    expect(frameLayout("mobile", "fit", { width: 1000, height: 600 }, true).scale).toBeCloseTo((600 - 48) / 844);
   });
 
   it("accepts only well-formed bridge messages", () => {

@@ -200,6 +200,17 @@ describe("keepTweaks", () => {
     expect(twice.split('id="cubiq-tweak-vars"')).toHaveLength(2);
   });
 
+  it("pins only the tweaks that were chosen, and keeps vars an earlier Keep wrote", () => {
+    const themeOnly = keepTweaks(PAGE, { theme: "dusk" });
+    expect(themeOnly).toContain('<html lang="en" data-theme="dusk">');
+    expect(themeOnly).not.toContain("data-badges");
+    expect(themeOnly).not.toContain("cubiq-tweak-vars");
+
+    const accent = keepTweaks(PAGE, { accent: "#112233" });
+    const later = keepTweaks(accent, { theme: "dusk" });
+    expect(later).toContain("html:root{--color-accent:#112233}");
+  });
+
   it("is idempotent", () => {
     const values = { theme: "dusk", badges: "off", accent: "#112233" };
     const once = keepTweaks(PAGE, values);

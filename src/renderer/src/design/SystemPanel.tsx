@@ -3,6 +3,7 @@ import type { DesignSystemDoc, DesignToken } from "../../../shared/types";
 import { api } from "../api";
 import { Markdown } from "../markdown";
 import { useStore } from "../store";
+import { ColorSwatch } from "./ColorSwatch";
 import { contrastLabel, contrastRatio, groundFor, isColorToken, parseColor } from "./contrast";
 
 /** The panel's token sections, in display order. */
@@ -138,10 +139,11 @@ export function SystemPanel({ threadId, reloadKey }: { threadId: string; reloadK
     });
   const jumpTo = (key: JumpKey): void => sectionRefs.current[key]?.scrollIntoView({ block: "start" });
 
-  // Commit one token value; on success the fresh doc replaces it, on failure the draft reverts and the error shows.
-  const commitToken = (token: DesignToken, scheme: Scheme): void => {
+  // Commit one token value (the draft, or a value the colour picker hands over); on success the fresh doc replaces
+  // it, on failure the draft reverts and the error shows.
+  const commitToken = (token: DesignToken, scheme: Scheme, picked?: string): void => {
     const key = keyOf(token.name, scheme);
-    const value = drafts[key];
+    const value = picked ?? drafts[key];
     if (value === undefined) return;
     const base = scheme === "dark" ? token.dark ?? token.light : token.light;
     if (value.trim() === base.trim()) {
@@ -202,7 +204,13 @@ export function SystemPanel({ threadId, reloadKey }: { threadId: string; reloadK
     const label = token.name.replace(/^--color-/, "");
     return (
       <div key={scheme}>
-        <span className="design-inspector-swatch" style={{ background: shown }} aria-hidden />
+        <ColorSwatch
+          value={shown}
+          label={`${label} ${scheme}`}
+          disabled={!editable}
+          onInput={(v) => setDraft(key, v)}
+          onCommit={(v) => commitToken(token, scheme, v)}
+        />
         <input
           className={fieldClass + (inherited ? " inherited" : "")}
           value={shown}
