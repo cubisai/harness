@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createGuide, designNote, projectGuidePath, UI_BLOCKS_NOTE, userGuidePath } from "../src/main/guide";
 import { estimateTokens } from "../src/main/handoff";
+import { UI_NAMES } from "../src/renderer/src/genui/types";
 import { tempDir } from "./helpers";
 
 function write(path: string, text: string): void {
@@ -84,6 +85,8 @@ describe("createGuide", () => {
     // One line, so the opt-in stays cheap.
     expect(UI_BLOCKS_NOTE).not.toContain("\n");
     expect(estimateTokens(UI_BLOCKS_NOTE)).toBeLessThanOrEqual(130);
+    // Every widget's line form is named, so an agent can find it.
+    for (const name of UI_NAMES) expect(UI_BLOCKS_NOTE).toContain("`" + name + "`");
   });
 
   it("keeps the bundled guide within its 600-token budget", () => {

@@ -43,11 +43,12 @@ export function designNote(dir: string): string {
 
 /**
  * The inline UI block catalog (renderer: src/renderer/src/genui), sent only when
- * Settings › Interactive answers is on. Kept to one line: it rides in every
- * session's stable prefix.
+ * Settings › Interactive answers is on. Teaches only the shorter line form; a
+ * JSON body still renders. Kept to one line: it rides in every session's stable
+ * prefix.
  */
 export const UI_BLOCKS_NOTE =
-  "- **UI blocks** (rarely; only when clearer than prose, max 2 per reply): a ```ui:<name> fence with JSON: `checklist` {items:[{text,done?}]}, `calculator` {inputs:[{id,label,value,unit?}],formula,unit?}, `compare` {headers,rows,highlight?}, `timeline` {steps:[{time?,title,detail?}]}, `chart` {kind:\"bars\",series:[{label,value}],unit?}; `title`/`note` optional; ≤50 items.";
+  "- **UI blocks** (only when clearer than prose; max 2 per reply): a ```ui:<name> fence, one item per line, `|` between fields, optional `# Title` line. `checklist`: `[x] text`; `compare`: header row, then rows, `*` before the best row; `timeline`: `time | title | detail`; `chart`: `label | number`, optional `unit: $`; `calculator`: `id | label | value | unit` lines, then `= formula`.";
 
 /**
  * The harness guide agents receive as instructions: the app's bundled copy,

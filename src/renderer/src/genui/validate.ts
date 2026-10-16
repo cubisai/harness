@@ -1,4 +1,5 @@
 import { evaluateFormula, formulaIds } from "./formula";
+import { parseUiLines } from "./lines";
 import { UI_BODY_MAX, UI_ITEMS_MAX, UI_NAMES, UI_TEXT_MAX } from "./types";
 import type { CalculatorInput, CalculatorSpec, ChartSpec, ChecklistSpec, CompareSpec, TimelineSpec, UiName, UiSpec } from "./types";
 
@@ -177,19 +178,26 @@ function validateChart(o: Record<string, unknown>): ChartSpec | null {
 
 /**
  * Parse and check a ```ui:<name> body against the catalog in types.ts.
- * Returns a fresh, clipped spec object, or null when the block is not usable.
+ * A body opening with `{` is JSON; anything else uses the compact line
+ * syntax (lines.ts). Returns a fresh, clipped spec object, or null when the
+ * block is not usable.
  */
 export function validateUi(name: string, body: string): UiSpec | null {
   if (!(UI_NAMES as readonly string[]).includes(name)) return null;
   if (typeof body !== "string" || body.length > UI_BODY_MAX) return null;
+  const ui = name as UiName;
   let parsed: unknown;
-  try {
-    parsed = JSON.parse(body);
-  } catch {
-    return null;
+  if (body.trimStart().startsWith("{")) {
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      return null;
+    }
+  } else {
+    parsed = parseUiLines(ui, body);
+    if (parsed === null) return null;
   }
   if (!isRecord(parsed)) return null;
-  const ui = name as UiName;
   if (ui === "checklist") return validateChecklist(parsed);
   if (ui === "calculator") return validateCalculator(parsed);
   if (ui === "compare") return validateCompare(parsed);
