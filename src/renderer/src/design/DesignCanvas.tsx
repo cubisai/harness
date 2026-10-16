@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { flushSync } from "react-dom";
 import { Columns2, Download, Eraser, FolderOpen, Grid3x3, Hammer, LayoutGrid, MessageSquarePlus, MousePointer2, PanelRight, Pencil, Play, Smartphone, Type, Undo2, Workflow } from "lucide-react";
 import type { DesignEntry, DesignExportFormat } from "../../../shared/types";
 import { api } from "../api";
@@ -199,6 +200,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   // and Version pickers move to a row under the header. Measured (see the layout effect below), so it suits any tool set.
   const [headWidth, setHeadWidth] = useState(0);
   const [fold, setFold] = useState(0);
+  const [, setToolsResized] = useState(0);
   const headEl = useRef<HTMLElement | null>(null);
   const toolsEl = useRef<HTMLDivElement | null>(null);
   const foldKey = useRef("");
@@ -208,10 +210,18 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     headObserver.current = null;
     headEl.current = el;
     if (!el) return;
-    const measure = () => setHeadWidth(el.clientWidth);
-    measure();
-    headObserver.current = new ResizeObserver(measure);
+    setHeadWidth(el.clientWidth);
+    // flushSync: the fold steps a new width causes land before the browser paints (no frame of spilled tools).
+    // The tools are watched too: a picker or panel that loads later changes their width without a re-render here.
+    headObserver.current = new ResizeObserver((entries) =>
+      flushSync(() => {
+        setHeadWidth(el.clientWidth);
+        if (entries.some((entry) => entry.target !== el)) setToolsResized((n) => n + 1);
+      }),
+    );
     headObserver.current.observe(el);
+    const tools = el.querySelector(".design-tools");
+    if (tools) headObserver.current.observe(tools);
   }, []);
   const compactHead = fold >= 1;
   const pickersBelow = fold >= 2;

@@ -811,6 +811,9 @@ button.design-crumb:hover { background: var(--bg-hover); color: var(--text); }
   /* An expert thread adds the expert's portrait: the chips drop their chevrons so the model name keeps a little room. */
   .composer:has(.expert-chip) .mode-chip .chev, .composer:has(.expert-chip) .ds-chip .chev { display: none; }
   .composer .composer-actions .model-picker:not(.context-ring) { min-width: 44px; }
+  /* The left group sizes to its chips here, so the spacer would only add a gap; the bar's gap matches the actions'. */
+  .composer .composer-left .grow { display: none; }
+  .composer .composer-bar, .composer .composer-left { column-gap: 6px; }
   .composer .model-picker-button { max-width: 100%; }
   .composer textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
@@ -1313,6 +1316,12 @@ button.qc-option.other { cursor: pointer; }
 /* Controls, chips and meters wrap among themselves; the actions row stays put. */
 .composer-left { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; flex: 1; min-width: 0; }
 .composer-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+/* Folding step 1 (Composer measures it): the chips show their icons only, as in a narrow chat. */
+.composer-bar.icons .mode-chip-label, .composer-bar.icons .ds-chip-label { display: none; }
+/* Too narrow for one row even with the model label at its shortest (Composer measures it): the actions take a row
+   of their own, end-aligned, instead of spilling over the chips. */
+.composer-bar.stacked { flex-wrap: wrap; row-gap: 6px; }
+.composer-bar.stacked .composer-actions { flex: 1 0 100%; min-width: 0; justify-content: flex-end; }
 /* The thread's meters, on their own quiet row below the bar. */
 .composer-meters { display: flex; align-items: center; gap: 10px; padding: 0 12px 8px; font-size: 11px; color: var(--text-tertiary); }
 .composer-meters:empty, .composer-meters:has(> .thread-meters:empty) { display: none; }
@@ -2504,6 +2513,9 @@ button.hunk:hover { color: var(--text); }
 }
 .expert-chip-team { color: var(--text-tertiary); }
 .expert-chip { min-width: 0; }
+/* In the message box the expert's name gives way (ellipsis) before the chips wrap to a second row: its basis is small
+   so it stays on the row, then it grows back to its full width wherever there's room. */
+.composer-left .expert-chip { flex: 1000 1 64px; max-width: max-content; }
 /* The thread header's expert chip: beside the title, giving way to it on a narrow window. */
 .main-header .expert-chip { flex-shrink: 1; }
 .expert-chip-name { min-width: 0; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

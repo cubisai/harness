@@ -7,6 +7,7 @@ import { RequestDock } from "./components/RequestDock";
 import { TodoDock } from "./components/TodoDock";
 import { ThreadMeters } from "./components/Meters";
 import { DraftMode, DraftModel, ThreadMode, ThreadModel } from "./components/ThreadControls";
+import { ThreadDesignSettings } from "./components/DesignSettingsMenu";
 import { DraftDesignSystem, ThreadDesignSystem } from "./components/DesignSystemMenu";
 import { ThreadTier } from "./components/TierMenu";
 import { Inspector } from "./components/Inspector";
@@ -263,6 +264,14 @@ export function App() {
                         {thread.expertId && <ExpertChip expertId={thread.expertId} threadId={thread.id} />}
                       </>
                     )
+                  }
+                  compactMode={
+                    designThread ? (
+                      <>
+                        <ThreadDesignSettings thread={thread} running={running} />
+                        {thread.expertId && <ExpertChip expertId={thread.expertId} threadId={thread.id} />}
+                      </>
+                    ) : undefined
                   }
                   model={<ThreadModel thread={thread} running={running} />}
                   meters={<ThreadMeters agent={thread.agent} threadId={thread.id} />}

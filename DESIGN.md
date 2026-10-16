@@ -125,7 +125,7 @@ Full access mode shows its chip in `--danger`.
 ### 7.5 Artifact panel (right side)
 - Opens by itself **when a turn finishes**, never mid-stream, on the last file the agent wrote in that turn of a deliverable kind (html, svg, pdf, image, csv, docx, xlsx, pptx). Markdown and code never open by themselves: their file card in the chat has a **Preview** button. If the turn wrote several, it shows the last one with a switcher. A rewrite of the same file adds a version (v1, v2…).
 - The header shows the file name, version ▾, Open in ▾, Copy and Close. Tabs: Preview · Source · Diff.
-- Drag it up to 80% wide for long documents and plans. Beside it the chat must still work at 260px: the composer stays one row (model label ellipsizes, chips wrap), nothing scrolls sideways.
+- Drag it up to 80% wide for long documents and plans. Beside it the chat must still work at 260px: the composer stays one row, nothing scrolls sideways. When the controls don't fit, the bar folds (measured, before paint): the model label ellipsizes, the chips drop their labels, then a design thread's mode, system and tier merge into one chip; a second row is only a last resort against overlap.
 - Any file the agent read, created or edited opens here on click, from tool rows, the changes card or links in replies. Code gets line numbers, syntax colouring and diff tinting (`--add-bg` / `--del-bg`).
 - While the agent writes, the file card in the chat reads "Generating…".
 

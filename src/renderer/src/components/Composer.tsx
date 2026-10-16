@@ -1,4 +1,5 @@
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { AtSign, BriefcaseBusiness, Check, File, Folder, Puzzle, Slash, Sparkles } from "lucide-react";
 import type { PermissionMode, SkillEntry } from "../../../shared/types";
 import { IconArrowUp, IconStop } from "../icons";
@@ -36,7 +37,20 @@ function entriesOf(names: string[], extra: SkillEntry[] = []): SkillEntry[] {
   return names.flatMap((n) => all.find((s) => s.name === n) ?? extra.find((s) => s.name === n) ?? []);
 }
 
-export function Composer({ threadId, mode, model, meters }: { threadId: string | null; mode?: ReactNode; model?: ReactNode; meters?: ReactNode }) {
+export function Composer({
+  threadId,
+  mode,
+  compactMode,
+  model,
+  meters,
+}: {
+  threadId: string | null;
+  mode?: ReactNode;
+  /** The same controls folded into fewer chips, swapped in only when `mode` leaves no room on the row. */
+  compactMode?: ReactNode;
+  model?: ReactNode;
+  meters?: ReactNode;
+}) {
   const allSkills = useStore((s) => s.skills);
   // Design-only skills are offered in design threads (and a design draft) only; threadKind follows the open thread.
   const designKind = useStore((s) => s.threadKind) === "design";
@@ -450,6 +464,59 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
 
   const canSend = Boolean(text.trim() || picked.length || chips.length || refs.length) && !addingRefs;
 
+  // The controls stay one row. When the chips wrap or the actions run into them, the bar folds a step at a time:
+  // 1 the chips drop their labels (icons), 2 they merge into `compactMode` (a design thread's one chip), and 3 only if
+  // the actions still collide do the model, context and Send take a row of their own, so nothing overlaps. Measured
+  // before paint; a new width starts unfolded, and a chip that changes size later (a menu that loads its list) only
+  // ever folds further, so measuring can't loop.
+  const barEl = useRef<HTMLDivElement | null>(null);
+  const barObserver = useRef<ResizeObserver | null>(null);
+  const [barWidth, setBarWidth] = useState(0);
+  const [fold, setFold] = useState(0);
+  const [, setResized] = useState(0);
+  const foldedAt = useRef(0);
+  const barRef = useCallback((el: HTMLDivElement | null) => {
+    barObserver.current?.disconnect();
+    barObserver.current = null;
+    barEl.current = el;
+    if (!el) return;
+    // flushSync: the new width and every fold step it causes land before the browser paints, so a resize never shows
+    // a frame of overlapping or wrapped controls. The two groups are watched too: a chip that appears or grows later
+    // re-renders the bar (it lives in its own component), so the layout effect measures again.
+    barObserver.current = new ResizeObserver((entries) =>
+      flushSync(() => {
+        setBarWidth(el.clientWidth);
+        if (entries.some((entry) => entry.target !== el)) setResized((n) => n + 1);
+      }),
+    );
+    barObserver.current.observe(el);
+    for (const group of el.querySelectorAll(".composer-left, .composer-actions")) barObserver.current.observe(group);
+  }, []);
+  useLayoutEffect(() => {
+    const bar = barEl.current;
+    if (!bar) return;
+    if (foldedAt.current !== barWidth) {
+      foldedAt.current = barWidth;
+      if (fold !== 0) {
+        setFold(0);
+        return;
+      }
+    }
+    if (fold >= 3) return;
+    const actions = bar.querySelector<HTMLElement>(".composer-actions");
+    const first = actions?.firstElementChild;
+    // The actions end-align, so when they don't fit they spill out of their box's start, over the chips.
+    const collides = !!actions && !!first && first.getBoundingClientRect().left < actions.getBoundingClientRect().left - 0.5;
+    const tops = [...(bar.querySelector(".composer-left")?.children ?? [])].map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0).map((r) => r.top);
+    const wrapped = tops.some((top) => Math.abs(top - tops[0]!) > 2);
+    if (!collides && !wrapped) return;
+    let next = fold + 1;
+    if (next === 2 && !compactMode) next = 3;
+    // A last-resort second row only for a collision; chips that merely wrap stay as they always have.
+    if (next === 3 && !collides) return;
+    setFold(next);
+  });
+
   return (
     <div className="composer-wrap">
       <div className={`composer${running ? " running" : ""}`}>
@@ -583,7 +650,7 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
             onKeyDown={onKeyDown}
           />
         </div>
-        <div className="composer-bar">
+        <div className={`composer-bar${fold >= 1 ? " icons" : ""}${fold >= 3 ? " stacked" : ""}`} ref={barRef}>
           <div className="composer-left">
             <GooeyPlus
               items={[
@@ -594,7 +661,7 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
                 { id: "command", label: "Run a command (/)", icon: <Slash size={14} />, onSelect: () => startTrigger("/") },
               ]}
             />
-            {mode}
+            {fold >= 2 && compactMode ? compactMode : mode}
             <span className="grow" />
           </div>
           <div className="composer-actions">

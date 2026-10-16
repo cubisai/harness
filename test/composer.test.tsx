@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { describePick, type PickedElement } from "../src/main/browser/picker";
 import { chipLabel, commandQuery, composeMessage, skillQueryAt, toggleSkill } from "../src/renderer/src/composer";
 import { Composer } from "../src/renderer/src/components/Composer";
+import { ThreadDesignSettings } from "../src/renderer/src/components/DesignSettingsMenu";
 import { ThreadView } from "../src/renderer/src/components/ThreadView";
 import { useStore } from "../src/renderer/src/store";
 import type { SendRequest, Thread } from "../src/shared/types";
@@ -291,8 +292,33 @@ describe("composer actions row", () => {
     });
   });
 
+  it("shows the full chips, not the folded ones, until the bar is measured too narrow", () => {
+    withRunning({}, () => {
+      const html = renderToStaticMarkup(<Composer threadId="t" mode={<span className="mode">Ask</span>} compactMode={<span className="merged">All</span>} />);
+      expect(html).toContain('<span class="mode">Ask</span>');
+      expect(html).not.toContain("merged");
+      expect(html).toContain('class="composer-bar"');
+    });
+  });
+
   it("marks the composer running for the beam", () => {
     withRunning({ t: true }, () => expect(renderToStaticMarkup(<Composer threadId="t" />)).toContain('class="composer running"'));
     withRunning({}, () => expect(renderToStaticMarkup(<Composer threadId="t" />)).toContain('class="composer"'));
+  });
+});
+
+describe("ThreadDesignSettings", () => {
+  const design = (over: Partial<Thread>): Thread => ({ id: "t", projectId: "p", agent: "claude", title: "D", sessionId: null, bindings: {}, model: "m", effort: null, permissionMode: "ask", createdAt: 0, updatedAt: 0, kind: "design", ...over }) as Thread;
+
+  it("folds mode and tier into one chip that names both", () => {
+    const html = renderToStaticMarkup(<ThreadDesignSettings thread={design({ prototypeTier: "real-app" } as Partial<Thread>)} running={false} />);
+    expect(html).toContain("design-settings-chip");
+    expect(html).toMatch(/aria-label="Mode, design system and tier: Ask · Real app"/);
+  });
+
+  it("keeps Full access in the danger colour and disables while running", () => {
+    const html = renderToStaticMarkup(<ThreadDesignSettings thread={design({ permissionMode: "full" })} running />);
+    expect(html).toMatch(/class="chip-button mode-chip design-settings-chip danger"/);
+    expect(html).toContain("disabled");
   });
 });
