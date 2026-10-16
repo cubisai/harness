@@ -171,6 +171,17 @@ describe("buildCheckpoint", () => {
     expect(cp.commands.map((c) => c.toolUseId)).toEqual(["a1"]);
     expect(JSON.stringify(cp.commands)).not.toContain("SUBAGENT-OUTPUT");
   }, 20_000);
+
+  it("carries inline UI blocks as one-line summaries, not their bodies", async () => {
+    const store = open();
+    const project = store.addProject(tempDir());
+    const t = store.createThread(project.id, "claude", "m", "ask");
+    store.appendEvent(t.id, { kind: "user", text: "compare plans" });
+    store.appendEvent(t.id, { kind: "assistant-text", text: "Here:\n```ui:compare\n# Plans\nPlan | Price\nFree | 0\nPro | 20\n```\nWhich one?" });
+    const cp = await buildCheckpoint(store, t.id);
+    expect(cp.messages[1]).toEqual({ role: "assistant", text: 'Here:\n[ui:compare "Plans", 2 items]\nWhich one?' });
+    expect(cp.openQuestions).toEqual(['Here:\n[ui:compare "Plans", 2 items]\nWhich one?']);
+  });
 });
 
 describe("checkpointGit", () => {

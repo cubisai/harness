@@ -1,6 +1,8 @@
 import { Fragment, type ReactNode, useState } from "react";
 import { type FileRef, fileUrlRef, parseFileRef } from "./fileref";
+import { SmartTable } from "./genui/SmartTable";
 import { UiBlock } from "./genui/UiBlock";
+import { useStore } from "./store";
 import { memoizeByHash, parseBlocks, splitStreamingTail } from "./streaming";
 
 /**
@@ -15,6 +17,8 @@ import { memoizeByHash, parseBlocks, splitStreamingTail } from "./streaming";
  * into a link that opens it.
  */
 export function Markdown({ text, streaming, onFile }: { text: string; streaming?: boolean; onFile?: (ref: FileRef) => void }) {
+  // Smart tables / task lists follow the uiBlocks setting; off, everything renders as before.
+  const smart = useStore((s) => s.settings?.uiBlocks === true);
   // While streaming, parse only the frozen prefix (memoized); the tail renders
   // as plain text so an unterminated fence never becomes an open code block.
   const { frozen, tail } = streaming ? splitStreamingTail(text) : { frozen: text, tail: "" };
@@ -33,6 +37,22 @@ export function Markdown({ text, streaming, onFile }: { text: string; streaming?
             return <H key={i}>{inline(b.text, onFile)}</H>;
           }
           case "list": {
+            // A plain list of `- [x]` tasks becomes a readable checklist; other lists are untouched.
+            if (smart && !b.ordered && b.items.every((it) => /^\[[ xX]\]\s+/.test(it))) {
+              return (
+                <ul key={i} className="md-tasks">
+                  {b.items.map((it, j) => {
+                    const done = /^\[[xX]\]/.test(it);
+                    return (
+                      <li key={j} className="ui-check md-task">
+                        <input type="checkbox" checked={done} readOnly disabled aria-label={done ? "Done" : "Not done"} />
+                        <span>{inline(it.replace(/^\[[ xX]\]\s+/, ""), onFile)}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              );
+            }
             const L = b.ordered ? "ol" : "ul";
             return (
               <L key={i}>
@@ -43,7 +63,9 @@ export function Markdown({ text, streaming, onFile }: { text: string; streaming?
             );
           }
           case "table":
-            return (
+            return smart ? (
+              <SmartTable key={i} header={b.header} align={b.align} rows={b.rows} renderCell={(c) => inline(c, onFile)} />
+            ) : (
               <table key={i}>
                 <thead>
                   <tr>

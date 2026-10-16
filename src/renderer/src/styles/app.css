@@ -3210,6 +3210,24 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 .ui-block:hover .ui-actions, .ui-block:focus-within .ui-actions { opacity: 1; }
 .ui-actions .code-copy:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .ui-building { color: var(--text-tertiary); font-size: 12.5px; }
+/* ---------- smart tables and task lists (uiBlocks setting); see genui/SmartTable.tsx ---------- */
+
+.smart-table { position: relative; margin: 0 0 12px; min-width: 0; }
+/* Floats over the header row's right end (like .ui-actions), so a table takes no extra height. */
+.smart-table-bar { position: absolute; top: 2px; right: 0; z-index: 1; display: flex; gap: 4px; justify-content: flex-end; align-items: center; max-width: 100%; padding-left: 4px; background: var(--bg); opacity: 0; transition: opacity 120ms var(--ease); }
+.smart-table:hover .smart-table-bar, .smart-table:focus-within .smart-table-bar { opacity: 1; }
+.smart-table-filter { height: 24px; flex: 0 1 160px; min-width: 0; padding: 0 8px; background: var(--bg-subtle); border: 1px solid var(--hairline-strong); border-radius: var(--radius-s); color: var(--text); font: 12.5px var(--font); }
+.smart-table-filter:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.smart-th { width: 100%; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: inherit; cursor: pointer; }
+.smart-th:hover { color: var(--text); }
+.smart-th:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+th[aria-sort="ascending"] .smart-th::after { content: " ↑"; color: var(--text-tertiary); }
+th[aria-sort="descending"] .smart-th::after { content: " ↓"; color: var(--text-tertiary); }
+.smart-table-empty { color: var(--text-tertiary); font-size: 12.5px; }
+/* The reply's own ul padding (see .msg-assistant ul) would indent the list; the scoped pair keeps it flush. */
+.md-tasks, .msg-assistant .md-tasks { list-style: none; padding-left: 0; margin: 0 0 12px; }
+.md-task { cursor: default; }
+@media (hover: none) { .smart-table-bar { opacity: 1; } }
 @media (hover: none) { .ui-actions { opacity: 1; } }
 
 /* ---------- todo dock: the agent's checklist above the message box; grows upward, collapses to one line ---------- */

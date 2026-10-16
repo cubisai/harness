@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { HandoffCheckpoint, StoredEvent, Thread, ThreadEvent, ThreadExport, Usage } from "../shared/types";
+import { summarizeUiFences } from "../shared/ui-fences";
 import { stableStringify } from "./cache-policy";
 import { blobRefOf, type LedgerTarget, type Store } from "./db";
 import { createRef, gitState, workingTreeDiff } from "./git";
@@ -108,7 +109,8 @@ export async function buildCheckpoint(store: Store, threadId: string, opts?: { b
       if (goal === "") goal = event.text.slice(0, MAX_MESSAGE_CHARS);
       messages.push({ role: "user", text: event.text.slice(0, MAX_MESSAGE_CHARS) });
     } else if (event.kind === "assistant-text" || event.kind === "plan-proposal") {
-      messages.push({ role: "assistant", text: event.text.slice(0, MAX_MESSAGE_CHARS) });
+      // Inline UI blocks go as one-line summaries: their bodies were for the screen.
+      messages.push({ role: "assistant", text: summarizeUiFences(event.text).slice(0, MAX_MESSAGE_CHARS) });
     }
   }
 
@@ -152,7 +154,8 @@ export async function buildCheckpoint(store: Store, threadId: string, opts?: { b
   const lastAssistantText = events.filter((e) => e.event.kind === "assistant-text").at(-1)?.event as
     | Extract<ThreadEvent, { kind: "assistant-text" }>
     | undefined;
-  const openQuestions = lastAssistantText && lastAssistantText.text.trim().endsWith("?") ? [lastAssistantText.text] : [];
+  const lastText = lastAssistantText ? summarizeUiFences(lastAssistantText.text) : "";
+  const openQuestions = lastText.trim().endsWith("?") ? [lastText] : [];
 
   const files = (await workingTreeDiff(cwd)).map((f) => ({ path: f.path, status: f.status, additions: f.additions, deletions: f.deletions }));
   const git = await gitState(cwd);
