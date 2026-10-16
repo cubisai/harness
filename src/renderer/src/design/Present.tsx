@@ -1,7 +1,7 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { BOARD_SIZES, flowOrder, parsePage } from "./board-layout";
-import { readBridgeMessage } from "./frame";
+import { deviceFor, readBridgeMessage } from "./frame";
 import type { DesignDevice } from "../../../shared/types";
 
 /** The page shown, in board order, in a sandboxed frame scaled to the overlay: ← / → step, Exit leaves. */
@@ -19,7 +19,15 @@ export function Present({ pages, links, start, onExit }: { pages: { rel: string;
   const page = pages.find((p) => p.rel === current) ?? pages.find((p) => p.rel === start) ?? pages[0];
   const parsed = page ? parsePage(page.rel, page.url, page.device) : null;
   const size = parsed ? BOARD_SIZES[parsed.kind] : BOARD_SIZES.desktop;
-  const scale = stage.width > 0 && stage.height > 0 ? Math.min(1, (stage.width - 64) / size.width, (stage.height - 64) / size.height) : 1;
+  // The canvas's device chrome: a phone or tablet bezel, a browser window for a desktop page; a slide has none.
+  const shell = parsed ? deviceFor(parsed.kind) : null;
+  // The bezel scales with the page (12px or 20px a side at 100%); the browser bar (36px) and its 1px border don't.
+  const bezel = shell === "phone" ? 24 : shell === "tablet" ? 40 : 0;
+  const fixed = shell === "browser" ? { width: 2, height: 38 } : { width: 0, height: 0 };
+  const scale =
+    stage.width > 0 && stage.height > 0
+      ? Math.min(1, (stage.width - 64 - fixed.width) / (size.width + bezel), (stage.height - 64 - fixed.height) / (size.height + bezel))
+      : 1;
   const index = order.indexOf(current);
 
   // Measure the stage (below the bar), so the frame scales down to fit with 32px of padding around it.
@@ -110,16 +118,27 @@ export function Present({ pages, links, start, onExit }: { pages: { rel: string;
         </button>
       </div>
       <div className="design-present-stage" ref={stageRef}>
-        <div className={`design-present-device${parsed.kind === "mobile" ? " mobile" : ""}`} style={{ width: size.width * scale, height: size.height * scale }}>
-          <iframe
-            key={page.rel}
-            ref={frameRef}
-            className="design-frame"
-            title={`Present: ${page.rel}`}
-            src={page.url}
-            sandbox="allow-scripts"
-            style={{ width: size.width, height: size.height, transform: `scale(${scale})` }}
-          />
+        <div className={shell ? `device-shell device-${shell}` : "design-present-device"} style={shell ? ({ "--s": scale } as CSSProperties) : undefined}>
+          {shell === "browser" && (
+            <div className="device-browserbar" aria-hidden>
+              <span className="device-dots" />
+              <span className="device-address">{page.rel}</span>
+              <span className="device-spacer" />
+            </div>
+          )}
+          <div className={`design-present-screen${shell ? " device-screen" : ""}`} style={{ width: size.width * scale, height: size.height * scale }}>
+            <iframe
+              key={page.rel}
+              ref={frameRef}
+              className="design-frame"
+              title={`Present: ${page.rel}`}
+              src={page.url}
+              sandbox="allow-scripts"
+              style={{ width: size.width, height: size.height, transform: `scale(${scale})` }}
+            />
+            {shell === "phone" && <div className="device-island" aria-hidden />}
+            {(shell === "phone" || shell === "tablet") && <div className="device-homebar" aria-hidden />}
+          </div>
         </div>
       </div>
     </div>

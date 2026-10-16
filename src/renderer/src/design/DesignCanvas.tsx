@@ -33,7 +33,7 @@ const kebab = (prop: string): string => prop.replace(/[A-Z]/g, (c) => `-${c.toLo
  * design thread opens, so the Chat bundle stays as it was.
  */
 /** Extra room the device chrome needs around a frame (both sides together, in stage px, beyond the usual padding). */
-const DEVICE_CHROME = { none: { width: 0, height: 0 }, phone: { width: 40, height: 40 }, tablet: { width: 56, height: 56 }, browser: { width: 16, height: 52 } } as const;
+const DEVICE_CHROME = { none: { width: 0, height: 0 }, phone: { width: 40, height: 40 }, tablet: { width: 56, height: 56 }, browser: { width: 18, height: 54 } } as const;
 
 export default function DesignCanvas({ threadId }: { threadId: string }) {
   const reload = useStore((s) => s.designReload[threadId] ?? 0);

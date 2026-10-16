@@ -592,9 +592,10 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-present-label { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 500; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .design-present-count { min-width: 44px; text-align: center; font: 500 12px var(--mono); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .design-present-stage { flex: 1; min-height: 0; min-width: 0; display: grid; place-items: center; padding: 32px; overflow: hidden; }
+/* A slide keeps a plain frame; phones, tablets and desktop pages get the canvas's device shell. */
 .design-present-device { position: relative; flex-shrink: 0; box-sizing: content-box; overflow: hidden; border: 1px solid var(--hairline-strong); border-radius: var(--radius-l); background: var(--bg); }
-.design-present-device.mobile { border-width: 10px; border-radius: 44px; }
-.design-present-device .design-frame { position: absolute; top: 0; left: 0; }
+.design-present-screen { position: relative; overflow: hidden; }
+.design-present-screen .design-frame { position: absolute; top: 0; left: 0; }
 /* Inspector (design mode): the selected element's properties and the page's code, beside the stage. */
 .design-stage-row { display: flex; flex: 1; min-height: 0; min-width: 0; }
 /* The stage and the floating tools share a positioned wrapper, so the bar can hover over the frame. */
