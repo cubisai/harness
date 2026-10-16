@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { InjectionPlan } from "../src/main/inject";
-import { parseOpenCodeVariants, withOpenCodeTeam, withOpenCodeVariant } from "../src/main/inject/opencode";
+import { parseOpenCodeVariants, withOpenCodeReadDirs, withOpenCodeTeam, withOpenCodeVariant } from "../src/main/inject/opencode";
 
 describe("parseOpenCodeVariants", () => {
   const fixture = readFileSync(join(__dirname, "fixtures", "opencode-models.txt"), "utf8");
@@ -97,5 +97,25 @@ describe("withOpenCodeTeam", () => {
     // Already open to every agent, and a member is never its own lead.
     expect(agent.build!.permission).toEqual({ task: "allow" });
     expect(agent.analyst).toEqual({ mode: "subagent", description: "Ana, Analyst: Finds facts.", prompt: "Research." });
+  });
+});
+
+describe("withOpenCodeReadDirs", () => {
+  it("allows each folder's subtree and keeps the other rules", () => {
+    const plan: InjectionPlan = { env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ permission: { bash: "ask", external_directory: { "/tmp/**": "deny" } } }) }, byok: false };
+    const config = JSON.parse(withOpenCodeReadDirs(plan, ["/u/experts/team/skills/"]).env.OPENCODE_CONFIG_CONTENT!);
+    expect(config.permission).toEqual({ bash: "ask", external_directory: { "/tmp/**": "deny", "/u/experts/team/skills/**": "allow" } });
+  });
+
+  it("keeps a bare rule as the default and lists a Windows folder both ways", () => {
+    const plan: InjectionPlan = { env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ permission: { external_directory: "ask" } }) }, byok: false };
+    const config = JSON.parse(withOpenCodeReadDirs(plan, ["C:\\Users\\me\\experts\\t\\skills"]).env.OPENCODE_CONFIG_CONTENT!);
+    expect(config.permission.external_directory).toEqual({ "*": "ask", "C:\\Users\\me\\experts\\t\\skills/**": "allow", "C:/Users/me/experts/t/skills/**": "allow" });
+  });
+
+  it("starts a plan from the environment when there is none", () => {
+    const out = withOpenCodeReadDirs(undefined, ["/x"], { HOME: "/h" });
+    expect(out.env.HOME).toBe("/h");
+    expect(JSON.parse(out.env.OPENCODE_CONFIG_CONTENT!).permission.external_directory).toEqual({ "/x/**": "allow" });
   });
 });

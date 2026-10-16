@@ -142,21 +142,7 @@ export function withOpenCodeVariant(
  * these after the agent's own rules, so they win over its "*" deny.
  */
 export function withOpenCodeTeam(plan: InjectionPlan | undefined, team: TeamAgent[], leads: string[] = [], env: NodeJS.ProcessEnv = process.env): InjectionPlan {
-  let out = plan;
-  if (!out) {
-    const base: InjectedEnv = {};
-    for (const [name, value] of Object.entries(env)) if (value !== undefined) base[name] = value;
-    out = { env: base, byok: false };
-  }
-  let config: Record<string, unknown> = {};
-  const raw = out.env.OPENCODE_CONFIG_CONTENT;
-  if (raw !== undefined) {
-    try {
-      config = JSON.parse(raw) as Record<string, unknown>;
-    } catch {
-      config = {};
-    }
-  }
+  const { out, config } = injectedConfig(plan, env);
   const agents = (config.agent && typeof config.agent === "object" ? config.agent : {}) as Record<string, unknown>;
   const added: string[] = [];
   for (const m of team) {
@@ -178,4 +164,45 @@ export function withOpenCodeTeam(plan: InjectionPlan | undefined, team: TeamAgen
   config.agent = agents;
   out.env.OPENCODE_CONFIG_CONTENT = JSON.stringify(config);
   return out;
+}
+
+/**
+ * Let every agent in the plan read (and list) `dirs` outside the project
+ * without asking: top-level `permission.external_directory` gets `allow` for
+ * each folder's subtree. A bare string rule becomes the `*` default, so it
+ * still governs every other folder.
+ */
+export function withOpenCodeReadDirs(plan: InjectionPlan | undefined, dirs: string[], env: NodeJS.ProcessEnv = process.env): InjectionPlan {
+  const { out, config } = injectedConfig(plan, env);
+  const permission = (config.permission && typeof config.permission === "object" ? config.permission : {}) as Record<string, unknown>;
+  const current = permission.external_directory;
+  const rules: Record<string, unknown> = current && typeof current === "object" ? { ...(current as Record<string, unknown>) } : typeof current === "string" ? { "*": current } : {};
+  for (const dir of dirs) {
+    if (!dir) continue;
+    // OpenCode matches forward-slash paths; a Windows folder is listed both ways.
+    for (const form of new Set([dir, dir.replace(/\\/g, "/")])) rules[`${form.replace(/[\\/]+$/, "")}/**`] = "allow";
+  }
+  config.permission = { ...permission, external_directory: rules };
+  out.env.OPENCODE_CONFIG_CONTENT = JSON.stringify(config);
+  return out;
+}
+
+/** The plan to extend (a fresh one inheriting `env` when absent) and its parsed inline OpenCode config. */
+function injectedConfig(plan: InjectionPlan | undefined, env: NodeJS.ProcessEnv): { out: InjectionPlan; config: Record<string, unknown> } {
+  let out = plan;
+  if (!out) {
+    const base: InjectedEnv = {};
+    for (const [name, value] of Object.entries(env)) if (value !== undefined) base[name] = value;
+    out = { env: base, byok: false };
+  }
+  let config: Record<string, unknown> = {};
+  const raw = out.env.OPENCODE_CONFIG_CONTENT;
+  if (raw !== undefined) {
+    try {
+      config = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      config = {};
+    }
+  }
+  return { out, config };
 }

@@ -42,7 +42,7 @@ import { testConnection } from "./providers";
 import { discoverModels, ModelsDev, pickSmallModel } from "./models-catalog";
 import { injectionFor } from "./inject";
 import { redactSecrets } from "./inject/redact";
-import { opencodeVariants, withOpenCodeTeam, withOpenCodeVariant } from "./inject/opencode";
+import { opencodeVariants, withOpenCodeReadDirs, withOpenCodeTeam, withOpenCodeVariant } from "./inject/opencode";
 import { ensureOpenCodeGuard, withOpenCodeGuard } from "./inject/opencode-guard";
 import { BUILT_IN_GUARD, findPython } from "./guard";
 import { PROVIDER_AGENT_PREFIX } from "./harness/driver";
@@ -281,9 +281,9 @@ async function main(): Promise<void> {
    * skills. "tool" mode's list is built once, so the tool and the names it
    * lists can't disagree.
    */
-  const skillsInputFor = (delivery: SkillsDelivery | undefined, cwd: string | null, design = false, threadId?: string | null) => {
+  const skillsInputFor = (delivery: SkillsDelivery | undefined, cwd: string | null, design = false) => {
     if (!delivery) return null;
-    const catalog = skillsFor(cwd, threadId);
+    const catalog = skillsFor(cwd);
     const toolSkills = forAgent(catalog, { mode: "tool", reads: TOOL_SKILL_READS }, new Set(), { design });
     return {
       mode: delivery.mode,
@@ -388,40 +388,29 @@ async function main(): Promise<void> {
     bundledDir: app.isPackaged ? join(process.resourcesPath, "experts") : join(app.getAppPath(), "resources", "experts"),
     userDir: join(userData, "experts"),
   });
-  /** A thread's expert's own skill folders (an imported package's `skills/`); none for every other thread. */
-  const expertSkillDirs = (threadId?: string | null): string[] => {
-    if (!threadId) return [];
-    try {
-      const id = store.getThread(threadId).expertId;
-      const dir = id ? experts.skillsDir(id) : null;
-      return dir ? [dir] : [];
-    } catch {
-      return [];
-    }
-  };
-  /** The skill catalog for a cwd, plus the thread's expert's own skills when it has any. */
-  function skillsFor(cwd: string | null, threadId?: string | null) {
-    return skills.forProject(cwd, expertSkillDirs(threadId));
+  /** The skill catalog for a cwd. An expert's package skills are never in it: they reach its agents as private prompt indexes. */
+  function skillsFor(cwd: string | null) {
+    return skills.forProject(cwd);
   }
-  /** A generated skills folder's key: cwd, design, and the expert's skills only when the thread has some (so others keep theirs). */
-  const skillsKey = (cwd: string, design: boolean | undefined, threadId?: string | null) =>
+  /** A generated skills folder's key: cwd and design. */
+  const skillsKey = (cwd: string, design: boolean | undefined) =>
     createHash("sha256")
-      .update([cwd, ...(design ? ["design"] : []), ...expertSkillDirs(threadId)].join("\0"))
+      .update([cwd, ...(design ? ["design"] : [])].join("\0"))
       .digest("hex")
       .slice(0, 12);
   const driver = createClaudeDriver({
     guide: (cwd, design) => guide.forCwd(cwd, design),
-    pluginDir: (cwd, design, threadId) =>
+    pluginDir: (cwd, design) =>
       ensurePlugin(
         forAgent(
-          skillsFor(cwd, threadId),
+          skillsFor(cwd),
           CLAUDE_CAPABILITIES.skillsDelivery,
           // Claude Code loads these itself; the plugin would list them twice.
           skills.namesIn([join(homedir(), ".claude", "skills"), join(cwd, ".claude", "skills")]),
           { design },
         ),
         // Design threads get their own plugin (with the design-only skills), so a chat thread's never changes.
-        join(userData, "harness-plugin", skillsKey(cwd, design, threadId)),
+        join(userData, "harness-plugin", skillsKey(cwd, design)),
       ),
     skillDirs: () => [skills.dirs(null).bundled, skills.dirs(null).harness],
     guardScript,
@@ -523,7 +512,7 @@ async function main(): Promise<void> {
       // The project's skills too (.cubiq, .claude), which tool-mode agents don't read themselves.
       // A design thread's (named by `?t=`) list adds the design-only skills.
       (pid, tid) => [
-        skillTool(() => forAgent(skillsFor(projectPathOf(pid ?? null), tid), { mode: "tool", reads: TOOL_SKILL_READS }, new Set(), { design: isDesignThread(tid) })),
+        skillTool(() => forAgent(skillsFor(projectPathOf(pid ?? null)), { mode: "tool", reads: TOOL_SKILL_READS }, new Set(), { design: isDesignThread(tid) })),
       ],
       (pid) => routedTools(pid),
       () => threadTools,
@@ -550,11 +539,11 @@ async function main(): Promise<void> {
             extensions: extensionsFor("codex"),
             // Per project: Codex reads .agents/skills itself, but not .cubiq or .claude.
             // A design thread's set adds the design-only skills, in a folder of its own.
-            skillsDir: (cwd, design, threadId) =>
+            skillsDir: (cwd, design) =>
               cwd
                 ? ensureModelSkillsDir(
-                    forAgent(skillsFor(cwd, threadId), CODEX_CAPABILITIES.skillsDelivery, new Set(), { design }),
-                    join(`${modelSkillsDir}-projects`, skillsKey(cwd, design, threadId)),
+                    forAgent(skillsFor(cwd), CODEX_CAPABILITIES.skillsDelivery, new Set(), { design }),
+                    join(`${modelSkillsDir}-projects`, skillsKey(cwd, design)),
                   )
                 : ensureModelSkillsDir(forAgent(skills.global(), CODEX_CAPABILITIES.skillsDelivery), modelSkillsDir),
             toolServer: getToolServer,
@@ -591,6 +580,8 @@ async function main(): Promise<void> {
           if (ctx?.effort) plan = withOpenCodeVariant(plan, ctx.effort);
           // An expert team's members, as this thread's subagents (OpenCode only; other ACP agents run the team as one agent).
           if (ctx?.team?.length && config.injector === "opencode") plan = withOpenCodeTeam(plan, ctx.team, [ctx.teamLead ?? "build", "build"]);
+          // The expert's private package skills sit outside the project: let its agents read them without a prompt.
+          if (ctx?.expertRoot && config.injector === "opencode") plan = withOpenCodeReadDirs(plan, [ctx.expertRoot]);
           return plan;
         },
       });
@@ -727,7 +718,7 @@ async function main(): Promise<void> {
   }
   const service = new Service(
     store,
-    (cwd: string | null, threadId?: string) => skillsFor(cwd, threadId),
+    (cwd: string | null) => skillsFor(cwd),
     drivers,
     broadcast,
     harnessTools,
@@ -753,8 +744,8 @@ async function main(): Promise<void> {
     // The project's MCP servers through the app's router (search_tools / call_mcp_tool).
     mcpTools: (projectId) => (mcpScopes.effective(projectId ?? null).length ? routedTools(projectId) : []),
     // The project's model-invoked skills as a `skill` tool, when it has any.
-    skills: (cwd, design, threadId) => {
-      const list = forAgent(skillsFor(cwd, threadId), { mode: "tool", reads: [] }, new Set(), { design });
+    skills: (cwd, design) => {
+      const list = forAgent(skillsFor(cwd), { mode: "tool", reads: [] }, new Set(), { design });
       return list.length ? skillTool(() => list) : null;
     },
   });
@@ -1305,7 +1296,7 @@ async function main(): Promise<void> {
       guideParts: cwd ? guide.partsForCwd(cwd) : [],
       // An agent that keeps the shared memory itself doesn't need the memory tools.
       tools: harnessTools(thread ?? undefined).filter((t) => !(thread && drivers.find((d) => d.id === thread.agent)?.capabilities.nativeMemory && (t.name === MEMORY_READ_TOOL || t.name === MEMORY_WRITE_TOOL))),
-      skills: thread && delivery ? skillsInputFor(delivery, cwd, thread.kind === "design", thread.id) : null,
+      skills: thread && delivery ? skillsInputFor(delivery, cwd, thread.kind === "design") : null,
       mcp: servers.map((s) => ({ name: s.name, listed: mcpTools.peek(s.spec), deferred })),
       memoryIndex: pid && memoryOn(settings.get(), pid) ? (({ lines, tokens }) => ({ lines, tokens }))(memory.store.blockIndex(pid)) : null,
     });

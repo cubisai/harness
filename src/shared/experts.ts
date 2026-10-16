@@ -297,19 +297,46 @@ export function expertFromMarkdown(text: string, fallbackId: string, source: "bu
   };
 }
 
+/** A skill an expert package ships in its own `skills/` folder; private to the agent it's bound to. */
+export interface ExpertSkill {
+  name: string;
+  /** One line, from SKILL.md's frontmatter. */
+  description: string;
+  /** Absolute path of its SKILL.md. */
+  file: string;
+}
+
+/**
+ * The private index of an agent's package skills, appended to the prompt of
+ * the lead or member it's bound to. Empty string when it has none.
+ */
+export function skillsIndexBlock(skills: ExpertSkill[]): string {
+  if (!skills.length) return "";
+  const lines = [
+    "<skills>",
+    "These skills are yours alone. Before using one, read its SKILL.md; relative paths in it resolve against that file's folder. Run a skill's scripts with your shell tool instead of pasting them, and write output files to the project or the team workspace, never into a skill folder.",
+    ...skills.map((s) => (s.description ? `- \`${s.name}\` — ${s.description} — ${s.file}` : `- \`${s.name}\` — ${s.file}`)),
+    "</skills>",
+  ];
+  return lines.join("\n");
+}
+
 /**
  * The text injected into an agent's instructions for a thread's expert: the
- * persona prompt wrapped in an `<expert>` block, and, for a team, its members.
- * Double quotes in attributes are escaped so the markup stays well-formed.
+ * persona prompt wrapped in an `<expert>` block, the lead's package skills
+ * as a private index, and, for a team, its members. Double quotes in
+ * attributes are escaped so the markup stays well-formed.
  */
-export function expertBlock(def: Pick<ExpertDef, "name" | "profession" | "prompt" | "kind" | "members">): string {
+export function expertBlock(def: Pick<ExpertDef, "name" | "profession" | "prompt" | "kind" | "members">, leadSkills: ExpertSkill[] = []): string {
   const attr = (value: string) => value.replace(/"/g, "&quot;");
   const head = `<expert name="${attr(def.name)}" role="${attr(def.profession)}">`;
   const body = `${head}\n${def.prompt}\n</expert>`;
-  if (def.kind !== "team" || !def.members?.length) return body;
+  const index = skillsIndexBlock(leadSkills);
+  if (def.kind !== "team" || !def.members?.length) return index ? [body, index].join("\n\n") : body;
   const lines = def.members.map((m) => `- \`${m.id}\` — ${m.name}, ${m.profession}: ${m.description}`);
   return [
     body,
+    ...(index ? [index] : []),
     "## Your team",
     lines.join("\n"),
     "Hand independent steps to members in parallel, keep dependent steps in order, then consolidate their outputs into one answer.",
@@ -333,8 +360,10 @@ const RESERVED_AGENT_IDS = new Set(["general-purpose", "explore", "plan", "statu
 /**
  * A team's members as subagents, in order: none for a single expert. Members
  * with a bad or reserved id are left out (the lead still sees their role).
+ * A member's prompt ends with its own package skills' private index, when
+ * memberSkills has one for it.
  */
-export function teamAgents(def: Pick<ExpertDef, "kind" | "members">): TeamAgent[] {
+export function teamAgents(def: Pick<ExpertDef, "kind" | "members">, memberSkills: Record<string, ExpertSkill[]> = {}): TeamAgent[] {
   if (def.kind !== "team" || !def.members?.length) return [];
   const seen = new Set<string>();
   const out: TeamAgent[] = [];
@@ -342,9 +371,33 @@ export function teamAgents(def: Pick<ExpertDef, "kind" | "members">): TeamAgent[
     if (!EXPERT_ID_RE.test(m.id) || RESERVED_AGENT_IDS.has(m.id) || seen.has(m.id) || !m.prompt.trim()) continue;
     seen.add(m.id);
     const what = [m.name, m.profession].filter(Boolean).join(", ");
-    out.push({ id: m.id, description: m.description ? `${what}: ${m.description}` : what, prompt: m.prompt.slice(0, EXPERT_PROMPT_MAX) });
+    const index = skillsIndexBlock(memberSkills[m.id] ?? []);
+    out.push({
+      id: m.id,
+      description: m.description ? `${what}: ${m.description}` : what,
+      prompt: m.prompt.slice(0, EXPERT_PROMPT_MAX) + (index ? `\n\n${index}` : ""),
+    });
   }
   return out;
+}
+
+/**
+ * Bind a package's skills to the roles of the expert it belongs to: each team
+ * member gets the skills its `skills` list names (in list order, skipping
+ * names the package doesn't ship), and the lead gets whatever no member
+ * claimed. A single expert gets the whole package.
+ */
+export function bindExpertSkills(def: Pick<ExpertDef, "kind" | "members">, pkg: ExpertSkill[]): { lead: ExpertSkill[]; members: Record<string, ExpertSkill[]> } {
+  const members: Record<string, ExpertSkill[]> = {};
+  if (def.kind !== "team" || !def.members?.length) return { lead: pkg, members };
+  const byName = new Map(pkg.map((s) => [s.name, s]));
+  const claimed = new Set<string>();
+  for (const m of def.members) {
+    const bound = m.skills.flatMap((name) => (byName.has(name) ? [byName.get(name)!] : []));
+    if (bound.length) members[m.id] = bound;
+    for (const s of bound) claimed.add(s.name);
+  }
+  return { lead: pkg.filter((s) => !claimed.has(s.name)), members };
 }
 
 /** What an expert import did: what it installed, what a marketplace offers to pick from, and what it skipped. */

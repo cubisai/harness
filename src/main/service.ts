@@ -34,7 +34,7 @@ import type {
   Usage,
 } from "../shared/types";
 import { bindingKey } from "../shared/bindings";
-import { expertBlock, teamAgents, type ExpertDef, type TeamAgent } from "../shared/experts";
+import { bindExpertSkills, expertBlock, teamAgents, type ExpertDef, type ExpertSkill, type TeamAgent } from "../shared/experts";
 import { CRITIQUE_ARTIFACT } from "../shared/artifact-kind";
 import type { TweakValues } from "../shared/tweaks";
 import { tierFeatures, tierNote, tierOf, type PrototypeTier } from "../shared/tiers";
@@ -140,7 +140,7 @@ export class Service {
     /** Where threads' own worktrees go (the app's data folder); null turns worktree threads off. */
     private worktreesDir: string | null = null,
     /** The expert catalogue: a thread's expertId resolves to a persona injected into its turns. */
-    private experts: { get(id: string): ExpertDef | null } | null = null,
+    private experts: { get(id: string): ExpertDef | null; packageSkills?(id: string): ExpertSkill[]; skillsDir?(id: string): string | null } | null = null,
   ) {
     if (!drivers.length) throw new Error("no agent drivers");
     this.drivers = new Map(drivers.map((d) => [d.id, d]));
@@ -272,15 +272,21 @@ export class Service {
 
   /**
    * A turn's expert fields: the `<expert>` block for the thread's expert
-   * persona and, for a team, its members as subagents; empty when the thread
-   * has no expert we can resolve.
+   * persona and, for a team, its members as subagents. The expert's package
+   * skills go into the lead's and the members' prompts as private index
+   * blocks, and `expertRoot` is the folder that holds them, so the agents
+   * may read a skill's files from there. Empty when the thread has no
+   * expert we can resolve.
    */
-  private expertInput(thread: Thread): { expert?: string; team?: TeamAgent[] } {
+  private expertInput(thread: Thread): { expert?: string; team?: TeamAgent[]; expertRoot?: string } {
     if (!thread.expertId || !this.experts) return {};
     const def = this.experts.get(thread.expertId);
     if (!def) return {};
-    const team = teamAgents(def);
-    return { expert: expertBlock(def), ...(team.length ? { team } : {}) };
+    const pkg = this.experts.packageSkills?.(def.id) ?? [];
+    const bound = bindExpertSkills(def, pkg);
+    const team = teamAgents(def, bound.members);
+    const root = pkg.length ? (this.experts.skillsDir?.(def.id) ?? null) : null;
+    return { expert: expertBlock(def, bound.lead), ...(team.length ? { team } : {}), ...(root ? { expertRoot: root } : {}) };
   }
 
   /**

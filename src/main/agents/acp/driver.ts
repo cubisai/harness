@@ -298,9 +298,10 @@ export function createAcpDriver(
     /** The credential plan for the next agent process; absent = inherit process.env. */
     /**
      * `team`: the thread's expert team members, injected as subagents for this thread's process only;
-     * `teamLead`: the primary agent (mode) the lead runs as, which must be allowed to hand them work.
+     * `teamLead`: the primary agent (mode) the lead runs as, which must be allowed to hand them work;
+     * `expertRoot`: the folder of the expert's private package skills, which its agents may read.
      */
-    injection?: (ctx?: { effort?: { agent: string; model: string; variant: string }; team?: TeamAgent[]; teamLead?: string }) => InjectionPlan;
+    injection?: (ctx?: { effort?: { agent: string; model: string; variant: string }; team?: TeamAgent[]; teamLead?: string; expertRoot?: string }) => InjectionPlan;
     /** Per-model reasoning variants, for agents that carry them outside a thought_level option. */
     variants?: () => Promise<Record<string, string[]>>;
     /** The git-guardrails script: an execute permission call is vetoed in every mode. */
@@ -667,7 +668,7 @@ export function createAcpDriver(
 
     // A thread's process is its own, so its team's subagents never reach another thread.
     const team = input.team?.length ? { team: input.team, teamLead: modeFrom(existing?.configOptions ?? threadConfigs.get(threadKey) ?? lastConfigOptions) } : {};
-    const ctx = wanted || input.team?.length ? { ...(wanted ? { effort: wanted } : {}), ...team } : undefined;
+    const ctx = wanted || input.team?.length || input.expertRoot ? { ...(wanted ? { effort: wanted } : {}), ...team, ...(input.expertRoot ? { expertRoot: input.expertRoot } : {}) } : undefined;
     const plan = deps.injection?.(ctx);
     if (plan?.error) throw new Error(plan.error);
     if (plan?.warning && !shownNotices.has(plan.warning)) {

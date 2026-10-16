@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { expertFromMarkdown, parseExpertMarkdown, type ExpertDef, type ExpertMember } from "../../shared/experts";
+import { expertFromMarkdown, parseExpertMarkdown, type ExpertDef, type ExpertMember, type ExpertSkill } from "../../shared/experts";
 
 /**
  * The Library's expert catalogue: bundled experts shipped with the app, plus
@@ -15,6 +15,7 @@ export function createExpertCatalog(opts: { bundledDir: string; userDir: string 
   list(): ExpertDef[];
   get(id: string): ExpertDef | null;
   skillsDir(id: string): string | null;
+  packageSkills(id: string): ExpertSkill[];
 } {
   let cached: { sig: string; defs: ExpertDef[] } | null = null;
 
@@ -60,6 +61,14 @@ export function createExpertCatalog(opts: { bundledDir: string; userDir: string 
     return defs;
   };
 
+  /** A folder expert's own `skills/` (an imported package's), or null: a bare `<id>.md` has none. */
+  const skillsDirOf = (id: string): string | null => {
+    const path = all().find((d) => d.id === id)?.path;
+    if (!path || basename(path) !== "expert.md") return null;
+    const dir = join(dirname(path), "skills");
+    return isDir(dir) ? dir : null;
+  };
+
   return {
     list(): ExpertDef[] {
       return all();
@@ -67,12 +76,31 @@ export function createExpertCatalog(opts: { bundledDir: string; userDir: string 
     get(id: string): ExpertDef | null {
       return all().find((d) => d.id === id) ?? null;
     },
-    /** A folder expert's own `skills/` (an imported package's), or null: a bare `<id>.md` has none. */
     skillsDir(id: string): string | null {
-      const path = all().find((d) => d.id === id)?.path;
-      if (!path || basename(path) !== "expert.md") return null;
-      const dir = join(dirname(path), "skills");
-      return isDir(dir) ? dir : null;
+      return skillsDirOf(id);
+    },
+    /** The expert's own package skills (`<expert folder>/skills/<name>/SKILL.md`), sorted by folder name; [] when it has none. */
+    packageSkills(id: string): ExpertSkill[] {
+      const dir = skillsDirOf(id);
+      if (!dir) return [];
+      const out: ExpertSkill[] = [];
+      for (const entry of readDir(dir)) {
+        const file = join(dir, entry, "SKILL.md");
+        if (!isFile(file)) continue;
+        let text: string;
+        try {
+          text = readFileSync(file, "utf8");
+        } catch {
+          continue;
+        }
+        const { meta } = parseExpertMarkdown(text, entry);
+        out.push({
+          name: metaStr(meta, "name") || entry,
+          description: metaStr(meta, "description").replace(/\s+/g, " ").slice(0, 300),
+          file,
+        });
+      }
+      return out;
     },
   };
 }
@@ -102,8 +130,17 @@ function readDef(path: string, source: "builtin" | "imported"): ExpertDef | null
   }
   const def = expertFromMarkdown(text, fallbackIdOf(path), source);
   if (!def) return null;
+  // A folder expert's package skills are private to the agent it's bound to,
+  // so they never appear among the def's skills (the UI pre-adds those as
+  // global chips when the expert is summoned).
+  let skills = def.skills;
+  const skillsFolder = join(dirname(path), "skills");
+  if (basename(path) === "expert.md" && isDir(skillsFolder)) {
+    const pkg = new Set(readDir(skillsFolder).filter((entry) => isDir(join(skillsFolder, entry))));
+    skills = skills.filter((name) => !pkg.has(name));
+  }
   const members = readMembers(join(dirname(path), "members"));
-  return { ...def, path, ...(members.length ? { members } : {}) };
+  return { ...def, skills, path, ...(members.length ? { members } : {}) };
 }
 
 /** Members from `members/<memberId>.md`: id = the file name, prompt = the body, the rest from meta. */

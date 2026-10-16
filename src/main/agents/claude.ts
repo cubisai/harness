@@ -398,6 +398,8 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
       const plugins: { type: "local"; path: string }[] = pluginPath ? [{ type: "local", path: pluginPath }] : [];
       // A design thread's skills keep their scaffolds and scripts outside the project; reading them shouldn't ask (Claude asks for paths outside its directories even in Full access).
       const skillRoots = input.design ? [...(pluginPath ? [pluginPath] : []), ...(config.skillDirs?.() ?? [])] : [];
+      // The expert's private package skills: readable, but never a skill root (they're indexed in the prompts).
+      if (input.expertRoot) skillRoots.push(input.expertRoot);
 
       const plan = await config.injection?.();
       const model = input.model;

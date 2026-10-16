@@ -53,6 +53,8 @@ export interface TurnInput {
   expert?: string;
   /** The expert team's members as subagents (Claude SDK agents, OpenCode agents); absent = no team. Fixed for a thread. */
   team?: TeamAgent[];
+  /** The folder holding the thread's expert's private package skills (read-only for the agent); absent = none. */
+  expertRoot?: string;
   prompt: string;
   /** Compact the session instead of prompting (/compact); the focus steers the summary where the agent supports it. */
   compact?: { focus: string | null };
@@ -112,6 +114,8 @@ export interface SeedRequest {
   design?: string;
   /** The thread's expert persona block (see shared/experts.ts expertBlock), appended to the guide; absent = no expert. */
   expert?: string;
+  /** The folder holding the thread's expert's private package skills (read-only for the agent); absent = none. */
+  expertRoot?: string;
   model: string;
   permissionMode: PermissionMode;
   tools: HarnessTool[];
