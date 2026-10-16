@@ -1,6 +1,7 @@
 import { type ReactNode, useMemo } from "react";
 import { validateUi } from "./validate";
 import { Calculator } from "./components/Calculator";
+import { Chart } from "./components/Chart";
 import { Checklist } from "./components/Checklist";
 import { Compare } from "./components/Compare";
 import { Timeline } from "./components/Timeline";
@@ -25,6 +26,9 @@ export function UiBlock({ name, body, fallback }: { name: string; body: string; 
       break;
     case "timeline":
       view = <Timeline spec={spec} />;
+      break;
+    case "chart":
+      view = <Chart spec={spec} />;
       break;
   }
   return (

@@ -11,7 +11,7 @@ export const UI_ITEMS_MAX = 50;
 /** Strings longer than this are clipped (with "…"). */
 export const UI_TEXT_MAX = 500;
 
-export const UI_NAMES = ["checklist", "calculator", "compare", "timeline"] as const;
+export const UI_NAMES = ["checklist", "calculator", "compare", "timeline", "chart"] as const;
 export type UiName = (typeof UI_NAMES)[number];
 
 export type ChecklistSpec = { name: "checklist"; title?: string; items: { text: string; done: boolean }[]; note?: string };
@@ -24,4 +24,7 @@ export type CompareSpec = { name: "compare"; title?: string; headers: string[]; 
 
 export type TimelineSpec = { name: "timeline"; title?: string; steps: { time?: string; title: string; detail?: string }[] };
 
-export type UiSpec = ChecklistSpec | CalculatorSpec | CompareSpec | TimelineSpec;
+/** Horizontal bars; values must be finite and ≥ 0. Bars are drawn relative to the largest value. */
+export type ChartSpec = { name: "chart"; title?: string; kind: "bars"; series: { label: string; value: number }[]; unit?: string };
+
+export type UiSpec = ChecklistSpec | CalculatorSpec | CompareSpec | TimelineSpec | ChartSpec;

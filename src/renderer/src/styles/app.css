@@ -3178,6 +3178,19 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 .ui-timeline-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .ui-timeline-detail { margin-top: 4px; font-size: 12.5px; line-height: 1.6; color: var(--text-secondary); }
 
+.ui-chart { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ui-chart li { display: grid; grid-template-columns: minmax(0, 30%) 1fr auto; align-items: center; gap: 8px; font-size: 12.5px; }
+.ui-chart-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+.ui-chart-track { height: 8px; border-radius: var(--radius-s); background: var(--bg-subtle); overflow: hidden; }
+.ui-chart-bar { height: 100%; background: var(--text-secondary); border-radius: inherit; }
+.ui-chart-value { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--text); }
+/* Copy / Use in reply: revealed on hover or keyboard focus (DESIGN §8). */
+.ui-actions { display: flex; justify-content: flex-end; gap: 4px; margin-top: 8px; opacity: 0; transition: opacity 120ms var(--ease); }
+.ui-block:hover .ui-actions, .ui-block:focus-within .ui-actions { opacity: 1; }
+.ui-actions .code-copy:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ui-building { color: var(--text-tertiary); font-size: 12.5px; }
+@media (hover: none) { .ui-actions { opacity: 1; } }
+
 /* ---------- todo dock: the agent's checklist above the message box; grows upward, collapses to one line ---------- */
 
 .todo-dock { padding: 0 28px 8px; flex-shrink: 0; }

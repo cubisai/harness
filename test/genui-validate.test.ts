@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { evaluateFormula } from "../src/renderer/src/genui/formula";
 import { validateUi } from "../src/renderer/src/genui/validate";
 import { UI_BODY_MAX, UI_ITEMS_MAX, UI_TEXT_MAX } from "../src/renderer/src/genui/types";
-import type { CalculatorSpec, ChecklistSpec, CompareSpec, TimelineSpec } from "../src/renderer/src/genui/types";
+import type { CalculatorSpec, ChartSpec, ChecklistSpec, CompareSpec, TimelineSpec } from "../src/renderer/src/genui/types";
 
 const checklist = (body: unknown): ChecklistSpec => {
   const spec = validateUi("checklist", JSON.stringify(body));
@@ -28,6 +28,12 @@ const timeline = (body: unknown): TimelineSpec => {
   return spec;
 };
 
+const chart = (body: unknown): ChartSpec => {
+  const spec = validateUi("chart", JSON.stringify(body));
+  if (!spec || spec.name !== "chart") throw new Error("expected a valid chart");
+  return spec;
+};
+
 describe("validateUi", () => {
   it("accepts a valid minimal spec for each name", () => {
     expect(checklist({ items: [{ text: "buy milk", done: true }] }).items).toEqual([{ text: "buy milk", done: true }]);
@@ -37,7 +43,7 @@ describe("validateUi", () => {
   });
 
   it("rejects an unknown name", () => {
-    expect(validateUi("chart", JSON.stringify({}))).toBeNull();
+    expect(validateUi("nope", JSON.stringify({}))).toBeNull();
   });
 
   it("rejects invalid JSON", () => {
@@ -67,6 +73,27 @@ describe("validateUi", () => {
 
   it("rejects a calculator whose formula references an unknown input", () => {
     expect(validateUi("calculator", JSON.stringify({ inputs: [{ id: "a", label: "A", value: 1 }], formula: "a+b" }))).toBeNull();
+  });
+
+  it("accepts a valid chart, including a zero value", () => {
+    expect(chart({ kind: "bars", series: [{ label: "A", value: 3 }, { label: "B", value: 0 }] }).series).toEqual([
+      { label: "A", value: 3 },
+      { label: "B", value: 0 },
+    ]);
+  });
+
+  it("rejects a chart whose kind is not bars", () => {
+    expect(validateUi("chart", JSON.stringify({ kind: "pie", series: [{ label: "A", value: 1 }] }))).toBeNull();
+  });
+
+  it("rejects a chart with a negative or non-numeric value", () => {
+    expect(validateUi("chart", JSON.stringify({ kind: "bars", series: [{ label: "A", value: -1 }] }))).toBeNull();
+    expect(validateUi("chart", JSON.stringify({ kind: "bars", series: [{ label: "A", value: "3" }] }))).toBeNull();
+  });
+
+  it("rejects a chart with more than the maximum number of entries", () => {
+    const series = Array.from({ length: UI_ITEMS_MAX + 1 }, (_, i) => ({ label: `S${i}`, value: i }));
+    expect(validateUi("chart", JSON.stringify({ kind: "bars", series }))).toBeNull();
   });
 });
 

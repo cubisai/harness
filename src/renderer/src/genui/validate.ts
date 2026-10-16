@@ -1,6 +1,6 @@
 import { evaluateFormula, formulaIds } from "./formula";
 import { UI_BODY_MAX, UI_ITEMS_MAX, UI_NAMES, UI_TEXT_MAX } from "./types";
-import type { CalculatorInput, CalculatorSpec, ChecklistSpec, CompareSpec, TimelineSpec, UiName, UiSpec } from "./types";
+import type { CalculatorInput, CalculatorSpec, ChartSpec, ChecklistSpec, CompareSpec, TimelineSpec, UiName, UiSpec } from "./types";
 
 /** Most columns a compare block may have. */
 const COMPARE_COLS_MAX = 8;
@@ -154,6 +154,27 @@ function validateTimeline(o: Record<string, unknown>): TimelineSpec | null {
   return spec;
 }
 
+function validateChart(o: Record<string, unknown>): ChartSpec | null {
+  if (o.kind !== "bars") return null;
+  const raw = list(o.series, UI_ITEMS_MAX);
+  if (!raw) return null;
+  const series: ChartSpec["series"] = [];
+  for (const entry of raw) {
+    if (!isRecord(entry)) return null;
+    const label = text(entry.label);
+    if (label === null) return null;
+    const value = num(entry.value);
+    if (value === null || value < 0) return null;
+    series.push({ label, value });
+  }
+  const spec: ChartSpec = { name: "chart", kind: "bars", series };
+  const title = optText(o, "title");
+  if (title !== undefined) spec.title = title;
+  const unit = optText(o, "unit");
+  if (unit !== undefined) spec.unit = unit;
+  return spec;
+}
+
 /**
  * Parse and check a ```ui:<name> body against the catalog in types.ts.
  * Returns a fresh, clipped spec object, or null when the block is not usable.
@@ -172,5 +193,7 @@ export function validateUi(name: string, body: string): UiSpec | null {
   if (ui === "checklist") return validateChecklist(parsed);
   if (ui === "calculator") return validateCalculator(parsed);
   if (ui === "compare") return validateCompare(parsed);
-  return validateTimeline(parsed);
+  if (ui === "timeline") return validateTimeline(parsed);
+  if (ui === "chart") return validateChart(parsed);
+  return null;
 }

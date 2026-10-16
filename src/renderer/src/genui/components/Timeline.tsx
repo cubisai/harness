@@ -1,5 +1,18 @@
 import { useState } from "react";
+import { UiActions } from "../UiActions";
 import type { TimelineSpec } from "../types";
+
+/** Markdown for a timeline: numbered "time — title: detail" steps, dropping empty parts. */
+export function timelineMarkdown(spec: TimelineSpec): string {
+  const lines = spec.steps
+    .map((step, i) => {
+      const time = step.time ? `${step.time} — ` : "";
+      const detail = step.detail ? `: ${step.detail}` : "";
+      return `${i + 1}. ${time}${step.title}${detail}`;
+    })
+    .join("\n");
+  return spec.title ? `**${spec.title}**\n\n${lines}` : lines;
+}
 
 /** A timeline; a step with a detail expands on click, collapsed shows only its title. */
 export function Timeline({ spec }: { spec: TimelineSpec }) {
@@ -26,6 +39,7 @@ export function Timeline({ spec }: { spec: TimelineSpec }) {
           );
         })}
       </ol>
+      <UiActions markdown={timelineMarkdown(spec)} />
     </>
   );
 }

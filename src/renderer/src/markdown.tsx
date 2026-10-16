@@ -19,6 +19,7 @@ export function Markdown({ text, streaming, onFile }: { text: string; streaming?
   // as plain text so an unterminated fence never becomes an open code block.
   const { frozen, tail } = streaming ? splitStreamingTail(text) : { frozen: text, tail: "" };
   const blocks = streaming ? memoizeByHash(frozen, parseBlocks) : parseBlocks(text);
+  const building = streaming ? buildingUi(tail) : null;
   return (
     <>
       {blocks.map((b, i) => {
@@ -69,12 +70,21 @@ export function Markdown({ text, streaming, onFile }: { text: string; streaming?
         }
       })}
       {streaming ? (
-        <p className="caret" style={{ whiteSpace: "pre-wrap" }}>
-          {tail}
-        </p>
+        building !== null ? (
+          <p className="caret ui-building">Building a {building}…</p>
+        ) : (
+          <p className="caret" style={{ whiteSpace: "pre-wrap" }}>
+            {tail}
+          </p>
+        )
       ) : null}
     </>
   );
+}
+
+/** The name of the ```ui:<name> fence the streaming tail is still writing, if any. */
+function buildingUi(tail: string): string | null {
+  return /^(```|~~~)\s*ui:([a-z][a-z0-9-]*)/.exec(tail.trimStart())?.[2] ?? null;
 }
 
 const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*|_[^_\s][^_]*_)|(\[[^\]]+\]\(((?:https?|file):\/\/[^)\s]+|\/[^)\s]+|[A-Za-z]:[\\/][^)\s]+)\))|(~~[^~]+~~)/g;

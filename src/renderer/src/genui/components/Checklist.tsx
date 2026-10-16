@@ -1,5 +1,12 @@
 import { useState } from "react";
+import { UiActions } from "../UiActions";
 import type { ChecklistSpec } from "../types";
+
+/** Markdown for a checklist: an optional bold title, then one task line per item. */
+export function checklistMarkdown(spec: ChecklistSpec, done: boolean[]): string {
+  const lines = spec.items.map((item, i) => `- [${done[i] ? "x" : " "}] ${item.text}`).join("\n");
+  return spec.title ? `**${spec.title}**\n\n${lines}` : lines;
+}
 
 /** A checklist: ticking is local and throwaway, nothing is stored back. */
 export function Checklist({ spec }: { spec: ChecklistSpec }) {
@@ -22,6 +29,7 @@ export function Checklist({ spec }: { spec: ChecklistSpec }) {
         {count} of {spec.items.length} done
       </div>
       {spec.note ? <div className="ui-note">{spec.note}</div> : null}
+      <UiActions markdown={checklistMarkdown(spec, done)} />
     </>
   );
 }
