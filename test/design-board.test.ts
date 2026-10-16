@@ -31,6 +31,8 @@ describe("design board parsing", () => {
 
   it("keeps a non-numbered section page's label in title case", () => {
     expect(parsePage("desktop--studio.html", "u")).toMatchObject({ section: "Desktop", label: "Studio", step: null, kind: "desktop" });
+    // A device the page declares wins over its name.
+    expect(parsePage("index.html", "u", "mobile")).toMatchObject({ section: "Pages", kind: "mobile" });
   });
 
   it("turns a variant into an option, always in the Options section", () => {

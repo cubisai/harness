@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { listDesignSystems, materializeSystem, parseSystemIndex, resolveDesignSystem, type DesignSystemInfo } from "../src/main/design/systems";
+import { forkSystem, listDesignSystems, materializeSystem, parseSystemIndex, resolveDesignSystem, type DesignSystemInfo } from "../src/main/design/systems";
 import { tempDir } from "./helpers";
 
 /** A design-system folder: index.md, an optional DESIGN.md (null skips it) and optional tokens.css. */
@@ -154,5 +154,58 @@ describe("materializeSystem", () => {
     expect(existsSync(join(dest, "tokens.css"))).toBe(false);
     expect(readFileSync(join(dest, ".system"), "utf-8")).toBe("clean");
     expect(materializeSystem(clean, dest)).toBe(false);
+  });
+});
+
+describe("forkSystem", () => {
+  it("copies a built-in into the project and lists it as a project folder", () => {
+    const builtin = tempDir();
+    makeSystem(builtin, "warm", "---\ntype: design-system\nname: Warm\ndescription: Warm one\nswatches: #fff,#000\n---\n", "warm design", "warm tokens");
+    const [warm] = listDesignSystems(null, builtin);
+    const project = tempDir();
+
+    const forked = forkSystem(warm!, project);
+    const dir = join(project, ".agents", "design-systems", "warm-custom");
+    expect(forked.id).toBe("project:warm-custom");
+    expect(forked.name).toBe("Warm (custom)");
+    expect(forked.description).toBe("Warm one");
+    expect(forked.swatches).toEqual(["#fff", "#000"]);
+    expect(forked.source).toBe("projectFolder");
+    expect(forked.designMd).toBe(join(dir, "DESIGN.md"));
+    expect(forked.tokensCss).toBe(join(dir, "tokens.css"));
+
+    expect(readFileSync(join(dir, "DESIGN.md"), "utf-8")).toBe("warm design");
+    expect(readFileSync(join(dir, "tokens.css"), "utf-8")).toBe("warm tokens");
+    expect(readFileSync(join(dir, "index.md"), "utf-8")).toBe(
+      "---\ntype: design-system\nname: Warm (custom)\ndescription: Warm one\nswatches: #fff, #000\n---\n\nA copy of Warm, edited in CubiQ's System tab. Rules in `DESIGN.md`, tokens in `tokens.css`.\n",
+    );
+
+    const listed = listDesignSystems(project, builtin).find((s) => s.id === forked.id);
+    expect(listed?.source).toBe("projectFolder");
+    expect(listed?.name).toBe("Warm (custom)");
+  });
+
+  it("keeps a second fork's edits instead of overwriting the copy", () => {
+    const builtin = tempDir();
+    makeSystem(builtin, "warm", "---\ntype: design-system\nname: Warm\n---\n", "warm design", "warm tokens");
+    const [warm] = listDesignSystems(null, builtin);
+    const project = tempDir();
+    const copy = join(project, ".agents", "design-systems", "warm-custom", "tokens.css");
+
+    const first = forkSystem(warm!, project);
+    writeFileSync(copy, "edited tokens");
+    const second = forkSystem(warm!, project);
+    expect(second.id).toBe(first.id);
+    expect(second.name).toBe("Warm (custom)");
+    expect(readFileSync(copy, "utf-8")).toBe("edited tokens");
+  });
+
+  it("returns a non-built-in system unchanged", () => {
+    const system = info("project:warm", "projectFolder");
+    expect(forkSystem(system, tempDir())).toBe(system);
+  });
+
+  it("refuses a built-in whose id has unsafe characters", () => {
+    expect(() => forkSystem(info("bad/id!", "builtin"), tempDir())).toThrow("Can't copy this design system.");
   });
 });

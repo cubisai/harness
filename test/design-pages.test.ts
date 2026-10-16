@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { MAX_PAGES, listDesignPages, promoteVariant } from "../src/main/design/pages";
+import { MAX_PAGES, listDesignPages, pageDevice, promoteVariant } from "../src/main/design/pages";
 import { isVariant, variantLabel } from "../src/shared/design";
 import { tempDir } from "./helpers";
 
@@ -108,5 +108,21 @@ describe("variants", () => {
     expect(variantLabel("variant-a.html")).toBe("A");
     expect(variantLabel("variant-dense-hero.html")).toBe("Dense hero");
     expect(variantLabel("pricing.html")).toBe("pricing.html");
+  });
+});
+
+describe("pageDevice", () => {
+  it("reads the cubiq-device meta in either attribute order", () => {
+    expect(pageDevice('<head><meta name="cubiq-device" content="mobile"></head>')).toBe("mobile");
+    expect(pageDevice("<meta content='tablet' name='cubiq-device'>")).toBe("tablet");
+    expect(pageDevice('<meta name="cubiq-device" content="watch">')).toBeNull();
+  });
+  it("treats a one-screen phone page (status bar + bottom bar, one phone at most, no board) as mobile", () => {
+    expect(pageDevice('<div class="status-bar"></div><main class="screen"></main><nav class="tab-bar"></nav>')).toBe("mobile");
+    expect(pageDevice('<section class="phone"><div class="status-bar"></div><div class="home-indicator"></div></section>')).toBe("mobile");
+    const two = '<section class="phone"><div class="status-bar"></div><div class="home-indicator"></div></section>';
+    expect(pageDevice(two + two)).toBeNull();
+    expect(pageDevice(`<div class="board">${two}</div>`)).toBeNull();
+    expect(pageDevice('<header class="status-bar"></header>')).toBeNull();
   });
 });

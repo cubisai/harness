@@ -59,7 +59,7 @@ Give the page 2–5 tweaks the user can change live in the canvas without a new 
 ## Options and flows
 
 - Asked for options, directions or variations: write 2–4 files `variant-a.html`, `variant-b.html`, … beside `index.html`, each a complete page from the same scaffold and tokens, and differing in layout and hierarchy (not only colour). Leave `index.html` as it is unless asked; the user promotes one from the canvas. Say in one line what each option tries.
-- Several screens: one page per screen in the design folder, linked with relative `<a href="checkout.html">`. Keep shared CSS in one file beside them. For a step-by-step flow, or desktop and mobile versions side by side, name them `<section>--<NN>-<name>.html` (`checkout--01-cart.html`, `checkout--02-payment.html`, `mobile--01-cart.html`) so CubiQ's Board view shows each section as numbered artboards at the right size.
+- Several screens: one page per screen in the design folder, linked with relative `<a href="checkout.html">`. Keep shared CSS in one file beside them. For a step-by-step flow, or desktop and mobile versions side by side, name them `<section>--<NN>-<name>.html` (`checkout--01-cart.html`, `checkout--02-payment.html`, `mobile--01-cart.html`) so CubiQ's Board view shows each section as numbered artboards at the right size. A page that is one phone or tablet screen says so in its head: `<meta name="cubiq-device" content="mobile">` (or `tablet`).
 
 ## 4. Finish
 

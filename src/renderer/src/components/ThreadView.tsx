@@ -200,17 +200,18 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
           </div>
         ))}
       </div>
+      {/* Right under the last message in a short thread; sticks to the bottom once the thread scrolls, so streaming text
+          above never moves it. */}
+      {running && permissions.length === 0 && plans.length === 0 && !asking && (
+        <div className="waiting-dock">
+          <WaitingLine
+            startedAt={startedAt ?? Date.now()}
+            outputTokens={live.usage?.outputTokens ?? live.thinkingTokens ?? null}
+            activity={activityOf(turnEvents, { textStreaming: textItems.length > 0, reasoningStreaming: reasoningItems.length > 0 || live.thinkingTokens !== null })}
+          />
+        </div>
+      )}
     </div>
-    {/* Docked below the scrolling thread, so streaming text above never moves it. */}
-    {running && permissions.length === 0 && plans.length === 0 && !asking && (
-      <div className="waiting-dock">
-        <WaitingLine
-          startedAt={startedAt ?? Date.now()}
-          outputTokens={live.usage?.outputTokens ?? live.thinkingTokens ?? null}
-          activity={activityOf(turnEvents, { textStreaming: textItems.length > 0, reasoningStreaming: reasoningItems.length > 0 || live.thinkingTokens !== null })}
-        />
-      </div>
-    )}
     </>
   );
 }

@@ -251,12 +251,12 @@ export function App() {
                         <ThreadMode thread={thread} running={running} />
                         <ThreadDesignSystem thread={thread} running={running} />
                         <ThreadTier thread={thread} running={running} />
-                        {thread.expertId && <ExpertChip expertId={thread.expertId} />}
+                        {thread.expertId && <ExpertChip expertId={thread.expertId} threadId={thread.id} />}
                       </>
                     ) : (
                       <>
                         <ThreadMode thread={thread} running={running} />
-                        {thread.expertId && <ExpertChip expertId={thread.expertId} />}
+                        {thread.expertId && <ExpertChip expertId={thread.expertId} threadId={thread.id} />}
                       </>
                     )
                   }

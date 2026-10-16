@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Copy } from "lucide-react";
 import { elementLabel, type SelectedElement } from "../../../shared/selection";
 import { api } from "../api";
+import { SystemPanel } from "./SystemPanel";
 
 // The inspector's rows, in display order. The keys match STYLE_KEYS in shared/selection.ts.
 const SIZE_FIELDS = ["width", "height"];
@@ -61,7 +62,7 @@ export function InspectorPanel({
   /** The Tweaks tab's controls, or null when the page has none (or the tier has no tweaks). */
   tweaks: ReactNode | null;
 }) {
-  const [tab, setTab] = useState<"properties" | "elements" | "code" | "tweaks">("properties");
+  const [tab, setTab] = useState<"properties" | "elements" | "code" | "system" | "tweaks">("properties");
   const shownTab = tab === "tweaks" && !tweaks ? "properties" : tab;
   // The user's edits, keyed by prop; an absent key means "still the original".
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -137,10 +138,13 @@ export function InspectorPanel({
           {tabButton("properties", "Properties")}
           {tabButton("elements", "Elements")}
           {tabButton("code", "Code")}
+          {tabButton("system", "System")}
           {tweaks && tabButton("tweaks", "Tweaks")}
         </div>
       </div>
-      {shownTab === "elements" ? (
+      {shownTab === "system" ? (
+        <SystemPanel threadId={threadId} reloadKey={reloadKey} />
+      ) : shownTab === "elements" ? (
         elements
       ) : shownTab === "tweaks" ? (
         tweaks

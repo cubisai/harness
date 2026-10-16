@@ -1,6 +1,7 @@
 // The board's pure parts: page naming, section grouping, layout and view maths. No React, no DOM.
 
 import { isVariant, variantLabel } from "../../../shared/design";
+import type { DesignDevice } from "../../../shared/types";
 
 /** The frame size a page's artboard is laid out at on the board. */
 export type BoardKind = "mobile" | "tablet" | "desktop" | "slide";
@@ -45,9 +46,10 @@ function kindOf(section: string, raw: string): BoardKind {
 
 /**
  * A page as the board shows it: its section, a human label, an optional flow step, the artboard kind it's drawn at.
- * `mobile-flow--01-create.html` is step 1 of the "Mobile flow" section; a `variant-*.html` is an option.
+ * `mobile-flow--01-create.html` is step 1 of the "Mobile flow" section; a `variant-*.html` is an option. A `device` the
+ * page declares (main reads it from the HTML) wins over the kind guessed from its name.
  */
-export function parsePage(rel: string, url: string): BoardPage {
+export function parsePage(rel: string, url: string, device?: DesignDevice): BoardPage {
   const variant = isVariant(rel);
   const base = rel.replace(/\.html?$/i, "");
   let section: string;
@@ -78,14 +80,14 @@ export function parsePage(rel: string, url: string): BoardPage {
       label = titleCase(raw);
     }
   }
-  return { rel, url, section, label, step, kind: kindOf(section, raw), variant };
+  return { rel, url, section, label, step, kind: device ?? kindOf(section, raw), variant };
 }
 
 /** The board's sections in first-seen order, with "Options" always last and stepped pages sorted by step. */
-export function boardSections(pages: { rel: string; url: string }[]): { title: string; pages: BoardPage[] }[] {
+export function boardSections(pages: { rel: string; url: string; device?: DesignDevice }[]): { title: string; pages: BoardPage[] }[] {
   const map = new Map<string, BoardPage[]>();
   for (const p of pages) {
-    const page = parsePage(p.rel, p.url);
+    const page = parsePage(p.rel, p.url, p.device);
     const list = map.get(page.section);
     if (list) list.push(page);
     else map.set(page.section, [page]);

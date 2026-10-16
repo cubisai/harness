@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ExpertDef } from "../../../../shared/experts";
+import { api } from "../../api";
+import { IconClose } from "../../icons";
 import { useStore } from "../../store";
 import { ExpertAvatar, initials, memberAvatarId } from "./ExpertAvatar";
 import { readUsage } from "./ExpertCenter";
@@ -8,16 +10,21 @@ import { ExpertDetail } from "./ExpertDetail";
 /**
  * The summoned expert, shown where it works: a chip beside the permission chip
  * in the composer bar (like WorkBuddy), and an intro card at the top of its
- * thread before the first message (see ThreadView). Neither removes or changes
- * the expert; only the user's explicit Summon sets it.
+ * thread before the first message (see ThreadView). Only the user's explicit
+ * Summon sets the expert; the composer's chip has a × that takes it off a thread
+ * with no messages yet (after the first turn the expert stays with the thread).
  */
 
 const chipTitle = (def: ExpertDef) => `${def.name} · ${def.profession}`;
 
-/** A chip for an expert already in a thread: its avatar and name, opening its detail. */
-export function ExpertChip({ expertId }: { expertId: string }) {
+/**
+ * A chip for an expert already in a thread: its avatar and name, opening its detail. With `threadId` (the composer's
+ * chip) it also gets a × while that thread has no messages.
+ */
+export function ExpertChip({ expertId, threadId }: { expertId: string; threadId?: string }) {
   const experts = useStore((s) => s.experts);
   const canSummon = useStore((s) => Boolean(s.selectedProjectId));
+  const empty = useStore((s) => (threadId ? (s.events[threadId]?.length ?? 0) === 0 : false));
   const [open, setOpen] = useState(false);
 
   // The catalogue loads on the chip's first render (a thread may open before the Library did).
@@ -43,6 +50,16 @@ export function ExpertChip({ expertId }: { expertId: string }) {
         setOpen(false);
         useStore.getState().setComposerDraft(prompt);
       }}
+      {...(threadId && empty
+        ? {
+            onRemove: () => {
+              void api()
+                .setThreadExpert(threadId, null)
+                .then((thread) => useStore.getState().apply({ type: "thread", thread }))
+                .catch((err: unknown) => useStore.getState().showNotice(err instanceof Error ? err.message : String(err)));
+            },
+          }
+        : {})}
     />
   );
 }
@@ -57,6 +74,7 @@ export function ExpertChipView({
   onClose,
   onSummon,
   onSummonPrompt,
+  onRemove,
 }: {
   def: ExpertDef;
   used: number;
@@ -66,6 +84,8 @@ export function ExpertChipView({
   onClose(): void;
   onSummon(): void;
   onSummonPrompt(prompt: string): void;
+  /** Takes the expert off the thread; absent once the thread has messages. */
+  onRemove?(): void;
 }) {
   return (
     <>
@@ -76,6 +96,11 @@ export function ExpertChipView({
           {def.kind === "team" && <span className="expert-chip-team">{" · Team"}</span>}
         </span>
       </button>
+      {onRemove && (
+        <button className="icon-button expert-chip-remove" title="Remove the expert" aria-label={`Remove ${def.name}`} onClick={onRemove}>
+          <IconClose />
+        </button>
+      )}
       {open && <ExpertDetail def={def} used={used} canSummon={canSummon} onClose={onClose} onSummon={onSummon} onSummonPrompt={onSummonPrompt} />}
     </>
   );

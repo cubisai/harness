@@ -1,4 +1,4 @@
-import type { AgentCatalogEntry, LiveUpdate, McpOverview, MemoryNote, MemoryOverview, MemoryScope, Project, SettingsView, SkillEntry, SkillOrigin, StoredEvent, Thread, ThreadEvent, UnskilledApi } from "../../shared/types";
+import type { AgentCatalogEntry, DesignSystemDoc, LiveUpdate, McpOverview, MemoryNote, MemoryOverview, MemoryScope, Project, SettingsView, SkillEntry, SkillOrigin, StoredEvent, Thread, ThreadEvent, UnskilledApi } from "../../shared/types";
 import type { ExpertDef } from "../../shared/experts";
 
 /**
@@ -658,6 +658,14 @@ export function installMock(): void {
       { id: "mono", name: "Mono", description: "Black, white and one gray ramp.", swatches: ["#ffffff", "#0a0a0a", "#0a0a0a", "#404040"], source: "builtin" },
       { id: "playful", name: "Playful", description: "Bright and friendly, big radii.", swatches: ["#fffaf5", "#2a1b3d", "#7c3aed", "#c2410c"], source: "builtin" },
     ],
+    designSystemDoc: async () => mockSystemDoc,
+    designSystemEdit: async (threadId) => {
+      for (const list of Object.values(threads)) {
+        const thread = list.find((x) => x.id === threadId);
+        if (thread) return { doc: mockSystemDoc, thread };
+      }
+      throw new Error("no thread");
+    },
     listArtifacts: async (threadId) =>
       threadId === "t1"
         ? [
@@ -733,6 +741,31 @@ export function installMock(): void {
 }
 
 /** A few experts for the UI preview (the app reads resources/experts). */
+const mockSystemDoc: DesignSystemDoc = {
+  id: "clean",
+  name: "Clean",
+  source: "builtin",
+  editable: true,
+  copyOnWrite: true,
+  designMd: "# Clean\n\n## 1. Visual theme and atmosphere\n\nNeutral and calm: white surfaces, one blue accent, soft radii.\n",
+  groups: [
+    {
+      title: "Color",
+      tokens: [
+        { name: "--color-bg", light: "#ffffff", dark: "#18181b" },
+        { name: "--color-text", light: "#18181b", dark: "#ffffff" },
+        { name: "--color-primary", light: "#2563eb", dark: "#0e7490" },
+        { name: "--color-on-primary", light: "#ffffff", dark: "#ffffff" },
+        { name: "--color-accent", light: "#0e7490", dark: null },
+      ],
+    },
+    { title: "Type", tokens: [{ name: "--font-sans", light: "system-ui, sans-serif", dark: null }, { name: "--text-md", light: "16px", dark: null }] },
+    { title: "Space", tokens: [{ name: "--space-2", light: "8px", dark: null }, { name: "--space-6", light: "24px", dark: null }] },
+    { title: "Radius", tokens: [{ name: "--radius-md", light: "8px", dark: null }] },
+    { title: "Elevation", tokens: [{ name: "--shadow-2", light: "0 4px 16px #18181b", dark: null }] },
+  ],
+};
+
 const mockExperts: ExpertDef[] = [
   { id: "data-analyst", kind: "agent", name: "Data Analyst", profession: "Senior Data Analyst", persona: "Daniel", category: "Data & AI", avatarText: "DA", description: "Turns raw data into clear analyses, SQL and dashboards that answer a specific business question.", tags: ["analytics", "sql"], quickPrompts: ["Write SQL to compute week-over-week active users by segment", "Analyze this CSV and summarize the trends that matter"], prompt: "You are Daniel.", skills: [], source: "builtin", version: "1.0.0" },
   { id: "frontend-developer", kind: "agent", name: "Frontend Developer", profession: "Senior Frontend Engineer", persona: "Fran", category: "Engineering", avatarText: "FD", description: "Builds accessible, fast interfaces in React and plain web platform code.", tags: ["react", "a11y"], quickPrompts: ["Build a responsive pricing table component with keyboard support"], prompt: "You are Fran.", skills: [], source: "builtin", version: "1.0.0" },

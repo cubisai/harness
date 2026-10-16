@@ -5,6 +5,8 @@ import type {
   AgentInfo,
   ArtifactContent,
   ArtifactFile,
+  DesignSystemDoc,
+  DesignSystemEdit,
   DesignSystemOption,
   DiffFile,
   LiveDelta,
@@ -43,7 +45,8 @@ import { saveRef } from "./design/refs";
 import { addComment, deleteComment, loadComments, saveComments, updateComment } from "./design/comments";
 import { applyStyleEdit, applyTextEdit } from "./design/textedit";
 import { keepTweaks } from "./design/tweaks";
-import { listDesignSystems, materializeSystem, resolveDesignSystem } from "./design/systems";
+import { forkSystem, listDesignSystems, materializeSystem, resolveDesignSystem, type DesignSystemInfo } from "./design/systems";
+import { parseTokens, setToken } from "./design/tokens";
 import { skillsOf } from "../shared/skill-list";
 import type { AgentDriver, HarnessTool, ModelSwitch, SessionSeed } from "./agents/types";
 import {
@@ -1224,6 +1227,68 @@ export class Service {
       swatches,
       source,
     }));
+  }
+
+  /** A design thread's resolved system with its files, or null (not a design thread, or no system at all). */
+  private threadSystem(thread: Thread): DesignSystemInfo | null {
+    if (thread.kind !== "design") return null;
+    return resolveDesignSystem(listDesignSystems(this.projectPath(thread.projectId), this.designSystemsDir ?? ""), thread.designSystem);
+  }
+
+  /** The System tab's view of a system: DESIGN.md and its tokens, plus whether (and how) it can be edited. */
+  private systemDoc(thread: Thread, system: DesignSystemInfo): DesignSystemDoc {
+    const project = this.projectPath(thread.projectId);
+    const read = (file: string | undefined): string => {
+      if (!file) return "";
+      try {
+        return readFileSync(file, "utf8");
+      } catch {
+        return "";
+      }
+    };
+    return {
+      id: system.id,
+      name: system.name,
+      source: system.source,
+      editable: system.source !== "builtin" || project !== null,
+      copyOnWrite: system.source === "builtin",
+      designMd: read(system.designMd),
+      groups: parseTokens(read(system.tokensCss)),
+    };
+  }
+
+  /** The thread's design system for the canvas's System tab; null for any other thread. */
+  designSystemDoc(threadId: string): DesignSystemDoc | null {
+    const thread = this.store.getThread(threadId);
+    const system = this.threadSystem(thread);
+    return system ? this.systemDoc(thread, system) : null;
+  }
+
+  /**
+   * Edit a design thread's system from the System tab. A built-in is copied into the project's
+   * `.agents/design-systems/<id>-custom/` first and the thread switched to the copy. The result is copied into the design
+   * folder right away, so the canvas reloads with it; the marker moves too, so the next turn doesn't announce a switch.
+   */
+  editDesignSystem(threadId: string, edit: DesignSystemEdit): { doc: DesignSystemDoc; thread: Thread } {
+    let thread = this.store.getThread(threadId);
+    let system = this.threadSystem(thread);
+    if (!system) throw new Error("Only a design thread has a design system.");
+    if (system.source === "builtin") {
+      const project = this.projectPath(thread.projectId);
+      if (!project) throw new Error("Open a project folder to customize a built-in design system.");
+      system = forkSystem(system, project);
+      thread = this.store.setDesignSystem(threadId, system.id);
+    }
+    if ("token" in edit) {
+      if (!system.tokensCss) throw new Error("This design system has no tokens.css.");
+      const { name, scheme, value } = edit.token;
+      writeFileSync(system.tokensCss, setToken(readFileSync(system.tokensCss, "utf8"), name, scheme, value));
+    } else {
+      writeFileSync(system.designMd, edit.designMd);
+    }
+    const root = this.designRoot(threadId);
+    if (root) materializeSystem(system, join(root, "system"));
+    return { doc: this.systemDoc(thread, system), thread };
   }
 
   /** Pick a design thread's system (null = the default); the next turn copies it in and tells the agent. */

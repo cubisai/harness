@@ -818,6 +818,41 @@ export interface DesignSystemOption {
   source: "project" | "projectFolder" | "builtin";
 }
 
+/** One custom property in a design system's tokens.css: its light (`:root`) value and its dark override, if any. */
+export interface DesignToken {
+  /** "--color-bg". */
+  name: string;
+  light: string;
+  /** The value under `@media (prefers-color-scheme: dark) { :root { … } }`; null when the token has none. */
+  dark: string | null;
+}
+
+/** The tokens under one group comment in tokens.css ("Color (light)" → "Color"); "Other" before any comment. */
+export interface DesignTokenGroup {
+  title: string;
+  tokens: DesignToken[];
+}
+
+/** A design thread's system, read for the canvas's System tab. */
+export interface DesignSystemDoc {
+  id: string;
+  name: string;
+  source: DesignSystemOption["source"];
+  /** False when an edit has nowhere to go (a built-in on a thread without a project folder). */
+  editable: boolean;
+  /** True when the first edit copies it into the project's `.agents/design-systems/<id>-custom/` (a built-in). */
+  copyOnWrite: boolean;
+  designMd: string;
+  /** Empty when it has no tokens.css (a project's own DESIGN.md). */
+  groups: DesignTokenGroup[];
+}
+
+/** One edit from the System tab: a token value for one scheme, or the whole DESIGN.md. */
+export type DesignSystemEdit = { token: { name: string; scheme: "light" | "dark"; value: string } } | { designMd: string };
+
+/** The frame a page declares it is drawn in (`<meta name="cubiq-device">`, or a one-screen mobile page's bars). */
+export type DesignDevice = "mobile" | "tablet" | "desktop" | "slide";
+
 /** What a design page exports as (canvas toolbar › Export). */
 export type DesignExportFormat = "html" | "png" | "pdf";
 
@@ -829,7 +864,7 @@ export interface DesignEntry {
   /** Its `cubiq-design:` URL (the latest file; add `?v=N` for a stored version). */
   url: string;
   /** Every page in the design folder (index first, then pages, then `variant-*.html`), with their URLs. */
-  pages: { rel: string; url: string }[];
+  pages: { rel: string; url: string; device?: DesignDevice }[];
   /** Page-to-page links (relative <a href> / data-goto between pages), for the board's flow arrows and Present. */
   links?: { from: string; to: string }[];
   /** Whether the design has a developer handoff (`handoff.md`) beside its pages. */
@@ -1191,6 +1226,10 @@ export interface UnskilledApi {
   designExport(threadId: string, format: DesignExportFormat, opts: { rel: string; version: number | null; width: number }): Promise<string | null>;
   /** The design systems a project's design threads can use: its DESIGN.md, its .agents/design-systems, then the built-ins. */
   designSystems(projectId: string | null): Promise<DesignSystemOption[]>;
+  /** The thread's design system for the System tab, or null for a non-design thread. */
+  designSystemDoc(threadId: string): Promise<DesignSystemDoc | null>;
+  /** Edit the thread's design system (a built-in is copied into the project first and the thread switched to the copy). */
+  designSystemEdit(threadId: string, edit: DesignSystemEdit): Promise<{ doc: DesignSystemDoc; thread: Thread }>;
   /** The expert catalogue: bundled experts and teams, then the user's imported ones. */
   listExperts(): Promise<ExpertDef[]>;
   getExpert(id: string): Promise<ExpertDef | null>;

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /** One design system a design thread can be started from. */
@@ -208,4 +208,51 @@ export function materializeSystem(system: DesignSystemInfo, destDir: string): bo
   }
   changed = writeIfChanged(join(destDir, ".system"), system.id) || changed;
   return changed;
+}
+
+/**
+ * Copy a built-in design system into the project's `.agents/design-systems` as
+ * `<id>-custom`, for edits to land in the project. A non-built-in passes through
+ * unchanged; an existing copy is left as-is and its own index read back.
+ */
+export function forkSystem(system: DesignSystemInfo, projectPath: string): DesignSystemInfo {
+  if (system.source !== "builtin") return system;
+  if (!/^[\w.-]+$/.test(system.id)) throw new Error("Can't copy this design system.");
+  const folder = `${system.id}-custom`;
+  const dir = join(projectPath, ".agents", "design-systems", folder);
+  const index = join(dir, "index.md");
+  const designMd = join(dir, "DESIGN.md");
+  const tokensCss = join(dir, "tokens.css");
+
+  if (isFile(index) && isFile(designMd)) {
+    const parsed = parseSystemIndex(readText(index) ?? "");
+    return {
+      id: `project:${folder}`,
+      name: parsed.name || folder,
+      description: parsed.description || "",
+      swatches: parsed.swatches,
+      source: "projectFolder",
+      designMd,
+      ...(isFile(tokensCss) ? { tokensCss } : {}),
+    };
+  }
+
+  mkdirSync(dir, { recursive: true });
+  const lines = ["---", "type: design-system", `name: ${system.name} (custom)`];
+  if (system.description) lines.push(`description: ${system.description}`);
+  if (system.swatches.length) lines.push(`swatches: ${system.swatches.join(", ")}`);
+  lines.push("---", "", `A copy of ${system.name}, edited in CubiQ's System tab. Rules in \`DESIGN.md\`, tokens in \`tokens.css\`.`, "");
+  writeFileSync(index, lines.join("\n"));
+  copyFileSync(system.designMd, designMd);
+  if (system.tokensCss) copyFileSync(system.tokensCss, tokensCss);
+
+  return {
+    id: `project:${folder}`,
+    name: `${system.name} (custom)`,
+    description: system.description,
+    swatches: system.swatches,
+    source: "projectFolder",
+    designMd,
+    ...(isFile(tokensCss) ? { tokensCss } : {}),
+  };
 }

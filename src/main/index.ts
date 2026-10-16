@@ -4,12 +4,12 @@ import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell, utilityProcess } from "electron";
-import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, DesignExportFormat, DesignSystemOption, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryScope, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
+import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, DesignDevice, DesignExportFormat, DesignSystemEdit, DesignSystemOption, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryScope, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
 import { DESIGN_SCHEME, designDirName, designUrl, entryFile, serveDesign } from "./design/serve";
 import { DesignWatcher } from "./design/watch";
-import { listDesignPages } from "./design/pages";
+import { listDesignPages, pageDevice } from "./design/pages";
 import { readTier } from "../shared/tiers";
 import { readTarget } from "../shared/comments";
 import { bridgeScript } from "./design/bridge";
@@ -793,8 +793,8 @@ async function main(): Promise<void> {
     const inPages = new Set(pages);
     const links: { from: string; to: string }[] = [];
     const seen = new Set<string>();
+    const devices = new Map<string, DesignDevice>();
     for (const from of pages) {
-      if (links.length >= 200) break;
       let html: string;
       try {
         const file = join(root, from);
@@ -803,6 +803,9 @@ async function main(): Promise<void> {
       } catch {
         continue;
       }
+      const device = pageDevice(html);
+      if (device) devices.set(from, device);
+      if (links.length >= 200) continue;
       for (const m of html.matchAll(/(?:href|data-goto)\s*=\s*(["'])(.*?)\1/gi)) {
         const raw = m[2] ?? "";
         if (/^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("//")) continue;
@@ -819,7 +822,10 @@ async function main(): Promise<void> {
       dir: designDirName(threadId),
       rel,
       url: designUrl(threadId, rel),
-      pages: pages.map((p) => ({ rel: p, url: designUrl(threadId, p) })),
+      pages: pages.map((p) => {
+        const device = devices.get(p);
+        return { rel: p, url: designUrl(threadId, p), ...(device ? { device } : {}) };
+      }),
       links,
       handoff: existsSync(join(root, "handoff.md")),
     };
@@ -1339,6 +1345,8 @@ async function main(): Promise<void> {
     service.setDesignSystem(threadId, typeof id === "string" && /^[\w:.-]{1,80}$/.test(id) ? id : null),
   );
   ipcMain.handle("design:systems", (_e, projectId: string | null): DesignSystemOption[] => service.designSystems(projectId)),
+  ipcMain.handle("design:system-doc", (_e, threadId: string) => service.designSystemDoc(threadId));
+  ipcMain.handle("design:system-edit", (_e, threadId: string, edit: unknown) => service.editDesignSystem(threadId, readSystemEdit(edit)));
   ipcMain.handle("threads:set-expert", (_e, threadId: string, expertId: unknown) => {
     // Only an expert the catalogue knows; null clears it.
     const id = typeof expertId === "string" && EXPERT_ID_RE.test(expertId) && experts.get(expertId) ? expertId : null;
@@ -1700,6 +1708,16 @@ async function smokeBrowserWith(tools: ReturnType<typeof browserTools>, browser:
     console.error("smoke: browser failed", err);
     return false;
   }
+}
+
+/** A System-tab edit from the renderer, checked for shape (setToken checks the name and value themselves). */
+function readSystemEdit(edit: unknown): DesignSystemEdit {
+  const e = (edit ?? {}) as { token?: { name?: unknown; scheme?: unknown; value?: unknown }; designMd?: unknown };
+  if (e.token && typeof e.token.name === "string" && typeof e.token.value === "string" && (e.token.scheme === "light" || e.token.scheme === "dark")) {
+    return { token: { name: e.token.name, scheme: e.token.scheme, value: e.token.value } };
+  }
+  if (typeof e.designMd === "string" && e.designMd.length <= 200_000) return { designMd: e.designMd };
+  throw new Error("Invalid design-system edit.");
 }
 
 function pick<T extends object, K extends keyof T>(obj: T, keys: K[]): Pick<T, K> {

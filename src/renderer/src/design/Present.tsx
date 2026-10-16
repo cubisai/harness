@@ -2,9 +2,10 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { BOARD_SIZES, flowOrder, parsePage } from "./board-layout";
 import { readBridgeMessage } from "./frame";
+import type { DesignDevice } from "../../../shared/types";
 
 /** The page shown, in board order, in a sandboxed frame scaled to the overlay: ← / → step, Exit leaves. */
-export function Present({ pages, links, start, onExit }: { pages: { rel: string; url: string }[]; links?: { from: string; to: string }[]; start: string; onExit: () => void }) {
+export function Present({ pages, links, start, onExit }: { pages: { rel: string; url: string; device?: DesignDevice }[]; links?: { from: string; to: string }[]; start: string; onExit: () => void }) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
@@ -16,7 +17,7 @@ export function Present({ pages, links, start, onExit }: { pages: { rel: string;
   const [stage, setStage] = useState({ width: 0, height: 0 });
 
   const page = pages.find((p) => p.rel === current) ?? pages.find((p) => p.rel === start) ?? pages[0];
-  const parsed = page ? parsePage(page.rel, page.url) : null;
+  const parsed = page ? parsePage(page.rel, page.url, page.device) : null;
   const size = parsed ? BOARD_SIZES[parsed.kind] : BOARD_SIZES.desktop;
   const scale = stage.width > 0 && stage.height > 0 ? Math.min(1, (stage.width - 64) / size.width, (stage.height - 64) / size.height) : 1;
   const index = order.indexOf(current);

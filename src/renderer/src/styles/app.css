@@ -644,15 +644,45 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-inspector-foot { position: sticky; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--hairline); background: var(--bg-elevated); }
 .design-inspector-foot .grow { flex: 1; }
 .design-inspector-hint { min-width: 0; font-size: 11.5px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* Four tabs share the panel's width evenly. */
+/* Five tabs share the panel's width evenly. */
 .design-inspector-tabs .segmented { flex: 1; min-width: 0; }
-.design-inspector-tabs .segmented button { flex: 1; min-width: 0; padding: 0 4px; }
+.design-inspector-tabs .segmented button { flex: 1; min-width: 0; padding: 0 4px; font-size: 11.5px; }
 /* Width and height: a Hug | Fill | Fixed switch above the value. */
 .design-inspector-size { padding-top: 4px; }
 .design-inspector-sizing { margin-left: 100px; }
 .design-inspector-sizing button { height: 22px; padding: 0 8px; font-size: 11.5px; }
 /* The Tweaks tab: the page's tweak controls, without the popover's frame. */
 .design-inspector .design-tweaks { position: static; width: auto; max-height: none; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
+/* The System tab: the thread's design system — its name, section jumps, DESIGN.md and tokens.css. */
+.sys-head { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 10px 12px 8px; border-bottom: 1px solid var(--hairline); }
+.sys-title { min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sys-sub { min-width: 0; font-size: 11.5px; color: var(--text-tertiary); }
+.sys-jump { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 12px 8px; }
+.sys-jump .button.ghost { height: 22px; padding: 0 6px; font-size: 11.5px; border-radius: var(--radius-s); }
+.sys-md { min-width: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-secondary); overflow-wrap: anywhere; }
+.sys-md h1, .sys-md h2, .sys-md h3, .sys-md h4 { margin: 12px 0 4px; font-size: 12.5px; font-weight: 600; line-height: 1.4; color: var(--text); }
+.sys-md p, .sys-md li { margin: 0 0 6px; font-size: 12.5px; }
+.sys-md ul, .sys-md ol { margin: 0 0 6px; padding-left: 16px; }
+.sys-md code { font-size: 11.5px; }
+.design-inspector .sys-md-edit { width: 100%; min-height: 240px; padding: 6px 8px; font: 11.5px var(--mono); resize: vertical; }
+.sys-md-actions { display: flex; gap: 8px; margin-top: 8px; }
+.sys-color { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; border-bottom: 1px solid var(--hairline); }
+.sys-color-cells { display: flex; gap: 6px; min-width: 0; }
+.sys-color-cells > div { flex: 1 1 0; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; }
+/* The value keeps the cell's width; an ink token's contrast badge drops onto its own line under it. */
+.design-inspector .sys-color-cells .sys-input { flex: 1 1 calc(100% - 22px); }
+.sys-color-cells .sys-badge { margin-left: 18px; }
+.sys-name { flex: 1 1 auto; min-width: 0; font-size: 11.5px; font-family: var(--mono); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.design-inspector .sys-input { height: 26px; padding: 0 6px; font: 11.5px var(--mono); min-width: 0; flex: 1; }
+.design-inspector .sys-input.inherited { color: var(--text-tertiary); }
+.sys-badge { flex: none; font: 10.5px var(--mono); font-variant-numeric: tabular-nums; padding: 0 4px; border-radius: var(--radius-s); background: var(--bg-subtle); }
+.sys-badge.fail { color: var(--danger); }
+.sys-badge.aa, .sys-badge.large { color: var(--text-secondary); }
+.sys-row { display: flex; align-items: center; gap: 8px; min-height: 30px; }
+.sys-space { flex: none; height: 6px; border-radius: 3px; background: var(--text-tertiary); }
+.sys-radius { flex: none; width: 20px; height: 20px; border: 1px solid var(--hairline-strong); background: var(--bg); }
+.sys-shadow { flex: none; width: 24px; height: 16px; border: 1px solid var(--hairline-strong); background: var(--bg); }
+.sys-error { margin: 0; padding: 0 12px 8px; font-size: 11.5px; color: var(--danger); }
 /* Layer tree (Elements tab): one row per element, indented by depth, the selected row tinted. */
 .el-tree { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: auto; }
 .el-row { display: flex; align-items: center; gap: 6px; width: 100%; height: 24px; padding-right: 8px; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 12.5px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1023,7 +1053,7 @@ details.tool[open]::details-content { height: auto; }
 .check-row summary { cursor: pointer; margin-top: 4px; }
 .check-row pre { margin: 4px 0 0; }
 /* The running turn's line, in Claude Code's style. */
-.waiting-dock { flex-shrink: 0; width: 100%; max-width: 720px; margin: 0 auto; padding: 0 28px; box-sizing: border-box; }
+.waiting-dock { position: sticky; bottom: 0; z-index: 1; width: 100%; max-width: 720px; margin: -24px auto 0; padding: 0 28px; box-sizing: border-box; background: var(--bg); }
 .waiting-line { display: flex; align-items: center; gap: 6px; margin: 6px 0 8px; font-size: 12.5px; color: var(--text-secondary); }
 .waiting-orb { width: 20px; height: 20px; flex: none; align-self: center; }
 .waiting-verb { color: var(--signal-ink); font-weight: 500; }
@@ -2438,6 +2468,9 @@ button.hunk:hover { color: var(--text); }
 /* The thread header's expert chip: beside the title, giving way to it on a narrow window. */
 .main-header .expert-chip { flex-shrink: 1; }
 .expert-chip-name { min-width: 0; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The composer chip's ×: takes the expert off a thread that hasn't started. */
+.expert-chip-remove { flex: none; width: 20px; height: 20px; margin-left: -4px; color: var(--text-tertiary); }
+.expert-chip-remove:hover { color: var(--text); }
 /* A bundled portrait fills the same box as the initials it replaces; it carries its own round background. */
 img.expert-avatar-img { display: block; padding: 0; border: 0; border-radius: 999px; background: none; object-fit: cover; }
 img.expert-intro-member.expert-avatar-img { border: 1px solid var(--bg-elevated); }
@@ -2729,6 +2762,8 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
   position: absolute;
   z-index: 4;
   min-width: 240px;
+  /* Capped, so a long one-line row (a skill's description) ellipsizes instead of stretching it across the window. */
+  max-width: min(360px, calc(100vw - 32px));
   max-height: 360px;
   overflow: auto;
   padding: 4px;

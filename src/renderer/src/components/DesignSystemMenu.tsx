@@ -34,7 +34,8 @@ export function DesignSystemMenu({ projectId, value, disabled, onPick }: { proje
   useEffect(() => {
     if (open) focusSelectedOption(menu.current);
   }, [open]);
-  // Re-read on open too: a system the agent just extracted into .agents/design-systems shows up without a restart.
+  // Re-read on open too: a system the agent just extracted into .agents/design-systems shows up without a restart. And
+  // when the value changes: the System tab's first edit switches the thread to a copy that wasn't in the list yet.
   useEffect(() => {
     let live = true;
     void api()
@@ -44,7 +45,7 @@ export function DesignSystemMenu({ projectId, value, disabled, onPick }: { proje
     return () => {
       live = false;
     };
-  }, [projectId, open]);
+  }, [projectId, open, value]);
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent) => {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Maximize2, Play } from "lucide-react";
 import { BOARD_HEADER, BOARD_TITLE_BAND, boardLayout, boardSections, clampZoom, fitBoard, zoomAt, type BoardFrame, flowPath } from "./board-layout";
+import type { DesignEntry } from "../../../shared/types";
 
 /** The margin around the stage within which a frame's iframe is rendered (others are placeholders). */
 const LAZY_MARGIN = 400;
@@ -25,7 +26,7 @@ export function Board({
   onPresent,
   reloadKey,
 }: {
-  pages: { rel: string; url: string }[];
+  pages: DesignEntry["pages"];
   links?: { from: string; to: string }[];
   flow: boolean;
   onFocus: (rel: string) => void;
@@ -202,7 +203,16 @@ export function Board({
                   </div>
                   <div className="design-board-frame">
                     {shown ? (
-                      <iframe key={`${frame.page.rel}-${reloadKey}`} className="design-frame" sandbox="allow-scripts" src={frame.page.url} title={`Design: ${frame.page.rel}`} style={{ width: frame.width, height: frame.height }} />
+                      <iframe
+                        key={`${frame.page.rel}-${reloadKey}`}
+                        className="design-frame"
+                        sandbox="allow-scripts"
+                        src={frame.page.url}
+                        title={`Design: ${frame.page.rel}`}
+                        style={{ width: frame.width, height: frame.height }}
+                        // An artboard is a screen, not a window: hide the page's scrollbars as the device frame does.
+                        onLoad={(e) => e.currentTarget.contentWindow?.postMessage({ source: "cubiq-canvas", type: "device-chrome", on: true }, "*")}
+                      />
                     ) : (
                       <div className="design-board-placeholder" style={{ width: frame.width, height: frame.height }}>
                         {frame.page.label}

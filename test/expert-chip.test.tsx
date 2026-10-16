@@ -211,3 +211,18 @@ describe("ExpertAvatar", () => {
     expect(initials("Research Planner & Editor")).toBe("RP");
   });
 });
+
+describe("ExpertChip remove", () => {
+  it("shows a × only when the view gets onRemove, and calls it", async () => {
+    const { ExpertChipView } = await load();
+    const props = { def: analyst, used: 0, canSummon: true, open: false, onOpen: () => {}, onClose: () => {}, onSummon: () => {}, onSummonPrompt: () => {} };
+    expect(renderToStaticMarkup(<ExpertChipView {...props} />)).not.toContain("expert-chip-remove");
+
+    let removed = false;
+    const tree = ExpertChipView({ ...props, onRemove: () => (removed = true) });
+    const x = findAll(tree, (el) => el.props?.className === "icon-button expert-chip-remove")[0]!;
+    expect(x.props!["aria-label"]).toBe("Remove Data Analyst");
+    (x.props!.onClick as () => void)();
+    expect(removed).toBe(true);
+  });
+});
