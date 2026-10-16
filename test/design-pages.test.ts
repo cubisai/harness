@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { MAX_PAGES, listDesignPages, pageDevice, promoteVariant } from "../src/main/design/pages";
+import { MAX_PAGES, listDesignFiles, listDesignPages, pageDevice, promoteVariant } from "../src/main/design/pages";
 import { isVariant, variantLabel } from "../src/shared/design";
 import { tempDir } from "./helpers";
 
@@ -124,5 +124,33 @@ describe("pageDevice", () => {
     expect(pageDevice(two + two)).toBeNull();
     expect(pageDevice(`<div class="board">${two}</div>`)).toBeNull();
     expect(pageDevice('<header class="status-bar"></header>')).toBeNull();
+  });
+});
+
+describe("listDesignFiles", () => {
+  it("lists pages first then the other text files, skipping dotfiles, node_modules and non-text files", () => {
+    const root = tempDir();
+    for (const name of ["index.html", "about.html", "styles.css", "app.js", "notes.md", "image.png", ".hidden.css"]) {
+      writeFileSync(join(root, name), name);
+    }
+    mkdirSync(join(root, ".versions"));
+    writeFileSync(join(root, ".versions", "old.html"), "x");
+    mkdirSync(join(root, "node_modules"));
+    writeFileSync(join(root, "node_modules", "x.js"), "x");
+    mkdirSync(join(root, "system"));
+    writeFileSync(join(root, "system", "tokens.css"), "x");
+    expect(listDesignFiles(root)).toEqual(["index.html", "about.html", "app.js", "notes.md", "styles.css", "system/tokens.css"]);
+  });
+
+  it("walks three folder levels deep and no further", () => {
+    const root = tempDir();
+    mkdirSync(join(root, "a", "b", "c", "d", "e"), { recursive: true });
+    writeFileSync(join(root, "a", "b", "c", "ok.css"), "x");
+    writeFileSync(join(root, "a", "b", "c", "d", "e", "deep.css"), "x");
+    expect(listDesignFiles(root)).toEqual(["a/b/c/ok.css"]);
+  });
+
+  it("is empty for a missing root", () => {
+    expect(listDesignFiles(join(tempDir(), "missing"))).toEqual([]);
   });
 });

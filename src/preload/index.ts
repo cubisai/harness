@@ -88,6 +88,7 @@ const api: UnskilledApi = {
   search: (query) => ipcRenderer.invoke("search:query", query),
   listArtifacts: (threadId) => ipcRenderer.invoke("artifacts:list", threadId),
   designEntry: (threadId, rel) => ipcRenderer.invoke("design:entry", threadId, rel ?? null),
+  designFiles: (threadId) => ipcRenderer.invoke("design:files", threadId),
   designPromote: (threadId, rel) => ipcRenderer.invoke("design:promote", threadId, rel),
   designKeepTweaks: (threadId, rel, values) => ipcRenderer.invoke("design:keep-tweaks", threadId, rel, values),
   designSaveRef: (threadId, bytes) => ipcRenderer.invoke("design:save-ref", threadId, bytes),

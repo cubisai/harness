@@ -9,7 +9,7 @@ import type { HarnessTool } from "./agents/types";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
 import { DESIGN_SCHEME, designDirName, designUrl, entryFile, serveDesign } from "./design/serve";
 import { DesignWatcher } from "./design/watch";
-import { listDesignPages, pageDevice } from "./design/pages";
+import { listDesignFiles, listDesignPages, pageDevice } from "./design/pages";
 import { readTier } from "../shared/tiers";
 import { readTarget } from "../shared/comments";
 import { bridgeScript } from "./design/bridge";
@@ -849,6 +849,10 @@ async function main(): Promise<void> {
       links,
       handoff: existsSync(join(root, "handoff.md")),
     };
+  });
+  ipcMain.handle("design:files", (_e, threadId: string) => {
+    const root = service.designRoot(threadId);
+    return root ? listDesignFiles(root) : [];
   });
   ipcMain.handle("design:promote", (_e, threadId: string, rel: string) => {
     if (typeof rel !== "string") throw new Error("Not a variant.");

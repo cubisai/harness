@@ -1197,6 +1197,8 @@ export interface UnskilledApi {
   listArtifacts(threadId: string): Promise<ArtifactFile[]>;
   /** A design thread's page for the canvas: its folder (relative to the thread's), entry file and `cubiq-design:` URL; null before the agent writes one. */
   designEntry(threadId: string, rel?: string | null): Promise<DesignEntry | null>;
+  /** Text files in a design thread's folder (its pages first), as "/"-separated relative paths; [] for a thread without one. */
+  designFiles(threadId: string): Promise<string[]>;
   /** Make a design's `variant-*.html` its `index.html`; the old and new index are saved as versions. */
   designPromote(threadId: string, rel: string): Promise<void>;
   /** Write the canvas's tweak values into a design page (Keep), saving versions; false when nothing changed. */

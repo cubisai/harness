@@ -621,6 +621,7 @@ export function installMock(): void {
       return { threads: found.filter((h) => h.kind === "title"), messages: found.filter((h) => h.kind !== "title") };
     },
     designEntry: async () => null,
+    designFiles: async () => [],
     designPromote: async () => {},
     designKeepTweaks: async () => false,
     designSaveRef: async () => "designs/mock/refs/ref-1.png",

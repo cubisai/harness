@@ -39,6 +39,43 @@ export function listDesignPages(root: string): string[] {
   return [...index, ...rest.filter((n) => !isVariant(n)), ...rest.filter(isVariant)].slice(0, MAX_PAGES);
 }
 
+/** The most files one design folder lists. */
+export const MAX_DESIGN_FILES = 200;
+
+const FILE_RE = /\.(html?|css|m?js|jsx|tsx?|json|md|svg|txt)$/i;
+
+/**
+ * Every text file below the design folder, as "/"-separated paths relative to
+ * `root`: the pages first (in `listDesignPages` order), then the rest a-z.
+ * Three folder levels deep at most, skipping dot-entries and `node_modules`;
+ * a missing or unreadable folder contributes nothing.
+ */
+export function listDesignFiles(root: string): string[] {
+  const files: string[] = [];
+  const walk = (dir: string, rel: string, depth: number): void => {
+    let entries: { name: string; isFile: boolean; isDirectory: boolean }[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true }).map((e) => ({ name: e.name, isFile: e.isFile(), isDirectory: e.isDirectory() }));
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      const path = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory) {
+        if (entry.name === "node_modules" || depth >= 3) continue;
+        walk(join(dir, entry.name), path, depth + 1);
+      } else if (entry.isFile && FILE_RE.test(entry.name)) {
+        files.push(path);
+      }
+    }
+  };
+  walk(root, "", 0);
+  const pages = listDesignPages(root);
+  const rest = files.filter((f) => !pages.includes(f)).sort((a, b) => a.localeCompare(b));
+  return [...pages, ...rest].slice(0, MAX_DESIGN_FILES);
+}
+
 /**
  * Make the variant `rel` the design's main page: the current `index.html` is
  * recorded as a version first, then the variant's bytes take its place. The

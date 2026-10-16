@@ -72,6 +72,11 @@
   --device-island: #000000;
   --add-bg: rgb(47 158 68 / 0.1);
   --del-bg: rgb(229 72 77 / 0.08);
+  /* Syntax colours (code views): each ≥ 4.5:1 on --bg and --bg-subtle. Attributes and properties use --text-secondary. */
+  --syn-keyword: #8b3dbf;
+  --syn-string: #2b7a3b;
+  --syn-number: #a35c00;
+  --syn-comment: #6b717c;
 
   --radius-s: 6px;
   --radius-m: 8px;
@@ -126,6 +131,10 @@
     --device-island: #000000;
     --add-bg: rgb(63 185 80 / 0.12);
     --del-bg: rgb(255 99 105 / 0.12);
+    --syn-keyword: #c792ea;
+    --syn-string: #8fd19e;
+    --syn-number: #f0b060;
+    --syn-comment: #7d838e;
   }
 }
 
@@ -171,6 +180,10 @@
   --device-island: #000000;
   --add-bg: rgb(63 185 80 / 0.12);
   --del-bg: rgb(255 99 105 / 0.12);
+  --syn-keyword: #c792ea;
+  --syn-string: #8fd19e;
+  --syn-number: #f0b060;
+  --syn-comment: #7d838e;
 }
 
 * { box-sizing: border-box; }
@@ -640,7 +653,16 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-inspector-pad .text-input { flex: none; height: 28px; padding: 0 6px; font-size: 12.5px; font-family: var(--mono); }
 .design-inspector-code-head { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--hairline); background: var(--bg-elevated); }
 .design-inspector-code-path { flex: 1; min-width: 0; font: 11.5px var(--mono); color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.design-inspector-code { margin: 0; padding: 10px 12px; font: 11.5px/1.5 var(--mono); color: var(--text); white-space: pre; overflow: auto; }
+.design-inspector-code { flex: 1; min-width: 0; margin: 0; padding: 10px 12px; font: 11.5px/1.5 var(--mono); color: var(--text); white-space: pre; }
+.design-inspector-code-scroll { display: flex; align-items: flex-start; min-width: 0; overflow: auto; }
+.design-inspector-gutter { flex: none; position: sticky; left: 0; padding: 10px 8px 10px 12px; font: 11.5px/1.5 var(--mono); color: var(--text-tertiary); text-align: right; user-select: none; background: var(--bg-elevated); border-right: 1px solid var(--hairline); }
+.design-inspector-code-head .ghost-select { flex: 1; min-width: 0; }
+/* Syntax colours for code views (tokens: --syn-*). */
+.syn-keyword { color: var(--syn-keyword); }
+.syn-string { color: var(--syn-string); }
+.syn-number { color: var(--syn-number); }
+.syn-comment { color: var(--syn-comment); font-style: italic; }
+.syn-attr { color: var(--text-secondary); }
 .design-inspector-foot { position: sticky; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--hairline); background: var(--bg-elevated); }
 .design-inspector-foot .grow { flex: 1; }
 .design-inspector-hint { min-width: 0; font-size: 11.5px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

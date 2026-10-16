@@ -64,23 +64,23 @@
 
 | Token | Light | Dark | Line |
 | --- | --- | --- | --- |
-| `--radius-s` | `6px` | — | 76 |
-| `--radius-m` | `8px` | — | 77 |
-| `--radius-l` | `10px` | — | 78 |
+| `--radius-s` | `6px` | — | 81 |
+| `--radius-m` | `8px` | — | 82 |
+| `--radius-l` | `10px` | — | 83 |
 
 ## Layout
 
 | Token | Light | Dark | Line |
 | --- | --- | --- | --- |
-| `--titlebar` | `46px` | — | 79 |
-| `--sidebar-w` | `248px` | — | 80 |
-| `--inspector-w` | `430px` | — | 81 |
+| `--titlebar` | `46px` | — | 84 |
+| `--sidebar-w` | `248px` | — | 85 |
+| `--inspector-w` | `430px` | — | 86 |
 
 ## Motion
 
 | Token | Light | Dark | Line |
 | --- | --- | --- | --- |
-| `--ease` | `cubic-bezier(0.2, 0.8, 0.2, 1)` | — | 82 |
+| `--ease` | `cubic-bezier(0.2, 0.8, 0.2, 1)` | — | 87 |
 
 ## Other
 
@@ -89,6 +89,10 @@
 | `--device-bezel` | `#1b1d21` | `#34373e` | 70 |
 | `--device-edge` | `#3b3f46` | `#5a5f69` | 71 |
 | `--device-island` | `#000000` | `#000000` | 72 |
+| `--syn-keyword` | `#8b3dbf` | `#c792ea` | 76 |
+| `--syn-string` | `#2b7a3b` | `#8fd19e` | 77 |
+| `--syn-number` | `#a35c00` | `#f0b060` | 78 |
+| `--syn-comment` | `#6b717c` | `#7d838e` | 79 |
 
 ## Aliases
 
