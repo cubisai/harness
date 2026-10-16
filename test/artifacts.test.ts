@@ -9,6 +9,7 @@ import {
   artifactKind,
   editedFilesInTurn,
   filesWrittenSince,
+  inlineStylesheets,
   isPreviewable,
   listArtifacts,
   readArtifact,
@@ -335,6 +336,40 @@ describe("readArtifact", () => {
 
   it("reports a missing file", async () => {
     expect(await readArtifact(fakeDeps().deps, { threadId: "t", root: tempDir(), path: "nope.md" })).toEqual({ ok: false, error: "File not found" });
+  });
+  it("inlines a design page's relative stylesheet for the preview, keeping the source as written", async () => {
+    const root = tempDir();
+    mkdirSync(join(root, "designs/aaaaaaaa/system"), { recursive: true });
+    writeFileSync(join(root, "designs/aaaaaaaa/system/tokens.css"), ":root { --space-4: 16px; }");
+    const page = '<html><head><link rel="stylesheet" href="system/tokens.css"></head><body>hi</body></html>';
+    writeFileSync(join(root, "designs/aaaaaaaa/02-home.html"), page);
+    const content = await readArtifact(fakeDeps().deps, { threadId: "t", root, path: "designs/aaaaaaaa/02-home.html" });
+    expect(content).toMatchObject({ ok: true, kind: "html", text: page });
+    expect(content.ok && content.doc).toBe("<html><head><style>:root { --space-4: 16px; }</style></head><body>hi</body></html>");
+  });
+
+  it("leaves html without local stylesheets alone", async () => {
+    const root = tempDir();
+    writeFileSync(join(root, "page.html"), '<link rel="stylesheet" href="https://cdn.example/x.css"><link rel="stylesheet" href="missing.css"><p>hi</p>');
+    const content = await readArtifact(fakeDeps().deps, { threadId: "t", root, path: "page.html" });
+    expect(content.ok && content.doc).toBeUndefined();
+  });
+});
+
+describe("inlineStylesheets", () => {
+  it("never reads a stylesheet outside the root", () => {
+    const outer = tempDir();
+    const root = join(outer, "proj");
+    mkdirSync(root);
+    writeFileSync(join(outer, "secret.css"), "body { color: red }");
+    expect(inlineStylesheets('<link rel="stylesheet" href="../secret.css">', root, "page.html")).toBeNull();
+  });
+
+  it("keeps media, skips non-stylesheet links and escapes a closing style tag", () => {
+    const root = tempDir();
+    writeFileSync(join(root, "a.css"), "/* </style><script>x</script> */");
+    const html = '<link rel="icon" href="a.css"><link href=\'a.css\' rel="stylesheet" media="print">';
+    expect(inlineStylesheets(html, root, "page.html")).toBe('<link rel="icon" href="a.css"><style media="print">/* <\\/style><script>x</script> */</style>');
   });
 });
 

@@ -882,10 +882,11 @@ export interface ArtifactFile {
 
 /**
  * A file's content for the panel. Text kinds carry `text`; pdf and image carry a
- * `cubiq-file:` `url`; office kinds (docx, sheet, pptx, csv) carry `office`.
+ * `cubiq-file:` `url`; office kinds (docx, sheet, pptx, csv) carry `office`. An html page whose
+ * relative stylesheets were inlined for the preview also carries that `doc` (Source still shows `text`).
  */
 export type ArtifactContent =
-  | { ok: true; path: string; kind: ArtifactKind; bytes: number; version: number | null; text?: string; truncated?: boolean; url?: string; office?: OfficePreview }
+  | { ok: true; path: string; kind: ArtifactKind; bytes: number; version: number | null; text?: string; doc?: string; truncated?: boolean; url?: string; office?: OfficePreview }
   | { ok: false; error: string };
 
 export interface ModelOption {

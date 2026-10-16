@@ -256,7 +256,9 @@ export async function readArtifact(
 
     if (kind === "md" || kind === "html" || kind === "svg" || kind === "code" || kind === "text") {
       if (bytes.subarray(0, NUL_SCAN_BYTES).includes(0)) return { ok: false, error: "Binary file" };
-      return { ...base, ...cutText(bytes) };
+      const cut = cutText(bytes);
+      const doc = kind === "html" ? inlineStylesheets(cut.text, input.root, rel) : null;
+      return { ...base, ...cut, ...(doc !== null ? { doc } : {}) };
     }
 
     if (kind === "pdf" || kind === "image") {
@@ -271,6 +273,46 @@ export async function readArtifact(
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/** Stylesheets inlined into one HTML preview, in total; past this a link is left as it is. */
+const MAX_INLINE_CSS_BYTES = 1024 * 1024;
+
+/**
+ * The page with its relative `<link rel="stylesheet">` files (inside the root) inlined as `<style>`, for the panel's
+ * sandboxed srcdoc preview, which can't load them itself (a design page's `system/tokens.css`). Null when none apply.
+ */
+export function inlineStylesheets(html: string, root: string, rel: string): string | null {
+  let budget = MAX_INLINE_CSS_BYTES;
+  let changed = false;
+  const out = html.replace(/<link\b[^>]*>/gi, (tag) => {
+    if (!/\srel\s*=\s*["']?[^"'>]*\bstylesheet\b/i.test(tag)) return tag;
+    const href = /\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag);
+    const raw = (href?.[1] ?? href?.[2] ?? href?.[3] ?? "").trim();
+    // Only a plain relative file: no scheme, protocol-relative, root-absolute or data URL.
+    if (!raw || /^[a-z][a-z0-9+.-]*:|^[/\\#]/i.test(raw)) return tag;
+    let path: string;
+    try {
+      path = decodeURIComponent(raw.replace(/[?#].*$/, ""));
+    } catch {
+      return tag;
+    }
+    const target = resolveInside(root, join(dirname(rel), path));
+    if (!target) return tag;
+    try {
+      const abs = join(realpathSync(root), target);
+      const stat = statSync(abs);
+      if (!stat.isFile() || stat.size > budget) return tag;
+      budget -= stat.size;
+      changed = true;
+      const media = /\smedia\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag);
+      const mediaAttr = media ? ` media="${(media[1] ?? media[2] ?? "").replace(/"/g, "&quot;")}"` : "";
+      return `<style${mediaAttr}>${readFileSync(abs, "utf-8").replace(/<\/style/gi, "<\\/style")}</style>`;
+    } catch {
+      return tag;
+    }
+  });
+  return changed ? out : null;
 }
 
 /** A version cut to MAX_TEXT_BYTES, decoded as UTF-8. */

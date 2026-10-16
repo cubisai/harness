@@ -155,6 +155,18 @@ describe("materializeSystem", () => {
     expect(readFileSync(join(dest, ".system"), "utf-8")).toBe("clean");
     expect(materializeSystem(clean, dest)).toBe(false);
   });
+
+  it("keeps the tokens.css the agent derived for a system without one, turn after turn", () => {
+    const project = tempDir();
+    writeFileSync(join(project, "DESIGN.md"), "project design");
+    const [own] = listDesignSystems(project, tempDir());
+    const dest = join(tempDir(), "dest");
+
+    expect(materializeSystem(own!, dest)).toBe(true);
+    writeFileSync(join(dest, "tokens.css"), "derived tokens");
+    expect(materializeSystem(own!, dest)).toBe(false);
+    expect(readFileSync(join(dest, "tokens.css"), "utf-8")).toBe("derived tokens");
+  });
 });
 
 describe("forkSystem", () => {

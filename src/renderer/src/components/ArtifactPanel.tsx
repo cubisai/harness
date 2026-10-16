@@ -106,7 +106,7 @@ function PreviewBody({ content }: { content: OkContent }): JSX.Element {
         </div>
       );
     case "html":
-      return <iframe className="artifact-frame" sandbox="" srcDoc={content.text ?? ""} title={content.path} />;
+      return <iframe className="artifact-frame" sandbox="" srcDoc={content.doc ?? content.text ?? ""} title={content.path} />;
     case "svg":
       return (
         <div className="artifact-image-wrap">

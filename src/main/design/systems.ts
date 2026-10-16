@@ -189,13 +189,18 @@ function writeIfChanged(file: string, text: string): boolean {
  * Materialize `system` into `destDir`: its DESIGN.md and tokens.css, plus a
  * `.system` marker with its id. Only changed files (and a now-stale tokens.css)
  * are touched; returns whether anything was written or deleted.
+ *
+ * A system without tokens.css (the project's own DESIGN.md) leaves the agent to
+ * derive one, so a tokens.css is deleted only when it came from a different
+ * system; deleting it on the next turn of the same system unstyles every page.
  */
 export function materializeSystem(system: DesignSystemInfo, destDir: string): boolean {
   mkdirSync(destDir, { recursive: true });
+  const before = readText(join(destDir, ".system"))?.trim() ?? "";
   let changed = copyIfChanged(system.designMd, join(destDir, "DESIGN.md"));
   if (system.tokensCss) {
     changed = copyIfChanged(system.tokensCss, join(destDir, "tokens.css")) || changed;
-  } else {
+  } else if (before && before !== system.id) {
     const tokensCss = join(destDir, "tokens.css");
     if (existsSync(tokensCss)) {
       try {
