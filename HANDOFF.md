@@ -1,6 +1,64 @@
-# Handoff: Design v2 DM1–DM3 + Expert Center EX1–EX4 done, plus expert portraits, chip and intro (2026-10-15) — see "Resume here — DM3, EX2b, EX3 + expert identity"; next: Add-expert UI, DM4, EX5 teams runtime, Windows gate
+# Handoff: Design v2 + Expert Center — DM3, EX2, EX3, EX4-UI finished (2026-10-16) — see "Resume here — partial phases finished"; next: EX5 teams runtime, DM4, DM5, live checks
 
 Updated 2026-10-13 on the **Mac**, branch `m4`. Read **Resume here — harness best practices (2026-10-13)** first (plan `.ai/plans/harness-bp.md`, research `plan/docs/12-harness-best-practices.md`), then **Resume here — Design v2 Mac test (2026-10-13)**, then **Resume here — Design mode v2** (plan: `.ai/plans/design-mode-v2.md`, Windows PC only), then **Resume here — native agent N2** (plan: `.ai/plans/native-agent.md`), then **Resume here — D4 done, Design mode complete**, then **Resume here — D3 done, D4 next**, then **Resume here — D2 done, D3 next**, then **Resume here — D1 done, D2 next**, then **Resume here — D1 next** (its plan), then **Resume here — P3 done**, then **Windows gate (2026-10-07)**, then **Resume here — C0 + P2 done**, then **Resume here — P1 done, next P2**, then **Resume here — MCP, providers, Design mode**, then **Resume here — Plan mode v2**, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`, `secrets-handling` (every stored credential safeStorage-encrypted; test keys only in the gitignored `.env`, never in briefs/commits).
+
+## Resume here — partial phases finished: DM3, EX2, EX3, EX4-UI (2026-10-16, Mac)
+
+Plan: `.ai/plans/design-expert-center.md` (approved). Branch `m4`, **pushed** at `e0d7337`. A CI run was started on push; check it with `gh run list --branch m4 --limit 1`, and if `test/acp.test.ts` times out alone, rerun it (memory `ci-windows-acp-flake`).
+
+**Commits this session:**
+- `73e45f8`, **Windows gate fix:** `test/db.test.ts` "restores a thread without its expert" never closed its Store, so on windows-latest the temp db unlink failed with EBUSY. CI then went green (run 38835034280).
+- `d260bca`, **backend for the expert UI:**
+  - `threads:set-expert` → `service.setThreadExpert`, which refuses a thread that already has events (keeps the prompt-cache prefix)
+  - `experts:pick-source` (folder or .zip dialog)
+  - `ExpertDef` gains `sourceUrl`, `author` and `license` (`"none"` when the package has no license)
+  - the importer's `pick` also matches the installed id, so Update re-picks from a marketplace
+- `f0181b5`, **DM3 write-back:**
+  - `design:edit-style` → `service.editDesignStyle` → `applyStyleEdit` (in `main/design/textedit.ts`) merges into the element's `style` attribute by unique `data-agent-id`
+  - only STYLE_KEYS are allowed, and only plain values (no `;`, quotes, braces, `url()` or `expression()`); versions are saved before and after
+  - Quick tier is refused in main too
+  - the inspector's Apply writes on Working and Real app when the element has an id; otherwise, or on error, it drafts the composer message as before. The footer hint says which one happens.
+  - Hug/Fill/Fixed for width and height (`fit-content` / `100%` / the measured px)
+  - tabs: Properties | Elements | Code | Tweaks. Tweaks reuses `TweaksBody` from TweaksPanel, and the popover button is hidden while the inspector is open.
+- `f760bbd` + `1994fa4`, **DM3 Elements:**
+  - the bridge posts `outline` (`outlineOf`: pre-order walk, depth ≤ 8, ≤ 400 nodes) on ready and on request; the canvas asks again when the inspector opens
+  - `ElementsTree` row click → `set-selection`
+  - fixed: DesignCanvas's catch-all `else` (pick-cancel) would have stopped Select on every outline message
+- `eaaca24`, **EX4-UI + EX3 rest:**
+  - `AddExpertDialog`: GitHub link, Folder…, .zip file…, then a marketplace pick step, then a done step with the skipped reasons
+  - the detail shows Source, Author and License, a "No license: for your own use" warning, Update, and a two-step Remove
+  - "+" → Experts: an empty thread of the right kind takes the expert in place (`store.setThreadExpert`, which also adds its skills and design system). A thread with messages shows a "Start a new thread with X?" confirm. On a failed set it falls back to a new thread.
+  - a new "+" → **Skills** submenu (`SkillsSubmenu.tsx`) adds a skill chip through `addPendingSkills`
+- `e0d7337`, **portraits and header chip:**
+  - imported experts get a DiceBear Notionists portrait generated at runtime, seeded by id. `@dicebear/core` and `@dicebear/notionists` 9.4.2 are now dependencies (MIT; the art is CC0); see `assets/experts/LICENSE.md`.
+  - the expert chip also shows in the thread header (`App.tsx` `.main-header`)
+
+**Checks at `e0d7337`:**
+- typecheck green
+- **2280 passed** (the full suite)
+- `design:check` 0 errors (48 baseline warnings)
+- Live in the dev app:
+  - the header chip renders beside the title
+  - Add expert → `https://github.com/liangdabiao/workbuddy-expert-research-insight` → "Installed 1 expert." It went to `userData/experts/research-insight`.
+- **Not yet live-checked:**
+  - the imported expert's card and detail (portrait, No-license warning, Update/Remove)
+  - the inspector's Apply writing the file, the Elements tab, the Tweaks tab, and Hug/Fill/Fixed
+  - the "+" → Experts empty-thread vs confirm flow, and "+" → Skills
+  - live turns on OpenCode, Codex and Claude (memory `test-app-for-real`; the plan allows one end-to-end test at the end)
+- **Test data:** a stray "Career Coach" thread appeared in `board-proj` during agent-browser clicks. It didn't reproduce, so it was likely a stale ref. Delete it if you like.
+
+**Workers this session:** 1 researcher plus 3 implementers on `opencode/deepseek-v4.1-flash-free`, in parallel worktrees, all exit 0.
+- dm3el: one wrong test expectation, fixed by Claude
+- ex3rest: Claude added the `.catch` fallback
+- Worktrees and branches are removed. `.ai/tmp` holds only `dispatch.sh`.
+
+**Still open** (from "What's left" below; DM3, EX2, EX3 and EX4-UI are now done apart from these):
+- DM3: the Code tab has no syntax highlighting and no file list
+- EX2: no "×" on the chip (allowed under manual-only)
+- EX4: a package's `skills/` doesn't yet join the skill roots for that expert's threads (natural with EX5)
+- **EX5 teams runtime** (next), then the live team run on Claude with the imported research-insight team
+- **DM4**, then **DM5**
+- the Windows PC run (memory `two-machines`)
 
 ## Resume here — DM3, EX2b, EX3 + expert identity (2026-10-15, Mac, session 2)
 
