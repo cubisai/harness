@@ -30,8 +30,8 @@
 | `--text-tertiary` | `#9aa0aa` | `#5f6570` | 66 |
 | `--hairline` | `#e7e9ed` | `#22252b` | 67 |
 | `--hairline-strong` | `#d5d9df` | `#30343c` | 68 |
-| `--add-bg` | `rgb(47 158 68 / 0.1)` | `rgb(63 185 80 / 0.12)` | 70 |
-| `--del-bg` | `rgb(229 72 77 / 0.08)` | `rgb(255 99 105 / 0.12)` | 71 |
+| `--add-bg` | `rgb(47 158 68 / 0.1)` | `rgb(63 185 80 / 0.12)` | 73 |
+| `--del-bg` | `rgb(229 72 77 / 0.08)` | `rgb(255 99 105 / 0.12)` | 74 |
 
 ## Effect
 
@@ -64,23 +64,31 @@
 
 | Token | Light | Dark | Line |
 | --- | --- | --- | --- |
-| `--radius-s` | `6px` | — | 73 |
-| `--radius-m` | `8px` | — | 74 |
-| `--radius-l` | `10px` | — | 75 |
+| `--radius-s` | `6px` | — | 76 |
+| `--radius-m` | `8px` | — | 77 |
+| `--radius-l` | `10px` | — | 78 |
 
 ## Layout
 
 | Token | Light | Dark | Line |
 | --- | --- | --- | --- |
-| `--titlebar` | `46px` | — | 76 |
-| `--sidebar-w` | `248px` | — | 77 |
-| `--inspector-w` | `430px` | — | 78 |
+| `--titlebar` | `46px` | — | 79 |
+| `--sidebar-w` | `248px` | — | 80 |
+| `--inspector-w` | `430px` | — | 81 |
 
 ## Motion
 
 | Token | Light | Dark | Line |
 | --- | --- | --- | --- |
-| `--ease` | `cubic-bezier(0.2, 0.8, 0.2, 1)` | — | 79 |
+| `--ease` | `cubic-bezier(0.2, 0.8, 0.2, 1)` | — | 82 |
+
+## Other
+
+| Token | Light | Dark | Line |
+| --- | --- | --- | --- |
+| `--device-bezel` | `#1b1d21` | `#34373e` | 70 |
+| `--device-edge` | `#3b3f46` | `#5a5f69` | 71 |
+| `--device-island` | `#000000` | `#000000` | 72 |
 
 ## Aliases
 

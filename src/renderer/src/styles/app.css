@@ -67,6 +67,9 @@
   --hairline: #e7e9ed;
   --hairline-strong: #d5d9df;
   --shadow-float: 0 12px 40px rgb(0 0 0 / 0.12);
+  --device-bezel: #1b1d21;
+  --device-edge: #3b3f46;
+  --device-island: #000000;
   --add-bg: rgb(47 158 68 / 0.1);
   --del-bg: rgb(229 72 77 / 0.08);
 
@@ -118,6 +121,9 @@
     --hairline: #22252b;
     --hairline-strong: #30343c;
     --shadow-float: 0 12px 40px rgb(0 0 0 / 0.5);
+    --device-bezel: #34373e;
+    --device-edge: #5a5f69;
+    --device-island: #000000;
     --add-bg: rgb(63 185 80 / 0.12);
     --del-bg: rgb(255 99 105 / 0.12);
   }
@@ -160,6 +166,9 @@
   --hairline: #22252b;
   --hairline-strong: #30343c;
   --shadow-float: 0 12px 40px rgb(0 0 0 / 0.5);
+  --device-bezel: #34373e;
+  --device-edge: #5a5f69;
+  --device-island: #000000;
   --add-bg: rgb(63 185 80 / 0.12);
   --del-bg: rgb(255 99 105 / 0.12);
 }
@@ -595,18 +604,24 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-float-divider { flex-shrink: 0; width: 1px; height: 20px; margin: 0 2px; background: var(--hairline); }
 /* The pen overlay: it fills the frame box and takes every pointer event while the Draw tool is on. */
 .design-draw { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: auto; cursor: crosshair; touch-action: none; z-index: 1; }
-/* Device chrome around a sized frame: a phone (bezel, notch, home bar), a tablet, or a browser window. */
-.design-frame-box.device { border: 0; }
-.design-frame-box.device-phone { border-radius: calc(44px * var(--s)); box-shadow: 0 0 0 calc(10px * var(--s)) var(--text), var(--shadow-float); overflow: hidden; }
-.design-frame-box.device-tablet { border-radius: calc(24px * var(--s)); box-shadow: 0 0 0 calc(14px * var(--s)) var(--text), var(--shadow-float); overflow: hidden; }
-.design-frame-box.device-browser { border: 1px solid var(--hairline-strong); border-radius: 0 0 var(--radius-m) var(--radius-m); box-shadow: var(--shadow-float); }
-.device-notch { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: calc(120px * var(--s)); height: calc(30px * var(--s)); background: var(--text); border-radius: 0 0 calc(16px * var(--s)) calc(16px * var(--s)); z-index: 1; pointer-events: none; }
-.device-homebar { position: absolute; bottom: calc(8px * var(--s)); left: 50%; transform: translateX(-50%); width: calc(134px * var(--s)); height: calc(5px * var(--s)); border-radius: 999px; background: var(--text); opacity: .6; z-index: 1; pointer-events: none; }
-.device-browserbar { position: absolute; bottom: 100%; left: -1px; right: -1px; height: 28px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--hairline-strong); border-bottom: 0; border-radius: var(--radius-m) var(--radius-m) 0 0; background: var(--bg-subtle); font-size: 11.5px; color: var(--text-tertiary); }
-.device-dots { flex-shrink: 0; width: 36px; height: 8px; background-image: radial-gradient(circle, var(--hairline-strong) 3px, transparent 3.5px); background-size: 14px 8px; background-repeat: repeat-x; }
-.device-address { flex: 1; min-width: 0; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.design-stage.device-browser { padding-top: 52px; }
-.design-stage.device-phone, .design-stage.device-tablet { padding: 40px; }
+/* Device chrome around a sized frame: a phone (bezel, island, home indicator), a tablet, or a browser window. Sizes scale with the frame (--s). */
+.device-off { display: contents; }
+.device-shell { position: relative; margin: auto; flex-shrink: 0; box-shadow: var(--shadow-float); }
+.device-shell .design-frame-box { margin: 0; border: 0; }
+.device-shell.device-phone, .device-shell.device-tablet { background: var(--device-bezel); box-shadow: 0 0 0 1px var(--device-edge), var(--shadow-float); }
+.device-shell.device-phone { padding: calc(12px * var(--s)); border-radius: calc(56px * var(--s)); }
+.device-shell.device-tablet { padding: calc(20px * var(--s)); border-radius: calc(36px * var(--s)); }
+.device-screen { position: relative; overflow: hidden; }
+.device-phone .device-screen { border-radius: calc(44px * var(--s)); }
+.device-tablet .device-screen { border-radius: calc(16px * var(--s)); }
+.device-island { position: absolute; top: calc(11px * var(--s)); left: 50%; transform: translateX(-50%); width: calc(118px * var(--s)); height: calc(34px * var(--s)); border-radius: 999px; background: var(--device-island); z-index: 2; pointer-events: none; }
+.device-homebar { position: absolute; bottom: calc(8px * var(--s)); left: 50%; transform: translateX(-50%); width: calc(134px * var(--s)); height: calc(5px * var(--s)); border-radius: 999px; background: var(--text); opacity: .5; z-index: 2; pointer-events: none; }
+.device-shell.device-browser { display: flex; flex-direction: column; border: 1px solid var(--hairline-strong); border-radius: var(--radius-m); overflow: hidden; background: var(--bg-subtle); }
+.device-browserbar { flex-shrink: 0; height: 36px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-bottom: 1px solid var(--hairline); }
+.device-dots { flex-shrink: 0; width: 44px; height: 10px; background-image: radial-gradient(circle, var(--hairline-strong) 4.5px, transparent 5px); background-size: 16px 10px; background-repeat: repeat-x; }
+.device-address { flex: 0 1 360px; min-width: 0; margin: 0 auto; padding: 4px 12px; border-radius: var(--radius-s); background: var(--bg); font-size: 11.5px; color: var(--text-tertiary); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.device-spacer { flex-shrink: 0; width: 44px; }
+.design-stage.device-phone, .design-stage.device-tablet, .design-stage.device-browser { padding: 32px; }
 .design-inspector { width: 280px; flex-shrink: 0; min-height: 0; overflow-y: auto; border-left: 1px solid var(--hairline); background: var(--bg-elevated); }
 .design-inspector-tabs { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--hairline); background: var(--bg-elevated); }
 .design-inspector-empty { margin: 0; padding: 12px; font-size: 12.5px; color: var(--text-secondary); }

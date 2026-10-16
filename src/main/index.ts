@@ -868,7 +868,9 @@ async function main(): Promise<void> {
     const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? Math.round(v) : NaN);
     const box = { x: n(rect?.x), y: n(rect?.y), width: n(rect?.width), height: n(rect?.height) };
     if (Object.values(box).some(Number.isNaN) || box.x < 0 || box.y < 0 || box.width < 8 || box.height < 8 || box.width > 8000 || box.height > 8000) throw new Error("Bad capture area.");
-    const image = await e.sender.capturePage(box);
+    // The rect is in CSS px; capturePage takes window DIPs, which differ by the page's zoom factor.
+    const zoom = e.sender.getZoomFactor() || 1;
+    const image = await e.sender.capturePage({ x: Math.round(box.x * zoom), y: Math.round(box.y * zoom), width: Math.round(box.width * zoom), height: Math.round(box.height * zoom) });
     const path = service.saveDesignRef(threadId, image.toPNG());
     return { path, thumb: image.resize({ height: 96 }).toDataURL() };
   });

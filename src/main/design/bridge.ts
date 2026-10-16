@@ -50,6 +50,8 @@ export type CanvasMessage =
   | { source: "cubiq-canvas"; type: "set-selection"; targets: { id?: string; selector: string; tag: string; text: string }[] }
   | { source: "cubiq-canvas"; type: "clear-selection" }
   | { source: "cubiq-canvas"; type: "set-tweak"; attr?: string; var?: string; value: string }
+  /** A device frame is shown around the page: hide its scrollbars (it still scrolls), like a phone or tablet does. */
+  | { source: "cubiq-canvas"; type: "device-chrome"; on: boolean }
   | { source: "cubiq-canvas"; type: "set-pins"; pins: { n: number; target: { id?: string; selector: string; tag: string; text: string } }[] }
   | { source: "cubiq-canvas"; type: "preview-style"; target: { id?: string; selector: string; tag: string; text: string }; prop: string; value: string }
   | { source: "cubiq-canvas"; type: "clear-preview" }
@@ -592,6 +594,15 @@ export function designBridge(
       }
     } else if (data.type === "set-pins") {
       setPins(data.pins);
+    } else if (data.type === "device-chrome") {
+      const id = "cubiq-device-chrome";
+      const prior = document.getElementById(id);
+      if (data.on === true && !prior) {
+        const style = document.createElement("style");
+        style.id = id;
+        style.textContent = "html,body{scrollbar-width:none}::-webkit-scrollbar{display:none}";
+        document.head.appendChild(style);
+      } else if (data.on !== true && prior) prior.remove();
     } else if (data.type === "preview-style") {
       if (typeof data.prop !== "string" || STYLE_PROPS.indexOf(data.prop) < 0) return;
       if (typeof data.value !== "string" || data.value.length > 120 || !/^[#(),.%\w\s-]*$/.test(data.value)) return;

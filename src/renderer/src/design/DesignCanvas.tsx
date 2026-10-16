@@ -32,6 +32,9 @@ const kebab = (prop: string): string => prop.replace(/[A-Z]/g, (c) => `-${c.toLo
  * as its folder changes, with viewport, zoom, an 8px grid, saved versions and pick-to-comment. Loaded only when a
  * design thread opens, so the Chat bundle stays as it was.
  */
+/** Extra room the device chrome needs around a frame (both sides together, in stage px, beyond the usual padding). */
+const DEVICE_CHROME = { none: { width: 0, height: 0 }, phone: { width: 40, height: 40 }, tablet: { width: 56, height: 56 }, browser: { width: 16, height: 52 } } as const;
+
 export default function DesignCanvas({ threadId }: { threadId: string }) {
   const reload = useStore((s) => s.designReload[threadId] ?? 0);
   const files = useStore((s) => s.artifactFiles[threadId]);
@@ -51,8 +54,13 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   const [version, setVersion] = useState(0);
   const [manual, setManual] = useState(0);
   const [stage, setStage] = useState({ width: 0, height: 0 });
-  const stageRef = useRef<HTMLDivElement>(null);
-  const frameRef = useRef<HTMLIFrameElement>(null);
+  const frameRef = useRef<HTMLIFrameElement | null>(null);
+  // The mounted frame element: Board ↔ page, Compare and the first page each mount a new one, which must get its address.
+  const [frameEl, setFrameEl] = useState<HTMLIFrameElement | null>(null);
+  const frameMount = useCallback((el: HTMLIFrameElement | null) => {
+    frameRef.current = el;
+    setFrameEl(el);
+  }, []);
   const boxRef = useRef<HTMLDivElement>(null);
   const scroll = useRef({ x: 0, y: 0 });
   const [exportOpen, setExportOpen] = useState(false);
@@ -167,15 +175,18 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     };
   }, [threadId, reload, manual, page]);
 
-  useLayoutEffect(() => {
-    const el = stageRef.current;
+  // The stage is measured from whichever element is mounted: it remounts on Board, Compare and the first page, and
+  // a stale observer on a detached one would leave sized viewports scaled to nothing.
+  const stageObserver = useRef<ResizeObserver | null>(null);
+  const stageRef = useCallback((el: HTMLDivElement | null) => {
+    stageObserver.current?.disconnect();
+    stageObserver.current = null;
     if (!el) return;
     const measure = () => setStage({ width: el.clientWidth, height: el.clientHeight });
     measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [entry !== null, comparing, inspectorOpen]);
+    stageObserver.current = new ResizeObserver(measure);
+    stageObserver.current.observe(el);
+  }, []);
 
   const post = useCallback((msg: Record<string, unknown>) => {
     frameRef.current?.contentWindow?.postMessage({ source: "cubiq-canvas", ...msg }, "*");
@@ -201,6 +212,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
         } else if (scroll.current.x || scroll.current.y) post({ type: "restore-scroll", ...scroll.current });
         if (picking) post({ type: "pick", on: true, edit: features.textEdit });
         if (pinsRef.current.length) post({ type: "set-pins", pins: pinsRef.current });
+        if (deviceRef.current) post({ type: "device-chrome", on: true });
         // A reload (the agent rewrote the page): find the selection again; anything gone is dropped and reported.
         const sel = useStore.getState().designSelection[threadId];
         if (sel && entry && sel.page === (to?.rel ?? entry.rel) && version === 0) {
@@ -372,7 +384,17 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   const src = entry ? (version ? `${entry.url}?v=${version}` : entry.url) : null;
   // The latest file remounts on every change; a saved version stays put.
   const frameKey = version ? `v${version}` : `live-${reload}-${manual}`;
-  const layout = frameLayout(viewport, zoom, stage);
+  // A device frame hides the page's scrollbars (a reload asks again on ready).
+  const deviceRef = useRef(false);
+  const deviceOn = device && deviceFor(viewport) !== null;
+  useEffect(() => {
+    deviceRef.current = deviceOn;
+    post({ type: "device-chrome", on: deviceOn });
+  }, [deviceOn, post]);
+
+  // The device chrome (bezel, browser bar) takes room the frame can't use when it fits to the stage.
+  const chrome = device ? DEVICE_CHROME[deviceFor(viewport) ?? "none"] : DEVICE_CHROME.none;
+  const layout = frameLayout(viewport, zoom, { width: stage.width - chrome.width, height: stage.height - chrome.height }, device && deviceFor(viewport) !== null);
   const fit = viewport === "fit";
   // The device chrome to draw: only when toggled on and the viewport has a device (not Fit or Slide).
   const kind = device ? deviceFor(viewport) : null;
@@ -386,7 +408,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     if (!frame || !src || frame.dataset.src === src) return;
     frame.dataset.src = src;
     frame.src = src;
-  }, [src, frameKey, comparing]);
+  }, [src, frameKey, comparing, frameEl]);
 
   const pageComments = features.comments && entry ? comments.filter((c) => c.page === entry.rel && !c.resolved) : [];
   const pins = version === 0 && !comparing ? pageComments.map((c, i) => ({ n: i + 1, target: c.target })) : [];
@@ -556,42 +578,42 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     }
   };
 
+  // The frame itself; with a device on it sits in that device's shell (sized to the screen, so capture and picking are unchanged).
+  const frameBox = entry && src ? (
+    <div
+      className="design-frame-box"
+      ref={boxRef}
+      style={fit ? undefined : { width: layout.width * layout.scale, height: layout.height * layout.scale }}
+    >
+      <iframe
+        key={frameKey}
+        ref={frameMount}
+        className="design-frame"
+        title={`Design: ${entry.rel}`}
+        sandbox="allow-scripts"
+        style={fit ? undefined : { width: layout.width, height: layout.height, transform: `scale(${layout.scale})` }}
+      />
+      {grid && <div className="design-grid" style={{ backgroundSize: `${8 * layout.scale}px ${8 * layout.scale}px` }} aria-hidden />}
+      {tool === "draw" && <DrawOverlay strokes={strokes} onStrokes={setStrokes} />}
+    </div>
+  ) : null;
+
   const stageEl = entry && src ? (
     <div className={`design-stage${fit ? " fit" : ""}${kind ? ` device-${kind}` : ""}`} ref={stageRef}>
-      <div
-        className={`design-frame-box${kind ? ` device device-${kind}` : ""}`}
-        ref={boxRef}
-        style={
-          kind
-            ? ({ width: layout.width * layout.scale, height: layout.height * layout.scale, "--s": layout.scale } as CSSProperties)
-            : fit
-              ? undefined
-              : { width: layout.width * layout.scale, height: layout.height * layout.scale }
-        }
-      >
-        {kind === "phone" && (
-          <>
-            <div className="device-notch" aria-hidden />
-            <div className="device-homebar" aria-hidden />
-          </>
-        )}
-        {kind === "tablet" && <div className="device-homebar" aria-hidden />}
+      {/* The shell is always mounted (display: contents without a device), so toggling it never reloads the frame. */}
+      <div className={kind ? `device-shell device-${kind}` : "device-off"} style={kind ? ({ "--s": layout.scale } as CSSProperties) : undefined}>
         {kind === "browser" && (
           <div className="device-browserbar" aria-hidden>
             <span className="device-dots" />
             <span className="device-address">{entry.rel}</span>
+            <span className="device-spacer" />
           </div>
         )}
-        <iframe
-          key={frameKey}
-          ref={frameRef}
-          className="design-frame"
-          title={`Design: ${entry.rel}`}
-          sandbox="allow-scripts"
-          style={fit ? undefined : { width: layout.width, height: layout.height, transform: `scale(${layout.scale})` }}
-        />
-        {grid && <div className="design-grid" style={{ backgroundSize: `${8 * layout.scale}px ${8 * layout.scale}px` }} aria-hidden />}
-        {tool === "draw" && <DrawOverlay strokes={strokes} onStrokes={setStrokes} />}
+        <div className={kind ? "device-screen" : "device-off"}>
+          {frameBox}
+          {kind === "phone" && <div className="device-island" aria-hidden />}
+          {kind && kind !== "browser" && <div className="device-homebar" aria-hidden />}
+        </div>
       </div>
     </div>
   ) : null;
@@ -970,7 +992,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
                   className={`icon-button${tool === "comment" ? " active" : ""}`}
                   aria-pressed={tool === "comment"}
                   aria-label="Comment"
-                  title={features.comments ? "Comment on an element" : "Comments need the Working or Real app tier"}
+                  title={features.comments ? "Comment on an element" : "Comments need the Real app tier"}
                   disabled={!features.comments}
                   onClick={() => chooseTool("comment")}
                 >

@@ -38,13 +38,19 @@ export const STAGE_PAD = 24;
  * The frame's own size and its scale on the stage. "Fit" fills the stage at 100%; a preset keeps its size and, on
  * zoom Fit, scales down (never up) so it fits the stage's width, and its height too for a slide.
  */
-export function frameLayout(viewport: Viewport, zoom: Zoom, stage: { width: number; height: number }): { width: number; height: number; scale: number } {
+export function frameLayout(
+  viewport: Viewport,
+  zoom: Zoom,
+  stage: { width: number; height: number },
+  /** Fit the whole frame (width and height), as a device frame does; otherwise Fit matches the width and the stage scrolls. */
+  whole = false,
+): { width: number; height: number; scale: number } {
   const size = VIEWPORTS.find((v) => v.value === viewport)?.size ?? null;
   if (!size) return { width: Math.max(0, stage.width), height: Math.max(0, stage.height), scale: zoom === "fit" ? 1 : zoom };
   if (zoom !== "fit") return { ...size, scale: zoom };
   const room = { width: Math.max(1, stage.width - 2 * STAGE_PAD), height: Math.max(1, stage.height - 2 * STAGE_PAD) };
   const byWidth = room.width / size.width;
-  const scale = Math.min(1, viewport === "slide" ? Math.min(byWidth, room.height / size.height) : byWidth);
+  const scale = Math.min(1, viewport === "slide" || whole ? Math.min(byWidth, room.height / size.height) : byWidth);
   return { ...size, scale };
 }
 
