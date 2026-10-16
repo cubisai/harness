@@ -43,5 +43,5 @@ Use when a findings list, analysis or draft is about to be published or merged i
 - Do not merge rows to shrink the log; each claim keeps its own row.
 
 ## Output
-- Write the full result (numbered claims, the completed log table, replacement wording, removals) to a Markdown file in the team workspace or the project, at the path given in the brief from the lead.
-- Reply to the lead with at most 200 words plus that file path and any open questions.
+- Write the full result (numbered claims, the completed log table, replacement wording, removals) with the `team_write` tool (name `<your-id>-<step>`), or to the project path the brief names.
+- Reply to the lead with at most 200 words plus that file name and any open questions.

@@ -165,9 +165,16 @@ function readMembers(dir: string): ExpertMember[] {
       description: metaStr(meta, "description"),
       prompt,
       skills: metaList(meta, "skills"),
+      ...maxTurnsOf(metaStr(meta, "maxTurns")),
     });
   }
   return out;
+}
+
+/** A package's `maxTurns` (1–500) as a member field; nothing when absent or out of range. */
+function maxTurnsOf(value: string): { maxTurns?: number } {
+  const n = Number.parseInt(value, 10);
+  return Number.isInteger(n) && n >= 1 && n <= 500 ? { maxTurns: n } : {};
 }
 
 /** A meta value as one trimmed string, or "" when it's a list/absent. */

@@ -119,3 +119,10 @@ describe("withOpenCodeReadDirs", () => {
     expect(JSON.parse(out.env.OPENCODE_CONFIG_CONTENT!).permission.external_directory).toEqual({ "/x/**": "allow" });
   });
 });
+
+describe("withOpenCodeTeam steps", () => {
+  it("passes a member's maxTurns as its steps", () => {
+    const out = withOpenCodeTeam(undefined, [{ id: "a", description: "A", prompt: "Do.", maxTurns: 30 }], [], {});
+    expect(JSON.parse(out.env.OPENCODE_CONFIG_CONTENT!).agent.a).toEqual({ mode: "subagent", description: "A", prompt: "Do.", steps: 30 });
+  });
+});

@@ -147,7 +147,7 @@ export function withOpenCodeTeam(plan: InjectionPlan | undefined, team: TeamAgen
   const added: string[] = [];
   for (const m of team) {
     if (agents[m.id] !== undefined) continue;
-    agents[m.id] = { mode: "subagent", description: m.description, prompt: m.prompt };
+    agents[m.id] = { mode: "subagent", description: m.description, prompt: m.prompt, ...(m.maxTurns ? { steps: m.maxTurns } : {}) };
     added.push(m.id);
   }
   const memberIds = new Set(team.map((m) => m.id));

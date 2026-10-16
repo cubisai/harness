@@ -138,6 +138,8 @@ export interface ExpertMember {
   description: string;
   prompt: string;
   skills: string[];
+  /** The member's turn budget as a subagent (a package's `maxTurns`); absent = the engine's default. */
+  maxTurns?: number;
 }
 
 export interface ExpertDef {
@@ -339,7 +341,7 @@ export function expertBlock(def: Pick<ExpertDef, "name" | "profession" | "prompt
     ...(index ? [index] : []),
     "## Your team",
     lines.join("\n"),
-    "Hand independent steps to members in parallel, keep dependent steps in order, then consolidate their outputs into one answer.",
+    TEAM_LEAD_PROTOCOL,
   ].join("\n\n");
 }
 
@@ -348,6 +350,33 @@ export interface TeamAgent {
   id: string;
   description: string;
   prompt: string;
+  /** Turn budget as a subagent; absent = the engine's default. */
+  maxTurns?: number;
+}
+
+/**
+ * How the lead runs its team, after the roster: briefs, the shared
+ * workspace tools (team_write / team_read / team_post / team_board) and
+ * the final synthesis. Kept short: it rides every turn of a team thread.
+ */
+export const TEAM_LEAD_PROTOCOL = [
+  "## How the team works",
+  "- Hand a member one step with your subagent tool (subagent type = the member id). Run independent steps in parallel and dependent ones in order.",
+  "- Each brief states: the objective, the inputs (workspace file names or paths), the member skill to use if any, the expected output and length, what other members cover, and when to stop.",
+  "- Members save full results with `team_write` and reply with a short summary and the file name. Pass file names to the next member instead of retelling results; call `team_read` only when the summary isn't enough.",
+  "- `team_board` (for: \"lead\") lists notes members sent you and the workspace files; `team_post` sends a member a note.",
+  "- Route factual claims through the team's verifying member when it has one. The final answer is yours: consolidate, resolve conflicts, name the files it rests on.",
+].join("\n");
+
+/** How a member works inside the team: one step, results to the workspace, a short reply. */
+export function teamMemberProtocol(id: string): string {
+  return [
+    "## Working in the team",
+    `Your team id is \`${id}\`; the lead is \`lead\`. Do only the step in your brief.`,
+    `- Save your full result with \`team_write\` (from: "${id}", name: "${id}-<step>"), then reply to the lead with at most 200 words: the outcome, the file name and open questions.`,
+    `- Read other members' results with \`team_read\` when your brief names them. \`team_board\` (for: "${id}") shows notes for you; \`team_post\` reaches the lead or a member. Keep notes short and rare.`,
+    "- Don't edit project files unless your brief says to.",
+  ].join("\n");
 }
 
 /**
@@ -375,7 +404,8 @@ export function teamAgents(def: Pick<ExpertDef, "kind" | "members">, memberSkill
     out.push({
       id: m.id,
       description: m.description ? `${what}: ${m.description}` : what,
-      prompt: m.prompt.slice(0, EXPERT_PROMPT_MAX) + (index ? `\n\n${index}` : ""),
+      prompt: [m.prompt.slice(0, EXPERT_PROMPT_MAX), index, teamMemberProtocol(m.id)].filter(Boolean).join("\n\n"),
+      ...(m.maxTurns ? { maxTurns: m.maxTurns } : {}),
     });
   }
   return out;

@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createExpertCatalog } from "../src/main/experts/catalog";
-import { bindExpertSkills, expertBlock, skillsIndexBlock, teamAgents, type ExpertSkill } from "../src/shared/experts";
+import { bindExpertSkills, expertBlock, skillsIndexBlock, teamAgents, teamMemberProtocol, type ExpertSkill } from "../src/shared/experts";
 import { tempDir } from "./helpers";
 
 const skill = (name: string, description = ""): ExpertSkill => ({ name, description, file: `/pkg/skills/${name}/SKILL.md` });
@@ -59,7 +59,7 @@ describe("teamAgents", () => {
 
   it("appends each member's private index to its prompt", () => {
     const agents = teamAgents({ kind: "team", members: [member("m1", { skills: ["b"] }), member("m2")] }, { m1: [skill("b", "Does B.")] });
-    expect(agents[0]!.prompt.endsWith(skillsIndexBlock([skill("b", "Does B.")]))).toBe(true);
+    expect(agents[0]!.prompt.endsWith(`${skillsIndexBlock([skill("b", "Does B.")])}\n\n${teamMemberProtocol("m1")}`)).toBe(true);
     expect(agents[0]!.prompt).toContain("/pkg/skills/b/SKILL.md");
     expect(agents[1]!.prompt).not.toContain("<skills>");
   });
@@ -84,6 +84,18 @@ describe("packageSkills", () => {
     expect(catalog.packageSkills("unknown")).toEqual([]);
   });
 
+  it("reads a member's maxTurns and ignores an out-of-range one", () => {
+    const userDir = tempDir();
+    const team = join(userDir, "t");
+    mkdirSync(join(team, "members"), { recursive: true });
+    writeFileSync(join(team, "expert.md"), "---\nid: t\nkind: team\nname: T\nprofession: Lead\n---\nLead.\n");
+    writeFileSync(join(team, "members", "a.md"), "---\nname: A\nprofession: P\nmaxTurns: 40\n---\nA.\n");
+    writeFileSync(join(team, "members", "b.md"), "---\nname: B\nprofession: P\nmaxTurns: 9000\n---\nB.\n");
+    const members = createExpertCatalog({ bundledDir: tempDir(), userDir }).get("t")!.members!;
+    expect(members.find((m) => m.id === "a")!.maxTurns).toBe(40);
+    expect(members.find((m) => m.id === "b")).not.toHaveProperty("maxTurns");
+  });
+
   it("keeps an expert's package skills out of its global skill chips", () => {
     const userDir = tempDir();
     const expert = join(userDir, "painter");
@@ -91,5 +103,20 @@ describe("packageSkills", () => {
     writeFileSync(join(expert, "expert.md"), "---\nname: Painter\nskills: [a, design-prototype]\n---\nPaint.\n");
     const catalog = createExpertCatalog({ bundledDir: tempDir(), userDir });
     expect(catalog.list()[0]!.skills).toEqual(["design-prototype"]);
+  });
+});
+
+describe("team protocol", () => {
+  it("tells a member its id, the team tools and a short reply, and carries maxTurns", () => {
+    const [agent] = teamAgents({ kind: "team", members: [{ id: "checker", name: "C", profession: "Checker", description: "Checks.", prompt: "Check.", skills: [], maxTurns: 40 }] });
+    expect(agent!.maxTurns).toBe(40);
+    expect(agent!.prompt).toContain("Your team id is `checker`");
+    expect(agent!.prompt).toContain('team_write` (from: "checker"');
+    expect(agent!.prompt).toContain("at most 200 words");
+  });
+
+  it("leaves maxTurns out when the member has none", () => {
+    const [agent] = teamAgents({ kind: "team", members: [{ id: "a", name: "A", profession: "P", description: "", prompt: "Do.", skills: [] }] });
+    expect(agent).not.toHaveProperty("maxTurns");
   });
 });

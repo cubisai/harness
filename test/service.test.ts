@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { LiveUpdate, PlanDecision, ThreadEvent } from "../src/shared/types";
-import type { ExpertDef } from "../src/shared/experts";
+import { teamMemberProtocol, type ExpertDef } from "../src/shared/experts";
 import type { AgentDriver, HarnessTool, TurnInput } from "../src/main/agents/types";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
 import { CRITIQUE_ARTIFACT, PLAN_ARTIFACT } from "../src/shared/artifact-kind";
@@ -394,7 +394,7 @@ describe("Service.send", () => {
     service.setThreadExpert(team.id, "crew");
     await service.send({ threadId: team.id, text: "one" });
     await service.send({ threadId: team.id, text: "two" });
-    expect(inputs[0]!.team).toEqual([{ id: "analyst", description: "Ana, Analyst: Finds facts.", prompt: "Research." }]);
+    expect(inputs[0]!.team).toEqual([{ id: "analyst", description: "Ana, Analyst: Finds facts.", prompt: `Research.\n\n${teamMemberProtocol("analyst")}` }]);
     expect(inputs[0]!.expert).toContain("## Your team");
     const notices = store.listEvents(team.id).filter((e) => e.event.kind === "notice");
     expect(notices).toHaveLength(1);
