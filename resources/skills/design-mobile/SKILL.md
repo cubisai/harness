@@ -35,4 +35,6 @@ For a flow of four or more screens, or when the user wants to see each screen on
 
 ## 4. Finish
 
+Tweaks (not in the Quick tier): declare 2–4 per page (e.g. a `theme` choice, `density`, an `accent` color) with the same `<script type="application/json" id="cubiq-tweaks">` manifest in `<head>` as `design-prototype` describes: `choice`/`toggle` set `data-<id>` on `<html>`, `color`/`range` set a CSS variable on `:root`. Loose `--t-*` variables without the manifest don't show up in the canvas.
+
 States: show empty, loading (skeletons) and error for data screens, and pressed/disabled for buttons. Then say in a line which screens you made and what to look at; don't paste the HTML.
