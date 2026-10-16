@@ -134,7 +134,10 @@ function sourceUrlOf(source: ImportSource): string {
  * still carrying CJK after the optional `translate` is dropped, and a Chinese
  * `expert.md` fails its package.
  */
-export async function importExperts(input: string, opts: { userDir: string; pick?: string[]; fetch?: typeof fetch; maxBytes?: number; translate?: Translate }): Promise<ImportResult> {
+export async function importExperts(
+  input: string,
+  opts: { userDir: string; pick?: string[]; fetch?: typeof fetch; maxBytes?: number; translate?: Translate; onProgress?: (done: number, total: number) => void },
+): Promise<ImportResult> {
   const source = parseSource(input);
   if (!source) throw new Error("Paste a GitHub link, or pick a folder or a .zip.");
 
@@ -158,7 +161,7 @@ export async function importExperts(input: string, opts: { userDir: string; pick
       }
       try {
         const built = buildPackage({ tree, pkgRoot: candidate.root, plugin: readPlugin(tree, candidate.root), sourceUrl, license: detectLicense(tree, [candidate.root, ""]) });
-        const pass = await englishPass(built.files, { translate: opts.translate });
+        const pass = await englishPass(built.files, { translate: opts.translate, ...(opts.onProgress ? { onProgress: opts.onProgress } : {}) });
         writeAtomic(opts.userDir, built.id, pass.files);
         installed.push(built.id);
         const note = passNote(built.id, pass);
@@ -173,7 +176,7 @@ export async function importExperts(input: string, opts: { userDir: string; pick
   // A plugin root installs one expert.
   if (tree.has(PLUGIN_MANIFEST)) {
     const built = buildPackage({ tree, pkgRoot: "", plugin: readPlugin(tree, ""), sourceUrl, license: detectLicense(tree, [""]) });
-    const pass = await englishPass(built.files, { translate: opts.translate });
+    const pass = await englishPass(built.files, { translate: opts.translate, ...(opts.onProgress ? { onProgress: opts.onProgress } : {}) });
     writeAtomic(opts.userDir, built.id, pass.files);
     const note = passNote(built.id, pass);
     return { installed: [built.id], candidates: [], skipped: [], ...(note ? { notes: [note] } : {}) };
@@ -185,7 +188,7 @@ export async function importExperts(input: string, opts: { userDir: string; pick
   const notes: string[] = [];
   for (const built of buildBareAgents(tree, sourceUrl)) {
     try {
-      const pass = await englishPass(built.files, { translate: opts.translate });
+      const pass = await englishPass(built.files, { translate: opts.translate, ...(opts.onProgress ? { onProgress: opts.onProgress } : {}) });
       writeAtomic(opts.userDir, built.id, pass.files);
       installed.push(built.id);
       const note = passNote(built.id, pass);

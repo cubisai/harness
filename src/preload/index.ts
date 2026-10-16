@@ -111,6 +111,11 @@ const api: UnskilledApi = {
   listExperts: () => ipcRenderer.invoke("experts:list"),
   getExpert: (id) => ipcRenderer.invoke("experts:get", id),
   importExperts: (source, pick) => ipcRenderer.invoke("experts:import", source, pick ?? null),
+  onExpertImportProgress: (listener) => {
+    const handler = (_e: Electron.IpcRendererEvent, progress: { done: number; total: number }) => listener(progress);
+    ipcRenderer.on("experts:import-progress", handler);
+    return () => ipcRenderer.removeListener("experts:import-progress", handler);
+  },
   removeExpert: (id) => ipcRenderer.invoke("experts:remove", id),
   pickExpertSource: (kind) => ipcRenderer.invoke("experts:pick-source", kind),
   setThreadExpert: (threadId, expertId) => ipcRenderer.invoke("threads:set-expert", threadId, expertId),

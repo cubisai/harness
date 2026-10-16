@@ -25,6 +25,9 @@ export function AddExpertDialog({ onClose, onInstalled }: { onClose(): void; onI
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [installed, setInstalled] = useState(0);
   const [skipped, setSkipped] = useState<Skipped[]>([]);
+  const [notes, setNotes] = useState<string[]>([]);
+  /** The running import's translation progress; null until a package needs translating. */
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   /** The source the running import started from, so the pick step installs from the same place. */
   const sourceRef = useRef("");
   const inputId = useId();
@@ -40,9 +43,12 @@ export function AddExpertDialog({ onClose, onInstalled }: { onClose(): void; onI
     return () => window.removeEventListener("keydown", onKey, true);
   }, [onClose]);
 
+  useEffect(() => api().onExpertImportProgress((p) => setProgress(p.total > 0 ? p : null)), []);
+
   const run = async (src: string, pick?: string[]) => {
     sourceRef.current = src;
     setError(null);
+    setProgress(null);
     try {
       const result = await api().importExperts(src, pick);
       if (result.installed.length > 0) onInstalled(result.installed);
@@ -54,6 +60,7 @@ export function AddExpertDialog({ onClose, onInstalled }: { onClose(): void; onI
       } else {
         setInstalled(result.installed.length);
         setSkipped(result.skipped);
+        setNotes(result.notes ?? []);
         setStep("done");
       }
     } catch (err) {
@@ -154,6 +161,11 @@ export function AddExpertDialog({ onClose, onInstalled }: { onClose(): void; onI
                 {busy === "zip" ? "Importing…" : ".zip file…"}
               </button>
             </div>
+            {busy && progress ? (
+              <p className="xc-add-or" role="status">
+                Translating to English… {Math.round((progress.done / progress.total) * 100)}% ({progress.done}/{progress.total})
+              </p>
+            ) : null}
           </>
         )}
 
@@ -193,6 +205,13 @@ export function AddExpertDialog({ onClose, onInstalled }: { onClose(): void; onI
                   <li key={`${s.name}:${s.reason}`}>
                     {s.name}: {s.reason}
                   </li>
+                ))}
+              </ul>
+            )}
+            {notes.length > 0 && (
+              <ul className="xc-add-skipped">
+                {notes.map((n) => (
+                  <li key={n}>{n}</li>
                 ))}
               </ul>
             )}

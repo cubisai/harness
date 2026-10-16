@@ -641,6 +641,7 @@ export function installMock(): void {
     listExperts: async () => mockExperts,
     getExpert: async (id) => mockExperts.find((e) => e.id === id) ?? null,
     importExperts: async () => ({ installed: [], candidates: [], skipped: [] }),
+    onExpertImportProgress: () => () => {},
     removeExpert: async () => {},
     pickExpertSource: async () => null,
     setThreadExpert: async (id, expertId) => {

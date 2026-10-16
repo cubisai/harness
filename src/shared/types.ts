@@ -1252,6 +1252,8 @@ export interface UnskilledApi {
   getExpert(id: string): Promise<ExpertDef | null>;
   /** Install expert packages from a GitHub link, a folder or a .zip; a marketplace without `pick` only lists candidates. */
   importExperts(source: string, pick?: string[]): Promise<ExpertImportResult>;
+  /** Progress of a running import's English translation (items translated of total); returns an unsubscribe. */
+  onExpertImportProgress(listener: (progress: { done: number; total: number }) => void): () => void;
   /** Remove an imported expert (bundled ones can't be removed). */
   removeExpert(id: string): Promise<void>;
   /** Pick a folder or a .zip to import experts from; null when cancelled. */

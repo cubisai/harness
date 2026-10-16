@@ -1410,12 +1410,16 @@ async function main(): Promise<void> {
   ipcMain.handle("experts:list", () => experts.list());
   ipcMain.handle("experts:get", (_e, id: unknown) => (typeof id === "string" && EXPERT_ID_RE.test(id) ? experts.get(id) : null));
   // Install from a GitHub link, a folder or a .zip into the user's experts folder (nothing in a package is run).
-  ipcMain.handle("experts:import", (_e, source: unknown, pick: unknown) => {
+  ipcMain.handle("experts:import", (event, source: unknown, pick: unknown) => {
     if (typeof source !== "string" || source.length > 2000) throw new Error("Paste a GitHub link, or pick a folder or a .zip.");
     const names = Array.isArray(pick) ? pick.filter((n): n is string => typeof n === "string" && n.length <= 200).slice(0, 100) : undefined;
     // Packages in another language are translated to English once, here, with a small Claude model (nothing non-English is installed).
     const translate = makeTranslate((system, user) => claudeOneShot(system, user, "haiku"));
-    return importExperts(source.trim(), { userDir: join(userData, "experts"), translate, ...(names ? { pick: names } : {}) });
+    // Translation can take a while on a big package: the dialog shows how far it got.
+    const onProgress = (done: number, total: number) => {
+      if (!event.sender.isDestroyed()) event.sender.send("experts:import-progress", { done, total });
+    };
+    return importExperts(source.trim(), { userDir: join(userData, "experts"), translate, onProgress, ...(names ? { pick: names } : {}) });
   });
   // The folder or .zip an expert is imported from, through the system picker; null when cancelled.
   ipcMain.handle("experts:pick-source", async (event, kind: unknown) => {

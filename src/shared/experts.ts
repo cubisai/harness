@@ -361,7 +361,7 @@ export interface TeamAgent {
  */
 export const TEAM_LEAD_PROTOCOL = [
   "## How the team works",
-  "- Hand a member one step with your subagent tool (subagent type = the member id). Run independent steps in parallel and dependent ones in order.",
+  "- Hand a member one step with your subagent tool (subagent type = the member id). Run independent steps in parallel and dependent ones in order. Wait for members' results in this turn; don't end your turn while one is still working.",
   "- Each brief states: the objective, the inputs (workspace file names or paths), the member skill to use if any, the expected output and length, what other members cover, and when to stop.",
   "- Members save full results with `team_write` and reply with a short summary and the file name. Pass file names to the next member instead of retelling results; call `team_read` only when the summary isn't enough.",
   "- `team_board` (for: \"lead\") lists notes members sent you and the workspace files; `team_post` sends a member a note.",
@@ -435,4 +435,6 @@ export interface ExpertImportResult {
   installed: string[];
   candidates: { name: string; description: string; root: string }[];
   skipped: { name: string; reason: string }[];
+  /** What the English pass had to drop per installed expert, when it dropped anything. */
+  notes?: string[];
 }

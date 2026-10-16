@@ -469,7 +469,9 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
           : {}),
         ...(systemAppend ? { systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: systemAppend } } : {}),
         ...(memoryText !== null ? { settings: { autoMemoryEnabled: false } } : {}),
-        ...(plan ? { env: plan.env } : {}),
+        // A team's members run in the foreground, inside the lead's turn: a backgrounded member outlives
+        // the turn, and with it the permission stream its tool calls need.
+        ...(input.team?.length ? { env: { ...(plan?.env ?? process.env), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1" } } : plan ? { env: plan.env } : {}),
         ...withUserServers(harnessToolOptions(input.tools, { ...(input.projectId ? { projectId: input.projectId } : {}), ...(input.threadId ? { threadId: input.threadId } : {}) }), input.mcpServers),
         hooks: { PreToolUse: [{ matcher: "Bash", hooks: [guard] }] },
         canUseTool: async (toolName, toolInput, { suggestions }): Promise<PermissionResult> => {

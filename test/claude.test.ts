@@ -241,6 +241,8 @@ describe("Claude driver guide", () => {
     await d.runTurn(input);
     // Members get no Skill tool: their toolkit is their own skills index.
     expect(sdk.calls[0]?.options.agents).toEqual({ analyst: { description: "Ana, Analyst", prompt: "Research.", disallowedTools: ["Skill"] } });
+    // Members stay in the foreground, inside the lead's turn.
+    expect((sdk.calls[0]?.options.env as Record<string, string> | undefined)?.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS).toBe("1");
   });
 });
 

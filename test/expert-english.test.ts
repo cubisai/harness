@@ -169,3 +169,60 @@ describe("englishPass maxTurns", () => {
     expect(out).toContain("maxTurns: 100");
   });
 });
+
+describe("englishPass code files", () => {
+  const han = "研究";
+  it("sends only the distinct CJK lines of a code file and keeps code and indentation", async () => {
+    const py = `def run():\n    # ${han}\n    x = 1  # ${han}\n    return "${han}"\n# ${han}\n`;
+    const sent: string[] = [];
+    const translate: Translate = async (items) => {
+      sent.push(...items.map((i) => i.text));
+      return items.map((i) => i.text.replace(new RegExp(han, "g"), "research"));
+    };
+    const progress: [number, number][] = [];
+    const out = await englishPass(new Map([["skills/s/scripts/a.py", enc(py)]]), { translate, onProgress: (d, t) => progress.push([d, t]) });
+    expect(sent).toEqual([`# ${han}`, `x = 1  # ${han}`, `return "${han}"`]);
+    expect(new TextDecoder().decode(out.files.get("skills/s/scripts/a.py")!)).toBe('def run():\n    # research\n    x = 1  # research\n    return "research"\n# research\n');
+    expect(out.translated).toBe(1);
+    expect(progress[0]).toEqual([0, 3]);
+    expect(progress.at(-1)).toEqual([3, 3]);
+  });
+
+  it("retries a misaligned batch once in halves", async () => {
+    let calls = 0;
+    const translate: Translate = async (items) => {
+      calls++;
+      if (items.length > 1) return ["only one"];
+      return items.map((i) => i.text.replace(new RegExp(han, "g"), "research"));
+    };
+    const files = new Map([
+      ["a.md", enc(`${han} a`)],
+      ["b.md", enc(`${han} b`)],
+    ]);
+    const out = await englishPass(files, { translate });
+    expect(calls).toBe(3);
+    expect(out.dropped).toEqual([]);
+  });
+});
+
+describe("englishPass leftovers", () => {
+  const han = "研究";
+  it("maps full-width punctuation to ASCII and retries leftover lines once", async () => {
+    let call = 0;
+    const translate: Translate = async (items) => {
+      call++;
+      // First pass leaves a stray word and full-width punctuation; the second fixes the word.
+      return items.map((i) => (call === 1 ? i.text.replace(han, "Research， " + han) : i.text.replace(han, "study")));
+    };
+    const out = await englishPass(new Map([["skills/s/SKILL.md", enc(`${han} notes`)]]), { translate });
+    expect(new TextDecoder().decode(out.files.get("skills/s/SKILL.md")!)).toBe("Research, study notes");
+    expect(out.partialSkills).toEqual([]);
+    expect(call).toBe(2);
+  });
+
+  it("checks a text file without a known extension, and never sniffs a media file", async () => {
+    const out = await englishPass(new Map([["skills/s/.env.example", enc(`# ${han}\nKEY=`)], ["skills/s/a.png", enc(han)], ["skills/s/SKILL.md", enc("ok")]]), {});
+    expect(out.dropped).toEqual(["skills/s/.env.example"]);
+    expect(out.files.has("skills/s/a.png")).toBe(true);
+  });
+});
