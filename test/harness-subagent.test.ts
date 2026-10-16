@@ -150,3 +150,60 @@ describe("createTaskTool", () => {
     expect(await empty.run({ description: "x", prompt: "  " })).toMatchObject({ isError: true });
   });
 });
+
+describe("createTaskTool team members", () => {
+  const member = { id: "checker", description: "Checks facts", prompt: "You check facts.", maxTurns: 3 };
+
+  it("keeps the definition explore-only when the thread has no team", () => {
+    const { task } = setup([]);
+    const params = task.definition.parameters as { properties: Record<string, unknown> };
+    expect(params.properties).not.toHaveProperty("agent");
+  });
+
+  it("lists the team members in the description and the agent parameter", () => {
+    const { task } = setup([], { team: [member] });
+    expect(task.definition.description).toContain("- checker: Checks facts");
+    expect(task.definition.parameters).toMatchObject({
+      properties: { agent: { type: "string", enum: ["checker"], description: "A team member id; omit for the explore subagent" } },
+      required: ["description", "prompt"],
+    });
+  });
+
+  it("runs a member with its own prompt, tools and result", async () => {
+    const read = tool("read", "read");
+    const edit = tool("edit", "edit");
+    const teamRead = tool("team_read", "read", async () => ({ text: "the board" }));
+    const t = setup([[call("r1", "team_read")], text("It checks out")], {
+      tools: () => [read, edit],
+      team: [member],
+      memberTools: () => [teamRead],
+    });
+    const result = await t.run({ description: "Verify", prompt: "check X", agent: "checker" });
+    expect(result).toEqual({ text: "It checks out" });
+    expect(t.requests[0]!.system).toEqual(["You check facts.", "Working folder: /work"]);
+    expect(t.requests[0]!.tools.map((x) => x.name)).toEqual(["read", "team_read"]);
+    expect(t.requests[1]!.messages.at(-1)).toMatchObject({ role: "tool", results: [{ callId: "r1", text: "the board" }] });
+  });
+
+  it("summarizes a member call as the label and the id, and tags the payload with it", () => {
+    const { task } = setup([], { team: [member] });
+    expect(task.summarize({ description: "Verify", agent: "checker" })).toBe("Verify · checker");
+    expect(task.summarize({ agent: "checker" })).toBe("checker · checker");
+    expect(task.inputPayload?.({ prompt: "check X", agent: "checker" })).toEqual({ prompt: "check X", subagent_type: "checker" });
+  });
+
+  it("rejects an unknown agent id", async () => {
+    const t = setup([], { team: [member] });
+    const result = await t.run({ description: "x", prompt: "go", agent: "ghost" });
+    expect(result).toMatchObject({ isError: true });
+    expect(result.text).toContain('Unknown team member "ghost"');
+  });
+
+  it("stops a member at its own maxTurns", async () => {
+    const read = tool("read", "read", async () => ({ text: "ok" }));
+    const t = setup([[call("r1", "read", { path: "a.ts" })]], { tools: () => [read], team: [{ ...member, maxTurns: 1 }] });
+    const result = await t.run({ description: "x", prompt: "go", agent: "checker" });
+    expect(result.text.startsWith("(Stopped at the step limit.)")).toBe(true);
+    expect(t.requests).toHaveLength(1);
+  });
+});

@@ -74,6 +74,7 @@ const CAPABILITIES = withCapabilities(SAFE_DEFAULTS, {
   permissionGranularity: "perTool",
   guardEnforcement: { ask: "block", "auto-edit": "block", plan: "block", full: "block" },
   seeding: "first-message",
+  subagentTeams: true,
 });
 
 /** The protocol a provider's calls use; Gemini isn't spoken natively yet. */
@@ -323,7 +324,8 @@ async function runTurn(
   const skill = deps.skills?.(input.cwd, Boolean(input.design), input.threadId) ?? null;
   const skillLoop = skill ? appLoopTool(skill, input) : null;
   // The task tool is read-only and runs in every mode; it hands its children the
-  // three read-only native tools only, never the app's tools or propose_plan.
+  // three read-only native tools only, never the app's tools or propose_plan. A
+  // team thread's members also get the team channel tools (team_write and co).
   const taskLoop = createTaskTool({
     route,
     request: subagentRequest,
@@ -339,6 +341,7 @@ async function runTurn(
       extraUsage = addUsage(extraUsage, u);
     },
     ...(deps.stream ? { stream: deps.stream } : {}),
+    ...(input.team?.length ? { team: input.team, memberTools: () => appTools.filter((t) => t.definition.name.startsWith("team_")) } : {}),
   });
   const tools = [...nativeLoop, ...appTools, ...(skillLoop ? [skillLoop] : []), ...(planLoop ? [planLoop] : []), ...(askLoop ? [askLoop] : []), taskLoop].filter((t, i, all) => all.findIndex((o) => o.definition.name === t.definition.name) === i);
 
