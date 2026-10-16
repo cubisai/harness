@@ -1,12 +1,14 @@
 import { Fragment, type ReactNode, useState } from "react";
 import { type FileRef, fileUrlRef, parseFileRef } from "./fileref";
+import { UiBlock } from "./genui/UiBlock";
 import { memoizeByHash, parseBlocks, splitStreamingTail } from "./streaming";
 
 /**
  * A small Markdown renderer for agent replies: fenced code, headings, lists,
  * GFM tables, paragraphs, and inline code / bold / italic / strikethrough /
  * links. It builds React elements (never raw HTML), so model output can't
- * inject markup.
+ * inject markup. `ui:` fences render as inline UI blocks (validated JSON,
+ * never HTML).
  */
 /**
  * `onFile`, when given, turns inline code that names a file (`src/a.ts:42`)
@@ -23,6 +25,8 @@ export function Markdown({ text, streaming, onFile }: { text: string; streaming?
         switch (b.type) {
           case "code":
             return <CodeBlock key={i} text={b.text} lang={b.lang} />;
+          case "ui":
+            return <UiBlock key={i} name={b.name} body={b.body} fallback={<CodeBlock text={b.body} lang={`ui:${b.name}`} />} />;
           case "heading": {
             const H = (`h${Math.min(b.level, 3)}` as "h1" | "h2" | "h3");
             return <H key={i}>{inline(b.text, onFile)}</H>;

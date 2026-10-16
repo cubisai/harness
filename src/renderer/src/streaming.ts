@@ -4,6 +4,7 @@ export type Block =
   | { type: "heading"; level: number; text: string }
   | { type: "list"; ordered: boolean; items: string[] }
   | { type: "table"; header: string[]; align: ("left" | "center" | "right" | null)[]; rows: string[][] }
+  | { type: "ui"; name: string; body: string }
   | { type: "para"; text: string };
 
 export function parseBlocks(text: string): Block[] {
@@ -16,13 +17,15 @@ export function parseBlocks(text: string): Block[] {
   };
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? "";
-    const fence = /^\s*(```|~~~)\s*([\w+#.-]*)/.exec(line);
+    const fence = /^\s*(```|~~~)\s*([\w+#.:-]*)/.exec(line);
     if (fence) {
       flush();
       const body: string[] = [];
       i++;
       while (i < lines.length && !(lines[i] ?? "").trimStart().startsWith(fence[1]!)) body.push(lines[i++] ?? "");
-      blocks.push({ type: "code", text: body.join("\n"), ...(fence[2] ? { lang: fence[2] } : {}) });
+      const ui = /^ui:([a-z][a-z0-9-]*)$/.exec(fence[2] ?? "");
+      if (ui) blocks.push({ type: "ui", name: ui[1]!, body: body.join("\n") });
+      else blocks.push({ type: "code", text: body.join("\n"), ...(fence[2] ? { lang: fence[2] } : {}) });
       continue;
     }
     const heading = /^(#{1,6})\s+(.*)$/.exec(line);

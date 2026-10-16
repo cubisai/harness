@@ -3139,6 +3139,42 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 .code-copy:hover { background: var(--bg-hover); color: var(--text); }
 .msg-assistant .code-block pre, .work-note .code-block pre { margin: 0; border: 0; border-radius: 0; background: var(--bg); }
 
+/* ---------- inline UI blocks (genui): a validated ```ui: fence drawn flat; see DESIGN.md §2–§5 ---------- */
+
+.ui-block { border: 1px solid var(--hairline); border-radius: var(--radius-l); padding: 12px; margin: 0 0 12px; background: var(--bg); }
+.ui-title { font-size: 13px; font-weight: 600; line-height: 1.5; color: var(--text); margin: 0 0 8px; }
+.ui-meta { margin-top: 8px; font: 12.5px var(--mono); font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
+.ui-note { margin-top: 6px; font-size: 12.5px; line-height: 1.5; color: var(--text-secondary); }
+
+.ui-check { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; font-size: 13px; line-height: 1.5; color: var(--text); cursor: pointer; }
+.ui-check input { flex-shrink: 0; width: 14px; height: 14px; margin: 3px 0 0; accent-color: var(--primary); }
+.ui-check > span { min-width: 0; overflow-wrap: anywhere; }
+.ui-check input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.ui-field { display: flex; align-items: center; gap: 8px; padding: 4px 0; min-width: 0; font-size: 13px; color: var(--text); }
+.ui-field-label { flex: 1; min-width: 0; }
+.ui-field input { height: 28px; flex: 1; min-width: 0; max-width: 8em; padding: 0 8px; background: var(--bg-subtle); border: 1px solid var(--hairline-strong); border-radius: var(--radius-s); color: var(--text); font: 12.5px var(--font); font-variant-numeric: tabular-nums; }
+.ui-field input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ui-unit { flex-shrink: 0; font-size: 12.5px; color: var(--text-tertiary); }
+.ui-result { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--hairline); font: 600 13px var(--mono); font-variant-numeric: tabular-nums; color: var(--text); }
+
+.ui-compare { width: 100%; border-collapse: collapse; font-size: 13px; color: var(--text); }
+.ui-compare th, .ui-compare td { padding: 6px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--hairline); }
+.ui-compare th { font-size: 11.5px; font-weight: 500; color: var(--text-tertiary); }
+.ui-compare tr.hl { background: var(--bg-selected); }
+.ui-compare tr:last-child td { border-bottom: 0; }
+
+.ui-timeline { list-style: none; margin: 0; padding: 0; }
+.ui-timeline li { position: relative; padding: 0 0 12px 16px; border-left: 1px solid var(--hairline); }
+.ui-timeline li:last-child { padding-bottom: 0; border-left-color: transparent; }
+.ui-timeline li::before { content: ""; position: absolute; left: -3px; top: 5px; width: 5px; height: 5px; border-radius: 50%; background: var(--hairline-strong); }
+.ui-time { font: 11.5px var(--mono); font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
+.ui-timeline-title { font-size: 13px; font-weight: 500; line-height: 1.5; color: var(--text); }
+.ui-timeline-toggle { margin-top: 4px; height: 24px; padding: 0 8px; border: 1px solid var(--hairline); border-radius: var(--radius-s); background: transparent; color: var(--text-secondary); font: 12px var(--font); }
+.ui-timeline-toggle:hover { background: var(--bg-hover); color: var(--text); }
+.ui-timeline-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ui-timeline-detail { margin-top: 4px; font-size: 12.5px; line-height: 1.6; color: var(--text-secondary); }
+
 /* ---------- todo dock: the agent's checklist above the message box; grows upward, collapses to one line ---------- */
 
 .todo-dock { padding: 0 28px 8px; flex-shrink: 0; }
