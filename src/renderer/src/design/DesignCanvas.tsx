@@ -32,8 +32,8 @@ const kebab = (prop: string): string => prop.replace(/[A-Z]/g, (c) => `-${c.toLo
  * as its folder changes, with viewport, zoom, an 8px grid, saved versions and pick-to-comment. Loaded only when a
  * design thread opens, so the Chat bundle stays as it was.
  */
-/** Below this header width (px) the grid, reload and folder tools fold into the Export menu. */
-const COMPACT_HEAD = 640;
+/** How far the header folds when its tools don't fit: 1 = grid, reload and folder into More; 2 = the pickers to a second row. */
+const MAX_FOLD = 2;
 
 /** Extra room the device chrome needs around a frame (both sides together, in stage px, beyond the usual padding). */
 const DEVICE_CHROME = { none: { width: 0, height: 0 }, phone: { width: 40, height: 40 }, tablet: { width: 56, height: 56 }, browser: { width: 18, height: 54 } } as const;
@@ -194,20 +194,27 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     stageObserver.current.observe(el);
   }, []);
 
-  // The header's width: below COMPACT_HEAD the grid, reload and folder tools fold into the Export menu ("More"), so
-  // the tools never run past the canvas into the panel beside it.
+  // The header folds only as far as it must for the tools to fit, never past the canvas into the panel beside it and
+  // never by cutting a picker's label: first the grid, reload and folder tools go into More, then the Viewport, Zoom
+  // and Version pickers move to a row under the header. Measured (see the layout effect below), so it suits any tool set.
   const [headWidth, setHeadWidth] = useState(0);
+  const [fold, setFold] = useState(0);
+  const headEl = useRef<HTMLElement | null>(null);
+  const toolsEl = useRef<HTMLDivElement | null>(null);
+  const foldKey = useRef("");
   const headObserver = useRef<ResizeObserver | null>(null);
   const headRef = useCallback((el: HTMLElement | null) => {
     headObserver.current?.disconnect();
     headObserver.current = null;
+    headEl.current = el;
     if (!el) return;
     const measure = () => setHeadWidth(el.clientWidth);
     measure();
     headObserver.current = new ResizeObserver(measure);
     headObserver.current.observe(el);
   }, []);
-  const compactHead = headWidth > 0 && headWidth < COMPACT_HEAD;
+  const compactHead = fold >= 1;
+  const pickersBelow = fold >= 2;
 
   const post = useCallback((msg: Record<string, unknown>) => {
     frameRef.current?.contentWindow?.postMessage({ source: "cubiq-canvas", ...msg }, "*");
@@ -506,6 +513,24 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   const tweaksDirty = Object.keys(tweakChanges).length > 0;
   const showTweaks = features.tweaks && !!tweaks && !!entry && version === 0 && !comparing;
 
+  // Fold the header until its tools end inside it. A new width or tool set starts again unfolded; every step runs
+  // before paint, so the overflowing layouts are never seen.
+  useLayoutEffect(() => {
+    const head = headEl.current;
+    const tools = toolsEl.current;
+    if (!head || !tools) return;
+    const key = `${headWidth}|${board}|${comparing}|${versions.length > 0}|${showTweaks}|${!!entry}`;
+    if (foldKey.current !== key) {
+      foldKey.current = key;
+      if (fold !== 0) {
+        setFold(0);
+        return;
+      }
+    }
+    const end = head.getBoundingClientRect().right - (parseFloat(getComputedStyle(head).paddingRight) || 0);
+    if (fold < MAX_FOLD && tools.getBoundingClientRect().right > end + 0.5) setFold(fold + 1);
+  });
+
   const changeTweak = (t: Tweak, raw: string) => {
     const v = tweakValue(t, raw);
     if (v === null || !rel) return;
@@ -644,6 +669,20 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     </div>
   ) : null;
 
+  const viewportPicker = !board && (
+    <Select<Viewport> value={viewport} options={VIEWPORTS.map(({ value, label, detail }) => ({ value, label, detail }))} onChange={setViewport} ariaLabel="Viewport" className="ghost-select" />
+  );
+  const zoomPicker = !board && !fit && <Select<Zoom> value={zoom} options={ZOOMS} onChange={setZoom} ariaLabel="Zoom" className="ghost-select" />;
+  const versionPicker = versions.length > 0 && (
+    <Select<number>
+      value={version}
+      options={[{ value: 0, label: "Latest" }, ...versions.map((v) => ({ value: v.version, label: `v${v.version}` }))]}
+      onChange={setVersion}
+      ariaLabel="Version"
+      className="ghost-select"
+    />
+  );
+
   return (
     <section className="design-canvas" aria-label="Design canvas">
       <header className="design-canvas-head drag" ref={headRef}>
@@ -668,7 +707,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
             {comparing ? `Comparing ${cells.length}` : entry ? entry.rel : "Canvas"}
           </span>
         )}
-        <div className="design-tools">
+        <div className="design-tools" ref={toolsEl}>
           {entry && entry.pages.length > 1 && version === 0 && (
             <button
               className={`icon-button${board ? " active" : ""}`}
@@ -711,9 +750,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
               </button>
             </>
           )}
-          {!board && (
-            <Select<Viewport> value={viewport} options={VIEWPORTS.map(({ value, label, detail }) => ({ value, label, detail }))} onChange={setViewport} ariaLabel="Viewport" className="ghost-select" />
-          )}
+          {!pickersBelow && viewportPicker}
           <button
             className={`icon-button${device ? " active" : ""}`}
             aria-label="Device frame"
@@ -724,16 +761,8 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           >
             <Smartphone size={16} strokeWidth={1.75} aria-hidden />
           </button>
-          {!board && !fit && <Select<Zoom> value={zoom} options={ZOOMS} onChange={setZoom} ariaLabel="Zoom" className="ghost-select" />}
-          {versions.length > 0 && (
-            <Select<number>
-              value={version}
-              options={[{ value: 0, label: "Latest" }, ...versions.map((v) => ({ value: v.version, label: `v${v.version}` }))]}
-              onChange={setVersion}
-              ariaLabel="Version"
-              className="ghost-select"
-            />
-          )}
+          {!pickersBelow && zoomPicker}
+          {!pickersBelow && versionPicker}
           {!compactHead && (
             <button className={`icon-button${grid ? " active" : ""}`} title="8px grid" aria-pressed={grid} onClick={() => setGrid(!grid)}>
               <Grid3x3 size={16} strokeWidth={1.75} aria-hidden />
@@ -891,6 +920,13 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           </div>
         </div>
       </header>
+      {pickersBelow && (viewportPicker || zoomPicker || versionPicker) && (
+        <div className="design-canvas-pickers">
+          {viewportPicker}
+          {zoomPicker}
+          {versionPicker}
+        </div>
+      )}
       {exported && (
         <div className={`design-version-bar${"error" in exported ? " error" : ""}`} role="status">
           <span title={"path" in exported ? exported.path : exported.error}>

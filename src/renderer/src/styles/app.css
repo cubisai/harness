@@ -527,13 +527,12 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 }
 .platform-win32 .app:not(.with-inspector) .design-canvas-head, .platform-linux .app:not(.with-inspector) .design-canvas-head { padding-right: calc(150px / var(--zoom, 1)); }
 .design-canvas-title { flex: 1 1 auto; font-size: 12.5px; font-weight: 500; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-/* The file name gives way first; then the pickers (Viewport, Zoom, Version) shrink with an ellipsis, so the tools
-   never run past the canvas. Icon buttons keep their size, and a page picker keeps room for a few letters. */
-.design-tools { display: flex; align-items: center; gap: 2px; flex: 0 1 auto; min-width: 0; }
-.design-tools .select { height: 28px; font-size: 12.5px; flex-shrink: 0; }
-.design-tools .select-button { flex-shrink: 1; min-width: 52px; }
-.design-tools .icon-button, .design-tools .artifact-menu-wrap { flex-shrink: 0; }
-.design-canvas-title:has(.select-button) { min-width: 80px; }
+/* The file name gives way first (a page picker keeps room for a few letters); the tools keep their size. When they
+   still don't fit, DesignCanvas folds them (into More, then the pickers to .design-canvas-pickers), never truncates. */
+.design-tools { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+.design-tools .select, .design-canvas-pickers .select { height: 28px; font-size: 12.5px; flex-shrink: 0; }
+.design-canvas-title:has(.select-button) { min-width: 96px; }
+.design-canvas-pickers { display: flex; align-items: center; gap: 2px; height: 36px; padding: 0 14px; border-bottom: 1px solid var(--hairline); background: var(--bg); flex-shrink: 0; }
 .design-version-bar {
   display: flex;
   align-items: center;
