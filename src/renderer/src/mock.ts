@@ -626,6 +626,8 @@ export function installMock(): void {
     designSaveRef: async () => "designs/mock/refs/ref-1.png",
     designEditText: async () => {},
     designEditStyle: async () => {},
+    designCapture: async () => ({ path: "designs/mock/refs/ref-2.png", thumb: "" }),
+    designRestoreVersion: async () => {},
     designComments: async () => [],
     designCommentAdd: async () => [],
     designCommentUpdate: async () => [],

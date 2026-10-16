@@ -410,6 +410,37 @@ describe("Service.send", () => {
     expect(() => service.editDesignStyle(chat.id, "index.html", { id: "cta-buy", changes: [] })).toThrow(/design thread/);
   });
 
+  it("restores a design page version as the newest, keeping the current page as a version", () => {
+    const { service, store } = setup(async () => {});
+    service.setArtifacts({
+      addVersion: (threadId, path, sha, bytes, turnSeq) => store.addArtifactVersion(threadId, path, sha, bytes, turnSeq),
+      listVersions: (threadId) => store.listArtifactVersions(threadId),
+      writeBlob: (sha, content) => store.writeBlobBytes(sha, content),
+      readBlob: (sha) => store.readBlobBytes(sha),
+      gitHead: async () => null,
+      preview: async () => ({ ok: false, error: "none" }),
+      fileUrl: () => "",
+    });
+    const project = store.addProject(tempDir());
+    const chat = service.createThread(project.id);
+    const design = service.createThread(project.id, undefined, "design");
+    const root = service.designRoot(design.id)!;
+    mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, "index.html"), `<main><button data-agent-id="cta-buy">Buy now</button></main>`);
+    service.editDesignText(design.id, "index.html", { id: "cta-buy", before: "Buy now", after: "Start" });
+    const path = `designs/${design.id.slice(0, 8)}/index.html`;
+    const versions = () => store.listArtifactVersions(design.id).find((v) => v.path === path)!.versions;
+    expect(versions()).toHaveLength(2);
+    service.restoreDesignVersion(design.id, "index.html", 1);
+    expect(readFileSync(join(root, "index.html"), "utf8")).toBe(`<main><button data-agent-id="cta-buy">Buy now</button></main>`);
+    // v2 (the page before) was already saved, so the restore adds only v3; v2 stays readable.
+    expect(versions()).toHaveLength(3);
+    expect(service.readDesignVersion(design.id, "index.html", 2)!.toString("utf8")).toContain("Start");
+    expect(() => service.restoreDesignVersion(design.id, "index.html", 9)).toThrow(/No version 9/);
+    expect(() => service.restoreDesignVersion(design.id, "missing.html", 1)).toThrow("No such page.");
+    expect(() => service.restoreDesignVersion(chat.id, "index.html", 1)).toThrow(/design thread/);
+  });
+
   it("saves a reference image into a design thread's refs folder and refuses a chat thread", () => {
     const { service, store } = setup(async () => {});
     const project = store.addProject(tempDir());

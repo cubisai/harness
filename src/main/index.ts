@@ -862,6 +862,18 @@ async function main(): Promise<void> {
     if (!(bytes instanceof Uint8Array)) throw new Error("Not an image (png, jpg, webp or gif).");
     return service.saveDesignRef(threadId, bytes);
   });
+  ipcMain.handle("design:capture", async (e, threadId: string, rect: { x?: unknown; y?: unknown; width?: unknown; height?: unknown }) => {
+    const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? Math.round(v) : NaN);
+    const box = { x: n(rect?.x), y: n(rect?.y), width: n(rect?.width), height: n(rect?.height) };
+    if (Object.values(box).some(Number.isNaN) || box.x < 0 || box.y < 0 || box.width < 8 || box.height < 8 || box.width > 8000 || box.height > 8000) throw new Error("Bad capture area.");
+    const image = await e.sender.capturePage(box);
+    const path = service.saveDesignRef(threadId, image.toPNG());
+    return { path, thumb: image.resize({ height: 96 }).toDataURL() };
+  });
+  ipcMain.handle("design:restore-version", (_e, threadId: string, rel: string, version: number) => {
+    if (typeof rel !== "string" || !Number.isInteger(version) || version < 1) throw new Error("Bad version.");
+    return service.restoreDesignVersion(threadId, rel, version);
+  });
   ipcMain.handle("design:keep-tweaks", (_e, threadId: string, rel: string, values: Record<string, string>) => {
     if (typeof rel !== "string" || !values || typeof values !== "object" || Array.isArray(values)) throw new Error("Bad tweak values.");
     const clean: Record<string, string> = {};

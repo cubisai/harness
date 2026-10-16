@@ -56,6 +56,16 @@ export function Composer({ threadId, mode, model, meters }: { threadId: string |
   // Reference images pasted or dropped into a design thread: saved in its design folder, sent as mentions.
   const [refs, setRefs] = useState<{ path: string; thumb: string }[]>([]);
   const [addingRefs, setAddingRefs] = useState(false);
+  // Images handed over by the canvas (Draw → Attach) join the reference chips, up to the cap.
+  const pendingRefs = useStore((s) => (threadId ? s.pendingRefs[threadId] : undefined));
+  useEffect(() => {
+    if (!threadId || !pendingRefs?.length) return;
+    const taken = useStore.getState().takeDesignRefs(threadId);
+    setRefs((list) => {
+      if (list.length + taken.length > MAX_REFS) useStore.getState().showNotice(`At most ${MAX_REFS} reference images per message.`);
+      return [...list, ...taken].slice(0, MAX_REFS);
+    });
+  }, [threadId, pendingRefs]);
   // Elements selected on a design thread's canvas: chips here, and a "change only these" block on the next message.
   const selection = useStore((s) => (threadId ? s.designSelection[threadId] : undefined));
   const area = useRef<HTMLTextAreaElement>(null);

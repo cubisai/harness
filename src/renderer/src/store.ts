@@ -189,6 +189,11 @@ interface State {
   designSelection: Record<string, DesignSelection>;
   /** Set (or clear, with null or no elements) a design thread's selection. */
   setDesignSelection(threadId: string, selection: DesignSelection | null): void;
+  /** Reference images handed to a design thread's composer from elsewhere (the canvas's Draw tool); the composer takes them. */
+  pendingRefs: Record<string, { path: string; thumb: string }[]>;
+  addDesignRefs(threadId: string, refs: { path: string; thumb: string }[]): void;
+  /** Take (and clear) a thread's pending reference images. */
+  takeDesignRefs(threadId: string): { path: string; thumb: string }[];
   /** Text to put back in the message box (Edit on a sent message); consumed by the composer. */
   composerDraft: { text: string; nonce: number } | null;
   setComposerDraft(text: string): void;
@@ -584,6 +589,7 @@ export const useStore = create<State>((set, get) => ({
     });
   },
   composerDraft: null,
+  pendingRefs: {},
   experts: null,
   async loadExperts() {
     try {
@@ -610,6 +616,15 @@ export const useStore = create<State>((set, get) => ({
     if (!def) return;
     if (def.skills.length) get().addPendingSkills(def.skills);
     if (def.designSystem && thread.kind === "design") await get().setDesignSystem(threadId, def.designSystem);
+  },
+  addDesignRefs(threadId, refs) {
+    if (!refs.length) return;
+    set((s) => ({ pendingRefs: { ...s.pendingRefs, [threadId]: [...(s.pendingRefs[threadId] ?? []), ...refs] } }));
+  },
+  takeDesignRefs(threadId) {
+    const refs = get().pendingRefs[threadId] ?? [];
+    if (refs.length) set((s) => ({ pendingRefs: Object.fromEntries(Object.entries(s.pendingRefs).filter(([id]) => id !== threadId)) }));
+    return refs;
   },
   setComposerDraft(text) {
     set((s) => ({ composerDraft: { text, nonce: (s.composerDraft?.nonce ?? 0) + 1 } }));

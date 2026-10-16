@@ -1389,6 +1389,26 @@ export class Service {
     if (this.artifacts) this.broadcast({ type: "artifact-ready", threadId, path: `${dir}/${rel}`, files: [`${dir}/${rel}`] });
   }
 
+  /**
+   * Restore a stored version of a design page as its newest: the page as it is
+   * now is saved as a version first, then version N is written back and saved
+   * again, so nothing is overwritten and the restore itself can be undone.
+   */
+  restoreDesignVersion(threadId: string, rel: string, version: number): void {
+    const thread = this.store.getThread(threadId);
+    const root = this.designRoot(threadId);
+    const dir = designOf(thread);
+    if (!root || !dir) throw new Error("Only a design thread has versions to restore.");
+    if (!listDesignPages(root).includes(rel)) throw new Error("No such page.");
+    const buf = this.readDesignVersion(threadId, rel, version);
+    if (!buf) throw new Error(`No version ${version} of this page.`);
+    const file = join(root, rel);
+    this.recordDesignPage(threadId, root, dir, rel);
+    writeFileSync(file, buf);
+    this.recordDesignPage(threadId, root, dir, rel);
+    if (this.artifacts) this.broadcast({ type: "artifact-ready", threadId, path: `${dir}/${rel}`, files: [`${dir}/${rel}`] });
+  }
+
   /** A design thread's folder, or an error for any other thread. */
   private designRootOf(threadId: string, what: string): string {
     const root = this.designRoot(threadId);
