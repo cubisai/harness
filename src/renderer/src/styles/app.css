@@ -2331,6 +2331,47 @@ button.hunk:hover { color: var(--text); }
 .xc-note { font-size: 11.5px; color: var(--text-tertiary); margin: 8px 0 0; }
 .xc-detail-id { font: 11.5px var(--mono); color: var(--text-tertiary); margin: 14px 0 0; }
 
+/* ---------- imported expert: source and license ---------- */
+
+.xc-source { margin-top: 8px; display: grid; gap: 2px; font-size: 12.5px; color: var(--text-secondary); }
+.xc-source-row { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.xc-source-row a { color: var(--primary); text-decoration: none; }
+.xc-source-row a:hover { text-decoration: underline; }
+.xc-license-warn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--warning);
+}
+.xc-license-warn svg { flex-shrink: 0; }
+.xc-source-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+
+/* ---------- add expert ---------- */
+
+.xc-add { width: min(560px, calc(100vw - 32px)); }
+.xc-add-head { display: flex; align-items: center; gap: 8px; padding: 12px 0 6px; }
+.xc-add-head h3 { flex: 1; min-width: 0; margin: 0; font-size: 14px; font-weight: 600; color: var(--text); }
+.xc-add-field { margin-top: 4px; }
+.xc-add-label { display: block; font-size: 12.5px; color: var(--text-secondary); margin-bottom: 6px; }
+.xc-add-row { display: flex; align-items: center; gap: 8px; }
+.xc-add-row .text-input { min-width: 0; }
+.xc-add-or { font-size: 12.5px; color: var(--text-tertiary); margin: 12px 0 6px; }
+.xc-add-sources { display: flex; flex-wrap: wrap; gap: 8px; }
+.xc-add-lead { font-size: 12.5px; color: var(--text-secondary); margin: 12px 0 0; }
+.xc-add-candidates { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.xc-add-candidate { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; color: var(--text); cursor: pointer; }
+.xc-add-candidate input { margin-top: 2px; flex-shrink: 0; }
+.xc-add-candidate-text { min-width: 0; }
+.xc-add-candidate-name { display: block; font-weight: 500; }
+.xc-add-candidate-desc { display: block; font-size: 11.5px; color: var(--text-secondary); margin-top: 1px; line-height: 1.45; }
+.xc-add-done-line { font-size: 13px; color: var(--text); margin: 12px 0 0; }
+.xc-add-skipped { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 2px; font-size: 11.5px; color: var(--text-tertiary); }
+.xc-add-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.xc-add-error { color: var(--danger); font-size: 12px; margin: 10px 0 0; }
+.xc-add-note { font-size: 12.5px; color: var(--text-tertiary); line-height: 1.5; margin: 16px 0 0; }
+
 /* ---------- summoned expert: composer chip and thread intro ---------- */
 
 .expert-chip-avatar {
@@ -2667,6 +2708,15 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 }
 .xs-browse:hover, .xs-browse:focus-visible { background: var(--bg-hover); color: var(--text); }
 .xs-browse svg { margin-left: auto; flex: none; }
+/* The + menu's Experts flyout: the confirm step for an expert picked on a thread that already has messages. */
+.xs-confirm { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px; text-align: center; }
+.xs-confirm p { margin: 0; }
+.xs-confirm p:first-of-type { font-size: 13px; font-weight: 500; }
+.xs-confirm p + p { color: var(--text-tertiary); font-size: 12.5px; line-height: 1.5; }
+.xs-confirm-actions { display: flex; gap: 6px; margin-top: 4px; }
+/* The + menu's Skills flyout: a row's name, then its description on one truncated line. */
+.xs-row:has(.xs-skill-desc) .xs-name { flex: 0 1 auto; min-width: 0; font-weight: 500; }
+.xs-skill-desc { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-tertiary); font-size: 11.5px; }
 .chip-button .chev { opacity: 0.6; flex: none; }
 .mode-chip.danger, .mode-chip.danger:hover { color: var(--danger); }
 /* A design thread's system chip: up to three swatches and the name; the menu shows each system's four. */

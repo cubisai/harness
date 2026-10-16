@@ -217,6 +217,8 @@ interface State {
   loadExperts(): Promise<void>;
   /** Start a new thread with an expert: its skills as chips, a design expert in a design thread, `prompt` pre-filled (not sent). */
   summonExpert(id: string, prompt?: string): Promise<string | null>;
+  /** Set an expert on a thread that has no messages yet: its skills join the composer, and a design thread takes its design system. */
+  setThreadExpert(threadId: string, id: string): Promise<void>;
   /** Pick a design thread's design system; the next turn copies it into the design folder. */
   setDesignSystem(threadId: string, id: string): Promise<void>;
   /** Change a design thread's prototype tier. */
@@ -600,6 +602,14 @@ export const useStore = create<State>((set, get) => ({
     const threadId = await get().newThread(def.skills, { expertId: def.id, ...(def.designSystem ? { designSystem: def.designSystem } : {}) });
     if (threadId && prompt) get().setComposerDraft(prompt);
     return threadId;
+  },
+  async setThreadExpert(threadId, id) {
+    const thread = await api().setThreadExpert(threadId, id);
+    get().apply({ type: "thread", thread });
+    const def = get().experts?.find((e) => e.id === id) ?? (await api().getExpert(id));
+    if (!def) return;
+    if (def.skills.length) get().addPendingSkills(def.skills);
+    if (def.designSystem && thread.kind === "design") await get().setDesignSystem(threadId, def.designSystem);
   },
   setComposerDraft(text) {
     set((s) => ({ composerDraft: { text, nonce: (s.composerDraft?.nonce ?? 0) + 1 } }));

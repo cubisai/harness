@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import type { ExpertDef } from "../../../../shared/experts";
+import { api } from "../../api";
 import { useStore } from "../../store";
 import { Select, type SelectOption } from "../Select";
+import { AddExpertDialog } from "./AddExpertDialog";
 import { ExpertAvatar } from "./ExpertAvatar";
 import { ExpertDetail } from "./ExpertDetail";
 
@@ -191,6 +193,7 @@ export function ExpertCenter({ engines }: { engines?: (query: string) => ReactNo
   const [myExperts, setMyExperts] = useState(false);
   const [usage, setUsage] = useState<Record<string, number>>(() => readUsage());
   const [detail, setDetail] = useState<ExpertDef | null>(null);
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     if (experts === null) void useStore.getState().loadExperts();
@@ -240,6 +243,10 @@ export function ExpertCenter({ engines }: { engines?: (query: string) => ReactNo
         <Select value={sort} options={SORT_OPTIONS} onChange={(v) => setSort(v)} ariaLabel="Sort" className="xc-sort" />
         <button className={`button ghost xc-my${myExperts ? " on" : ""}`} aria-pressed={myExperts} onClick={() => setMyExperts((v) => !v)}>
           My experts
+        </button>
+        <button className="button ghost" onClick={() => setAdding(true)}>
+          <Plus size={14} strokeWidth={1.75} aria-hidden />
+          Add expert
         </button>
       </div>
 
@@ -291,8 +298,29 @@ export function ExpertCenter({ engines }: { engines?: (query: string) => ReactNo
           onClose={() => setDetail(null)}
           onSummon={() => summonDef(detail)}
           onSummonPrompt={(prompt) => summonDef(detail, prompt)}
+          onRemove={
+            detail.source === "imported"
+              ? async () => {
+                  await api().removeExpert(detail.id);
+                  await useStore.getState().loadExperts();
+                  setDetail(null);
+                }
+              : undefined
+          }
+          onUpdate={
+            detail.source === "imported" && detail.sourceUrl
+              ? async () => {
+                  await api().importExperts(detail.sourceUrl!, [detail.id]);
+                  await useStore.getState().loadExperts();
+                  const fresh = useStore.getState().experts?.find((e) => e.id === detail.id);
+                  setDetail(fresh ?? null);
+                }
+              : undefined
+          }
         />
       )}
+
+      {adding && <AddExpertDialog onClose={() => setAdding(false)} onInstalled={() => void useStore.getState().loadExperts()} />}
     </div>
   );
 }

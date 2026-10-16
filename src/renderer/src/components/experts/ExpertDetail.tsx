@@ -1,9 +1,10 @@
-import { useEffect, useRef } from "react";
-import { Lightbulb, MessageSquare, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Lightbulb, MessageSquare, RefreshCw, Trash2, TriangleAlert, X } from "lucide-react";
 import type { ExpertDef } from "../../../../shared/experts";
+import { ipcError } from "./AddExpertDialog";
 import { ExpertAvatar, initials, memberAvatarId } from "./ExpertAvatar";
 
-/** What the detail modal needs: the def, its usage count and the three actions. */
+/** What the detail modal needs: the def, its usage count and the actions. */
 export interface ExpertDetailProps {
   def: ExpertDef;
   /** Times this expert has been summoned (localStorage, see ExpertCenter). */
@@ -14,6 +15,10 @@ export interface ExpertDetailProps {
   onSummon(): void;
   /** Summon pre-filling the composer with a quick prompt. */
   onSummonPrompt(prompt: string): void;
+  /** Remove this imported expert; absent for the built-ins. */
+  onRemove?(): Promise<void>;
+  /** Re-import an imported expert from its sourceUrl; absent without one. */
+  onUpdate?(): Promise<void>;
 }
 
 /**
@@ -51,7 +56,7 @@ export function ExpertDetail(props: ExpertDetailProps) {
 }
 
 /** The modal's body, split out so a test can render and drive it without the shell's effects. */
-export function ExpertDetailContent({ def, used, canSummon, onClose, onSummon, onSummonPrompt }: ExpertDetailProps) {
+export function ExpertDetailContent({ def, used, canSummon, onClose, onSummon, onSummonPrompt, onRemove, onUpdate }: ExpertDetailProps) {
   const notReady = canSummon ? undefined : "Open a project first";
   const team = def.kind === "team";
   const members = def.members ?? [];
@@ -87,6 +92,32 @@ export function ExpertDetailContent({ def, used, canSummon, onClose, onSummon, o
       <div className="xc-detail-stats">
         v{def.version} · {def.source === "imported" ? "Imported" : "Built in"} · Used {used}×
       </div>
+
+      {def.source === "imported" && (
+        <div className="xc-source">
+          {def.sourceUrl ? (
+            <p className="xc-source-row">
+              Source:{" "}
+              {def.sourceUrl.startsWith("https://") ? (
+                <a href={def.sourceUrl} target="_blank" rel="noreferrer">
+                  {def.sourceUrl}
+                </a>
+              ) : (
+                def.sourceUrl
+              )}
+            </p>
+          ) : null}
+          {def.author ? <p className="xc-source-row">Author: {def.author}</p> : null}
+          {def.license && def.license !== "none" ? <p className="xc-source-row">License: {def.license}</p> : null}
+          {!def.license || def.license === "none" ? (
+            <p className="xc-license-warn" role="note">
+              <TriangleAlert size={14} strokeWidth={1.75} aria-hidden />
+              No license: for your own use
+            </p>
+          ) : null}
+          <ExpertSourceActions onUpdate={onUpdate} onRemove={onRemove} />
+        </div>
+      )}
 
       {def.quickPrompts.length > 0 && (
         <div className="xc-detail-section">
@@ -145,6 +176,66 @@ export function ExpertDetailContent({ def, used, canSummon, onClose, onSummon, o
       )}
 
       <p className="xc-detail-id">ID: {def.id}</p>
+    </>
+  );
+}
+
+/**
+ * Update and two-step Remove for an imported expert. Remove asks once more
+ * ("Confirm remove") before it runs; both buttons show a busy label while their
+ * promise is in flight, and any failure shows the IPC error's own text.
+ */
+function ExpertSourceActions({ onUpdate, onRemove }: { onUpdate?(): Promise<void>; onRemove?(): Promise<void> }) {
+  const [busy, setBusy] = useState<"update" | "remove" | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const runAction = async (kind: "update" | "remove", action: (() => Promise<void>) | undefined) => {
+    if (!action) return;
+    setBusy(kind);
+    setActionError(null);
+    try {
+      await action();
+    } catch (err) {
+      setActionError(ipcError(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (!onUpdate && !onRemove) return null;
+
+  return (
+    <>
+      <div className="xc-source-actions">
+        {onUpdate ? (
+          <button className="button ghost" disabled={busy !== null} onClick={() => void runAction("update", onUpdate)}>
+            <RefreshCw size={14} strokeWidth={1.75} aria-hidden />
+            {busy === "update" ? "Updating…" : "Update"}
+          </button>
+        ) : null}
+        {onRemove ? (
+          <button
+            className="button ghost danger"
+            disabled={busy !== null}
+            onClick={() => {
+              if (!confirmRemove) {
+                setConfirmRemove(true);
+                return;
+              }
+              void runAction("remove", onRemove);
+            }}
+          >
+            <Trash2 size={14} strokeWidth={1.75} aria-hidden />
+            {busy === "remove" ? "Removing…" : confirmRemove ? "Confirm remove" : "Remove"}
+          </button>
+        ) : null}
+      </div>
+      {actionError ? (
+        <p className="xc-add-error" role="alert">
+          {actionError}
+        </p>
+      ) : null}
     </>
   );
 }
