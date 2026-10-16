@@ -570,7 +570,7 @@ async function main(): Promise<void> {
           // After the guard, so both the plugin and the variant survive.
           if (ctx?.effort) plan = withOpenCodeVariant(plan, ctx.effort);
           // An expert team's members, as this thread's subagents (OpenCode only; other ACP agents run the team as one agent).
-          if (ctx?.team?.length && config.injector === "opencode") plan = withOpenCodeTeam(plan, ctx.team);
+          if (ctx?.team?.length && config.injector === "opencode") plan = withOpenCodeTeam(plan, ctx.team, [ctx.teamLead ?? "build", "build"]);
           return plan;
         },
       });

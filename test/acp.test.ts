@@ -497,8 +497,8 @@ describe("ACP driver", () => {
       {
         clientVersion: "test",
         injection: (ctx) => {
-          seen.push(ctx?.team ?? null);
-          return ctx?.team ? withOpenCodeTeam(undefined, ctx.team, {}) : { env: {}, byok: false };
+          seen.push(ctx?.team ?? null, ctx?.teamLead ?? null);
+          return ctx?.team ? withOpenCodeTeam(undefined, ctx.team, [], {}) : { env: {}, byok: false };
         },
       },
     );
@@ -507,7 +507,8 @@ describe("ACP driver", () => {
     const first = turn("config", { team });
     await d.runTurn(first.input);
     expect(JSON.parse(first.deltas.join(""))).toEqual({ analyst: { mode: "subagent", description: "Ana, Analyst", prompt: "Research." } });
-    expect(seen).toEqual([team]);
+    // No session listed yet: the lead runs as OpenCode's default primary agent.
+    expect(seen).toEqual([team, "build"]);
   });
 
   it("respawns on a changed variant, resumes the session, and says so once", async () => {

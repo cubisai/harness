@@ -81,10 +81,21 @@ describe("withOpenCodeTeam", () => {
   });
 
   it("creates a plan from the env when none exists, and never overrides a configured agent", () => {
-    const out = withOpenCodeTeam(undefined, team, { PATH: "/bin", OPENCODE_CONFIG_CONTENT: JSON.stringify({ agent: { writer: { model: "x" } } }) });
+    const out = withOpenCodeTeam(undefined, team, [], { PATH: "/bin", OPENCODE_CONFIG_CONTENT: JSON.stringify({ agent: { writer: { model: "x" } } }) });
     expect(out.env.PATH).toBe("/bin");
     const agent = (JSON.parse(out.env.OPENCODE_CONFIG_CONTENT!) as { agent: Record<string, unknown> }).agent;
     expect(agent.writer).toEqual({ model: "x" });
     expect(agent.analyst).toMatchObject({ mode: "subagent" });
+  });
+
+  it("lets each lead hand work to the members, even when its task tool is restricted", () => {
+    const config = { agent: { orchestrator: { model: "m", permission: { edit: "allow", task: { "*": "deny", researcher: "allow" } } }, plan: { permission: { task: "deny" } }, build: { permission: { task: "allow" } } } };
+    const out = withOpenCodeTeam({ env: { OPENCODE_CONFIG_CONTENT: JSON.stringify(config) }, byok: false }, team, ["orchestrator", "plan", "build", "analyst"]);
+    const agent = (JSON.parse(out.env.OPENCODE_CONFIG_CONTENT!) as { agent: Record<string, { permission?: unknown; model?: string }> }).agent;
+    expect(agent.orchestrator).toEqual({ model: "m", permission: { edit: "allow", task: { "*": "deny", researcher: "allow", analyst: "allow", writer: "allow" } } });
+    expect(agent.plan!.permission).toEqual({ task: { "*": "deny", analyst: "allow", writer: "allow" } });
+    // Already open to every agent, and a member is never its own lead.
+    expect(agent.build!.permission).toEqual({ task: "allow" });
+    expect(agent.analyst).toEqual({ mode: "subagent", description: "Ana, Analyst: Finds facts.", prompt: "Research." });
   });
 });

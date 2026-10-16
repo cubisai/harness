@@ -135,8 +135,13 @@ export function withOpenCodeVariant(
  * its task tool. Only for the thread that summoned the team: the plan feeds
  * that thread's own process. Other config keys and agents are kept; a member
  * never overrides an agent already in the config.
+ *
+ * `leads` are the primary agents the lead may run as (the session's mode). A
+ * primary agent can restrict its task tool (`permission.task: { "*": "deny",
+ * ... }`), so each lead also gets `allow` for every member; OpenCode merges
+ * these after the agent's own rules, so they win over its "*" deny.
  */
-export function withOpenCodeTeam(plan: InjectionPlan | undefined, team: TeamAgent[], env: NodeJS.ProcessEnv = process.env): InjectionPlan {
+export function withOpenCodeTeam(plan: InjectionPlan | undefined, team: TeamAgent[], leads: string[] = [], env: NodeJS.ProcessEnv = process.env): InjectionPlan {
   let out = plan;
   if (!out) {
     const base: InjectedEnv = {};
@@ -153,9 +158,22 @@ export function withOpenCodeTeam(plan: InjectionPlan | undefined, team: TeamAgen
     }
   }
   const agents = (config.agent && typeof config.agent === "object" ? config.agent : {}) as Record<string, unknown>;
+  const added: string[] = [];
   for (const m of team) {
     if (agents[m.id] !== undefined) continue;
     agents[m.id] = { mode: "subagent", description: m.description, prompt: m.prompt };
+    added.push(m.id);
+  }
+  const memberIds = new Set(team.map((m) => m.id));
+  for (const lead of new Set(leads)) {
+    if (!lead || memberIds.has(lead) || !added.length) continue;
+    const agent = (agents[lead] && typeof agents[lead] === "object" ? agents[lead] : {}) as Record<string, unknown>;
+    const permission = (agent.permission && typeof agent.permission === "object" ? agent.permission : {}) as Record<string, unknown>;
+    // A bare "allow" already covers the members; a bare "deny" stays the default for everything else.
+    if (permission.task === "allow") continue;
+    const task: Record<string, unknown> = permission.task && typeof permission.task === "object" ? { ...(permission.task as Record<string, unknown>) } : permission.task === "deny" ? { "*": "deny" } : {};
+    for (const id of added) task[id] = "allow";
+    agents[lead] = { ...agent, permission: { ...permission, task } };
   }
   config.agent = agents;
   out.env.OPENCODE_CONFIG_CONTENT = JSON.stringify(config);

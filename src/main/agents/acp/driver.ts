@@ -296,8 +296,11 @@ export function createAcpDriver(
      */
     mcpRouting?: (projectId: string | null, servers: McpServerEntry[]) => Promise<boolean>;
     /** The credential plan for the next agent process; absent = inherit process.env. */
-    /** `team`: the thread's expert team members, injected as subagents for this thread's process only. */
-    injection?: (ctx?: { effort?: { agent: string; model: string; variant: string }; team?: TeamAgent[] }) => InjectionPlan;
+    /**
+     * `team`: the thread's expert team members, injected as subagents for this thread's process only;
+     * `teamLead`: the primary agent (mode) the lead runs as, which must be allowed to hand them work.
+     */
+    injection?: (ctx?: { effort?: { agent: string; model: string; variant: string }; team?: TeamAgent[]; teamLead?: string }) => InjectionPlan;
     /** Per-model reasoning variants, for agents that carry them outside a thought_level option. */
     variants?: () => Promise<Record<string, string[]>>;
     /** The git-guardrails script: an execute permission call is vetoed in every mode. */
@@ -663,7 +666,8 @@ export function createAcpDriver(
     }
 
     // A thread's process is its own, so its team's subagents never reach another thread.
-    const ctx = wanted || input.team?.length ? { ...(wanted ? { effort: wanted } : {}), ...(input.team?.length ? { team: input.team } : {}) } : undefined;
+    const team = input.team?.length ? { team: input.team, teamLead: modeFrom(existing?.configOptions ?? threadConfigs.get(threadKey) ?? lastConfigOptions) } : {};
+    const ctx = wanted || input.team?.length ? { ...(wanted ? { effort: wanted } : {}), ...team } : undefined;
     const plan = deps.injection?.(ctx);
     if (plan?.error) throw new Error(plan.error);
     if (plan?.warning && !shownNotices.has(plan.warning)) {
