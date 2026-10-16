@@ -110,6 +110,22 @@ describe("createExpertCatalog", () => {
     expect(catalog.get("nope")).toBeNull();
     expect(catalog.list()).toEqual([]);
   });
+
+  it("finds a folder expert's own skills folder, and none for a bare file or no folder", () => {
+    const bundled = tempDir();
+    const userDir = tempDir();
+    writeFileSync(join(bundled, "solo.md"), "---\nname: Solo\n---\nBody.\n");
+    mkdirSync(join(userDir, "pkg", "skills", "tool-a"), { recursive: true });
+    writeFileSync(join(userDir, "pkg", "expert.md"), "---\nname: Pkg\n---\nBody.\n");
+    writeFileSync(join(userDir, "pkg", "skills", "tool-a", "SKILL.md"), "---\nname: tool-a\ndescription: A tool\n---\nbody\n");
+    mkdirSync(join(userDir, "plain"), { recursive: true });
+    writeFileSync(join(userDir, "plain", "expert.md"), "---\nname: Plain\n---\nBody.\n");
+    const catalog = createExpertCatalog({ bundledDir: bundled, userDir });
+    expect(catalog.skillsDir("pkg")).toBe(join(userDir, "pkg", "skills"));
+    expect(catalog.skillsDir("plain")).toBeNull();
+    expect(catalog.skillsDir("solo")).toBeNull();
+    expect(catalog.skillsDir("missing")).toBeNull();
+  });
 });
 
 describe("expertBlock", () => {

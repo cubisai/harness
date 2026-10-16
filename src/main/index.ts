@@ -281,14 +281,13 @@ async function main(): Promise<void> {
    * skills. "tool" mode's list is built once, so the tool and the names it
    * lists can't disagree.
    */
-  const skillsInputFor = (delivery: SkillsDelivery | undefined, cwd: string | null, design = false) => {
+  const skillsInputFor = (delivery: SkillsDelivery | undefined, cwd: string | null, design = false, threadId?: string | null) => {
     if (!delivery) return null;
-    const toolSkills = forAgent(skills.forProject(cwd), { mode: "tool", reads: TOOL_SKILL_READS }, new Set(), { design });
+    const catalog = skillsFor(cwd, threadId);
+    const toolSkills = forAgent(catalog, { mode: "tool", reads: TOOL_SKILL_READS }, new Set(), { design });
     return {
       mode: delivery.mode,
-      entries: skills
-        .forProject(cwd)
-        .modelSkills.filter((s) => design || s.mode !== "design")
+      entries: catalog.modelSkills.filter((s) => design || s.mode !== "design")
         .map(({ name, description }) => ({ name, description })),
       tool: delivery.mode === "tool" ? skillTool(() => toolSkills) : undefined,
       toolNames: toolSkills.map((s) => s.name),
@@ -389,19 +388,40 @@ async function main(): Promise<void> {
     bundledDir: app.isPackaged ? join(process.resourcesPath, "experts") : join(app.getAppPath(), "resources", "experts"),
     userDir: join(userData, "experts"),
   });
+  /** A thread's expert's own skill folders (an imported package's `skills/`); none for every other thread. */
+  const expertSkillDirs = (threadId?: string | null): string[] => {
+    if (!threadId) return [];
+    try {
+      const id = store.getThread(threadId).expertId;
+      const dir = id ? experts.skillsDir(id) : null;
+      return dir ? [dir] : [];
+    } catch {
+      return [];
+    }
+  };
+  /** The skill catalog for a cwd, plus the thread's expert's own skills when it has any. */
+  function skillsFor(cwd: string | null, threadId?: string | null) {
+    return skills.forProject(cwd, expertSkillDirs(threadId));
+  }
+  /** A generated skills folder's key: cwd, design, and the expert's skills only when the thread has some (so others keep theirs). */
+  const skillsKey = (cwd: string, design: boolean | undefined, threadId?: string | null) =>
+    createHash("sha256")
+      .update([cwd, ...(design ? ["design"] : []), ...expertSkillDirs(threadId)].join("\0"))
+      .digest("hex")
+      .slice(0, 12);
   const driver = createClaudeDriver({
     guide: (cwd, design) => guide.forCwd(cwd, design),
-    pluginDir: (cwd, design) =>
+    pluginDir: (cwd, design, threadId) =>
       ensurePlugin(
         forAgent(
-          skills.forProject(cwd),
+          skillsFor(cwd, threadId),
           CLAUDE_CAPABILITIES.skillsDelivery,
           // Claude Code loads these itself; the plugin would list them twice.
           skills.namesIn([join(homedir(), ".claude", "skills"), join(cwd, ".claude", "skills")]),
           { design },
         ),
         // Design threads get their own plugin (with the design-only skills), so a chat thread's never changes.
-        join(userData, "harness-plugin", createHash("sha256").update(design ? `${cwd}\0design` : cwd).digest("hex").slice(0, 12)),
+        join(userData, "harness-plugin", skillsKey(cwd, design, threadId)),
       ),
     skillDirs: () => [skills.dirs(null).bundled, skills.dirs(null).harness],
     guardScript,
@@ -503,7 +523,7 @@ async function main(): Promise<void> {
       // The project's skills too (.cubiq, .claude), which tool-mode agents don't read themselves.
       // A design thread's (named by `?t=`) list adds the design-only skills.
       (pid, tid) => [
-        skillTool(() => forAgent(skills.forProject(projectPathOf(pid ?? null)), { mode: "tool", reads: TOOL_SKILL_READS }, new Set(), { design: isDesignThread(tid) })),
+        skillTool(() => forAgent(skillsFor(projectPathOf(pid ?? null), tid), { mode: "tool", reads: TOOL_SKILL_READS }, new Set(), { design: isDesignThread(tid) })),
       ],
       (pid) => routedTools(pid),
       () => threadTools,
@@ -530,11 +550,11 @@ async function main(): Promise<void> {
             extensions: extensionsFor("codex"),
             // Per project: Codex reads .agents/skills itself, but not .cubiq or .claude.
             // A design thread's set adds the design-only skills, in a folder of its own.
-            skillsDir: (cwd, design) =>
+            skillsDir: (cwd, design, threadId) =>
               cwd
                 ? ensureModelSkillsDir(
-                    forAgent(skills.forProject(cwd), CODEX_CAPABILITIES.skillsDelivery, new Set(), { design }),
-                    join(`${modelSkillsDir}-projects`, createHash("sha256").update(design ? `${cwd}\0design` : cwd).digest("hex").slice(0, 12)),
+                    forAgent(skillsFor(cwd, threadId), CODEX_CAPABILITIES.skillsDelivery, new Set(), { design }),
+                    join(`${modelSkillsDir}-projects`, skillsKey(cwd, design, threadId)),
                   )
                 : ensureModelSkillsDir(forAgent(skills.global(), CODEX_CAPABILITIES.skillsDelivery), modelSkillsDir),
             toolServer: getToolServer,
@@ -707,7 +727,7 @@ async function main(): Promise<void> {
   }
   const service = new Service(
     store,
-    (cwd: string | null) => skills.forProject(cwd),
+    (cwd: string | null, threadId?: string) => skillsFor(cwd, threadId),
     drivers,
     broadcast,
     harnessTools,
@@ -733,8 +753,8 @@ async function main(): Promise<void> {
     // The project's MCP servers through the app's router (search_tools / call_mcp_tool).
     mcpTools: (projectId) => (mcpScopes.effective(projectId ?? null).length ? routedTools(projectId) : []),
     // The project's model-invoked skills as a `skill` tool, when it has any.
-    skills: (cwd, design) => {
-      const list = forAgent(skills.forProject(cwd), { mode: "tool", reads: [] }, new Set(), { design });
+    skills: (cwd, design, threadId) => {
+      const list = forAgent(skillsFor(cwd, threadId), { mode: "tool", reads: [] }, new Set(), { design });
       return list.length ? skillTool(() => list) : null;
     },
   });
@@ -1281,7 +1301,7 @@ async function main(): Promise<void> {
       guideParts: cwd ? guide.partsForCwd(cwd) : [],
       // An agent that keeps the shared memory itself doesn't need the memory tools.
       tools: harnessTools(thread ?? undefined).filter((t) => !(thread && drivers.find((d) => d.id === thread.agent)?.capabilities.nativeMemory && (t.name === MEMORY_READ_TOOL || t.name === MEMORY_WRITE_TOOL))),
-      skills: thread && delivery ? skillsInputFor(delivery, cwd, thread.kind === "design") : null,
+      skills: thread && delivery ? skillsInputFor(delivery, cwd, thread.kind === "design", thread.id) : null,
       mcp: servers.map((s) => ({ name: s.name, listed: mcpTools.peek(s.spec), deferred })),
       memoryIndex: pid && memoryOn(settings.get(), pid) ? (({ lines, tokens }) => ({ lines, tokens }))(memory.store.blockIndex(pid)) : null,
     });

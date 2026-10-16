@@ -79,7 +79,12 @@ export class SkillCatalogs {
     );
   }
 
-  forProject(cwd: string | null): Catalog {
+  /**
+   * `expertDirs`: the thread's expert's own skill folders, a layer after the
+   * project's (so the user's own skills win a name) and before the app-wide
+   * ones. Only that expert's threads pass them; everyone else gets none.
+   */
+  forProject(cwd: string | null, expertDirs: string[] = []): Catalog {
     const disabled = new Set(this.opts.disabled());
     const layers: SkillEntry[][] = [];
     // .cubiq comes first, then .agents, so they win a name over the later folders. .cubiq is the
@@ -92,6 +97,7 @@ export class SkillCatalogs {
         this.discovered("projectClaude", join(cwd, ".claude", "skills")),
       );
     }
+    for (const dir of expertDirs) layers.push(this.discovered("expert", dir));
     layers.push(this.discovered("harness", this.opts.harnessDir), this.discovered("bundled", this.opts.bundledDir), this.legacy());
     return mergeCatalog(layers, disabled, this.opts.legacyRoot);
   }

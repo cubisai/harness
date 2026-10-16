@@ -226,6 +226,22 @@ describe("SkillCatalogs", () => {
     expect(none.projectClaude).toBe("");
     expect(none.projectCubiq).toBe("");
   });
+
+  it("adds a thread's expert's own skills, the project beating them for a name", () => {
+    const cwd = tempDir();
+    const expertDir = tempDir();
+    writeSkill(join(cwd, ".agents", "skills"), "shared-name", "---\nname: shared-name\ndescription: Project skill\n---\nbody");
+    writeSkill(expertDir, "expert-only", "---\nname: expert-only\ndescription: Expert skill\n---\nbody");
+    writeSkill(expertDir, "shared-name", "---\nname: shared-name\ndescription: Expert skill\n---\nbody");
+    const cats = catalogs();
+    expect(cats.forProject(cwd).byName.has("expert-only")).toBe(false);
+    const withExpert = cats.forProject(cwd, [expertDir]);
+    const expertOnly = withExpert.modelSkills.find((s) => s.name === "expert-only");
+    expect(expertOnly?.origin).toBe("expert");
+    expect(withExpert.byName.get("shared-name")?.origin).toBe("project");
+    const shadowed = withExpert.all.find((s) => s.name === "shared-name" && s.origin === "expert");
+    expect(shadowed?.shadowedBy).toBe("project");
+  });
 });
 
 describe("skillTool", () => {

@@ -43,8 +43,8 @@ export interface ProviderDriverDeps {
   memory(projectId: string, threadId?: string, sessionKey?: string | null): string | null;
   /** The app's MCP router tools (search_tools / call_mcp_tool) for a project; empty when it has no servers. */
   mcpTools(projectId?: string): HarnessTool[];
-  /** The model-invoked skills tool for this folder, or null when there are none. */
-  skills?(cwd: string, design: boolean): HarnessTool | null;
+  /** The model-invoked skills tool for this folder, or null when there are none; `threadId` adds that thread's expert's own skills. */
+  skills?(cwd: string, design: boolean, threadId?: string): HarnessTool | null;
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform;
   /** Tests. */
@@ -320,7 +320,7 @@ async function runTurn(
   } }) : null;
   const appTools = [...input.tools, ...deps.mcpTools(input.projectId)].map((t) => appLoopTool(t, input));
   const askLoop = input.requestUserInput ? appLoopTool(askUserTool((_threadId, questions) => input.requestUserInput!(questions)), input) : null;
-  const skill = deps.skills?.(input.cwd, Boolean(input.design)) ?? null;
+  const skill = deps.skills?.(input.cwd, Boolean(input.design), input.threadId) ?? null;
   const skillLoop = skill ? appLoopTool(skill, input) : null;
   // The task tool is read-only and runs in every mode; it hands its children the
   // three read-only native tools only, never the app's tools or propose_plan.

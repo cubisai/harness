@@ -174,6 +174,8 @@ export function originLabel(origin?: SkillOrigin): string {
     case "project":
     case "projectClaude":
       return "Project";
+    case "expert":
+      return "Expert";
     case "harness":
       return "Global (CubiQ)";
     case "shared":

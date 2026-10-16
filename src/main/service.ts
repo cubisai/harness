@@ -125,7 +125,8 @@ export class Service {
 
   constructor(
     private store: Store,
-    private catalogFor: (cwd: string | null) => Catalog,
+    /** A cwd's skills; with a thread, plus its expert's own skills. */
+    private catalogFor: (cwd: string | null, threadId?: string) => Catalog,
     drivers: AgentDriver[],
     private broadcast: (update: LiveUpdate) => void,
     /** Tools the harness offers the agent this turn (the browser pane's, once it's open; a design thread's add the design tools). */
@@ -686,7 +687,7 @@ export class Service {
     const systemNote = compact ? "" : this.prepareDesignSystem(thread) + this.prepareDesignTier(thread);
     const prompt = compact
       ? `/compact${compact.focus ? ` ${compact.focus}` : ""}`
-      : composePrompt(this.catalogFor(cwd), req.text, skills, driver.skillsDelivery) + mentionNote(cwd, req.mentions) + systemNote;
+      : composePrompt(this.catalogFor(cwd, thread.id), req.text, skills, driver.skillsDelivery) + mentionNote(cwd, req.mentions) + systemNote;
 
     const userEvent = this.emit(thread.id, { kind: "user", text: req.text, ...(skills.length ? { skills } : {}) });
     // An automatic fix round never names the thread; the user's message does.

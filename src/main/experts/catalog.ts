@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { expertFromMarkdown, parseExpertMarkdown, type ExpertDef, type ExpertMember } from "../../shared/experts";
 
 /**
@@ -11,7 +11,11 @@ import { expertFromMarkdown, parseExpertMarkdown, type ExpertDef, type ExpertMem
  * same name. Every read is best-effort: a missing folder or a bad file is
  * skipped, never thrown. The listing is cached by the candidate paths' mtimes.
  */
-export function createExpertCatalog(opts: { bundledDir: string; userDir: string }): { list(): ExpertDef[]; get(id: string): ExpertDef | null } {
+export function createExpertCatalog(opts: { bundledDir: string; userDir: string }): {
+  list(): ExpertDef[];
+  get(id: string): ExpertDef | null;
+  skillsDir(id: string): string | null;
+} {
   let cached: { sig: string; defs: ExpertDef[] } | null = null;
 
   /** Bundled expert.md paths: a bare `<id>.md`, or a folder `<id>/expert.md`, in file-name order. */
@@ -62,6 +66,13 @@ export function createExpertCatalog(opts: { bundledDir: string; userDir: string 
     },
     get(id: string): ExpertDef | null {
       return all().find((d) => d.id === id) ?? null;
+    },
+    /** A folder expert's own `skills/` (an imported package's), or null: a bare `<id>.md` has none. */
+    skillsDir(id: string): string | null {
+      const path = all().find((d) => d.id === id)?.path;
+      if (!path || basename(path) !== "expert.md") return null;
+      const dir = join(dirname(path), "skills");
+      return isDir(dir) ? dir : null;
     },
   };
 }
@@ -154,6 +165,14 @@ function readDir(dir: string): string[] {
 function isFile(path: string): boolean {
   try {
     return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function isDir(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
   } catch {
     return false;
   }

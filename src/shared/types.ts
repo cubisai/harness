@@ -13,7 +13,8 @@ export type Invocation = "model" | "user";
  * "projectCubiq" is the project's .cubiq/skills, which no agent reads natively; "project" is .agents/skills;
  * "projectClaude" is .claude/skills, read natively only by Claude. All three are listed as Project.
  */
-export type SkillOrigin = "projectCubiq" | "project" | "projectClaude" | "harness" | "shared" | "bundled" | "legacy";
+/** `expert`: an imported expert's own skills, in that expert's threads only. */
+export type SkillOrigin = "projectCubiq" | "project" | "projectClaude" | "expert" | "harness" | "shared" | "bundled" | "legacy";
 
 /** One skill: a folder with a SKILL.md (see plan/docs/HARNESS.md). */
 export interface SkillEntry {
