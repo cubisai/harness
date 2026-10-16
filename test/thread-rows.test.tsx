@@ -92,10 +92,10 @@ describe("subagent steps", () => {
       state.disclosures = { t1: { [`work-${agent.seq}`]: true } };
       const closed = renderToStaticMarkup(<ThreadView threadId="t1" />);
       expect(closed).toContain("Agent");
-      // The child's own text row is not at the top level; the collapsed Agent
-      // row summarises the latest step instead.
+      // The child's own text row is not at the top level; the collapsed Agent row,
+      // left without a result after its turn, reads as stopped with its tool count.
       expect(closed).not.toContain("Found the bug");
-      expect(closed).toContain("1 step · Read calc.py");
+      expect(closed).toContain("Stopped · 1 tool use");
 
       state.disclosures = { t1: { [`work-${agent.seq}`]: true, "tu-agent": true } };
       const open = renderToStaticMarkup(<ThreadView threadId="t1" />);

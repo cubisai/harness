@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { SubagentCard } from "../src/renderer/src/components/SubagentCard";
+import { handBack, relative, SubagentCard } from "../src/renderer/src/components/SubagentCard";
 import { ToolRow } from "../src/renderer/src/components/ThreadView";
 import { appendDelta, emptyLive, flushPending } from "../src/renderer/src/live";
 import type { StoredEvent, ThreadEvent } from "../src/shared/types";
@@ -35,14 +35,45 @@ describe("SubagentCard", () => {
     expect(html).toContain("Explore");
   });
 
-  it("summarises a running subagent by its step count", () => {
-    expect(render({ running: true })).toContain("1 step");
+  it("peeks at a running subagent's last steps and newest note, Claude Code style", () => {
+    const html = render({ running: true });
+    expect(html).toContain("1 tool use");
+    expect(html).toContain('class="subagent-peek"');
+    expect(html).toContain('<span class="name">Read</span><span class="summary">src/a.ts</span>');
+    // Its newest note came after the last tool call: it shows as the "now" line.
+    expect(html).toContain('<div class="peek-now">found 3</div>');
+    // Prompt and report stay out of the one-line view.
+    expect(html).not.toContain("Prompt");
   });
 
-  it("marks the newest drawn step while running, skipping tool results", () => {
-    const html = render({ open: true, running: true });
-    expect(html).toContain('<div class="tool-step newest"><div class="tool-step-text"><p>found 3</p>');
-    expect(html.match(/newest/g)?.length).toBe(1);
+  it("folds older steps into +N more while running", () => {
+    const many: StoredEvent[] = Array.from({ length: 5 }, (_, i) => ({ seq: 10 + i, createdAt: 0, event: { kind: "tool-use", toolUseId: `g${i}`, name: "Grep", summary: `p${i}`, parentId: "a1" } }));
+    const html = renderToStaticMarkup(<SubagentCard tool={agent} children={many} running open={false} onToggle={() => {}} />);
+    expect(html).toContain("+2 more tool uses");
+    expect(html).not.toContain(">p1<");
+    expect(html).toContain(">p4<");
+  });
+
+  it("reads Done · N tool uses · time once finished, with no peek", () => {
+    const timed = children.map((c, i) => ({ ...c, createdAt: 1_000 + i * 4_000 }));
+    const html = renderToStaticMarkup(
+      <SubagentCard tool={agent} result={{ kind: "tool-result", toolUseId: "a1", isError: false, summary: "x", payload: "found 3 callers" }} children={timed} running={false} open={false} startedAt={1_000} onToggle={() => {}} />,
+    );
+    expect(html).toContain("Done · 1 tool use · 12s");
+    expect(html).not.toContain("subagent-peek");
+  });
+
+  it("names files relative to the thread folder in the peek, on macOS and Windows paths", () => {
+    expect(relative("ls -la /work/app/src and /work/app/README.md", "/work/app")).toBe("ls -la src and README.md");
+    expect(relative("C:\\work\\app\\src\\a.ts", "C:\\work\\app")).toBe("src\\a.ts");
+    expect(relative("C:\\work\\app\\src\\a.ts", "C:/work/app")).toBe("src\\a.ts");
+    expect(relative("/elsewhere/a.ts", "/work/app")).toBe("/elsewhere/a.ts");
+  });
+
+  it("shows only the report from Claude Code's hand-back wrapper", () => {
+    const wrapped = "[Subagent hand-back] The text below is the final report. The report follows:\n  line one\n    indented";
+    expect(handBack(wrapped)).toBe("line one\n  indented");
+    expect(handBack("plain report")).toBe("plain report");
   });
 
   it("streams the subagent's live text inside its card while it runs", () => {

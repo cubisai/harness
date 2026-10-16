@@ -543,9 +543,9 @@ export function ToolEventRow({
   startedAt?: number;
 }) {
   const stored = useStore((s) => (threadId ? s.disclosures[threadId]?.[tool.toolUseId] : undefined));
-  // A subagent opens itself while it runs, collapses on success and stays open on error;
+  // A subagent stays one line (peeking at its steps while it runs) and opens itself only on error;
   // an explicit toggle always wins over that default.
-  const open = stored ?? (prettyTool(tool.name) === "Agent" ? (!result ? running : Boolean(result.isError)) : false);
+  const open = stored ?? (prettyTool(tool.name) === "Agent" ? Boolean(result?.isError) : false);
   return (
     <ToolRow
       tool={tool}
@@ -556,7 +556,9 @@ export function ToolEventRow({
       open={open}
       startedAt={startedAt}
       threadId={threadId}
-      onToggle={(o) => threadId && useStore.getState().setDisclosure(threadId, tool.toolUseId, o)}
+      // <details> fires toggle for the open prop's own changes too (a running Agent opening itself):
+      // only a real click, which flips it away from `open`, is the user's choice.
+      onToggle={(o) => threadId && o !== open && useStore.getState().setDisclosure(threadId, tool.toolUseId, o)}
     />
   );
 }
