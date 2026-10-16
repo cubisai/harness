@@ -150,6 +150,7 @@ export function App() {
                 {thread ? thread.title : project ? project.name : "CubiQ"}
                 {thread && project && <span className="sub">{project.name}</span>}
               </div>
+              {thread?.expertId && <ExpertChip expertId={thread.expertId} />}
               {project && (
                 <>
                   <button

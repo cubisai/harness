@@ -2388,6 +2388,8 @@ button.hunk:hover { color: var(--text); }
 }
 .expert-chip-team { color: var(--text-tertiary); }
 .expert-chip { min-width: 0; }
+/* The thread header's expert chip: beside the title, giving way to it on a narrow window. */
+.main-header .expert-chip { flex-shrink: 1; }
 .expert-chip-name { min-width: 0; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* A bundled portrait fills the same box as the initials it replaces; it carries its own round background. */
 img.expert-avatar-img { display: block; padding: 0; border: 0; border-radius: 999px; background: none; object-fit: cover; }

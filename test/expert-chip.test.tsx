@@ -196,12 +196,18 @@ describe("ExpertIntro", () => {
 });
 
 describe("ExpertAvatar", () => {
-  it("shows the bundled portrait for a bundled expert or team member, else the initials", async () => {
-    const { ExpertAvatar, expertAvatarUrl, initials, memberAvatarId } = await import("../src/renderer/src/components/experts/ExpertAvatar");
+  it("shows the bundled portrait for a bundled expert or team member, else one generated from the id", async () => {
+    const { ExpertAvatar, expertAvatarUrl, generatedAvatarUrl, initials, memberAvatarId } = await import("../src/renderer/src/components/experts/ExpertAvatar");
     expect(expertAvatarUrl("code-reviewer")).toContain("code-reviewer.svg");
     expect(expertAvatarUrl(memberAvatarId("software-delivery-team", "tester"))).toContain("software-delivery-team--tester.svg");
+    expect(expertAvatarUrl("imported-thing")).toBeUndefined();
+    const url = generatedAvatarUrl("imported-thing");
+    expect(url).toMatch(/^data:image\/svg\+xml/);
+    expect(generatedAvatarUrl("imported-thing")).toBe(url);
+    expect(generatedAvatarUrl("another-import")).not.toBe(url);
     const imported = renderToStaticMarkup(<ExpertAvatar id="imported-thing" text="IT" className="xs-avatar" />);
-    expect(imported).toBe('<span class="xs-avatar" aria-hidden="true">IT</span>');
+    expect(imported).toContain('<img class="xs-avatar expert-avatar-img"');
+    expect(imported).not.toContain(">IT<");
     expect(initials("Research Planner & Editor")).toBe("RP");
   });
 });
