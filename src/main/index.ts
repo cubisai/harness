@@ -383,6 +383,7 @@ async function main(): Promise<void> {
     bundled: app.isPackaged ? join(process.resourcesPath, "CUBIQ.md") : join(app.getAppPath(), "resources", "CUBIQ.md"),
     global: userGuidePath(userData),
     designMode: app.isPackaged ? join(process.resourcesPath, "DESIGN-MODE.md") : join(app.getAppPath(), "resources", "DESIGN-MODE.md"),
+    uiBlocks: () => settings.get().uiBlocks === true,
   });
   // The expert catalogue: bundled personas shipped with the app, plus the user's imported ones.
   const experts = createExpertCatalog({

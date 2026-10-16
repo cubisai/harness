@@ -31,6 +31,12 @@ interface TaskToolOptions {
   tools(): LoopTool[];
   cwd: string;
   emit(e: ThreadEvent): void;
+  /** The subagent's live text, reasoning and tool output, streamed under its Agent row (never stored). */
+  live?: {
+    text(text: string, itemId: string, parentId: string): void;
+    reasoning(itemId: string, text: string, parentId: string): void;
+    toolOutput(toolUseId: string, text: string, parentId: string): void;
+  };
   onUsage(u: LlmUsage): void;
   stream?: typeof streamLlm;
 }
@@ -96,10 +102,11 @@ export function createTaskTool(opts: TaskToolOptions): LoopTool {
           authorize: async () => ({ ok: true }),
           emit: {
             event: (e) => opts.emit({ ...e, parentId: call.id }),
-            textDelta: () => {},
-            reasoningDelta: () => {},
+            textDelta: (text, itemId) => opts.live?.text(text, itemId, call.id),
+            reasoningDelta: (itemId, text) => opts.live?.reasoning(itemId, text, call.id),
+            // A child's tool input isn't shown live; its tool row lands whole.
             toolInputDelta: () => {},
-            toolOutputDelta: () => {},
+            toolOutputDelta: (toolUseId, text) => opts.live?.toolOutput(toolUseId, text, call.id),
             usage: (u) => {
               seenUsage = u;
             },

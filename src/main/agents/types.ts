@@ -68,16 +68,19 @@ export interface TurnInput {
   permissionMode: PermissionMode;
   signal: AbortSignal;
   onEvent(event: ThreadEvent): void;
-  /** Live assistant text; itemId keys the live item so the renderer clears it only when that item's terminal event lands. */
-  onTextDelta(text: string, itemId?: string): void;
+  /**
+   * Live assistant text; itemId keys the live item so the renderer clears it only when that item's terminal event lands.
+   * parentId (here and on reasoning/tool output) = the Agent call a subagent's delta streams under.
+   */
+  onTextDelta(text: string, itemId?: string, parentId?: string): void;
   /** Live reasoning text for one thinking item. */
-  onReasoningDelta?(d: { itemId: string; text: string; opaque: boolean }): void;
+  onReasoningDelta?(d: { itemId: string; text: string; opaque: boolean; parentId?: string }): void;
   /** Latest summary for one reasoning item. */
   onReasoningSummary?(d: { itemId: string; index: number; text: string }): void;
   /** Tool input JSON as it streams. */
   onToolInputDelta?(d: { toolUseId: string; text: string }): void;
   /** Tool output as it streams. */
-  onToolOutputDelta?(d: { toolUseId: string; text: string }): void;
+  onToolOutputDelta?(d: { toolUseId: string; text: string; parentId?: string }): void;
   /** Rolling token usage for the turn. */
   onUsageUpdate?(u: Omit<Extract<LiveDelta, { kind: "usage-update" }>, "kind">): void;
   /** Estimated thinking tokens for the in-progress block. */

@@ -183,6 +183,7 @@ export class SettingsStore {
     if (patch.learn && typeof patch.learn === "object" && !Array.isArray(patch.learn)) next.learn = sanitizeLearn({ ...next.learn, ...patch.learn });
     if (patch.mcpRouter === "auto" || patch.mcpRouter === "off") next.mcpRouter = patch.mcpRouter;
     if (typeof patch.sidebarGroupByProject === "boolean") next.sidebarGroupByProject = patch.sidebarGroupByProject;
+    if (typeof patch.uiBlocks === "boolean") next.uiBlocks = patch.uiBlocks;
     if (patch.splash && ["agent", "voyage", "off"].includes(patch.splash)) next.splash = patch.splash;
     // The Antigravity opt-in: the acknowledgement is stamped here, never trusted from
     // the caller, and the flag turns on only with a current one.

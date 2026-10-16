@@ -505,7 +505,17 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
           if (p.item) onItemCompleted(t, p.item);
           return;
         case "item/agentMessage/delta":
-          if (p.itemId && p.delta) t.deltas.set(p.itemId, (t.deltas.get(p.itemId) ?? "") + p.delta);
+          if (p.itemId && p.delta) {
+            t.deltas.set(p.itemId, (t.deltas.get(p.itemId) ?? "") + p.delta);
+            // Live only, under the Agent row; the stored message lands whole on item/completed.
+            if (t.rowId) t.input.onTextDelta(p.delta, p.itemId, t.rowId);
+          }
+          return;
+        case "item/reasoning/textDelta":
+          if (p.itemId && p.delta && t.rowId) {
+            t.reasoning.set(p.itemId, (t.reasoning.get(p.itemId) ?? "") + p.delta);
+            t.input.onReasoningDelta?.({ itemId: p.itemId, text: p.delta, opaque: false, parentId: t.rowId });
+          }
           return;
         default:
           return;
@@ -655,7 +665,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       return;
     }
     if (item.type === "reasoning") {
-      if (t.parent) return;
+      // A child's reasoning lands under its Agent row (its onEvent adds the parentId); handoff leaves it out.
       const r = item as { summary: string[] };
       const text = r.summary.join("\n\n").trim() || t.reasoning.get(item.id)?.trim() || "";
       if (text) t.input.onEvent({ kind: "thinking", text, itemId: item.id });

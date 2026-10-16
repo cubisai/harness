@@ -248,6 +248,7 @@ async function waitFor(fn: () => boolean, ms = 3000): Promise<void> {
 function turn(prompt: string, over: Partial<TurnInput> = {}) {
   const events: ThreadEvent[] = [];
   const deltas: string[] = [];
+  const childDeltas: { text: string; itemId?: string; parentId: string }[] = [];
   const sessions: string[] = [];
   const asked: string[] = [];
   const controller = new AbortController();
@@ -262,7 +263,8 @@ function turn(prompt: string, over: Partial<TurnInput> = {}) {
     tools: [],
     mcpServers: [],
     onEvent: (e) => events.push(e),
-    onTextDelta: (t) => deltas.push(t),
+    // A subagent's deltas carry its Agent row's id: kept apart from the root's.
+    onTextDelta: (t, itemId, parentId) => (parentId ? childDeltas.push({ text: t, ...(itemId ? { itemId } : {}), parentId }) : deltas.push(t)),
     onSession: (s) => sessions.push(s),
     requestPermission: async (r) => {
       asked.push(r.summary);
@@ -271,7 +273,7 @@ function turn(prompt: string, over: Partial<TurnInput> = {}) {
     requestPlanDecision: async () => ({ keep: "" }),
     ...over,
   };
-  return { input, events, deltas, sessions, asked, controller };
+  return { input, events, deltas, childDeltas, sessions, asked, controller };
 }
 
 describe("Codex login changes", () => {
@@ -761,8 +763,9 @@ describe("Codex subagents", () => {
     // The Agent row closes with the child's last message.
     const closed = t.events.find((e): e is Extract<ThreadEvent, { kind: "tool-result" }> => e.kind === "tool-result" && e.toolUseId === agentRow);
     expect(closed).toMatchObject({ summary: "391", isError: false });
-    // The child's streamed text never reaches the root's text deltas.
+    // The child's streamed text never reaches the root's text deltas: it streams under its Agent row.
     expect(t.deltas).not.toContain("391");
+    expect(t.childDeltas).toEqual([{ text: "391", itemId: "cm1", parentId: agentRow }]);
   });
   it("emits a spawnAgent row once its child id arrives, with the call's prompt", async () => {
     const d = driver();

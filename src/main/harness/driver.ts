@@ -330,6 +330,11 @@ async function runTurn(
     tools: () => nativeLoop.filter((t) => ["read", "glob", "grep"].includes(t.definition.name)),
     cwd: input.cwd,
     emit: (e) => input.onEvent(e),
+    live: {
+      text: (text, itemId, parentId) => input.onTextDelta(text, itemId, parentId),
+      reasoning: (itemId, text, parentId) => input.onReasoningDelta?.({ itemId, text, opaque: false, parentId }),
+      toolOutput: (toolUseId, text, parentId) => input.onToolOutputDelta?.({ toolUseId, text, parentId }),
+    },
     onUsage: (u) => {
       extraUsage = addUsage(extraUsage, u);
     },

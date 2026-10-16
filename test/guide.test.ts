@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createGuide, designNote, projectGuidePath, userGuidePath } from "../src/main/guide";
+import { createGuide, designNote, projectGuidePath, UI_BLOCKS_NOTE, userGuidePath } from "../src/main/guide";
 import { estimateTokens } from "../src/main/handoff";
 import { tempDir } from "./helpers";
 
@@ -67,6 +67,23 @@ describe("createGuide", () => {
     write(bundled, "# Guide\r\n\r\n- one\r\n- two\r\n");
     const guide = createGuide({ bundled, global: join(root, "none.md") });
     expect(guide.forCwd(join(root, "project"))).toBe("# Guide\n\n- one\n- two");
+  });
+
+  it("sends the UI block catalog only when Interactive answers is on, right after the app's guide", () => {
+    const root = tempDir();
+    const bundled = join(root, "CUBIQ.md");
+    const global = join(root, "user.md");
+    write(bundled, "# App");
+    write(global, "# Mine");
+    let on = false;
+    const guide = createGuide({ bundled, global, uiBlocks: () => on });
+    expect(guide.forCwd(join(root, "p"))).toBe("# App\n\n# Mine");
+    on = true;
+    expect(guide.forCwd(join(root, "p"))).toBe(`# App\n\n${UI_BLOCKS_NOTE}\n\n# Mine`);
+    expect(guide.partsForCwd(join(root, "p")).map((p) => p.path)).toEqual([bundled, "ui-blocks", global]);
+    // One line, so the opt-in stays cheap.
+    expect(UI_BLOCKS_NOTE).not.toContain("\n");
+    expect(estimateTokens(UI_BLOCKS_NOTE)).toBeLessThanOrEqual(130);
   });
 
   it("keeps the bundled guide within its 600-token budget", () => {

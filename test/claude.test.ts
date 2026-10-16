@@ -346,6 +346,7 @@ describe("Claude driver effort", () => {
       await d.runTurn(input);
       expect(sdk.calls[0]?.options.effort).toBe("high");
       expect(sdk.calls[0]?.options.thinking).toEqual({ type: "adaptive", display: "summarized" });
+      expect(sdk.calls[0]?.options.forwardSubagentText).toBe(true);
     } finally {
       sdk.models = [];
     }
@@ -636,6 +637,16 @@ describe("Claude stream mapping", () => {
     expect(events).toContainEqual({ kind: "assistant-text", text: "Looking around", itemId: "m2:0", parentId: "tu-agent" });
     expect(events.find((e) => e.kind === "tool-use")).toMatchObject({ kind: "tool-use", toolUseId: "g1", name: "Search", parentId: "tu-agent" });
     expect(events.some((e) => e.kind === "turn-start")).toBe(false);
+  });
+
+  it("keeps a subagent's thinking under its parent Agent (forwarded with forwardSubagentText)", () => {
+    const { input, events } = recorder();
+    feed(input, newTurnState(), {
+      type: "assistant",
+      parent_tool_use_id: "tu-agent",
+      message: { id: "m3", model: "claude-x", content: [{ type: "thinking", thinking: "check the imports", signature: "sig" }, { type: "thinking", thinking: " ", signature: "sig" }] },
+    } as unknown as SDKMessage);
+    expect(events).toEqual([{ kind: "thinking", text: "check the imports", opaque: false, itemId: "m3:0", parentId: "tu-agent" }]);
   });
 
   it("nests a subagent's tool result under its parent Agent", () => {

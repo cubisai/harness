@@ -80,6 +80,21 @@ describe("createTaskTool", () => {
     expect(t.events.every((e) => e.parentId === "call1")).toBe(true);
   });
 
+  it("streams the child's live text under the call's id, never as the parent's", async () => {
+    const live: string[] = [];
+    const t = setup([text("streamed answer")], {
+      live: {
+        text: (txt, itemId, parentId) => live.push(`${parentId}|${itemId}|${txt}`),
+        reasoning: () => {},
+        toolOutput: () => {},
+      },
+    });
+    await t.run({ description: "x", prompt: "go" }, "call7");
+    expect(live).toEqual(["call7|call7-sub-0-t|streamed answer"]);
+    // The stored reply carries the same item id, so the live item closes when it lands.
+    expect(t.events.find((e) => e.kind === "assistant-text")).toMatchObject({ itemId: "call7-sub-0-t", parentId: "call7" });
+  });
+
   it("filters out edit-access and nested task tools from the child's request", async () => {
     const tools = [tool("read", "read"), tool("edit", "edit"), tool("bash", "shell"), tool("task", "read")];
     const t = setup([text("done")], { tools: () => tools });

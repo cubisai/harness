@@ -452,6 +452,9 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         allowDangerouslySkipPermissions: input.permissionMode === "full",
         ...(skillRoots.length ? { additionalDirectories: skillRoots } : {}),
         includePartialMessages: true,
+        // Subagents' text and thinking come back whole (tagged with parent_tool_use_id) for their Agent card.
+        // CubiQ-side only: nothing extra goes to the model.
+        forwardSubagentText: true,
         // Options may carry a markdown mockup, shown beside them in the question card.
         toolConfig: { askUserQuestion: { previewFormat: "markdown" } },
         // Effort guides how deep the model thinks; summarized adaptive thinking
@@ -895,8 +898,11 @@ function emitAssistantBlock(block: AssistantBlock, itemId: string, input: TurnIn
     return;
   }
   if (block.type === "thinking") {
-    // A subagent's reasoning is not the thread's history; its tool rows are.
-    if (parentId) return;
+    // A subagent's reasoning shows in its Agent card; handoff leaves parented events out of history.
+    if (parentId) {
+      if (block.thinking.trim()) input.onEvent({ kind: "thinking", text: block.thinking, opaque: false, itemId, parentId });
+      return;
+    }
     const signature = block.signature || turn.signatures.get(itemId);
     if (block.thinking.trim()) {
       turn.pending.delete(itemId);

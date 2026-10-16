@@ -207,6 +207,8 @@ export interface Settings {
   mcpRouter?: "auto" | "off";
   /** Sidebar Recent section grouped by project (true, the default when unset) or one flat list (false). */
   sidebarGroupByProject?: boolean;
+  /** Tell agents they may answer with inline UI blocks (checklist, calculator, …). Off unless set: it costs guide tokens. */
+  uiBlocks?: boolean;
   /** The launch splash clip; unset means "agent". */
   splash?: Splash;
   /** Self-improve (scorecard, lessons, verified promotion): off unless a project is listed. SettingsStore.get() always fills it in. */

@@ -42,6 +42,14 @@ export function designNote(dir: string): string {
 }
 
 /**
+ * The inline UI block catalog (renderer: src/renderer/src/genui), sent only when
+ * Settings › Interactive answers is on. Kept to one line: it rides in every
+ * session's stable prefix.
+ */
+export const UI_BLOCKS_NOTE =
+  "- **UI blocks** (rarely; only when clearer than prose, max 2 per reply): a ```ui:<name> fence with JSON: `checklist` {items:[{text,done?}]}, `calculator` {inputs:[{id,label,value,unit?}],formula,unit?}, `compare` {headers,rows,highlight?}, `timeline` {steps:[{time?,title,detail?}]}, `chart` {kind:\"bars\",series:[{label,value}],unit?}; `title`/`note` optional; ≤50 items.";
+
+/**
  * The harness guide agents receive as instructions: the app's bundled copy,
  * then the user's own, then the project's; a design thread's ends with Design
  * mode's guide (`designMode`) for its folder. Each file is read once and cached by
@@ -49,7 +57,7 @@ export function designNote(dir: string): string {
  * broken by a re-read (which also means a guide edited mid-session is only
  * picked up on the next mtime change, not mid-turn).
  */
-export function createGuide(opts: { bundled: string; global: string; designMode?: string }): {
+export function createGuide(opts: { bundled: string; global: string; designMode?: string; uiBlocks?: () => boolean }): {
   forCwd(cwd: string, design?: string): string;
   partsForCwd(cwd: string): { source: "bundled" | "user" | "project"; path: string; text: string }[];
 } {
@@ -77,9 +85,11 @@ export function createGuide(opts: { bundled: string; global: string; designMode?
       { source: "user", path: opts.global },
       { source: "project", path: projectGuidePath(cwd) },
     ];
-    return sources
-      .map((s) => ({ ...s, text: read(s.path) }))
-      .filter((p) => p.text.length > 0);
+    const parts = sources.map((s) => ({ ...s, text: read(s.path) })).filter((p) => p.text.length > 0);
+    // The opt-in UI block catalog follows the app's own guide.
+    if (!opts.uiBlocks?.()) return parts;
+    const at = parts.filter((p) => p.source === "bundled").length;
+    return [...parts.slice(0, at), { source: "bundled" as const, path: "ui-blocks", text: UI_BLOCKS_NOTE }, ...parts.slice(at)];
   };
 
   /** Design mode's guide with the thread's folder filled in; the short note when the file is missing. */

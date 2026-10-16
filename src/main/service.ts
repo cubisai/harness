@@ -843,8 +843,8 @@ export class Service {
         },
         // Live text is scrubbed like stored events. A key split across two deltas can
         // slip through here, but the turn's stored assistant-text event is redacted whole.
-        onTextDelta: (text, itemId) => live({ kind: "text-delta", itemId: itemId ?? "", text: scrub(text) }),
-        onReasoningDelta: (d) => live({ kind: "reasoning-delta", itemId: d.itemId, text: scrub(d.text), opaque: d.opaque }),
+        onTextDelta: (text, itemId, parentId) => live({ kind: "text-delta", itemId: itemId ?? "", text: scrub(text), ...(parentId ? { parentId } : {}) }),
+        onReasoningDelta: (d) => live({ kind: "reasoning-delta", itemId: d.itemId, text: scrub(d.text), opaque: d.opaque, ...(d.parentId ? { parentId: d.parentId } : {}) }),
         onReasoningSummary: (d) => live({ kind: "reasoning-summary", ...d, text: scrub(d.text) }),
         onToolInputDelta: (d) => live({ kind: "tool-input-delta", ...d, text: scrub(d.text) }),
         onToolOutputDelta: (d) => live({ kind: "tool-output-delta", ...d, text: scrub(d.text) }),
