@@ -5,6 +5,16 @@ import { MAX_SELECTED, readSelected, type SelectedElement } from "../../../share
 export type Viewport = "fit" | "mobile" | "tablet" | "desktop" | "slide";
 export type Zoom = "fit" | 0.5 | 0.75 | 1 | 1.5;
 
+/** The device chrome drawn around a sized frame; Fit and Slide have none. */
+export type DeviceKind = "phone" | "tablet" | "browser";
+
+const DEVICE_OF: Partial<Record<Viewport, DeviceKind>> = { mobile: "phone", tablet: "tablet", desktop: "browser" };
+
+/** The device a viewport is shown in, or null when it has none. */
+export function deviceFor(viewport: Viewport): DeviceKind | null {
+  return DEVICE_OF[viewport] ?? null;
+}
+
 export const VIEWPORTS: { value: Viewport; label: string; detail: string; size: { width: number; height: number } | null }[] = [
   { value: "fit", label: "Fit", detail: "The canvas's own size", size: null },
   { value: "mobile", label: "Mobile", detail: "390 × 844", size: { width: 390, height: 844 } },

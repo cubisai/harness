@@ -575,6 +575,38 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-present-device .design-frame { position: absolute; top: 0; left: 0; }
 /* Inspector (design mode): the selected element's properties and the page's code, beside the stage. */
 .design-stage-row { display: flex; flex: 1; min-height: 0; min-width: 0; }
+/* The stage and the floating tools share a positioned wrapper, so the bar can hover over the frame. */
+.design-stage-wrap { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; }
+.design-float-tools {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-l);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-float);
+}
+.design-float-divider { flex-shrink: 0; width: 1px; height: 20px; margin: 0 2px; background: var(--hairline); }
+/* The pen overlay: it fills the frame box and takes every pointer event while the Draw tool is on. */
+.design-draw { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: auto; cursor: crosshair; touch-action: none; z-index: 1; }
+/* Device chrome around a sized frame: a phone (bezel, notch, home bar), a tablet, or a browser window. */
+.design-frame-box.device { border: 0; }
+.design-frame-box.device-phone { border-radius: calc(44px * var(--s)); box-shadow: 0 0 0 calc(10px * var(--s)) var(--text), var(--shadow-float); overflow: hidden; }
+.design-frame-box.device-tablet { border-radius: calc(24px * var(--s)); box-shadow: 0 0 0 calc(14px * var(--s)) var(--text), var(--shadow-float); overflow: hidden; }
+.design-frame-box.device-browser { border: 1px solid var(--hairline-strong); border-radius: 0 0 var(--radius-m) var(--radius-m); box-shadow: var(--shadow-float); }
+.device-notch { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: calc(120px * var(--s)); height: calc(30px * var(--s)); background: var(--text); border-radius: 0 0 calc(16px * var(--s)) calc(16px * var(--s)); z-index: 1; pointer-events: none; }
+.device-homebar { position: absolute; bottom: calc(8px * var(--s)); left: 50%; transform: translateX(-50%); width: calc(134px * var(--s)); height: calc(5px * var(--s)); border-radius: 999px; background: var(--text); opacity: .6; z-index: 1; pointer-events: none; }
+.device-browserbar { position: absolute; bottom: 100%; left: -1px; right: -1px; height: 28px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--hairline-strong); border-bottom: 0; border-radius: var(--radius-m) var(--radius-m) 0 0; background: var(--bg-subtle); font-size: 11.5px; color: var(--text-tertiary); }
+.device-dots { flex-shrink: 0; width: 36px; height: 8px; background-image: radial-gradient(circle, var(--hairline-strong) 3px, transparent 3.5px); background-size: 14px 8px; background-repeat: repeat-x; }
+.device-address { flex: 1; min-width: 0; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.design-stage.device-browser { padding-top: 52px; }
+.design-stage.device-phone, .design-stage.device-tablet { padding: 40px; }
 .design-inspector { width: 280px; flex-shrink: 0; min-height: 0; overflow-y: auto; border-left: 1px solid var(--hairline); background: var(--bg-elevated); }
 .design-inspector-tabs { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--hairline); background: var(--bg-elevated); }
 .design-inspector-empty { margin: 0; padding: 12px; font-size: 12.5px; color: var(--text-secondary); }

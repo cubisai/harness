@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Columns2, Download, FolderOpen, Grid3x3, Hammer, LayoutGrid, Play, SlidersHorizontal, Workflow } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { Columns2, Download, Eraser, FolderOpen, Grid3x3, Hammer, LayoutGrid, MessageSquarePlus, MousePointer2, Pencil, Play, SlidersHorizontal, Smartphone, Type, Undo2, Workflow } from "lucide-react";
 import type { DesignEntry, DesignExportFormat } from "../../../shared/types";
 import { api } from "../api";
 import { fileManagerName } from "../components/OpenIn";
@@ -7,7 +7,8 @@ import { Select } from "../components/Select";
 import { IconClose, IconRefresh, IconTarget } from "../icons";
 import "../styles/artifact.css";
 import { useStore } from "../store";
-import { VIEWPORTS, ZOOMS, frameLayout, pageFromPath, readBridgeMessage, type OutlineNode, type Viewport, type Zoom } from "./frame";
+import { VIEWPORTS, ZOOMS, deviceFor, frameLayout, pageFromPath, readBridgeMessage, type OutlineNode, type Viewport, type Zoom } from "./frame";
+import { DrawOverlay, type Stroke } from "./DrawOverlay";
 import { announceSelection, elementLabel, selectionKey, type SelectedElement } from "../../../shared/selection";
 import { compareCells, pageOptions, sameEntry, type CompareCell } from "./pages";
 import { changedTweaks, currentTweakValues, parseTweaks, tweakTarget, tweakValue, type Tweak, type TweakValues } from "../../../shared/tweaks";
@@ -40,12 +41,19 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   const [zoom, setZoom] = useState<Zoom>("fit");
   const [grid, setGrid] = useState(false);
   const [picking, setPicking] = useState(false);
+  // The floating bar's chosen tool (null = none), the pen strokes over the frame, and the device frame around it.
+  const [tool, setTool] = useState<"select" | "text" | "comment" | "draw" | null>(null);
+  const [strokes, setStrokes] = useState<Stroke[]>([]);
+  const [device, setDevice] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   // 0 = the file as it is now; N = its saved version N (live reload pauses).
   const [version, setVersion] = useState(0);
   const [manual, setManual] = useState(0);
   const [stage, setStage] = useState({ width: 0, height: 0 });
   const stageRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
   const scroll = useRef({ x: 0, y: 0 });
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState<DesignExportFormat | null>(null);
@@ -111,6 +119,9 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   useEffect(() => {
     setVersion(0);
     setPicking(false);
+    setTool(null);
+    setStrokes([]);
+    setDevice(false);
     setExported(null);
     setPage(null);
     setCompare(false);
@@ -297,7 +308,38 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   const togglePick = () => {
     const on = !picking;
     setPicking(on);
+    setTool(on ? "select" : null);
+    if (on) setStrokes([]);
     post({ type: "pick", on, edit: features.textEdit });
+  };
+
+  // The floating bar's tool: Select picks like the header button; Text edit and Comment pick with the edit flag set
+  // to what the tier allows; Draw puts the pen down. Choosing the current tool again turns everything off.
+  const chooseTool = (t: "select" | "text" | "comment" | "draw") => {
+    if (t === tool) {
+      setTool(null);
+      setStrokes([]);
+      if (picking) {
+        setPicking(false);
+        post({ type: "pick", on: false });
+      }
+      return;
+    }
+    if (t === "select") {
+      setPicking(true);
+      post({ type: "pick", on: true, edit: features.textEdit });
+    } else if (t === "text") {
+      setPicking(true);
+      post({ type: "pick", on: true, edit: true });
+    } else if (t === "comment") {
+      setPicking(true);
+      post({ type: "pick", on: true, edit: false });
+    } else if (picking) {
+      setPicking(false);
+      post({ type: "pick", on: false });
+    }
+    if (t === "draw") setStrokes([]);
+    setTool(t);
   };
 
   // Esc in the app (focus outside the frame) works like Esc in it: first it clears the selection, then it stops selecting.
@@ -311,11 +353,19 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
         return;
       }
       setPicking(false);
+      setTool(null);
       post({ type: "pick", on: false });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [picking, post, threadId]);
+
+  // Comment tool: picking one element opens the existing comment form (the chips already go with the message).
+  // Only a new pick opens it, so Cancel closes it until the next one.
+  const pickedOne = selected.length === 1 ? selected[0]!.selector : null;
+  useEffect(() => {
+    if (tool === "comment" && pickedOne && features.comments) setCommentDraft((draft) => draft ?? "");
+  }, [tool, pickedOne, features.comments]);
 
   const path = entry ? `${entry.dir}/${entry.rel}` : null;
   const versions = (files?.find((f) => f.path === path)?.versions ?? []).slice().sort((a, b) => b.version - a.version);
@@ -324,6 +374,8 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   const frameKey = version ? `v${version}` : `live-${reload}-${manual}`;
   const layout = frameLayout(viewport, zoom, stage);
   const fit = viewport === "fit";
+  // The device chrome to draw: only when toggled on and the viewport has a device (not Fit or Slide).
+  const kind = device ? deviceFor(viewport) : null;
   // Exports lay the page out at the viewport on screen; Fit exports at desktop width.
   const exportWidth = VIEWPORTS.find((v) => v.value === viewport)?.size?.width ?? 1440;
 
@@ -468,12 +520,68 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     }
   };
 
+  // Restore: version N becomes the newest version (the page as it is now is kept as one), then the canvas shows it live.
+  const restore = async (rel: string, v: number) => {
+    setRestoring(true);
+    try {
+      await api().designRestoreVersion(threadId, rel, v);
+      setVersion(0);
+      setNotice({ text: `Restored v${v} as the latest version.` });
+    } catch (err) {
+      setNotice({ text: ipcError(err), error: true });
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  // Attach: the floating bar steps aside, then the frame box (the page plus the drawing over it) is captured and put
+  // into the composer as a reference image for the next message.
+  const attach = async () => {
+    setCapturing(true);
+    try {
+      // Wait a frame so the bar is gone and the overlay has repainted before the area is read.
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      const box = boxRef.current;
+      if (!box) return;
+      const r = box.getBoundingClientRect();
+      const res = await api().designCapture(threadId, { x: r.left, y: r.top, width: r.width, height: r.height });
+      useStore.getState().addDesignRefs(threadId, [res]);
+      setStrokes([]);
+      setTool(null);
+      setNotice({ text: "Drawing attached to your next message." });
+    } catch (err) {
+      setNotice({ text: ipcError(err), error: true });
+    } finally {
+      setCapturing(false);
+    }
+  };
+
   const stageEl = entry && src ? (
-    <div className={`design-stage${fit ? " fit" : ""}`} ref={stageRef}>
+    <div className={`design-stage${fit ? " fit" : ""}${kind ? ` device-${kind}` : ""}`} ref={stageRef}>
       <div
-        className="design-frame-box"
-        style={fit ? undefined : { width: layout.width * layout.scale, height: layout.height * layout.scale }}
+        className={`design-frame-box${kind ? ` device device-${kind}` : ""}`}
+        ref={boxRef}
+        style={
+          kind
+            ? ({ width: layout.width * layout.scale, height: layout.height * layout.scale, "--s": layout.scale } as CSSProperties)
+            : fit
+              ? undefined
+              : { width: layout.width * layout.scale, height: layout.height * layout.scale }
+        }
       >
+        {kind === "phone" && (
+          <>
+            <div className="device-notch" aria-hidden />
+            <div className="device-homebar" aria-hidden />
+          </>
+        )}
+        {kind === "tablet" && <div className="device-homebar" aria-hidden />}
+        {kind === "browser" && (
+          <div className="device-browserbar" aria-hidden>
+            <span className="device-dots" />
+            <span className="device-address">{entry.rel}</span>
+          </div>
+        )}
         <iframe
           key={frameKey}
           ref={frameRef}
@@ -483,6 +591,7 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           style={fit ? undefined : { width: layout.width, height: layout.height, transform: `scale(${layout.scale})` }}
         />
         {grid && <div className="design-grid" style={{ backgroundSize: `${8 * layout.scale}px ${8 * layout.scale}px` }} aria-hidden />}
+        {tool === "draw" && <DrawOverlay strokes={strokes} onStrokes={setStrokes} />}
       </div>
     </div>
   ) : null;
@@ -557,6 +666,16 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           {!board && (
             <Select<Viewport> value={viewport} options={VIEWPORTS.map(({ value, label, detail }) => ({ value, label, detail }))} onChange={setViewport} ariaLabel="Viewport" className="ghost-select" />
           )}
+          <button
+            className={`icon-button${device ? " active" : ""}`}
+            aria-label="Device frame"
+            title="Show a device frame"
+            aria-pressed={device}
+            disabled={deviceFor(viewport) === null || board || comparing}
+            onClick={() => setDevice(!device)}
+          >
+            <Smartphone size={16} strokeWidth={1.75} aria-hidden />
+          </button>
           {!board && !fit && <Select<Zoom> value={zoom} options={ZOOMS} onChange={setZoom} ariaLabel="Zoom" className="ghost-select" />}
           {versions.length > 0 && (
             <Select<number>
@@ -780,6 +899,11 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           <span>
             Viewing v{version}. Linked files show as they are now.
           </span>
+          {entry && (
+            <button className="button ghost" disabled={restoring} onClick={() => void restore(entry.rel, version)}>
+              Restore this version
+            </button>
+          )}
           <button className="button ghost" onClick={() => setVersion(0)}>
             Back to latest
           </button>
@@ -818,7 +942,78 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
       ) : entry && src ? (
         // One wrapper either way, so opening the inspector never remounts (and reloads) the frame.
         <div className="design-stage-row">
-          {stageEl}
+          {/* One wrapper around the stage (and the floating tools), so the inspector never remounts the frame. */}
+          <div className="design-stage-wrap">
+            {stageEl}
+            {entry && src && version === 0 && !board && !comparing && !capturing && (
+              <div className="design-float-tools" role="toolbar" aria-label="Canvas tools">
+                <button
+                  className={`icon-button${tool === "select" ? " active" : ""}`}
+                  aria-pressed={tool === "select"}
+                  aria-label="Select"
+                  title="Select elements to change"
+                  onClick={() => chooseTool("select")}
+                >
+                  <MousePointer2 size={16} strokeWidth={1.75} aria-hidden />
+                </button>
+                <button
+                  className={`icon-button${tool === "text" ? " active" : ""}`}
+                  aria-pressed={tool === "text"}
+                  aria-label="Edit text"
+                  title={features.textEdit ? "Click text to edit it in place" : "Text editing needs the Working or Real app tier"}
+                  disabled={!features.textEdit}
+                  onClick={() => chooseTool("text")}
+                >
+                  <Type size={16} strokeWidth={1.75} aria-hidden />
+                </button>
+                <button
+                  className={`icon-button${tool === "comment" ? " active" : ""}`}
+                  aria-pressed={tool === "comment"}
+                  aria-label="Comment"
+                  title={features.comments ? "Comment on an element" : "Comments need the Working or Real app tier"}
+                  disabled={!features.comments}
+                  onClick={() => chooseTool("comment")}
+                >
+                  <MessageSquarePlus size={16} strokeWidth={1.75} aria-hidden />
+                </button>
+                <button
+                  className={`icon-button${tool === "draw" ? " active" : ""}`}
+                  aria-pressed={tool === "draw"}
+                  aria-label="Draw on the design"
+                  title="Draw on the design"
+                  onClick={() => chooseTool("draw")}
+                >
+                  <Pencil size={16} strokeWidth={1.75} aria-hidden />
+                </button>
+                {tool === "draw" && (
+                  <>
+                    <span className="design-float-divider" aria-hidden />
+                    <button
+                      className="icon-button"
+                      aria-label="Undo stroke"
+                      title="Undo the last stroke"
+                      disabled={strokes.length === 0}
+                      onClick={() => setStrokes(strokes.slice(0, -1))}
+                    >
+                      <Undo2 size={16} strokeWidth={1.75} aria-hidden />
+                    </button>
+                    <button
+                      className="icon-button"
+                      aria-label="Clear drawing"
+                      title="Clear the drawing"
+                      disabled={strokes.length === 0}
+                      onClick={() => setStrokes([])}
+                    >
+                      <Eraser size={16} strokeWidth={1.75} aria-hidden />
+                    </button>
+                    <button className="button primary" disabled={strokes.length === 0 || capturing} onClick={() => void attach()}>
+                      Attach
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
           {inspectorOpen && (
             <InspectorPanel
               threadId={threadId}
