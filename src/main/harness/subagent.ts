@@ -2,6 +2,7 @@
 // read-only explore subagent, which runs its own small loop over read, glob and
 // grep and reports back. Its events re-enter the thread under one Agent row.
 
+import type { TeamAgent } from "../../shared/experts";
 import type { ThreadEvent } from "../../shared/types";
 import { runLoop, type LoopTool } from "./loop";
 import type { Route, streamLlm } from "./llm/client";
@@ -39,6 +40,10 @@ interface TaskToolOptions {
   };
   onUsage(u: LlmUsage): void;
   stream?: typeof streamLlm;
+  /** The thread's expert-team members; with any, the tool can run one of them instead of the explore subagent. */
+  team?: TeamAgent[];
+  /** Extra tools a team member gets besides the read-only ones (the team channel). */
+  memberTools?: () => LoopTool[];
 }
 
 /** The text parts of the last assistant message, trimmed; "" when it has none. */
@@ -60,69 +65,98 @@ function boundReport(text: string): string {
  * The tool the main agent calls to start an explore subagent. Several calls in
  * one step run together as read-only calls; each runs its own loop and returns
  * one report, with every child event carried on the parent's thread under this
- * call's Agent row.
+ * call's Agent row. On a team thread it can instead run one member, with the
+ * member's own prompt and step budget plus the team channel tools.
  */
 export function createTaskTool(opts: TaskToolOptions): LoopTool {
+  const team = opts.team ?? [];
+  const memberById = new Map(team.map((m) => [m.id, m]));
+  const memberLines = team.map((m) => `- ${m.id}: ${m.description}`).join("\n");
   return {
     definition: {
       name: TASK_TOOL,
       description:
-        "Start a read-only explore subagent for a self-contained research question (where is X, how does Y work, find all Z). It can read, glob and grep but not edit or run commands, and it doesn't see this conversation, so write a complete prompt. Several task calls in one step run in parallel. Returns the subagent's report.",
+        "Start a read-only explore subagent for a self-contained research question (where is X, how does Y work, find all Z). It can read, glob and grep but not edit or run commands, and it doesn't see this conversation, so write a complete prompt. Several task calls in one step run in parallel. Returns the subagent's report." +
+        (team.length ? `\n\nOr hand a step to a team member: set \`agent\` to its id. Members:\n${memberLines}` : ""),
       parameters: {
         type: "object",
         properties: {
           description: { type: "string", description: "3-5 word label" },
           prompt: { type: "string", description: "The full task for the subagent" },
+          ...(team.length ? { agent: { type: "string", enum: team.map((m) => m.id), description: "A team member id; omit for the explore subagent" } } : {}),
         },
         required: ["description", "prompt"],
       },
     },
     displayName: "Agent",
     access: "read",
-    summarize: (args) => (typeof args.description === "string" && args.description.trim() ? args.description : "Explore"),
-    inputPayload: (args) => ({ prompt: args.prompt, subagent_type: "explore" }),
+    summarize: (args) => {
+      const agent = typeof args.agent === "string" ? args.agent : "";
+      if (agent && memberById.has(agent)) {
+        const label = typeof args.description === "string" ? args.description.trim() : "";
+        return `${label || agent} · ${agent}`;
+      }
+      return typeof args.description === "string" && args.description.trim() ? args.description : "Explore";
+    },
+    inputPayload: (args) => ({
+      prompt: args.prompt,
+      subagent_type: typeof args.agent === "string" && memberById.has(args.agent) ? args.agent : "explore",
+    }),
     run: async (args, call): Promise<ToolResult> => {
       const prompt = typeof args.prompt === "string" ? args.prompt.trim() : "";
       if (!prompt) return { text: "The task tool needs a prompt.", isError: true };
 
-      const tools = opts.tools().filter((t) => t.access === "read" && t.definition.name !== TASK_TOOL);
-      const messages: LlmMessage[] = [{ role: "user", content: [{ type: "text", text: prompt }] }];
-      // The child's streamed usage isn't shown live; it's still worth reporting
-      // if the loop dies before it returns.
-      let seenUsage: LlmUsage | null = null;
-      try {
-        const result = await runLoop({
-          route: opts.route,
-          request: { ...opts.request, system: [EXPLORE_PROMPT, `Working folder: ${opts.cwd}`] },
-          messages,
-          tools,
-          signal: call.signal,
-          turnId: `${call.id}-sub`,
-          maxSteps: SUBAGENT_MAX_STEPS,
-          authorize: async () => ({ ok: true }),
-          emit: {
-            event: (e) => opts.emit({ ...e, parentId: call.id }),
-            textDelta: (text, itemId) => opts.live?.text(text, itemId, call.id),
-            reasoningDelta: (itemId, text) => opts.live?.reasoning(itemId, text, call.id),
-            // A child's tool input isn't shown live; its tool row lands whole.
-            toolInputDelta: () => {},
-            toolOutputDelta: (toolUseId, text) => opts.live?.toolOutput(toolUseId, text, call.id),
-            usage: (u) => {
-              seenUsage = u;
+      const agent = typeof args.agent === "string" ? args.agent : "";
+      const member = agent ? memberById.get(agent) ?? null : null;
+      if (agent && !member) return { text: `Unknown team member "${agent}". Members: ${team.map((m) => m.id).join(", ")}.`, isError: true };
+
+      // One child loop, explore or member: its events stream under the call's
+      // Agent row and it finishes the same way whoever ran.
+      const runChild = async (system: string[], childTools: LoopTool[], maxSteps: number): Promise<ToolResult> => {
+        const messages: LlmMessage[] = [{ role: "user", content: [{ type: "text", text: prompt }] }];
+        // The child's streamed usage isn't shown live; it's still worth reporting
+        // if the loop dies before it returns.
+        let seenUsage: LlmUsage | null = null;
+        try {
+          const result = await runLoop({
+            route: opts.route,
+            request: { ...opts.request, system },
+            messages,
+            tools: childTools,
+            signal: call.signal,
+            turnId: `${call.id}-sub`,
+            maxSteps,
+            authorize: async () => ({ ok: true }),
+            emit: {
+              event: (e) => opts.emit({ ...e, parentId: call.id }),
+              textDelta: (text, itemId) => opts.live?.text(text, itemId, call.id),
+              reasoningDelta: (itemId, text) => opts.live?.reasoning(itemId, text, call.id),
+              // A child's tool input isn't shown live; its tool row lands whole.
+              toolInputDelta: () => {},
+              toolOutputDelta: (toolUseId, text) => opts.live?.toolOutput(toolUseId, text, call.id),
+              usage: (u) => {
+                seenUsage = u;
+              },
             },
-          },
-          onMessage: () => {},
-          ...(opts.stream ? { stream: opts.stream } : {}),
-        });
-        opts.onUsage(result.usage);
-        if (result.stop === "stopped") return { text: "Interrupted by the user.", isError: true };
-        let text = lastAssistantText(messages) || "The subagent finished without a report.";
-        if (result.stop === "max-steps") text = `(Stopped at the step limit.) ${text}`;
-        return { text: boundReport(text) };
-      } catch (err) {
-        if (seenUsage) opts.onUsage(seenUsage);
-        return { text: `The subagent failed: ${err instanceof Error ? err.message : String(err)}`, isError: true };
-      }
+            onMessage: () => {},
+            ...(opts.stream ? { stream: opts.stream } : {}),
+          });
+          opts.onUsage(result.usage);
+          if (result.stop === "stopped") return { text: "Interrupted by the user.", isError: true };
+          let text = lastAssistantText(messages) || "The subagent finished without a report.";
+          if (result.stop === "max-steps") text = `(Stopped at the step limit.) ${text}`;
+          return { text: boundReport(text) };
+        } catch (err) {
+          if (seenUsage) opts.onUsage(seenUsage);
+          return { text: `The subagent failed: ${err instanceof Error ? err.message : String(err)}`, isError: true };
+        }
+      };
+
+      const readOnly = opts.tools().filter((t) => t.access === "read" && t.definition.name !== TASK_TOOL);
+      if (!member) return runChild([EXPLORE_PROMPT, `Working folder: ${opts.cwd}`], readOnly, SUBAGENT_MAX_STEPS);
+      // A member gets the read-only tools plus the team channel, deduped by name.
+      const tools = [...readOnly, ...(opts.memberTools?.() ?? [])].filter((t, i, all) => all.findIndex((o) => o.definition.name === t.definition.name) === i);
+      return runChild([member.prompt, `Working folder: ${opts.cwd}`], tools, member.maxTurns ?? SUBAGENT_MAX_STEPS);
     },
   };
 }
