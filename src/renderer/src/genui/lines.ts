@@ -56,8 +56,13 @@ function compareRecord(meta: Record<string, string>, rows: string[]): Record<str
   for (const row of rows.slice(1)) {
     const cells = splitCells(row);
     const first = cells[0];
-    if (highlight === undefined && first !== undefined && first.startsWith("*")) {
+    // The best row: `*` before it, or (as agents also write) ` *` after any of its cells.
+    const marked = cells.findIndex((c) => /\s\*$/.test(c));
+    if (highlight === undefined && first !== undefined && first.startsWith("*") && !first.startsWith("**")) {
       cells[0] = first.replace(/^\*\s*/, "");
+      highlight = body.length;
+    } else if (highlight === undefined && marked >= 0) {
+      cells[marked] = cells[marked]!.replace(/\s+\*$/, "");
       highlight = body.length;
     }
     body.push(cells);
@@ -164,7 +169,12 @@ export function parseUiLines(name: UiName, body: string): Record<string, unknown
   if (name === "chart") return { ...meta, kind: "bars", series: rows.map(chartPoint) };
   if (name === "compare") return compareRecord(meta, rows);
   if (name === "timeline") return { ...meta, steps: rows.map(timelineStep) };
-  if (name === "choices") return { ...meta, options: rows.map((row) => row.replace(/^[-*]\s+/, "")) };
+  if (name === "choices") {
+    // Agents often put the question first without `# `: a leading line ending in "?" is the title.
+    const options = rows.map((row) => row.replace(/^[-*]\s+/, ""));
+    if (meta.title === undefined && options.length > 2 && options[0]!.endsWith("?")) meta.title = options.shift()!;
+    return { ...meta, options };
+  }
   if (name === "form") return { ...meta, fields: rows.map(formField) };
   if (name === "stat") return { ...meta, stats: rows.map(statTile) };
   if (name === "cards") return { ...meta, items: rows.map(cardItem) };

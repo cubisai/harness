@@ -78,15 +78,19 @@ function publicLookup(hostname: string, options: object, callback: (err: NodeJS.
 
 type Fetched = { type: string; body: Buffer; url: URL };
 
-/** One GET, following up to REDIRECTS_MAX redirects (each re-checked), stopping at `max` bytes. */
-function get(url: URL, max: number, accept: string, hops = 0): Promise<Fetched | null> {
+/**
+ * One GET, following up to REDIRECTS_MAX redirects (each re-checked). Past `max`
+ * bytes it fails, or with `truncate` keeps the first `max` bytes (a page's
+ * `<head>` is all that's needed).
+ */
+function get(url: URL, max: number, accept: string, hops = 0, truncate = false): Promise<Fetched | null> {
   return new Promise((resolve) => {
     const req = request(url, { method: "GET", lookup: publicLookup as never, timeout: TIMEOUT_MS, headers: { accept, "user-agent": "CubiQ link preview" } }, (res: IncomingMessage) => {
       const status = res.statusCode ?? 0;
       if (status >= 300 && status < 400 && res.headers.location) {
         res.resume();
         const next = hops < REDIRECTS_MAX ? fetchableUrl(new URL(res.headers.location, url).toString()) : null;
-        resolve(next ? get(next, max, accept, hops + 1) : null);
+        resolve(next ? get(next, max, accept, hops + 1, truncate) : null);
         return;
       }
       if (status !== 200) {
@@ -96,7 +100,7 @@ function get(url: URL, max: number, accept: string, hops = 0): Promise<Fetched |
       }
       const type = String(res.headers["content-type"] ?? "").split(";")[0]!.trim().toLowerCase();
       const declared = Number(res.headers["content-length"] ?? 0);
-      if (declared > max) {
+      if (declared > max && !truncate) {
         res.destroy();
         resolve(null);
         return;
@@ -105,12 +109,11 @@ function get(url: URL, max: number, accept: string, hops = 0): Promise<Fetched |
       let size = 0;
       res.on("data", (chunk: Buffer) => {
         size += chunk.length;
+        chunks.push(chunk);
         if (size > max) {
           res.destroy();
-          resolve(null);
-          return;
+          resolve(truncate ? { type, body: Buffer.concat(chunks).subarray(0, max), url } : null);
         }
-        chunks.push(chunk);
       });
       res.on("end", () => resolve({ type, body: Buffer.concat(chunks), url }));
       res.on("error", () => resolve(null));
@@ -151,9 +154,10 @@ async function imageData(raw: string): Promise<string | null> {
 async function pageImage(raw: string): Promise<string | null> {
   const url = fetchableUrl(raw);
   if (!url) return null;
-  const got = await get(url, PAGE_MAX, "text/html,image/*;q=0.8");
+  const got = await get(url, PAGE_MAX, "text/html,image/*;q=0.8", 0, true);
   if (!got) return null;
-  if (IMAGE_TYPES.has(got.type)) return `data:${got.type};base64,${got.body.toString("base64")}`;
+  // A page URL that is itself an image: fetch it whole (the page read stops at PAGE_MAX).
+  if (IMAGE_TYPES.has(got.type)) return imageData(got.url.toString());
   if (got.type !== "text/html") return null;
   const og = ogImage(got.body.toString("utf8"), got.url);
   return og ? imageData(og) : null;

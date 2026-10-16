@@ -1,6 +1,33 @@
 import { useEffect, useState } from "react";
 import {
   BookOpen,
+  Box,
+  Brush,
+  Bug,
+  Calendar,
+  Cloud,
+  Dot,
+  Download,
+  Flag,
+  GitBranch,
+  House,
+  Image,
+  Key,
+  Laptop,
+  Mail,
+  MapPin,
+  MessageSquare,
+  Music,
+  PenLine,
+  Play,
+  Server,
+  Shield,
+  ShoppingCart,
+  Smartphone,
+  SquareTerminal,
+  TrendingUp,
+  Upload,
+  Video,
   ChartColumn,
   CircleCheck,
   CircleDollarSign,
@@ -34,7 +61,7 @@ import { useStore } from "../../store";
 import { UiActions } from "../UiActions";
 import type { CardsSpec } from "../types";
 
-/** Icon words a card's `lead` may use, with synonyms; unknown words draw nothing. */
+/** Icon words a card's `lead` may use, with synonyms; an unknown word draws a small dot, so rows stay aligned. */
 export const CARD_ICONS: Record<string, LucideIcon> = {
   check: CircleCheck,
   done: CircleCheck,
@@ -103,6 +130,59 @@ export const CARD_ICONS: Record<string, LucideIcon> = {
   paint: Palette,
   database: Database,
   data: Database,
+  pen: PenLine,
+  pencil: PenLine,
+  edit: PenLine,
+  write: PenLine,
+  draw: Brush,
+  brush: Brush,
+  sketch: Brush,
+  image: Image,
+  photo: Image,
+  picture: Image,
+  video: Video,
+  music: Music,
+  audio: Music,
+  map: MapPin,
+  location: MapPin,
+  place: MapPin,
+  mail: Mail,
+  email: Mail,
+  chat: MessageSquare,
+  message: MessageSquare,
+  comment: MessageSquare,
+  calendar: Calendar,
+  date: Calendar,
+  home: House,
+  house: House,
+  cloud: Cloud,
+  server: Server,
+  phone: Smartphone,
+  mobile: Smartphone,
+  laptop: Laptop,
+  desktop: Laptop,
+  computer: Laptop,
+  shield: Shield,
+  safe: Shield,
+  key: Key,
+  auth: Key,
+  bug: Bug,
+  git: GitBranch,
+  branch: GitBranch,
+  package: Box,
+  box: Box,
+  terminal: SquareTerminal,
+  cli: SquareTerminal,
+  shell: SquareTerminal,
+  play: Play,
+  run: Play,
+  download: Download,
+  upload: Upload,
+  trend: TrendingUp,
+  growth: TrendingUp,
+  flag: Flag,
+  shop: ShoppingCart,
+  cart: ShoppingCart,
 };
 
 /** Image extensions a `lead` may name, as a URL or a local path. */
@@ -122,7 +202,7 @@ function hostname(link: string): string {
 /**
  * A row's lead: an icon for a known word (case-insensitive, a trailing "s" is
  * dropped when there is no direct match), an image for an https URL or a local
- * image path, or nothing.
+ * image path, a dot for any other single word, or nothing.
  */
 export function leadKind(lead: string | undefined): { kind: "icon"; Icon: LucideIcon } | { kind: "image"; src: string } | { kind: "none" } {
   const raw = lead?.trim();
@@ -131,7 +211,9 @@ export function leadKind(lead: string | undefined): { kind: "icon"; Icon: Lucide
   if (IMAGE_EXT_RE.test(raw) && !SCHEME_RE.test(raw)) return { kind: "image", src: raw };
   const word = raw.toLowerCase();
   const Icon = CARD_ICONS[word] ?? (word.endsWith("s") ? CARD_ICONS[word.slice(0, -1)] : undefined);
-  return Icon ? { kind: "icon", Icon } : { kind: "none" };
+  if (Icon) return { kind: "icon", Icon };
+  // A word we don't know still asked for a lead: a neutral dot keeps the rows aligned.
+  return /^[a-z][a-z-]{0,23}$/.test(word) ? { kind: "icon", Icon: Dot } : { kind: "none" };
 }
 
 /** Markdown for a cards block: an optional bold title, then one `- **Title** — text (link)` line per row. */

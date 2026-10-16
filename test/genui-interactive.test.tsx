@@ -17,6 +17,8 @@ describe("interactive UI blocks", () => {
 
   it("reads choices, form and stat from the line form", () => {
     expect(validateUi("choices", "# Which plan?\n- Free\nPro\nTeam")).toEqual({ name: "choices", title: "Which plan?", options: ["Free", "Pro", "Team"] });
+    expect(validateUi("choices", "Which one do you want to try?\nPenpot\nFigma")).toEqual({ name: "choices", title: "Which one do you want to try?", options: ["Penpot", "Figma"] });
+    expect(validateUi("choices", "Why?\nBecause")).toEqual({ name: "choices", options: ["Why?", "Because"] });
     expect(validateUi("form", "# Trip\nbudget | Budget | number\nregion | Region | EU/US/Asia\nflex | Flexible dates | yes/no\nnote | Anything else")).toEqual({
       name: "form",
       title: "Trip",

@@ -142,4 +142,9 @@ describe("validateUi line form", () => {
     // Leading whitespace also puts the body on the JSON path.
     expect(spec("checklist", `\n  ${body}`)).toEqual(expected);
   });
+
+  it("also takes a trailing ` *` on any cell as the best row, and leaves bold cells alone", () => {
+    expect(validateUi("compare", "Venue | Price\nCoast | $600\nLodge | $450 *")).toEqual({ name: "compare", headers: ["Venue", "Price"], rows: [["Coast", "$600"], ["Lodge", "$450"]], highlight: 1 });
+    expect(validateUi("compare", "A | B\n**x** | 1")).toEqual({ name: "compare", headers: ["A", "B"], rows: [["**x**", "1"]] });
+  });
 });

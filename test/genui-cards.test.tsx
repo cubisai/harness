@@ -24,7 +24,9 @@ describe("cards block", () => {
     expect(leadKind("Checks").kind).toBe("icon");
     expect(leadKind("https://x.com/a.png")).toEqual({ kind: "image", src: "https://x.com/a.png" });
     expect(leadKind("./shots/a.PNG")).toEqual({ kind: "image", src: "./shots/a.PNG" });
-    expect(leadKind("nonsense-word").kind).toBe("none");
+    expect(leadKind("nonsense-word").kind).toBe("icon"); // a neutral dot keeps rows aligned
+    expect(leadKind("pen").kind).toBe("icon");
+    expect(leadKind("two words").kind).toBe("none");
     expect(leadKind(undefined).kind).toBe("none");
   });
 
