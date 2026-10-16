@@ -84,9 +84,10 @@ describe("createGuide", () => {
     expect(guide.partsForCwd(join(root, "p")).map((p) => p.path)).toEqual([bundled, "ui-blocks", global]);
     // One line, so the opt-in stays cheap.
     expect(UI_BLOCKS_NOTE).not.toContain("\n");
-    expect(estimateTokens(UI_BLOCKS_NOTE)).toBeLessThanOrEqual(130);
+    // Nine widgets in about the v1 note's real size (this estimate is bytes / 3, so it runs high).
+    expect(estimateTokens(UI_BLOCKS_NOTE)).toBeLessThanOrEqual(150);
     // Every widget's line form is named, so an agent can find it.
-    for (const name of UI_NAMES) expect(UI_BLOCKS_NOTE).toContain("`" + name + "`");
+    for (const name of UI_NAMES) expect(UI_BLOCKS_NOTE).toMatch(new RegExp(`\\b${name}\\b`));
   });
 
   it("keeps the bundled guide within its 600-token budget", () => {

@@ -184,6 +184,7 @@ export class SettingsStore {
     if (patch.mcpRouter === "auto" || patch.mcpRouter === "off") next.mcpRouter = patch.mcpRouter;
     if (typeof patch.sidebarGroupByProject === "boolean") next.sidebarGroupByProject = patch.sidebarGroupByProject;
     if (typeof patch.uiBlocks === "boolean") next.uiBlocks = patch.uiBlocks;
+    if (typeof patch.linkPreviews === "boolean") next.linkPreviews = patch.linkPreviews;
     if (patch.splash && ["agent", "voyage", "off"].includes(patch.splash)) next.splash = patch.splash;
     // The Antigravity opt-in: the acknowledgement is stamped here, never trusted from
     // the caller, and the flag turns on only with a current one.

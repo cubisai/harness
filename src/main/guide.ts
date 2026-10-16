@@ -48,7 +48,7 @@ export function designNote(dir: string): string {
  * prefix.
  */
 export const UI_BLOCKS_NOTE =
-  "- **UI blocks** (only when clearer than prose; max 2 per reply): a ```ui:<name> fence, one item per line, `|` between fields, optional `# Title` line. `checklist`: `[x] text`; `compare`: header row, then rows, `*` before the best row; `timeline`: `time | title | detail`; `chart`: `label | number`, optional `unit: $`; `calculator`: `id | label | value | unit` lines, then `= formula`.";
+  "- **UI blocks** (when clearer than prose; max 2 per reply): a ```ui:<name> fence, one item per line, fields split by `|`, optional `# Title`. checklist `[x] text`; compare: header row, rows, `*` marks best; timeline `time|title|detail`; chart `label|number`; calculator `id|label|value|unit` lines, then `=formula`; choices: reply options; form `id|label|text, number, yes/no or a/b/c`; stat `label|value|change`; cards `icon|title|text|https-link`.";
 
 /**
  * The harness guide agents receive as instructions: the app's bundled copy,

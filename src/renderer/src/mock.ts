@@ -516,6 +516,7 @@ export function installMock(): void {
         { hash: "9a0b1c2", date: "2026-09-25", subject: "Show rate limits in the Message Center" },
       ],
     }),
+    uiImage: async () => null,
     contextPreview: async () => ({
       guide: [{ source: "bundled", path: "CUBIQ.md", tokens: 1240 }],
       tools: [

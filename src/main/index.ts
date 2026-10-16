@@ -32,6 +32,7 @@ import { BrowserController, isAllowedUrl } from "./browser/controller";
 import { browserTools } from "./browser/tools";
 import { Store } from "./db";
 import { artifactKind, resolveInside } from "./artifacts";
+import { createLinkPreviews, localImage } from "./link-preview";
 import { headContent } from "./git";
 import { PreviewHost, utilityFork } from "./preview/host";
 import { migrateLegacyData } from "./migrate-data";
@@ -1309,6 +1310,18 @@ async function main(): Promise<void> {
       return { skills, mcp };
     };
   }
+  // Pictures for ui:cards rows: thread-folder images always; the web only with Load link previews on.
+  const linkPreviews = createLinkPreviews();
+  ipcMain.handle("ui:image", async (_e, threadId: unknown, src: unknown, kind: unknown): Promise<string | null> => {
+    if (typeof src !== "string" || !src || src.length > 2048) return null;
+    if (/^https:\/\//i.test(src)) return settings.get().linkPreviews === true ? linkPreviews.image(src, kind === "page" ? "page" : "image") : null;
+    if (typeof threadId !== "string") return null;
+    try {
+      return localImage(service.threadFolder(threadId), src);
+    } catch {
+      return null;
+    }
+  });
   ipcMain.handle("context:preview", async (_e, threadId: string | null, projectId: string | null): Promise<ContextPreview> => {
     const thread = threadId ? store.getThread(threadId) : null;
     const pid = thread?.projectId ?? projectId;

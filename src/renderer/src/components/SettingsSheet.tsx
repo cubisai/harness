@@ -185,7 +185,7 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
             </div>
           </div>
           <div className="row">
-            <span className="label" title="Checklists, calculators, comparisons, timelines and bar charts inside replies">Interactive answers</span>
+            <span className="label" title="Checklists, calculators, comparisons, timelines, charts, reply buttons, forms, stat tiles and cards inside replies">Interactive answers</span>
             <div className="segmented">
               {[true, false].map((on) => (
                 <button key={String(on)} className={(settings.uiBlocks ?? false) === on ? "on" : ""} onClick={() => update({ uiBlocks: on })}>
@@ -194,7 +194,18 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
               ))}
             </div>
           </div>
-          <p className="note">Lets agents answer with small interactive blocks. Adds about 120 tokens to each new session; off costs nothing. Blocks agents write anyway always render.</p>
+          <p className="note">Lets agents answer with small interactive blocks, and makes reply tables sortable. Adds about 120 tokens to each new session; off costs nothing. Blocks agents write anyway always render.</p>
+          <div className="row">
+            <span className="label" title="Thumbnails for links and images in card lists">Load link previews</span>
+            <div className="segmented">
+              {[true, false].map((on) => (
+                <button key={String(on)} className={(settings.linkPreviews ?? false) === on ? "on" : ""} onClick={() => update({ linkPreviews: on })}>
+                  {on ? "On" : "Off"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="note">Fetches thumbnails for links in card lists from public https sites, which tells those sites your IP address. Off, cards show an icon and nothing is fetched.</p>
           <div className="row">
             <span className="label" title="The looping clip shown while CubiQ starts">Splash screen</span>
             <div className="segmented">

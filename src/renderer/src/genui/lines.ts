@@ -86,6 +86,48 @@ function calculatorInput(row: string): Record<string, unknown> {
   return input;
 }
 
+/** One form row `id | label | type`: `number`, `yes/no` (a toggle), `a/b/c` (a select) or text. */
+function formField(row: string): Record<string, unknown> {
+  const cells = splitCells(row);
+  const kind = (cells[2] ?? "").trim();
+  const field: Record<string, unknown> = { id: cells[0] ?? "", label: cells[1] ?? cells[0] ?? "" };
+  if (/^number$/i.test(kind)) field.type = "number";
+  else if (/^(yes\/no|toggle)$/i.test(kind)) field.type = "toggle";
+  else if (kind.includes("/")) {
+    field.type = "select";
+    field.options = kind.split("/").map((o) => o.trim());
+  } else field.type = "text";
+  return field;
+}
+
+/** One stat row `label | value | delta?`. */
+function statTile(row: string): Record<string, unknown> {
+  const cells = splitCells(row);
+  const tile: Record<string, unknown> = { label: cells[0] ?? "", value: cells[1] ?? "" };
+  if (cells[2]) tile.delta = cells[2];
+  return tile;
+}
+
+/**
+ * One cards row `lead | title | text | link`. A last cell that is an https
+ * URL is the link; then three cells are lead, title, text, two are title,
+ * text, and one is the title.
+ */
+function cardItem(row: string): Record<string, unknown> {
+  const cells = splitCells(row);
+  const item: Record<string, unknown> = {};
+  if (cells.length > 1 && /^https:\/\/\S+$/.test(cells.at(-1) ?? "")) item.link = cells.pop();
+  if (cells.length >= 3) {
+    item.lead = cells[0];
+    item.title = cells[1];
+    item.text = cells.slice(2).join(" | ");
+  } else if (cells.length === 2) {
+    item.title = cells[0];
+    item.text = cells[1];
+  } else item.title = cells[0] ?? "";
+  return item;
+}
+
 /**
  * Convert a compact line-syntax body into the record shape the per-widget
  * validators in validate.ts accept, or null when it has no item rows.
@@ -122,6 +164,10 @@ export function parseUiLines(name: UiName, body: string): Record<string, unknown
   if (name === "chart") return { ...meta, kind: "bars", series: rows.map(chartPoint) };
   if (name === "compare") return compareRecord(meta, rows);
   if (name === "timeline") return { ...meta, steps: rows.map(timelineStep) };
+  if (name === "choices") return { ...meta, options: rows.map((row) => row.replace(/^[-*]\s+/, "")) };
+  if (name === "form") return { ...meta, fields: rows.map(formField) };
+  if (name === "stat") return { ...meta, stats: rows.map(statTile) };
+  if (name === "cards") return { ...meta, items: rows.map(cardItem) };
   const record: Record<string, unknown> = { ...meta, inputs: rows.map(calculatorInput) };
   if (formula !== undefined) record.formula = formula;
   return record;

@@ -209,6 +209,8 @@ export interface Settings {
   sidebarGroupByProject?: boolean;
   /** Tell agents they may answer with inline UI blocks (checklist, calculator, …). Off unless set: it costs guide tokens. */
   uiBlocks?: boolean;
+  /** Fetch pictures for `ui:cards` rows (a page's preview image, a remote image) from public https sites. Off unless set: it reaches the network. */
+  linkPreviews?: boolean;
   /** The launch splash clip; unset means "agent". */
   splash?: Splash;
   /** Self-improve (scorecard, lessons, verified promotion): off unless a project is listed. SettingsStore.get() always fills it in. */
@@ -1142,6 +1144,12 @@ export interface UnskilledApi {
   aboutInfo(): Promise<AboutInfo>;
   /** The harness-side context a thread (or, with no thread, a new one in the project) starts with. */
   contextPreview(threadId: string | null, projectId: string | null): Promise<ContextPreview>;
+  /**
+   * A picture for a `ui:cards` row as a data: URL, or null. `src` is an image in the
+   * thread's folder, or (only with Settings › Load link previews on) an https image
+   * (`kind` "image") or a page whose preview image is wanted (`kind` "page").
+   */
+  uiImage(threadId: string | null, src: string, kind: "image" | "page"): Promise<string | null>;
   memoryOverview(projectId: string): Promise<MemoryOverview>;
   memoryRead(projectId: string, file: string, scope?: MemoryScope): Promise<(MemoryNote & { body: string }) | null>;
   /** Save a note (a new one when file is absent); returns its file. Scope defaults to the project. */

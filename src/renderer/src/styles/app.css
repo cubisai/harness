@@ -3204,6 +3204,34 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 .ui-chart-track { height: 8px; border-radius: var(--radius-s); background: var(--bg-subtle); overflow: hidden; }
 .ui-chart-bar { height: 100%; background: var(--text-secondary); border-radius: inherit; }
 .ui-chart-value { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--text); }
+
+/* choices: tap-to-reply buttons (genui/components/Choices.tsx) */
+.ui-choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.ui-choice { min-height: 28px; max-width: 100%; padding: 4px 12px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-m); background: var(--bg); color: var(--text); font: 12.5px/1.4 var(--font); text-align: left; overflow-wrap: anywhere; cursor: pointer; transition: background 120ms var(--ease); }
+.ui-choice:hover:not(:disabled) { background: var(--bg-hover); }
+.ui-choice:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ui-choice.on { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.ui-choice:disabled:not(.on) { color: var(--text-tertiary); cursor: default; }
+.ui-choice.on:disabled { cursor: default; }
+
+/* form: a few fields and one Send (genui/components/Form.tsx); rows reuse .ui-field */
+.ui-form fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+.ui-field .select-button { flex: 1; min-width: 0; max-width: 16em; }
+.ui-field input[type="text"] { max-width: 16em; }
+.ui-field input.ui-toggle { flex: 0 0 auto; width: 14px; height: 14px; padding: 0; accent-color: var(--primary); }
+.ui-form-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+.ui-submit { height: 28px; padding: 0 12px; border: 0; border-radius: var(--radius-m); background: var(--primary); color: var(--on-primary); font: 500 12.5px var(--font); cursor: pointer; }
+.ui-submit:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ui-form fieldset:disabled .ui-submit { background: var(--bg-chip); color: var(--text-tertiary); cursor: default; }
+
+/* stat: big-number tiles (genui/components/Stat.tsx) */
+.ui-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.ui-stat { min-width: 0; padding: 8px 12px; border-radius: var(--radius-m); background: var(--bg-subtle); }
+.ui-stat-label { font-size: 11.5px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-stat-value { margin-top: 2px; font: 600 14px var(--mono); font-variant-numeric: tabular-nums; color: var(--text); overflow-wrap: anywhere; }
+.ui-stat-delta { margin-top: 2px; font: 11.5px var(--mono); font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
+.ui-stat-delta.up { color: var(--success); }
+.ui-stat-delta.down { color: var(--danger); }
 /* Copy / Use in reply: revealed on hover or keyboard focus (DESIGN §8). */
 /* Top right like a code block's Copy, so the hidden pair takes no room. */
 .ui-actions { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; padding-left: 4px; background: var(--bg); opacity: 0; transition: opacity 120ms var(--ease); }
@@ -3227,6 +3255,27 @@ th[aria-sort="descending"] .smart-th::after { content: " ↓"; color: var(--text
 /* The reply's own ul padding (see .msg-assistant ul) would indent the list; the scoped pair keeps it flush. */
 .md-tasks, .msg-assistant .md-tasks { list-style: none; padding-left: 0; margin: 0 0 12px; }
 .md-task { cursor: default; }
+
+/* Cards (genui/cards): a row list with a lead icon or thumbnail, split by hairlines. */
+.ui-cards { list-style: none; margin: 0; padding: 0; }
+/* The reply's own ul padding (see .msg-assistant ul) would indent the block's list; keep it flush. */
+.msg-assistant .ui-cards { padding-left: 0; }
+.ui-card { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--hairline); }
+.ui-card:first-child { padding-top: 0; }
+.ui-card:last-child { border-bottom: 0; padding-bottom: 0; }
+.ui-card-lead { flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); }
+.ui-card-lead.icon { width: 20px; height: 20px; margin-top: 1px; }
+.ui-card-lead.thumb { width: 96px; height: 64px; border-radius: var(--radius-m); border: 1px solid var(--hairline); background: var(--bg-subtle); overflow: hidden; }
+.ui-card-lead.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ui-card-body { flex: 1; min-width: 0; }
+.ui-card-title { font-size: 13px; font-weight: 600; line-height: 1.5; color: var(--text); overflow-wrap: anywhere; }
+.ui-card-title a { color: inherit; text-decoration: underline; text-decoration-color: var(--hairline-strong); text-underline-offset: 3px; }
+.ui-card-title a:hover { text-decoration-color: var(--text); }
+.ui-card-title a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ui-card-link { font-size: 12.5px; color: var(--text-secondary); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-card-text { margin-top: 4px; font-size: 13px; line-height: 1.6; color: var(--text-secondary); overflow-wrap: anywhere; }
+@media (max-width: 520px) { .ui-card-lead.thumb { width: 64px; height: 48px; } }
+
 @media (hover: none) { .smart-table-bar { opacity: 1; } }
 @media (hover: none) { .ui-actions { opacity: 1; } }
 

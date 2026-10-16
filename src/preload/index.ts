@@ -55,6 +55,7 @@ const api: UnskilledApi = {
   updateStatus: () => ipcRenderer.invoke("app:update-status"),
   aboutInfo: () => ipcRenderer.invoke("app:about"),
   contextPreview: (threadId, projectId) => ipcRenderer.invoke("context:preview", threadId, projectId),
+  uiImage: (threadId, src, kind) => ipcRenderer.invoke("ui:image", threadId, src, kind),
   memoryOverview: (projectId) => ipcRenderer.invoke("memory:overview", projectId),
   memoryRead: (projectId, file, scope) => ipcRenderer.invoke("memory:read", projectId, file, scope),
   memoryWrite: (projectId, note, scope) => ipcRenderer.invoke("memory:write", projectId, note, scope),

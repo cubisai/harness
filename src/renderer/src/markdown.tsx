@@ -53,6 +53,27 @@ export function Markdown({ text, streaming, onFile }: { text: string; streaming?
                 </ul>
               );
             }
+            // A list of `**Title** — text` items reads as a card list, as in ChatGPT.
+            const cards = smart ? boldLeadItems(b.items) : null;
+            if (cards) {
+              return (
+                <div key={i} className="ui-block md-cards">
+                  <ul className="ui-cards">
+                    {cards.map((c, j) => (
+                      <li key={j} className="ui-card">
+                        <div className="ui-card-body">
+                          <div className="ui-card-title">
+                            {b.ordered ? `${j + 1}. ` : null}
+                            {inline(c.title, onFile)}
+                          </div>
+                          {c.text ? <div className="ui-card-text">{inline(c.text, onFile)}</div> : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            }
             const L = b.ordered ? "ol" : "ul";
             return (
               <L key={i}>
@@ -102,6 +123,22 @@ export function Markdown({ text, streaming, onFile }: { text: string; streaming?
       ) : null}
     </>
   );
+}
+
+/**
+ * A list's items as titled cards when every item opens with a bold title
+ * (`**Title** — text`, `**Title**: text`, `**Title:** text`) and at least two
+ * carry text; otherwise null.
+ */
+export function boldLeadItems(items: string[]): { title: string; text: string }[] | null {
+  if (items.length < 2) return null;
+  const out: { title: string; text: string }[] = [];
+  for (const item of items) {
+    const m = /^\*\*([^*]+?)\*\*\s*(?:[—–:-]\s*)?([\s\S]*)$/.exec(item.trim());
+    if (!m) return null;
+    out.push({ title: m[1]!.trim().replace(/[:.]$/, ""), text: m[2]!.trim() });
+  }
+  return out.filter((c) => c.text).length >= 2 ? out : null;
 }
 
 /** The name of the ```ui:<name> fence the streaming tail is still writing, if any. */

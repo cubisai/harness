@@ -1,7 +1,7 @@
 import { evaluateFormula, formulaIds } from "./formula";
 import { parseUiLines } from "./lines";
-import { UI_BODY_MAX, UI_ITEMS_MAX, UI_NAMES, UI_TEXT_MAX } from "./types";
-import type { CalculatorInput, CalculatorSpec, ChartSpec, ChecklistSpec, CompareSpec, TimelineSpec, UiName, UiSpec } from "./types";
+import { CARDS_MAX, CHOICES_MAX, FORM_FIELDS_MAX, STATS_MAX, UI_BODY_MAX, UI_ITEMS_MAX, UI_NAMES, UI_TEXT_MAX } from "./types";
+import type { CalculatorInput, CalculatorSpec, CardItem, CardsSpec, ChartSpec, ChecklistSpec, ChoicesSpec, CompareSpec, FormField, FormSpec, StatSpec, TimelineSpec, UiName, UiSpec } from "./types";
 
 /** Most columns a compare block may have. */
 const COMPARE_COLS_MAX = 8;
@@ -176,6 +176,115 @@ function validateChart(o: Record<string, unknown>): ChartSpec | null {
   return spec;
 }
 
+/** A non-empty string after trimming, clipped; numbers are accepted as their text. */
+function label(v: unknown): string | null {
+  const s = typeof v === "number" && Number.isFinite(v) ? String(v) : text(v);
+  return s !== null && s.trim() !== "" ? s.trim() : null;
+}
+
+/** An https URL, or undefined. */
+function httpsUrl(v: unknown): string | undefined {
+  if (typeof v !== "string" || v.length > UI_TEXT_MAX) return undefined;
+  try {
+    return new URL(v).protocol === "https:" ? v : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function validateChoices(o: Record<string, unknown>): ChoicesSpec | null {
+  const raw = list(o.options, CHOICES_MAX);
+  if (!raw) return null;
+  const options: string[] = [];
+  for (const entry of raw) {
+    const option = label(entry);
+    if (option === null) return null;
+    options.push(option);
+  }
+  const spec: ChoicesSpec = { name: "choices", options };
+  const title = optText(o, "title");
+  if (title !== undefined) spec.title = title;
+  return spec;
+}
+
+const FIELD_TYPES = new Set<FormField["type"]>(["text", "number", "toggle", "select"]);
+
+function validateForm(o: Record<string, unknown>): FormSpec | null {
+  const raw = list(o.fields, FORM_FIELDS_MAX);
+  if (!raw) return null;
+  const fields: FormField[] = [];
+  const ids = new Set<string>();
+  for (const entry of raw) {
+    if (!isRecord(entry)) return null;
+    const id = entry.id;
+    if (typeof id !== "string" || !ID_RE.test(id) || ids.has(id)) return null;
+    ids.add(id);
+    const name = label(entry.label) ?? id;
+    const type = entry.type === undefined ? "text" : entry.type;
+    if (typeof type !== "string" || !FIELD_TYPES.has(type as FormField["type"])) return null;
+    const field: FormField = { id, label: name, type: type as FormField["type"] };
+    if (field.type === "select") {
+      const opts = list(entry.options, CHOICES_MAX * 2);
+      if (!opts || opts.length < 2) return null;
+      const options: string[] = [];
+      for (const opt of opts) {
+        const value = label(opt);
+        if (value === null) return null;
+        options.push(value);
+      }
+      field.options = options;
+    }
+    fields.push(field);
+  }
+  const spec: FormSpec = { name: "form", fields };
+  const title = optText(o, "title");
+  if (title !== undefined) spec.title = title;
+  return spec;
+}
+
+function validateStat(o: Record<string, unknown>): StatSpec | null {
+  const raw = list(o.stats, STATS_MAX);
+  if (!raw) return null;
+  const stats: StatSpec["stats"] = [];
+  for (const entry of raw) {
+    if (!isRecord(entry)) return null;
+    const name = label(entry.label);
+    const value = label(entry.value);
+    if (name === null || value === null) return null;
+    const stat: StatSpec["stats"][number] = { label: name, value };
+    const delta = label(entry.delta);
+    if (delta !== null) stat.delta = delta;
+    stats.push(stat);
+  }
+  const spec: StatSpec = { name: "stat", stats };
+  const title = optText(o, "title");
+  if (title !== undefined) spec.title = title;
+  return spec;
+}
+
+function validateCards(o: Record<string, unknown>): CardsSpec | null {
+  const raw = list(o.items, CARDS_MAX);
+  if (!raw) return null;
+  const items: CardItem[] = [];
+  for (const entry of raw) {
+    if (!isRecord(entry)) return null;
+    const heading = label(entry.title);
+    if (heading === null) return null;
+    const item: CardItem = { title: heading };
+    const lead = label(entry.lead);
+    if (lead !== null && lead !== "-") item.lead = lead;
+    const body = label(entry.text);
+    if (body !== null) item.text = body;
+    const link = httpsUrl(entry.link);
+    if (link !== undefined) item.link = link;
+    items.push(item);
+  }
+  const spec: CardsSpec = { name: "cards", items };
+  const title = optText(o, "title");
+  if (title !== undefined) spec.title = title;
+  return spec;
+}
+
 /**
  * Parse and check a ```ui:<name> body against the catalog in types.ts.
  * A body opening with `{` is JSON; anything else uses the compact line
@@ -203,5 +312,9 @@ export function validateUi(name: string, body: string): UiSpec | null {
   if (ui === "compare") return validateCompare(parsed);
   if (ui === "timeline") return validateTimeline(parsed);
   if (ui === "chart") return validateChart(parsed);
+  if (ui === "choices") return validateChoices(parsed);
+  if (ui === "form") return validateForm(parsed);
+  if (ui === "stat") return validateStat(parsed);
+  if (ui === "cards") return validateCards(parsed);
   return null;
 }
