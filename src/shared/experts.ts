@@ -381,10 +381,10 @@ export function teamMemberProtocol(id: string): string {
 
 /**
  * Agent names the engines define themselves (Claude's built-ins, OpenCode's
- * primary and hidden agents). A member with one of these ids would replace
+ * primary and hidden agents, Codex's built-in roles). A member with one of these ids would replace
  * the engine's own agent, so it stays a role in the lead's prompt only.
  */
-const RESERVED_AGENT_IDS = new Set(["general-purpose", "explore", "plan", "statusline-setup", "output-style-setup", "build", "general", "compaction", "title", "summary"]);
+const RESERVED_AGENT_IDS = new Set(["general-purpose", "explore", "plan", "statusline-setup", "output-style-setup", "build", "general", "compaction", "title", "summary", "default", "explorer", "worker", "awaiter"]);
 
 /**
  * A team's members as subagents, in order: none for a single expert. Members

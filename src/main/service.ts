@@ -302,7 +302,7 @@ export class Service {
     if (driver.capabilities.subagentTeams) return;
     const def = thread.expertId && this.experts ? this.experts.get(thread.expertId) : null;
     if (!def || !teamAgents(def).length) return;
-    const text = `The ${def.name} team runs as one agent on ${driver.label}: the lead works through its members' roles itself. Claude and OpenCode run members as subagents.`;
+    const text = `The ${def.name} team runs as one agent on ${driver.label}: the lead works through its members' roles itself. Claude, OpenCode, Codex and the native agent run members as subagents.`;
     if (this.store.listEvents(thread.id).some((e) => e.event.kind === "notice" && e.event.text === text)) return;
     this.emit(thread.id, { kind: "notice", text });
   }

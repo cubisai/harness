@@ -18,6 +18,7 @@ import { summarizeToolInput, summarizeToolResult } from "./summarize";
 import { MODEL_TTL_MS } from "./model-ttl";
 import { binaryInfo, resolvedCommandAsync } from "./binaries";
 import type { AgentDriver, HarnessTool, SessionSeed, TurnInput } from "./types";
+import type { TeamAgent } from "../../shared/experts";
 import { codexAnswers, fromCodexAsyncQuestions, fromCodexQuestions } from "../questions";
 
 // The slices of Codex's app-server protocol (`codex app-server generate-ts`) this driver uses.
@@ -73,7 +74,7 @@ export interface CodexConfig {
   clientVersion: string;
   /** Where to write the model catalog without the async question tools; none: Codex uses its own. */
   catalogDir?: () => string | null;
-  /** Model-invoked skills for a project (the app-wide set without one), registered as Codex's extra skills root; `design` adds the design-only ones; `threadId` adds that thread's expert's own skills. */
+  /** Model-invoked skills for a project (the app-wide set without one), registered as Codex's extra skills root; `design` adds the design-only ones. */
   skillsDir?: (cwd?: string, design?: boolean, threadId?: string) => string | null;
   /** The harness's tools over HTTP MCP (the browser pane's), attached per thread. */
   toolServer?: () => Promise<{ url: string; token: string }>;
@@ -94,6 +95,34 @@ export interface CodexConfig {
    * resuming, and the same block comes back for that session's later turns.
    */
   memory?: (projectId: string, threadId?: string, sessionKey?: string | null) => string | null;
+  /** Where a team thread's member role files go (one folder per thread); none: Codex runs a team as one agent. */
+  rolesDir?: string;
+}
+
+/**
+ * An expert team's members as Codex agent roles for one thread: a role file
+ * per member (`developer_instructions` = the member prompt) in `dir`, and the
+ * `agents` table for that thread's config, so its spawn_agent can start a
+ * member by id. Nothing is registered outside this thread. A file is only
+ * rewritten when its text changed.
+ */
+export function codexTeamRoles(team: TeamAgent[], dir: string): Record<string, { description: string; config_file: string }> {
+  mkdirSync(dir, { recursive: true });
+  const roles: Record<string, { description: string; config_file: string }> = {};
+  for (const m of team) {
+    const file = join(dir, `${m.id}.toml`);
+    // JSON string escapes are valid TOML basic-string escapes.
+    const text = `developer_instructions = ${JSON.stringify(m.prompt)}\n`;
+    let current: string | null = null;
+    try {
+      current = readFileSync(file, "utf8");
+    } catch {
+      current = null;
+    }
+    if (current !== text) writeFileSync(file, text);
+    roles[m.id] = { description: m.description, config_file: file };
+  }
+  return roles;
 }
 
 /** The MCP server name the harness's tools go by, in Codex's config and its tool calls. */
@@ -909,6 +938,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     const memory = memoryFor(input.sessionId ?? null);
     // CubiQ memory is on: Codex's own memories would duplicate it, so turn them off.
     if (memory !== null) threadConfig = { ...(threadConfig ?? {}), memories: { use_memories: false, generate_memories: false } };
+    // A team thread's members, as agent roles its spawn_agent can start (this thread's config only).
+    if (input.team?.length && config.rolesDir) threadConfig = { ...(threadConfig ?? {}), agents: codexTeamRoles(input.team, join(config.rolesDir, input.threadId)) };
     // A context-window override rides the thread config, so changing it changes the
     // signature below and reloads the thread with the new window on the next turn.
     if (typeof input.contextWindow === "number" && input.contextWindow > 0) {

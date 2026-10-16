@@ -558,6 +558,7 @@ async function main(): Promise<void> {
             args: ["app-server"],
             clientVersion: app.getVersion(),
             catalogDir: () => userData,
+            rolesDir: join(userData, "codex-roles"),
             guardScript,
             guide: (cwd, design) => guide.forCwd(cwd, design),
             memory: memoryPromptFor,
@@ -1423,9 +1424,10 @@ async function main(): Promise<void> {
   );
   ipcMain.handle("threads:delete", async (_e, id: string) => {
     await service.deleteThread(id);
-    // Its team workspace goes with it.
+    // Its team workspace and Codex member roles go with it.
     teamToolLists.delete(id);
     rmSync(teamRunDir(id), { recursive: true, force: true });
+    rmSync(join(userData, "codex-roles", id), { recursive: true, force: true });
   });
   ipcMain.handle("threads:switch", (_e, id: string, agent: string, mode: SwitchMode, model?: string) => service.switchAgent(id, agent, mode, model));
   ipcMain.handle("threads:export", async (event, id: string) => {

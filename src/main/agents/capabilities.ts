@@ -112,4 +112,6 @@ export const CODEX_CAPABILITIES: AgentCapabilities = Object.freeze({
   guardEnforcement: Object.freeze({ ask: "block" as const, "auto-edit": "block" as const, plan: "block" as const, full: "warnOnly" as const }),
   sandbox: "workspace" as const,
   manualCompact: true,
+  // Team members run as per-thread agent roles (spawn_agent).
+  subagentTeams: true,
 });
