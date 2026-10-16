@@ -122,6 +122,20 @@ describe("Service.applyModel in send", () => {
     expect(store.listEvents(thread.id).some((e) => e.event.kind === "notice" && e.event.text.startsWith("Handed this thread's history to"))).toBe(true);
   });
 
+  it("compares the model a turn was asked for, not the id the API resolved it to", async () => {
+    const resolved = (input: TurnInput) => input.onEvent({ kind: "turn-start", turnId: "t", agent: "fake", model: "m1-2026-10-01" });
+    const { service, driver, thread, store } = setup(fakeDriver("in-place", resolved));
+    await service.send({ threadId: thread.id, text: "one" });
+    await service.send({ threadId: thread.id, text: "two" });
+    expect(driver.switches).toEqual([]);
+    expect(modelNotices(store, thread.id)).toHaveLength(0);
+
+    service.updateThread(thread.id, { model: "m2" });
+    await service.send({ threadId: thread.id, text: "three" });
+    expect(driver.switches).toEqual(["in-place"]);
+    expect(modelNotices(store, thread.id)).toHaveLength(1);
+  });
+
   it("doesn't switch when the model hasn't changed", async () => {
     const { service, driver, thread } = setup(fakeDriver("in-place"));
     await service.send({ threadId: thread.id, text: "one" });

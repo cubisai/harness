@@ -1156,7 +1156,9 @@ export class Service {
     let fallback: string | null = null;
     for (let i = events.length - 1; i >= 0; i--) {
       const { event, provenance } = events[i]!;
-      if (event.kind === "turn-start" && (provenance?.agent === agent || event.agent === agent)) return event.model;
+      // The model that turn was asked for, not the id the API resolved it to (Claude reports `claude-sonnet-5-5`
+      // for `default`), so an unchanged pick never reads as a switch.
+      if (event.kind === "turn-start" && (provenance?.agent === agent || event.agent === agent)) return provenance?.model ?? event.model;
       if (fallback === null && provenance?.agent === agent) fallback = provenance.model;
     }
     return fallback;
