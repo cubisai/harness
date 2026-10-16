@@ -4,7 +4,7 @@
 import type { PaneLayout } from "../../shared/types";
 import { BOUNDS, chatFloor, clamp, inspectorCap } from "../../shared/layout";
 
-export { BOUNDS, DEFAULT_LAYOUT, chatFloor, clamp, inspectorCap, sanitizeLayout } from "../../shared/layout";
+export { BOUNDS, DEFAULT_LAYOUT, chatFloor, clamp, designChatWidth, inspectorCap, sanitizeLayout } from "../../shared/layout";
 
 /**
  * The widths to draw at this window width. The stored layout is never changed here. The panel is capped at 80% of

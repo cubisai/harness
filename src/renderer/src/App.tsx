@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect } from "react";
+import { Suspense, lazy, useEffect, type CSSProperties } from "react";
 import { CommandPalette } from "./components/CommandPalette";
 import { SearchDialog } from "./components/SearchDialog";
 import { Library } from "./components/Library";
@@ -26,7 +26,7 @@ import { McpSheet } from "./components/McpSheet";
 import { ThreadView } from "./components/ThreadView";
 import { IconArrowLeft, IconDiff, IconFolder, IconGlobe, IconSparkle, IconTerminal } from "./icons";
 import { usePaneLayout } from "./hooks/usePaneLayout";
-import { BOUNDS, DEFAULT_LAYOUT, DESIGN_FLOOR, isWideInspector } from "./layout";
+import { BOUNDS, DEFAULT_LAYOUT, DESIGN_FLOOR, designChatWidth, isWideInspector } from "./layout";
 import { ESCAPE_OWNERS, escapeStopsTurn, type EscapeTarget } from "./escape";
 import { inboxModel, nthVisibleThread, threadKind, waitingThreads } from "./sections";
 import { useSelectedThread, useStore } from "./store";
@@ -133,12 +133,16 @@ export function App() {
   const wide = layout.browserWide && inspectorVisible && inspectorTab === "browser" && pane.inspector !== null;
   // A design thread puts its canvas between the chat and the side panel; browser-wide still wins.
   const design = designThread && !wide;
+  // A design thread's chat column: automatic (the CSS default) until the user drags its splitter.
+  const designChat = designChatWidth(pane.width - pane.sidebar - (inspectorVisible && pane.inspector !== null ? pane.inspector : 0), layout.designChat);
   const designMode = useStore((s) => s.threadKind) === "design";
 
   return (
-    <div className={`app${inspectorVisible && pane.inspector !== null ? " with-inspector" : ""}${wide ? " browser-wide" : ""}${layout.sidebarCollapsed ? " sidebar-collapsed" : ""}${design ? " design-thread" : ""}`}>
+    <div className={`app${inspectorVisible && pane.inspector !== null ? " with-inspector" : ""}${wide ? " browser-wide" : ""}${layout.sidebarCollapsed ? " sidebar-collapsed" : ""}${design ? " design-thread" : ""}`}
+      style={design && layout.designChat !== null ? ({ "--design-chat-w": `${designChat.width}px` } as CSSProperties) : undefined}
+    >
       {layout.sidebarCollapsed ? <PaneRail /> : <Sidebar />}
-      <main className="main">
+      <main className="main" id="main">
         {wide ? (
           // The browser holds the main area; the conversation is just a rail.
           // The Inspector stays mounted either way, so the page survives.
@@ -274,6 +278,22 @@ export function App() {
         <Suspense fallback={<section className="design-canvas" aria-label="Design canvas" />}>
           <DesignCanvas threadId={thread.id} />
         </Suspense>
+      )}
+      {design && thread && (
+        <Splitter
+          orientation="vertical"
+          controls="main"
+          label="Resize chat and canvas"
+          value={designChat.width}
+          min={BOUNDS.designChat.min}
+          max={designChat.max}
+          defaultValue={designChatWidth(designChat.max + BOUNDS.designCanvas, null).width}
+          collapsed={false}
+          className="splitter-design"
+          // The chat never collapses here (Enter would toggle it): only the width moves.
+          onChange={(v, c) => !c && setPaneLayout({ designChat: v }, false)}
+          onCommit={(v, c) => !c && setPaneLayout({ designChat: v }, true)}
+        />
       )}
       <Splitter
         orientation="vertical"

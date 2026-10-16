@@ -14,6 +14,9 @@ export const BOUNDS = {
   main: 420,
   mainFloor: 260,
   terminal: { min: 120, max: 600 },
+  /** A design thread's chat column; its real max leaves the canvas `designCanvas` (see designChatWidth). */
+  designChat: { min: 260, max: 4000 },
+  designCanvas: 480,
 } as const;
 
 export const DEFAULT_LAYOUT: PaneLayout = {
@@ -25,6 +28,7 @@ export const DEFAULT_LAYOUT: PaneLayout = {
   terminalOpen: false,
   browserWide: false,
   inspectorWide: false,
+  designChat: null,
 };
 
 /** The narrowest the chat gets beside a wide panel: 20% of the space right of the sidebar, never under `mainFloor`. */
@@ -54,5 +58,17 @@ export function sanitizeLayout(value: unknown): PaneLayout {
     terminalOpen: bool(v.terminalOpen, DEFAULT_LAYOUT.terminalOpen),
     browserWide: bool(v.browserWide, DEFAULT_LAYOUT.browserWide),
     inspectorWide: bool(v.inspectorWide, DEFAULT_LAYOUT.inspectorWide),
+    designChat: typeof v.designChat === "number" && Number.isFinite(v.designChat) ? clamp(v.designChat, BOUNDS.designChat.min, BOUNDS.designChat.max) : null,
   };
+}
+
+/**
+ * A design thread's chat width and its splitter's max, given the room right of the sidebar and left of the side
+ * panel: the width the user dragged to (kept so the canvas has `designCanvas`), else 45% of the room within 260–420
+ * (the CSS default in app.css's `.app.design-thread`).
+ */
+export function designChatWidth(room: number, dragged: number | null): { width: number; max: number } {
+  const max = Math.max(BOUNDS.designChat.min, room - BOUNDS.designCanvas);
+  if (dragged === null) return { width: clamp(Math.round(room * 0.45), BOUNDS.designChat.min, 420), max };
+  return { width: clamp(dragged, BOUNDS.designChat.min, max), max };
 }

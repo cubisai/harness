@@ -174,6 +174,8 @@ export interface PaneLayout {
   browserWide: boolean;
   /** The user dragged the side panel past the chat's normal width: it may keep up to 80%, the chat down to its floor. */
   inspectorWide: boolean;
+  /** A design thread's chat width the user dragged to; null = automatic (45% of the room, 260–420px). */
+  designChat: number | null;
 }
 
 export interface Settings {

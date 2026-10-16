@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { SettingsStore, type SecretBox } from "../src/main/settings";
-import { BOUNDS, DEFAULT_LAYOUT, chatFloor, clampLayout, inspectorCap, isWideInspector, sanitizeLayout } from "../src/renderer/src/layout";
+import { BOUNDS, DEFAULT_LAYOUT, chatFloor, clampLayout, designChatWidth, inspectorCap, isWideInspector, sanitizeLayout } from "../src/renderer/src/layout";
 import { tempDir } from "./helpers";
 
 const box: SecretBox = {
@@ -89,6 +89,22 @@ describe("sanitizeLayout", () => {
 
   it("returns the defaults for a non-object", () => {
     expect(sanitizeLayout(null)).toEqual(DEFAULT_LAYOUT);
+  });
+});
+
+describe("design chat width", () => {
+  it("is automatic (45% within 260–420) until dragged, then keeps the canvas 480px", () => {
+    expect(designChatWidth(1000, null)).toEqual({ width: 420, max: 520 });
+    expect(designChatWidth(700, null).width).toBe(315);
+    expect(designChatWidth(1000, 800)).toEqual({ width: 520, max: 520 });
+    expect(designChatWidth(1000, 100).width).toBe(BOUNDS.designChat.min);
+    expect(designChatWidth(500, 400)).toEqual({ width: 260, max: 260 });
+  });
+
+  it("stores a dragged width and drops a bad one", () => {
+    expect(sanitizeLayout({ designChat: 500 }).designChat).toBe(500);
+    expect(sanitizeLayout({ designChat: "wide" }).designChat).toBeNull();
+    expect(sanitizeLayout({}).designChat).toBeNull();
   });
 });
 
