@@ -341,6 +341,7 @@ describe("Store migrations", () => {
 
   it("restores a thread without its expert: experts are only ever summoned by the user", () => {
     const store = new Store(join(tempDir(), "expert-restore.db"));
+    closeAfter(() => store.close());
     const p = store.addProject("/tmp/p");
     const withExpert = store.createThread(p.id, "claude", "m", "ask", "chat", null, "code-reviewer");
     expect(store.getThread(withExpert.id).expertId).toBe("code-reviewer");
