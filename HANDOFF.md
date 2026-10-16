@@ -1,6 +1,57 @@
-# Handoff: Design v2 + Expert Center — DM3, EX2, EX3, EX4-UI finished (2026-10-16) — see "Resume here — partial phases finished"; next: EX5 teams runtime, DM4, DM5, live checks
+# Handoff: Design v2 + Expert Center — EX5 + DM4 done and live-tested (2026-10-16) — see "Resume here — EX5 + DM4"; next: DM5, DM3/EX leftovers, Windows run
 
 Updated 2026-10-13 on the **Mac**, branch `m4`. Read **Resume here — harness best practices (2026-10-13)** first (plan `.ai/plans/harness-bp.md`, research `plan/docs/12-harness-best-practices.md`), then **Resume here — Design v2 Mac test (2026-10-13)**, then **Resume here — Design mode v2** (plan: `.ai/plans/design-mode-v2.md`, Windows PC only), then **Resume here — native agent N2** (plan: `.ai/plans/native-agent.md`), then **Resume here — D4 done, Design mode complete**, then **Resume here — D3 done, D4 next**, then **Resume here — D2 done, D3 next**, then **Resume here — D1 done, D2 next**, then **Resume here — D1 next** (its plan), then **Resume here — P3 done**, then **Windows gate (2026-10-07)**, then **Resume here — C0 + P2 done**, then **Resume here — P1 done, next P2**, then **Resume here — MCP, providers, Design mode**, then **Resume here — Plan mode v2**, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`, `secrets-handling` (every stored credential safeStorage-encrypted; test keys only in the gitignored `.env`, never in briefs/commits).
+
+## Resume here — EX5 + DM4 done, live-tested (2026-10-16, Mac, session 3)
+
+Plan: `.ai/plans/design-expert-center.md` (approved; user wants no approval stops). Branch `m4`, **not pushed** yet (last push `e0d7337`). Commits this session:
+- `7af12e6` **DM4 groundwork**:
+  - `design:capture` (a window rect → a PNG ref in the design's `refs/`, returns path + thumb)
+  - `design:restore-version` → `service.restoreDesignVersion` (saves the current page as a version first, then writes vN as newest)
+  - store `pendingRefs` / `addDesignRefs` / `takeDesignRefs`; the Composer takes them as reference chips
+- `afedb9c` **EX5 teams runtime**:
+  - `teamAgents(def)` (shared/experts.ts) drops reserved engine names, bad ids and duplicates
+  - `TurnInput.team`; `service.expertInput(thread)` replaces `expertOf` at all 3 sites
+  - Claude → SDK `agents`; OpenCode → `withOpenCodeTeam` (agent.<id> subagent) via the ACP `injection` ctx (`team`, `teamLead`). The process is per thread, so the team never leaks to other threads.
+  - capability `subagentTeams` (Claude, OpenCode preset); other agents get a one-time notice "runs as one agent on X" (`noteTeamFallback`)
+  - `clipAgentSummary` keeps the member id in "desc · id" summaries
+  - `TeamStrip.tsx` above the composer (lead + members; lit while its Agent tool-use has no result); cost note in the team detail
+- `b6681f2` **DM4 UI** (worker + Claude fixes): a floating tool bar (Select, Edit text, Comment [Real app tier only], Draw), `DrawOverlay.tsx` → Attach (capture → composer chip), a device-frame toggle, and "Restore this version" in the version bar
+- `c470ec3` **EX5 fix, found live**: the user's global opencode `default_agent: orchestrator` has `permission.task {"*": deny, …}`, so the members were hidden. `withOpenCodeTeam` now also adds `task: {<member>: allow}` to the lead agent (the session mode) and to `build`; OpenCode merges these after the agent's deny (verified with `opencode agent list`).
+- `a69bb24` **DM4 live fixes** (the user called the first frame ugly and broken):
+  - a real `.device-shell` (tokens `--device-bezel/edge/island`: graphite in dark, so it's visible), dynamic island, home bar and browser bar. The shell is always mounted (`.device-off { display: contents }`), so toggling doesn't reload the frame.
+  - Fit fits the whole device (`frameLayout(..., whole)`)
+  - the bridge's `device-chrome` message hides the page scrollbar
+  - fixed a blank frame after Board → page: the iframe src effect now keys on the mounted element (`frameMount` callback ref), and the stage ResizeObserver is a callback ref (it was stale → a 1px frame on Mobile)
+  - `design:capture` multiplies by `getZoomFactor()` (the capture was offset)
+  - the design-mobile SKILL: a one-screen page is the screen (no bezel), bars pinned, only `.screen` scrolls. DESIGN-MODE.md is at its 700-token budget; don't add to it.
+
+**Checks at `a69bb24`:** typecheck green, **2298 passed**, `design:check` 0 errors (48 baseline warnings).
+
+**Live (dev app, CDP 9455):**
+- Claude (Sonnet 5.5) team turn: the strip showed "1 working", and the step read "CSV history facts · deep-researcher"
+- OpenCode (Zen DeepSeek V4.1 Flash Free) team turn: the member ran as a real subagent ("· deep-researcher") after `c470ec3`
+- Codex (GPT-6-Luna): the one-agent notice showed and the turn answered
+- Design (Claude Sonnet 5.5):
+  - the 2-screen prototype was built and the agent pinned its bars per the new skill rule
+  - phone frame screenshot OK
+  - Draw → Attach → `refs/ref-3.png` = exact frame + stroke
+  - Restore v1 → newest v3, file matches
+  - Board ↔ page ×4 stays loaded
+
+**Test data:**
+- board-proj's folder was recreated at `/private/tmp/claude-501/-Users-phumrin-Documents-ai-agent-aiharness/974ddb30-…/scratchpad/board-proj` (the sidebar still says "Folder missing" until restart)
+- extra empty "New thread"s and "Small test of the team" threads in posara_web/board-proj; delete them if you like
+
+**Still open (next session, in order):**
+1. **DM5** (design-system viewer/editor): not started. See the plan's Track DM.
+2. **Board artboards for one-screen mobile pages render landscape** (desktop-size thumbnails), seen live. The Board should size them as mobile (meta `cubiq-section` / viewport detection in `design/pages.ts` / `board-layout.ts`).
+3. Device frame not yet checked visually for tablet and browser (only phone screenshots). The Present mode (`Present.tsx`) still has its old thin border; consider reusing `.device-shell`.
+4. DM3 leftovers: the Code tab has no syntax highlighting and no file list. EX2: no "×" on the chip. EX4: package `skills/` don't join the skill roots for that expert's threads (`main/skills/sources.ts`; imported skills live at `userData/experts/<id>/skills/<name>/`).
+5. Push `m4` and check CI (`gh run list --branch m4 --limit 1`; the acp flake → rerun). Windows PC run (memory `two-machines`): importer paths, capture zoom, and the device shell.
+6. Live-check left: the Elements/Tweaks tabs and inspector Apply writing the file (from session 2), and "+" → Experts/Skills.
+
+**Workers this session:** 2 researchers and 2 implementers (TeamStrip, DM4 UI) on `opencode/deepseek-v4.1-flash-free` in parallel worktrees, all exit 0. Fixes Claude made after them: the DM4 Comment tool reopening the form after Cancel, tooltip text, the `.ts` → `.tsx` test rename, and every live-found bug above. `.ai/tmp` holds `dispatch.sh` (worktree runs) and `run.sh` (main-repo runs).
 
 ## Resume here — partial phases finished: DM3, EX2, EX3, EX4-UI (2026-10-16, Mac)
 
