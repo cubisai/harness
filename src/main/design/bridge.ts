@@ -21,6 +21,16 @@ export interface SelectionTarget {
   text: string;
 }
 
+/** One node of a design page's outline (layer tree), as reported to the canvas. */
+export interface OutlineNode {
+  id?: string;
+  tag: string;
+  cls: string;
+  selector: string;
+  label: string;
+  depth: number;
+}
+
 /** Messages the design page sends up to the canvas. */
 export type BridgeMessage =
   | { source: "cubiq-design"; type: "ready"; path?: string }
@@ -30,7 +40,8 @@ export type BridgeMessage =
   | { source: "cubiq-design"; type: "edit-refused"; reason: string }
   | { source: "cubiq-design"; type: "pick-cancel" }
   | { source: "cubiq-design"; type: "tweaks"; manifest: string; attrs: Record<string, string>; vars: Record<string, string> }
-  | { source: "cubiq-design"; type: "pins"; missing: number[] };
+  | { source: "cubiq-design"; type: "pins"; missing: number[] }
+  | { source: "cubiq-design"; type: "outline"; nodes: OutlineNode[] };
 
 /** Messages the canvas sends down into the design page. */
 export type CanvasMessage =
@@ -41,7 +52,8 @@ export type CanvasMessage =
   | { source: "cubiq-canvas"; type: "set-tweak"; attr?: string; var?: string; value: string }
   | { source: "cubiq-canvas"; type: "set-pins"; pins: { n: number; target: { id?: string; selector: string; tag: string; text: string } }[] }
   | { source: "cubiq-canvas"; type: "preview-style"; target: { id?: string; selector: string; tag: string; text: string }; prop: string; value: string }
-  | { source: "cubiq-canvas"; type: "clear-preview" };
+  | { source: "cubiq-canvas"; type: "clear-preview" }
+  | { source: "cubiq-canvas"; type: "outline" };
 
 /** Snap an element to its nearest interactive ancestor, or itself when there is none. */
 export function snapTarget(el: Element): Element {
@@ -142,6 +154,45 @@ export function editableText(el: Element): { ok: true; id: string; text: string 
 }
 
 /**
+ * Flatten a page's elements into an outline (layer tree), depth-first in document order. `root` itself is not a
+ * node; its children start at depth 0. At most 400 nodes and 8 levels of depth are reported. Runs inside the page
+ * (passed in with toString), so it must not reference anything outside its own parameters.
+ */
+export function outlineOf(root: Element, selectorFor: (el: Element) => string): OutlineNode[] {
+  const nodes: OutlineNode[] = [];
+  const walk = (el: Element, depth: number): void => {
+    if (nodes.length >= 400 || depth > 8) return;
+    const tag = el.tagName.toLowerCase();
+    if (["script", "style", "link", "meta", "noscript", "template", "br"].indexOf(tag) < 0) {
+      const rawId = el.getAttribute("data-agent-id");
+      const cls = (el.getAttribute("class") || "")
+        .split(/\s+/)
+        .filter((name) => name !== "")
+        .slice(0, 2)
+        .join(".")
+        .slice(0, 60);
+      let own = "";
+      for (let i = 0; i < el.childNodes.length; i++) {
+        const text = el.childNodes[i];
+        if (text && text.nodeType === 3) own += text.textContent || "";
+      }
+      const node: OutlineNode = { tag, cls, selector: selectorFor(el), label: own.replace(/\s+/g, " ").trim().slice(0, 40), depth };
+      if (rawId && /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(rawId)) node.id = rawId;
+      nodes.push(node);
+    }
+    for (let i = 0; i < el.children.length; i++) {
+      const child = el.children[i];
+      if (child) walk(child, depth + 1);
+    }
+  };
+  for (let i = 0; i < root.children.length; i++) {
+    const child = root.children[i];
+    if (child) walk(child, 0);
+  }
+  return nodes;
+}
+
+/**
  * The canvas bridge injected into a design page: scroll reporting, scroll
  * restore, and a persistent element selection. Runs inside the page (serialized
  * with toString), so it must not reference anything outside its own parameters.
@@ -152,6 +203,7 @@ export function designBridge(
   snapTarget: (el: Element) => Element,
   resolveTarget: (doc: Document, target: SelectionTarget) => Element | null,
   editableText: (el: Element) => { ok: true; id: string; text: string } | { ok: false; reason: string },
+  outlineOf: (root: Element, selectorFor: (el: Element) => string) => OutlineNode[],
 ): void {
   const post = (type: string, data?: Record<string, unknown>): void => {
     parent.postMessage({ source: "cubiq-design", type, ...(data ?? {}) }, "*");
@@ -187,9 +239,14 @@ export function designBridge(
     post("tweaks", { manifest: text, attrs, vars });
   };
 
+  const reportOutline = (): void => {
+    if (document.body) post("outline", { nodes: outlineOf(document.body, selectorFor) });
+  };
+
   const announceReady = (): void => {
     post("ready", { path: location.pathname });
     reportTweaks();
+    reportOutline();
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", announceReady, { once: true });
   else announceReady();
@@ -562,11 +619,13 @@ export function designBridge(
         });
       });
       previewOriginals.clear();
+    } else if (data.type === "outline") {
+      reportOutline();
     }
   });
 }
 
 /** The bridge as one script body, embedding the page-side helpers it needs. */
 export function bridgeScript(selectorFor: (el: Element) => string): string {
-  return `(${designBridge.toString()})(${selectorFor.toString()}, ${describeElement.toString()}, ${snapTarget.toString()}, ${resolveTarget.toString()}, ${editableText.toString()});`;
+  return `(${designBridge.toString()})(${selectorFor.toString()}, ${describeElement.toString()}, ${snapTarget.toString()}, ${resolveTarget.toString()}, ${editableText.toString()}, ${outlineOf.toString()});`;
 }

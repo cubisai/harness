@@ -46,7 +46,18 @@ export type BridgeMessage =
   | { type: "edit-refused"; reason: string }
   | { type: "pins"; missing: number[] }
   | { type: "pick-cancel" }
-  | { type: "tweaks"; manifest: string; attrs: Record<string, string>; vars: Record<string, string> };
+  | { type: "tweaks"; manifest: string; attrs: Record<string, string>; vars: Record<string, string> }
+  | { type: "outline"; nodes: OutlineNode[] };
+
+/** One node of the design page's outline (layer tree), as reported by the bridge. Duplicated from main: no cross-import. */
+export interface OutlineNode {
+  id?: string;
+  tag: string;
+  cls: string;
+  selector: string;
+  label: string;
+  depth: number;
+}
 
 const num = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const str = (v: unknown, max: number): v is string => typeof v === "string" && v.length <= max;
@@ -88,6 +99,21 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
   if (d.type === "tweaks") {
     if (!str(d.manifest, 8000) || !strMap(d.attrs, 32) || !strMap(d.vars, 32)) return null;
     return { type: "tweaks", manifest: d.manifest, attrs: d.attrs, vars: d.vars };
+  }
+  if (d.type === "outline") {
+    if (!Array.isArray(d.nodes) || d.nodes.length > 400) return null;
+    const nodes: OutlineNode[] = [];
+    for (const raw of d.nodes) {
+      if (!raw || typeof raw !== "object") continue;
+      const n = raw as Record<string, unknown>;
+      if (!str(n.tag, 32) || !/^[a-z][a-z0-9-]{0,31}$/.test(n.tag)) continue;
+      if (!str(n.cls, 60) || !str(n.selector, 1000) || !str(n.label, 40)) continue;
+      if (typeof n.depth !== "number" || !Number.isInteger(n.depth) || n.depth < 0 || n.depth > 8) continue;
+      const node: OutlineNode = { tag: n.tag, cls: n.cls, selector: n.selector, label: n.label, depth: n.depth };
+      if (str(n.id, 64) && /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(n.id)) node.id = n.id;
+      nodes.push(node);
+    }
+    return { type: "outline", nodes };
   }
   return null;
 }

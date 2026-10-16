@@ -606,6 +606,14 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-inspector-sizing button { height: 22px; padding: 0 8px; font-size: 11.5px; }
 /* The Tweaks tab: the page's tweak controls, without the popover's frame. */
 .design-inspector .design-tweaks { position: static; width: auto; max-height: none; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
+/* Layer tree (Elements tab): one row per element, indented by depth, the selected row tinted. */
+.el-tree { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: auto; }
+.el-row { display: flex; align-items: center; gap: 6px; width: 100%; height: 24px; padding-right: 8px; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 12.5px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.el-row:hover { background: var(--bg-hover); }
+.el-row.on { background: var(--bg-selected); }
+.el-tag { flex-shrink: 0; font: 500 12.5px var(--mono); color: var(--text); }
+.el-cls, .el-id, .el-label { min-width: 0; margin-left: 4px; font-size: 11.5px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.el-empty { margin: 0; padding: 12px; font-size: 12.5px; color: var(--text-secondary); }
 /* Selection: a count on the Select button, a breadcrumb bar for one element, and a spoken summary. */
 .design-tools .icon-button { position: relative; }
 .design-select-count { position: absolute; top: 1px; right: 0; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: var(--primary); color: var(--on-primary); font: 600 10px/14px var(--mono); font-variant-numeric: tabular-nums; }
