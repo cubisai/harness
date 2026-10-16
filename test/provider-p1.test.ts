@@ -102,6 +102,19 @@ describe("upstreamMessage", () => {
     expect(upstreamMessage(JSON.stringify({ error: "nope!" }), null)).toBe("nope!");
     expect(upstreamMessage("<html>502</html>", null)).toBeNull();
   });
+
+  it("clips a long message at a sentence or word, never as a fake full stop, and masks a key that straddles the cut", () => {
+    const first = `Your Pass allowance for this period is used up, and your account is set not to spend wallet balance beyond it. ${"Turn on the setting to continue. ".repeat(4)}`;
+    const long = `${first}Or wait for the next period to start, when your allowance resets to the full amount again.`;
+    const clipped = upstreamMessage(JSON.stringify({ error: { message: long } }), null)!;
+    expect(clipped.length).toBeLessThanOrEqual(300);
+    expect(clipped.endsWith("continue.")).toBe(true);
+    const words = upstreamMessage(JSON.stringify({ error: { message: "word ".repeat(80) } }), null)!;
+    expect(words.endsWith("word…")).toBe(true);
+    const key = "sk-live-0123456789abcdef0123456789abcdef";
+    const straddle = upstreamMessage(JSON.stringify({ error: { message: `${"x".repeat(280)} ${key} tail` } }), key)!;
+    expect(straddle).not.toContain("sk-live");
+  });
 });
 
 describe("per-thread provider (P1d)", () => {

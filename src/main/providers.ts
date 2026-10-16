@@ -215,8 +215,17 @@ export function upstreamMessage(body: string, apiKey: string | null): string | n
     return null;
   }
   if (typeof message !== "string" || !message.trim()) return null;
-  let text = message.trim().replace(/\s+/g, " ").slice(0, 300);
+  // Mask before clipping, or a key that straddles the cut would leave its first part in the text.
+  let text = message.trim().replace(/\s+/g, " ");
   if (apiKey) text = text.split(apiKey).join("«redacted»");
+  if (text.length > 300) {
+    // Clip at the last whole sentence, else the last word, and mark it, so a cut-off message doesn't read as complete.
+    const cut = text.slice(0, 300);
+    const sentence = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
+    if (sentence >= 120) return cut.slice(0, sentence + 1);
+    const word = cut.lastIndexOf(" ");
+    return `${cut.slice(0, word > 0 ? word : 300)}…`;
+  }
   return /[.!?]$/.test(text) ? text : `${text}.`;
 }
 
