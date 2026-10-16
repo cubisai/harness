@@ -7,11 +7,12 @@ import { Select } from "../components/Select";
 import { IconClose, IconRefresh, IconTarget } from "../icons";
 import "../styles/artifact.css";
 import { useStore } from "../store";
-import { VIEWPORTS, ZOOMS, frameLayout, pageFromPath, readBridgeMessage, type Viewport, type Zoom } from "./frame";
+import { VIEWPORTS, ZOOMS, frameLayout, pageFromPath, readBridgeMessage, type OutlineNode, type Viewport, type Zoom } from "./frame";
 import { announceSelection, elementLabel, selectionKey, type SelectedElement } from "../../../shared/selection";
 import { compareCells, pageOptions, sameEntry, type CompareCell } from "./pages";
 import { changedTweaks, currentTweakValues, parseTweaks, tweakTarget, tweakValue, type Tweak, type TweakValues } from "../../../shared/tweaks";
 import { TweaksBody, TweaksPanel } from "./TweaksPanel";
+import { ElementsTree } from "./ElementsTree";
 import { DEFAULT_TIER, tierFeatures, tierOf } from "../../../shared/tiers";
 import { commentsMessage, type DesignComment } from "../../../shared/comments";
 import { CommentsPanel } from "./CommentsPanel";
@@ -57,6 +58,8 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
   const [flow, setFlow] = useState(false);
   // The inspector: the selected element's properties and the page's code, beside the stage.
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  // The page's layer tree for the inspector's Elements tab, as its bridge last reported it.
+  const [outline, setOutline] = useState<OutlineNode[]>([]);
   // The page the Present overlay starts on (null = not presenting).
   const [present, setPresent] = useState<string | null>(null);
   const [promoting, setPromoting] = useState<string | null>(null);
@@ -218,6 +221,8 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           });
       } else if (msg.type === "pins") {
         setPinMissing(msg.missing);
+      } else if (msg.type === "outline") {
+        setOutline(msg.nodes);
       } else if (msg.type === "edit-refused") {
         setNotice({ text: msg.reason });
       } else if (msg.type === "selection") {
@@ -234,6 +239,11 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, [entry, picking, post, threadId, version, setSelection, features.textEdit]);
+
+  // Opening the inspector asks for a fresh outline: a page that renders with script has more layers than at load.
+  useEffect(() => {
+    if (inspectorOpen) post({ type: "outline" });
+  }, [inspectorOpen, post]);
 
   // A tier switch while selecting turns in-place editing on or off right away.
   useEffect(() => {
@@ -842,7 +852,13 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
                     draft();
                   });
               }}
-              elements={null}
+              elements={
+                <ElementsTree
+                  nodes={outline}
+                  selected={selected[0] ?? null}
+                  onPick={(n) => post({ type: "set-selection", targets: [{ ...(n.id ? { id: n.id } : {}), selector: n.selector, tag: n.tag, text: "" }] })}
+                />
+              }
               tweaks={
                 showTweaks ? (
                   <div className="design-tweaks">
