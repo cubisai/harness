@@ -159,6 +159,11 @@ export interface ExpertDef {
   members?: ExpertMember[];
   source: "builtin" | "imported";
   version: string;
+  /** Where an imported expert came from (a GitHub link, a folder or a .zip path); re-importing it updates the expert. */
+  sourceUrl?: string;
+  author?: string;
+  /** An imported package's license: SPDX-ish ("MIT", "custom"), or "none" when the package has no license file. */
+  license?: string;
   /** The expert.md this def was read from, when it came from disk. */
   path?: string;
 }
@@ -286,6 +291,9 @@ export function expertFromMarkdown(text: string, fallbackId: string, source: "bu
     prompt: prompt.slice(0, EXPERT_PROMPT_MAX),
     source,
     version: str(meta, "version") || "1.0.0",
+    ...(str(meta, "sourceUrl") ? { sourceUrl: str(meta, "sourceUrl") } : {}),
+    ...(str(meta, "author") ? { author: str(meta, "author") } : {}),
+    ...(str(meta, "license") ? { license: str(meta, "license") } : {}),
   };
 }
 

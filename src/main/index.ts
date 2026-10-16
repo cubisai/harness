@@ -1313,6 +1313,12 @@ async function main(): Promise<void> {
     service.setDesignSystem(threadId, typeof id === "string" && /^[\w:.-]{1,80}$/.test(id) ? id : null),
   );
   ipcMain.handle("design:systems", (_e, projectId: string | null): DesignSystemOption[] => service.designSystems(projectId)),
+  ipcMain.handle("threads:set-expert", (_e, threadId: string, expertId: unknown) => {
+    // Only an expert the catalogue knows; null clears it.
+    const id = typeof expertId === "string" && EXPERT_ID_RE.test(expertId) && experts.get(expertId) ? expertId : null;
+    if (expertId !== null && !id) throw new Error("Unknown expert.");
+    return service.setThreadExpert(threadId, id);
+  });
   ipcMain.handle("experts:list", () => experts.list());
   ipcMain.handle("experts:get", (_e, id: unknown) => (typeof id === "string" && EXPERT_ID_RE.test(id) ? experts.get(id) : null));
   // Install from a GitHub link, a folder or a .zip into the user's experts folder (nothing in a package is run).
@@ -1320,6 +1326,17 @@ async function main(): Promise<void> {
     if (typeof source !== "string" || source.length > 2000) throw new Error("Paste a GitHub link, or pick a folder or a .zip.");
     const names = Array.isArray(pick) ? pick.filter((n): n is string => typeof n === "string" && n.length <= 200).slice(0, 100) : undefined;
     return importExperts(source.trim(), { userDir: join(userData, "experts"), ...(names ? { pick: names } : {}) });
+  });
+  // The folder or .zip an expert is imported from, through the system picker; null when cancelled.
+  ipcMain.handle("experts:pick-source", async (event, kind: unknown) => {
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    const options: Electron.OpenDialogOptions =
+      kind === "zip"
+        ? { title: "Import experts from a .zip", properties: ["openFile"], filters: [{ name: "Expert package", extensions: ["zip"] }] }
+        : { title: "Import experts from a folder", properties: ["openDirectory"] };
+    const res = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+    const path = res.filePaths[0];
+    return res.canceled || !path ? null : path;
   });
   ipcMain.handle("experts:remove", (_e, id: unknown) => {
     if (typeof id !== "string") throw new Error("Invalid expert id.");

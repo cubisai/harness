@@ -1213,6 +1213,15 @@ export class Service {
     return this.store.setDesignSystem(threadId, id);
   }
 
+  /**
+   * Set the expert on a thread that has no messages yet (the user summoned it there). A thread that has run keeps the
+   * expert it started with, so its prompt-cache prefix never changes mid-conversation.
+   */
+  setThreadExpert(threadId: string, expertId: string | null): Thread {
+    if (this.store.listEvents(threadId).length > 0) throw new Error("This thread already has messages; start a new thread with the expert.");
+    return this.store.setExpert(threadId, expertId);
+  }
+
   /** Pick a design thread's prototype tier (null = Working); the next turn tells the agent, once. */
   setPrototypeTier(threadId: string, tier: PrototypeTier | null): Thread {
     const thread = this.store.getThread(threadId);

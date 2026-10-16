@@ -202,6 +202,15 @@ describe("marketplace import", () => {
     expect(result.installed).toEqual(["alpha-expert"]);
     expect(readFileSync(join(userDir, "alpha-expert", "expert.md"), "utf-8")).toContain("Alpha body.");
   });
+
+  it("re-picks a plugin by the expert id it installed as (an update)", async () => {
+    const src = tempDir();
+    const userDir = tempDir();
+    marketplace(src);
+    const result = await importExperts(src, { userDir, pick: ["alpha-expert"] });
+    expect(result.installed).toEqual(["alpha-expert"]);
+    expect(result.skipped).toEqual([]);
+  });
 });
 
 describe("zip import", () => {

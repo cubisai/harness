@@ -415,6 +415,12 @@ export class Store {
     return this.getThread(id);
   }
 
+  /** A thread's expert (null = none). Not activity: the thread keeps its place. */
+  setExpert(id: string, expertId: string | null): Thread {
+    this.db.prepare("UPDATE threads SET expert_id = ? WHERE id = ?").run(expertId, id);
+    return this.getThread(id);
+  }
+
   /** A design thread's prototype tier (null = the default: working). Not activity: the thread keeps its place. */
   setPrototypeTier(id: string, tier: PrototypeTier | null): Thread {
     this.db.prepare("UPDATE threads SET prototype_tier = ? WHERE id = ?").run(tier, id);

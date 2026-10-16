@@ -637,6 +637,17 @@ export function installMock(): void {
     getExpert: async (id) => mockExperts.find((e) => e.id === id) ?? null,
     importExperts: async () => ({ installed: [], candidates: [], skipped: [] }),
     removeExpert: async () => {},
+    pickExpertSource: async () => null,
+    setThreadExpert: async (id, expertId) => {
+      for (const list of Object.values(threads)) {
+        const i = list.findIndex((x) => x.id === id);
+        if (i >= 0) {
+          const { expertId: _old, ...rest } = list[i]!;
+          return (list[i] = expertId ? { ...rest, expertId } : rest);
+        }
+      }
+      throw new Error("no thread");
+    },
     designSystems: async () => [
       { id: "clean", name: "Clean", description: "Neutral and calm: white surfaces, one blue accent, soft radii.", swatches: ["#ffffff", "#18181b", "#2563eb", "#0e7490"], source: "builtin" },
       { id: "dashboard", name: "Dashboard", description: "Dense and data-first.", swatches: ["#f6f7f9", "#111827", "#4f46e5", "#0e7490"], source: "builtin" },

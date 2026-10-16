@@ -141,7 +141,8 @@ export async function importExperts(input: string, opts: { userDir: string; pick
     const installed: string[] = [];
     const skipped: { name: string; reason: string }[] = [];
     for (const name of opts.pick) {
-      const candidate = candidates.find((c) => c.name === name);
+      // By its marketplace name, or by the expert id it installs as (an update re-picks by id).
+      const candidate = candidates.find((c) => c.name === name || slugify(c.name) === name);
       if (!candidate) {
         skipped.push({ name, reason: "not in this marketplace" });
         continue;

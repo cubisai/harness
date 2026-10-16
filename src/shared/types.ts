@@ -1190,6 +1190,10 @@ export interface UnskilledApi {
   importExperts(source: string, pick?: string[]): Promise<ExpertImportResult>;
   /** Remove an imported expert (bundled ones can't be removed). */
   removeExpert(id: string): Promise<void>;
+  /** Pick a folder or a .zip to import experts from; null when cancelled. */
+  pickExpertSource(kind: "folder" | "zip"): Promise<string | null>;
+  /** Set (or clear) the expert of a thread with no messages yet; throws on a thread that has messages. */
+  setThreadExpert(threadId: string, expertId: string | null): Promise<Thread>;
   /** A thread file's content for the panel: the file on disk, or a saved version. */
   readArtifact(threadId: string, path: string, version?: number | null): Promise<ArtifactContent>;
   /** Unified diff of a version against the one before it (or against git HEAD / empty for the first); null when not text. */

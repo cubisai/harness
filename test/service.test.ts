@@ -363,6 +363,17 @@ describe("Service.send", () => {
     expect(prompts.map((p) => /Prototype tier: (\w+)/.exec(p)?.[1] ?? null)).toEqual(["Working", null, "Quick", null]);
   });
 
+  it("sets an expert only on a thread with no messages yet", async () => {
+    const { service, store } = setup(async () => {});
+    const project = store.addProject(tempDir());
+    const fresh = service.createThread(project.id);
+    expect(service.setThreadExpert(fresh.id, "code-review").expertId).toBe("code-review");
+    expect(service.setThreadExpert(fresh.id, null).expertId).toBeUndefined();
+    const used = service.createThread(project.id);
+    await service.send({ threadId: used.id, text: "hi" });
+    expect(() => service.setThreadExpert(used.id, "code-review")).toThrow(/already has messages/);
+  });
+
   it("writes an in-place text edit into a design page with versions, and refuses when it isn't safe", () => {
     const { service, store, updates } = setup(async () => {});
     service.setArtifacts({

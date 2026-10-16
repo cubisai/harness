@@ -56,6 +56,13 @@ describe("expertFromMarkdown", () => {
     const def = expertFromMarkdown(good, "fallback", "builtin");
     expect(def).toMatchObject({ id: "fallback", name: "Ada", kind: "agent", category: "General", avatarText: "AD", version: "1.0.0", source: "builtin" });
     expect(def?.prompt).toBe("You are Ada.");
+    expect(def).not.toHaveProperty("sourceUrl");
+    expect(def).not.toHaveProperty("license");
+  });
+
+  it("reads an imported expert's source, author and license", () => {
+    const def = expertFromMarkdown("---\nname: Ada\nsourceUrl: https://github.com/a/b\nauthor: Ann\nlicense: none\n---\nYou are Ada.", "ada", "imported");
+    expect(def).toMatchObject({ sourceUrl: "https://github.com/a/b", author: "Ann", license: "none" });
   });
 });
 

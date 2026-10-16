@@ -348,6 +348,15 @@ describe("Store migrations", () => {
     const restored = store.restoreThread(p.id, { thread: store.getThread(withExpert.id), events: [] });
     expect(store.getThread(restored.id).expertId).toBeUndefined();
   });
+
+  it("sets and clears a thread's expert without touching its place", () => {
+    const store = new Store(join(tempDir(), "set-expert.db"));
+    closeAfter(() => store.close());
+    const p = store.addProject("/tmp/p");
+    const t = store.createThread(p.id, "claude", "m", "ask", "chat");
+    expect(store.setExpert(t.id, "code-reviewer")).toMatchObject({ expertId: "code-reviewer", updatedAt: t.updatedAt });
+    expect(store.setExpert(t.id, null).expertId).toBeUndefined();
+  });
 });
 
 describe("Store design systems (migration 21)", () => {
