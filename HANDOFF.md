@@ -17,7 +17,7 @@ Plan: `.ai/plans/dm5-system-editor.md` (under the approved `.ai/plans/design-exp
 **Workers:** 2 researchers + 2 implementers (tokens/fork in a worktree, SystemPanel in the main repo) on Zen DeepSeek free, all exit 0. Claude fixes after them: panel reload flicker (refresh in place), badge squeezing the hex field, markdown sizing, the reload on a system switch.
 **Test data:** board-proj now has `.agents/design-systems/clean-custom/` (tokens reverted to the built-in values) and its thread uses it; both pages carry the cubiq-device meta.
 
-**Still open (in order):**
+**Still open (in order). This is everything left in the whole design + expert plan: DM1–DM5 and EX1–EX5 are built and live-tested apart from these:**
 1. **EX4**: an imported expert's package `skills/` (`userData/experts/<id>/skills/<name>/`) still don't join the skill roots for that expert's threads. It needs a per-thread layer in `SkillCatalogs.forProject` and the thread passed at every `skills.forProject(cwd)` call in `main/index.ts` (286, 290, 397, 506, 536, 710, 737). Keep it scoped to that expert's threads (memory `experts-manual-only`).
 2. DM3 leftovers: the Code tab has no syntax highlighting and no file list.
 3. Present mode (`Present.tsx`) still has its old thin border (reuse `.device-shell`); the tablet and browser device frames haven't been checked visually.
