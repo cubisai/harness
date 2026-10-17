@@ -1,4 +1,60 @@
-# Handoff: Design v2 + Expert Center — all of DM1–DM5 and EX1–EX5 built (2026-10-16) — see "Resume here — session 5"; next: Tweaks/Apply live check, push + CI, Windows run
+# Handoff: Teams + UI blocks parity (TGP) done and live-tested on every engine (2026-10-17) — see "Resume here — session 6"; next: 6 open TGP items, push + CI, Windows run
+
+## Resume here — session 6: teams like WorkBuddy + UI blocks on every engine (2026-10-17, Mac)
+
+Plan: `.ai/plans/team-genui-parity.md` (approved; its "Status 2026-10-17" section has the live matrix). Commits on `m4`, **not pushed** (last push still `e0d7337`): `c450214` (UI blocks), `3a86ce7` (teams).
+- **UI blocks (`c450214`)**: before, 1–2 of 4 blocks showed as raw code on every engine. Now all 4 render on Claude Sonnet 5.5, Codex GPT-6-Luna, OpenCode Zen DeepSeek Flash Free, OpenCode AgentRouter deepseek-v4-flash and native (TokenHarbor free model; the Pass is exhausted, never flip pay-as-you-go).
+  - chart: negatives diverge from a zero line
+  - compare: per-cell `*` best marks (`best: [row, col][]`); ragged rows padded or trimmed; `*italic*` left alone
+  - formula: `^`/`**`
+  - calculator: `=name = expr` prefix stripped; empty starting values become blank inputs; results ≤2 decimals when ≥1
+  - streaming: "Building…" also after prose (`streaming.ts` UI_FENCE boundary)
+  - the note now says "max 2 unless asked" (≤150-token budget in `test/guide.test.ts`)
+- **Teams (`3a86ce7`)**:
+  - Lead protocol (`shared/experts.ts`): phases, scope split, no ghostwriting, single-member routing, plus a "Stay <name>" anchor line.
+  - Star topology (`experts/team.ts`): members `team_post` to the lead only; the peer cap is gone.
+  - Codex member rows: Codex sends **no thread/started for spawned children** (probed; memory `codex-child-threads`), so `registerChild` holds a team turn's Agent row until `thread/read` returns `agentRole`. The child's first `item/*` or its end emits the row unlabelled.
+  - Codex roles carry `maxTurns` as a sentence.
+  - `SubagentCard`: member portrait + name + profession; the empty Prompt fold is hidden.
+  - `TeamStrip`: the lead lights up while the turn runs and no member works; a working agent wears the send button's `<Beam />`.
+  - Stall watchdog (`main/watchdog.ts`, wired in `service.ts`): a notice after 3 min of silence, Stop after 10. Time on permission, plan or question cards is excluded.
+  - **Deep Research Team** (built in, original English content): `resources/experts/deep-research-team/`, members `deep-researcher`, `cross-verifier`, `idea-validator`, `insight-editor`, each with its own skill (`deep-dive`, `cross-check`, `demand-check`, `insight-brief`) and portraits.
+  - The imported Research Insight was removed at the user's request (user: "i want it as my own").
+
+**Checks at `3a86ce7`:** typecheck green, **2538 passed**, `design:check` 0 errors (48 baseline warnings). Live team runs labelled members on Claude, Codex, OpenCode Zen and AgentRouter.
+**Workers:** 2 researchers + 3 implementers on Zen DeepSeek free (worktrees). W3's Codex fix used `thread/started` and passed its fake-server test, but did nothing live. Claude replaced it with the thread/read approach and made the test probe realistic.
+
+**Open — the 6 TGP items left (in this order):**
+1. **Member skill files readable on native (verify Codex).**
+   - `service.expertInput` returns `expertRoot` (`service.ts` ~289), but only Claude (`agents/claude.ts` ~429 skill roots) and OpenCode (`index.ts` ~611 `withOpenCodeReadDirs`) use it.
+   - Native members' read tools are path-guarded (`harness/tools/paths.ts`), so they can't open their own `SKILL.md`. Built-in teams' skills sit under `resources/experts/<team>/skills/`.
+   - Add the root to the native read roots for team threads only. Check live that a Codex member can open its SKILL.md too.
+2. **Phase progress in the strip** ("2 of 3 done").
+   - `TeamStrip.activeMembers` only tracks in-flight calls. Also count member Agent rows that finished in the current turn (events after the last user message).
+   - Keep "Lead working" / "N working".
+3. **Click a member → its latest result file.**
+   - The workspace is `<userData>/team-runs/<threadId>/` (`teamRunDir`, `index.ts` ~503). Models pick free file names (`dana-json-facts-a.md`), and `team_write` stores no author.
+   - Record `from` per file (e.g. an `index.json` beside `notes.jsonl` in `experts/team.ts`), then open the newest file for that member in the File panel.
+4. **Distinguishable portraits.** All Notionists busts look alike in the strip. Give each member a tinted round background from tokens (use the `token-change` skill for any new token; DESIGN.md §2).
+5. **Calculator with a broken formula.**
+   - `validate.ts` `validateCalculator` still returns null (raw code) for unknown ids or a malformed formula, e.g. DeepSeek's `P * r/12 …`.
+   - Render the inputs plus an inline "Couldn't compute: unknown P, r, n" line instead. Pin that valid calculators are unchanged.
+6. **Per-engine text-shape fixtures** (never written; the live runs covered it). Feed `Markdown` (streaming and final) a ui fence the way each engine delivers text:
+   - Claude: text blocks split around tool calls
+   - Codex: agentMessage deltas, then the final item
+   - ACP: chunk accumulation
+   - CRLF
+
+   Assert the blocks render.
+
+Then: one live turn each on Claude, Codex and OpenCode. Push `m4` + CI (`gh run list --branch m4 --limit 1`; the Windows acp flake → rerun the failed job). Windows PC run: team-runs / codex-roles paths, the Deep Research skills paths, the watchdog.
+
+**Found, not fixed (outside the plan):**
+- The model picker keeps its last search text across opens, so "OpenCode switch" etc. can be filtered out of a new thread's picker.
+- The renderer loads the expert list once (`store.loadExperts` when null): a bundled team added while the app runs needs a reload. Dev-only in practice.
+- The lead ghostwriting a member's file can't be enforced in code. Seen once on OpenCode's default model; the prompt rule covers the rest.
+- AgentRouter returns "sensitive words detected" on some calls. OpenCode retries and the turn finished; the watchdog covers a hang.
+- The context ring at ~1% looks like a loading spinner.
 
 Updated 2026-10-13 on the **Mac**, branch `m4`. Read **Resume here — harness best practices (2026-10-13)** first (plan `.ai/plans/harness-bp.md`, research `plan/docs/12-harness-best-practices.md`), then **Resume here — Design v2 Mac test (2026-10-13)**, then **Resume here — Design mode v2** (plan: `.ai/plans/design-mode-v2.md`, Windows PC only), then **Resume here — native agent N2** (plan: `.ai/plans/native-agent.md`), then **Resume here — D4 done, Design mode complete**, then **Resume here — D3 done, D4 next**, then **Resume here — D2 done, D3 next**, then **Resume here — D1 done, D2 next**, then **Resume here — D1 next** (its plan), then **Resume here — P3 done**, then **Windows gate (2026-10-07)**, then **Resume here — C0 + P2 done**, then **Resume here — P1 done, next P2**, then **Resume here — MCP, providers, Design mode**, then **Resume here — Plan mode v2**, then **Resume here — UI refresh**, then `DESIGN.md` (the design system every UI change follows), then `.ai/plans/ui-refresh.md` (phases U0–U6, evidence, blast radius; `.ai/` is gitignored, so it exists on this Mac only), then `CLAUDE.md`. Approved mock: https://claude.ai/artifact/TNGyM5xqgZcrJZne7zdYHN (direction A, "Ink Flat"). Older roadmap: `.ai/plans/harness-roadmap.md`. Memories that apply: `commit-style` (≤150 chars, no attribution trailer, `rm .ai/tmp/*` per phase), `test-app-for-real` (live turn on OpenCode, Codex **and** Claude before every commit), `oc-dispatch-mac`, `context-no-bloat`, `two-machines`, `secrets-handling` (every stored credential safeStorage-encrypted; test keys only in the gitignored `.env`, never in briefs/commits).
 
