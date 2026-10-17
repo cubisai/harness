@@ -11,6 +11,7 @@ import { withDesign, withProject } from "../mcp-http";
 import { normalizeUsage } from "../usage";
 import type { InjectionPlan } from "../inject";
 import { RpcError, StdioRpc } from "./rpc";
+import { isSkillRead } from "./skill-read";
 import { CODEX_CAPABILITIES } from "./capabilities";
 import { codexLimitsPatch, codexReadPatch, type CodexRateLimits, type CodexRateLimitsRead, type LimitsListener, type LimitsPatch } from "./limits";
 import { checkCommand } from "../guard";
@@ -786,6 +787,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
           return { decision: "decline" };
         }
       }
+      // A team member reading its own skill files (Codex reads with the shell) never asks.
+      if (isCommand && typeof p.command === "string" && t.input.expertRoot && isSkillRead(p.command, [t.input.expertRoot])) return { decision: "accept" };
       // Auto-edit auto-approves edits, like Claude's acceptEdits; commands still ask.
       if (!isCommand && t.input.permissionMode === "auto-edit") return { decision: "accept" };
       const decision = await t.input.requestPermission({
