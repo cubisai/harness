@@ -1,4 +1,40 @@
-# Handoff: Teams + UI blocks parity (TGP) done and live-tested on every engine (2026-10-17) — see "Resume here — session 6"; next: 6 open TGP items, push + CI, Windows run
+# Handoff: TGP closed (2026-10-17) — all 6 open items done, live on OpenCode, Codex and Claude, m4 pushed — see "Resume here — session 7"; next: Windows PC run
+
+## Resume here — session 7: TGP closed (2026-10-17, Mac)
+
+Commits on `m4`, pushed (`edd8887`); CI run 39005818223 green on windows-latest + ubuntu-latest.
+- `a85a8e2`, the 6 open TGP items:
+  1. **Member skill files.** Native members already read them: reads are never path-guarded, member child loops auto-authorize, and the member prompt lists absolute SKILL.md paths. Pinned in `harness-tools-rw` / `harness-loop` tests. OpenCode reads them through `withOpenCodeReadDirs`.
+  2. **Strip progress.** `doneMembers` + `stripStatus` in `TeamStrip.tsx`: "1 working · 2 of 3 done", "Lead working · 3 of 3 done". The count resets at each user message.
+  3. **Member click → latest result.** `team_write` records `{from, at}` in `index.json` beside the files. The `team:member-file` IPC calls `latestFileBy` and copies the file into the version store as `cubiq:team/<name>.md` (a pseudo artifact, `shared/artifact-kind.ts`). The strip's members are buttons that open it in the File panel; a member with no result opens nothing.
+  4. **Portrait tints.** Tokens `--portrait-1..6` (light + both dark blocks). The line-art's white ground multiplies into the tint (`.team-strip-tint`). Strip only; the Library team sheet is untouched.
+  5. **Calculator with a broken formula.** `CalculatorSpec.problem` ("unknown P, r, n", "the formula doesn't parse", "no formula"): the inputs render with a "Couldn't compute: …" line. Valid calculators are unchanged.
+  6. **Engine text-shape tests** (`test/engine-text-shapes.test.tsx`): Claude blocks, Codex deltas, ACP split fences, CRLF. They found a real bug: a streaming reply ending exactly at its closing fence stayed "Building…". Fixed in `splitStreamingTail`.
+- `edd8887`:
+  - **Codex members' skill reads no longer ask.** Codex reads with the shell, so in Ask mode each `cat SKILL.md` showed an approval card (user: "it ask for approve"). `agents/skill-read.ts` `isSkillRead` auto-accepts one plain read (cat/head/tail/sed -n/ls/wc, PowerShell Get-Content/type) of an absolute path inside `expertRoot`: no shell syntax, one operand. Verified live: Owen's read ran with no card.
+  - File cards for team results say "Team result", not "cubiq:team/".
+
+**Checks at `edd8887`:** typecheck green, **2552 passed**, `design:check` 0 errors (48 baseline warnings).
+**Live (dev app, dark):**
+- OpenCode Zen DeepSeek V4.1 Flash Free: progress line, tints, Dana click → `dana-yaml-facts.md`, members opened their own SKILL.md, watchdog notice at 3 min.
+- Codex GPT-6-Luna: members labelled, all three SKILL.md opened, Victor click → `cross-verifier-toml-check.md`.
+- Claude Sonnet 5.5: 3 of 3 done, ui:calculator rendered.
+**Worker:** 1 implementer on Zen DeepSeek free wrote item 6's tests in a worktree. Claude fixed its ACP-split case (a missing newline) and the streaming bug it surfaced. Claude did items 1–5 directly (each 1–4 files).
+
+**Windows PC run, still to do:**
+- team-runs / `index.json` paths
+- `isSkillRead` with a real Codex-on-Windows command shape (the PowerShell wrapper regex is a guess; check the approval card's text)
+- Deep Research skills paths
+- the watchdog
+- the tints in both themes
+
+**Found, not fixed:**
+- **OpenCode sub-agent permission asks hang the turn.** Seen when a member `glob`s from the home folder: `external_directory /Users/phumrin/*`, in OpenCode's log as `permission=external_directory ... action=ask`. The app shows "OpenCode is waiting for a permission it can't ask here" and the watchdog fires, but the only way out is Stop. It came from my prompt telling the lead to make members "find" their skill. With the path given ("in your skills list, no searching") it never recurs. Option: answer such child asks with reject so the member gets an error and goes on.
+- The OpenCode lead can't see members' skill paths (they're only in member prompts), so it may search for them itself.
+- The Library team sheet still says "Members work as subagents on Claude and OpenCode; other agents run the team as one agent". Codex has member roles now.
+- Driving the Library left a few empty "New thread" rows in posara_web.
+- Carried over: the model picker keeps its search text across opens; experts load once per renderer; the ~1% context ring looks like a spinner.
+
 
 ## Resume here — session 6: teams like WorkBuddy + UI blocks on every engine (2026-10-17, Mac)
 
