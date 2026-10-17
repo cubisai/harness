@@ -3,12 +3,13 @@
 // The agent is any AgentDriver, so the same task runs on every agent.
 
 import { randomUUID } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import type { AgentDriver, TurnInput } from "../../src/main/agents/types";
 import { runCheck } from "../../src/main/check";
 import { canonicalTool, clipSummary } from "../../src/shared/tools";
+import { rootTurnEnd, spansOf, timeSplit, type TimedEvent } from "../../src/shared/run-trace";
 import type { ThreadEvent } from "../../src/shared/types";
 import { generate } from "../../scripts/mock-extensions-lib.mjs";
 import { grade, score } from "./graders";
@@ -31,6 +32,8 @@ export interface TrialOptions {
   keep?: boolean;
   /** Injected in tests; defaults to runCheck. */
   runCommand?: GradeInput["runCommand"];
+  /** Write a full trace per trial here (redacted); its path relative to `traceRoot` goes on the result. */
+  trace?: { dir: string; root: string; fidelity: string; redact(text: string): string; sessionFile?(sessionId: string): string | null };
 }
 
 const TEXT_MAX = 2000;
@@ -95,6 +98,8 @@ export async function runTrial(o: TrialOptions): Promise<TrialResult> {
   const sentinels = writeSkillKit(task, dir, o.skillDirs ?? [".agents/skills"]);
 
   const events: ThreadEvent[] = [];
+  const timed: TimedEvent[] = [];
+  let sessionId: string | null = null;
   const controller = new AbortController();
   let overBudget = false;
   let toolCalls = 0;
@@ -119,6 +124,7 @@ export async function runTrial(o: TrialOptions): Promise<TrialResult> {
     signal: controller.signal,
     onEvent: (e) => {
       events.push(e);
+      timed.push({ t: Date.now() - started, event: e });
       if (e.kind === "tool-use" && ++toolCalls > task.budget.maxSteps) stop();
     },
     onTextDelta: () => {},
@@ -126,7 +132,9 @@ export async function runTrial(o: TrialOptions): Promise<TrialResult> {
       liveInput = (u.inputTokens ?? 0) + (u.cacheReadTokens ?? 0);
       if (liveInput > task.budget.maxInputTokens) stop();
     },
-    onSession: () => {},
+    onSession: (id) => {
+      sessionId = id;
+    },
     requestPermission: async () => (task.permissions === "deny" ? "deny" : "allow-once"),
     requestPlanDecision: async (p) => {
       // Every agent's proposal reaches the graders the same way, whatever its plan tool is called.
@@ -162,7 +170,7 @@ export async function runTrial(o: TrialOptions): Promise<TrialResult> {
   const graders = await grade({ task, events: compacted, dir, fixtureDir, overBudget, sentinels, runCommand: o.runCommand ?? defaultRunCommand });
   const graded = score(graders);
 
-  const end = events.findLast((e) => e.kind === "turn-end") as Extract<ThreadEvent, { kind: "turn-end" }> | undefined;
+  const end = rootTurnEnd(events);
   const inputTokens = end?.inputTokens ?? liveInput;
   const outputTokens = end?.outputTokens ?? 0;
   const cacheReadTokens = end?.usage?.cacheReadTokens ?? 0;
@@ -174,9 +182,13 @@ export async function runTrial(o: TrialOptions): Promise<TrialResult> {
   const harnessError = thrown ?? errorText?.message.slice(0, 300) ?? null;
   const status = trialStatus({ harnessError, graders: graders.length, pass: graded.pass, overBudget });
 
+  const trialId = randomUUID();
+  const spans = spansOf(timed);
+  const trace = o.trace ? writeTrace(o.trace, { trialId, task, status, durationMs, timed, spans, sessionId }) : undefined;
+
   if (!o.keep) rmSync(root, { recursive: true, force: true });
   return {
-    trialId: randomUUID(),
+    trialId,
     status,
     pass: status === "passed",
     score: graded.score,
@@ -192,8 +204,36 @@ export async function runTrial(o: TrialOptions): Promise<TrialResult> {
     costUsd,
     usageCoverage,
     costCoverage,
+    toolMs: timeSplit(spans, durationMs).toolMs,
+    ...(trace ? { trace } : {}),
     events: compacted,
   };
+}
+
+/** One trial's full trace: timed events, spans and, when the engine keeps one, the model-visible session. */
+function writeTrace(
+  o: NonNullable<TrialOptions["trace"]>,
+  t: { trialId: string; task: Task; status: string; durationMs: number; timed: TimedEvent[]; spans: ReturnType<typeof spansOf>; sessionId: string | null },
+): string {
+  let session: unknown[] | undefined;
+  const file = t.sessionId ? o.sessionFile?.(t.sessionId) : null;
+  if (file && existsSync(file)) {
+    session = readFileSync(file, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .flatMap((line) => {
+        try {
+          return [JSON.parse(line) as unknown];
+        } catch {
+          return [];
+        }
+      });
+  }
+  mkdirSync(o.dir, { recursive: true });
+  const path = join(o.dir, `${t.task.id}-${t.trialId.slice(0, 8)}.json`);
+  const body = { trialId: t.trialId, task: { id: t.task.id, prompt: t.task.prompt, mode: t.task.mode }, status: t.status, durationMs: t.durationMs, fidelity: o.fidelity, spans: t.spans, events: t.timed, ...(session ? { session } : {}) };
+  writeFileSync(path, o.redact(JSON.stringify(body, null, 1)));
+  return relative(o.root, path).split(sep).join("/");
 }
 
 /** Runs `trials` trials of a task (stopping early on a harness error) and folds them into a TaskResult. */

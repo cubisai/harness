@@ -8,13 +8,14 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AGENTS, setupAgent, type AgentId } from "./lib/agents";
 import { incomplete } from "./lib/accounting";
 import { runTask } from "./lib/runner";
-import { assembleTask, cacheKey, compareBaseline, diffRuns, findCachedTrials, listRuns, previousRun, readBaseline, saveBaseline, saveRun, summarize, trend } from "./lib/store";
+import { RUN_MANIFEST_VERSION, type RunManifest } from "../src/shared/run-trace";
+import { assembleTask, cacheKey, EVAL_RUNTIME_VERSION, redact, runFileName, compareBaseline, diffRuns, findCachedTrials, listRuns, previousRun, readBaseline, saveBaseline, saveRun, summarize, trend } from "./lib/store";
 import type { RunResult, Task, TaskResult, Tier } from "./lib/types";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -22,6 +23,23 @@ const TASKS = join(ROOT, "evals", "tasks");
 const FIXTURES = join(ROOT, "evals", "fixtures");
 const RESULTS = join(ROOT, ".ai", "evals");
 const BASELINE = join(ROOT, "evals", "baseline.json");
+const TRACES = join(RESULTS, "traces");
+/** Trace folders kept (newest runs); older ones are deleted at the start of a run. */
+const TRACE_RUNS_KEPT = 20;
+
+function pruneTraces(): void {
+  if (!existsSync(TRACES)) return;
+  const dirs = readdirSync(TRACES)
+    .map((name) => ({ name, at: statSync(join(TRACES, name)).mtimeMs }))
+    .sort((a, b) => b.at - a.at);
+  for (const d of dirs.slice(TRACE_RUNS_KEPT - 1)) rmSync(join(TRACES, d.name), { recursive: true, force: true });
+}
+
+const fileHash = (...rel: string[]): string =>
+  createHash("sha256")
+    .update(rel.map((r) => (existsSync(join(ROOT, r)) ? readFileSync(join(ROOT, r), "utf8") : "")).join("\0"))
+    .digest("hex")
+    .slice(0, 16);
 
 function flags(argv: string[]): Map<string, string> {
   const out = new Map<string, string>();
@@ -74,10 +92,7 @@ async function main(): Promise<number> {
   const trials = Number(f.get("trials") ?? 1);
   const effort = f.get("effort") ?? "low";
   // The grading and trial code: a change there makes cached trials incomparable.
-  const graderVersion = createHash("sha256")
-    .update(["graders.ts", "runner.ts"].map((f) => readFileSync(join(ROOT, "evals", "lib", f), "utf8")).join("\0"))
-    .digest("hex")
-    .slice(0, 16);
+  const graderVersion = fileHash("evals/lib/graders.ts", "evals/lib/runner.ts");
   const maxTokens = Number(f.get("max-tokens") ?? Infinity);
   const maxUsd = Number(f.get("max-usd") ?? Infinity);
   const priceArg = f.get("price")?.split(",").map(Number);
@@ -101,6 +116,32 @@ async function main(): Promise<number> {
   const hash = harnessHash(setup.hashPaths, setup.version);
   const startedAt = new Date().toISOString();
   const results: TaskResult[] = [];
+  const manifest: RunManifest = {
+    version: RUN_MANIFEST_VERSION,
+    runId: runFileName({ tier, model, startedAt } as RunResult["meta"]).replace(/\.json$/, ""),
+    origin: "eval",
+    agent,
+    requestedModel: f.get("model") ?? "default",
+    model: setup.model,
+    protocol,
+    effort,
+    versions: {
+      harness: hash,
+      graders: graderVersion,
+      runtime: EVAL_RUNTIME_VERSION,
+      guide: fileHash("resources/CUBIQ.md"),
+      tasks: createHash("sha256").update(tasks.map((t) => JSON.stringify(t)).join("\n")).digest("hex").slice(0, 16),
+      app: JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version as string,
+      ...(setup.version ? { cli: setup.version } : {}),
+    },
+    price: price ? { ...price, source: "--price" } : null,
+    budget: { maxTokens: Number.isFinite(maxTokens) ? maxTokens : null, maxUsd: Number.isFinite(maxUsd) ? maxUsd : null, trials },
+    fidelity: setup.fidelity,
+    platform: `${process.platform}-${process.arch}`,
+    startedAt,
+  };
+  pruneTraces();
+  const trace = { dir: join(TRACES, manifest.runId), root: RESULTS, fidelity: setup.fidelity, redact: (text: string) => redact(text), sessionFile: setup.sessionFile };
   let spentTokens = 0;
   let spentUsd = 0;
   try {
@@ -115,7 +156,7 @@ async function main(): Promise<number> {
       const reused = f.has("force") ? [] : findCachedTrials(RESULTS, ck).slice(0, want);
       const fresh =
         reused.length < want
-          ? (await runTask({ task, fixturesRoot: FIXTURES, driver, model: setup.model, effort, skillDirs, price, keep: f.has("keep"), trials: want - reused.length, cacheKey: ck })).trials
+          ? (await runTask({ task, fixturesRoot: FIXTURES, driver, model: setup.model, effort, skillDirs, price, keep: f.has("keep"), trials: want - reused.length, cacheKey: ck, trace })).trials
           : [];
       const r = assembleTask(task, ck, want, reused, fresh);
       results.push(r);
@@ -133,7 +174,7 @@ async function main(): Promise<number> {
     rmSync(scratch, { recursive: true, force: true });
   }
 
-  const run: RunResult = { meta: { tier, agent, model, protocol, harnessHash: hash, effort, startedAt, durationMs: Date.now() - Date.parse(startedAt) }, tasks: results };
+  const run: RunResult = { meta: { tier, agent, model, protocol, harnessHash: hash, effort, manifest, startedAt, durationMs: Date.now() - Date.parse(startedAt) }, tasks: results };
   const path = saveRun(RESULTS, run);
   console.log(`\n${summarize(run)}`);
   const diff = diffRuns(previousRun(RESULTS, tier, model, startedAt), run);

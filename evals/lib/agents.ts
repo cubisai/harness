@@ -39,6 +39,10 @@ export interface AgentSetup {
   hashPaths: string[];
   /** The agent's CLI version, part of the cache key. */
   version: string;
+  /** What a trace shows for this engine (manifest + trace files). */
+  fidelity: string;
+  /** The model-visible session log for a session id, when the engine keeps one CubiQ can read. */
+  sessionFile?(sessionId: string): string | null;
   dispose(): void;
 }
 
@@ -92,13 +96,15 @@ export function setupAgent(agent: AgentId, o: { root: string; scratch: string; p
       skillDirs: [".agents/skills"],
       hashPaths: ["src/main/harness", "src/main/skills", ...shared],
       version: "",
+      fidelity: "full: thread events plus the model-visible session messages (tool calls and results); system prompt and tool schemas not stored",
+      sessionFile: (id) => join(o.scratch, "sessions", `${id}.jsonl`),
       dispose: () => {},
     };
   }
 
   const drivers: AgentDriver[] = [];
   const keep = (d: AgentDriver) => (drivers.push(d), d);
-  const base = { model: o.model ?? "", protocol: agent, version: "", dispose: () => drivers.forEach((d) => d.dispose?.()) };
+  const base = { model: o.model ?? "", protocol: agent, version: "", fidelity: `thread events only: ${agent}'s own prompt, tool schemas and internal loop are not visible to CubiQ`, dispose: () => drivers.forEach((d) => d.dispose?.()) };
 
   if (agent === "claude") {
     // Haiku keeps subscription use low; Claude Code reads .claude/skills itself.

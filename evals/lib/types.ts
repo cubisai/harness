@@ -94,7 +94,8 @@ export interface GraderResult {
 export type TrialStatus = "passed" | "failed" | "harness-error" | "budget-stop" | "cancelled" | "ungraded";
 
 /** Where a usage or cost number came from; missing is "unavailable", never zero. */
-export type Coverage = "reported" | "estimated" | "unavailable";
+export type { UsageCoverage as Coverage } from "../../src/shared/run-trace";
+import type { RunManifest, UsageCoverage as Coverage } from "../../src/shared/run-trace";
 
 export interface TrialResult {
   /** Stable id, so a trial reused from the cache is never counted twice. Missing on old run files. */
@@ -120,6 +121,10 @@ export interface TrialResult {
   /** Source of the token counts / of costUsd. Missing on old run files. */
   usageCoverage?: Coverage;
   costCoverage?: Coverage;
+  /** Wall time inside tool calls (overlaps counted once); the rest is model + overhead. */
+  toolMs?: number;
+  /** Full trace file, relative to the results folder. */
+  trace?: string;
   events: CompactEvent[];
 }
 
@@ -146,6 +151,8 @@ export interface RunMeta {
   harnessHash: string;
   /** Reasoning effort the turns ran at; part of the cache identity. */
   effort?: string;
+  /** Everything the result depends on, versioned. Missing on old run files. */
+  manifest?: RunManifest;
   startedAt: string;
   durationMs: number;
 }

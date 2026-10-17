@@ -13,8 +13,8 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 | --- | --- | --- |
 | P1.1 Trial-level cache + experiment identity | done | see git log |
 | P1.2 Trial statuses, usage/cost coverage, cost per success, incomplete runs fail | done | see git log |
-| P1.3 Run manifest + traces | next | |
-| P1.4 Local report | | |
+| P1.3 Run manifest + traces | done | see git log |
+| P1.4 Local report | next | |
 | P1.5 Grader validation | | |
 | P1.6 Multi-turn scenarios | | |
 | P1.7 Case set expansion | | |
@@ -45,3 +45,17 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 - Summary footer adds `measured … · spent now … · cost/success …`.
 - Old run files still load: the new fields are optional and `statusOf` derives a status for them.
 - Checks: typecheck green; vitest 2549 passed / 14 skipped.
+
+### P1.3 — run manifest + traces (2026-10-17)
+- New `src/shared/run-trace.ts` (pure, shared by evals and later the app):
+  - `RunManifest` v1: origin, requested vs resolved model, effort, versions (harness, graders, runtime, guide, tasks, app, cli), price snapshot, budget, fidelity, platform.
+  - `spansOf(timed events)`: tool, child, compaction and check spans.
+  - `timeSplit`: tool time with overlaps counted once.
+  - `rootTurnEnd`: ignores a member's turn-end.
+- `evals/lib/runner.ts` timestamps every event and writes a redacted trace per trial to `.ai/evals/traces/<runId>/<task>-<id>.json`:
+  - spans and timed events, plus the native session's model-visible messages
+  - the trace path and `toolMs` go on the trial
+  - usage now comes from the root turn-end, so a member's turn-end can't stand in for the parent
+- `evals/lib/agents.ts`: each engine declares its trace `fidelity`. Native also exposes its session file.
+- `evals/run.ts` stores `meta.manifest` and keeps trace folders for the newest 20 runs.
+- Checks: typecheck green; vitest 2553 passed.

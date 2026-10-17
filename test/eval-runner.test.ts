@@ -2,7 +2,7 @@
 // native tools and real grader commands.
 
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BUILT_IN_GUARD } from "../src/main/guard";
@@ -173,6 +173,24 @@ describe("eval runner (scripted model)", () => {
     const r = await runTrial({ task: t, fixturesRoot: FIXTURES, driver: scripted([[text("ok")]]).driver, model: "m" });
     expect(r).toMatchObject({ status: "ungraded", pass: false, usageCoverage: "reported" });
   });
+
+  it("writes a redacted trace with timed events and spans", async () => {
+    const dir = tempDir();
+    const r = await runTrial({
+      task: task("fix-off-by-one"),
+      fixturesRoot: FIXTURES,
+      driver: scripted(FIX).driver,
+      model: "m",
+      trace: { dir: join(dir, "traces", "run1"), root: dir, fidelity: "test", redact: (t) => t.replaceAll("range.js", "***") },
+    });
+    expect(r.trace).toMatch(/^traces\/run1\/fix-off-by-one-[0-9a-f]{8}\.json$/);
+    const body = JSON.parse(readFileSync(join(dir, r.trace!), "utf8"));
+    expect(body).toMatchObject({ trialId: r.trialId, status: "passed", fidelity: "test" });
+    expect(body.spans.map((s: { name: string }) => s.name)).toEqual(["Read", "Edit"]);
+    expect(body.events[0]).toHaveProperty("t");
+    expect(JSON.stringify(body)).not.toContain("range.js");
+    expect(r.toolMs).toBeGreaterThanOrEqual(0);
+  }, 60_000);
 
   it("labels a price-derived cost as estimated", async () => {
     const r = await runTrial({ task: task("explain-no-edit"), fixturesRoot: FIXTURES, driver: scripted([[text("It adds.")]]).driver, model: "m", price: { input: 1, output: 2 } });
