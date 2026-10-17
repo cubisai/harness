@@ -23,11 +23,11 @@ Next point: **P1.6, multi-turn scenarios**. Nothing has been written for it yet.
 
 | Point | State | Commit |
 | --- | --- | --- |
-| P1.1 Trial-level cache + experiment identity | done | see git log |
-| P1.2 Trial statuses, usage/cost coverage, cost per success, incomplete runs fail | done | see git log |
-| P1.3 Run manifest + traces | done | see git log |
-| P1.4 Local report | done | see git log |
-| P1.5 Grader validation | done | see git log (+ fix `f2dff88`) |
+| P1.1 Trial-level cache + experiment identity | done | `470aa04` |
+| P1.2 Trial statuses, usage/cost coverage, cost per success, incomplete runs fail | done | `470aa04` |
+| P1.3 Run manifest + traces | done | `740df2e` |
+| P1.4 Local report | done | `c1ab7fd` |
+| P1.5 Grader validation | done | `8d07bde` + fix `f2dff88` |
 | P1.6 Multi-turn scenarios | next | |
 | P1.7 Case set expansion | | |
 | P1.8 Desktop baseline fixtures | | |
