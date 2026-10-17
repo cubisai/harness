@@ -16,7 +16,7 @@ export function calculatorMarkdown(spec: CalculatorSpec, values: Record<string, 
     const shown = raw === undefined || !Number.isFinite(raw) ? "—" : String(raw);
     return `- ${input.label}: ${shown}${input.unit ? ` ${input.unit}` : ""}`;
   });
-  lines.push(`**Result: ${formatResult(evaluateFormula(spec.formula, values), spec.unit)}**`);
+  lines.push(spec.problem ? `Couldn't compute: ${spec.problem}` : `**Result: ${formatResult(evaluateFormula(spec.formula, values), spec.unit)}**`);
   return spec.title ? `**${spec.title}**\n\n${lines.join("\n")}` : lines.join("\n");
 }
 
@@ -26,7 +26,7 @@ export function Calculator({ spec }: { spec: CalculatorSpec }) {
   const [values, setValues] = useState<Record<string, number>>(() =>
     Object.fromEntries(spec.inputs.map((i): [string, number] => [i.id, i.value])),
   );
-  const result = evaluateFormula(spec.formula, values);
+  const result = spec.problem ? null : evaluateFormula(spec.formula, values);
   return (
     <>
       {spec.title ? <div className="ui-title">{spec.title}</div> : null}
@@ -48,7 +48,13 @@ export function Calculator({ spec }: { spec: CalculatorSpec }) {
           </label>
         );
       })}
-      <div className="ui-result">{formatResult(result, spec.unit)}</div>
+      {spec.problem ? (
+        <div className="ui-note" role="status">
+          Couldn't compute: {spec.problem}
+        </div>
+      ) : (
+        <div className="ui-result">{formatResult(result, spec.unit)}</div>
+      )}
       {spec.note ? <div className="ui-note">{spec.note}</div> : null}
       <UiActions markdown={calculatorMarkdown(spec, values)} />
     </>

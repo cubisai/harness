@@ -111,6 +111,41 @@ function ensureDir(dir: string): void {
   mkdirSync(dir, { recursive: true });
 }
 
+/** Who wrote each result file and when, kept beside the files (`team_write` names are free-form). */
+type FileIndex = Record<string, { from: string; at: string }>;
+
+function readIndex(dir: string): FileIndex {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(join(dir, "index.json"), "utf8"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as FileIndex) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The name of the newest result file `from` wrote in the workspace, or null:
+ * the one with the latest `team_write` that still exists on disk.
+ */
+export function latestFileBy(dir: string, from: string): string | null {
+  let best: { name: string; at: string } | null = null;
+  for (const [name, entry] of Object.entries(readIndex(dir))) {
+    if (entry?.from !== from || typeof entry.at !== "string" || !NAME_RE.test(name) || !existsSync(filePath(dir, name))) continue;
+    if (!best || entry.at >= best.at) best = { name, at: entry.at };
+  }
+  return best?.name ?? null;
+}
+
+/** A result file's text, or null when it's missing or the name isn't a workspace name. */
+export function readTeamFile(dir: string, name: string): string | null {
+  if (!NAME_RE.test(name)) return null;
+  try {
+    return readFileSync(filePath(dir, name), "utf8");
+  } catch {
+    return null;
+  }
+}
+
 /** Every well-formed note in notes.jsonl; a missing file or corrupt line is skipped. */
 function readNotes(dir: string): TeamNote[] {
   const path = join(dir, "notes.jsonl");
@@ -185,6 +220,9 @@ export function teamTools(opts: TeamToolsOptions): HarnessTool[] {
         if (args.content.length > WRITE_MAX) return fail(`Too long: ${args.content.length} chars; keep a result under ${WRITE_MAX} (split it).`);
         ensureDir(dir);
         writeFileSync(filePath(dir, args.name), args.content, "utf8");
+        const index = readIndex(dir);
+        index[args.name] = { from: args.from, at: now().toISOString() };
+        writeFileSync(join(dir, "index.json"), `${JSON.stringify(index)}\n`, "utf8");
         return { text: `Saved ${args.name} (${args.content.length} chars) at ${filePath(dir, args.name)}.` };
       },
     }),

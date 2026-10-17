@@ -6,20 +6,22 @@ import {
   TEAM_POST_TOOL,
   TEAM_READ_TOOL,
   TEAM_WRITE_TOOL,
+  latestFileBy,
+  readTeamFile,
   teamTools,
   type TeamNote,
 } from "../src/main/experts/team";
 import { tempDir } from "./helpers";
 
-/** A fresh workspace with the four tools, a note log, and a fixed clock. */
-function setup(opts: { members?: string[] } = {}) {
+/** A fresh workspace with the four tools, a note log, and a fixed clock (or a ticking one). */
+function setup(opts: { members?: string[]; now?: () => Date } = {}) {
   const dir = tempDir();
   const notes: TeamNote[] = [];
   const tools = teamTools({
     dir,
     members: opts.members ?? ["researcher-1", "researcher-2"],
     onNote: (n) => notes.push(n),
-    now: () => new Date(0),
+    now: opts.now ?? (() => new Date(0)),
   });
   const run = (name: string, args: Record<string, unknown>) => {
     const tool = tools.find((t) => t.name === name);
@@ -186,5 +188,24 @@ describe("expert team tools", () => {
     expect(board.text).toContain("Unread notes (1):");
     expect(board.text).toContain("- lead → all: valid note");
     expect(JSON.parse(readFileSync(join(dir, "cursors.json"), "utf8"))).toMatchObject({ "researcher-2": 1 });
+  });
+
+  it("records who wrote each file and finds a member's newest one", async () => {
+    let t = 0;
+    const { dir, run } = setup({ now: () => new Date(++t * 1000) });
+    expect(latestFileBy(dir, "researcher-1")).toBeNull();
+    await run(TEAM_WRITE_TOOL, { from: "researcher-1", name: "dana-facts-a", content: "a" });
+    await run(TEAM_WRITE_TOOL, { from: "researcher-2", name: "other", content: "b" });
+    await run(TEAM_WRITE_TOOL, { from: "researcher-1", name: "dana-facts-b", content: "c" });
+    expect(latestFileBy(dir, "researcher-1")).toBe("dana-facts-b");
+    expect(latestFileBy(dir, "researcher-2")).toBe("other");
+    // Rewriting an older file makes it the newest.
+    await run(TEAM_WRITE_TOOL, { from: "researcher-1", name: "dana-facts-a", content: "a2" });
+    expect(latestFileBy(dir, "researcher-1")).toBe("dana-facts-a");
+    expect(readTeamFile(dir, "dana-facts-a")).toBe("a2");
+    expect(readTeamFile(dir, "../index")).toBeNull();
+    // A corrupt index finds nothing instead of throwing.
+    writeFileSync(join(dir, "index.json"), "{not json");
+    expect(latestFileBy(dir, "researcher-1")).toBeNull();
   });
 });

@@ -21,6 +21,7 @@ import {
 } from "../src/main/artifacts";
 import type { PreviewResult } from "../src/main/preview/host";
 import type { ArtifactKind, ArtifactVersion, StoredEvent, ThreadEvent } from "../src/shared/types";
+import { isPseudoArtifact, pseudoArtifactLabel, teamArtifact } from "../src/shared/artifact-kind";
 import { tempDir } from "./helpers";
 
 let seq = 0;
@@ -460,5 +461,19 @@ describe("critique artifact", () => {
     expect(diff).not.toContain(CRITIQUE_ARTIFACT);
     // The plan's own record is untouched.
     expect(await readArtifact(deps, { threadId: "t", root, path: PLAN_ARTIFACT })).toEqual({ ok: false, error: "No plan yet" });
+  });
+});
+
+describe("team result artifacts", () => {
+  it("are store-only files under cubiq:team/, labelled by their file name", async () => {
+    const root = tempDir();
+    const { deps } = fakeDeps();
+    const path = teamArtifact("dana-facts-a");
+    expect(path).toBe("cubiq:team/dana-facts-a.md");
+    expect(isPseudoArtifact(path)).toBe(true);
+    expect(pseudoArtifactLabel(path)).toBe("dana-facts-a.md");
+    expect(isPseudoArtifact("team/dana-facts-a.md")).toBe(false);
+    expect(recordPseudo(deps, path, { threadId: "t", text: "# Facts\n", turnSeq: 1 })?.version).toBe(1);
+    expect(await readArtifact(deps, { threadId: "t", root, path })).toMatchObject({ ok: true, kind: "md", text: "# Facts\n", path });
   });
 });

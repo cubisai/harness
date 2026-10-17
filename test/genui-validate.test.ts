@@ -78,8 +78,11 @@ describe("validateUi", () => {
     expect(compare({ headers: ["A", "B"], rows: [["1", "2"]], best: "nope" }).best).toBeUndefined();
   });
 
-  it("rejects a calculator whose formula references an unknown input", () => {
-    expect(validateUi("calculator", JSON.stringify({ inputs: [{ id: "a", label: "A", value: 1 }], formula: "a+b" }))).toBeNull();
+  it("keeps a calculator whose formula can't run, with the reason in place of a result", () => {
+    expect(calculator({ inputs: [{ id: "a", label: "A", value: 1 }], formula: "a+b" }).problem).toBe("unknown b");
+    expect(calculator({ inputs: [{ id: "a", label: "A", value: 1 }], formula: "a+(" }).problem).toBe("the formula doesn't parse");
+    expect(calculator({ inputs: [{ id: "a", label: "A", value: 1 }] }).problem).toBe("no formula");
+    expect(calculator({ inputs: [{ id: "a", label: "A", value: 2 }], formula: "a*3" }).problem).toBeUndefined();
   });
 
   it("accepts a valid chart, including a zero value", () => {

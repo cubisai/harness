@@ -29,6 +29,12 @@ describe("splitStreamingTail with a ui fence", () => {
     expect(tail).toBe("```ui:chart\nQ1|12");
   });
 
+  it("freezes a ui fence whose closing marker is the text's last line", () => {
+    expect(splitStreamingTail("Hi\n\n```ui:chart\nA|1\n```")).toEqual({ frozen: "Hi\n\n```ui:chart\nA|1\n```", tail: "" });
+    // A partial closing marker is still being written.
+    expect(splitStreamingTail("```ui:chart\nA|1\n``").tail).toBe("```ui:chart\nA|1\n``");
+  });
+
   it("leaves a plain code fence after prose in the tail with its paragraph", () => {
     const { frozen, tail } = splitStreamingTail("Run:\n```sh\nls");
     expect(frozen).toBe("");

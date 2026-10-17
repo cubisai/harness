@@ -72,6 +72,21 @@ describe("activeMembers", () => {
   });
 });
 
+describe("doneMembers", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const user: ThreadEvent = { kind: "user", text: "next" };
+
+  it("counts members whose handoff finished since the last user message", async () => {
+    const { doneMembers } = await load();
+    const ids = ["analyst", "writer"];
+    expect([...doneMembers([toolUse("t1", "analyst"), toolResult("t1"), toolUse("t2", "writer")], ids)]).toEqual(["analyst"]);
+    // A new user message starts a new turn's count.
+    expect([...doneMembers([toolUse("t1", "analyst"), toolResult("t1"), turnEnd, user], ids)]).toEqual([]);
+    // Other tool results don't count.
+    expect([...doneMembers([toolResult("x")], ids)]).toEqual([]);
+  });
+});
+
 describe("TeamStripView", () => {
   afterEach(() => vi.unstubAllGlobals());
 
@@ -107,7 +122,12 @@ describe("TeamStripView", () => {
     const member = strip(renderToStaticMarkup(<TeamStripView def={team} active={new Set(["writer"])} running />));
     expect(member).toContain('class="team-strip-lead"');
     expect(member).toContain("1 working");
-    // Idle: nobody lit.
+    // Progress once a member finished; finished-and-rebriefed counts as working.
+    expect(strip(renderToStaticMarkup(<TeamStripView def={team} active={new Set(["writer"])} done={new Set(["analyst"])} running />))).toContain("1 working · 1 of 2 done");
+    expect(strip(renderToStaticMarkup(<TeamStripView def={team} active={new Set<string>()} done={new Set(["analyst", "writer"])} running />))).toContain("Lead working · 2 of 2 done");
+    expect(strip(renderToStaticMarkup(<TeamStripView def={team} active={new Set(["analyst"])} done={new Set(["analyst"])} running />))).toContain(">1 working<");
+    // Idle: nobody lit, no progress.
+    expect(strip(renderToStaticMarkup(<TeamStripView def={team} active={new Set<string>()} done={new Set(["analyst"])} />))).toContain("2 members");
     const idle = strip(renderToStaticMarkup(<TeamStripView def={team} active={new Set<string>()} />));
     expect(idle).not.toContain("team-strip-lead active");
     expect(idle).not.toContain('class="beam"');

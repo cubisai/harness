@@ -36,7 +36,7 @@ import type {
 } from "../shared/types";
 import { bindingKey } from "../shared/bindings";
 import { bindExpertSkills, expertBlock, teamAgents, type ExpertDef, type ExpertSkill, type TeamAgent } from "../shared/experts";
-import { CRITIQUE_ARTIFACT } from "../shared/artifact-kind";
+import { CRITIQUE_ARTIFACT, teamArtifact } from "../shared/artifact-kind";
 import type { TweakValues } from "../shared/tweaks";
 import { tierFeatures, tierNote, tierOf, type PrototypeTier } from "../shared/tiers";
 import type { CommentTarget, DesignComment } from "../shared/comments";
@@ -1398,6 +1398,18 @@ export class Service {
       // A failed copy leaves the last system in place; never fail the turn over it.
       return "";
     }
+  }
+
+  /**
+   * Copy a team result file into the version store as `cubiq:team/<name>.md`
+   * (unchanged text adds no version) and return that path, or null when
+   * artifacts are off or the file is empty.
+   */
+  saveTeamFile(threadId: string, name: string, text: string): string | null {
+    if (!this.artifacts) return null;
+    const path = teamArtifact(name);
+    recordPseudo(this.artifacts, path, { threadId, text, turnSeq: this.store.lastSeq(threadId) });
+    return this.artifacts.listVersions(threadId).some((v) => v.path === path) ? path : null;
   }
 
   /**
