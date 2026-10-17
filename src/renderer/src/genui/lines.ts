@@ -48,27 +48,42 @@ function chartPoint(row: string): { label: string; value: number } {
   return { label: cells[0] ?? "", value: toNumber(cells[1] ?? "") };
 }
 
-/** One compare row list: the first row is headers, and the first later row starting with `*` is the highlight. */
+/**
+ * One compare row list: the first row is headers; a `*` on a label highlights
+ * that row (first one only), and a `*` on a value cell marks it as a best cell.
+ */
 function compareRecord(meta: Record<string, string>, rows: string[]): Record<string, unknown> {
   const headers = splitCells(rows[0] ?? "");
   const body: string[][] = [];
+  const best: [number, number][] = [];
   let highlight: number | undefined;
   for (const row of rows.slice(1)) {
     const cells = splitCells(row);
-    const first = cells[0];
-    // The best row: `*` before it, or (as agents also write) ` *` after any of its cells.
-    const marked = cells.findIndex((c) => /\s\*$/.test(c));
-    if (highlight === undefined && first !== undefined && first.startsWith("*") && !first.startsWith("**")) {
-      cells[0] = first.replace(/^\*\s*/, "");
-      highlight = body.length;
-    } else if (highlight === undefined && marked >= 0) {
-      cells[marked] = cells[marked]!.replace(/\s+\*$/, "");
-      highlight = body.length;
+    for (let col = 0; col < cells.length; col++) {
+      const cell = cells[col] ?? "";
+      // Bold markdown (`**…**`) is left exactly as written.
+      if (cell.startsWith("**") || cell.endsWith("**")) continue;
+      // So is italic markdown (`*…*`).
+      if (/^\*[^*\s][^*]*\*$/.test(cell)) continue;
+      const leading = cell.startsWith("*");
+      const trailing = /\s*\*$/.test(cell);
+      if (col === 0) {
+        // A star on the row label marks the whole row; only the first such row is highlighted and stripped.
+        if (highlight === undefined && (leading || trailing)) {
+          cells[col] = leading ? cell.replace(/^\*\s*/, "") : cell.replace(/\s*\*$/, "");
+          highlight = body.length;
+        }
+      } else if (leading || trailing) {
+        // A star on a value cell marks that column's best for the row.
+        cells[col] = (leading ? cell.replace(/^\*\s*/, "") : cell.replace(/\s*\*$/, "")).trim();
+        best.push([body.length, col]);
+      }
     }
     body.push(cells);
   }
   const record: Record<string, unknown> = { ...meta, headers, rows: body };
   if (highlight !== undefined) record.highlight = highlight;
+  if (best.length > 0) record.best = best;
   return record;
 }
 
@@ -159,7 +174,10 @@ export function parseUiLines(name: UiName, body: string): Record<string, unknown
     }
     if (/^\|?\s*:?-{3,}/.test(line)) continue;
     if (name === "calculator" && line.startsWith("=")) {
-      formula = line.slice(1).trim();
+      const body = line.slice(1).trim();
+      // Agents often name the result first: `=monthly = principal * ...`.
+      const named = /^([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)\s*(.*)$/.exec(body);
+      formula = named ? (named[2] ?? "") : body;
       continue;
     }
     rows.push(line);

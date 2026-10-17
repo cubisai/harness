@@ -108,6 +108,7 @@ function alignOf(cell: string): "left" | "center" | "right" | null {
 }
 
 const FENCE = /^\s*(```|~~~)/;
+const UI_FENCE = /^\s*(```|~~~)\s*ui:[a-z]/;
 
 /**
  * Split streaming text at the last complete block boundary: `frozen` can be
@@ -126,8 +127,11 @@ export function splitStreamingTail(text: string): { frozen: string; tail: string
     const after = atEnd ? -1 : i + 1;
     const marker = FENCE.exec(line)?.[1] ?? null;
     if (fence === null) {
-      if (marker) fence = marker;
-      else if (!line.trim() && after >= 0) boundary = after;
+      if (marker) {
+        fence = marker;
+        // A ```ui: fence ends the paragraph above it, so the tail starts at the fence and shows "Building…".
+        if (UI_FENCE.test(line)) boundary = lineStart;
+      } else if (!line.trim() && after >= 0) boundary = after;
     } else if (marker && line.trimStart().startsWith(fence)) {
       fence = null;
       if (after >= 0) boundary = after;

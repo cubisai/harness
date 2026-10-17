@@ -69,9 +69,11 @@ function validateCalculator(o: Record<string, unknown>): CalculatorSpec | null {
     ids.add(id);
     const label = text(entry.label);
     if (label === null) return null;
+    // A missing starting value (`id|label||unit`, as agents write) is an empty input to fill in.
+    const empty = entry.value === undefined || entry.value === "" || (typeof entry.value === "number" && Number.isNaN(entry.value));
     const value = num(entry.value);
-    if (value === null) return null;
-    const input: CalculatorInput = { id, label, value };
+    if (value === null && !empty) return null;
+    const input: CalculatorInput = { id, label, value: value ?? Number.NaN };
     const min = optNum(entry.min);
     if (min !== undefined) input.min = min;
     const max = optNum(entry.max);
@@ -87,7 +89,8 @@ function validateCalculator(o: Record<string, unknown>): CalculatorSpec | null {
   const used = formulaIds(formula);
   if (used === null || !used.every((id) => ids.has(id))) return null;
   const defaults: Record<string, number> = {};
-  for (const input of inputs) defaults[input.id] = input.value;
+  // Empty inputs count as 1, so the formula is still checked to parse and evaluate.
+  for (const input of inputs) defaults[input.id] = Number.isFinite(input.value) ? input.value : 1;
   if (evaluateFormula(formula, defaults) === null) return null;
   const spec: CalculatorSpec = { name: "calculator", inputs, formula };
   const title = optText(o, "title");
@@ -112,9 +115,10 @@ function validateCompare(o: Record<string, unknown>): CompareSpec | null {
   if (!rawRows) return null;
   const rows: string[][] = [];
   for (const entry of rawRows) {
-    if (!Array.isArray(entry) || entry.length !== headers.length) return null;
+    if (!Array.isArray(entry)) return null;
     const row: string[] = [];
-    for (const cell of entry) {
+    // Short rows are padded with "" and extra cells beyond the headers dropped.
+    for (const cell of entry.slice(0, headers.length)) {
       if (typeof cell === "number") {
         if (!Number.isFinite(cell)) return null;
         row.push(String(cell));
@@ -124,11 +128,29 @@ function validateCompare(o: Record<string, unknown>): CompareSpec | null {
         row.push(s);
       }
     }
+    while (row.length < headers.length) row.push("");
     rows.push(row);
   }
   const spec: CompareSpec = { name: "compare", headers, rows };
   const highlight = o.highlight;
   if (typeof highlight === "number" && Number.isInteger(highlight) && highlight >= 0 && highlight < rows.length) spec.highlight = highlight;
+  const rawBest = o.best;
+  if (Array.isArray(rawBest)) {
+    // Invalid, out-of-bounds or repeated pairs are dropped, never a rejection.
+    const best: [number, number][] = [];
+    const seen = new Set<string>();
+    for (const pair of rawBest) {
+      if (!Array.isArray(pair) || pair.length !== 2) continue;
+      const [row, column] = pair as [unknown, unknown];
+      if (typeof row !== "number" || !Number.isInteger(row) || row < 0 || row >= rows.length) continue;
+      if (typeof column !== "number" || !Number.isInteger(column) || column < 1 || column >= headers.length) continue;
+      const key = `${row},${column}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      best.push([row, column]);
+    }
+    if (best.length > 0) spec.best = best;
+  }
   const title = optText(o, "title");
   if (title !== undefined) spec.title = title;
   return spec;
@@ -165,7 +187,7 @@ function validateChart(o: Record<string, unknown>): ChartSpec | null {
     const label = text(entry.label);
     if (label === null) return null;
     const value = num(entry.value);
-    if (value === null || value < 0) return null;
+    if (value === null) return null;
     series.push({ label, value });
   }
   const spec: ChartSpec = { name: "chart", kind: "bars", series };

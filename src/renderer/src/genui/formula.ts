@@ -20,7 +20,12 @@ function tokenize(src: string): Token[] | null {
       i++;
       continue;
     }
-    if (c === "+" || c === "-" || c === "*" || c === "/" || c === "(" || c === ")") {
+    if (c === "*" && src.charAt(i + 1) === "*") {
+      tokens.push({ kind: "op", value: "**" });
+      i += 2;
+      continue;
+    }
+    if (c === "+" || c === "-" || c === "*" || c === "/" || c === "^" || c === "(" || c === ")") {
       tokens.push({ kind: "op", value: c });
       i++;
       continue;
@@ -92,12 +97,24 @@ function parse(tokens: Token[], vars: Record<string, number>): number | null {
     return null;
   };
 
+  /** Exponentiation (`^` / `**`), right-associative and tighter than `*` and `/`; the exponent may be unary. */
+  const power = (): number | null => {
+    const base = primary();
+    if (base === null) return null;
+    if (eat("^") || eat("**")) {
+      const exponent = unary();
+      if (exponent === null) return null;
+      return Math.pow(base, exponent);
+    }
+    return base;
+  };
+
   const unary = (): number | null => {
     if (eat("-")) {
       const v = unary();
       return v === null ? null : -v;
     }
-    return primary();
+    return power();
   };
 
   const term = (): number | null => {

@@ -107,12 +107,73 @@ describe("validateUi line form", () => {
     });
   });
 
+  it("marks starred compare cells per column, row by row, and strips the stars", () => {
+    expect(spec("compare", ["Plan | Cost | Speed", "Notion|Free|Limited*", "Obsidian|*Free|Full *"].join("\n"))).toEqual({
+      name: "compare",
+      headers: ["Plan", "Cost", "Speed"],
+      rows: [
+        ["Notion", "Free", "Limited"],
+        ["Obsidian", "Free", "Full"],
+      ],
+      best: [
+        [0, 2],
+        [1, 1],
+        [1, 2],
+      ],
+    });
+  });
+
+  it("still highlights the row for a starred label", () => {
+    expect(spec("compare", ["Plan | Cost | Speed", "*Obsidian|Free|Full"].join("\n"))).toEqual({
+      name: "compare",
+      headers: ["Plan", "Cost", "Speed"],
+      rows: [["Obsidian", "Free", "Full"]],
+      highlight: 0,
+    });
+  });
+
+  it("leaves a fully bold compare cell alone", () => {
+    expect(spec("compare", ["Plan | Cost | Speed", "**Bold**|x|y"].join("\n"))).toEqual({
+      name: "compare",
+      headers: ["Plan", "Cost", "Speed"],
+      rows: [["**Bold**", "x", "y"]],
+    });
+  });
+
+  it("pads a short compare row and trims a long one", () => {
+    expect(spec("compare", "Name | Qty\nApples")).toEqual({ name: "compare", headers: ["Name", "Qty"], rows: [["Apples", ""]] });
+    expect(spec("compare", "Name | Qty\nApples | 3 | extra")).toEqual({ name: "compare", headers: ["Name", "Qty"], rows: [["Apples", "3"]] });
+  });
+
   it("reads a currency amount with a thousands separator", () => {
     expect(spec("chart", "Mon | $1,200")).toEqual({ name: "chart", kind: "bars", series: [{ label: "Mon", value: 1200 }] });
   });
 
   it("reads the unit meta key case-insensitively", () => {
     expect(spec("chart", "A | 1\nUNIT: kg")).toEqual({ name: "chart", kind: "bars", series: [{ label: "A", value: 1 }], unit: "kg" });
+  });
+
+  it("keeps a negative chart value", () => {
+    expect(spec("chart", "Change | -5")).toEqual({ name: "chart", kind: "bars", series: [{ label: "Change", value: -5 }] });
+  });
+
+  it("reads a named calculator formula line, leaving an unnamed one unchanged", () => {
+    expect(spec("calculator", "principal | Principal | 100\n=monthly = principal * 2")).toEqual({
+      name: "calculator",
+      inputs: [{ id: "principal", label: "Principal", value: 100 }],
+      formula: "principal * 2",
+    });
+    expect(spec("calculator", "principal | Principal | 100\n=principal*2")).toEqual({
+      name: "calculator",
+      inputs: [{ id: "principal", label: "Principal", value: 100 }],
+      formula: "principal*2",
+    });
+  });
+
+  it("pins an unchanged compare, chart and calculator spec", () => {
+    expect(spec("compare", "Plan | Cost\nPro | 10")).toEqual({ name: "compare", headers: ["Plan", "Cost"], rows: [["Pro", "10"]] });
+    expect(spec("chart", "Mon | 3")).toEqual({ name: "chart", kind: "bars", series: [{ label: "Mon", value: 3 }] });
+    expect(spec("calculator", "a | A | 2\n=a*3")).toEqual({ name: "calculator", inputs: [{ id: "a", label: "A", value: 2 }], formula: "a*3" });
   });
 
   it("accepts dash and star markers on checklist lines", () => {
@@ -128,7 +189,7 @@ describe("validateUi line form", () => {
 
   it("returns null for invalid line forms", () => {
     expect(validateUi("chart", "A | abc")).toBeNull();
-    expect(validateUi("compare", "A | B\n1 | 2 | 3")).toBeNull();
+    expect(validateUi("compare", "A | B")).toBeNull();
     expect(validateUi("calculator", "a | A | 1\n= a+b")).toBeNull();
     expect(validateUi("timeline", "# Only a title")).toBeNull();
     expect(validateUi("checklist", "")).toBeNull();
@@ -143,8 +204,14 @@ describe("validateUi line form", () => {
     expect(spec("checklist", `\n  ${body}`)).toEqual(expected);
   });
 
-  it("also takes a trailing ` *` on any cell as the best row, and leaves bold cells alone", () => {
-    expect(validateUi("compare", "Venue | Price\nCoast | $600\nLodge | $450 *")).toEqual({ name: "compare", headers: ["Venue", "Price"], rows: [["Coast", "$600"], ["Lodge", "$450"]], highlight: 1 });
+  it("takes a trailing `*` on a value cell as a best mark, and leaves bold cells alone", () => {
+    expect(validateUi("compare", "Venue | Price\nCoast | $600\nLodge | $450 *")).toEqual({
+      name: "compare",
+      headers: ["Venue", "Price"],
+      rows: [["Coast", "$600"], ["Lodge", "$450"]],
+      best: [[1, 1]],
+    });
     expect(validateUi("compare", "A | B\n**x** | 1")).toEqual({ name: "compare", headers: ["A", "B"], rows: [["**x**", "1"]] });
+    expect(validateUi("compare", "A | B\nx | *maybe*")).toEqual({ name: "compare", headers: ["A", "B"], rows: [["x", "*maybe*"]] });
   });
 });

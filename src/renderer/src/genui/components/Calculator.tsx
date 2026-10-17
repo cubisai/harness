@@ -3,10 +3,10 @@ import { evaluateFormula } from "../formula";
 import { UiActions } from "../UiActions";
 import type { CalculatorSpec } from "../types";
 
-/** The result string the calculator shows, unit included; "—" when undefined. */
+/** The result string the calculator shows, unit included; "—" when undefined. Two decimals from 1 up (money, rates), four below. */
 export function formatResult(result: number | null, unit?: string): string {
   if (result === null || !Number.isFinite(result)) return "—";
-  return `${result.toLocaleString(undefined, { maximumFractionDigits: 4 })}${unit ? ` ${unit}` : ""}`;
+  return `${result.toLocaleString(undefined, { maximumFractionDigits: Math.abs(result) >= 1 ? 2 : 4 })}${unit ? ` ${unit}` : ""}`;
 }
 
 /** Markdown for a calculator: one line per input at its current value, then the result. */

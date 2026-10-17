@@ -66,9 +66,16 @@ describe("validateUi", () => {
     expect(item.text.endsWith("…")).toBe(true);
   });
 
-  it("rejects a compare row whose cell count does not match the headers", () => {
-    expect(validateUi("compare", JSON.stringify({ headers: ["A", "B"], rows: [["1"]] }))).toBeNull();
-    expect(validateUi("compare", JSON.stringify({ headers: ["A", "B"], rows: [["1", "2", "3"]] }))).toBeNull();
+  it("pads a short compare row and trims a long one", () => {
+    expect(compare({ headers: ["A", "B"], rows: [["1"]] }).rows).toEqual([["1", ""]]);
+    expect(compare({ headers: ["A", "B"], rows: [["1", "2", "3"]] }).rows).toEqual([["1", "2"]]);
+  });
+
+  it("keeps only in-bounds, deduped best pairs on a compare", () => {
+    const spec = compare({ headers: ["A", "B", "C"], rows: [["1", "2", "3"]], best: [[0, 2], [0, 2], [0, 0], [1, 1], [0, 3], ["0", 1], [0]] });
+    expect(spec.best).toEqual([[0, 2]]);
+    // A malformed `best` never rejects the block.
+    expect(compare({ headers: ["A", "B"], rows: [["1", "2"]], best: "nope" }).best).toBeUndefined();
   });
 
   it("rejects a calculator whose formula references an unknown input", () => {
@@ -86,8 +93,8 @@ describe("validateUi", () => {
     expect(validateUi("chart", JSON.stringify({ kind: "pie", series: [{ label: "A", value: 1 }] }))).toBeNull();
   });
 
-  it("rejects a chart with a negative or non-numeric value", () => {
-    expect(validateUi("chart", JSON.stringify({ kind: "bars", series: [{ label: "A", value: -1 }] }))).toBeNull();
+  it("accepts a chart with a negative value and rejects a non-numeric one", () => {
+    expect(chart({ kind: "bars", series: [{ label: "A", value: -1 }] }).series).toEqual([{ label: "A", value: -1 }]);
     expect(validateUi("chart", JSON.stringify({ kind: "bars", series: [{ label: "A", value: "3" }] }))).toBeNull();
   });
 
@@ -104,6 +111,22 @@ describe("evaluateFormula", () => {
 
   it("honours precedence and unary minus", () => {
     expect(evaluateFormula("-(2+3)*2", {})).toBe(-10);
+  });
+
+  it("evaluates `^` and `**` as right-associative exponentiation", () => {
+    expect(evaluateFormula("2^3", {})).toBe(8);
+    expect(evaluateFormula("2**3", {})).toBe(8);
+    expect(evaluateFormula("2^3^2", {})).toBe(512);
+  });
+
+  it("binds unary minus looser than power, and allows it in the exponent", () => {
+    expect(evaluateFormula("-2^2", {})).toBe(-4);
+    expect(evaluateFormula("(-2)^2", {})).toBe(4);
+    expect(evaluateFormula("2^-1", {})).toBe(0.5);
+  });
+
+  it("evaluates a loan-payment formula", () => {
+    expect(evaluateFormula("principal*(rate/1200)/(1-(1+rate/1200)^(-years*12))", { principal: 200000, rate: 6, years: 30 })).toBeCloseTo(1199.1, 2);
   });
 
   it("rejects calls, property access and division by zero", () => {

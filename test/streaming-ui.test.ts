@@ -22,4 +22,16 @@ describe("splitStreamingTail with a ui fence", () => {
     expect(frozen).toBe("intro\n\n");
     expect(tail.startsWith("```ui:timeline")).toBe(true);
   });
+
+  it("starts the tail at a ui fence typed straight after prose", () => {
+    const { frozen, tail } = splitStreamingTail("Here it is:\n```ui:chart\nQ1|12");
+    expect(frozen).toBe("Here it is:\n");
+    expect(tail).toBe("```ui:chart\nQ1|12");
+  });
+
+  it("leaves a plain code fence after prose in the tail with its paragraph", () => {
+    const { frozen, tail } = splitStreamingTail("Run:\n```sh\nls");
+    expect(frozen).toBe("");
+    expect(tail).toBe("Run:\n```sh\nls");
+  });
 });

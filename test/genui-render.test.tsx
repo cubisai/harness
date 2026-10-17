@@ -19,6 +19,30 @@ describe("inline UI blocks", () => {
     expect(tl).not.toContain("220C"); // details start collapsed
   });
 
+  it("draws a chart with negative values around a zero line, and an all-positive chart as before", () => {
+    const neg = render(fence("chart", "Q1|12\nQ2|-5\nQ3|8"));
+    expect(neg).toContain('class="ui-chart diverging"');
+    expect(neg).toContain('class="ui-chart-zero"');
+    expect(neg).toContain('class="ui-chart-bar neg"');
+    const pos = render(fence("chart", "A|4\nB|2"));
+    expect(pos).toContain('<ul class="ui-chart"');
+    expect(pos).toContain('style="width:50%"');
+    expect(pos).not.toContain("ui-chart-zero");
+  });
+
+  it("marks best compare cells from per-cell stars and copies them in bold", () => {
+    const html = render(fence("compare", "App|Price|Offline\nNotion|$10|Limited\nObsidian|Free *|*Full"));
+    expect(html).toContain('<td class="best"><span class="sr-only">Best: </span>Free</td>');
+    expect(html).toContain('<td class="best"><span class="sr-only">Best: </span>Full</td>');
+    expect(html).not.toContain("*");
+  });
+
+  it("renders the loan calculator agents write (named result, ^ power)", () => {
+    const calc = render(fence("calculator", "principal|Principal|200000|$\nrate|Annual rate|6|%\nyears|Years|30|years\n=monthly = principal*(rate/1200)/(1-(1+rate/1200)^(-years*12))"));
+    expect(calc).toContain('data-ui="calculator"');
+    expect(calc).toContain("1,199.1<");
+  });
+
   it("shows an invalid, unknown or oversized block as a plain code block", () => {
     for (const text of [fence("checklist", "{not json"), fence("slider", { items: [] }), fence("checklist", { items: Array.from({ length: 51 }, () => ({ text: "x" })) })]) {
       const html = render(text);
@@ -40,5 +64,22 @@ describe("inline UI blocks", () => {
 
   it("leaves replies without ui fences unchanged", () => {
     expect(render("```js\nconst a = 1;\n```\n\nText")).toContain("<pre><code>const a = 1;</code></pre>");
+  });
+});
+
+describe("calculator with empty starting values", () => {
+  it("renders blank inputs and a dash until they're filled, instead of raw code", () => {
+    const html = renderToStaticMarkup(<Markdown text={"```ui:calculator\nprincipal|Principal||$\nrate|Rate|6|%\n=principal*rate/100\n```"} />);
+    expect(html).toContain('data-ui="calculator"');
+    expect(html).toContain('value=""');
+    expect(html).toContain("—");
+    expect(html).not.toContain("code-block");
+  });
+
+  it("treats a non-numeric starting value in the line form as blank, but still rejects one in JSON", () => {
+    const line = renderToStaticMarkup(<Markdown text={"```ui:calculator\nprincipal|Principal|lots|$\n=principal*2\n```"} />);
+    expect(line).toContain('data-ui="calculator"');
+    const json = renderToStaticMarkup(<Markdown text={'```ui:calculator\n{"inputs":[{"id":"a","label":"A","value":"lots"}],"formula":"a*2"}\n```'} />);
+    expect(json).toContain("code-block");
   });
 });

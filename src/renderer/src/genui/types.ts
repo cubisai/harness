@@ -16,15 +16,19 @@ export type UiName = (typeof UI_NAMES)[number];
 
 export type ChecklistSpec = { name: "checklist"; title?: string; items: { text: string; done: boolean }[]; note?: string };
 
+/** `value` is NaN when the agent left the starting value empty (the input starts blank). */
 export type CalculatorInput = { id: string; label: string; value: number; min?: number; max?: number; step?: number; unit?: string };
 export type CalculatorSpec = { name: "calculator"; title?: string; inputs: CalculatorInput[]; formula: string; unit?: string; note?: string };
 
-/** `highlight` is a 0-based row index. Every row has `headers.length` cells. */
-export type CompareSpec = { name: "compare"; title?: string; headers: string[]; rows: string[][]; highlight?: number };
+/**
+ * `highlight` is a 0-based row index. Every row has `headers.length` cells.
+ * Best cells as [row, column] pairs (0-based; row indexes `rows`, column indexes `headers`).
+ */
+export type CompareSpec = { name: "compare"; title?: string; headers: string[]; rows: string[][]; highlight?: number; best?: [number, number][] };
 
 export type TimelineSpec = { name: "timeline"; title?: string; steps: { time?: string; title: string; detail?: string }[] };
 
-/** Horizontal bars; values must be finite and ≥ 0. Bars are drawn relative to the largest value. */
+/** Horizontal bars; values are finite and may be negative. Bars are drawn relative to the largest value. */
 export type ChartSpec = { name: "chart"; title?: string; kind: "bars"; series: { label: string; value: number }[]; unit?: string };
 
 /** Most buttons in a choices block, fields in a form, tiles in a stat block, rows in a cards block. */
