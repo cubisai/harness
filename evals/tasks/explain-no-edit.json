@@ -10,7 +10,7 @@
   "graders": [
     {
       "type": "answer",
-      "matches": "(?=[\\s\\S]*\\b(sum|adds?|total)\\b)(?=[\\s\\S]*(finite|skip|ignor|non-?numer|not (a )?numbers?))"
+      "matches": "(?=[\\s\\S]*(sum|add|total))(?=[\\s\\S]*(finite|skip|ignor|non-?numer|not (a )?numbers?))"
     },
     {
       "type": "tool",
