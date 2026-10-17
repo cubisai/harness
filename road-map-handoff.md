@@ -8,6 +8,17 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 
 **Rules:** one commit per point. Typecheck and the full vitest suite must be green before each commit. At the end of each phase that changes the app runtime, do one live turn each on Claude, Codex and OpenCode Zen.
 
+## Resume here (stopped 2026-10-17 at the owner's request)
+
+Next point: **P1.6, multi-turn scenarios**. Nothing has been written for it yet. Findings so far:
+- **Turns:** add `turns?: { prompt: string; reply?: string }[]` to `Task`. `runTrial` then runs them in order on one session: keep the `sessionId` from `onSession` and pass it into the next `TurnInput`. `reply` answers `requestUserInput`.
+- **Memory:** the native driver takes `memory(projectId, threadId, sessionKey) → string | null` (`src/main/harness/driver.ts:43`). The eval setup passes `() => null` (`evals/lib/agents.ts`). Add a `memory` fixture block to `Task` and return it from there.
+- **MCP:** `scripts/mock-extensions-lib.mjs` `generate({ servers, tools, seed, serverScript })` writes `.mcp.json` and mock servers (`scripts/mock-extensions.mjs`).
+  - The app wires them through `routerTools({ servers, listings: new McpToolsCache(), pool: new McpClientPool() })` (`src/main/index.ts:657`, `738`, `772`).
+  - This needs no Electron, so the eval's native `mcpTools` can use it.
+- **Browser and team scenarios** need Electron, so they can't run in the bun runner. Record them as "unavailable in the eval runner" until P5/P6 add a headless browser backend.
+- After that: P1.7 (about 20 new cases, each with a reference and a validator pass), then P1.8 (10k/50k-event history fixtures plus `scripts/profile-history.ts`).
+
 ## Status
 
 | Point | State | Commit |
@@ -16,7 +27,7 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 | P1.2 Trial statuses, usage/cost coverage, cost per success, incomplete runs fail | done | see git log |
 | P1.3 Run manifest + traces | done | see git log |
 | P1.4 Local report | done | see git log |
-| P1.5 Grader validation | done | see git log |
+| P1.5 Grader validation | done | see git log (+ fix `f2dff88`) |
 | P1.6 Multi-turn scenarios | next | |
 | P1.7 Case set expansion | | |
 | P1.8 Desktop baseline fixtures | | |
