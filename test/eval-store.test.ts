@@ -2,11 +2,13 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { accountingLine, costPerSuccess, incomplete, spend, statusOf } from "../evals/lib/accounting";
 import {
+  assembleTask,
   cacheKey,
   compareBaseline,
   diffRuns,
-  findCached,
+  findCachedTrials,
   hashDir,
   listRuns,
   previousRun,
@@ -146,6 +148,16 @@ describe("cacheKey", () => {
     writeFileSync(join(dir, "basic.hidden", "test.js"), "assert(false)");
     expect(cacheKey(fixtureTask(), fixtureDir, "model-a", "native", "h1")).not.toBe(base);
   });
+
+  it("changes with the effort and the grader version", () => {
+    const dir = tmp();
+    mkdirSync(join(dir, "basic"), { recursive: true });
+    const fixtureDir = join(dir, "basic");
+    const base = cacheKey(fixtureTask(), fixtureDir, "m", "native", "h1", { effort: "low", graderVersion: "g1" });
+    expect(cacheKey(fixtureTask(), fixtureDir, "m", "native", "h1", { effort: "high", graderVersion: "g1" })).not.toBe(base);
+    expect(cacheKey(fixtureTask(), fixtureDir, "m", "native", "h1", { effort: "low", graderVersion: "g2" })).not.toBe(base);
+    expect(cacheKey(fixtureTask(), fixtureDir, "m", "native", "h1", { effort: "low", graderVersion: "g1" })).toBe(base);
+  });
 });
 
 describe("redact", () => {
@@ -208,14 +220,10 @@ describe("saveRun / listRuns", () => {
   });
 });
 
-describe("findCached", () => {
-  it("returns a hit, a miss, and skips a harness-errored newest run", () => {
+describe("findCachedTrials", () => {
+  it("returns reusable trials, skipping harness-errored ones", () => {
     const dir = tmp();
-    saveRun(
-      dir,
-      run({ meta: { startedAt: "2026-01-01T00:00:00.000Z" }, tasks: [task("clean", { cacheKey: "k1" })] }),
-      {},
-    );
+    saveRun(dir, run({ meta: { startedAt: "2026-01-01T00:00:00.000Z" }, tasks: [task("clean", { cacheKey: "k1" })] }), {});
     saveRun(
       dir,
       run({
@@ -224,19 +232,84 @@ describe("findCached", () => {
       }),
       {},
     );
-
-    const hit = findCached(dir, "k1");
-    expect(hit?.id).toBe("clean");
-    expect(hit?.cached).toBe(true);
-    expect(findCached(dir, "nope")).toBeNull();
+    const hits = findCachedTrials(dir, "k1");
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({ cached: true, harnessError: null });
+    expect(findCachedTrials(dir, "nope")).toEqual([]);
 
     const only = tmp();
+    saveRun(only, run({ tasks: [task("broken", { cacheKey: "k2", trials: [trial({ harnessError: "5xx" })] })] }), {});
+    expect(findCachedTrials(only, "k2")).toEqual([]);
+  });
+
+  it("counts a trial reused by a later run once, and skips old whole-task cache copies", () => {
+    const dir = tmp();
+    const t1 = trial({ trialId: "a" });
+    saveRun(dir, run({ meta: { startedAt: "2026-01-01T00:00:00.000Z" }, tasks: [task("x", { cacheKey: "k", trials: [t1] })] }), {});
+    // A later run reused trial "a" and ran "b".
     saveRun(
-      only,
-      run({ tasks: [task("broken", { cacheKey: "k2", trials: [trial({ harnessError: "5xx" })] })] }),
+      dir,
+      run({ meta: { startedAt: "2026-01-02T00:00:00.000Z" }, tasks: [task("x", { cacheKey: "k", trials: [{ ...t1, cached: true }, trial({ trialId: "b" })] })] }),
       {},
     );
-    expect(findCached(only, "k2")).toBeNull();
+    // An old-format run that copied a cached task wholesale (no trial ids).
+    saveRun(dir, run({ meta: { startedAt: "2026-01-03T00:00:00.000Z" }, tasks: [task("x", { cacheKey: "k", cached: true })] }), {});
+    expect(findCachedTrials(dir, "k").map((t) => t.trialId).sort()).toEqual(["a", "b"]);
+  });
+
+  it("a request for more trials than are cached runs only the missing ones", () => {
+    const reused = [trial({ trialId: "a", cached: true })];
+    const fresh = [trial({ trialId: "b" }), trial({ trialId: "c", pass: false, status: "failed" })];
+    const r = assembleTask({ id: "x", tags: ["regression"] }, "k", 3, reused, fresh);
+    expect(r.trials.map((t) => t.trialId)).toEqual(["a", "b", "c"]);
+    expect(r).toMatchObject({ cached: false, requestedTrials: 3, passAtK: true, passHatK: false });
+    expect(assembleTask({ id: "x", tags: [] }, "k", 1, [trial({ cached: true }), trial({ cached: true })], [])).toMatchObject({ cached: true, trials: [expect.anything()] });
+  });
+
+  it("pass^k needs every requested trial, not just the ones that ran", () => {
+    expect(assembleTask({ id: "x", tags: [] }, "k", 3, [], [trial(), trial()]).passHatK).toBe(false);
+    expect(assembleTask({ id: "x", tags: [] }, "k", 2, [], [trial(), trial()]).passHatK).toBe(true);
+  });
+});
+
+describe("accounting", () => {
+  it("derives a status for old trials and never passes a harness error", () => {
+    expect(statusOf(trial())).toBe("passed");
+    expect(statusOf(trial({ pass: true, harnessError: "401" }))).toBe("harness-error");
+    expect(statusOf(trial({ pass: false, overBudget: true }))).toBe("budget-stop");
+    expect(statusOf(trial({ status: "ungraded", pass: false }))).toBe("ungraded");
+  });
+
+  it("keeps measured cost on cached trials apart from this run's spend", () => {
+    const tasks = [task("a", { trials: [trial({ costUsd: 0.5, cached: true }), trial({ costUsd: 0.25 })] })];
+    const s = spend(tasks);
+    expect(s.measured).toEqual({ usd: 0.75, known: 2, trials: 2 });
+    expect(s.spent).toEqual({ usd: 0.25, known: 1, trials: 1 });
+  });
+
+  it("cost per success weights cases equally and includes failed attempts", () => {
+    // Case a: 3 trials (2 pass) at $0.30 each; case b: 1 trial (fails) at $0.10.
+    const tasks = [
+      task("a", { trials: [trial({ costUsd: 0.3 }), trial({ costUsd: 0.3 }), trial({ costUsd: 0.3, pass: false })] }),
+      task("b", { trials: [trial({ costUsd: 0.1, pass: false })] }),
+    ];
+    const c = costPerSuccess(tasks);
+    expect(c.passRate).toBeCloseTo(1 / 3);
+    expect(c.meanCost).toBeCloseTo(0.2);
+    expect(c.usd).toBeCloseTo(0.6);
+  });
+
+  it("unknown cost stays unknown and no success has no finite cost per success", () => {
+    expect(costPerSuccess([task("a", { trials: [trial({ costUsd: null })] })])).toMatchObject({ usd: null, meanCost: null, covered: 0 });
+    expect(costPerSuccess([task("a", { trials: [trial({ pass: false })] })]).usd).toBeNull();
+    expect(accountingLine([task("a", { trials: [trial({ pass: false })] })])).toContain("none passed");
+    expect(accountingLine([task("a", { trials: [trial({ costUsd: null })] })])).toContain("cost/success unknown");
+  });
+
+  it("flags an incomplete run so it can't stand as a pass", () => {
+    expect(incomplete([task("a")], 1)).toEqual([]);
+    expect(incomplete([task("a", { requestedTrials: 3 })], 2)).toEqual(["fewer trials than requested in a (1/3)", "1 of 2 tasks not run"]);
+    expect(incomplete([task("a", { trials: [trial({ harnessError: "429" })] })], 1)[0]).toContain("harness error");
   });
 });
 

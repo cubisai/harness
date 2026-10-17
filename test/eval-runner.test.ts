@@ -10,6 +10,7 @@ import { createProviderDriver } from "../src/main/harness/driver";
 import { emptyUsage, type AssistantPart, type LlmEvent } from "../src/main/harness/llm/types";
 import { SessionStore } from "../src/main/harness/session";
 import type { Provider } from "../src/shared/types";
+import type { AgentDriver } from "../src/main/agents/types";
 import { runTask, runTrial } from "../evals/lib/runner";
 import type { Task } from "../evals/lib/types";
 import { loadTasks } from "../evals/run";
@@ -155,6 +156,29 @@ describe("eval runner (scripted model)", () => {
     expect(r.trials.map((t) => t.pass)).toEqual([true, false]);
     expect(r).toMatchObject({ passAtK: true, passHatK: false, cached: false, cacheKey: "k" });
   }, 60_000);
+
+  it("an infrastructure failure never passes, even when the graders would", async () => {
+    const t = task("explain-no-edit");
+    t.graders = [{ type: "file", path: "src/sum.js", unchanged: true }];
+    const failing = () => ({ runTurn: async () => { throw new Error("fetch failed"); } }) as unknown as AgentDriver;
+    const r = await runTrial({ task: t, fixturesRoot: FIXTURES, driver: failing, model: "m" });
+    expect(r.graders[0]?.pass).toBe(true);
+    expect(r).toMatchObject({ status: "harness-error", pass: false, harnessError: "fetch failed", usageCoverage: "unavailable", costCoverage: "unavailable" });
+    expect(r.trialId).toMatch(/[0-9a-f-]{36}/);
+  });
+
+  it("a task with no graders is ungraded, not passed", async () => {
+    const t = task("explain-no-edit");
+    t.graders = [];
+    const r = await runTrial({ task: t, fixturesRoot: FIXTURES, driver: scripted([[text("ok")]]).driver, model: "m" });
+    expect(r).toMatchObject({ status: "ungraded", pass: false, usageCoverage: "reported" });
+  });
+
+  it("labels a price-derived cost as estimated", async () => {
+    const r = await runTrial({ task: task("explain-no-edit"), fixturesRoot: FIXTURES, driver: scripted([[text("It adds.")]]).driver, model: "m", price: { input: 1, output: 2 } });
+    expect(r.costCoverage).toBe("estimated");
+    expect(r.costUsd).toBeCloseTo((1000 * 1 + 50 * 2) / 1e6);
+  });
 
   it("--dry prints the worst case without a key or a model call", () => {
     const out = execFileSync(process.execPath.includes("bun") ? process.execPath : "bun", ["evals/run.ts", "--tier", "smoke", "--dry"], {

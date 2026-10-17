@@ -87,7 +87,22 @@ export interface GraderResult {
   why: string;
 }
 
+/**
+ * How a trial ended. Only "passed" is a quality pass: an infrastructure failure,
+ * a cancelled turn or a trial with no graders can never count as one.
+ */
+export type TrialStatus = "passed" | "failed" | "harness-error" | "budget-stop" | "cancelled" | "ungraded";
+
+/** Where a usage or cost number came from; missing is "unavailable", never zero. */
+export type Coverage = "reported" | "estimated" | "unavailable";
+
 export interface TrialResult {
+  /** Stable id, so a trial reused from the cache is never counted twice. Missing on old run files. */
+  trialId?: string;
+  /** Reused from an earlier run: its measured cost is history, not this run's spend. */
+  cached?: boolean;
+  /** Missing on old run files; see trialStatus(). */
+  status?: TrialStatus;
   pass: boolean;
   /** Weighted share of graders passed, 0..1. */
   score: number;
@@ -102,6 +117,9 @@ export interface TrialResult {
   toolCalls: number;
   durationMs: number;
   costUsd: number | null;
+  /** Source of the token counts / of costUsd. Missing on old run files. */
+  usageCoverage?: Coverage;
+  costCoverage?: Coverage;
   events: CompactEvent[];
 }
 
@@ -109,12 +127,14 @@ export interface TaskResult {
   id: string;
   tags: TaskTag[];
   cacheKey: string;
-  /** True when this result was reused from the cache (no model calls). */
+  /** True when every trial was reused from the cache (no model calls). */
   cached: boolean;
+  /** Trials asked for; trials.length can be lower when a harness error stopped the task. */
+  requestedTrials?: number;
   trials: TrialResult[];
   /** At least one trial passed. */
   passAtK: boolean;
-  /** Every trial passed. */
+  /** Every requested trial ran and passed. */
   passHatK: boolean;
 }
 
@@ -124,6 +144,8 @@ export interface RunMeta {
   model: string;
   protocol: string;
   harnessHash: string;
+  /** Reasoning effort the turns ran at; part of the cache identity. */
+  effort?: string;
   startedAt: string;
   durationMs: number;
 }

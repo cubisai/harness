@@ -4,7 +4,8 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
-import type { RunMeta, RunResult, Task, TaskResult } from "./types";
+import { accountingLine } from "./accounting";
+import type { RunMeta, RunResult, Task, TaskResult, TrialResult } from "./types";
 
 function sha256Hex(data: string | Buffer): string {
   return createHash("sha256").update(data).digest("hex");
@@ -31,6 +32,17 @@ export function hashDir(dir: string): string {
   return sha256Hex(entries.join("\n"));
 }
 
+/** Bumped when the runner's trial semantics change, so older cached trials stop matching. */
+export const EVAL_RUNTIME_VERSION = "2";
+
+/** The rest of an experiment's identity: settings outside the task file that change its result. */
+export interface Identity {
+  /** Reasoning effort the turns run at. */
+  effort?: string;
+  /** Hash of the grader code. */
+  graderVersion?: string;
+}
+
 /** Cache key for a task's inputs: everything that can change the result. */
 export function cacheKey(
   task: Task,
@@ -38,6 +50,7 @@ export function cacheKey(
   model: string,
   protocol: string,
   harnessHash: string,
+  identity: Identity = {},
 ): string {
   const parts = [
     JSON.stringify(task),
@@ -46,6 +59,9 @@ export function cacheKey(
     model,
     protocol,
     harnessHash,
+    `runtime ${EVAL_RUNTIME_VERSION}`,
+    `effort ${identity.effort ?? ""}`,
+    `graders ${identity.graderVersion ?? ""}`,
   ];
   return sha256Hex(parts.join("\n"));
 }
@@ -99,16 +115,55 @@ export function listRuns(dir: string): RunResult[] {
   return runs.sort((a, b) => b.meta.startedAt.localeCompare(a.meta.startedAt));
 }
 
-/** First task with the key that no trial failed at the harness level, newest run first. */
-export function findCached(dir: string, key: string): TaskResult | null {
+/** A trial worth reusing: the agent ran to an outcome (an infra failure or a cancel says nothing about it). */
+function reusable(t: TrialResult): boolean {
+  if (t.harnessError) return false;
+  return t.status !== "harness-error" && t.status !== "cancelled";
+}
+
+/**
+ * Every reusable trial stored under `key`, newest run first, each counted once.
+ * Trials carry a trialId; an old run file's task that was itself a cache copy
+ * (`cached: true`, no ids) repeats an earlier run's trials and is skipped.
+ */
+export function findCachedTrials(dir: string, key: string): TrialResult[] {
+  const seen = new Set<string>();
+  const out: TrialResult[] = [];
   for (const run of listRuns(dir)) {
     for (const task of run.tasks) {
       if (task.cacheKey !== key) continue;
-      if (task.trials.some((t) => Boolean(t.harnessError))) continue;
-      return { ...task, cached: true, trials: task.trials.map((t) => ({ ...t })) };
+      task.trials.forEach((t, i) => {
+        if (!t.trialId && task.cached) return;
+        if (!reusable(t)) return;
+        const id = t.trialId ?? `${run.meta.startedAt}#${task.id}#${i}`;
+        if (seen.has(id)) return;
+        seen.add(id);
+        out.push({ ...t, trialId: id, cached: true });
+      });
     }
   }
-  return null;
+  return out;
+}
+
+/** Folds reused and fresh trials into a task result; pass^k needs every requested trial. */
+export function assembleTask(
+  task: Pick<Task, "id" | "tags">,
+  key: string,
+  requested: number,
+  reused: TrialResult[],
+  fresh: TrialResult[],
+): TaskResult {
+  const trials = [...reused.slice(0, requested), ...fresh];
+  return {
+    id: task.id,
+    tags: task.tags,
+    cacheKey: key,
+    cached: fresh.length === 0 && trials.length > 0,
+    requestedTrials: requested,
+    trials,
+    passAtK: trials.some((t) => t.pass),
+    passHatK: trials.length >= requested && trials.length > 0 && trials.every((t) => t.pass),
+  };
 }
 
 /** Newest run of the same tier+model started before `before`. */
@@ -141,19 +196,21 @@ export function summarize(run: RunResult): string {
     if (task.passHatK) passHat++;
 
     let status = task.passAtK ? "PASS" : "FAIL";
-    if (trials.length > 1) status += ` pass^k ${task.passHatK ? "yes" : "no"}`;
+    if (trials.length > 1 || (task.requestedTrials ?? 1) > 1) status += ` pass^k ${task.passHatK ? "yes" : "no"}`;
+    const cachedCount = task.cached ? trials.length : trials.filter((t) => t.cached).length;
+    const short = task.requestedTrials !== undefined && trials.length < task.requestedTrials ? ` (${trials.length}/${task.requestedTrials} trials)` : "";
     lines.push(
       `${task.id.padEnd(20)} ${status.padEnd(18)} score ${mean.toFixed(2)}  in ${taskIn} tok  ` +
-        `steps ${taskSteps}${task.cached ? " (cached)" : ""}`,
+        `steps ${taskSteps}${cachedCount === trials.length && trials.length ? " (cached)" : cachedCount ? ` (${cachedCount} cached)` : ""}${short}`,
     );
 
-    // Cached tasks count toward pass totals but not toward token totals.
-    if (task.cached) continue;
-    inTok += taskIn;
-    outTok += trials.reduce((s, t) => s + t.outputTokens, 0);
-    cacheRead += trials.reduce((s, t) => s + t.cacheReadTokens, 0);
-    steps += taskSteps;
+    // Cached trials count toward pass totals but not toward token totals.
     for (const t of trials) {
+      if (task.cached || t.cached) continue;
+      inTok += t.inputTokens;
+      outTok += t.outputTokens;
+      cacheRead += t.cacheReadTokens;
+      steps += t.steps;
       if (t.costUsd === null) costUnknown = true;
       else cost += t.costUsd;
     }
@@ -166,6 +223,7 @@ export function summarize(run: RunResult): string {
     `${passed}/${total} passed · pass^k ${passHat}/${total} · in ${inTok} tok · out ${outTok} tok · ` +
       `cache-hit ${hit}% · steps ${steps} · $${costUnknown ? "unknown" : cost.toFixed(2)}`,
   );
+  lines.push(accountingLine(run.tasks));
   return lines.join("\n");
 }
 
@@ -178,11 +236,11 @@ function runStats(run: RunResult): { passed: number; total: number; passHat: num
   for (const task of run.tasks) {
     if (task.passAtK) passed++;
     if (task.passHatK) passHat++;
-    // Cached tasks count toward pass totals but not toward token totals.
+    // Cached trials count toward pass totals but not toward token totals.
     if (task.cached) continue;
-    const taskIn = task.trials.reduce((s, t) => s + t.inputTokens, 0);
-    inTok += taskIn;
-    cacheRead += task.trials.reduce((s, t) => s + t.cacheReadTokens, 0);
+    const fresh = task.trials.filter((t) => !t.cached);
+    inTok += fresh.reduce((s, t) => s + t.inputTokens, 0);
+    cacheRead += fresh.reduce((s, t) => s + t.cacheReadTokens, 0);
   }
   return { passed, total: run.tasks.length, passHat, inTok, cacheRead };
 }
@@ -265,7 +323,7 @@ export function diffRuns(prev: RunResult | null, cur: RunResult): string {
   const tokenSum = (run: RunResult): number =>
     run.tasks
       .filter((t) => !t.cached)
-      .reduce((sum, t) => sum + t.trials.reduce((s, x) => s + x.inputTokens, 0), 0);
+      .reduce((sum, t) => sum + t.trials.filter((x) => !x.cached).reduce((s, x) => s + x.inputTokens, 0), 0);
   const prevSum = tokenSum(prev);
   const curSum = tokenSum(cur);
   if (prevSum !== 0 && curSum !== 0) {

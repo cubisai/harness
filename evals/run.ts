@@ -1,7 +1,7 @@
 // Eval CLI. Keys come from the environment, e.g.
 //   bun --env-file=.env evals/run.ts --tier smoke --provider pgs [--dry]
 // Flags: --agent native|claude|codex|opencode (default native), --tier smoke|full,
-// --provider th|pgs (native; opencode: pgs), --model <id>, --trials <n>,
+// --provider th|pgs (native; opencode: pgs), --model <id>, --effort <level> (default low), --trials <n>,
 // --task <id>[,<id>…], --dry, --force, --keep, --save-baseline, --max-tokens <n>, --max-usd <n>,
 // --price <in>,<out> (USD per 1M tokens), --trend [--last <n>]
 // (zero tokens: pass/token history per tier+model from .ai/evals). Plan: .ai/plans/eval-framework.md.
@@ -12,8 +12,9 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AGENTS, setupAgent, type AgentId } from "./lib/agents";
+import { incomplete } from "./lib/accounting";
 import { runTask } from "./lib/runner";
-import { cacheKey, compareBaseline, diffRuns, findCached, listRuns, previousRun, readBaseline, saveBaseline, saveRun, summarize, trend } from "./lib/store";
+import { assembleTask, cacheKey, compareBaseline, diffRuns, findCachedTrials, listRuns, previousRun, readBaseline, saveBaseline, saveRun, summarize, trend } from "./lib/store";
 import type { RunResult, Task, TaskResult, Tier } from "./lib/types";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -71,6 +72,12 @@ async function main(): Promise<number> {
   const agent = (f.get("agent") ?? "native") as AgentId;
   if (!AGENTS.includes(agent)) throw new Error(`--agent must be one of ${AGENTS.join(", ")}`);
   const trials = Number(f.get("trials") ?? 1);
+  const effort = f.get("effort") ?? "low";
+  // The grading and trial code: a change there makes cached trials incomparable.
+  const graderVersion = createHash("sha256")
+    .update(["graders.ts", "runner.ts"].map((f) => readFileSync(join(ROOT, "evals", "lib", f), "utf8")).join("\0"))
+    .digest("hex")
+    .slice(0, 16);
   const maxTokens = Number(f.get("max-tokens") ?? Infinity);
   const maxUsd = Number(f.get("max-usd") ?? Infinity);
   const priceArg = f.get("price")?.split(",").map(Number);
@@ -102,15 +109,19 @@ async function main(): Promise<number> {
         console.log(`budget reached (${spentTokens} tokens, $${spentUsd.toFixed(2)}); skipping the rest`);
         break;
       }
-      const ck = cacheKey(task, join(FIXTURES, task.fixture), model, protocol, hash);
-      const hit = f.has("force") ? null : findCached(RESULTS, ck);
-      const r = hit ?? (await runTask({ task, fixturesRoot: FIXTURES, driver, model: setup.model, skillDirs, price, keep: f.has("keep"), trials: trialsOf(task), cacheKey: ck }));
+      const ck = cacheKey(task, join(FIXTURES, task.fixture), model, protocol, hash, { effort, graderVersion });
+      // Trial-level cache: reuse what's stored and run only the missing trials.
+      const want = trialsOf(task);
+      const reused = f.has("force") ? [] : findCachedTrials(RESULTS, ck).slice(0, want);
+      const fresh =
+        reused.length < want
+          ? (await runTask({ task, fixturesRoot: FIXTURES, driver, model: setup.model, effort, skillDirs, price, keep: f.has("keep"), trials: want - reused.length, cacheKey: ck })).trials
+          : [];
+      const r = assembleTask(task, ck, want, reused, fresh);
       results.push(r);
-      if (!r.cached) {
-        spentTokens += r.trials.reduce((n, t) => n + t.inputTokens + t.outputTokens, 0);
-        spentUsd += r.trials.reduce((n, t) => n + (t.costUsd ?? 0), 0);
-      }
-      console.log(`${r.passAtK ? "PASS" : "FAIL"} ${task.id}${r.cached ? " (cached)" : ""}`);
+      spentTokens += fresh.reduce((n, t) => n + t.inputTokens + t.outputTokens, 0);
+      spentUsd += fresh.reduce((n, t) => n + (t.costUsd ?? 0), 0);
+      console.log(`${r.passAtK ? "PASS" : "FAIL"} ${task.id}${r.cached ? " (cached)" : reused.length ? ` (${reused.length} cached + ${fresh.length} run)` : ""}`);
       const harnessError = r.trials.find((t) => t.harnessError)?.harnessError;
       if (harnessError) {
         console.log(`harness error, stopping: ${harnessError}`);
@@ -122,7 +133,7 @@ async function main(): Promise<number> {
     rmSync(scratch, { recursive: true, force: true });
   }
 
-  const run: RunResult = { meta: { tier, agent, model, protocol, harnessHash: hash, startedAt, durationMs: Date.now() - Date.parse(startedAt) }, tasks: results };
+  const run: RunResult = { meta: { tier, agent, model, protocol, harnessHash: hash, effort, startedAt, durationMs: Date.now() - Date.parse(startedAt) }, tasks: results };
   const path = saveRun(RESULTS, run);
   console.log(`\n${summarize(run)}`);
   const diff = diffRuns(previousRun(RESULTS, tier, model, startedAt), run);
@@ -135,6 +146,12 @@ async function main(): Promise<number> {
     console.log(`baseline saved for ${tier}|${model}`);
   }
   console.log(`\nsaved ${path}`);
+  // An incomplete run is never a quality pass, whatever the baseline says about the tasks that did run.
+  const gaps = incomplete(results, tasks.length);
+  if (gaps.length) {
+    console.log(`incomplete: ${gaps.join("; ")}`);
+    return 2;
+  }
   // With a baseline, only backsliding fails the run; without one, any failing regression task does.
   if (baseline[`${tier}|${model}`]) return vsBaseline.includes("below baseline") ? 1 : 0;
   return results.some((r) => r.tags.includes("regression") && !r.passAtK) ? 1 : 0;

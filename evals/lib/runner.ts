@@ -2,6 +2,7 @@
 // task's budget, the hidden grader files copied in afterwards, then grading.
 // The agent is any AgentDriver, so the same task runs on every agent.
 
+import { randomUUID } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -11,7 +12,8 @@ import { canonicalTool, clipSummary } from "../../src/shared/tools";
 import type { ThreadEvent } from "../../src/shared/types";
 import { generate } from "../../scripts/mock-extensions-lib.mjs";
 import { grade, score } from "./graders";
-import type { CompactEvent, GradeInput, Task, TaskResult, TrialResult } from "./types";
+import { assembleTask } from "./store";
+import type { CompactEvent, Coverage, GradeInput, Task, TaskResult, TrialResult, TrialStatus } from "./types";
 
 export interface TrialOptions {
   task: Task;
@@ -52,6 +54,15 @@ export function compact(e: ThreadEvent): CompactEvent | null {
     default:
       return null;
   }
+}
+
+/** How a trial ended; only a graded, error-free run whose required graders pass is "passed". */
+export function trialStatus(o: { harnessError: string | null; graders: number; pass: boolean; overBudget: boolean; cancelled?: boolean }): TrialStatus {
+  if (o.harnessError) return "harness-error";
+  if (o.cancelled) return "cancelled";
+  if (o.graders === 0) return "ungraded";
+  if (o.pass) return "passed";
+  return o.overBudget ? "budget-stop" : "failed";
 }
 
 const defaultRunCommand: GradeInput["runCommand"] = async (command, cwd, timeoutMs) => {
@@ -149,22 +160,29 @@ export async function runTrial(o: TrialOptions): Promise<TrialResult> {
     for (const sentinel of sentinels.keys()) if (raw.includes(sentinel)) compacted.push({ kind: "skill-loaded", text: sentinel });
   }
   const graders = await grade({ task, events: compacted, dir, fixtureDir, overBudget, sentinels, runCommand: o.runCommand ?? defaultRunCommand });
-  const { pass, score: s } = score(graders);
+  const graded = score(graders);
 
   const end = events.findLast((e) => e.kind === "turn-end") as Extract<ThreadEvent, { kind: "turn-end" }> | undefined;
   const inputTokens = end?.inputTokens ?? liveInput;
   const outputTokens = end?.outputTokens ?? 0;
   const cacheReadTokens = end?.usage?.cacheReadTokens ?? 0;
   const errorText = events.find((e) => e.kind === "error" && HARNESS_ERROR.test(e.message)) as { message: string } | undefined;
-  const costUsd = end?.costUsd ?? (o.price ? (inputTokens * o.price.input + outputTokens * o.price.output) / 1e6 : null);
+  const reportedCost = typeof end?.costUsd === "number" ? end.costUsd : null;
+  const costUsd = reportedCost ?? (o.price ? (inputTokens * o.price.input + outputTokens * o.price.output) / 1e6 : null);
+  const costCoverage: Coverage = reportedCost !== null ? "reported" : costUsd !== null ? "estimated" : "unavailable";
+  const usageCoverage: Coverage = typeof end?.inputTokens === "number" ? "reported" : liveInput > 0 ? "estimated" : "unavailable";
+  const harnessError = thrown ?? errorText?.message.slice(0, 300) ?? null;
+  const status = trialStatus({ harnessError, graders: graders.length, pass: graded.pass, overBudget });
 
   if (!o.keep) rmSync(root, { recursive: true, force: true });
   return {
-    pass,
-    score: s,
+    trialId: randomUUID(),
+    status,
+    pass: status === "passed",
+    score: graded.score,
     graders,
     overBudget,
-    harnessError: thrown ?? errorText?.message.slice(0, 300) ?? null,
+    harnessError,
     inputTokens,
     outputTokens,
     cacheReadTokens,
@@ -172,6 +190,8 @@ export async function runTrial(o: TrialOptions): Promise<TrialResult> {
     toolCalls,
     durationMs,
     costUsd,
+    usageCoverage,
+    costCoverage,
     events: compacted,
   };
 }
@@ -184,13 +204,5 @@ export async function runTask(o: TrialOptions & { trials: number; cacheKey: stri
     trials.push(t);
     if (t.harnessError) break;
   }
-  return {
-    id: o.task.id,
-    tags: o.task.tags,
-    cacheKey: o.cacheKey,
-    cached: false,
-    trials,
-    passAtK: trials.some((t) => t.pass),
-    passHatK: trials.length > 0 && trials.every((t) => t.pass),
-  };
+  return assembleTask(o.task, o.cacheKey, o.trials, [], trials);
 }
