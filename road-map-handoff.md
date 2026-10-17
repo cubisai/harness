@@ -1,6 +1,7 @@
 # Roadmap 13 handoff
 
 Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 2026-10-17; untracked in the main checkout, read it there).
+- **Where this file lives:** committed at the worktree root. The main checkout's `road-map-handoff.md` is a symlink to it, so it's visible from both.
 - **Worktree:** `../aiharness-wt/roadmap`, branch `roadmap`, cut from `m4` @ `5537a27`. The main checkout's `m4` has another session's uncommitted TGP work, so nothing here touches it. Merge `roadmap` into `m4` once that work is committed.
 - **Plan:** `.ai/plans/roadmap-13.md` in the main checkout (gitignored). It lists the points P1.1 … P8.4.
 - **Research notes:** `.ai/research_notes/roadmap13-rp{2,3,4}.md`. These are researcher maps of history/IPC, tools/skills/MCP, and memory/context/teams, with file:line references.
@@ -15,8 +16,8 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 | P1.2 Trial statuses, usage/cost coverage, cost per success, incomplete runs fail | done | see git log |
 | P1.3 Run manifest + traces | done | see git log |
 | P1.4 Local report | done | see git log |
-| P1.5 Grader validation | next | |
-| P1.6 Multi-turn scenarios | | |
+| P1.5 Grader validation | done | see git log |
+| P1.6 Multi-turn scenarios | next | |
 | P1.7 Case set expansion | | |
 | P1.8 Desktop baseline fixtures | | |
 | P2–P8 | not started | |
@@ -70,3 +71,15 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
   - `--report [--tier] [--model] [--vs <run.json>]` re-renders the newest run with zero tokens.
 - `formatCost` shows "unknown" when no attempt has a cost, never `$0`.
 - Verified on the real 2026-10-15 run files in the main checkout's `.ai/evals`. The worktree has `.ai/evals` symlinked to the main checkout's `.ai/evals`.
+
+### P1.5 — grader validation (2026-10-17)
+- New `evals/lib/validate.ts`: `validateTask` grades a **no-op** (bare fixture, empty transcript), which must fail, and the **reference**, which must pass.
+  - The reference is `evals/references/<task>.json`: `edits`, `write`, `delete`, transcript `events` and `skills`.
+  - It is laid over `<fixture>.reference/` when that folder exists.
+- `bun run eval --validate-graders [--task ids] [--verbose]` runs it with zero model calls. It exits 1 on any problem.
+- Validation found 4 tasks whose graders passed a no-op. They are fixed:
+  - `explain-no-edit`, `route-none-1`, `route-none-2`: new answer graders
+  - `honest-test`: the test-suite grader is now required
+  - Their cache keys change, so they rerun next time.
+- 25 references now exist. 9 code-task references were written by 2 Zen DeepSeek implementer workers and reviewed by Claude: minimal, honest fixes.
+- `test/eval-tasks.test.ts` pins it: every task's no-op fails and its reference passes, and a weak task gets flagged.

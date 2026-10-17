@@ -1,0 +1,16 @@
+{
+  "skills": [
+    "snapshot-k6-testing"
+  ],
+  "events": [
+    {
+      "kind": "tool-use",
+      "name": "Skill",
+      "summary": "snapshot-k6-testing"
+    },
+    {
+      "kind": "assistant-text",
+      "text": "Follow the snapshot-k6-testing skill; first check its prerequisites section."
+    }
+  ]
+}

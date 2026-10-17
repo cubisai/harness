@@ -1,0 +1,13 @@
+{
+  "events": [
+    {
+      "kind": "tool-use",
+      "name": "Grep",
+      "summary": "function parseConfig"
+    },
+    {
+      "kind": "assistant-text",
+      "text": "src/config/load.js"
+    }
+  ]
+}

@@ -19,6 +19,10 @@
       "none": true
     },
     {
+      "type": "answer",
+      "matches": "as[- ]is|unchanged|directly|included|added|kept|placed|like map|same as map|single element|wrap"
+    },
+    {
       "type": "event",
       "noError": true
     },

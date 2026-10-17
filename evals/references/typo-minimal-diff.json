@@ -1,0 +1,13 @@
+{
+  "edits": [
+    { "path": "src/msg.js", "old": "  sent: \"We will recieve your order shortly.\",", "new": "  sent: \"We will receive your order shortly.\"," },
+    { "path": "src/msg.js", "old": "  wait: \"You will recieve an email when it ships.\",", "new": "  wait: \"You will receive an email when it ships.\"," }
+  ],
+  "events": [
+    { "kind": "tool-use", "name": "Grep", "summary": "recieve" },
+    { "kind": "tool-use", "name": "Read", "summary": "src/msg.js" },
+    { "kind": "tool-use", "name": "Edit", "summary": "src/msg.js" },
+    { "kind": "tool-use", "name": "Edit", "summary": "src/msg.js" },
+    { "kind": "assistant-text", "text": "Fixed both user-facing messages in src/msg.js (\"recieve\" -> \"receive\"). src/legacy.js was left untouched because its identifier is a queue key other services depend on." }
+  ]
+}

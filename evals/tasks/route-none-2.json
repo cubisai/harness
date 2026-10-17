@@ -19,6 +19,10 @@
       "none": true
     },
     {
+      "type": "answer",
+      "matches": "(?=[\\s\\S]*prev)(?=[\\s\\S]*next)"
+    },
+    {
       "type": "event",
       "noError": true
     },

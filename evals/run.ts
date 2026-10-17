@@ -4,7 +4,8 @@
 // --provider th|pgs (native; opencode: pgs), --model <id>, --effort <level> (default low), --trials <n>,
 // --task <id>[,<id>…], --dry, --force, --keep, --save-baseline, --max-tokens <n>, --max-usd <n>,
 // --price <in>,<out> (USD per 1M tokens), --trend [--last <n>],
-// --report [--tier t] [--model m] [--vs <run file>] (re-render the newest run's HTML report, zero tokens)
+// --report [--tier t] [--model m] [--vs <run file>] (re-render the newest run's HTML report, zero tokens),
+// --validate-graders [--task ids] (no model: a no-op must fail and evals/references/<task>.json must pass)
 // (zero tokens: pass/token history per tier+model from .ai/evals). Plan: .ai/plans/eval-framework.md.
 
 import { execFileSync } from "node:child_process";
@@ -16,6 +17,8 @@ import { AGENTS, setupAgent, type AgentId } from "./lib/agents";
 import { incomplete } from "./lib/accounting";
 import { compareRuns, renderReport } from "./lib/report";
 import { runTask } from "./lib/runner";
+import { validateTask } from "./lib/validate";
+import { runCheck } from "../src/main/check";
 import { RUN_MANIFEST_VERSION, type RunManifest } from "../src/shared/run-trace";
 import { assembleTask, cacheKey, EVAL_RUNTIME_VERSION, redact, runFileName, compareBaseline, diffRuns, findCachedTrials, listRuns, previousRun, readBaseline, saveBaseline, saveRun, summarize, trend } from "./lib/store";
 import type { RunResult, Task, TaskResult, Tier } from "./lib/types";
@@ -25,6 +28,7 @@ const TASKS = join(ROOT, "evals", "tasks");
 const FIXTURES = join(ROOT, "evals", "fixtures");
 const RESULTS = join(ROOT, ".ai", "evals");
 const BASELINE = join(ROOT, "evals", "baseline.json");
+const REFERENCES = join(ROOT, "evals", "references");
 const TRACES = join(RESULTS, "traces");
 /** Trace folders kept (newest runs); older ones are deleted at the start of a run. */
 const TRACE_RUNS_KEPT = 20;
@@ -108,6 +112,24 @@ async function main(): Promise<number> {
   if (f.has("trend")) {
     console.log(trend(listRuns(RESULTS), { tier: f.get("tier"), model: f.get("model"), last: f.has("last") ? Number(f.get("last")) : undefined }));
     return 0;
+  }
+  if (f.has("validate-graders")) {
+    const only = f.get("task")?.split(",");
+    let bad = 0;
+    for (const task of loadTasks().filter((t) => !only || only.includes(t.id))) {
+      const v = await validateTask(task, {
+        fixturesRoot: FIXTURES,
+        referencesRoot: REFERENCES,
+        runCommand: async (command, cwd, timeoutMs) => {
+          const r = await runCheck(command, cwd, { timeoutMs });
+          return { ok: r.ok, exitCode: r.exitCode, tail: r.tail };
+        },
+      });
+      if (v.problems.length) bad++;
+      console.log(`${v.problems.length ? "BAD " : "OK  "} ${task.id.padEnd(24)} ${v.problems.join("; ")}`);
+      if (f.has("verbose") || v.problems.some((p) => p !== "no reference solution")) for (const line of [...v.noop.why.map((w) => `noop ${w}`), ...(v.reference?.why.map((w) => `ref  ${w}`) ?? [])]) console.log(`       ${line}`);
+    }
+    return bad ? 1 : 0;
   }
   const tier = (f.get("tier") ?? "smoke") as Tier;
   const agent = (f.get("agent") ?? "native") as AgentId;

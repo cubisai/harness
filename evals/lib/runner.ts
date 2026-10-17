@@ -74,7 +74,7 @@ const defaultRunCommand: GradeInput["runCommand"] = async (command, cwd, timeout
 };
 
 /** Writes the task's mock skill kit into `dir`; returns sentinel → skill name. */
-function writeSkillKit(task: Task, dir: string, skillDirs: string[]): Map<string, string> | undefined {
+export function writeSkillKit(task: Task, dir: string, skillDirs: string[]): Map<string, string> | undefined {
   if (!task.skills) return undefined;
   const kit = generate({ skills: task.skills.kit.skills, servers: 0, tools: 0, seed: task.skills.kit.seed, serverScript: "" });
   for (const f of kit.files.filter((f) => f.path.startsWith(".agents/skills/"))) {

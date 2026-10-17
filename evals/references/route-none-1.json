@@ -1,0 +1,8 @@
+{
+  "events": [
+    {
+      "kind": "assistant-text",
+      "text": "Its value is placed in the result as-is: flatMap flattens only one level, so a non-array return value is added as a single element, just like map."
+    }
+  ]
+}

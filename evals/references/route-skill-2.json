@@ -1,0 +1,16 @@
+{
+  "skills": [
+    "validate-smtp-email"
+  ],
+  "events": [
+    {
+      "kind": "tool-use",
+      "name": "Skill",
+      "summary": "validate-smtp-email"
+    },
+    {
+      "kind": "assistant-text",
+      "text": "Follow the validate-smtp-email skill; first check its prerequisites section."
+    }
+  ]
+}

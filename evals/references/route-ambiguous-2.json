@@ -1,0 +1,16 @@
+{
+  "skills": [
+    "rotate-spark-data-pipeline"
+  ],
+  "events": [
+    {
+      "kind": "tool-use",
+      "name": "Skill",
+      "summary": "rotate-spark-data-pipeline"
+    },
+    {
+      "kind": "assistant-text",
+      "text": "rotate-spark-data-pipeline fits: it covers rotating that service in that domain."
+    }
+  ]
+}

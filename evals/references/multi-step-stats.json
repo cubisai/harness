@@ -1,0 +1,19 @@
+{
+  "edits": [
+    {
+      "path": "src/stats.js",
+      "old": "// Small statistics helpers for arrays of numbers.",
+      "new": "// Small statistics helpers for arrays of numbers.\n\n/** Smallest value in the array. */\nexport function min(values) {\n  return Math.min(...values);\n}\n\n/** Largest value in the array. */\nexport function max(values) {\n  return Math.max(...values);\n}\n\n/** Arithmetic mean of the array. */\nexport function mean(values) {\n  return values.reduce((sum, value) => sum + value, 0) / values.length;\n}"
+    }
+  ],
+  "write": {
+    "test/stats.test.mjs": "import { test } from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { min, max, mean } from \"../src/stats.js\";\n\ntest(\"min returns the smallest value\", () => assert.equal(min([3, 1, 2]), 1));\ntest(\"max returns the largest value\", () => assert.equal(max([3, 1, 2]), 3));\ntest(\"mean returns the arithmetic mean\", () => assert.equal(mean([1, 2, 3, 4]), 2.5));\n"
+  },
+  "events": [
+    { "kind": "tool-use", "name": "Read", "summary": "src/stats.js" },
+    { "kind": "tool-use", "name": "Edit", "summary": "src/stats.js" },
+    { "kind": "tool-use", "name": "Write", "summary": "test/stats.test.mjs" },
+    { "kind": "tool-use", "name": "Run", "summary": "node --test test/stats.test.mjs" },
+    { "kind": "assistant-text", "text": "Added and exported min, max and mean in src/stats.js, each with a one-line JSDoc, and a node:test suite in test/stats.test.mjs covering all three. `node --test test/stats.test.mjs` passes." }
+  ]
+}

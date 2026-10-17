@@ -1,0 +1,16 @@
+{
+  "skills": [
+    "rotate-mongodb-database"
+  ],
+  "events": [
+    {
+      "kind": "tool-use",
+      "name": "Skill",
+      "summary": "rotate-mongodb-database"
+    },
+    {
+      "kind": "assistant-text",
+      "text": "rotate-mongodb-database fits: it covers rotating that service in that domain."
+    }
+  ]
+}

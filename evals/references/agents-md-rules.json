@@ -1,0 +1,20 @@
+{
+  "edits": [
+    {
+      "path": "src/math.js",
+      "old": "  return a + b;\n}",
+      "new": "  return a + b;\n}\n\n/** Clamps a value between min and max. */\nexport function clamp(value, min, max) {\n  return Math.min(Math.max(value, min), max);\n}"
+    }
+  ],
+  "write": {
+    "test/math.test.mjs": "import { test } from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { clamp } from \"../src/math.js\";\n\ntest(\"clamp keeps values inside the range\", () => assert.equal(clamp(2, 0, 3), 2));\ntest(\"clamp caps values above max\", () => assert.equal(clamp(5, 0, 3), 3));\ntest(\"clamp floors values below min\", () => assert.equal(clamp(-2, 0, 3), 0));\n"
+  },
+  "events": [
+    { "kind": "tool-use", "name": "Read", "summary": "AGENTS.md" },
+    { "kind": "tool-use", "name": "Read", "summary": "src/math.js" },
+    { "kind": "tool-use", "name": "Edit", "summary": "src/math.js" },
+    { "kind": "tool-use", "name": "Write", "summary": "test/math.test.mjs" },
+    { "kind": "tool-use", "name": "Run", "summary": "node --test test/math.test.mjs" },
+    { "kind": "assistant-text", "text": "Added clamp(value, min, max) to src/math.js with a one-line JSDoc directly above it and named exports only, per AGENTS.md. Added test/math.test.mjs using node:test. `node --test test/math.test.mjs` passes." }
+  ]
+}

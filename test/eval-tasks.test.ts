@@ -10,6 +10,7 @@ import { runCheck } from "../src/main/check";
 import { loadTasks } from "../evals/run";
 import { grade } from "../evals/lib/graders";
 import type { GradeInput, Task } from "../evals/lib/types";
+import { validateTask } from "../evals/lib/validate";
 
 const FIXTURES = join(__dirname, "..", "evals", "fixtures");
 const dirs: string[] = [];
@@ -48,4 +49,21 @@ describe("eval tasks with a reference solution", () => {
       expect(results.filter((r) => !r.pass).map((r) => r.why)).toEqual([]);
     });
   }
+});
+
+describe("grader validation (evals/references)", () => {
+  const REFERENCES = join(__dirname, "..", "evals", "references");
+
+  for (const task of loadTasks()) {
+    it(`${task.id}: a no-op fails and the reference passes`, async () => {
+      const v = await validateTask(task, { fixturesRoot: FIXTURES, referencesRoot: REFERENCES, runCommand });
+      expect(v.problems, [...v.noop.why, ...(v.reference?.why ?? [])].join("\n")).toEqual([]);
+    }, 30_000);
+  }
+
+  it("flags a task whose graders a no-op passes, and a missing reference", async () => {
+    const weak: Task = { ...loadTasks().find((t) => t.id === "explain-no-edit")!, id: "weak-x", graders: [{ type: "budget" }] };
+    const v = await validateTask(weak, { fixturesRoot: FIXTURES, referencesRoot: REFERENCES, runCommand });
+    expect(v.problems).toEqual(["a no-op passes: the graders don't check the outcome", "no reference solution"]);
+  });
 });
