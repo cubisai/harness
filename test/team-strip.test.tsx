@@ -96,4 +96,20 @@ describe("TeamStripView", () => {
     expect(working).toContain('aria-current="true"');
     expect(working).toContain("1 working");
   });
+
+  it("lights the lead while the turn runs and no member is working", async () => {
+    const { TeamStripView } = await load();
+    const lead = strip(renderToStaticMarkup(<TeamStripView def={team} active={new Set<string>()} running />));
+    expect(lead).toContain('class="team-strip-lead active"');
+    expect(lead).toContain("Lead working");
+    expect(lead.match(/class="beam"/g)?.length).toBe(1);
+    // A member at work takes over: the lead waits.
+    const member = strip(renderToStaticMarkup(<TeamStripView def={team} active={new Set(["writer"])} running />));
+    expect(member).toContain('class="team-strip-lead"');
+    expect(member).toContain("1 working");
+    // Idle: nobody lit.
+    const idle = strip(renderToStaticMarkup(<TeamStripView def={team} active={new Set<string>()} />));
+    expect(idle).not.toContain("team-strip-lead active");
+    expect(idle).not.toContain('class="beam"');
+  });
 });

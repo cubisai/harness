@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { createTurnWatchdog, STALL_NOTICE_MS, STALL_STOP_MS, type TurnWatchdog } from "./watchdog";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import type {
@@ -714,6 +715,8 @@ export class Service {
     if (learner && round === 0) learner.onUserMessage({ thread, seq: userEvent.seq, text: req.text });
 
     const controller = new AbortController();
+    // Ends a turn whose agent goes silent (a provider that hangs or retries forever).
+    let watchdog: TurnWatchdog | null = null;
     this.running.set(thread.id, controller);
     this.broadcast({ type: "running", threadId: thread.id, running: true });
     // Set when a failed check schedules the next automatic fix; fired after this send's finally.
@@ -766,7 +769,19 @@ export class Service {
       let denied = 0;
       let toolCalls = 0;
       let turnTokens = 0;
-      const live = (delta: LiveDelta) => this.broadcast({ type: "delta", threadId: thread.id, delta });
+      const dog = createTurnWatchdog({
+        onNotice: () =>
+          this.emit(thread.id, { kind: "notice", text: `No activity from ${driver.label} for ${STALL_NOTICE_MS / 60_000} minutes. The model or a team member may be stuck: keep waiting, or Stop the turn and try again or pick another model.` }, provenance),
+        onStop: () => {
+          this.emit(thread.id, { kind: "error", message: `Stopped this turn: no activity from ${driver.label} for ${STALL_STOP_MS / 60_000} minutes. Send again to retry, or pick another model.` }, provenance);
+          controller.abort();
+        },
+      });
+      watchdog = dog;
+      const live = (delta: LiveDelta) => {
+        dog.bump();
+        this.broadcast({ type: "delta", threadId: thread.id, delta });
+      };
       const scrub = (text: string) => redactSecrets(text, this.secrets());
       const catchUp = compact ? null : await this.catchUp(thread.id, driver, userEvent.seq);
       const turnPrompt = catchUp ? `${catchUp}\n---\n${prompt}` : prompt;
@@ -799,6 +814,7 @@ export class Service {
         },
         onSessionLost: (reason) => this.rehydrate(thread.id, driver, reason, userEvent.seq),
         onEvent: (event) => {
+          dog.bump();
           if (event.kind === "compaction") {
             compacted = true;
             answered = true;
@@ -866,7 +882,7 @@ export class Service {
           // a remembered approval never skips a guardrail block. Answer
           // "allow-once" so Claude doesn't write the same settings rule again.
           if (approvals.get(thread.agent, p.toolName, p.summary)) return Promise.resolve<PermissionDecision>("allow-once");
-          return new Promise<PermissionDecision>((resolve) => {
+          return dog.waitOn(new Promise<PermissionDecision>((resolve) => {
             const requestId = randomUUID();
             const done = (d: PermissionDecision) => {
               if (d === "deny" && !controller.signal.aborted) denied++;
@@ -880,10 +896,10 @@ export class Service {
             const request = { requestId, threadId: thread.id, ...p };
             this.permissionRequests.set(requestId, request);
             this.broadcast({ type: "permission", request });
-          });
+          }));
         },
         requestPlanDecision: (p) =>
-          new Promise<PlanDecision>((resolve) => {
+          dog.waitOn(new Promise<PlanDecision>((resolve) => {
             const requestId = randomUUID();
             this.pendingPlans.set(requestId, { threadId: thread.id, resolve });
             controller.signal.addEventListener(
@@ -902,9 +918,9 @@ export class Service {
             const request = { requestId, threadId: thread.id, plan: p.plan };
             this.planRequests.set(requestId, request);
             this.broadcast({ type: "plan-approval", request });
-          }),
+          })),
         // An async question doesn't hold the turn, so Stop doesn't take its card away.
-        requestUserInput: (questions, opts) => this.ask(thread.id, questions, opts?.async ? [] : [controller.signal], opts?.async === true),
+        requestUserInput: (questions, opts) => dog.waitOn(this.ask(thread.id, questions, opts?.async ? [] : [controller.signal], opts?.async === true)),
       });
       // The turn finished cleanly: hand it to the memory extractor. A listener
       // failure is its own concern and never touches the thread. An automatic
@@ -1011,6 +1027,7 @@ export class Service {
         }
       }
     } finally {
+      watchdog?.dispose();
       this.running.delete(thread.id);
       // An async answer that missed the turn goes out as the next message (unless a check fix round is next).
       const late = this.afterTurn.get(thread.id);

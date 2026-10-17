@@ -2,6 +2,7 @@ import { useEffect, useMemo } from "react";
 import type { ExpertDef } from "../../../../shared/experts";
 import type { ThreadEvent } from "../../../../shared/types";
 import { useStore } from "../../store";
+import { Beam } from "../Beam";
 import { ExpertAvatar, initials, memberAvatarId } from "./ExpertAvatar";
 
 /**
@@ -37,15 +38,23 @@ export function activeMembers(events: ThreadEvent[], memberIds: string[]): Set<s
   return new Set(running.values());
 }
 
-/** The strip's markup, hook-free so a test can render it directly. */
-export function TeamStripView({ def, active }: { def: ExpertDef; active: Set<string> }) {
+/**
+ * The strip's markup, hook-free so a test can render it directly. While the
+ * turn runs and no member is working, the lead is the one working (planning,
+ * briefing, writing the answer), so it lights up instead.
+ */
+export function TeamStripView({ def, active, running = false }: { def: ExpertDef; active: Set<string>; running?: boolean }) {
   const members = def.members ?? [];
   if (def.kind !== "team" || members.length === 0) return null;
   const working = members.filter((m) => active.has(m.id)).length;
+  const leadOn = running && working === 0;
   return (
     <div className="team-strip" role="group" aria-label={`${def.name} team`}>
-      <span className="team-strip-lead">
-        <ExpertAvatar id={def.id} text={def.avatarText} className="team-strip-avatar" />
+      <span className={`team-strip-lead${leadOn ? " active" : ""}`} title={`${def.persona || def.name} · ${def.profession}${leadOn ? " · working" : ""}`} {...(leadOn ? { "aria-current": "true" as const } : {})}>
+        <span className="team-strip-face">
+          {leadOn && <Beam />}
+          <ExpertAvatar id={def.id} text={def.avatarText} className="team-strip-avatar" />
+        </span>
         <span>Lead</span>
       </span>
       {members.map((m) => {
@@ -57,11 +66,14 @@ export function TeamStripView({ def, active }: { def: ExpertDef; active: Set<str
             title={`${m.name} · ${m.profession}${on ? " · working" : ""}`}
             {...(on ? { "aria-current": "true" as const } : {})}
           >
-            <ExpertAvatar id={memberAvatarId(def.id, m.id)} text={initials(m.name)} className="team-strip-avatar" />
+            <span className="team-strip-face">
+              {on && <Beam />}
+              <ExpertAvatar id={memberAvatarId(def.id, m.id)} text={initials(m.name)} className="team-strip-avatar" />
+            </span>
           </span>
         );
       })}
-      <span>{working > 0 ? `${working} working` : `${members.length} members`}</span>
+      <span aria-live="polite">{working > 0 ? `${working} working` : leadOn ? "Lead working" : `${members.length} members`}</span>
     </div>
   );
 }
@@ -70,6 +82,7 @@ export function TeamStripView({ def, active }: { def: ExpertDef; active: Set<str
 export function TeamStrip({ threadId, expertId }: { threadId: string; expertId: string }) {
   const experts = useStore((s) => s.experts);
   const events = useStore((s) => s.events[threadId]);
+  const running = useStore((s) => s.running[threadId] === true);
 
   // The catalogue loads on the strip's first render (a thread may open before the Library did).
   useEffect(() => {
@@ -83,5 +96,5 @@ export function TeamStrip({ threadId, expertId }: { threadId: string; expertId: 
   }, [events, def]);
 
   if (!def) return null;
-  return <TeamStripView def={def} active={active} />;
+  return <TeamStripView def={def} active={active} running={running} />;
 }

@@ -2,7 +2,6 @@ import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  PEER_NOTE_CAP,
   TEAM_BOARD_TOOL,
   TEAM_POST_TOOL,
   TEAM_READ_TOOL,
@@ -97,10 +96,10 @@ describe("expert team tools", () => {
   it("boards unread notes addressed to the reader or all, then none after", async () => {
     const { dir, run } = setup();
     await run(TEAM_POST_TOOL, { from: "researcher-1", to: "lead", text: "hello lead" });
-    await run(TEAM_POST_TOOL, { from: "researcher-1", to: "researcher-2", text: "direct ping" });
-    await run(TEAM_POST_TOOL, { from: "researcher-1", to: "all", text: "standup note" });
-    await run(TEAM_POST_TOOL, { from: "researcher-2", to: "researcher-1", text: "reply" });
-    await run(TEAM_POST_TOOL, { from: "researcher-2", to: "all", text: "progress" });
+    await run(TEAM_POST_TOOL, { from: "researcher-2", to: "lead", text: "reply" });
+    await run(TEAM_POST_TOOL, { from: "lead", to: "researcher-2", text: "direct ping" });
+    await run(TEAM_POST_TOOL, { from: "lead", to: "all", text: "standup note" });
+    await run(TEAM_POST_TOOL, { from: "lead", to: "researcher-1", text: "for you" });
 
     const r1 = await run(TEAM_BOARD_TOOL, { for: "researcher-1" });
     expect(r1.isError).toBeFalsy();
@@ -109,8 +108,8 @@ describe("expert team tools", () => {
         `Workspace: ${dir}`,
         "Team: lead, researcher-1, researcher-2",
         "Unread notes (2):",
-        "- researcher-2 → researcher-1: reply",
-        "- researcher-2 → all: progress",
+        "- lead → all: standup note",
+        "- lead → researcher-1: for you",
         "Files:",
         "- none",
       ].join("\n"),
@@ -118,8 +117,8 @@ describe("expert team tools", () => {
 
     const r2 = await run(TEAM_BOARD_TOOL, { for: "researcher-2" });
     expect(r2.text).toContain("Unread notes (2):");
-    expect(r2.text).toContain("- researcher-1 → researcher-2: direct ping");
-    expect(r2.text).toContain("- researcher-1 → all: standup note");
+    expect(r2.text).toContain("- lead → researcher-2: direct ping");
+    expect(r2.text).toContain("- lead → all: standup note");
 
     // Reading marks the inbox read: the second board call has nothing new.
     const r1again = await run(TEAM_BOARD_TOOL, { for: "researcher-1" });
@@ -127,32 +126,32 @@ describe("expert team tools", () => {
     expect(JSON.parse(readFileSync(join(dir, "cursors.json"), "utf8"))).toMatchObject({ "researcher-1": 5 });
   });
 
-  it(`caps direct member-to-member notes at ${PEER_NOTE_CAP} until the lead posts again`, async () => {
-    const { notes, run } = setup({ members: ["a", "b"] });
-    for (let i = 0; i < PEER_NOTE_CAP; i++) {
-      const res = await run(TEAM_POST_TOOL, { from: "a", to: "b", text: `ping ${i}` });
-      expect(res.isError).toBeFalsy();
-    }
-    expect(notes.length).toBe(PEER_NOTE_CAP);
+  it("lets a member post to the lead alone, never to a member or all", async () => {
+    const { notes, run } = setup();
+    const expected = 'Members report to the lead only: post with to: "lead".';
+    const peer = await run(TEAM_POST_TOOL, { from: "researcher-1", to: "researcher-2", text: "ping" });
+    expect(peer.isError).toBe(true);
+    expect(peer.text).toBe(expected);
+    const broadcast = await run(TEAM_POST_TOOL, { from: "researcher-1", to: "all", text: "ping all" });
+    expect(broadcast.isError).toBe(true);
+    expect(broadcast.text).toBe(expected);
+    expect(notes).toEqual([]);
 
-    const over = await run(TEAM_POST_TOOL, { from: "a", to: "b", text: "ping 6" });
-    expect(over.isError).toBe(true);
-    expect(over.text).toBe("Direct-note limit reached for this round; report to the lead instead.");
-    expect(notes.length).toBe(PEER_NOTE_CAP);
-
-    // A note from the lead starts a new round, so a→b works again.
-    expect((await run(TEAM_POST_TOOL, { from: "lead", to: "b", text: "carry on" })).isError).toBeFalsy();
-    expect((await run(TEAM_POST_TOOL, { from: "a", to: "b", text: "fresh round" })).isError).toBeFalsy();
-    expect(notes.length).toBe(PEER_NOTE_CAP + 2);
+    const toLead = await run(TEAM_POST_TOOL, { from: "researcher-1", to: "lead", text: "done" });
+    expect(toLead.isError).toBeFalsy();
+    expect(toLead.text).toBe("Sent to lead.");
+    expect(notes).toHaveLength(1);
   });
 
-  it("never counts posts between members and the lead against the cap", async () => {
-    const { run } = setup({ members: ["a", "b"] });
-    for (let i = 0; i < 7; i++) {
-      expect((await run(TEAM_POST_TOOL, { from: "lead", to: "a", text: `task ${i}` })).isError).toBeFalsy();
-      expect((await run(TEAM_POST_TOOL, { from: "b", to: "lead", text: `report ${i}` })).isError).toBeFalsy();
-    }
-    expect((await run(TEAM_POST_TOOL, { from: "a", to: "b", text: "still allowed" })).isError).toBeFalsy();
+  it("lets the lead post to one member or to all", async () => {
+    const { notes, run } = setup();
+    const toMember = await run(TEAM_POST_TOOL, { from: "lead", to: "researcher-2", text: "task" });
+    expect(toMember.isError).toBeFalsy();
+    expect(toMember.text).toBe("Sent to researcher-2.");
+    const toAll = await run(TEAM_POST_TOOL, { from: "lead", to: "all", text: "standup" });
+    expect(toAll.isError).toBeFalsy();
+    expect(toAll.text).toBe("Sent to all.");
+    expect(notes.map((n) => n.to)).toEqual(["researcher-2", "all"]);
   });
 
   it("lists workspace files sorted by name with character counts", async () => {
@@ -178,14 +177,14 @@ describe("expert team tools", () => {
     expect(empty.text).toContain("Unread notes (0):\n- none");
     expect(empty.text).toContain("Files:\n- none");
 
-    await run(TEAM_POST_TOOL, { from: "researcher-1", to: "all", text: "valid note" });
+    await run(TEAM_POST_TOOL, { from: "lead", to: "all", text: "valid note" });
     appendFileSync(join(dir, "notes.jsonl"), "{corrupt\n");
     writeFileSync(join(dir, "cursors.json"), "{corrupt");
 
     const board = await run(TEAM_BOARD_TOOL, { for: "researcher-2" });
     expect(board.isError).toBeFalsy();
     expect(board.text).toContain("Unread notes (1):");
-    expect(board.text).toContain("- researcher-1 → all: valid note");
+    expect(board.text).toContain("- lead → all: valid note");
     expect(JSON.parse(readFileSync(join(dir, "cursors.json"), "utf8"))).toMatchObject({ "researcher-2": 1 });
   });
 });

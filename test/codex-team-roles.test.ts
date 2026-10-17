@@ -27,4 +27,17 @@ describe("codexTeamRoles", () => {
     codexTeamRoles(team, dir);
     expect(statSync(join(dir, "writer.toml")).mtimeMs).toBe(before);
   });
+
+  it("adds the step budget sentence to a member with maxTurns", () => {
+    const dir = join(tempDir(), "t3");
+    codexTeamRoles([{ id: "researcher", description: "Researcher", prompt: "Find facts.", maxTurns: 5 }], dir);
+    const toml = readFileSync(join(dir, "researcher.toml"), "utf8");
+    expect(toml).toBe('developer_instructions = "Find facts.\\n\\nFinish your step within 5 tool calls, then reply to the lead."\n');
+  });
+
+  it("leaves a member without maxTurns at exactly the member prompt", () => {
+    const dir = join(tempDir(), "t4");
+    codexTeamRoles(team, dir);
+    expect(readFileSync(join(dir, "writer.toml"), "utf8")).toBe('developer_instructions = "Write."\n');
+  });
 });

@@ -326,15 +326,17 @@ export function skillsIndexBlock(skills: ExpertSkill[]): string {
 /**
  * The text injected into an agent's instructions for a thread's expert: the
  * persona prompt wrapped in an `<expert>` block, the lead's package skills
- * as a private index, and, for a team, its members. Double quotes in
- * attributes are escaped so the markup stays well-formed.
+ * as a private index, and, for a team, its members and the team protocol.
+ * It ends with the Stay line that anchors the persona to the whole thread.
+ * Double quotes in attributes are escaped so the markup stays well-formed.
  */
 export function expertBlock(def: Pick<ExpertDef, "name" | "profession" | "prompt" | "kind" | "members">, leadSkills: ExpertSkill[] = []): string {
   const attr = (value: string) => value.replace(/"/g, "&quot;");
   const head = `<expert name="${attr(def.name)}" role="${attr(def.profession)}">`;
   const body = `${head}\n${def.prompt}\n</expert>`;
   const index = skillsIndexBlock(leadSkills);
-  if (def.kind !== "team" || !def.members?.length) return index ? [body, index].join("\n\n") : body;
+  const stay = def.profession ? `Stay ${def.name}, ${def.profession}, for this whole thread.` : `Stay ${def.name} for this whole thread.`;
+  if (def.kind !== "team" || !def.members?.length) return [...(index ? [body, index] : [body]), stay].join("\n\n");
   const lines = def.members.map((m) => `- \`${m.id}\` — ${m.name}, ${m.profession}: ${m.description}`);
   return [
     body,
@@ -342,6 +344,7 @@ export function expertBlock(def: Pick<ExpertDef, "name" | "profession" | "prompt
     "## Your team",
     lines.join("\n"),
     TEAM_LEAD_PROTOCOL,
+    stay,
   ].join("\n\n");
 }
 
@@ -361,10 +364,13 @@ export interface TeamAgent {
  */
 export const TEAM_LEAD_PROTOCOL = [
   "## How the team works",
-  "- Hand a member one step with your subagent tool (subagent type = the member id). Run independent steps in parallel and dependent ones in order. Wait for members' results in this turn; don't end your turn while one is still working.",
-  "- Each brief states: the objective, the inputs (workspace file names or paths), the member skill to use if any, the expected output and length, what other members cover, and when to stop.",
-  "- Members save full results with `team_write` and reply with a short summary and the file name. Pass file names to the next member instead of retelling results; call `team_read` only when the summary isn't enough.",
-  "- `team_board` (for: \"lead\") lists notes members sent you and the workspace files; `team_post` sends a member a note.",
+  "- Plan the work as phases. Members in one phase run in parallel (one subagent call each, in the same message); start a phase only after every result of the previous one is in. Tell the user one short line as each phase starts.",
+  "- Hand a member one step with your subagent tool (subagent type = the member id). Don't end your turn while a member is still working.",
+  "- Each brief states: the objective, the inputs (workspace file names or paths), the member skill to use if any, the expected output and length, what the other members in that phase cover (so they don't overlap), and when to stop.",
+  "- Never write a member's specialist output yourself or speak for a member: if the work is in a member's field, hand it to them. You plan, brief, relay and synthesize.",
+  "- A narrow ask that fits one member goes to that member alone; don't run the whole team for it.",
+  "- Members save full results with `team_write` and reply with a short summary and the file name. Pass file names to the next phase instead of retelling results; call `team_read` only when the summary isn't enough.",
+  "- Members report only to you. `team_board` (for: \"lead\") lists their notes and the workspace files; `team_post` sends a member a note.",
   "- Route factual claims through the team's verifying member when it has one. The final answer is yours: consolidate, resolve conflicts, name the files it rests on.",
 ].join("\n");
 
@@ -374,7 +380,7 @@ export function teamMemberProtocol(id: string): string {
     "## Working in the team",
     `Your team id is \`${id}\`; the lead is \`lead\`. Do only the step in your brief.`,
     `- Save your full result with \`team_write\` (from: "${id}", name: "${id}-<step>"), then reply to the lead with at most 200 words: the outcome, the file name and open questions.`,
-    `- Read other members' results with \`team_read\` when your brief names them. \`team_board\` (for: "${id}") shows notes for you; \`team_post\` reaches the lead or a member. Keep notes short and rare.`,
+    `- Read other members' results with \`team_read\` when your brief names them. \`team_board\` (for: "${id}") shows notes for you; \`team_post\` reaches the lead only (to: "lead"), never other members.`,
     "- Don't edit project files unless your brief says to.",
   ].join("\n");
 }

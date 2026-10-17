@@ -1,6 +1,6 @@
 import type { McpServerEntry, ModelOption, PermissionDecision, PermissionMode, ThreadEvent } from "../../shared/types";
 import type { RunPayload, RunResult, ToolDiff } from "../../shared/tools";
-import { clipSummary } from "../../shared/tools";
+import { clipAgentSummary, clipSummary } from "../../shared/tools";
 import { diffSummary } from "../../shared/diff";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -111,8 +111,10 @@ export function codexTeamRoles(team: TeamAgent[], dir: string): Record<string, {
   const roles: Record<string, { description: string; config_file: string }> = {};
   for (const m of team) {
     const file = join(dir, `${m.id}.toml`);
+    // A member with a turn budget is told where its step ends; Codex subagents otherwise run until done.
+    const instructions = m.maxTurns ? `${m.prompt}\n\nFinish your step within ${m.maxTurns} tool calls, then reply to the lead.` : m.prompt;
     // JSON string escapes are valid TOML basic-string escapes.
-    const text = `developer_instructions = ${JSON.stringify(m.prompt)}\n`;
+    const text = `developer_instructions = ${JSON.stringify(instructions)}\n`;
     let current: string | null = null;
     try {
       current = readFileSync(file, "utf8");
@@ -404,6 +406,11 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   const turns = new Map<string, TurnState>(); // by Codex thread id
   /** Codex child threads (subagents), by child thread id: their items hang under their Agent row. */
   const children = new Map<string, TurnState>();
+  /**
+   * A team turn's Agent rows held back until the child's role is known (thread/read), by child
+   * thread id; calling one emits its row. A child's first item or its end emits it unlabelled.
+   */
+  const pendingRows = new Map<string, () => void>();
   /** Agent rows already closed, so a duplicate completion emits one tool-result. */
   const closedRows = new Set<string>();
   /** spawnAgent rows whose child thread ids only arrive with item/completed. */
@@ -470,13 +477,44 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     children.set(childThreadId, child);
     // A spawnAgent call can name several children: its Agent row is emitted once.
     for (const other of children.values()) if (other !== child && other.rowId === rowId) return;
-    parent.input.onEvent({ kind: "tool-use", toolUseId: rowId, name: "Agent", summary: clipSummary(agent.subagent), payload: { prompt: agent.prompt, subagent_type: agent.subagent } });
+    // A team member's row reads as the member (" · <member id>") so the team strip lights.
+    // Codex sends no thread/started for a spawned child, so its role (the
+    // agent_type the lead passed) comes from thread/read before the row goes out.
+    const emit = (role?: string) => {
+      pendingRows.delete(childThreadId);
+      const member = role && parent.input.team?.some((m) => m.id === role) ? role : null;
+      if (member) {
+        parent.input.onEvent({
+          kind: "tool-use",
+          toolUseId: rowId,
+          name: "Agent",
+          summary: clipAgentSummary(agent.subagent === "subagent" ? member : agent.subagent, member),
+          payload: { prompt: agent.prompt, subagent_type: member },
+        });
+        return;
+      }
+      parent.input.onEvent({ kind: "tool-use", toolUseId: rowId, name: "Agent", summary: clipSummary(agent.subagent), payload: { prompt: agent.prompt, subagent_type: agent.subagent } });
+    };
+    const conn = rpc;
+    if (!parent.input.team?.length || !conn) return emit();
+    pendingRows.set(childThreadId, () => emit());
+    const settle = (role?: string) => {
+      if (pendingRows.has(childThreadId)) emit(role);
+    };
+    void conn.request("thread/read", { threadId: childThreadId }).then(
+      (r) => {
+        const role = (r as { thread?: { agentRole?: unknown } } | null)?.thread?.agentRole;
+        settle(typeof role === "string" ? role : undefined);
+      },
+      () => settle(),
+    );
   };
 
   /** Close one Agent row once: its child thread ended with the given kind. */
   const closeChild = (parent: TurnState, childThreadId: string, interrupted: boolean) => {
     const child = children.get(childThreadId);
     if (!child) return;
+    pendingRows.get(childThreadId)?.();
     children.delete(childThreadId);
     if (!child.rowId || closedRows.has(child.rowId)) return;
     closedRows.add(child.rowId);
@@ -492,6 +530,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   const closeRootChildren = (root: TurnState, interrupted: boolean) => {
     for (const [childThreadId, child] of children) {
       if (child.parent !== root) continue;
+      pendingRows.get(childThreadId)?.();
       children.delete(childThreadId);
       if (!child.rowId || closedRows.has(child.rowId)) continue;
       closedRows.add(child.rowId);
@@ -526,6 +565,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     // messages and tool calls surface, under the Agent row that spawned it.
     // Its turn lifecycle, usage, reasoning and errors stay out of the root.
     if (t.parent) {
+      // The child's first step: its Agent row must be out before it (status changes don't count).
+      if (p.threadId && method.startsWith("item/")) pendingRows.get(p.threadId)?.();
       switch (method) {
         case "item/started":
           if (p.item) onItemStarted(t, p.item);

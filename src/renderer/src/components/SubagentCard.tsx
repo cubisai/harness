@@ -1,11 +1,13 @@
-import { type ReactNode } from "react";
+import { type ReactNode, useMemo } from "react";
 import { prettyTool } from "../../../shared/tools";
+import type { ExpertDef } from "../../../shared/experts";
 import type { StoredEvent, ThreadEvent } from "../../../shared/types";
 import { useSmoothText } from "../hooks/useSmoothText";
 import { type LiveThread, visibleItems } from "../live";
 import { Markdown } from "../markdown";
 import { useStore } from "../store";
 import { agentPromptOf, openRef, payloadText, ToolEventRow, useRunningTimer } from "./ThreadView";
+import { ExpertAvatar, initials, memberAvatarId } from "./experts/ExpertAvatar";
 
 type ToolEvent = Extract<ThreadEvent, { kind: "tool-use" }>;
 type ResultEvent = Extract<ThreadEvent, { kind: "tool-result" }>;
@@ -30,6 +32,7 @@ export function SubagentCard({
   threadId,
   onToggle,
   live: liveOverride,
+  team: teamOverride,
 }: {
   tool: ToolEvent;
   result?: ResultEvent;
@@ -42,6 +45,8 @@ export function SubagentCard({
   onToggle(open: boolean): void;
   /** The thread's live stream; read from the store when omitted (tests pass it). */
   live?: LiveThread;
+  /** The thread's expert team; read from the store when omitted (tests pass it). */
+  team?: ExpertDef;
 }) {
   const active = !result && running;
   const state = result ? (result.isError ? "error" : "done") : running ? "pending" : "";
@@ -73,17 +78,41 @@ export function SubagentCard({
     return thread?.worktreePath ?? s.projects.find((p) => p.id === thread?.projectId)?.path ?? null;
   });
 
+  // On a team thread a member's row reads as the member: its portrait, name and profession.
+  const expertId = useStore((s) => (threadId ? Object.values(s.threads).flat().find((t) => t.id === threadId)?.expertId : undefined));
+  const teamFromStore = useStore((s) => (expertId ? s.experts?.find((e) => e.id === expertId && e.kind === "team") : undefined));
+  const team = teamOverride ?? teamFromStore;
+  const member = useMemo(() => {
+    const cut = tool.summary.lastIndexOf(" · ");
+    const id = cut >= 0 ? tool.summary.slice(cut + 3) : "";
+    const m = team?.members?.find((x) => x.id === id);
+    return team && m ? { teamId: team.id, ...m, task: tool.summary.slice(0, cut) } : null;
+  }, [team, tool.summary]);
+
   return (
     <div className={`subagent-card ${state}`}>
       <details className="tool" open={open} onToggle={(e) => onToggle(e.currentTarget.open)}>
-        <summary className="tool-row" title={tool.summary}>
+        <summary className="tool-row" title={member ? `${member.name} · ${member.profession} (${member.id}) — ${member.task}` : tool.summary}>
           <span className={`dot ${state}`} />
-          <span className="name">Agent</span>
-          <span className="summary">
-            {tool.summary}
-            {/* Claude's summary already ends with the type ("Find the bug · Explore"). */}
-            {agent?.subagent && !tool.summary.endsWith(agent.subagent) ? <span className="subagent-type"> · {agent.subagent}</span> : null}
-          </span>
+          {member ? (
+            <>
+              <ExpertAvatar id={memberAvatarId(member.teamId, member.id)} text={initials(member.name)} className="subagent-avatar" />
+              <span className="name">{member.name}</span>
+              <span className="summary">
+                {member.task && member.task !== member.id ? `${member.task} · ` : ""}
+                <span className="subagent-type">{member.profession || member.id}</span>
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="name">Agent</span>
+              <span className="summary">
+                {tool.summary}
+                {/* Claude's summary already ends with the type ("Find the bug · Explore"). */}
+                {agent?.subagent && !tool.summary.endsWith(agent.subagent) ? <span className="subagent-type"> · {agent.subagent}</span> : null}
+              </span>
+            </>
+          )}
           <span className="result">{status.filter(Boolean).join(" · ")}</span>
         </summary>
         {open && (
@@ -95,7 +124,8 @@ export function SubagentCard({
             {liveText.map((it) => (
               <LiveChildText key={it.key} text={it.text} />
             ))}
-            {agent && (
+            {/* Codex reports some subagents without their prompt: no empty fold then. */}
+            {agent?.prompt.trim() && (
               <details className="subagent-fold">
                 <summary>Prompt</summary>
                 <pre className="tool-pre">{agent.prompt}</pre>

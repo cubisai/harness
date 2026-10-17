@@ -112,11 +112,36 @@ describe("team protocol", () => {
     expect(agent!.maxTurns).toBe(40);
     expect(agent!.prompt).toContain("Your team id is `checker`");
     expect(agent!.prompt).toContain('team_write` (from: "checker"');
+    expect(agent!.prompt).toContain('team_post` reaches the lead only (to: "lead"), never other members');
     expect(agent!.prompt).toContain("at most 200 words");
   });
 
   it("leaves maxTurns out when the member has none", () => {
     const [agent] = teamAgents({ kind: "team", members: [{ id: "a", name: "A", profession: "P", description: "", prompt: "Do.", skills: [] }] });
     expect(agent).not.toHaveProperty("maxTurns");
+  });
+});
+
+describe("the bundled Deep Research Team", () => {
+  const catalog = createExpertCatalog({ bundledDir: join(__dirname, "..", "resources", "experts"), userDir: tempDir() });
+  const def = catalog.get("deep-research-team");
+
+  it("is a team of four members, each with its own skill and turn budget", () => {
+    expect(def?.kind).toBe("team");
+    expect(def?.members?.map((m) => m.id)).toEqual(["cross-verifier", "deep-researcher", "idea-validator", "insight-editor"]);
+    const bound = bindExpertSkills(def!, catalog.packageSkills("deep-research-team"));
+    expect(Object.fromEntries(Object.entries(bound.members).map(([id, skills]) => [id, skills.map((s) => s.name)]))).toEqual({
+      "cross-verifier": ["cross-check"],
+      "deep-researcher": ["deep-dive"],
+      "idea-validator": ["demand-check"],
+      "insight-editor": ["insight-brief"],
+    });
+    expect(bound.lead).toEqual([]);
+    expect(teamAgents(def!).map((a) => a.maxTurns)).toEqual([40, 40, 40, 30]);
+  });
+
+  it("is English only", () => {
+    const text = [def!.prompt, ...def!.members!.map((m) => m.prompt)].join("\n");
+    expect(text).not.toMatch(/[぀-ヿ㐀-鿿가-힯]/);
   });
 });

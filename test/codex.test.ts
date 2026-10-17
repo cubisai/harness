@@ -227,6 +227,44 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 });
 `;
 
+/**
+ * A team spawn as the app-server really does it: a subAgentActivity item and
+ * no thread/started for the child, whose role only thread/read reports. The
+ * turn completes after that read. The prompt picks the role: "team-foreign"
+ * starts the child as someone off the team.
+ */
+const TEAM_PROBE = `
+const readline = require("node:readline");
+const send = (m) => process.stdout.write(JSON.stringify(m) + "\\n");
+readline.createInterface({ input: process.stdin }).on("line", (line) => {
+  const msg = JSON.parse(line);
+  if (msg.id === undefined) return;
+  const { id, method, params } = msg;
+  if (method === "initialize") return send({ id, result: { userAgent: "probe" } });
+  if (method === "model/list") return send({ id, result: { data: [] } });
+  if (method === "thread/start" || method === "thread/resume") return send({ id, result: { thread: { id: "probe-thread" } } });
+  if (method === "turn/start") {
+    const turn = { id: "turn-1", status: "inProgress", error: null, durationMs: null };
+    send({ id, result: { turn } });
+    send({ method: "turn/started", params: { threadId: params.threadId, turn } });
+    globalThis.foreign = params.input.map((i) => i.text).join("") === "team-foreign";
+    globalThis.root = { threadId: params.threadId, turn };
+    const activity = { type: "subAgentActivity", id: "call_s1", kind: "started", agentThreadId: "child-1", agentPath: "/root/history_facts_a" };
+    send({ method: "item/started", params: { threadId: params.threadId, turnId: turn.id, item: activity } });
+    // As the real server does: the child's status changes before thread/read answers.
+    send({ method: "thread/status/changed", params: { threadId: "child-1", status: { type: "active" } } });
+    return;
+  }
+  if (method === "thread/read") {
+    send({ id, result: { thread: { id: params.threadId, agentNickname: "Pascal", agentRole: globalThis.foreign ? "not-a-member" : "deep-researcher" } } });
+    const { threadId, turn } = globalThis.root;
+    send({ method: "turn/completed", params: { threadId, turn: { ...turn, status: "completed", durationMs: 1 } } });
+    return;
+  }
+  send({ id, result: {} });
+});
+`;
+
 function driver() {
   const d = createCodexDriver({ command: process.execPath, args: [MOCK], clientVersion: "test", skillsDir: () => "/skills/here" });
   closeAfter(() => d.dispose?.());
@@ -776,6 +814,34 @@ describe("Codex subagents", () => {
     expect(agents[0]).toMatchObject({ toolUseId: "call_sp1", payload: { prompt: "What is 17*23?" } });
     expect(t.events.find((e) => e.kind === "assistant-text" && e.text === "391")).toMatchObject({ parentId: "call_sp1" });
     expect(t.events.find((e) => e.kind === "tool-result" && e.toolUseId === "call_sp1")).toMatchObject({ summary: "391", isError: false });
+  });
+});
+
+describe("Codex team member rows", () => {
+  const team = [{ id: "deep-researcher", description: "Researcher", prompt: "Research." }];
+
+  function teamDriver() {
+    const d = createCodexDriver({ command: process.execPath, args: ["-e", TEAM_PROBE], clientVersion: "test" });
+    closeAfter(() => d.dispose?.());
+    return d;
+  }
+
+  const agentRows = (t: ReturnType<typeof turn>) => t.events.filter((e): e is Extract<ThreadEvent, { kind: "tool-use" }> => e.kind === "tool-use" && e.name === "Agent");
+
+  it("names the Agent row after the team member the child thread started as", async () => {
+    const t = turn("team", { team });
+    await teamDriver().runTurn(t.input);
+    const agents = agentRows(t);
+    expect(agents).toHaveLength(1);
+    expect(agents[0]).toMatchObject({ summary: "history_facts_a · deep-researcher", payload: { prompt: "", subagent_type: "deep-researcher" } });
+  });
+
+  it("keeps Codex's task name when the child's role isn't a team member", async () => {
+    const t = turn("team-foreign", { team });
+    await teamDriver().runTurn(t.input);
+    const agents = agentRows(t);
+    expect(agents).toHaveLength(1);
+    expect(agents[0]).toMatchObject({ summary: "history_facts_a", payload: { prompt: "", subagent_type: "history_facts_a" } });
   });
 });
 

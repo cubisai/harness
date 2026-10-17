@@ -14,22 +14,19 @@ export const TEAM_WRITE_TOOL = "team_write";
 /** The harness tool a member calls to read a result file from the workspace. */
 export const TEAM_READ_TOOL = "team_read";
 
-/** The harness tool a member calls to send a short note to the lead, a member, or all. */
+/** The harness tool a member calls to report to the lead, or the lead calls to reach a member or all. */
 export const TEAM_POST_TOOL = "team_post";
 
 /** The harness tool a member calls to see its unread notes, the workspace files and the roster. */
 export const TEAM_BOARD_TOOL = "team_board";
 
-/** Direct member-to-member notes allowed since the lead's last note. */
-export const PEER_NOTE_CAP = 6;
-
-/** A note one team member sends to the lead, to a member, or to all. */
+/** A note a member sends to the lead, or the lead sends to a member or to all. */
 export interface TeamNote {
   /** ISO timestamp of the send. */
   at: string;
   /** Sender: "lead" or a member id. */
   from: string;
-  /** Recipient: "lead", "all", or a member id. */
+  /** Recipient: "lead" from a member; "all" or a member id from the lead. */
   to: string;
   /** The note, at most 600 characters. */
   text: string;
@@ -67,7 +64,7 @@ const READ_SHAPE = {
 
 const POST_SHAPE = {
   from: z.string().describe("Your member id (or lead)"),
-  to: z.string().describe('"lead", "all", or a member id'),
+  to: z.string().describe('"lead" (members), or a member id / "all" (lead only)'),
   text: z.string().describe("The note; keep it short and point to team_write files for anything longer"),
 };
 
@@ -151,18 +148,6 @@ function readCursors(dir: string): Record<string, number> {
   }
 }
 
-/** Peer notes since the lead's last note; every peer note when the lead never posted. */
-function peerNotes(notes: TeamNote[]): TeamNote[] {
-  let start = 0;
-  for (let i = notes.length - 1; i >= 0; i--) {
-    if (notes[i]!.from === "lead") {
-      start = i + 1;
-      break;
-    }
-  }
-  return notes.slice(start).filter((n) => n.from !== "lead" && n.to !== "lead");
-}
-
 /** The workspace's result files, sorted by name, without the .md suffix. */
 function workspaceFiles(dir: string): { name: string; chars: number }[] {
   if (!existsSync(dir)) return [];
@@ -221,19 +206,17 @@ export function teamTools(opts: TeamToolsOptions): HarnessTool[] {
     define({
       name: TEAM_POST_TOOL,
       description:
-        "Send a short note to the lead, one member, or all. Keep it under 600 characters and point to files for anything longer. Members: prefer reporting to the lead.",
+        "Send a short note. Members: only to the lead. The lead: to one member or all. Keep it under 600 characters and point to files for anything longer.",
       input: POST_SHAPE,
       autoAllow: true,
       run: async (args) => {
         if (!isOnTeam(args.from, members)) return memberError(args.from, members);
         if (!isOnTeam(args.to, members) && args.to !== "all") return memberError(args.to, members);
         if (args.from === args.to) return fail("You can't post to yourself.");
+        if (args.from !== "lead" && args.to !== "lead") return fail('Members report to the lead only: post with to: "lead".');
         const text = args.text.trim();
         if (!text || text.length > NOTE_MAX) {
           return fail("Keep a note under 600 characters; save longer text with team_write and point to it.");
-        }
-        if (args.from !== "lead" && args.to !== "lead" && peerNotes(readNotes(dir)).length >= PEER_NOTE_CAP) {
-          return fail("Direct-note limit reached for this round; report to the lead instead.");
         }
         const note: TeamNote = { at: now().toISOString(), from: args.from, to: args.to, text };
         ensureDir(dir);

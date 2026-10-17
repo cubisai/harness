@@ -129,12 +129,17 @@ describe("createExpertCatalog", () => {
 });
 
 describe("expertBlock", () => {
-  it("wraps the prompt and escapes quotes in attributes", () => {
+  it("wraps the prompt, escapes quotes in attributes and ends with the Stay line", () => {
     const block = expertBlock({ name: 'Ada "The" One', profession: "Writer", prompt: "You write.", kind: "agent", members: undefined });
-    expect(block).toBe('<expert name="Ada &quot;The&quot; One" role="Writer">\nYou write.\n</expert>');
+    expect(block).toBe('<expert name="Ada &quot;The&quot; One" role="Writer">\nYou write.\n</expert>\n\nStay Ada "The" One, Writer, for this whole thread.');
   });
 
-  it("lists team members and the consolidation line", () => {
+  it("says Stay without a role when the expert has no profession", () => {
+    const block = expertBlock({ name: "Solo", profession: "", prompt: "Write.", kind: "agent", members: undefined });
+    expect(block.endsWith("\n\nStay Solo for this whole thread.")).toBe(true);
+  });
+
+  it("lists team members, the lead protocol and then the Stay line", () => {
     const block = expertBlock({
       name: "Crew",
       profession: "Lead",
@@ -144,7 +149,7 @@ describe("expertBlock", () => {
     });
     expect(block).toContain("## Your team");
     expect(block).toContain("- `writer` — Wren, Writer: Writes.");
-    expect(block.endsWith(TEAM_LEAD_PROTOCOL)).toBe(true);
+    expect(block.endsWith(`${TEAM_LEAD_PROTOCOL}\n\nStay Crew, Lead, for this whole thread.`)).toBe(true);
   });
 });
 

@@ -101,4 +101,27 @@ describe("SubagentCard", () => {
     expect(html).toContain("tool-row");
     expect(html).not.toContain("subagent-card");
   });
+
+  it("shows a team member's row as the member: portrait, name and profession", () => {
+    const team = { id: "rt", kind: "team", name: "Research", profession: "Lead", members: [{ id: "deep-researcher", name: "Dana Reed", profession: "Deep Researcher" }] } as never;
+    {
+      const tool: ToolUse = { ...agent, summary: "CSV history facts · deep-researcher", payload: { prompt: "p", subagent_type: "deep-researcher" } };
+      const html = renderToStaticMarkup(<SubagentCard tool={tool} running={false} open={false} team={team} onToggle={() => {}} />);
+      expect(html).toContain('class="subagent-avatar');
+      expect(html).toContain('<span class="name">Dana Reed</span>');
+      expect(html).toContain("CSV history facts · ");
+      expect(html).toContain('<span class="subagent-type">Deep Researcher</span>');
+      // A row whose type isn't a member stays a plain Agent row.
+      const other = renderToStaticMarkup(<SubagentCard tool={agent} running={false} open={false} team={team} onToggle={() => {}} />);
+      expect(other).toContain('<span class="name">Agent</span>');
+    }
+  });
+});
+
+describe("SubagentCard without a prompt", () => {
+  it("leaves out the Prompt fold when the engine sent no prompt (Codex subAgentActivity)", () => {
+    const tool: ToolUse = { kind: "tool-use", toolUseId: "c1", name: "Agent", summary: "history_a", payload: { prompt: "", subagent_type: "history_a" } };
+    const html = renderToStaticMarkup(<SubagentCard tool={tool} running={false} open onToggle={() => {}} />);
+    expect(html).not.toContain("<summary>Prompt</summary>");
+  });
 });
