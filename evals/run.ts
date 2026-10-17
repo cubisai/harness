@@ -3,16 +3,18 @@
 // Flags: --agent native|claude|codex|opencode (default native), --tier smoke|full,
 // --provider th|pgs (native; opencode: pgs), --model <id>, --effort <level> (default low), --trials <n>,
 // --task <id>[,<id>…], --dry, --force, --keep, --save-baseline, --max-tokens <n>, --max-usd <n>,
-// --price <in>,<out> (USD per 1M tokens), --trend [--last <n>]
+// --price <in>,<out> (USD per 1M tokens), --trend [--last <n>],
+// --report [--tier t] [--model m] [--vs <run file>] (re-render the newest run's HTML report, zero tokens)
 // (zero tokens: pass/token history per tier+model from .ai/evals). Plan: .ai/plans/eval-framework.md.
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AGENTS, setupAgent, type AgentId } from "./lib/agents";
 import { incomplete } from "./lib/accounting";
+import { compareRuns, renderReport } from "./lib/report";
 import { runTask } from "./lib/runner";
 import { RUN_MANIFEST_VERSION, type RunManifest } from "../src/shared/run-trace";
 import { assembleTask, cacheKey, EVAL_RUNTIME_VERSION, redact, runFileName, compareBaseline, diffRuns, findCachedTrials, listRuns, previousRun, readBaseline, saveBaseline, saveRun, summarize, trend } from "./lib/store";
@@ -80,8 +82,29 @@ function harnessHash(paths: string[], version: string): string {
   return createHash("sha256").update(trees + dirty + version).digest("hex").slice(0, 16);
 }
 
+/** Writes `<results>/reports/<run>.html`, compared with `base` when given; returns its path. */
+function writeReport(run: RunResult, base: RunResult | null, baseLabel?: string): string {
+  const dir = join(RESULTS, "reports");
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, runFileName(run.meta).replace(/\.json$/, ".html"));
+  writeFileSync(path, renderReport(run, base ? compareRuns(base, run) : undefined, baseLabel ?? (base ? base.meta.startedAt : undefined)));
+  return path;
+}
+
 async function main(): Promise<number> {
   const f = flags(process.argv.slice(2));
+  if (f.has("report")) {
+    const runs = listRuns(RESULTS).filter((r) => (!f.has("tier") || r.meta.tier === f.get("tier")) && (!f.has("model") || r.meta.model === f.get("model")));
+    const run = runs[0];
+    if (!run) {
+      console.log("no runs");
+      return 1;
+    }
+    const vs = f.get("vs");
+    const base = vs ? (JSON.parse(readFileSync(vs, "utf8")) as RunResult) : previousRun(RESULTS, run.meta.tier, run.meta.model, run.meta.startedAt);
+    console.log(writeReport(run, base, vs));
+    return 0;
+  }
   if (f.has("trend")) {
     console.log(trend(listRuns(RESULTS), { tier: f.get("tier"), model: f.get("model"), last: f.has("last") ? Number(f.get("last")) : undefined }));
     return 0;
@@ -177,7 +200,8 @@ async function main(): Promise<number> {
   const run: RunResult = { meta: { tier, agent, model, protocol, harnessHash: hash, effort, manifest, startedAt, durationMs: Date.now() - Date.parse(startedAt) }, tasks: results };
   const path = saveRun(RESULTS, run);
   console.log(`\n${summarize(run)}`);
-  const diff = diffRuns(previousRun(RESULTS, tier, model, startedAt), run);
+  const prev = previousRun(RESULTS, tier, model, startedAt);
+  const diff = diffRuns(prev, run);
   if (diff) console.log(`\n${diff}`);
   const baseline = readBaseline(BASELINE);
   const vsBaseline = compareBaseline(baseline, run);
@@ -187,6 +211,7 @@ async function main(): Promise<number> {
     console.log(`baseline saved for ${tier}|${model}`);
   }
   console.log(`\nsaved ${path}`);
+  console.log(`report ${writeReport(run, prev)}`);
   // An incomplete run is never a quality pass, whatever the baseline says about the tasks that did run.
   const gaps = incomplete(results, tasks.length);
   if (gaps.length) {

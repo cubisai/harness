@@ -14,8 +14,8 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 | P1.1 Trial-level cache + experiment identity | done | see git log |
 | P1.2 Trial statuses, usage/cost coverage, cost per success, incomplete runs fail | done | see git log |
 | P1.3 Run manifest + traces | done | see git log |
-| P1.4 Local report | next | |
-| P1.5 Grader validation | | |
+| P1.4 Local report | done | see git log |
+| P1.5 Grader validation | next | |
 | P1.6 Multi-turn scenarios | | |
 | P1.7 Case set expansion | | |
 | P1.8 Desktop baseline fixtures | | |
@@ -59,3 +59,14 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 - `evals/lib/agents.ts`: each engine declares its trace `fidelity`. Native also exposes its session file.
 - `evals/run.ts` stores `meta.manifest` and keeps trace folders for the newest 20 runs.
 - Checks: typecheck green; vitest 2553 passed.
+
+### P1.4 — local report (2026-10-17)
+- New `evals/lib/report.ts`:
+  - `caseRow` gives per case: pass rate, statuses, trials vs requested, cached count, mean cost (unknown if any attempt is), p50/p95 latency, trace links.
+  - `compareRuns` uses only the shared tasks and lists the setting differences: model, effort, harness, graders, guide, price.
+  - `renderReport` writes a self-contained HTML file with light and dark themes.
+- `evals/run.ts`:
+  - Every run writes `.ai/evals/reports/<run>.html`, compared with the previous run of the same tier and model.
+  - `--report [--tier] [--model] [--vs <run.json>]` re-renders the newest run with zero tokens.
+- `formatCost` shows "unknown" when no attempt has a cost, never `$0`.
+- Verified on the real 2026-10-15 run files in the main checkout's `.ai/evals`. The worktree has `.ai/evals` symlinked to the main checkout's `.ai/evals`.

@@ -96,12 +96,16 @@ export function incomplete(tasks: TaskResult[], expectedTasks: number): string[]
   return out;
 }
 
-const usd = (c: CostTotal): string => (c.known < c.trials ? `$${c.usd.toFixed(4)}+ (${c.known}/${c.trials} costed)` : `$${c.usd.toFixed(4)}`);
+/** "$0.1234", "$0.1234+ (3/5 costed)" when partly known, "unknown" when nothing is. */
+export function formatCost(c: CostTotal): string {
+  if (c.trials > 0 && c.known === 0) return "unknown";
+  return c.known < c.trials ? `$${c.usd.toFixed(4)}+ (${c.known}/${c.trials} costed)` : `$${c.usd.toFixed(4)}`;
+}
 
 /** One-line accounting footer: measured cost, this run's spend, cost per success. */
 export function accountingLine(tasks: TaskResult[]): string {
   const s = spend(tasks);
   const cps = costPerSuccess(tasks);
   const per = cps.usd === null ? (cps.passRate === 0 ? "none passed" : "unknown") : `$${cps.usd.toFixed(4)}`;
-  return `measured ${usd(s.measured)} · spent now ${usd(s.spent)} · cost/success ${per} (pass rate ${(cps.passRate * 100).toFixed(0)}%, ${cps.covered}/${cps.cases} cases costed)`;
+  return `measured ${formatCost(s.measured)} · spent now ${formatCost(s.spent)} · cost/success ${per} (pass rate ${(cps.passRate * 100).toFixed(0)}%, ${cps.covered}/${cps.cases} cases costed)`;
 }
