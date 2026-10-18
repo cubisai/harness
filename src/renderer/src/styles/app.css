@@ -2470,6 +2470,7 @@ button.hunk:hover { color: var(--text); }
 .xc-team { display: flex; flex-direction: column; gap: 8px; }
 .xc-team-name { font-size: 12.5px; font-weight: 600; color: var(--text); }
 .xc-team-prof { font-weight: 400; color: var(--text-secondary); }
+.xc-team-model { display: block; margin-top: 1px; font: 11.5px var(--mono); color: var(--text-tertiary); }
 .xc-team-desc {
   margin: 2px 0 0;
   font-size: 12.5px;

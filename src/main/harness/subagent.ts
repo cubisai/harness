@@ -13,6 +13,13 @@ export const TASK_TOOL = "task";
 export const SUBAGENT_MAX_STEPS = 30;
 export const SUBAGENT_RESULT_CHARS = 20_000;
 
+/** A member's own model as the driver resolves it: the child's route, its wire id, and whether it reasons. */
+export interface MemberModelRoute {
+  route: Route;
+  model: string;
+  reasoning: boolean;
+}
+
 /** The explore subagent's whole system prompt; it gets one task and reports back. */
 export const EXPLORE_PROMPT = `You are a read-only exploration subagent. Another agent hands you one self-contained question; you investigate the code and report what you find.
 
@@ -44,6 +51,8 @@ interface TaskToolOptions {
   team?: TeamAgent[];
   /** Extra tools a team member gets besides the read-only ones (the team channel). */
   memberTools?: () => LoopTool[];
+  /** A member's own model resolved by the driver; null when the provider doesn't list it (the lead's model runs instead). */
+  routeFor?(modelId: string): MemberModelRoute | null;
 }
 
 /** The text parts of the last assistant message, trimmed; "" when it has none. */
@@ -111,16 +120,25 @@ export function createTaskTool(opts: TaskToolOptions): LoopTool {
       if (agent && !member) return { text: `Unknown team member "${agent}". Members: ${team.map((m) => m.id).join(", ")}.`, isError: true };
 
       // One child loop, explore or member: its events stream under the call's
-      // Agent row and it finishes the same way whoever ran.
-      const runChild = async (system: string[], childTools: LoopTool[], maxSteps: number): Promise<ToolResult> => {
+      // Agent row and it finishes the same way whoever ran. A member runs on its
+      // own model where the provider lists it, else the lead's, with a notice.
+      const runChild = async (system: string[], childTools: LoopTool[], maxSteps: number, member: TeamAgent | null): Promise<ToolResult> => {
         const messages: LlmMessage[] = [{ role: "user", content: [{ type: "text", text: prompt }] }];
+        const own = member?.model ? opts.routeFor?.(member.model) ?? null : null;
+        const fallback = member?.model && !own ? `(ran on ${opts.request.model}: ${member.model} isn't offered by this provider)` : null;
+        const reasoning = own?.reasoning ?? opts.request.reasoning;
+        const request: Omit<LlmRequest, "messages" | "tools" | "system"> = {
+          ...opts.request,
+          ...(own ? { model: own.model, reasoning: own.reasoning } : {}),
+          ...(member?.effort && reasoning ? { effort: member.effort } : {}),
+        };
         // The child's streamed usage isn't shown live; it's still worth reporting
         // if the loop dies before it returns.
         let seenUsage: LlmUsage | null = null;
         try {
           const result = await runLoop({
-            route: opts.route,
-            request: { ...opts.request, system },
+            route: own?.route ?? opts.route,
+            request: { ...request, system },
             messages,
             tools: childTools,
             signal: call.signal,
@@ -145,7 +163,8 @@ export function createTaskTool(opts: TaskToolOptions): LoopTool {
           if (result.stop === "stopped") return { text: "Interrupted by the user.", isError: true };
           let text = lastAssistantText(messages) || "The subagent finished without a report.";
           if (result.stop === "max-steps") text = `(Stopped at the step limit.) ${text}`;
-          return { text: boundReport(text) };
+          const bounded = boundReport(text);
+          return { text: fallback ? `${bounded}\n\n${fallback}` : bounded };
         } catch (err) {
           if (seenUsage) opts.onUsage(seenUsage);
           return { text: `The subagent failed: ${err instanceof Error ? err.message : String(err)}`, isError: true };
@@ -153,10 +172,10 @@ export function createTaskTool(opts: TaskToolOptions): LoopTool {
       };
 
       const readOnly = opts.tools().filter((t) => t.access === "read" && t.definition.name !== TASK_TOOL);
-      if (!member) return runChild([EXPLORE_PROMPT, `Working folder: ${opts.cwd}`], readOnly, SUBAGENT_MAX_STEPS);
+      if (!member) return runChild([EXPLORE_PROMPT, `Working folder: ${opts.cwd}`], readOnly, SUBAGENT_MAX_STEPS, null);
       // A member gets the read-only tools plus the team channel, deduped by name.
       const tools = [...readOnly, ...(opts.memberTools?.() ?? [])].filter((t, i, all) => all.findIndex((o) => o.definition.name === t.definition.name) === i);
-      return runChild([member.prompt, `Working folder: ${opts.cwd}`], tools, member.maxTurns ?? SUBAGENT_MAX_STEPS);
+      return runChild([member.prompt, `Working folder: ${opts.cwd}`], tools, member.maxTurns ?? SUBAGENT_MAX_STEPS, member);
     },
   };
 }

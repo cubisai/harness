@@ -467,7 +467,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         // An expert team's members, as subagents the lead hands steps to (Agent tool, subagent_type = member id).
         // Members don't get the Skill tool: their toolkit is their own skills index, and the user's whole skill list would ride every step.
         ...(input.team?.length
-          ? { agents: Object.fromEntries(input.team.map((m) => [m.id, { description: m.description, prompt: m.prompt, disallowedTools: ["Skill"], ...(m.maxTurns ? { maxTurns: m.maxTurns } : {}) }])) }
+          ? { agents: Object.fromEntries(input.team.map((m) => [m.id, { description: m.description, prompt: m.prompt, disallowedTools: ["Skill"], ...(m.model ? { model: m.model } : {}), ...(m.maxTurns ? { maxTurns: m.maxTurns } : {}) }])) }
           : {}),
         ...(systemAppend ? { systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: systemAppend } } : {}),
         ...(memoryText !== null ? { settings: { autoMemoryEnabled: false } } : {}),

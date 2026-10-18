@@ -353,7 +353,20 @@ async function runTurn(
       extraUsage = addUsage(extraUsage, u);
     },
     ...(deps.stream ? { stream: deps.stream } : {}),
-    ...(input.team?.length ? { team: input.team, memberTools: () => appTools.filter((t) => t.definition.name.startsWith("team_")) } : {}),
+    ...(input.team?.length
+      ? {
+          team: input.team,
+          memberTools: () => appTools.filter((t) => t.definition.name.startsWith("team_")),
+          // A member's own model, resolved the way the lead's was: the provider's
+          // entry for that id, its wire id and whether it reasons.
+          routeFor: (modelId: string) => {
+            const entry = provider.models.find((m) => m.id === modelId);
+            if (!entry) return null;
+            const memberWire = wireIdOf(entry, entry.id);
+            return { route: routeFor(provider, protocol, memberWire, deps.secret(), deps.secretHeaders(), env), model: memberWire, reasoning: entry.capabilities.reasoning };
+          },
+        }
+      : {}),
   });
   // P3.5 pilot: with code mode on, one sandboxed script can chain the other
   // tools. Every call the script makes goes back through authorize, so ask mode
