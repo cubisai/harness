@@ -65,6 +65,10 @@ export interface Task {
   budget: Budget;
   /** What a correct run does, so a 0% score is checked against the task first. */
   reference?: string;
+  /** Why the case is hard in a way that matters for CubiQ, or "negative control: …". */
+  difficulty?: string;
+  /** Which suite the case belongs to (roadmap §7.1). */
+  suite?: "coding" | "context" | "memory" | "skills" | "mcp" | "browser" | "teams";
 }
 
 /** A thread event cut down for storage and grading: no deltas, summaries clipped to 160 chars. */

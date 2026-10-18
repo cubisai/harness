@@ -1,0 +1,17 @@
+{
+  "id": "c-multi-file-feature",
+  "tags": ["capability"],
+  "tier": "full",
+  "suite": "coding",
+  "difficulty": "A new optional parameter has to be threaded through three modules on one call chain, so each file is only correct if the other two agree on the new argument.",
+  "fixture": "c-multi-file-feature",
+  "mode": "auto-edit",
+  "prompt": "We need currency on our invoices. Add an optional `currency` argument to `formatAmount(value, currency)` in src/format.js: when it is given, prefix it (formatAmount(10, \"USD\") -> \"USD 10.00\"), and with no currency keep the current \"10.00\". Thread it through `invoiceLine` and `report` too so a report can be rendered in one currency. Existing calls without a currency must keep working.",
+  "graders": [
+    { "type": "command", "run": "node --test test/multi-file-feature-hidden.test.mjs" },
+    { "type": "event", "noError": true, "noFalseClaim": true },
+    { "type": "budget" }
+  ],
+  "budget": { "maxSteps": 14, "maxInputTokens": 100000, "timeoutMs": 240000 },
+  "reference": "Adds a second `currency` parameter to formatAmount and passes it down through invoiceLine and report; output without a currency is unchanged."
+}

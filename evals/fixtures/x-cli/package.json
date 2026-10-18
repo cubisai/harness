@@ -1,0 +1,6 @@
+{
+  "name": "x-cli",
+  "type": "module",
+  "private": true,
+  "bin": { "x-cli": "bin/cli.js" }
+}

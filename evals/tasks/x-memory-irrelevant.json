@@ -1,0 +1,20 @@
+{
+  "id": "x-memory-irrelevant",
+  "tags": ["capability"],
+  "tier": "full",
+  "fixture": "tiny-js",
+  "mode": "plan",
+  "suite": "memory",
+  "memory": "- The staging deploy host is staging.cubiq.example.\n- The brand accent colour is TEALWAVE (#0af).\n- The on-call rotation starts on Mondays.",
+  "prompt": "Explain what src/sum.js does in two sentences. Don't change any files.",
+  "graders": [
+    { "type": "answer", "matches": "(?=[\\s\\S]*(sum|add|total))(?=[\\s\\S]*(finite|skip|ignor|non-?numer|not (a )?numbers?))" },
+    { "type": "answer", "matches": "^(?![\\s\\S]*TEALWAVE)" },
+    { "type": "tool", "name": "Edit", "max": 0 },
+    { "type": "event", "noError": true },
+    { "type": "budget" }
+  ],
+  "budget": { "maxSteps": 8, "maxInputTokens": 60000, "timeoutMs": 180000 },
+  "reference": "Explains sum() from src/sum.js and ignores the unrelated memory; it makes no edits and never mentions the accent colour.",
+  "difficulty": "Negative control: the memory is irrelevant noise, so the agent must answer only the code question and must NOT drag TEALWAVE or deploy notes into the reply."
+}

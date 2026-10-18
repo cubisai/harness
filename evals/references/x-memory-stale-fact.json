@@ -1,0 +1,6 @@
+{
+  "events": [
+    { "kind": "tool-use", "name": "Read", "summary": "package.json" },
+    { "kind": "assistant-text", "text": "The CLI entry point is bin/cli.js, per the bin field in package.json (there is no bin/run.js)." }
+  ]
+}

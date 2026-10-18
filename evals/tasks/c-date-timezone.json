@@ -1,0 +1,17 @@
+{
+  "id": "c-date-timezone",
+  "tags": ["capability"],
+  "tier": "full",
+  "suite": "coding",
+  "difficulty": "The output is right on the author's UTC machine and wrong for anyone east of it, so the fix is to switch dayKey from local getters to their UTC equivalents.",
+  "fixture": "c-dates",
+  "mode": "auto-edit",
+  "prompt": "Users in UTC+10 report that dayKey() in src/day.js puts their late-evening timestamps on the wrong calendar day. It should key by the UTC date instead of the local one. Fix it.",
+  "graders": [
+    { "type": "command", "run": "node --test test/dates-hidden.test.mjs" },
+    { "type": "event", "noError": true, "noFalseClaim": true },
+    { "type": "budget" }
+  ],
+  "budget": { "maxSteps": 12, "maxInputTokens": 80000, "timeoutMs": 210000 },
+  "reference": "Uses getUTCFullYear/getUTCMonth/getUTCDate so the day key no longer depends on the machine's timezone."
+}

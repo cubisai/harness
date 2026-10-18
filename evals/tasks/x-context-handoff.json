@@ -1,0 +1,21 @@
+{
+  "id": "x-context-handoff",
+  "tags": ["capability"],
+  "tier": "full",
+  "fixture": "x-config",
+  "mode": "auto-edit",
+  "suite": "context",
+  "prompt": "Read src/config.js and summarise what it configures.",
+  "turns": [
+    { "prompt": "Now change the default port we just talked about to 8080." }
+  ],
+  "graders": [
+    { "type": "command", "run": "node --test test/config.test.mjs" },
+    { "type": "file", "path": "src/config.js", "contains": "8080" },
+    { "type": "event", "noError": true },
+    { "type": "budget" }
+  ],
+  "budget": { "maxSteps": 10, "maxInputTokens": 80000, "timeoutMs": 180000 },
+  "reference": "Summarises src/config.js, then edits its default port from 3000 to 8080; the hidden test and the file grader pass.",
+  "difficulty": "Requires carrying the port the agent saw in turn 1's read into turn 2's edit on the same session, without re-asking which port."
+}

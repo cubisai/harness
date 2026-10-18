@@ -10,7 +10,7 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 
 ## Resume here
 
-Next point: **P1.7, case set expansion** (about 20 new cases, each with a reference and a validator pass), then P1.8 (10k/50k-event history fixtures plus `scripts/profile-history.ts`).
+Next point: **P1.8, desktop baseline fixtures** (10k/50k-event history fixtures plus `scripts/profile-history.ts`). After P1, P2/P3/P4 run in parallel worktrees (`roadmap-p2`, `-p3`, `-p4` from `roadmap`), merged back in order P3 → P4 → P2.
 - **Workers on the Windows PC:** Zen's free models (`opencode/deepseek-v4.1-flash-free`, `opencode/glm-5.3-flash-free`) work without a key. The stored Zen key in `auth.json` has expired and is sent anyway, so dispatch with `XDG_DATA_HOME` pointed at a short empty dir and `OPENCODE_BIN=C:/Users/laplop/.bun/bin/opencode.exe` (oc-run only looks under npm), plus `--chain opencode/deepseek-v4.1-flash-free,opencode/glm-5.3-flash-free`.
 - **Baseline on that PC:** the full suite has about 9–11 environment failures on a clean tree: TokenHarbor live tests, codex-e2e MCP, opencode-guard EPERM/timeout, and load timeouts. Compare failing files against that list, not against zero.
 
@@ -23,8 +23,8 @@ Next point: **P1.7, case set expansion** (about 20 new cases, each with a refere
 | P1.3 Run manifest + traces | done | `740df2e` |
 | P1.4 Local report | done | `c1ab7fd` |
 | P1.5 Grader validation | done | `8d07bde` + fix `f2dff88` |
-| P1.6 Multi-turn scenarios | done | (this commit) |
-| P1.7 Case set expansion | | |
+| P1.6 Multi-turn scenarios | done | `4074952` |
+| P1.7 Case set expansion | done | (this commit) |
 | P1.8 Desktop baseline fixtures | | |
 | P2–P8 | not started | |
 
@@ -106,3 +106,14 @@ Next point: **P1.7, case set expansion** (about 20 new cases, each with a refere
 - Tests: multi-turn session reuse + summed usage, memory reaches the system prompt, reply/dismiss, mcpKit, the mcp grader, and an end-to-end run where a real mock stdio MCP server is called through the router.
 - Implemented by a Zen deepseek-v4.1-flash-free implementer worker; Claude reviewed the diff and added the end-to-end MCP test.
 - Checks: typecheck green; `--validate-graders` exit 0 (27 OK, 2 skipped); vitest 2583 passed, 9 failed. All 9 failures are environment-only and in the baseline list above; there were 11 on the clean tree.
+
+### P1.7 — case set expansion (2026-10-18)
+- 20 new capability cases (tier full), each with `suite` and `difficulty` (new optional `Task` fields; old cache keys are unchanged) and a reference that passes while the no-op fails.
+  - **coding `c-*`:** multi-file feature, async in-flight race, diagnosis two calls from the failing test, legitimate test update, signature change with 3 callers, ENOENT-vs-bad-JSON, O(n²) dedupe (200k items in a 2 s child process), UTC day key (child process with TZ), minimal diff in a 162-line file, and a negative control (the claimed bug isn't real).
+  - **`x-*` cases:**
+    - context: a turn-1 constraint recalled at turn 4; a read in turn 1, then an edit in turn 2.
+    - memory: preference, correction, stale fact vs repo, and an irrelevant-memory negative control.
+    - skills: 200-skill catalog; a direct-answer negative control.
+    - mcp: tool unavailable (near-miss `audit_terraform`); 3 React tools to disambiguate.
+- Written by 2 parallel Zen deepseek-v4.1-flash-free implementers. Claude reviewed every prompt and grader and checked the MCP and skill claims against `generate()`.
+- Checks: typecheck green; `--validate-graders` exit 0 (47 OK, 2 skipped); vitest 2606 passed, 10 failed. The failures are the environment list plus an `mcp-router` closeAll timing flake under load, which passes alone.

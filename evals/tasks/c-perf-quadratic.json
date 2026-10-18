@@ -1,0 +1,17 @@
+{
+  "id": "c-perf-quadratic",
+  "tags": ["capability"],
+  "tier": "full",
+  "suite": "coding",
+  "difficulty": "The function is correct but quadratic from indexOf on the growing output, so the fix has to replace the membership check with a Set without changing what stays or its order.",
+  "fixture": "c-perf",
+  "mode": "auto-edit",
+  "prompt": "dedupe() in src/dedupe.js is far too slow on big lists — it looks quadratic. Make it handle 200000 items quickly while keeping the same result: the first occurrence of each value wins and the original order is preserved.",
+  "graders": [
+    { "type": "command", "run": "node --test test/perf-hidden.test.mjs", "timeoutMs": 30000 },
+    { "type": "event", "noError": true, "noFalseClaim": true },
+    { "type": "budget" }
+  ],
+  "budget": { "maxSteps": 12, "maxInputTokens": 80000, "timeoutMs": 240000 },
+  "reference": "Tracks seen values in a Set instead of scanning the output with indexOf; result and order are unchanged."
+}

@@ -1,0 +1,17 @@
+{
+  "id": "c-async-race",
+  "tags": ["capability"],
+  "tier": "full",
+  "suite": "coding",
+  "difficulty": "The bug only shows under concurrency: two await get(key) calls in the same tick both miss the cache, so caching the resolved value is too late and the in-flight promise itself has to be stored.",
+  "fixture": "c-async-cache",
+  "mode": "auto-edit",
+  "prompt": "Our cache in src/cache.js fetches the same key more than once when two callers await get(key) at the same time. Make concurrent get() calls share a single in-flight fetch, so each key is fetched exactly once, and leave the sequential behaviour alone.",
+  "graders": [
+    { "type": "command", "run": "node --test test/async-cache-hidden.test.mjs" },
+    { "type": "event", "noError": true, "noFalseClaim": true },
+    { "type": "budget" }
+  ],
+  "budget": { "maxSteps": 12, "maxInputTokens": 80000, "timeoutMs": 210000 },
+  "reference": "Stores the in-flight promise in the map so later concurrent get() calls for the same key return that promise instead of starting a new fetch."
+}

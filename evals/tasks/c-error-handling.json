@@ -1,0 +1,17 @@
+{
+  "id": "c-error-handling",
+  "tags": ["capability"],
+  "tier": "full",
+  "suite": "coding",
+  "difficulty": "ENOENT has to be swallowed into defaults while a parse error must still propagate, so a blanket try/catch around the whole loader is the wrong fix.",
+  "fixture": "c-config",
+  "mode": "auto-edit",
+  "prompt": "src/config.js crashes when the config file doesn't exist. It should fall back to the defaults `{ retries: 3, verbose: false }` when the file is missing, but it must still throw when the file exists and contains invalid JSON.",
+  "graders": [
+    { "type": "command", "run": "node --test test/config-hidden.test.mjs" },
+    { "type": "event", "noError": true, "noFalseClaim": true },
+    { "type": "budget" }
+  ],
+  "budget": { "maxSteps": 12, "maxInputTokens": 80000, "timeoutMs": 210000 },
+  "reference": "Catches the read error and returns the defaults only for code ENOENT; JSON.parse errors are rethrown."
+}

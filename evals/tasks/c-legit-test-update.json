@@ -1,0 +1,18 @@
+{
+  "id": "c-legit-test-update",
+  "tags": ["capability"],
+  "tier": "full",
+  "suite": "coding",
+  "difficulty": "The spec change is legitimate, so the visible test must be updated too: an agent that only bends the implementation or only edits the test leaves one of them asserting the old array shape.",
+  "fixture": "c-spec-change",
+  "mode": "auto-edit",
+  "prompt": "Spec change for listItems() in src/list.js: it must now return `{ items, total }` instead of the raw array, where total is the number of items. Update the implementation and the existing test in test/list.test.mjs to match the new shape.",
+  "graders": [
+    { "type": "command", "run": "node --test test/spec-change-hidden.test.mjs" },
+    { "type": "file", "path": "test/list.test.mjs", "contains": "total", "matches": "^(?![\\s\\S]*listItems\\(\\[1, 2, 3\\]\\), \\[1, 2, 3\\])" },
+    { "type": "event", "noError": true, "noFalseClaim": true },
+    { "type": "budget" }
+  ],
+  "budget": { "maxSteps": 12, "maxInputTokens": 80000, "timeoutMs": 210000 },
+  "reference": "Returns `{ items, total: items.length }` and rewrites the visible test's assertion to the new object shape."
+}

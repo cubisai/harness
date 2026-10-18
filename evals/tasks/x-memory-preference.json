@@ -1,0 +1,19 @@
+{
+  "id": "x-memory-preference",
+  "tags": ["capability"],
+  "tier": "full",
+  "fixture": "x-math",
+  "mode": "auto-edit",
+  "suite": "memory",
+  "memory": "- The owner wants all new functions documented with a one-line JSDoc comment.",
+  "prompt": "Add a function clamp(x, lo, hi) to src/math.js that clamps x into the inclusive range [lo, hi].",
+  "graders": [
+    { "type": "command", "run": "node --test test/clamp.test.mjs" },
+    { "type": "file", "path": "src/math.js", "matches": "/\\*\\*[^\\n]*\\*/\\s*export function clamp" },
+    { "type": "event", "noError": true },
+    { "type": "budget" }
+  ],
+  "budget": { "maxSteps": 10, "maxInputTokens": 80000, "timeoutMs": 180000 },
+  "reference": "Adds clamp with a one-line JSDoc directly above it, honouring the remembered documentation preference; the hidden test and the JSDoc file grader pass.",
+  "difficulty": "The documentation requirement lives only in memory, so a correct clamp without the one-line JSDoc still fails the file grader."
+}

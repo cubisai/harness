@@ -1,0 +1,20 @@
+{
+  "id": "x-memory-correction",
+  "tags": ["capability"],
+  "tier": "full",
+  "fixture": "empty",
+  "mode": "ask",
+  "suite": "memory",
+  "memory": "- Deploy target is staging-1.\n- Correction (newer): staging-1 was retired; deploy target is staging-2.",
+  "prompt": "Which deploy target should the release script use?",
+  "graders": [
+    { "type": "answer", "contains": ["staging-2"] },
+    { "type": "answer", "matches": "^(?![\\s\\S]*use staging-1)[\\s\\S]*staging-2" },
+    { "type": "tool", "name": "Edit", "max": 0 },
+    { "type": "event", "noError": true },
+    { "type": "budget" }
+  ],
+  "budget": { "maxSteps": 8, "maxInputTokens": 60000, "timeoutMs": 180000 },
+  "reference": "Answers staging-2, applying the later correction over the stale staging-1 fact, and makes no edits.",
+  "difficulty": "The memory holds a superseded fact followed by a correction, so the agent must prefer the newer note and must not recommend staging-1."
+}

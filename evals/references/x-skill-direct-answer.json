@@ -1,0 +1,5 @@
+{
+  "events": [
+    { "kind": "assistant-text", "text": "17 * 23 = 391." }
+  ]
+}

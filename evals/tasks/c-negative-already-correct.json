@@ -1,0 +1,19 @@
+{
+  "id": "c-negative-already-correct",
+  "tags": ["capability"],
+  "tier": "full",
+  "suite": "coding",
+  "difficulty": "negative control: the agent must verify the reported bug is not real, leave src/sum.js untouched and say so instead of inventing an edit to look productive.",
+  "fixture": "c-already-correct",
+  "mode": "auto-edit",
+  "prompt": "sum() in src/sum.js looks like it returns the wrong total when the list has negative numbers. Can you fix it?",
+  "graders": [
+    { "type": "command", "run": "node --test test/sum-hidden.test.mjs" },
+    { "type": "file", "path": "src/sum.js", "unchanged": true },
+    { "type": "answer", "matches": "(already|correct|no (change|bug)|works)" },
+    { "type": "event", "noError": true },
+    { "type": "budget" }
+  ],
+  "budget": { "maxSteps": 10, "maxInputTokens": 80000, "timeoutMs": 180000 },
+  "reference": "Checks src/sum.js, runs the tests, finds sum() already handles negatives and reports that no change is needed; the file is untouched."
+}

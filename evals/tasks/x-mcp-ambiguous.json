@@ -1,0 +1,20 @@
+{
+  "id": "x-mcp-ambiguous",
+  "tags": ["capability"],
+  "tier": "full",
+  "fixture": "empty",
+  "mode": "full",
+  "suite": "mcp",
+  "mcp": { "servers": 3, "tools": 15, "seed": 37 },
+  "prompt": "On the mock-frontend server, make a safety copy of our React setup and report the status the tool returns.",
+  "graders": [
+    { "type": "mcp", "expect": ["mock-frontend/backup_react"] },
+    { "type": "tool", "name": "call_mcp_tool", "min": 1 },
+    { "type": "tool", "name": "search_tools", "min": 1 },
+    { "type": "event", "noError": true },
+    { "type": "budget" }
+  ],
+  "budget": { "maxSteps": 10, "maxInputTokens": 80000, "timeoutMs": 180000 },
+  "reference": "Searches, then calls mock-frontend/backup_react (the safety-copy tool) rather than monitor_react or validate_react.",
+  "difficulty": "React has three tools on the server (backup, monitor, validate); the prompt uses a synonym for one verb, so the agent must pick backup_react and not an adjacent tool."
+}

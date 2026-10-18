@@ -1,0 +1,15 @@
+{
+  "edits": [
+    {
+      "path": "src/dedupe.js",
+      "old": "  const out = [];\n  for (const item of list) {\n    if (out.indexOf(item) === -1) out.push(item);\n  }\n  return out;",
+      "new": "  const seen = new Set();\n  const out = [];\n  for (const item of list) {\n    if (seen.has(item)) continue;\n    seen.add(item);\n    out.push(item);\n  }\n  return out;"
+    }
+  ],
+  "events": [
+    { "kind": "tool-use", "name": "Read", "summary": "src/dedupe.js" },
+    { "kind": "tool-use", "name": "Edit", "summary": "src/dedupe.js" },
+    { "kind": "tool-use", "name": "Run", "summary": "node --test test/perf-hidden.test.mjs" },
+    { "kind": "assistant-text", "text": "dedupe() now uses a Set for membership instead of indexOf on the growing output, so it is O(n); first occurrence and order are unchanged." }
+  ]
+}

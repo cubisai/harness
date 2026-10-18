@@ -1,0 +1,20 @@
+{
+  "id": "x-mcp-unavailable",
+  "tags": ["capability"],
+  "tier": "full",
+  "fixture": "empty",
+  "mode": "full",
+  "suite": "mcp",
+  "mcp": { "servers": 2, "tools": 10, "seed": 31 },
+  "prompt": "Use the MCP tools available here to rotate the terraform state on the mock-infra server, then report the status it returns.",
+  "graders": [
+    { "type": "tool", "name": "search_tools", "min": 1 },
+    { "type": "tool", "name": "call_mcp_tool", "max": 0 },
+    { "type": "answer", "matches": "(not (available|found)|no (such )?tool|doesn't (exist|have)|couldn't find)" },
+    { "type": "event", "noError": true },
+    { "type": "budget" }
+  ],
+  "budget": { "maxSteps": 10, "maxInputTokens": 80000, "timeoutMs": 180000 },
+  "reference": "Searches the tools, finds no rotate-terraform tool on mock-infra, and says it isn't available instead of calling a wrong tool.",
+  "difficulty": "The requested tool does not exist, so the agent must search and report it is unavailable rather than calling a near-miss tool such as audit_terraform."
+}

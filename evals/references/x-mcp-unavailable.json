@@ -1,0 +1,6 @@
+{
+  "events": [
+    { "kind": "tool-use", "name": "search_tools", "summary": "rotate terraform" },
+    { "kind": "assistant-text", "text": "No tool is available on the mock-infra server to rotate terraform state — the closest is audit_terraform, which I did not call." }
+  ]
+}

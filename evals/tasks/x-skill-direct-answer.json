@@ -1,0 +1,20 @@
+{
+  "id": "x-skill-direct-answer",
+  "tags": ["capability"],
+  "tier": "full",
+  "fixture": "empty",
+  "mode": "ask",
+  "suite": "skills",
+  "skills": { "kit": { "skills": 50, "seed": 29 } },
+  "prompt": "What's 17 * 23?",
+  "graders": [
+    { "type": "skill", "none": true },
+    { "type": "answer", "contains": ["391"] },
+    { "type": "tool", "name": "Edit", "max": 0 },
+    { "type": "event", "noError": true },
+    { "type": "budget" }
+  ],
+  "budget": { "maxSteps": 8, "maxInputTokens": 60000, "timeoutMs": 180000 },
+  "reference": "Answers 391 directly and loads no skill from the catalog.",
+  "difficulty": "Negative control: even with a 50-skill catalog present, the agent must NOT load any skill for a trivial arithmetic question."
+}

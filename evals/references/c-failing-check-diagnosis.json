@@ -1,0 +1,18 @@
+{
+  "edits": [
+    {
+      "path": "src/text.js",
+      "old": "  return word[0].toUpperCase() + word.slice(1);",
+      "new": "  return word[0].toUpperCase() + word.slice(1).toLowerCase();"
+    }
+  ],
+  "events": [
+    { "kind": "tool-use", "name": "Run", "summary": "node --test test/format.test.mjs" },
+    { "kind": "tool-use", "name": "Read", "summary": "src/format.js" },
+    { "kind": "tool-use", "name": "Read", "summary": "src/labels.js" },
+    { "kind": "tool-use", "name": "Read", "summary": "src/text.js" },
+    { "kind": "tool-use", "name": "Edit", "summary": "src/text.js" },
+    { "kind": "tool-use", "name": "Run", "summary": "node --test test/format.test.mjs" },
+    { "kind": "assistant-text", "text": "The root cause was capitalize() in src/text.js: it upper-cased the first letter but never lower-cased the rest, so \"cacheS\" became \"CacheS\". Lowercasing the remainder fixes the title-cased heading." }
+  ]
+}

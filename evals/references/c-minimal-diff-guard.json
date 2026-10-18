@@ -1,0 +1,12 @@
+{
+  "edits": [
+    { "path": "src/big.js", "old": "  if (i >= length) return length;", "new": "  if (i >= length) return length - 1;" }
+  ],
+  "events": [
+    { "kind": "tool-use", "name": "Read", "summary": "src/big.js" },
+    { "kind": "tool-use", "name": "Grep", "summary": "clampIndex" },
+    { "kind": "tool-use", "name": "Edit", "summary": "src/big.js" },
+    { "kind": "tool-use", "name": "Run", "summary": "node --test test/bigfile-hidden.test.mjs" },
+    { "kind": "assistant-text", "text": "One-line fix in clampIndex: the past-the-end branch now returns length - 1. Nothing else in src/big.js or src/other.js was touched." }
+  ]
+}
