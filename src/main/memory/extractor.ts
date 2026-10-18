@@ -1,6 +1,7 @@
 import type { BackgroundRun } from "../../shared/learn";
 import type { ModelOption } from "../../shared/types";
 import type { AgentDriver } from "../agents/types";
+import { findDuplicate } from "./dedupe";
 import { GLOBAL_SCOPE, type MemoryStore, type MemoryType } from "./store";
 
 /** One note change the extractor asked for. */
@@ -85,16 +86,24 @@ export function buildExtractionPrompt(indexText: string, delta: { user: string; 
     "Record ONLY durable user preferences, feedback on how to work, project goals, constraints, decisions, and external references.",
     "NEVER record code structure, file contents, git history, chat logs, one-off task details, secrets, keys or tokens.",
     "When an index entry already covers a fact, prefer update over add.",
+    'A preference or correction about the user that matches a GLOBAL note must update that note (file "global/<file>"), never add a new one.',
     'Output {"ops":[]} when nothing is worth keeping (the common case).',
     'Example: {"ops":[{"op":"add","name":"commit-style","description":"Commit messages stay under 72 characters","type":"feedback","body":"Keep commit messages under 72 characters.\\n**Why:** the user asked.\\n**How to apply:** check the length before committing."}]}',
     "",
-    "CURRENT INDEX:",
+    "CURRENT INDEX (global notes are referenced as global/<file>):",
     indexText.trim() ? indexText : "(empty)",
     "",
     "TURN:",
     `User: ${clip(delta.user)}`,
     `Assistant: ${clip(delta.answer)}`,
   ].join("\n");
+}
+
+/** Both scopes' indexes for the prompt; global links get a `global/` prefix so ops can name them. */
+function buildIndexText(store: MemoryStore, projectId: string): string {
+  const project = store.index(projectId).text.trim();
+  const global = store.index(GLOBAL_SCOPE).text.replace(/\]\(([^)]+\.md)\)/g, "](global/$1)").trim();
+  return `PROJECT NOTES:\n${project || "(empty)"}\n\nGLOBAL NOTES (about the user; hold in every project):\n${global || "(empty)"}`;
 }
 
 /** The first balanced top-level {...} in `text`, or null. */
@@ -173,6 +182,13 @@ export function parseOps(text: string, existingFiles: Set<string>): ExtractOp[] 
   return out;
 }
 
+/** The scope and bare file an op names: `global/<file>` for global, else this project then global. */
+function locate(store: MemoryStore, projectId: string, file: string): { scope: string; file: string } | null {
+  if (file.startsWith("global/")) return { scope: GLOBAL_SCOPE, file: file.slice("global/".length) };
+  for (const scope of [projectId, GLOBAL_SCOPE]) if (store.read(scope, file)) return { scope, file };
+  return null;
+}
+
 /** Apply validated ops; each is independent, so one bad note never stops the rest. */
 export function applyOps(store: MemoryStore, projectId: string, ops: ExtractOp[]): { added: number; updated: number; deleted: number } {
   let added = 0;
@@ -183,13 +199,24 @@ export function applyOps(store: MemoryStore, projectId: string, ops: ExtractOp[]
       if (op.op === "add") {
         // A note about the user holds in every project, so it goes to the global scope.
         const type = op.type ?? "project";
-        store.write(type === "user" ? GLOBAL_SCOPE : projectId, { name: op.name!, description: op.description!, type, body: op.body! });
-        added++;
+        const scope = type === "user" ? GLOBAL_SCOPE : projectId;
+        // Only the target scope's duplicates merge: a same-name note in the other
+        // scope is a different fact (this project's vs. the user's) and stays.
+        const dup = findDuplicate(store, scope, op.name!, op.description!);
+        if (dup) {
+          const current = store.read(scope, dup.file);
+          store.write(scope, { file: dup.file, name: op.name!, description: op.description!, type: op.type ?? current?.type ?? "project", body: op.body! });
+          updated++;
+        } else {
+          store.write(scope, { name: op.name!, description: op.description!, type, body: op.body! });
+          added++;
+        }
       } else if (op.op === "update" && op.file) {
-        const current = store.read(projectId, op.file);
-        if (!current) continue;
-        store.write(projectId, {
-          file: op.file,
+        const where = locate(store, projectId, op.file);
+        const current = where ? store.read(where.scope, where.file) : null;
+        if (!where || !current) continue;
+        store.write(where.scope, {
+          file: where.file,
           name: op.name ?? current.name,
           description: op.description ?? current.description,
           type: op.type ?? current.type,
@@ -197,7 +224,8 @@ export function applyOps(store: MemoryStore, projectId: string, ops: ExtractOp[]
         });
         updated++;
       } else if (op.op === "delete" && op.file) {
-        if (store.remove(projectId, op.file)) deleted++;
+        const where = locate(store, projectId, op.file);
+        if (where && store.remove(where.scope, where.file)) deleted++;
       }
     } catch {
       // Best-effort: a single malformed note is skipped.
@@ -244,7 +272,7 @@ export function createExtractor(deps: {
       const chosen = deps.background?.(delta.projectId) ?? null;
       const explicit = chosen?.driver.oneShot ? chosen : null;
       if (!explicit && !driver?.oneShot) return;
-      const prompt = buildExtractionPrompt(deps.store.index(delta.projectId).text, { user: delta.user, answer: delta.answer });
+      const prompt = buildExtractionPrompt(buildIndexText(deps.store, delta.projectId), { user: delta.user, answer: delta.answer });
       // The estimate doubles (the prompt and its reply), so stop before the day's memory cap would be blown.
       if (deps.budgetLeft && estimate(prompt) * 2 > deps.budgetLeft(delta.projectId)) {
         log(`memory: daily budget spent (${delta.projectId})`);
@@ -279,6 +307,7 @@ export function createExtractor(deps: {
         }
       }
       const files = new Set(deps.store.list(delta.projectId).map((f) => f.file));
+      for (const f of deps.store.list(GLOBAL_SCOPE)) files.add(`global/${f.file}`);
       const { added, updated, deleted } = applyOps(deps.store, delta.projectId, parseOps(text, files));
       if (added || updated || deleted) log(`memory: +${added} ~${updated} -${deleted} (${delta.projectId})`);
     } catch (err) {

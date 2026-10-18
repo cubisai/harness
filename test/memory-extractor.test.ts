@@ -120,6 +120,18 @@ describe("parseOps", () => {
     expect(ops).toEqual([{ op: "update", file: "known.md", description: "new" }, { op: "delete", file: "known.md" }]);
   });
 
+  it("keeps a global/ op only when that global file exists", () => {
+    const ops = parseOps(
+      JSON.stringify({ ops: [
+        { op: "update", file: "global/terse.md", description: "new" },
+        { op: "update", file: "global/missing.md", description: "x" },
+        { op: "delete", file: "global/terse.md" },
+      ] }),
+      new Set(["global/terse.md"]),
+    );
+    expect(ops).toEqual([{ op: "update", file: "global/terse.md", description: "new" }, { op: "delete", file: "global/terse.md" }]);
+  });
+
   it("drops an op whose text looks like a credential", () => {
     const ops = parseOps(
       JSON.stringify({ ops: [
@@ -168,6 +180,52 @@ describe("applyOps", () => {
     expect(store.list(GLOBAL_SCOPE).map((f) => f.name)).toEqual(["Tabs"]);
     expect(store.list("p1").map((f) => f.name)).toEqual(["Build"]);
   });
+
+  it("merges a user add into a same-name global note instead of duplicating", () => {
+    const store = new MemoryStore(tempDir());
+    store.write(GLOBAL_SCOPE, { name: "Terse", description: "prefers terse", type: "user", body: "no fluff" });
+    const result = applyOps(store, "p1", [{ op: "add", name: "terse", description: "prefers short", type: "user", body: "short" }]);
+    expect(result).toEqual({ added: 0, updated: 1, deleted: 0 });
+    expect(store.list(GLOBAL_SCOPE)).toHaveLength(1);
+    expect(store.read(GLOBAL_SCOPE, "terse.md")).toMatchObject({ name: "terse", description: "prefers short", type: "user", body: "short" });
+  });
+
+  it("merges a near-duplicate add into the existing note", () => {
+    const store = new MemoryStore(tempDir());
+    store.write("p1", { name: "Commit Style Guide", description: "commit messages use imperative mood", type: "feedback", body: "a" });
+    const result = applyOps(store, "p1", [{ op: "add", name: "Commit Style Rules", description: "commit messages use imperative mood", type: "feedback", body: "b" }]);
+    expect(result).toEqual({ added: 0, updated: 1, deleted: 0 });
+    expect(store.list("p1")).toHaveLength(1);
+    expect(store.read("p1", "commit-style-guide.md")).toMatchObject({ name: "Commit Style Rules", description: "commit messages use imperative mood", body: "b" });
+  });
+
+  it("still adds a note when nothing duplicates it", () => {
+    const store = new MemoryStore(tempDir());
+    store.write(GLOBAL_SCOPE, { name: "Terse", description: "prefers terse", type: "user", body: "no fluff" });
+    const result = applyOps(store, "p1", [{ op: "add", name: "Build", description: "builds with bun", type: "project", body: "Use bun." }]);
+    expect(result).toEqual({ added: 1, updated: 0, deleted: 0 });
+    expect(store.list("p1")).toHaveLength(1);
+  });
+
+  it("updates and deletes a global note named by its global/ file", () => {
+    const store = new MemoryStore(tempDir());
+    store.write(GLOBAL_SCOPE, { name: "Terse", description: "prefers terse", type: "user", body: "no fluff" });
+    const updated = applyOps(store, "p1", [{ op: "update", file: "global/terse.md", description: "changed" }]);
+    expect(updated).toEqual({ added: 0, updated: 1, deleted: 0 });
+    expect(store.read(GLOBAL_SCOPE, "terse.md")).toMatchObject({ description: "changed", type: "user", body: "no fluff" });
+    const deleted = applyOps(store, "p1", [{ op: "delete", file: "global/terse.md" }]);
+    expect(deleted).toEqual({ added: 0, updated: 0, deleted: 1 });
+    expect(store.list(GLOBAL_SCOPE)).toEqual([]);
+  });
+
+  it("falls back to the global scope for a bare file that only lives there", () => {
+    const store = new MemoryStore(tempDir());
+    store.write(GLOBAL_SCOPE, { name: "Terse", description: "prefers terse", type: "user", body: "no fluff" });
+    const result = applyOps(store, "p1", [{ op: "update", file: "terse.md", body: "short answers" }]);
+    expect(result).toEqual({ added: 0, updated: 1, deleted: 0 });
+    expect(store.read(GLOBAL_SCOPE, "terse.md")?.body).toBe("short answers");
+    expect(store.list("p1")).toEqual([]);
+  });
 });
 
 describe("createExtractor", () => {
@@ -188,6 +246,27 @@ describe("createExtractor", () => {
       expect(store.list("p1").map((f) => f.file)).toEqual(["tabs.md"]);
       const prompt = oneShot.mock.calls[0]![0].prompt;
       expect(prompt).toContain(second);
+      ex.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows both scopes in the prompt, prefixing global note links", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new MemoryStore(tempDir());
+      store.write(GLOBAL_SCOPE, { name: "Terse", description: "prefers terse", type: "user", body: "no fluff" });
+      store.write("p1", { name: "Build", description: "builds with bun", type: "project", body: "Use bun." });
+      const oneShot = vi.fn(async (_req: Parameters<NonNullable<AgentDriver["oneShot"]>>[0]) => '{"ops":[]}');
+      const ex = createExtractor({ store, enabled: () => true, driverFor: () => extractorDriver({ oneShot }), log: () => {} });
+      ex.schedule(base());
+      await vi.advanceTimersByTimeAsync(31_000);
+      const prompt = oneShot.mock.calls[0]![0].prompt;
+      expect(prompt).toContain("PROJECT NOTES:");
+      expect(prompt).toContain("GLOBAL NOTES (about the user; hold in every project):");
+      expect(prompt).toContain("- [Build](build.md) — builds with bun");
+      expect(prompt).toContain("- [Terse](global/terse.md) — prefers terse");
       ex.dispose();
     } finally {
       vi.useRealTimers();

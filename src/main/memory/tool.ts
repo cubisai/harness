@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { HarnessTool } from "../agents/types";
+import { findDuplicate, wordSet } from "./dedupe";
 import { SECRETISH } from "./extractor";
 import { GLOBAL_SCOPE, type MemoryStore } from "./store";
 
@@ -51,19 +52,6 @@ function overLimit(label: string, value: string, max: number): string | null {
 /** Whether any of these strings looks like a credential. */
 function looksSecret(...values: (string | undefined)[]): boolean {
   return values.some((v) => typeof v === "string" && SECRETISH.test(v));
-}
-
-/** Lowercased alphanumeric words of at least `min` characters. */
-function wordSet(text: string, min: number): Set<string> {
-  return new Set(text.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= min));
-}
-
-/** How much two notes' titles+descriptions overlap, 0..1 (0 when both are empty). */
-function jaccard(a: Set<string>, b: Set<string>): number {
-  if (!a.size && !b.size) return 0;
-  let shared = 0;
-  for (const w of a) if (b.has(w)) shared++;
-  return shared / (a.size + b.size - shared);
 }
 
 /**
@@ -186,15 +174,15 @@ export function memoryWriteTool(deps: { store: MemoryStore; enabled: (projectId:
           if (over) return fail(over);
           if (looksSecret(name, description, body)) return fail("That looks like a credential; memory never stores secrets.");
           const type = args.type ?? (choice === "global" ? "user" : "project");
-          const existing = deps.store.list(scope);
-          const sameName = existing.find((f) => f.name.toLowerCase() === name.toLowerCase());
-          if (sameName) {
-            deps.store.write(scope, { file: sameName.file, name, description, type, body });
-            return { text: `Updated existing note ${sameName.file} (${choice}).` };
+          const dup = findDuplicate(deps.store, scope, name, description);
+          if (dup?.kind === "same") {
+            deps.store.write(scope, { file: dup.file, name, description, type, body });
+            return { text: `Updated existing note ${dup.file} (${choice}).` };
           }
-          const candidate = wordSet(`${name} ${description}`, 3);
-          const near = existing.find((f) => jaccard(candidate, wordSet(`${f.name} ${f.description}`, 3)) >= 0.7);
-          if (near) return fail(`Similar note exists: ${near.file} (${near.name}). Update it with op "update" and file "${near.file}" instead.`);
+          if (dup) {
+            const similar = deps.store.read(scope, dup.file);
+            return fail(`Similar note exists: ${dup.file} (${similar?.name ?? dup.file}). Update it with op "update" and file "${dup.file}" instead.`);
+          }
           const file = deps.store.write(scope, { name, description, type, body });
           return { text: `Saved ${file} (${choice}).` };
         }
