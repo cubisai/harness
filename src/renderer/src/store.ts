@@ -190,6 +190,8 @@ interface State {
   composerInsert: { text: string; nonce: number } | null;
   /** Bumped when an open design thread's folder changes, so its canvas reloads. */
   designReload: Record<string, number>;
+  /** Each open design thread's latest change: a counter and the raw changed paths (null = unknown), so the board regenerates only the artboards it affects. */
+  designChange: Record<string, { n: number; paths: string[] | null }>;
   /** Each design thread's selected elements on its canvas (one page): chips in the composer, scope for the next message. */
   designSelection: Record<string, DesignSelection>;
   /** Set (or clear, with null or no elements) a design thread's selection. */
@@ -620,6 +622,7 @@ export const useStore = create<State>((set, get) => ({
   browserLoaded: false,
   composerInsert: null,
   designReload: {},
+  designChange: {},
   designSelection: {},
   setDesignSelection(threadId, selection) {
     set((s) => {
@@ -1289,7 +1292,10 @@ export const useStore = create<State>((set, get) => ({
         return;
       }
       case "design-changed":
-        set((s) => ({ designReload: { ...s.designReload, [update.threadId]: (s.designReload[update.threadId] ?? 0) + 1 } }));
+        set((s) => ({
+          designReload: { ...s.designReload, [update.threadId]: (s.designReload[update.threadId] ?? 0) + 1 },
+          designChange: { ...s.designChange, [update.threadId]: { n: (s.designChange[update.threadId]?.n ?? 0) + 1, paths: update.paths ?? null } },
+        }));
         return;
       case "event":
         // A plan proposal is also a new version of the thread's plan artifact: refresh its file list.
@@ -1444,6 +1450,22 @@ export const useStore = create<State>((set, get) => ({
 function isDesignFile(s: Pick<State, "threads">, threadId: string, path: string): boolean {
   const thread = Object.values(s.threads).flat().find((t) => t.id === threadId);
   return thread?.kind === "design" && path.startsWith(`${designDirName(threadId)}/`);
+}
+
+/**
+ * Which of a design folder's `pages` a change affects: "all" when the paths are unknown or any changed file
+ * isn't an `.html` page (css, js, images, fonts, json, folders… may be shared by every page), else the changed
+ * paths that are pages. An `.html` that isn't a page affects nothing.
+ */
+export function affectedPages(paths: string[] | undefined, pages: string[]): string[] | "all" {
+  if (!paths) return "all";
+  const known = new Set(pages);
+  const out: string[] = [];
+  for (const path of paths) {
+    if (!/\.html$/i.test(path)) return "all";
+    if (known.has(path)) out.push(path);
+  }
+  return out;
 }
 
 export function useSelectedThread(): Thread | null {

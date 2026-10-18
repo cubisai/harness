@@ -814,7 +814,7 @@ async function main(): Promise<void> {
       bridge: designBridgeJs,
     }),
   );
-  const designWatcher = new DesignWatcher({ onChange: (threadId) => broadcast({ type: "design-changed", threadId }) });
+  const designWatcher = new DesignWatcher({ onChange: (threadId, paths) => broadcast({ type: "design-changed", threadId, ...(paths ? { paths } : {}) }) });
   // Each window's watches, so a window that closes (or reloads) without unmounting its canvas releases them.
   const designWatches = new Map<number, Map<string, number>>();
   const designHooked = new Set<number>();

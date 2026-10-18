@@ -1073,8 +1073,8 @@ export type LiveUpdate =
   | { type: "open-about" }
   /** A turn finished having written previewable files: open the panel on `path` (the last one). */
   | { type: "artifact-ready"; threadId: string; path: string; files: string[] }
-  /** Something in an open design thread's folder changed (debounced): the canvas reloads. */
-  | { type: "design-changed"; threadId: string }
+  /** Something in an open design thread's folder changed (debounced): the canvas reloads. `paths` are the changed files relative to the folder; absent = unknown. */
+  | { type: "design-changed"; threadId: string; paths?: string[] }
   /** Self-improve: a turn's health changed (scored, or a later correction/revert). */
   | { type: "turn-score"; score: TurnScore }
   /** Self-improve: a project's lessons or cases changed (the Learned tab refetches). */
