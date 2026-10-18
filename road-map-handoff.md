@@ -10,7 +10,10 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 
 ## Resume here
 
-- **P3 and P4 are done and merged into `roadmap`.** P2 is in progress in worktree `../harness-roadmap-p2` (branch `roadmap-p2`): P2.1a–P2.3 are done, P2.4 is next, then P2.5–P2.7. Merge it last.
+- **P1–P4 are done and merged into `roadmap`.**
+- **P5:** in worktree `../harness-roadmap-p5` (branch `roadmap-p5`). P5.1 is done (`665281e`); P5.2 is next. Its brief is in `.ai/tmp/p52.brief.txt` there, built on measured agent-browser facts.
+- **P6:** in worktree `../harness-roadmap-p6` (branch `roadmap-p6`). P6.1 has uncommitted, unverified partial edits; review them before reusing.
+- **Memory:** on 2026-10-18 the Windows PC ran out of memory with 3–4 workers, a vitest run and Chrome going at once. Run one track at a time there.
 - **Still owed after the P2 merge:**
   - one live turn each on Claude, Codex and OpenCode Zen;
   - the real-app UI check for P2.1b/P2.3 (DESIGN §9: light/dark, 900px, keyboard, screenshot).
@@ -34,11 +37,14 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 | P1.6 Multi-turn scenarios | done | `4074952` |
 | P1.7 Case set expansion | done | `71b16ee` |
 | P1.8 Desktop baseline fixtures | done | `088abd2` |
-| P2.1a Paged event reads (main + IPC) | done (branch roadmap-p2) | `6597a8f` |
-| P2.1b Renderer paging | done (branch roadmap-p2) | `17b4c17` |
-| P2.2 Incremental projection | done (branch roadmap-p2) | `ed0afdf` |
-| P2.3 Windowed transcript | done (branch roadmap-p2) | `4b0c19f` |
-| P2.4–P2.7 | in progress | |
+| P2.1a Paged event reads (main + IPC) | done | `6597a8f` |
+| P2.1b Renderer paging | done | `17b4c17` |
+| P2.2 Incremental projection | done | `ed0afdf` |
+| P2.3 Windowed transcript | done | `4b0c19f` |
+| P2.4 Startup | done | `ca003f6` |
+| P2.5 Bounded renderer caches | done | `8cce319` |
+| P2.6 session.ts async persistence | profiled, no change justified | — |
+| P2.7 Board reload by changed path | done | `cca56d8` |
 | P3.1 Tool effects | done | `a3b53f1` |
 | P3.2 Skill catalog index + search | done | `3aab6b2` |
 | P3.3 MCP catalog persistence | done | `0218cf4` |
@@ -49,7 +55,8 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 | P4.3 Ranked retrieval + corrections | done | `1a009a2` + `0a1c697` |
 | P4.4 Pruning keeps references | done | `573bba6` |
 | P4.5 Memory updates once per binding | done | `9d81425` |
-| P5–P8 | not started | |
+| P5.1 Browser auto-open | done (branch roadmap-p5) | `665281e` |
+| P5.2–P5.5, P6, P7, P8 | not started / in progress | |
 
 ## Log
 
@@ -171,3 +178,17 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
   - P4.4: pruned results name their saved full output (written at prune time if needed); `retentionFor(contextSize)`.
   - P4.5: a resumed session gets one `<memory-update>` note per memory change, and its cached system prompt is left unchanged.
 - **Checks on merged roadmap:** typecheck green; vitest 2690 passed, 9 failed (all environment-only); `--validate-graders` exit 0.
+
+### P2 merged into roadmap (2026-10-18)
+- P2.1a: `Store.listEventsPage` returns a turn-aligned page (23 ms vs 1.6 s at 50k events). `threadTotals` uses one SQL pass with the same rules as UsageMeter. IPC `events:page` and `thread:totals` are new; `events:list` is kept.
+- P2.1b: threads open on a 1,500-event page plus totals. Older pages load on scroll or the quiet "Show earlier messages" button, and the scroll position is held. Live events merge by seq. UsageMeter and the expert counts use the totals.
+- P2.2: `createSegmenter` caches closed turns, so a live event re-segments only the open tail (append at 50k: 10 ms vs 50 ms).
+- P2.3: past 200 segments only the visible rows mount, with measured spacers and scroll anchoring. The last 20 segments stay mounted while you're pinned to the bottom.
+- P2.4: `listAllThreads` (one query) runs alongside the boot calls, and the selected thread opens before the branch lookups.
+- P2.5: the 8 most recently selected threads keep their caches; selected, running and waiting threads are never evicted. A live event for an unloaded background thread no longer creates a one-event list.
+- P2.6: profiled on the Windows PC. A sync append takes 0.3–0.6 ms per model step (p95 under 1 ms); load/replace of a 10 MB session takes 20–30 ms. No async rewrite was made: there's no measurable win, and sync keeps crash-safe ordering.
+- P2.7: watcher bursts carry the changed paths. An `.html` page edit remounts only its artboard; any other file or an unknown change reloads all of them. If more than one change is missed between renders, everything reloads.
+- **Still owed:**
+  - the real-app check of P2.1b/P2.3 (DESIGN §9: light/dark, 900px, keyboard, screenshot);
+  - the live turns on Claude, Codex and OpenCode Zen for P2–P4.
+- **Checks on merged roadmap:** typecheck green; design:check 0 errors; vitest 2745 passed, 9 failed (environment-only); `--validate-graders` exit 0.
