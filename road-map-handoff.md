@@ -8,43 +8,50 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 
 **Rules:** one commit per point. Typecheck and the full vitest suite must be green before each commit. At the end of each phase that changes the app runtime, do one live turn each on Claude, Codex and OpenCode Zen.
 
-## Resume here (stopped 2026-10-18 at the owner's request; start a new session from this section)
+## Resume here (stopped 2026-10-18; start a new session from this section, on any PC)
 
-**Progress:** 29 of 40 points done. P1–P4 and P5.1–P5.3 are merged into `roadmap`. That branch is green: typecheck, design:check, vitest (environment failures only), validate-graders, and live turns on Claude, Codex and OpenCode Zen.
+**Progress:** 29 of 40 points done. P1–P4 and P5.1–P5.3 are merged into `roadmap` and pushed to origin (green: typecheck, design:check, vitest with environment failures only, validate-graders, and live turns on Claude, Codex and OpenCode Zen).
 
-**Worktrees** (all siblings of this one under `D:/Cubebis Work/ai-agent/`; each has its own `node_modules`):
-| Worktree | Branch | State |
-| --- | --- | --- |
-| `harness-roadmap` | `roadmap` | P1–P4 and P5.1–P5.3 merged (pushed to origin). This handoff lives here. |
-| `harness-roadmap-p5` | `roadmap-p5` | P5.1–P5.3 committed (`665281e`, `19ce7a8`, `93cc180`). Next: **P5.4**, then P5.5. Plan: `.ai/plans/p5.md` there. Merged into `roadmap` through P5.3; merge `roadmap` back into it before continuing. |
-| `harness-roadmap-p6` | `roadmap-p6` | **P6.1 has UNCOMMITTED, UNVERIFIED partial edits** (claude.ts, experts/catalog.ts, harness/driver.ts, harness/subagent.ts, inject/opencode.ts, ExpertDetail.tsx, app.css, shared/experts.ts) from a worker the system killed for low memory. Review the diff against the brief `.ai/tmp/p61.brief.txt` there, finish it (tests are missing), then verify. Plan: `.ai/plans/p6.md` there. |
-| `harness-roadmap-p2/-p3/-p4` | `roadmap-p2/3/4` | Done and merged. They can be removed (`git worktree remove`). |
+**What's in git (everything needed is pushed):**
+- `origin/roadmap`: all finished work, and this handoff.
+- `origin/roadmap-p6`: commit `b65ea92`, "WIP P6.1": partial, UNVERIFIED edits with no tests (the worker was stopped for low memory). Never merge it as-is.
+- Plans and notes, force-added under the gitignored `.ai/` on `roadmap`:
+  - `.ai/plans/roadmap-13.md`: the 40 points.
+  - `.ai/plans/p2.md` … `p6.md`: per-phase plans with file:line evidence, change lists and notes.
+  - `.ai/plans/briefs/p61.brief.txt`: P6.1 spec.
+  - `.ai/plans/briefs/p52.brief.txt`: the P5.2 spec, done, kept as a pattern.
+  - `.ai/research_notes/roadmap13-p{2..6}.md`: researcher code maps (spot-checked; line numbers can drift).
+
+**Set up on another PC:**
+1. `git fetch origin`.
+2. Check out `roadmap` in your roadmap worktree (on the Mac that was `../aiharness-wt/roadmap`), then `bun install`. The roadmap added a pinned dependency, `quickjs-emscripten@0.32.0`.
+3. For P6: `git worktree add ../aiharness-wt/roadmap-p6 roadmap-p6`, `git merge roadmap` inside it (it branched before P2/P5 merged), then `bun install`.
+4. Check: `bun run typecheck` and `bunx vitest run`. The live `*-live` tests need `.env` keys; without them they fail as expected.
 
 **Next, in order:**
-1. Finish P6.1 and P5.4. Run **one track at a time** on the Windows PC: on 2026-10-18 it ran out of memory with 3–4 opencode workers, a vitest run and Chrome all going.
-2. P5.5, then P6.2 and P6.3.
-3. Merge P5 and P6 into `roadmap`; live turns on Claude, Codex and OpenCode Zen; a real-app check of the browser auto-open and takeover.
-4. P7 (automations; needs P3 and P5), then P8 (needs P1 and P4).
+1. **P6.1:** review the WIP diff on `roadmap-p6` against `.ai/plans/briefs/p61.brief.txt`, then finish it (tests missing, and the native per-member model route needs checking), verify, and commit.
+2. **P5.4:** readiness conditions, stale-ref detection, compact observations. Continue on `roadmap` (or a `roadmap-p5` worktree from it). See `.ai/plans/p5.md`.
+3. **Then:** P5.5, P6.2, P6.3. Merge P6, run live turns on Claude, Codex and OpenCode Zen, and do a real-app check of the browser auto-open and takeover.
+4. **Then:** P7 (automations; needs P3 and P5), then P8 (needs P1 and P4).
 
-**Still owed (needs a person at the app):** the DESIGN §9 real-app check of P2.1b/P2.3 (paged transcript, "Show earlier messages", windowing): light/dark, a 900px window, keyboard, screenshot. Run with `bun run dev`.
+**Still owed (needs a person at the app):** the DESIGN §9 real-app check of P2.1b/P2.3 (paged transcript, "Show earlier messages", windowing): light/dark, a 900px window, keyboard, screenshot (`bun run dev`, a long thread).
 
-**Workers on the Windows PC** (opencode, AGENTS policy in CLAUDE.md):
-- The stored Zen key in `~/.local/share/opencode/auth.json` has expired. Free models work without a key, so point `XDG_DATA_HOME` at a short, empty dir (`D:/ocz-a`…`D:/ocz-h` exist) so the old key isn't sent.
-- Set `OPENCODE_BIN=C:/Users/laplop/.bun/bin/opencode.exe` (oc-run only looks under npm).
-- Pass `--chain opencode/deepseek-v4.1-flash-free,opencode/glm-5.3-flash-free`.
-- The free endpoints often fail: dropped sockets, "Endpoint is unavailable", or 10 minutes idle. After 1–2 failures it was faster to implement the point directly with a precise brief as the spec; P4.5, P2.7, P5.2 and P5.3 were finished that way.
-- Python isn't installed. Use node scripts for edits. Files on disk are CRLF, so normalise `
+**Workers (opencode delegation per CLAUDE.md):**
+- The owner wants Zen DeepSeek Flash Free: `--chain opencode/deepseek-v4.1-flash-free,opencode/glm-5.3-flash-free` on oc-run.
+- Free endpoints were flaky: dropped sockets, "Endpoint is unavailable", 10 minutes idle. After 1–2 failed dispatches it was faster to implement directly from the brief; P4.5, P2.7, P5.2 and P5.3 were finished that way.
+- Run one worker or track at a time unless the machine has memory to spare.
+
+### Windows PC specifics (D:/Cubebis Work/ai-agent/)
+- **Local worktrees:** `harness-roadmap` (roadmap), plus `harness-roadmap-p2`…`-p6`. p2–p5 are merged and can be removed. `-p6` holds the WIP, now committed.
+- **Memory:** on 2026-10-18 the PC ran out of memory with 3–4 opencode workers, a vitest run and Chrome going at once; Claude Code killed the background jobs.
+- **Zen key:** the stored key in `~/.local/share/opencode/auth.json` has expired. Free models work without a key, so set `XDG_DATA_HOME` to an empty dir (`D:/ocz-a`…`D:/ocz-h`) so the old key isn't sent.
+- **opencode binary:** set `OPENCODE_BIN=C:/Users/laplop/.bun/bin/opencode.exe` (oc-run only looks under npm).
+- **Editing:** no Python is installed; use node for scripted edits. Files on disk are CRLF, so normalise `
 ` before string-replacing.
-
-**agent-browser (P5.2):**
-- v0.27 is installed. Spawn `%APPDATA%/npm/node_modules/agent-browser/bin/agent-browser-win32-x64.exe` directly with an args array, and resolve on "exit": its daemon holds the pipes, so going through the .cmd shim or a shell pipe hangs.
-- Each command takes about 250 ms and prints one JSON line `{success,data,error}`. Refs need a prior `snapshot`.
-
-**Test baseline on the Windows PC:** 7–11 environment failures on a clean tree.
-- Always: TokenHarbor `*-live` tests (no keys), codex-e2e, opencode-guard (EPERM/timeout), memory-tool "caps the list" (about 12 s on a 15 s limit).
-- Sometimes: `check`, `switch` and `mcp-router`, which fail with Windows temp-dir EPERM or under load and pass alone.
-
-**Research notes** (gitignored, Windows PC only): `.ai/research_notes/roadmap13-p{2,3,4,5,6}.md` in this worktree, with file:line maps.
+- **agent-browser:** v0.27, Chrome at `AGENT_BROWSER_EXECUTABLE_PATH`. Spawn `%APPDATA%/npm/node_modules/agent-browser/bin/agent-browser-win32-x64.exe` directly and resolve on "exit"; the .cmd shim or a shell pipe hangs on its daemon. The adapter handles this, and `resolveAgentBrowser()` returns "agent-browser" on macOS/Linux.
+- **Test baseline:** 7–11 environment failures.
+  - Always: TokenHarbor `*-live` tests, codex-e2e, opencode-guard EPERM/timeout, and memory-tool "caps the list" (about 12 s on a 15 s limit).
+  - Sometimes: `check`, `switch` and `mcp-router`, with temp-dir EPERM or failures under load; they pass alone.
 
 ## Status
 
