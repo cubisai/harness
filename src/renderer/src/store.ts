@@ -121,6 +121,8 @@ interface State {
   setDraft(patch: Partial<Draft>): void;
   selectedProjectId: string | null;
   selectedThreadId: string | null;
+  /** Thread ids by how recently they were selected (oldest first), so the per-thread caches can be bounded. */
+  selectedOrder: string[];
   /** Chat or Design mode: which threads the sidebar lists and what New thread makes. Follows the selected thread. */
   threadKind: ThreadKind;
   /** Switch mode; a selected thread of the other kind gives way to the project's latest of this kind, if any. */
@@ -294,6 +296,17 @@ function findThread(threads: Record<string, Thread[]>, id: string): Thread | und
 
 /** How many events one history page asks for; the main side extends it back to a turn boundary. */
 export const HISTORY_PAGE = 1500;
+
+/** How many threads keep their loaded caches; older ones are evicted on selection. */
+export const CACHE_THREADS = 8;
+
+/**
+ * The thread ids to drop so at most `max` remain: the oldest of `order`
+ * (most-recently-selected last) beyond the newest `max`, never an id in `keep`.
+ */
+export function evictable(order: string[], keep: Set<string>, max: number): string[] {
+  return order.slice(0, Math.max(0, order.length - max)).filter((id) => !keep.has(id));
+}
 
 /** Union of two seq-sorted event lists, deduped by seq (a later list's copy wins) and sorted ascending. */
 export function mergeBySeq(a: StoredEvent[], b: StoredEvent[]): StoredEvent[] {
@@ -509,6 +522,7 @@ export const useStore = create<State>((set, get) => ({
   },
   selectedProjectId: null,
   selectedThreadId: null,
+  selectedOrder: [],
   threadKind: "chat",
   async setThreadKind(kind) {
     const s = get();
@@ -872,6 +886,8 @@ export const useStore = create<State>((set, get) => ({
     const picked = id ? Object.values(get().threads).flat().find((t) => t.id === id) : undefined;
     set((s) => ({
       selectedThreadId: id,
+      // Keep the selection order so the per-thread caches can be bounded below.
+      selectedOrder: id ? [...s.selectedOrder.filter((x) => x !== id), id] : s.selectedOrder,
       // Jumping to a thread (⌘K, the Message Center) lands in its mode.
       ...(picked ? { threadKind: threadKind(picked) } : {}),
       finished: threadSeen(s.finished, id),
@@ -880,6 +896,34 @@ export const useStore = create<State>((set, get) => ({
         ? { artifact: null, ...(s.inspectorTab === "artifact" ? { inspectorTab: "changes" as const, inspectorOpen: false } : {}) }
         : {}),
     }));
+    // Bound the caches: keep the selection and live work (running turns, cards, queued messages).
+    const state = get();
+    const keep = new Set<string>();
+    if (id) keep.add(id);
+    for (const [tid, on] of Object.entries(state.running)) if (on) keep.add(tid);
+    for (const p of state.permissions) keep.add(p.threadId);
+    for (const p of state.plans) keep.add(p.threadId);
+    for (const q of state.questions) keep.add(q.threadId);
+    for (const [tid, list] of Object.entries(state.outbox)) if (list.length) keep.add(tid);
+    const drop = evictable(state.selectedOrder, keep, CACHE_THREADS);
+    if (drop.length) {
+      const dropped = new Set(drop);
+      set((s) => {
+        const events = { ...s.events };
+        const history = { ...s.history };
+        const artifactFiles = { ...s.artifactFiles };
+        const turnScores = { ...s.turnScores };
+        const live = { ...s.live };
+        for (const tid of dropped) {
+          delete events[tid];
+          delete history[tid];
+          delete artifactFiles[tid];
+          delete turnScores[tid];
+          if (!s.running[tid]) delete live[tid];
+        }
+        return { events, history, artifactFiles, turnScores, live, selectedOrder: s.selectedOrder.filter((x) => !dropped.has(x)) };
+      });
+    }
     // The thread's recorded files, so each turn's file cards include what it wrote by command.
     if (id && !get().artifactFiles[id]) {
       void Promise.resolve()
@@ -1257,13 +1301,16 @@ export const useStore = create<State>((set, get) => ({
             .catch(() => {});
         }
         set((s) => {
-          const list = s.events[update.threadId] ?? [];
-          if (list.some((e) => e.seq === update.stored.seq)) return {};
+          const list = s.events[update.threadId];
+          if (list?.some((e) => e.seq === update.stored.seq)) return {};
           // Deltas that arrived before this terminal event must land first.
           const live = drainQueue(s);
           live[update.threadId] = applyLiveEvent(live[update.threadId] ?? emptyLive(), update.stored);
+          // An event for a thread whose history isn't loaded (and isn't being loaded) must not
+          // make a one-event list, which would block the page load; selectThread brings it in.
+          if (!list && update.threadId !== s.selectedThreadId) return { live };
           return {
-            events: { ...s.events, [update.threadId]: [...list, update.stored] },
+            events: { ...s.events, [update.threadId]: [...(list ?? []), update.stored] },
             live,
           };
         });
