@@ -94,7 +94,7 @@ export function loadReference(referencesRoot: string, task: Pick<Task, "id" | "f
 export async function validateTask(task: Task, o: { fixturesRoot: string; referencesRoot: string; runCommand: GradeInput["runCommand"] }): Promise<Validation> {
   // Needs Electron's browser pane or team runtime, which the bun runner can't
   // provide: count it as skipped, not a failure (the eval run skips it too).
-  if (task.requires?.length) return { id: task.id, noop: { pass: false, why: [] }, reference: null, problems: [], skipped: `needs ${task.requires.join(", ")}` };
+  if (task.requires?.includes("team")) return { id: task.id, noop: { pass: false, why: [] }, reference: null, problems: [], skipped: "needs team" };
   const problems: string[] = [];
   if (task.graders.length === 0) problems.push("no graders");
   const noop = await gradeOutcome(task, o.fixturesRoot, o.runCommand, null);

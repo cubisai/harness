@@ -33,7 +33,7 @@ export class BrowserController {
   private shots: string[] = [];
   /** The emulated viewport. */
   device: DevicePreset = "desktop";
-  /** True once the user has opened the pane this session: only then do the agent's browser tools exist. */
+  /** True once the renderer's <webview> has attached this session. */
   enabled = false;
   /** The user took the pointer: acting tools refuse until they resume. Reads (snapshot, logs, screenshot) stay allowed. */
   paused = false;
@@ -51,6 +51,8 @@ export class BrowserController {
       /** The agent acted in the pane: who is driving, and on what. */
       onAction?(action: "open" | "click" | "type" | "eval", ref: string | undefined, url: string): void;
     } = {},
+    /** How long page() waits for the renderer to mount and attach the pane. */
+    private opts: { openTimeoutMs?: number } = {},
   ) {}
 
   setPaused(paused: boolean): void {
@@ -166,7 +168,7 @@ export class BrowserController {
       return this.wc;
     }
     const attached = new Promise<WebContents>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("The browser pane didn't open.")), 15_000);
+      const timer = setTimeout(() => reject(new Error("The browser pane didn't open.")), this.opts.openTimeoutMs ?? 15_000);
       this.waiters.push((wc) => {
         clearTimeout(timer);
         resolve(wc);
@@ -176,6 +178,21 @@ export class BrowserController {
     const wc = await attached;
     if (url && wc.getURL() !== url) await this.navigate(url);
     return wc;
+  }
+
+  /** Make sure the pane is mounted, opening it if the user hasn't, and let its first load settle. */
+  async ensureOpen(): Promise<void> {
+    if (this.wc && !this.wc.isDestroyed()) return;
+    const wc = await this.page();
+    if (wc.isLoading()) {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 10_000);
+        wc.once("did-stop-loading", () => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+    }
   }
 
   async navigate(input: string): Promise<void> {

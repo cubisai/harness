@@ -437,7 +437,8 @@ async function main(): Promise<void> {
       onAction: (action, ref, url) => broadcast({ type: "browser-action", action, ref, url }),
     },
   );
-  const tools = browserTools(browser);
+  // The pane is one target: a thread whose turn is running owns it until the turn ends (service is set up below).
+  const tools = browserTools(browser, { busy: (threadId) => service.isRunning(threadId) });
   const memoryEnabled = (pid: string) => memoryOn(settings.get(), pid);
   const memoryTools = [memoryReadTool({ store: memory.store, enabled: memoryEnabled }), memoryWriteTool({ store: memory.store, enabled: memoryEnabled })];
   // A stable array identity: the tool list must not change mid-conversation.
@@ -1776,7 +1777,7 @@ async function smokeBrowserWith(tools: ReturnType<typeof browserTools>, browser:
       <label for=u>Email</label><input id=u>
       <button onclick="document.querySelector('p').textContent = 'Hello ' + document.getElementById('u').value; console.error('smoke-console-check')">Go</button>
       <p>waiting</p>`);
-  // The tools refuse until the user opens the pane; the smoke stands in for that user.
+  // The smoke attaches its own webview, as the pane does once it opens.
   browser.enabled = true;
   try {
     const opened = await byName("browser_open").run({ url: page });
