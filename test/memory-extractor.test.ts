@@ -70,6 +70,7 @@ describe("buildExtractionPrompt", () => {
     expect(prompt).toContain("- [Tabs](tabs.md) — prefers tabs");
     expect(prompt).toContain("User: use tabs");
     expect(prompt).toContain("Assistant: ok");
+    expect(prompt).toContain('Set "correction": true');
     expect(buildExtractionPrompt("", { user: "u", answer: "a" })).toContain("(empty)");
   });
 
@@ -146,6 +147,15 @@ describe("parseOps", () => {
   it("drops an add with no name, description or body", () => {
     const raw = { ops: [{ op: "add", name: "", description: "d", body: "b" }, { op: "add", name: "x", description: "", body: "b" }, { op: "add", name: "y", description: "d", body: "" }] };
     expect(parseOps(JSON.stringify(raw), new Set())).toEqual([]);
+  });
+
+  it("keeps a boolean correction on add and update, and drops a non-boolean one", () => {
+    const add = parseOps(JSON.stringify({ ops: [{ op: "add", name: "x", description: "d", type: "project", body: "b", correction: true }] }), new Set());
+    expect(add).toEqual([{ op: "add", name: "x", description: "d", type: "project", body: "b", correction: true }]);
+    const update = parseOps(JSON.stringify({ ops: [{ op: "update", file: "known.md", correction: true }] }), new Set(["known.md"]));
+    expect(update).toEqual([{ op: "update", file: "known.md", correction: true }]);
+    const bad = parseOps(JSON.stringify({ ops: [{ op: "add", name: "x", description: "d", type: "project", body: "b", correction: "yes" }] }), new Set());
+    expect(bad).toEqual([{ op: "add", name: "x", description: "d", type: "project", body: "b" }]);
   });
 });
 
@@ -225,6 +235,25 @@ describe("applyOps", () => {
     expect(result).toEqual({ added: 0, updated: 1, deleted: 0 });
     expect(store.read(GLOBAL_SCOPE, "terse.md")?.body).toBe("short answers");
     expect(store.list("p1")).toEqual([]);
+  });
+
+  it("marks a correction op's note, and a global add in the global scope", () => {
+    const store = new MemoryStore(tempDir());
+    const result = applyOps(store, "p1", [
+      { op: "add", name: "Staging Two", description: "deploy target changed", type: "project", body: "b", correction: true },
+      { op: "add", name: "Terse", description: "prefers terse", type: "user", body: "b", correction: true },
+    ]);
+    expect(result).toEqual({ added: 2, updated: 0, deleted: 0 });
+    expect(store.meta("p1")["staging-two.md"]?.correction).toBeTypeOf("number");
+    expect(store.meta(GLOBAL_SCOPE)["terse.md"]?.correction).toBeTypeOf("number");
+    expect(store.meta("p1")["terse.md"]).toBeUndefined();
+  });
+
+  it("marks an updated note when the update carries correction", () => {
+    const store = new MemoryStore(tempDir());
+    store.write("p1", { name: "Alpha", description: "a", type: "project", body: "a" });
+    applyOps(store, "p1", [{ op: "update", file: "alpha.md", description: "b", correction: true }]);
+    expect(store.meta("p1")["alpha.md"]?.correction).toBeTypeOf("number");
   });
 });
 

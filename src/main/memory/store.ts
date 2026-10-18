@@ -16,6 +16,14 @@ export interface MemoryFact {
   body: string;
 }
 
+/** A note's sidecar marker: when it was marked a correction, and what it supersedes. */
+export interface NoteMeta {
+  /** Epoch ms when the note was marked as a correction. */
+  correction?: number;
+  /** The file this note replaces, when it was written with one. */
+  supersedes?: string;
+}
+
 /**
  * The reserved scope id for notes about the user that hold in every project;
  * stored as `store.dir(GLOBAL_SCOPE)` under the same root.
@@ -208,6 +216,11 @@ export class MemoryStore {
       delete usage[file];
       atomicWrite(join(this.dir(projectId), ".usage.json"), JSON.stringify(usage));
     }
+    const meta = this.meta(projectId);
+    if (meta[file] !== undefined) {
+      delete meta[file];
+      atomicWrite(join(this.dir(projectId), ".meta.json"), JSON.stringify(meta));
+    }
     this.rebuildIndex(projectId);
     return true;
   }
@@ -231,6 +244,30 @@ export class MemoryStore {
       const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
       return parsed as Record<string, number>;
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Mark a note as a correction (optionally naming the note it supersedes), for
+   * correction-first ordering. A no-op for a filename that isn't a valid fact file.
+   */
+  markCorrection(scope: string, file: string, supersedes?: string): void {
+    if (!validFile(file)) return;
+    const meta = this.meta(scope);
+    meta[file] = { correction: this.now().getTime(), ...(supersedes ? { supersedes } : {}) };
+    atomicWrite(join(this.dir(scope), ".meta.json"), JSON.stringify(meta));
+  }
+
+  /** The scope's metadata sidecar (file -> correction marker), or {} when missing or corrupt. */
+  meta(scope: string): Record<string, NoteMeta> {
+    const path = join(this.dir(scope), ".meta.json");
+    if (!existsSync(path)) return {};
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+      return parsed as Record<string, NoteMeta>;
     } catch {
       return {};
     }
@@ -293,8 +330,9 @@ export class MemoryStore {
   }
 
   /**
-   * The memory block agents see: global notes first, then this project's, each
-   * section capped and ordered newest-first (by `updated` or last use).
+   * The memory block agents see: global notes first, then this project's. Within
+   * a section corrections come first (newest marked first), then the rest
+   * newest-first (by `updated` or last use); each section is capped.
    */
   blockIndex(projectId: string): { text: string; lines: number; tokens: number; shown: number; total: number } {
     const scopes = projectId === GLOBAL_SCOPE ? [GLOBAL_SCOPE] : [GLOBAL_SCOPE, projectId];
@@ -306,11 +344,15 @@ export class MemoryStore {
       total += facts.length;
       if (!facts.length) continue;
       const usage = this.usage(scope);
+      const meta = this.meta(scope);
       const recency = (f: Omit<MemoryFact, "body">): number => Math.max(Date.parse(f.updated ?? "") || 0, usage[f.file] ?? 0);
-      const sorted = [...facts].sort((a, b) => {
-        const diff = recency(b) - recency(a);
-        return diff !== 0 ? diff : a.file < b.file ? -1 : a.file > b.file ? 1 : 0;
-      });
+      const byFile = (a: Omit<MemoryFact, "body">, b: Omit<MemoryFact, "body">): number => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0);
+      // Corrections first (newest marked first), then the rest by recency; an
+      // unmarked scope keeps exactly the order it had before corrections existed.
+      const marked = (f: Omit<MemoryFact, "body">): number | undefined => meta[f.file]?.correction;
+      const corrections = facts.filter((f) => marked(f) !== undefined).sort((a, b) => marked(b)! - marked(a)! || byFile(a, b));
+      const rest = facts.filter((f) => marked(f) === undefined).sort((a, b) => recency(b) - recency(a) || byFile(a, b));
+      const sorted = [...corrections, ...rest];
       const header = scope === GLOBAL_SCOPE ? `Global (about the user, every project; read with scope "global"):` : "This project:";
       // The newline joining the two sections comes out of the project's share, so the total stays ≤ 4800.
       const cap = scope === GLOBAL_SCOPE ? BLOCK_CAP.global : BLOCK_CAP.project - (sections.length ? 1 : 0);

@@ -106,6 +106,27 @@ describe("memoryReadTool", () => {
     expect((await tool.run({ query: "alpha" }, ctx)).text.split("\n")).toHaveLength(5);
   });
 
+  it("ranks a correction above its older twin for the same query", async () => {
+    const store = new MemoryStore(tempDir());
+    store.write("p1", { name: "Staging One", description: "deploy target is staging one", type: "project", body: "deploy target staging one" });
+    store.write("p1", { name: "Staging Two", description: "deploy target is staging two", type: "project", body: "deploy target staging two" });
+    store.markCorrection("p1", "staging-two.md");
+    const tool = memoryReadTool({ store, enabled: () => true });
+    const lines = (await tool.run({ query: "deploy target" }, ctx)).text.split("\n");
+    expect(lines[0]).toContain("staging-two.md");
+    expect(lines[1]).toContain("staging-one.md");
+  });
+
+  it("matches whole words, so a query word hidden inside another does not count", async () => {
+    const store = new MemoryStore(tempDir());
+    store.write("p1", { name: "Latest", description: "the latest build", type: "project", body: "the latest build" });
+    store.write("p1", { name: "Checks", description: "run the test suite", type: "project", body: "run the test suite" });
+    const tool = memoryReadTool({ store, enabled: () => true });
+    const text = (await tool.run({ query: "test" }, ctx)).text;
+    expect(text).toContain("checks.md");
+    expect(text).not.toContain("latest.md");
+  });
+
   it("caps the list at 60 lines and ends with a query hint", async () => {
     const store = new MemoryStore(tempDir());
     for (let i = 0; i < 70; i++) store.write("p1", { name: `N${String(i).padStart(2, "0")}`, description: "d", type: "project", body: "b" });
@@ -218,6 +239,24 @@ describe("memoryWriteTool", () => {
     const res = await tool.run({ op: "delete", file: "commit-style.md" }, ctx);
     expect(res.text).toBe("Deleted commit-style.md (project).");
     expect(store.list("p1")).toEqual([]);
+  });
+
+  it("marks a correction, deletes the note it supersedes, and names both", async () => {
+    const { store, tool } = writer();
+    store.write("p1", { name: "Staging One", description: "deploy target is staging", type: "project", body: "deploy to staging" });
+    const res = await tool.run({ op: "add", name: "Staging Two", description: "deploy target changed", body: "deploy to staging-2", type: "project", correction: true, supersedes: "staging-one.md" }, ctx);
+    expect(res.isError).toBeFalsy();
+    expect(res.text).toBe("Saved staging-two.md (project); deleted superseded staging-one.md.");
+    expect(store.read("p1", "staging-one.md")).toBeNull();
+    expect(store.meta("p1")["staging-two.md"]?.correction).toBeTypeOf("number");
+  });
+
+  it("marks a note updated with correction: true", async () => {
+    const { store, tool } = writer();
+    store.write("p1", { name: "Commit Style", description: "max 150", type: "feedback", body: "keep short" });
+    const res = await tool.run({ op: "update", file: "commit-style.md", correction: true, description: "max 100" }, ctx);
+    expect(res.text).toBe("Updated commit-style.md (project).");
+    expect(store.meta("p1")["commit-style.md"]?.correction).toBeTypeOf("number");
   });
 
   it("finds a global note to update or delete when no scope is given", async () => {

@@ -12,6 +12,8 @@ export interface ExtractOp {
   description?: string;
   type?: MemoryType;
   body?: string;
+  /** True when the note corrects or reverses an earlier fact. */
+  correction?: boolean;
 }
 
 /** One finished turn, as the extractor sees it. */
@@ -86,6 +88,7 @@ export function buildExtractionPrompt(indexText: string, delta: { user: string; 
     "Record ONLY durable user preferences, feedback on how to work, project goals, constraints, decisions, and external references.",
     "NEVER record code structure, file contents, git history, chat logs, one-off task details, secrets, keys or tokens.",
     "When an index entry already covers a fact, prefer update over add.",
+    'Set "correction": true when the user corrects or reverses an earlier fact or preference; update or delete the old note rather than keeping both.',
     'A preference or correction about the user that matches a GLOBAL note must update that note (file "global/<file>"), never add a new one.',
     'Output {"ops":[]} when nothing is worth keeping (the common case).',
     'Example: {"ops":[{"op":"add","name":"commit-style","description":"Commit messages stay under 72 characters","type":"feedback","body":"Keep commit messages under 72 characters.\\n**Why:** the user asked.\\n**How to apply:** check the length before committing."}]}',
@@ -162,7 +165,9 @@ export function parseOps(text: string, existingFiles: Set<string>): ExtractOp[] 
       if (!name || !description || !body) continue;
       if (secretish(name, description, body)) continue;
       const type = typeof op.type === "string" && (TYPES as string[]).includes(op.type) ? (op.type as MemoryType) : "project";
-      out.push({ op: "add", name, description, type, body });
+      const next: ExtractOp = { op: "add", name, description, type, body };
+      if (typeof op.correction === "boolean") next.correction = op.correction;
+      out.push(next);
     } else if (op.op === "update") {
       const file = typeof op.file === "string" ? op.file : "";
       if (!existingFiles.has(file)) continue;
@@ -171,6 +176,7 @@ export function parseOps(text: string, existingFiles: Set<string>): ExtractOp[] 
       if (typeof op.description === "string" && op.description.trim()) next.description = op.description.trim().slice(0, 200);
       if (typeof op.body === "string" && op.body.trim()) next.body = op.body.trim().slice(0, 4000);
       if (typeof op.type === "string" && (TYPES as string[]).includes(op.type)) next.type = op.type as MemoryType;
+      if (typeof op.correction === "boolean") next.correction = op.correction;
       if (secretish(next.name, next.description, next.body)) continue;
       out.push(next);
     } else if (op.op === "delete") {
@@ -206,9 +212,11 @@ export function applyOps(store: MemoryStore, projectId: string, ops: ExtractOp[]
         if (dup) {
           const current = store.read(scope, dup.file);
           store.write(scope, { file: dup.file, name: op.name!, description: op.description!, type: op.type ?? current?.type ?? "project", body: op.body! });
+          if (op.correction) store.markCorrection(scope, dup.file);
           updated++;
         } else {
-          store.write(scope, { name: op.name!, description: op.description!, type, body: op.body! });
+          const file = store.write(scope, { name: op.name!, description: op.description!, type, body: op.body! });
+          if (op.correction) store.markCorrection(scope, file);
           added++;
         }
       } else if (op.op === "update" && op.file) {
@@ -222,6 +230,7 @@ export function applyOps(store: MemoryStore, projectId: string, ops: ExtractOp[]
           type: op.type ?? current.type,
           body: op.body ?? current.body,
         });
+        if (op.correction) store.markCorrection(where.scope, where.file);
         updated++;
       } else if (op.op === "delete" && op.file) {
         const where = locate(store, projectId, op.file);
