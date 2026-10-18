@@ -18,6 +18,7 @@ import { SubagentCard } from "./SubagentCard";
 import { activityOf, WaitingLine } from "./WaitingLine";
 import { useSmoothText } from "../hooks/useSmoothText";
 import { createSegmenter, type Segment, type TurnChanges, workDuration, workSummary } from "../turns";
+import { computeWindow, ESTIMATE_PX, WINDOW_MIN_SEGMENTS } from "../windowing";
 
 type ToolEvent = Extract<ThreadEvent, { kind: "tool-use" }>;
 type ResultEvent = Extract<ThreadEvent, { kind: "tool-result" }>;
@@ -162,6 +163,45 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
     return -1;
   }, [segments]);
 
+  // P2.3: windowing only starts at the threshold; below it the render path is untouched.
+  // `view` is the last measured scroll position; viewport 0 means it is not measured yet
+  // (SSR, first layout), when the transcript is assumed pinned to the bottom.
+  const windowing = segments.length >= WINDOW_MIN_SEGMENTS;
+  const measured = useRef(new Map<string, number>());
+  const measureRaf = useRef(false);
+  const scrollRaf = useRef(false);
+  const [measureTick, setMeasureTick] = useState(0);
+  const [view, setView] = useState({ top: 0, viewport: 0, pinned: true });
+  const heights = useMemo(
+    () => segments.map((seg) => measured.current.get(segmentKey(seg)) ?? ESTIMATE_PX),
+    [segments, measureTick],
+  );
+  let start = 0;
+  let end = 0;
+  let before = 0;
+  let after = 0;
+  if (windowing) {
+    const tail = Math.max(0, segments.length - PINNED_TAIL);
+    if (view.viewport === 0) {
+      start = tail;
+      end = segments.length;
+      before = sumHeights(heights, 0, start);
+    } else {
+      const win = computeWindow(heights, view.top, view.viewport);
+      start = win.start;
+      end = win.end;
+      before = win.before;
+      after = win.after;
+      // While pinned, the last turn stays mounted so streaming and its footer work as before.
+      if (view.pinned) {
+        start = Math.min(start, tail);
+        end = segments.length;
+        before = sumHeights(heights, 0, start);
+        after = 0;
+      }
+    }
+  }
+
   // Stay pinned to the bottom while the user hasn't scrolled away.
   const pinned = useRef(true);
   useEffect(() => {
@@ -180,6 +220,57 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
     return () => follow.disconnect();
   }, []);
 
+  // One observer measures the mounted rows (P2.3); a rAF-throttled tick feeds the
+  // results back as spacer heights. It is rebuilt as the window moves.
+  useEffect(() => {
+    if (!windowing || typeof ResizeObserver === "undefined") return;
+    const body = inner.current;
+    if (!body) return;
+    const ro = new ResizeObserver((entries) => {
+      let changed = false;
+      for (const entry of entries) {
+        const el = entry.target as HTMLElement;
+        const key = el.dataset.seg;
+        if (!key) continue;
+        const h = entry.contentRect.height || el.offsetHeight;
+        if (measured.current.get(key) === h) continue;
+        measured.current.set(key, h);
+        changed = true;
+      }
+      if (!changed || measureRaf.current) return;
+      measureRaf.current = true;
+      const flush = () => {
+        measureRaf.current = false;
+        setMeasureTick((n) => n + 1);
+      };
+      if (typeof requestAnimationFrame !== "undefined") requestAnimationFrame(flush);
+      else flush();
+    });
+    for (const node of body.querySelectorAll<HTMLElement>("[data-seg]")) ro.observe(node);
+    return () => ro.disconnect();
+  }, [windowing, start, end, segments]);
+
+  // The first window: at the bottom, with the scroller's real viewport.
+  useLayoutEffect(() => {
+    if (!windowing) return;
+    const el = scroller.current;
+    if (!el) return;
+    if (pinned.current) el.scrollTop = el.scrollHeight;
+    setView({ top: el.scrollTop, viewport: el.clientHeight, pinned: pinned.current });
+  }, [windowing]);
+
+  const scheduleView = () => {
+    if (scrollRaf.current) return;
+    scrollRaf.current = true;
+    const flush = () => {
+      scrollRaf.current = false;
+      const el = scroller.current;
+      if (el) setView({ top: el.scrollTop, viewport: el.clientHeight, pinned: pinned.current });
+    };
+    if (typeof requestAnimationFrame !== "undefined") requestAnimationFrame(flush);
+    else flush();
+  };
+
   const firstSeq = events[0]?.seq;
   // Where the reader was before older events prepend, so the view holds its place (DESIGN.md §7.4).
   const pendingRestore = useRef<{ scrollHeight: number; scrollTop: number; firstSeq: number } | null>(null);
@@ -190,6 +281,23 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
     if (el) pendingRestore.current = { scrollHeight: el.scrollHeight, scrollTop: el.scrollTop, firstSeq: firstSeq ?? 0 };
     void useStore.getState().loadOlder(threadId);
   };
+  // Measured heights above the window move its offset: hold the reader's place, unless
+  // pinned (the follow effect owns the bottom) or a prepend restore is about to run.
+  const anchor = useRef<{ start: number; before: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!windowing) {
+      anchor.current = null;
+      return;
+    }
+    const prev = anchor.current;
+    anchor.current = { start, before };
+    const el = scroller.current;
+    if (!el || !prev || prev.start !== start) return;
+    if (pinned.current || pendingRestore.current) return;
+    const delta = before - prev.before;
+    if (delta !== 0) el.scrollTop += delta;
+  }, [windowing, start, before]);
+
   useLayoutEffect(() => {
     const pending = pendingRestore.current;
     if (!pending) return;
@@ -209,6 +317,7 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
       onScroll={(e) => {
         const el = e.currentTarget;
         pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        if (windowing) scheduleView();
         // Near the top, pull the next older page in; loadOlder itself guards against repeats.
         if (el.scrollTop < 200) loadEarlier();
       }}
@@ -216,9 +325,24 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
       <div className="thread-inner" ref={inner}>
         {history?.hasMore && <EarlierMessages loading={history.loadingOlder} onLoad={loadEarlier} />}
         {expertId && events.length === 0 && <ExpertIntro expertId={expertId} />}
-        {segments.map((seg, i) => (
-          <SegmentRow key={segmentKey(seg)} seg={seg} results={results} children={children} running={running} threadId={threadId} last={i === lastTurnEnd} />
-        ))}
+        {windowing ? (
+          <>
+            {before > 0 && <div style={{ height: before }} />}
+            {segments.slice(start, end).map((seg, i) => {
+              const key = segmentKey(seg);
+              return (
+                <div key={key} data-seg={key}>
+                  <SegmentRow seg={seg} results={results} children={children} running={running} threadId={threadId} last={start + i === lastTurnEnd} />
+                </div>
+              );
+            })}
+            {after > 0 && <div style={{ height: after }} />}
+          </>
+        ) : (
+          segments.map((seg, i) => (
+            <SegmentRow key={segmentKey(seg)} seg={seg} results={results} children={children} running={running} threadId={threadId} last={i === lastTurnEnd} />
+          ))
+        )}
         {reasoningMode === "text" &&
           reasoningItems.map((item, i) => (
             <LiveReasoning key={item.key} text={item.text} newest={i === reasoningItems.length - 1 && textItems.length === 0} />
@@ -261,6 +385,15 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
 }
 
 const EMPTY: StoredEvent[] = [];
+
+/** With windowing on, at least this many trailing segments stay mounted (P2.3). */
+const PINNED_TAIL = 20;
+
+function sumHeights(heights: number[], from: number, to: number): number {
+  let total = 0;
+  for (let i = from; i < to; i++) total += heights[i]!;
+  return total;
+}
 
 function segmentKey(seg: Segment): string {
   return seg.kind === "work" ? `w${seg.key}` : `e${seg.stored.seq}`;
