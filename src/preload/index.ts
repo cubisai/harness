@@ -11,6 +11,7 @@ const api: UnskilledApi = {
   deleteProject: (projectId) => ipcRenderer.invoke("projects:delete", projectId),
   setCheckCommand: (projectId, command, fixRounds) => ipcRenderer.invoke("projects:set-check-command", projectId, command, fixRounds),
   listThreads: (projectId) => ipcRenderer.invoke("threads:list", projectId),
+  listAllThreads: () => ipcRenderer.invoke("threads:all"),
   createThread: (projectId, agent, opts) => ipcRenderer.invoke("threads:create", projectId, agent, opts),
   setDesignSystem: (threadId, id) => ipcRenderer.invoke("threads:set-design-system", threadId, id),
   setPrototypeTier: (threadId, tier) => ipcRenderer.invoke("threads:set-prototype-tier", threadId, tier),

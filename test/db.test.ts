@@ -50,6 +50,25 @@ describe("Store", () => {
 
     store.close();
   });
+
+  it("lists every project's threads in one query, grouped and ordered like listThreads", async () => {
+    const store = new Store(join(tempDir(), "all.db"));
+    const one = store.addProject("/tmp/all/one");
+    const none = store.addProject("/tmp/all/none");
+    const three = store.addProject("/tmp/all/three");
+    const older = store.createThread(one.id, "claude", "m", "ask");
+    await new Promise((r) => setTimeout(r, 30)); // Distinct updated_at, so ordering is unambiguous.
+    const newer = store.createThread(one.id, "claude", "m", "ask");
+    const only = store.createThread(three.id, "claude", "m", "ask");
+
+    const all = store.listAllThreads();
+
+    expect(all).toEqual({ [one.id]: store.listThreads(one.id), [three.id]: store.listThreads(three.id) });
+    expect(all[one.id]!.map((t) => t.id)).toEqual([newer.id, older.id]);
+    expect(all[three.id]!.map((t) => t.id)).toEqual([only.id]);
+    expect(all[none.id]).toBeUndefined();
+    store.close();
+  });
 });
 
 describe("Store migrations", () => {

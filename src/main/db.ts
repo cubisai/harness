@@ -356,6 +356,16 @@ export class Store {
       .map((r) => toThread(r as unknown as ThreadRow));
   }
 
+  /** Every project's threads in one query, each group ordered as `listThreads`; a project with none is absent. */
+  listAllThreads(): Record<string, Thread[]> {
+    const grouped: Record<string, Thread[]> = {};
+    for (const row of this.db.prepare(`SELECT ${THREAD_COLS} FROM threads ORDER BY project_id, updated_at DESC`).all()) {
+      const thread = toThread(row as unknown as ThreadRow);
+      (grouped[thread.projectId] ??= []).push(thread);
+    }
+    return grouped;
+  }
+
   createThread(projectId: string, agent: string, model: string, permissionMode: PermissionMode, kind: ThreadKind = "chat", designSystem: string | null = null, expertId: string | null = null): Thread {
     const now = Date.now();
     const thread: Thread = {

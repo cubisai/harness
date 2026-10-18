@@ -1095,6 +1095,8 @@ export interface UnskilledApi {
   /** Set a project's post-turn check command; null/empty turns it off. */
   setCheckCommand(projectId: string, command: string | null, fixRounds?: number | null): Promise<Project>;
   listThreads(projectId: string): Promise<Thread[]>;
+  /** Every project's threads, grouped by project id; a project with none is absent. */
+  listAllThreads(): Promise<Record<string, Thread[]>>;
   createThread(projectId: string, agent?: string, opts?: { worktree?: boolean; kind?: ThreadKind; designSystem?: string; expertId?: string }): Promise<Thread>;
   /** Pick a design thread's design system (null = the default); the next turn copies it into the design folder. */
   setDesignSystem(threadId: string, id: string | null): Promise<Thread>;

@@ -247,6 +247,7 @@ export function installMock(): void {
       return project;
     },
     listThreads: async (pid) => threads[pid] ?? [],
+    listAllThreads: async () => Object.fromEntries(Object.entries(threads).filter(([, list]) => list.length)),
     createThread: async (pid, agent, opts) => {
       const th = t(`t${Math.random()}`, pid, "New thread", 0, agent ?? "claude");
       if (opts?.worktree) {

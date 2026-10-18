@@ -1384,6 +1384,7 @@ async function main(): Promise<void> {
     store.setCheckCommand(projectId, command, fixRounds),
   );
   ipcMain.handle("threads:list", (_e, projectId: string) => store.listThreads(projectId));
+  ipcMain.handle("threads:all", () => store.listAllThreads());
   ipcMain.handle("threads:create", (_e, projectId: string, agent?: string, opts?: { worktree?: boolean; kind?: unknown; designSystem?: unknown; expertId?: unknown }) => {
     const kind: ThreadKind = opts?.kind === "design" ? "design" : "chat";
     // Only a design thread keeps a system, and only an id the picker could offer (checked again at each turn).

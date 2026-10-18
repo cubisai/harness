@@ -731,7 +731,7 @@ export const useStore = create<State>((set, get) => ({
       api().onUpdate((u) => get().apply(u));
     }
     try {
-      const [projects, skills, agents, settings, appUpdate, limitList, pending] = await Promise.all([
+      const [projects, skills, agents, settings, appUpdate, limitList, pending, allThreads] = await Promise.all([
         api().listProjects(),
         api().listSkills(),
         api().listAgents(),
@@ -739,6 +739,7 @@ export const useStore = create<State>((set, get) => ({
         api().updateStatus(),
         api().listLimits(),
         api().pendingState(),
+        api().listAllThreads(),
       ]);
       void api()
         .listEditors()
@@ -748,8 +749,7 @@ export const useStore = create<State>((set, get) => ({
       applyDensity(settings.density);
       applyZoom(settings.zoom);
       const threads: Record<string, Thread[]> = {};
-      for (const p of projects) threads[p.id] = await api().listThreads(p.id);
-      for (const p of projects) void get().loadBranch(p.id);
+      for (const p of projects) threads[p.id] = allThreads[p.id] ?? [];
       const limits = Object.fromEntries(limitList.map((l) => [l.agent, l]));
       set((s) => ({ projects, skills, agents, threads, settings, paneLayout: sanitizeLayout(settings.paneLayout), appUpdate, limits: { ...limits, ...s.limits } }));
       // A window that loads mid-turn picks up what's live: running threads and the cards waiting on the user.
@@ -765,7 +765,10 @@ export const useStore = create<State>((set, get) => ({
       if (first) {
         await get().selectProject(first.id);
         const recent = threads[first.id]?.[0];
-        if (recent) await get().selectThread(recent.id);
+        // Open the selected thread before the per-project branch loads, which are not on the critical path.
+        const opening = recent ? get().selectThread(recent.id) : Promise.resolve();
+        for (const p of projects) void get().loadBranch(p.id);
+        await opening;
       }
     } catch (err) {
       // A startup call that rejects used to leave a blank window; let the user retry.
