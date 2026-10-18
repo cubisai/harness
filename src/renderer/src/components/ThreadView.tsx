@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, Copy, Pencil, RotateCcw, X } from "lucide-react";
 import { artifactKind, isPreviewable, PLAN_ARTIFACT } from "../../../shared/artifact-kind";
 import { skillsOf } from "../../../shared/skill-list";
@@ -54,8 +54,20 @@ function SkillChips({ names }: { names: string[] }) {
   );
 }
 
+/** The transcript's quiet "Show earlier messages" control, shown while older events remain. */
+export function EarlierMessages({ loading, onLoad }: { loading: boolean; onLoad(): void }) {
+  return (
+    <div className="earlier-messages">
+      <button type="button" className="button ghost" disabled={loading} onClick={onLoad}>
+        {loading ? "Loading earlier messages…" : "Show earlier messages"}
+      </button>
+    </div>
+  );
+}
+
 export function ThreadView({ threadId, expertId }: { threadId: string; expertId?: string }) {
   const events = useStore((s) => s.events[threadId]) ?? EMPTY;
+  const history = useStore((s) => s.history[threadId]);
   const live = useStore((s) => s.live[threadId]) ?? EMPTY_LIVE;
   const running = useStore((s) => Boolean(s.running[threadId]));
   const outbox = useStore((s) => s.outbox[threadId]) ?? NO_QUEUE;
@@ -161,6 +173,27 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
     return () => follow.disconnect();
   }, []);
 
+  const firstSeq = events[0]?.seq;
+  // Where the reader was before older events prepend, so the view holds its place (DESIGN.md §7.4).
+  const pendingRestore = useRef<{ scrollHeight: number; scrollTop: number; firstSeq: number } | null>(null);
+  const loadEarlier = () => {
+    const h = useStore.getState().history[threadId];
+    if (!h?.hasMore || h.loadingOlder) return;
+    const el = scroller.current;
+    if (el) pendingRestore.current = { scrollHeight: el.scrollHeight, scrollTop: el.scrollTop, firstSeq: firstSeq ?? 0 };
+    void useStore.getState().loadOlder(threadId);
+  };
+  useLayoutEffect(() => {
+    const pending = pendingRestore.current;
+    if (!pending) return;
+    const el = scroller.current;
+    if (el && firstSeq !== undefined && firstSeq !== pending.firstSeq) {
+      // The transcript grew above: push the scroll down by exactly that growth.
+      el.scrollTop = el.scrollHeight - (pending.scrollHeight - pending.scrollTop);
+    }
+    pendingRestore.current = null;
+  }, [firstSeq]);
+
   return (
     <>
     <div
@@ -169,9 +202,12 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
       onScroll={(e) => {
         const el = e.currentTarget;
         pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        // Near the top, pull the next older page in; loadOlder itself guards against repeats.
+        if (el.scrollTop < 200) loadEarlier();
       }}
     >
       <div className="thread-inner" ref={inner}>
+        {history?.hasMore && <EarlierMessages loading={history.loadingOlder} onLoad={loadEarlier} />}
         {expertId && events.length === 0 && <ExpertIntro expertId={expertId} />}
         {segments.map((seg, i) => (
           <SegmentRow key={segmentKey(seg)} seg={seg} results={results} children={children} running={running} threadId={threadId} last={i === lastTurnEnd} />

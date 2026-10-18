@@ -25,6 +25,7 @@ import type {
   SwitchResult,
   Thread,
   ThreadKind,
+  ThreadTotals,
 } from "../../shared/types";
 import { api } from "./api";
 import { appendDelta, applyLiveEvent, emptyLive, flushPending, type LiveThread } from "./live";
@@ -125,6 +126,8 @@ interface State {
   /** Switch mode; a selected thread of the other kind gives way to the project's latest of this kind, if any. */
   setThreadKind(kind: ThreadKind): Promise<void>;
   events: Record<string, StoredEvent[]>; // by thread id
+  /** Each thread's loaded history window: where it starts, whether older events exist, and its whole-thread totals. */
+  history: Record<string, { firstSeq: number; hasMore: boolean; loadingOlder: boolean; totals: ThreadTotals | null }>;
   live: Record<string, LiveThread>; // streaming state not yet stored
   running: Record<string, boolean>;
   /** Pin or unpin a thread; pins are stored with the thread. */
@@ -215,6 +218,8 @@ interface State {
   setCheckCommand(id: string, command: string | null, fixRounds?: number | null): Promise<void>;
   selectProject(id: string): Promise<void>;
   selectThread(id: string | null): Promise<void>;
+  /** Load the next older page of a thread's history; a no-op when there is none or one is loading. */
+  loadOlder(threadId: string): Promise<void>;
   /** Open a new thread, returning its id (or null when nothing was created: no project, or the create failed). `worktree` gives it its own git worktree on a new branch; `designSystem` picks a design thread's system. */
   newThread(skills?: string[], opts?: { worktree?: boolean; designSystem?: string; expertId?: string }): Promise<string | null>;
   /** The expert catalogue (null until loaded). */
@@ -285,6 +290,25 @@ function findThread(threads: Record<string, Thread[]>, id: string): Thread | und
   return Object.values(threads)
     .flat()
     .find((t) => t.id === id);
+}
+
+/** How many events one history page asks for; the main side extends it back to a turn boundary. */
+export const HISTORY_PAGE = 1500;
+
+/** Union of two seq-sorted event lists, deduped by seq (a later list's copy wins) and sorted ascending. */
+export function mergeBySeq(a: StoredEvent[], b: StoredEvent[]): StoredEvent[] {
+  const bySeq = new Map<number, StoredEvent>();
+  for (const e of a) bySeq.set(e.seq, e);
+  for (const e of b) bySeq.set(e.seq, e);
+  return [...bySeq.values()].sort((x, y) => x.seq - y.seq);
+}
+
+/** The thread's total event count: the server total plus events past it, never below what's loaded. */
+export function eventCount(events: StoredEvent[] | undefined, totals: ThreadTotals | null | undefined): number {
+  const loaded = events?.length ?? 0;
+  if (!totals) return loaded;
+  const live = (events ?? []).reduce((n, e) => n + (e.seq > totals.lastSeq ? 1 : 0), 0);
+  return Math.max(loaded, totals.events + live);
 }
 
 /** createThread's options: the kind being shown, and a design thread's system (an explicit one beats the draft's). */
@@ -498,6 +522,7 @@ export const useStore = create<State>((set, get) => ({
     await get().selectThread(latest?.id ?? null);
   },
   events: {},
+  history: {},
   live: {},
   running: {},
   async togglePin(threadId) {
@@ -539,9 +564,11 @@ export const useStore = create<State>((set, get) => ({
     }
     set((s) => {
       const { [threadId]: _events, ...events } = s.events;
+      const { [threadId]: _history, ...history } = s.history;
       return {
         threads: { ...s.threads, [thread.projectId]: (s.threads[thread.projectId] ?? []).filter((t) => t.id !== threadId) },
         events,
+        history,
         finished: s.finished.filter((f) => f.threadId !== threadId),
         selectedThreadId: s.selectedThreadId === threadId ? null : s.selectedThreadId,
       };
@@ -798,6 +825,7 @@ export const useStore = create<State>((set, get) => ({
       const { [id]: _removedThreads, ...threads } = s.threads;
       const { [id]: _removedBranch, ...projectBranches } = s.projectBranches;
       const events = Object.fromEntries(Object.entries(s.events).filter(([tid]) => !threadIdsToRemove.has(tid)));
+      const history = Object.fromEntries(Object.entries(s.history).filter(([tid]) => !threadIdsToRemove.has(tid)));
       const finished = s.finished.filter((f) => !threadIdsToRemove.has(f.threadId));
       const selectedThreadId = threadIdsToRemove.has(s.selectedThreadId ?? "") ? null : s.selectedThreadId;
 
@@ -806,6 +834,7 @@ export const useStore = create<State>((set, get) => ({
         threads,
         projectBranches,
         events,
+        history,
         finished,
         selectedProjectId: nextProjectId,
         selectedThreadId,
@@ -862,8 +891,32 @@ export const useStore = create<State>((set, get) => ({
         .catch(() => {});
     }
     if (id && !get().events[id]) {
-      const events = await api().listEvents(id);
-      set((s) => ({ events: { ...s.events, [id]: events } }));
+      const [page, totals] = await Promise.all([api().listEventsPage(id, { minEvents: HISTORY_PAGE }), api().threadTotals(id)]);
+      set((s) => ({
+        // Live events can land while the page loads: keep the union, the page's stored copies winning.
+        events: { ...s.events, [id]: mergeBySeq(s.events[id] ?? [], page.events) },
+        history: { ...s.history, [id]: { firstSeq: page.firstSeq, hasMore: page.hasMore, loadingOlder: false, totals } },
+      }));
+    }
+  },
+
+  async loadOlder(threadId) {
+    const history = get().history[threadId];
+    if (!history?.hasMore || history.loadingOlder) return;
+    set((s) => ({ history: { ...s.history, [threadId]: { ...history, loadingOlder: true } } }));
+    try {
+      const page = await api().listEventsPage(threadId, { beforeSeq: history.firstSeq, minEvents: HISTORY_PAGE });
+      set((s) => {
+        const current = s.history[threadId] ?? history;
+        return {
+          events: { ...s.events, [threadId]: mergeBySeq(s.events[threadId] ?? [], page.events) },
+          // An empty page has no firstSeq to take; hasMore going false ends the paging anyway.
+          history: { ...s.history, [threadId]: { ...current, firstSeq: page.events.length ? page.firstSeq : current.firstSeq, hasMore: page.hasMore, loadingOlder: false } },
+        };
+      });
+    } catch {
+      // Leave the loaded window as it was; the control stays so the user can retry.
+      set((s) => ({ history: { ...s.history, [threadId]: { ...(s.history[threadId] ?? history), loadingOlder: false } } }));
     }
   },
 
@@ -884,6 +937,7 @@ export const useStore = create<State>((set, get) => ({
       pendingSkills: skills ?? [],
       threads: { ...s.threads, [projectId]: upsertThread(s.threads[projectId], thread) },
       events: { ...s.events, [thread.id]: [] },
+      history: { ...s.history, [thread.id]: { firstSeq: 0, hasMore: false, loadingOlder: false, totals: null } },
       selectedThreadId: thread.id,
       draft: {},
       lastAgent: thread.agent,
@@ -906,6 +960,7 @@ export const useStore = create<State>((set, get) => ({
     set((s) => ({
       threads: { ...s.threads, [design.projectId]: upsertThread(s.threads[design.projectId], thread) },
       events: { ...s.events, [thread.id]: [] },
+      history: { ...s.history, [thread.id]: { firstSeq: 0, hasMore: false, loadingOlder: false, totals: null } },
     }));
     const dir = designDirName(designThreadId);
     const ok = await get().send(buildInCodePrompt(dir), undefined, thread.id, [handoffPath(dir)]);
@@ -928,6 +983,7 @@ export const useStore = create<State>((set, get) => ({
     set((s) => ({
       threads: { ...s.threads, [projectId]: upsertThread(s.threads[projectId], thread) },
       events: { ...s.events, [thread.id]: [] },
+      history: { ...s.history, [thread.id]: { firstSeq: 0, hasMore: false, loadingOlder: false, totals: null } },
       draft: {},
       lastAgent: thread.agent,
     }));
