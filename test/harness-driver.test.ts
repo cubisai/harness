@@ -85,6 +85,7 @@ function setup(
 ) {
   const cwd = tmp();
   const data = tmp();
+  const outputDir = join(data, "out");
   const s = scripted(...answers);
   const sessions = new SessionStore(join(data, "sessions"));
   const saved = "saved" in opts ? opts.saved : provider();
@@ -93,7 +94,7 @@ function setup(
     secret: () => "sk-test",
     secretHeaders: () => ({}),
     sessions,
-    outputDir: join(data, "out"),
+    outputDir,
     guardScript: BUILT_IN_GUARD,
     guide: () => "GUIDE TEXT",
     memory: opts.memory ?? (() => "MEMORY TEXT"),
@@ -124,7 +125,7 @@ function setup(
     mcpServers: [],
     ...(opts.requestUserInput ? { requestUserInput: opts.requestUserInput } : {}),
   });
-  return { driver, events, asked, planRequests, input, cwd, sessions, requests: s.requests, session: () => session };
+  return { driver, events, asked, planRequests, input, cwd, outputDir, sessions, requests: s.requests, session: () => session };
 }
 
 describe("provider driver", () => {
@@ -254,6 +255,35 @@ describe("provider driver", () => {
     expect(t.asked).toEqual([]);
     expect(ran).toEqual(["ran"]);
     expect(t.events.find((e) => e.kind === "tool-result")).toMatchObject({ isError: false });
+  });
+
+  it("bounds an app tool's long output and saves the full text", async () => {
+    const text = Array.from({ length: 3000 }, (_, i) => `L${i + 1}`).join("\n");
+    const browser: HarnessTool = { name: "browser_open", description: "Open a URL", input: { url: z.string() }, autoAllow: true, run: async () => ({ text }) };
+    const t = setup([[{ type: "tool-call", id: "c1", name: "browser_open", input: { url: "https://x.dev" } }], [{ type: "text", text: "ok" }]], { tools: [browser] });
+    await t.driver.runTurn(t.input("open"));
+    const result = (t.requests[1]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!;
+    expect(result.text).toMatch(/full output is in/);
+    const savedFile = join(t.outputDir, "c1.txt");
+    expect(existsSync(savedFile)).toBe(true);
+    expect(readFileSync(savedFile, "utf8")).toBe(text);
+  });
+
+  it("leaves a short app result unchanged", async () => {
+    const browser: HarnessTool = { name: "browser_open", description: "Open a URL", input: { url: z.string() }, autoAllow: true, run: async () => ({ text: "opened" }) };
+    const t = setup([[{ type: "tool-call", id: "c1", name: "browser_open", input: { url: "https://x.dev" } }], [{ type: "text", text: "ok" }]], { tools: [browser] });
+    await t.driver.runTurn(t.input("open"));
+    const result = (t.requests[1]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!;
+    expect(result.text).toBe("opened");
+  });
+
+  it("leaves the skill tool's long body unbounded", async () => {
+    const text = Array.from({ length: 3000 }, (_, i) => `line ${i + 1}`).join("\n");
+    const skill: HarnessTool = { name: "skill", description: "Load a skill", input: { name: z.string() }, autoAllow: true, run: async () => ({ text }) };
+    const t = setup([[{ type: "tool-call", id: "c1", name: "skill", input: { name: "x" } }], [{ type: "text", text: "ok" }]], { skills: () => skill });
+    await t.driver.runTurn(t.input("hi"));
+    const result = (t.requests[1]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!;
+    expect(result.text).toBe(text);
   });
 
   it("turns TodoWrite into the thread's plan", async () => {
