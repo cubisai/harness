@@ -7,6 +7,8 @@ export interface MemorySnapshot {
   sessionKey: string;
   block: string;
   at: number;
+  /** The block text the live session has been told about; absent means `block` itself. */
+  seen?: string;
 }
 
 /**
@@ -20,6 +22,19 @@ const THREAD_ID = /^[A-Za-z0-9_-]{1,128}$/;
 
 /** Snapshots older than this are too stale to reuse, even for a still-live thread. */
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** How many added/removed entries an update note lists before it just counts the rest. */
+const UPDATE_CAP = 20;
+
+/** A block's note entries: one markdown list line per fact. */
+function entryLines(block: string): string[] {
+  return block.split("\n").filter((line) => line.startsWith("- ["));
+}
+
+/** One side of an update note, capped so a large memory can't bloat the prompt. */
+function side(lines: string[], sign: string): string[] {
+  return [...lines.slice(0, UPDATE_CAP).map((l) => `${sign} ${l}`), ...(lines.length > UPDATE_CAP ? [`… ${lines.length - UPDATE_CAP} more`] : [])];
+}
 
 /**
  * The frozen memory block each thread was first shown, keyed by thread and tied
@@ -46,6 +61,29 @@ export class MemorySnapshots {
     const block = compute();
     this.write(threadId, { sessionKey, block, at: this.now() });
     return block;
+  }
+
+  /**
+   * What this thread's live session hasn't been told about yet, as a short note,
+   * or null when no entry changed (a header-only move counts as unchanged).
+   * Consumes the change: the current block becomes the baseline, so a later call
+   * returns null until another entry moves.
+   */
+  updates(threadId: string, current: string): string | null {
+    if (!THREAD_ID.test(threadId)) return null;
+    const stored = this.read(threadId);
+    if (!stored) return null;
+    const base = stored.seen ?? stored.block;
+    if (current === base) return null;
+    const before = entryLines(base);
+    const after = entryLines(current);
+    const had = new Set(before);
+    const has = new Set(after);
+    const added = after.filter((l) => !had.has(l));
+    const removed = before.filter((l) => !has.has(l));
+    if (!added.length && !removed.length) return null;
+    this.write(threadId, { ...stored, seen: current });
+    return ["<memory-update>", "Memory changed since this session started (the list above is out of date):", ...side(added, "+"), ...side(removed, "-"), "</memory-update>"].join("\n");
   }
 
   /** Point the current snapshot at a new session key without changing the block (used once the agent reports its real session id). No-op when none stored. */
@@ -94,7 +132,7 @@ export class MemorySnapshots {
     try {
       const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<MemorySnapshot>;
       if (typeof parsed.sessionKey !== "string" || typeof parsed.block !== "string" || typeof parsed.at !== "number") return null;
-      return { sessionKey: parsed.sessionKey, block: parsed.block, at: parsed.at };
+      return { sessionKey: parsed.sessionKey, block: parsed.block, at: parsed.at, ...(typeof parsed.seen === "string" ? { seen: parsed.seen } : {}) };
     } catch {
       return null;
     }

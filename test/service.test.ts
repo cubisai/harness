@@ -173,6 +173,26 @@ describe("Service.send", () => {
     expect(user && "skill" in user).toBe(false);
   });
 
+  it("prepends a memory update to a resumed session's prompt, leaving the stored user event alone", async () => {
+    const { store, service, driver, thread } = setup(async () => {});
+    service.setMemoryUpdates(() => "<memory-update>X</memory-update>");
+    store.updateThread(thread.id, { sessionId: "session-1" });
+    await service.send({ threadId: thread.id, text: "Say hi" });
+    expect(driver.prompts[0]!.startsWith("<memory-update>X</memory-update>\n\n")).toBe(true);
+    const user = store
+      .listEvents(thread.id)
+      .map((e) => e.event)
+      .find((e): e is Extract<ThreadEvent, { kind: "user" }> => e.kind === "user");
+    expect(user?.text).toBe("Say hi");
+  });
+
+  it("leaves a new session's prompt unchanged, since it gets a fresh memory block anyway", async () => {
+    const { service, driver, thread } = setup(async () => {});
+    service.setMemoryUpdates(() => "<memory-update>X</memory-update>");
+    await service.send({ threadId: thread.id, text: "Say hi" });
+    expect(driver.prompts[0]).not.toContain("<memory-update>");
+  });
+
   it("routes permission requests to the UI and back", async () => {
     let decision = "";
     const { service, thread, updates } = setup(async (input) => {

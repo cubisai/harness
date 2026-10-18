@@ -464,6 +464,20 @@ async function main(): Promise<void> {
       return null;
     }
   };
+  /**
+   * What a live session's frozen memory block is missing, or null when nothing
+   * changed. Diffed as raw block lines so it lines up with what get() stored.
+   * Never throws: memory must not block a turn.
+   */
+  const memoryUpdateFor = (projectId: string, threadId: string): string | null => {
+    try {
+      if (!memoryOn(settings.get(), projectId)) return null;
+      memory.ensure(projectId, store.getProject(projectId).path);
+      return memorySnapshots.updates(threadId, memory.store.blockIndex(projectId).text);
+    } catch {
+      return null;
+    }
+  };
   // Launched from an older terminal, the app would miss user variables agents read (a provider key in OpenCode's config).
   fillUserEnvironment();
   augmentPath();
@@ -1022,6 +1036,7 @@ async function main(): Promise<void> {
     existing: (projectId) => memory.store.list(projectId).map((n) => n.description),
   });
   service.setLearner(learner);
+  service.setMemoryUpdates((projectId, threadId) => memoryUpdateFor(projectId, threadId));
   ipcMain.handle("learn:scores", (_e, threadId: string) => learner.scores(threadId));
 
   // The Library: skills, agents, and MCP servers, as the agents will see them.
