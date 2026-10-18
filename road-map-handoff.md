@@ -10,7 +10,7 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 
 ## Resume here
 
-Next point: **P1.8, desktop baseline fixtures** (10k/50k-event history fixtures plus `scripts/profile-history.ts`). After P1, P2/P3/P4 run in parallel worktrees (`roadmap-p2`, `-p3`, `-p4` from `roadmap`), merged back in order P3 → P4 → P2.
+P1 is done. Next: **P2, P3 and P4 in parallel worktrees** (`roadmap-p2`, `-p3`, `-p4` from `roadmap`, each with its own `bun install`), merged back in order P3 → P4 → P2. P4.4 waits for P3.4. Fresh research is needed: the rp2–4 research notes live only on the other PC.
 - **Workers on the Windows PC:** Zen's free models (`opencode/deepseek-v4.1-flash-free`, `opencode/glm-5.3-flash-free`) work without a key. The stored Zen key in `auth.json` has expired and is sent anyway, so dispatch with `XDG_DATA_HOME` pointed at a short empty dir and `OPENCODE_BIN=C:/Users/laplop/.bun/bin/opencode.exe` (oc-run only looks under npm), plus `--chain opencode/deepseek-v4.1-flash-free,opencode/glm-5.3-flash-free`.
 - **Baseline on that PC:** the full suite has about 9–11 environment failures on a clean tree: TokenHarbor live tests, codex-e2e MCP, opencode-guard EPERM/timeout, and load timeouts. Compare failing files against that list, not against zero.
 
@@ -24,8 +24,8 @@ Next point: **P1.8, desktop baseline fixtures** (10k/50k-event history fixtures 
 | P1.4 Local report | done | `c1ab7fd` |
 | P1.5 Grader validation | done | `8d07bde` + fix `f2dff88` |
 | P1.6 Multi-turn scenarios | done | `4074952` |
-| P1.7 Case set expansion | done | (this commit) |
-| P1.8 Desktop baseline fixtures | | |
+| P1.7 Case set expansion | done | `71b16ee` |
+| P1.8 Desktop baseline fixtures | done | (this commit) |
 | P2–P8 | not started | |
 
 ## Log
@@ -117,3 +117,19 @@ Next point: **P1.8, desktop baseline fixtures** (10k/50k-event history fixtures 
     - mcp: tool unavailable (near-miss `audit_terraform`); 3 React tools to disambiguate.
 - Written by 2 parallel Zen deepseek-v4.1-flash-free implementers. Claude reviewed every prompt and grader and checked the MCP and skill claims against `generate()`.
 - Checks: typecheck green; `--validate-graders` exit 0 (47 OK, 2 skipped); vitest 2606 passed, 10 failed. The failures are the environment list plus an `mcp-router` closeAll timing flake under load, which passes alone.
+
+### P1.8 — desktop baseline fixtures (2026-10-18)
+- New `scripts/history-fixtures.ts`: `makeHistory({ events, seed, subagents })` gives byte-identical seeded threads.
+  - Shape: turns of about 40 events with tool-use/result pairs, 2–20 KB payloads, about 10% errors, and notices.
+  - Child events hang off a root `task` call. `reasoning-summary` is live-only, so it is stored as opaque thinking.
+  - Presets: small 200, long 10k, huge 50k. `seedStore()` adds the big thread plus extra projects of small threads, every third one archived.
+- New `scripts/profile-history.ts --preset … --runs N --json .ai/profiles/<name>.json`.
+  - Times `listEvents` (cold after reopen, then warm), `listThreads` for every project, and `segmentEvents`; also records event bytes and heap/rss for huge.
+  - Under bun it calls `Bun.gc` before removing the temp dir, because Windows keeps the WAL locked.
+- `tsconfig.node.json` includes `scripts/**/*` (composite project: the test imports the fixture script).
+- Baseline on the Windows PC (`.ai/profiles/history-baseline.json`, not committed), warm p50:
+  - listEvents: 10k 104 ms / 50k 636 ms (45 MB of event JSON)
+  - segmentEvents: 10k 5–8 ms / 50k 33 ms
+  - listThreads: about 10 ms for 21 projects
+- So P2.1 (paged reads) is the big lever.
+- Checks: typecheck green; vitest 2607 passed, 9 failed, all environment-only.
