@@ -6,6 +6,8 @@ import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import { describe, expect, it } from "vitest";
 import { Store } from "../src/main/db";
+import { seedStore } from "../scripts/history-fixtures";
+import type { StoredEvent } from "../src/shared/types";
 import { closeAfter, tempDir } from "./helpers";
 
 describe("Store", () => {
@@ -582,5 +584,99 @@ describe("Store search and artifact versions", () => {
     const bytes = Buffer.from([0, 1, 2, 255]);
     store.writeBlobBytes("blobsha", bytes);
     expect(store.readBlobBytes("blobsha").equals(bytes)).toBe(true);
+  });
+});
+
+describe("Store paged events and thread totals", () => {
+  it("pages a 1000-event thread from a root boundary and rebuilds listEvents", () => {
+    const store = new Store(join(tempDir(), "page.db"));
+    closeAfter(() => store.close());
+    const { threadId } = seedStore(store, { events: 1000, seed: 4 });
+    const all = store.listEvents(threadId);
+
+    const page = store.listEventsPage(threadId, { minEvents: 100 });
+    expect(page.events.length).toBeGreaterThanOrEqual(100);
+    expect(page.events.map((e) => e.seq)).toEqual(Array.from({ length: page.events.length }, (_, i) => page.firstSeq + i));
+    expect(page.events[page.events.length - 1]!.seq).toBe(1000);
+    const head = page.events[0]!.event;
+    expect(head.kind === "user" || head.kind === "turn-start").toBe(true);
+    expect(head.parentId).toBeUndefined();
+    expect(page.hasMore).toBe(true);
+
+    // Paging backwards by firstSeq, the pages are contiguous and byte-identical to listEvents.
+    const pages: StoredEvent[] = [...page.events];
+    let cursor = page.firstSeq;
+    let more = page.hasMore;
+    for (let guard = 0; more && guard < 100; guard++) {
+      const older = store.listEventsPage(threadId, { minEvents: 100, beforeSeq: cursor });
+      pages.unshift(...older.events);
+      cursor = older.firstSeq;
+      more = older.hasMore;
+    }
+    expect(more).toBe(false);
+    expect(JSON.stringify(pages)).toBe(JSON.stringify(all));
+  });
+
+  it("returns a thread shorter than minEvents whole, and an empty thread as empty", () => {
+    const store = new Store(join(tempDir(), "short.db"));
+    closeAfter(() => store.close());
+    const { threadId } = seedStore(store, { events: 50, seed: 6 });
+    const page = store.listEventsPage(threadId, { minEvents: 1500 });
+    expect(page.events).toHaveLength(50);
+    expect(page.firstSeq).toBe(1);
+    expect(page.hasMore).toBe(false);
+
+    const empty = store.createThread(store.addProject("/tmp/empty").id, "claude", "m", "ask");
+    expect(store.listEventsPage(empty.id, { minEvents: 1500 })).toEqual({ events: [], firstSeq: 0, hasMore: false });
+  });
+
+  it("never opens a page on a child event", () => {
+    const store = new Store(join(tempDir(), "child.db"));
+    closeAfter(() => store.close());
+    const { threadId } = seedStore(store, { events: 3000, seed: 5, subagents: true });
+    const all = store.listEvents(threadId);
+    const childIdx = all.findIndex((e) => e.event.parentId !== undefined);
+    expect(childIdx).toBeGreaterThan(0);
+
+    // minEvents chosen so the newest selection would start exactly on that child event.
+    const page = store.listEventsPage(threadId, { minEvents: all.length - childIdx });
+    expect(page.events[0]!.seq).toBeLessThan(all[childIdx]!.seq);
+    expect(page.events[0]!.event.parentId).toBeUndefined();
+    expect(["user", "turn-start"]).toContain(page.events[0]!.event.kind);
+  });
+
+  it("totals a thread like UsageMeter, and reports an empty thread as zeros", () => {
+    const store = new Store(join(tempDir(), "totals.db"));
+    closeAfter(() => store.close());
+    const { threadId } = seedStore(store, { events: 3000, seed: 5, subagents: true });
+    const all = store.listEvents(threadId);
+
+    // UsageMeter's reduction (src/renderer/src/components/Meters.tsx): every
+    // turn-end counts, cache reads come from usage.cacheReadTokens, cost is null
+    // when no turn reported one.
+    let turns = 0;
+    let inputTokens = 0;
+    let cacheReadTokens = 0;
+    let outputTokens = 0;
+    let costUsd = 0;
+    let sawCost = false;
+    for (const e of all) {
+      if (e.event.kind !== "turn-end") continue;
+      turns++;
+      inputTokens += e.event.inputTokens;
+      cacheReadTokens += e.event.usage?.cacheReadTokens ?? 0;
+      outputTokens += e.event.outputTokens;
+      if (typeof e.event.costUsd === "number") {
+        sawCost = true;
+        costUsd += e.event.costUsd;
+      }
+    }
+    const totals = store.threadTotals(threadId);
+    expect(totals).toMatchObject({ events: all.length, turns, inputTokens, cacheReadTokens, outputTokens, lastSeq: all[all.length - 1]!.seq });
+    expect(sawCost).toBe(true);
+    expect(totals.costUsd).toBeCloseTo(costUsd, 9);
+
+    const empty = store.createThread(store.addProject("/tmp/totals-empty").id, "claude", "m", "ask");
+    expect(store.threadTotals(empty.id)).toEqual({ events: 0, turns: 0, inputTokens: 0, cacheReadTokens: 0, outputTokens: 0, costUsd: null, lastSeq: 0 });
   });
 });

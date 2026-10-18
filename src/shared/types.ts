@@ -681,6 +681,26 @@ export interface StoredEvent {
   provenance?: Provenance | null;
 }
 
+export interface EventPage {
+  events: StoredEvent[];
+  /** Seq of the first event returned; 0 when empty. */
+  firstSeq: number;
+  /** Older events exist before firstSeq. */
+  hasMore: boolean;
+}
+
+export interface ThreadTotals {
+  events: number;
+  turns: number;
+  inputTokens: number;
+  cacheReadTokens: number;
+  outputTokens: number;
+  /** Null when no turn reported a cost. */
+  costUsd: number | null;
+  /** Highest seq counted (0 when empty), so the renderer adds only live events after it. */
+  lastSeq: number;
+}
+
 /** A tool call waiting on the user in "ask" mode. */
 export interface PermissionRequest {
   requestId: string;
@@ -1094,6 +1114,10 @@ export interface UnskilledApi {
   /** Replace them from an export; null when cancelled. */
   importSettings(): Promise<SettingsView | null>;
   listEvents(threadId: string): Promise<StoredEvent[]>;
+  /** The newest events of a thread, starting at a turn boundary; page further back with beforeSeq. */
+  listEventsPage(threadId: string, opts: { beforeSeq?: number; minEvents?: number }): Promise<EventPage>;
+  /** A thread's stored totals: event/turn counts and token usage over its turns. */
+  threadTotals(threadId: string): Promise<ThreadTotals>;
   listSkills(projectId?: string): Promise<SkillEntry[]>;
   listAgents(): Promise<AgentInfo[]>;
   send(request: SendRequest): Promise<void>;
