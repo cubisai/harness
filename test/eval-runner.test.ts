@@ -12,6 +12,7 @@ import { emptyUsage, type AssistantPart, type LlmEvent, type LlmRequest } from "
 import { SessionStore } from "../src/main/harness/session";
 import { McpClientPool, routerTools } from "../src/main/mcp/router";
 import { McpToolsCache } from "../src/main/mcp/servers";
+import { AgentBrowserBackend, resolveAgentBrowser } from "../src/main/browser/agent-browser";
 import type { Provider } from "../src/shared/types";
 import type { AgentDriver, TurnInput } from "../src/main/agents/types";
 import { mcpKit, runTask, runTrial } from "../evals/lib/runner";
@@ -264,6 +265,39 @@ describe("eval runner (scripted model)", () => {
       await mcp.pool.closeAll();
     }
   }, 60_000);
+
+  it("a browser task runs on a headless backend the runner hands it, closed after the trial", async () => {
+    const calls: string[][] = [];
+    const ok = (data: unknown) => ({ code: 0, stdout: JSON.stringify({ success: true, data, error: null }), stderr: "" });
+    const browser = new AgentBrowserBackend({
+      session: "trial",
+      screenshotDir: tempDir(),
+      run: async (args) => {
+        calls.push(args);
+        if (args[0] === "--version") return { code: 0, stdout: "agent-browser 0.27.0", stderr: "" };
+        if (args[3] === "open") return ok({ title: "KESTREL-42", url: "data:x" });
+        if (args[3] === "snapshot") return ok({ origin: "data:x", refs: { e1: { role: "button", name: "Ship it" } } });
+        if (args[3] === "get") return ok({ title: "KESTREL-42" });
+        return ok({ closed: true });
+      },
+    });
+    let seen = "";
+    const s = scripted([[call("browser_open", { url: "data:text/html,<title>KESTREL-42</title>" })], [text('The title is KESTREL-42 and the button says "Ship it".')]], (_cwd, req) => {
+      const last = req.messages.at(-1);
+      if (last?.role === "tool") seen = last.results.map((r) => r.text).join(" | ");
+    });
+    const r = await runTrial({ task: task("browser-smoke"), fixturesRoot: FIXTURES, driver: s.driver, model: "m", browser: () => browser });
+    expect(seen).toContain('[e1] button "Ship it"');
+    expect(r.status).toBe("passed");
+    expect(calls.at(-1)?.[3]).toBe("close");
+  }, 60_000);
+
+  const headless = process.platform === "win32" ? resolveAgentBrowser() : null;
+  it.skipIf(!headless || !existsSync(headless))("browser-smoke passes end to end on a real agent-browser session", async () => {
+    const s = scripted([[call("browser_open", { url: task("browser-smoke").prompt.slice(task("browser-smoke").prompt.indexOf("data:")) })], [text('The title is KESTREL-42 and the button says "Ship it".')]]);
+    const r = await runTrial({ task: task("browser-smoke"), fixturesRoot: FIXTURES, driver: s.driver, model: "m", browser: () => new AgentBrowserBackend({ session: `cubiq-eval-test-${process.pid}`, command: headless!, screenshotDir: tempDir() }) });
+    expect(r.graders.map((g) => [g.type, g.pass])).toEqual([["answer", true], ["tool", true], ["event", true], ["budget", true]]);
+  }, 120_000);
 
   it("mcpKit builds the task's stdio servers and tool sentinels", () => {
     const kit = mcpKit(task("mcp-lookup"))!;

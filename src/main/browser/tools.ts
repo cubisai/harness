@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { HarnessTool, ToolOutput } from "../agents/types";
+import { asBackend, type BrowserBackend } from "./backend";
 import type { BrowserController } from "./controller";
 
 async function safely(fn: () => Promise<ToolOutput>): Promise<ToolOutput> {
@@ -11,7 +12,7 @@ async function safely(fn: () => Promise<ToolOutput>): Promise<ToolOutput> {
 }
 
 /** Open the pane if needed, then run the tool; a pane that won't open is reported, not thrown. */
-function gated(browser: BrowserController, fn: () => Promise<ToolOutput>): Promise<ToolOutput> {
+function gated(browser: BrowserBackend, fn: () => Promise<ToolOutput>): Promise<ToolOutput> {
   return safely(async () => {
     try {
       await browser.ensureOpen();
@@ -31,8 +32,10 @@ function define<S extends z.ZodRawShape>(t: HarnessTool<S>): HarnessTool {
  * text with element refs; screenshots are files, shown to the model only
  * when it asks to look. They are always offered, so the tool set never
  * changes mid-conversation; the first call opens the pane for the user.
+ * A headless backend (agent-browser) runs the same tools in its own session.
  */
-export function browserTools(browser: BrowserController): HarnessTool[] {
+export function browserTools(target: BrowserBackend | BrowserController): HarnessTool[] {
+  const browser = asBackend(target);
   return [
     define({
       name: "browser_open",
@@ -46,10 +49,7 @@ export function browserTools(browser: BrowserController): HarnessTool[] {
       effect: "mutate",
       run: ({ url, device }) =>
         gated(browser, async () => {
-          browser.assertOpenAllowed();
-          if (device) await browser.setDevice(device);
-          await browser.page(url);
-          browser.announce("open", undefined);
+          await browser.open(url, device);
           return { text: await browser.snapshot() };
         }),
     }),
@@ -89,7 +89,7 @@ export function browserTools(browser: BrowserController): HarnessTool[] {
       input: { expression: z.string().describe("A JavaScript expression; may be async") },
       autoAllow: false,
       effect: "mutate",
-      run: ({ expression }) => gated(browser, async () => ({ text: await browser.evaluateForAgent(expression) })),
+      run: ({ expression }) => gated(browser, async () => ({ text: await browser.evaluate(expression) })),
     }),
     define({
       name: "browser_logs",
@@ -98,7 +98,7 @@ export function browserTools(browser: BrowserController): HarnessTool[] {
       input: { clear: z.boolean().optional().describe("Clear the log after reading") },
       autoAllow: true,
       effect: "read",
-      run: ({ clear }) => gated(browser, async () => ({ text: await browser.readLogs(clear ?? false) })),
+      run: ({ clear }) => gated(browser, async () => ({ text: await browser.logs(clear ?? false) })),
     }),
     define({
       name: "browser_screenshot",

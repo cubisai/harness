@@ -7,7 +7,9 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { AgentDriver, TurnInput } from "../../src/main/agents/types";
+import type { AgentDriver, HarnessTool, TurnInput } from "../../src/main/agents/types";
+import type { BrowserBackend } from "../../src/main/browser/backend";
+import { browserTools } from "../../src/main/browser/tools";
 import { runCheck } from "../../src/main/check";
 import { canonicalTool, clipSummary } from "../../src/shared/tools";
 import { spansOf, timeSplit, type TimedEvent } from "../../src/shared/run-trace";
@@ -31,6 +33,8 @@ export interface TrialOptions {
   skillDirs?: string[];
   /** The stdio script the mock MCP servers run; default test/fixtures/mock-mcp-many.mjs. */
   mcpServerScript?: string;
+  /** A fresh headless browser for a task that requires one (one isolated session per trial); null = none available. */
+  browser?: () => BrowserBackend | null;
   /** Keep the trial folder (debugging). */
   keep?: boolean;
   /** Injected in tests; defaults to runCheck. */
@@ -117,6 +121,8 @@ export async function runTrial(o: TrialOptions): Promise<TrialResult> {
   if (existsSync(fixtureDir)) cpSync(fixtureDir, dir, { recursive: true });
   const sentinels = writeSkillKit(task, dir, o.skillDirs ?? [".agents/skills"]);
   const kit = mcpKit(task, o.mcpServerScript);
+  const browser = task.requires?.includes("browser") ? (o.browser?.() ?? null) : null;
+  const tools: HarnessTool[] = browser ? browserTools(browser) : [];
   const scenario: Scenario = { memory: task.memory ?? null, mcpServers: kit?.servers ?? [] };
 
   const events: ThreadEvent[] = [];
@@ -169,7 +175,7 @@ export async function runTrial(o: TrialOptions): Promise<TrialResult> {
       return "manual";
     },
     requestUserInput: async (questions) => (reply === undefined ? "dismiss" : { answers: Object.fromEntries(questions.map((q) => [q.id, [reply]])) }),
-    tools: [],
+    tools,
     mcpServers: scenario.mcpServers,
   });
 
@@ -185,6 +191,7 @@ export async function runTrial(o: TrialOptions): Promise<TrialResult> {
   } finally {
     clearTimeout(timer);
     driver.dispose?.();
+    await browser?.close?.();
   }
   const durationMs = Date.now() - started;
 
