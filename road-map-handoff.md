@@ -8,22 +8,43 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 
 **Rules:** one commit per point. Typecheck and the full vitest suite must be green before each commit. At the end of each phase that changes the app runtime, do one live turn each on Claude, Codex and OpenCode Zen.
 
-## Resume here
+## Resume here (stopped 2026-10-18 at the owner's request; start a new session from this section)
 
-- **P1–P4 are done and merged into `roadmap`.**
-- **P5:** in worktree `../harness-roadmap-p5` (branch `roadmap-p5`). P5.1 is done (`665281e`); P5.2 is next. Its brief is in `.ai/tmp/p52.brief.txt` there, built on measured agent-browser facts.
-- **P6:** in worktree `../harness-roadmap-p6` (branch `roadmap-p6`). P6.1 has uncommitted, unverified partial edits; review them before reusing.
-- **Memory:** on 2026-10-18 the Windows PC ran out of memory with 3–4 workers, a vitest run and Chrome going at once. Run one track at a time there.
-- **Still owed after the P2 merge:**
-  - one live turn each on Claude, Codex and OpenCode Zen;
-  - the real-app UI check for P2.1b/P2.3 (DESIGN §9: light/dark, 900px, keyboard, screenshot).
-- **Then:** P5 and P6 (they can run in parallel worktrees), P7, then P8.
-- **Workers on the Windows PC:**
-  - Zen's free models need `XDG_DATA_HOME` pointed at a short, empty, key-less dir (e.g. `D:/ocz-a`).
-  - Also set `OPENCODE_BIN=C:/Users/laplop/.bun/bin/opencode.exe` and `--chain opencode/deepseek-v4.1-flash-free,opencode/glm-5.3-flash-free`.
-  - The free endpoints sometimes drop connections ("Task cancelled", "Endpoint is unavailable"): retry, or finish the point yourself.
-- **Baseline on that PC:** about 7–11 environment failures (TokenHarbor live tests, codex-e2e, opencode-guard EPERM/timeout, and the memory-tool 70-note test near its 15 s limit). `check`, `switch` and `mcp-router` can fail under load but pass alone.
-- **Research notes** for P2–P4: `.ai/research_notes/roadmap13-p{2,3,4}.md` (gitignored, Windows PC).
+**Progress:** 29 of 40 points done. P1–P4 are complete and merged into `roadmap`. That branch is green: typecheck, design:check, vitest (environment failures only), validate-graders, and live turns on Claude, Codex and OpenCode Zen.
+
+**Worktrees** (all siblings of this one under `D:/Cubebis Work/ai-agent/`; each has its own `node_modules`):
+| Worktree | Branch | State |
+| --- | --- | --- |
+| `harness-roadmap` | `roadmap` | P1–P4 merged. This handoff lives here. |
+| `harness-roadmap-p5` | `roadmap-p5` | P5.1–P5.3 committed (`665281e`, `19ce7a8`, `93cc180`). Next: **P5.4**, then P5.5. Plan: `.ai/plans/p5.md` there. Branched before the P2 merge, so merge `roadmap` into it (or rebase) before the final merge. |
+| `harness-roadmap-p6` | `roadmap-p6` | **P6.1 has UNCOMMITTED, UNVERIFIED partial edits** (claude.ts, experts/catalog.ts, harness/driver.ts, harness/subagent.ts, inject/opencode.ts, ExpertDetail.tsx, app.css, shared/experts.ts) from a worker the system killed for low memory. Review the diff against the brief `.ai/tmp/p61.brief.txt` there, finish it (tests are missing), then verify. Plan: `.ai/plans/p6.md` there. |
+| `harness-roadmap-p2/-p3/-p4` | `roadmap-p2/3/4` | Done and merged. They can be removed (`git worktree remove`). |
+
+**Next, in order:**
+1. Finish P6.1 and P5.4. Run **one track at a time** on the Windows PC: on 2026-10-18 it ran out of memory with 3–4 opencode workers, a vitest run and Chrome all going.
+2. P5.5, then P6.2 and P6.3.
+3. Merge P5 and P6 into `roadmap`; live turns on Claude, Codex and OpenCode Zen; a real-app check of the browser auto-open and takeover.
+4. P7 (automations; needs P3 and P5), then P8 (needs P1 and P4).
+
+**Still owed (needs a person at the app):** the DESIGN §9 real-app check of P2.1b/P2.3 (paged transcript, "Show earlier messages", windowing): light/dark, a 900px window, keyboard, screenshot. Run with `bun run dev`.
+
+**Workers on the Windows PC** (opencode, AGENTS policy in CLAUDE.md):
+- The stored Zen key in `~/.local/share/opencode/auth.json` has expired. Free models work without a key, so point `XDG_DATA_HOME` at a short, empty dir (`D:/ocz-a`…`D:/ocz-h` exist) so the old key isn't sent.
+- Set `OPENCODE_BIN=C:/Users/laplop/.bun/bin/opencode.exe` (oc-run only looks under npm).
+- Pass `--chain opencode/deepseek-v4.1-flash-free,opencode/glm-5.3-flash-free`.
+- The free endpoints often fail: dropped sockets, "Endpoint is unavailable", or 10 minutes idle. After 1–2 failures it was faster to implement the point directly with a precise brief as the spec; P4.5, P2.7, P5.2 and P5.3 were finished that way.
+- Python isn't installed. Use node scripts for edits. Files on disk are CRLF, so normalise `
+` before string-replacing.
+
+**agent-browser (P5.2):**
+- v0.27 is installed. Spawn `%APPDATA%/npm/node_modules/agent-browser/bin/agent-browser-win32-x64.exe` directly with an args array, and resolve on "exit": its daemon holds the pipes, so going through the .cmd shim or a shell pipe hangs.
+- Each command takes about 250 ms and prints one JSON line `{success,data,error}`. Refs need a prior `snapshot`.
+
+**Test baseline on the Windows PC:** 7–11 environment failures on a clean tree.
+- Always: TokenHarbor `*-live` tests (no keys), codex-e2e, opencode-guard (EPERM/timeout), memory-tool "caps the list" (about 12 s on a 15 s limit).
+- Sometimes: `check`, `switch` and `mcp-router`, which fail with Windows temp-dir EPERM or under load and pass alone.
+
+**Research notes** (gitignored, Windows PC only): `.ai/research_notes/roadmap13-p{2,3,4,5,6}.md` in this worktree, with file:line maps.
 
 ## Status
 
@@ -56,7 +77,14 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 | P4.4 Pruning keeps references | done | `573bba6` |
 | P4.5 Memory updates once per binding | done | `9d81425` |
 | P5.1 Browser auto-open | done (branch roadmap-p5) | `665281e` |
-| P5.2–P5.5, P6, P7, P8 | not started / in progress | |
+| P5.2 Backend interface + headless agent-browser | done (branch roadmap-p5) | `19ce7a8` |
+| P5.3 Target ownership + serialization | done (branch roadmap-p5) | `93cc180` |
+| P5.4 Readiness, stale refs, compact observations | next | |
+| P5.5 Dev-server lifecycle + test reports | | |
+| P6.1 Member model/effort | partial, uncommitted (roadmap-p6) | |
+| P6.2–P6.3 | | |
+| P7.1–P7.3 | not started | |
+| P8.1–P8.4 | not started | |
 
 ## Log
 
@@ -196,3 +224,11 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
   - Codex default (CLI 0.160.0): cost not reported.
   - OpenCode Zen `deepseek-v4.1-flash-free` (1.18.34): $0.00, run with a key-less `XDG_DATA_HOME`.
 - Still owed: the real-app UI check (DESIGN §9) for P2.1b/P2.3; it needs someone at the running app.
+
+### P5.1–P5.3 on branch roadmap-p5 (2026-10-18)
+- P5.1: `gated()` calls `BrowserController.ensureOpen()`: the pane opens itself (via the existing `browser-open` broadcast) and waits for attach plus its first load. A failure reads "Couldn't open the browser pane: …", and `openTimeoutMs` can be injected.
+- P5.2: `src/main/browser/backend.ts` adds the `BrowserBackend` interface, `visibleBackend(controller)`, and `asBackend`. `browserTools()` accepts either a backend or a controller.
+  - `src/main/browser/agent-browser.ts` is the headless `AgentBrowserBackend`: one session per job, a version gate (0.27 ≤ v < 1.0), and snapshots in the pane's `[eN] role "name"` shape.
+  - Evals: tasks that require `browser` now run on a fresh headless session per trial (skipped only when the CLI is missing). `browser-smoke` uses a self-contained `data:` page, and a real end-to-end test passes on this PC.
+- P5.3: `TargetLock` in tools.ts. Page-changing tools (open, click, type, eval) queue per target. The last acting thread owns the pane, and while its turn runs (`service.isRunning`) another thread's action is refused with a clear message. Reads stay open to everyone.
+- Checks: typecheck green; vitest 2705 passed, 10 failed (environment-only); validate-graders exit 0.
