@@ -12,7 +12,7 @@ import { PLAN_MODE_NOTE, PROPOSE_PLAN_TOOL } from "../src/main/harness/plan";
 import { ProviderAgents } from "../src/main/harness/register";
 import { EXPLORE_PROMPT, TASK_TOOL } from "../src/main/harness/subagent";
 import { SessionStore, repairHistory } from "../src/main/harness/session";
-import { PRUNED_MARKER } from "../src/main/harness/context/prune";
+import { isPruned } from "../src/main/harness/context/prune";
 import { MemorySnapshots, PENDING_SESSION } from "../src/main/memory/snapshot";
 import { tempDir } from "./helpers";
 import type { Route } from "../src/main/harness/llm/client";
@@ -318,7 +318,9 @@ describe("provider driver", () => {
     const t = setup([[{ type: "text", text: "done" }]], {
       saved: provider({ models: [{ id: "deepseek-v4", name: "DeepSeek V4", capabilities: { tools: true, vision: false, reasoning: true }, contextWindow: 20_000, maxOutput: 8_000, cost: { input: 1, output: 2 } }] }),
     });
-    const sid = seedSession(t.sessions);
+    // Big enough that pruning the older result still leaves the protected newest
+    // one over the cap, so the turn compacts as well.
+    const sid = seedSession(t.sessions, 80_000);
     await t.driver.runTurn(t.input("and now?", sid));
     expect(t.events.find((e) => e.kind === "compaction")).toMatchObject({ trigger: "auto" });
     const first = t.sessions.load(sid)![0]!;
@@ -346,7 +348,10 @@ describe("provider driver", () => {
     // The old result is cleared and, because the estimate now fits, no summary call is made.
     expect(requests.filter((r) => r.tools.length === 0)).toHaveLength(0);
     expect(t.events.some((e) => e.kind === "compaction")).toBe(false);
-    expect(t.sessions.load(sid)![2]).toMatchObject({ role: "tool", results: [{ text: PRUNED_MARKER }] });
+    const pruned = (t.sessions.load(sid)![2] as Extract<LlmMessage, { role: "tool" }>).results[0]!;
+    expect(isPruned(pruned.text)).toBe(true);
+    expect(pruned.text).toContain(t.outputDir);
+    expect(readFileSync(join(t.outputDir, "c1.pruned.txt"), "utf8")).toBe("x".repeat(160_000));
     expect(t.events.at(-1)).toMatchObject({ kind: "turn-end", steps: 2, pruned: 1 });
   });
 

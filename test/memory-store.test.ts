@@ -274,3 +274,48 @@ describe("MemoryStore dated notes, global scope, usage and blockIndex", () => {
     expect(block.text.split("\n").filter((l) => l.includes("more (memory_read"))).toHaveLength(2);
   });
 });
+
+describe("MemoryStore correction metadata", () => {
+  const clock = (iso: string) => () => new Date(iso);
+
+  it("round-trips a correction marker in .meta.json and treats a corrupt one as empty", () => {
+    const store = new MemoryStore(tempDir(), clock("2026-10-14T10:00:00Z"));
+    store.write("p1", { name: "Staging Two", description: "deploy target", type: "project", body: "b" });
+    expect(store.meta("p1")).toEqual({});
+    store.markCorrection("p1", "staging-two.md", "staging-one.md");
+    expect(store.meta("p1")).toEqual({ "staging-two.md": { correction: Date.parse("2026-10-14T10:00:00Z"), supersedes: "staging-one.md" } });
+    writeFileSync(join(store.dir("p1"), ".meta.json"), "{not json");
+    expect(store.meta("p1")).toEqual({});
+  });
+
+  it("drops a note's meta key when it is removed, and ignores a bad file name", () => {
+    const store = new MemoryStore(tempDir());
+    store.write("p1", { name: "Alpha", description: "first", type: "project", body: "a" });
+    store.markCorrection("p1", "alpha.md");
+    store.markCorrection("p1", "../bad.md");
+    expect(Object.keys(store.meta("p1"))).toEqual(["alpha.md"]);
+    expect(store.meta("p1")["alpha.md"]?.correction).toBeTypeOf("number");
+    expect(store.remove("p1", "alpha.md")).toBe(true);
+    expect(store.meta("p1")).toEqual({});
+  });
+
+  it("lists a marked correction first in its section even when older", () => {
+    const store = new MemoryStore(tempDir());
+    const dir = store.dir("p1");
+    writeFileSync(join(dir, "staging-one.md"), serializeFact({ name: "Staging One", description: "deploy target", type: "project", body: "a", updated: "2026-06-01" }));
+    writeFileSync(join(dir, "staging-two.md"), serializeFact({ name: "Staging Two", description: "deploy target", type: "project", body: "b", updated: "2026-01-01" }));
+    expect(blockFiles(store.blockIndex("p1").text)).toEqual(["staging-one.md", "staging-two.md"]);
+    store.markCorrection("p1", "staging-two.md");
+    expect(blockFiles(store.blockIndex("p1").text)).toEqual(["staging-two.md", "staging-one.md"]);
+  });
+
+  it("leaves an unmarked scope's block byte-identical", () => {
+    const store = new MemoryStore(tempDir(), clock("2026-10-14T10:00:00Z"));
+    store.write(GLOBAL_SCOPE, { name: "Terse", description: "prefers terse answers", type: "user", body: "x" });
+    store.write("p1", { name: "Commit Style", description: "Max 150", type: "feedback", body: "y" });
+    expect(store.blockIndex("p1").text).toBe(
+      'Global (about the user, every project; read with scope "global"):\n- [Terse](terse.md) — prefers terse answers\nThis project:\n- [Commit Style](commit-style.md) — Max 150',
+    );
+    expect(store.meta("p1")).toEqual({});
+  });
+});

@@ -1,7 +1,9 @@
 import { z } from "zod";
 import type { HarnessTool } from "../agents/types";
+import { findDuplicate } from "./dedupe";
 import { SECRETISH } from "./extractor";
-import { GLOBAL_SCOPE, type MemoryStore } from "./store";
+import { rank } from "./rank";
+import { GLOBAL_SCOPE, type MemoryFact, type MemoryStore } from "./store";
 
 /** The harness tool agents without native memory call to read the shared store. */
 export const MEMORY_READ_TOOL = "memory_read";
@@ -48,22 +50,17 @@ function overLimit(label: string, value: string, max: number): string | null {
   return value.length > max ? `${label} is ${value.length} chars; keep a note under ${max} (split it or summarise).` : null;
 }
 
+/** A scope's notes in display order: corrections first (newest marked first), then as listed. */
+function orderForListing(store: MemoryStore, scope: string, notes: Omit<MemoryFact, "body">[]): Omit<MemoryFact, "body">[] {
+  const meta = store.meta(scope);
+  const marked = (f: Omit<MemoryFact, "body">): number | undefined => meta[f.file]?.correction;
+  const corrections = notes.filter((n) => marked(n) !== undefined).sort((a, b) => marked(b)! - marked(a)! || (a.file < b.file ? -1 : 1));
+  return corrections.length ? [...corrections, ...notes.filter((n) => marked(n) === undefined)] : notes;
+}
+
 /** Whether any of these strings looks like a credential. */
 function looksSecret(...values: (string | undefined)[]): boolean {
   return values.some((v) => typeof v === "string" && SECRETISH.test(v));
-}
-
-/** Lowercased alphanumeric words of at least `min` characters. */
-function wordSet(text: string, min: number): Set<string> {
-  return new Set(text.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= min));
-}
-
-/** How much two notes' titles+descriptions overlap, 0..1 (0 when both are empty). */
-function jaccard(a: Set<string>, b: Set<string>): number {
-  if (!a.size && !b.size) return 0;
-  let shared = 0;
-  for (const w of a) if (b.has(w)) shared++;
-  return shared / (a.size + b.size - shared);
 }
 
 /**
@@ -102,27 +99,35 @@ export function memoryReadTool(deps: { store: MemoryStore; enabled: (projectId: 
           return { text: `No note named ${args.file}. Call memory_read without a file to list them.`, isError: true };
         }
         if (args.query !== undefined) {
-          const words = wordSet(args.query, 2);
-          const hits: { score: number; file: string; line: string }[] = [];
+          const candidates: { choice: ScopeChoice; fact: MemoryFact; correction: boolean; recency: number }[] = [];
           for (const choice of scopesFor(args.scope, ["global", "project"])) {
             const scope = scopeId(projectId, choice);
+            const meta = deps.store.meta(scope);
+            const usage = deps.store.usage(scope);
             for (const note of deps.store.list(scope)) {
               const fact = deps.store.read(scope, note.file);
               if (!fact) continue;
-              const hay = `${fact.name} ${fact.description} ${fact.body}`.toLowerCase();
-              let score = 0;
-              for (const w of words) if (hay.includes(w)) score++;
-              if (score > 0) hits.push({ score, file: note.file, line: lineFor(choice, fact) });
+              candidates.push({
+                choice,
+                fact,
+                correction: meta[note.file]?.correction !== undefined,
+                recency: Math.max(Date.parse(fact.updated ?? "") || 0, usage[note.file] ?? 0),
+              });
             }
           }
+          // The name is doubled so a title match outweighs a passing body mention.
+          const scores = rank(args.query, candidates.map((c) => `${c.fact.name} ${c.fact.name} ${c.fact.description} ${c.fact.body}`));
+          const hits = candidates
+            .map((c, i) => ({ score: scores[i]! * (c.correction ? 1.5 : 1), recency: c.recency, file: c.fact.file, line: lineFor(c.choice, c.fact) }))
+            .filter((h) => h.score > 0);
           if (!hits.length) return { text: `No notes match "${args.query}".` };
-          hits.sort((a, b) => b.score - a.score || (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
+          hits.sort((a, b) => b.score - a.score || b.recency - a.recency || (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
           return { text: hits.slice(0, 5).map((h) => h.line).join("\n") };
         }
         const lines: string[] = [];
         for (const choice of scopesFor(args.scope, ["global", "project"])) {
           const scope = scopeId(projectId, choice);
-          for (const note of deps.store.list(scope)) lines.push(lineFor(choice, note));
+          for (const note of orderForListing(deps.store, scope, deps.store.list(scope))) lines.push(lineFor(choice, note));
         }
         if (!lines.length) return { text: "No notes yet." };
         const kept: string[] = [];
@@ -164,6 +169,8 @@ export function memoryWriteTool(deps: { store: MemoryStore; enabled: (projectId:
       description: z.string().optional().describe("A one-line summary (add/update)"),
       type: z.enum(["user", "feedback", "project", "reference"]).optional().describe('"user" facts default to global scope; other types to this project'),
       body: z.string().optional().describe("The full note (add/update)"),
+      correction: z.boolean().optional().describe("true when this note corrects or replaces an earlier belief"),
+      supersedes: z.string().optional().describe("For add: the file of the note this one replaces; that note is deleted"),
     },
     autoAllow: true,
     effect: "mutate",
@@ -188,17 +195,24 @@ export function memoryWriteTool(deps: { store: MemoryStore; enabled: (projectId:
           if (over) return fail(over);
           if (looksSecret(name, description, body)) return fail("That looks like a credential; memory never stores secrets.");
           const type = args.type ?? (choice === "global" ? "user" : "project");
-          const existing = deps.store.list(scope);
-          const sameName = existing.find((f) => f.name.toLowerCase() === name.toLowerCase());
-          if (sameName) {
-            deps.store.write(scope, { file: sameName.file, name, description, type, body });
-            return { text: `Updated existing note ${sameName.file} (${choice}).` };
+          // A correction is marked, and a superseded note in the same scope is wrong now: delete it.
+          const applyCorrection = (file: string): string => {
+            const superseded = args.supersedes && args.supersedes !== file && deps.store.read(scope, args.supersedes) ? args.supersedes : null;
+            if (args.correction) deps.store.markCorrection(scope, file, args.supersedes);
+            if (superseded) deps.store.remove(scope, superseded);
+            return superseded ? `; deleted superseded ${superseded}` : "";
+          };
+          const dup = findDuplicate(deps.store, scope, name, description);
+          if (dup?.kind === "same") {
+            deps.store.write(scope, { file: dup.file, name, description, type, body });
+            return { text: `Updated existing note ${dup.file} (${choice})${applyCorrection(dup.file)}.` };
           }
-          const candidate = wordSet(`${name} ${description}`, 3);
-          const near = existing.find((f) => jaccard(candidate, wordSet(`${f.name} ${f.description}`, 3)) >= 0.7);
-          if (near) return fail(`Similar note exists: ${near.file} (${near.name}). Update it with op "update" and file "${near.file}" instead.`);
+          if (dup) {
+            const similar = deps.store.read(scope, dup.file);
+            return fail(`Similar note exists: ${dup.file} (${similar?.name ?? dup.file}). Update it with op "update" and file "${dup.file}" instead.`);
+          }
           const file = deps.store.write(scope, { name, description, type, body });
-          return { text: `Saved ${file} (${choice}).` };
+          return { text: `Saved ${file} (${choice})${applyCorrection(file)}.` };
         }
 
         // Update and delete find the note where it lives when no scope was given: this project first, then global.
@@ -220,6 +234,7 @@ export function memoryWriteTool(deps: { store: MemoryStore; enabled: (projectId:
           if (over) return fail(over);
           if (looksSecret(name, description, body)) return fail("That looks like a credential; memory never stores secrets.");
           deps.store.write(where.scope, { file: args.file, name, description, type, body });
+          if (args.correction) deps.store.markCorrection(where.scope, args.file);
           return { text: `Updated ${args.file} (${where.choice}).` };
         }
 

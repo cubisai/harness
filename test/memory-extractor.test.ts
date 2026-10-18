@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { BackgroundRun } from "../src/shared/learn";
 import type { AgentCapabilities, ModelOption } from "../src/shared/types";
 import type { AgentDriver } from "../src/main/agents/types";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
@@ -69,6 +70,7 @@ describe("buildExtractionPrompt", () => {
     expect(prompt).toContain("- [Tabs](tabs.md) — prefers tabs");
     expect(prompt).toContain("User: use tabs");
     expect(prompt).toContain("Assistant: ok");
+    expect(prompt).toContain('Set "correction": true');
     expect(buildExtractionPrompt("", { user: "u", answer: "a" })).toContain("(empty)");
   });
 
@@ -119,6 +121,18 @@ describe("parseOps", () => {
     expect(ops).toEqual([{ op: "update", file: "known.md", description: "new" }, { op: "delete", file: "known.md" }]);
   });
 
+  it("keeps a global/ op only when that global file exists", () => {
+    const ops = parseOps(
+      JSON.stringify({ ops: [
+        { op: "update", file: "global/terse.md", description: "new" },
+        { op: "update", file: "global/missing.md", description: "x" },
+        { op: "delete", file: "global/terse.md" },
+      ] }),
+      new Set(["global/terse.md"]),
+    );
+    expect(ops).toEqual([{ op: "update", file: "global/terse.md", description: "new" }, { op: "delete", file: "global/terse.md" }]);
+  });
+
   it("drops an op whose text looks like a credential", () => {
     const ops = parseOps(
       JSON.stringify({ ops: [
@@ -133,6 +147,15 @@ describe("parseOps", () => {
   it("drops an add with no name, description or body", () => {
     const raw = { ops: [{ op: "add", name: "", description: "d", body: "b" }, { op: "add", name: "x", description: "", body: "b" }, { op: "add", name: "y", description: "d", body: "" }] };
     expect(parseOps(JSON.stringify(raw), new Set())).toEqual([]);
+  });
+
+  it("keeps a boolean correction on add and update, and drops a non-boolean one", () => {
+    const add = parseOps(JSON.stringify({ ops: [{ op: "add", name: "x", description: "d", type: "project", body: "b", correction: true }] }), new Set());
+    expect(add).toEqual([{ op: "add", name: "x", description: "d", type: "project", body: "b", correction: true }]);
+    const update = parseOps(JSON.stringify({ ops: [{ op: "update", file: "known.md", correction: true }] }), new Set(["known.md"]));
+    expect(update).toEqual([{ op: "update", file: "known.md", correction: true }]);
+    const bad = parseOps(JSON.stringify({ ops: [{ op: "add", name: "x", description: "d", type: "project", body: "b", correction: "yes" }] }), new Set());
+    expect(bad).toEqual([{ op: "add", name: "x", description: "d", type: "project", body: "b" }]);
   });
 });
 
@@ -167,6 +190,71 @@ describe("applyOps", () => {
     expect(store.list(GLOBAL_SCOPE).map((f) => f.name)).toEqual(["Tabs"]);
     expect(store.list("p1").map((f) => f.name)).toEqual(["Build"]);
   });
+
+  it("merges a user add into a same-name global note instead of duplicating", () => {
+    const store = new MemoryStore(tempDir());
+    store.write(GLOBAL_SCOPE, { name: "Terse", description: "prefers terse", type: "user", body: "no fluff" });
+    const result = applyOps(store, "p1", [{ op: "add", name: "terse", description: "prefers short", type: "user", body: "short" }]);
+    expect(result).toEqual({ added: 0, updated: 1, deleted: 0 });
+    expect(store.list(GLOBAL_SCOPE)).toHaveLength(1);
+    expect(store.read(GLOBAL_SCOPE, "terse.md")).toMatchObject({ name: "terse", description: "prefers short", type: "user", body: "short" });
+  });
+
+  it("merges a near-duplicate add into the existing note", () => {
+    const store = new MemoryStore(tempDir());
+    store.write("p1", { name: "Commit Style Guide", description: "commit messages use imperative mood", type: "feedback", body: "a" });
+    const result = applyOps(store, "p1", [{ op: "add", name: "Commit Style Rules", description: "commit messages use imperative mood", type: "feedback", body: "b" }]);
+    expect(result).toEqual({ added: 0, updated: 1, deleted: 0 });
+    expect(store.list("p1")).toHaveLength(1);
+    expect(store.read("p1", "commit-style-guide.md")).toMatchObject({ name: "Commit Style Rules", description: "commit messages use imperative mood", body: "b" });
+  });
+
+  it("still adds a note when nothing duplicates it", () => {
+    const store = new MemoryStore(tempDir());
+    store.write(GLOBAL_SCOPE, { name: "Terse", description: "prefers terse", type: "user", body: "no fluff" });
+    const result = applyOps(store, "p1", [{ op: "add", name: "Build", description: "builds with bun", type: "project", body: "Use bun." }]);
+    expect(result).toEqual({ added: 1, updated: 0, deleted: 0 });
+    expect(store.list("p1")).toHaveLength(1);
+  });
+
+  it("updates and deletes a global note named by its global/ file", () => {
+    const store = new MemoryStore(tempDir());
+    store.write(GLOBAL_SCOPE, { name: "Terse", description: "prefers terse", type: "user", body: "no fluff" });
+    const updated = applyOps(store, "p1", [{ op: "update", file: "global/terse.md", description: "changed" }]);
+    expect(updated).toEqual({ added: 0, updated: 1, deleted: 0 });
+    expect(store.read(GLOBAL_SCOPE, "terse.md")).toMatchObject({ description: "changed", type: "user", body: "no fluff" });
+    const deleted = applyOps(store, "p1", [{ op: "delete", file: "global/terse.md" }]);
+    expect(deleted).toEqual({ added: 0, updated: 0, deleted: 1 });
+    expect(store.list(GLOBAL_SCOPE)).toEqual([]);
+  });
+
+  it("falls back to the global scope for a bare file that only lives there", () => {
+    const store = new MemoryStore(tempDir());
+    store.write(GLOBAL_SCOPE, { name: "Terse", description: "prefers terse", type: "user", body: "no fluff" });
+    const result = applyOps(store, "p1", [{ op: "update", file: "terse.md", body: "short answers" }]);
+    expect(result).toEqual({ added: 0, updated: 1, deleted: 0 });
+    expect(store.read(GLOBAL_SCOPE, "terse.md")?.body).toBe("short answers");
+    expect(store.list("p1")).toEqual([]);
+  });
+
+  it("marks a correction op's note, and a global add in the global scope", () => {
+    const store = new MemoryStore(tempDir());
+    const result = applyOps(store, "p1", [
+      { op: "add", name: "Staging Two", description: "deploy target changed", type: "project", body: "b", correction: true },
+      { op: "add", name: "Terse", description: "prefers terse", type: "user", body: "b", correction: true },
+    ]);
+    expect(result).toEqual({ added: 2, updated: 0, deleted: 0 });
+    expect(store.meta("p1")["staging-two.md"]?.correction).toBeTypeOf("number");
+    expect(store.meta(GLOBAL_SCOPE)["terse.md"]?.correction).toBeTypeOf("number");
+    expect(store.meta("p1")["terse.md"]).toBeUndefined();
+  });
+
+  it("marks an updated note when the update carries correction", () => {
+    const store = new MemoryStore(tempDir());
+    store.write("p1", { name: "Alpha", description: "a", type: "project", body: "a" });
+    applyOps(store, "p1", [{ op: "update", file: "alpha.md", description: "b", correction: true }]);
+    expect(store.meta("p1")["alpha.md"]?.correction).toBeTypeOf("number");
+  });
 });
 
 describe("createExtractor", () => {
@@ -187,6 +275,27 @@ describe("createExtractor", () => {
       expect(store.list("p1").map((f) => f.file)).toEqual(["tabs.md"]);
       const prompt = oneShot.mock.calls[0]![0].prompt;
       expect(prompt).toContain(second);
+      ex.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows both scopes in the prompt, prefixing global note links", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new MemoryStore(tempDir());
+      store.write(GLOBAL_SCOPE, { name: "Terse", description: "prefers terse", type: "user", body: "no fluff" });
+      store.write("p1", { name: "Build", description: "builds with bun", type: "project", body: "Use bun." });
+      const oneShot = vi.fn(async (_req: Parameters<NonNullable<AgentDriver["oneShot"]>>[0]) => '{"ops":[]}');
+      const ex = createExtractor({ store, enabled: () => true, driverFor: () => extractorDriver({ oneShot }), log: () => {} });
+      ex.schedule(base());
+      await vi.advanceTimersByTimeAsync(31_000);
+      const prompt = oneShot.mock.calls[0]![0].prompt;
+      expect(prompt).toContain("PROJECT NOTES:");
+      expect(prompt).toContain("GLOBAL NOTES (about the user; hold in every project):");
+      expect(prompt).toContain("- [Build](build.md) — builds with bun");
+      expect(prompt).toContain("- [Terse](global/terse.md) — prefers terse");
       ex.dispose();
     } finally {
       vi.useRealTimers();
@@ -277,6 +386,86 @@ describe("createExtractor", () => {
       await vi.advanceTimersByTimeAsync(31_000);
       expect(oneShot.mock.calls.map((c) => c[0].model)).toEqual(["m-mini", "m"]);
       expect(store.list("p1").map((f) => f.file)).toEqual(["tabs.md"]);
+      ex.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("accounts one run for a successful extraction, on the cheap pick", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new MemoryStore(tempDir());
+      const oneShot = vi.fn(async () => ADD_JSON);
+      const driver = { ...extractorDriver({ oneShot }), models: () => [{ id: "m", label: "M" }, { id: "m-mini", label: "M mini" }] };
+      const runs: Omit<BackgroundRun, "purpose" | "day" | "at">[] = [];
+      const ex = createExtractor({ store, enabled: () => true, driverFor: () => driver, account: (r) => runs.push(r), log: () => {} });
+      ex.schedule(base());
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(runs).toEqual([{ projectId: "p1", agent: "codex", model: "m-mini", tokens: expect.any(Number), estimated: true, ok: true, escalated: false }]);
+      ex.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("accounts the failed cheap pick, then the escalated fallback", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new MemoryStore(tempDir());
+      const oneShot = vi.fn(async (req: Parameters<NonNullable<AgentDriver["oneShot"]>>[0]) => {
+        if (req.model === "m-mini") throw new Error("model not on this plan");
+        return ADD_JSON;
+      });
+      const driver = { ...extractorDriver({ oneShot }), models: () => [{ id: "m", label: "M" }, { id: "m-mini", label: "M mini" }] };
+      const runs: Omit<BackgroundRun, "purpose" | "day" | "at">[] = [];
+      const ex = createExtractor({ store, enabled: () => true, driverFor: () => driver, account: (r) => runs.push(r), log: () => {} });
+      ex.schedule(base());
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(runs.map((r) => [r.model, r.ok, r.escalated])).toEqual([
+        ["m-mini", false, false],
+        ["m", true, true],
+      ]);
+      ex.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("skips the run when the daily budget is spent", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new MemoryStore(tempDir());
+      const oneShot = vi.fn(async () => ADD_JSON);
+      const runs: unknown[] = [];
+      const ex = createExtractor({ store, enabled: () => true, driverFor: () => extractorDriver({ oneShot }), budgetLeft: () => 0, account: (r) => runs.push(r), log: () => {} });
+      ex.schedule(base());
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(oneShot).not.toHaveBeenCalled();
+      expect(runs).toEqual([]);
+      ex.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("runs the explicit background model, never falling back to the thread's", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new MemoryStore(tempDir());
+      const threadShot = vi.fn(async () => ADD_JSON);
+      const bgShot = vi.fn(async () => {
+        throw new Error("chosen model is down");
+      });
+      const thread = extractorDriver({ oneShot: threadShot });
+      const bg = { ...extractorDriver({ oneShot: bgShot }), id: "chosen" };
+      const runs: Omit<BackgroundRun, "purpose" | "day" | "at">[] = [];
+      const ex = createExtractor({ store, enabled: () => true, driverFor: () => thread, background: () => ({ driver: bg, model: "cheap-1", effort: null }), account: (r) => runs.push(r), log: () => {} });
+      ex.schedule(base());
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(bgShot).toHaveBeenCalledTimes(1);
+      expect(threadShot).not.toHaveBeenCalled();
+      expect(runs).toEqual([{ projectId: "p1", agent: "chosen", model: "cheap-1", tokens: expect.any(Number), estimated: true, ok: false, escalated: false }]);
       ex.dispose();
     } finally {
       vi.useRealTimers();

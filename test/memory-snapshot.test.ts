@@ -96,6 +96,47 @@ describe("MemorySnapshots", () => {
     expect(existsSync(join(root, "_snapshots", "broken.json"))).toBe(false);
   });
 
+  it("reports nothing for a thread with no snapshot or an invalid id", () => {
+    const snaps = new MemorySnapshots(tempDir());
+    expect(snaps.updates("t1", "This project:\n- [a](a.md) — A")).toBeNull();
+    expect(snaps.updates("../x", "This project:\n- [a](a.md) — A")).toBeNull();
+  });
+
+  it("reports only entry changes, and only once", () => {
+    const snaps = new MemorySnapshots(tempDir());
+    const base = "This project:\n- [a](a.md) — A";
+    snaps.get("t1", "s1", () => base);
+    expect(snaps.updates("t1", base)).toBeNull();
+    const next = `${base}\n- [b](b.md) — B`;
+    const text = snaps.updates("t1", next);
+    expect(text).toContain("+ - [b](b.md) — B");
+    expect(text).toContain("<memory-update>");
+    // The change is consumed: the same block now reports nothing.
+    expect(snaps.updates("t1", next)).toBeNull();
+  });
+
+  it("shows a removed entry line", () => {
+    const snaps = new MemorySnapshots(tempDir());
+    snaps.get("t1", "s1", () => "This project:\n- [a](a.md) — A\n- [b](b.md) — B");
+    expect(snaps.updates("t1", "This project:\n- [a](a.md) — A")).toContain("- - [b](b.md) — B");
+  });
+
+  it("ignores a header-only change", () => {
+    const snaps = new MemorySnapshots(tempDir());
+    snaps.get("t1", "s1", () => "This project:\n- [a](a.md) — A");
+    expect(snaps.updates("t1", "This project (renamed):\n- [a](a.md) — A")).toBeNull();
+  });
+
+  it("a new session key clears seen, so the fresh block is the new baseline", () => {
+    const snaps = new MemorySnapshots(tempDir());
+    snaps.get("t1", "s1", () => "This project:\n- [a](a.md) — A");
+    const seen = "This project:\n- [a](a.md) — A\n- [b](b.md) — B";
+    snaps.updates("t1", seen);
+    // A new session recomputes to a block without b; the old seen must not win.
+    snaps.get("t1", "s2", () => "This project:\n- [a](a.md) — A");
+    expect(snaps.updates("t1", seen)).toContain("+ - [b](b.md) — B");
+  });
+
   it("always computes for a new (pending) session, and the first real key adopts that block", () => {
     const snaps = new MemorySnapshots(tempDir());
     let n = 0;

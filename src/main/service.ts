@@ -119,6 +119,8 @@ export class Service {
   private turnListener: ((d: TurnDelta) => void) | null = null;
   /** Self-improve: scores turns of opted-in projects (null = off everywhere). */
   private learner: Learner | null = null;
+  /** A live session's memory changes since its frozen block, as a per-turn prefix (null = off). */
+  private memoryUpdates: ((projectId: string, threadId: string) => string | null) | null = null;
   /** Each thread's last user message seq, so an automatic fix round scores as part of the turn it fixes. */
   private rootSeqs = new Map<string, number>();
 
@@ -638,6 +640,11 @@ export class Service {
     this.learner = learner;
   }
 
+  /** Where a resumed session asks what memory changed since its frozen block; null turns it off. */
+  setMemoryUpdates(fn: ((projectId: string, threadId: string) => string | null) | null): void {
+    this.memoryUpdates = fn;
+  }
+
   isRunning(threadId: string): boolean {
     return this.running.has(threadId);
   }
@@ -784,7 +791,10 @@ export class Service {
       };
       const scrub = (text: string) => redactSecrets(text, this.secrets());
       const catchUp = compact ? null : await this.catchUp(thread.id, driver, userEvent.seq);
-      const turnPrompt = catchUp ? `${catchUp}\n---\n${prompt}` : prompt;
+      const basePrompt = catchUp ? `${catchUp}\n---\n${prompt}` : prompt;
+      // A resumed session keeps the block its cache was built on; tell it once what changed since. The stored user event stays as sent.
+      const update = current.sessionId !== null ? (this.memoryUpdates?.(thread.projectId, thread.id) ?? null) : null;
+      const turnPrompt = update ? `${update}\n\n${basePrompt}` : basePrompt;
       if (!catchUp && !switched && current.sessionId === null && this.store.listEvents(thread.id).length > 1) {
         this.emit(thread.id, { kind: "notice", text: `Now talking to ${driver.label}. It starts without the earlier messages above.` });
       }

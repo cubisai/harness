@@ -60,7 +60,7 @@ import { buildContextPreview, mcpRow, skillsOf, toolTokens } from "./context-pre
 import { createMemory, memoryOn, memoryPrompt } from "./memory";
 import { createMemoryApi } from "./memory/api";
 import { createExtractor } from "./memory/extractor";
-import { createLearner } from "./learn";
+import { createLearner, today } from "./learn";
 import { LearnDb } from "./learn/db";
 import { MemorySnapshots, PENDING_SESSION } from "./memory/snapshot";
 import { MEMORY_READ_TOOL, MEMORY_WRITE_TOOL, memoryReadTool, memoryWriteTool } from "./memory/tool";
@@ -463,6 +463,20 @@ async function main(): Promise<void> {
       memory.ensure(projectId, store.getProject(projectId).path);
       const compute = () => memoryPrompt(memory.store.blockIndex(projectId).text);
       return threadId ? memorySnapshots.get(threadId, sessionKey ?? PENDING_SESSION, compute) : compute();
+    } catch {
+      return null;
+    }
+  };
+  /**
+   * What a live session's frozen memory block is missing, or null when nothing
+   * changed. Diffed as raw block lines so it lines up with what get() stored.
+   * Never throws: memory must not block a turn.
+   */
+  const memoryUpdateFor = (projectId: string, threadId: string): string | null => {
+    try {
+      if (!memoryOn(settings.get(), projectId)) return null;
+      memory.ensure(projectId, store.getProject(projectId).path);
+      return memorySnapshots.updates(threadId, memory.store.blockIndex(projectId).text);
     } catch {
       return null;
     }
@@ -997,15 +1011,25 @@ async function main(): Promise<void> {
     mkdirSync(root, { recursive: true });
     await shell.openPath(root);
   });
-  // After a Codex/ACP turn, extract memory in the background; Claude keeps its own.
+  // Self-improve: scores turns of opted-in projects (off for every project by default).
+  const learnDb = new LearnDb(store.sql);
+  // After a Codex/ACP turn, extract memory in the background; Claude keeps its own. Extraction
+  // shares self-improve's accounting: an explicit background pick, and the project's memory cap.
   const extractor = createExtractor({
     store: memory.store,
     enabled: (pid) => memoryOn(settings.get(), pid),
     driverFor: (id) => drivers.find((d) => d.id === id),
+    account: (r) => learnDb.recordRun({ ...r, purpose: "memory", day: today(Date.now()), at: Date.now() }),
+    budgetLeft: (pid) => settings.get().learn!.memoryDailyTokens - learnDb.runTokens(pid, today(Date.now()), "memory"),
+    background: (pid) => {
+      const learn = settings.get().learn!;
+      const chosen = learn.backgroundByProject[pid] ?? learn.background;
+      if (!chosen) return null;
+      const driver = drivers.find((d) => d.id === chosen.agent);
+      return driver ? { driver, model: chosen.model, effort: null } : null;
+    },
   });
   service.setTurnListener((d) => extractor.schedule(d));
-  // Self-improve: scores turns of opted-in projects (off for every project by default).
-  const learnDb = new LearnDb(store.sql);
   const learner = createLearner({
     db: learnDb,
     settings: () => settings.get().learn,
@@ -1017,6 +1041,7 @@ async function main(): Promise<void> {
     existing: (projectId) => memory.store.list(projectId).map((n) => n.description),
   });
   service.setLearner(learner);
+  service.setMemoryUpdates((projectId, threadId) => memoryUpdateFor(projectId, threadId));
   ipcMain.handle("learn:scores", (_e, threadId: string) => learner.scores(threadId));
 
   // The Library: skills, agents, and MCP servers, as the agents will see them.
