@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { LlmMessage, ToolResult } from "../src/main/harness/llm/types";
 import { CHARS_PER_TOKEN, estimateMessage, estimateMessages, estimateText } from "../src/main/harness/context/estimate";
-import { MIN_SAVING, PRUNED_MARKER, pruneToolOutputs } from "../src/main/harness/context/prune";
+import { MIN_SAVING, PROTECT_TOKENS, PRUNED_MARKER, PRUNED_MARKER_SAVED, isPruned, pruneToolOutputs, retentionFor } from "../src/main/harness/context/prune";
 
 const result = (name: string, text: string, extra: Partial<ToolResult> = {}): ToolResult => ({ callId: `${name}:${text.length}`, name, text, ...extra });
 const toolMsg = (...results: ToolResult[]): LlmMessage => ({ role: "tool", results });
@@ -169,5 +169,78 @@ describe("pruneToolOutputs", () => {
 
     expect(out.messages).toBe(messages);
     expect(out.pruned).toBe(0);
+  });
+
+  it("keeps a bound() note's saved path and never calls save for it", () => {
+    const note = `head\n${"y".repeat(2000)}\n\n[100 of 200 lines omitted; the full output is in /tmp/out/c1.txt (Read it with offset/limit, or Grep it)]`;
+    const messages: LlmMessage[] = [user("go"), toolMsg(result("read", note)), { role: "assistant", content: [{ type: "text", text: "ok" }] }, toolMsg(result("read", big))];
+    let calls = 0;
+
+    const out = pruneToolOutputs(messages, { protect: 0, minSaving: 1, save: (r) => (calls++, `/tmp/${r.callId}.txt`) });
+    const pruned = (out.messages[1] as Extract<LlmMessage, { role: "tool" }>).results[0]!;
+
+    expect(pruned.text).toBe(`${PRUNED_MARKER_SAVED} /tmp/out/c1.txt (Read it with offset/limit, or Grep it).]`);
+    expect(calls).toBe(0);
+  });
+
+  it("calls save for a result without a reference and names the returned path", () => {
+    const messages: LlmMessage[] = [user("go"), toolMsg(result("read", big)), { role: "assistant", content: [{ type: "text", text: "ok" }] }, toolMsg(result("read", big))];
+    let calls = 0;
+
+    const out = pruneToolOutputs(messages, { protect: 0, minSaving: 1, save: (r) => (calls++, `/tmp/${r.callId}.txt`) });
+    const pruned = (out.messages[1] as Extract<LlmMessage, { role: "tool" }>).results[0]!;
+
+    expect(calls).toBe(1);
+    expect(pruned.text).toBe(`${PRUNED_MARKER_SAVED} /tmp/read:5000.txt (Read it with offset/limit, or Grep it).]`);
+  });
+
+  it("falls back to the plain marker when save returns null", () => {
+    const messages: LlmMessage[] = [user("go"), toolMsg(result("read", big)), { role: "assistant", content: [{ type: "text", text: "ok" }] }, toolMsg(result("read", big))];
+
+    const out = pruneToolOutputs(messages, { protect: 0, minSaving: 1, save: () => null });
+    const pruned = (out.messages[1] as Extract<LlmMessage, { role: "tool" }>).results[0]!;
+
+    expect(pruned.text).toBe(PRUNED_MARKER);
+  });
+
+  it("never calls save when the saving is below the minimum", () => {
+    const messages: LlmMessage[] = [user("go"), toolMsg(result("read", big)), { role: "assistant", content: [{ type: "text", text: "ok" }] }, toolMsg(result("read", big))];
+    let calls = 0;
+
+    const out = pruneToolOutputs(messages, { protect: 0, minSaving: 100_000, save: (r) => (calls++, `/tmp/${r.callId}.txt`) });
+
+    expect(out.messages).toBe(messages);
+    expect(out.saved).toBe(0);
+    expect(calls).toBe(0);
+  });
+
+  it("recognises both markers and skips an already-pruned result on a second pass", () => {
+    expect(isPruned(PRUNED_MARKER)).toBe(true);
+    expect(isPruned(`${PRUNED_MARKER_SAVED} /tmp/a.txt (Read it with offset/limit, or Grep it).]`)).toBe(true);
+    expect(isPruned(big)).toBe(false);
+
+    const saved = `${PRUNED_MARKER_SAVED} /tmp/a.txt (Read it with offset/limit, or Grep it).]`;
+    const messages: LlmMessage[] = [user("go"), toolMsg(result("read", saved), result("read", big)), { role: "assistant", content: [{ type: "text", text: "ok" }] }, toolMsg(result("read", big))];
+
+    const out = pruneToolOutputs(messages, { protect: 0, minSaving: 1 });
+
+    expect(out.pruned).toBe(1);
+    expect((out.messages[1] as Extract<LlmMessage, { role: "tool" }>).results[0]!.text).toBe(saved);
+  });
+});
+
+describe("retentionFor", () => {
+  it("keeps today's constants for an unknown window", () => {
+    expect(retentionFor(0)).toEqual({ protect: PROTECT_TOKENS, minSaving: MIN_SAVING });
+    expect(retentionFor(-1)).toEqual({ protect: PROTECT_TOKENS, minSaving: MIN_SAVING });
+  });
+
+  it("caps a large window at today's constants", () => {
+    expect(retentionFor(200_000)).toEqual({ protect: 40_000, minSaving: 20_000 });
+  });
+
+  it("scales the budgets down with the window", () => {
+    expect(retentionFor(32_000)).toEqual({ protect: 8_000, minSaving: 4_000 });
+    expect(retentionFor(100_000)).toEqual({ protect: 20_000, minSaving: 10_000 });
   });
 });

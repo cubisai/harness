@@ -3,6 +3,8 @@
 // app's guide, memory, browser and MCP tools, and a JSONL session per thread.
 
 import { randomUUID } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { z } from "zod";
 import type { ModelOption, PermissionMode, Provider } from "../../shared/types";
 import { SAFE_DEFAULTS, withCapabilities } from "../agents/capabilities";
@@ -22,7 +24,7 @@ import { prefixKey, unbindThinking } from "./context/binding";
 import { compactedHistory, splitForCompaction, summaryPrompt } from "./context/compact";
 import { estimateMessages, estimateText } from "./context/estimate";
 import { contextFiles } from "./context/files";
-import { pruneToolOutputs } from "./context/prune";
+import { pruneToolOutputs, retentionFor } from "./context/prune";
 import { nativeTools, shellFor, todosOf, type NativeTool, type ToolContext } from "./tools";
 import { bound } from "./tools/bound";
 import { resolvePath } from "./tools/paths";
@@ -379,7 +381,20 @@ async function runTurn(
     // The previous call's real context is only good for deciding whether to
     // act: it was measured before pruning, so it can't judge the result.
     if (Math.max(estimateMessages(msgs) + overhead, last ? contextOf(last) : 0) <= cap) return;
-    const pruned = pruneToolOutputs(msgs);
+    // Keep the full text of a pruned result on disk so the marker can name it.
+    const pruned = pruneToolOutputs(msgs, {
+      ...retentionFor(contextSize),
+      save: (r) => {
+        try {
+          const path = join(deps.outputDir, `${r.callId.replace(/[^\w.-]/g, "_")}.pruned.txt`);
+          mkdirSync(deps.outputDir, { recursive: true });
+          writeFileSync(path, r.text);
+          return path;
+        } catch {
+          return null;
+        }
+      },
+    });
     if (pruned.pruned > 0) {
       prunedThisTurn += pruned.pruned;
       msgs.splice(0, msgs.length, ...pruned.messages);
