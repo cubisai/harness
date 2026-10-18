@@ -7,6 +7,7 @@ import { z } from "zod";
 import type { McpServerEntry, McpServerSpec } from "../../shared/types";
 import type { HarnessTool } from "../agents/types";
 import { stableStringify } from "../cache-policy";
+import { bm25Rank } from "../search/bm25";
 import { killPidTree } from "../winspawn";
 import { clientTransport, type ClientTransport } from "./transport";
 import type { McpToolsCache, McpToolInfo } from "./servers";
@@ -143,14 +144,6 @@ export const MCP_ROUTER_MIN_TOOLS = 20;
 /** Cap on tool names in the search_tools index; past it the description lists per-server counts only. */
 export const MCP_ROUTER_INDEX_MAX_NAMES = 200;
 
-const K1 = 1.2;
-const B = 0.75;
-
-/** Lowercase, split on anything that isn't a-z0-9 (so "_", "-" and "." split), drop empties. */
-function tokenize(text: string): string[] {
-  return text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
-}
-
 function compare(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
@@ -184,31 +177,12 @@ export function rankTools(entries: { server: string; tool: McpToolInfo }[], quer
   const q = query.trim().toLowerCase();
   const exact = (e: { server: string; tool: McpToolInfo }): boolean =>
     [e.tool.name, `${e.server}.${e.tool.name}`, `${e.server}__${e.tool.name}`, `mcp__${e.server}__${e.tool.name}`].some((f) => f.toLowerCase() === q);
-  const docs = entries.map((e) => {
-    const name = tokenize(e.tool.name);
-    return [...name, ...name, ...tokenize(e.server), ...tokenize(e.tool.description)];
-  });
-  const n = entries.length;
-  const avgdl = docs.reduce((sum, doc) => sum + doc.length, 0) / (n || 1);
-  const terms = [...new Set(tokenize(query))];
-  const df = new Map(terms.map((term) => [term, docs.filter((doc) => doc.includes(term)).length]));
-  const scored = entries.map((e, i) => {
-    if (exact(e)) return { ...e, score: Infinity };
-    const doc = docs[i] ?? [];
-    let score = 0;
-    for (const term of terms) {
-      const tf = doc.filter((t) => t === term).length;
-      if (tf === 0) continue;
-      const freq = df.get(term) ?? 0;
-      const idf = Math.log(1 + (n - freq + 0.5) / (freq + 0.5));
-      score += idf * ((tf * (K1 + 1)) / (tf + K1 * (1 - B + (B * doc.length) / avgdl)));
-    }
-    return { ...e, score };
-  });
-  return scored
-    .filter((r) => r.score > 0)
-    .sort((a, b) => b.score - a.score || compare(a.server, b.server) || compare(a.tool.name, b.tool.name))
-    .slice(0, limit);
+  const tiebreak = (a: { server: string; tool: McpToolInfo }, b: { server: string; tool: McpToolInfo }): number => compare(a.server, b.server) || compare(a.tool.name, b.tool.name);
+  return bm25Rank(entries, (e) => `${e.tool.name} ${e.tool.name} ${e.server} ${e.tool.description}`, query, entries.length, tiebreak)
+    .map((r) => (exact(r.item) ? { ...r, score: Infinity } : r))
+    .sort((a, b) => b.score - a.score || tiebreak(a.item, b.item))
+    .slice(0, limit)
+    .map((r) => ({ server: r.item.server, tool: r.item.tool, score: r.score }));
 }
 
 function define<S extends z.ZodRawShape>(t: HarnessTool<S>): HarnessTool {
