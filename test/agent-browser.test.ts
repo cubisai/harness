@@ -119,3 +119,47 @@ describe.skipIf(!installed || !existsSync(installed))("agent-browser backend, re
     }
   });
 });
+
+describe("browser target ownership (P5.3)", () => {
+  it("runs page-changing calls one at a time, in order", async () => {
+    const { TargetLock } = await import("../src/main/browser/tools");
+    const lock = new TargetLock();
+    const order: string[] = [];
+    const step = (name: string, ms: number) => lock.run("t1", async () => {
+      order.push(`${name}+`);
+      await new Promise((r) => setTimeout(r, ms));
+      order.push(`${name}-`);
+    });
+    await Promise.all([step("a", 30), step("b", 1), step("c", 1)]);
+    expect(order).toEqual(["a+", "a-", "b+", "b-", "c+", "c-"]);
+  });
+
+  it("refuses another thread's action while the owner's turn runs, and hands over once it ends", async () => {
+    const { TargetLock } = await import("../src/main/browser/tools");
+    const running = new Set(["t1"]);
+    const lock = new TargetLock((id) => running.has(id));
+    await lock.run("t1", async () => {});
+    await expect(lock.run("t2", async () => {})).rejects.toThrow(/in use by another thread/);
+    expect(lock.current).toBe("t1");
+    running.delete("t1");
+    await lock.run("t2", async () => {});
+    expect(lock.current).toBe("t2");
+  });
+
+  it("a failed action doesn't block the queue", async () => {
+    const { TargetLock } = await import("../src/main/browser/tools");
+    const lock = new TargetLock();
+    await expect(lock.run("t1", async () => { throw new Error("x"); })).rejects.toThrow("x");
+    await expect(lock.run("t1", async () => "ok")).resolves.toBe("ok");
+  });
+
+  it("browser_click from another thread is refused as a tool error; reads still work", async () => {
+    const f = fake({ "get url": ok({ url: "http://x/" }), snapshot: ok(SNAPSHOT), "get title": ok({ title: "T" }) });
+    const tools = browserTools(backend(f.run), { busy: (id) => id === "owner" });
+    const click = tools.find((t) => t.name === "browser_click")!;
+    const snapshot = tools.find((t) => t.name === "browser_snapshot")!;
+    expect((await click.run({ ref: "e1" }, { threadId: "owner" })).isError).toBeUndefined();
+    expect(await click.run({ ref: "e1" }, { threadId: "other" })).toMatchObject({ isError: true, text: expect.stringContaining("in use by another thread") });
+    expect((await snapshot.run({}, { threadId: "other" })).text).toContain('[e2] button "Go"');
+  });
+});

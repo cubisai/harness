@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { HarnessTool, ToolOutput } from "../agents/types";
+import type { HarnessTool, ToolContext, ToolOutput } from "../agents/types";
 import { asBackend, type BrowserBackend } from "./backend";
 import type { BrowserController } from "./controller";
 
@@ -23,6 +23,38 @@ function gated(browser: BrowserBackend, fn: () => Promise<ToolOutput>): Promise<
   });
 }
 
+/**
+ * One browser target's ownership and order (P5.3). Actions that change the page run one at a time, in call order,
+ * across every thread. The thread that acted last owns the target: while its turn is still running, another
+ * thread's action is refused instead of silently acting on its page. Reads stay open to everyone.
+ */
+export class TargetLock {
+  private chain: Promise<unknown> = Promise.resolve();
+  private owner: string | null = null;
+
+  constructor(private busy: (threadId: string) => boolean = () => false) {}
+
+  /** Who drove the target last, if anyone. */
+  get current(): string | null {
+    return this.owner;
+  }
+
+  /** Run a mutation for `threadId` after every earlier one has finished. */
+  run<T>(threadId: string | undefined, fn: () => Promise<T>): Promise<T> {
+    const next = this.chain.then(() => {
+      const owner = this.owner;
+      if (threadId && owner && owner !== threadId && this.busy(owner)) {
+        throw new Error("The browser pane is in use by another thread's running turn. Wait for it to finish, or carry on without the browser.");
+      }
+      if (threadId) this.owner = threadId;
+      return fn();
+    });
+    // A failed mutation must not block the ones queued behind it.
+    this.chain = next.catch(() => {});
+    return next;
+  }
+}
+
 function define<S extends z.ZodRawShape>(t: HarnessTool<S>): HarnessTool {
   return t as unknown as HarnessTool;
 }
@@ -34,8 +66,11 @@ function define<S extends z.ZodRawShape>(t: HarnessTool<S>): HarnessTool {
  * changes mid-conversation; the first call opens the pane for the user.
  * A headless backend (agent-browser) runs the same tools in its own session.
  */
-export function browserTools(target: BrowserBackend | BrowserController): HarnessTool[] {
+export function browserTools(target: BrowserBackend | BrowserController, opts: { busy?: (threadId: string) => boolean } = {}): HarnessTool[] {
   const browser = asBackend(target);
+  const lock = new TargetLock(opts.busy);
+  /** A page-changing tool: opened if needed, then queued on the target and owned by the calling thread. */
+  const acting = (ctx: ToolContext | undefined, fn: () => Promise<ToolOutput>): Promise<ToolOutput> => gated(browser, () => lock.run(ctx?.threadId, fn));
   return [
     define({
       name: "browser_open",
@@ -47,8 +82,8 @@ export function browserTools(target: BrowserBackend | BrowserController): Harnes
       },
       autoAllow: true,
       effect: "mutate",
-      run: ({ url, device }) =>
-        gated(browser, async () => {
+      run: ({ url, device }, ctx) =>
+        acting(ctx, async () => {
           await browser.open(url, device);
           return { text: await browser.snapshot() };
         }),
@@ -68,7 +103,7 @@ export function browserTools(target: BrowserBackend | BrowserController): Harnes
       input: { ref: z.string().describe("Element ref from browser_snapshot, e.g. e7") },
       autoAllow: true,
       effect: "mutate",
-      run: ({ ref }) => gated(browser, async () => ({ text: await browser.click(ref) })),
+      run: ({ ref }, ctx) => acting(ctx, async () => ({ text: await browser.click(ref) })),
     }),
     define({
       name: "browser_type",
@@ -80,7 +115,7 @@ export function browserTools(target: BrowserBackend | BrowserController): Harnes
       },
       autoAllow: true,
       effect: "mutate",
-      run: ({ ref, text, submit }) => gated(browser, async () => ({ text: await browser.type(ref, text, submit ?? false) })),
+      run: ({ ref, text, submit }, ctx) => acting(ctx, async () => ({ text: await browser.type(ref, text, submit ?? false) })),
     }),
     define({
       name: "browser_eval",
@@ -89,7 +124,7 @@ export function browserTools(target: BrowserBackend | BrowserController): Harnes
       input: { expression: z.string().describe("A JavaScript expression; may be async") },
       autoAllow: false,
       effect: "mutate",
-      run: ({ expression }) => gated(browser, async () => ({ text: await browser.evaluate(expression) })),
+      run: ({ expression }, ctx) => acting(ctx, async () => ({ text: await browser.evaluate(expression) })),
     }),
     define({
       name: "browser_logs",
