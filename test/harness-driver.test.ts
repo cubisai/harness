@@ -85,6 +85,7 @@ function setup(
 ) {
   const cwd = tmp();
   const data = tmp();
+  const outputDir = join(data, "out");
   const s = scripted(...answers);
   const sessions = new SessionStore(join(data, "sessions"));
   const saved = "saved" in opts ? opts.saved : provider();
@@ -93,7 +94,7 @@ function setup(
     secret: () => "sk-test",
     secretHeaders: () => ({}),
     sessions,
-    outputDir: join(data, "out"),
+    outputDir,
     guardScript: BUILT_IN_GUARD,
     guide: () => "GUIDE TEXT",
     memory: opts.memory ?? (() => "MEMORY TEXT"),
@@ -124,7 +125,7 @@ function setup(
     mcpServers: [],
     ...(opts.requestUserInput ? { requestUserInput: opts.requestUserInput } : {}),
   });
-  return { driver, events, asked, planRequests, input, cwd, sessions, requests: s.requests, session: () => session };
+  return { driver, events, asked, planRequests, input, cwd, outputDir, sessions, requests: s.requests, session: () => session };
 }
 
 describe("provider driver", () => {
@@ -202,6 +203,87 @@ describe("provider driver", () => {
     expect(t.requests[0]!.tools.find((x) => x.name === "browser_open")!.parameters).toMatchObject({ type: "object", properties: { url: { type: "string" } }, required: ["url"] });
     expect(ran).toEqual([{ url: "https://x.dev" }]);
     expect(t.requests[1]!.messages.at(-1)).toMatchObject({ results: [{ isError: true }, { text: "opened" }] });
+  });
+
+  it("runs a mutating app tool alone but lets read ones overlap", async () => {
+    const peakOf = async (effect: "read" | "mutate"): Promise<number> => {
+      let active = 0;
+      let peak = 0;
+      const probe: HarnessTool = {
+        name: "probe",
+        description: "probe",
+        input: { n: z.number() },
+        autoAllow: true,
+        effect,
+        run: async () => {
+          active++;
+          peak = Math.max(peak, active);
+          await new Promise((r) => setTimeout(r, 20));
+          active--;
+          return { text: "ok" };
+        },
+      };
+      const t = setup(
+        [
+          [
+            { type: "tool-call", id: "c1", name: "probe", input: { n: 1 } },
+            { type: "tool-call", id: "c2", name: "probe", input: { n: 2 } },
+          ],
+          [{ type: "text", text: "done" }],
+        ],
+        { tools: [probe] },
+      );
+      await t.driver.runTurn(t.input("go"));
+      return peak;
+    };
+    expect(await peakOf("mutate")).toBe(1);
+    expect(await peakOf("read")).toBe(2);
+  });
+
+  it("runs an auto-allowed mutating app tool without asking in ask mode", async () => {
+    const ran: string[] = [];
+    const memory: HarnessTool = {
+      name: "memory_write",
+      description: "Save a note",
+      input: { x: z.string() },
+      autoAllow: true,
+      effect: "mutate",
+      run: async () => (ran.push("ran"), { text: "saved" }),
+    };
+    const t = setup([[{ type: "tool-call", id: "c1", name: "memory_write", input: { x: "hi" } }], [{ type: "text", text: "done" }]], { mode: "ask", tools: [memory] });
+    await t.driver.runTurn(t.input("save"));
+    expect(t.asked).toEqual([]);
+    expect(ran).toEqual(["ran"]);
+    expect(t.events.find((e) => e.kind === "tool-result")).toMatchObject({ isError: false });
+  });
+
+  it("bounds an app tool's long output and saves the full text", async () => {
+    const text = Array.from({ length: 3000 }, (_, i) => `L${i + 1}`).join("\n");
+    const browser: HarnessTool = { name: "browser_open", description: "Open a URL", input: { url: z.string() }, autoAllow: true, run: async () => ({ text }) };
+    const t = setup([[{ type: "tool-call", id: "c1", name: "browser_open", input: { url: "https://x.dev" } }], [{ type: "text", text: "ok" }]], { tools: [browser] });
+    await t.driver.runTurn(t.input("open"));
+    const result = (t.requests[1]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!;
+    expect(result.text).toMatch(/full output is in/);
+    const savedFile = join(t.outputDir, "c1.txt");
+    expect(existsSync(savedFile)).toBe(true);
+    expect(readFileSync(savedFile, "utf8")).toBe(text);
+  });
+
+  it("leaves a short app result unchanged", async () => {
+    const browser: HarnessTool = { name: "browser_open", description: "Open a URL", input: { url: z.string() }, autoAllow: true, run: async () => ({ text: "opened" }) };
+    const t = setup([[{ type: "tool-call", id: "c1", name: "browser_open", input: { url: "https://x.dev" } }], [{ type: "text", text: "ok" }]], { tools: [browser] });
+    await t.driver.runTurn(t.input("open"));
+    const result = (t.requests[1]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!;
+    expect(result.text).toBe("opened");
+  });
+
+  it("leaves the skill tool's long body unbounded", async () => {
+    const text = Array.from({ length: 3000 }, (_, i) => `line ${i + 1}`).join("\n");
+    const skill: HarnessTool = { name: "skill", description: "Load a skill", input: { name: z.string() }, autoAllow: true, run: async () => ({ text }) };
+    const t = setup([[{ type: "tool-call", id: "c1", name: "skill", input: { name: "x" } }], [{ type: "text", text: "ok" }]], { skills: () => skill });
+    await t.driver.runTurn(t.input("hi"));
+    const result = (t.requests[1]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!;
+    expect(result.text).toBe(text);
   });
 
   it("turns TodoWrite into the thread's plan", async () => {

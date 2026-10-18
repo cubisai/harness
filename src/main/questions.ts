@@ -154,6 +154,7 @@ export function askUserTool(ask: (threadId: string, questions: Question[], signa
       "Ask the user multiple-choice questions and wait for the answers. Use it only for decisions that are the user's (preferences, trade-offs, scope) and that you can't settle by reading the project; never to ask permission to proceed.",
     input,
     autoAllow: true,
+    effect: "mutate",
     run: async (args: unknown, ctx?: ToolContext) => {
       const questions = fromClaudeQuestions(args).slice(0, 4);
       if (!questions.length) return { text: "Give at least one question.", isError: true };

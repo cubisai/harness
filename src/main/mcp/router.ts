@@ -7,6 +7,7 @@ import { z } from "zod";
 import type { McpServerEntry, McpServerSpec } from "../../shared/types";
 import type { HarnessTool } from "../agents/types";
 import { stableStringify } from "../cache-policy";
+import { bm25Rank } from "../search/bm25";
 import { killPidTree } from "../winspawn";
 import { clientTransport, type ClientTransport } from "./transport";
 import type { McpToolsCache, McpToolInfo } from "./servers";
@@ -143,16 +144,14 @@ export const MCP_ROUTER_MIN_TOOLS = 20;
 /** Cap on tool names in the search_tools index; past it the description lists per-server counts only. */
 export const MCP_ROUTER_INDEX_MAX_NAMES = 200;
 
-const K1 = 1.2;
-const B = 0.75;
-
-/** Lowercase, split on anything that isn't a-z0-9 (so "_", "-" and "." split), drop empties. */
-function tokenize(text: string): string[] {
-  return text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
-}
-
 function compare(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** A server's listing error, trimmed to its first line and 120 chars, for a short reply. */
+function listingError(error?: string): string {
+  const first = (error ?? "it didn't answer").split("\n")[0]!.trim();
+  return first.length > 120 ? first.slice(0, 120) : first;
 }
 
 /**
@@ -184,31 +183,12 @@ export function rankTools(entries: { server: string; tool: McpToolInfo }[], quer
   const q = query.trim().toLowerCase();
   const exact = (e: { server: string; tool: McpToolInfo }): boolean =>
     [e.tool.name, `${e.server}.${e.tool.name}`, `${e.server}__${e.tool.name}`, `mcp__${e.server}__${e.tool.name}`].some((f) => f.toLowerCase() === q);
-  const docs = entries.map((e) => {
-    const name = tokenize(e.tool.name);
-    return [...name, ...name, ...tokenize(e.server), ...tokenize(e.tool.description)];
-  });
-  const n = entries.length;
-  const avgdl = docs.reduce((sum, doc) => sum + doc.length, 0) / (n || 1);
-  const terms = [...new Set(tokenize(query))];
-  const df = new Map(terms.map((term) => [term, docs.filter((doc) => doc.includes(term)).length]));
-  const scored = entries.map((e, i) => {
-    if (exact(e)) return { ...e, score: Infinity };
-    const doc = docs[i] ?? [];
-    let score = 0;
-    for (const term of terms) {
-      const tf = doc.filter((t) => t === term).length;
-      if (tf === 0) continue;
-      const freq = df.get(term) ?? 0;
-      const idf = Math.log(1 + (n - freq + 0.5) / (freq + 0.5));
-      score += idf * ((tf * (K1 + 1)) / (tf + K1 * (1 - B + (B * doc.length) / avgdl)));
-    }
-    return { ...e, score };
-  });
-  return scored
-    .filter((r) => r.score > 0)
-    .sort((a, b) => b.score - a.score || compare(a.server, b.server) || compare(a.tool.name, b.tool.name))
-    .slice(0, limit);
+  const tiebreak = (a: { server: string; tool: McpToolInfo }, b: { server: string; tool: McpToolInfo }): number => compare(a.server, b.server) || compare(a.tool.name, b.tool.name);
+  return bm25Rank(entries, (e) => `${e.tool.name} ${e.tool.name} ${e.server} ${e.tool.description}`, query, entries.length, tiebreak)
+    .map((r) => (exact(r.item) ? { ...r, score: Infinity } : r))
+    .sort((a, b) => b.score - a.score || tiebreak(a.item, b.item))
+    .slice(0, limit)
+    .map((r) => ({ server: r.item.server, tool: r.item.tool, score: r.score }));
 }
 
 function define<S extends z.ZodRawShape>(t: HarnessTool<S>): HarnessTool {
@@ -230,17 +210,20 @@ const LIST_TIMEOUT_MS = 15_000;
 export function routerTools(
   deps: {
     servers: (projectId: string | undefined) => McpServerEntry[];
-    listings: Pick<McpToolsCache, "refresh" | "peek">;
+    listings: Pick<McpToolsCache, "refresh" | "peek"> & Partial<Pick<McpToolsCache, "peekStale">>;
     pool: Pick<McpClientPool, "callTool">;
   },
   projectId?: string,
 ): HarnessTool[] {
   // Snapshot the cache synchronously: tools/list runs on every session open, so
-  // refreshing here would list every server before a turn even starts.
+  // refreshing here would list every server before a turn even starts. The
+  // stale fallback is the previous session's listing, so a cold start still
+  // shows the index.
   const enabled = deps.servers(projectId).filter((s) => s.enabled === true);
   const index = enabled.map((s) => {
     const listing = deps.listings.peek(s.spec);
-    return { name: s.name, tools: listing?.ok ? listing.tools.map((t) => t.name) : null };
+    const tools = listing?.ok ? listing.tools : deps.listings.peekStale?.(s.spec)?.tools;
+    return { name: s.name, tools: tools ? tools.map((t) => t.name) : null };
   });
   const searchDescription =
     "Search the MCP tools available in this project and get their input schemas. Call this before call_mcp_tool; pass an exact tool name to fetch that tool." +
@@ -257,21 +240,34 @@ export function routerTools(
       query: z.string().describe("What the tool should do, or its exact name"),
       limit: z.number().int().min(1).max(10).optional().describe("How many results (default 5)"),
     },
+    effect: "read",
     run: async ({ query, limit }, ctx) => {
       const enabled = deps.servers(ctx?.projectId).filter((s) => s.enabled === true);
       await deps.listings.refresh(enabled, LIST_TIMEOUT_MS);
       const entries: { server: string; tool: McpToolInfo }[] = [];
+      const unreachable: { name: string; error: string }[] = [];
       for (const server of enabled) {
         const listing = deps.listings.peek(server.spec);
+        // A server that failed to list is unreachable, not a server with no matching tool.
         if (listing?.ok) for (const tool of listing.tools) entries.push({ server: server.name, tool });
+        else unreachable.push({ name: server.name, error: listingError(listing?.error) });
       }
       if (!enabled.length) return { text: "No MCP servers are enabled for this project.", isError: true };
+      const reached = (s: { name: string }) => !unreachable.some((u) => u.name === s.name);
       const ranked = rankTools(entries, query, limit ?? 5);
       if (!ranked.length) {
+        if (unreachable.length === enabled.length) {
+          return { text: `Couldn't reach any MCP server: ${unreachable.map((u) => `${u.name} (${u.error})`).join(", ")}`, isError: true };
+        }
+        if (unreachable.length) {
+          const names = enabled.filter(reached).map((s) => s.name);
+          return { text: `No tool matched "${query}" on ${names.join(", ")}. Couldn't reach: ${unreachable.map((u) => `${u.name} (${u.error})`).join(", ")}.` };
+        }
         return { text: `No tool matched "${query}". Servers: ${enabled.map((s) => s.name).join(", ")}. Try other words or an exact tool name.` };
       }
       const out = ranked.map((r) => ({ server: r.server, tool: r.tool.name, description: r.tool.description, inputSchema: r.tool.inputSchema }));
-      return { text: JSON.stringify(out, null, 2) };
+      const missed = unreachable.length ? `\nCouldn't reach: ${unreachable.map((u) => `${u.name} (${u.error})`).join(", ")}; their tools aren't included.` : "";
+      return { text: JSON.stringify(out, null, 2) + missed };
     },
   });
 
@@ -284,6 +280,7 @@ export function routerTools(
       tool: z.string(),
       arguments: z.record(z.string(), z.unknown()).optional().describe("Arguments matching the tool's inputSchema from search_tools"),
     },
+    effect: "mutate",
     run: async ({ server, tool, arguments: rawArgs }, ctx) => {
       const enabled = deps.servers(ctx?.projectId).filter((s) => s.enabled === true);
       const target = enabled.find((s) => s.name === server);

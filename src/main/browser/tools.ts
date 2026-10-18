@@ -38,6 +38,7 @@ export function browserTools(browser: BrowserController): HarnessTool[] {
         device: z.enum(["mobile", "tablet", "desktop"]).optional().describe("Emulate a viewport before loading: mobile (390px), tablet (768px), or desktop (no emulation)"),
       },
       autoAllow: true,
+      effect: "mutate",
       run: ({ url, device }) =>
         gated(browser, async () => {
           browser.assertOpenAllowed();
@@ -53,6 +54,7 @@ export function browserTools(browser: BrowserController): HarnessTool[] {
         "Text snapshot of the current page in the browser pane: headings, text, and every link, button, and field with a ref like e3 for browser_click and browser_type. Refs change when the page changes; take a new snapshot after acting.",
       input: {},
       autoAllow: true,
+      effect: "read",
       run: () => gated(browser, async () => ({ text: await browser.snapshot() })),
     }),
     define({
@@ -60,6 +62,7 @@ export function browserTools(browser: BrowserController): HarnessTool[] {
       description: "Click the element with this ref from the latest browser_snapshot, as a real mouse click.",
       input: { ref: z.string().describe("Element ref from browser_snapshot, e.g. e7") },
       autoAllow: true,
+      effect: "mutate",
       run: ({ ref }) => gated(browser, async () => ({ text: await browser.click(ref) })),
     }),
     define({
@@ -71,6 +74,7 @@ export function browserTools(browser: BrowserController): HarnessTool[] {
         submit: z.boolean().optional().describe("Press Enter after typing"),
       },
       autoAllow: true,
+      effect: "mutate",
       run: ({ ref, text, submit }) => gated(browser, async () => ({ text: await browser.type(ref, text, submit ?? false) })),
     }),
     define({
@@ -79,6 +83,7 @@ export function browserTools(browser: BrowserController): HarnessTool[] {
         "Evaluate a JavaScript expression in the page and return its JSON value. For checks a snapshot can't show (localStorage, computed styles, app state).",
       input: { expression: z.string().describe("A JavaScript expression; may be async") },
       autoAllow: false,
+      effect: "mutate",
       run: ({ expression }) => gated(browser, async () => ({ text: await browser.evaluateForAgent(expression) })),
     }),
     define({
@@ -87,6 +92,7 @@ export function browserTools(browser: BrowserController): HarnessTool[] {
         "Console errors and warnings, uncaught exceptions, and failed or 4xx/5xx network requests since the page loaded. Check after each step of a UI test.",
       input: { clear: z.boolean().optional().describe("Clear the log after reading") },
       autoAllow: true,
+      effect: "read",
       run: ({ clear }) => gated(browser, async () => ({ text: await browser.readLogs(clear ?? false) })),
     }),
     define({
@@ -95,6 +101,7 @@ export function browserTools(browser: BrowserController): HarnessTool[] {
         "Save a screenshot of the browser pane and return its file path, as evidence for a report. Set look to also see the image (costs far more tokens than a snapshot).",
       input: { look: z.boolean().optional().describe("Return the image to you as well as saving it") },
       autoAllow: true,
+      effect: "read",
       run: ({ look }) =>
         gated(browser, async () => {
           const { path, png } = await browser.screenshot();

@@ -49,6 +49,7 @@ import { BUILT_IN_GUARD, findPython } from "./guard";
 import { PROVIDER_AGENT_PREFIX } from "./harness/driver";
 import { ProviderAgents } from "./harness/register";
 import { SessionStore } from "./harness/session";
+import { pruneOutputDir } from "./harness/tools/bound";
 import { createGuide, userGuidePath } from "./guide";
 import { createExpertCatalog } from "./experts/catalog";
 import { importExperts, removeImportedExpert } from "./experts/importer";
@@ -236,6 +237,8 @@ async function main(): Promise<void> {
   const store = new Store(join(userData, "unskilled.db"));
   // Content left behind by threads deleted before blobs were pruned on delete, off the startup path.
   setImmediate(() => store.pruneBlobs());
+  // Saved tool output from old turns, likewise off the startup path.
+  setImmediate(() => pruneOutputDir(join(userData, "harness-output")));
   const memory = createMemory({ root: join(userData, "memory", "projects"), home: homedir(), codexHome: process.env.CODEX_HOME || undefined });
   const secretBox: SecretBox = {
     // On Linux, isEncryptionAvailable() is true even with the plain-text fallback backend.
@@ -668,7 +671,8 @@ async function main(): Promise<void> {
   // Move any plain-text secrets left in mcp.json files from before the vault into it now, off the startup path.
   setImmediate(() => migrateMcpSecrets(mcpStore, mcpScopes, join(userData, "projects")));
   // The enabled servers' tool schemas, for the Context sheet; listed on demand.
-  const mcpTools = new McpToolsCache();
+  // Ok listings are also persisted by spec hash, so the next launch's index has them.
+  const mcpTools = new McpToolsCache(undefined, undefined, { file: join(userData, "mcp-tools-cache.json") });
   /** A server announced new tools: drop its listing, and the window asks again (debounced there). */
   const mcpToolsChanged = (spec: McpServerSpec | null) => {
     if (spec) mcpTools.invalidate(spec);
@@ -1709,6 +1713,7 @@ async function main(): Promise<void> {
     designWatcher.closeAll();
     shooter.close();
     terminals.dispose();
+    mcpTools.flush();
     void toolServer?.then((s) => s.close());
     void mcpPool.closeAll();
     void mcpGateway.closeAll();

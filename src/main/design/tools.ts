@@ -74,6 +74,7 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
         fullPage: z.boolean().optional().describe("Capture the whole scroll height (up to 4000 px); default false"),
       },
       autoAllow: true,
+      effect: "read",
       run: async (args) => {
         const page = pageOf(deps, threadId, args.path);
         if (!("rel" in page)) return page;
@@ -97,6 +98,7 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
         width: z.number().optional().describe("Viewport width in CSS px, 320-2560; default 1440"),
       },
       autoAllow: true,
+      effect: "read",
       run: async (args) => {
         const page = pageOf(deps, threadId, args.path);
         if (!("rel" in page)) return page;
@@ -118,6 +120,7 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
         markdown: z.string().describe("The full critique in markdown"),
       },
       autoAllow: true,
+      effect: "mutate",
       run: async (args) => {
         const text = args.markdown.trim();
         if (!text) return { text: "The critique is empty.", isError: true };

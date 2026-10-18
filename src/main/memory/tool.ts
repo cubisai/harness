@@ -79,6 +79,7 @@ export function memoryReadTool(deps: { store: MemoryStore; enabled: (projectId: 
       query: z.string().optional().describe("Words to search for across note names, descriptions and bodies"),
     },
     autoAllow: true,
+    effect: "read",
     run: async (args, ctx) => {
       if (!ctx?.projectId || !deps.enabled(ctx.projectId)) {
         return { text: "Project memory is off or unavailable for this session.", isError: true };
@@ -172,6 +173,7 @@ export function memoryWriteTool(deps: { store: MemoryStore; enabled: (projectId:
       supersedes: z.string().optional().describe("For add: the file of the note this one replaces; that note is deleted"),
     },
     autoAllow: true,
+    effect: "mutate",
     run: async (args, ctx) => {
       if (!ctx?.projectId || !deps.enabled(ctx.projectId)) {
         return { text: "Project memory is off or unavailable for this session.", isError: true };

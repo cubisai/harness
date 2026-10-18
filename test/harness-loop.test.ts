@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ThreadEvent } from "../src/shared/types";
-import { REPEAT_FAIL_NOTE, UNBACKED_PASS_NOTE, runLoop, type LoopInput, type LoopTool } from "../src/main/harness/loop";
+import { REPEAT_FAIL_NOTE, UNBACKED_PASS_NOTE, runLoop, runsInParallel, type LoopInput, type LoopTool } from "../src/main/harness/loop";
 import { decide, refusal } from "../src/main/harness/permissions";
 import type { Route } from "../src/main/harness/llm/client";
 import { LlmError, emptyUsage, type AssistantPart, type LlmEvent, type LlmMessage, type LlmRequest } from "../src/main/harness/llm/types";
@@ -26,8 +26,15 @@ function script(...answers: (AssistantPart[] | ((req: LlmRequest) => AssistantPa
   return { stream: stream as LoopInput["stream"], requests };
 }
 
-function tool(name: string, access: LoopTool["access"], run: LoopTool["run"] = async () => ({ text: `${name} ok` })): LoopTool {
-  return { definition: { name, description: name, parameters: { type: "object", properties: {} } }, displayName: name.toUpperCase(), access, summarize: (a) => String(a.path ?? name), run };
+function tool(name: string, access: LoopTool["access"], run: LoopTool["run"] = async () => ({ text: `${name} ok` }), parallel?: boolean): LoopTool {
+  return {
+    definition: { name, description: name, parameters: { type: "object", properties: {} } },
+    displayName: name.toUpperCase(),
+    access,
+    ...(parallel === undefined ? {} : { parallel }),
+    summarize: (a) => String(a.path ?? name),
+    run,
+  };
 }
 
 function setup(over: Partial<LoopInput> & { stream: LoopInput["stream"] }) {
@@ -92,6 +99,57 @@ describe("runLoop", () => {
     expect(peak).toBe(3);
     const results = (messages[2] as Extract<LlmMessage, { role: "tool" }>).results;
     expect(results.map((r) => r.text)).toEqual(["read:1", "read:2", "read:3", "edit:4", "edit:5"]);
+  });
+
+  it("never overlaps read calls marked not parallel, and keeps their order", async () => {
+    let active = 0;
+    let peak = 0;
+    const order: string[] = [];
+    const serial = tool(
+      "read",
+      "read",
+      async (args) => {
+        order.push(`start:${String(args.n)}`);
+        active++;
+        peak = Math.max(peak, active);
+        await new Promise((r) => setTimeout(r, 20));
+        active--;
+        order.push(`end:${String(args.n)}`);
+        return { text: `read:${String(args.n)}` };
+      },
+      false,
+    );
+    const s = script([call("a", "read", { n: 1 }), call("b", "read", { n: 2 }), call("c", "read", { n: 3 })], text("ok"));
+    const { input, messages } = setup({ stream: s.stream, tools: [serial] });
+    await runLoop(input);
+    expect(peak).toBe(1);
+    expect(order).toEqual(["start:1", "end:1", "start:2", "end:2", "start:3", "end:3"]);
+    const results = (messages[2] as Extract<LlmMessage, { role: "tool" }>).results;
+    expect(results.map((r) => r.text)).toEqual(["read:1", "read:2", "read:3"]);
+  });
+
+  it("overlaps an edit marked parallel with read calls", async () => {
+    let active = 0;
+    let peak = 0;
+    const slow = (name: string, access: LoopTool["access"], parallel?: boolean) =>
+      tool(
+        name,
+        access,
+        async (args) => {
+          active++;
+          peak = Math.max(peak, active);
+          await new Promise((r) => setTimeout(r, 20));
+          active--;
+          return { text: `${name}:${String(args.n)}` };
+        },
+        parallel,
+      );
+    const s = script([call("a", "edit", { n: 1 }), call("b", "read", { n: 2 }), call("c", "read", { n: 3 })], text("ok"));
+    const { input, messages } = setup({ stream: s.stream, tools: [slow("edit", "edit", true), slow("read", "read")] });
+    await runLoop(input);
+    expect(peak).toBe(3);
+    const results = (messages[2] as Extract<LlmMessage, { role: "tool" }>).results;
+    expect(results.map((r) => r.text)).toEqual(["edit:1", "read:2", "read:3"]);
   });
 
   it("reports refusals, unknown tools, bad JSON and tool errors to the model", async () => {
@@ -316,6 +374,16 @@ describe("nudges", () => {
     const { input, messages } = setup({ stream: repeatFail().stream, tools: repeatFailTools() });
     expect(await runLoop(input)).toMatchObject({ stop: "done", steps: 6 });
     expect(bashTexts(messages)).toEqual(["boom", "boom", "boom"]);
+  });
+});
+
+describe("runsInParallel", () => {
+  it("defaults to the legacy read rule and lets explicit flags win", () => {
+    expect(runsInParallel(undefined)).toBe(false);
+    expect(runsInParallel(tool("read", "read"))).toBe(true);
+    expect(runsInParallel(tool("edit", "edit"))).toBe(false);
+    expect(runsInParallel(tool("read", "read", undefined, false))).toBe(false);
+    expect(runsInParallel(tool("edit", "edit", undefined, true))).toBe(true);
   });
 });
 

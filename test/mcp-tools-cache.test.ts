@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { listServerTools, McpToolsCache, type McpToolInfo } from "../src/main/mcp/servers";
@@ -84,5 +84,75 @@ describe("McpToolsCache", () => {
     await cache.refresh([entry("a", false)]);
     expect(calls).toBe(0);
     expect(cache.peek(spec)).toBeNull();
+  });
+
+  it("persists ok listings by spec hash, never the spec or its secrets", async () => {
+    const file = join(tempDir(), "mcp-tools-cache.json");
+    const secretSpec: McpServerSpec = { type: "stdio", command: "x", env: { API_KEY: "sk-secret-123" } };
+    const a = new McpToolsCache(async () => ({ ok: true, tools: [info("a")] }), undefined, { file });
+    await a.refresh([entry("secret", true, secretSpec)]);
+    a.flush();
+    const raw = readFileSync(file, "utf-8");
+    expect(raw).not.toContain("sk-secret-123");
+    expect(raw).not.toContain("API_KEY");
+
+    let calls = 0;
+    const b = new McpToolsCache(
+      async () => {
+        calls++;
+        return { ok: true, tools: [info("b")] };
+      },
+      undefined,
+      { file },
+    );
+    expect(b.peek(secretSpec)).toBeNull();
+    expect(b.peekStale(secretSpec)).toMatchObject({ tools: [info("a")] });
+    await b.refresh([entry("secret", true, secretSpec)]);
+    expect(calls).toBe(1);
+  });
+
+  it("keeps a persisted server this session never listed", async () => {
+    const file = join(tempDir(), "mcp-tools-cache.json");
+    const other: McpServerSpec = { type: "stdio", command: "other" };
+    const a = new McpToolsCache(async () => ({ ok: true, tools: [info("a")] }), undefined, { file });
+    await a.refresh([entry("other", true, other)]);
+    a.flush();
+    const b = new McpToolsCache(async () => ({ ok: true, tools: [info("b")] }), undefined, { file });
+    await b.refresh([entry("a")]);
+    b.flush();
+    const c = new McpToolsCache(undefined, undefined, { file });
+    expect(c.peekStale(other)).toMatchObject({ tools: [info("a")] });
+    expect(c.peekStale(spec)).toMatchObject({ tools: [info("b")] });
+  });
+
+  it("doesn't persist a failed listing", async () => {
+    const file = join(tempDir(), "mcp-tools-cache.json");
+    const cache = new McpToolsCache(async () => ({ ok: false, tools: [], error: "down" }), undefined, { file });
+    await cache.refresh([entry("a")]);
+    cache.flush();
+    const loaded = new McpToolsCache(undefined, undefined, { file });
+    expect(loaded.peekStale(spec)).toBeNull();
+  });
+
+  it("ignores a corrupt cache file", () => {
+    const file = join(tempDir(), "mcp-tools-cache.json");
+    writeFileSync(file, "{not json");
+    const cache = new McpToolsCache(undefined, undefined, { file });
+    expect(cache.peekStale(spec)).toBeNull();
+  });
+
+  it("caps the persisted cache at 200 entries, newest first", async () => {
+    const file = join(tempDir(), "mcp-tools-cache.json");
+    let now = 0;
+    const cache = new McpToolsCache(async () => ({ ok: true, tools: [info("a")] }), () => now, { file });
+    for (let i = 0; i < 201; i++) {
+      now += 1;
+      await cache.refresh([entry(`s${i}`, true, { type: "stdio", command: `c${i}` })]);
+    }
+    cache.flush();
+    const parsed = JSON.parse(readFileSync(file, "utf-8")) as { entries: Record<string, { at: number }> };
+    expect(Object.keys(parsed.entries)).toHaveLength(200);
+    const ats = Object.values(parsed.entries).map((e) => e.at);
+    expect(ats).toEqual([...ats].sort((a, b) => b - a));
   });
 });

@@ -32,6 +32,8 @@ export function createProposePlanTool(opts: {
     },
     displayName: "Plan",
     access: "read",
+    // Presenting a plan waits on the user, so it never shares a batch.
+    parallel: false,
     summarize: (args) => {
       const first = String(args.plan ?? "").trim().split("\n")[0]?.trim() ?? "";
       return first || "Plan";

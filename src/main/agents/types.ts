@@ -35,6 +35,8 @@ export interface HarnessTool<Shape extends ZodRawShape = ZodRawShape> {
   input: Shape;
   /** Safe to run without asking in "ask" mode. */
   autoAllow: boolean;
+  /** What running it does, for scheduling (not permission): "read" calls may overlap; "mutate" calls run alone, in order. Absent: the legacy rule (autoAllow runs like a read). */
+  effect?: "read" | "mutate";
   run(args: z.infer<z.ZodObject<Shape>>, ctx?: ToolContext): Promise<ToolOutput>;
 }
 

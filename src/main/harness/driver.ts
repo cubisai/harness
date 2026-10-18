@@ -24,6 +24,7 @@ import { estimateMessages, estimateText } from "./context/estimate";
 import { contextFiles } from "./context/files";
 import { pruneToolOutputs } from "./context/prune";
 import { nativeTools, shellFor, todosOf, type NativeTool, type ToolContext } from "./tools";
+import { bound } from "./tools/bound";
 import { resolvePath } from "./tools/paths";
 
 /** Agent ids of provider agents: `provider-<providerId>`. */
@@ -319,10 +320,10 @@ async function runTurn(
     const i = system.indexOf(PLAN_MODE_NOTE);
     if (i >= 0) system.splice(i, 1);
   } }) : null;
-  const appTools = [...input.tools, ...deps.mcpTools(input.projectId)].map((t) => appLoopTool(t, input));
-  const askLoop = input.requestUserInput ? appLoopTool(askUserTool((_threadId, questions) => input.requestUserInput!(questions)), input) : null;
+  const appTools = [...input.tools, ...deps.mcpTools(input.projectId)].map((t) => appLoopTool(t, input, deps.outputDir));
+  const askLoop = input.requestUserInput ? appLoopTool(askUserTool((_threadId, questions) => input.requestUserInput!(questions)), input, deps.outputDir) : null;
   const skill = deps.skills?.(input.cwd, Boolean(input.design), input.threadId) ?? null;
-  const skillLoop = skill ? appLoopTool(skill, input) : null;
+  const skillLoop = skill ? appLoopTool(skill, input, deps.outputDir) : null;
   // The task tool is read-only and runs in every mode; it hands its children the
   // three read-only native tools only, never the app's tools or propose_plan. A
   // team thread's members also get the team channel tools (team_write and co).
@@ -472,7 +473,7 @@ function nativeLoopTool(tool: NativeTool, ctxFor: (callId: string, signal: Abort
 }
 
 /** One of the app's tools (browser, memory, design, MCP router) in the loop. */
-function appLoopTool(tool: HarnessTool, input: TurnInput): LoopTool {
+function appLoopTool(tool: HarnessTool, input: TurnInput, outputDir: string): LoopTool {
   let parameters: Record<string, unknown>;
   try {
     const { $schema: _schema, ...schema } = z.toJSONSchema(z.object(tool.input), { io: "input", unrepresentable: "any" }) as Record<string, unknown>;
@@ -485,6 +486,8 @@ function appLoopTool(tool: HarnessTool, input: TurnInput): LoopTool {
     displayName: tool.name,
     // Safe tools run in any mode; the rest ask in "ask" mode, like an edit.
     access: tool.autoAllow ? "read" : "edit",
+    // Permission and scheduling are separate: a tool may be safe to run without asking yet still change state.
+    parallel: tool.effect ? tool.effect === "read" : tool.autoAllow,
     summarize: (args) => {
       const first = Object.values(args).find((v) => typeof v === "string");
       return typeof first === "string" ? first : tool.name;
@@ -493,7 +496,9 @@ function appLoopTool(tool: HarnessTool, input: TurnInput): LoopTool {
       const parsed = z.object(tool.input).safeParse(args);
       if (!parsed.success) return { text: `Invalid arguments for ${tool.name}: ${parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`, isError: true };
       const out = await tool.run(parsed.data as never, { ...(input.projectId ? { projectId: input.projectId } : {}), threadId: input.threadId, signal: call.signal });
-      return { text: out.text, ...(out.isError ? { isError: true } : {}), ...(out.imagePng ? { imagePng: out.imagePng } : {}) };
+      // A skill's body is instructions, not output: it reaches the model whole. Anything else is bounded like a native tool's result.
+      const text = tool.name === "skill" ? out.text : bound(out.text, { outputDir, callId: call.id });
+      return { text, ...(out.isError ? { isError: true } : {}), ...(out.imagePng ? { imagePng: out.imagePng } : {}) };
     },
   };
 }
