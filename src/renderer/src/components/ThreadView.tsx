@@ -17,7 +17,7 @@ import { ReasoningBlock } from "./ReasoningBlock";
 import { SubagentCard } from "./SubagentCard";
 import { activityOf, WaitingLine } from "./WaitingLine";
 import { useSmoothText } from "../hooks/useSmoothText";
-import { segmentEvents, type Segment, type TurnChanges, workDuration, workSummary } from "../turns";
+import { createSegmenter, type Segment, type TurnChanges, workDuration, workSummary } from "../turns";
 
 type ToolEvent = Extract<ThreadEvent, { kind: "tool-use" }>;
 type ResultEvent = Extract<ThreadEvent, { kind: "tool-result" }>;
@@ -146,8 +146,15 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
   // What the thread actually renders: notices written for a message show above it,
   // tool runs fold into "Worked for" groups, and each turn ends with its footer.
   const displayEvents = useMemo(() => displayOrder(events), [events]);
+  // One segmenter per thread: it caches closed turns, so a live event only re-segments the open tail.
+  const segmenter = useRef(createSegmenter());
+  const segmenterThread = useRef(threadId);
+  if (segmenterThread.current !== threadId) {
+    segmenter.current = createSegmenter();
+    segmenterThread.current = threadId;
+  }
   const segments = useMemo(
-    () => segmentEvents(displayEvents.filter((e) => !stalePlans.has(e.seq) && !hiddenChecks.has(e.seq) && !e.event.parentId), running),
+    () => segmenter.current(displayEvents.filter((e) => !stalePlans.has(e.seq) && !hiddenChecks.has(e.seq) && !e.event.parentId), running),
     [displayEvents, stalePlans, hiddenChecks, running],
   );
   const lastTurnEnd = useMemo(() => {

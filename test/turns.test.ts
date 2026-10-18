@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { segmentEvents, workDuration, workSummary } from "../src/renderer/src/turns";
+import { createSegmenter, segmentEvents, workDuration, workSummary } from "../src/renderer/src/turns";
 import type { StoredEvent, ThreadEvent } from "../src/shared/types";
 
 let seq = 0;
@@ -57,6 +57,13 @@ describe("segmentEvents", () => {
   it("has no changes for a turn that edited nothing", () => {
     const segs = segmentEvents([at(0, { kind: "user", text: "q" }), text(1, "a"), end(2)], false);
     expect(segs.at(-1)).toMatchObject({ kind: "turn-end", changes: null, answer: "a" });
+  });
+
+  it("createSegmenter matches segmentEvents on the fixture turns", () => {
+    const closed = turn();
+    expect(createSegmenter()(closed, false)).toEqual(segmentEvents(closed, false));
+    const open = turn().slice(0, 5);
+    expect(createSegmenter()(open, true)).toEqual(segmentEvents(open, true));
   });
 });
 
