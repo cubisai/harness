@@ -81,6 +81,7 @@ function setup(
     plan?: PlanDecision;
     requestUserInput?: TurnInput["requestUserInput"];
     memory?: ProviderDriverDeps["memory"];
+    codeMode?: () => boolean;
   } = {},
 ) {
   const cwd = tmp();
@@ -100,6 +101,7 @@ function setup(
     memory: opts.memory ?? (() => "MEMORY TEXT"),
     mcpTools: () => [],
     ...(opts.skills ? { skills: opts.skills } : {}),
+    ...(opts.codeMode ? { codeMode: opts.codeMode } : {}),
     stream: opts.stream ?? s.stream,
   });
   const events: ThreadEvent[] = [];
@@ -630,6 +632,38 @@ describe("provider driver", () => {
       await t.driver.runTurn(t.input("hi"));
       expect(t.requests[0]!.tools.map((x) => x.name)).toContain(TASK_TOOL);
     }
+  });
+
+  it("offers run_code only when code mode is on", async () => {
+    const off = setup([[{ type: "text", text: "ok" }]]);
+    await off.driver.runTurn(off.input("hi"));
+    expect(off.requests[0]!.tools.map((x) => x.name)).not.toContain("run_code");
+
+    const on = setup([[{ type: "text", text: "ok" }]], { codeMode: () => true });
+    await on.driver.runTurn(on.input("hi"));
+    expect(on.requests[0]!.tools.map((x) => x.name)).toContain("run_code");
+  });
+
+  it("authorizes each run_code inner call and surfaces a denial inside the script", async () => {
+    const code = "await tools.write({ path: 'x.txt', content: 'x' }); return 'wrote';";
+    const t = setup([[{ type: "tool-call", id: "c1", name: "run_code", input: { code } }], [{ type: "text", text: "ok" }]], { mode: "ask", codeMode: () => true });
+    const asked: string[] = [];
+    await t.driver.runTurn({
+      ...t.input("go"),
+      requestPermission: async (r) => {
+        asked.push(`${r.toolName}: ${r.summary}`);
+        return r.toolName === "run_code" ? "allow-once" : "deny";
+      },
+    });
+    expect(asked).toEqual([`run_code: ${code}`, "Write: x.txt"]);
+    // The denied inner call throws inside the script, so run_code itself reports the error.
+    const result = (t.requests[1]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!;
+    expect(result.isError).toBe(true);
+    expect(result.text).toMatch(/denied/i);
+    expect(existsSync(join(t.cwd, "x.txt"))).toBe(false);
+    // The refused inner call is still a visible child row, with its refusal as the result.
+    expect(t.events.find((e) => e.kind === "tool-use" && e.parentId === "c1")).toMatchObject({ name: "Write", summary: "x.txt" });
+    expect(t.events.find((e) => e.kind === "tool-result" && e.parentId === "c1")).toMatchObject({ isError: true });
   });
 });
 

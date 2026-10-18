@@ -205,6 +205,8 @@ export interface Settings {
   memory?: { enabled: boolean; disabledProjects: string[] };
   /** MCP tool search for agents without their own: "auto" routes when 20+ tools are enabled (default), "off" never. */
   mcpRouter?: "auto" | "off";
+  /** Pilot: the native agent gets a run_code tool that scripts other tools in a sandbox. Default off. */
+  codeMode?: "off" | "on";
   /** Sidebar Recent section grouped by project (true, the default when unset) or one flat list (false). */
   sidebarGroupByProject?: boolean;
   /** Tell agents they may answer with inline UI blocks (checklist, calculator, …). Off unless set: it costs guide tokens. */

@@ -43,6 +43,7 @@
     "lucide-react": "^1.48.0",
     "mammoth": "^1.13.0",
     "node-pty": "1.1.0",
+    "quickjs-emscripten": "0.32.0",
     "thinking-orbs": "0.3.2",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "4.6.5"

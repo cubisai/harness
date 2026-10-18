@@ -25,6 +25,7 @@ import { contextFiles } from "./context/files";
 import { pruneToolOutputs } from "./context/prune";
 import { nativeTools, shellFor, todosOf, type NativeTool, type ToolContext } from "./tools";
 import { bound } from "./tools/bound";
+import { createCodeTool } from "./tools/code";
 import { resolvePath } from "./tools/paths";
 
 /** Agent ids of provider agents: `provider-<providerId>`. */
@@ -46,6 +47,8 @@ export interface ProviderDriverDeps {
   mcpTools(projectId?: string): HarnessTool[];
   /** The model-invoked skills tool for this folder, or null when there are none; `threadId` adds that thread's expert's own skills. */
   skills?(cwd: string, design: boolean, threadId?: string): HarnessTool | null;
+  /** P3.5 pilot: offer the `run_code` sandbox tool. */
+  codeMode?: () => boolean;
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform;
   /** Tests. */
@@ -145,6 +148,12 @@ export function createProviderDriver(providerId: string, deps: ProviderDriverDep
     },
   };
 }
+
+/** One line of text for a thread row: the first line, trimmed to a summary length. */
+const oneLine = (text: string, max = 160): string => {
+  const line = text.trim().split("\n")[0] ?? "";
+  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+};
 
 function errorText(err: unknown): string {
   if (err instanceof LlmError && err.kind === "overflow") return `${err.message} The conversation is longer than the model's context window; start a new thread or switch to a model with a larger one.`;
@@ -344,7 +353,45 @@ async function runTurn(
     ...(deps.stream ? { stream: deps.stream } : {}),
     ...(input.team?.length ? { team: input.team, memberTools: () => appTools.filter((t) => t.definition.name.startsWith("team_")) } : {}),
   });
-  const tools = [...nativeLoop, ...appTools, ...(skillLoop ? [skillLoop] : []), ...(planLoop ? [planLoop] : []), ...(askLoop ? [askLoop] : []), taskLoop].filter((t, i, all) => all.findIndex((o) => o.definition.name === t.definition.name) === i);
+  // P3.5 pilot: with code mode on, one sandboxed script can chain the other
+  // tools. Every call the script makes goes back through authorize, so ask mode
+  // still asks and the thread still shows each call.
+  let childCalls = 0;
+  const codeLoop: LoopTool | null = deps.codeMode?.()
+    ? createCodeTool({
+        tools: () => tools,
+        outputDir: deps.outputDir,
+        broker: async (name, args, parentId, signal) => {
+          const tool = tools.find((t) => t.definition.name === name);
+          if (!tool) return { text: `There's no tool named "${name}".`, isError: true };
+          let summary: string;
+          try {
+            summary = tool.summarize(args) || tool.displayName;
+          } catch {
+            summary = tool.displayName;
+          }
+          // The row goes up before the permission ask, so a refused call shows in the thread too.
+          const toolUseId = `${parentId}:${++childCalls}`;
+          input.onEvent({ kind: "tool-use", toolUseId, name: tool.displayName, summary, parentId });
+          const auth = await authorize(tool, args, summary);
+          if (!auth.ok) {
+            input.onEvent({ kind: "tool-result", toolUseId, isError: true, summary: oneLine(auth.reason), parentId });
+            return { text: auth.reason, isError: true };
+          }
+          try {
+            const result = await tool.run(args, { id: toolUseId, signal, onOutput: () => {} });
+            const text = bound(result.text, { outputDir: deps.outputDir, callId: toolUseId });
+            input.onEvent({ kind: "tool-result", toolUseId, isError: result.isError === true, summary: oneLine(text), payload: result.display?.result ?? text, parentId });
+            return { text, isError: result.isError === true };
+          } catch (err) {
+            const text = `${tool.displayName} failed: ${err instanceof Error ? err.message : String(err)}`;
+            input.onEvent({ kind: "tool-result", toolUseId, isError: true, summary: oneLine(text), parentId });
+            return { text, isError: true };
+          }
+        },
+      })
+    : null;
+  const tools: LoopTool[] = [...nativeLoop, ...appTools, ...(skillLoop ? [skillLoop] : []), ...(planLoop ? [planLoop] : []), ...(askLoop ? [askLoop] : []), taskLoop, ...(codeLoop ? [codeLoop] : [])].filter((t, i, all) => all.findIndex((o) => o.definition.name === t.definition.name) === i);
 
   // A brand-new session's first turn gets a one-line token breakdown of what it starts with.
   if (createdNew) {

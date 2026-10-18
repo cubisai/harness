@@ -779,6 +779,7 @@ async function main(): Promise<void> {
       const list = forAgent(skillsFor(cwd), { mode: "tool", reads: [] }, new Set(), { design });
       return list.length ? skillTool(() => list) : null;
     },
+    codeMode: () => settings.get().codeMode === "on",
   });
   const syncProviderAgents = () => service.syncDrivers(PROVIDER_AGENT_PREFIX, providerAgents.list());
   syncProviderAgents();
