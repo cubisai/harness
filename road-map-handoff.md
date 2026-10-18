@@ -10,13 +10,13 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 
 ## Resume here (stopped 2026-10-18 at the owner's request; start a new session from this section)
 
-**Progress:** 29 of 40 points done. P1–P4 are complete and merged into `roadmap`. That branch is green: typecheck, design:check, vitest (environment failures only), validate-graders, and live turns on Claude, Codex and OpenCode Zen.
+**Progress:** 29 of 40 points done. P1–P4 and P5.1–P5.3 are merged into `roadmap`. That branch is green: typecheck, design:check, vitest (environment failures only), validate-graders, and live turns on Claude, Codex and OpenCode Zen.
 
 **Worktrees** (all siblings of this one under `D:/Cubebis Work/ai-agent/`; each has its own `node_modules`):
 | Worktree | Branch | State |
 | --- | --- | --- |
-| `harness-roadmap` | `roadmap` | P1–P4 merged. This handoff lives here. |
-| `harness-roadmap-p5` | `roadmap-p5` | P5.1–P5.3 committed (`665281e`, `19ce7a8`, `93cc180`). Next: **P5.4**, then P5.5. Plan: `.ai/plans/p5.md` there. Branched before the P2 merge, so merge `roadmap` into it (or rebase) before the final merge. |
+| `harness-roadmap` | `roadmap` | P1–P4 and P5.1–P5.3 merged (pushed to origin). This handoff lives here. |
+| `harness-roadmap-p5` | `roadmap-p5` | P5.1–P5.3 committed (`665281e`, `19ce7a8`, `93cc180`). Next: **P5.4**, then P5.5. Plan: `.ai/plans/p5.md` there. Merged into `roadmap` through P5.3; merge `roadmap` back into it before continuing. |
 | `harness-roadmap-p6` | `roadmap-p6` | **P6.1 has UNCOMMITTED, UNVERIFIED partial edits** (claude.ts, experts/catalog.ts, harness/driver.ts, harness/subagent.ts, inject/opencode.ts, ExpertDetail.tsx, app.css, shared/experts.ts) from a worker the system killed for low memory. Review the diff against the brief `.ai/tmp/p61.brief.txt` there, finish it (tests are missing), then verify. Plan: `.ai/plans/p6.md` there. |
 | `harness-roadmap-p2/-p3/-p4` | `roadmap-p2/3/4` | Done and merged. They can be removed (`git worktree remove`). |
 
@@ -76,9 +76,9 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 | P4.3 Ranked retrieval + corrections | done | `1a009a2` + `0a1c697` |
 | P4.4 Pruning keeps references | done | `573bba6` |
 | P4.5 Memory updates once per binding | done | `9d81425` |
-| P5.1 Browser auto-open | done (branch roadmap-p5) | `665281e` |
-| P5.2 Backend interface + headless agent-browser | done (branch roadmap-p5) | `19ce7a8` |
-| P5.3 Target ownership + serialization | done (branch roadmap-p5) | `93cc180` |
+| P5.1 Browser auto-open | done | `665281e` |
+| P5.2 Backend interface + headless agent-browser | done | `19ce7a8` |
+| P5.3 Target ownership + serialization | done | `93cc180` |
 | P5.4 Readiness, stale refs, compact observations | next | |
 | P5.5 Dev-server lifecycle + test reports | | |
 | P6.1 Member model/effort | partial, uncommitted (roadmap-p6) | |
@@ -232,3 +232,4 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
   - Evals: tasks that require `browser` now run on a fresh headless session per trial (skipped only when the CLI is missing). `browser-smoke` uses a self-contained `data:` page, and a real end-to-end test passes on this PC.
 - P5.3: `TargetLock` in tools.ts. Page-changing tools (open, click, type, eval) queue per target. The last acting thread owns the pane, and while its turn runs (`service.isRunning`) another thread's action is refused with a clear message. Reads stay open to everyone.
 - Checks: typecheck green; vitest 2705 passed, 10 failed (environment-only); validate-graders exit 0.
+- P5.1–P5.3 merged into roadmap (2026-10-18): typecheck green; vitest 2761 passed, 9 failed (environment-only); validate-graders exit 0.
