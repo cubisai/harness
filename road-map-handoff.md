@@ -10,9 +10,17 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 
 ## Resume here
 
-P1 is done. Next: **P2, P3 and P4 in parallel worktrees** (`roadmap-p2`, `-p3`, `-p4` from `roadmap`, each with its own `bun install`), merged back in order P3 → P4 → P2. P4.4 waits for P3.4. Fresh research is needed: the rp2–4 research notes live only on the other PC.
-- **Workers on the Windows PC:** Zen's free models (`opencode/deepseek-v4.1-flash-free`, `opencode/glm-5.3-flash-free`) work without a key. The stored Zen key in `auth.json` has expired and is sent anyway, so dispatch with `XDG_DATA_HOME` pointed at a short empty dir and `OPENCODE_BIN=C:/Users/laplop/.bun/bin/opencode.exe` (oc-run only looks under npm), plus `--chain opencode/deepseek-v4.1-flash-free,opencode/glm-5.3-flash-free`.
-- **Baseline on that PC:** the full suite has about 9–11 environment failures on a clean tree: TokenHarbor live tests, codex-e2e MCP, opencode-guard EPERM/timeout, and load timeouts. Compare failing files against that list, not against zero.
+- **P3 and P4 are done and merged into `roadmap`.** P2 is in progress in worktree `../harness-roadmap-p2` (branch `roadmap-p2`): P2.1a–P2.3 are done, P2.4 is next, then P2.5–P2.7. Merge it last.
+- **Still owed after the P2 merge:**
+  - one live turn each on Claude, Codex and OpenCode Zen;
+  - the real-app UI check for P2.1b/P2.3 (DESIGN §9: light/dark, 900px, keyboard, screenshot).
+- **Then:** P5 and P6 (they can run in parallel worktrees), P7, then P8.
+- **Workers on the Windows PC:**
+  - Zen's free models need `XDG_DATA_HOME` pointed at a short, empty, key-less dir (e.g. `D:/ocz-a`).
+  - Also set `OPENCODE_BIN=C:/Users/laplop/.bun/bin/opencode.exe` and `--chain opencode/deepseek-v4.1-flash-free,opencode/glm-5.3-flash-free`.
+  - The free endpoints sometimes drop connections ("Task cancelled", "Endpoint is unavailable"): retry, or finish the point yourself.
+- **Baseline on that PC:** about 7–11 environment failures (TokenHarbor live tests, codex-e2e, opencode-guard EPERM/timeout, and the memory-tool 70-note test near its 15 s limit). `check`, `switch` and `mcp-router` can fail under load but pass alone.
+- **Research notes** for P2–P4: `.ai/research_notes/roadmap13-p{2,3,4}.md` (gitignored, Windows PC).
 
 ## Status
 
@@ -25,8 +33,23 @@ P1 is done. Next: **P2, P3 and P4 in parallel worktrees** (`roadmap-p2`, `-p3`, 
 | P1.5 Grader validation | done | `8d07bde` + fix `f2dff88` |
 | P1.6 Multi-turn scenarios | done | `4074952` |
 | P1.7 Case set expansion | done | `71b16ee` |
-| P1.8 Desktop baseline fixtures | done | (this commit) |
-| P2–P8 | not started | |
+| P1.8 Desktop baseline fixtures | done | `088abd2` |
+| P2.1a Paged event reads (main + IPC) | done (branch roadmap-p2) | `6597a8f` |
+| P2.1b Renderer paging | done (branch roadmap-p2) | `17b4c17` |
+| P2.2 Incremental projection | done (branch roadmap-p2) | `ed0afdf` |
+| P2.3 Windowed transcript | done (branch roadmap-p2) | `4b0c19f` |
+| P2.4–P2.7 | in progress | |
+| P3.1 Tool effects | done | `a3b53f1` |
+| P3.2 Skill catalog index + search | done | `3aab6b2` |
+| P3.3 MCP catalog persistence | done | `0218cf4` |
+| P3.4 Result references | done | `00008a1` |
+| P3.5 Code-mode pilot (off by default) | done | `cc27d00` |
+| P4.1 Background runs accounting | done | `bbeecc2` |
+| P4.2 Scope-aware extractor dedupe | done | `6199d02` |
+| P4.3 Ranked retrieval + corrections | done | `1a009a2` + `0a1c697` |
+| P4.4 Pruning keeps references | done | `573bba6` |
+| P4.5 Memory updates once per binding | done | `9d81425` |
+| P5–P8 | not started | |
 
 ## Log
 
@@ -133,3 +156,18 @@ P1 is done. Next: **P2, P3 and P4 in parallel worktrees** (`roadmap-p2`, `-p3`, 
   - listThreads: about 10 ms for 21 projects
 - So P2.1 (paged reads) is the big lever.
 - Checks: typecheck green; vitest 2607 passed, 9 failed, all environment-only.
+
+### P3 + P4 merged into roadmap (2026-10-18)
+- **P3 (lazy capability discovery):**
+  - P3.1: `HarnessTool.effect` and `LoopTool.parallel` separate scheduling from permission. Mutating auto-allowed tools (browser_open/click/type, memory_write, team_write/post/board, ask_user, design_critique_save) no longer run in parallel. `readOnlyHint` goes to Claude and the HTTP MCP server.
+  - P3.2: past 40 skills or 6k chars, the skill tool becomes a names-only index with BM25 `query` search (`src/main/search/bm25.ts`). At 200 skills the description shrinks from 37.6k to 4.8k chars.
+  - P3.3: MCP tool listings are persisted by spec hash (no secrets) in `userData/mcp-tools-cache.json`, so a cold start still shows the index. search_tools reports unreachable servers separately from "no match".
+  - P3.4: app/MCP/browser tool text goes through `bound()`; added `savedOutputOf`; `harness-output` files are pruned after 14 days.
+  - P3.5: `Settings.codeMode = "on"` gives the native agent `run_code` (QuickJS via `quickjs-emscripten@0.32.0`, pinned). Every inner call is authorized and shown as a child row, a refused one included. Packaging of the WASM file under electron-builder is not tested yet.
+- **P4 (context, memory, background spending):**
+  - P4.1: `background_runs` table; memory extraction is accounted, capped by `learn.memoryDailyTokens` (200k), and uses the explicit background model when one is set.
+  - P4.2: the extractor sees global notes as `global/<file>` and merges same-name or near-duplicate adds.
+  - P4.3: `.meta.json` correction sidecar; corrections come first; BM25 `memory_read`; `supersedes` removes the stale note.
+  - P4.4: pruned results name their saved full output (written at prune time if needed); `retentionFor(contextSize)`.
+  - P4.5: a resumed session gets one `<memory-update>` note per memory change, and its cached system prompt is left unchanged.
+- **Checks on merged roadmap:** typecheck green; vitest 2690 passed, 9 failed (all environment-only); `--validate-graders` exit 0.
