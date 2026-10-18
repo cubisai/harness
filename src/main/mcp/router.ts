@@ -148,6 +148,12 @@ function compare(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+/** A server's listing error, trimmed to its first line and 120 chars, for a short reply. */
+function listingError(error?: string): string {
+  const first = (error ?? "it didn't answer").split("\n")[0]!.trim();
+  return first.length > 120 ? first.slice(0, 120) : first;
+}
+
 /**
  * The compact, deterministic MCP index for search_tools' description: one line
  * per server in name order. A listed server shows its tool count, and its
@@ -204,17 +210,20 @@ const LIST_TIMEOUT_MS = 15_000;
 export function routerTools(
   deps: {
     servers: (projectId: string | undefined) => McpServerEntry[];
-    listings: Pick<McpToolsCache, "refresh" | "peek">;
+    listings: Pick<McpToolsCache, "refresh" | "peek"> & Partial<Pick<McpToolsCache, "peekStale">>;
     pool: Pick<McpClientPool, "callTool">;
   },
   projectId?: string,
 ): HarnessTool[] {
   // Snapshot the cache synchronously: tools/list runs on every session open, so
-  // refreshing here would list every server before a turn even starts.
+  // refreshing here would list every server before a turn even starts. The
+  // stale fallback is the previous session's listing, so a cold start still
+  // shows the index.
   const enabled = deps.servers(projectId).filter((s) => s.enabled === true);
   const index = enabled.map((s) => {
     const listing = deps.listings.peek(s.spec);
-    return { name: s.name, tools: listing?.ok ? listing.tools.map((t) => t.name) : null };
+    const tools = listing?.ok ? listing.tools : deps.listings.peekStale?.(s.spec)?.tools;
+    return { name: s.name, tools: tools ? tools.map((t) => t.name) : null };
   });
   const searchDescription =
     "Search the MCP tools available in this project and get their input schemas. Call this before call_mcp_tool; pass an exact tool name to fetch that tool." +
@@ -236,17 +245,29 @@ export function routerTools(
       const enabled = deps.servers(ctx?.projectId).filter((s) => s.enabled === true);
       await deps.listings.refresh(enabled, LIST_TIMEOUT_MS);
       const entries: { server: string; tool: McpToolInfo }[] = [];
+      const unreachable: { name: string; error: string }[] = [];
       for (const server of enabled) {
         const listing = deps.listings.peek(server.spec);
+        // A server that failed to list is unreachable, not a server with no matching tool.
         if (listing?.ok) for (const tool of listing.tools) entries.push({ server: server.name, tool });
+        else unreachable.push({ name: server.name, error: listingError(listing?.error) });
       }
       if (!enabled.length) return { text: "No MCP servers are enabled for this project.", isError: true };
+      const reached = (s: { name: string }) => !unreachable.some((u) => u.name === s.name);
       const ranked = rankTools(entries, query, limit ?? 5);
       if (!ranked.length) {
+        if (unreachable.length === enabled.length) {
+          return { text: `Couldn't reach any MCP server: ${unreachable.map((u) => `${u.name} (${u.error})`).join(", ")}`, isError: true };
+        }
+        if (unreachable.length) {
+          const names = enabled.filter(reached).map((s) => s.name);
+          return { text: `No tool matched "${query}" on ${names.join(", ")}. Couldn't reach: ${unreachable.map((u) => `${u.name} (${u.error})`).join(", ")}.` };
+        }
         return { text: `No tool matched "${query}". Servers: ${enabled.map((s) => s.name).join(", ")}. Try other words or an exact tool name.` };
       }
       const out = ranked.map((r) => ({ server: r.server, tool: r.tool.name, description: r.tool.description, inputSchema: r.tool.inputSchema }));
-      return { text: JSON.stringify(out, null, 2) };
+      const missed = unreachable.length ? `\nCouldn't reach: ${unreachable.map((u) => `${u.name} (${u.error})`).join(", ")}; their tools aren't included.` : "";
+      return { text: JSON.stringify(out, null, 2) + missed };
     },
   });
 

@@ -201,11 +201,19 @@ function fakeRouter(
   listings: Map<McpServerSpec, Listing>,
   pool: { callTool: (spec: McpServerSpec, name: string, args: Record<string, unknown>) => Promise<{ ok: boolean; text: string; isError: boolean }> },
   projectId?: string,
+  stale?: Map<McpServerSpec, McpToolInfo[]>,
 ) {
   const tools = routerTools(
     {
       servers: () => entries,
-      listings: { refresh: async () => {}, peek: (spec) => listings.get(spec) ?? null },
+      listings: {
+        refresh: async () => {},
+        peek: (spec) => listings.get(spec) ?? null,
+        peekStale: (spec) => {
+          const tools = stale?.get(spec);
+          return tools ? { tools, at: 0 } : null;
+        },
+      },
       pool,
     },
     projectId,
@@ -223,6 +231,9 @@ const dbListing: Listing = {
     { name: "list_tables", description: "list database tables", inputSchema: { type: "object", properties: {} } },
   ],
 };
+const DOWN_SPEC: McpServerSpec = { type: "stdio", command: "down" };
+const downEntry: McpServerEntry = { name: "down", spec: DOWN_SPEC, enabled: true };
+const downListing = { ok: false, tools: [], error: "No answer in 15 seconds." } as Listing;
 
 describe("routerTools", () => {
   it("search_tools returns matching tools with their input schemas", async () => {
@@ -247,6 +258,54 @@ describe("routerTools", () => {
     const b = fakeRouter([dbEntry], new Map([[DB_SPEC, dbListing]]), pool, "p1");
     expect(a.search.description).toBe(b.search.description);
     expect(a.call.description).toBe(b.call.description);
+  });
+
+  it("falls back to persisted tools for the index on a cold cache", () => {
+    const stale = new Map<McpServerSpec, McpToolInfo[]>([[DB_SPEC, dbListing.tools]]);
+    const { search } = fakeRouter([dbEntry], new Map(), { callTool: async () => ({ ok: true, text: "", isError: false }) }, "p1", stale);
+    expect(search.description).toContain("run_query");
+    expect(search.description).toContain("list_tables");
+  });
+
+  it("returns matches and names the servers it couldn't reach", async () => {
+    const listings = new Map<McpServerSpec, Listing>([
+      [DB_SPEC, dbListing],
+      [DOWN_SPEC, downListing],
+    ]);
+    const { search } = fakeRouter([dbEntry, downEntry], listings, { callTool: async () => ({ ok: true, text: "", isError: false }) });
+    const out = await search.run({ query: "database query", limit: 5 });
+    expect(out.isError).toBeUndefined();
+    expect(out.text).toContain("run_query");
+    expect(out.text).toContain("Couldn't reach: down (No answer in 15 seconds.); their tools aren't included.");
+  });
+
+  it("tells no match apart from an unreachable server", async () => {
+    const listings = new Map<McpServerSpec, Listing>([
+      [DB_SPEC, dbListing],
+      [DOWN_SPEC, { ok: false, tools: [], error: "down" } as Listing],
+    ]);
+    const { search } = fakeRouter([dbEntry, downEntry], listings, { callTool: async () => ({ ok: true, text: "", isError: false }) });
+    const out = await search.run({ query: "zzz", limit: 5 });
+    expect(out.isError).toBeUndefined();
+    expect(out.text).toBe('No tool matched "zzz" on db. Couldn\'t reach: down (down).');
+  });
+
+  it("errors when no MCP server could be reached", async () => {
+    const listings = new Map<McpServerSpec, Listing>([
+      [DB_SPEC, { ok: false, tools: [], error: "down db" } as Listing],
+      [DOWN_SPEC, { ok: false, tools: [], error: "down" } as Listing],
+    ]);
+    const { search } = fakeRouter([dbEntry, downEntry], listings, { callTool: async () => ({ ok: true, text: "", isError: false }) });
+    const out = await search.run({ query: "database query", limit: 5 });
+    expect(out.isError).toBe(true);
+    expect(out.text).toBe("Couldn't reach any MCP server: db (down db), down (down)");
+  });
+
+  it("keeps the legacy no-match text when every server is reachable", async () => {
+    const { search } = fakeRouter([dbEntry], new Map([[DB_SPEC, dbListing]]), { callTool: async () => ({ ok: true, text: "", isError: false }) });
+    const out = await search.run({ query: "zzz", limit: 5 });
+    expect(out.isError).toBeUndefined();
+    expect(out.text).toBe('No tool matched "zzz". Servers: db. Try other words or an exact tool name.');
   });
 
   it("search_tools errors when the project has no servers", async () => {

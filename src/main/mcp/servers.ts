@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -468,21 +469,52 @@ interface McpToolsEntry {
   error?: string;
 }
 
+/** The on-disk cache: only successful listings, keyed by the sha256 of each spec's stable form. */
+interface PersistedTools {
+  version: 1;
+  entries: Record<string, { at: number; tools: McpToolInfo[] }>;
+}
+
+const PERSIST_FILE_CAP = 200;
+const PERSIST_DEBOUNCE_MS = 1_000;
+
+/** The persisted key: sha256 of the spec's stable form, so no spec (and no secret) reaches the file. */
+function specHash(key: string): string {
+  return createHash("sha256").update(key).digest("hex");
+}
+
 /**
  * The enabled MCP servers' tool schemas, listed once per spec and kept for the
  * Context sheet. An ok listing lives 10 minutes and a failure 1, so a server
  * that is down isn't re-probed on every open. Concurrent asks share one listing.
+ * With `persist`, ok listings also survive restarts (by spec hash), so a cold
+ * start's search index and `peekStale` have the previous session's tool names.
  */
 export class McpToolsCache {
   private entries = new Map<string, McpToolsEntry>();
   private inflight = new Map<string, Promise<void>>();
+  /** Ok listings loaded from disk, by spec hash; never satisfies `peek`, so refresh still lists. */
+  private stale = new Map<string, { at: number; tools: McpToolInfo[] }>();
+  private saveTimer: ReturnType<typeof setTimeout> | undefined;
 
-  constructor(private list = listServerTools, private now = () => Date.now()) {}
+  constructor(
+    private list = listServerTools,
+    private now = () => Date.now(),
+    private persist?: { file: string },
+  ) {
+    if (persist) this.loadPersisted();
+  }
 
   /** Drop the listing for this spec (all of them without one), so the next refresh lists again. */
   invalidate(spec?: McpServerSpec): void {
-    if (spec) this.entries.delete(stableStringify(spec));
-    else this.entries.clear();
+    if (spec) {
+      const key = stableStringify(spec);
+      this.entries.delete(key);
+      this.stale.delete(specHash(key));
+    } else {
+      this.entries.clear();
+      this.stale.clear();
+    }
   }
 
   /** The cached listing for this spec, or null when there isn't a fresh one. */
@@ -491,6 +523,36 @@ export class McpToolsCache {
     if (!entry) return null;
     if (this.now() - entry.at >= (entry.ok ? 600_000 : 60_000)) return null;
     return { ok: entry.ok, tools: entry.tools, ...(entry.error !== undefined && { error: entry.error }) };
+  }
+
+  /** The fresh ok listing for this spec, else the one persisted by a previous session, else null. */
+  peekStale(spec: McpServerSpec): { tools: McpToolInfo[]; at: number } | null {
+    const key = stableStringify(spec);
+    const fresh = this.peek(spec);
+    if (fresh?.ok) return { tools: fresh.tools, at: this.entries.get(key)!.at };
+    return this.stale.get(specHash(key)) ?? null;
+  }
+
+  /** Write the current ok listings now; for app quit and tests. */
+  flush(): void {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = undefined;
+    }
+    if (!this.persist) return;
+    // `stale` holds every ok listing, this session's and the persisted ones, so servers
+    // not opened this session (other projects') keep their tools on disk.
+    const entries: PersistedTools["entries"] = {};
+    const ok = [...this.stale].sort((a, b) => b[1].at - a[1].at);
+    for (const [hash, entry] of ok.slice(0, PERSIST_FILE_CAP)) entries[hash] = { at: entry.at, tools: entry.tools };
+    try {
+      mkdirSync(dirname(this.persist.file), { recursive: true });
+      const tmp = `${this.persist.file}.tmp`;
+      writeFileSync(tmp, JSON.stringify({ version: 1, entries }, null, 2), { mode: 0o600 });
+      renameSync(tmp, this.persist.file);
+    } catch {
+      // The cache is a convenience; a failed write must not break a listing.
+    }
   }
 
   /** List every enabled server without a fresh listing; never throws. */
@@ -504,7 +566,13 @@ export class McpToolsCache {
           if (running) return running;
           const run = this.list(s.spec, timeoutMs)
             .then((r) => {
-              this.entries.set(key, { at: this.now(), ok: r.ok, tools: r.tools, ...(r.error !== undefined && { error: r.error }) });
+              const at = this.now();
+              this.entries.set(key, { at, ok: r.ok, tools: r.tools, ...(r.error !== undefined && { error: r.error }) });
+              // Only a successful listing is worth keeping; failures are never persisted.
+              if (r.ok) {
+                this.stale.set(specHash(key), { at, tools: r.tools });
+                this.scheduleSave();
+              }
             })
             .catch(() => {
               // listServerTools never throws, but the sheet must survive one that does.
@@ -515,5 +583,27 @@ export class McpToolsCache {
           return run;
         }),
     );
+  }
+
+  private loadPersisted(): void {
+    if (!this.persist) return;
+    try {
+      const raw = JSON.parse(readFileSync(this.persist.file, "utf-8")) as Partial<PersistedTools>;
+      if (raw?.version !== 1 || !raw.entries || typeof raw.entries !== "object") return;
+      for (const [hash, entry] of Object.entries(raw.entries)) {
+        if (entry && typeof entry.at === "number" && Array.isArray(entry.tools)) this.stale.set(hash, { at: entry.at, tools: entry.tools });
+      }
+    } catch {
+      // Missing or corrupt: start with no previous session's tools.
+    }
+  }
+
+  private scheduleSave(): void {
+    if (!this.persist || this.saveTimer) return;
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = undefined;
+      this.flush();
+    }, PERSIST_DEBOUNCE_MS);
+    this.saveTimer.unref?.();
   }
 }

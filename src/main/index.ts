@@ -654,7 +654,8 @@ async function main(): Promise<void> {
   // Move any plain-text secrets left in mcp.json files from before the vault into it now, off the startup path.
   setImmediate(() => migrateMcpSecrets(mcpStore, mcpScopes, join(userData, "projects")));
   // The enabled servers' tool schemas, for the Context sheet; listed on demand.
-  const mcpTools = new McpToolsCache();
+  // Ok listings are also persisted by spec hash, so the next launch's index has them.
+  const mcpTools = new McpToolsCache(undefined, undefined, { file: join(userData, "mcp-tools-cache.json") });
   /** A server announced new tools: drop its listing, and the window asks again (debounced there). */
   const mcpToolsChanged = (spec: McpServerSpec | null) => {
     if (spec) mcpTools.invalidate(spec);
@@ -1684,6 +1685,7 @@ async function main(): Promise<void> {
     designWatcher.closeAll();
     shooter.close();
     terminals.dispose();
+    mcpTools.flush();
     void toolServer?.then((s) => s.close());
     void mcpPool.closeAll();
     void mcpGateway.closeAll();
