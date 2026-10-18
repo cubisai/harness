@@ -190,5 +190,9 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 - P2.7: watcher bursts carry the changed paths. An `.html` page edit remounts only its artboard; any other file or an unknown change reloads all of them. If more than one change is missed between renders, everything reloads.
 - **Still owed:**
   - the real-app check of P2.1b/P2.3 (DESIGN §9: light/dark, 900px, keyboard, screenshot);
-  - the live turns on Claude, Codex and OpenCode Zen for P2–P4.
 - **Checks on merged roadmap:** typecheck green; design:check 0 errors; vitest 2745 passed, 9 failed (environment-only); `--validate-graders` exit 0.
+- Live turns on merged roadmap (2026-10-18, eval runner, task explain-no-edit, all PASS with score 1.00):
+  - Claude haiku (CLI 2.1.302): $0.12.
+  - Codex default (CLI 0.160.0): cost not reported.
+  - OpenCode Zen `deepseek-v4.1-flash-free` (1.18.34): $0.00, run with a key-less `XDG_DATA_HOME`.
+- Still owed: the real-app UI check (DESIGN §9) for P2.1b/P2.3; it needs someone at the running app.
