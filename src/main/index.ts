@@ -1767,7 +1767,7 @@ async function smokeBrowserWith(tools: ReturnType<typeof browserTools>, browser:
       <label for=u>Email</label><input id=u>
       <button onclick="document.querySelector('p').textContent = 'Hello ' + document.getElementById('u').value; console.error('smoke-console-check')">Go</button>
       <p>waiting</p>`);
-  // The tools refuse until the user opens the pane; the smoke stands in for that user.
+  // The smoke attaches its own webview, as the pane does once it opens.
   browser.enabled = true;
   try {
     const opened = await byName("browser_open").run({ url: page });

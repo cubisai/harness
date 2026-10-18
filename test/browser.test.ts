@@ -62,9 +62,10 @@ describe("formatSnapshot", () => {
 });
 
 describe("browser tools gate", () => {
-  const tools = browserTools({ enabled: false } as unknown as BrowserController);
+  const args: Record<string, unknown> = { url: "http://x", ref: "e1", text: "a", expression: "1" };
 
   it("offers exactly the seven named tools", () => {
+    const tools = browserTools({ enabled: false } as unknown as BrowserController);
     expect(tools.map((t) => t.name)).toEqual([
       "browser_open",
       "browser_snapshot",
@@ -76,11 +77,25 @@ describe("browser tools gate", () => {
     ]);
   });
 
-  it("answers \"Browser pane not open\" for every tool", async () => {
-    const args: Record<string, unknown> = { url: "http://x", ref: "e1", text: "a", expression: "1" };
-    for (const tool of tools) {
-      expect(await tool.run(args)).toEqual({ text: "Browser pane not open", isError: true });
+  it("reports a pane that never opens for every tool", async () => {
+    const requestOpen = vi.fn();
+    const browser = new BrowserController(requestOpen, tempDir(), () => {}, {}, { openTimeoutMs: 50 });
+    for (const tool of browserTools(browser)) {
+      const out = await tool.run(args);
+      expect(out.isError).toBe(true);
+      expect(out.text).toContain("Couldn't open the browser pane");
     }
+    expect(requestOpen).toHaveBeenCalledTimes(7);
+  });
+
+  it("opens the pane before running the tool body", async () => {
+    const browser = new BrowserController(() => {}, tempDir(), () => {}, {}, { openTimeoutMs: 50 });
+    const ensureOpen = vi.spyOn(browser, "ensureOpen").mockResolvedValue();
+    const snapshot = vi.spyOn(browser, "snapshot").mockResolvedValue("page text");
+    const tool = browserTools(browser).find((t) => t.name === "browser_snapshot")!;
+    expect(await tool.run({})).toEqual({ text: "page text" });
+    expect(ensureOpen).toHaveBeenCalled();
+    expect(ensureOpen.mock.invocationCallOrder[0]!).toBeLessThan(snapshot.mock.invocationCallOrder[0]!);
   });
 });
 
@@ -162,6 +177,7 @@ describe("BrowserController", () => {
     const stub = {
       enabled: true,
       paused: true,
+      ensureOpen: vi.fn(),
       assertOpenAllowed() {
         throw new Error("The user took over the browser pane and paused you.");
       },

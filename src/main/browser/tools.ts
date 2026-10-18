@@ -10,10 +10,16 @@ async function safely(fn: () => Promise<ToolOutput>): Promise<ToolOutput> {
   }
 }
 
-/** Refuse, without touching the browser, until the user opens the pane. */
+/** Open the pane if needed, then run the tool; a pane that won't open is reported, not thrown. */
 function gated(browser: BrowserController, fn: () => Promise<ToolOutput>): Promise<ToolOutput> {
-  if (!browser.enabled) return Promise.resolve({ text: "Browser pane not open", isError: true });
-  return safely(fn);
+  return safely(async () => {
+    try {
+      await browser.ensureOpen();
+    } catch (err) {
+      throw new Error(`Couldn't open the browser pane: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return fn();
+  });
 }
 
 function define<S extends z.ZodRawShape>(t: HarnessTool<S>): HarnessTool {
@@ -24,15 +30,14 @@ function define<S extends z.ZodRawShape>(t: HarnessTool<S>): HarnessTool {
  * The browser pane's tools, named as HARNESS.md specifies. Snapshots are
  * text with element refs; screenshots are files, shown to the model only
  * when it asks to look. They are always offered, so the tool set never
- * changes mid-conversation; until the user opens the Browser tab they
- * answer "Browser pane not open".
+ * changes mid-conversation; the first call opens the pane for the user.
  */
 export function browserTools(browser: BrowserController): HarnessTool[] {
   return [
     define({
       name: "browser_open",
       description:
-        "Open a URL in the browser pane the user can see (a local dev server like localhost:3000, or any http(s) page), wait for it to load, and return a snapshot of the page. Optionally emulate a mobile or tablet viewport first.",
+        "Open a URL in the browser pane the user can see (a local dev server like localhost:3000, or any http(s) page), wait for it to load, and return a snapshot of the page. The pane opens automatically if it isn't already. Optionally emulate a mobile or tablet viewport first.",
       input: {
         url: z.string().describe("URL to open, e.g. http://localhost:5173/login"),
         device: z.enum(["mobile", "tablet", "desktop"]).optional().describe("Emulate a viewport before loading: mobile (390px), tablet (768px), or desktop (no emulation)"),
