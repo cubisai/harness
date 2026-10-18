@@ -108,10 +108,32 @@ export interface LearnSettings {
   enabledProjects: string[];
   /** Background tokens per project per day. */
   dailyTokens: number;
+  /** Memory-extraction tokens per project per day; extraction pauses for the day past it. */
+  memoryDailyTokens: number;
   /** The global background model; null = pick automatically. */
   background: { agent: string; model: string } | null;
   /** Per-project overrides of `background`. */
   backgroundByProject: Record<string, { agent: string; model: string }>;
 }
 
-export const LEARN_DEFAULTS: LearnSettings = { enabledProjects: [], dailyTokens: 50_000, background: null, backgroundByProject: {} };
+export const LEARN_DEFAULTS: LearnSettings = { enabledProjects: [], dailyTokens: 50_000, memoryDailyTokens: 200_000, background: null, backgroundByProject: {} };
+
+/** What a hidden background model call was for: shared memory extraction, or a lesson draft. */
+export type BackgroundPurpose = "memory" | "lesson";
+
+/** One background model call, as the accounting table records it. */
+export interface BackgroundRun {
+  purpose: BackgroundPurpose;
+  projectId: string;
+  /** "YYYY-MM-DD" the call is accounted to. */
+  day: string;
+  agent: string;
+  model: string;
+  tokens: number;
+  /** True when the tokens are an estimate, not the driver's own count. */
+  estimated: boolean;
+  ok: boolean;
+  /** The cheap pick failed and this was the fallback to the thread's own model. */
+  escalated: boolean;
+  at: number;
+}

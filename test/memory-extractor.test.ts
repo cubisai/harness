@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { BackgroundRun } from "../src/shared/learn";
 import type { AgentCapabilities, ModelOption } from "../src/shared/types";
 import type { AgentDriver } from "../src/main/agents/types";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
@@ -277,6 +278,86 @@ describe("createExtractor", () => {
       await vi.advanceTimersByTimeAsync(31_000);
       expect(oneShot.mock.calls.map((c) => c[0].model)).toEqual(["m-mini", "m"]);
       expect(store.list("p1").map((f) => f.file)).toEqual(["tabs.md"]);
+      ex.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("accounts one run for a successful extraction, on the cheap pick", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new MemoryStore(tempDir());
+      const oneShot = vi.fn(async () => ADD_JSON);
+      const driver = { ...extractorDriver({ oneShot }), models: () => [{ id: "m", label: "M" }, { id: "m-mini", label: "M mini" }] };
+      const runs: Omit<BackgroundRun, "purpose" | "day" | "at">[] = [];
+      const ex = createExtractor({ store, enabled: () => true, driverFor: () => driver, account: (r) => runs.push(r), log: () => {} });
+      ex.schedule(base());
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(runs).toEqual([{ projectId: "p1", agent: "codex", model: "m-mini", tokens: expect.any(Number), estimated: true, ok: true, escalated: false }]);
+      ex.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("accounts the failed cheap pick, then the escalated fallback", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new MemoryStore(tempDir());
+      const oneShot = vi.fn(async (req: Parameters<NonNullable<AgentDriver["oneShot"]>>[0]) => {
+        if (req.model === "m-mini") throw new Error("model not on this plan");
+        return ADD_JSON;
+      });
+      const driver = { ...extractorDriver({ oneShot }), models: () => [{ id: "m", label: "M" }, { id: "m-mini", label: "M mini" }] };
+      const runs: Omit<BackgroundRun, "purpose" | "day" | "at">[] = [];
+      const ex = createExtractor({ store, enabled: () => true, driverFor: () => driver, account: (r) => runs.push(r), log: () => {} });
+      ex.schedule(base());
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(runs.map((r) => [r.model, r.ok, r.escalated])).toEqual([
+        ["m-mini", false, false],
+        ["m", true, true],
+      ]);
+      ex.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("skips the run when the daily budget is spent", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new MemoryStore(tempDir());
+      const oneShot = vi.fn(async () => ADD_JSON);
+      const runs: unknown[] = [];
+      const ex = createExtractor({ store, enabled: () => true, driverFor: () => extractorDriver({ oneShot }), budgetLeft: () => 0, account: (r) => runs.push(r), log: () => {} });
+      ex.schedule(base());
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(oneShot).not.toHaveBeenCalled();
+      expect(runs).toEqual([]);
+      ex.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("runs the explicit background model, never falling back to the thread's", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new MemoryStore(tempDir());
+      const threadShot = vi.fn(async () => ADD_JSON);
+      const bgShot = vi.fn(async () => {
+        throw new Error("chosen model is down");
+      });
+      const thread = extractorDriver({ oneShot: threadShot });
+      const bg = { ...extractorDriver({ oneShot: bgShot }), id: "chosen" };
+      const runs: Omit<BackgroundRun, "purpose" | "day" | "at">[] = [];
+      const ex = createExtractor({ store, enabled: () => true, driverFor: () => thread, background: () => ({ driver: bg, model: "cheap-1", effort: null }), account: (r) => runs.push(r), log: () => {} });
+      ex.schedule(base());
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(bgShot).toHaveBeenCalledTimes(1);
+      expect(threadShot).not.toHaveBeenCalled();
+      expect(runs).toEqual([{ projectId: "p1", agent: "chosen", model: "cheap-1", tokens: expect.any(Number), estimated: true, ok: false, escalated: false }]);
       ex.dispose();
     } finally {
       vi.useRealTimers();

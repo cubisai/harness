@@ -1,7 +1,7 @@
-// Typed access to self-improve's tables (created by db.ts migrations 23-26).
+// Typed access to self-improve's tables (created by db.ts migrations 23-26 and 28).
 
 import type { DatabaseSync } from "node:sqlite";
-import type { Health, Lesson, LessonScope, LessonStatus, LessonVerification, TurnScore, TurnSignal } from "../../shared/learn";
+import type { BackgroundPurpose, BackgroundRun, Health, Lesson, LessonScope, LessonStatus, LessonVerification, TurnScore, TurnSignal } from "../../shared/learn";
 
 export interface ScoreRow extends TurnScore {
   projectId: string;
@@ -50,6 +50,19 @@ interface RawLesson {
   note: string | null;
   created_at: number;
   updated_at: number;
+}
+
+interface RawBackgroundRun {
+  purpose: string;
+  project_id: string;
+  day: string;
+  agent: string;
+  model: string;
+  tokens: number;
+  estimated: number;
+  ok: number;
+  escalated: number;
+  at: number;
 }
 
 function parse<T>(text: string | null, fallback: T): T {
@@ -101,7 +114,23 @@ function lessonOf(r: RawLesson): Lesson {
   };
 }
 
+function runOf(r: RawBackgroundRun): BackgroundRun {
+  return {
+    purpose: r.purpose as BackgroundPurpose,
+    projectId: r.project_id,
+    day: r.day,
+    agent: r.agent,
+    model: r.model,
+    tokens: r.tokens,
+    estimated: r.estimated === 1,
+    ok: r.ok === 1,
+    escalated: r.escalated === 1,
+    at: r.at,
+  };
+}
+
 const SCORE_COLS = "thread_id, user_seq, project_id, agent, model, session_id, health, signals, injected, steps, tokens, created_at, updated_at";
+const RUN_COLS = "purpose, project_id, day, agent, model, tokens, estimated, ok, escalated, at";
 
 export class LearnDb {
   constructor(private db: DatabaseSync, private now: () => number = () => Date.now()) {}
@@ -219,5 +248,23 @@ export class LearnDb {
     this.db
       .prepare("INSERT INTO learn_budget (project_id, day, tokens) VALUES (?, ?, ?) ON CONFLICT(project_id, day) DO UPDATE SET tokens = tokens + excluded.tokens")
       .run(projectId, day, Math.round(tokens));
+  }
+
+  /** Record one background model call for accounting. */
+  recordRun(run: BackgroundRun): void {
+    this.db
+      .prepare(`INSERT INTO background_runs (${RUN_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(run.purpose, run.projectId, run.day, run.agent, run.model, Math.round(run.tokens), run.estimated ? 1 : 0, run.ok ? 1 : 0, run.escalated ? 1 : 0, run.at);
+  }
+
+  /** Background tokens the project spent on `day` for one purpose; 0 when none. */
+  runTokens(projectId: string, day: string, purpose: BackgroundPurpose): number {
+    const r = this.db.prepare("SELECT SUM(tokens) AS tokens FROM background_runs WHERE project_id = ? AND day = ? AND purpose = ?").get(projectId, day, purpose) as unknown as { tokens: number | null } | undefined;
+    return r?.tokens ?? 0;
+  }
+
+  /** The project's background calls, newest first. */
+  runs(projectId: string, limit = 50): BackgroundRun[] {
+    return (this.db.prepare(`SELECT ${RUN_COLS} FROM background_runs WHERE project_id = ? ORDER BY at DESC, id DESC LIMIT ?`).all(projectId, limit) as unknown as RawBackgroundRun[]).map(runOf);
   }
 }

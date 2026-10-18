@@ -261,6 +261,24 @@ export class Store {
       },
       // 27: the expert a thread was summoned with (an ExpertDef id); null = none.
       { applied: () => this.hasColumn("threads", "expert_id"), sql: "ALTER TABLE threads ADD COLUMN expert_id TEXT" },
+      // 28: shared accounting for background model calls (memory extraction and lesson drafts), per project and day.
+      {
+        applied: () => this.hasTable("background_runs"),
+        sql: `CREATE TABLE background_runs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          purpose TEXT NOT NULL,
+          project_id TEXT NOT NULL,
+          day TEXT NOT NULL,
+          agent TEXT NOT NULL,
+          model TEXT NOT NULL,
+          tokens INTEGER NOT NULL,
+          estimated INTEGER NOT NULL,
+          ok INTEGER NOT NULL,
+          escalated INTEGER NOT NULL DEFAULT 0,
+          at INTEGER NOT NULL
+        );
+        CREATE INDEX background_runs_project_day ON background_runs (project_id, day, purpose)`,
+      },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;

@@ -108,7 +108,7 @@ const RECENT_TREES = 5;
 const DRAFT_TIMEOUT_MS = 120_000;
 
 const keyOf = (threadId: string, userSeq: number): string => `${threadId}:${userSeq}`;
-const today = (t: number): string => new Date(t).toISOString().slice(0, 10);
+export const today = (t: number): string => new Date(t).toISOString().slice(0, 10);
 
 const view = (r: ScoreRow): TurnScore => ({ threadId: r.threadId, userSeq: r.userSeq, health: r.health, signals: r.signals });
 
@@ -269,6 +269,18 @@ export function createLearner(deps: LearnerDeps): Learner {
     const timeout = AbortSignal.timeout(DRAFT_TIMEOUT_MS);
     const { text, tokens } = await backgroundShot(bg, prompt, AbortSignal.any([controller.signal, timeout]));
     deps.db.spend(job.projectId, today(now()), tokens);
+    deps.db.recordRun({
+      purpose: "lesson",
+      projectId: job.projectId,
+      day: today(now()),
+      agent: bg.driver.id,
+      model: bg.model,
+      tokens,
+      estimated: true,
+      ok: true,
+      escalated: false,
+      at: now(),
+    });
     const drafted = parseLesson(text);
     if (!drafted) return;
     const dup = findDuplicate(drafted.rule, lessons);

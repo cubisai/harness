@@ -429,11 +429,13 @@ function modelPick(value: unknown): { agent: string; model: string } | null {
   return v && typeof v.agent === "string" && v.agent && typeof v.model === "string" && v.model ? { agent: v.agent.slice(0, 200), model: v.model.slice(0, 200) } : null;
 }
 
-/** Self-improve settings with every field valid: off for any project not listed, the cap within 1k–5M. */
+/** Self-improve settings with every field valid: off for any project not listed, each cap within 1k–5M. */
 export function sanitizeLearn(value: Partial<LearnSettings> | undefined): LearnSettings {
   const v = value ?? {};
   const projects = Array.isArray(v.enabledProjects) ? v.enabledProjects.filter((s): s is string => typeof s === "string") : [];
-  const cap = typeof v.dailyTokens === "number" && Number.isFinite(v.dailyTokens) ? Math.round(Math.min(5_000_000, Math.max(1000, v.dailyTokens))) : LEARN_DEFAULTS.dailyTokens;
+  const clamp = (n: unknown, fallback: number): number => (typeof n === "number" && Number.isFinite(n) ? Math.round(Math.min(5_000_000, Math.max(1000, n))) : fallback);
+  const cap = clamp(v.dailyTokens, LEARN_DEFAULTS.dailyTokens);
+  const memoryCap = clamp(v.memoryDailyTokens, LEARN_DEFAULTS.memoryDailyTokens);
   const byProject: LearnSettings["backgroundByProject"] = {};
   if (v.backgroundByProject && typeof v.backgroundByProject === "object") {
     for (const [id, pick] of Object.entries(v.backgroundByProject).slice(0, 500)) {
@@ -441,5 +443,5 @@ export function sanitizeLearn(value: Partial<LearnSettings> | undefined): LearnS
       if (p) byProject[id] = p;
     }
   }
-  return { enabledProjects: [...new Set(projects)].slice(0, 500), dailyTokens: cap, background: modelPick(v.background), backgroundByProject: byProject };
+  return { enabledProjects: [...new Set(projects)].slice(0, 500), dailyTokens: cap, memoryDailyTokens: memoryCap, background: modelPick(v.background), backgroundByProject: byProject };
 }

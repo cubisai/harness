@@ -11,7 +11,7 @@ import { LearnDb } from "../src/main/learn/db";
 import { createLearner, type Learner } from "../src/main/learn";
 import { failingRepeats, healthOf, isCorrection, mergeSignals, overNorm, roundSignals } from "../src/main/learn/signals";
 import { sanitizeLearn } from "../src/main/settings";
-import { LEARN_DEFAULTS, type LearnSettings, type TurnScore } from "../src/shared/learn";
+import { LEARN_DEFAULTS, type BackgroundRun, type LearnSettings, type TurnScore } from "../src/shared/learn";
 import { catalog, closeAfter, tempDir } from "./helpers";
 
 const facts = { evidence: [], check: null, fixRound: false, denied: 0, stopped: false, failedCommands: [], steps: 3, tokens: 2000 };
@@ -70,7 +70,14 @@ describe("learn settings", () => {
       background: { agent: "codex", model: "" },
       backgroundByProject: { p: { agent: "opencode", model: "x" }, q: { agent: 1 } as unknown as { agent: string; model: string } },
     });
-    expect(s).toEqual({ enabledProjects: ["a"], dailyTokens: 1000, background: null, backgroundByProject: { p: { agent: "opencode", model: "x" } } });
+    expect(s).toEqual({ enabledProjects: ["a"], dailyTokens: 1000, memoryDailyTokens: 200_000, background: null, backgroundByProject: { p: { agent: "opencode", model: "x" } } });
+  });
+
+  it("defaults and clamps the memory cap within 1k–5M", () => {
+    expect(sanitizeLearn(undefined).memoryDailyTokens).toBe(200_000);
+    expect(sanitizeLearn({ memoryDailyTokens: 10 }).memoryDailyTokens).toBe(1000);
+    expect(sanitizeLearn({ memoryDailyTokens: 9_000_000 }).memoryDailyTokens).toBe(5_000_000);
+    expect(sanitizeLearn({ memoryDailyTokens: 12_345 }).memoryDailyTokens).toBe(12_345);
   });
 });
 
@@ -260,5 +267,31 @@ describe("LearnDb", () => {
     db.saveReplay("k", "case", null, true, 1234);
     expect(db.cachedReplay("k")).toEqual({ pass: true, tokens: 1234 });
     expect(db.cachedReplay("nope")).toBeNull();
+  });
+
+  it("records background runs, sums them per purpose and lists newest first", () => {
+    const store = new Store(join(tempDir(), "t.db"));
+    closeAfter(() => store.close());
+    const db = new LearnDb(store.sql);
+    const run = (over: Partial<BackgroundRun> & Pick<BackgroundRun, "purpose" | "tokens" | "at">): BackgroundRun => ({
+      projectId: "p",
+      day: "2026-10-15",
+      agent: "codex",
+      model: "m-mini",
+      estimated: true,
+      ok: true,
+      escalated: false,
+      ...over,
+    });
+    db.recordRun(run({ purpose: "memory", tokens: 10, at: 1 }));
+    db.recordRun(run({ purpose: "memory", tokens: 5, at: 2 }));
+    db.recordRun(run({ purpose: "lesson", tokens: 7, at: 3 }));
+    db.recordRun(run({ purpose: "memory", tokens: 100, at: 4, projectId: "q" }));
+    expect(db.runTokens("p", "2026-10-15", "memory")).toBe(15);
+    expect(db.runTokens("p", "2026-10-15", "lesson")).toBe(7);
+    expect(db.runTokens("p", "2026-10-16", "memory")).toBe(0);
+    expect(db.runs("p").map((r) => r.at)).toEqual([3, 2, 1]);
+    expect(db.runs("p", 2).map((r) => r.at)).toEqual([3, 2]);
+    expect(db.runs("p")[0]).toEqual({ purpose: "lesson", projectId: "p", day: "2026-10-15", agent: "codex", model: "m-mini", tokens: 7, estimated: true, ok: true, escalated: false, at: 3 });
   });
 });

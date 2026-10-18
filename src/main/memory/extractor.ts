@@ -1,3 +1,4 @@
+import type { BackgroundRun } from "../../shared/learn";
 import type { ModelOption } from "../../shared/types";
 import type { AgentDriver } from "../agents/types";
 import { GLOBAL_SCOPE, type MemoryStore, type MemoryType } from "./store";
@@ -36,6 +37,9 @@ const EFFORT_ORDER = ["none", "minimal", "low", "medium"];
 export const SECRETISH = /(api[_-]?key|secret|password|token)\s*[:=]\s*\S{8,}|sk-[A-Za-z0-9]{16,}/i;
 
 const RUN_TIMEOUT_MS = 120_000;
+
+/** Rough tokens for a string a driver doesn't count: 4 characters each (local, since background.ts imports this module). */
+const estimate = (text: string): number => Math.ceil(text.length / 4);
 
 /** A model id's provider: the part before "/" ("opencode/x" → "opencode"), "" when there is none. */
 function providerOf(id: string): string {
@@ -216,6 +220,12 @@ export function createExtractor(deps: {
   store: MemoryStore;
   enabled: (projectId: string) => boolean;
   driverFor: (agentId: string) => AgentDriver | undefined;
+  /** Account one model call attempt (ok true/false); shared with self-improve's background accounting. */
+  account?: (run: Omit<BackgroundRun, "purpose" | "day" | "at">) => void;
+  /** Tokens the project may still spend on memory extraction today; the run is skipped past it. */
+  budgetLeft?: (projectId: string) => number;
+  /** The project's explicit Settings pick, when it has one; runs instead of the thread's agent, with no fallback. */
+  background?: (projectId: string) => { driver: AgentDriver; model: string; effort: string | null } | null;
   debounceMs?: number;
   log?: (msg: string) => void;
 }): { schedule(req: TurnDelta): void; dispose(): void } {
@@ -231,16 +241,42 @@ export function createExtractor(deps: {
     timeout.unref?.();
     try {
       const driver = deps.driverFor(delta.agentId);
-      if (!driver?.oneShot) return;
-      const { model, effort } = pickExtractorModel(driver.models(), delta.model);
+      const chosen = deps.background?.(delta.projectId) ?? null;
+      const explicit = chosen?.driver.oneShot ? chosen : null;
+      if (!explicit && !driver?.oneShot) return;
       const prompt = buildExtractionPrompt(deps.store.index(delta.projectId).text, { user: delta.user, answer: delta.answer });
+      // The estimate doubles (the prompt and its reply), so stop before the day's memory cap would be blown.
+      if (deps.budgetLeft && estimate(prompt) * 2 > deps.budgetLeft(delta.projectId)) {
+        log(`memory: daily budget spent (${delta.projectId})`);
+        return;
+      }
+      // One accounted attempt: the run counts even when the driver throws, with no reply tokens to add.
+      const attempt = async (agent: string, model: string, escalated: boolean, call: () => Promise<string>): Promise<string> => {
+        try {
+          const reply = await call();
+          deps.account?.({ projectId: delta.projectId, agent, model, tokens: estimate(prompt) + estimate(reply), estimated: true, ok: true, escalated });
+          return reply;
+        } catch (err) {
+          deps.account?.({ projectId: delta.projectId, agent, model, tokens: estimate(prompt), estimated: true, ok: false, escalated });
+          throw err;
+        }
+      };
       let text: string;
-      try {
-        text = await driver.oneShot({ prompt, model, effort, signal: controller.signal });
-      } catch (err) {
-        // The cheap pick may not be runnable on this account: fall back to the thread's own model once.
-        if (model === delta.model || controller.signal.aborted) throw err;
-        text = await driver.oneShot({ prompt, model: delta.model, effort: null, signal: controller.signal });
+      if (explicit) {
+        // The user chose this model: run only it, never fall back to the thread's own.
+        const shot = explicit.driver.oneShot!;
+        text = await attempt(explicit.driver.id, explicit.model, false, () => shot({ prompt, model: explicit.model, effort: explicit.effort, signal: controller.signal }));
+      } else {
+        const shot = driver?.oneShot;
+        if (!shot) return;
+        const { model, effort } = pickExtractorModel(driver.models(), delta.model);
+        try {
+          text = await attempt(driver.id, model, false, () => shot({ prompt, model, effort, signal: controller.signal }));
+        } catch (err) {
+          // The cheap pick may not be runnable on this account: fall back to the thread's own model once.
+          if (model === delta.model || controller.signal.aborted) throw err;
+          text = await attempt(driver.id, delta.model, true, () => shot({ prompt, model: delta.model, effort: null, signal: controller.signal }));
+        }
       }
       const files = new Set(deps.store.list(delta.projectId).map((f) => f.file));
       const { added, updated, deleted } = applyOps(deps.store, delta.projectId, parseOps(text, files));
