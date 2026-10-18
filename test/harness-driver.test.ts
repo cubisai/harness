@@ -204,6 +204,58 @@ describe("provider driver", () => {
     expect(t.requests[1]!.messages.at(-1)).toMatchObject({ results: [{ isError: true }, { text: "opened" }] });
   });
 
+  it("runs a mutating app tool alone but lets read ones overlap", async () => {
+    const peakOf = async (effect: "read" | "mutate"): Promise<number> => {
+      let active = 0;
+      let peak = 0;
+      const probe: HarnessTool = {
+        name: "probe",
+        description: "probe",
+        input: { n: z.number() },
+        autoAllow: true,
+        effect,
+        run: async () => {
+          active++;
+          peak = Math.max(peak, active);
+          await new Promise((r) => setTimeout(r, 20));
+          active--;
+          return { text: "ok" };
+        },
+      };
+      const t = setup(
+        [
+          [
+            { type: "tool-call", id: "c1", name: "probe", input: { n: 1 } },
+            { type: "tool-call", id: "c2", name: "probe", input: { n: 2 } },
+          ],
+          [{ type: "text", text: "done" }],
+        ],
+        { tools: [probe] },
+      );
+      await t.driver.runTurn(t.input("go"));
+      return peak;
+    };
+    expect(await peakOf("mutate")).toBe(1);
+    expect(await peakOf("read")).toBe(2);
+  });
+
+  it("runs an auto-allowed mutating app tool without asking in ask mode", async () => {
+    const ran: string[] = [];
+    const memory: HarnessTool = {
+      name: "memory_write",
+      description: "Save a note",
+      input: { x: z.string() },
+      autoAllow: true,
+      effect: "mutate",
+      run: async () => (ran.push("ran"), { text: "saved" }),
+    };
+    const t = setup([[{ type: "tool-call", id: "c1", name: "memory_write", input: { x: "hi" } }], [{ type: "text", text: "done" }]], { mode: "ask", tools: [memory] });
+    await t.driver.runTurn(t.input("save"));
+    expect(t.asked).toEqual([]);
+    expect(ran).toEqual(["ran"]);
+    expect(t.events.find((e) => e.kind === "tool-result")).toMatchObject({ isError: false });
+  });
+
   it("turns TodoWrite into the thread's plan", async () => {
     const t = setup([[{ type: "tool-call", id: "c1", name: "todowrite", input: { todos: [{ content: "Read code", status: "in_progress" }] } }], [{ type: "text", text: "ok" }]]);
     await t.driver.runTurn(t.input("plan"));

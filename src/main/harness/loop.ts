@@ -1,6 +1,6 @@
 // The agent loop: call the model, show what it says, run the tools it asks for,
-// feed the results back, repeat until it answers without tools. Read-only calls
-// in a row run together; edits and commands run one at a time, in order.
+// feed the results back, repeat until it answers without tools. Parallel-safe
+// calls in a row run together; the rest run one at a time, in order.
 // History stays valid on every exit: each tool call gets a result.
 
 import type { ThreadEvent } from "../../shared/types";
@@ -15,6 +15,8 @@ export interface LoopTool {
   definition: ToolDefinition;
   displayName: string;
   access: ToolAccess;
+  /** May overlap other parallel calls in one step; absent: `access === "read"` (the legacy rule). */
+  parallel?: boolean;
   summarize(args: Record<string, unknown>): string;
   /** The tool-use payload the thread shows; the arguments when absent. */
   inputPayload?(args: Record<string, unknown>): unknown;
@@ -75,6 +77,9 @@ const DOOM_REPEATS = 3;
 /** Self-improve S6: failures of the same call (any order) that earn the note. */
 const REPEAT_FAIL_AT = 3;
 const READ_CONCURRENCY = 8;
+
+/** Whether this call may overlap others in one step; an explicit `parallel` wins, else the legacy read rule. */
+export const runsInParallel = (t: LoopTool | undefined): boolean => t?.parallel ?? t?.access === "read";
 
 /** Self-improve S6: appended to the third failing result of one call in a turn, when nudges are on. */
 export const REPEAT_FAIL_NOTE = "This exact command has now failed 3 times this turn. Don't run it again unchanged: read the error, change the approach, or tell the user what's blocking you.";
@@ -228,9 +233,9 @@ async function runCalls(input: LoopInput, calls: ToolCallPart[], byName: Map<str
       for (; i < planned.length; i++) results[i] = finish(input, planned[i]!, { text: "Interrupted by the user.", isError: true }, fails, nudge);
       break;
     }
-    // A run of read-only calls goes together; anything else runs alone.
+    // A run of parallel-safe calls goes together; anything else runs alone.
     let j = i + 1;
-    if (planned[i]!.tool?.access === "read") while (j < planned.length && j - i < READ_CONCURRENCY && planned[j]!.tool?.access === "read") j++;
+    if (runsInParallel(planned[i]!.tool)) while (j < planned.length && j - i < READ_CONCURRENCY && runsInParallel(planned[j]!.tool)) j++;
     const batch = planned.slice(i, j);
     const done = await Promise.all(batch.map((p) => runOne(input, p, recent)));
     done.forEach((r, k) => (results[i + k] = finish(input, batch[k]!, r, fails, nudge)));

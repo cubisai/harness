@@ -194,7 +194,7 @@ export async function startToolServer(
     });
     const ctx = projectId || threadId ? { ...(projectId ? { projectId } : {}), ...(threadId ? { threadId, signal: gone.signal } : {}) } : undefined;
     for (const t of list) {
-      server.registerTool(t.name, { description: t.description, inputSchema: t.input }, async (args: unknown, handlerExtra) => {
+      server.registerTool(t.name, { description: t.description, inputSchema: t.input, ...(t.effect ? { annotations: { readOnlyHint: t.effect === "read" } } : {}) }, async (args: unknown, handlerExtra) => {
         const stop = waitingNames.has(t.name) ? heartbeat(handlerExtra, heartbeatMs) : () => {};
         try {
           return toResult(await t.run(args as never, ctx));

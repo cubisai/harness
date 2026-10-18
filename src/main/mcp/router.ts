@@ -257,6 +257,7 @@ export function routerTools(
       query: z.string().describe("What the tool should do, or its exact name"),
       limit: z.number().int().min(1).max(10).optional().describe("How many results (default 5)"),
     },
+    effect: "read",
     run: async ({ query, limit }, ctx) => {
       const enabled = deps.servers(ctx?.projectId).filter((s) => s.enabled === true);
       await deps.listings.refresh(enabled, LIST_TIMEOUT_MS);
@@ -284,6 +285,7 @@ export function routerTools(
       tool: z.string(),
       arguments: z.record(z.string(), z.unknown()).optional().describe("Arguments matching the tool's inputSchema from search_tools"),
     },
+    effect: "mutate",
     run: async ({ server, tool, arguments: rawArgs }, ctx) => {
       const enabled = deps.servers(ctx?.projectId).filter((s) => s.enabled === true);
       const target = enabled.find((s) => s.name === server);

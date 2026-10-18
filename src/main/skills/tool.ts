@@ -28,6 +28,7 @@ export function skillTool(skills: () => SkillEntry[]): HarnessTool {
     name: "skill",
     description,
     autoAllow: true,
+    effect: "read",
     input: { name: z.string().describe("Skill name from the list") },
     run: async ({ name }) => {
       const found = skills().find((s) => s.name === name);

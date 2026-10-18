@@ -45,7 +45,9 @@ export function harnessToolOptions(tools: HarnessTool[], ctx?: ToolContext): Pic
   const server = createSdkMcpServer({
     name: TOOL_SERVER,
     version: "1.0.0",
-    tools: tools.map((t) => tool(t.name, t.description, t.input, async (args) => toCallToolResult(await t.run(args, ctx)))),
+    tools: tools.map((t) =>
+      tool(t.name, t.description, t.input, async (args) => toCallToolResult(await t.run(args, ctx)), t.effect ? { annotations: { readOnlyHint: t.effect === "read" } } : undefined),
+    ),
   });
   return {
     mcpServers: { [TOOL_SERVER]: server },

@@ -179,6 +179,7 @@ export function teamTools(opts: TeamToolsOptions): HarnessTool[] {
         "Save your full result (Markdown) to the team workspace so the lead and other members can read it with team_read. Use a name like <your-id>-<step>. Overwrites a file of the same name.",
       input: WRITE_SHAPE,
       autoAllow: true,
+      effect: "mutate",
       run: async (args) => {
         if (!isOnTeam(args.from, members)) return memberError(args.from, members);
         if (!NAME_RE.test(args.name)) return badName();
@@ -193,6 +194,7 @@ export function teamTools(opts: TeamToolsOptions): HarnessTool[] {
       description: "Read a file from the team workspace (a member's result or a brief).",
       input: READ_SHAPE,
       autoAllow: true,
+      effect: "read",
       run: async (args) => {
         if (!NAME_RE.test(args.name)) return badName();
         const path = filePath(dir, args.name);
@@ -209,6 +211,7 @@ export function teamTools(opts: TeamToolsOptions): HarnessTool[] {
         "Send a short note. Members: only to the lead. The lead: to one member or all. Keep it under 600 characters and point to files for anything longer.",
       input: POST_SHAPE,
       autoAllow: true,
+      effect: "mutate",
       run: async (args) => {
         if (!isOnTeam(args.from, members)) return memberError(args.from, members);
         if (!isOnTeam(args.to, members) && args.to !== "all") return memberError(args.to, members);
@@ -230,6 +233,8 @@ export function teamTools(opts: TeamToolsOptions): HarnessTool[] {
       description: "Your inbox and the team workspace: unread notes for you (marked read), the workspace files and the team roster.",
       input: BOARD_SHAPE,
       autoAllow: true,
+      // It marks notes read (cursors.json), so two calls must not race.
+      effect: "mutate",
       run: async (args) => {
         if (!isOnTeam(args.for, members)) return memberError(args.for, members);
         const notes = readNotes(dir);

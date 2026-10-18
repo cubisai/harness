@@ -485,6 +485,8 @@ function appLoopTool(tool: HarnessTool, input: TurnInput): LoopTool {
     displayName: tool.name,
     // Safe tools run in any mode; the rest ask in "ask" mode, like an edit.
     access: tool.autoAllow ? "read" : "edit",
+    // Permission and scheduling are separate: a tool may be safe to run without asking yet still change state.
+    parallel: tool.effect ? tool.effect === "read" : tool.autoAllow,
     summarize: (args) => {
       const first = Object.values(args).find((v) => typeof v === "string");
       return typeof first === "string" ? first : tool.name;
