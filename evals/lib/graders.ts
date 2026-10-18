@@ -78,6 +78,15 @@ function gradeSkill(g: Extract<Grader, { type: "skill" }>, input: GradeInput): V
   return { pass: true, why: want.length ? `loaded ${want.join(", ")}` : "no skill expected" };
 }
 
+/** A mock MCP tool's `mcp-result` carries its sentinel; a call is proved when that sentinel came back. */
+function gradeMcp(g: Extract<Grader, { type: "mcp" }>, input: GradeInput): Verdict {
+  if (!input.mcpSentinels) return { pass: false, why: "no mcp kit" };
+  const seen = new Set(input.events.filter((e) => e.kind === "mcp-result").map((e) => input.mcpSentinels!.get(e.text ?? "")));
+  const missing = g.expect.filter((name) => !seen.has(name));
+  if (missing.length) return { pass: false, why: `missing ${missing.join(", ")}` };
+  return { pass: true, why: `called ${g.expect.join(", ")}` };
+}
+
 function gradeEvent(g: Extract<Grader, { type: "event" }>, events: CompactEvent[]): Verdict {
   if (g.noError && events.some((e) => e.kind === "error")) return { pass: false, why: "saw an error event" };
   if (g.noFalseClaim) {
@@ -116,6 +125,8 @@ export async function grade(input: GradeInput): Promise<GraderResult[]> {
         return gradeEvent(g, input.events);
       case "answer":
         return gradeAnswer(g, input.events);
+      case "mcp":
+        return gradeMcp(g, input);
       case "budget":
         return { pass: !input.overBudget, why: input.overBudget ? "over budget" : "within budget" };
     }

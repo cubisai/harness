@@ -15,9 +15,12 @@ import { createGuide } from "../../src/main/guide";
 import { createProviderDriver } from "../../src/main/harness/driver";
 import type { HarnessProtocol } from "../../src/main/harness/llm/types";
 import { SessionStore } from "../../src/main/harness/session";
+import { McpClientPool, routerTools } from "../../src/main/mcp/router";
+import { McpToolsCache } from "../../src/main/mcp/servers";
 import { discoverSkills } from "../../src/main/skills/discover";
 import { skillTool } from "../../src/main/skills/tool";
 import type { Provider } from "../../src/shared/types";
+import type { Scenario } from "./types";
 
 export type AgentId = "native" | "claude" | "codex" | "opencode";
 export const AGENTS: AgentId[] = ["native", "claude", "codex", "opencode"];
@@ -28,7 +31,7 @@ export const PRESETS: Record<string, { envVar: string; baseURL: string; protocol
 };
 
 export interface AgentSetup {
-  driver(cwd: string): AgentDriver;
+  driver(cwd: string, scenario?: Scenario): AgentDriver;
   model: string;
   /** Names the run in reports, the cache key and the baseline: the bare model for native, "<agent>/<model>" otherwise. */
   label: string;
@@ -73,8 +76,10 @@ export function setupAgent(agent: AgentId, o: { root: string; scratch: string; p
       secret: { kind: "envRef", envVar: preset.envVar },
       models: [{ id: model, name: model, capabilities: { tools: true, vision: false, reasoning: true }, contextWindow: 200_000, maxOutput: 8_000 }],
     };
+    const listings = new McpToolsCache();
+    const pool = new McpClientPool();
     return {
-      driver: () =>
+      driver: (_cwd, scenario) =>
         createProviderDriver("eval", {
           provider: () => provider,
           secret: () => key,
@@ -83,8 +88,8 @@ export function setupAgent(agent: AgentId, o: { root: string; scratch: string; p
           outputDir: join(o.scratch, "out"),
           guardScript: BUILT_IN_GUARD,
           guide: forCwd,
-          memory: () => null,
-          mcpTools: () => [],
+          memory: () => scenario?.memory ?? null,
+          mcpTools: () => (scenario?.mcpServers.length ? routerTools({ servers: () => scenario.mcpServers, listings, pool }) : []),
           skills: (dir) => {
             const found = discoverSkills({ origin: "project", dir: join(dir, ".agents", "skills") });
             return found.length ? skillTool(() => found) : null;
@@ -94,16 +99,20 @@ export function setupAgent(agent: AgentId, o: { root: string; scratch: string; p
       label: model,
       protocol: preset.protocol,
       skillDirs: [".agents/skills"],
-      hashPaths: ["src/main/harness", "src/main/skills", ...shared],
+      hashPaths: ["src/main/harness", "src/main/mcp", "src/main/skills", ...shared],
       version: "",
       fidelity: "full: thread events plus the model-visible session messages (tool calls and results); system prompt and tool schemas not stored",
       sessionFile: (id) => join(o.scratch, "sessions", `${id}.jsonl`),
-      dispose: () => {},
+      dispose: () => {
+        void pool.closeAll().catch(() => {});
+      },
     };
   }
 
   const drivers: AgentDriver[] = [];
   const keep = (d: AgentDriver) => (drivers.push(d), d);
+  // CLI engines keep their own memory: the scenario's memory fixture is native-only.
+  // MCP servers reach them through TurnInput.mcpServers instead.
   const base = { model: o.model ?? "", protocol: agent, version: "", fidelity: `thread events only: ${agent}'s own prompt, tool schemas and internal loop are not visible to CubiQ`, dispose: () => drivers.forEach((d) => d.dispose?.()) };
 
   if (agent === "claude") {

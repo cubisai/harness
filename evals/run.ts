@@ -117,6 +117,10 @@ async function main(): Promise<number> {
     const only = f.get("task")?.split(",");
     let bad = 0;
     for (const task of loadTasks().filter((t) => !only || only.includes(t.id))) {
+      if (task.requires?.length) {
+        console.log(`skip ${task.id}: needs ${task.requires.join(", ")}, unavailable in the eval runner`);
+        continue;
+      }
       const v = await validateTask(task, {
         fixturesRoot: FIXTURES,
         referencesRoot: REFERENCES,
@@ -143,7 +147,10 @@ async function main(): Promise<number> {
   const priceArg = f.get("price")?.split(",").map(Number);
   const price = priceArg && priceArg.length === 2 ? { input: priceArg[0]!, output: priceArg[1]! } : undefined;
 
-  const tasks = loadTasks().filter((t) => (tier === "smoke" ? t.tier === "smoke" : true) && (!f.has("task") || f.get("task")!.split(",").includes(t.id)));
+  const selected = loadTasks().filter((t) => (tier === "smoke" ? t.tier === "smoke" : true) && (!f.has("task") || f.get("task")!.split(",").includes(t.id)));
+  // Tasks needing Electron's browser or team runtime can't run here; say so and leave them out.
+  for (const t of selected) if (t.requires?.length) console.log(`skip ${t.id}: needs ${t.requires.join(", ")}, unavailable in the eval runner`);
+  const tasks = selected.filter((t) => !t.requires?.length);
   const trialsOf = (t: Task) => (t.tags.includes("regression") ? trials : 1);
 
   if (f.has("dry")) {

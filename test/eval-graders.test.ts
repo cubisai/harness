@@ -208,6 +208,31 @@ describe("skill", () => {
   });
 });
 
+describe("mcp", () => {
+  const mcpSentinels = new Map([["SENTINEL-server-tool", "server/tool"]]);
+
+  it("passes when the tool's sentinel result came back", async () => {
+    const [r] = await run([{ type: "mcp", expect: ["server/tool"] }], {
+      events: [{ kind: "mcp-result", text: "SENTINEL-server-tool" }],
+      mcpSentinels,
+    });
+    expect(r).toMatchObject({ pass: true, required: true, weight: 1 });
+    expect(r!.why).toBe("called server/tool");
+  });
+
+  it("fails naming the missing tool when its sentinel is absent", async () => {
+    const [r] = await run([{ type: "mcp", expect: ["server/tool"] }], { events: [], mcpSentinels });
+    expect(r!.pass).toBe(false);
+    expect(r!.why).toBe("missing server/tool");
+  });
+
+  it("fails when there is no mcp kit", async () => {
+    const [r] = await run([{ type: "mcp", expect: ["server/tool"] }], { events: [{ kind: "mcp-result", text: "SENTINEL-server-tool" }] });
+    expect(r!.pass).toBe(false);
+    expect(r!.why).toBe("no mcp kit");
+  });
+});
+
 describe("event", () => {
   it("noError fails on an error event and passes otherwise", async () => {
     const [bad] = await run([{ type: "event", noError: true }], { events: [{ kind: "error", text: "boom" }] });

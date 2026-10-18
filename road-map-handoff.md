@@ -8,16 +8,11 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 
 **Rules:** one commit per point. Typecheck and the full vitest suite must be green before each commit. At the end of each phase that changes the app runtime, do one live turn each on Claude, Codex and OpenCode Zen.
 
-## Resume here (stopped 2026-10-17 at the owner's request)
+## Resume here
 
-Next point: **P1.6, multi-turn scenarios**. Nothing has been written for it yet. Findings so far:
-- **Turns:** add `turns?: { prompt: string; reply?: string }[]` to `Task`. `runTrial` then runs them in order on one session: keep the `sessionId` from `onSession` and pass it into the next `TurnInput`. `reply` answers `requestUserInput`.
-- **Memory:** the native driver takes `memory(projectId, threadId, sessionKey) → string | null` (`src/main/harness/driver.ts:43`). The eval setup passes `() => null` (`evals/lib/agents.ts`). Add a `memory` fixture block to `Task` and return it from there.
-- **MCP:** `scripts/mock-extensions-lib.mjs` `generate({ servers, tools, seed, serverScript })` writes `.mcp.json` and mock servers (`scripts/mock-extensions.mjs`).
-  - The app wires them through `routerTools({ servers, listings: new McpToolsCache(), pool: new McpClientPool() })` (`src/main/index.ts:657`, `738`, `772`).
-  - This needs no Electron, so the eval's native `mcpTools` can use it.
-- **Browser and team scenarios** need Electron, so they can't run in the bun runner. Record them as "unavailable in the eval runner" until P5/P6 add a headless browser backend.
-- After that: P1.7 (about 20 new cases, each with a reference and a validator pass), then P1.8 (10k/50k-event history fixtures plus `scripts/profile-history.ts`).
+Next point: **P1.7, case set expansion** (about 20 new cases, each with a reference and a validator pass), then P1.8 (10k/50k-event history fixtures plus `scripts/profile-history.ts`).
+- **Workers on the Windows PC:** Zen's free models (`opencode/deepseek-v4.1-flash-free`, `opencode/glm-5.3-flash-free`) work without a key. The stored Zen key in `auth.json` has expired and is sent anyway, so dispatch with `XDG_DATA_HOME` pointed at a short empty dir and `OPENCODE_BIN=C:/Users/laplop/.bun/bin/opencode.exe` (oc-run only looks under npm), plus `--chain opencode/deepseek-v4.1-flash-free,opencode/glm-5.3-flash-free`.
+- **Baseline on that PC:** the full suite has about 9–11 environment failures on a clean tree: TokenHarbor live tests, codex-e2e MCP, opencode-guard EPERM/timeout, and load timeouts. Compare failing files against that list, not against zero.
 
 ## Status
 
@@ -28,7 +23,7 @@ Next point: **P1.6, multi-turn scenarios**. Nothing has been written for it yet.
 | P1.3 Run manifest + traces | done | `740df2e` |
 | P1.4 Local report | done | `c1ab7fd` |
 | P1.5 Grader validation | done | `8d07bde` + fix `f2dff88` |
-| P1.6 Multi-turn scenarios | next | |
+| P1.6 Multi-turn scenarios | done | (this commit) |
 | P1.7 Case set expansion | | |
 | P1.8 Desktop baseline fixtures | | |
 | P2–P8 | not started | |
@@ -94,3 +89,20 @@ Next point: **P1.6, multi-turn scenarios**. Nothing has been written for it yet.
   - Their cache keys change, so they rerun next time.
 - 25 references now exist. 9 code-task references were written by 2 Zen DeepSeek implementer workers and reviewed by Claude: minimal, honest fixes.
 - `test/eval-tasks.test.ts` pins it: every task's no-op fails and its reference passes, and a weak task gets flagged.
+
+### P1.6 — multi-turn scenarios (2026-10-18)
+- `Task` gains `reply`, `turns[]`, `memory`, `mcp { servers, tools, seed }` and `requires` (browser/team).
+- `runTrial` runs the turns in order on one session (the next `TurnInput.sessionId` is the one `onSession` reported). The budget covers the whole trial, and usage/cost/steps sum every root turn-end, so single-turn results are unchanged. `reply` answers `requestUserInput`.
+- `mcpKit(task)` turns `generate()` into stdio `McpServerEntry`s plus sentinel → "server/tool".
+  - Native evals wire them through the app's `routerTools` + `McpToolsCache` + `McpClientPool` (`evals/lib/agents.ts`).
+  - CLI engines get them through `TurnInput.mcpServers`.
+  - The scenario memory is native-only.
+- New `mcp` grader: each expected tool's sentinel came back. References can list `mcp: [...]`.
+- New tasks:
+  - `memory-multi-turn`: memory plus 2 turns.
+  - `mcp-lookup`: `mock-frontend/seed_react`.
+  - `browser-smoke` and `team-review` carry `requires`. Run and validate print "skip …: unavailable in the eval runner" for them; they don't count as incomplete.
+- `validate.ts` normalises CRLF before applying reference edits, which fixes add-cli-flag/agents-md-rules on Windows checkouts.
+- Tests: multi-turn session reuse + summed usage, memory reaches the system prompt, reply/dismiss, mcpKit, the mcp grader, and an end-to-end run where a real mock stdio MCP server is called through the router.
+- Implemented by a Zen deepseek-v4.1-flash-free implementer worker; Claude reviewed the diff and added the end-to-end MCP test.
+- Checks: typecheck green; `--validate-graders` exit 0 (27 OK, 2 skipped); vitest 2583 passed, 9 failed. All 9 failures are environment-only and in the baseline list above; there were 11 on the clean tree.

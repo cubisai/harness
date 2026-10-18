@@ -1,0 +1,16 @@
+{
+  "mcp": [
+    "mock-frontend/seed_react"
+  ],
+  "events": [
+    {
+      "kind": "tool-use",
+      "name": "call_mcp_tool",
+      "summary": "mock-frontend seed_react"
+    },
+    {
+      "kind": "assistant-text",
+      "text": "Status: ok"
+    }
+  ]
+}

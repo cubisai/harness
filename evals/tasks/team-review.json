@@ -1,0 +1,34 @@
+{
+  "id": "team-review",
+  "tags": [
+    "capability"
+  ],
+  "tier": "full",
+  "fixture": "empty",
+  "mode": "full",
+  "requires": [
+    "team"
+  ],
+  "prompt": "Ask a reviewer teammate to check README.md and summarise their findings.",
+  "graders": [
+    {
+      "type": "answer",
+      "contains": [
+        "review"
+      ]
+    },
+    {
+      "type": "event",
+      "noError": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 6,
+    "maxInputTokens": 60000,
+    "timeoutMs": 180000
+  },
+  "reference": "Needs the app's team runtime (Electron)."
+}

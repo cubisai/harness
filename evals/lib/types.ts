@@ -1,6 +1,8 @@
 // The eval contract: task files (evals/tasks/*.json), graders and stored
 // results. Plan: .ai/plans/eval-framework.md.
 
+import type { McpServerEntry } from "../../src/shared/types";
+
 export type Tier = "smoke" | "full";
 export type TaskTag = "capability" | "regression";
 
@@ -31,7 +33,9 @@ export type Grader =
   | { type: "event"; noError?: boolean; noFalseClaim?: boolean; planProposed?: boolean; required?: boolean; weight?: number }
   | { type: "budget"; required?: boolean; weight?: number }
   /** The final answer text: every `contains` (case-insensitive) and `matches` (regex, i). */
-  | { type: "answer"; contains?: string[]; matches?: string; required?: boolean; weight?: number };
+  | { type: "answer"; contains?: string[]; matches?: string; required?: boolean; weight?: number }
+  /** Each "server/tool" in expect was called and its result came back (sentinel seen). */
+  | { type: "mcp"; expect: string[]; required?: boolean; weight?: number };
 
 export interface Task {
   id: string;
@@ -41,6 +45,16 @@ export interface Task {
   fixture: string;
   prompt: string;
   mode: "ask" | "plan" | "auto-edit" | "full";
+  /** Answer to any requestUserInput question during the first turn. */
+  reply?: string;
+  /** Follow-up user turns run in order on the SAME agent session after `prompt`. */
+  turns?: { prompt: string; reply?: string }[];
+  /** Memory text the agent is given (native engine: returned from the driver's `memory` dep). */
+  memory?: string;
+  /** Mock MCP servers from scripts/mock-extensions-lib.mjs `generate`. */
+  mcp?: { servers: number; tools: number; seed: number };
+  /** Capabilities the bun eval runner can't provide (they need Electron); such tasks are skipped, see run.ts. */
+  requires?: ("browser" | "team")[];
   /** How the runner answers permission requests; default allow. */
   permissions?: "allow" | "deny";
   /** How the runner answers a plan proposal: "stop" ends the turn there (default), the others approve it. */
@@ -74,8 +88,16 @@ export interface GradeInput {
   overBudget: boolean;
   /** Sentinel → skill name, for `skill` graders. */
   sentinels?: Map<string, string>;
+  /** Sentinel → "server/tool", for `mcp` graders. */
+  mcpSentinels?: Map<string, string>;
   /** Runs a grader command in `dir`; injected so tests need no shell. */
   runCommand(command: string, cwd: string, timeoutMs: number): Promise<{ ok: boolean; exitCode: number | null; tail: string }>;
+}
+
+/** What a trial hands its driver before the first turn: memory text and mock MCP servers. */
+export interface Scenario {
+  memory: string | null;
+  mcpServers: McpServerEntry[];
 }
 
 export interface GraderResult {
