@@ -247,6 +247,7 @@ export function installMock(): void {
       return project;
     },
     listThreads: async (pid) => threads[pid] ?? [],
+    listAllThreads: async () => Object.fromEntries(Object.entries(threads).filter(([, list]) => list.length)),
     createThread: async (pid, agent, opts) => {
       const th = t(`t${Math.random()}`, pid, "New thread", 0, agent ?? "claude");
       if (opts?.worktree) {
@@ -304,6 +305,46 @@ export function installMock(): void {
     exportSettings: async () => null,
     importSettings: async () => null,
     listEvents: async (id) => events[id] ?? [],
+    listEventsPage: async (id, opts) => {
+      const all = events[id] ?? [];
+      const before = opts.beforeSeq ?? Infinity;
+      const window = all.filter((e) => e.seq < before).slice(-(opts.minEvents ?? 1500));
+      if (window.length === 0) return { events: [], firstSeq: 0, hasMore: false };
+      const first = window[0]!.seq;
+      const isRootTurnBoundary = (e: StoredEvent) => (e.event.kind === "user" || e.event.kind === "turn-start") && !e.event.parentId;
+      // The page opens on the turn's root; a thread with no boundary opens at its first event.
+      let start = all[0]!.seq;
+      for (let i = all.length - 1; i >= 0; i--) {
+        if (all[i]!.seq > first) continue;
+        if (isRootTurnBoundary(all[i]!)) {
+          start = all[i]!.seq;
+          break;
+        }
+      }
+      const page = all.filter((e) => e.seq >= start && e.seq <= window[window.length - 1]!.seq);
+      return { events: page, firstSeq: page[0]!.seq, hasMore: all.some((e) => e.seq < page[0]!.seq) };
+    },
+    threadTotals: async (id) => {
+      const all = events[id] ?? [];
+      let inputTokens = 0;
+      let cacheReadTokens = 0;
+      let outputTokens = 0;
+      let costUsd = 0;
+      let turns = 0;
+      let sawCost = false;
+      for (const e of all) {
+        if (e.event.kind !== "turn-end") continue;
+        turns++;
+        inputTokens += e.event.inputTokens;
+        cacheReadTokens += e.event.usage?.cacheReadTokens ?? 0;
+        outputTokens += e.event.outputTokens;
+        if (typeof e.event.costUsd === "number") {
+          sawCost = true;
+          costUsd += e.event.costUsd;
+        }
+      }
+      return { events: all.length, turns, inputTokens, cacheReadTokens, outputTokens, costUsd: sawCost ? costUsd : null, lastSeq: all.length ? all[all.length - 1]!.seq : 0 };
+    },
     listSkills: async () => allSkills.filter((s) => s.enabled !== false && !s.shadowedBy),
     listAgents: async () => [
       {

@@ -13,13 +13,17 @@ export type DesignWatchFn = (dir: string, listener: (file?: string) => void) => 
 /** Files CubiQ itself keeps at the top of a design folder: writing them is bookkeeping, not a design change. */
 export const UNWATCHED = new Set(["comments.json", ".tier"]);
 
+/** How many distinct paths a burst may name before the change is treated as unknown (reload everything). */
+const MAX_PATHS = 200;
+
 /** Whether a reported change is CubiQ's own bookkeeping (no reload for it). */
 export function ignoredChange(file: string | undefined): boolean {
   return file !== undefined && UNWATCHED.has(file.replace(/\\/g, "/"));
 }
 
 export interface DesignWatcherOptions {
-  onChange(threadId: string): void;
+  /** `paths` lists the burst's changed files relative to the folder, or is null when they're unknown. */
+  onChange(threadId: string, paths: string[] | null): void;
   debounceMs?: number;
   watchFn?: DesignWatchFn;
 }
@@ -31,6 +35,12 @@ interface Entry {
   dir: string;
   /** The topmost folder the watch created, if any: removed again on close while it's still empty. */
   created: string | null;
+  /** The current burst's changed paths, normalized to `/` with no duplicates. */
+  paths: Set<string>;
+  /** An event in the burst had no reported path, so its files are unknown. */
+  unknown: boolean;
+  /** The burst named more than MAX_PATHS distinct paths. */
+  overflow: boolean;
 }
 
 /**
@@ -39,7 +49,7 @@ interface Entry {
  * only increments the count, and the folder is created on first watch.
  */
 export class DesignWatcher {
-  private readonly onChange: (threadId: string) => void;
+  private readonly onChange: (threadId: string, paths: string[] | null) => void;
   private readonly debounceMs: number;
   private readonly watchFn: DesignWatchFn;
   private readonly entries = new Map<string, Entry>();
@@ -68,14 +78,14 @@ export class DesignWatcher {
       created = firstCreated(dir);
       mkdirSync(dir, { recursive: true });
       handle = this.watchFn(dir, (file) => {
-        if (!ignoredChange(file)) this.bump(threadId);
+        if (!ignoredChange(file)) this.bump(threadId, file);
       });
     } catch (err) {
       console.warn(`DesignWatcher: can't watch ${dir}`, err);
       if (created) removeEmpty(dir, created);
       return;
     }
-    const entry: Entry = { handle, count: 1, timer: null, dir, created };
+    const entry: Entry = { handle, count: 1, timer: null, dir, created, paths: new Set(), unknown: false, overflow: false };
     this.entries.set(threadId, entry);
     handle.on?.("error", () => this.forget(threadId));
   }
@@ -103,16 +113,26 @@ export class DesignWatcher {
     this.entries.clear();
   }
 
-  /** Reset a thread's debounce timer; it fires `onChange` once the burst ends. */
-  private bump(threadId: string): void {
+  /** Reset a thread's debounce timer; it fires `onChange` with the burst's paths once the burst ends. */
+  private bump(threadId: string, file?: string): void {
     const entry = this.entries.get(threadId);
     if (!entry) return;
+    if (file === undefined) entry.unknown = true;
+    else {
+      const rel = file.replace(/\\/g, "/");
+      if (entry.paths.size < MAX_PATHS) entry.paths.add(rel);
+      else if (!entry.paths.has(rel)) entry.overflow = true;
+    }
     if (entry.timer !== null) clearTimeout(entry.timer);
     entry.timer = setTimeout(() => {
       const current = this.entries.get(threadId);
       if (current !== entry) return;
       entry.timer = null;
-      this.onChange(threadId);
+      const paths = entry.unknown || entry.overflow ? null : [...entry.paths];
+      entry.paths.clear();
+      entry.unknown = false;
+      entry.overflow = false;
+      this.onChange(threadId, paths);
     }, this.debounceMs);
   }
 

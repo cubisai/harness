@@ -833,7 +833,7 @@ async function main(): Promise<void> {
       bridge: designBridgeJs,
     }),
   );
-  const designWatcher = new DesignWatcher({ onChange: (threadId) => broadcast({ type: "design-changed", threadId }) });
+  const designWatcher = new DesignWatcher({ onChange: (threadId, paths) => broadcast({ type: "design-changed", threadId, ...(paths ? { paths } : {}) }) });
   // Each window's watches, so a window that closes (or reloads) without unmounting its canvas releases them.
   const designWatches = new Map<number, Map<string, number>>();
   const designHooked = new Set<number>();
@@ -1414,6 +1414,7 @@ async function main(): Promise<void> {
     store.setCheckCommand(projectId, command, fixRounds),
   );
   ipcMain.handle("threads:list", (_e, projectId: string) => store.listThreads(projectId));
+  ipcMain.handle("threads:all", () => store.listAllThreads());
   ipcMain.handle("threads:create", (_e, projectId: string, agent?: string, opts?: { worktree?: boolean; kind?: unknown; designSystem?: unknown; expertId?: unknown }) => {
     const kind: ThreadKind = opts?.kind === "design" ? "design" : "chat";
     // Only a design thread keeps a system, and only an id the picker could offer (checked again at each turn).
@@ -1529,6 +1530,14 @@ async function main(): Promise<void> {
     return service.importThread(projectId, JSON.parse(readFileSync(path, "utf8")));
   });
   ipcMain.handle("events:list", (_e, threadId: string) => store.listEvents(threadId));
+  ipcMain.handle("events:page", (_e, threadId: string, opts?: { beforeSeq?: unknown; minEvents?: unknown }) => {
+    // Numbers only; minEvents is capped so a window can't ask for the whole thread.
+    const page: { beforeSeq?: number; minEvents?: number } = {};
+    if (typeof opts?.beforeSeq === "number" && Number.isFinite(opts.beforeSeq)) page.beforeSeq = Math.floor(opts.beforeSeq);
+    if (typeof opts?.minEvents === "number" && Number.isFinite(opts.minEvents)) page.minEvents = Math.min(20_000, Math.max(1, Math.floor(opts.minEvents)));
+    return store.listEventsPage(threadId, page);
+  });
+  ipcMain.handle("thread:totals", (_e, threadId: string) => store.threadTotals(threadId));
   ipcMain.handle("skills:list", (_e, projectId?: string) => service.listSkills(projectId));
   ipcMain.handle("agents:list", () => service.listAgents());
   ipcMain.handle("turn:send", (_e, req: SendRequest) => {

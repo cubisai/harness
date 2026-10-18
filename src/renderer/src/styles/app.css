@@ -912,6 +912,7 @@ button.design-crumb:hover { background: var(--bg-hover); color: var(--text); }
 
 .thread-scroll { flex: 1; min-height: 0; overflow-y: auto; user-select: text; }
 .thread-inner { max-width: 720px; margin: 0 auto; padding: 28px 28px 24px; }
+.earlier-messages { display: flex; justify-content: center; margin: 0 0 16px; }
 
 .msg-user {
   display: flex;

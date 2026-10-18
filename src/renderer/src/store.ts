@@ -25,6 +25,7 @@ import type {
   SwitchResult,
   Thread,
   ThreadKind,
+  ThreadTotals,
 } from "../../shared/types";
 import { api } from "./api";
 import { appendDelta, applyLiveEvent, emptyLive, flushPending, type LiveThread } from "./live";
@@ -120,11 +121,15 @@ interface State {
   setDraft(patch: Partial<Draft>): void;
   selectedProjectId: string | null;
   selectedThreadId: string | null;
+  /** Thread ids by how recently they were selected (oldest first), so the per-thread caches can be bounded. */
+  selectedOrder: string[];
   /** Chat or Design mode: which threads the sidebar lists and what New thread makes. Follows the selected thread. */
   threadKind: ThreadKind;
   /** Switch mode; a selected thread of the other kind gives way to the project's latest of this kind, if any. */
   setThreadKind(kind: ThreadKind): Promise<void>;
   events: Record<string, StoredEvent[]>; // by thread id
+  /** Each thread's loaded history window: where it starts, whether older events exist, and its whole-thread totals. */
+  history: Record<string, { firstSeq: number; hasMore: boolean; loadingOlder: boolean; totals: ThreadTotals | null }>;
   live: Record<string, LiveThread>; // streaming state not yet stored
   running: Record<string, boolean>;
   /** Pin or unpin a thread; pins are stored with the thread. */
@@ -185,6 +190,8 @@ interface State {
   composerInsert: { text: string; nonce: number } | null;
   /** Bumped when an open design thread's folder changes, so its canvas reloads. */
   designReload: Record<string, number>;
+  /** Each open design thread's latest change: a counter and the raw changed paths (null = unknown), so the board regenerates only the artboards it affects. */
+  designChange: Record<string, { n: number; paths: string[] | null }>;
   /** Each design thread's selected elements on its canvas (one page): chips in the composer, scope for the next message. */
   designSelection: Record<string, DesignSelection>;
   /** Set (or clear, with null or no elements) a design thread's selection. */
@@ -215,6 +222,8 @@ interface State {
   setCheckCommand(id: string, command: string | null, fixRounds?: number | null): Promise<void>;
   selectProject(id: string): Promise<void>;
   selectThread(id: string | null): Promise<void>;
+  /** Load the next older page of a thread's history; a no-op when there is none or one is loading. */
+  loadOlder(threadId: string): Promise<void>;
   /** Open a new thread, returning its id (or null when nothing was created: no project, or the create failed). `worktree` gives it its own git worktree on a new branch; `designSystem` picks a design thread's system. */
   newThread(skills?: string[], opts?: { worktree?: boolean; designSystem?: string; expertId?: string }): Promise<string | null>;
   /** The expert catalogue (null until loaded). */
@@ -285,6 +294,36 @@ function findThread(threads: Record<string, Thread[]>, id: string): Thread | und
   return Object.values(threads)
     .flat()
     .find((t) => t.id === id);
+}
+
+/** How many events one history page asks for; the main side extends it back to a turn boundary. */
+export const HISTORY_PAGE = 1500;
+
+/** How many threads keep their loaded caches; older ones are evicted on selection. */
+export const CACHE_THREADS = 8;
+
+/**
+ * The thread ids to drop so at most `max` remain: the oldest of `order`
+ * (most-recently-selected last) beyond the newest `max`, never an id in `keep`.
+ */
+export function evictable(order: string[], keep: Set<string>, max: number): string[] {
+  return order.slice(0, Math.max(0, order.length - max)).filter((id) => !keep.has(id));
+}
+
+/** Union of two seq-sorted event lists, deduped by seq (a later list's copy wins) and sorted ascending. */
+export function mergeBySeq(a: StoredEvent[], b: StoredEvent[]): StoredEvent[] {
+  const bySeq = new Map<number, StoredEvent>();
+  for (const e of a) bySeq.set(e.seq, e);
+  for (const e of b) bySeq.set(e.seq, e);
+  return [...bySeq.values()].sort((x, y) => x.seq - y.seq);
+}
+
+/** The thread's total event count: the server total plus events past it, never below what's loaded. */
+export function eventCount(events: StoredEvent[] | undefined, totals: ThreadTotals | null | undefined): number {
+  const loaded = events?.length ?? 0;
+  if (!totals) return loaded;
+  const live = (events ?? []).reduce((n, e) => n + (e.seq > totals.lastSeq ? 1 : 0), 0);
+  return Math.max(loaded, totals.events + live);
 }
 
 /** createThread's options: the kind being shown, and a design thread's system (an explicit one beats the draft's). */
@@ -485,6 +524,7 @@ export const useStore = create<State>((set, get) => ({
   },
   selectedProjectId: null,
   selectedThreadId: null,
+  selectedOrder: [],
   threadKind: "chat",
   async setThreadKind(kind) {
     const s = get();
@@ -498,6 +538,7 @@ export const useStore = create<State>((set, get) => ({
     await get().selectThread(latest?.id ?? null);
   },
   events: {},
+  history: {},
   live: {},
   running: {},
   async togglePin(threadId) {
@@ -539,9 +580,11 @@ export const useStore = create<State>((set, get) => ({
     }
     set((s) => {
       const { [threadId]: _events, ...events } = s.events;
+      const { [threadId]: _history, ...history } = s.history;
       return {
         threads: { ...s.threads, [thread.projectId]: (s.threads[thread.projectId] ?? []).filter((t) => t.id !== threadId) },
         events,
+        history,
         finished: s.finished.filter((f) => f.threadId !== threadId),
         selectedThreadId: s.selectedThreadId === threadId ? null : s.selectedThreadId,
       };
@@ -579,6 +622,7 @@ export const useStore = create<State>((set, get) => ({
   browserLoaded: false,
   composerInsert: null,
   designReload: {},
+  designChange: {},
   designSelection: {},
   setDesignSelection(threadId, selection) {
     set((s) => {
@@ -704,7 +748,7 @@ export const useStore = create<State>((set, get) => ({
       api().onUpdate((u) => get().apply(u));
     }
     try {
-      const [projects, skills, agents, settings, appUpdate, limitList, pending] = await Promise.all([
+      const [projects, skills, agents, settings, appUpdate, limitList, pending, allThreads] = await Promise.all([
         api().listProjects(),
         api().listSkills(),
         api().listAgents(),
@@ -712,6 +756,7 @@ export const useStore = create<State>((set, get) => ({
         api().updateStatus(),
         api().listLimits(),
         api().pendingState(),
+        api().listAllThreads(),
       ]);
       void api()
         .listEditors()
@@ -721,8 +766,7 @@ export const useStore = create<State>((set, get) => ({
       applyDensity(settings.density);
       applyZoom(settings.zoom);
       const threads: Record<string, Thread[]> = {};
-      for (const p of projects) threads[p.id] = await api().listThreads(p.id);
-      for (const p of projects) void get().loadBranch(p.id);
+      for (const p of projects) threads[p.id] = allThreads[p.id] ?? [];
       const limits = Object.fromEntries(limitList.map((l) => [l.agent, l]));
       set((s) => ({ projects, skills, agents, threads, settings, paneLayout: sanitizeLayout(settings.paneLayout), appUpdate, limits: { ...limits, ...s.limits } }));
       // A window that loads mid-turn picks up what's live: running threads and the cards waiting on the user.
@@ -738,7 +782,10 @@ export const useStore = create<State>((set, get) => ({
       if (first) {
         await get().selectProject(first.id);
         const recent = threads[first.id]?.[0];
-        if (recent) await get().selectThread(recent.id);
+        // Open the selected thread before the per-project branch loads, which are not on the critical path.
+        const opening = recent ? get().selectThread(recent.id) : Promise.resolve();
+        for (const p of projects) void get().loadBranch(p.id);
+        await opening;
       }
     } catch (err) {
       // A startup call that rejects used to leave a blank window; let the user retry.
@@ -798,6 +845,7 @@ export const useStore = create<State>((set, get) => ({
       const { [id]: _removedThreads, ...threads } = s.threads;
       const { [id]: _removedBranch, ...projectBranches } = s.projectBranches;
       const events = Object.fromEntries(Object.entries(s.events).filter(([tid]) => !threadIdsToRemove.has(tid)));
+      const history = Object.fromEntries(Object.entries(s.history).filter(([tid]) => !threadIdsToRemove.has(tid)));
       const finished = s.finished.filter((f) => !threadIdsToRemove.has(f.threadId));
       const selectedThreadId = threadIdsToRemove.has(s.selectedThreadId ?? "") ? null : s.selectedThreadId;
 
@@ -806,6 +854,7 @@ export const useStore = create<State>((set, get) => ({
         threads,
         projectBranches,
         events,
+        history,
         finished,
         selectedProjectId: nextProjectId,
         selectedThreadId,
@@ -840,6 +889,8 @@ export const useStore = create<State>((set, get) => ({
     const picked = id ? Object.values(get().threads).flat().find((t) => t.id === id) : undefined;
     set((s) => ({
       selectedThreadId: id,
+      // Keep the selection order so the per-thread caches can be bounded below.
+      selectedOrder: id ? [...s.selectedOrder.filter((x) => x !== id), id] : s.selectedOrder,
       // Jumping to a thread (⌘K, the Message Center) lands in its mode.
       ...(picked ? { threadKind: threadKind(picked) } : {}),
       finished: threadSeen(s.finished, id),
@@ -848,6 +899,34 @@ export const useStore = create<State>((set, get) => ({
         ? { artifact: null, ...(s.inspectorTab === "artifact" ? { inspectorTab: "changes" as const, inspectorOpen: false } : {}) }
         : {}),
     }));
+    // Bound the caches: keep the selection and live work (running turns, cards, queued messages).
+    const state = get();
+    const keep = new Set<string>();
+    if (id) keep.add(id);
+    for (const [tid, on] of Object.entries(state.running)) if (on) keep.add(tid);
+    for (const p of state.permissions) keep.add(p.threadId);
+    for (const p of state.plans) keep.add(p.threadId);
+    for (const q of state.questions) keep.add(q.threadId);
+    for (const [tid, list] of Object.entries(state.outbox)) if (list.length) keep.add(tid);
+    const drop = evictable(state.selectedOrder, keep, CACHE_THREADS);
+    if (drop.length) {
+      const dropped = new Set(drop);
+      set((s) => {
+        const events = { ...s.events };
+        const history = { ...s.history };
+        const artifactFiles = { ...s.artifactFiles };
+        const turnScores = { ...s.turnScores };
+        const live = { ...s.live };
+        for (const tid of dropped) {
+          delete events[tid];
+          delete history[tid];
+          delete artifactFiles[tid];
+          delete turnScores[tid];
+          if (!s.running[tid]) delete live[tid];
+        }
+        return { events, history, artifactFiles, turnScores, live, selectedOrder: s.selectedOrder.filter((x) => !dropped.has(x)) };
+      });
+    }
     // The thread's recorded files, so each turn's file cards include what it wrote by command.
     if (id && !get().artifactFiles[id]) {
       void Promise.resolve()
@@ -862,8 +941,32 @@ export const useStore = create<State>((set, get) => ({
         .catch(() => {});
     }
     if (id && !get().events[id]) {
-      const events = await api().listEvents(id);
-      set((s) => ({ events: { ...s.events, [id]: events } }));
+      const [page, totals] = await Promise.all([api().listEventsPage(id, { minEvents: HISTORY_PAGE }), api().threadTotals(id)]);
+      set((s) => ({
+        // Live events can land while the page loads: keep the union, the page's stored copies winning.
+        events: { ...s.events, [id]: mergeBySeq(s.events[id] ?? [], page.events) },
+        history: { ...s.history, [id]: { firstSeq: page.firstSeq, hasMore: page.hasMore, loadingOlder: false, totals } },
+      }));
+    }
+  },
+
+  async loadOlder(threadId) {
+    const history = get().history[threadId];
+    if (!history?.hasMore || history.loadingOlder) return;
+    set((s) => ({ history: { ...s.history, [threadId]: { ...history, loadingOlder: true } } }));
+    try {
+      const page = await api().listEventsPage(threadId, { beforeSeq: history.firstSeq, minEvents: HISTORY_PAGE });
+      set((s) => {
+        const current = s.history[threadId] ?? history;
+        return {
+          events: { ...s.events, [threadId]: mergeBySeq(s.events[threadId] ?? [], page.events) },
+          // An empty page has no firstSeq to take; hasMore going false ends the paging anyway.
+          history: { ...s.history, [threadId]: { ...current, firstSeq: page.events.length ? page.firstSeq : current.firstSeq, hasMore: page.hasMore, loadingOlder: false } },
+        };
+      });
+    } catch {
+      // Leave the loaded window as it was; the control stays so the user can retry.
+      set((s) => ({ history: { ...s.history, [threadId]: { ...(s.history[threadId] ?? history), loadingOlder: false } } }));
     }
   },
 
@@ -884,6 +987,7 @@ export const useStore = create<State>((set, get) => ({
       pendingSkills: skills ?? [],
       threads: { ...s.threads, [projectId]: upsertThread(s.threads[projectId], thread) },
       events: { ...s.events, [thread.id]: [] },
+      history: { ...s.history, [thread.id]: { firstSeq: 0, hasMore: false, loadingOlder: false, totals: null } },
       selectedThreadId: thread.id,
       draft: {},
       lastAgent: thread.agent,
@@ -906,6 +1010,7 @@ export const useStore = create<State>((set, get) => ({
     set((s) => ({
       threads: { ...s.threads, [design.projectId]: upsertThread(s.threads[design.projectId], thread) },
       events: { ...s.events, [thread.id]: [] },
+      history: { ...s.history, [thread.id]: { firstSeq: 0, hasMore: false, loadingOlder: false, totals: null } },
     }));
     const dir = designDirName(designThreadId);
     const ok = await get().send(buildInCodePrompt(dir), undefined, thread.id, [handoffPath(dir)]);
@@ -928,6 +1033,7 @@ export const useStore = create<State>((set, get) => ({
     set((s) => ({
       threads: { ...s.threads, [projectId]: upsertThread(s.threads[projectId], thread) },
       events: { ...s.events, [thread.id]: [] },
+      history: { ...s.history, [thread.id]: { firstSeq: 0, hasMore: false, loadingOlder: false, totals: null } },
       draft: {},
       lastAgent: thread.agent,
     }));
@@ -1186,7 +1292,10 @@ export const useStore = create<State>((set, get) => ({
         return;
       }
       case "design-changed":
-        set((s) => ({ designReload: { ...s.designReload, [update.threadId]: (s.designReload[update.threadId] ?? 0) + 1 } }));
+        set((s) => ({
+          designReload: { ...s.designReload, [update.threadId]: (s.designReload[update.threadId] ?? 0) + 1 },
+          designChange: { ...s.designChange, [update.threadId]: { n: (s.designChange[update.threadId]?.n ?? 0) + 1, paths: update.paths ?? null } },
+        }));
         return;
       case "event":
         // A plan proposal is also a new version of the thread's plan artifact: refresh its file list.
@@ -1198,13 +1307,16 @@ export const useStore = create<State>((set, get) => ({
             .catch(() => {});
         }
         set((s) => {
-          const list = s.events[update.threadId] ?? [];
-          if (list.some((e) => e.seq === update.stored.seq)) return {};
+          const list = s.events[update.threadId];
+          if (list?.some((e) => e.seq === update.stored.seq)) return {};
           // Deltas that arrived before this terminal event must land first.
           const live = drainQueue(s);
           live[update.threadId] = applyLiveEvent(live[update.threadId] ?? emptyLive(), update.stored);
+          // An event for a thread whose history isn't loaded (and isn't being loaded) must not
+          // make a one-event list, which would block the page load; selectThread brings it in.
+          if (!list && update.threadId !== s.selectedThreadId) return { live };
           return {
-            events: { ...s.events, [update.threadId]: [...list, update.stored] },
+            events: { ...s.events, [update.threadId]: [...(list ?? []), update.stored] },
             live,
           };
         });
@@ -1338,6 +1450,22 @@ export const useStore = create<State>((set, get) => ({
 function isDesignFile(s: Pick<State, "threads">, threadId: string, path: string): boolean {
   const thread = Object.values(s.threads).flat().find((t) => t.id === threadId);
   return thread?.kind === "design" && path.startsWith(`${designDirName(threadId)}/`);
+}
+
+/**
+ * Which of a design folder's `pages` a change affects: "all" when the paths are unknown or any changed file
+ * isn't an `.html` page (css, js, images, fonts, json, folders… may be shared by every page), else the changed
+ * paths that are pages. An `.html` that isn't a page affects nothing.
+ */
+export function affectedPages(paths: string[] | undefined, pages: string[]): string[] | "all" {
+  if (!paths) return "all";
+  const known = new Set(pages);
+  const out: string[] = [];
+  for (const path of paths) {
+    if (!/\.html$/i.test(path)) return "all";
+    if (known.has(path)) out.push(path);
+  }
+  return out;
 }
 
 export function useSelectedThread(): Thread | null {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Maximize2, Play } from "lucide-react";
 import { BOARD_HEADER, BOARD_TITLE_BAND, boardLayout, boardSections, clampZoom, fitBoard, zoomAt, type BoardFrame, flowPath } from "./board-layout";
+import { affectedPages } from "../store";
 import type { DesignEntry } from "../../../shared/types";
 
 /** The margin around the stage within which a frame's iframe is rendered (others are placeholders). */
@@ -15,6 +16,17 @@ interface View {
 }
 
 /**
+ * The next per-artboard reload counts after a change: each page the change affects gets one more, so its frame
+ * remounts while the others stay put. Unknown paths affect every page.
+ */
+export function bumpArtboardCounts(counts: ReadonlyMap<string, number>, pages: string[], changes: { paths: string[] | null } | undefined): Map<string, number> {
+  const next = new Map(counts);
+  const affected = affectedPages(changes?.paths ?? undefined, pages);
+  for (const rel of affected === "all" ? pages : affected) next.set(rel, (next.get(rel) ?? 0) + 1);
+  return next;
+}
+
+/**
  * The board: every page of a design at once, laid out as labelled artboards on one pannable, zoomable canvas. Frames
  * off screen stay as placeholders, so a design with many pages doesn't pay for them all.
  */
@@ -22,22 +34,39 @@ export function Board({
   pages,
   links,
   flow,
+  changes,
+  manual,
   onFocus,
   onPresent,
-  reloadKey,
 }: {
   pages: DesignEntry["pages"];
   links?: { from: string; to: string }[];
   flow: boolean;
+  /** The thread's latest design change (counter + changed paths), so only the artboards it affects reload. */
+  changes?: { n: number; paths: string[] | null };
+  /** The canvas's manual Reload counter: it remounts every artboard. */
+  manual: number;
   onFocus: (rel: string) => void;
   onPresent: (rel: string) => void;
-  reloadKey: string;
 }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const [stage, setStage] = useState({ width: 0, height: 0 });
   const [view, setView] = useState<View>({ x: 0, y: 0, zoom: 1 });
   const [space, setSpace] = useState(false);
   const drag = useRef<{ x: number; y: number; viewX: number; viewY: number } | null>(null);
+
+  // Per-artboard reload counts: a change increments only the pages it affects, so their frames remount while the
+  // rest stay. `manual` sits in the key too, so a manual Reload still remounts them all.
+  const counts = useRef<Map<string, number>>(new Map());
+  const appliedN = useRef(0);
+  const rels = pages.map((p) => p.rel);
+  const n = changes?.n ?? 0;
+  if (n !== appliedN.current) {
+    // More than one change since the last render: the earlier ones' paths are gone, so reload every artboard.
+    const missed = n - appliedN.current > 1;
+    appliedN.current = n;
+    counts.current = bumpArtboardCounts(counts.current, rels, missed ? { paths: null } : changes);
+  }
 
   const sections = boardSections(pages);
   // Set when the board is fitted, so section labels have room at that zoom.
@@ -204,7 +233,7 @@ export function Board({
                   <div className="design-board-frame">
                     {shown ? (
                       <iframe
-                        key={`${frame.page.rel}-${reloadKey}`}
+                        key={`${frame.page.rel}-${counts.current.get(frame.page.rel) ?? 0}-${manual}`}
                         className="design-frame"
                         sandbox="allow-scripts"
                         src={frame.page.url}

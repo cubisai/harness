@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { ExpertDef } from "../../../../shared/experts";
 import { api } from "../../api";
 import { IconClose } from "../../icons";
-import { useStore } from "../../store";
+import { eventCount, useStore } from "../../store";
 import { ExpertAvatar, initials, memberAvatarId } from "./ExpertAvatar";
 import { readUsage } from "./ExpertCenter";
 import { ExpertDetail } from "./ExpertDetail";
@@ -24,7 +24,8 @@ const chipTitle = (def: ExpertDef) => `${def.name} · ${def.profession}`;
 export function ExpertChip({ expertId, threadId }: { expertId: string; threadId?: string }) {
   const experts = useStore((s) => s.experts);
   const canSummon = useStore((s) => Boolean(s.selectedProjectId));
-  const empty = useStore((s) => (threadId ? (s.events[threadId]?.length ?? 0) === 0 : false));
+  // Empty only when neither the server totals nor the loaded window hold a single event.
+  const empty = useStore((s) => (threadId ? eventCount(s.events[threadId], s.history[threadId]?.totals) === 0 : false));
   const [open, setOpen] = useState(false);
 
   // The catalogue loads on the chip's first render (a thread may open before the Library did).

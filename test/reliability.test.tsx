@@ -158,6 +158,7 @@ describe("store reliability (D7)", () => {
       updateStatus: vi.fn(() => Promise.resolve({ current: "0.1.0", ready: null, supported: false })),
       listLimits: vi.fn(() => Promise.resolve([])),
       pendingState: vi.fn(() => Promise.resolve({ running: [], permissions: [], plans: [], questions: [] })),
+      listAllThreads: vi.fn(() => Promise.resolve({})),
       listEditors: vi.fn(() => Promise.resolve([])),
     };
     vi.stubGlobal("window", { unskilled: fake, dispatchEvent: vi.fn() });
