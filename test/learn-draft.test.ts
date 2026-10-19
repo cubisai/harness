@@ -26,6 +26,12 @@ describe("buildDraftPrompt", () => {
     expect(p).toContain("EXISTING:\n(none)");
   });
 
+  it("explains a revert only when one is among the signals", () => {
+    const reverted: TurnSignal[] = [{ kind: "reverted", level: "fail", detail: "The user restored these files to how they were before the turn: src/a.ts" }];
+    expect(buildDraftPrompt(input({ signals: reverted }))).toContain("the edit did land; the user then put the files back");
+    expect(buildDraftPrompt(input({ signals: SIGNALS }))).not.toContain("the edit did land");
+  });
+
   it("lists existing rules", () => {
     const p = buildDraftPrompt(input({ existing: ["Use tabs", "Keep commits short"] }));
     expect(p).toContain("- Use tabs");

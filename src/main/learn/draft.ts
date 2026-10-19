@@ -48,6 +48,10 @@ export function buildDraftPrompt(i: DraftInput): string {
     "",
     "SIGNALS:",
     ...i.signals.map((s) => `- ${s.kind} (${s.level}): ${s.detail}`),
+    // "Undone" read as "the edit didn't stick" once (2026-10-19): say what a revert means.
+    ...(i.signals.some((s) => s.kind === "reverted")
+      ? ["(reverted: the edit did land; the user then put the files back, so they didn't want that change. Unless the TURN shows the agent misread the request, that is a change of mind.)"]
+      : []),
     "",
     "EXISTING:",
     ...(i.existing.length ? i.existing.map((r) => `- ${r}`) : ["(none)"]),

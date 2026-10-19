@@ -379,7 +379,7 @@ export function createLearner(deps: LearnerDeps): Learner {
       });
       if (reverted.length) {
         const names = reverted.map((p) => p.rel).slice(0, 3).join(", ");
-        addSignals(w.threadId, w.userSeq, [{ kind: "reverted", level: "fail", detail: `Its edits were undone: ${names}` }]);
+        addSignals(w.threadId, w.userSeq, [{ kind: "reverted", level: "fail", detail: `The user restored these files to how they were before the turn: ${names}` }]);
         void learn(keyOf(w.threadId, w.userSeq), null, reverted.map((p) => p.rel));
         continue;
       }
