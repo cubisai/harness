@@ -5,7 +5,7 @@ import type { PrototypeTier } from "./tiers";
 import type { ExpertDef, ExpertImportResult } from "./experts";
 import type { CommentTarget, DesignComment } from "./comments";
 import type { LearnCase, LearnOverview, LearnSettings, Lesson, TurnScore } from "./learn";
-import type { AutomationNotice } from "./automations";
+import type { AutomationInput, AutomationNotice, AutomationsOverview, AutomationView } from "./automations";
 
 export type Invocation = "model" | "user";
 
@@ -1190,6 +1190,15 @@ export interface UnskilledApi {
    * (`kind` "image") or a page whose preview image is wanted (`kind` "page").
    */
   uiImage(threadId: string | null, src: string, kind: "image" | "page"): Promise<string | null>;
+  /** Scheduled automations: one project's list plus the templates to start from. */
+  automationsOverview(projectId: string): Promise<AutomationsOverview>;
+  /** Create (no id) or update an automation; rejects with the reason when the schedule is invalid. */
+  automationSave(projectId: string, input: AutomationInput, id?: string): Promise<AutomationView>;
+  automationDelete(id: string): Promise<void>;
+  /** Queue one run now, outside the schedule; null when it can't be claimed. */
+  automationRunNow(id: string): Promise<AutomationNotice | null>;
+  /** The newest runs first. */
+  automationRuns(id: string): Promise<AutomationNotice[]>;
   memoryOverview(projectId: string): Promise<MemoryOverview>;
   memoryRead(projectId: string, file: string, scope?: MemoryScope): Promise<(MemoryNote & { body: string }) | null>;
   /** Save a note (a new one when file is absent); returns its file. Scope defaults to the project. */

@@ -29,3 +29,42 @@ export interface AutomationNotice {
   endedAt: number | null;
   error: string | null;
 }
+
+/** A starting point for a new automation: its prompt, schedule and budget. */
+export interface AutomationTemplate {
+  id: "repo-health" | "browser-smoke" | "project-brief" | "eval-regression" | "custom";
+  name: string;
+  description: string;
+  prompt: string;
+  schedule: Schedule;
+  budgetUsd: number | null;
+}
+
+/** What the editor saves; the main process validates the schedule. */
+export interface AutomationInput {
+  name: string;
+  template: string;
+  prompt: string;
+  schedule: Schedule;
+  missed: MissedPolicy;
+  enabled: boolean;
+  agent: string | null;
+  model: string | null;
+  budgetUsd: number | null;
+}
+
+/** One automation as the Library lists it. */
+export interface AutomationView extends AutomationInput {
+  id: string;
+  projectId: string;
+  /** describeSchedule(), e.g. "daily at 09:00 (Europe/London)". */
+  scheduleText: string;
+  /** The next scheduled instant; null when disabled. */
+  nextAt: number | null;
+  lastRun: AutomationNotice | null;
+}
+
+export interface AutomationsOverview {
+  templates: AutomationTemplate[];
+  automations: AutomationView[];
+}

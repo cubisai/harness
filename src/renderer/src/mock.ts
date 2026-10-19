@@ -1,4 +1,5 @@
 import type { AgentCatalogEntry, DesignSystemDoc, LiveUpdate, McpOverview, MemoryNote, MemoryOverview, MemoryScope, Project, SettingsView, SkillEntry, SkillOrigin, StoredEvent, Thread, ThreadEvent, UnskilledApi } from "../../shared/types";
+import type { AutomationTemplate, AutomationView, Schedule } from "../../shared/automations";
 import type { ExpertDef } from "../../shared/experts";
 
 /**
@@ -216,6 +217,41 @@ export function installMock(): void {
     global: globalNotes,
     block: { shown: memoryNotes.length + globalNotes.length, total: memoryNotes.length + globalNotes.length, tokens: 62 },
   });
+
+  // The Automations tab: the five starter templates, one seeded automation, and a run counter.
+  const daily = (): Schedule => ({ kind: "daily", at: "09:00", timeZone: "UTC" });
+  const automationTemplates: AutomationTemplate[] = [
+    { id: "repo-health", name: "Repo health", description: "Run the project's checks and report what passed and what each failure was.", prompt: "Run the project's check command and report what passed, each failure with its first error, and the smallest next step. Don't edit any files.", schedule: daily(), budgetUsd: 0.5 },
+    { id: "browser-smoke", name: "Browser smoke test", description: "Drive the dev server in the browser and report PASS or FAIL with evidence.", prompt: "Start the dev server, open it in the browser, exercise the main page, and finish with PASS or FAIL with evidence. Don't edit any files.", schedule: daily(), budgetUsd: 0.5 },
+    { id: "project-brief", name: "Project brief", description: "Summarise what changed since the last run from the commit list.", prompt: "Summarise what changed since the last run from the commit list: the themes, the risky changes, and the follow-ups worth doing next. Don't edit any files.", schedule: daily(), budgetUsd: 0.25 },
+    { id: "eval-regression", name: "Eval regression", description: "Run the validation eval split and flag anything that regressed.", prompt: "Run `bun run eval --split validation --max-usd 1` and report the pass rate against the previous run and any task that regressed. Don't edit any files.", schedule: daily(), budgetUsd: 1 },
+    { id: "custom", name: "Custom", description: "Start from scratch with your own prompt, schedule and budget.", prompt: "", schedule: daily(), budgetUsd: null },
+  ];
+  const describeSchedule = (s: Schedule): string => {
+    if (s.kind === "interval") return s.everyMinutes % 60 === 0 && s.everyMinutes >= 60 ? `every ${s.everyMinutes / 60} h` : `every ${s.everyMinutes} min`;
+    const days = s.days?.slice().sort((a, b) => a - b).map((d) => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d] ?? "");
+    return `${days?.length ? `${days.join(", ")} at ${s.at}` : `daily at ${s.at}`} (${s.timeZone})`;
+  };
+  const automations: AutomationView[] = [
+    {
+      id: "a1",
+      projectId: "p1",
+      name: "Project brief",
+      template: "project-brief",
+      prompt: automationTemplates[2]!.prompt,
+      schedule: daily(),
+      missed: "coalesce",
+      enabled: true,
+      agent: null,
+      model: null,
+      budgetUsd: 0.25,
+      scheduleText: "daily at 09:00 (UTC)",
+      nextAt: now + 3_600_000,
+      lastRun: { automationId: "a1", name: "Project brief", runId: 1, threadId: "t1", status: "succeeded", costUsd: 0.04, endedAt: now - 7_200_000, error: null },
+    },
+  ];
+  let automationSeq = automations.length;
+  let automationRunSeq = 1;
 
   const api: UnskilledApi = {
     platform: params.get("platform") ?? "darwin",
@@ -569,6 +605,39 @@ export function installMock(): void {
       memoryIndex: null,
     }),
     learnScores: async () => [],
+    automationsOverview: async (projectId) => ({
+      templates: automationTemplates,
+      automations: automations.filter((a) => a.projectId === projectId),
+    }),
+    automationSave: async (projectId, input, id) => {
+      const view: AutomationView = {
+        ...input,
+        id: id ?? `a${++automationSeq}`,
+        projectId,
+        scheduleText: describeSchedule(input.schedule),
+        nextAt: input.enabled ? now + 3_600_000 : null,
+        lastRun: automations.find((a) => a.id === id)?.lastRun ?? null,
+      };
+      const at = automations.findIndex((a) => a.id === view.id);
+      if (at >= 0) automations[at] = view;
+      else automations.push(view);
+      return view;
+    },
+    automationDelete: async (id) => {
+      const at = automations.findIndex((a) => a.id === id);
+      if (at >= 0) automations.splice(at, 1);
+    },
+    automationRunNow: async (id) => {
+      const a = automations.find((x) => x.id === id);
+      if (!a) return null;
+      const notice = { automationId: id, name: a.name, runId: ++automationRunSeq, threadId: null, status: "queued" as const, costUsd: null, endedAt: null, error: null };
+      a.lastRun = notice;
+      return notice;
+    },
+    automationRuns: async (id) => {
+      const a = automations.find((x) => x.id === id);
+      return a?.lastRun ? [a.lastRun] : [];
+    },
     memoryOverview: async () => memoryView(),
     memoryRead: async (_projectId, file, scope) => {
       const note = notesFor(scope).find((n) => n.file === file);

@@ -1,4 +1,5 @@
 import type { ExpertDef } from "../../shared/experts";
+import type { AutomationNotice } from "../../shared/automations";
 import { create } from "zustand";
 import type {
   ArtifactFile,
@@ -47,7 +48,7 @@ export interface DesignSelection {
 /** The right panel's tabs. Changes and Files need a project; Browser works without one; File shows an artifact. */
 export type InspectorTab = "changes" | "browser" | "files" | "artifact";
 
-export type LibraryTab = "experts" | "skills" | "connectors" | "mcp" | "agents" | "memory";
+export type LibraryTab = "experts" | "skills" | "connectors" | "mcp" | "agents" | "memory" | "automations";
 
 /** A new thread's pickers before it exists; reset once the thread is created. */
 interface Draft {
@@ -152,6 +153,8 @@ interface State {
   questions: QuestionRequest[];
   /** Turns that ended on a thread that wasn't open, for the Message Center. */
   finished: FinishedTurn[];
+  /** The latest run notice per automation, for the Message Center (newest first, capped). */
+  automationNotices: AutomationNotice[];
   /** When each running turn started (renderer clock), for a Finished row's duration. */
   turnStartedAt: Record<string, number>;
   inboxOpen: boolean;
@@ -602,6 +605,7 @@ export const useStore = create<State>((set, get) => ({
   plans: [],
   questions: [],
   finished: [],
+  automationNotices: [],
   turnStartedAt: {},
   inboxOpen: false,
   setInboxOpen(open) {
@@ -894,6 +898,8 @@ export const useStore = create<State>((set, get) => ({
       // Jumping to a thread (⌘K, the Message Center) lands in its mode.
       ...(picked ? { threadKind: threadKind(picked) } : {}),
       finished: threadSeen(s.finished, id),
+      // Opening a thread also clears the run notices it delivered into.
+      automationNotices: id ? s.automationNotices.filter((n) => n.threadId !== id) : s.automationNotices,
       // The File tab belongs to one thread: leaving it closes the file.
       ...(s.artifact && s.artifact.threadId !== id
         ? { artifact: null, ...(s.inspectorTab === "artifact" ? { inspectorTab: "changes" as const, inspectorOpen: false } : {}) }
@@ -1437,6 +1443,15 @@ export const useStore = create<State>((set, get) => ({
       case "open-about":
         set({ aboutOpen: true });
         break;
+      case "automation-run": {
+        // Only the newest run per automation matters; keep the list bounded.
+        const notice = update.notice;
+        set((s) => ({ automationNotices: [notice, ...s.automationNotices.filter((n) => n.automationId !== notice.automationId)].slice(0, 20) }));
+        return;
+      }
+      case "automation-delivered":
+        // The delivered thread's own Finished row already covers it.
+        return;
       case "thread":
         set((s) => ({
           threads: { ...s.threads, [update.thread.projectId]: upsertThread(s.threads[update.thread.projectId], update.thread) },

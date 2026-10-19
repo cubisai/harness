@@ -7,6 +7,7 @@ import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, powerMonit
 import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, DesignDevice, DesignExportFormat, DesignSystemEdit, DesignSystemOption, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryScope, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
+import type { AutomationInput } from "../shared/automations";
 import { DESIGN_SCHEME, designDirName, designUrl, entryFile, serveDesign } from "./design/serve";
 import { DesignWatcher } from "./design/watch";
 import { listDesignFiles, listDesignPages, pageDevice } from "./design/pages";
@@ -1398,6 +1399,11 @@ async function main(): Promise<void> {
   ipcMain.handle("memory:delete", (_e, projectId: string, file: string, scope?: unknown) => memoryApi.remove(projectId, file, memoryScope(scope)));
   ipcMain.handle("memory:set-enabled", (_e, projectId: string | null, on: boolean) => memoryApi.setEnabled(projectId, on));
   ipcMain.handle("memory:import", (_e, projectId: string) => memoryApi.reimport(projectId));
+  ipcMain.handle("automation:overview", (_e, projectId: string) => automations.overview(projectId));
+  ipcMain.handle("automation:save", (_e, projectId: string, input: AutomationInput, id?: string) => automations.save(projectId, input, id));
+  ipcMain.handle("automation:delete", (_e, id: string) => automations.remove(id));
+  ipcMain.handle("automation:run-now", (_e, id: string) => automations.runNow(id));
+  ipcMain.handle("automation:runs", (_e, id: string) => automations.runs(id));
   ipcMain.handle("app:update-status", () => updater.status());
   ipcMain.handle("limits:list", () => limits.all());
   ipcMain.handle("app:install-update", () => updater.install());

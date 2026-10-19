@@ -1,9 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { MessageCenterView } from "../src/renderer/src/components/MessageCenter";
-import { formatDuration, inboxRows, threadSeen, turnEnded, type FinishedTurn } from "../src/renderer/src/inbox";
+import { automationText, formatDuration, inboxRows, threadSeen, turnEnded, type FinishedTurn } from "../src/renderer/src/inbox";
 import { useStore } from "../src/renderer/src/store";
 import type { AgentInfo, PermissionRequest, Thread } from "../src/shared/types";
+import type { AutomationNotice } from "../src/shared/automations";
 
 const thread = (id: string, agent = "claude"): Thread => ({
   id,
@@ -20,6 +21,17 @@ const thread = (id: string, agent = "claude"): Thread => ({
 });
 const threads = { p: [thread("A"), thread("B", "codex")] };
 const ask = (threadId: string): PermissionRequest => ({ requestId: `r-${threadId}`, threadId, toolName: "Bash", summary: "npm test", canAlwaysAllow: true });
+const notice = (over: Partial<AutomationNotice> = {}): AutomationNotice => ({
+  automationId: "a1",
+  name: "Repo health",
+  runId: 1,
+  threadId: null,
+  status: "succeeded",
+  costUsd: null,
+  endedAt: 0,
+  error: null,
+  ...over,
+});
 
 describe("inboxRows", () => {
   it("lists a permission raised on a thread other than the open one", () => {
@@ -37,6 +49,52 @@ describe("inboxRows", () => {
       { threadId: "B", durationMs: 2000, endedAt: 2 },
     ];
     expect(inboxRows({ permissions: [], finished, threads, selectedThreadId: null }).finished.map((r) => r.threadId)).toEqual(["B", "A"]);
+  });
+});
+
+describe("automation rows", () => {
+  it("lists failed and paused runs under Needs you", () => {
+    const rows = inboxRows({
+      permissions: [],
+      finished: [],
+      threads,
+      selectedThreadId: null,
+      automations: [notice({ automationId: "a1", status: "failed", error: "boom" }), notice({ automationId: "a2", status: "paused-budget" })],
+    });
+    expect(rows.needsYou.map((r) => (r.kind === "automation" ? automationText(r.notice) : r.kind))).toEqual(["failed: boom", "paused at its budget"]);
+  });
+
+  it("hides a run whose thread is the open one", () => {
+    const rows = inboxRows({ permissions: [], finished: [], threads, selectedThreadId: "A", automations: [notice({ status: "failed", threadId: "A" })] });
+    expect(rows.needsYou).toEqual([]);
+  });
+
+  it("attaches the notice to the finished row it delivered into", () => {
+    const rows = inboxRows({
+      permissions: [],
+      finished: [{ threadId: "A", durationMs: 1_000, endedAt: 1 }],
+      threads,
+      selectedThreadId: null,
+      automations: [notice({ status: "succeeded", threadId: "A" })],
+    });
+    expect(rows.finished).toMatchObject([{ kind: "finished", threadId: "A", automation: { status: "succeeded", name: "Repo health" } }]);
+  });
+
+  it("adds no row for a succeeded run with no finished turn", () => {
+    const rows = inboxRows({ permissions: [], finished: [], threads, selectedThreadId: null, automations: [notice({ status: "succeeded" })] });
+    expect(rows).toEqual({ needsYou: [], finished: [] });
+  });
+});
+
+describe("automationText", () => {
+  it("names the outcome, with the cost", () => {
+    expect(automationText(notice({ status: "succeeded", costUsd: 1.5 }))).toBe("finished · $1.50");
+    expect(automationText(notice({ status: "interrupted" }))).toBe("was interrupted");
+    expect(automationText(notice({ status: "partial" }))).toBe("finished, but its result may not have been delivered");
+  });
+
+  it("truncates a long error to 80 characters", () => {
+    expect(automationText(notice({ status: "failed", error: "x".repeat(120) }))).toBe(`failed: ${"x".repeat(80)}`);
   });
 });
 
@@ -95,6 +153,13 @@ describe("MessageCenterView", () => {
     expect(html).toContain("Finished");
     expect(html).toContain("Codex");
     expect(html).toContain("finished in 12s");
+  });
+
+  it("renders a run that paused at its budget", () => {
+    const rows = inboxRows({ permissions: [], finished: [], threads, selectedThreadId: null, automations: [notice({ name: "Repo health", status: "paused-budget" })] });
+    const html = renderToStaticMarkup(<MessageCenterView {...rows} agents={agents} onOpen={() => {}} onClose={() => {}} />);
+    expect(html).toContain("Automation · paused at its budget");
+    expect(html).toContain("Repo health");
   });
 
   it("says so when nothing is waiting", () => {

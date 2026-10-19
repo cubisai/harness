@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Brain, BriefcaseBusiness, Plug, Puzzle } from "lucide-react";
+import { Brain, BriefcaseBusiness, CalendarClock, Plug, Puzzle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { AgentCatalogEntry, SkillDetail, SkillEntry, SkillOrigin } from "../../../shared/types";
 import { api } from "../api";
 import { Markdown } from "../markdown";
 import { useStore, type LibraryTab } from "../store";
+import { AutomationsTab } from "./AutomationsTab";
 import { CantDoList, CapabilityChips, BinaryLine } from "./Capabilities";
 import { ExpertCenter } from "./experts/ExpertCenter";
 import { McpPanel } from "./McpPanel";
@@ -12,11 +13,12 @@ import { MemoryTab } from "./MemoryTab";
 import { Select, selectPopupOpen } from "./Select";
 import { UnsupportedChip } from "./UnsupportedChip";
 
-const TABS: { id: "experts" | "skills" | "connectors" | "memory"; label: string; icon: LucideIcon }[] = [
+const TABS: { id: "experts" | "skills" | "connectors" | "memory" | "automations"; label: string; icon: LucideIcon }[] = [
   { id: "experts", label: "Experts", icon: BriefcaseBusiness },
   { id: "skills", label: "Skills", icon: Puzzle },
   { id: "connectors", label: "Connectors", icon: Plug },
   { id: "memory", label: "Memory", icon: Brain },
+  { id: "automations", label: "Automations", icon: CalendarClock },
 ];
 
 export function Library() {
@@ -27,8 +29,8 @@ export function Library() {
 
 function LibrarySheet({ tab }: { tab: LibraryTab }) {
   const close = () => useStore.setState({ libraryTab: null });
-  const activeTab: "experts" | "skills" | "connectors" | "memory" =
-    tab === "agents" ? "experts" : tab === "mcp" ? "connectors" : tab === "experts" ? "experts" : tab === "connectors" ? "connectors" : tab === "memory" ? "memory" : "skills";
+  const activeTab: "experts" | "skills" | "connectors" | "memory" | "automations" =
+    tab === "agents" ? "experts" : tab === "mcp" ? "connectors" : tab === "experts" ? "experts" : tab === "connectors" ? "connectors" : tab === "memory" ? "memory" : tab === "automations" ? "automations" : "skills";
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -72,6 +74,7 @@ function LibrarySheet({ tab }: { tab: LibraryTab }) {
         {activeTab === "skills" && <SkillsTab />}
         {activeTab === "connectors" && <ConnectorsTab />}
         {activeTab === "memory" && <MemoryTab />}
+        {activeTab === "automations" && <AutomationsTab />}
       </div>
     </div>
   );

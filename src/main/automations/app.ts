@@ -1,14 +1,17 @@
 // Wires the automation runner to the app: threads come from Service, results go to the Message Center.
 
+import { randomUUID } from "node:crypto";
 import type { Store } from "../db";
 import type { Service } from "../service";
-import type { AutomationNotice } from "../../shared/automations";
+import type { AutomationInput, AutomationNotice, AutomationsOverview, AutomationView } from "../../shared/automations";
 import type { LiveUpdate } from "../../shared/types";
 import { messageCenterDestination } from "./destinations";
 import type { Source } from "./io";
 import { AutomationRunner } from "./runner";
+import { describeSchedule, nextDue, validSchedule } from "./schedule";
 import { defaultSources } from "./sources";
 import { AutomationStore, type Automation, type AutomationRun } from "./store";
+import { templates } from "./templates";
 
 const TICK_MS = 60_000;
 const LEASE_MS = 10 * 60_000;
@@ -22,6 +25,35 @@ export function sourcesForTemplate(template: string): string[] {
 
 export function noticeOf(run: AutomationRun, a: Automation): AutomationNotice {
   return { automationId: a.id, name: a.name, runId: run.id, threadId: run.threadId, status: run.status, costUsd: run.costUsd, endedAt: run.endedAt, error: run.error };
+}
+
+/** One automation as the Library lists it: its settings, a schedule phrase, and its last run. */
+export function viewOf(a: Automation, store: Pick<AutomationStore, "runs" | "lastScheduled">, now: number): AutomationView {
+  let nextAt: number | null = null;
+  if (a.enabled) {
+    try {
+      nextAt = nextDue(a.schedule, Math.max(now, store.lastScheduled(a.id) ?? a.createdAt), a.anchor);
+    } catch {
+      // A schedule that can't produce a next instant just shows none.
+    }
+  }
+  const last = store.runs(a.id, 1)[0];
+  return {
+    id: a.id,
+    projectId: a.projectId,
+    name: a.name,
+    template: a.template,
+    prompt: a.prompt,
+    schedule: a.schedule,
+    missed: a.missed,
+    enabled: a.enabled,
+    agent: a.agent,
+    model: a.model,
+    budgetUsd: a.budgetUsd,
+    scheduleText: describeSchedule(a.schedule),
+    nextAt,
+    lastRun: last ? noticeOf(last, a) : null,
+  };
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -48,6 +80,15 @@ export async function sendAndWait(service: Pick<Service, "send" | "isRunning">, 
 export interface AutomationsApp {
   store: AutomationStore;
   runner: AutomationRunner;
+  /** One project's automations plus the templates to start from. */
+  overview(projectId: string): AutomationsOverview;
+  /** Create (no id) or update one, validating its name, schedule and budget. */
+  save(projectId: string, input: AutomationInput, id?: string): AutomationView;
+  remove(id: string): void;
+  /** Queue one run now, outside the schedule; null when it can't be claimed. */
+  runNow(id: string): AutomationNotice | null;
+  /** The newest runs first. */
+  runs(id: string): AutomationNotice[];
   /** Check what's due and run it (timer, wake from sleep, startup). */
   tick(): void;
   dispose(): void;
@@ -94,9 +135,36 @@ export function startAutomations(o: { store: Store; service: Service; broadcast:
   };
   void runner.recover().finally(tick);
   const timer = setInterval(tick, TICK_MS);
+  const overview = (projectId: string): AutomationsOverview => ({
+    templates: templates(),
+    automations: automations.list(projectId).map((a) => viewOf(a, automations, Date.now())),
+  });
+  const save = (projectId: string, input: AutomationInput, id?: string): AutomationView => {
+    const name = input.name.trim();
+    if (!name) throw new Error("Name the automation.");
+    const bad = validSchedule(input.schedule);
+    if (bad) throw new Error(bad);
+    if (input.budgetUsd !== null && (!Number.isFinite(input.budgetUsd) || input.budgetUsd <= 0)) throw new Error("Budget must be a positive amount.");
+    const fields = { name, prompt: input.prompt, schedule: input.schedule, missed: input.missed, enabled: input.enabled, agent: input.agent, model: input.model, budgetUsd: input.budgetUsd };
+    const a = id ? automations.update(id, fields) : automations.create({ id: randomUUID(), projectId, template: input.template, anchor: Date.now(), ...fields });
+    return viewOf(a, automations, Date.now());
+  };
   return {
     store: automations,
     runner,
+    overview,
+    save,
+    remove: (id) => automations.remove(id),
+    runNow: (id) => {
+      const run = runner.runNow(id);
+      void runner.drain();
+      const a = run ? automations.get(id) : null;
+      return run && a ? noticeOf(run, a) : null;
+    },
+    runs: (id) => {
+      const a = automations.get(id);
+      return a ? automations.runs(id, 20).map((r) => noticeOf(r, a)) : [];
+    },
     tick,
     dispose: () => {
       clearInterval(timer);

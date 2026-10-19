@@ -1,15 +1,16 @@
 import { useEffect, useRef } from "react";
 import type { AgentInfo } from "../../../shared/types";
 import { IconBell } from "../icons";
-import { formatDuration, inboxRows, type InboxRow } from "../inbox";
+import { automationText, formatDuration, inboxRows, type InboxRow } from "../inbox";
 import { useStore } from "../store";
 
 function useInbox() {
   const permissions = useStore((s) => s.permissions);
   const finished = useStore((s) => s.finished);
+  const automations = useStore((s) => s.automationNotices);
   const threads = useStore((s) => s.threads);
   const selectedThreadId = useStore((s) => s.selectedThreadId);
-  return inboxRows({ permissions, finished, threads, selectedThreadId });
+  return inboxRows({ permissions, finished, automations, threads, selectedThreadId });
 }
 
 /** The sidebar-footer bell; its badge counts what's waiting. */
@@ -54,6 +55,11 @@ export function MessageCenter() {
   if (!open) return null;
   const openRow = (row: InboxRow) => {
     const s = useStore.getState();
+    // A run that never delivered into a thread has nothing to open.
+    if (row.kind === "automation" && row.threadId === null) {
+      setOpen(false);
+      return;
+    }
     if (row.thread) void s.selectProject(row.thread.projectId);
     void s.selectThread(row.threadId);
     setOpen(false);
@@ -82,12 +88,19 @@ export function MessageCenterView({
 }) {
   const agentLabel = (row: InboxRow) => (row.thread ? (agents.find((a) => a.id === row.thread!.agent)?.label ?? row.thread.agent) : "");
   const item = (row: InboxRow) => (
-    <li key={row.kind === "permission" ? row.requestId : row.threadId}>
+    <li key={row.kind === "permission" ? row.requestId : row.kind === "automation" ? `${row.notice.automationId}:${row.notice.runId}` : row.threadId}>
       <button className="inbox-row" onClick={() => onOpen(row)}>
-        <span className="inbox-title">{row.thread?.title ?? "A thread"}</span>
+        <span className="inbox-title">{row.thread?.title ?? (row.kind === "automation" ? row.notice.name : "A thread")}</span>
         <span className="inbox-meta">
-          {agentLabel(row)}
-          {row.kind === "permission" ? <> · wants to run {row.summary}</> : <> · finished in {formatDuration(row.durationMs)}</>}
+          {row.kind === "automation" ? (
+            <>Automation · {automationText(row.notice)}</>
+          ) : (
+            <>
+              {row.kind === "finished" && row.automation ? "Automation · " : ""}
+              {agentLabel(row)}
+              {row.kind === "permission" ? <> · wants to run {row.summary}</> : <> · finished in {formatDuration(row.durationMs)}</>}
+            </>
+          )}
         </span>
       </button>
     </li>
