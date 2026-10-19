@@ -4,12 +4,15 @@ import type { WebContents } from "electron";
 import { webContents as allWebContents } from "electron";
 import type { BrowserLogEntry, DevicePreset } from "../../shared/types";
 import { PICK_BINDING, type PickedElement, describePick, selectorFor, startPicker } from "./picker";
+import { hasWait, NO_LOGS, NO_NEW_LOGS, staleRefMessage, waitNote, waitUntil, type RefPrint, type SnapshotOptions, type WaitFor } from "./backend";
 import { collectPage, formatSnapshot, type PageSnapshot } from "./snapshot";
 import { isAllowedUrl, normalizeUrl } from "./url";
 
 export { isAllowedUrl } from "./url";
 
 const MAX_LOGS = 200;
+/** How many refs' kind and name are remembered, to explain a stale one. */
+const MAX_PRINTS = 2000;
 
 export type LogEntry = BrowserLogEntry;
 
@@ -27,6 +30,12 @@ export const DEVICE_PRESETS: Record<Exclude<DevicePreset, "desktop">, { width: n
 export class BrowserController {
   private wc: WebContents | null = null;
   private logs: LogEntry[] = [];
+  /** Lines shifted off the front of a full buffer, and how far the agent has read (both counted since the page loaded). */
+  private dropped = 0;
+  private readUpTo = 0;
+  /** The next ref number; never reset, so a ref is never handed to a second element. */
+  private nextRef = 1;
+  private prints = new Map<string, RefPrint>();
   private requests = new Map<string, string>();
   private waiters: ((wc: WebContents) => void)[] = [];
   /** Every screenshot saved this session, oldest first. */
@@ -79,8 +88,7 @@ export class BrowserController {
     this.detach();
     this.wc = wc;
     this.enabled = true;
-    this.logs = [];
-    this.events.onLog?.(null);
+    this.resetLogs();
     try {
       wc.debugger.attach("1.3");
     } catch {
@@ -118,8 +126,18 @@ export class BrowserController {
   /** Append a log line, cap the buffer, and tell the renderer. */
   private push(entry: LogEntry): void {
     this.logs.push(entry);
-    if (this.logs.length > MAX_LOGS) this.logs.shift();
+    if (this.logs.length > MAX_LOGS) {
+      this.logs.shift();
+      this.dropped++;
+    }
     this.events.onLog?.(entry);
+  }
+
+  private resetLogs(): void {
+    this.logs = [];
+    this.dropped = 0;
+    this.readUpTo = 0;
+    this.events.onLog?.(null);
   }
 
   private onCdp(method: string, params: Record<string, unknown>): void {
@@ -200,8 +218,7 @@ export class BrowserController {
     if (!isAllowedUrl(url)) throw new Error(`Not allowed in the browser pane: ${url}`);
     const wc = this.wc;
     if (!wc) throw new Error("The browser pane isn't open.");
-    this.logs = [];
-    this.events.onLog?.(null);
+    this.resetLogs();
     try {
       await wc.loadURL(url);
     } catch (err) {
@@ -223,14 +240,26 @@ export class BrowserController {
     return res.result?.value as T;
   }
 
-  async snapshot(): Promise<string> {
+  async snapshot(opts?: SnapshotOptions): Promise<string> {
     const wc = await this.page();
-    const snap = await this.evaluate<PageSnapshot>(wc, `(${collectPage.toString()})(400)`);
-    return formatSnapshot(snap);
+    return formatSnapshot(await this.collect(wc, opts), opts);
+  }
+
+  /** Run collectPage in the page, carrying the ref counter on and remembering what each ref points at. */
+  private async collect(wc: WebContents, opts?: SnapshotOptions): Promise<PageSnapshot> {
+    const snap = await this.evaluate<PageSnapshot>(wc, `(${collectPage.toString()})(400, ${this.nextRef}, ${JSON.stringify(opts?.selector ?? null)}, ${Boolean(opts?.interactive)})`);
+    if (snap.next) this.nextRef = Math.max(this.nextRef, snap.next);
+    for (const node of snap.nodes) {
+      if (!node.ref) continue;
+      this.prints.delete(node.ref);
+      this.prints.set(node.ref, { kind: node.kind, name: node.name });
+      if (this.prints.size > MAX_PRINTS) this.prints.delete(this.prints.keys().next().value!);
+    }
+    return snap;
   }
 
   private async locate(wc: WebContents, ref: string): Promise<{ x: number; y: number; label: string }> {
-    const found = await this.evaluate<{ x: number; y: number; label: string } | null>(
+    const found = await this.evaluate<{ x: number; y: number; label: string; hidden?: boolean } | null>(
       wc,
       `(() => {
         const el = document.querySelector('[data-unskilled-ref="${ref.replace(/[^a-z0-9]/gi, "")}"]');
@@ -238,14 +267,29 @@ export class BrowserController {
         el.scrollIntoView({ block: "center", inline: "center" });
         const r = el.getBoundingClientRect();
         const label = (el.getAttribute("aria-label") || el.innerText || el.value || el.tagName).toString().trim().slice(0, 60);
-        return { x: r.left + r.width / 2, y: r.top + r.height / 2, label };
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2, label, hidden: r.width === 0 && r.height === 0 };
       })()`,
     );
-    if (!found) throw new Error(`No element ${ref} on the page. Take a new browser_snapshot; refs change when the page does.`);
+    if (found?.hidden) throw new Error(`${ref} is on the page but hidden now. Take a new browser_snapshot.`);
+    if (!found) {
+      // Gone: look at the page as it is now and name the likely replacement, without acting on it.
+      const print = this.prints.get(ref);
+      const matches = print ? (await this.collect(wc)).nodes.filter((n) => n.ref && n.kind === print.kind && n.name === print.name).map((n) => n.ref!) : [];
+      throw new Error(staleRefMessage(ref, print, matches));
+    }
     return found;
   }
 
-  private async settle(wc: WebContents): Promise<void> {
+  /** Wait in the pane until the condition holds or its budget runs out; the note for the action's result. */
+  async waitFor(wait: WaitFor): Promise<string> {
+    const wc = await this.page();
+    const r = await waitUntil((expression) => this.evaluate(wc, expression), wait);
+    return waitNote(wait, r, wc.getURL());
+  }
+
+  /** After an action: the agent's own condition when it gave one, else a short fixed settle. Returns the wait note, or "". */
+  private async settle(wc: WebContents, wait?: WaitFor): Promise<string> {
+    if (hasWait(wait)) return this.waitFor(wait);
     // Let navigation or re-rendering triggered by the action start and finish.
     await new Promise((r) => setTimeout(r, 250));
     if (wc.isLoading()) {
@@ -257,6 +301,7 @@ export class BrowserController {
         });
       });
     }
+    return "";
   }
 
   /** A brief ring over the element's rect, so the user sees what the agent just acted on. Cosmetic: never fails an action. */
@@ -281,20 +326,20 @@ export class BrowserController {
     }
   }
 
-  async click(ref: string): Promise<string> {
+  async click(ref: string, wait?: WaitFor): Promise<string> {
     this.assertNotPaused();
     const wc = await this.page();
     const { x, y, label } = await this.locate(wc, ref);
     for (const type of ["mouseMoved", "mousePressed", "mouseReleased"] as const) {
       await wc.debugger.sendCommand("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 });
     }
-    await this.settle(wc);
+    const note = await this.settle(wc, wait);
     void this.highlight(wc, ref);
     this.events.onAction?.("click", ref, wc.getURL());
-    return `Clicked ${ref} ("${label}"). Now at ${wc.getURL()}`;
+    return `Clicked ${ref} ("${label}"). Now at ${wc.getURL()}${note ? `\n${note}` : ""}`;
   }
 
-  async type(ref: string, text: string, submit: boolean): Promise<string> {
+  async type(ref: string, text: string, submit: boolean, wait?: WaitFor): Promise<string> {
     this.assertNotPaused();
     const wc = await this.page();
     await this.locate(wc, ref);
@@ -331,10 +376,10 @@ export class BrowserController {
         })()`,
       );
     }
-    await this.settle(wc);
+    const note = await this.settle(wc, wait);
     void this.highlight(wc, ref);
     this.events.onAction?.("type", ref, wc.getURL());
-    return `Typed into ${ref}${submit ? " and pressed Enter" : ""}. Now at ${wc.getURL()}`;
+    return `Typed into ${ref}${submit ? " and pressed Enter" : ""}. Now at ${wc.getURL()}${note ? `\n${note}` : ""}`;
   }
 
   async evaluateForAgent(expression: string): Promise<string> {
@@ -346,14 +391,14 @@ export class BrowserController {
     return text === undefined ? "undefined" : text.length > 4000 ? `${text.slice(0, 4000)}… (truncated)` : text;
   }
 
-  async readLogs(clear: boolean): Promise<string> {
+  /** The page's log lines since it loaded, or with newOnly only those since the agent's last read. */
+  async readLogs(clear: boolean, newOnly = false): Promise<string> {
     await this.page();
-    const lines = this.logs.map((l) => `[${l.level}] ${l.text}`);
-    if (clear) {
-      this.logs = [];
-      this.events.onLog?.(null);
-    }
-    return lines.length ? lines.join("\n") : "No console errors, warnings, or failed requests since the last page load.";
+    const from = newOnly ? Math.max(0, this.readUpTo - this.dropped) : 0;
+    const lines = this.logs.slice(from).map((l) => `[${l.level}] ${l.text}`);
+    this.readUpTo = this.dropped + this.logs.length;
+    if (clear) this.resetLogs();
+    return lines.length ? lines.join("\n") : newOnly ? NO_NEW_LOGS : NO_LOGS;
   }
 
   /** The console buffer for the user's console tab: a copy that never clears it. */

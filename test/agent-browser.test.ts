@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AgentBrowserBackend, formatHeadlessSnapshot, parseVersion, resolveAgentBrowser, supported, type RunCli } from "../src/main/browser/agent-browser";
+import { NO_NEW_LOGS } from "../src/main/browser/backend";
 import { browserTools } from "../src/main/browser/tools";
 import { tempDir } from "./helpers";
 
@@ -16,6 +17,12 @@ const SNAPSHOT = {
   origin: "http://x/",
   refs: { e2: { name: "Go", role: "button" }, e1: { name: "hi", role: "heading" }, e3: { name: "name", role: "textbox" } },
   snapshot: '- heading "hi" [level=1, ref=e1]\n- button "Go" [ref=e2]\n- textbox "name" [ref=e3]',
+};
+
+const REFS = {
+  origin: "http://x/",
+  refs: { e7: { name: "Go", role: "button" }, e3: { name: "name", role: "textbox" } },
+  snapshot: '- button "Go" [ref=e7]\n- textbox "name" [ref=e3]',
 };
 
 /** A fake CLI: records argument lists and answers from a table keyed by the command word. */
@@ -47,14 +54,57 @@ describe("agent-browser backend", () => {
   });
 
   it("accepts e7 and @e7 and reports the URL after acting", async () => {
-    const f = fake({ "get url": ok({ url: "http://x/next" }) });
+    const f = fake({ snapshot: ok(REFS), "get url": ok({ url: "http://x/next" }) });
     const b = backend(f.run);
+    await b.snapshot();
     expect(await b.click("e7")).toBe("Clicked e7. Now at http://x/next");
     expect(await b.click("@e7")).toBe("Clicked e7. Now at http://x/next");
     expect(f.calls.filter((c) => c[3] === "click").map((c) => c[4])).toEqual(["@e7", "@e7"]);
     expect(await b.type("e3", "Ada", true)).toBe("Typed into e3 and pressed Enter. Now at http://x/next");
     expect(f.calls.some((c) => c[3] === "fill" && c[4] === "@e3" && c[5] === "Ada")).toBe(true);
     expect(f.calls.some((c) => c[3] === "press" && c[4] === "Enter")).toBe(true);
+  });
+
+  it("hands out fresh refs each snapshot, and a stale one names its same-kind-and-name replacement", async () => {
+    const f = fake({ snapshot: ok(SNAPSHOT), "get url": ok({ url: "http://x/next" }) });
+    const b = backend(f.run);
+    expect(await b.snapshot()).toContain('[e2] button "Go"');
+    const again = await b.snapshot();
+    expect(again).toContain('[e4] heading "hi"');
+    expect(again).toContain('[e5] button "Go"');
+    expect(again).toContain('[e6] textbox "name"');
+    // The stale ref looks at the page afresh (a third snapshot, e7…e9) and names the match there.
+    await expect(b.click("e2")).rejects.toThrow('The page now has button "Go" as [e8]');
+    expect(f.calls.some((c) => c[3] === "click")).toBe(false);
+    await expect(b.click("e5")).rejects.toThrow("is no longer on the page");
+    expect(await b.click("e11")).toBe("Clicked e11. Now at http://x/next");
+    expect(f.calls.filter((c) => c[3] === "click").map((c) => c[4])).toEqual(["@e2"]);
+  });
+
+  it("refuses a ref it never handed out with the no-print message", async () => {
+    await expect(backend(fake({}).run).click("e99")).rejects.toThrow("No element e99 on the page");
+  });
+
+  it("narrows a snapshot to a selector and to interactive elements", async () => {
+    const f = fake({ snapshot: ok(SNAPSHOT) });
+    const text = await backend(f.run).snapshot({ selector: "#main", interactive: true });
+    expect(f.calls.find((c) => c[3] === "snapshot")).toEqual(["--session", "job-1", "--json", "snapshot", "-i", "-s", "#main"]);
+    expect(text).toContain("Scope: #main");
+    expect(text).toContain("(interactive elements only)");
+  });
+
+  it("waits after an action when asked, and reports it", async () => {
+    const met = fake({ snapshot: ok(SNAPSHOT), "get url": ok({ url: "http://x/next" }), eval: ok({ result: true }) });
+    const b1 = backend(met.run);
+    await b1.snapshot();
+    const out = await b1.click("e2", { text: "Saved" });
+    expect(out).toContain("Waited");
+    expect(out).toContain('for text "Saved".');
+
+    const missed = fake({ snapshot: ok(SNAPSHOT), "get url": ok({ url: "http://x/next" }), eval: ok({ result: false }) });
+    const b2 = backend(missed.run);
+    await b2.snapshot();
+    expect(await b2.click("e2", { text: "Saved", timeoutMs: 100 })).toContain(": not met. Now at");
   });
 
   it("returns eval results as text, JSON for objects", async () => {
@@ -72,11 +122,20 @@ describe("agent-browser backend", () => {
     expect(quiet.calls.find((c) => c[3] === "console")).toContain("--clear");
   });
 
+  it("returns only logs since the last read with newOnly", async () => {
+    const f = fake({ console: ok({ messages: [{ text: "boom", type: "error" }] }), errors: ok({ errors: [] }) });
+    const b = backend(f.run);
+    expect(await b.logs(false)).toBe("[error] boom");
+    expect(await b.logs(false, true)).toBe(NO_NEW_LOGS);
+  });
+
   it("surfaces the CLI's error, and the tools turn it into an error result", async () => {
-    const f = fake({ click: fail("Unknown ref: e9") });
-    await expect(backend(f.run).click("e9")).rejects.toThrow("Unknown ref: e9");
-    const click = browserTools(backend(f.run)).find((t) => t.name === "browser_click")!;
-    expect(await click.run({ ref: "e9" })).toEqual({ text: "Unknown ref: e9", isError: true });
+    const f = fake({ snapshot: ok(SNAPSHOT), "get url": ok({ url: "http://x/" }), click: fail("Unknown ref: e9") });
+    const b = backend(f.run);
+    await b.snapshot();
+    await expect(b.click("e2")).rejects.toThrow("Unknown ref: e9");
+    const click = browserTools(b).find((t) => t.name === "browser_click")!;
+    expect(await click.run({ ref: "e2" })).toEqual({ text: "Unknown ref: e9", isError: true });
   });
 
   it("refuses a CLI version it doesn't speak", async () => {
@@ -97,9 +156,9 @@ describe("agent-browser backend", () => {
   });
 });
 
-const installed = process.platform === "win32" ? resolveAgentBrowser() : null;
+const installed = resolveAgentBrowser();
 
-describe.skipIf(!installed || !existsSync(installed))("agent-browser backend, real session", () => {
+describe.skipIf(!installed || (process.platform === "win32" && !existsSync(installed)))("agent-browser backend, real session", () => {
   it("opens a page, clicks, fills and reads it back, then closes", { timeout: 90_000 }, async () => {
     const b = new AgentBrowserBackend({ session: `cubiq-test-${process.pid}`, screenshotDir: tempDir() });
     try {
@@ -107,8 +166,16 @@ describe.skipIf(!installed || !existsSync(installed))("agent-browser backend, re
       const snap = await b.snapshot();
       expect(snap).toContain('button "Go"');
       const button = /\[(e\d+)\] button "Go"/.exec(snap)![1]!;
-      const field = /\[(e\d+)\] textbox/.exec(snap)![1]!;
-      await b.click(button);
+      // A second snapshot renumbers the CLI refs; ours move on, so the old ref is refused.
+      const again = await b.snapshot();
+      const button2 = /\[(e\d+)\] button "Go"/.exec(again)![1]!;
+      expect(button2).not.toBe(button);
+      // The old ref is refused with the match on the page as it is now, which the agent then uses.
+      const stale = await b.click(button).then(() => "", (err: Error) => err.message);
+      expect(stale).toContain("is no longer on the page");
+      const button3 = /as \[(e\d+)\]/.exec(stale)![1]!;
+      await b.click(button3);
+      const field = /\[(e\d+)\] textbox/.exec(await b.snapshot())![1]!;
       expect(await b.evaluate("document.title")).toBe("clicked");
       await b.type(field, "Ada", false);
       expect(await b.evaluate("document.querySelector('input').value")).toBe("Ada");
@@ -158,8 +225,9 @@ describe("browser target ownership (P5.3)", () => {
     const tools = browserTools(backend(f.run), { busy: (id) => id === "owner" });
     const click = tools.find((t) => t.name === "browser_click")!;
     const snapshot = tools.find((t) => t.name === "browser_snapshot")!;
-    expect((await click.run({ ref: "e1" }, { threadId: "owner" })).isError).toBeUndefined();
-    expect(await click.run({ ref: "e1" }, { threadId: "other" })).toMatchObject({ isError: true, text: expect.stringContaining("in use by another thread") });
-    expect((await snapshot.run({}, { threadId: "other" })).text).toContain('[e2] button "Go"');
+    expect((await snapshot.run({}, { threadId: "owner" })).text).toContain('[e2] button "Go"');
+    expect((await click.run({ ref: "e2" }, { threadId: "owner" })).isError).toBeUndefined();
+    expect(await click.run({ ref: "e2" }, { threadId: "other" })).toMatchObject({ isError: true, text: expect.stringContaining("in use by another thread") });
+    expect((await snapshot.run({}, { threadId: "other" })).text).toContain('[e5] button "Go"');
   });
 });

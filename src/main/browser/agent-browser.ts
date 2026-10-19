@@ -9,13 +9,25 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { BrowserBackend } from "./backend";
+import type { DevicePreset } from "../../shared/types";
+import {
+  hasWait,
+  NO_LOGS,
+  NO_NEW_LOGS,
+  scopeLines,
+  staleRefMessage,
+  waitNote,
+  waitUntil,
+  type BrowserBackend,
+  type RefPrint,
+  type SnapshotOptions,
+  type WaitFor,
+} from "./backend";
 
 /** The CLI versions this adapter speaks (its JSON shapes were checked against 0.27). */
 export const SUPPORTED = { min: "0.27.0", maxMajor: 0 };
 
 const EVAL_MAX = 4000;
-const NO_LOGS = "No console errors, warnings, or failed requests since the last page load.";
 
 /** One CLI call's JSON line. */
 interface CliReply {
@@ -91,10 +103,10 @@ interface Snapshot {
   snapshot?: string;
 }
 
-/** The headless snapshot in the visible pane's shape: `Page:`/`URL:` then one `[eN] role "name"` line per ref. */
-export function formatHeadlessSnapshot(data: Snapshot, title: string, url: string): string {
+/** The headless snapshot in the visible pane's shape: `Page:`/`URL:`, scope lines, then one `[eN] role "name"` line per ref. */
+export function formatHeadlessSnapshot(data: Snapshot, title: string, url: string, opts?: SnapshotOptions): string {
   const refs = Object.entries(data.refs ?? {}).sort((a, b) => Number(a[0].slice(1)) - Number(b[0].slice(1)));
-  const lines = [`Page: ${title}`, `URL: ${url}`];
+  const lines = [`Page: ${title}`, `URL: ${url}`, ...scopeLines(opts)];
   for (const [ref, node] of refs) lines.push(`[${ref}] ${node.role ?? "node"}${node.name ? ` "${node.name}"` : ""}`);
   if (!refs.length) lines.push(data.snapshot?.trim() || "(no visible content)");
   return lines.join("\n");
@@ -110,6 +122,15 @@ export class AgentBrowserBackend implements BrowserBackend {
   private checked: Promise<void> | null = null;
   private shots = 0;
   private title = "";
+  /** The highest ref number handed out; the CLI renumbers e1… per snapshot, so ours never repeat. */
+  private issued = 0;
+  /** The latest snapshot's model ref → CLI ref. */
+  private current = new Map<string, string>();
+  /** Every handed-out ref's kind and name, to recognise it after it goes stale. */
+  private prints = new Map<string, RefPrint>();
+  /** Matching log lines already returned, for newOnly reads. */
+  private seenConsole = 0;
+  private seenErrors = 0;
 
   constructor(
     private o: {
@@ -153,11 +174,23 @@ export class AgentBrowserBackend implements BrowserBackend {
     await this.versionChecked();
   }
 
-  async open(url: string, device?: "mobile" | "tablet" | "desktop"): Promise<void> {
+  async open(url: string, device?: DevicePreset, wait?: WaitFor): Promise<string> {
     if (device === "mobile") await this.call("set", "viewport", "390", "844");
     else if (device === "tablet") await this.call("set", "viewport", "768", "1024");
     const data = await this.call<{ title?: string }>("open", url);
     this.title = data.title ?? "";
+    // A navigation makes every earlier ref stale.
+    this.current = new Map();
+    this.seenConsole = 0;
+    this.seenErrors = 0;
+    if (!hasWait(wait)) return "";
+    const r = await this.awaitCondition(wait);
+    return waitNote(wait, r, await this.url());
+  }
+
+  /** Wait on a condition in the page: the CLI's eval awaits the promise and returns `{ result }`. */
+  private awaitCondition(wait: WaitFor): Promise<{ met: boolean; ms: number }> {
+    return waitUntil((expression) => this.call<{ result?: unknown }>("eval", expression).then((d) => d.result), wait);
   }
 
   private async url(): Promise<string> {
@@ -165,21 +198,59 @@ export class AgentBrowserBackend implements BrowserBackend {
     return data.url ?? data.result ?? "";
   }
 
-  async snapshot(): Promise<string> {
-    const data = await this.call<Snapshot>("snapshot");
+  async snapshot(opts?: SnapshotOptions): Promise<string> {
+    const args = ["snapshot", ...(opts?.interactive ? ["-i"] : []), ...(opts?.selector ? ["-s", opts.selector] : [])];
+    const data = await this.call<Snapshot>(...args);
     const title = await this.call<{ title?: string; result?: string }>("get", "title").then((d) => d.title ?? d.result ?? this.title, () => this.title);
-    return formatHeadlessSnapshot(data, title, data.origin ?? (await this.url()));
+    const url = data.origin ?? (await this.url());
+    const refs = Object.entries(data.refs ?? {}).sort((a, b) => Number(a[0].slice(1)) - Number(b[0].slice(1)));
+    // Hand out our own refs, offset past every one already issued, so a CLI ref
+    // reused by the next snapshot (it always renumbers e1…) can't retarget an old ref.
+    const current = new Map<string, string>();
+    const rekeyed: NonNullable<Snapshot["refs"]> = {};
+    let max = 0;
+    for (const [cliRef, node] of refs) {
+      const n = Number(cliRef.slice(1));
+      if (n > max) max = n;
+      const model = `e${this.issued + n}`;
+      current.set(model, cliRef);
+      rekeyed[model] = node;
+      this.prints.set(model, { kind: node.role ?? "node", name: node.name ?? "" });
+      if (this.prints.size > 2000) this.prints.delete(this.prints.keys().next().value!);
+    }
+    this.issued += max;
+    this.current = current;
+    return formatHeadlessSnapshot(refs.length ? { ...data, refs: rekeyed } : data, title, url, opts);
   }
 
-  async click(ref: string): Promise<string> {
-    await this.call("click", atRef(ref));
-    return `Clicked ${bareRef(ref)}. Now at ${await this.url()}`;
+  /** The CLI ref behind a model ref, or the stale-ref error naming the same-kind-and-name refs on the page now (a fresh snapshot). */
+  private async resolveRef(ref: string): Promise<string> {
+    const bare = bareRef(ref);
+    const cli = this.current.get(bare);
+    if (cli) return cli;
+    const print = this.prints.get(bare);
+    if (!print) throw new Error(staleRefMessage(bare, undefined, []));
+    await this.snapshot();
+    const matches = [...this.current.keys()].filter((m) => {
+      const p = this.prints.get(m);
+      return p?.kind === print.kind && p.name === print.name;
+    });
+    throw new Error(staleRefMessage(bare, print, matches));
   }
 
-  async type(ref: string, text: string, submit: boolean): Promise<string> {
-    await this.call("fill", atRef(ref), text);
+  async click(ref: string, wait?: WaitFor): Promise<string> {
+    await this.call("click", atRef(await this.resolveRef(ref)));
+    let out = `Clicked ${bareRef(ref)}. Now at ${await this.url()}`;
+    if (hasWait(wait)) out += `\n${waitNote(wait, await this.awaitCondition(wait), await this.url())}`;
+    return out;
+  }
+
+  async type(ref: string, text: string, submit: boolean, wait?: WaitFor): Promise<string> {
+    await this.call("fill", atRef(await this.resolveRef(ref)), text);
     if (submit) await this.call("press", "Enter");
-    return `Typed into ${bareRef(ref)}${submit ? " and pressed Enter" : ""}. Now at ${await this.url()}`;
+    let out = `Typed into ${bareRef(ref)}${submit ? " and pressed Enter" : ""}. Now at ${await this.url()}`;
+    if (hasWait(wait)) out += `\n${waitNote(wait, await this.awaitCondition(wait), await this.url())}`;
+    return out;
   }
 
   async evaluate(expression: string): Promise<string> {
@@ -189,15 +260,16 @@ export class AgentBrowserBackend implements BrowserBackend {
     return text.length > EVAL_MAX ? `${text.slice(0, EVAL_MAX)}… (truncated)` : text;
   }
 
-  async logs(clear: boolean): Promise<string> {
+  async logs(clear: boolean, newOnly = false): Promise<string> {
     const flag = clear ? ["--clear"] : [];
     const consoleData = await this.call<{ messages?: { type?: string; level?: string; text?: string }[] }>("console", ...flag);
     const errorData = await this.call<{ errors?: { message?: string; text?: string }[] }>("errors", ...flag).catch(() => ({ errors: [] }));
-    const lines = [
-      ...(consoleData.messages ?? []).filter((m) => ["error", "warning", "warn", "assert"].includes(m.type ?? m.level ?? "")).map((m) => `[${m.type ?? m.level}] ${m.text ?? ""}`),
-      ...(errorData.errors ?? []).map((e) => `[error] ${e.message ?? e.text ?? ""}`),
-    ];
-    return lines.length ? lines.join("\n") : NO_LOGS;
+    const consoleLines = (consoleData.messages ?? []).filter((m) => ["error", "warning", "warn", "assert"].includes(m.type ?? m.level ?? "")).map((m) => `[${m.type ?? m.level}] ${m.text ?? ""}`);
+    const errorLines = (errorData.errors ?? []).map((e) => `[error] ${e.message ?? e.text ?? ""}`);
+    const lines = newOnly ? [...consoleLines.slice(this.seenConsole), ...errorLines.slice(this.seenErrors)] : [...consoleLines, ...errorLines];
+    this.seenConsole = clear ? 0 : consoleLines.length;
+    this.seenErrors = clear ? 0 : errorLines.length;
+    return lines.length ? lines.join("\n") : newOnly ? NO_NEW_LOGS : NO_LOGS;
   }
 
   async screenshot(): Promise<{ path: string; png: Buffer }> {

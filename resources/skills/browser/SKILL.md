@@ -10,13 +10,13 @@ The harness has a browser pane the user can see. You drive it with these tools (
 | Tool | Use |
 | :--- | :--- |
 | `browser_open` | Open a URL (`localhost:5173`, `https://…`), wait for load, get a snapshot. Optional `device`: `mobile`, `tablet`, `desktop`. |
-| `browser_snapshot` | The page as text with element refs like `e3`. Cheaper than a screenshot; use it first. |
-| `browser_click` / `browser_type` | Act on a ref from the latest snapshot. |
-| `browser_logs` | Console errors and warnings, and failed network requests, since the page loaded. |
+| `browser_snapshot` | The page as text with element refs like `e3`. Cheaper than a screenshot; use it first. `selector` limits it to part of the page, `interactive` to links, buttons and fields. |
+| `browser_click` / `browser_type` | Act on a ref from a snapshot. Give `wait_for` (`url`, `selector`, `text`) when the action navigates or loads content. |
+| `browser_logs` | Console errors and warnings, and failed network requests, since the page loaded. `new_only` gives only what's new since your last read. |
 | `browser_eval` | Run JavaScript in the page. Asks the user first in Ask mode. |
 | `browser_screenshot` | Save a PNG (the user sees it in the pane). Returns the image only when you ask for it. |
 
-If a tool answers "Browser pane not open", ask the user to open it (the globe button in the header, or Ctrl/Cmd+Shift+B), then retry.
+The pane opens by itself on the first call. If a tool says it couldn't open the pane, ask the user to open it (the globe button in the header, or Ctrl/Cmd+Shift+B), then retry.
 
 ## Checking a UI change
 
@@ -26,7 +26,7 @@ If a tool answers "Browser pane not open", ask the user to open it (the globe bu
 4. Interact the way a user would (`browser_click`, `browser_type`), then snapshot again to confirm the result.
 5. For layout or visual changes, `browser_screenshot`, and try `device: "mobile"` when the page is meant to be responsive.
 
-Refs go stale after the page changes: take a fresh snapshot before the next click.
+An element keeps its ref while it stays on the page. When a ref is gone, the error names the likely replacement; check it's the element you meant before using it.
 
 ## Without the pane
 

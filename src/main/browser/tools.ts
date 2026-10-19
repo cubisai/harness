@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { HarnessTool, ToolContext, ToolOutput } from "../agents/types";
-import { asBackend, type BrowserBackend } from "./backend";
+import { asBackend, WAIT_MAX_MS, type BrowserBackend, type WaitFor } from "./backend";
 import type { BrowserController } from "./controller";
 
 async function safely(fn: () => Promise<ToolOutput>): Promise<ToolOutput> {
@@ -55,6 +55,25 @@ export class TargetLock {
   }
 }
 
+/** The readiness condition browser_open, browser_click and browser_type accept (P5.4). */
+const waitFor = z
+  .object({
+    url: z.string().optional().describe("The URL contains this, e.g. /dashboard"),
+    selector: z.string().optional().describe("A CSS selector that must match a visible element"),
+    text: z.string().optional().describe("Text that must appear on the page"),
+    timeout_ms: z.number().int().positive().max(WAIT_MAX_MS).optional().describe("Give up after this long (default 5000)"),
+  })
+  .optional()
+  .describe("Wait until all given conditions hold before returning, instead of a fixed short pause. Use it when the action starts a navigation or loads content.");
+
+type WaitArg = z.infer<typeof waitFor>;
+
+/** The tool argument as the backend's WaitFor; undefined when absent. */
+function toWait(w: WaitArg): WaitFor | undefined {
+  if (!w) return undefined;
+  return { ...(w.url ? { url: w.url } : {}), ...(w.selector ? { selector: w.selector } : {}), ...(w.text ? { text: w.text } : {}), ...(w.timeout_ms ? { timeoutMs: w.timeout_ms } : {}) };
+}
+
 function define<S extends z.ZodRawShape>(t: HarnessTool<S>): HarnessTool {
   return t as unknown as HarnessTool;
 }
@@ -79,31 +98,37 @@ export function browserTools(target: BrowserBackend | BrowserController, opts: {
       input: {
         url: z.string().describe("URL to open, e.g. http://localhost:5173/login"),
         device: z.enum(["mobile", "tablet", "desktop"]).optional().describe("Emulate a viewport before loading: mobile (390px), tablet (768px), or desktop (no emulation)"),
+        wait_for: waitFor,
       },
       autoAllow: true,
       effect: "mutate",
-      run: ({ url, device }, ctx) =>
+      run: ({ url, device, wait_for }, ctx) =>
         acting(ctx, async () => {
-          await browser.open(url, device);
-          return { text: await browser.snapshot() };
+          const note = await browser.open(url, device, toWait(wait_for));
+          const snap = await browser.snapshot();
+          return { text: note ? `${note}\n\n${snap}` : snap };
         }),
     }),
     define({
       name: "browser_snapshot",
       description:
-        "Text snapshot of the current page in the browser pane: headings, text, and every link, button, and field with a ref like e3 for browser_click and browser_type. Refs change when the page changes; take a new snapshot after acting.",
-      input: {},
+        "Text snapshot of the current page in the browser pane: headings, text, and every link, button, and field with a ref like e3 for browser_click and browser_type. An element keeps its ref while it stays on the page; take a new snapshot after the page changes. Narrow it with selector or interactive to save tokens.",
+      input: {
+        selector: z.string().optional().describe("Only the part of the page inside this CSS selector, e.g. main or #checkout"),
+        interactive: z.boolean().optional().describe("Only links, buttons and fields (no headings or text)"),
+      },
       autoAllow: true,
       effect: "read",
-      run: () => gated(browser, async () => ({ text: await browser.snapshot() })),
+      run: ({ selector, interactive }) =>
+        gated(browser, async () => ({ text: await browser.snapshot(selector || interactive ? { ...(selector ? { selector } : {}), ...(interactive ? { interactive } : {}) } : undefined) })),
     }),
     define({
       name: "browser_click",
       description: "Click the element with this ref from the latest browser_snapshot, as a real mouse click.",
-      input: { ref: z.string().describe("Element ref from browser_snapshot, e.g. e7") },
+      input: { ref: z.string().describe("Element ref from browser_snapshot, e.g. e7"), wait_for: waitFor },
       autoAllow: true,
       effect: "mutate",
-      run: ({ ref }, ctx) => acting(ctx, async () => ({ text: await browser.click(ref) })),
+      run: ({ ref, wait_for }, ctx) => acting(ctx, async () => ({ text: await browser.click(ref, toWait(wait_for)) })),
     }),
     define({
       name: "browser_type",
@@ -112,10 +137,11 @@ export function browserTools(target: BrowserBackend | BrowserController, opts: {
         ref: z.string().describe("Field ref from browser_snapshot"),
         text: z.string(),
         submit: z.boolean().optional().describe("Press Enter after typing"),
+        wait_for: waitFor,
       },
       autoAllow: true,
       effect: "mutate",
-      run: ({ ref, text, submit }, ctx) => acting(ctx, async () => ({ text: await browser.type(ref, text, submit ?? false) })),
+      run: ({ ref, text, submit, wait_for }, ctx) => acting(ctx, async () => ({ text: await browser.type(ref, text, submit ?? false, toWait(wait_for)) })),
     }),
     define({
       name: "browser_eval",
@@ -130,10 +156,13 @@ export function browserTools(target: BrowserBackend | BrowserController, opts: {
       name: "browser_logs",
       description:
         "Console errors and warnings, uncaught exceptions, and failed or 4xx/5xx network requests since the page loaded. Check after each step of a UI test.",
-      input: { clear: z.boolean().optional().describe("Clear the log after reading") },
+      input: {
+        clear: z.boolean().optional().describe("Clear the log after reading"),
+        new_only: z.boolean().optional().describe("Only what was logged since your last browser_logs call"),
+      },
       autoAllow: true,
       effect: "read",
-      run: ({ clear }) => gated(browser, async () => ({ text: await browser.logs(clear ?? false) })),
+      run: ({ clear, new_only }) => gated(browser, async () => ({ text: await browser.logs(clear ?? false, new_only ?? false) })),
     }),
     define({
       name: "browser_screenshot",
