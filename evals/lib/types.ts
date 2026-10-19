@@ -2,6 +2,7 @@
 // results. Plan: .ai/plans/eval-framework.md.
 
 import type { McpServerEntry } from "../../src/shared/types";
+import type { HarnessTool } from "../../src/main/agents/types";
 
 export type Tier = "smoke" | "full";
 export type TaskTag = "capability" | "regression";
@@ -120,6 +121,8 @@ export interface GradeInput {
 export interface Scenario {
   memory: string | null;
   mcpServers: McpServerEntry[];
+  /** The trial's harness tools (the browser's); Codex and OpenCode take them over MCP. */
+  tools?: HarnessTool[];
 }
 
 export interface GraderResult {

@@ -8,8 +8,10 @@ import { createAcpDriver } from "../../src/main/agents/acp/driver";
 import { createClaudeDriver } from "../../src/main/agents/claude";
 import { createCodexDriver } from "../../src/main/agents/codex";
 import { ACP_PRESETS } from "../../src/main/agents/registry";
-import type { AgentDriver } from "../../src/main/agents/types";
+import type { AgentDriver, HarnessTool } from "../../src/main/agents/types";
 import { BUILT_IN_GUARD } from "../../src/main/guard";
+import { startToolServer, type ToolServer } from "../../src/main/mcp-http";
+import { memoryPrompt } from "../../src/main/memory/index";
 import type { InjectionPlan } from "../../src/main/inject";
 import { createGuide } from "../../src/main/guide";
 import { createProviderDriver } from "../../src/main/harness/driver";
@@ -56,6 +58,31 @@ const cliVersion = (command: string): string => {
     return "missing";
   }
 };
+
+/**
+ * What the app gives a CLI engine besides its guide: the scenario's memory as
+ * CubiQ's memory block, and the trial's harness tools (the browser's) over the
+ * app's MCP tool server, which Codex and OpenCode call (Claude takes them
+ * in-process). Trials run one at a time, so one server serves the current list.
+ */
+export function cliWiring(): {
+  /** Points the server at this trial's tools; returns the driver's `memory` option. */
+  forTrial(scenario?: Scenario): () => string | null;
+  toolServer(): Promise<ToolServer>;
+  close(): void;
+} {
+  let trialTools: HarnessTool[] = [];
+  let server: Promise<ToolServer> | null = null;
+  return {
+    forTrial: (scenario) => {
+      trialTools = scenario?.tools ?? [];
+      const block = scenario?.memory ? memoryPrompt(scenario.memory) : null;
+      return () => block;
+    },
+    toolServer: () => (server ??= startToolServer(() => trialTools)),
+    close: () => void server?.then((s) => s.close()).catch(() => {}),
+  };
+}
 
 export function setupAgent(agent: AgentId, o: { root: string; scratch: string; provider?: string; model?: string; guide?: string }): AgentSetup {
   // --guide overrides the bundled project guide with a candidate's file.
@@ -112,20 +139,25 @@ export function setupAgent(agent: AgentId, o: { root: string; scratch: string; p
 
   const drivers: AgentDriver[] = [];
   const keep = (d: AgentDriver) => (drivers.push(d), d);
-  // CLI engines keep their own memory: the scenario's memory fixture is native-only.
-  // MCP servers reach them through TurnInput.mcpServers instead.
-  const base = { model: o.model ?? "", protocol: agent, version: "", fidelity: `thread events only: ${agent}'s own prompt, tool schemas and internal loop are not visible to CubiQ`, dispose: () => drivers.forEach((d) => d.dispose?.()) };
+  // MCP servers reach CLI engines through TurnInput.mcpServers.
+  const { forTrial, toolServer, close } = cliWiring();
+  const dispose = () => {
+    drivers.forEach((d) => d.dispose?.());
+    close();
+  };
+  const cliShared = [...shared, "src/main/mcp-http.ts", "src/main/memory/index.ts"];
+  const base = { model: o.model ?? "", protocol: agent, version: "", fidelity: `thread events only: ${agent}'s own prompt, tool schemas and internal loop are not visible to CubiQ`, dispose };
 
   if (agent === "claude") {
     // Haiku keeps subscription use low; Claude Code reads .claude/skills itself.
     const model = o.model ?? "haiku";
     return {
       ...base,
-      driver: () => keep(createClaudeDriver({ guide: forCwd, guardScript: BUILT_IN_GUARD, pluginDir: () => null })),
+      driver: (_cwd, scenario) => keep(createClaudeDriver({ guide: forCwd, guardScript: BUILT_IN_GUARD, pluginDir: () => null, memory: forTrial(scenario) })),
       model,
       label: `claude/${model}`,
       skillDirs: [".claude/skills"],
-      hashPaths: ["src/main/agents/claude.ts", "src/main/agents/summarize.ts", ...shared],
+      hashPaths: ["src/main/agents/claude.ts", "src/main/agents/summarize.ts", ...cliShared],
       version: cliVersion("claude"),
     };
   }
@@ -133,11 +165,11 @@ export function setupAgent(agent: AgentId, o: { root: string; scratch: string; p
     const model = o.model ?? "default";
     return {
       ...base,
-      driver: () => keep(createCodexDriver({ command: "codex", args: ["app-server"], clientVersion: "eval", guardScript: BUILT_IN_GUARD, guide: forCwd })),
+      driver: (_cwd, scenario) => keep(createCodexDriver({ command: "codex", args: ["app-server"], clientVersion: "eval", guardScript: BUILT_IN_GUARD, guide: forCwd, memory: forTrial(scenario), toolServer })),
       model,
       label: `codex/${model}`,
       skillDirs: [".agents/skills"],
-      hashPaths: ["src/main/agents/codex.ts", "src/main/agents/rpc.ts", "src/main/agents/summarize.ts", ...shared],
+      hashPaths: ["src/main/agents/codex.ts", "src/main/agents/rpc.ts", "src/main/agents/summarize.ts", ...cliShared],
       version: cliVersion("codex"),
     };
   }
@@ -162,11 +194,11 @@ export function setupAgent(agent: AgentId, o: { root: string; scratch: string; p
   }
   return {
     ...base,
-    driver: () => keep(createAcpDriver(config, { clientVersion: "eval", guardScript: BUILT_IN_GUARD, guide: forCwd, injection })),
+    driver: (_cwd, scenario) => keep(createAcpDriver(config, { clientVersion: "eval", guardScript: BUILT_IN_GUARD, guide: forCwd, injection, memory: forTrial(scenario), toolServer })),
     model,
     label: `opencode/${model}`,
     skillDirs: [".agents/skills"],
-    hashPaths: ["src/main/agents/acp", "src/main/agents/rpc.ts", "src/main/agents/summarize.ts", ...shared],
+    hashPaths: ["src/main/agents/acp", "src/main/agents/rpc.ts", "src/main/agents/summarize.ts", ...cliShared],
     version: cliVersion("opencode"),
   };
 }

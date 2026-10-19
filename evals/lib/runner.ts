@@ -125,7 +125,7 @@ export async function runTrial(o: TrialOptions): Promise<TrialResult> {
   const kit = mcpKit(task, o.mcpServerScript);
   const browser = task.requires?.includes("browser") ? (o.browser?.() ?? null) : null;
   const tools: HarnessTool[] = browser ? browserTools(browser) : [];
-  const scenario: Scenario = { memory: task.memory ?? null, mcpServers: kit?.servers ?? [] };
+  const scenario: Scenario = { memory: task.memory ?? null, mcpServers: kit?.servers ?? [], tools };
 
   const events: ThreadEvent[] = [];
   const timed: TimedEvent[] = [];
