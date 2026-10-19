@@ -9,7 +9,7 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 
 ## Session 5 (2026-10-19, Mac): P8 live checks closed, moved to `m4`
 
-**Checks on `m4`:** typecheck green, vitest 3072 passed / 0 failed.
+**Checks on `m4`:** typecheck green, vitest 3090 passed / 0 failed; CI (windows-latest) green on `b83913f`.
 
 **Fixed (3 commits):**
 - `30e5a91` Optimizer: `cost-unknown` now counts cached trials too. A fully cached, unpriced train run counted 0 of 0 fresh trials and went on to spend blind. It also stops after any validation run that comes back unpriced, since a candidate's `model=` can be unpriced.
@@ -25,11 +25,41 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
   - Experiments are in `.ai/evals/experiments/opt-recheck-*`.
 - **Live turns after the fixes:** Claude Sonnet (edit + revert turns), Codex GPT-6-Luna, OpenCode AgentRouter `deepseek-v4-flash`.
 
-**Left:**
-1. **Owner's open question:** "Load link previews" (Settings, under Interactive answers) only thumbnails links inside card-list blocks. The owner expects ChatGPT-style link/citation chips in normal replies. Ask which shape before building: inline chips, numbered citations with a hover card, or a sources row.
-2. **Live lesson promotion:** needs a case a rule can actually fix. A revert of exactly what was asked is a change of mind, and is now skipped. Try a correction, e.g. the agent also touched a file it was told not to.
-3. **Eval isolation:** trials auto-allow every permission, so an OpenCode agent read other projects' memory under `~/.claude/projects` while looking for answers (`x-memory-correction`, run C). Consider denying reads outside the trial dir in evals.
-4. **Windows PC:** the per-phase gate for P7/P8, session 4's UI fixes, and session 5's fixes. Watch `tar -xf` in replay's `materializeCase`, CRLF in git output, and the scrollbar gutter (classic scrollbars are always on there).
+**OpenCode permission fix (plan `.ai/plans/opencode-ask.md`, approved by the owner):**
+- **Bug (verified live in the app):** with OpenCode, Ask ("Ask before edits and commands") created a file and ran a command with no card. OpenCode asks over ACP only when its own config says "ask". Its defaults allow edit and bash, and a user's agent (`~/.config/opencode/agent/orchestrator.md`: `edit: allow`, `bash "*": allow`) overrides any injected top-level permission.
+- `01118a7` **Phase A:**
+  - The OpenCode plugin (`inject/opencode-guard.ts`, now loaded even without Python) asks the app before every edit/write/patch/apply_patch and bash, over `CUBIQ_ASK_URL`/`CUBIQ_ASK_TOKEN`.
+  - `acp/ask-server.ts` is one 127.0.0.1 server per driver, with one token per process (= thread).
+  - `decidePluginAsk` in `acp/driver.ts` decides by mode: Full allows, Auto-edit allows edits and asks for commands, Ask asks, and Plan defers (unchanged).
+  - Fails closed. The git guard still runs first.
+  - An approved callID skips OpenCode's own ACP ask for the same call. Verified: ACP `toolCallId` == plugin `callID`, and the test fails with the dedupe removed.
+  - Tests: `test/opencode-ask.test.ts`, including 4 real-OpenCode end-to-end runs (fake model).
+- `3dbe62d` **Phase B:**
+  - OpenCode eval trials use `XDG_CONFIG_HOME=<scratch>` plus only the user's `provider`/`model`/`small_model` (`openCodeEvalConfig`), and load the same plugin.
+  - The runner denies any ask that names the user's home outside the trial (`reachesHome`).
+  - Live: 5/5 tasks pass on AgentRouter Flash. An Ask-mode `ls ~/.claude/projects` came back "The user denied this command."
+- **Checks:** typecheck green, vitest 3090 passed / 0 failed.
+
+**Left (do in this order):**
+1. **Live app check of the OpenCode fix** (not done yet; the owner had to leave). Use a vite-proj thread on OpenCode AgentRouter `deepseek-v4-flash`:
+   - Ask: "create probe.txt then run cat probe.txt". Two cards should appear (edit, command); Deny blocks.
+   - Auto-edit: the edit is silent and the command shows a card.
+   - Full: silent.
+   - Plan: unchanged.
+   - Then a team turn in Ask: member edits/commands show cards and nothing hangs.
+   - Then one Claude + one Codex sanity turn.
+   - Screenshot the card in dark theme (DESIGN §9).
+2. **Windows PC gate:** the OpenCode plugin's `fetch` to 127.0.0.1 inside OpenCode on Windows, `file://` plugin URL, the eval `XDG_CONFIG_HOME` override (OpenCode reads `%USERPROFILE%/.config/opencode` there too), plus the P7/P8 and session 4 items: `tar -xf` in replay's `materializeCase`, CRLF in git output, the scrollbar gutter.
+3. **Owner's open question:** "Load link previews" only thumbnails links inside card-list blocks. The owner expects ChatGPT-style chips in normal replies. Ask which shape: inline chips, numbered citations with a hover card, or a sources row.
+4. **Live lesson promotion:** needs a case a rule can actually fix. A revert of exactly what was asked is a change of mind and is now skipped. Try a correction, e.g. the agent also touched a file it was told not to.
+
+**Continue on another PC:**
+- `git fetch origin && git checkout m4 && git pull`, then `bun install`.
+- Check: `bun run typecheck`, `bunx vitest run`.
+- Plans and notes are force-added under `.ai/plans/` and `.ai/research_notes/`.
+- Eval results (`.ai/evals/`) are local only: not needed to continue.
+- OpenCode live turns/evals: AgentRouter `deepseek-v4-flash`. Zen free is rate-limiting. On Windows, start `~/.config/opencode/start-proxy.bat` if nothing listens on :3900.
+- The scratch `vite-proj` exists only on the Mac. On Windows use any small git project (add it through the app).
 
 ## Session 4 (2026-10-19, Mac)
 
