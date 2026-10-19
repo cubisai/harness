@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 import type { ExpertDef } from "../../../shared/experts";
-import { useStore } from "../store";
+import { eventCount, useStore } from "../store";
 import { ExpertAvatar } from "./experts/ExpertAvatar";
 import { bumpUsage, readUsage } from "./experts/ExpertCenter";
 
@@ -41,7 +41,8 @@ export function chooseExpert(id: string, close: () => void): "here" | "same" | "
   const s = useStore.getState();
   const threadId = s.selectedThreadId;
   const thread = threadId ? Object.values(s.threads).flat().find((t) => t.id === threadId) : undefined;
-  const messages = (threadId ? s.events[threadId]?.length : 0) ?? 0;
+  // A suffix-only load must not read as an empty thread: count the server totals plus anything newer.
+  const messages = eventCount(threadId ? s.events[threadId] : undefined, threadId ? s.history[threadId]?.totals : undefined);
   const running = Boolean(threadId ? s.running[threadId] : false);
   const def: { id: string; threadKind?: "design" } = s.experts?.find((e) => e.id === id) ?? { id };
   const mode = pickMode({ thread: thread ? { kind: thread.kind ?? "chat", expertId: thread.expertId } : null, messages, running, def });

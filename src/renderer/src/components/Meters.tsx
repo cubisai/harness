@@ -111,13 +111,23 @@ export function LimitMeter({ agent }: { agent: string }) {
 /** What this thread has cost so far, summed over its turns. Quiet until there's something to show. */
 export function UsageMeter({ threadId }: { threadId: string }) {
   const events = useStore((s) => s.events[threadId]);
+  const totals = useStore((s) => s.history[threadId]?.totals);
   let input = 0;
   let cached = 0;
   let output = 0;
   let cost = 0;
   let turns = 0;
+  // With whole-thread totals, only turn-ends newer than them are missing from the loaded suffix.
+  const countedThrough = totals?.lastSeq ?? null;
+  if (totals) {
+    turns = totals.turns;
+    input = totals.inputTokens;
+    cached = totals.cacheReadTokens;
+    output = totals.outputTokens;
+    cost = totals.costUsd ?? 0;
+  }
   for (const e of events ?? []) {
-    if (e.event.kind !== "turn-end") continue;
+    if (e.event.kind !== "turn-end" || (countedThrough !== null && e.seq <= countedThrough)) continue;
     turns++;
     input += e.event.inputTokens;
     cached += e.event.usage?.cacheReadTokens ?? 0;

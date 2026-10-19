@@ -683,6 +683,26 @@ export interface StoredEvent {
   provenance?: Provenance | null;
 }
 
+export interface EventPage {
+  events: StoredEvent[];
+  /** Seq of the first event returned; 0 when empty. */
+  firstSeq: number;
+  /** Older events exist before firstSeq. */
+  hasMore: boolean;
+}
+
+export interface ThreadTotals {
+  events: number;
+  turns: number;
+  inputTokens: number;
+  cacheReadTokens: number;
+  outputTokens: number;
+  /** Null when no turn reported a cost. */
+  costUsd: number | null;
+  /** Highest seq counted (0 when empty), so the renderer adds only live events after it. */
+  lastSeq: number;
+}
+
 /** A tool call waiting on the user in "ask" mode. */
 export interface PermissionRequest {
   requestId: string;
@@ -1055,8 +1075,8 @@ export type LiveUpdate =
   | { type: "open-about" }
   /** A turn finished having written previewable files: open the panel on `path` (the last one). */
   | { type: "artifact-ready"; threadId: string; path: string; files: string[] }
-  /** Something in an open design thread's folder changed (debounced): the canvas reloads. */
-  | { type: "design-changed"; threadId: string }
+  /** Something in an open design thread's folder changed (debounced): the canvas reloads. `paths` are the changed files relative to the folder; absent = unknown. */
+  | { type: "design-changed"; threadId: string; paths?: string[] }
   /** Self-improve: a turn's health changed (scored, or a later correction/revert). */
   | { type: "turn-score"; score: TurnScore }
   /** Self-improve: a project's lessons or cases changed (the Learned tab refetches). */
@@ -1077,6 +1097,8 @@ export interface UnskilledApi {
   /** Set a project's post-turn check command; null/empty turns it off. */
   setCheckCommand(projectId: string, command: string | null, fixRounds?: number | null): Promise<Project>;
   listThreads(projectId: string): Promise<Thread[]>;
+  /** Every project's threads, grouped by project id; a project with none is absent. */
+  listAllThreads(): Promise<Record<string, Thread[]>>;
   createThread(projectId: string, agent?: string, opts?: { worktree?: boolean; kind?: ThreadKind; designSystem?: string; expertId?: string }): Promise<Thread>;
   /** Pick a design thread's design system (null = the default); the next turn copies it into the design folder. */
   setDesignSystem(threadId: string, id: string | null): Promise<Thread>;
@@ -1096,6 +1118,10 @@ export interface UnskilledApi {
   /** Replace them from an export; null when cancelled. */
   importSettings(): Promise<SettingsView | null>;
   listEvents(threadId: string): Promise<StoredEvent[]>;
+  /** The newest events of a thread, starting at a turn boundary; page further back with beforeSeq. */
+  listEventsPage(threadId: string, opts: { beforeSeq?: number; minEvents?: number }): Promise<EventPage>;
+  /** A thread's stored totals: event/turn counts and token usage over its turns. */
+  threadTotals(threadId: string): Promise<ThreadTotals>;
   listSkills(projectId?: string): Promise<SkillEntry[]>;
   listAgents(): Promise<AgentInfo[]>;
   send(request: SendRequest): Promise<void>;

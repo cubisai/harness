@@ -41,6 +41,7 @@ const DEVICE_CHROME = { none: { width: 0, height: 0 }, phone: { width: 40, heigh
 
 export default function DesignCanvas({ threadId }: { threadId: string }) {
   const reload = useStore((s) => s.designReload[threadId] ?? 0);
+  const change = useStore((s) => s.designChange[threadId]);
   const files = useStore((s) => s.artifactFiles[threadId]);
   const [entry, setEntry] = useState<DesignEntry | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -1046,7 +1047,8 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           pages={entry.pages}
           links={entry.links}
           flow={flow}
-          reloadKey={`${reload}-${manual}`}
+          changes={change}
+          manual={manual}
           onFocus={(rel) => {
             setBoard(false);
             scroll.current = { x: 0, y: 0 };

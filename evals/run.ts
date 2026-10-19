@@ -9,7 +9,7 @@
 // (zero tokens: pass/token history per tier+model from .ai/evals). Plan: .ai/plans/eval-framework.md.
 
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,6 +19,7 @@ import { compareRuns, renderReport } from "./lib/report";
 import { runTask } from "./lib/runner";
 import { validateTask } from "./lib/validate";
 import { runCheck } from "../src/main/check";
+import { AgentBrowserBackend, resolveAgentBrowser } from "../src/main/browser/agent-browser";
 import { RUN_MANIFEST_VERSION, type RunManifest } from "../src/shared/run-trace";
 import { assembleTask, cacheKey, EVAL_RUNTIME_VERSION, redact, runFileName, compareBaseline, diffRuns, findCachedTrials, listRuns, previousRun, readBaseline, saveBaseline, saveRun, summarize, trend } from "./lib/store";
 import type { RunResult, Task, TaskResult, Tier } from "./lib/types";
@@ -117,8 +118,8 @@ async function main(): Promise<number> {
     const only = f.get("task")?.split(",");
     let bad = 0;
     for (const task of loadTasks().filter((t) => !only || only.includes(t.id))) {
-      if (task.requires?.length) {
-        console.log(`skip ${task.id}: needs ${task.requires.join(", ")}, unavailable in the eval runner`);
+      if (task.requires?.includes("team")) {
+        console.log(`skip ${task.id}: needs team, unavailable in the eval runner`);
         continue;
       }
       const v = await validateTask(task, {
@@ -148,9 +149,14 @@ async function main(): Promise<number> {
   const price = priceArg && priceArg.length === 2 ? { input: priceArg[0]!, output: priceArg[1]! } : undefined;
 
   const selected = loadTasks().filter((t) => (tier === "smoke" ? t.tier === "smoke" : true) && (!f.has("task") || f.get("task")!.split(",").includes(t.id)));
-  // Tasks needing Electron's browser or team runtime can't run here; say so and leave them out.
-  for (const t of selected) if (t.requires?.length) console.log(`skip ${t.id}: needs ${t.requires.join(", ")}, unavailable in the eval runner`);
-  const tasks = selected.filter((t) => !t.requires?.length);
+  // A browser task runs on a headless agent-browser session when the CLI is installed; the team runtime needs Electron.
+  const headless = resolveAgentBrowser();
+  const unavailable = (t: Task): string | null => (t.requires?.includes("team") ? "team" : t.requires?.includes("browser") && !headless ? "browser (agent-browser isn't installed)" : null);
+  for (const t of selected) {
+    const why = unavailable(t);
+    if (why) console.log(`skip ${t.id}: needs ${why}, unavailable in the eval runner`);
+  }
+  const tasks = selected.filter((t) => !unavailable(t));
   const trialsOf = (t: Task) => (t.tags.includes("regression") ? trials : 1);
 
   if (f.has("dry")) {
@@ -208,7 +214,7 @@ async function main(): Promise<number> {
       const reused = f.has("force") ? [] : findCachedTrials(RESULTS, ck).slice(0, want);
       const fresh =
         reused.length < want
-          ? (await runTask({ task, fixturesRoot: FIXTURES, driver, model: setup.model, effort, skillDirs, price, keep: f.has("keep"), trials: want - reused.length, cacheKey: ck, trace })).trials
+          ? (await runTask({ task, fixturesRoot: FIXTURES, driver, model: setup.model, effort, skillDirs, price, keep: f.has("keep"), trials: want - reused.length, cacheKey: ck, trace, browser: () => (headless ? new AgentBrowserBackend({ session: `cubiq-eval-${randomUUID().slice(0, 8)}`, command: headless, screenshotDir: join(scratch, "shots") }) : null) })).trials
           : [];
       const r = assembleTask(task, ck, want, reused, fresh);
       results.push(r);

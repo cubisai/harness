@@ -23,22 +23,30 @@ function isWork(e: StoredEvent): boolean {
   return k === "tool-use" || k === "tool-result" || k === "thinking";
 }
 
-/**
- * Group a thread's top-level events for display (DESIGN.md §7.4): runs of
- * tool calls become one "Worked for" fold once the turn has moved past them;
- * a run still in progress stays as plain rows. A run of thinking alone stays
- * as its reasoning block. Each turn-end carries its answer, prompt and changes.
- */
-export function segmentEvents(events: StoredEvent[], running: boolean): Segment[] {
+/** The thread-wide tool-result map, last result per call: an Edit's stat can be reported after its call. */
+function toolResults(events: StoredEvent[]): Map<string, { summary?: string; isError: boolean }> {
+  const results = new Map<string, { summary?: string; isError: boolean }>();
+  for (const e of events) if (e.event.kind === "tool-result") results.set(e.event.toolUseId, { summary: e.event.summary, isError: e.event.isError });
+  return results;
+}
+
+/** What a closed turn carries into the next: the last prompt and its user seq. Answer, edits and the fold all reset at a turn-end. */
+interface Carry {
+  prompt: { text: string; skills?: string[] } | null;
+  userSeq: number | null;
+}
+
+const NO_CARRY: Carry = { prompt: null, userSeq: null };
+
+/** Segment one run of events from the state entering it. A run for a single turn is self-contained given `carry` and the thread-wide `results`. */
+function segmentRun(events: StoredEvent[], running: boolean, results: Map<string, { summary?: string; isError: boolean }>, carry: Carry): { segments: Segment[]; carry: Carry } {
   const out: Segment[] = [];
   let run: StoredEvent[] = [];
   let answer: string[] = [];
-  let prompt: { text: string; skills?: string[] } | null = null;
-  let userSeq: number | null = null;
+  let prompt: { text: string; skills?: string[] } | null = carry.prompt;
+  let userSeq: number | null = carry.userSeq;
   let edits = new Map<string, { additions: number; deletions: number }>();
   let statKnown = false;
-  const results = new Map<string, { summary?: string; isError: boolean }>();
-  for (const e of events) if (e.event.kind === "tool-result") results.set(e.event.toolUseId, { summary: e.event.summary, isError: e.event.isError });
 
   const flush = (done: boolean, endedAt: number) => {
     if (!run.length) return;
@@ -109,7 +117,59 @@ export function segmentEvents(events: StoredEvent[], running: boolean): Segment[
   }
   const last = run[run.length - 1];
   flush(!running, last?.createdAt ?? 0);
-  return out;
+  return { segments: out, carry: { prompt, userSeq } };
+}
+
+/**
+ * Group a thread's top-level events for display (DESIGN.md §7.4): runs of
+ * tool calls become one "Worked for" fold once the turn has moved past them;
+ * a run still in progress stays as plain rows. A run of thinking alone stays
+ * as its reasoning block. Each turn-end carries its answer, prompt and changes.
+ */
+export function segmentEvents(events: StoredEvent[], running: boolean): Segment[] {
+  return segmentRun(events, running, toolResults(events), NO_CARRY).segments;
+}
+
+const carryKey = (c: Carry): string => JSON.stringify([c.userSeq, c.prompt?.text ?? null, c.prompt?.skills ?? null]);
+
+/**
+ * A stateful `segmentEvents` for the thread view (P2.2). It splits the input at
+ * turn-end boundaries, caches each closed turn's segments by its seq span and
+ * event count, and rebuilds only the open tail (and any turn whose key changed),
+ * so a live event doesn't re-segment the whole loaded history. Equal to
+ * `segmentEvents` on the same input. `onRecompute`, when given, fires once per
+ * closed turn actually re-segmented; tests use it to show the closed turns hold.
+ */
+export function createSegmenter(onRecompute?: (key: string) => void): (events: StoredEvent[], running: boolean) => Segment[] {
+  const cache = new Map<string, { segments: Segment[]; carry: Carry }>();
+  return (events, running) => {
+    const results = toolResults(events);
+    const out: Segment[] = [];
+    const used = new Set<string>();
+    let carry = NO_CARRY;
+    let start = 0;
+    for (let i = 0; i < events.length; i++) {
+      if (events[i]!.event.kind !== "turn-end") continue;
+      // The carry only matters when the turn has no user of its own; keying on it then
+      // keeps a cache hit valid even if the lead-in changes.
+      const key = `${events[start]!.seq}:${events[i]!.seq}:${i + 1 - start}:${carryKey(carry)}`;
+      used.add(key);
+      let entry = cache.get(key);
+      if (!entry) {
+        onRecompute?.(key);
+        const done = segmentRun(events.slice(start, i + 1), false, results, carry);
+        entry = { segments: done.segments, carry: done.carry };
+        cache.set(key, entry);
+      }
+      out.push(...entry.segments);
+      carry = entry.carry;
+      start = i + 1;
+    }
+    if (start < events.length) out.push(...segmentRun(events.slice(start), running, results, carry).segments);
+    // Forget turns no longer present (a rebuilt or truncated thread).
+    for (const key of cache.keys()) if (!used.has(key)) cache.delete(key);
+    return out;
+  };
 }
 
 function plural(n: number, one: string, many: string): string {

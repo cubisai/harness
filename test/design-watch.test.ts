@@ -10,18 +10,18 @@ function harness(): {
   watchFn: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
   onChange: ReturnType<typeof vi.fn>;
-  fire: () => void;
+  fire: (file?: string) => void;
   opened: () => number;
 } {
-  const listeners: (() => void)[] = [];
+  const listeners: ((file?: string) => void)[] = [];
   const close = vi.fn();
-  const watchFn = vi.fn((_dir: string, listener: () => void) => {
+  const watchFn = vi.fn((_dir: string, listener: (file?: string) => void) => {
     listeners.push(listener);
     return { close };
   });
   const onChange = vi.fn();
   const watcher = new DesignWatcher({ onChange, watchFn, debounceMs: 150 });
-  return { watcher, watchFn, close, onChange, fire: () => listeners[0]?.(), opened: () => listeners.length };
+  return { watcher, watchFn, close, onChange, fire: (file) => listeners[0]?.(file), opened: () => listeners.length };
 }
 
 describe("DesignWatcher", () => {
@@ -37,7 +37,42 @@ describe("DesignWatcher", () => {
       expect(h.onChange).not.toHaveBeenCalled();
       vi.advanceTimersByTime(1);
       expect(h.onChange).toHaveBeenCalledTimes(1);
-      expect(h.onChange).toHaveBeenCalledWith("t");
+      // No path was reported, so the burst's files are unknown (null).
+      expect(h.onChange).toHaveBeenCalledWith("t", null);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("names a burst's changed paths, normalized, and reports null when any event has no file", () => {
+    vi.useFakeTimers();
+    try {
+      const a = harness();
+      a.watcher.watch("t", tempDir());
+      a.fire("a.html");
+      a.fire("sub\\b.html");
+      vi.advanceTimersByTime(150);
+      expect(a.onChange).toHaveBeenCalledWith("t", ["a.html", "sub/b.html"]);
+
+      const b = harness();
+      b.watcher.watch("t", tempDir());
+      b.fire("a.html");
+      b.fire();
+      vi.advanceTimersByTime(150);
+      expect(b.onChange).toHaveBeenCalledWith("t", null);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports null once a burst names more than 200 paths", () => {
+    vi.useFakeTimers();
+    try {
+      const h = harness();
+      h.watcher.watch("t", tempDir());
+      for (let i = 0; i < 201; i++) h.fire(`p${i}.html`);
+      vi.advanceTimersByTime(150);
+      expect(h.onChange).toHaveBeenCalledWith("t", null);
     } finally {
       vi.useRealTimers();
     }
@@ -109,6 +144,8 @@ describe("DesignWatcher", () => {
       listener();
       vi.advanceTimersByTime(1000);
       expect(onChange).toHaveBeenCalledTimes(3);
+      // Only the real page and the nested (not top-level) bookkeeping file are named.
+      expect(onChange.mock.calls.map((c) => c[1])).toEqual([["index.html"], ["sub/comments.json"], null]);
       watcher.closeAll();
     } finally {
       vi.useRealTimers();
@@ -135,7 +172,7 @@ describe("DesignWatcher", () => {
         writeFileSync(join(dir, "index.html"), `<p>hi ${i}</p>`);
         await new Promise((r) => setTimeout(r, 100));
       }
-      expect(onChange).toHaveBeenCalledWith("t");
+      expect(onChange.mock.calls.at(-1)?.[0]).toBe("t");
     } finally {
       watcher.closeAll();
     }

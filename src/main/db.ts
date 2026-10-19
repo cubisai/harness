@@ -7,6 +7,7 @@ import { readTier } from "../shared/tiers";
 import type { PrototypeTier } from "../shared/tiers";
 import type {
   ArtifactVersion,
+  EventPage,
   PermissionMode,
   Project,
   Provenance,
@@ -18,6 +19,7 @@ import type {
   Thread,
   ThreadEvent,
   ThreadKind,
+  ThreadTotals,
   Usage,
 } from "../shared/types";
 
@@ -370,6 +372,16 @@ export class Store {
       .prepare(`SELECT ${THREAD_COLS} FROM threads WHERE project_id = ? ORDER BY updated_at DESC`)
       .all(projectId)
       .map((r) => toThread(r as unknown as ThreadRow));
+  }
+
+  /** Every project's threads in one query, each group ordered as `listThreads`; a project with none is absent. */
+  listAllThreads(): Record<string, Thread[]> {
+    const grouped: Record<string, Thread[]> = {};
+    for (const row of this.db.prepare(`SELECT ${THREAD_COLS} FROM threads ORDER BY project_id, updated_at DESC`).all()) {
+      const thread = toThread(row as unknown as ThreadRow);
+      (grouped[thread.projectId] ??= []).push(thread);
+    }
+    return grouped;
   }
 
   createThread(projectId: string, agent: string, model: string, permissionMode: PermissionMode, kind: ThreadKind = "chat", designSystem: string | null = null, expertId: string | null = null): Thread {
@@ -794,15 +806,68 @@ export class Store {
     return this.db
       .prepare("SELECT seq, payload, created_at, provenance FROM events WHERE thread_id = ? ORDER BY seq")
       .all(threadId)
-      .map((r) => {
-        const row = r as unknown as { seq: number; payload: string; created_at: number; provenance: string | null };
-        return {
-          seq: row.seq,
-          event: JSON.parse(row.payload) as ThreadEvent,
-          createdAt: row.created_at,
-          provenance: row.provenance ? (JSON.parse(row.provenance) as Provenance) : null,
-        };
-      });
+      .map((r) => toStoredEvent(r as unknown as EventRow));
+  }
+
+  /**
+   * The newest `minEvents` events older than `beforeSeq`, extended back so the
+   * page starts on a root turn boundary (a root `user`/`turn-start` event).
+   * Paging with `beforeSeq = firstSeq` reconstructs `listEvents` exactly.
+   */
+  listEventsPage(threadId: string, opts: { beforeSeq?: number; minEvents?: number } = {}): EventPage {
+    const beforeSeq = opts.beforeSeq ?? Infinity;
+    const minEvents = opts.minEvents ?? 1500;
+    const newest = this.db
+      .prepare("SELECT seq FROM events WHERE thread_id = ? AND seq < ? ORDER BY seq DESC LIMIT ?")
+      .all(threadId, beforeSeq, minEvents) as unknown as { seq: number }[];
+    if (newest.length === 0) return { events: [], firstSeq: 0, hasMore: false };
+    const first = newest[newest.length - 1]!.seq;
+    const last = newest[0]!.seq;
+    // A child event (or anything mid-turn) never opens the page: walk back to the turn's root.
+    const boundary = this.db
+      .prepare(
+        `SELECT MAX(seq) AS seq FROM events
+         WHERE thread_id = ? AND seq <= ? AND parent_id IS NULL AND json_extract(payload, '$.parentId') IS NULL
+           AND json_extract(payload, '$.kind') IN ('user', 'turn-start')`,
+      )
+      .get(threadId, first) as unknown as { seq: number | null };
+    // No root boundary: fall back to the thread's first event.
+    const startSeq = boundary.seq ?? ((this.db.prepare("SELECT MIN(seq) AS seq FROM events WHERE thread_id = ?").get(threadId) as unknown as { seq: number | null }).seq ?? first);
+    const events = this.db
+      .prepare("SELECT seq, payload, created_at, provenance FROM events WHERE thread_id = ? AND seq >= ? AND seq <= ? ORDER BY seq")
+      .all(threadId, startSeq, last)
+      .map((r) => toStoredEvent(r as unknown as EventRow));
+    const firstSeq = events[0]?.seq ?? 0;
+    const older = this.db.prepare("SELECT 1 FROM events WHERE thread_id = ? AND seq < ? LIMIT 1").get(threadId, firstSeq);
+    return { events, firstSeq, hasMore: older !== undefined };
+  }
+
+  /**
+   * A thread's stored totals in one pass over its rows: every turn-end counts
+   * (subagents' included), cached tokens come from `usage.cacheReadTokens`, and
+   * cost is null when no turn reported one.
+   */
+  threadTotals(threadId: string): ThreadTotals {
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(*) AS events, MAX(seq) AS last_seq,
+           COALESCE(SUM(CASE WHEN json_extract(payload, '$.kind') = 'turn-end' THEN 1 ELSE 0 END), 0) AS turns,
+           COALESCE(SUM(CASE WHEN json_extract(payload, '$.kind') = 'turn-end' THEN json_extract(payload, '$.inputTokens') ELSE 0 END), 0) AS input_tokens,
+           COALESCE(SUM(CASE WHEN json_extract(payload, '$.kind') = 'turn-end' THEN COALESCE(json_extract(payload, '$.usage.cacheReadTokens'), 0) ELSE 0 END), 0) AS cache_read_tokens,
+           COALESCE(SUM(CASE WHEN json_extract(payload, '$.kind') = 'turn-end' THEN json_extract(payload, '$.outputTokens') ELSE 0 END), 0) AS output_tokens,
+           SUM(CASE WHEN json_extract(payload, '$.kind') = 'turn-end' THEN json_extract(payload, '$.costUsd') END) AS cost_usd
+         FROM events WHERE thread_id = ?`,
+      )
+      .get(threadId) as unknown as TotalsRow;
+    return {
+      events: row.events,
+      turns: row.turns,
+      inputTokens: row.input_tokens,
+      cacheReadTokens: row.cache_read_tokens,
+      outputTokens: row.output_tokens,
+      costUsd: row.cost_usd ?? null,
+      lastSeq: row.last_seq ?? 0,
+    };
   }
 
   /**
@@ -862,6 +927,23 @@ interface ArtifactRow {
   turn_seq: number;
 }
 
+interface EventRow {
+  seq: number;
+  payload: string;
+  created_at: number;
+  provenance: string | null;
+}
+
+interface TotalsRow {
+  events: number;
+  last_seq: number | null;
+  turns: number;
+  input_tokens: number;
+  cache_read_tokens: number;
+  output_tokens: number;
+  cost_usd: number | null;
+}
+
 interface ThreadRow {
   id: string;
   project_id: string;
@@ -892,6 +974,15 @@ export function blobRefOf(event: ThreadEvent): { sha256: string; bytes: number |
   const p = event.payload as { blobRef?: unknown; bytes?: unknown } | null | undefined;
   if (!p || typeof p !== "object" || typeof p.blobRef !== "string") return null;
   return { sha256: p.blobRef, bytes: typeof p.bytes === "number" ? p.bytes : null };
+}
+
+function toStoredEvent(row: EventRow): StoredEvent {
+  return {
+    seq: row.seq,
+    event: JSON.parse(row.payload) as ThreadEvent,
+    createdAt: row.created_at,
+    provenance: row.provenance ? (JSON.parse(row.provenance) as Provenance) : null,
+  };
 }
 
 function toProject(r: ProjectRow): Project {
