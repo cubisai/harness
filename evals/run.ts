@@ -9,6 +9,8 @@
 // --stability [N] [--task ids] (no model: re-runs grader validation N times; exit 1 when a verdict flips)
 // --calibrate-judge <name> [--provider p] [--model m] (judges evals/judges/<name>.json's labelled examples, stores the report; exit 1 below the bar)
 // --split train|validation|holdout [--release] (only that split; the holdout is sealed unless --release),
+// --guide <file> (a project guide for the agent; its hash joins every trial's cache key),
+// --out <file> (also write the run JSON there),
 // --splits (no model: the split summary and any leakage across splits; exit 1 when there is any)
 // (zero tokens: pass/token history per tier+model from .ai/evals). Plan: .ai/plans/eval-framework.md.
 
@@ -16,7 +18,7 @@ import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { AGENTS, setupAgent, type AgentId } from "./lib/agents";
 import { incomplete } from "./lib/accounting";
 import { compareRuns, renderReport } from "./lib/report";
@@ -204,6 +206,13 @@ async function main(): Promise<number> {
   }
   const trials = Number(f.get("trials") ?? 1);
   const effort = f.get("effort") ?? "low";
+  // --guide swaps the agent's project guide; a candidate's file must exist.
+  const guideArg = f.get("guide");
+  const guidePath = guideArg ? resolve(ROOT, guideArg) : undefined;
+  if (guidePath !== undefined && !existsSync(guidePath)) {
+    console.error(`--guide: no such file: ${guideArg}`);
+    return 2;
+  }
   // The grading and trial code: a change there makes cached trials incomparable.
   const graderVersion = fileHash("evals/lib/graders.ts", "evals/lib/runner.ts");
   const maxTokens = Number(f.get("max-tokens") ?? Infinity);
@@ -233,11 +242,14 @@ async function main(): Promise<number> {
   }
 
   const scratch = mkdtempSync(join(tmpdir(), "eval-run-"));
-  const setup = setupAgent(agent, { root: ROOT, scratch, provider: f.get("provider"), model: f.get("model") });
+  const setup = setupAgent(agent, { root: ROOT, scratch, provider: f.get("provider"), model: f.get("model"), guide: guidePath });
   const { driver, label: model, protocol, skillDirs } = setup;
   console.log(`agent ${agent} · ${model}${setup.version ? ` · ${setup.version}` : ""}`);
 
-  const hash = harnessHash(setup.hashPaths, setup.version);
+  // A custom guide changes the prompt, so its content joins the cache key; runs
+  // without --guide keep the plain harness hash and their existing keys.
+  const guideHash = guidePath ? createHash("sha256").update(readFileSync(guidePath, "utf8")).digest("hex").slice(0, 16) : "";
+  const hash = guidePath ? `${harnessHash(setup.hashPaths, setup.version)}:${guideHash}` : harnessHash(setup.hashPaths, setup.version);
   const startedAt = new Date().toISOString();
   const results: TaskResult[] = [];
   const manifest: RunManifest = {
@@ -253,7 +265,7 @@ async function main(): Promise<number> {
       harness: hash,
       graders: graderVersion,
       runtime: EVAL_RUNTIME_VERSION,
-      guide: fileHash("resources/CUBIQ.md"),
+      guide: guideHash || fileHash("resources/CUBIQ.md"),
       tasks: createHash("sha256").update(tasks.map((t) => JSON.stringify(t)).join("\n")).digest("hex").slice(0, 16),
       app: JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version as string,
       ...(setup.version ? { cli: setup.version } : {}),
@@ -302,6 +314,13 @@ async function main(): Promise<number> {
 
   const run: RunResult = { meta: { tier, agent, model, protocol, harnessHash: hash, effort, manifest, startedAt, durationMs: Date.now() - Date.parse(startedAt) }, tasks: results };
   const path = saveRun(RESULTS, run);
+  const outArg = f.get("out");
+  if (outArg) {
+    const outPath = resolve(ROOT, outArg);
+    mkdirSync(dirname(outPath), { recursive: true });
+    writeFileSync(outPath, redact(JSON.stringify(run, null, 1)));
+    console.log(`out ${outPath}`);
+  }
   console.log(`\n${summarize(run)}`);
   const prev = previousRun(RESULTS, tier, model, startedAt);
   const diff = diffRuns(prev, run);

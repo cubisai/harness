@@ -57,8 +57,9 @@ const cliVersion = (command: string): string => {
   }
 };
 
-export function setupAgent(agent: AgentId, o: { root: string; scratch: string; provider?: string; model?: string }): AgentSetup {
-  const guide = createGuide({ bundled: join(o.root, "resources", "CUBIQ.md"), global: join(o.scratch, "no-user-guide.md") });
+export function setupAgent(agent: AgentId, o: { root: string; scratch: string; provider?: string; model?: string; guide?: string }): AgentSetup {
+  // --guide overrides the bundled project guide with a candidate's file.
+  const guide = createGuide({ bundled: o.guide ?? join(o.root, "resources", "CUBIQ.md"), global: join(o.scratch, "no-user-guide.md") });
   const shared = ["src/main/guide.ts", "resources/CUBIQ.md", "src/main/guard.ts"];
   const forCwd = (cwd: string, design?: string) => guide.forCwd(cwd, design);
 
