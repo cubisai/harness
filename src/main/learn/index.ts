@@ -358,11 +358,15 @@ export function createLearner(deps: LearnerDeps): Learner {
     });
   };
 
-  /** Mark watched turns whose edits are back to their pre-turn bytes; drop expired watches. */
-  const checkReverts = (projectId: string): void => {
+  /**
+   * Mark watched turns whose edits are back to their pre-turn bytes; drop expired watches.
+   * `asOf` lets a window's own deadline timer look at the files as of its last moment: that timer
+   * fires at the deadline, when `now()` alone would already count the watch as expired.
+   */
+  const checkReverts = (projectId: string, asOf?: number): void => {
     const list = watches.get(projectId);
     if (!list?.length) return;
-    const t = now();
+    const t = asOf ?? now();
     const keep: Watch[] = [];
     for (const w of list) {
       // Past its window, an undo is the user's own later change, not a revert.
@@ -404,9 +408,10 @@ export function createLearner(deps: LearnerDeps): Learner {
       ? [...prior.paths.filter((p) => !paths.some((q) => q.rel === p.rel)), ...paths.map((p) => ({ ...p, pre: prior.paths.find((q) => q.rel === p.rel)?.pre ?? p.pre }))]
       : paths;
     const list = (watches.get(projectId) ?? []).filter((w) => !same(w));
-    list.push({ threadId: rec.thread.id, userSeq: rec.rootSeq, cwd: rec.cwd, paths: merged, until: now() + windowMs });
+    const until = now() + windowMs;
+    list.push({ threadId: rec.thread.id, userSeq: rec.rootSeq, cwd: rec.cwd, paths: merged, until });
     watches.set(projectId, list);
-    later(windowMs, () => checkReverts(projectId));
+    later(windowMs, () => checkReverts(projectId, until - 1));
   };
 
   const score = async (rec: TurnRecord, pre: PreTurn | null): Promise<void> => {

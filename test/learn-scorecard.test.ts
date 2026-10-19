@@ -237,6 +237,21 @@ describe("the scorecard in Service.send", () => {
     expect(first!.signals[0]!.detail).toContain("src/math.ts");
   });
 
+  it("catches an undo by the window's own deadline, with no next message", async () => {
+    const { service, thread, db, learner, dir } = setupRepo(
+      async (input, n) => {
+        if (n === 0) writeFileSync(join(input.cwd, "src", "math.ts"), "export const add = (a, b) => a * b;\n");
+      },
+      { revertWindowMs: 150 },
+    );
+    await service.send({ threadId: thread.id, text: "change add" });
+    await settle(learner);
+    writeFileSync(join(dir, "src", "math.ts"), "export const add = (a, b) => a - b;\n");
+    await new Promise((r) => setTimeout(r, 300));
+    await settle(learner);
+    expect(db.threadScores(thread.id)[0]!.signals.map((s) => s.kind)).toEqual(["reverted"]);
+  });
+
   it("doesn't call an edit reverted once the window has passed", async () => {
     const { service, thread, db, learner, dir } = setupRepo(
       async (input, n) => {
