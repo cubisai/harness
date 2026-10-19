@@ -1,0 +1,56 @@
+/* The Library's Learned tab: self-improve lessons, their evidence and actions. */
+
+.learned-tab .learned-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0 4px 4px;
+}
+.learned-tab .learned-meta {
+  font: 11px var(--mono);
+  color: var(--text-tertiary);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.learned-tab .learned-cases { margin: 0 4px 6px; }
+.learned-tab .learned-off { margin: 0 4px 8px; }
+
+/* Status group headings: quiet meta, sentence case (DESIGN.md §3). */
+.learned-tab .learned-group {
+  padding: 12px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.learned-tab .learned-item { gap: 2px; }
+.learned-tab .learned-item-top { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
+.learned-tab .learned-item .learned-rule {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  white-space: normal;
+}
+.learned-tab .learned-pin { flex: none; width: 12px; height: 12px; margin-top: 2px; color: var(--text-tertiary); }
+
+.learned-tab .learned-view { display: flex; flex-direction: column; gap: 12px; min-width: 0; max-width: 640px; }
+.learned-tab .learned-title { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.learned-tab .learned-title h3 { flex: 1; min-width: 0; margin: 0; font: 600 14px var(--font); line-height: 1.5; }
+.learned-tab .learned-why { margin: 0; color: var(--text-secondary); line-height: 1.5; }
+.learned-tab .learned-evidence {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: var(--radius-m);
+  background: var(--bg-subtle);
+}
+.learned-tab .learned-evidence .note { margin: 0; }
+.learned-tab .learned-view .learned-meta { white-space: normal; overflow: visible; }
+.learned-tab .learned-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.learned-tab .learned-error { margin: 0; }

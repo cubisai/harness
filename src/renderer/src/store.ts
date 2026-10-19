@@ -48,7 +48,7 @@ export interface DesignSelection {
 /** The right panel's tabs. Changes and Files need a project; Browser works without one; File shows an artifact. */
 export type InspectorTab = "changes" | "browser" | "files" | "artifact";
 
-export type LibraryTab = "experts" | "skills" | "connectors" | "mcp" | "agents" | "memory" | "automations";
+export type LibraryTab = "experts" | "skills" | "connectors" | "mcp" | "agents" | "memory" | "automations" | "learned";
 
 /** A new thread's pickers before it exists; reset once the thread is created. */
 interface Draft {
@@ -215,6 +215,8 @@ interface State {
   openPickerRequest: number;
   requestModelPicker(): void;
   diffVersion: number; // bumps when a turn ends, so the diff refreshes
+  /** Bumped by "learn-changed", so an open Learned tab refetches its lessons. */
+  learnVersion: number;
 
   init(): Promise<void>;
   addProject(): Promise<void>;
@@ -735,6 +737,7 @@ export const useStore = create<State>((set, get) => ({
   },
   pendingSkills: [],
   diffVersion: 0,
+  learnVersion: 0,
   openPickerRequest: 0,
   requestModelPicker() {
     set((s) => ({ openPickerRequest: s.openPickerRequest + 1 }));
@@ -1297,6 +1300,10 @@ export const useStore = create<State>((set, get) => ({
         set((s) => ({ turnScores: { ...s.turnScores, [sc.threadId]: { ...s.turnScores[sc.threadId], [sc.userSeq]: sc } } }));
         return;
       }
+      case "learn-changed":
+        // An open Learned tab refetches: bump the version its effect depends on.
+        set((s) => ({ learnVersion: s.learnVersion + 1 }));
+        return;
       case "design-changed":
         set((s) => ({
           designReload: { ...s.designReload, [update.threadId]: (s.designReload[update.threadId] ?? 0) + 1 },
