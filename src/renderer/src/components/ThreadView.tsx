@@ -1,10 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import { ChevronRight, Copy, Pencil, RotateCcw, X } from "lucide-react";
 import { artifactKind, isPreviewable, PLAN_ARTIFACT, TEAM_ARTIFACT_PREFIX } from "../../../shared/artifact-kind";
 import { skillsOf } from "../../../shared/skill-list";
 import type { ArtifactKind, StoredEvent, ThreadEvent } from "../../../shared/types";
 import type { TurnScore } from "../../../shared/learn";
 import { prettyTool, type RunResult } from "../../../shared/tools";
+import { anchorDelta, anchorFor, collapseTarget, type ScrollAnchor } from "../disclosure";
 import { displayOrder } from "../event-order";
 import { type FileRef, parseFileRef } from "../fileref";
 import { emptyLive, liveReasoningMode, visibleItems } from "../live";
@@ -204,16 +206,99 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
 
   // Stay pinned to the bottom while the user hasn't scrolled away.
   const pinned = useRef(true);
+  // A disclosure the user just opened or folded keeps its header where it was, instead of the
+  // pinned view jumping to the new bottom under the pointer; cleared once the layout settles.
+  const userAnchor = useRef<ScrollAnchor | null>(null);
+  const anchorClear = useRef(0);
+  const holdAnchor = (summary: Element) => {
+    const el = scroller.current;
+    if (!el) return;
+    userAnchor.current = anchorFor(summary, el);
+    if (anchorClear.current) clearTimeout(anchorClear.current);
+    anchorClear.current = window.setTimeout(() => {
+      userAnchor.current = null;
+      anchorClear.current = 0;
+    }, 300);
+  };
+  const keepAnchor = (el: HTMLElement): boolean => {
+    const a = userAnchor.current;
+    if (!a || !a.node.isConnected) return false;
+    const delta = anchorDelta(a);
+    if (delta !== 0) el.scrollTop += delta;
+    pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    return true;
+  };
+  // Folding a block near the end would shrink the transcript under the pointer and clamp the scroll:
+  // the transcript keeps its height for now, and the reserve shrinks as the reader scrolls up.
+  const reserved = useRef(false);
+  const reserveSpace = () => {
+    const body = inner.current;
+    if (!body) return;
+    body.style.minHeight = `${body.offsetHeight}px`;
+    reserved.current = true;
+  };
+  const releaseSpace = () => {
+    if (!reserved.current) return;
+    reserved.current = false;
+    if (inner.current) inner.current.style.minHeight = "";
+  };
+  const trimSpace = (el: HTMLElement) => {
+    const body = inner.current;
+    if (!reserved.current || !body) return;
+    const last = body.lastElementChild;
+    const rect = body.getBoundingClientRect();
+    const natural = (last ? last.getBoundingClientRect().bottom - rect.top : 0) + parseFloat(getComputedStyle(body).paddingBottom);
+    const needed = el.scrollTop + el.clientHeight - (rect.top - el.getBoundingClientRect().top + el.scrollTop);
+    if (needed <= natural + 1) releaseSpace();
+    else body.style.minHeight = `${Math.ceil(needed)}px`;
+  };
+  // A plain click inside an open block's body folds it, so a long one needn't be scrolled back to its header.
+  // It waits out a double-click, which selects a word instead.
+  const pendingFold = useRef(0);
+  const onTranscriptClick = (e: ReactMouseEvent<HTMLDivElement>) => {
+    if (pendingFold.current) {
+      clearTimeout(pendingFold.current);
+      pendingFold.current = 0;
+    }
+    if (e.button !== 0 || e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const target = e.target as Element;
+    const summary = target.closest("summary");
+    if (summary) {
+      if ((summary.parentElement as HTMLDetailsElement | null)?.open) reserveSpace();
+      holdAnchor(summary);
+      return;
+    }
+    if (e.detail > 1) return;
+    pendingFold.current = window.setTimeout(() => {
+      pendingFold.current = 0;
+      const details = collapseTarget(target.isConnected ? target : null, window.getSelection()?.toString() ?? "");
+      const head = details?.querySelector(":scope > summary");
+      if (!details || !head) return;
+      reserveSpace();
+      holdAnchor(head);
+      details.open = false;
+    }, 250);
+  };
+  useEffect(
+    () => () => {
+      clearTimeout(pendingFold.current);
+      clearTimeout(anchorClear.current);
+    },
+    [],
+  );
   useEffect(() => {
     const el = scroller.current;
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
   }, [events.length, textLength, permissions.length, plans.length]);
+  // New content takes the reserved room back.
+  useEffect(() => releaseSpace(), [events.length]);
   // Smoothed text keeps growing after the store stops changing: follow the content's size.
   useEffect(() => {
     const el = scroller.current;
     const body = inner.current;
     if (!el || !body || typeof ResizeObserver === "undefined") return;
     const follow = new ResizeObserver(() => {
+      if (keepAnchor(el)) return;
       if (pinned.current) el.scrollTop = el.scrollHeight;
     });
     follow.observe(body);
@@ -314,8 +399,10 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
     <div
       className="thread-scroll"
       ref={scroller}
+      onClick={onTranscriptClick}
       onScroll={(e) => {
         const el = e.currentTarget;
+        trimSpace(el);
         pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
         if (windowing) scheduleView();
         // Near the top, pull the next older page in; loadOlder itself guards against repeats.
