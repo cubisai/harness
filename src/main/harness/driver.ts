@@ -186,11 +186,15 @@ async function runTurn(
   const files = contextFiles(input.cwd);
 
   const contextSize = provider.contextWindowOverride ?? entry.contextWindow;
-  const costOf = (u: LlmUsage): number | null =>
-    entry.cost ? (u.inputTokens * entry.cost.input + (u.cacheReadTokens ?? 0) * (entry.cost.cacheRead ?? entry.cost.input) + (u.cacheWriteTokens ?? 0) * entry.cost.input + u.outputTokens * entry.cost.output) / 1e6 : null;
+  const priceOf = (e: typeof entry, u: LlmUsage): number | null =>
+    e.cost ? (u.inputTokens * e.cost.input + (u.cacheReadTokens ?? 0) * (e.cost.cacheRead ?? e.cost.input) + (u.cacheWriteTokens ?? 0) * e.cost.input + u.outputTokens * e.cost.output) / 1e6 : null;
+  const costOf = (u: LlmUsage): number | null => priceOf(entry, u);
   const contextOf = (u: LlmUsage): number => u.inputTokens + (u.cacheReadTokens ?? 0) + (u.cacheWriteTokens ?? 0);
   // The summary call's usage, folded into the turn's reported usage and cost.
   let extraUsage = emptyUsage();
+  // Subagents' usage and cost, each priced on the model it ran on (a member may name its own); null once one is unpriced.
+  let childUsage = emptyUsage();
+  let childCost: number | null = 0;
   // The estimate right after the last auto compaction, so a turn doesn't compact
   // again until the history has grown meaningfully past that point.
   let compactedAt: number | null = null;
@@ -349,9 +353,12 @@ async function runTurn(
       reasoning: (itemId, text, parentId) => input.onReasoningDelta?.({ itemId, text, opaque: false, parentId }),
       toolOutput: (toolUseId, text, parentId) => input.onToolOutputDelta?.({ toolUseId, text, parentId }),
     },
-    onUsage: (u) => {
-      extraUsage = addUsage(extraUsage, u);
+    onUsage: (u, cost) => {
+      childUsage = addUsage(childUsage, u);
+      const c = cost === undefined ? costOf(u) : cost;
+      childCost = childCost === null || c === null ? null : childCost + c;
     },
+    costOf: (u, wire) => priceOf(provider.models.find((m) => wireIdOf(m, m.id) === wire) ?? entry, u),
     ...(deps.stream ? { stream: deps.stream } : {}),
     ...(input.team?.length
       ? {
@@ -518,9 +525,12 @@ async function runTurn(
   });
 
   if (result.stop === "stopped") input.onEvent({ kind: "notice", text: "Stopped." });
-  const totalUsage = addUsage(result.usage, extraUsage);
+  const ownUsage = addUsage(result.usage, extraUsage);
+  const totalUsage = addUsage(ownUsage, childUsage);
   const usage = { ...normalizeUsage(totalUsage), ...(result.last ? { contextUsed: contextOf(result.last) } : {}), contextSize };
-  input.onEvent({ kind: "turn-end", costUsd: costOf(totalUsage), inputTokens: totalUsage.inputTokens, outputTokens: totalUsage.outputTokens, durationMs: Date.now() - started, usage, steps: result.steps, pruned: prunedThisTurn });
+  const ownCost = costOf(ownUsage);
+  const costUsd = ownCost === null || childCost === null ? null : ownCost + childCost;
+  input.onEvent({ kind: "turn-end", costUsd, inputTokens: totalUsage.inputTokens, outputTokens: totalUsage.outputTokens, durationMs: Date.now() - started, usage, steps: result.steps, pruned: prunedThisTurn });
 }
 
 /** A built-in tool in the loop; TodoWrite also updates the thread's plan. */

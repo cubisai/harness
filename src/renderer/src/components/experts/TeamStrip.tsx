@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { memberModelLabel, memberModelNote, type ExpertDef, type ExpertMember } from "../../../../shared/experts";
+import { memberRuns, runLine, type MemberRun } from "../../../../shared/team-runs";
 import type { ThreadEvent } from "../../../../shared/types";
 import { api } from "../../api";
 import { useStore } from "../../store";
@@ -89,6 +90,7 @@ export function TeamStripView({
   active,
   done = new Set(),
   running = false,
+  runs = [],
   onMember,
   agent,
   leadModel,
@@ -97,6 +99,8 @@ export function TeamStripView({
   active: Set<string>;
   done?: Set<string>;
   running?: boolean;
+  /** The team's runs (memberRuns), for the tooltips' recent-history line. */
+  runs?: MemberRun[];
   /** Clicking a member: open its newest result file. */
   onMember?: (memberId: string) => void;
   agent?: string;
@@ -124,7 +128,7 @@ export function TeamStripView({
             type="button"
             key={m.id}
             className={`team-strip-member${on ? " active" : ""}`}
-            title={`${m.name} · ${m.profession}${runsOn(m, agent, leadModel)}${on ? " · working" : running && done.has(m.id) ? " · done" : ""} · open latest result`}
+            title={`${m.name} · ${m.profession}${runsOn(m, agent, leadModel)}${on ? " · working" : running && done.has(m.id) ? " · done" : ""}${runsTitle(runs, m.id)} · open latest result`}
             aria-label={`${m.name}: open latest result`}
             onClick={() => onMember?.(m.id)}
             {...(on ? { "aria-current": "true" as const } : {})}
@@ -151,6 +155,15 @@ function runsOn(m: ExpertMember, agent: string | undefined, leadModel: string | 
   return `${label ? ` · ${label}` : ""}${note ? ` (${note})` : ""}`;
 }
 
+/** " · <latest 3 run lines>" (+N earlier) for a member with runs, else "". */
+function runsTitle(runs: MemberRun[], memberId: string): string {
+  const mine = runs.filter((r) => r.memberId === memberId);
+  if (mine.length === 0) return "";
+  const latest = mine.slice(-3).reverse();
+  const earlier = mine.length - latest.length;
+  return ` · ${latest.map(runLine).join("; ")}${earlier > 0 ? ` (+${earlier} earlier)` : ""}`;
+}
+
 /** The strip for a thread's expert: reads the catalogue and the thread's events. */
 export function TeamStrip({ threadId, expertId, agent, leadModel }: { threadId: string; expertId: string; agent: string; leadModel: string }) {
   const experts = useStore((s) => s.experts);
@@ -163,10 +176,11 @@ export function TeamStrip({ threadId, expertId, agent, leadModel }: { threadId: 
   }, [experts]);
 
   const def = experts?.find((e) => e.id === expertId) ?? null;
-  const { active, done } = useMemo(() => {
+  const { active, done, runs } = useMemo(() => {
     const ids = (def && def.kind === "team" ? def.members ?? [] : []).map((m) => m.id);
-    const list = events?.map((e) => e.event) ?? [];
-    return { active: activeMembers(list, ids), done: doneMembers(list, ids) };
+    const stored = events ?? [];
+    const list = stored.map((e) => e.event);
+    return { active: activeMembers(list, ids), done: doneMembers(list, ids), runs: memberRuns(stored, ids) };
   }, [events, def]);
 
   // A member with no result yet opens nothing.
@@ -180,5 +194,5 @@ export function TeamStrip({ threadId, expertId, agent, leadModel }: { threadId: 
   };
 
   if (!def) return null;
-  return <TeamStripView def={def} active={active} done={done} running={running} onMember={openResult} agent={agent} leadModel={leadModel} />;
+  return <TeamStripView def={def} active={active} done={done} running={running} runs={runs} onMember={openResult} agent={agent} leadModel={leadModel} />;
 }

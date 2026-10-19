@@ -2,6 +2,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExpertDef } from "../src/shared/experts";
+import type { MemberRun } from "../src/shared/team-runs";
 import type { ThreadEvent } from "../src/shared/types";
 
 /** A def with the boring fields defaulted, so each test states only what it checks. */
@@ -145,5 +146,15 @@ describe("TeamStripView", () => {
     // No agent known, or no member model: the tooltip is unchanged.
     expect(renderToStaticMarkup(<TeamStripView def={own} active={new Set<string>()} />)).toContain('title="Data Analyst · Senior Data Analyst · open latest result"');
     expect(renderToStaticMarkup(<TeamStripView def={team} active={new Set<string>()} agent="claude" leadModel="opus" />)).toContain('title="Data Analyst · Senior Data Analyst · open latest result"');
+  });
+
+  it("shows a member's latest runs in its title, newest first, capped at 3", async () => {
+    const { TeamStripView } = await load();
+    const run = (toolUseId: string, status: MemberRun["status"], durationMs: number): MemberRun => ({ memberId: "analyst", toolUseId, status, startedAt: 0, endedAt: durationMs, durationMs, summary: "", usage: null });
+    const runs = [run("t1", "done", 1000), run("t2", "done", 2000), run("t3", "failed", 3000), run("t4", "done", 4000)];
+    const html = strip(renderToStaticMarkup(<TeamStripView def={team} active={new Set<string>()} runs={runs} />));
+    expect(html).toContain('title="Data Analyst · Senior Data Analyst · done · 4.0 s; failed · 3.0 s; done · 2.0 s (+1 earlier) · open latest result"');
+    // A member with no runs keeps its plain title.
+    expect(html).toContain('title="Report Writer · Technical Writer · open latest result"');
   });
 });
