@@ -136,6 +136,32 @@ describe("optimize", () => {
     expect(exp.rounds).toEqual([]);
   });
 
+  it("stops on a fully cached train run whose stored trials have no cost (0 fresh trials isn't priced)", async () => {
+    const splits: string[] = [];
+    const cachedUnpriced: RunSplit = async (split, settings, trials, maxUsd) => {
+      splits.push(split);
+      const r = await winning(split, settings, trials, maxUsd);
+      return { ...r, tasks: r.tasks.map((t) => ({ ...t, cached: true, trials: t.trials.map((x) => ({ ...x, costUsd: null })) })) };
+    };
+    const exp = await optimize(opts(), cachedUnpriced);
+    expect(exp.stop).toBe("cost-unknown");
+    expect(splits).toEqual(["train"]);
+  });
+
+  it("stops after a candidate whose model reports no cost, before the next round", async () => {
+    const splits: string[] = [];
+    const unpricedModel: RunSplit = async (split, settings, trials, maxUsd) => {
+      splits.push(split);
+      const r = await winning(split, settings, trials, maxUsd);
+      if (settings.model !== "free") return r;
+      return { ...r, tasks: r.tasks.map((t) => ({ ...t, trials: t.trials.map((x) => ({ ...x, costUsd: null })) })) };
+    };
+    const exp = await optimize(opts({ candidates: [{ model: "free" }, { effort: "high" }] }), unpricedModel);
+    expect(exp.stop).toBe("cost-unknown");
+    expect(exp.rounds).toHaveLength(1);
+    expect(splits).toEqual(["train", "validation", "validation"]);
+  });
+
   it("keeps a candidate that clearly wins as best, and requests no holdout", async () => {
     const splits: string[] = [];
     const fake: RunSplit = async (split, settings, trials, maxUsd) => {

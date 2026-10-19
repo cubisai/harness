@@ -188,13 +188,7 @@ export async function optimize(o: OptimizeOptions, runSplit: RunSplit): Promise<
   e.spentUsd += spend(train.tasks).spent.usd;
   saveExperiment(o.root, e);
   // A model that reports no cost would spend past --budget unseen: stop until its price (0,0 when free) is given.
-  const unpriced = unknownCost(train);
-  if (unpriced) {
-    e.stop = "cost-unknown";
-    saveExperiment(o.root, e);
-    console.log(`${unpriced}\n${summary(e)}`);
-    return e;
-  }
+  if (stopUnpriced(e, train, o.root)) return e;
 
   // The validation baseline every candidate is compared against.
   const baseRun = await runSplit("validation", {}, o.trials, o.budgetUsd);
@@ -203,6 +197,7 @@ export async function optimize(o: OptimizeOptions, runSplit: RunSplit): Promise<
   e.bestScore = baseline;
   e.spentUsd += baseline.costUsd;
   saveExperiment(o.root, e);
+  if (stopUnpriced(e, baseRun, o.root)) return e;
 
   const describe = (s: CandidateSettings): string => Object.entries(s).map(([k, v]) => `${k}=${v}`).join(", ");
   for (const settings of o.candidates) {
@@ -218,6 +213,8 @@ export async function optimize(o: OptimizeOptions, runSplit: RunSplit): Promise<
     const decision = decide(e.bestScore!, score, e.criteria);
     e = applyRound(e, { candidateId: added.candidate.id, validation: score, decision, at: new Date().toISOString() }, score.costUsd);
     saveExperiment(o.root, e);
+    // A candidate's model= can be one that reports no cost: the next round's budget would be blind.
+    if (stopUnpriced(e, run, o.root)) return e;
   }
   if (!e.stop) e.stop = "done";
 
@@ -237,11 +234,25 @@ export async function optimize(o: OptimizeOptions, runSplit: RunSplit): Promise<
   return e;
 }
 
-/** Why the budget can't be enforced for this run (some fresh trials report no cost), or null when every one is priced. */
+/** Marks the experiment stopped (cost-unknown) when the run has unpriced trials; true when it did. */
+function stopUnpriced(e: Experiment, run: RunResult, root: string): boolean {
+  const why = unknownCost(run);
+  if (!why) return false;
+  e.stop = "cost-unknown";
+  saveExperiment(root, e);
+  console.log(`${why}\n${summary(e)}`);
+  return true;
+}
+
+/**
+ * Why the budget can't be enforced for this run, or null when every trial is priced.
+ * Cached trials count too: a model that reported no cost before won't now, and a
+ * fully cached train run would otherwise look priced (0 of 0 fresh trials).
+ */
 export function unknownCost(run: RunResult): string | null {
-  const { spent } = spend(run.tasks);
-  if (spent.known === spent.trials) return null;
-  return `Spend can't be measured: ${spent.trials - spent.known} of ${spent.trials} trials report no cost, so --budget can't stop the run. Pass --price <in>,<out> (USD per 1M tokens), or --price 0,0 for a free model.`;
+  const { measured } = spend(run.tasks);
+  if (measured.known === measured.trials) return null;
+  return `Spend can't be measured: ${measured.trials - measured.known} of ${measured.trials} trials report no cost, so --budget can't stop the run. Pass --price <in>,<out> (USD per 1M tokens), or --price 0,0 for a free model.`;
 }
 
 /** "opt-<surface>-<yyyymmdd-hhmmss>" in UTC. */
