@@ -341,6 +341,8 @@ export class Store {
           updated_at INTEGER NOT NULL
         )`,
       },
+      // 30: whether an automation runs unattended (full access, guardrails on) or asks before tools.
+      { applied: () => this.hasColumn("automations", "permissions"), sql: "ALTER TABLE automations ADD COLUMN permissions TEXT NOT NULL DEFAULT 'unattended'" },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;

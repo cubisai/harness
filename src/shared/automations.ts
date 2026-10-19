@@ -18,6 +18,9 @@ export type RunStatus =
   | "cancelled"
   | "interrupted";
 
+/** How a run's tools are approved: unattended (full access, git guardrails on) or asking the user. */
+export type AutomationPermissions = "unattended" | "ask";
+
 /** A run's outcome as the renderer sees it (Message Center rows, the automation list). */
 export interface AutomationNotice {
   automationId: string;
@@ -51,6 +54,7 @@ export interface AutomationInput {
   agent: string | null;
   model: string | null;
   budgetUsd: number | null;
+  permissions: AutomationPermissions;
 }
 
 /** One automation as the Library lists it. */

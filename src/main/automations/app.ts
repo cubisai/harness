@@ -3,7 +3,7 @@
 import { randomUUID } from "node:crypto";
 import type { Store } from "../db";
 import type { Service } from "../service";
-import type { AutomationInput, AutomationNotice, AutomationsOverview, AutomationView } from "../../shared/automations";
+import type { AutomationInput, AutomationNotice, AutomationPermissions, AutomationsOverview, AutomationView } from "../../shared/automations";
 import type { LiveUpdate } from "../../shared/types";
 import { messageCenterDestination } from "./destinations";
 import type { Source } from "./io";
@@ -50,6 +50,7 @@ export function viewOf(a: Automation, store: Pick<AutomationStore, "runs" | "las
     agent: a.agent,
     model: a.model,
     budgetUsd: a.budgetUsd,
+    permissions: a.permissions,
     scheduleText: describeSchedule(a.schedule),
     nextAt,
     lastRun: last ? noticeOf(last, a) : null,
@@ -103,7 +104,8 @@ export function startAutomations(o: { store: Store; service: Service; broadcast:
     createThread: async (a) => {
       const t = o.service.createThread(a.projectId, a.agent ?? undefined);
       own.add(t.id);
-      const thread = o.store.updateThread(t.id, { title: `Automation · ${a.name}`, ...(a.model ? { model: a.model } : {}) });
+      // Nobody watches a scheduled run: unattended runs skip approvals (git guardrails still apply); "ask" keeps the user's default and waits.
+      const thread = o.store.updateThread(t.id, { title: `Automation · ${a.name}`, ...(a.model ? { model: a.model } : {}), ...(a.permissions === "unattended" ? { permissionMode: "full" as const } : {}) });
       o.broadcast({ type: "thread", thread });
       return t.id;
     },
@@ -145,7 +147,10 @@ export function startAutomations(o: { store: Store; service: Service; broadcast:
     const bad = validSchedule(input.schedule);
     if (bad) throw new Error(bad);
     if (input.budgetUsd !== null && (!Number.isFinite(input.budgetUsd) || input.budgetUsd <= 0)) throw new Error("Budget must be a positive amount.");
-    const fields = { name, prompt: input.prompt, schedule: input.schedule, missed: input.missed, enabled: input.enabled, agent: input.agent, model: input.model, budgetUsd: input.budgetUsd };
+    // An unknown agent would quietly fall back to the default one (and its price): refuse it instead.
+    if (input.agent !== null && !o.service.allDrivers().some((d) => d.id === input.agent)) throw new Error(`Unknown agent: ${input.agent}`);
+    const permissions: AutomationPermissions = input.permissions === "ask" ? "ask" : "unattended";
+    const fields = { name, prompt: input.prompt, schedule: input.schedule, missed: input.missed, enabled: input.enabled, agent: input.agent, model: input.model, budgetUsd: input.budgetUsd, permissions };
     const a = id ? automations.update(id, fields) : automations.create({ id: randomUUID(), projectId, template: input.template, anchor: Date.now(), ...fields });
     return viewOf(a, automations, Date.now());
   };

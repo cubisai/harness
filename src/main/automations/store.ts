@@ -1,7 +1,7 @@
 // Typed access to scheduled automations' tables (created by db.ts migration 29).
 
 import type { DatabaseSync } from "node:sqlite";
-import type { MissedPolicy, RunStatus, Schedule } from "../../shared/automations";
+import type { AutomationPermissions, MissedPolicy, RunStatus, Schedule } from "../../shared/automations";
 
 export interface Automation {
   id: string;
@@ -15,6 +15,7 @@ export interface Automation {
   agent: string | null;
   model: string | null;
   budgetUsd: number | null;
+  permissions: AutomationPermissions;
   configVersion: number;
   anchor: number;
   createdAt: number;
@@ -79,6 +80,7 @@ interface RawAutomation {
   agent: string | null;
   model: string | null;
   budget_usd: number | null;
+  permissions: string;
   config_version: number;
   anchor: number;
   created_at: number;
@@ -147,6 +149,7 @@ function automationOf(r: RawAutomation): Automation {
     agent: r.agent,
     model: r.model,
     budgetUsd: r.budget_usd,
+    permissions: r.permissions === "ask" ? "ask" : "unattended",
     configVersion: r.config_version,
     anchor: r.anchor,
     createdAt: r.created_at,
@@ -200,7 +203,7 @@ function deliveryOf(r: RawDelivery): Delivery {
   };
 }
 
-const AUTO_COLS = "id, project_id, name, template, prompt, schedule, missed, enabled, agent, model, budget_usd, config_version, anchor, created_at, updated_at";
+const AUTO_COLS = "id, project_id, name, template, prompt, schedule, missed, enabled, agent, model, budget_usd, permissions, config_version, anchor, created_at, updated_at";
 const RUN_COLS =
   "id, automation_id, run_key, scheduled_at, status, thread_id, lease_until, config_version, cost_usd, input_tokens, output_tokens, started_at, ended_at, checkpoint, result, error, created_at";
 const CUR_COLS = "automation_id, source, bookmark, last_ok_at, last_status, last_error, updated_at";
@@ -210,11 +213,11 @@ const DEL_COLS = "idempotency_key, run_id, destination, state, receipt, created_
 export class AutomationStore {
   constructor(private db: DatabaseSync, private now: () => number = () => Date.now()) {}
 
-  create(a: Omit<Automation, "createdAt" | "updatedAt" | "configVersion">): Automation {
+  create(a: Omit<Automation, "createdAt" | "updatedAt" | "configVersion" | "permissions"> & { permissions?: AutomationPermissions }): Automation {
     const now = this.now();
     this.db
-      .prepare(`INSERT INTO automations (${AUTO_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(a.id, a.projectId, a.name, a.template, a.prompt, JSON.stringify(a.schedule), a.missed, a.enabled ? 1 : 0, a.agent, a.model, a.budgetUsd, 1, a.anchor, now, now);
+      .prepare(`INSERT INTO automations (${AUTO_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(a.id, a.projectId, a.name, a.template, a.prompt, JSON.stringify(a.schedule), a.missed, a.enabled ? 1 : 0, a.agent, a.model, a.budgetUsd, a.permissions ?? "unattended", 1, a.anchor, now, now);
     return this.get(a.id)!;
   }
 
@@ -231,13 +234,13 @@ export class AutomationStore {
   }
 
   /** Patch an automation; any edit bumps configVersion, so a stale run never inherits new settings. */
-  update(id: string, patch: Partial<Pick<Automation, "name" | "prompt" | "schedule" | "missed" | "enabled" | "agent" | "model" | "budgetUsd">>): Automation {
+  update(id: string, patch: Partial<Pick<Automation, "name" | "prompt" | "schedule" | "missed" | "enabled" | "agent" | "model" | "budgetUsd" | "permissions">>): Automation {
     const cur = this.get(id);
     if (!cur) throw new Error(`automation not found: ${id}`);
     const next: Automation = { ...cur, ...patch, configVersion: cur.configVersion + 1, updatedAt: this.now() };
     this.db
-      .prepare("UPDATE automations SET name = ?, prompt = ?, schedule = ?, missed = ?, enabled = ?, agent = ?, model = ?, budget_usd = ?, config_version = ?, updated_at = ? WHERE id = ?")
-      .run(next.name, next.prompt, JSON.stringify(next.schedule), next.missed, next.enabled ? 1 : 0, next.agent, next.model, next.budgetUsd, next.configVersion, next.updatedAt, id);
+      .prepare("UPDATE automations SET name = ?, prompt = ?, schedule = ?, missed = ?, enabled = ?, agent = ?, model = ?, budget_usd = ?, permissions = ?, config_version = ?, updated_at = ? WHERE id = ?")
+      .run(next.name, next.prompt, JSON.stringify(next.schedule), next.missed, next.enabled ? 1 : 0, next.agent, next.model, next.budgetUsd, next.permissions, next.configVersion, next.updatedAt, id);
     return next;
   }
 

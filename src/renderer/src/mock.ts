@@ -245,6 +245,7 @@ export function installMock(): void {
       agent: null,
       model: null,
       budgetUsd: 0.25,
+      permissions: "unattended",
       scheduleText: "daily at 09:00 (UTC)",
       nextAt: now + 3_600_000,
       lastRun: { automationId: "a1", name: "Project brief", runId: 1, threadId: "t1", status: "succeeded", costUsd: 0.04, endedAt: now - 7_200_000, error: null },

@@ -37,6 +37,7 @@ const overview: AutomationsOverview = {
       agent: null,
       model: null,
       budgetUsd: 0.25,
+      permissions: "unattended",
       scheduleText: "daily at 09:00 (UTC)",
       nextAt: null,
       lastRun: notice,

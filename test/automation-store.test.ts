@@ -21,6 +21,7 @@ const base = (over: Partial<NewAutomation> = {}): NewAutomation => ({
   agent: null,
   model: null,
   budgetUsd: null,
+  permissions: "unattended",
   anchor: 1000,
   ...over,
 });
@@ -32,6 +33,15 @@ function open(file: string, now: () => number = () => Date.now()): { store: Stor
 }
 
 describe("AutomationStore", () => {
+  it("stores how a run's tools are approved, unattended by default", () => {
+    const { store, db } = open(join(tempDir(), "p.db"));
+    closeAfter(() => store.close());
+    const { permissions: _drop, ...noPermissions } = base();
+    expect(db.create(noPermissions).permissions).toBe("unattended");
+    expect(db.update("a1", { permissions: "ask" }).permissions).toBe("ask");
+    expect(db.get("a1")!.permissions).toBe("ask");
+  });
+
   it("creates the automation tables and re-opens the file idempotently", () => {
     const file = join(tempDir(), "m.db");
     const first = open(file);

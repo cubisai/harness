@@ -23,6 +23,7 @@ const base = (over: Partial<NewAutomation> = {}): NewAutomation => ({
   agent: null,
   model: null,
   budgetUsd: 0.5,
+  permissions: "unattended",
   anchor: 1000,
   ...over,
 });

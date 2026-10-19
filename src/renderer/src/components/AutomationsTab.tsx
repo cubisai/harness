@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { CalendarClock } from "lucide-react";
-import type { AutomationInput, AutomationNotice, AutomationTemplate, AutomationView, AutomationsOverview, MissedPolicy, Schedule } from "../../../shared/automations";
+import type { AutomationInput, AutomationNotice, AutomationPermissions, AutomationTemplate, AutomationView, AutomationsOverview, MissedPolicy, Schedule } from "../../../shared/automations";
 import { api } from "../api";
 import { useStore } from "../store";
 import { Select } from "./Select";
@@ -14,6 +14,11 @@ const KINDS: { value: Schedule["kind"]; label: string }[] = [
 const MISSED: { value: MissedPolicy; label: string }[] = [
   { value: "coalesce", label: "Run once to catch up" },
   { value: "skip", label: "Skip" },
+];
+
+const PERMISSIONS: { value: AutomationPermissions; label: string }[] = [
+  { value: "unattended", label: "Run unattended" },
+  { value: "ask", label: "Ask me first" },
 ];
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -38,6 +43,7 @@ export function inputOf(template: AutomationTemplate): AutomationInput {
     agent: null,
     model: null,
     budgetUsd: template.budgetUsd,
+    permissions: "unattended",
   };
 }
 
@@ -94,6 +100,7 @@ function draftOfView(view: AutomationView): Draft {
     agent: view.agent,
     model: view.model,
     budgetUsd: view.budgetUsd,
+    permissions: view.permissions,
   };
 }
 
@@ -108,6 +115,7 @@ function toInput(draft: Draft): AutomationInput {
     agent: draft.agent,
     model: draft.model,
     budgetUsd: draft.budgetUsd,
+    permissions: draft.permissions,
   };
 }
 
@@ -255,7 +263,7 @@ export function AutomationsTab({ overview: initial }: { overview?: AutomationsOv
     draft !== null &&
     (saved === null
       ? draft.name !== "" || draft.prompt !== ""
-      : draft.name !== saved.name || draft.prompt !== saved.prompt || draft.schedule !== saved.schedule || draft.missed !== saved.missed || draft.enabled !== saved.enabled || draft.budgetUsd !== saved.budgetUsd || draft.agent !== saved.agent || draft.model !== saved.model);
+      : draft.name !== saved.name || draft.prompt !== saved.prompt || draft.schedule !== saved.schedule || draft.missed !== saved.missed || draft.enabled !== saved.enabled || draft.budgetUsd !== saved.budgetUsd || draft.agent !== saved.agent || draft.model !== saved.model || draft.permissions !== saved.permissions);
 
   const selectedTemplate = draft ? data.templates.find((t) => t.id === draft.template) : undefined;
 
@@ -375,6 +383,17 @@ export function AutomationsTab({ overview: initial }: { overview?: AutomationsOv
                   />
                 )}
                 <p className="note">Each run starts a fresh thread on this agent; a cheap model keeps scheduled runs cheap.</p>
+              </div>
+            </div>
+            <div className="automations-row">
+              <span className="label">Permissions</span>
+              <div className="automations-fields">
+                <Select value={draft.permissions} options={PERMISSIONS} onChange={(permissions) => setDraft({ ...draft, permissions })} ariaLabel="Permissions" />
+                <p className="note">
+                  {draft.permissions === "unattended"
+                    ? "Runs its tools without asking, with git guardrails on. Keep the prompt read-only unless you want it to change files."
+                    : "Each tool waits for your approval, so a scheduled run pauses until you answer it in the Message Center."}
+                </p>
               </div>
             </div>
             <div className="automations-row">
