@@ -8,31 +8,35 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 
 **Rules:** one commit per point. Typecheck and the full vitest suite must be green before each commit. At the end of each phase that changes the app runtime, do one live turn each on Claude, Codex and OpenCode Zen.
 
-## Resume here (stopped 2026-10-19 on the Mac; start a new session from this section, on any PC)
+## Resume here (stopped 2026-10-19 on the Mac, session 3; start a new session from this section, on any PC)
 
-**Progress:** 36 of 41 points done (the table has 41 rows; P2.1 is split into a and b). Session 2026-10-19 finished P6.1, P5.4, P5.5, P6.2, P6.3, P7.1 and P8.1, running parallel worktrees, one per track. Every track is merged into `roadmap` and pushed. No other roadmap branches exist; the per-track worktrees and branches were removed.
-- **`m4` is merged in:** `roadmap` now also contains m4's TGP close-out (`a85a8e2`, `edd8887`, `65dbbfb`), merged through P6. The only conflict was `TeamStrip.tsx`, resolved so both features work together: m4's member click / done progress and the roadmap's model tooltip and run history.
-- **Checks on `roadmap` (Mac):** typecheck green, design:check 0 errors, vitest 2899 passed / 0 failed, validate-graders exit 0, `--splits` reports no leakage.
+**Progress: all 41 points are implemented** and merged on `roadmap`. This session did P7.2, P7.3, P8.2, P8.3 and P8.4 (+ its Learned tab UI), in parallel worktrees (`roadmap-p7`, `roadmap-p8`, since removed).
+- **Checks on `roadmap` (Mac):** typecheck green, design:check 0 errors, vitest 3056 passed / 0 failed, `--validate-graders` 0 BAD, `--splits` no leakage, `--stability 3` 48 OK / 0 flaky, `electron-vite build` OK.
+- **Live this session (real app, agent-browser):**
+  - Automations: a Project brief run end to end on OpenCode Zen `deepseek-v4.1-flash-free`, Claude `sonnet` and Codex `gpt-6-luna`, all `succeeded`. The git cursor advances only after the delivery is confirmed, so a second run sees only new commits. Message Center rows and the dark-theme UI were checked, and a 900px window has no horizontal scroll.
+  - Learned tab: seeded lessons (then deleted); Retire → Undo and Verify ("no captured case") went through real IPC.
+  - The test automation "Project brief" on the scratch project `board-proj` (re-created as a git repo under an old scratchpad path) is left **disabled**.
+- **Owner decision (2026-10-19):** automations have a per-automation **Permissions** setting, default **Run unattended** (thread permission mode `full`, git guardrails on), or **Ask me first** (runs pause, show in the Message Center). An unknown agent id is refused on save; it used to fall back silently to the default agent (Claude Opus).
 
-**Left (5 points), with designs ready to brief:**
-1. **P7.2:** the automation runner, sources/destination and app wiring. The full design is in `.ai/plans/p7.md` ("P7.2 design"): two parallel workers (runner.ts; io/sources/destinations), then Claude wires index.ts, Service and the Message Center.
-2. **P8.2:** a judge grader with calibration, plus grader stability. Design in `.ai/plans/p8.md`: two parallel workers.
-   - P7.2 and P8.2 don't depend on each other, so run them in parallel worktrees.
-3. **P7.3:** templates and the automations UI (after P7.2).
-4. **P8.3:** the bounded optimizer (after P8.2).
-5. **P8.4:** lesson replay, promotion and retirement. Do a researcher pass on `src/main/learn/` first; the brief is outlined in p8.md.
+**Left (verification only, no planned code):**
+1. **P5 phase end, real app:**
+   - the pane auto-opens from closed;
+   - user takeover pauses the agent;
+   - a `wait_for` click;
+   - `dev_server` status and start on a real Vite project;
+   - `browser_report` PASS/FAIL.
+2. **P6 phase end:** a live team turn each on Claude (sonnet), Codex and OpenCode Zen, with one member that sets `model`. Check the roster line, the strip tooltip (model + run history), and that a small ask isn't fanned out. Take a dark screenshot.
+3. **DESIGN §9 check of P2.1b/P2.3:** paged transcript and windowing.
+4. **P8 live (spends tokens):**
+   - one Verify of a real captured lesson: enable self-improve on a project, let a failed turn be captured, then Verify;
+   - one small `bun run eval:optimize --surface model-effort --try "effort=medium" --budget 1`.
+5. **Windows PC:** the per-phase Windows gate for P7/P8. Watch for `tar -xf` in replay's `materializeCase` and for CRLF in git output (the git source already splits on `\r?\n`).
+6. Merge `roadmap` into `m4`.
 
-**Still owed (live and real-app checks; none have run since P5.3):**
-- **P5 phase end, real app:**
-  - the pane auto-opens from closed;
-  - user takeover pauses the agent;
-  - a `wait_for` click;
-  - `dev_server` status and start on a real Vite project;
-  - `browser_report` PASS/FAIL.
-- **P6 phase end:** a live team turn each on Claude (sonnet), Codex and OpenCode Zen (`deepseek-v4.1-flash-free`), with one member that sets `model`.
-  - Check the roster line, the strip tooltip with the model and run history, and that a small ask is answered without fanning out.
-  - Take a dark-theme screenshot.
-- **DESIGN §9 check of P2.1b/P2.3:** paged transcript and windowing.
+**Known limits (by design, noted for later):**
+- The optimizer wires only the `prompt` (`--guide`) and `model-effort` surfaces; `skill-description` and `retrieval-profile` are rejected with a message.
+- Codex reports no cost, so an automation's budget can't pause a Codex run.
+- Lessons reach every engine through the frozen memory block (≤ 5 active ones, ranked pinned → helpful−harmful → newest), not per-prompt relevance.
 
 **What's in git:**
 - `origin/roadmap`: everything, plus this handoff.
@@ -112,12 +116,12 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 | P6.2 Flexible lead guidance + brief template | done | `b3ae1e4` |
 | P6.3 Member runs, cost/latency reconciliation | done | `207e08f` |
 | P7.1 Records + scheduler | done | `08e3ec8` |
-| P7.2 Runner, sources, deliveries | next (design in p7.md) | |
-| P7.3 Templates + UI | | |
+| P7.2 Runner, sources, deliveries | done | `447722d` |
+| P7.3 Templates + UI | done | `4d70e62` + `ff1008e` + `89c78fb` |
 | P8.1 Splits + sealed holdout + leakage | done | `364eb9f` |
-| P8.2 Grader/judge calibration | next (design in p8.md) | |
-| P8.3 Bounded optimizer | | |
-| P8.4 Lesson replay/promotion/retirement | | |
+| P8.2 Grader/judge calibration | done | `1598d19` |
+| P8.3 Bounded optimizer | done | `903ae93` |
+| P8.4 Lesson replay/promotion/retirement | done | `b1872f2` + `14ad77d` |
 
 ## Log
 
@@ -325,3 +329,35 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
   - Not wired into the app yet (P7.2).
 - **P8.1 `364eb9f`:** evals splits, `--split` / `--release` / `--splits`. The holdout is sealed unless `--release` is given.
 - **Merged `roadmap`:** vitest 2899 passed / 0 failed.
+
+### P7.2 + P7.3 — automations runner, templates, UI (2026-10-19, session 3)
+- `src/main/automations/`:
+  - `runner.ts`: tick/claim by run_key, one run at a time behind interactive turns, lease renewal, waiting-input tracking, budget → paused-budget.
+  - Delivery: intent → published → confirmed; failed delivery → partial.
+  - The cursor moves only after confirm; the text and cursor advances are checkpointed before delivery.
+  - `recover()`: interrupts every in-flight run at startup, re-queues claimed-but-unstarted runs, finishes a cut-short delivery, never blind-reposts an unknown one.
+  - `sources.ts` (git log, CRLF-safe), `destinations.ts` (Message Center), `io.ts`.
+  - `app.ts`: Service wiring, sendAndWait waits through check-fix rounds, IPC overview/save/delete/run-now/runs.
+  - `templates.ts`: repo health, browser smoke, project brief (git source), eval regression, custom.
+  - Migration 30 adds `automations.permissions`.
+- UI:
+  - Library → Automations: list, editor (template, schedule, days, missed policy, agent/model, permissions, budget, enabled), Run now, two-step Delete.
+  - Message Center: needs-you rows for paused/failed/interrupted/partial runs; finished rows tagged "Automation".
+- Manual Run now works on a disabled automation; disabled only stops the schedule.
+
+### P8.2 + P8.3 + P8.4 — judge, optimizer, lesson lifecycle (2026-10-19, session 3)
+- **P8.2:** `evals/lib/judge.ts`.
+  - A judge counts only with a calibration ≥ 0.85 accuracy on ≥ 10 examples for the same rubric; otherwise the trial is ungraded.
+  - An unreadable reply counts as a miss. Pairwise mode is blinded and order-randomized; agreement is Cohen's kappa.
+  - Flags: `--calibrate-judge <name>`, `--stability N`.
+- **P8.3:** `evals/lib/optimize.ts` + `evals/optimize.ts` (`bun run eval:optimize`).
+  - Decisions use a paired bootstrap CI over tasks. Verdict order: stale, too-few-trials, regression, noise, cost, latency, accept.
+  - Train failures are graders' whys only; the holdout runs only with `--release`; every round is saved.
+  - `run.ts`: `--guide <file>` (its hash joins the cache key), `--out <file>`.
+- **P8.4:**
+  - `learn/lifecycle.ts`: active lessons go into the memory block (`<harness-lessons>`), and injected ids flow into the turn record.
+  - Counters: helpful/harmful/relevant counted once per final turn; auto-retire when harmful ≥ 3 and > 2× helpful.
+  - Retire/undo/pin/drop. At startup, active lessons verified on another background model or app minor version go back to candidate.
+  - `learn/replay.ts` + `verify-app.ts`: rebuild the case tree (git archive of headSha + base overlay − deleted), runTrial on the background agent without and with the lesson, transfer on ≤ 3 other cases (held-out first).
+  - Replays are cached, budgeted by `learn_budget`, and promote only with both pieces of evidence.
+  - Library → Learned tab.
