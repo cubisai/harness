@@ -328,6 +328,33 @@ describe("provider driver", () => {
     expect(results.some((e) => e.kind === "tool-result" && /ran on deepseek-v4: nope isn't offered/.test(JSON.stringify(e)))).toBe(true);
   });
 
+  it("reconciles a team turn's cost: the lead's own calls plus each member priced on the model it ran on (P6.3)", async () => {
+    const small = { id: "small", capabilities: { tools: true, vision: false, reasoning: true }, contextWindow: 64_000, maxOutput: 4_000, cost: { input: 10, output: 20 } };
+    const hand = (agent: string): AssistantPart[] => [{ type: "tool-call", id: `c-${agent}`, name: "task", input: { description: "Check", prompt: "Check it.", agent } }];
+    const t = setup([hand("listed"), [{ type: "text", text: "a" }], hand("plain"), [{ type: "text", text: "b" }], [{ type: "text", text: "done" }]], {
+      saved: provider({ models: [...provider().models, small] }),
+    });
+    await t.driver.runTurn({
+      ...t.input("go"),
+      team: [
+        { id: "listed", description: "L", prompt: "You are listed.", model: "small" },
+        { id: "plain", description: "P", prompt: "You are plain." },
+      ],
+    });
+    // Every call reports 1000 in / 100 out. Lead: 3 calls on deepseek (1/2 per M); listed: small (10/20); plain: deepseek.
+    const lead = (3000 * 1 + 300 * 2) / 1e6;
+    const listed = (1000 * 10 + 100 * 20) / 1e6;
+    const plain = (1000 * 1 + 100 * 2) / 1e6;
+    const results = t.events.filter((e): e is Extract<ThreadEvent, { kind: "tool-result" }> => e.kind === "tool-result" && !e.parentId);
+    expect(results.map((r) => r.runUsage)).toEqual([
+      { inputTokens: 1000, outputTokens: 100, costUsd: listed },
+      { inputTokens: 1000, outputTokens: 100, costUsd: plain },
+    ]);
+    const end = t.events.find((e) => e.kind === "turn-end")!;
+    expect(end).toMatchObject({ inputTokens: 5000, outputTokens: 500 });
+    expect((end as { costUsd: number }).costUsd).toBeCloseTo(lead + listed + plain, 10);
+  });
+
   it("gives GPT models apply_patch instead of edit", async () => {
     const t = setup([[{ type: "text", text: "ok" }]], { saved: provider({ models: [{ id: "gpt-5.5", capabilities: { tools: true, vision: true, reasoning: true }, contextWindow: 400_000, maxOutput: 128_000 }] }) });
     await t.driver.runTurn({ ...t.input("hi"), model: "gpt-5.5" });

@@ -1,3 +1,4 @@
+import type { RunUsage } from "../../../shared/types";
 // The harness's own tools: what each one declares and what it gets when it runs.
 // The loop advertises `parameters` to the model, gates a call by `access`, and
 // shows `display` in the thread (names the renderer already knows: Read, Edit, Run…).
@@ -42,6 +43,8 @@ export interface ToolResult {
   /** A PNG the model should see, base64. */
   imagePng?: string;
   display?: ToolDisplay;
+  /** A subagent call's own usage, carried onto its tool-result event. */
+  runUsage?: RunUsage;
 }
 
 export interface NativeTool {

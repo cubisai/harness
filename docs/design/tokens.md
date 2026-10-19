@@ -64,23 +64,23 @@
 
 | Token | Light | Dark | Line |
 | --- | --- | --- | --- |
-| `--radius-s` | `6px` | — | 81 |
-| `--radius-m` | `8px` | — | 82 |
-| `--radius-l` | `10px` | — | 83 |
+| `--radius-s` | `6px` | — | 88 |
+| `--radius-m` | `8px` | — | 89 |
+| `--radius-l` | `10px` | — | 90 |
 
 ## Layout
 
 | Token | Light | Dark | Line |
 | --- | --- | --- | --- |
-| `--titlebar` | `46px` | — | 84 |
-| `--sidebar-w` | `248px` | — | 85 |
-| `--inspector-w` | `430px` | — | 86 |
+| `--titlebar` | `46px` | — | 91 |
+| `--sidebar-w` | `248px` | — | 92 |
+| `--inspector-w` | `430px` | — | 93 |
 
 ## Motion
 
 | Token | Light | Dark | Line |
 | --- | --- | --- | --- |
-| `--ease` | `cubic-bezier(0.2, 0.8, 0.2, 1)` | — | 87 |
+| `--ease` | `cubic-bezier(0.2, 0.8, 0.2, 1)` | — | 94 |
 
 ## Other
 
@@ -93,6 +93,12 @@
 | `--syn-string` | `#2b7a3b` | `#8fd19e` | 77 |
 | `--syn-number` | `#a35c00` | `#f0b060` | 78 |
 | `--syn-comment` | `#6b717c` | `#7d838e` | 79 |
+| `--portrait-1` | `#ffe1cf` | `#d9a98f` | 81 |
+| `--portrait-2` | `#d6e9ff` | `#95b8de` | 82 |
+| `--portrait-3` | `#d9f3d3` | `#9fcb95` | 83 |
+| `--portrait-4` | `#e7dcff` | `#b5a3e3` | 84 |
+| `--portrait-5` | `#fff0c2` | `#d8bf78` | 85 |
+| `--portrait-6` | `#d2f1ed` | `#8fc7bf` | 86 |
 
 ## Aliases
 

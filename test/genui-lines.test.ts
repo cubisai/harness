@@ -190,7 +190,8 @@ describe("validateUi line form", () => {
   it("returns null for invalid line forms", () => {
     expect(validateUi("chart", "A | abc")).toBeNull();
     expect(validateUi("compare", "A | B")).toBeNull();
-    expect(validateUi("calculator", "a | A | 1\n= a+b")).toBeNull();
+    // A calculator with an unknown id still renders its inputs, with the reason instead of a result.
+    expect(validateUi("calculator", "a | A | 1\n= a+b")).toMatchObject({ name: "calculator", problem: "unknown b" });
     expect(validateUi("timeline", "# Only a title")).toBeNull();
     expect(validateUi("checklist", "")).toBeNull();
     expect(validateUi("checklist", "  \n\n")).toBeNull();

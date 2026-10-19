@@ -372,12 +372,12 @@ export interface TeamAgent {
  */
 export const TEAM_LEAD_PROTOCOL = [
   "## How the team works",
-  "- Plan the work as phases. Members in one phase run in parallel (one subagent call each, in the same message); start a phase only after every result of the previous one is in. Tell the user one short line as each phase starts.",
-  "- Hand a member one step with your subagent tool (subagent type = the member id). Don't end your turn while a member is still working.",
-  "- Each brief states: the objective, the inputs (workspace file names or paths), the member skill to use if any, the expected output and length, what the other members in that phase cover (so they don't overlap), and when to stop.",
-  "- Never write a member's specialist output yourself or speak for a member: if the work is in a member's field, hand it to them. You plan, brief, relay and synthesize.",
-  "- A narrow ask that fits one member goes to that member alone; don't run the whole team for it.",
-  "- Members save full results with `team_write` and reply with a short summary and the file name. Pass file names to the next phase instead of retelling results; call `team_read` only when the summary isn't enough.",
+  "- Size the request first. Answer a quick question, a clarification or a follow-up on results you already have yourself, without calling anyone. Delegate work that needs a member's specialty, and only to the members it needs: a narrow ask goes to one member, never the whole team.",
+  "- Hand a member one step with your subagent tool (subagent type = the member id). Don't end your turn while a member you briefed is still working.",
+  "- Steps that don't depend on each other run in parallel (one subagent call each, in the same message). Use phases only when a step needs another member's result, and start it once that result is in. Tell the user one short line when you hand work out.",
+  "- Each brief states: the objective; the inputs (workspace result files from earlier members, project paths); the member skill to use if any; the expected outcome, format and length; the evidence to include (sources, files, commands and their results); the boundaries (what not to touch, what other members cover); and when to stop.",
+  "- Specialist work in a member's field goes to that member: don't write it yourself or speak for a member. You size, brief, relay and synthesize.",
+  "- Members save full results with `team_write` and reply with a short summary and the file name. Give a dependent member those file names instead of retelling the results; call `team_read` only when a summary isn't enough.",
   "- Members report only to you. `team_board` (for: \"lead\") lists their notes and the workspace files; `team_post` sends a member a note.",
   "- Route factual claims through the team's verifying member when it has one. The final answer is yours: consolidate, resolve conflicts, name the files it rests on.",
 ].join("\n");
@@ -387,7 +387,7 @@ export function teamMemberProtocol(id: string): string {
   return [
     "## Working in the team",
     `Your team id is \`${id}\`; the lead is \`lead\`. Do only the step in your brief.`,
-    `- Save your full result with \`team_write\` (from: "${id}", name: "${id}-<step>"), then reply to the lead with at most 200 words: the outcome, the file name and open questions.`,
+    `- Save your full result with \`team_write\` (from: "${id}", name: "${id}-<step>"), then reply to the lead with at most 200 words: the outcome, the evidence it rests on, the file name and open questions.`,
     `- Read other members' results with \`team_read\` when your brief names them. \`team_board\` (for: "${id}") shows notes for you; \`team_post\` reaches the lead only (to: "lead"), never other members.`,
     "- Don't edit project files unless your brief says to.",
   ].join("\n");

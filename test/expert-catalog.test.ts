@@ -151,6 +151,17 @@ describe("expertBlock", () => {
     expect(block).toContain("- `writer` — Wren, Writer: Writes.");
     expect(block.endsWith(`${TEAM_LEAD_PROTOCOL}\n\nStay Crew, Lead, for this whole thread.`)).toBe(true);
   });
+
+  it("tells the lead to size a request before delegating, and what a brief holds (P6.2)", () => {
+    // Small asks are answered directly, narrow ones go to one member, phases only on dependencies.
+    expect(TEAM_LEAD_PROTOCOL).toContain("Answer a quick question, a clarification or a follow-up on results you already have yourself");
+    expect(TEAM_LEAD_PROTOCOL).toContain("a narrow ask goes to one member, never the whole team");
+    expect(TEAM_LEAD_PROTOCOL).toContain("Use phases only when a step needs another member's result");
+    expect(TEAM_LEAD_PROTOCOL).not.toContain("Plan the work as phases");
+    for (const part of ["the objective", "the inputs", "the expected outcome", "the evidence to include", "the boundaries", "when to stop"]) expect(TEAM_LEAD_PROTOCOL).toContain(part);
+    expect(TEAM_LEAD_PROTOCOL).toContain("Give a dependent member those file names instead of retelling the results");
+    expect(teamMemberProtocol("writer")).toContain("the outcome, the evidence it rests on, the file name and open questions");
+  });
 });
 
 describe("teamAgents", () => {

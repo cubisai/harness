@@ -69,7 +69,7 @@ describe("createTaskTool", () => {
     const read = tool("read", "read", async (args) => ({ text: `contents of ${String(args.path)}` }));
     const t = setup([[call("r1", "read", { path: "a.ts" })], text("Found it at a.ts:1")], { tools: () => [read] });
     const result = await t.run({ description: "find the loop", prompt: "Where is the loop?" });
-    expect(result).toEqual({ text: "Found it at a.ts:1" });
+    expect(result).toMatchObject({ text: "Found it at a.ts:1" });
     expect(t.requests[0]!.messages).toEqual([{ role: "user", content: [{ type: "text", text: "Where is the loop?" }] }]);
     expect(t.requests[1]!.messages.at(-1)).toMatchObject({ role: "tool", results: [{ callId: "r1", text: "contents of a.ts" }] });
   });
@@ -114,7 +114,8 @@ describe("createTaskTool", () => {
   it("reports the child's usage to onUsage", async () => {
     const t = setup([text("done")]);
     const result = await t.run({ description: "x", prompt: "go" });
-    expect(result).toEqual({ text: "done" });
+    // The child's own usage rides its result too; unpriced without costOf.
+    expect(result).toEqual({ text: "done", runUsage: { inputTokens: 10, outputTokens: 5, costUsd: null } });
     expect(t.usages).toEqual([usage(10)]);
   });
 
@@ -131,7 +132,7 @@ describe("createTaskTool", () => {
     abort.abort();
     const t = setup([text("never")]);
     const result = await t.run({ description: "x", prompt: "go" }, "call1", abort.signal);
-    expect(result).toEqual({ text: "Interrupted by the user.", isError: true });
+    expect(result).toMatchObject({ text: "Interrupted by the user.", isError: true });
   });
 
   it("cuts a long report and says so", async () => {
@@ -150,6 +151,31 @@ describe("createTaskTool", () => {
 
     const empty = setup([]);
     expect(await empty.run({ description: "x", prompt: "  " })).toMatchObject({ isError: true });
+  });
+});
+
+describe("createTaskTool child cost", () => {
+  it("prices a child on the model it ran on and passes the cost to onUsage and its result", async () => {
+    const priced: [number, string][] = [];
+    const costs: (number | null | undefined)[] = [];
+    const s = script(text("done"));
+    const task = createTaskTool({
+      route,
+      request: { model: "m" },
+      tools: () => [],
+      cwd: "/work",
+      emit: () => {},
+      onUsage: (_u, c) => costs.push(c),
+      costOf: (u, model) => {
+        priced.push([u.inputTokens, model]);
+        return 0.25;
+      },
+      stream: s.stream,
+    });
+    const result = await task.run({ description: "x", prompt: "go" }, { id: "c1", signal: new AbortController().signal, onOutput: () => {} });
+    expect(priced).toEqual([[10, "m"]]);
+    expect(costs).toEqual([0.25]);
+    expect(result).toMatchObject({ runUsage: { inputTokens: 10, outputTokens: 5, costUsd: 0.25 } });
   });
 });
 
@@ -182,7 +208,7 @@ describe("createTaskTool team members", () => {
       memberTools: () => [teamRead],
     });
     const result = await t.run({ description: "Verify", prompt: "check X", agent: "checker" });
-    expect(result).toEqual({ text: "It checks out" });
+    expect(result).toMatchObject({ text: "It checks out" });
     expect(t.requests[0]!.system).toEqual(["You check facts.", "Working folder: /work"]);
     expect(t.requests[0]!.tools.map((x) => x.name)).toEqual(["read", "team_read"]);
     expect(t.requests[1]!.messages.at(-1)).toMatchObject({ role: "tool", results: [{ callId: "r1", text: "the board" }] });

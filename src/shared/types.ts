@@ -601,6 +601,13 @@ export interface PlanEntry {
   priority?: "high" | "medium" | "low";
 }
 
+/** A subagent call's own tokens and cost. Already inside its turn's turn-end: shown per member, never added to totals. */
+export interface RunUsage {
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number | null;
+}
+
 /** Stable semantic ids shared by every event, so a handoff can replay exactly. */
 export interface EventIds {
   messageId?: string;
@@ -619,7 +626,7 @@ export type ThreadEvent = (
   | { kind: "assistant-text"; text: string }
   | { kind: "thinking"; text: string; signature?: string; opaque?: boolean }
   | { kind: "tool-use"; toolUseId: string; name: string; summary: string; payload?: unknown }
-  | { kind: "tool-result"; toolUseId: string; isError: boolean; summary: string; payload?: unknown }
+  | { kind: "tool-result"; toolUseId: string; isError: boolean; summary: string; payload?: unknown; /** A subagent call's own usage, when the engine reports it. */ runUsage?: RunUsage }
   | {
       kind: "turn-end";
       costUsd: number | null;
@@ -1290,6 +1297,8 @@ export interface UnskilledApi {
   setThreadExpert(threadId: string, expertId: string | null): Promise<Thread>;
   /** A thread file's content for the panel: the file on disk, or a saved version. */
   readArtifact(threadId: string, path: string, version?: number | null): Promise<ArtifactContent>;
+  /** A team member's newest result file as an artifact path the panel opens, or null when it wrote none. */
+  teamMemberFile(threadId: string, memberId: string): Promise<string | null>;
   /** Unified diff of a version against the one before it (or against git HEAD / empty for the first); null when not text. */
   artifactDiff(threadId: string, path: string, version?: number | null): Promise<string | null>;
 }

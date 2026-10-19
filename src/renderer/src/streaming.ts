@@ -114,7 +114,7 @@ const UI_FENCE = /^\s*(```|~~~)\s*ui:[a-z]/;
  * Split streaming text at the last complete block boundary: `frozen` can be
  * parsed once and reused, `tail` is the block still being written. A boundary
  * sits after a blank line (outside a fence) or after a line that closes a
- * fence. `frozen + tail` is always `text`.
+ * fence, the text's last line included. `frozen + tail` is always `text`.
  */
 export function splitStreamingTail(text: string): { frozen: string; tail: string } {
   let boundary = 0;
@@ -134,7 +134,9 @@ export function splitStreamingTail(text: string): { frozen: string; tail: string
       } else if (!line.trim() && after >= 0) boundary = after;
     } else if (marker && line.trimStart().startsWith(fence)) {
       fence = null;
+      // A bare closing marker as the last line is complete too (a reply that ends at its fence, then a tool call).
       if (after >= 0) boundary = after;
+      else if (line.trim() === marker) boundary = text.length;
     }
     lineStart = after >= 0 ? after : i;
     if (atEnd) break;

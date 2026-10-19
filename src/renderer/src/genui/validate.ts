@@ -57,6 +57,24 @@ function validateChecklist(o: Record<string, unknown>): ChecklistSpec | null {
   return spec;
 }
 
+/**
+ * Why a calculator's formula can't run, or null when it can. Agents write
+ * formulas with ids they never declared (`P * r/12` over inputs named
+ * principal and rate) or stray characters; the inputs still render, with this
+ * line in place of the result.
+ */
+function formulaProblem(formula: string, inputs: CalculatorInput[]): string | null {
+  if (!formula) return "no formula";
+  const ids = new Set(inputs.map((i) => i.id));
+  const used = formulaIds(formula) ?? [...new Set(formula.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [])];
+  const unknown = used.filter((id) => !ids.has(id));
+  if (unknown.length) return `unknown ${unknown.slice(0, 6).join(", ")}`;
+  const defaults: Record<string, number> = {};
+  // Empty inputs count as 1, so the formula is still checked to parse and evaluate.
+  for (const input of inputs) defaults[input.id] = Number.isFinite(input.value) ? input.value : 1;
+  return evaluateFormula(formula, defaults) === null ? "the formula doesn't parse" : null;
+}
+
 function validateCalculator(o: Record<string, unknown>): CalculatorSpec | null {
   const raw = list(o.inputs, UI_ITEMS_MAX);
   if (!raw) return null;
@@ -84,15 +102,10 @@ function validateCalculator(o: Record<string, unknown>): CalculatorSpec | null {
     if (unit !== undefined) input.unit = unit;
     inputs.push(input);
   }
-  const formula = text(o.formula);
-  if (formula === null) return null;
-  const used = formulaIds(formula);
-  if (used === null || !used.every((id) => ids.has(id))) return null;
-  const defaults: Record<string, number> = {};
-  // Empty inputs count as 1, so the formula is still checked to parse and evaluate.
-  for (const input of inputs) defaults[input.id] = Number.isFinite(input.value) ? input.value : 1;
-  if (evaluateFormula(formula, defaults) === null) return null;
+  const formula = text(o.formula) ?? "";
   const spec: CalculatorSpec = { name: "calculator", inputs, formula };
+  const problem = formulaProblem(formula, inputs);
+  if (problem) spec.problem = problem;
   const title = optText(o, "title");
   if (title !== undefined) spec.title = title;
   const unit = optText(o, "unit");

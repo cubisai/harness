@@ -59,12 +59,23 @@ export function isPlanArtifact(path: string): boolean {
 /** A design thread's critiques (design_critique_save), stored the same way as the plan. */
 export const CRITIQUE_ARTIFACT = "cubiq:critique.md";
 
-/** Artifacts that live only in the version store: the plan and the design critique. */
+/**
+ * A team member's result file, copied from the team workspace (outside the
+ * project, in the app's data folder) into the version store when it's opened.
+ */
+export const TEAM_ARTIFACT_PREFIX = "cubiq:team/";
+
+export function teamArtifact(name: string): string {
+  return `${TEAM_ARTIFACT_PREFIX}${name}.md`;
+}
+
+/** Artifacts that live only in the version store: the plan, the design critique and team results. */
 export function isPseudoArtifact(path: string): boolean {
-  return path === PLAN_ARTIFACT || path === CRITIQUE_ARTIFACT;
+  return path === PLAN_ARTIFACT || path === CRITIQUE_ARTIFACT || path.startsWith(TEAM_ARTIFACT_PREFIX);
 }
 
 /** The name a pseudo-artifact shows in the panel, or null for a real file. */
 export function pseudoArtifactLabel(path: string): string | null {
+  if (path.startsWith(TEAM_ARTIFACT_PREFIX)) return path.slice(TEAM_ARTIFACT_PREFIX.length);
   return path === PLAN_ARTIFACT ? "Plan" : path === CRITIQUE_ARTIFACT ? "Critique" : null;
 }

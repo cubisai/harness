@@ -4,6 +4,8 @@ import { Markdown } from "../src/renderer/src/markdown";
 
 /** Markup of one reply through the renderer under test. */
 const render = (text: string, streaming = false): string => renderToStaticMarkup(<Markdown text={text} streaming={streaming} />);
+/** React SSR separates adjacent text nodes with a comment, and escapes quotes; undo both before matching prose. */
+const strip = (html: string): string => html.replace(/<!-- -->/g, "").replace(/&#x27;/g, "'");
 const fence = (name: string, body: unknown): string => `\`\`\`ui:${name}\n${typeof body === "string" ? body : JSON.stringify(body)}\n\`\`\``;
 
 describe("inline UI blocks", () => {
@@ -64,6 +66,17 @@ describe("inline UI blocks", () => {
 
   it("leaves replies without ui fences unchanged", () => {
     expect(render("```js\nconst a = 1;\n```\n\nText")).toContain("<pre><code>const a = 1;</code></pre>");
+  });
+});
+
+describe("calculator with a formula that can't run", () => {
+  it("renders the inputs and names the unknown ids instead of raw code", () => {
+    const html = render(fence("calculator", "principal|Principal|200000|$\nrate|Rate|6|%\nyears|Years|30\n=P * r/12 … n"));
+    expect(html).toContain('data-ui="calculator"');
+    expect(html).toContain('value="200000"');
+    expect(strip(html)).toContain("Couldn't compute: unknown P, r, n");
+    expect(html).not.toContain("ui-result");
+    expect(html).not.toContain("code-block");
   });
 });
 

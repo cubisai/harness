@@ -3,7 +3,7 @@
 // grep and reports back. Its events re-enter the thread under one Agent row.
 
 import type { TeamAgent } from "../../shared/experts";
-import type { ThreadEvent } from "../../shared/types";
+import type { ThreadEvent, RunUsage } from "../../shared/types";
 import { runLoop, type LoopTool } from "./loop";
 import type { Route, streamLlm } from "./llm/client";
 import type { LlmMessage, LlmRequest, LlmUsage } from "./llm/types";
@@ -45,7 +45,10 @@ interface TaskToolOptions {
     reasoning(itemId: string, text: string, parentId: string): void;
     toolOutput(toolUseId: string, text: string, parentId: string): void;
   };
-  onUsage(u: LlmUsage): void;
+  /** A child's usage, and its cost when costOf could price it (undefined: the caller prices it as the lead's). */
+  onUsage(u: LlmUsage, costUsd?: number | null): void;
+  /** A child's cost on the model it ran on; null when that model has no price. */
+  costOf?(u: LlmUsage, model: string): number | null;
   stream?: typeof streamLlm;
   /** The thread's expert-team members; with any, the tool can run one of them instead of the explore subagent. */
   team?: TeamAgent[];
@@ -159,16 +162,23 @@ export function createTaskTool(opts: TaskToolOptions): LoopTool {
             onMessage: () => {},
             ...(opts.stream ? { stream: opts.stream } : {}),
           });
-          opts.onUsage(result.usage);
-          if (result.stop === "stopped") return { text: "Interrupted by the user.", isError: true };
+          const runUsage = report(result.usage, request.model);
+          if (result.stop === "stopped") return { text: "Interrupted by the user.", isError: true, runUsage };
           let text = lastAssistantText(messages) || "The subagent finished without a report.";
           if (result.stop === "max-steps") text = `(Stopped at the step limit.) ${text}`;
           const bounded = boundReport(text);
-          return { text: fallback ? `${bounded}\n\n${fallback}` : bounded };
+          return { text: fallback ? `${bounded}\n\n${fallback}` : bounded, runUsage };
         } catch (err) {
-          if (seenUsage) opts.onUsage(seenUsage);
-          return { text: `The subagent failed: ${err instanceof Error ? err.message : String(err)}`, isError: true };
+          const runUsage = seenUsage ? report(seenUsage, request.model) : undefined;
+          return { text: `The subagent failed: ${err instanceof Error ? err.message : String(err)}`, isError: true, ...(runUsage ? { runUsage } : {}) };
         }
+      };
+
+      // The child's usage goes to the turn's total and onto its own tool-result, priced on the model it ran on.
+      const report = (u: LlmUsage, model: string): RunUsage => {
+        const costUsd = opts.costOf ? opts.costOf(u, model) : undefined;
+        opts.onUsage(u, costUsd);
+        return { inputTokens: u.inputTokens, outputTokens: u.outputTokens, costUsd: costUsd ?? null };
       };
 
       const readOnly = opts.tools().filter((t) => t.access === "read" && t.definition.name !== TASK_TOOL);

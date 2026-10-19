@@ -723,6 +723,7 @@ export function installMock(): void {
         : { ok: true, path, kind: "code", bytes: 498, version: version ?? null, text: 'import rateLimit from "express-rate-limit";\n\nexport const loginLimiter = rateLimit({ windowMs: 60_000, max: 5 });\n' },
     artifactDiff: async (_threadId, path) =>
       `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1,3 +1,3 @@\n import rateLimit from "express-rate-limit";\n \n-export const loginLimiter = rateLimit({ windowMs: 60_000, max: 10 });\n+export const loginLimiter = rateLimit({ windowMs: 60_000, max: 5 });\n`,
+    teamMemberFile: async () => null,
   };
   window.unskilled = api;
 

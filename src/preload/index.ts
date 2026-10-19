@@ -123,6 +123,7 @@ const api: UnskilledApi = {
   pickExpertSource: (kind) => ipcRenderer.invoke("experts:pick-source", kind),
   setThreadExpert: (threadId, expertId) => ipcRenderer.invoke("threads:set-expert", threadId, expertId),
   readArtifact: (threadId, path, version) => ipcRenderer.invoke("artifacts:read", threadId, path, version),
+  teamMemberFile: (threadId, memberId) => ipcRenderer.invoke("team:member-file", threadId, memberId),
   artifactDiff: (threadId, path, version) => ipcRenderer.invoke("artifacts:diff", threadId, path, version),
   onUpdate: (listener) => {
     const handler = (_e: Electron.IpcRendererEvent, update: LiveUpdate) => listener(update);

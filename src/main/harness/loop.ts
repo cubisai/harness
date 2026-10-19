@@ -275,7 +275,7 @@ async function runOne(input: LoopInput, { call, tool }: Planned, recent: string[
 }
 
 function finish(input: LoopInput, { call, tool }: Planned, r: ToolResult, fails: Map<string, number>, nudge: { repeat: boolean }): LlmToolResult {
-  input.emit.event({ kind: "tool-result", toolUseId: call.id, isError: r.isError === true, summary: oneLine(r.text), payload: r.display?.result ?? r.text });
+  input.emit.event({ kind: "tool-result", toolUseId: call.id, isError: r.isError === true, summary: oneLine(r.text), payload: r.display?.result ?? r.text, ...(r.runUsage ? { runUsage: r.runUsage } : {}) });
   let text = r.text;
   if (r.isError === true) {
     const key = `${call.name}:${JSON.stringify(call.input)}`;
