@@ -106,8 +106,25 @@ describe("LearnedTab", () => {
     try {
       state.selectedProjectId = "p1";
       const html = renderToStaticMarkup(<LearnedTab overview={{ ...overview, enabled: false }} />);
-      expect(html).toContain("Self-improve is off for this project.");
+      expect(html).toContain("Off for this project.");
+      // Its own switch, with Off pressed.
+      expect(html).toContain('aria-label="Self-improve for this project"');
+      expect(html).toMatch(/class="on" aria-pressed="true">Off</);
       expect(html).toContain("Check the flaky test");
+    } finally {
+      state.selectedProjectId = saved;
+    }
+  });
+
+  it("shows On pressed and no off note when self-improve is on", async () => {
+    const { useStore, LearnedTab } = await render();
+    const state = useStore.getInitialState();
+    const saved = state.selectedProjectId;
+    try {
+      state.selectedProjectId = "p1";
+      const html = renderToStaticMarkup(<LearnedTab overview={{ ...overview, enabled: true }} />);
+      expect(html).toMatch(/class="on" aria-pressed="true">On</);
+      expect(html).not.toContain("Off for this project.");
     } finally {
       state.selectedProjectId = saved;
     }

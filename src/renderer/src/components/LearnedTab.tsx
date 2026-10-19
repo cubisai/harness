@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { GraduationCap, Pin } from "lucide-react";
-import type { LearnOverview, Lesson, LessonAction, LessonVerification } from "../../../shared/learn";
+import { LEARN_DEFAULTS, type LearnOverview, type Lesson, type LessonAction, type LessonVerification } from "../../../shared/learn";
 import { api } from "../api";
 import { useStore } from "../store";
 import "../styles/learned.css";
@@ -76,6 +76,7 @@ export function LearnedTab({ overview: initial }: { overview?: LearnOverview | n
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
+  const learnSettings = useStore((s) => s.settings?.learn);
 
   const reload = useCallback(() => {
     if (initial !== undefined || !projectId) return;
@@ -113,6 +114,21 @@ export function LearnedTab({ overview: initial }: { overview?: LearnOverview | n
     setNotice(null);
   };
 
+  // Self-improve is opt-in per project; this is its only switch.
+  const setEnabled = async (on: boolean) => {
+    if (!projectId) return;
+    const current = learnSettings ?? LEARN_DEFAULTS;
+    const others = current.enabledProjects.filter((id) => id !== projectId);
+    setError(null);
+    try {
+      const next = await api().updateSettings({ learn: { ...current, enabledProjects: on ? [...others, projectId] : others } });
+      useStore.setState({ settings: next });
+      reload();
+    } catch (err) {
+      setError(errorText(err));
+    }
+  };
+
   const act = async (target: Lesson, action: LearnAction) => {
     setError(null);
     if (action !== "verify") {
@@ -145,7 +161,17 @@ export function LearnedTab({ overview: initial }: { overview?: LearnOverview | n
           <span className="learned-meta">{`Today: ${compact(data.usedToday)} / ${compact(data.dailyTokens)} tokens`}</span>
         </div>
         <p className="learned-meta learned-cases">{`${data.cases.length} captured cases (${heldOut} held out)`}</p>
-        {!data.enabled && <p className="note learned-off">Self-improve is off for this project. Turn it on in Settings.</p>}
+        <div className="learned-switch">
+          <span className="label">Self-improve</span>
+          <div className="segmented" role="group" aria-label="Self-improve for this project">
+            {[true, false].map((on) => (
+              <button key={String(on)} type="button" className={data.enabled === on ? "on" : ""} aria-pressed={data.enabled === on} onClick={() => void setEnabled(on)}>
+                {on ? "On" : "Off"}
+              </button>
+            ))}
+          </div>
+        </div>
+        {!data.enabled && <p className="note learned-off">Off for this project. On, CubiQ scores each turn and turns failed ones into lessons on the background model, within the daily token budget.</p>}
         {sections.map((s) =>
           s.list.length ? (
             <div key={s.label}>
