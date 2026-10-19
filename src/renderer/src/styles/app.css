@@ -1517,6 +1517,8 @@ button.qc-option.other { cursor: pointer; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
+  /* `*` doesn't reach this pseudo-element: tool rows open without the height slide. */
+  details.tool::details-content { transition-duration: 1ms !important; }
 }
 
 /* ---------- browser pane ---------- */
