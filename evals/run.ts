@@ -6,6 +6,8 @@
 // --price <in>,<out> (USD per 1M tokens), --trend [--last <n>],
 // --report [--tier t] [--model m] [--vs <run file>] (re-render the newest run's HTML report, zero tokens),
 // --validate-graders [--task ids] (no model: a no-op must fail and evals/references/<task>.json must pass)
+// --stability [N] [--task ids] (no model: re-runs grader validation N times; exit 1 when a verdict flips)
+// --calibrate-judge <name> [--provider p] [--model m] (judges evals/judges/<name>.json's labelled examples, stores the report; exit 1 below the bar)
 // --split train|validation|holdout [--release] (only that split; the holdout is sealed unless --release),
 // --splits (no model: the split summary and any leakage across splits; exit 1 when there is any)
 // (zero tokens: pass/token history per tier+model from .ai/evals). Plan: .ai/plans/eval-framework.md.
@@ -20,6 +22,9 @@ import { incomplete } from "./lib/accounting";
 import { compareRuns, renderReport } from "./lib/report";
 import { runTask } from "./lib/runner";
 import { validateTask } from "./lib/validate";
+import { formatStability, stability } from "./lib/calibrate";
+import { askFor } from "./lib/ask";
+import { calibrate, isCalibrated, loadCalibration, MIN_ACCURACY, MIN_EXAMPLES } from "./lib/judge";
 import { runCheck } from "../src/main/check";
 import { AgentBrowserBackend, resolveAgentBrowser } from "../src/main/browser/agent-browser";
 import { RUN_MANIFEST_VERSION, type RunManifest } from "../src/shared/run-trace";
@@ -33,6 +38,7 @@ const FIXTURES = join(ROOT, "evals", "fixtures");
 const RESULTS = join(ROOT, ".ai", "evals");
 const BASELINE = join(ROOT, "evals", "baseline.json");
 const REFERENCES = join(ROOT, "evals", "references");
+const JUDGES = join(ROOT, "evals", "judges");
 const TRACES = join(RESULTS, "traces");
 /** Trace folders kept (newest runs); older ones are deleted at the start of a run. */
 const TRACE_RUNS_KEPT = 20;
@@ -103,6 +109,11 @@ function writeReport(run: RunResult, base: RunResult | null, baseLabel?: string)
 
 async function main(): Promise<number> {
   const f = flags(process.argv.slice(2));
+  // The grader command hook both --validate-graders and --stability grade through.
+  const checkRunner = () => async (command: string, cwd: string, timeoutMs: number) => {
+    const r = await runCheck(command, cwd, { timeoutMs });
+    return { ok: r.ok, exitCode: r.exitCode, tail: r.tail };
+  };
   if (f.has("report")) {
     const runs = listRuns(RESULTS).filter((r) => (!f.has("tier") || r.meta.tier === f.get("tier")) && (!f.has("model") || r.meta.model === f.get("model")));
     const run = runs[0];
@@ -130,16 +141,49 @@ async function main(): Promise<number> {
       const v = await validateTask(task, {
         fixturesRoot: FIXTURES,
         referencesRoot: REFERENCES,
-        runCommand: async (command, cwd, timeoutMs) => {
-          const r = await runCheck(command, cwd, { timeoutMs });
-          return { ok: r.ok, exitCode: r.exitCode, tail: r.tail };
-        },
+        runCommand: checkRunner(),
       });
       if (v.problems.length) bad++;
       console.log(`${v.problems.length ? "BAD " : "OK  "} ${task.id.padEnd(24)} ${v.problems.join("; ")}`);
       if (f.has("verbose") || v.problems.some((p) => p !== "no reference solution")) for (const line of [...v.noop.why.map((w) => `noop ${w}`), ...(v.reference?.why.map((w) => `ref  ${w}`) ?? [])]) console.log(`       ${line}`);
     }
     return bad ? 1 : 0;
+  }
+  if (f.has("stability")) {
+    const only = f.get("task")?.split(",");
+    const requested = Number(f.get("stability"));
+    // A missing or non-numeric N falls back to 3; a real one is clamped to 2..20.
+    const n = Number.isFinite(requested) ? Math.min(20, Math.max(2, Math.round(requested))) : 3;
+    let flaky = 0;
+    for (const task of loadTasks().filter((t) => !only || only.includes(t.id))) {
+      if (task.requires?.includes("team")) {
+        console.log(`skip ${task.id}: needs team, unavailable in the eval runner`);
+        continue;
+      }
+      const s = await stability(task, n, (t) => validateTask(t, { fixturesRoot: FIXTURES, referencesRoot: REFERENCES, runCommand: checkRunner() }));
+      if (s.flips.length) flaky++;
+      console.log(formatStability(s));
+    }
+    return flaky ? 1 : 0;
+  }
+  if (f.has("calibrate-judge")) {
+    const name = f.get("calibrate-judge")!;
+    const c = loadCalibration(JUDGES, name);
+    if (!c) {
+      console.error(`no calibration file: evals/judges/${name}.json`);
+      return 2;
+    }
+    if (c.examples.length < MIN_EXAMPLES) {
+      console.log(`BAD  ${name}: ${c.examples.length} labelled examples, needs at least ${MIN_EXAMPLES}`);
+      return 1;
+    }
+    const { model, ask } = askFor({ provider: f.get("provider"), model: f.get("model") });
+    const r = await calibrate(ask, c.rubric, c.examples);
+    const next = { ...c, report: { ...r, model, at: new Date().toISOString() } };
+    writeFileSync(join(JUDGES, `${name}.json`), `${JSON.stringify(next, null, 2)}\n`);
+    const ok = isCalibrated(next);
+    console.log(`${ok ? "OK  " : "BAD "} ${name}: accuracy ${r.accuracy.toFixed(2)} on ${r.n}, kappa ${r.agreement.toFixed(2)} (${model})${ok ? "" : ` — needs ≥ ${MIN_ACCURACY} to count`}`);
+    return ok ? 0 : 1;
   }
   if (f.has("splits")) {
     const tasks = loadTasks();
@@ -222,6 +266,8 @@ async function main(): Promise<number> {
   };
   pruneTraces();
   const trace = { dir: join(TRACES, manifest.runId), root: RESULTS, fidelity: setup.fidelity, redact: (text: string) => redact(text), sessionFile: setup.sessionFile };
+  // Judge graders get a model only when some task has one; an uncalibrated judge still leaves its trial ungraded.
+  const judge = tasks.some((t) => t.graders.some((g) => g.type === "judge")) ? { ask: askFor({ provider: f.get("provider") }).ask, root: JUDGES } : undefined;
   let spentTokens = 0;
   let spentUsd = 0;
   try {
@@ -236,7 +282,7 @@ async function main(): Promise<number> {
       const reused = f.has("force") ? [] : findCachedTrials(RESULTS, ck).slice(0, want);
       const fresh =
         reused.length < want
-          ? (await runTask({ task, fixturesRoot: FIXTURES, driver, model: setup.model, effort, skillDirs, price, keep: f.has("keep"), trials: want - reused.length, cacheKey: ck, trace, browser: () => (headless ? new AgentBrowserBackend({ session: `cubiq-eval-${randomUUID().slice(0, 8)}`, command: headless, screenshotDir: join(scratch, "shots") }) : null) })).trials
+          ? (await runTask({ task, fixturesRoot: FIXTURES, driver, model: setup.model, effort, skillDirs, price, keep: f.has("keep"), trials: want - reused.length, cacheKey: ck, trace, judge, browser: () => (headless ? new AgentBrowserBackend({ session: `cubiq-eval-${randomUUID().slice(0, 8)}`, command: headless, screenshotDir: join(scratch, "shots") }) : null) })).trials
           : [];
       const r = assembleTask(task, ck, want, reused, fresh);
       results.push(r);

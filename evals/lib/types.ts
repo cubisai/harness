@@ -36,7 +36,16 @@ export type Grader =
   /** The final answer text: every `contains` (case-insensitive) and `matches` (regex, i). */
   | { type: "answer"; contains?: string[]; matches?: string; required?: boolean; weight?: number }
   /** Each "server/tool" in expect was called and its result came back (sentinel seen). */
-  | { type: "mcp"; expect: string[]; required?: boolean; weight?: number };
+  | { type: "mcp"; expect: string[]; required?: boolean; weight?: number }
+  /** A model judge; counts only when its calibration file shows accuracy ≥ 0.85 on ≥ 10 labelled examples. */
+  | {
+      type: "judge";
+      rubric: string;
+      /** Calibration file name under evals/judges/, without .json. */
+      calibration: string;
+      required?: boolean;
+      weight?: number;
+    };
 
 export interface Task {
   id: string;
@@ -101,6 +110,10 @@ export interface GradeInput {
   mcpSentinels?: Map<string, string>;
   /** Runs a grader command in `dir`; injected so tests need no shell. */
   runCommand(command: string, cwd: string, timeoutMs: number): Promise<{ ok: boolean; exitCode: number | null; tail: string }>;
+  /** One model call for judge graders; absent = judges are ungraded. */
+  ask?: (prompt: string) => Promise<string>;
+  /** Folder holding judge calibration files (evals/judges). */
+  judgesRoot?: string;
 }
 
 /** What a trial hands its driver before the first turn: memory text and mock MCP servers. */
@@ -116,6 +129,8 @@ export interface GraderResult {
   weight: number;
   /** One line: why it passed or failed. */
   why: string;
+  /** The grader couldn't give a verdict (e.g. an uncalibrated judge): the trial is ungraded, not failed. */
+  ungraded?: boolean;
 }
 
 /**

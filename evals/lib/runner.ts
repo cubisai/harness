@@ -39,6 +39,8 @@ export interface TrialOptions {
   keep?: boolean;
   /** Injected in tests; defaults to runCheck. */
   runCommand?: GradeInput["runCommand"];
+  /** A model and calibration folder for judge graders; absent = judges leave the trial ungraded. */
+  judge?: { ask: (prompt: string) => Promise<string>; root: string };
   /** Write a full trace per trial here (redacted); its path relative to `traceRoot` goes on the result. */
   trace?: { dir: string; root: string; fidelity: string; redact(text: string): string; sessionFile?(sessionId: string): string | null };
 }
@@ -67,10 +69,10 @@ export function compact(e: ThreadEvent): CompactEvent | null {
 }
 
 /** How a trial ended; only a graded, error-free run whose required graders pass is "passed". */
-export function trialStatus(o: { harnessError: string | null; graders: number; pass: boolean; overBudget: boolean; cancelled?: boolean }): TrialStatus {
+export function trialStatus(o: { harnessError: string | null; graders: number; pass: boolean; overBudget: boolean; cancelled?: boolean; ungraded?: boolean }): TrialStatus {
   if (o.harnessError) return "harness-error";
   if (o.cancelled) return "cancelled";
-  if (o.graders === 0) return "ungraded";
+  if (o.graders === 0 || o.ungraded) return "ungraded";
   if (o.pass) return "passed";
   return o.overBudget ? "budget-stop" : "failed";
 }
@@ -207,7 +209,7 @@ export async function runTrial(o: TrialOptions): Promise<TrialResult> {
     const raw = JSON.stringify(events);
     for (const sentinel of kit.sentinels.keys()) if (raw.includes(sentinel)) compacted.push({ kind: "mcp-result", text: sentinel });
   }
-  const graders = await grade({ task, events: compacted, dir, fixtureDir, overBudget, sentinels, mcpSentinels: kit?.sentinels, runCommand: o.runCommand ?? defaultRunCommand });
+  const graders = await grade({ task, events: compacted, dir, fixtureDir, overBudget, sentinels, mcpSentinels: kit?.sentinels, runCommand: o.runCommand ?? defaultRunCommand, ...(o.judge ? { ask: o.judge.ask, judgesRoot: o.judge.root } : {}) });
   const graded = score(graders);
 
   // Multi-turn trials fold every root turn-end; a child's turn-end only covers its own subagent.
@@ -221,7 +223,7 @@ export async function runTrial(o: TrialOptions): Promise<TrialResult> {
   const costCoverage: Coverage = reportedCost !== null ? "reported" : costUsd !== null ? "estimated" : "unavailable";
   const usageCoverage: Coverage = ends.length && ends.every((e) => typeof e.inputTokens === "number") ? "reported" : liveInput > 0 ? "estimated" : "unavailable";
   const harnessError = thrown ?? errorText?.message.slice(0, 300) ?? null;
-  const status = trialStatus({ harnessError, graders: graders.length, pass: graded.pass, overBudget });
+  const status = trialStatus({ harnessError, graders: graders.length, pass: graded.pass, overBudget, ungraded: graders.some((g) => g.ungraded) });
 
   const trialId = randomUUID();
   const spans = spansOf(timed);
