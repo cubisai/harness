@@ -33,6 +33,8 @@ export interface BrowserBackend {
   click(ref: string, wait?: WaitFor): Promise<string>;
   type(ref: string, text: string, submit: boolean, wait?: WaitFor): Promise<string>;
   evaluate(expression: string): Promise<string>;
+  /** Evaluate a read-only expression for the harness itself (not the agent): no takeover check, no action announced; the raw value. */
+  query(expression: string): Promise<unknown>;
   /** Logs since the page loaded, or only those since the last read with newOnly. */
   logs(clear: boolean, newOnly?: boolean): Promise<string>;
   screenshot(): Promise<{ path: string; png: Buffer }>;
@@ -132,6 +134,7 @@ export function visibleBackend(c: BrowserController): BrowserBackend {
     click: (ref, wait) => c.click(ref, wait),
     type: (ref, text, submit, wait) => c.type(ref, text, submit, wait),
     evaluate: (expression) => c.evaluateForAgent(expression),
+    query: (expression) => c.query(expression),
     logs: (clear, newOnly) => c.readLogs(clear, newOnly),
     screenshot: () => c.screenshot(),
   };

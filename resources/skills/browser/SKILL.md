@@ -13,17 +13,19 @@ The harness has a browser pane the user can see. You drive it with these tools (
 | `browser_snapshot` | The page as text with element refs like `e3`. Cheaper than a screenshot; use it first. `selector` limits it to part of the page, `interactive` to links, buttons and fields. |
 | `browser_click` / `browser_type` | Act on a ref from a snapshot. Give `wait_for` (`url`, `selector`, `text`) when the action navigates or loads content. |
 | `browser_logs` | Console errors and warnings, and failed network requests, since the page loaded. `new_only` gives only what's new since your last read. |
+| `browser_report` | Check the page against assertions (text, URL, an element's value or count) and get PASS/FAIL lines with the actual values, console/network errors and an optional screenshot. Use it to decide whether a UI change works. |
 | `browser_eval` | Run JavaScript in the page. Asks the user first in Ask mode. |
+| `dev_server` / `dev_server_start` | See the project's dev/start/serve/preview scripts and which ports already serve; start one as a background server CubiQ owns (asks first in Ask mode), stop only servers CubiQ started. |
 | `browser_screenshot` | Save a PNG (the user sees it in the pane). Returns the image only when you ask for it. |
 
 The pane opens by itself on the first call. If a tool says it couldn't open the pane, ask the user to open it (the globe button in the header, or Ctrl/Cmd+Shift+B), then retry.
 
 ## Checking a UI change
 
-1. Make sure the dev server runs. Look in `package.json` scripts for `dev`/`start`/`preview` and the port it prints. Start it in the background if it isn't running; don't block on it.
+1. Make sure the dev server runs: `dev_server` shows the scripts and which ports already serve. Open a running one; only call `dev_server_start` when nothing is serving.
 2. `browser_open` the page you changed. Read the snapshot: is the new element there, with the right text?
 3. `browser_logs`: fix any new console error or failed request before calling the change done.
-4. Interact the way a user would (`browser_click`, `browser_type`), then snapshot again to confirm the result.
+4. Interact the way a user would (`browser_click`, `browser_type`, with `wait_for` when the action loads something), then confirm the result with `browser_report` checks on the state that should have changed, not only a screenshot.
 5. For layout or visual changes, `browser_screenshot`, and try `device: "mobile"` when the page is meant to be responsive.
 
 An element keeps its ref while it stays on the page. When a ref is gone, the error names the likely replacement; check it's the element you meant before using it.

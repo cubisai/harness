@@ -391,6 +391,12 @@ export class BrowserController {
     return text === undefined ? "undefined" : text.length > 4000 ? `${text.slice(0, 4000)}… (truncated)` : text;
   }
 
+  /** Evaluate a read-only expression for the harness itself: no takeover check and no action announced. */
+  async query(expression: string): Promise<unknown> {
+    const wc = await this.page();
+    return this.evaluate<unknown>(wc, expression);
+  }
+
   /** The page's log lines since it loaded, or with newOnly only those since the agent's last read. */
   async readLogs(clear: boolean, newOnly = false): Promise<string> {
     await this.page();
