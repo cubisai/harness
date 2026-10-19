@@ -8,35 +8,65 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 
 **Rules:** one commit per point. Typecheck and the full vitest suite must be green before each commit. At the end of each phase that changes the app runtime, do one live turn each on Claude, Codex and OpenCode Zen.
 
-## Resume here (stopped 2026-10-19 on the Mac, session 3; start a new session from this section, on any PC)
+## Resume here (stopped 2026-10-19 on the Mac, session 4; start a new session from this section, on any PC)
 
-**Progress: all 41 points are implemented** and merged on `roadmap`. This session did P7.2, P7.3, P8.2, P8.3 and P8.4 (+ its Learned tab UI), in parallel worktrees (`roadmap-p7`, `roadmap-p8`, since removed).
-- **Checks on `roadmap` (Mac):** typecheck green, design:check 0 errors, vitest 3056 passed / 0 failed, `--validate-graders` 0 BAD, `--splits` no leakage, `--stability 3` 48 OK / 0 flaky, `electron-vite build` OK.
-- **Live this session (real app, agent-browser):**
-  - Automations: a Project brief run end to end on OpenCode Zen `deepseek-v4.1-flash-free`, Claude `sonnet` and Codex `gpt-6-luna`, all `succeeded`. The git cursor advances only after the delivery is confirmed, so a second run sees only new commits. Message Center rows and the dark-theme UI were checked, and a 900px window has no horizontal scroll.
-  - Learned tab: seeded lessons (then deleted); Retire → Undo and Verify ("no captured case") went through real IPC.
-  - The test automation "Project brief" on the scratch project `board-proj` (re-created as a git repo under an old scratchpad path) is left **disabled**.
-- **Owner decision (2026-10-19):** automations have a per-automation **Permissions** setting, default **Run unattended** (thread permission mode `full`, git guardrails on), or **Ask me first** (runs pause, show in the Message Center). An unknown agent id is refused on save; it used to fall back silently to the default agent (Claude Opus).
+**Progress:** all 41 points are implemented. Session 4 ran the Mac verification items and fixed what they turned up (8 commits, `b0ed3a4`…`03484b3`). Checks on `roadmap` (Mac): typecheck green, design:check 0 errors, vitest 3067 passed / 0 failed, `--validate-graders` all OK.
 
-**Left (verification only, no planned code):**
-1. **P5 phase end, real app:**
-   - the pane auto-opens from closed;
-   - user takeover pauses the agent;
-   - a `wait_for` click;
-   - `dev_server` status and start on a real Vite project;
-   - `browser_report` PASS/FAIL.
-2. **P6 phase end:** a live team turn each on Claude (sonnet), Codex and OpenCode Zen, with one member that sets `model`. Check the roster line, the strip tooltip (model + run history), and that a small ask isn't fanned out. Take a dark screenshot.
-3. **DESIGN §9 check of P2.1b/P2.3:** paged transcript and windowing.
-4. **P8 live (spends tokens):**
-   - one Verify of a real captured lesson: enable self-improve on a project, let a failed turn be captured, then Verify;
-   - one small `bun run eval:optimize --surface model-effort --try "effort=medium" --budget 1`.
-5. **Windows PC:** the per-phase Windows gate for P7/P8. Watch for `tar -xf` in replay's `materializeCase` and for CRLF in git output (the git source already splits on `\r?\n`).
-6. Merge `roadmap` into `m4`.
+**Verified live this session (real app, agent-browser):**
+- **P5 browser (Claude sonnet, scratch Vite project on :5183):**
+  - The pane auto-opens from closed.
+  - `dev_server` status, then `dev_server_start` (asks first, Allow Once), then status shows "owned by CubiQ".
+  - `browser_click` with `wait_for` text: "Waited 1516 ms" against a 1500 ms page delay.
+  - `browser_report`: 3 PASS + 1 intended FAIL, logs none.
+  - Takeover: clicking the overlay mid-turn makes the next `browser_click` refused with "The user took over…"; the lock resets at turn end. Reads (snapshots) still run while taken over, by design.
+- **P6 teams:** test teams `live-model-team` (Fact-Checker `model: haiku`) and `live-model-team-oc` (Fact-Checker `model: opencode/glm-5.3-flash-free`) sit in userData `experts/`.
+  - Claude: the member ran on `claude-haiku-5-5` (SDK subagent transcript); tooltip "haiku · done · 8.3 s".
+  - OpenCode Zen: member session model `glm-5.3-flash-free`, lead `deepseek-v4.1-flash-free` (opencode.db).
+  - Codex `gpt-6-luna`: roster says "(uses the lead's model on this agent)".
+  - Small asks were answered by the lead with no fan-out on all three engines.
+- **DESIGN §9 for P2.1b/P2.3:** a seeded thread "Long transcript (seeded, 400 turns)" in `vite-proj` (3200 events).
+  - It opens in 133 ms, windowed (27–83 segments mounted) and pinned to the bottom.
+  - The older page loads at the top and holds the reader's place.
+  - Light/dark both fine; at 900px no sideways scroll.
+  - At 900px the side panel auto-collapses per `clampLayout`. This was already the case, not a P2 change.
+
+**Fixed this session (from the owner's live feedback and the checks):**
+- Library category cards: measured to fit one row, so no clipped last card (`b0ed3a4`).
+- Team strip: the lead sits in a neutral seat, new token `--portrait-lead` (`b0ed3a4`).
+- Transcript disclosures (`3f028fe`, `8e543f2`):
+  - Opening or folding keeps the header still. Before, the pinned follow-observer jumped to the bottom, and folding near the end clamped the scroll; now a reserve shrinks as you scroll up.
+  - A plain click inside an open tool/work/thinking/subagent block folds it.
+  - Tool rows open in one step: no 180 ms height slide, no `content-visibility` placeholder (that caused a +8 px second step).
+  - `.thread-scroll` keeps `scrollbar-gutter: stable both-edges`, so the column no longer kicks left when the scrollbar appears.
+- Learned tab: a per-project Self-improve On/Off switch (`a1bd391`). It used to say "turn it on in Settings", where no control ever existed.
+- Self-improve revert detection: the window's deadline timer never saw an undo, because it fired exactly at expiry and skipped its own watch (`1e70412`). Before, only a next message within 10 minutes caught it.
+- Optimizer (`03484b3`):
+  - `run.ts --trials-all`. Before, only regression-tagged tasks repeated, so every candidate was rejected as "too-few-trials".
+  - It stops with `cost-unknown` after the train run when trials report no cost. `--price <in>,<out>`, or `--price 0,0` for a free model, lets it go on.
+
+**Left:**
+1. **P8 Verify of a real lesson:** self-improve is ON for `vite-proj`.
+   - The first captured case (`94f572416f4fbe8a`, grader "src/style.css left as you had it") landed in the held-out quarter, so no lesson was drafted.
+   - Repeat until a non-held-out case drafts a candidate on the background model (TokenHarbor DeepSeek): one edit turn in `vite-proj`, then `git checkout` the file and send a next message (or wait 10 minutes now). Then Library → Learned → Verify.
+2. **P8 optimizer live re-run** after `03484b3`:
+   - Expect `cost-unknown` without `--price` on TokenHarbor.
+   - With `--price` it should run 42 validation trials per candidate. A real run is ~100 trials, so use a free model with `--price 0,0` or a small `--try`.
+3. **Owner's open question:** "Load link previews" (Settings, under Interactive answers) only thumbnails links inside card-list blocks. The owner expects ChatGPT-style link/citation chips in normal replies. Ask what exactly they want before building.
+4. **Windows PC:** the per-phase gate for P7/P8 and this session's UI fixes. Watch `tar -xf` in replay's `materializeCase`, CRLF in git output, and the scrollbar gutter on Windows (classic scrollbars are always on there).
+5. Merge `roadmap` into `m4`. `m4` is an ancestor of `roadmap`, so it's a fast-forward.
+
+**Scratch state on the Mac (safe to delete):**
+- Project `vite-proj` (id `c0ffee00-…v17e`), inserted straight into `unskilled.db` because the add dialog is native; folder under the session-4 scratchpad.
+- Its seeded long thread and the test threads.
+- userData `experts/live-model-team*`.
+- `.env` in the worktree is a symlink to the main checkout's.
 
 **Known limits (by design, noted for later):**
 - The optimizer wires only the `prompt` (`--guide`) and `model-effort` surfaces; `skill-description` and `retrieval-profile` are rejected with a message.
 - Codex reports no cost, so an automation's budget can't pause a Codex run.
 - Lessons reach every engine through the frozen memory block (≤ 5 active ones, ranked pinned → helpful−harmful → newest), not per-prompt relevance.
+- `dev_server` status trusts a port probe, so it can't tell whose server is listening. In dev, CubiQ's own renderer holds :5173 (Vite's default), and a project on the default port looks "running (not started by CubiQ)".
+- Teams are single-engine: a member's `model` picks a model of the lead's engine (Claude alias, OpenCode provider/model); there is no cross-provider team.
 
 **What's in git:**
 - `origin/roadmap`: everything, plus this handoff.
