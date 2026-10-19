@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, ReactNode, RefObject } from "react";
 import { ChevronRight, Plus } from "lucide-react";
 import type { ExpertDef } from "../../../../shared/experts";
 import { api } from "../../api";
@@ -120,6 +120,29 @@ export function expertScenarios(defs: ExpertDef[]): { category: string; items: E
     }));
 }
 
+const SCENARIO_MIN = 200;
+const SCENARIO_GAP = 8;
+
+/** How many scenario cards fit one row at SCENARIO_MIN each, measured before paint; all of them until the row has a width. */
+function useScenarioColumns(row: RefObject<HTMLDivElement | null>, count: number): number {
+  const [cols, setCols] = useState(count);
+  useLayoutEffect(() => {
+    const el = row.current;
+    if (!el) return;
+    const measure = () => {
+      const style = getComputedStyle(el);
+      const width = el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      setCols(width > 0 ? Math.max(1, Math.min(count, Math.floor((width + SCENARIO_GAP) / (SCENARIO_MIN + SCENARIO_GAP)))) : count);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [row, count]);
+  return cols;
+}
+
 interface ExpertCardProps {
   def: ExpertDef;
   canSummon: boolean;
@@ -211,6 +234,8 @@ export function ExpertCenter({ engines }: { engines?: (query: string) => ReactNo
   }, [defs]);
   const categories = useMemo(() => ["All", ...categoriesOf(defs), "Engines"], [defs]);
   const scenarios = useMemo(() => expertScenarios(defs), [defs]);
+  const scenarioRow = useRef<HTMLDivElement>(null);
+  const scenarioCols = useScenarioColumns(scenarioRow, scenarios.length);
   const shown = useMemo(
     () => filterDefs(defs, { query, kind, category, sort, myExperts, usage }),
     [defs, query, kind, category, sort, myExperts, usage],
@@ -251,8 +276,8 @@ export function ExpertCenter({ engines }: { engines?: (query: string) => ReactNo
       </div>
 
       {scenarios.length > 0 && (
-        <div className="xc-scenarios">
-          {scenarios.map((s) => (
+        <div ref={scenarioRow} className="xc-scenarios" style={{ "--xc-cols": scenarioCols } as CSSProperties}>
+          {scenarios.slice(0, scenarioCols).map((s) => (
             <div key={s.category} className="xc-scenario">
               <h4>{s.category}</h4>
               {s.items.map((d) => (

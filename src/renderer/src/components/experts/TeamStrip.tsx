@@ -117,7 +117,9 @@ export function TeamStripView({
       <span className={`team-strip-lead${leadOn ? " active" : ""}`} title={`${def.persona || def.name} · ${def.profession}${leadOn ? " · working" : ""}`} {...(leadOn ? { "aria-current": "true" as const } : {})}>
         <span className="team-strip-face">
           {leadOn && <Beam />}
-          <ExpertAvatar id={def.id} text={def.avatarText} className="team-strip-avatar" />
+          <span className="team-strip-tint" data-tint="lead">
+            <ExpertAvatar id={def.id} text={def.avatarText} className="team-strip-avatar" />
+          </span>
         </span>
         <span>Lead</span>
       </span>

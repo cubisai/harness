@@ -64,23 +64,23 @@
 
 | Token | Light | Dark | Line |
 | --- | --- | --- | --- |
-| `--radius-s` | `6px` | — | 88 |
-| `--radius-m` | `8px` | — | 89 |
-| `--radius-l` | `10px` | — | 90 |
+| `--radius-s` | `6px` | — | 89 |
+| `--radius-m` | `8px` | — | 90 |
+| `--radius-l` | `10px` | — | 91 |
 
 ## Layout
 
 | Token | Light | Dark | Line |
 | --- | --- | --- | --- |
-| `--titlebar` | `46px` | — | 91 |
-| `--sidebar-w` | `248px` | — | 92 |
-| `--inspector-w` | `430px` | — | 93 |
+| `--titlebar` | `46px` | — | 92 |
+| `--sidebar-w` | `248px` | — | 93 |
+| `--inspector-w` | `430px` | — | 94 |
 
 ## Motion
 
 | Token | Light | Dark | Line |
 | --- | --- | --- | --- |
-| `--ease` | `cubic-bezier(0.2, 0.8, 0.2, 1)` | — | 94 |
+| `--ease` | `cubic-bezier(0.2, 0.8, 0.2, 1)` | — | 95 |
 
 ## Other
 
@@ -99,6 +99,7 @@
 | `--portrait-4` | `#e7dcff` | `#b5a3e3` | 84 |
 | `--portrait-5` | `#fff0c2` | `#d8bf78` | 85 |
 | `--portrait-6` | `#d2f1ed` | `#8fc7bf` | 86 |
+| `--portrait-lead` | `#e4e4e0` | `#b8b8b2` | 87 |
 
 ## Aliases
 

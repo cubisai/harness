@@ -84,6 +84,7 @@
   --portrait-4: #e7dcff;
   --portrait-5: #fff0c2;
   --portrait-6: #d2f1ed;
+  --portrait-lead: #e4e4e0;
 
   --radius-s: 6px;
   --radius-m: 8px;
@@ -148,6 +149,7 @@
     --portrait-4: #b5a3e3;
     --portrait-5: #d8bf78;
     --portrait-6: #8fc7bf;
+    --portrait-lead: #b8b8b2;
   }
 }
 
@@ -203,6 +205,7 @@
   --portrait-4: #b5a3e3;
   --portrait-5: #d8bf78;
   --portrait-6: #8fc7bf;
+  --portrait-lead: #b8b8b2;
 }
 
 * { box-sizing: border-box; }
@@ -2337,19 +2340,17 @@ button.hunk:hover { color: var(--text); }
   color: var(--text);
 }
 
+/* As many category cards as fit one row (measured), sharing its width; the rest stay reachable through the category pills. */
 .xc-scenarios {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(var(--xc-cols, 4), minmax(0, 1fr));
   gap: 8px;
-  overflow-x: auto;
   padding: 12px 20px;
   border-bottom: 1px solid var(--hairline);
   background: var(--bg);
-  scrollbar-width: none;
 }
-.xc-scenarios::-webkit-scrollbar { display: none; }
 .xc-scenario {
-  flex: 0 0 240px;
-  width: 240px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -2616,6 +2617,7 @@ img.expert-intro-member.expert-avatar-img { border: 1px solid var(--bg-elevated)
 .team-strip-tint[data-tint="4"] { background: var(--portrait-4); }
 .team-strip-tint[data-tint="5"] { background: var(--portrait-5); }
 .team-strip-tint[data-tint="6"] { background: var(--portrait-6); }
+.team-strip-tint[data-tint="lead"] { background: var(--portrait-lead); }
 .team-strip-member {
   display: inline-flex;
   padding: 0;
