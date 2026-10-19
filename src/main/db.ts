@@ -281,6 +281,66 @@ export class Store {
         );
         CREATE INDEX background_runs_project_day ON background_runs (project_id, day, purpose)`,
       },
+      // 29: scheduled automations: definitions, runs (one row per scheduled instant), per-source cursors and deliveries.
+      {
+        applied: () => this.hasTable("automations"),
+        sql: `CREATE TABLE IF NOT EXISTS automations (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          template TEXT NOT NULL,
+          prompt TEXT NOT NULL,
+          schedule TEXT NOT NULL,
+          missed TEXT NOT NULL,
+          enabled INTEGER NOT NULL,
+          agent TEXT,
+          model TEXT,
+          budget_usd REAL,
+          config_version INTEGER NOT NULL,
+          anchor INTEGER NOT NULL,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS automation_runs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          automation_id TEXT NOT NULL,
+          run_key TEXT NOT NULL UNIQUE,
+          scheduled_at INTEGER NOT NULL,
+          status TEXT NOT NULL,
+          thread_id TEXT,
+          lease_until INTEGER,
+          config_version INTEGER NOT NULL,
+          cost_usd REAL,
+          input_tokens INTEGER,
+          output_tokens INTEGER,
+          started_at INTEGER,
+          ended_at INTEGER,
+          checkpoint TEXT,
+          result TEXT,
+          error TEXT,
+          created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS automation_runs_by_automation ON automation_runs (automation_id, scheduled_at);
+        CREATE TABLE IF NOT EXISTS automation_cursors (
+          automation_id TEXT NOT NULL,
+          source TEXT NOT NULL,
+          bookmark TEXT,
+          last_ok_at INTEGER,
+          last_status TEXT NOT NULL,
+          last_error TEXT,
+          updated_at INTEGER NOT NULL,
+          PRIMARY KEY (automation_id, source)
+        );
+        CREATE TABLE IF NOT EXISTS automation_deliveries (
+          idempotency_key TEXT PRIMARY KEY,
+          run_id INTEGER NOT NULL,
+          destination TEXT NOT NULL,
+          state TEXT NOT NULL,
+          receipt TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )`,
+      },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;
