@@ -569,6 +569,9 @@ export function installMock(): void {
       memoryIndex: null,
     }),
     learnScores: async () => [],
+    learnOverview: async () => ({ enabled: false, background: null, dailyTokens: 50_000, usedToday: 0, trend: [], lessons: [], cases: [] }),
+    learnSetLesson: async () => null,
+    learnVerify: async () => null,
     memoryOverview: async () => memoryView(),
     memoryRead: async (_projectId, file, scope) => {
       const note = notesFor(scope).find((n) => n.file === file);

@@ -4,7 +4,7 @@
 import type { PrototypeTier } from "./tiers";
 import type { ExpertDef, ExpertImportResult } from "./experts";
 import type { CommentTarget, DesignComment } from "./comments";
-import type { LearnCase, LearnOverview, LearnSettings, Lesson, TurnScore } from "./learn";
+import type { LearnCase, LearnOverview, LearnSettings, Lesson, LessonAction, TurnScore } from "./learn";
 
 export type Invocation = "model" | "user";
 
@@ -1196,6 +1196,12 @@ export interface UnskilledApi {
   memoryImport(projectId: string): Promise<number>;
   /** Self-improve: a thread's turn scores (empty when its project isn't opted in). */
   learnScores(threadId: string): Promise<TurnScore[]>;
+  /** The Learned tab: lessons, captured cases, budget and the 14-day health trend for one project. */
+  learnOverview(projectId: string): Promise<LearnOverview>;
+  /** Retire, undo, pin, unpin or drop a lesson; null when the action doesn't apply to its status. */
+  learnSetLesson(id: string, action: LessonAction): Promise<Lesson | null>;
+  /** Replay the lesson's case with and without it, check transfer, and promote it only on both. */
+  learnVerify(id: string): Promise<Lesson | null>;
   /** Rate limits reported so far, by agent. */
   listLimits(): Promise<AgentLimits[]>;
   /** Every skill discovered for the project (or globally): the whole list, shadowed and disabled included. */

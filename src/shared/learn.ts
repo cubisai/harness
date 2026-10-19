@@ -32,6 +32,9 @@ export interface TurnScore {
 
 export type LessonStatus = "candidate" | "active" | "retired" | "dropped";
 
+/** What the user can do to a lesson from the Learned tab. */
+export type LessonAction = "retire" | "undo" | "pin" | "unpin" | "drop";
+
 /** Where a lesson applies: paths (globs or prefixes) and prompt keywords; both empty = everywhere in the project. */
 export interface LessonScope {
   paths: string[];

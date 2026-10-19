@@ -8,12 +8,13 @@
 import { randomUUID } from "node:crypto";
 import type { Thread } from "../../shared/types";
 import type { LiveUpdate } from "../../shared/types";
-import { LEARN_DEFAULTS, type LearnSettings, type Lesson, type TurnScore, type TurnSignal } from "../../shared/learn";
+import { LEARN_DEFAULTS, type LearnOverview, type LearnSettings, type Lesson, type LessonAction, type LessonVerification, type TurnScore, type TurnSignal } from "../../shared/learn";
 import type { AgentDriver } from "../agents/types";
 import { backgroundShot, estimateTokens, pickBackground } from "./background";
-import { captureCase } from "./cases";
+import { captureCase, caseView, listCases } from "./cases";
 import type { LearnDb, ScoreRow } from "./db";
 import { buildDraftPrompt, findDuplicate, parseLesson, pulledOutsideContent } from "./draft";
+import { applyAction, autoRetire, countOutcome, lessonsBlock, relevantLessons, revalidation, type Runtime } from "./lifecycle";
 import { healthOf, isCorrection, mergeSignals, roundSignals } from "./signals";
 import { fileBytes, preBytes, sha256, snapshotPre, type PreTurn } from "./snapshot";
 
@@ -47,6 +48,10 @@ export interface TurnRecord {
 export interface Learner {
   /** Whether self-improve is on for this project. */
   enabled(projectId: string): boolean;
+  /** The active lessons' prompt block for a turn, remembering the ids a thread was sent; null when off. */
+  lessonsBlockFor(projectId: string, threadId?: string): string | null;
+  /** The lesson ids last sent to a thread. */
+  injectedFor(threadId: string): string[];
   /** Snapshot the tree before a turn; null when off or outside git. */
   beforeTurn(t: { thread: Thread; cwd: string }): Promise<PreTurn | null>;
   /** The user sent a new message (not a fix round): a correction marks the turn before it. */
@@ -54,6 +59,14 @@ export interface Learner {
   afterTurn(rec: TurnRecord, pre: PreTurn | null): Promise<void>;
   /** A thread's scores, for the health dots. */
   scores(threadId: string): TurnScore[];
+  /** The Learned tab's data for one project. */
+  overview(projectId: string): LearnOverview;
+  /** Apply a Learned-tab action to a lesson; null when it doesn't apply. */
+  setLesson(id: string, action: LessonAction): Lesson | null;
+  /** Replay the lesson's case and promote or leave it; null without a verifier or lesson. */
+  verify(id: string): Promise<Lesson | null>;
+  /** Demote active lessons whose verification no longer holds; how many moved. */
+  revalidate(projectIds: string[], appVersion: string): number;
   dispose(): void;
 }
 
@@ -71,6 +84,8 @@ export interface LearnerDeps {
   checkCommand?: (projectId: string) => string | null;
   /** One-line notes the project already keeps (memory), so a lesson doesn't repeat one. */
   existing?: (projectId: string) => string[];
+  /** Replay a lesson's case and report the verdict (S3); absent = verification is off. */
+  verifyLesson?: (l: Lesson) => Promise<{ verification: LessonVerification | null; promote: boolean; why: string; tokens: number } | null>;
   now?: () => number;
   /** How long after a turn its edits count as reverted when undone (default 10 min). */
   revertWindowMs?: number;
@@ -106,6 +121,9 @@ const WATCH_PATHS = 20;
 const RECENT_TURNS = 30;
 const RECENT_TREES = 5;
 const DRAFT_TIMEOUT_MS = 120_000;
+/** Days the Learned tab's trend covers, and one day's milliseconds. */
+const TREND_DAYS = 14;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const keyOf = (threadId: string, userSeq: number): string => `${threadId}:${userSeq}`;
 export const today = (t: number): string => new Date(t).toISOString().slice(0, 10);
@@ -120,6 +138,8 @@ export function createLearner(deps: LearnerDeps): Learner {
   const watches = new Map<string, Watch[]>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
   const recent = new Map<string, Recent>();
+  /** The lesson ids last sent to each thread, so a turn knows what to count. */
+  const injectedByThread = new Map<string, string[]>();
   /** Turns already sent to the drafter (one lesson attempt per turn). */
   const learned = new Set<string>();
   /** A corrected turn waits for the thread's next turn, whose answer (when healthy) is the contrast. */
@@ -432,6 +452,17 @@ export function createLearner(deps: LearnerDeps): Learner {
         }
         // A turn that failed on its own (a correction or revert can still arrive and add a contrast first).
         if (row.health === "fail") await learn(keyOf(rec.thread.id, rec.rootSeq), null);
+        // Lessons that rode this turn: count it once, at the root turn's end.
+        let changed = false;
+        for (const id of new Set(row.injected)) {
+          const l = deps.db.getLesson(id);
+          if (!l || l.status !== "active") continue;
+          const patch = countOutcome(l, row.health);
+          const retire = autoRetire({ ...l, ...patch });
+          deps.db.updateLesson(id, { ...patch, ...(retire ?? {}) });
+          changed = true;
+        }
+        if (changed) learnChanged(rec.thread.projectId);
       }
     } catch (err) {
       log(`learn: scoring failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -440,6 +471,21 @@ export function createLearner(deps: LearnerDeps): Learner {
 
   return {
     enabled,
+
+    lessonsBlockFor(projectId, threadId) {
+      try {
+        if (!enabled(projectId)) return null;
+        const lessons = relevantLessons(deps.db.lessons(projectId, ["active"]));
+        if (threadId) injectedByThread.set(threadId, lessons.map((l) => l.id));
+        return lessonsBlock(lessons);
+      } catch {
+        return null;
+      }
+    },
+
+    injectedFor(threadId) {
+      return injectedByThread.get(threadId) ?? [];
+    },
 
     async beforeTurn({ thread, cwd }) {
       if (!enabled(thread.projectId)) return null;
@@ -473,6 +519,73 @@ export function createLearner(deps: LearnerDeps): Learner {
       } catch {
         return [];
       }
+    },
+
+    overview(projectId) {
+      const s = settings();
+      const bg = pickBackground({ learn: s, projectId, drivers: deps.drivers?.() ?? [] });
+      const byDay = new Map<string, { day: string; ok: number; warn: number; fail: number }>();
+      for (const row of deps.db.projectScores(projectId, now() - TREND_DAYS * DAY_MS)) {
+        const day = today(row.createdAt);
+        const entry = byDay.get(day) ?? { day, ok: 0, warn: 0, fail: 0 };
+        entry[row.health]++;
+        byDay.set(day, entry);
+      }
+      return {
+        enabled: enabled(projectId),
+        background: bg ? { agent: bg.driver.id, model: bg.model, label: bg.label } : null,
+        dailyTokens: s.dailyTokens,
+        usedToday: deps.db.spent(projectId, today(now())),
+        trend: [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day)),
+        lessons: deps.db.lessons(projectId),
+        cases: deps.casesRoot ? listCases(deps.casesRoot(projectId)).map(caseView) : [],
+      };
+    },
+
+    setLesson(id, action) {
+      const lesson = deps.db.getLesson(id);
+      if (!lesson) return null;
+      const patch = applyAction(lesson, action);
+      if (!patch) return null;
+      const updated = deps.db.updateLesson(id, patch);
+      learnChanged(lesson.projectId);
+      return updated;
+    },
+
+    async verify(id) {
+      const verifyLesson = deps.verifyLesson;
+      if (!verifyLesson) return null;
+      const lesson = deps.db.getLesson(id);
+      if (!lesson) return null;
+      const result = await verifyLesson(lesson);
+      if (!result) return null;
+      const updated = deps.db.updateLesson(id, {
+        tries: lesson.tries + 1,
+        verified: result.verification ?? lesson.verified,
+        status: result.promote ? "active" : lesson.status,
+        note: result.promote ? null : result.why,
+      });
+      learnChanged(lesson.projectId);
+      return updated;
+    },
+
+    revalidate(projectIds, appVersion) {
+      let moved = 0;
+      for (const projectId of projectIds) {
+        const bg = pickBackground({ learn: settings(), projectId, drivers: deps.drivers?.() ?? [] });
+        if (!bg) continue;
+        const rt: Runtime = { model: bg.model, agent: bg.driver.id, appVersion };
+        let changed = false;
+        for (const lesson of deps.db.lessons(projectId, ["active"])) {
+          const reason = revalidation(lesson, rt);
+          if (reason === null) continue;
+          deps.db.updateLesson(lesson.id, { status: "candidate", note: `revalidate: ${reason}` });
+          moved++;
+          changed = true;
+        }
+        if (changed) learnChanged(projectId);
+      }
+      return moved;
     },
 
     dispose() {
