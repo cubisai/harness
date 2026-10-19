@@ -639,6 +639,9 @@ export function installMock(): void {
       const a = automations.find((x) => x.id === id);
       return a?.lastRun ? [a.lastRun] : [];
     },
+    learnOverview: async () => ({ enabled: false, background: null, dailyTokens: 50_000, usedToday: 0, trend: [], lessons: [], cases: [] }),
+    learnSetLesson: async () => null,
+    learnVerify: async () => null,
     memoryOverview: async () => memoryView(),
     memoryRead: async (_projectId, file, scope) => {
       const note = notesFor(scope).find((n) => n.file === file);

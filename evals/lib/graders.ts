@@ -4,9 +4,10 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { claimsPass, ranChecks } from "../../src/main/evidence";
+import { isCalibrated, judgeOnce, loadCalibration, transcriptOf } from "./judge";
 import type { CompactEvent, GradeInput, Grader, GraderResult } from "./types";
 
-type Verdict = { pass: boolean; why: string };
+type Verdict = { pass: boolean; why: string; ungraded?: boolean };
 
 const readText = (path: string): string | null => {
   try {
@@ -110,6 +111,18 @@ function gradeAnswer(g: Extract<Grader, { type: "answer" }>, events: CompactEven
   return { pass: true, why: "answer ok" };
 }
 
+/** A calibrated judge grades; anything else leaves the trial ungraded rather than failed. */
+async function gradeJudge(g: Extract<Grader, { type: "judge" }>, input: GradeInput): Promise<Verdict> {
+  if (!input.ask || !input.judgesRoot) return { pass: false, why: "judge has no model", ungraded: true };
+  const c = loadCalibration(input.judgesRoot, g.calibration);
+  if (!isCalibrated(c, g.rubric)) {
+    const why = c && c.rubric.trim() !== g.rubric.trim() ? `judge uncalibrated (${g.calibration}: calibrated on another rubric)` : c?.report ? `judge uncalibrated (${g.calibration}: accuracy ${c.report.accuracy} on ${c.report.n})` : `judge uncalibrated (${g.calibration}: no calibration report)`;
+    return { pass: false, why, ungraded: true };
+  }
+  const v = await judgeOnce(input.ask, g.rubric, transcriptOf(input.events));
+  return v.invalid ? { pass: false, why: v.why, ungraded: true } : { pass: v.pass, why: v.why };
+}
+
 export async function grade(input: GradeInput): Promise<GraderResult[]> {
   const run = async (g: Grader): Promise<Verdict> => {
     switch (g.type) {
@@ -127,6 +140,8 @@ export async function grade(input: GradeInput): Promise<GraderResult[]> {
         return gradeAnswer(g, input.events);
       case "mcp":
         return gradeMcp(g, input);
+      case "judge":
+        return gradeJudge(g, input);
       case "budget":
         return { pass: !input.overBudget, why: input.overBudget ? "over budget" : "within budget" };
     }
@@ -134,7 +149,9 @@ export async function grade(input: GradeInput): Promise<GraderResult[]> {
   const out: GraderResult[] = [];
   for (const g of input.task.graders) {
     const v = await run(g);
-    out.push({ type: g.type, pass: v.pass, required: g.required ?? true, weight: g.weight ?? 1, why: v.why });
+    const result: GraderResult = { type: g.type, pass: v.pass, required: g.required ?? true, weight: g.weight ?? 1, why: v.why };
+    if (v.ungraded) result.ungraded = true;
+    out.push(result);
   }
   return out;
 }

@@ -1028,7 +1028,7 @@ export class Service {
               steps: toolCalls,
               tokens: turnTokens,
               changed,
-              injected: [],
+              injected: learner.injectedFor?.(thread.id) ?? [],
             },
             pre,
           );

@@ -64,8 +64,10 @@ import { buildContextPreview, mcpRow, skillsOf, toolTokens } from "./context-pre
 import { createMemory, memoryOn, memoryPrompt } from "./memory";
 import { createMemoryApi } from "./memory/api";
 import { createExtractor } from "./memory/extractor";
-import { createLearner, today } from "./learn";
+import { createLearner, type Learner, today } from "./learn";
 import { LearnDb } from "./learn/db";
+import { createVerifier } from "./learn/verify-app";
+import type { LessonAction } from "../shared/learn";
 import { MemorySnapshots, PENDING_SESSION } from "./memory/snapshot";
 import { MEMORY_READ_TOOL, MEMORY_WRITE_TOOL, memoryReadTool, memoryWriteTool } from "./memory/tool";
 import { askUserTool, questionAnswerOf } from "./questions";
@@ -465,18 +467,29 @@ async function main(): Promise<void> {
       // Best-effort housekeeping.
     }
   });
+  // The learner is created below, after memoryPromptFor needs it: a late-bound reference.
+  let learnerRef: Learner | null = null;
   /**
-   * The memory block every agent gets, or null when memory is off. With a
-   * thread it's frozen per agent session (null sessionKey = a new session), so
-   * a note written mid-session never changes the prompt the cache was built on.
-   * Never throws: memory must not block a turn.
+   * The memory block every agent gets, plus the project's active lessons, or
+   * null when both are empty. With a thread it's frozen per agent session (null
+   * sessionKey = a new session), so a note written mid-session never changes the
+   * prompt the cache was built on. Never throws: memory must not block a turn.
    */
   const memoryPromptFor = (projectId: string, threadId?: string, sessionKey?: string | null): string | null => {
     try {
-      if (!memoryOn(settings.get(), projectId)) return null;
-      memory.ensure(projectId, store.getProject(projectId).path);
-      const compute = () => memoryPrompt(memory.store.blockIndex(projectId).text);
-      return threadId ? memorySnapshots.get(threadId, sessionKey ?? PENDING_SESSION, compute) : compute();
+      const compute = (): string => {
+        const parts: string[] = [];
+        if (memoryOn(settings.get(), projectId)) {
+          memory.ensure(projectId, store.getProject(projectId).path);
+          const block = memoryPrompt(memory.store.blockIndex(projectId).text);
+          if (block) parts.push(block);
+        }
+        const lessons = learnerRef?.lessonsBlockFor(projectId, threadId);
+        if (lessons) parts.push(lessons);
+        return parts.join("\n\n");
+      };
+      const out = threadId ? memorySnapshots.get(threadId, sessionKey ?? PENDING_SESSION, compute) : compute();
+      return out || null;
     } catch {
       return null;
     }
@@ -1056,10 +1069,28 @@ async function main(): Promise<void> {
     casesRoot: (projectId) => join(userData, "learn", projectId, "cases"),
     checkCommand: (projectId) => store.getProject(projectId).checkCommand?.trim() || null,
     existing: (projectId) => memory.store.list(projectId).map((n) => n.description),
+    verifyLesson: createVerifier({
+      db: learnDb,
+      settings: () => settings.get().learn,
+      drivers: () => service.allDrivers(),
+      casesRoot: (projectId) => join(userData, "learn", projectId, "cases"),
+      projectPath: (projectId) => store.getProject(projectId).path,
+      appVersion: app.getVersion(),
+    }),
   });
+  learnerRef = learner;
   service.setLearner(learner);
   service.setMemoryUpdates((projectId, threadId) => memoryUpdateFor(projectId, threadId));
   ipcMain.handle("learn:scores", (_e, threadId: string) => learner.scores(threadId));
+  ipcMain.handle("learn:overview", (_e, projectId: string) => learner.overview(projectId));
+  ipcMain.handle("learn:set-lesson", (_e, id: string, action: LessonAction) => learner.setLesson(id, action));
+  ipcMain.handle("learn:verify", (_e, id: string) => learner.verify(id));
+  // Lessons verified on another model or app version go back to candidates at startup.
+  try {
+    learner.revalidate(store.listProjects().map((p) => p.id), app.getVersion());
+  } catch {
+    // Revalidation is best-effort.
+  }
 
   // The Library: skills, agents, and MCP servers, as the agents will see them.
   const catalogOfAgents = () =>
