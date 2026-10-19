@@ -10,11 +10,10 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 
 ## Resume here (stopped 2026-10-18; start a new session from this section, on any PC)
 
-**Progress:** 30 of 40 points done. 2026-10-19 (Mac): P6.1 finished on `roadmap-p6` (merged with `roadmap` first); not merged into `roadmap` yet. P1–P4 and P5.1–P5.3 are merged into `roadmap` and pushed to origin (green: typecheck, design:check, vitest with environment failures only, validate-graders, and live turns on Claude, Codex and OpenCode Zen).
+**Progress:** 31 of 41 points done (the table has 41 rows; P2.1 is split into a and b). 2026-10-19 (Mac): P6.1 finished and merged, then P5.4. Everything is on `roadmap`; the `roadmap-p6` branch is deleted locally and on origin. On `roadmap`: typecheck green, design:check 0 errors, vitest 2804 passed / 0 failed, validate-graders exit 0. Live turns on Claude, Codex and OpenCode Zen last ran after P5.3.
 
 **What's in git (everything needed is pushed):**
 - `origin/roadmap`: all finished work, and this handoff.
-- `origin/roadmap-p6`: commit `b65ea92`, "WIP P6.1": partial, UNVERIFIED edits with no tests (the worker was stopped for low memory). Never merge it as-is.
 - Plans and notes, force-added under the gitignored `.ai/` on `roadmap`:
   - `.ai/plans/roadmap-13.md`: the 40 points.
   - `.ai/plans/p2.md` … `p6.md`: per-phase plans with file:line evidence, change lists and notes.
@@ -25,12 +24,11 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 **Set up on another PC:**
 1. `git fetch origin`.
 2. Check out `roadmap` in your roadmap worktree (on the Mac that was `../aiharness-wt/roadmap`), then `bun install`. The roadmap added a pinned dependency, `quickjs-emscripten@0.32.0`.
-3. For P6: `git worktree add ../aiharness-wt/roadmap-p6 roadmap-p6`, `git merge roadmap` inside it (it branched before P2/P5 merged), then `bun install`.
-4. Check: `bun run typecheck` and `bunx vitest run`. The live `*-live` tests need `.env` keys; without them they fail as expected.
+3. Check: `bun run typecheck` and `bunx vitest run`. The live `*-live` tests need `.env` keys; without them they fail as expected.
 
 **Next, in order:**
-1. **P5.4:** readiness conditions, stale-ref detection, compact observations. Continue on `roadmap` (or a `roadmap-p5` worktree from it). See `.ai/plans/p5.md`.
-2. **Then:** P5.5, P6.2, P6.3. Merge P6, run live turns on Claude, Codex and OpenCode Zen, and do a real-app check of the browser auto-open and takeover.
+1. **P5.5:** dev-server detection/owned start/stop, `browser_report` result shape. See `.ai/plans/p5.md`. Then the P5 phase-end real-app check (pane auto-open from closed, takeover, a `wait_for` click).
+2. **Then:** P6.2, P6.3, on `roadmap` (or a worktree branched from it). run live turns on Claude, Codex and OpenCode Zen, and do a real-app check of the browser auto-open and takeover.
 3. **Then:** P7 (automations; needs P3 and P5), then P8 (needs P1 and P4).
 
 **Still owed (needs a person at the app):** the DESIGN §9 real-app check of P2.1b/P2.3 (paged transcript, "Show earlier messages", windowing): light/dark, a 900px window, keyboard, screenshot (`bun run dev`, a long thread).
@@ -41,7 +39,7 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 - Run one worker or track at a time unless the machine has memory to spare.
 
 ### Windows PC specifics (D:/Cubebis Work/ai-agent/)
-- **Local worktrees:** `harness-roadmap` (roadmap), plus `harness-roadmap-p2`…`-p6`. p2–p5 are merged and can be removed. `-p6` holds the WIP, now committed.
+- **Local worktrees:** `harness-roadmap` (roadmap), plus `harness-roadmap-p2`…`-p6`. All of p2–p6 are merged into roadmap and can be removed (`git worktree remove`); the `roadmap-p6` branch no longer exists on origin.
 - **Memory:** on 2026-10-18 the PC ran out of memory with 3–4 opencode workers, a vitest run and Chrome going at once; Claude Code killed the background jobs.
 - **Zen key:** the stored key in `~/.local/share/opencode/auth.json` has expired. Free models work without a key, so set `XDG_DATA_HOME` to an empty dir (`D:/ocz-a`…`D:/ocz-h`) so the old key isn't sent.
 - **opencode binary:** set `OPENCODE_BIN=C:/Users/laplop/.bun/bin/opencode.exe` (oc-run only looks under npm).
@@ -85,9 +83,9 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 | P5.1 Browser auto-open | done | `665281e` |
 | P5.2 Backend interface + headless agent-browser | done | `19ce7a8` |
 | P5.3 Target ownership + serialization | done | `93cc180` |
-| P5.4 Readiness, stale refs, compact observations | next | |
-| P5.5 Dev-server lifecycle + test reports | | |
-| P6.1 Member model/effort | done (roadmap-p6) | `b65ea92` + `40aa80b` |
+| P5.4 Readiness, stale refs, compact observations | done | `98df692` |
+| P5.5 Dev-server lifecycle + test reports | next | |
+| P6.1 Member model/effort | done | `b65ea92` + `40aa80b` |
 | P6.2–P6.3 | | |
 | P7.1–P7.3 | not started | |
 | P8.1–P8.4 | not started | |
@@ -241,11 +239,33 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 - P5.1–P5.3 merged into roadmap (2026-10-18): typecheck green; vitest 2761 passed, 9 failed (environment-only); validate-graders exit 0.
 
 ### P6.1 — member model/effort (2026-10-19, Mac)
-- On `roadmap-p6` after `git merge roadmap`. The WIP `b65ea92` was reviewed and kept as-is; `40aa80b` adds the rest.
+- Done on a `roadmap-p6` worktree after `git merge roadmap`, then merged back into `roadmap` (branch since deleted). The WIP `b65ea92` was reviewed and kept as-is; `40aa80b` adds the rest.
 - Member frontmatter `model` (id-safe, ≤ 120 chars) and `effort` (low/medium/high) reach `TeamAgent`.
   - Claude: SDK agent `model`. OpenCode: agent `model`. Codex: ignored.
   - Native: the driver's `routeFor(modelId)` resolves the member's own provider entry (route, wire id, reasoning). Effort is passed only when that model reasons. A model the provider doesn't list runs on the lead's, and the result ends "(ran on <lead>: <model> isn't offered by this provider)".
 - UI: the ExpertDetail roster shows "<model> · <effort>" in mono tertiary. The team strip tooltip names what a member actually runs on for the thread's agent, with "(uses the lead's model on this agent)" on Codex. Tooltips are unchanged for members without a model.
 - Tests: catalog parsing, teamAgents, the label/note helpers, Claude SDK agents, OpenCode injection, unchanged Codex roles, task-tool route/model/effort/fallback, a native driver end-to-end (mutation-checked), the roster line, and the strip tooltip. Written by a Zen DeepSeek implementer and Claude; Claude reviewed the diff.
-- Checks (Mac): typecheck green; design:check 0 errors; vitest 2784 passed, 1 failed. The failure is `eval-tasks` c-perf-quadratic: on the Mac the no-op dedupe beats the 2 s budget, so "a no-op passes". It fails the same without P6.1, so it needs a bigger N or a tighter budget for fast machines.
+- Checks (Mac): typecheck green; design:check 0 errors; vitest 2784 passed, 1 failed (c-perf-quadratic, fixed in `2fddc24`).
 - Owed at P6 end: a live team turn on Claude, Codex and OpenCode Zen with a member that sets `model`, plus a dark-theme screenshot of the roster line.
+
+### P5.4 — readiness, stale refs, compact observations (2026-10-19, Mac)
+- `backend.ts` holds the shared contract.
+  - `WaitFor { url, selector, text, timeoutMs }`: 5 s default, 30 s max.
+  - `waitScript`/`waitUntil`: one in-page promise, retried across a navigation until the deadline. `waitNote` writes the result line.
+  - Also `SnapshotOptions` + `scopeLines`, `staleRefMessage`, and `NO_LOGS`/`NO_NEW_LOGS`.
+- Tools:
+  - browser_open/click/type take `wait_for`. With it, the pane skips the fixed 250 ms settle and waits on the condition. The result gains "Waited N ms for …" or "…: not met. Now at <url>". Without it, nothing changes.
+  - browser_snapshot takes `selector` and `interactive`; browser_logs takes `new_only`. Defaults are unchanged.
+- Visible pane:
+  - collectPage keeps an element's ref across snapshots and numbers new ones from the controller's counter, which never resets (not even on navigation). A ref is never reused.
+  - A gone ref takes a fresh snapshot and names the same kind+name match without acting on it. A hidden one says so.
+- Headless:
+  - agent-browser renumbers e1… on every snapshot (probed on 0.35.2). The adapter hands out its own offset refs mapped to the latest snapshot.
+  - A stale ref gets the same message, with matches taken from a fresh snapshot.
+  - `snapshot -i -s` serves scope and interactive; console/errors counts serve new_only.
+- Tests:
+  - `test/browser-readiness.test.ts` covers the helpers and a fake-CDP controller (wait vs settle, ref counter, stale through the tool, log deltas over a full buffer). It also runs collectPage in a real page through agent-browser: stable refs, a replaced node gets a new ref, scope, delayed text.
+  - The agent-browser real-session test now runs on macOS/Linux too.
+- The headless half was written by a Zen DeepSeek implementer. Claude made its stale-ref lookup use a fresh snapshot and fixed the tests.
+- The browser skill doc mentions the new options and the auto-opening pane.
+- `2fddc24`: c-perf-quadratic's hidden test is 400k items (200k unique). The quadratic no-op took 1.0 s on the Mac and passed; now it takes about 7.9 s and fails, while the reference stays in ms.
