@@ -6,7 +6,7 @@
   "difficulty": "The function is correct but quadratic from indexOf on the growing output, so the fix has to replace the membership check with a Set without changing what stays or its order.",
   "fixture": "c-perf",
   "mode": "auto-edit",
-  "prompt": "dedupe() in src/dedupe.js is far too slow on big lists — it looks quadratic. Make it handle 200000 items quickly while keeping the same result: the first occurrence of each value wins and the original order is preserved.",
+  "prompt": "dedupe() in src/dedupe.js is far too slow on big lists — it looks quadratic. Make it handle 400000 items quickly while keeping the same result: the first occurrence of each value wins and the original order is preserved.",
   "graders": [
     { "type": "command", "run": "node --test test/perf-hidden.test.mjs", "timeoutMs": 30000 },
     { "type": "event", "noError": true, "noFalseClaim": true },
