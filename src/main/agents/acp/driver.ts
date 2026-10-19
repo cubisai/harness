@@ -18,6 +18,7 @@ import { ASK_USER_TOOL } from "../../questions";
 import { checkCommand } from "../../guard";
 import { RpcError, StdioRpc } from "../rpc";
 import { classifyOpenCodeLog } from "./opencode-log";
+import { startAskServer, type AskServer, type PluginAsk } from "./ask-server";
 import { exportTurnUsage } from "./opencode-usage";
 import { normalizeUsage } from "../../usage";
 import type { InjectionPlan } from "../../inject";
@@ -149,6 +150,20 @@ export function pickPermission(
   return "ask";
 }
 
+/**
+ * An edit or command OpenCode's CubiQ plugin asks about, decided like an ACP
+ * ask: Full allows, Auto-edit allows edits, Ask asks the user. Plan mode
+ * defers to OpenCode's own plan agent and its ACP asks, as before the plugin
+ * asked (null = defer).
+ */
+export async function decidePluginAsk(input: Pick<TurnInput, "permissionMode" | "requestPermission">, ask: PluginAsk): Promise<PermissionDecision | null> {
+  if (input.permissionMode === "plan") return null;
+  const picked = pickPermission(input.permissionMode, ask.kind);
+  if (picked === "allow") return "allow-once";
+  if (picked === "deny") return "deny";
+  return input.requestPermission({ toolName: kindLabel(ask.kind), summary: ask.summary || ask.tool, canAlwaysAllow: false });
+}
+
 export function optionFor(options: PermissionOption[], decision: PermissionDecision): string | undefined {
   const order: PermissionOption["kind"][] =
     decision === "allow-always" ? ["allow_always", "allow_once"] : decision === "allow-once" ? ["allow_once", "allow_always"] : ["reject_once", "reject_always"];
@@ -215,6 +230,8 @@ interface Live {
   authUrl: string | null;
   /** The app's tool server (with ask_user) is attached to this session. */
   askUser?: boolean;
+  /** Calls the CubiQ plugin already got an answer for: OpenCode's own ACP ask for one is allowed, not asked twice. */
+  approvedCalls: Set<string>;
   idleTimer?: NodeJS.Timeout;
 }
 
@@ -335,6 +352,20 @@ export function createAcpDriver(
   // Threads already told that a variant change restarted OpenCode.
   const variantNotified = new Set<string>();
   const effortViaVariants = config.effortVia === "opencode-variants";
+  // OpenCode asks over ACP only when its own config says "ask", and a user's agent can allow
+  // everything; its CubiQ plugin asks this server before every edit and command instead.
+  const pluginAsks = config.guardPlugin === "opencode";
+  let askServer: Promise<AskServer> | null = null;
+
+  /** One plugin ask from a thread's process: no live turn means nobody can approve it. */
+  const answerPluginAsk = async (l: Live | undefined, ask: PluginAsk): Promise<PermissionDecision> => {
+    const t = l?.turn;
+    if (!l || !t) return "deny";
+    const decision = await decidePluginAsk(t.input, ask);
+    if (decision === null) return "allow-once";
+    if (decision !== "deny" && ask.callID) l.approvedCalls.add(ask.callID);
+    return decision;
+  };
 
   /** Remember the model and thought-level lists a session's config options carry. */
   const rememberConfig = (options: ConfigOption[] | null | undefined, threadKey?: string) => {
@@ -683,6 +714,13 @@ export function createAcpDriver(
     const command = bare ? await resolvedCommandAsync(config.command) : config.command;
     // eslint-disable-next-line prefer-const
     let l: Live;
+    let asks: { server: AskServer; token: string } | null = null;
+    if (pluginAsks) {
+      const server = await (askServer ??= startAskServer());
+      asks = { server, token: server.register((ask) => answerPluginAsk(l, ask)) };
+      env.CUBIQ_ASK_URL = server.url;
+      env.CUBIQ_ASK_TOKEN = asks.token;
+    }
     const conn = StdioRpc.spawn(command, config.args, { cwd: input.cwd, env }, {
       onNotification: (method, params) => {
         if (method === "session/update") onUpdate(l, (params as { update: SessionUpdate }).update);
@@ -711,6 +749,8 @@ export function createAcpDriver(
         }
         const choose = async (): Promise<PermissionDecision> => {
           if (!t) return "deny";
+          // The user (or the mode) already answered this call through the CubiQ plugin.
+          if (l.approvedCalls.delete(p.toolCall.toolCallId)) return "allow-once";
           const picked = pickPermission(t.input.permissionMode, p.toolCall.kind);
           if (picked === "allow") return "allow-once";
           // The harness's own safe tools (browser snapshot, click, ...) run without asking.
@@ -758,6 +798,7 @@ export function createAcpDriver(
         t.askTimers.set(log.id, timer);
       },
       onExit: () => {
+        asks?.server.revoke(asks.token);
         if (live.get(threadKey) === l) live.delete(threadKey);
       },
     });
@@ -767,7 +808,7 @@ export function createAcpDriver(
       clientInfo: { name: "cubiq", version: deps.clientVersion },
     });
     applyInitialize(init, input);
-    l = { conn, init, threadKey, command, env, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, variantKey: wantedKey, droppedNotified: new Set(), guidePending: false, historyPending: null, turn: null, modes: null, planModeId: null, defaultModeId: null, authUrl: null };
+    l = { conn, init, threadKey, command, env, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, variantKey: wantedKey, droppedNotified: new Set(), guidePending: false, historyPending: null, turn: null, modes: null, planModeId: null, defaultModeId: null, authUrl: null, approvedCalls: new Set() };
     // No proactive authenticate: the server infers the method from its own
     // settings and refreshes the token itself, so calling it here only ever
     // launched a browser (including during the startup model probe). A signed-out
@@ -1181,6 +1222,7 @@ export function createAcpDriver(
           if (l.turn) clearAskTimers(l.turn);
           current = turn;
           l.turn = turn;
+          l.approvedCalls.clear();
           const res = await l.conn.request<{ stopReason: string }>("session/prompt", {
             sessionId: l.sessionId,
             prompt: [{ type: "text", text: `/${name}${input.compact.focus ? ` ${input.compact.focus}` : ""}` }],
@@ -1205,6 +1247,7 @@ export function createAcpDriver(
           if (l.turn) clearAskTimers(l.turn);
           current = turn;
           l.turn = turn;
+          l.approvedCalls.clear();
           let stopped = false;
           // A native plan mode switches the whole session; without one the
           // prompt carries the plan-mode brief instead.
@@ -1328,6 +1371,8 @@ export function createAcpDriver(
     dispose() {
       for (const l of live.values()) l.conn.close();
       live.clear();
+      void askServer?.then((s) => s.close()).catch(() => {});
+      askServer = null;
     },
   };
 }

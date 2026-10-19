@@ -644,8 +644,9 @@ async function main(): Promise<void> {
         ...(config.effortVia === "opencode-variants" ? { variants: () => opencodeVariants(config.command) } : {}),
         injection: (ctx) => {
           let plan = injectionFor(settings, config.id, process.env);
-          if (python && config.guardPlugin === "opencode") {
-            plan = withOpenCodeGuard(plan, { pluginUrl: ensureOpenCodeGuard(join(userData, "opencode")), script: guardScript, python });
+          // Always loaded: it asks CubiQ before edits and commands; the git guard inside needs Python.
+          if (config.guardPlugin === "opencode") {
+            plan = withOpenCodeGuard(plan, { pluginUrl: ensureOpenCodeGuard(join(userData, "opencode")), ...(python ? { script: guardScript, python } : {}) });
           }
           // After the guard, so both the plugin and the variant survive.
           if (ctx?.effort) plan = withOpenCodeVariant(plan, ctx.effort);

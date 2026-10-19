@@ -5,6 +5,9 @@
 // Python argv from the child's environment (UNSKILLED_GUARD_SCRIPT and
 // UNSKILLED_GUARD_PYTHON); throwing rejects the tool call and returns the
 // error text to the model.
+// The same hook asks CubiQ before every edit and command (CUBIQ_ASK_URL and
+// CUBIQ_ASK_TOKEN, set per process by the ACP driver), so the thread's
+// permission mode holds whatever OpenCode's own config allows.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -32,34 +35,74 @@ function unwrapShell(command) {
   return current;
 }
 
+function guard(input, output) {
+  if (input.tool !== "bash") return;
+  const raw = output.args && output.args.command;
+  if (typeof raw !== "string") return;
+  const command = unwrapShell(raw);
+  const script = process.env.UNSKILLED_GUARD_SCRIPT;
+  const python = process.env.UNSKILLED_GUARD_PYTHON;
+  if (!script || !python) return;
+  let argv;
+  try {
+    argv = JSON.parse(python);
+  } catch {
+    return;
+  }
+  if (!Array.isArray(argv) || argv.length === 0) return;
+  const result = spawnSync(argv[0], argv.slice(1).concat(script), {
+    input: JSON.stringify({ tool_name: "Bash", tool_input: { command } }),
+    encoding: "utf8",
+    timeout: 5000,
+  });
+  if (result.error && result.error.code === "ETIMEDOUT") {
+    throw new Error("Blocked by git guardrails: guardrail timed out; blocked to be safe");
+  }
+  if (result.signal) throw new Error("Blocked by git guardrails: guardrail timed out; blocked to be safe");
+  // Any other spawn failure allows the command, like guard.ts failing open.
+  if (result.error) return;
+  if (result.status === 2) throw new Error("Blocked by git guardrails: " + String(result.stderr || "").trim());
+}
+
+// CubiQ's permission modes: OpenCode asks over ACP only when its own config
+// says so, so every edit and command is put to the app first (CUBIQ_ASK_URL).
+const EDIT_TOOLS = new Set(["edit", "write", "patch", "multiedit", "apply_patch"]);
+
+function summaryOf(kind, args) {
+  if (kind === "execute") return typeof args.command === "string" ? args.command : "";
+  for (const key of ["filePath", "file_path", "path"]) if (typeof args[key] === "string") return args[key];
+  const patch = typeof args.patchText === "string" ? args.patchText : typeof args.input === "string" ? args.input : "";
+  const files = patch.split("\\n").filter((line) => /^[*]{3} (Add|Update|Delete) File: /.test(line)).map((line) => line.replace(/^[*]{3} (Add|Update|Delete) File: /, ""));
+  return files.join(", ");
+}
+
+async function ask(input, output) {
+  const url = process.env.CUBIQ_ASK_URL;
+  const token = process.env.CUBIQ_ASK_TOKEN;
+  if (!url || !token) return;
+  const kind = input.tool === "bash" ? "execute" : EDIT_TOOLS.has(input.tool) ? "edit" : null;
+  if (!kind) return;
+  const noun = kind === "execute" ? "command" : "edit";
+  let decision = null;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer " + token },
+      body: JSON.stringify({ tool: input.tool, kind, summary: summaryOf(kind, output.args || {}), callID: input.callID, sessionID: input.sessionID }),
+    });
+    if (res.ok) decision = (await res.json()).decision;
+  } catch {
+    decision = null;
+  }
+  if (decision === "allow-once" || decision === "allow-always") return;
+  // Fail closed: without an answer from the app, nothing runs.
+  throw new Error(decision === "deny" ? "The user denied this " + noun + "." : "CubiQ couldn't ask the user about this " + noun + ", so it was blocked.");
+}
+
 export default async () => ({
   "tool.execute.before": async (input, output) => {
-    if (input.tool !== "bash") return;
-    const raw = output.args && output.args.command;
-    if (typeof raw !== "string") return;
-    const command = unwrapShell(raw);
-    const script = process.env.UNSKILLED_GUARD_SCRIPT;
-    const python = process.env.UNSKILLED_GUARD_PYTHON;
-    if (!script || !python) return;
-    let argv;
-    try {
-      argv = JSON.parse(python);
-    } catch {
-      return;
-    }
-    if (!Array.isArray(argv) || argv.length === 0) return;
-    const result = spawnSync(argv[0], argv.slice(1).concat(script), {
-      input: JSON.stringify({ tool_name: "Bash", tool_input: { command } }),
-      encoding: "utf8",
-      timeout: 5000,
-    });
-    if (result.error && result.error.code === "ETIMEDOUT") {
-      throw new Error("Blocked by git guardrails: guardrail timed out; blocked to be safe");
-    }
-    if (result.signal) throw new Error("Blocked by git guardrails: guardrail timed out; blocked to be safe");
-    // Any other spawn failure allows the command, like guard.ts failing open.
-    if (result.error) return;
-    if (result.status === 2) throw new Error("Blocked by git guardrails: " + String(result.stderr || "").trim());
+    guard(input, output);
+    await ask(input, output);
   },
 });
 `;
@@ -82,11 +125,12 @@ export function ensureOpenCodeGuard(dir: string): string {
  * Add the guard plugin to an OpenCode injection plan. The plan is mutated and
  * returned so its sealed toJSON stays attached; a plan that already errored is
  * left alone. The config may be absent (subscription: OpenCode's own settings
- * still load, and plugin arrays concatenate across config layers).
+ * still load, and plugin arrays concatenate across config layers). Without a
+ * script and Python the plugin still asks CubiQ; only the git guard is off.
  */
 export function withOpenCodeGuard(
   plan: InjectionPlan,
-  guard: { pluginUrl: string; script: string; python: string[] },
+  guard: { pluginUrl: string; script?: string; python?: string[] | null },
 ): InjectionPlan {
   if (plan.error) return plan;
   const raw = plan.env.OPENCODE_CONFIG_CONTENT;
@@ -103,7 +147,9 @@ export function withOpenCodeGuard(
   const plugins = Array.isArray(config.plugin) ? config.plugin : [];
   config.plugin = [...plugins, guard.pluginUrl];
   plan.env.OPENCODE_CONFIG_CONTENT = JSON.stringify(config);
-  plan.env.UNSKILLED_GUARD_SCRIPT = guard.script;
-  plan.env.UNSKILLED_GUARD_PYTHON = JSON.stringify(guard.python);
+  if (guard.script && guard.python?.length) {
+    plan.env.UNSKILLED_GUARD_SCRIPT = guard.script;
+    plan.env.UNSKILLED_GUARD_PYTHON = JSON.stringify(guard.python);
+  }
   return plan;
 }
