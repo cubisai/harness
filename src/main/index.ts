@@ -53,7 +53,7 @@ import { pruneOutputDir } from "./harness/tools/bound";
 import { createGuide, userGuidePath } from "./guide";
 import { createExpertCatalog } from "./experts/catalog";
 import { importExperts, removeImportedExpert } from "./experts/importer";
-import { teamTools } from "./experts/team";
+import { latestFileBy, readTeamFile, teamTools } from "./experts/team";
 import { makeTranslate } from "./experts/translate";
 import { EXPERT_ID_RE, teamAgents } from "../shared/experts";
 import { buildContextPreview, mcpRow, skillsOf, toolTokens } from "./context-preview";
@@ -1568,6 +1568,13 @@ async function main(): Promise<void> {
   ipcMain.handle("artifacts:read", (_e, threadId: string, path: string, version?: number | null) =>
     service.readArtifact(threadId, String(path), typeof version === "number" ? version : null),
   );
+  // A member's newest team result, copied into the version store so the panel opens it like the plan.
+  ipcMain.handle("team:member-file", (_e, threadId: string, memberId: string) => {
+    const dir = teamRunDir(String(threadId));
+    const name = latestFileBy(dir, String(memberId));
+    const text = name ? readTeamFile(dir, name) : null;
+    return name && text !== null ? service.saveTeamFile(String(threadId), name, text) : null;
+  });
   ipcMain.handle("artifacts:diff", (_e, threadId: string, path: string, version?: number | null) =>
     service.artifactDiff(threadId, String(path), typeof version === "number" ? version : null),
   );

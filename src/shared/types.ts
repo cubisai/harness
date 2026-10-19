@@ -1290,6 +1290,8 @@ export interface UnskilledApi {
   setThreadExpert(threadId: string, expertId: string | null): Promise<Thread>;
   /** A thread file's content for the panel: the file on disk, or a saved version. */
   readArtifact(threadId: string, path: string, version?: number | null): Promise<ArtifactContent>;
+  /** A team member's newest result file as an artifact path the panel opens, or null when it wrote none. */
+  teamMemberFile(threadId: string, memberId: string): Promise<string | null>;
   /** Unified diff of a version against the one before it (or against git HEAD / empty for the first); null when not text. */
   artifactDiff(threadId: string, path: string, version?: number | null): Promise<string | null>;
 }

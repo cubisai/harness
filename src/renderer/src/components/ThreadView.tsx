@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, Copy, Pencil, RotateCcw, X } from "lucide-react";
-import { artifactKind, isPreviewable, PLAN_ARTIFACT } from "../../../shared/artifact-kind";
+import { artifactKind, isPreviewable, PLAN_ARTIFACT, TEAM_ARTIFACT_PREFIX } from "../../../shared/artifact-kind";
 import { skillsOf } from "../../../shared/skill-list";
 import type { ArtifactKind, StoredEvent, ThreadEvent } from "../../../shared/types";
 import type { TurnScore } from "../../../shared/learn";
@@ -468,9 +468,11 @@ function FileCards({ files, turnSeq }: { files: string[]; turnSeq: number }) {
     <div className="file-cards">
       {shown.map((file) => {
         const rel = toRel(file);
+        // A team member's result (cubiq:team/<name>.md) shows its file name, never the store path.
+        const team = rel.startsWith(TEAM_ARTIFACT_PREFIX);
         const name = rel.split("/").pop() ?? rel;
         const ext = (/\.([^.]+)$/.exec(name)?.[1] ?? "").slice(0, 4).toUpperCase();
-        const dir = rel.includes("/") ? rel.slice(0, rel.lastIndexOf("/") + 1) : "";
+        const dir = team ? "Team result" : rel.includes("/") ? rel.slice(0, rel.lastIndexOf("/") + 1) : "";
         return (
           <button key={file} className={`file-card${open === rel ? " open" : ""}`} title={file} onClick={() => useStore.getState().openArtifact(file)}>
             <span className="file-card-ext">{ext}</span>

@@ -28,6 +28,18 @@ describe("harness read and write tools", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it("reads an absolute path outside the thread's folder (a team member's own SKILL.md)", async () => {
+    const skills = mkdtempSync(join(tmpdir(), "skills-"));
+    try {
+      writeFileSync(join(skills, "SKILL.md"), "# Deep dive");
+      const out = await readTool.run({ path: join(skills, "SKILL.md") }, context());
+      expect(out.isError).toBeFalsy();
+      expect(out.text).toContain("# Deep dive");
+    } finally {
+      rmSync(skills, { recursive: true, force: true });
+    }
+  });
+
   it("numbers lines and pages with offset/limit and a continuation note", async () => {
     writeFileSync(join(dir, "lines.txt"), ["line 1", "line 2", "line 3", "line 4", "line 5"].join("\n"));
     const ctx = context();

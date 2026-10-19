@@ -18,7 +18,8 @@ export type ChecklistSpec = { name: "checklist"; title?: string; items: { text: 
 
 /** `value` is NaN when the agent left the starting value empty (the input starts blank). */
 export type CalculatorInput = { id: string; label: string; value: number; min?: number; max?: number; step?: number; unit?: string };
-export type CalculatorSpec = { name: "calculator"; title?: string; inputs: CalculatorInput[]; formula: string; unit?: string; note?: string };
+/** `problem`: why the formula can't run (unknown ids, a parse error); the inputs render with it in place of the result. */
+export type CalculatorSpec = { name: "calculator"; title?: string; inputs: CalculatorInput[]; formula: string; unit?: string; note?: string; problem?: string };
 
 /**
  * `highlight` is a 0-based row index. Every row has `headers.length` cells.

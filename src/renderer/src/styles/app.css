@@ -77,6 +77,13 @@
   --syn-string: #2b7a3b;
   --syn-number: #a35c00;
   --syn-comment: #6b717c;
+  /* Portrait tints: team members' round backgrounds in the team strip, one per seat so the line-art busts tell apart. */
+  --portrait-1: #ffe1cf;
+  --portrait-2: #d6e9ff;
+  --portrait-3: #d9f3d3;
+  --portrait-4: #e7dcff;
+  --portrait-5: #fff0c2;
+  --portrait-6: #d2f1ed;
 
   --radius-s: 6px;
   --radius-m: 8px;
@@ -135,6 +142,12 @@
     --syn-string: #8fd19e;
     --syn-number: #f0b060;
     --syn-comment: #7d838e;
+    --portrait-1: #d9a98f;
+    --portrait-2: #95b8de;
+    --portrait-3: #9fcb95;
+    --portrait-4: #b5a3e3;
+    --portrait-5: #d8bf78;
+    --portrait-6: #8fc7bf;
   }
 }
 
@@ -184,6 +197,12 @@
   --syn-string: #8fd19e;
   --syn-number: #f0b060;
   --syn-comment: #7d838e;
+  --portrait-1: #d9a98f;
+  --portrait-2: #95b8de;
+  --portrait-3: #9fcb95;
+  --portrait-4: #b5a3e3;
+  --portrait-5: #d8bf78;
+  --portrait-6: #8fc7bf;
 }
 
 * { box-sizing: border-box; }
@@ -2588,13 +2607,25 @@ img.expert-intro-member.expert-avatar-img { border: 1px solid var(--bg-elevated)
   flex: none;
   object-fit: cover;
 }
+/* A member's seat tint under its portrait: the portrait's white ground multiplies into the tint, its ink lines stay. */
+.team-strip-tint { display: inline-flex; border-radius: 999px; isolation: isolate; }
+.team-strip-tint > img { mix-blend-mode: multiply; }
+.team-strip-tint[data-tint="1"] { background: var(--portrait-1); }
+.team-strip-tint[data-tint="2"] { background: var(--portrait-2); }
+.team-strip-tint[data-tint="3"] { background: var(--portrait-3); }
+.team-strip-tint[data-tint="4"] { background: var(--portrait-4); }
+.team-strip-tint[data-tint="5"] { background: var(--portrait-5); }
+.team-strip-tint[data-tint="6"] { background: var(--portrait-6); }
 .team-strip-member {
   display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: none;
   border-radius: 50%;
   opacity: 0.55;
   transition: opacity 160ms var(--ease);
 }
-.team-strip-member.active { opacity: 1; }
+.team-strip-member.active, .team-strip-member:hover { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   .team-strip-member { transition: none; }
 }
