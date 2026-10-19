@@ -1,14 +1,37 @@
 # Roadmap 13 handoff
 
-Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 2026-10-17; untracked in the main checkout, read it there).
-- **Where this file lives:** committed at the worktree root. The main checkout's `road-map-handoff.md` is a symlink to it, so it's visible from both.
-- **Worktree:** `../aiharness-wt/roadmap`, branch `roadmap`, cut from `m4` @ `5537a27`. The main checkout's `m4` has another session's uncommitted TGP work, so nothing here touches it. Merge `roadmap` into `m4` once that work is committed.
-- **Plan:** `.ai/plans/roadmap-13.md` in the main checkout (gitignored). It lists the points P1.1 … P8.4.
+Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 2026-10-17).
+- **Where the work lives now:** branch `m4` in the main checkout. `roadmap` was fast-forwarded into `m4` on 2026-10-19 (session 5) and the `../aiharness-wt/roadmap` worktree was removed. Work on `m4` only; `origin/roadmap` is kept for history.
+- **Plan:** `.ai/plans/roadmap-13.md` (gitignored, force-added). It lists the points P1.1 … P8.4.
 - **Research notes:** `.ai/research_notes/roadmap13-rp{2,3,4}.md`. These are researcher maps of history/IPC, tools/skills/MCP, and memory/context/teams, with file:line references.
 
-**Rules:** one commit per point. Typecheck and the full vitest suite must be green before each commit. At the end of each phase that changes the app runtime, do one live turn each on Claude, Codex and OpenCode Zen.
+**Rules:** one commit per point. Typecheck and the full vitest suite must be green before each commit. At the end of each phase that changes the app runtime, do one live turn each on Claude, Codex and OpenCode (AgentRouter `deepseek-v4-flash`; Zen free rate-limits).
 
-## Resume here (stopped 2026-10-19 on the Mac, session 4; start a new session from this section, on any PC)
+## Session 5 (2026-10-19, Mac): P8 live checks closed, moved to `m4`
+
+**Checks on `m4`:** typecheck green, vitest 3072 passed / 0 failed.
+
+**Fixed (3 commits):**
+- `30e5a91` Optimizer: `cost-unknown` now counts cached trials too. A fully cached, unpriced train run counted 0 of 0 fresh trials and went on to spend blind. It also stops after any validation run that comes back unpriced, since a candidate's `model=` can be unpriced.
+- `8285eb1` Self-improve: the revert signal now reads "The user restored these files to how they were before the turn". The draft prompt also explains that a revert usually means a change of mind. The old "Its edits were undone" made DeepSeek draft "re-read the file, the edit didn't stick". Probe: old wording drafted that rule; new wording gave `{"none":true}` 2/2.
+- `481aa8f` Evals: Claude, Codex and OpenCode now get the scenario's memory as the `<harness-memory>` block, and Codex and OpenCode get the trial's browser tools over the app's MCP tool server (`cliWiring()` in `evals/lib/agents.ts`). Before, `browser-smoke`, `memory-multi-turn` and `x-memory-correction` always failed on CLI engines. Now 3/3 on OpenCode AgentRouter. Codex `gpt-6-luna` 2/2. Claude Haiku got the memory but misspelled the reversal (a model miss).
+
+**Verified live:**
+- **P8 lesson Verify:** case `9e907ccf` (not held out) drafted a candidate on TokenHarbor DeepSeek. Verify replayed it: without 0/1, with 0/1 (5073 + 4355 tokens). It stays a candidate ("its case still fails with it"); transfer is skipped on purpose when the source case decides. A live promotion has **not** been seen yet.
+- **P8 optimizer:**
+  - A2 (PGS, no `--price`): stops `cost-unknown` after the cached train run.
+  - C (OpenCode `agentrouter/deepseek-v4-flash`, `--price 0,0`, `--try effort=high`): train 23/26; baseline and candidate 42 validation trials each; verdict `noise` (gain −0.07, CI −0.19…0.00).
+  - B (Zen free) was abandoned: rate limits.
+  - Experiments are in `.ai/evals/experiments/opt-recheck-*`.
+- **Live turns after the fixes:** Claude Sonnet (edit + revert turns), Codex GPT-6-Luna, OpenCode AgentRouter `deepseek-v4-flash`.
+
+**Left:**
+1. **Owner's open question:** "Load link previews" (Settings, under Interactive answers) only thumbnails links inside card-list blocks. The owner expects ChatGPT-style link/citation chips in normal replies. Ask which shape before building: inline chips, numbered citations with a hover card, or a sources row.
+2. **Live lesson promotion:** needs a case a rule can actually fix. A revert of exactly what was asked is a change of mind, and is now skipped. Try a correction, e.g. the agent also touched a file it was told not to.
+3. **Eval isolation:** trials auto-allow every permission, so an OpenCode agent read other projects' memory under `~/.claude/projects` while looking for answers (`x-memory-correction`, run C). Consider denying reads outside the trial dir in evals.
+4. **Windows PC:** the per-phase gate for P7/P8, session 4's UI fixes, and session 5's fixes. Watch `tar -xf` in replay's `materializeCase`, CRLF in git output, and the scrollbar gutter (classic scrollbars are always on there).
+
+## Session 4 (2026-10-19, Mac)
 
 **Progress:** all 41 points are implemented. Session 4 ran the Mac verification items and fixed what they turned up (8 commits, `b0ed3a4`…`03484b3`). Checks on `roadmap` (Mac): typecheck green, design:check 0 errors, vitest 3067 passed / 0 failed, `--validate-graders` all OK.
 
@@ -44,22 +67,10 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
   - `run.ts --trials-all`. Before, only regression-tagged tasks repeated, so every candidate was rejected as "too-few-trials".
   - It stops with `cost-unknown` after the train run when trials report no cost. `--price <in>,<out>`, or `--price 0,0` for a free model, lets it go on.
 
-**Left:**
-1. **P8 Verify of a real lesson:** self-improve is ON for `vite-proj`.
-   - The first captured case (`94f572416f4fbe8a`, grader "src/style.css left as you had it") landed in the held-out quarter, so no lesson was drafted.
-   - Repeat until a non-held-out case drafts a candidate on the background model (TokenHarbor DeepSeek): one edit turn in `vite-proj`, then `git checkout` the file and send a next message (or wait 10 minutes now). Then Library → Learned → Verify.
-2. **P8 optimizer live re-run** after `03484b3`:
-   - Expect `cost-unknown` without `--price` on TokenHarbor.
-   - With `--price` it should run 42 validation trials per candidate. A real run is ~100 trials, so use a free model with `--price 0,0` or a small `--try`.
-3. **Owner's open question:** "Load link previews" (Settings, under Interactive answers) only thumbnails links inside card-list blocks. The owner expects ChatGPT-style link/citation chips in normal replies. Ask what exactly they want before building.
-4. **Windows PC:** the per-phase gate for P7/P8 and this session's UI fixes. Watch `tar -xf` in replay's `materializeCase`, CRLF in git output, and the scrollbar gutter on Windows (classic scrollbars are always on there).
-5. Merge `roadmap` into `m4`. `m4` is an ancestor of `roadmap`, so it's a fast-forward.
-
 **Scratch state on the Mac (safe to delete):**
 - Project `vite-proj` (id `c0ffee00-…v17e`), inserted straight into `unskilled.db` because the add dialog is native; folder under the session-4 scratchpad.
 - Its seeded long thread and the test threads.
 - userData `experts/live-model-team*`.
-- `.env` in the worktree is a symlink to the main checkout's.
 
 **Known limits (by design, noted for later):**
 - The optimizer wires only the `prompt` (`--guide`) and `model-effort` surfaces; `skill-description` and `retrieval-profile` are rejected with a message.
@@ -69,7 +80,7 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 - Teams are single-engine: a member's `model` picks a model of the lead's engine (Claude alias, OpenCode provider/model); there is no cross-provider team.
 
 **What's in git:**
-- `origin/roadmap`: everything, plus this handoff.
+- `origin/m4`: everything, plus this handoff (`origin/roadmap` stops at session 5's move).
 - Under the gitignored `.ai/` (force-added):
   - `.ai/plans/roadmap-13.md`;
   - `.ai/plans/p2.md` … `p8.md`: per-phase plans; p7/p8 hold the ready designs;
@@ -77,8 +88,8 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
   - `.ai/research_notes/roadmap13-p{2..8,55}.md`: researcher maps (spot-checked; line numbers drift).
 
 **Set up on another PC:**
-1. `git fetch origin`, check out `roadmap`, `bun install`.
-2. On the Windows PC, remove the old `harness-roadmap-p2`…`-p6` worktrees (all merged).
+1. `git fetch origin`, check out `m4` (it holds all of roadmap), `bun install`.
+2. On the Windows PC, remove the old `harness-roadmap` and `harness-roadmap-p2`…`-p6` worktrees (all merged into `m4`).
 3. Check: `bun run typecheck`, `bunx vitest run` (the `*-live` tests need `.env` keys), `bun run eval --validate-graders`, `bun run eval --splits`.
 
 **How the parallel tracks ran (Mac, 8 GB):**
@@ -96,7 +107,7 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 - On the Windows PC the free endpoints were flaky (2026-10-18). After 1–2 failed dispatches, implement directly from the brief.
 
 ### Windows PC specifics (D:/Cubebis Work/ai-agent/)
-- **Local worktrees:** `harness-roadmap` (roadmap), plus `harness-roadmap-p2`…`-p6`. All of p2–p6 are merged into roadmap and can be removed (`git worktree remove`); the `roadmap-p6` branch no longer exists on origin.
+- **Local worktrees:** `harness-roadmap` (roadmap), plus `harness-roadmap-p2`…`-p6`. All are merged into `m4` and can be removed (`git worktree remove`); the `roadmap-p6` branch no longer exists on origin.
 - **Memory:** on 2026-10-18 the PC ran out of memory with 3–4 opencode workers, a vitest run and Chrome going at once; Claude Code killed the background jobs.
 - **Zen key:** the stored key in `~/.local/share/opencode/auth.json` has expired. Free models work without a key, so set `XDG_DATA_HOME` to an empty dir (`D:/ocz-a`…`D:/ocz-h`) so the old key isn't sent.
 - **opencode binary:** set `OPENCODE_BIN=C:/Users/laplop/.bun/bin/opencode.exe` (oc-run only looks under npm).
