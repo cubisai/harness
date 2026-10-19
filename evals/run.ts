@@ -6,6 +6,8 @@
 // --price <in>,<out> (USD per 1M tokens), --trend [--last <n>],
 // --report [--tier t] [--model m] [--vs <run file>] (re-render the newest run's HTML report, zero tokens),
 // --validate-graders [--task ids] (no model: a no-op must fail and evals/references/<task>.json must pass)
+// --split train|validation|holdout [--release] (only that split; the holdout is sealed unless --release),
+// --splits (no model: the split summary and any leakage across splits; exit 1 when there is any)
 // (zero tokens: pass/token history per tier+model from .ai/evals). Plan: .ai/plans/eval-framework.md.
 
 import { execFileSync } from "node:child_process";
@@ -22,7 +24,8 @@ import { runCheck } from "../src/main/check";
 import { AgentBrowserBackend, resolveAgentBrowser } from "../src/main/browser/agent-browser";
 import { RUN_MANIFEST_VERSION, type RunManifest } from "../src/shared/run-trace";
 import { assembleTask, cacheKey, EVAL_RUNTIME_VERSION, redact, runFileName, compareBaseline, diffRuns, findCachedTrials, listRuns, previousRun, readBaseline, saveBaseline, saveRun, summarize, trend } from "./lib/store";
-import type { RunResult, Task, TaskResult, Tier } from "./lib/types";
+import { checkSplits, forSplit, SPLIT_SHARES, splitSummary } from "./lib/splits";
+import type { RunResult, Split, Task, TaskResult, Tier } from "./lib/types";
 
 const ROOT = join(import.meta.dirname, "..");
 const TASKS = join(ROOT, "evals", "tasks");
@@ -33,6 +36,8 @@ const REFERENCES = join(ROOT, "evals", "references");
 const TRACES = join(RESULTS, "traces");
 /** Trace folders kept (newest runs); older ones are deleted at the start of a run. */
 const TRACE_RUNS_KEPT = 20;
+/** The dataset splits (roadmap P8.1): train/validation/holdout. */
+const SPLITS = Object.keys(SPLIT_SHARES) as Split[];
 
 function pruneTraces(): void {
   if (!existsSync(TRACES)) return;
@@ -136,9 +141,23 @@ async function main(): Promise<number> {
     }
     return bad ? 1 : 0;
   }
-  const tier = (f.get("tier") ?? "smoke") as Tier;
+  if (f.has("splits")) {
+    const tasks = loadTasks();
+    console.log(splitSummary(tasks));
+    const problems = checkSplits(tasks);
+    for (const p of problems) console.log(`BAD  ${p.kind.padEnd(16)} ${p.tasks[0]} / ${p.tasks[1]}: ${p.detail}`);
+    if (!problems.length) console.log("OK   no leakage across splits");
+    return problems.length ? 1 : 0;
+  }
+  // A split spans the whole case set, so it defaults to the full tier (smoke cases are a handful across splits).
+  const tier = (f.get("tier") ?? (f.has("split") ? "full" : "smoke")) as Tier;
   const agent = (f.get("agent") ?? "native") as AgentId;
   if (!AGENTS.includes(agent)) throw new Error(`--agent must be one of ${AGENTS.join(", ")}`);
+  const splitArg = f.get("split");
+  if (splitArg !== undefined && !SPLITS.includes(splitArg as Split)) {
+    console.error(`--split must be one of ${SPLITS.join(", ")} (got "${splitArg}")`);
+    return 2;
+  }
   const trials = Number(f.get("trials") ?? 1);
   const effort = f.get("effort") ?? "low";
   // The grading and trial code: a change there makes cached trials incomparable.
@@ -148,7 +167,10 @@ async function main(): Promise<number> {
   const priceArg = f.get("price")?.split(",").map(Number);
   const price = priceArg && priceArg.length === 2 ? { input: priceArg[0]!, output: priceArg[1]! } : undefined;
 
-  const selected = loadTasks().filter((t) => (tier === "smoke" ? t.tier === "smoke" : true) && (!f.has("task") || f.get("task")!.split(",").includes(t.id)));
+  const loaded = loadTasks();
+  // --split narrows to one split before --task/--tier; the holdout stays sealed unless --release.
+  const splitTasks = splitArg !== undefined ? forSplit(loaded, splitArg as Split, { sealed: !f.has("release") }) : loaded;
+  const selected = splitTasks.filter((t) => (tier === "smoke" ? t.tier === "smoke" : true) && (!f.has("task") || f.get("task")!.split(",").includes(t.id)));
   // A browser task runs on a headless agent-browser session when the CLI is installed; the team runtime needs Electron.
   const headless = resolveAgentBrowser();
   const unavailable = (t: Task): string | null => (t.requires?.includes("team") ? "team" : t.requires?.includes("browser") && !headless ? "browser (agent-browser isn't installed)" : null);

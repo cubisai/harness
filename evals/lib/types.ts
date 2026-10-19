@@ -5,6 +5,7 @@ import type { McpServerEntry } from "../../src/shared/types";
 
 export type Tier = "smoke" | "full";
 export type TaskTag = "capability" | "regression";
+export type Split = "train" | "validation" | "holdout";
 
 export interface Budget {
   /** Tool calls allowed in the turn before the runner aborts it. */
@@ -69,6 +70,10 @@ export interface Task {
   difficulty?: string;
   /** Which suite the case belongs to (roadmap §7.1). */
   suite?: "coding" | "context" | "memory" | "skills" | "mcp" | "browser" | "teams";
+  /** Cases that are variants of one scenario share a family and always land in the same split; absent = the task id. */
+  family?: string;
+  /** Pins the split; absent = assigned by hashing the family. */
+  split?: Split;
 }
 
 /** A thread event cut down for storage and grading: no deltas, summaries clipped to 160 chars. */
