@@ -3,6 +3,8 @@
 // user's own logins; third-party models go through native or OpenCode only.
 
 import { execFileSync } from "node:child_process";
+import { mkdirSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { createAcpDriver } from "../../src/main/agents/acp/driver";
 import { createClaudeDriver } from "../../src/main/agents/claude";
@@ -10,6 +12,7 @@ import { createCodexDriver } from "../../src/main/agents/codex";
 import { ACP_PRESETS } from "../../src/main/agents/registry";
 import type { AgentDriver, HarnessTool } from "../../src/main/agents/types";
 import { BUILT_IN_GUARD } from "../../src/main/guard";
+import { ensureOpenCodeGuard, withOpenCodeGuard } from "../../src/main/inject/opencode-guard";
 import { startToolServer, type ToolServer } from "../../src/main/mcp-http";
 import { memoryPrompt } from "../../src/main/memory/index";
 import type { InjectionPlan } from "../../src/main/inject";
@@ -81,6 +84,48 @@ export function cliWiring(): {
     },
     toolServer: () => (server ??= startToolServer(() => trialTools)),
     close: () => void server?.then((s) => s.close()).catch(() => {}),
+  };
+}
+
+/** The user's global OpenCode config (opencode.json[c] or config.json), or null when absent or unreadable. */
+export function readUserOpenCodeConfig(env: NodeJS.ProcessEnv = process.env): Record<string, unknown> | null {
+  const dir = join(env.XDG_CONFIG_HOME || join(homedir(), ".config"), "opencode");
+  for (const name of ["opencode.json", "opencode.jsonc", "config.json"]) {
+    let text: string;
+    try {
+      text = readFileSync(join(dir, name), "utf8");
+    } catch {
+      continue;
+    }
+    try {
+      return JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      // jsonc: drop whole-line comments and trailing commas, then try once more.
+      try {
+        return JSON.parse(text.replace(/^\s*\/\/.*$/gm, "").replace(/,(\s*[}\]])/g, "$1")) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * The only OpenCode config an eval trial sees: the user's providers and
+ * default model (so their models resolve), never their agents, plugins, MCP
+ * servers or permissions, which would make the run measure their setup
+ * instead of CubiQ's (a user agent can delegate everything, or allow every
+ * command). `extra` is a --provider preset's own provider and model.
+ */
+export function openCodeEvalConfig(user: Record<string, unknown> | null, extra?: { model: string; provider: Record<string, unknown> }): Record<string, unknown> {
+  const userProviders = user?.provider && typeof user.provider === "object" ? (user.provider as Record<string, unknown>) : {};
+  const model = extra?.model ?? (typeof user?.model === "string" ? user.model : undefined);
+  return {
+    $schema: "https://opencode.ai/config.json",
+    provider: { ...userProviders, ...(extra?.provider ?? {}) },
+    ...(model ? { model } : {}),
+    ...(typeof user?.small_model === "string" ? { small_model: user.small_model } : {}),
   };
 }
 
@@ -178,27 +223,32 @@ export function setupAgent(agent: AgentId, o: { root: string; scratch: string; p
   // With --provider, an OpenAI-compatible preset is added as an `eval` provider
   // through OPENCODE_CONFIG_CONTENT; the key stays an {env:} reference.
   let model = o.model ?? "default";
-  let injection: (() => InjectionPlan) | undefined;
+  let extra: { model: string; provider: Record<string, unknown> } | undefined;
   if (o.provider) {
     const preset = PRESETS[o.provider];
     if (!preset || preset.protocol !== "openai-chat") throw new Error(`--agent opencode --provider must be one of ${Object.entries(PRESETS).filter(([, p]) => p.protocol === "openai-chat").map(([id]) => id).join(", ")}`);
     if (!process.env[preset.envVar]) throw new Error(`${preset.envVar} is not set (run with bun --env-file=.env)`);
     const id = o.model ?? preset.model;
     model = `eval/${id}`;
-    const content = JSON.stringify({
-      model,
-      provider: { eval: { npm: "@ai-sdk/openai-compatible", name: "eval", options: { baseURL: preset.baseURL, apiKey: `{env:${preset.envVar}}` }, models: { [id]: { name: id, tool_call: true } } } },
-    });
-    const env = Object.fromEntries(Object.entries(process.env).filter((e): e is [string, string] => e[1] !== undefined));
-    injection = () => ({ env: { ...env, OPENCODE_CONFIG_CONTENT: content }, byok: true });
+    extra = { model, provider: { eval: { npm: "@ai-sdk/openai-compatible", name: "eval", options: { baseURL: preset.baseURL, apiKey: `{env:${preset.envVar}}` }, models: { [id]: { name: id, tool_call: true } } } } };
   }
+  // A trial runs on an empty config folder (sign-ins in XDG_DATA_HOME stay), with the
+  // CubiQ plugin the app loads: it asks the runner before every edit and command.
+  const content = JSON.stringify(openCodeEvalConfig(readUserOpenCodeConfig(), extra));
+  const configHome = join(o.scratch, "opencode-config");
+  mkdirSync(configHome, { recursive: true });
+  const pluginUrl = ensureOpenCodeGuard(join(o.scratch, "opencode"));
+  const injection = (): InjectionPlan => {
+    const env = Object.fromEntries(Object.entries(process.env).filter((e): e is [string, string] => e[1] !== undefined));
+    return withOpenCodeGuard({ env: { ...env, XDG_CONFIG_HOME: configHome, OPENCODE_CONFIG_CONTENT: content }, byok: Boolean(extra) }, { pluginUrl });
+  };
   return {
     ...base,
     driver: (_cwd, scenario) => keep(createAcpDriver(config, { clientVersion: "eval", guardScript: BUILT_IN_GUARD, guide: forCwd, injection, memory: forTrial(scenario), toolServer })),
     model,
     label: `opencode/${model}`,
     skillDirs: [".agents/skills"],
-    hashPaths: ["src/main/agents/acp", "src/main/agents/rpc.ts", "src/main/agents/summarize.ts", ...cliShared],
+    hashPaths: ["src/main/agents/acp", "src/main/agents/rpc.ts", "src/main/agents/summarize.ts", "src/main/inject/opencode-guard.ts", ...cliShared],
     version: cliVersion("opencode"),
   };
 }

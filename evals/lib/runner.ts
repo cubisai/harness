@@ -3,8 +3,8 @@
 // The agent is any AgentDriver, so the same task runs on every agent.
 
 import { randomUUID } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentDriver, HarnessTool, TurnInput } from "../../src/main/agents/types";
@@ -113,6 +113,26 @@ export function mcpKit(task: Task, serverScript = MOCK_MCP_SERVER): { servers: M
   return { servers, sentinels: new Map(kit.manifest.tools.map((t) => [t.sentinel, `${t.server}/${t.name}`])) };
 }
 
+/**
+ * Whether a permission request names the user's home outside the trial: a
+ * `~` or `$HOME` path, or an absolute one under the home folder. The trial's
+ * own folder (which sits under home on Windows) doesn't count.
+ */
+export function reachesHome(summary: string, trialRoot: string, home = homedir()): boolean {
+  const norm = (p: string) => p.replace(/\\/g, "/").replace(/^\/+/, "").toLowerCase();
+  let text = summary.replace(/\\/g, "/").toLowerCase();
+  const roots = new Set([trialRoot]);
+  try {
+    roots.add(realpathSync(trialRoot));
+  } catch {
+    // Already gone: its given path is enough.
+  }
+  for (const r of roots) if (norm(r)) text = text.split(norm(r)).join("<trial>");
+  if (/(^|[\s'"=:(])~(?=[/\s'"]|$)/.test(text) || /\$\{?home\b|%userprofile%/.test(text)) return true;
+  const h = norm(home);
+  return h.length > 1 && text.includes(h);
+}
+
 export async function runTrial(o: TrialOptions): Promise<TrialResult> {
   const { task } = o;
   const fixtureDir = join(o.fixturesRoot, task.fixture);
@@ -167,7 +187,8 @@ export async function runTrial(o: TrialOptions): Promise<TrialResult> {
     onSession: (id) => {
       sessionId = id;
     },
-    requestPermission: async () => (task.permissions === "deny" ? "deny" : "allow-once"),
+    // A trial never reaches the machine's own files (another project's memory, the user's configs).
+    requestPermission: async (req) => (task.permissions === "deny" || reachesHome(req.summary, root) ? "deny" : "allow-once"),
     requestPlanDecision: async (p) => {
       // Every agent's proposal reaches the graders the same way, whatever its plan tool is called.
       events.push({ kind: "plan-proposal", text: p.plan });
