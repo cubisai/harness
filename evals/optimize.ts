@@ -4,6 +4,7 @@
 //   bun --env-file=.env evals/optimize.ts --surface model-effort --try "effort=medium;effort=high" --budget 2
 // Flags: --surface <prompt|model-effort> (required), --try "k=v[,k=v];k=v" (candidates, ";"-separated),
 // --budget <usd> (required, > 0), --trials <n> (default 3, min 3), --provider, --model, --agent,
+// --price <in>,<out> (USD per 1M tokens, for a model that reports no cost; 0,0 for a free one),
 // --id <name> (default opt-<surface>-<yyyymmdd-hhmmss>), --release (run the holdout too), --dry (plan only).
 // Experiments live in .ai/evals/experiments/<id>/. Plan: .ai/plans/p8.md.
 
@@ -28,6 +29,7 @@ import {
   type SplitName,
   type Surface,
 } from "./lib/optimize";
+import { spend } from "./lib/accounting";
 import type { RunResult } from "./lib/types";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -60,6 +62,8 @@ export interface OptimizeOptions {
   provider?: string;
   model?: string;
   agent?: string;
+  /** "<in>,<out>" USD per 1M tokens, passed to run.ts for a model that reports no cost ("0,0" when free). */
+  price?: string;
   criteria?: Parameters<typeof newExperiment>[0]["criteria"];
 }
 
@@ -140,6 +144,7 @@ export function buildRunArgs(split: SplitName, settings: CandidateSettings, o: O
     split,
     "--trials",
     String(trials),
+    ...(trials > 1 ? ["--trials-all"] : []),
     "--max-usd",
     String(maxUsd),
     ...(out ? ["--out", out] : []),
@@ -147,6 +152,7 @@ export function buildRunArgs(split: SplitName, settings: CandidateSettings, o: O
     ...(o.provider ? ["--provider", o.provider] : []),
     ...(o.agent ? ["--agent", o.agent] : []),
     ...(model ? ["--model", model] : []),
+    ...(o.price ? ["--price", o.price] : []),
     ...(settings.effort ? ["--effort", settings.effort] : []),
     ...(settings.guide ? ["--guide", settings.guide] : []),
   ];
@@ -179,7 +185,16 @@ export async function optimize(o: OptimizeOptions, runSplit: RunSplit): Promise<
   const train = await runSplit("train", {}, 1, o.budgetUsd);
   e.trainFailures = trainFailures(train);
   writeFileSync(join(dir, "train-failures.md"), e.trainFailures.map((f) => `- ${f.id}: ${f.why.join("; ")}`).join("\n") + "\n");
+  e.spentUsd += spend(train.tasks).spent.usd;
   saveExperiment(o.root, e);
+  // A model that reports no cost would spend past --budget unseen: stop until its price (0,0 when free) is given.
+  const unpriced = unknownCost(train);
+  if (unpriced) {
+    e.stop = "cost-unknown";
+    saveExperiment(o.root, e);
+    console.log(`${unpriced}\n${summary(e)}`);
+    return e;
+  }
 
   // The validation baseline every candidate is compared against.
   const baseRun = await runSplit("validation", {}, o.trials, o.budgetUsd);
@@ -220,6 +235,13 @@ export async function optimize(o: OptimizeOptions, runSplit: RunSplit): Promise<
   saveExperiment(o.root, e);
   console.log(summary(e));
   return e;
+}
+
+/** Why the budget can't be enforced for this run (some fresh trials report no cost), or null when every one is priced. */
+export function unknownCost(run: RunResult): string | null {
+  const { spent } = spend(run.tasks);
+  if (spent.known === spent.trials) return null;
+  return `Spend can't be measured: ${spent.trials - spent.known} of ${spent.trials} trials report no cost, so --budget can't stop the run. Pass --price <in>,<out> (USD per 1M tokens), or --price 0,0 for a free model.`;
 }
 
 /** "opt-<surface>-<yyyymmdd-hhmmss>" in UTC. */
@@ -280,6 +302,7 @@ async function main(): Promise<number> {
     provider: f.get("provider"),
     model: f.get("model"),
     agent: f.get("agent"),
+    price: f.get("price"),
   };
   const describe = (s: CandidateSettings): string => Object.entries(s).map(([k, v]) => `${k}=${v}`).join(", ");
   if (f.has("dry")) {

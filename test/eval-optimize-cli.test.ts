@@ -87,6 +87,14 @@ describe("buildRunArgs", () => {
     expect(prompt[prompt.indexOf("--guide") + 1]).toBe("guides/a.md");
   });
 
+  it("repeats every task when more than one trial is asked, and passes a given price", () => {
+    expect(buildRunArgs("validation", {}, base)).toContain("--trials-all");
+    expect(buildRunArgs("train", {}, base, 1)).not.toContain("--trials-all");
+    expect(buildRunArgs("validation", {}, base)).not.toContain("--price");
+    const free = buildRunArgs("validation", {}, { ...base, price: "0,0" });
+    expect(free[free.indexOf("--price") + 1]).toBe("0,0");
+  });
+
   it("passes --release on the holdout and never on validation", () => {
     expect(buildRunArgs("validation", {}, base)).not.toContain("--release");
     expect(buildRunArgs("train", {}, base)).not.toContain("--release");
@@ -115,6 +123,19 @@ describe("surface and settings checks", () => {
 });
 
 describe("optimize", () => {
+  it("stops after the train run when its trials report no cost, before any validation spend", async () => {
+    const splits: string[] = [];
+    const unpriced: RunSplit = async (split, settings, trials, maxUsd) => {
+      splits.push(split);
+      const r = await winning(split, settings, trials, maxUsd);
+      return { ...r, tasks: r.tasks.map((t) => ({ ...t, trials: t.trials.map((x) => ({ ...x, costUsd: null })) })) };
+    };
+    const exp = await optimize(opts(), unpriced);
+    expect(exp.stop).toBe("cost-unknown");
+    expect(splits).toEqual(["train"]);
+    expect(exp.rounds).toEqual([]);
+  });
+
   it("keeps a candidate that clearly wins as best, and requests no holdout", async () => {
     const splits: string[] = [];
     const fake: RunSplit = async (split, settings, trials, maxUsd) => {

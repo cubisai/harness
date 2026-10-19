@@ -75,7 +75,7 @@ export interface Round {
   at: string;
 }
 
-export type StopReason = "budget" | "stalled" | "noise" | "regression" | "done";
+export type StopReason = "budget" | "cost-unknown" | "stalled" | "noise" | "regression" | "done";
 
 export interface Experiment {
   id: string;

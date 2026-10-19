@@ -3,7 +3,7 @@
 // Flags: --agent native|claude|codex|opencode (default native), --tier smoke|full,
 // --provider th|pgs (native; opencode: pgs), --model <id>, --effort <level> (default low), --trials <n>,
 // --task <id>[,<id>…], --dry, --force, --keep, --save-baseline, --max-tokens <n>, --max-usd <n>,
-// --price <in>,<out> (USD per 1M tokens), --trend [--last <n>],
+// --price <in>,<out> (USD per 1M tokens), --trials-all (repeat every task, not only regression ones), --trend [--last <n>],
 // --report [--tier t] [--model m] [--vs <run file>] (re-render the newest run's HTML report, zero tokens),
 // --validate-graders [--task ids] (no model: a no-op must fail and evals/references/<task>.json must pass)
 // --stability [N] [--task ids] (no model: re-runs grader validation N times; exit 1 when a verdict flips)
@@ -232,7 +232,9 @@ async function main(): Promise<number> {
     if (why) console.log(`skip ${t.id}: needs ${why}, unavailable in the eval runner`);
   }
   const tasks = selected.filter((t) => !unavailable(t));
-  const trialsOf = (t: Task) => (t.tags.includes("regression") ? trials : 1);
+  // Regression tasks repeat by default; --trials-all repeats every task (the optimizer compares per-task pass rates).
+  const trialsAll = f.has("trials-all");
+  const trialsOf = (t: Task) => (trialsAll || t.tags.includes("regression") ? trials : 1);
 
   if (f.has("dry")) {
     const worst = tasks.reduce((n, t) => n + trialsOf(t) * t.budget.maxInputTokens, 0);
