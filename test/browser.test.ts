@@ -64,7 +64,7 @@ describe("formatSnapshot", () => {
 describe("browser tools gate", () => {
   const args: Record<string, unknown> = { url: "http://x", ref: "e1", text: "a", expression: "1" };
 
-  it("offers exactly the seven named tools", () => {
+  it("offers exactly the eight named tools", () => {
     const tools = browserTools({ enabled: false } as unknown as BrowserController);
     expect(tools.map((t) => t.name)).toEqual([
       "browser_open",
@@ -73,6 +73,7 @@ describe("browser tools gate", () => {
       "browser_type",
       "browser_eval",
       "browser_logs",
+      "browser_report",
       "browser_screenshot",
     ]);
   });
@@ -85,7 +86,7 @@ describe("browser tools gate", () => {
       expect(out.isError).toBe(true);
       expect(out.text).toContain("Couldn't open the browser pane");
     }
-    expect(requestOpen).toHaveBeenCalledTimes(7);
+    expect(requestOpen).toHaveBeenCalledTimes(8);
   });
 
   it("opens the pane before running the tool body", async () => {

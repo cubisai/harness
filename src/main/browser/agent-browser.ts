@@ -260,6 +260,11 @@ export class AgentBrowserBackend implements BrowserBackend {
     return text.length > EVAL_MAX ? `${text.slice(0, EVAL_MAX)}… (truncated)` : text;
   }
 
+  /** A raw eval result for the harness itself, not the agent's browser_eval. */
+  async query(expression: string): Promise<unknown> {
+    return (await this.call<{ result?: unknown }>("eval", expression)).result;
+  }
+
   async logs(clear: boolean, newOnly = false): Promise<string> {
     const flag = clear ? ["--clear"] : [];
     const consoleData = await this.call<{ messages?: { type?: string; level?: string; text?: string }[] }>("console", ...flag);

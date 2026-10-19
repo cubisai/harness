@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { HarnessTool, ToolContext, ToolOutput } from "../agents/types";
 import { asBackend, WAIT_MAX_MS, type BrowserBackend, type WaitFor } from "./backend";
 import type { BrowserController } from "./controller";
+import { formatReport, runReport, type Assertion } from "./report";
 
 async function safely(fn: () => Promise<ToolOutput>): Promise<ToolOutput> {
   try {
@@ -163,6 +164,50 @@ export function browserTools(target: BrowserBackend | BrowserController, opts: {
       autoAllow: true,
       effect: "read",
       run: ({ clear, new_only }) => gated(browser, async () => ({ text: await browser.logs(clear ?? false, new_only ?? false) })),
+    }),
+    define({
+      name: "browser_report",
+      description:
+        "Verify the current page against assertions and return a report with evidence. Each check sets exactly one of: text (the page's visible text contains it), url (the page URL contains it), or selector — alone (at least one visible match), with value (the element's value or text equals it), or with count (that many visible matches). The report includes console/network errors and an optional screenshot. Prefer it to a screenshot for deciding pass or fail.",
+      input: {
+        title: z.string().optional().describe("A short name for the report, e.g. Checkout after submit"),
+        checks: z
+          .array(
+            z.object({
+              label: z.string().optional().describe("A short name for this check in the report"),
+              text: z.string().optional().describe("The page's visible text contains this"),
+              selector: z.string().optional().describe("A CSS selector; alone, at least one visible match"),
+              url: z.string().optional().describe("The page URL contains this, e.g. /dashboard"),
+              value: z.string().optional().describe("With selector: the element's value or text equals this"),
+              count: z.number().int().nonnegative().optional().describe("With selector: this many visible matches"),
+            }),
+          )
+          .max(30)
+          .describe("What must hold on the page, in order"),
+        screenshot: z.boolean().optional().describe("Also save a screenshot and put its path in the report"),
+      },
+      autoAllow: true,
+      effect: "read",
+      run: ({ title, checks, screenshot }, ctx) =>
+        gated(browser, async () => {
+          for (let i = 0; i < checks.length; i++) {
+            const c = checks[i]!;
+            const forms = [c.text !== undefined, c.url !== undefined, c.selector !== undefined].filter(Boolean).length;
+            if (forms !== 1) return { text: `Check ${i} must set exactly one of text, url, or selector.`, isError: true };
+            if ((c.value !== undefined || c.count !== undefined) && c.selector === undefined) return { text: `Check ${i} may set value or count only with a selector.`, isError: true };
+          }
+          const list: Assertion[] = checks.map((c) => ({
+            ...(c.label !== undefined ? { label: c.label } : {}),
+            ...(c.text !== undefined ? { text: c.text } : {}),
+            ...(c.selector !== undefined ? { selector: c.selector } : {}),
+            ...(c.url !== undefined ? { url: c.url } : {}),
+            ...(c.value !== undefined ? { value: c.value } : {}),
+            ...(c.count !== undefined ? { count: c.count } : {}),
+          }));
+          const target = `${browser.kind === "visible" ? "visible pane" : "headless session"}${ctx?.threadId ? ` · thread ${ctx.threadId}` : ""}`;
+          const result = await runReport(browser, list, { screenshot: screenshot ?? false, target });
+          return { text: formatReport(result, title), isError: false };
+        }),
     }),
     define({
       name: "browser_screenshot",

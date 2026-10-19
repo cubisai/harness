@@ -30,6 +30,8 @@ import { LimitsRefresher } from "./limits-refresher";
 import { loadAcpAgents, onPath } from "./agents/registry";
 import { BrowserController, isAllowedUrl } from "./browser/controller";
 import { browserTools } from "./browser/tools";
+import { DevServers } from "./devserver/registry";
+import { devServerTools } from "./devserver/tools";
 import { Store } from "./db";
 import { artifactKind, resolveInside } from "./artifacts";
 import { createLinkPreviews, localImage } from "./link-preview";
@@ -441,8 +443,17 @@ async function main(): Promise<void> {
   const tools = browserTools(browser, { busy: (threadId) => service.isRunning(threadId) });
   const memoryEnabled = (pid: string) => memoryOn(settings.get(), pid);
   const memoryTools = [memoryReadTool({ store: memory.store, enabled: memoryEnabled }), memoryWriteTool({ store: memory.store, enabled: memoryEnabled })];
+  // Dev servers the app starts for the agent (P5.5); only these are ever stopped, all of them on quit.
+  const devServers = new DevServers();
+  const devTools = devServerTools(devServers, (pid) => {
+    try {
+      return store.getProject(pid).path;
+    } catch {
+      return null;
+    }
+  });
   // A stable array identity: the tool list must not change mid-conversation.
-  const allTools = [...tools, ...memoryTools];
+  const allTools = [...tools, ...devTools, ...memoryTools];
   const memorySnapshots = new MemorySnapshots(join(userData, "memory", "projects"));
   // Snapshots of deleted threads (and stale ones), off the startup path.
   setImmediate(() => {
@@ -1724,6 +1735,7 @@ async function main(): Promise<void> {
     designWatcher.closeAll();
     shooter.close();
     terminals.dispose();
+    devServers.stopAll();
     mcpTools.flush();
     void toolServer?.then((s) => s.close());
     void mcpPool.closeAll();
