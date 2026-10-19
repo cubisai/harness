@@ -8,35 +8,58 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 
 **Rules:** one commit per point. Typecheck and the full vitest suite must be green before each commit. At the end of each phase that changes the app runtime, do one live turn each on Claude, Codex and OpenCode Zen.
 
-## Resume here (stopped 2026-10-18; start a new session from this section, on any PC)
+## Resume here (stopped 2026-10-19 on the Mac; start a new session from this section, on any PC)
 
-**Progress:** 31 of 41 points done (the table has 41 rows; P2.1 is split into a and b). 2026-10-19 (Mac): P6.1 finished and merged, then P5.4. Everything is on `roadmap`; the `roadmap-p6` branch is deleted locally and on origin. On `roadmap`: typecheck green, design:check 0 errors, vitest 2804 passed / 0 failed, validate-graders exit 0. Live turns on Claude, Codex and OpenCode Zen last ran after P5.3.
+**Progress:** 36 of 41 points done (the table has 41 rows; P2.1 is split into a and b). Session 2026-10-19 finished P6.1, P5.4, P5.5, P6.2, P6.3, P7.1 and P8.1, running parallel worktrees, one per track. Every track is merged into `roadmap` and pushed. No other roadmap branches exist; the per-track worktrees and branches were removed.
+- **`m4` is merged in:** `roadmap` now also contains m4's TGP close-out (`a85a8e2`, `edd8887`, `65dbbfb`), merged through P6. The only conflict was `TeamStrip.tsx`, resolved so both features work together: m4's member click / done progress and the roadmap's model tooltip and run history.
+- **Checks on `roadmap` (Mac):** typecheck green, design:check 0 errors, vitest 2899 passed / 0 failed, validate-graders exit 0, `--splits` reports no leakage.
 
-**What's in git (everything needed is pushed):**
-- `origin/roadmap`: all finished work, and this handoff.
-- Plans and notes, force-added under the gitignored `.ai/` on `roadmap`:
-  - `.ai/plans/roadmap-13.md`: the 40 points.
-  - `.ai/plans/p2.md` … `p6.md`: per-phase plans with file:line evidence, change lists and notes.
-  - `.ai/plans/briefs/p61.brief.txt`: P6.1 spec.
-  - `.ai/plans/briefs/p52.brief.txt`: the P5.2 spec, done, kept as a pattern.
-  - `.ai/research_notes/roadmap13-p{2..6}.md`: researcher code maps (spot-checked; line numbers can drift).
+**Left (5 points), with designs ready to brief:**
+1. **P7.2:** the automation runner, sources/destination and app wiring. The full design is in `.ai/plans/p7.md` ("P7.2 design"): two parallel workers (runner.ts; io/sources/destinations), then Claude wires index.ts, Service and the Message Center.
+2. **P8.2:** a judge grader with calibration, plus grader stability. Design in `.ai/plans/p8.md`: two parallel workers.
+   - P7.2 and P8.2 don't depend on each other, so run them in parallel worktrees.
+3. **P7.3:** templates and the automations UI (after P7.2).
+4. **P8.3:** the bounded optimizer (after P8.2).
+5. **P8.4:** lesson replay, promotion and retirement. Do a researcher pass on `src/main/learn/` first; the brief is outlined in p8.md.
+
+**Still owed (live and real-app checks; none have run since P5.3):**
+- **P5 phase end, real app:**
+  - the pane auto-opens from closed;
+  - user takeover pauses the agent;
+  - a `wait_for` click;
+  - `dev_server` status and start on a real Vite project;
+  - `browser_report` PASS/FAIL.
+- **P6 phase end:** a live team turn each on Claude (sonnet), Codex and OpenCode Zen (`deepseek-v4.1-flash-free`), with one member that sets `model`.
+  - Check the roster line, the strip tooltip with the model and run history, and that a small ask is answered without fanning out.
+  - Take a dark-theme screenshot.
+- **DESIGN §9 check of P2.1b/P2.3:** paged transcript and windowing.
+
+**What's in git:**
+- `origin/roadmap`: everything, plus this handoff.
+- Under the gitignored `.ai/` (force-added):
+  - `.ai/plans/roadmap-13.md`;
+  - `.ai/plans/p2.md` … `p8.md`: per-phase plans; p7/p8 hold the ready designs;
+  - `.ai/plans/briefs/`;
+  - `.ai/research_notes/roadmap13-p{2..8,55}.md`: researcher maps (spot-checked; line numbers drift).
 
 **Set up on another PC:**
-1. `git fetch origin`.
-2. Check out `roadmap` in your roadmap worktree (on the Mac that was `../aiharness-wt/roadmap`), then `bun install`. The roadmap added a pinned dependency, `quickjs-emscripten@0.32.0`.
-3. Check: `bun run typecheck` and `bunx vitest run`. The live `*-live` tests need `.env` keys; without them they fail as expected.
+1. `git fetch origin`, check out `roadmap`, `bun install`.
+2. On the Windows PC, remove the old `harness-roadmap-p2`…`-p6` worktrees (all merged).
+3. Check: `bun run typecheck`, `bunx vitest run` (the `*-live` tests need `.env` keys), `bun run eval --validate-graders`, `bun run eval --splits`.
 
-**Next, in order:**
-1. **P5.5:** dev-server detection/owned start/stop, `browser_report` result shape. See `.ai/plans/p5.md`. Then the P5 phase-end real-app check (pane auto-open from closed, takeover, a `wait_for` click).
-2. **Then:** P6.2, P6.3, on `roadmap` (or a worktree branched from it). run live turns on Claude, Codex and OpenCode Zen, and do a real-app check of the browser auto-open and takeover.
-3. **Then:** P7 (automations; needs P3 and P5), then P8 (needs P1 and P4).
-
-**Still owed (needs a person at the app):** the DESIGN §9 real-app check of P2.1b/P2.3 (paged transcript, "Show earlier messages", windowing): light/dark, a 900px window, keyboard, screenshot (`bun run dev`, a long thread).
+**How the parallel tracks ran (Mac, 8 GB):**
+- One worktree per track: `git worktree add -b roadmap-pN ../roadmap-pN roadmap`, then `bun install` in it. Don't symlink the main checkout's `node_modules`: `m4`'s copy lacks `quickjs-emscripten`.
+- Up to 5 opencode workers at once was fine, started 20 s apart. Each worker got ≤ 5 files with disjoint file sets, so two workers can share a worktree.
+- Dispatch on the Mac: `opencode run --agent orchestrator -m opencode/deepseek-v4.1-flash-free "<brief>" --format json < /dev/null`, with the brief starting "Dispatch this immediately with your `task` tool to the `implementer` subagent…". Workers run no shell commands; Claude runs every check.
+- Every worker run this session succeeded first time. Claude fixed small issues on review:
+  - headless stale-ref matches now use a fresh snapshot;
+  - dev-server `stop()` has a pid guard;
+  - `dev_server` effect changed to mutate;
+  - `--split` defaults to tier full.
 
 **Workers (opencode delegation per CLAUDE.md):**
-- The owner wants Zen DeepSeek Flash Free: `--chain opencode/deepseek-v4.1-flash-free,opencode/glm-5.3-flash-free` on oc-run.
-- Free endpoints were flaky: dropped sockets, "Endpoint is unavailable", 10 minutes idle. After 1–2 failed dispatches it was faster to implement directly from the brief; P4.5, P2.7, P5.2 and P5.3 were finished that way.
-- Run one worker or track at a time unless the machine has memory to spare.
+- The owner wants Zen DeepSeek Flash Free. On the Windows PC that is `--chain opencode/deepseek-v4.1-flash-free,opencode/glm-5.3-flash-free` on oc-run.
+- On the Windows PC the free endpoints were flaky (2026-10-18). After 1–2 failed dispatches, implement directly from the brief.
 
 ### Windows PC specifics (D:/Cubebis Work/ai-agent/)
 - **Local worktrees:** `harness-roadmap` (roadmap), plus `harness-roadmap-p2`…`-p6`. All of p2–p6 are merged into roadmap and can be removed (`git worktree remove`); the `roadmap-p6` branch no longer exists on origin.
@@ -84,11 +107,17 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 | P5.2 Backend interface + headless agent-browser | done | `19ce7a8` |
 | P5.3 Target ownership + serialization | done | `93cc180` |
 | P5.4 Readiness, stale refs, compact observations | done | `98df692` |
-| P5.5 Dev-server lifecycle + test reports | next | |
+| P5.5 Dev-server lifecycle + test reports | done | `b76788a` |
 | P6.1 Member model/effort | done | `b65ea92` + `40aa80b` |
-| P6.2–P6.3 | | |
-| P7.1–P7.3 | not started | |
-| P8.1–P8.4 | not started | |
+| P6.2 Flexible lead guidance + brief template | done | `b3ae1e4` |
+| P6.3 Member runs, cost/latency reconciliation | done | `207e08f` |
+| P7.1 Records + scheduler | done | `08e3ec8` |
+| P7.2 Runner, sources, deliveries | next (design in p7.md) | |
+| P7.3 Templates + UI | | |
+| P8.1 Splits + sealed holdout + leakage | done | `364eb9f` |
+| P8.2 Grader/judge calibration | next (design in p8.md) | |
+| P8.3 Bounded optimizer | | |
+| P8.4 Lesson replay/promotion/retirement | | |
 
 ## Log
 
@@ -269,3 +298,30 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 - The headless half was written by a Zen DeepSeek implementer. Claude made its stale-ref lookup use a fresh snapshot and fixed the tests.
 - The browser skill doc mentions the new options and the auto-opening pane.
 - `2fddc24`: c-perf-quadratic's hidden test is 400k items (200k unique). The quadratic no-op took 1.0 s on the Mac and passed; now it takes about 7.9 s and fails, while the reference stays in ms.
+
+### 2026-10-19 (Mac): P5.5, P6.2, P6.3, P7.1, P8.1, run as parallel worktrees
+- **P5.5 `b76788a`:**
+  - `src/main/devserver/`:
+    - detect: package.json dev/start/serve/preview, a port read from the script or the tool's default, the package manager from the lockfile;
+    - registry: a POSIX process group / Windows killPidTree, ready when the port opens, the output tail on failure;
+    - tools: `dev_server` (status/stop, auto) and `dev_server_start` (asks first, through the normal policy).
+  - Only owned servers stop; all of them are stopped on before-quit.
+  - `browser_report` (8th browser tool): text/url/selector/value/count checks run in one in-page script through the new `backend.query` (no takeover check, no action announced), with PASS/FAIL plus actual values, logs and an optional screenshot.
+  - The browser skill doc covers both.
+  - Checked for real: `npm run dev` on a temp project started, then stopping it killed the whole tree.
+- **P6.2 `b3ae1e4`:**
+  - TEAM_LEAD_PROTOCOL: size the request first. Answer small asks directly; a narrow ask goes to one member; phases only when a step needs another's result. Briefs list objective, inputs, outcome, evidence, boundaries and stop condition; dependents get file names.
+  - Member replies name their evidence.
+  - The software-delivery, product-launch and research-report teams' "How you work" now match the team to the ask instead of always fanning out.
+- **P6.3 `207e08f`** (on top of the m4 merge `945a881`):
+  - The tool-result event gains `runUsage` (a subagent call's own tokens/cost). The meters never sum it.
+  - Native: each child is priced on the model it ran on (`costOf(u, wire)`). The turn-end cost is the lead's own cost plus each child's, so a P6.1 member on a pricier model is no longer billed at the lead's rate.
+  - `src/shared/team-runs.ts`: `memberRuns` (done/failed/stopped/running, latency, usage) and `memberTotals`.
+  - The TeamStrip tooltip lists a member's latest 3 runs.
+  - Claude/Codex/OpenCode don't report per-member usage yet; their rows show status and latency only.
+- **P7.1 `08e3ec8`:**
+  - schedule.ts: Intl-only time zones. A DST gap runs at the first valid minute; an overlap runs at the first occurrence. Missed runs coalesce; run keys are unique.
+  - Migration 29 plus AutomationStore: `claimRun` is INSERT OR IGNORE, so a restart or wake can't duplicate a run (tested across a DB reopen). A cursor moves only via confirmSource; a failed source keeps its bookmark. Deliveries go intent → published → confirmed/unknown.
+  - Not wired into the app yet (P7.2).
+- **P8.1 `364eb9f`:** evals splits, `--split` / `--release` / `--splits`. The holdout is sealed unless `--release` is given.
+- **Merged `roadmap`:** vitest 2899 passed / 0 failed.
