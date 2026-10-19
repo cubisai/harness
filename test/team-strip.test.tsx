@@ -112,4 +112,18 @@ describe("TeamStripView", () => {
     expect(idle).not.toContain("team-strip-lead active");
     expect(idle).not.toContain('class="beam"');
   });
+
+  it("names what a member with its own model runs on, per agent", async () => {
+    const { TeamStripView } = await load();
+    const [analyst, writer] = team.members!;
+    const own = { ...team, members: [{ ...analyst!, model: "haiku", effort: "low" as const }, writer!] };
+    const claude = renderToStaticMarkup(<TeamStripView def={own} active={new Set<string>()} agent="claude" leadModel="opus" />);
+    expect(claude).toContain('title="Data Analyst · Senior Data Analyst · haiku low"');
+    expect(claude).toContain('title="Report Writer · Technical Writer"');
+    const codex = renderToStaticMarkup(<TeamStripView def={own} active={new Set<string>()} agent="codex" leadModel="gpt-6" />);
+    expect(codex).toContain("title=\"Data Analyst · Senior Data Analyst · gpt-6 low (uses the lead&#x27;s model on this agent)\"");
+    // No agent known, or no member model: the tooltip is unchanged.
+    expect(renderToStaticMarkup(<TeamStripView def={own} active={new Set<string>()} />)).toContain('title="Data Analyst · Senior Data Analyst"');
+    expect(renderToStaticMarkup(<TeamStripView def={team} active={new Set<string>()} agent="claude" leadModel="opus" />)).toContain('title="Data Analyst · Senior Data Analyst"');
+  });
 });

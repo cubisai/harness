@@ -241,6 +241,14 @@ describe("Claude driver guide", () => {
     await d.runTurn(input);
     // Members get no Skill tool: their toolkit is their own skills index.
     expect(sdk.calls[0]?.options.agents).toEqual({ analyst: { description: "Ana, Analyst", prompt: "Research.", disallowedTools: ["Skill"] } });
+    // A member's own model rides its SDK definition; one without keeps the lead's.
+    sdk.calls.length = 0;
+    input.team = [{ id: "analyst", description: "Ana, Analyst", prompt: "Research.", model: "haiku", effort: "low" }, { id: "writer", description: "W", prompt: "Write." }];
+    await d.runTurn(input);
+    expect(sdk.calls[0]?.options.agents).toEqual({
+      analyst: { description: "Ana, Analyst", prompt: "Research.", disallowedTools: ["Skill"], model: "haiku" },
+      writer: { description: "W", prompt: "Write.", disallowedTools: ["Skill"] },
+    });
     // Members stay in the foreground, inside the lead's turn.
     expect((sdk.calls[0]?.options.env as Record<string, string> | undefined)?.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS).toBe("1");
   });

@@ -140,6 +140,10 @@ export interface ExpertMember {
   skills: string[];
   /** The member's turn budget as a subagent (a package's `maxTurns`); absent = the engine's default. */
   maxTurns?: number;
+  /** The member's own model, used where the engine supports per-subagent models; absent = the lead's. */
+  model?: string;
+  /** The member's own effort, used where the engine supports per-subagent reasoning; absent = the lead's. */
+  effort?: "low" | "medium" | "high";
 }
 
 export interface ExpertDef {
@@ -355,6 +359,10 @@ export interface TeamAgent {
   prompt: string;
   /** Turn budget as a subagent; absent = the engine's default. */
   maxTurns?: number;
+  /** The member's own model, used where the engine supports per-subagent models; absent = the lead's. */
+  model?: string;
+  /** The member's own effort, used where the engine supports per-subagent reasoning; absent = the lead's. */
+  effort?: "low" | "medium" | "high";
 }
 
 /**
@@ -412,9 +420,26 @@ export function teamAgents(def: Pick<ExpertDef, "kind" | "members">, memberSkill
       description: m.description ? `${what}: ${m.description}` : what,
       prompt: [m.prompt.slice(0, EXPERT_PROMPT_MAX), index, teamMemberProtocol(m.id)].filter(Boolean).join("\n\n"),
       ...(m.maxTurns ? { maxTurns: m.maxTurns } : {}),
+      ...(m.model ? { model: m.model } : {}),
+      ...(m.effort ? { effort: m.effort } : {}),
     });
   }
   return out;
+}
+
+/** A member's own model, resolved against the agent that will run the team; null when the agent ignores it. */
+export function memberModelLabel(member: ExpertMember, agent: string, leadModel: string): string {
+  return agentRunsMemberModel(agent) ? member.model ?? leadModel : leadModel;
+}
+
+/** The caveat under a member's model in the roster: "uses the lead's model on this agent", or "". */
+export function memberModelNote(member: ExpertMember, agent: string): string {
+  return member.model && !agentRunsMemberModel(agent) ? "uses the lead's model on this agent" : "";
+}
+
+/** Whether an agent runs a member on its own model: Claude and OpenCode subagents and CubiQ's provider agents do. */
+function agentRunsMemberModel(agent: string): boolean {
+  return agent === "claude" || agent === "opencode" || agent.startsWith("provider-");
 }
 
 /**

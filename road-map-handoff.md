@@ -10,7 +10,7 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 
 ## Resume here (stopped 2026-10-18; start a new session from this section, on any PC)
 
-**Progress:** 29 of 40 points done. P1–P4 and P5.1–P5.3 are merged into `roadmap` and pushed to origin (green: typecheck, design:check, vitest with environment failures only, validate-graders, and live turns on Claude, Codex and OpenCode Zen).
+**Progress:** 30 of 40 points done. 2026-10-19 (Mac): P6.1 finished on `roadmap-p6` (merged with `roadmap` first); not merged into `roadmap` yet. P1–P4 and P5.1–P5.3 are merged into `roadmap` and pushed to origin (green: typecheck, design:check, vitest with environment failures only, validate-graders, and live turns on Claude, Codex and OpenCode Zen).
 
 **What's in git (everything needed is pushed):**
 - `origin/roadmap`: all finished work, and this handoff.
@@ -29,10 +29,9 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 4. Check: `bun run typecheck` and `bunx vitest run`. The live `*-live` tests need `.env` keys; without them they fail as expected.
 
 **Next, in order:**
-1. **P6.1:** review the WIP diff on `roadmap-p6` against `.ai/plans/briefs/p61.brief.txt`, then finish it (tests missing, and the native per-member model route needs checking), verify, and commit.
-2. **P5.4:** readiness conditions, stale-ref detection, compact observations. Continue on `roadmap` (or a `roadmap-p5` worktree from it). See `.ai/plans/p5.md`.
-3. **Then:** P5.5, P6.2, P6.3. Merge P6, run live turns on Claude, Codex and OpenCode Zen, and do a real-app check of the browser auto-open and takeover.
-4. **Then:** P7 (automations; needs P3 and P5), then P8 (needs P1 and P4).
+1. **P5.4:** readiness conditions, stale-ref detection, compact observations. Continue on `roadmap` (or a `roadmap-p5` worktree from it). See `.ai/plans/p5.md`.
+2. **Then:** P5.5, P6.2, P6.3. Merge P6, run live turns on Claude, Codex and OpenCode Zen, and do a real-app check of the browser auto-open and takeover.
+3. **Then:** P7 (automations; needs P3 and P5), then P8 (needs P1 and P4).
 
 **Still owed (needs a person at the app):** the DESIGN §9 real-app check of P2.1b/P2.3 (paged transcript, "Show earlier messages", windowing): light/dark, a 900px window, keyboard, screenshot (`bun run dev`, a long thread).
 
@@ -88,7 +87,7 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 | P5.3 Target ownership + serialization | done | `93cc180` |
 | P5.4 Readiness, stale refs, compact observations | next | |
 | P5.5 Dev-server lifecycle + test reports | | |
-| P6.1 Member model/effort | partial, uncommitted (roadmap-p6) | |
+| P6.1 Member model/effort | done (roadmap-p6) | `b65ea92` + `40aa80b` |
 | P6.2–P6.3 | | |
 | P7.1–P7.3 | not started | |
 | P8.1–P8.4 | not started | |
@@ -240,3 +239,13 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 - P5.3: `TargetLock` in tools.ts. Page-changing tools (open, click, type, eval) queue per target. The last acting thread owns the pane, and while its turn runs (`service.isRunning`) another thread's action is refused with a clear message. Reads stay open to everyone.
 - Checks: typecheck green; vitest 2705 passed, 10 failed (environment-only); validate-graders exit 0.
 - P5.1–P5.3 merged into roadmap (2026-10-18): typecheck green; vitest 2761 passed, 9 failed (environment-only); validate-graders exit 0.
+
+### P6.1 — member model/effort (2026-10-19, Mac)
+- On `roadmap-p6` after `git merge roadmap`. The WIP `b65ea92` was reviewed and kept as-is; `40aa80b` adds the rest.
+- Member frontmatter `model` (id-safe, ≤ 120 chars) and `effort` (low/medium/high) reach `TeamAgent`.
+  - Claude: SDK agent `model`. OpenCode: agent `model`. Codex: ignored.
+  - Native: the driver's `routeFor(modelId)` resolves the member's own provider entry (route, wire id, reasoning). Effort is passed only when that model reasons. A model the provider doesn't list runs on the lead's, and the result ends "(ran on <lead>: <model> isn't offered by this provider)".
+- UI: the ExpertDetail roster shows "<model> · <effort>" in mono tertiary. The team strip tooltip names what a member actually runs on for the thread's agent, with "(uses the lead's model on this agent)" on Codex. Tooltips are unchanged for members without a model.
+- Tests: catalog parsing, teamAgents, the label/note helpers, Claude SDK agents, OpenCode injection, unchanged Codex roles, task-tool route/model/effort/fallback, a native driver end-to-end (mutation-checked), the roster line, and the strip tooltip. Written by a Zen DeepSeek implementer and Claude; Claude reviewed the diff.
+- Checks (Mac): typecheck green; design:check 0 errors; vitest 2784 passed, 1 failed. The failure is `eval-tasks` c-perf-quadratic: on the Mac the no-op dedupe beats the 2 s budget, so "a no-op passes". It fails the same without P6.1, so it needs a bigger N or a tighter budget for fast machines.
+- Owed at P6 end: a live team turn on Claude, Codex and OpenCode Zen with a member that sets `model`, plus a dark-theme screenshot of the roster line.

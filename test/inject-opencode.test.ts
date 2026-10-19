@@ -125,4 +125,11 @@ describe("withOpenCodeTeam steps", () => {
     const out = withOpenCodeTeam(undefined, [{ id: "a", description: "A", prompt: "Do.", maxTurns: 30 }], [], {});
     expect(JSON.parse(out.env.OPENCODE_CONFIG_CONTENT!).agent.a).toEqual({ mode: "subagent", description: "A", prompt: "Do.", steps: 30 });
   });
+
+  it("passes a member's own model, and leaves the key out when there is none", () => {
+    const withModel = withOpenCodeTeam(undefined, [{ id: "a", description: "A", prompt: "Do.", model: "opencode/x" }], [], {});
+    expect(JSON.parse(withModel.env.OPENCODE_CONFIG_CONTENT!).agent.a).toEqual({ mode: "subagent", description: "A", prompt: "Do.", model: "opencode/x" });
+    const plain = withOpenCodeTeam(undefined, [{ id: "b", description: "B", prompt: "Do." }], [], {});
+    expect(JSON.parse(plain.env.OPENCODE_CONFIG_CONTENT!).agent.b).not.toHaveProperty("model");
+  });
 });

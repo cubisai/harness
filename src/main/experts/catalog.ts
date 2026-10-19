@@ -166,6 +166,8 @@ function readMembers(dir: string): ExpertMember[] {
       prompt,
       skills: metaList(meta, "skills"),
       ...maxTurnsOf(metaStr(meta, "maxTurns")),
+      ...modelOf(metaStr(meta, "model")),
+      ...effortOf(metaStr(meta, "effort")),
     });
   }
   return out;
@@ -175,6 +177,17 @@ function readMembers(dir: string): ExpertMember[] {
 function maxTurnsOf(value: string): { maxTurns?: number } {
   const n = Number.parseInt(value, 10);
   return Number.isInteger(n) && n >= 1 && n <= 500 ? { maxTurns: n } : {};
+}
+
+/** A package's `model` as a member field: trimmed, ≤120 chars, id-safe; nothing otherwise. */
+function modelOf(value: string): { model?: string } {
+  const model = value.trim();
+  return model && model.length <= 120 && /^[\w.:/@-]+$/.test(model) ? { model } : {};
+}
+
+/** A package's `effort` as a member field: only the three levels the engines share. */
+function effortOf(value: string): { effort?: "low" | "medium" | "high" } {
+  return value === "low" || value === "medium" || value === "high" ? { effort: value } : {};
 }
 
 /** A meta value as one trimmed string, or "" when it's a list/absent. */

@@ -307,6 +307,27 @@ describe("provider driver", () => {
     expect(lost.requests[0]!.messages[0]).toEqual({ role: "user", content: [{ type: "text", text: "HANDOFF\n\nhi" }] });
   });
 
+  it("runs a team member on its own model when the provider lists it, else on the lead's", async () => {
+    const small = { id: "small", capabilities: { tools: true, vision: false, reasoning: true }, contextWindow: 64_000, maxOutput: 4_000 };
+    const hand = (agent: string): AssistantPart[] => [{ type: "tool-call", id: `c-${agent}`, name: "task", input: { description: "Check", prompt: "Check it.", agent } }];
+    const t = setup([hand("listed"), [{ type: "text", text: "checked" }], hand("missing"), [{ type: "text", text: "checked too" }], [{ type: "text", text: "done" }]], {
+      saved: provider({ models: [...provider().models, small] }),
+    });
+    await t.driver.runTurn({
+      ...t.input("go"),
+      team: [
+        { id: "listed", description: "L", prompt: "You are listed.", model: "small", effort: "low" },
+        { id: "missing", description: "M", prompt: "You are missing.", model: "nope" },
+      ],
+    });
+    const listed = t.requests.find((r) => r.system.includes("You are listed."))!;
+    expect(listed).toMatchObject({ model: "small", effort: "low" });
+    const missing = t.requests.find((r) => r.system.includes("You are missing."))!;
+    expect(missing).toMatchObject({ model: "deepseek-v4", effort: "high" });
+    const results = t.events.filter((e) => e.kind === "tool-result");
+    expect(results.some((e) => e.kind === "tool-result" && /ran on deepseek-v4: nope isn't offered/.test(JSON.stringify(e)))).toBe(true);
+  });
+
   it("gives GPT models apply_patch instead of edit", async () => {
     const t = setup([[{ type: "text", text: "ok" }]], { saved: provider({ models: [{ id: "gpt-5.5", capabilities: { tools: true, vision: true, reasoning: true }, contextWindow: 400_000, maxOutput: 128_000 }] }) });
     await t.driver.runTurn({ ...t.input("hi"), model: "gpt-5.5" });

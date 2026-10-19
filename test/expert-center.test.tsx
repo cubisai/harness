@@ -277,6 +277,17 @@ describe("ExpertDetail", () => {
     (summonBtn.props!.onClick as () => void)();
     expect(onSummon).toHaveBeenCalledTimes(1);
   });
+
+  it("shows a member's own model and effort only for members that set them", async () => {
+    const { ExpertDetailContent } = await load();
+    const [architect, reviewer] = team.members!;
+    const def = { ...team, members: [{ ...architect!, model: "anthropic/claude-haiku-4.5", effort: "high" as const }, reviewer!] };
+    const html = strip(renderToStaticMarkup(<ExpertDetailContent def={def} used={0} canSummon onClose={() => {}} onSummon={() => {}} onSummonPrompt={() => {}} />));
+    expect(html.match(/class="xc-team-model"/g)?.length).toBe(1);
+    expect(html).toContain('<span class="xc-team-model">anthropic/claude-haiku-4.5 · high</span>');
+    const plain = strip(renderToStaticMarkup(<ExpertDetailContent def={team} used={0} canSummon onClose={() => {}} onSummon={() => {}} onSummonPrompt={() => {}} />));
+    expect(plain).not.toContain("xc-team-model");
+  });
 });
 
 describe("summon", () => {

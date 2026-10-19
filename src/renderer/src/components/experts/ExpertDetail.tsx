@@ -157,6 +157,7 @@ export function ExpertDetailContent({ def, used, canSummon, onClose, onSummon, o
                 <div className="xc-team-name">
                   {m.name}
                   {m.profession ? <span className="xc-team-prof"> · {m.profession}</span> : null}
+                  {m.model || m.effort ? <span className="xc-team-model">{[m.model, m.effort].filter(Boolean).join(" · ")}</span> : null}
                 </div>
                 {m.description ? <p className="xc-team-desc">{m.description}</p> : null}
               </div>
