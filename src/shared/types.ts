@@ -5,6 +5,7 @@ import type { PrototypeTier } from "./tiers";
 import type { ExpertDef, ExpertImportResult } from "./experts";
 import type { CommentTarget, DesignComment } from "./comments";
 import type { LearnCase, LearnOverview, LearnSettings, Lesson, TurnScore } from "./learn";
+import type { AutomationNotice } from "./automations";
 
 export type Invocation = "model" | "user";
 
@@ -1087,7 +1088,11 @@ export type LiveUpdate =
   /** Self-improve: a turn's health changed (scored, or a later correction/revert). */
   | { type: "turn-score"; score: TurnScore }
   /** Self-improve: a project's lessons or cases changed (the Learned tab refetches). */
-  | { type: "learn-changed"; projectId: string };
+  | { type: "learn-changed"; projectId: string }
+  /** An automation run changed state (finished, waiting on the user, paused at its budget). */
+  | { type: "automation-run"; notice: AutomationNotice }
+  /** An automation run's result was delivered into its thread. */
+  | { type: "automation-delivered"; automationId: string; runId: number; threadId: string; title: string };
 
 /** The API the preload script exposes as `window.unskilled`. */
 export interface UnskilledApi {

@@ -17,3 +17,15 @@ export type RunStatus =
   | "failed"
   | "cancelled"
   | "interrupted";
+
+/** A run's outcome as the renderer sees it (Message Center rows, the automation list). */
+export interface AutomationNotice {
+  automationId: string;
+  name: string;
+  runId: number;
+  threadId: string | null;
+  status: RunStatus;
+  costUsd: number | null;
+  endedAt: number | null;
+  error: string | null;
+}

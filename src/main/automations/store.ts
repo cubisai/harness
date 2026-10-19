@@ -302,11 +302,21 @@ export class AutomationStore {
     this.db.prepare("UPDATE automation_runs SET status = ? WHERE id = ?").run(status, id);
   }
 
-  /** On startup: any run left in flight whose lease expired is interrupted. */
-  interruptStale(): number {
+  /**
+   * Any run left in flight whose lease expired is interrupted. `all` (app
+   * startup, when no run of this process can be live) ignores the lease.
+   */
+  interruptStale(all = false): number {
     const now = this.now();
-    const info = this.db.prepare("UPDATE automation_runs SET status = 'interrupted', ended_at = ? WHERE status = 'running' AND (lease_until IS NULL OR lease_until < ?)").run(now, now);
+    const info = this.db
+      .prepare("UPDATE automation_runs SET status = 'interrupted', ended_at = ? WHERE status IN ('running', 'waiting-input') AND (? = 1 OR lease_until IS NULL OR lease_until < ?)")
+      .run(now, all ? 1 : 0, now);
     return Number(info.changes);
+  }
+
+  /** Runs claimed but never started (the app quit first), oldest first. */
+  queuedRuns(): AutomationRun[] {
+    return (this.db.prepare(`SELECT ${RUN_COLS} FROM automation_runs WHERE status = 'queued' ORDER BY scheduled_at, id`).all() as unknown as RawRun[]).map(runOf);
   }
 
   runs(automationId: string, limit = 20): AutomationRun[] {

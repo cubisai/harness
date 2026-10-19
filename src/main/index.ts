@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell, utilityProcess } from "electron";
+import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, powerMonitor, protocol, safeStorage, shell, utilityProcess } from "electron";
 import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, DesignDevice, DesignExportFormat, DesignSystemEdit, DesignSystemOption, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryScope, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
@@ -41,6 +41,7 @@ import { migrateLegacyData } from "./migrate-data";
 import { startToolServer, type ToolServer } from "./mcp-http";
 import { TerminalManager } from "./terminal";
 import { Service } from "./service";
+import { startAutomations } from "./automations/app";
 import { testConnection } from "./providers";
 import { discoverModels, ModelsDev, pickSmallModel } from "./models-catalog";
 import { injectionFor } from "./inject";
@@ -845,6 +846,9 @@ async function main(): Promise<void> {
       bridge: designBridgeJs,
     }),
   );
+  // Scheduled automations: reconcile a crash's leftovers, then run what's due every minute and on wake.
+  const automations = startAutomations({ store, service, broadcast });
+  powerMonitor.on("resume", automations.tick);
   const designWatcher = new DesignWatcher({ onChange: (threadId, paths) => broadcast({ type: "design-changed", threadId, ...(paths ? { paths } : {}) }) });
   // Each window's watches, so a window that closes (or reloads) without unmounting its canvas releases them.
   const designWatches = new Map<number, Map<string, number>>();
@@ -1743,6 +1747,7 @@ async function main(): Promise<void> {
     shooter.close();
     terminals.dispose();
     devServers.stopAll();
+    automations.dispose();
     mcpTools.flush();
     void toolServer?.then((s) => s.close());
     void mcpPool.closeAll();
