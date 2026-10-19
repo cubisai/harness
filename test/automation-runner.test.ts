@@ -344,6 +344,25 @@ describe("AutomationRunner.drain", () => {
   });
 });
 
+describe("AutomationRunner disabled automations", () => {
+  it("runs a manual run of a disabled automation but cancels a scheduled one", async () => {
+    const now = 1_000;
+    const { db } = open(() => now);
+    db.create(base({ id: "a1", enabled: false }));
+    const sent: string[] = [];
+    const runner = new AutomationRunner(makeDeps(db, { now: () => now, send: async (t) => (sent.push(t), { text: "ok" }) }));
+    const manual = runner.runNow("a1")!;
+    await runner.drain();
+    expect(db.run(manual.id)!.status).toBe("succeeded");
+
+    const scheduled = db.claimRun("a1", "a1@2026-01-01T00:00:00.000Z", 2)!;
+    (runner as unknown as { queue: number[] }).queue.push(scheduled.id);
+    await runner.drain();
+    expect(db.run(scheduled.id)!.status).toBe("cancelled");
+    expect(sent).toHaveLength(1);
+  });
+});
+
 describe("AutomationRunner.recover", () => {
   it("interrupts stale runs and reconciles deliveries without blind reposting", async () => {
     let now = 1_000;

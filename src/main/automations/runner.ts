@@ -183,7 +183,9 @@ export class AutomationRunner {
     const run = store.run(id);
     if (!run) return;
     const a = store.get(run.automationId);
-    if (!a || !a.enabled) {
+    // Disabled only stops the schedule: a manual run still goes.
+    const manual = run.runKey.startsWith(`${run.automationId}@manual-`);
+    if (!a || (!a.enabled && !manual)) {
       store.finishRun(id, { status: "cancelled" });
       return;
     }
