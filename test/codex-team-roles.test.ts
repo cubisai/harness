@@ -40,4 +40,13 @@ describe("codexTeamRoles", () => {
     codexTeamRoles(team, dir);
     expect(readFileSync(join(dir, "writer.toml"), "utf8")).toBe('developer_instructions = "Write."\n');
   });
+
+  it("ignores a member's own model and effort", () => {
+    const withModel = join(tempDir(), "t5");
+    const plain = join(tempDir(), "t6");
+    const a = codexTeamRoles([{ id: "writer", description: "Writer", prompt: "Write.", model: "gpt-x", effort: "high" }], withModel);
+    const b = codexTeamRoles([{ id: "writer", description: "Writer", prompt: "Write." }], plain);
+    expect(a.writer!.description).toBe(b.writer!.description);
+    expect(readFileSync(join(withModel, "writer.toml"), "utf8")).toBe(readFileSync(join(plain, "writer.toml"), "utf8"));
+  });
 });

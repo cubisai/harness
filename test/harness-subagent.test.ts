@@ -13,8 +13,10 @@ const call = (id: string, name: string, input: Record<string, unknown> = {}): As
 /** A fake model: each call answers with the next scripted message (after streaming its text). */
 function script(...answers: (AssistantPart[] | ((req: LlmRequest) => AssistantPart[]))[]) {
   const requests: LlmRequest[] = [];
+  const routes: Route[] = [];
   const stream = async function* (_r: Route, req: LlmRequest, opts?: { signal?: AbortSignal }): AsyncGenerator<LlmEvent> {
     requests.push({ ...req, messages: [...req.messages] });
+    routes.push(_r);
     const a = answers[Math.min(requests.length - 1, answers.length - 1)]!;
     const message = typeof a === "function" ? a(req) : a;
     for (const p of message) if (p.type === "text") yield { type: "text-delta", text: p.text };
@@ -22,7 +24,7 @@ function script(...answers: (AssistantPart[] | ((req: LlmRequest) => AssistantPa
     const calls = message.some((p) => p.type === "tool-call");
     yield { type: "finish", reason: calls ? "tool-calls" : "stop", message, usage: usage(10) };
   };
-  return { stream: stream as typeof streamLlm, requests };
+  return { stream: stream as typeof streamLlm, requests, routes };
 }
 
 function tool(name: string, access: LoopTool["access"], run: LoopTool["run"] = async () => ({ text: `${name} ok` })): LoopTool {
@@ -44,7 +46,7 @@ function setup(answers: (AssistantPart[] | ((req: LlmRequest) => AssistantPart[]
     ...over,
   });
   const run = (args: Record<string, unknown>, id = "call1", signal = new AbortController().signal) => task.run(args, { id, signal, onOutput: () => {} });
-  return { task, events, usages, requests: s.requests, run };
+  return { task, events, usages, requests: s.requests, routes: s.routes, run };
 }
 
 describe("createTaskTool", () => {
@@ -153,6 +155,7 @@ describe("createTaskTool", () => {
 
 describe("createTaskTool team members", () => {
   const member = { id: "checker", description: "Checks facts", prompt: "You check facts.", maxTurns: 3 };
+  const otherRoute: Route = { ...route, label: "Other" };
 
   it("keeps the definition explore-only when the thread has no team", () => {
     const { task } = setup([]);
@@ -205,5 +208,52 @@ describe("createTaskTool team members", () => {
     const result = await t.run({ description: "x", prompt: "go", agent: "checker" });
     expect(result.text.startsWith("(Stopped at the step limit.)")).toBe(true);
     expect(t.requests).toHaveLength(1);
+  });
+
+  it("runs a member on its resolved route and model, with its effort when it reasons", async () => {
+    const t = setup([text("done")], {
+      team: [{ ...member, model: "big", effort: "high" }],
+      routeFor: (id) => (id === "big" ? { route: otherRoute, model: "big-wire", reasoning: true } : null),
+    });
+    const result = await t.run({ description: "x", prompt: "x", agent: "checker" });
+    expect(t.requests[0]!.model).toBe("big-wire");
+    expect(t.requests[0]!.effort).toBe("high");
+    expect(t.routes[0]).toBe(otherRoute);
+    expect(result.text).not.toContain("ran on");
+  });
+
+  it("leaves effort off when the member's resolved route doesn't reason", async () => {
+    const t = setup([text("done")], {
+      team: [{ ...member, model: "big", effort: "high" }],
+      routeFor: (id) => (id === "big" ? { route: otherRoute, model: "big-wire", reasoning: false } : null),
+    });
+    await t.run({ description: "x", prompt: "x", agent: "checker" });
+    expect(t.requests[0]!.model).toBe("big-wire");
+    expect(t.requests[0]!.effort).toBeUndefined();
+  });
+
+  it("falls back to the lead's route and model when the provider doesn't offer the member's", async () => {
+    const t = setup([text("done")], {
+      team: [{ ...member, model: "big" }],
+      routeFor: () => null,
+    });
+    const result = await t.run({ description: "x", prompt: "x", agent: "checker" });
+    expect(t.requests[0]!.model).toBe("m");
+    expect(t.routes[0]).toBe(route);
+    expect(result.text.endsWith("(ran on m: big isn't offered by this provider)")).toBe(true);
+  });
+
+  it("never resolves a route for a member without its own model", async () => {
+    let calls = 0;
+    const t = setup([text("done")], {
+      team: [member],
+      routeFor: () => {
+        calls++;
+        return null;
+      },
+    });
+    await t.run({ description: "x", prompt: "x", agent: "checker" });
+    expect(t.requests[0]!.model).toBe("m");
+    expect(calls).toBe(0);
   });
 });

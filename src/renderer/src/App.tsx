@@ -247,7 +247,7 @@ export function App() {
                 <ThreadView threadId={thread.id} expertId={thread.expertId} />
                 <TodoDock threadId={thread.id} />
                 <RequestDock threadId={thread.id} />
-                {thread.expertId && <TeamStrip threadId={thread.id} expertId={thread.expertId} />}
+                {thread.expertId && <TeamStrip threadId={thread.id} expertId={thread.expertId} agent={thread.agent} leadModel={thread.model} />}
                 <Composer
                   threadId={thread.id}
                   mode={

@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import type { ExpertDef } from "../../../../shared/experts";
+import { memberModelLabel, memberModelNote, type ExpertDef, type ExpertMember } from "../../../../shared/experts";
 import type { ThreadEvent } from "../../../../shared/types";
 import { useStore } from "../../store";
 import { Beam } from "../Beam";
@@ -41,9 +41,10 @@ export function activeMembers(events: ThreadEvent[], memberIds: string[]): Set<s
 /**
  * The strip's markup, hook-free so a test can render it directly. While the
  * turn runs and no member is working, the lead is the one working (planning,
- * briefing, writing the answer), so it lights up instead.
+ * briefing, writing the answer), so it lights up instead. A member that names
+ * its own model or effort shows what it actually runs on in its tooltip.
  */
-export function TeamStripView({ def, active, running = false }: { def: ExpertDef; active: Set<string>; running?: boolean }) {
+export function TeamStripView({ def, active, running = false, agent, leadModel }: { def: ExpertDef; active: Set<string>; running?: boolean; agent?: string; leadModel?: string }) {
   const members = def.members ?? [];
   if (def.kind !== "team" || members.length === 0) return null;
   const working = members.filter((m) => active.has(m.id)).length;
@@ -63,7 +64,7 @@ export function TeamStripView({ def, active, running = false }: { def: ExpertDef
           <span
             key={m.id}
             className={`team-strip-member${on ? " active" : ""}`}
-            title={`${m.name} · ${m.profession}${on ? " · working" : ""}`}
+            title={`${m.name} · ${m.profession}${runsOn(m, agent, leadModel)}${on ? " · working" : ""}`}
             {...(on ? { "aria-current": "true" as const } : {})}
           >
             <span className="team-strip-face">
@@ -78,8 +79,16 @@ export function TeamStripView({ def, active, running = false }: { def: ExpertDef
   );
 }
 
+/** " · <model> <effort> (note)" for a member that sets a model or effort, else "". */
+function runsOn(m: ExpertMember, agent: string | undefined, leadModel: string | undefined): string {
+  if ((!m.model && !m.effort) || agent === undefined) return "";
+  const note = memberModelNote(m, agent);
+  const label = [memberModelLabel(m, agent, leadModel ?? ""), m.effort].filter(Boolean).join(" ");
+  return `${label ? ` · ${label}` : ""}${note ? ` (${note})` : ""}`;
+}
+
 /** The strip for a thread's expert: reads the catalogue and the thread's events. */
-export function TeamStrip({ threadId, expertId }: { threadId: string; expertId: string }) {
+export function TeamStrip({ threadId, expertId, agent, leadModel }: { threadId: string; expertId: string; agent: string; leadModel: string }) {
   const experts = useStore((s) => s.experts);
   const events = useStore((s) => s.events[threadId]);
   const running = useStore((s) => s.running[threadId] === true);
@@ -96,5 +105,5 @@ export function TeamStrip({ threadId, expertId }: { threadId: string; expertId: 
   }, [events, def]);
 
   if (!def) return null;
-  return <TeamStripView def={def} active={active} running={running} />;
+  return <TeamStripView def={def} active={active} running={running} agent={agent} leadModel={leadModel} />;
 }

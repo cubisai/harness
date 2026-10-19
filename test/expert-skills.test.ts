@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createExpertCatalog } from "../src/main/experts/catalog";
-import { bindExpertSkills, expertBlock, skillsIndexBlock, teamAgents, teamMemberProtocol, type ExpertSkill } from "../src/shared/experts";
+import { bindExpertSkills, expertBlock, memberModelLabel, memberModelNote, skillsIndexBlock, teamAgents, teamMemberProtocol, type ExpertSkill } from "../src/shared/experts";
 import { tempDir } from "./helpers";
 
 const skill = (name: string, description = ""): ExpertSkill => ({ name, description, file: `/pkg/skills/${name}/SKILL.md` });
@@ -96,6 +96,19 @@ describe("packageSkills", () => {
     expect(members.find((m) => m.id === "b")).not.toHaveProperty("maxTurns");
   });
 
+  it("reads a member's model and effort and drops a bad one", () => {
+    const userDir = tempDir();
+    const team = join(userDir, "t");
+    mkdirSync(join(team, "members"), { recursive: true });
+    writeFileSync(join(team, "expert.md"), "---\nid: t\nkind: team\nname: T\nprofession: Lead\n---\nLead.\n");
+    writeFileSync(join(team, "members", "a.md"), "---\nname: A\nprofession: P\nmodel: anthropic/claude-haiku-4.5\neffort: high\n---\nA.\n");
+    writeFileSync(join(team, "members", "b.md"), "---\nname: B\nprofession: P\nmodel: bad model!\neffort: extreme\n---\nB.\n");
+    const members = createExpertCatalog({ bundledDir: tempDir(), userDir }).get("t")!.members!;
+    expect(members.find((m) => m.id === "a")).toMatchObject({ model: "anthropic/claude-haiku-4.5", effort: "high" });
+    expect(members.find((m) => m.id === "b")).not.toHaveProperty("model");
+    expect(members.find((m) => m.id === "b")).not.toHaveProperty("effort");
+  });
+
   it("keeps an expert's package skills out of its global skill chips", () => {
     const userDir = tempDir();
     const expert = join(userDir, "painter");
@@ -119,6 +132,36 @@ describe("team protocol", () => {
   it("leaves maxTurns out when the member has none", () => {
     const [agent] = teamAgents({ kind: "team", members: [{ id: "a", name: "A", profession: "P", description: "", prompt: "Do.", skills: [] }] });
     expect(agent).not.toHaveProperty("maxTurns");
+  });
+
+  it("copies a member's model and effort, and leaves them out when unset", () => {
+    const [withOwn] = teamAgents({ kind: "team", members: [{ id: "checker", name: "C", profession: "Checker", description: "Checks.", prompt: "Check.", skills: [], model: "anthropic/claude-haiku-4.5", effort: "high" }] });
+    expect(withOwn).toMatchObject({ model: "anthropic/claude-haiku-4.5", effort: "high" });
+    const [plain] = teamAgents({ kind: "team", members: [{ id: "a", name: "A", profession: "P", description: "", prompt: "Do.", skills: [] }] });
+    expect(plain).not.toHaveProperty("model");
+    expect(plain).not.toHaveProperty("effort");
+  });
+});
+
+describe("memberModelLabel", () => {
+  const withModel = { id: "m", name: "M", profession: "P", description: "", prompt: "Do.", skills: [], model: "anthropic/claude-haiku-4.5" };
+  const without = { ...withModel, model: undefined };
+
+  it("names a member's own model where the agent runs it", () => {
+    expect(memberModelLabel(withModel, "claude", "lead")).toBe("anthropic/claude-haiku-4.5");
+    expect(memberModelLabel(withModel, "opencode", "lead")).toBe("anthropic/claude-haiku-4.5");
+    expect(memberModelLabel(withModel, "provider-x", "lead")).toBe("anthropic/claude-haiku-4.5");
+  });
+
+  it("falls back to the lead's model where the agent ignores it", () => {
+    expect(memberModelLabel(withModel, "codex", "lead")).toBe("lead");
+    expect(memberModelLabel(without, "claude", "lead")).toBe("lead");
+  });
+
+  it("notes when the agent ignores a member's model, and stays blank otherwise", () => {
+    expect(memberModelNote(withModel, "codex")).toBe("uses the lead's model on this agent");
+    expect(memberModelNote(withModel, "claude")).toBe("");
+    expect(memberModelNote(without, "codex")).toBe("");
   });
 });
 
