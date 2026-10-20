@@ -196,6 +196,8 @@ export interface Settings {
   defaultPermissionMode: PermissionMode;
   /** Download new versions in the background and install them on quit. */
   autoUpdate: boolean;
+  /** Background threads: how many turns may run at once (0 = no limit; over it, background sends wait in a queue) and whether Alt+Enter starts them in their own worktree. Absent = { maxRunning: 0, worktree: false }. */
+  background?: { maxRunning: number; worktree: boolean };
   /** The editor "Open in editor" uses; null = the first one found. */
   editor: string | null;
   /** Panel sizes and which panels are collapsed; SettingsStore.get() always fills it in. */
@@ -1361,3 +1363,6 @@ export interface ContextPreview {
   /** The shared memory index, once memory exists (null until then). */
   memoryIndex: { lines: number; tokens: number } | null;
 }
+
+/** The background-turn limits Settings offers; 0 means no limit. */
+export const MAX_RUNNING_CHOICES = [0, 2, 3, 4, 6] as const;

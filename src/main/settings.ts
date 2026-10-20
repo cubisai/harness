@@ -12,6 +12,7 @@ import type {
   Settings,
   SettingsView,
 } from "../shared/types";
+import { MAX_RUNNING_CHOICES } from "../shared/types";
 import { DEFAULT_LAYOUT, sanitizeLayout } from "../shared/layout";
 import { isZoom } from "../shared/zoom";
 import { LEARN_DEFAULTS, type LearnSettings } from "../shared/learn";
@@ -167,6 +168,12 @@ export class SettingsStore {
       next.defaultPermissionMode = patch.defaultPermissionMode;
     }
     if (typeof patch.autoUpdate === "boolean") next.autoUpdate = patch.autoUpdate;
+    if (patch.background && typeof patch.background === "object" && !Array.isArray(patch.background)) {
+      const current = next.background ?? { maxRunning: 0, worktree: false };
+      const maxRunning = (MAX_RUNNING_CHOICES as readonly number[]).includes(patch.background.maxRunning) ? patch.background.maxRunning : current.maxRunning;
+      const worktree = typeof patch.background.worktree === "boolean" ? patch.background.worktree : current.worktree;
+      next.background = { maxRunning, worktree };
+    }
     if (patch.editor !== undefined) next.editor = typeof patch.editor === "string" ? patch.editor : null;
     if (patch.paneLayout !== undefined) next.paneLayout = sanitizeLayout(patch.paneLayout);
     if (patch.skills && typeof patch.skills === "object" && Array.isArray(patch.skills.disabled)) {
