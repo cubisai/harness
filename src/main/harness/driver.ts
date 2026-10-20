@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import type { ModelOption, PermissionMode, Provider } from "../../shared/types";
+import type { CodeMode, ModelOption, PermissionMode, Provider } from "../../shared/types";
 import { SAFE_DEFAULTS, withCapabilities } from "../agents/capabilities";
 import type { AgentDriver, HarnessTool, TurnInput } from "../agents/types";
 import { askUserTool } from "../questions";
@@ -28,6 +28,7 @@ import { pruneToolOutputs, retentionFor } from "./context/prune";
 import { nativeTools, shellFor, todosOf, type NativeTool, type ToolContext } from "./tools";
 import { bound } from "./tools/bound";
 import { createCodeTool } from "./tools/code";
+import { createCodeBroker } from "./tools/code-broker";
 import { resolvePath } from "./tools/paths";
 
 /** Agent ids of provider agents: `provider-<providerId>`. */
@@ -49,8 +50,8 @@ export interface ProviderDriverDeps {
   mcpTools(projectId?: string): HarnessTool[];
   /** The model-invoked skills tool for this folder, or null when there are none; `threadId` adds that thread's expert's own skills. */
   skills?(cwd: string, design: boolean, threadId?: string): HarnessTool | null;
-  /** P3.5 pilot: offer the `run_code` sandbox tool. */
-  codeMode?: () => boolean;
+  /** The thread's code mode: "on" offers the `run_code` sandbox tool, "only" also leaves the read tools to scripts. */
+  codeMode?: (threadId: string) => CodeMode;
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform;
   /** Tests. */
@@ -92,6 +93,8 @@ export function createProviderDriver(providerId: string, deps: ProviderDriverDep
   const id = providerAgentId(providerId);
   // Files read per session, kept across turns so an edit next turn needs no re-read (a restart forgets them).
   const readsBySession = new Map<string, Map<string, number>>();
+  // run_code's store/load values, per session, the same way.
+  const codeStateBySession = new Map<string, Map<string, string>>();
   const current = (): Provider | undefined => deps.provider();
 
   const models = (): ModelOption[] =>
@@ -142,7 +145,7 @@ export function createProviderDriver(providerId: string, deps: ProviderDriverDep
       const turnId = randomUUID();
       input.onEvent({ kind: "turn-start", turnId, agent: id, model: input.model });
       try {
-        await runTurn(providerId, deps, input, turnId, started, readsBySession);
+        await runTurn(providerId, deps, input, turnId, started, readsBySession, codeStateBySession);
       } catch (err) {
         input.onEvent({ kind: "error", message: errorText(err) });
         input.onEvent({ kind: "turn-end", costUsd: null, inputTokens: 0, outputTokens: 0, durationMs: Date.now() - started });
@@ -150,6 +153,9 @@ export function createProviderDriver(providerId: string, deps: ProviderDriverDep
     },
   };
 }
+
+/** The native read tools code mode "only" leaves to scripts. */
+const SCRIPT_ONLY = new Set(["read", "glob", "grep"]);
 
 /** One line of text for a thread row: the first line, trimmed to a summary length. */
 const oneLine = (text: string, max = 160): string => {
@@ -170,6 +176,7 @@ async function runTurn(
   turnId: string,
   started: number,
   readsBySession: Map<string, Map<string, number>>,
+  codeStateBySession: Map<string, Map<string, string>>,
 ): Promise<void> {
   const provider = deps.provider();
   if (!provider) throw new Error("This provider was removed in Settings. Pick another agent for this thread.");
@@ -375,45 +382,24 @@ async function runTurn(
         }
       : {}),
   });
-  // P3.5 pilot: with code mode on, one sandboxed script can chain the other
-  // tools. Every call the script makes goes back through authorize, so ask mode
-  // still asks and the thread still shows each call.
-  let childCalls = 0;
-  const codeLoop: LoopTool | null = deps.codeMode?.()
-    ? createCodeTool({
-        tools: () => tools,
-        outputDir: deps.outputDir,
-        broker: async (name, args, parentId, signal) => {
-          const tool = tools.find((t) => t.definition.name === name);
-          if (!tool) return { text: `There's no tool named "${name}".`, isError: true };
-          let summary: string;
-          try {
-            summary = tool.summarize(args) || tool.displayName;
-          } catch {
-            summary = tool.displayName;
-          }
-          // The row goes up before the permission ask, so a refused call shows in the thread too.
-          const toolUseId = `${parentId}:${++childCalls}`;
-          input.onEvent({ kind: "tool-use", toolUseId, name: tool.displayName, summary, parentId });
-          const auth = await authorize(tool, args, summary);
-          if (!auth.ok) {
-            input.onEvent({ kind: "tool-result", toolUseId, isError: true, summary: oneLine(auth.reason), parentId });
-            return { text: auth.reason, isError: true };
-          }
-          try {
-            const result = await tool.run(args, { id: toolUseId, signal, onOutput: () => {} });
-            const text = bound(result.text, { outputDir: deps.outputDir, callId: toolUseId });
-            input.onEvent({ kind: "tool-result", toolUseId, isError: result.isError === true, summary: oneLine(text), payload: result.display?.result ?? text, parentId });
-            return { text, isError: result.isError === true };
-          } catch (err) {
-            const text = `${tool.displayName} failed: ${err instanceof Error ? err.message : String(err)}`;
-            input.onEvent({ kind: "tool-result", toolUseId, isError: true, summary: oneLine(text), parentId });
-            return { text, isError: true };
-          }
-        },
-      })
-    : null;
-  const tools: LoopTool[] = [...nativeLoop, ...appTools, ...(skillLoop ? [skillLoop] : []), ...(planLoop ? [planLoop] : []), ...(askLoop ? [askLoop] : []), taskLoop, ...(codeLoop ? [codeLoop] : [])].filter((t, i, all) => all.findIndex((o) => o.definition.name === t.definition.name) === i);
+  // Code mode: one sandboxed script can chain the other tools. Every call the
+  // script makes goes back through authorize, so ask mode still asks and the
+  // thread still shows each call.
+  const codeMode = deps.codeMode?.(input.threadId) ?? "off";
+  let codeState = codeStateBySession.get(sid);
+  if (!codeState) codeStateBySession.set(sid, (codeState = new Map<string, string>()));
+  const codeLoop: LoopTool | null =
+    codeMode !== "off"
+      ? createCodeTool({
+          tools: () => scriptable,
+          outputDir: deps.outputDir,
+          state: codeState,
+          broker: createCodeBroker({ tools: () => scriptable, emit: (e) => input.onEvent(e), authorize: (tool, args, summary) => authorize(tool, args, summary), outputDir: deps.outputDir }),
+        })
+      : null;
+  const scriptable: LoopTool[] = [...nativeLoop, ...appTools, ...(skillLoop ? [skillLoop] : []), ...(planLoop ? [planLoop] : []), ...(askLoop ? [askLoop] : []), taskLoop, ...(codeLoop ? [codeLoop] : [])].filter((t, i, all) => all.findIndex((o) => o.definition.name === t.definition.name) === i);
+  // "Only": the read tools are reached from scripts, not offered directly.
+  const tools: LoopTool[] = codeMode === "only" ? scriptable.filter((t) => !SCRIPT_ONLY.has(t.definition.name)) : scriptable;
 
   // A brand-new session's first turn gets a one-line token breakdown of what it starts with.
   if (createdNew) {
@@ -557,8 +543,8 @@ function nativeLoopTool(tool: NativeTool, ctxFor: (callId: string, signal: Abort
   };
 }
 
-/** One of the app's tools (browser, memory, design, MCP router) in the loop. */
-function appLoopTool(tool: HarnessTool, input: TurnInput, outputDir: string): LoopTool {
+/** One of the app's tools (browser, memory, design, MCP router) in the loop, or in a script (code mode). */
+export function appLoopTool(tool: HarnessTool, input: Pick<TurnInput, "projectId" | "threadId">, outputDir: string): LoopTool {
   let parameters: Record<string, unknown>;
   try {
     const { $schema: _schema, ...schema } = z.toJSONSchema(z.object(tool.input), { io: "input", unrepresentable: "any" }) as Record<string, unknown>;

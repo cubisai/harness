@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
 import type { EffortLevel, HookCallback, ModelInfo, ModelUsage, Options, PermissionResult, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
-import type { McpServerEntry, ModelOption, ModelPricing, PermissionMode, PlanEntry, ThreadEvent } from "../../shared/types";
+import type { CodeMode, McpServerEntry, ModelOption, ModelPricing, PermissionMode, PlanEntry, ThreadEvent } from "../../shared/types";
 import { canonicalTool, clipAgentSummary, clipSummary, type EditResult, type RunPayload, type RunResult } from "../../shared/tools";
 import { diffSummary, unifiedDiff } from "../../shared/diff";
 import type { ToolDiff } from "../../shared/tools";
@@ -260,7 +260,14 @@ export interface ClaudeDriverConfig {
   useInstalledCli?: boolean;
   /** CubiQ's memory block for this thread's agent session, or null when memory is off. */
   memory?: (projectId: string, threadId?: string, sessionKey?: string | null) => string | null;
+  /** The thread's code mode: "on" adds `run_code` (from `codeTool`) to the cubiq server, "only" also turns off Claude's Grep and Glob. */
+  codeMode?: (threadId: string) => CodeMode;
+  /** The thread's run_code harness tool. */
+  codeTool?: (threadId: string) => HarnessTool;
 }
+
+/** Claude's own search tools, which code mode "only" leaves to run_code scripts. Read stays: Claude's Edit refuses a file it hasn't Read. */
+const SCRIPT_ONLY_TOOLS = ["Grep", "Glob"];
 
 /**
  * Claude through the Agent SDK: Claude Code's own loop and tools, with the
@@ -444,6 +451,8 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
       const guideText = config.guide?.(input.cwd, input.design) ?? "";
       const memoryText = input.projectId ? config.memory?.(input.projectId, input.threadId, input.sessionId ?? null) ?? null : null;
       const systemAppend = [guideText, input.expert, memoryText].filter((part): part is string => Boolean(part)).join("\n\n");
+      const codeMode = input.threadId && config.codeTool ? (config.codeMode?.(input.threadId) ?? "off") : "off";
+      const harnessTools = codeMode !== "off" ? [...input.tools, config.codeTool!(input.threadId)] : input.tools;
       const options: Options = {
         cwd: input.cwd,
         abortController,
@@ -474,7 +483,8 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         // A team's members run in the foreground, inside the lead's turn: a backgrounded member outlives
         // the turn, and with it the permission stream its tool calls need.
         ...(input.team?.length ? { env: { ...(plan?.env ?? process.env), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1" } } : plan ? { env: plan.env } : {}),
-        ...withUserServers(harnessToolOptions(input.tools, { ...(input.projectId ? { projectId: input.projectId } : {}), ...(input.threadId ? { threadId: input.threadId } : {}) }), input.mcpServers),
+        ...(codeMode === "only" ? { disallowedTools: SCRIPT_ONLY_TOOLS } : {}),
+        ...withUserServers(harnessToolOptions(harnessTools, { ...(input.projectId ? { projectId: input.projectId } : {}), ...(input.threadId ? { threadId: input.threadId } : {}) }), input.mcpServers),
         hooks: { PreToolUse: [{ matcher: "Bash", hooks: [guard] }] },
         canUseTool: async (toolName, toolInput, { suggestions }): Promise<PermissionResult> => {
           // Plan mode's own gate: Claude presents its plan, the user decides how

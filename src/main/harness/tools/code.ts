@@ -31,7 +31,7 @@ export interface CodeToolOptions {
   state?: Map<string, string>;
 }
 
-const DESCRIPTION = [
+export const CODE_DESCRIPTION = [
   "Run a JavaScript program in a sandbox and return what it prints and returns.",
   "The code is the body of an async function: call tools as `await tools.<name>(args)`, which returns the tool's text output and throws on an error; `ALL_TOOLS` lists them, `searchTools(query)` ranks them, and `describeTool(name)` returns a TypeScript declaration.",
   "`store(key, value)` and `load(key)` keep JSON between scripts in this session, and a failed script's writes are dropped.",
@@ -49,7 +49,7 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
   return {
     definition: {
       name: "run_code",
-      description: DESCRIPTION,
+      description: CODE_DESCRIPTION,
       parameters: {
         type: "object",
         properties: { code: { type: "string", description: "The JavaScript to run, as the body of an async function." } },

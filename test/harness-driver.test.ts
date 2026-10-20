@@ -81,7 +81,7 @@ function setup(
     plan?: PlanDecision;
     requestUserInput?: TurnInput["requestUserInput"];
     memory?: ProviderDriverDeps["memory"];
-    codeMode?: () => boolean;
+    codeMode?: () => "off" | "on" | "only";
   } = {},
 ) {
   const cwd = tmp();
@@ -692,14 +692,42 @@ describe("provider driver", () => {
     await off.driver.runTurn(off.input("hi"));
     expect(off.requests[0]!.tools.map((x) => x.name)).not.toContain("run_code");
 
-    const on = setup([[{ type: "text", text: "ok" }]], { codeMode: () => true });
+    const on = setup([[{ type: "text", text: "ok" }]], { codeMode: () => "on" });
     await on.driver.runTurn(on.input("hi"));
     expect(on.requests[0]!.tools.map((x) => x.name)).toContain("run_code");
   });
 
+  it("in code mode only, leaves read, glob and grep to scripts and keeps store/load across turns", async () => {
+    const first = "store('n', 1); const r = await tools.read({ path: 'a.txt' }); return r.includes('hello');";
+    const second = "return load('n') + 1;";
+    const t = setup(
+      [
+        [{ type: "tool-call", id: "c1", name: "run_code", input: { code: first } }],
+        [{ type: "text", text: "ok" }],
+        [{ type: "tool-call", id: "c2", name: "run_code", input: { code: second } }],
+        [{ type: "text", text: "ok" }],
+      ],
+      { codeMode: () => "only" },
+    );
+    writeFileSync(join(t.cwd, "a.txt"), "hello\n");
+    await t.driver.runTurn(t.input("go"));
+    const names = t.requests[0]!.tools.map((x) => x.name);
+    expect(names).toContain("run_code");
+    expect(names).not.toContain("read");
+    expect(names).not.toContain("glob");
+    expect(names).not.toContain("grep");
+    expect(names).toContain("edit");
+    const result = (t.requests[1]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!;
+    expect(result.text).toContain("=> true");
+    expect(t.events.find((e) => e.kind === "tool-use" && e.parentId === "c1")).toMatchObject({ name: "Read" });
+    await t.driver.runTurn(t.input("again", t.session()));
+    const next = (t.requests[3]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!;
+    expect(next.text).toContain("=> 2");
+  });
+
   it("authorizes each run_code inner call and surfaces a denial inside the script", async () => {
     const code = "await tools.write({ path: 'x.txt', content: 'x' }); return 'wrote';";
-    const t = setup([[{ type: "tool-call", id: "c1", name: "run_code", input: { code } }], [{ type: "text", text: "ok" }]], { mode: "ask", codeMode: () => true });
+    const t = setup([[{ type: "tool-call", id: "c1", name: "run_code", input: { code } }], [{ type: "text", text: "ok" }]], { mode: "ask", codeMode: () => "on" });
     const asked: string[] = [];
     await t.driver.runTurn({
       ...t.input("go"),
