@@ -175,6 +175,28 @@ describe("runChecks", () => {
     expect(finding?.fixes.map((fix) => fix.kind)).not.toContain("run");
   });
 
+  it("offers to drop a pin first, so CubiQ can go back to the newest install", () => {
+    const npmPath = "/Users/me/.npm-global/bin/claude";
+    const nativePath = "/Users/me/.local/bin/claude";
+    const s = snapshot({
+      agents: [
+        agent({
+          id: "claude",
+          label: "Claude Code",
+          installs: [
+            { path: npmPath, version: "1.9.0" },
+            { path: nativePath, version: "2.1.0" },
+          ],
+          chosen: npmPath,
+          pinned: npmPath,
+        }),
+      ],
+    });
+    const finding = runChecks(s).find((f) => f.id === "claude:duplicates");
+    expect(finding?.fixes[0]).toEqual({ kind: "pin", label: "Use the newest automatically", agent: "claude", path: null });
+    expect(finding?.fixes[1]).toEqual({ kind: "pin", label: `Use 2.1.0 at ${nativePath}`, agent: "claude", path: nativePath });
+  });
+
   it("flags a chosen install below the minimum version", () => {
     const path = "/Users/me/.local/bin/claude";
     const s = snapshot({

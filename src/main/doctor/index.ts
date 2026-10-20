@@ -135,7 +135,7 @@ export function createDoctor(d: DoctorDeps): Doctor {
           const agent = d.agents().find((a) => a.id === fix.agent);
           d.savePin(fix.agent, fix.path);
           setBinaryPins(pinsByCommand(d));
-          return { ok: true, message: `${agent?.label ?? fix.agent} now uses ${fix.path}. New threads pick it up.` };
+          return { ok: true, message: `${agent?.label ?? fix.agent} now uses ${fix.path ?? "the newest install"}. New threads pick it up.` };
         }
         case "run": {
           try {

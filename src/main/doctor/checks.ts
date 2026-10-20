@@ -300,7 +300,8 @@ export function runChecks(s: DoctorSnapshot): DoctorFinding[] {
       (install) => `${install.path} (${install.version ?? "unknown"}, ${sourceOf(install)})`,
     );
     lines.push(chosen ? `CubiQ uses ${chosen.path}.` : "CubiQ doesn't use any of them.");
-    const fixes: DoctorFix[] = [];
+    // A pin can always be undone, without pinning some other copy instead.
+    const fixes: DoctorFix[] = agent.pinned !== null ? [{ kind: "pin", label: "Use the newest automatically", agent: agent.id, path: null }] : [];
     for (const install of agent.installs) {
       if (install.path === agent.chosen) continue;
       fixes.push({

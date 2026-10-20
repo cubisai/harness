@@ -10,7 +10,8 @@ export type DoctorLevel = "ok" | "warn" | "error";
  */
 export type DoctorFix =
   | { kind: "run"; label: string; command: string; args: string[] }
-  | { kind: "pin"; label: string; agent: string; path: string }
+  /** `path: null` drops the pin: CubiQ goes back to the newest install. */
+  | { kind: "pin"; label: string; agent: string; path: string | null }
   | { kind: "prune-worktrees"; label: string; dirs: string[] }
   | { kind: "copy"; label: string; text: string };
 
