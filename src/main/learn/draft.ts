@@ -12,6 +12,10 @@ export interface DraftInput {
   commands: string[];
   /** The failing project check's tail, or null when none ran. */
   checkTail: string | null;
+  /** Project-relative paths the turn changed. */
+  changed: string[];
+  /** The project's tracked file names (no contents), for naming real files; [] when unknown. */
+  files: string[];
   /** The answer of a later turn that went right, or null. */
   contrast: string | null;
   /** Rule texts of lessons/notes that already exist. */
@@ -26,6 +30,7 @@ export interface DraftedLesson {
 }
 
 const CLIP_AT = 1500;
+const MAX_FILES = 80;
 
 /** Clip a block to the prompt's budget, marking that it was cut. */
 function clip(text: string): string {
@@ -40,6 +45,7 @@ export function buildDraftPrompt(i: DraftInput): string {
     "rule: one imperative sentence, at most 200 characters, specific to this project, telling a future agent what to do differently.",
     "why: one sentence naming the evidence (the signal) that justifies the rule.",
     "paths: project-relative files, folders or globs the rule applies to ([] when it is general).",
+    "Name a file (in rule or paths) only if it appears in CHANGED, PROJECT FILES or the check output; never guess a file name.",
     "keywords: up to 5 lowercase words from the kind of request the rule applies to.",
     "Base the rule only on the SIGNALS (external evidence), never on guesses.",
     'Output {"none":true} when the failure was the user\'s change of mind, a flaky tool, or nothing generalisable.',
@@ -59,6 +65,10 @@ export function buildDraftPrompt(i: DraftInput): string {
     "TURN:",
     `User: ${clip(i.request)}`,
     `Commands: ${clip(i.commands.join("; "))}`,
+    `CHANGED: ${i.changed.length ? clip(i.changed.join(", ")) : "(none)"}`,
+    ...(i.files.length > 0
+      ? [`PROJECT FILES: ${clip(i.files.slice(0, MAX_FILES).join(", "))}${i.files.length > MAX_FILES ? ` (+${i.files.length - MAX_FILES} more)` : ""}`]
+      : []),
   ];
   if (i.checkTail !== null) lines.push(`Check output: ${clip(i.checkTail)}`);
   lines.push(`Assistant: ${clip(i.answer)}`);

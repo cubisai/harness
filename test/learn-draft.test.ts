@@ -3,7 +3,7 @@ import type { TurnSignal } from "../src/shared/learn";
 import { POISON_TOOLS, buildDraftPrompt, findDuplicate, parseLesson, pulledOutsideContent, similarity, tokens, type DraftInput } from "../src/main/learn/draft";
 
 function input(over: Partial<DraftInput> = {}): DraftInput {
-  return { request: "do the thing", answer: "done", signals: [], commands: [], checkTail: null, contrast: null, existing: [], ...over };
+  return { request: "do the thing", answer: "done", signals: [], commands: [], checkTail: null, changed: [], files: [], contrast: null, existing: [], ...over };
 }
 
 const SIGNALS: TurnSignal[] = [{ kind: "check-failed", level: "fail", detail: "npm test failed" }];
@@ -56,6 +56,22 @@ describe("buildDraftPrompt", () => {
     const p = buildDraftPrompt(input({ request: "x".repeat(2000) }));
     expect(p).toContain(`User: ${"x".repeat(1500)}…`);
     expect(p.includes("x".repeat(1501))).toBe(false);
+  });
+
+  it("shows the changed and tracked file names and forbids guessing others", () => {
+    const p = buildDraftPrompt(input({ changed: ["src/dec.js"], files: ["config/registry.json", "src/a.js"] }));
+    expect(p).toContain("CHANGED: src/dec.js");
+    expect(p).toContain("PROJECT FILES: config/registry.json, src/a.js");
+    expect(p).toContain("never guess a file name");
+    expect(buildDraftPrompt(input())).not.toContain("PROJECT FILES:");
+    expect(buildDraftPrompt(input())).toContain("CHANGED: (none)");
+  });
+
+  it("lists at most 80 project files and says how many more", () => {
+    const files = Array.from({ length: 85 }, (_, n) => `f${n}.ts`);
+    const p = buildDraftPrompt(input({ files }));
+    expect(p).toContain("(+5 more)");
+    expect(p).not.toContain("f80.ts,");
   });
 });
 

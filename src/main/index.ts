@@ -73,7 +73,7 @@ import { MEMORY_READ_TOOL, MEMORY_WRITE_TOOL, memoryReadTool, memoryWriteTool } 
 import { askUserTool, questionAnswerOf } from "./questions";
 import { SettingsStore, type SecretBox } from "./settings";
 import { agentCatalog, skillDetail } from "./library";
-import { fillUserEnvironment } from "./winspawn";
+import { execCommandSync, fillUserEnvironment } from "./winspawn";
 import { referenceEvents } from "./canonical-events";
 import { smokeCanonicalEvents, smokeHandoff, smokeMigration, smokeProviders } from "./smoke-checks";
 import { Editors, realHost } from "./editors";
@@ -1071,6 +1071,14 @@ async function main(): Promise<void> {
     casesRoot: (projectId) => join(userData, "learn", projectId, "cases"),
     checkCommand: (projectId) => store.getProject(projectId).checkCommand?.trim() || null,
     existing: (projectId) => memory.store.list(projectId).map((n) => n.description),
+    // Names only (never contents), so a drafted lesson points at files that exist.
+    projectFiles: (cwd) => {
+      try {
+        return execCommandSync("git", ["ls-files"], { cwd, timeout: 5000 }).split(/\r?\n/).filter(Boolean).slice(0, 200);
+      } catch {
+        return [];
+      }
+    },
     verifyLesson: createVerifier({
       db: learnDb,
       settings: () => settings.get().learn,

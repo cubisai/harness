@@ -84,6 +84,8 @@ export interface LearnerDeps {
   checkCommand?: (projectId: string) => string | null;
   /** One-line notes the project already keeps (memory), so a lesson doesn't repeat one. */
   existing?: (projectId: string) => string[];
+  /** The project's tracked file names at `cwd` (names only), for the drafter; absent = none. */
+  projectFiles?: (cwd: string) => string[];
   /** Replay a lesson's case and report the verdict (S3); absent = verification is off. */
   verifyLesson?: (l: Lesson) => Promise<{ verification: LessonVerification | null; promote: boolean; why: string; tokens: number } | null>;
   now?: () => number;
@@ -282,6 +284,8 @@ export function createLearner(deps: LearnerDeps): Learner {
       signals: row.signals,
       commands: rec.commands,
       checkTail: rec.check && !rec.check.ok ? rec.check.tail : null,
+      changed: rec.changed,
+      files: deps.projectFiles?.(rec.cwd) ?? [],
       contrast: job.contrast,
       existing: [...lessons.map((l) => l.rule), ...(deps.existing?.(job.projectId) ?? [])].slice(0, 40),
     });
