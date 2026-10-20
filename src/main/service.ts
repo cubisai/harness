@@ -88,6 +88,7 @@ import { redactDeep, redactSecrets } from "./inject/redact";
 import type { TurnDelta } from "./memory/extractor";
 import type { Learner } from "./learn";
 import { answersMessage } from "./questions";
+import { canonicalTool } from "../shared/tools";
 
 /**
  * Everything the UI can ask for, with no Electron in sight, so it runs
@@ -95,6 +96,8 @@ import { answersMessage } from "./questions";
  */
 export class Service {
   private running = new Map<string, AbortController>();
+  /** Per thread, the run_code rows still open (no result yet), so a script on the cubiq MCP server can nest its calls under its own row. */
+  private openScripts = new Map<string, { toolUseId: string; code: string | null }[]>();
   private artifacts: ArtifactDeps | null = null;
   private designSystemsDir: string | null = null;
   /** Projects already warned about loading the same conventions twice: said once, not every turn. */
@@ -662,6 +665,7 @@ export class Service {
   }
 
   private emit(threadId: string, event: ThreadEvent, provenance: Provenance | null = null): StoredEvent {
+    this.trackScripts(threadId, event);
     const stored = this.store.appendEvent(threadId, redactDeep(event, this.secrets()), provenance);
     this.broadcast({ type: "event", threadId, stored });
     return stored;
@@ -1106,6 +1110,38 @@ export class Service {
       for (const s of signals) s.addEventListener("abort", cancel, { once: true });
       this.broadcast({ type: "question", request: { requestId, threadId, questions, ...(async ? { async } : {}) } });
     });
+  }
+
+  private trackScripts(threadId: string, event: ThreadEvent): void {
+    if (event.parentId) return;
+    if (event.kind === "tool-use" && canonicalTool(event.name) === "run_code") {
+      const code = (event.payload as { code?: unknown } | undefined)?.code;
+      const open = this.openScripts.get(threadId) ?? [];
+      open.push({ toolUseId: event.toolUseId, code: typeof code === "string" ? code : null });
+      this.openScripts.set(threadId, open);
+    } else if (event.kind === "tool-result") {
+      const open = this.openScripts.get(threadId);
+      if (open) this.openScripts.set(threadId, open.filter((s) => s.toolUseId !== event.toolUseId));
+    } else if (event.kind === "turn-end") {
+      this.openScripts.delete(threadId);
+    }
+  }
+
+  /** The open run_code row in a running thread whose script is `code` (else the newest open one), or undefined. */
+  scriptParent(threadId: string, code: string): string | undefined {
+    if (!this.running.has(threadId)) return undefined;
+    const open = this.openScripts.get(threadId) ?? [];
+    return (open.find((s) => s.code === code) ?? open.at(-1))?.toolUseId;
+  }
+
+  /** A row from outside the agent (a cubiq run_code script's call) in a running thread; dropped once the turn is over. */
+  emitFromTool(threadId: string, event: ThreadEvent): void {
+    if (this.running.has(threadId)) this.emit(threadId, event);
+  }
+
+  /** The running turn's signal for a thread, or undefined when none runs. */
+  turnSignal(threadId: string): AbortSignal | undefined {
+    return this.running.get(threadId)?.signal;
   }
 
   /** A harness tool (ACP's ask_user) asks on behalf of a thread's running turn; null when no turn is running there. */

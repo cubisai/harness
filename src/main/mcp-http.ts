@@ -119,6 +119,14 @@ export function withDesign(url: string, threadId: string | undefined): string {
   return u.toString();
 }
 
+/** A tool-server URL that adds code mode's run_code for a thread (`?c=`), without naming it as the caller. */
+export function withCode(url: string, threadId: string | undefined): string {
+  if (!threadId) return url;
+  const u = new URL(url);
+  u.searchParams.set("c", threadId);
+  return u.toString();
+}
+
 /**
  * The harness's own tools (the browser pane's) as a Streamable HTTP MCP
  * server on 127.0.0.1, for agents that take tools over MCP rather than
@@ -134,7 +142,9 @@ export function withDesign(url: string, threadId: string | undefined): string {
  * `/mcp-up/<scope>/<name>` hands the request to `upstream` (the gateway to
  * the user's remote servers), behind the same Bearer. A design
  * thread (named by `?d=`, or `?t=`) also gets `design(threadId)`, the design
- * tools; `?d=` alone names no caller, so it adds no thread tools.
+ * tools; `?d=` alone names no caller, so it adds no thread tools. `?c=<threadId>`
+ * adds `code(threadId)`, code mode's run_code for that thread; the driver puts
+ * it on the URL at session start, so a session's list never changes.
  */
 export async function startToolServer(
   tools: () => HarnessTool[],
@@ -144,6 +154,7 @@ export async function startToolServer(
   heartbeatMs = HEARTBEAT_MS,
   upstream?: (req: IncomingMessage, res: ServerResponse, scope: string, name: string) => Promise<void>,
   design?: (threadId: string) => HarnessTool[],
+  code?: (threadId: string) => HarnessTool[],
 ): Promise<ToolServer> {
   const token = randomBytes(24).toString("hex");
   const http = createServer(async (req, res) => {
@@ -165,6 +176,7 @@ export async function startToolServer(
     const projectId = query.get("p") ?? undefined;
     const threadId = query.get("t") ?? undefined;
     const designId = query.get("d") ?? threadId;
+    const codeId = query.get("c") ?? undefined;
     if (req.method !== "POST") {
       // Stateless servers have no server-initiated stream to offer.
       res.writeHead(405, { Allow: "POST" }).end();
@@ -186,13 +198,17 @@ export async function startToolServer(
           : base;
     const waiting = threadId ? (threadTools?.() ?? []) : [];
     list.push(...waiting);
+    if (codeId) list.push(...(code?.(codeId) ?? []));
     const waitingNames = new Set(waiting.map((t) => t.name));
     // A call the agent abandons (the request closes before the answer) aborts, so a waiting ask_user card goes away.
     const gone = new AbortController();
     res.on("close", () => {
       if (!res.writableFinished) gone.abort();
     });
-    const ctx = projectId || threadId ? { ...(projectId ? { projectId } : {}), ...(threadId ? { threadId, signal: gone.signal } : {}) } : undefined;
+    const ctx =
+      projectId || threadId || codeId
+        ? { ...(projectId ? { projectId } : {}), ...(threadId ? { threadId } : {}), ...(threadId || codeId ? { signal: gone.signal } : {}) }
+        : undefined;
     for (const t of list) {
       server.registerTool(t.name, { description: t.description, inputSchema: t.input, ...(t.effect ? { annotations: { readOnlyHint: t.effect === "read" } } : {}) }, async (args: unknown, handlerExtra) => {
         const stop = waitingNames.has(t.name) ? heartbeat(handlerExtra, heartbeatMs) : () => {};

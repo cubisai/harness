@@ -208,8 +208,8 @@ export interface Settings {
   memory?: { enabled: boolean; disabledProjects: string[] };
   /** MCP tool search for agents without their own: "auto" routes when 20+ tools are enabled (default), "off" never. */
   mcpRouter?: "auto" | "off";
-  /** Pilot: the native agent gets a run_code tool that scripts other tools in a sandbox. Default off. */
-  codeMode?: "off" | "on";
+  /** run_code, a sandboxed script that chains read-only tools: Off (default), "on" = Read-only + MCP, "only" = scripts instead of direct reads. */
+  codeMode?: CodeMode;
   /** Sidebar Recent section grouped by project (true, the default when unset) or one flat list (false). */
   sidebarGroupByProject?: boolean;
   /** Tell agents they may answer with inline UI blocks (checklist, calculator, …). Off unless set: it costs guide tokens. */
@@ -612,6 +612,13 @@ export interface RunUsage {
 }
 
 /** Stable semantic ids shared by every event, so a handoff can replay exactly. */
+/**
+ * Code mode, read once per thread per app run (so a session's tool list never changes):
+ * "on" adds run_code (native, and on the cubiq MCP server for Claude, Codex, OpenCode v1 and ACP agents);
+ * "only" also hides the direct read tools where an engine allows it (native read/glob/grep, Claude's Grep/Glob).
+ */
+export type CodeMode = "off" | "on" | "only";
+
 export interface EventIds {
   messageId?: string;
   turnId?: string;

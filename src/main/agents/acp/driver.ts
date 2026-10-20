@@ -1,4 +1,4 @@
-import type { AgentCapabilities, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, PlanEntry } from "../../../shared/types";
+import type { AgentCapabilities, CodeMode, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, PlanEntry } from "../../../shared/types";
 import type { TeamAgent } from "../../../shared/experts";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
@@ -13,7 +13,7 @@ import { binaryInfo, majorOf, resolvedInstallAsync } from "../binaries";
 import type { AgentDriver, SessionSeed, TurnInput } from "../types";
 import { acpCapabilities, withCapabilities } from "../capabilities";
 import { forAcpWithReport, mcpChangeNotice } from "../../mcp/servers";
-import { TOOL_SERVER_NAME, withProject, withThread } from "../../mcp-http";
+import { TOOL_SERVER_NAME, withCode, withProject, withThread } from "../../mcp-http";
 import { ASK_USER_TOOL } from "../../questions";
 import { checkCommand } from "../../guard";
 import { RpcError, StdioRpc } from "../rpc";
@@ -116,6 +116,14 @@ interface InitializeResult {
     sessionCapabilities?: { resume?: object | null; close?: object | null };
   };
   authMethods?: { id: string; name: string }[];
+  agentInfo?: { name?: string; version?: string };
+}
+
+/** OpenCode 2 and later bring their own Code Mode (`execute`), so CubiQ's run_code isn't attached there. */
+export function hasOwnCodeMode(init: Pick<InitializeResult, "agentInfo">): boolean {
+  const info = init.agentInfo;
+  const major = Number.parseInt(info?.version ?? "", 10);
+  return /opencode/i.test(info?.name ?? "") && Number.isFinite(major) && major >= 2;
 }
 
 export const DEFAULT_MODEL = "default";
@@ -316,6 +324,8 @@ export function createAcpDriver(
     clientVersion: string;
     /** The harness's tools over HTTP MCP, for agents that take MCP servers. */
     toolServer?: () => Promise<{ url: string; token: string; skillsUrl?: string; routedUrl?: string }>;
+    /** The thread's code mode: on adds run_code to the tool server URL (`&c=`), except on agents with their own (OpenCode 2+). */
+    codeMode?: (threadId: string) => CodeMode;
     /**
      * Whether this session's MCP servers go through the app's router instead of
      * being sent (decided at session start); only asked when capabilities.mcpRouter.
@@ -894,7 +904,8 @@ export function createAcpDriver(
         // In tool mode the skill tool rides on /mcp-skills, alongside the browser tools.
         const skillsTarget = capabilities.skillsDelivery.mode === "tool" ? (skillsUrl ?? url) : url;
         const target = routed ? (routedUrl ?? skillsUrl ?? url) : skillsTarget;
-        servers.push({ type: "http", name: TOOL_SERVER_NAME, url: withThread(withProject(target, input.projectId), input.threadId), headers: [{ name: "Authorization", value: `Bearer ${token}` }] } as { name: string });
+        const code = (deps.codeMode?.(input.threadId) ?? "off") !== "off" && !hasOwnCodeMode(l.init);
+        servers.push({ type: "http", name: TOOL_SERVER_NAME, url: withCode(withThread(withProject(target, input.projectId), input.threadId), code ? input.threadId : undefined), headers: [{ name: "Authorization", value: `Bearer ${token}` }] } as { name: string });
         l.askUser = true;
       } else dropped.push("the app's browser tools");
     }
@@ -1503,7 +1514,7 @@ export function harnessTool(u: Pick<ToolCallFields, "title" | "kind" | "rawInput
   const m = /^(?:mcp__)?(?:cubiq|unskilled)(?:__|[_:.])([a-z][a-z0-9_]*)$/i.exec(u.title ?? "");
   if (!m || (u.kind && u.kind !== "other")) return null;
   const raw = (u.rawInput ?? {}) as Record<string, unknown>;
-  const arg = ["url", "ref", "text", "expression", "name"].map((k) => raw[k]).find((v): v is string => typeof v === "string");
+  const arg = ["url", "ref", "text", "expression", "name", "code"].map((k) => raw[k]).find((v): v is string => typeof v === "string");
   return { name: m[1]!, summary: arg ? clipSummary(arg) : "" };
 }
 

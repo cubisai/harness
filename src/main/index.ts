@@ -41,6 +41,7 @@ import { headContent } from "./git";
 import { PreviewHost, utilityFork } from "./preview/host";
 import { migrateLegacyData } from "./migrate-data";
 import { startToolServer, type ToolServer } from "./mcp-http";
+import { codeModes, createCodeServer } from "./code-mode";
 import { TerminalManager } from "./terminal";
 import { Service } from "./service";
 import { startAutomations } from "./automations/app";
@@ -416,6 +417,9 @@ async function main(): Promise<void> {
       .digest("hex")
       .slice(0, 12);
   const driver = createClaudeDriver({
+    // Lazy: both are made further down, with the tool server.
+    codeMode: (threadId) => codeModeOf(threadId),
+    codeTool: (threadId) => codeServer.tool(threadId),
     guide: (cwd, design) => guide.forCwd(cwd, design),
     pluginDir: (cwd, design) =>
       ensurePlugin(
@@ -582,6 +586,33 @@ async function main(): Promise<void> {
     if (!list) designThreadTools.set(thread.id, (list = [...allTools, ...designToolsOf(thread.id)]));
     return team.length ? [...list, ...team] : list;
   };
+  // Code mode, fixed per thread for this app run (a session's tool list never changes).
+  const codeModeOf = codeModes(() => settings.get().codeMode);
+  const threadOf = (threadId: string): Thread | null => {
+    try {
+      return store.getThread(threadId);
+    } catch {
+      return null;
+    }
+  };
+  // run_code over MCP (Claude in-process, Codex, OpenCode v1, ACP agents): read-only tools CubiQ runs, child rows in the thread.
+  const codeServer = createCodeServer({
+    cwdOf: (id) => {
+      const thread = threadOf(id);
+      return thread ? service.cwdOf(thread) : null;
+    },
+    projectOf: (id) => threadOf(id)?.projectId ?? undefined,
+    appTools: (id) => {
+      const thread = threadOf(id);
+      const pid = thread?.projectId ?? undefined;
+      return [...harnessTools(thread ?? undefined), ...(mcpScopes.effective(pid ?? null).length ? routedTools(pid) : [])];
+    },
+    parentOf: (id, code) => service.scriptParent(id, code),
+    emit: (id, event) => service.emitFromTool(id, event),
+    turnSignal: (id) => service.turnSignal(id),
+    outputDir: join(userData, "harness-output"),
+    guardScript,
+  });
   // Started on first use, for Codex and ACP agents, which take tools over MCP.
   let toolServer: Promise<ToolServer> | null = null;
   // `/mcp-skills` adds the skill tool for agents in "tool" delivery mode.
@@ -599,6 +630,8 @@ async function main(): Promise<void> {
       (req, res, scope, name) => mcpGateway.handle(req, res, scope, name),
       // `?d=` (Codex) or `?t=` (ACP) naming a design thread adds its design tools; a team thread's adds its team channel.
       (tid) => [...(isDesignThread(tid) ? designToolsOf(tid) : []), ...teamToolsOf(tid)],
+      // `?c=` (put on by a driver whose thread has code mode on) adds that thread's run_code.
+      (tid) => (codeModeOf(tid) !== "off" ? [codeServer.tool(tid)] : []),
     ));
   // Served only on a thread's own URL (`?t=`): ACP agents' question tool, answered in the app's card.
   const threadTools: HarnessTool[] = [askUserTool((threadId: string, questions: Question[], signal?: AbortSignal) => service.askFromTool(threadId, questions, signal))];
@@ -627,6 +660,7 @@ async function main(): Promise<void> {
                   )
                 : ensureModelSkillsDir(forAgent(skills.global(), CODEX_CAPABILITIES.skillsDelivery), modelSkillsDir),
             toolServer: getToolServer,
+            codeMode: codeModeOf,
             onLimits: limits.for("codex"),
             injection: () => injectionFor(settings, "codex", process.env),
           }),
@@ -646,6 +680,7 @@ async function main(): Promise<void> {
         skillsDir: () => ensureModelSkillsDir(forAgent(skills.global(), acpCapabilities(config).skillsDelivery), modelSkillsDir),
         clientVersion: app.getVersion(),
         toolServer: getToolServer,
+        codeMode: codeModeOf,
         guardScript,
         guide: (cwd, design) => guide.forCwd(cwd, design),
         memory: memoryPromptFor,
@@ -837,7 +872,7 @@ async function main(): Promise<void> {
       const list = forAgent(skillsFor(cwd), { mode: "tool", reads: [] }, new Set(), { design });
       return list.length ? skillTool(() => list) : null;
     },
-    codeMode: () => settings.get().codeMode === "on",
+    codeMode: codeModeOf,
   });
   const syncProviderAgents = () => service.syncDrivers(PROVIDER_AGENT_PREFIX, providerAgents.list());
   syncProviderAgents();

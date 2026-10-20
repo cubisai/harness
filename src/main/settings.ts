@@ -182,7 +182,7 @@ export class SettingsStore {
     }
     if (patch.learn && typeof patch.learn === "object" && !Array.isArray(patch.learn)) next.learn = sanitizeLearn({ ...next.learn, ...patch.learn });
     if (patch.mcpRouter === "auto" || patch.mcpRouter === "off") next.mcpRouter = patch.mcpRouter;
-    if (patch.codeMode === "off" || patch.codeMode === "on") next.codeMode = patch.codeMode;
+    if (patch.codeMode === "off" || patch.codeMode === "on" || patch.codeMode === "only") next.codeMode = patch.codeMode;
     if (typeof patch.sidebarGroupByProject === "boolean") next.sidebarGroupByProject = patch.sidebarGroupByProject;
     if (typeof patch.uiBlocks === "boolean") next.uiBlocks = patch.uiBlocks;
     if (typeof patch.linkPreviews === "boolean") next.linkPreviews = patch.linkPreviews;

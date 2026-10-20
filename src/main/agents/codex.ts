@@ -1,4 +1,4 @@
-import type { McpServerEntry, ModelOption, PermissionDecision, PermissionMode, ThreadEvent } from "../../shared/types";
+import type { CodeMode, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, ThreadEvent } from "../../shared/types";
 import type { RunPayload, RunResult, ToolDiff } from "../../shared/tools";
 import { clipAgentSummary, clipSummary } from "../../shared/tools";
 import { diffSummary } from "../../shared/diff";
@@ -7,7 +7,8 @@ import { createHash } from "node:crypto";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { forCodex, mcpChangeNotice } from "../mcp/servers";
-import { withDesign, withProject } from "../mcp-http";
+import { withCode, withDesign, withProject } from "../mcp-http";
+import { CODE_ONLY_HINT } from "../code-hint";
 import { normalizeUsage } from "../usage";
 import type { InjectionPlan } from "../inject";
 import { RpcError, StdioRpc } from "./rpc";
@@ -79,6 +80,8 @@ export interface CodexConfig {
   skillsDir?: (cwd?: string, design?: boolean, threadId?: string) => string | null;
   /** The harness's tools over HTTP MCP (the browser pane's), attached per thread. */
   toolServer?: () => Promise<{ url: string; token: string }>;
+  /** The thread's code mode: on adds run_code to its tool server URL (`&c=`); Codex's shell can't be hidden, so "only" adds one hint line. */
+  codeMode?: (threadId: string) => CodeMode;
   /** Plan rate limits, from the notifications Codex sends with its responses. */
   onLimits?: LimitsListener;
   /** The credential plan for the next app-server start; absent = inherit process.env (tests). */
@@ -133,6 +136,7 @@ export const CODEX_TOOL_SERVER = "cubiq";
 
 /** Stored threads and agents that predate the rename still call the server "unskilled". */
 const TOOL_SERVERS = new Set([CODEX_TOOL_SERVER, "unskilled"]);
+
 
 export const CODEX_DEFAULT_MODEL = "default";
 
@@ -974,7 +978,9 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     const withTools = input.tools.length > 0 && Boolean(config.toolServer);
     const server = withTools ? await config.toolServer!() : null;
     // A design or team thread's URL also names it (`&d=`), which adds its design tools or team channel; a chat thread's URL is unchanged.
-    const toolUrl = server ? withDesign(withProject(server.url, input.projectId), input.design || input.team?.length ? input.threadId : undefined) : "";
+    const codeMode = config.codeMode?.(input.threadId) ?? "off";
+    // Code mode's run_code rides the URL too (`&c=`), fixed for the thread, so the tool list never changes mid-session.
+    const toolUrl = server ? withCode(withDesign(withProject(server.url, input.projectId), input.design || input.team?.length ? input.threadId : undefined), codeMode !== "off" ? input.threadId : undefined) : "";
     let threadConfig = codexToolConfig(server ? { ...server, url: toolUrl } : null, input.tools, input.permissionMode, input.mcpServers);
     // The caller freezes the block per session: a resume passes the session id
     // to get its original block back, a new thread passes null for a fresh one.
@@ -989,7 +995,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     if (typeof input.contextWindow === "number" && input.contextWindow > 0) {
       threadConfig = { ...(threadConfig ?? {}), model_context_window: input.contextWindow };
     }
-    const guideText = config.guide?.(input.cwd, input.design) ?? "";
+    const guideText = [config.guide?.(input.cwd, input.design) ?? "", codeMode === "only" && server ? CODE_ONLY_HINT : ""].filter(Boolean).join("\n\n");
     const signature = JSON.stringify(threadConfig ?? null);
     let threadId = "";
     let threadModel: string | null = null;

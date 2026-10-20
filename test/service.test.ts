@@ -56,6 +56,26 @@ describe("Service.send", () => {
     expect(service.isRunning(thread.id)).toBe(false);
   });
 
+  it("nests a cubiq run_code script's calls under its own row, and only while the turn runs", async () => {
+    let seen: { parent?: string; fallback?: string; other?: string } = {};
+    const { store, service, thread } = setup(async (input) => {
+      input.onEvent({ kind: "tool-use", toolUseId: "a", name: "mcp__cubiq__run_code", summary: "s", payload: { code: "return 1" } });
+      input.onEvent({ kind: "tool-use", toolUseId: "b", name: "run_code", summary: "s", payload: { code: "return 2" } });
+      seen = { parent: service.scriptParent(thread.id, "return 1"), fallback: service.scriptParent(thread.id, "return 3") };
+      service.emitFromTool(thread.id, { kind: "tool-use", toolUseId: "a:1", name: "Read", summary: "x", parentId: "a" });
+      input.onEvent({ kind: "tool-result", toolUseId: "b", isError: false, summary: "ok" });
+      seen.other = service.scriptParent(thread.id, "return 2");
+    });
+    await service.send({ threadId: thread.id, text: "go" });
+    // Exact code first; otherwise the newest open row; a finished row is no longer a parent.
+    expect(seen).toEqual({ parent: "a", fallback: "b", other: "a" });
+    expect(store.listEvents(thread.id).some((e) => e.event.kind === "tool-use" && e.event.parentId === "a")).toBe(true);
+    // After the turn: no parent, and a late row is dropped.
+    expect(service.scriptParent(thread.id, "return 1")).toBeUndefined();
+    service.emitFromTool(thread.id, { kind: "tool-use", toolUseId: "late", name: "Read", summary: "x" });
+    expect(store.listEvents(thread.id).some((e) => e.event.kind === "tool-use" && e.event.toolUseId === "late")).toBe(false);
+  });
+
   it("refuses to start in a project folder that's gone, and says why", async () => {
     const { store, service, driver, thread, updates } = setup(async () => {});
     rmSync(store.getProject(thread.projectId).path, { recursive: true, force: true });
