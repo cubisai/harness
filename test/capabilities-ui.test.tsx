@@ -69,6 +69,20 @@ describe("PermissionCardView", () => {
     expect(html).not.toContain("warn-only");
   });
 
+  it("shows no guard notice on an edit card: the guardrail only concerns commands", () => {
+    const edit: PermissionRequest = { ...request, toolName: "Edit", summary: "src/a.ts" };
+    for (const guard of ["warnOnly", "block"] as const) {
+      const html = renderToStaticMarkup(<PermissionCardView request={edit} guard={guard} agentLabel="OpenCode" onRespond={() => {}} />);
+      expect(html).not.toContain("Git guardrails");
+      expect(html).toContain("Allow Once");
+    }
+  });
+
+  it("shows a Run card's guard notice, as ACP and Codex title commands", () => {
+    const html = renderToStaticMarkup(<PermissionCardView request={{ ...request, toolName: "Run" }} guard="warnOnly" agentLabel="OpenCode" onRespond={() => {}} />);
+    expect(html).toContain("warn-only for OpenCode");
+  });
+
   it("shows no guard notice when the agent reports no enforcement", () => {
     const html = renderToStaticMarkup(<PermissionCardView request={request} guard={undefined} agentLabel="this agent" onRespond={() => {}} />);
     expect(html).not.toContain("warn-only");
