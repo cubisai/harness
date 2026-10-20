@@ -14,6 +14,7 @@ import { createAcpDriver, decidePluginAsk, DEFAULT_MODEL } from "../src/main/age
 import { ACP_PRESETS, onPath } from "../src/main/agents/registry";
 import type { InjectionPlan } from "../src/main/inject";
 import { ensureOpenCodeGuard, withOpenCodeGuard } from "../src/main/inject/opencode-guard";
+import { BUILT_IN_GUARD } from "../src/main/guard";
 import { closeAfter, tempDir } from "./helpers";
 
 const ask = (over: Partial<PluginAsk> = {}): PluginAsk => ({ tool: "bash", kind: "execute", summary: "echo hi", callID: "call_1", ...over });
@@ -184,16 +185,17 @@ describe.skipIf(!onPath("opencode"))("OpenCode asks CubiQ before a command (real
     });
   }
 
-  async function turn(mode: PermissionMode, answer: PermissionDecision, ownBash: "allow" | "ask" = "allow", plan?: "auto" | "manual") {
+  async function turn(mode: PermissionMode, answer: PermissionDecision, ownBash: "allow" | "ask" = "allow", plan?: "auto" | "manual", opts: { prefix?: string; guardScript?: string } = {}) {
     isolate();
     const cwd = tempDir();
     const marker = join(cwd, "ran.txt");
-    const fake = await fakeToolChat(`echo ran > ${JSON.stringify(marker)}`, plan ? "Implement the plan." : undefined);
+    const fake = await fakeToolChat(`${opts.prefix ?? ""}echo ran > ${JSON.stringify(marker)}`, plan ? "Implement the plan." : undefined);
     closeAfter(() => void fake.server.close());
     const pluginUrl = ensureOpenCodeGuard(tempDir());
     const preset = ACP_PRESETS.find((p) => p.id === "opencode")!;
     const driver = createAcpDriver(preset, {
       clientVersion: "test",
+      ...(opts.guardScript ? { guardScript: opts.guardScript } : {}),
       injection: () => {
         // By default OpenCode's own config allows bash outright: only the plugin can stop it.
         const config = {
@@ -224,7 +226,7 @@ describe.skipIf(!onPath("opencode"))("OpenCode asks CubiQ before a command (real
       requestPermission: async (r) => (asked.push(r), answer),
       requestPlanDecision: async () => plan ?? { keep: "" },
     });
-    return { asked, ran: existsSync(marker) && readFileSync(marker, "utf8").includes("ran"), seen: fake.bodies.map((b) => JSON.stringify(b)).join("\n") };
+    return { asked, events, ran: existsSync(marker) && readFileSync(marker, "utf8").includes("ran"), seen: fake.bodies.map((b) => JSON.stringify(b)).join("\n") };
   }
 
   it("Ask: the command waits for the card, and a denial blocks it and reaches the model", async () => {
@@ -258,6 +260,16 @@ describe.skipIf(!onPath("opencode"))("OpenCode asks CubiQ before a command (real
     const r = await turn("plan", "allow-once", "allow", "auto");
     expect(r.asked.map((a) => a.toolName)).toEqual(["Run"]);
     expect(r.ran).toBe(true);
+  }, 120_000);
+
+  it("Full: a dangerous git command is blocked by the app's built-in guardrail, with no Python script", async () => {
+    const r = await turn("full", "allow-once", "allow", undefined, { prefix: "git push --force origin main; ", guardScript: BUILT_IN_GUARD });
+    expect(r.asked).toEqual([]);
+    expect(r.ran).toBe(false);
+    expect(r.events.some((e) => e.kind === "notice" && e.text.startsWith("Blocked by git guardrails: git push --force"))).toBe(true);
+    // The model is told why, not that a user it never asked said no.
+    expect(r.seen).toContain("BLOCKED:");
+    expect(r.seen).not.toContain("The user denied");
   }, 120_000);
 
   it("Full: runs without a card", async () => {

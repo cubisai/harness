@@ -20,10 +20,13 @@ export interface PluginAsk {
   sessionID?: string;
 }
 
+/** The app's answer: a decision, or a refusal with the reason the model is shown (a guardrail block). */
+export type PluginAnswer = PermissionDecision | { decision: "deny"; reason: string };
+
 export interface AskServer {
   url: string;
   /** A token for one agent process; its asks go to `answer` until `revoke`. */
-  register(answer: (ask: PluginAsk) => Promise<PermissionDecision>): string;
+  register(answer: (ask: PluginAsk) => Promise<PluginAnswer>): string;
   revoke(token: string): void;
   close(): Promise<void>;
 }
@@ -31,7 +34,7 @@ export interface AskServer {
 const MAX_BODY = 64 * 1024;
 
 export async function startAskServer(): Promise<AskServer> {
-  const handlers = new Map<string, (ask: PluginAsk) => Promise<PermissionDecision>>();
+  const handlers = new Map<string, (ask: PluginAsk) => Promise<PluginAnswer>>();
   const handlerFor = (header: string | undefined) => {
     const m = /^Bearer (\S+)$/.exec(header ?? "");
     if (!m) return null;
@@ -61,8 +64,8 @@ export async function startAskServer(): Promise<AskServer> {
         return void res.writeHead(400).end();
       }
       if ((ask.kind !== "edit" && ask.kind !== "execute") || typeof ask.tool !== "string") return void res.writeHead(400).end();
-      const reply = (decision: PermissionDecision) => {
-        if (!res.writableEnded) res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ decision }));
+      const reply = (answer: PluginAnswer) => {
+        if (!res.writableEnded) res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(typeof answer === "string" ? { decision: answer } : answer));
       };
       // An answer that throws is a refusal: the plugin fails closed either way.
       answer({ ...ask, summary: String(ask.summary ?? "") }).then(reply, () => reply("deny"));

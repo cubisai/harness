@@ -625,11 +625,12 @@ async function main(): Promise<void> {
       : []),
     ...acpAgents.map((config) => {
       // OpenCode can't ask before every shell command, so its guard is a plugin
-      // injected into its config; with one, the git guardrail blocks in every mode.
-      // OpenCode's guard is a plugin that runs the Python script itself, so it needs a real script file.
+      // injected into its config. The plugin puts every command to the app, which runs
+      // the git guardrail (script or built-in rules), so it blocks in every mode.
+      // The plugin also runs the Python script itself when there is a real script file.
       const python = config.guardPlugin === "opencode" && guardScript !== BUILT_IN_GUARD ? findPython() : null;
       const driverConfig =
-        python && config.guardPlugin === "opencode"
+        config.guardPlugin === "opencode"
           ? { ...config, capabilities: { ...config.capabilities, preToolGuard: true, guardEnforcement: { ask: "block" as const, "auto-edit": "block" as const, plan: "block" as const, full: "block" as const } } }
           : config;
       return createAcpDriver(driverConfig, {

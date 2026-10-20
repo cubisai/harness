@@ -18,7 +18,7 @@ import { ASK_USER_TOOL } from "../../questions";
 import { checkCommand } from "../../guard";
 import { RpcError, StdioRpc } from "../rpc";
 import { classifyOpenCodeLog } from "./opencode-log";
-import { startAskServer, type AskServer, type PluginAsk } from "./ask-server";
+import { startAskServer, type AskServer, type PluginAnswer, type PluginAsk } from "./ask-server";
 import { exportTurnUsage } from "./opencode-usage";
 import { normalizeUsage } from "../../usage";
 import type { InjectionPlan } from "../../inject";
@@ -358,9 +358,19 @@ export function createAcpDriver(
   let askServer: Promise<AskServer> | null = null;
 
   /** One plugin ask from a thread's process: no live turn means nobody can approve it. */
-  const answerPluginAsk = async (l: Live | undefined, ask: PluginAsk): Promise<PermissionDecision> => {
+  const answerPluginAsk = async (l: Live | undefined, ask: PluginAsk): Promise<PluginAnswer> => {
     const t = l?.turn;
     if (!l || !t) return "deny";
+    // The git guardrail vetoes a command in every mode, Plan and Full included, before anyone is asked;
+    // here it needs no Python, so OpenCode's guard blocks wherever its plugin runs.
+    if (ask.kind === "execute" && deps.guardScript) {
+      const verdict = await checkCommand(deps.guardScript, "Bash", ask.summary);
+      if (verdict.blocked) {
+        t.input.onEvent({ kind: "notice", text: `Blocked by git guardrails: ${ask.summary}` });
+        // The model reads the guardrail's reason, not "the user denied", so it doesn't think it was asked.
+        return { decision: "deny", reason: verdict.reason || "Blocked by git guardrails." };
+      }
+    }
     const decision = await decidePluginAsk(t.input, ask);
     if (decision === null) return "allow-once";
     if (decision !== "deny" && ask.callID) l.approvedCalls.add(ask.callID);

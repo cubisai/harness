@@ -84,6 +84,7 @@ async function ask(input, output) {
   if (!kind) return;
   const noun = kind === "execute" ? "command" : "edit";
   let decision = null;
+  let reason = "";
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -92,13 +93,17 @@ async function ask(input, output) {
       // The answer is the user's, so it may take minutes: OpenCode's Bun times a fetch out at 300 s otherwise.
       timeout: false,
     });
-    if (res.ok) decision = (await res.json()).decision;
+    if (res.ok) {
+      const answer = await res.json();
+      decision = answer.decision;
+      if (typeof answer.reason === "string") reason = answer.reason;
+    }
   } catch {
     decision = null;
   }
   if (decision === "allow-once" || decision === "allow-always") return;
   // Fail closed: without an answer from the app, nothing runs.
-  throw new Error(decision === "deny" ? "The user denied this " + noun + "." : "CubiQ couldn't ask the user about this " + noun + ", so it was blocked.");
+  throw new Error(decision === "deny" ? reason || "The user denied this " + noun + "." : "CubiQ couldn't ask the user about this " + noun + ", so it was blocked.");
 }
 
 export default async () => ({
