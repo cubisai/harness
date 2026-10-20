@@ -9,6 +9,7 @@ import type {
   ProviderView,
   SecretName,
   PaneLayout,
+  GitSettings,
   Settings,
   SettingsView,
 } from "../shared/types";
@@ -181,6 +182,7 @@ export class SettingsStore {
       next.memory = { enabled, disabledProjects };
     }
     if (patch.learn && typeof patch.learn === "object" && !Array.isArray(patch.learn)) next.learn = sanitizeLearn({ ...next.learn, ...patch.learn });
+    if (patch.git && typeof patch.git === "object" && !Array.isArray(patch.git)) next.git = sanitizeGit({ ...(next.git ?? { commitModel: null, coAuthor: false }), ...patch.git });
     if (patch.mcpRouter === "auto" || patch.mcpRouter === "off") next.mcpRouter = patch.mcpRouter;
     if (patch.codeMode === "off" || patch.codeMode === "on") next.codeMode = patch.codeMode;
     if (typeof patch.sidebarGroupByProject === "boolean") next.sidebarGroupByProject = patch.sidebarGroupByProject;
@@ -445,4 +447,11 @@ export function sanitizeLearn(value: Partial<LearnSettings> | undefined): LearnS
     }
   }
   return { enabledProjects: [...new Set(projects)].slice(0, 500), dailyTokens: cap, memoryDailyTokens: memoryCap, background: modelPick(v.background), backgroundByProject: byProject };
+}
+
+/** Commit-message settings: a picked agent+model (both strings) or null, and the co-author switch (off unless true). */
+function sanitizeGit(v: { commitModel?: unknown; coAuthor?: unknown }): GitSettings {
+  const m = v.commitModel as { agent?: unknown; model?: unknown } | null | undefined;
+  const commitModel = m && typeof m.agent === "string" && m.agent && typeof m.model === "string" && m.model ? { agent: m.agent, model: m.model } : null;
+  return { commitModel, coAuthor: v.coAuthor === true };
 }

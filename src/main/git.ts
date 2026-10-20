@@ -442,3 +442,12 @@ function firstLine(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err);
   return message.split("\n")[0]!.trim() || "The merge failed.";
 }
+
+/** Whether tracked files in `cwd` have changes (untracked files don't count: a merge leaves them alone). */
+export async function hasTrackedChanges(cwd: string): Promise<boolean> {
+  try {
+    return (await run("git", ["status", "--porcelain", "--untracked-files=no"], { cwd })).stdout.trim() !== "";
+  } catch {
+    return false;
+  }
+}
