@@ -42,8 +42,8 @@ export function replayKey(caseId: string, lessonId: string | null, rt: Runtime, 
 }
 
 /**
- * Replay `l`'s captured case with and without it, then check it doesn't change
- * the result of other cases. Runs before/after first; transfer is skipped when
+ * Replay `l`'s captured case with and without it, then check it doesn't make
+ * other cases fail. Runs before/after first; transfer is skipped when
  * the source case alone already decides the outcome.
  */
 export async function verifyLesson(l: Lesson, deps: ReplayDeps): Promise<{ verification: LessonVerification | null; promote: boolean; why: string; tokens: number }> {
@@ -88,7 +88,8 @@ export async function verifyLesson(l: Lesson, deps: ReplayDeps): Promise<{ verif
   for (const o of others) {
     const without = await run(o, null, null, 0);
     const withLesson = await run(o, l.id, block, 0);
-    if (without === withLesson) held++;
+    // Only a case the lesson breaks counts against it; one it also fixes is the transfer it should have.
+    if (!without || withLesson) held++;
   }
   const verification: LessonVerification = {
     model: deps.runtime.model,

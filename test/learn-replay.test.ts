@@ -158,7 +158,7 @@ describe("verifyLesson", () => {
     expect(calls).toEqual([src.id, src.id]);
   });
 
-  it("does not promote when a transfer case flips", async () => {
+  it("does not promote when a transfer case starts failing with it", async () => {
     const { root, src, o1, o2, db } = scene();
     const runCase = async (c: CaseFile, lessons: string | null) => {
       if (c.id === src.id) return { pass: lessons !== null, tokens: 1 };
@@ -174,8 +174,26 @@ describe("verifyLesson", () => {
       now: () => 1,
     });
     expect(r.promote).toBe(false);
-    expect(r.why).toContain("changed the result");
+    expect(r.why).toContain("made 1 of 2 other cases fail");
     expect(r.verification).toMatchObject({ before: { passed: 0, of: 1 }, after: { passed: 1, of: 1 }, transfer: { held: 1, of: 2 } });
+  });
+
+  it("promotes when it also fixes another failing case", async () => {
+    const { root, src, o1, o2, db } = scene();
+    const runCase = async (c: CaseFile, lessons: string | null) => {
+      if (c.id === src.id || c.id === o2.id) return { pass: lessons !== null, tokens: 1 }; // the same mistake, fixed by it
+      return { pass: true, tokens: 1 };
+    };
+    const r = await verifyLesson(lesson({ caseId: src.id }), {
+      casesRoot: root,
+      otherCases: () => [o1, o2],
+      runCase,
+      db,
+      runtime: RT,
+      now: () => 1,
+    });
+    expect(r.promote).toBe(true);
+    expect(r.verification).toMatchObject({ transfer: { held: 2, of: 2 } });
   });
 
   it("reuses cached runs and adds no tokens for them", async () => {

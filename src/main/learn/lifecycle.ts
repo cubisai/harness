@@ -95,6 +95,6 @@ export function promotion(v: LessonVerification): { promote: boolean; why: strin
   if (!(v.before.of >= 1 && v.before.passed < v.before.of)) return { promote: false, why: "its case already passes without it" };
   if (!(v.after.of >= 1 && v.after.passed === v.after.of && v.after.passed > v.before.passed)) return { promote: false, why: "its case still fails with it" };
   if (v.transfer.of < 1) return { promote: false, why: "no other case to check transfer on" };
-  if (v.transfer.held !== v.transfer.of) return { promote: false, why: `changed the result of ${v.transfer.of - v.transfer.held} of ${v.transfer.of} other cases` };
+  if (v.transfer.held !== v.transfer.of) return { promote: false, why: `made ${v.transfer.of - v.transfer.held} of ${v.transfer.of} other cases fail` };
   return { promote: true, why: `fixed its case and held on ${v.transfer.of} other case(s)` };
 }

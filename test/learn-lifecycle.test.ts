@@ -180,6 +180,6 @@ describe("promotion", () => {
   });
 
   it("refuses when transfer changed other cases", () => {
-    expect(promotion(verification({ transfer: { held: 1, of: 3 } }))).toEqual({ promote: false, why: "changed the result of 2 of 3 other cases" });
+    expect(promotion(verification({ transfer: { held: 1, of: 3 } }))).toEqual({ promote: false, why: "made 2 of 3 other cases fail" });
   });
 });
