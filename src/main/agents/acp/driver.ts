@@ -9,7 +9,7 @@ import type { EditResult, RunPayload, RunResult, ToolDiff } from "../../../share
 import { diffSummary, unifiedDiff } from "../../../shared/diff";
 import { summarizeToolResult } from "../summarize";
 import { MODEL_TTL_MS } from "../model-ttl";
-import { binaryInfo, resolvedCommandAsync } from "../binaries";
+import { binaryInfo, majorOf, resolvedInstallAsync } from "../binaries";
 import type { AgentDriver, SessionSeed, TurnInput } from "../types";
 import { acpCapabilities, withCapabilities } from "../capabilities";
 import { forAcpWithReport, mcpChangeNotice } from "../../mcp/servers";
@@ -55,7 +55,12 @@ export interface AcpAgentConfig {
   providerEnvOnly?: boolean;
   /** A guard plugin this agent needs injected to enforce the git guardrail. */
   guardPlugin?: "opencode";
-  /** Reasoning levels come per-model as OpenCode config variants, not a session thought_level option. */
+  /**
+   * Args for a newer major version of the CLI, keyed by the first major they
+   * apply to; `args` covers anything older or a version that can't be read.
+   */
+  argsByMajor?: Record<string, string[]>;
+  /** Reasoning levels come per-model as OpenCode config variants, not a session thought_level option (OpenCode v1 only; v2 has thought_level). */
   effortVia?: "opencode-variants";
   /** Turn token usage comes from `opencode export`, summed over every model call, not the last one. */
   turnUsageVia?: "opencode-export";
@@ -264,6 +269,10 @@ interface TurnState {
       /** The last plan emitted for a todowrite call, so a repeat isn't re-sent. */
       planKey?: string;
       locations?: ToolCallFields["locations"];
+      /** An OpenCode v2 Code Mode script (`execute`), shown as run_code with a child row per call it made. */
+      script?: boolean;
+      /** Which of the script's calls have had their tool-use / tool-result sent, by index. */
+      steps?: { announced: boolean; done: boolean }[];
     }
   >;
   /** Permission toolCallIds seen this turn, to spot a mismatch from the real call. */
@@ -318,7 +327,7 @@ export function createAcpDriver(
      * `teamLead`: the primary agent (mode) the lead runs as, which must be allowed to hand them work;
      * `expertRoot`: the folder of the expert's private package skills, which its agents may read.
      */
-    injection?: (ctx?: { effort?: { agent: string; model: string; variant: string }; team?: TeamAgent[]; teamLead?: string; expertRoot?: string }) => InjectionPlan;
+    injection?: (ctx?: { effort?: { agent: string; model: string; variant: string }; team?: TeamAgent[]; teamLead?: string; expertRoot?: string; major?: number | null }) => InjectionPlan;
     /** Per-model reasoning variants, for agents that carry them outside a thought_level option. */
     variants?: () => Promise<Record<string, string[]>>;
     /** The git-guardrails script: an execute permission call is vetoed in every mode. */
@@ -351,7 +360,24 @@ export function createAcpDriver(
   const shownNotices = new Set<string>();
   // Threads already told that a variant change restarted OpenCode.
   const variantNotified = new Set<string>();
-  const effortViaVariants = config.effortVia === "opencode-variants";
+  /** The CLI's major version, once read (null: unknown, treated as the oldest). */
+  let cliMajor: number | null = null;
+  /** Read the CLI's major version once, for agents whose args or config change with it. */
+  const knowMajor = async (): Promise<void> => {
+    if (!config.argsByMajor || cliMajor !== null) return;
+    cliMajor = majorOf((await resolvedInstallAsync(config.command))?.version);
+  };
+  /**
+   * The command and args to spawn: a bare command resolves to its newest
+   * install, and the CLI's major version picks the args.
+   */
+  const launch = async (): Promise<{ command: string; args: string[] }> => {
+    await knowMajor();
+    const command = bare ? ((await resolvedInstallAsync(config.command))?.path ?? config.command) : config.command;
+    return { command, args: argsFor(config, cliMajor) };
+  };
+  /** OpenCode v1 carries reasoning levels as config variants; v2 has a thought_level option. */
+  const viaVariants = (): boolean => config.effortVia === "opencode-variants" && (cliMajor ?? 1) < 2;
   // OpenCode asks over ACP only when its own config says "ask", and a user's agent can allow
   // everything; its CubiQ plugin asks this server before every edit and command instead.
   const pluginAsks = config.guardPlugin === "opencode";
@@ -437,8 +463,9 @@ export function createAcpDriver(
   };
 
   /** Load the variant map once, for the effortVia agents. */
-  const ensureVariants = (): Promise<void> => {
-    if (!effortViaVariants) return Promise.resolve();
+  const ensureVariants = async (): Promise<void> => {
+    await knowMajor();
+    if (!viaVariants()) return;
     variantsPromise ??= (async () => {
       try {
         knownVariants = (await deps.variants?.()) ?? {};
@@ -468,7 +495,7 @@ export function createAcpDriver(
     input: TurnInput,
     l?: Live,
   ): { agent: string; model: string; variant: string } | null => {
-    if (!effortViaVariants || !input.effort) return null;
+    if (!viaVariants() || !input.effort) return null;
     const options = l?.configOptions ?? threadConfigs.get(threadKey) ?? lastConfigOptions;
     const model = input.model === DEFAULT_MODEL ? modelFrom(options) : input.model;
     if (!model || !knownVariants[model]?.includes(input.effort)) return null;
@@ -600,20 +627,22 @@ export function createAcpDriver(
           const raw = merged.rawInput as Record<string, unknown> | null | undefined;
           const command = typeof raw?.command === "string" ? raw.command : undefined;
           const own = harnessTool(merged);
+          const script = codeModeScript(merged);
           const subagent = merged.kind === "think" && typeof raw?.subagent_type === "string";
-          const summary = own?.summary ?? (subagent ? subagentSummary(raw!, merged.title) : toolSummary(merged, command));
+          const summary = script !== null ? clipSummary(script) : (own?.summary ?? (subagent ? subagentSummary(raw!, merged.title) : toolSummary(merged, command)));
           // Vague: nothing to show, or only the tool's bare name ("bash", "edit").
           const vague = summary === "" || (/^[a-z_]+$/.test(summary) && summary === merged.title);
           if (!vague || text || terminal) {
             tool.announced = true;
             // An execute call's payload names the command even when rawInput
             // doesn't carry one (the title does), like the other adapters' Run.
-            const payload = toolUsePayload(merged.kind, merged.rawInput, command ?? merged.title ?? "");
+            const payload = script !== null ? { code: script } : toolUsePayload(merged.kind, merged.rawInput, command ?? merged.title ?? "");
             tool.payload = payload;
+            tool.script = script !== null;
             t.input.onEvent({
               kind: "tool-use",
               toolUseId: u.toolCallId,
-              name: own?.name ?? (subagent ? "Agent" : kindLabel(merged.kind)),
+              name: script !== null ? "run_code" : (own?.name ?? (subagent ? "Agent" : kindLabel(merged.kind))),
               summary,
               ...(payload !== undefined ? { payload } : {}),
             });
@@ -626,6 +655,24 @@ export function createAcpDriver(
           const added = text.startsWith(sent) ? text.slice(sent.length) : `\n${text}`;
           if (added) t.input.onToolOutputDelta?.({ toolUseId: u.toolCallId, text: added });
           tool.streamed = text;
+        }
+        if (tool.script && !tool.done) {
+          // Each call the script made becomes a child row, as native run_code's are;
+          // v2 lists them only in rawOutput, so a call can't outlive its script's row.
+          const steps = (tool.steps ??= []);
+          scriptSteps(tool.rawOutput).forEach((s, i) => {
+            const toolUseId = `${u.toolCallId}:${i + 1}`;
+            const seen = (steps[i] ??= { announced: false, done: false });
+            if (!seen.announced) {
+              seen.announced = true;
+              t.input.onEvent({ kind: "tool-use", toolUseId, name: scriptStepName(s.tool), summary: scriptStepSummary(s.input), ...(hasInput(s.input) ? { payload: s.input } : {}), parentId: u.toolCallId });
+            }
+            if (!seen.done && (terminal || (s.status !== "running" && s.status !== "pending"))) {
+              seen.done = true;
+              const failed = s.status !== "completed";
+              t.input.onEvent({ kind: "tool-result", toolUseId, isError: failed, summary: failed ? "Failed" : "Done", parentId: u.toolCallId });
+            }
+          });
         }
         if (!tool.done && (u.status === "completed" || u.status === "failed")) {
           tool.done = true;
@@ -701,7 +748,7 @@ export function createAcpDriver(
       // reset to default) needs a new process, resumed with the same session.
       existing.conn.close();
       live.delete(threadKey);
-      if (effortViaVariants && !variantNotified.has(threadKey)) {
+      if (viaVariants() && !variantNotified.has(threadKey)) {
         variantNotified.add(threadKey);
         input.onEvent({ kind: "notice", text: `OpenCode restarted to apply reasoning effort ${wanted?.variant ?? "default"}; the conversation continues.` });
       }
@@ -710,7 +757,8 @@ export function createAcpDriver(
     // A thread's process is its own, so its team's subagents never reach another thread.
     const team = input.team?.length ? { team: input.team, teamLead: modeFrom(existing?.configOptions ?? threadConfigs.get(threadKey) ?? lastConfigOptions) } : {};
     const ctx = wanted || input.team?.length || input.expertRoot ? { ...(wanted ? { effort: wanted } : {}), ...team, ...(input.expertRoot ? { expertRoot: input.expertRoot } : {}) } : undefined;
-    const plan = deps.injection?.(ctx);
+    // The CLI's major version picks the config shape (OpenCode v1 or v2).
+    const plan = deps.injection?.(cliMajor !== null ? { ...ctx, major: cliMajor } : ctx);
     if (plan?.error) throw new Error(plan.error);
     if (plan?.warning && !shownNotices.has(plan.warning)) {
       shownNotices.add(plan.warning);
@@ -721,7 +769,7 @@ export function createAcpDriver(
       const dir = deps.skillsDir();
       if (dir) env[config.skillsDirEnv] = dir;
     }
-    const command = bare ? await resolvedCommandAsync(config.command) : config.command;
+    const { command, args } = await launch();
     // eslint-disable-next-line prefer-const
     let l: Live;
     let asks: { server: AskServer; token: string } | null = null;
@@ -731,7 +779,7 @@ export function createAcpDriver(
       env.CUBIQ_ASK_URL = server.url;
       env.CUBIQ_ASK_TOKEN = asks.token;
     }
-    const conn = StdioRpc.spawn(command, config.args, { cwd: input.cwd, env }, {
+    const conn = StdioRpc.spawn(command, args, { cwd: input.cwd, env }, {
       onNotification: (method, params) => {
         if (method === "session/update") onUpdate(l, (params as { update: SessionUpdate }).update);
       },
@@ -1043,13 +1091,15 @@ export function createAcpDriver(
       // One throwaway process: initialize + session/new, read the model
       // config option, then exit. Real threads spawn their own later.
       await ready;
-      const env: NodeJS.ProcessEnv = { ...(plan?.env ?? process.env), ...config.env };
+      const { command, args } = await launch();
+      const shaped = cliMajor !== null ? deps.injection?.({ major: cliMajor }) : plan;
+      const env: NodeJS.ProcessEnv = { ...(shaped?.env ?? plan?.env ?? process.env), ...config.env };
       if (config.skillsDirEnv && deps.skillsDir) {
         const dir = deps.skillsDir();
         if (dir) env[config.skillsDirEnv] = dir;
       }
       const cwd = homedir();
-      const conn = StdioRpc.spawn(bare ? await resolvedCommandAsync(config.command) : config.command, config.args, { cwd, env }, {
+      const conn = StdioRpc.spawn(command, args, { cwd, env }, {
         onNotification: () => {},
         onRequest: async (method) => {
           throw new RpcError(-32601, `${method} is not supported during model refresh`);
@@ -1096,7 +1146,7 @@ export function createAcpDriver(
     ...(bare ? { binary: () => binaryInfo(config.command) ?? undefined } : {}),
     models: () => {
       // OpenCode's levels are per-model variants, not a session thought_level option.
-      if (effortViaVariants) {
+      if (viaVariants()) {
         const withVariants = (m: ModelOption): ModelOption => (knownVariants[m.id]?.length ? { ...m, efforts: knownVariants[m.id] } : m);
         const current = modelFrom(lastConfigOptions);
         const defaultOption: ModelOption = { id: DEFAULT_MODEL, label: "Agent default" };
@@ -1118,7 +1168,7 @@ export function createAcpDriver(
      */
     async oneShot(req) {
       await ensureVariants();
-      const plan = deps.injection?.();
+      const plan = deps.injection?.(cliMajor !== null ? { major: cliMajor } : undefined);
       if (plan?.error) throw new Error(plan.error);
       const env: NodeJS.ProcessEnv = { ...(plan?.env ?? process.env), ...config.env };
       if (config.skillsDirEnv && deps.skillsDir) {
@@ -1129,7 +1179,8 @@ export function createAcpDriver(
       mkdirSync(cwd, { recursive: true });
       let text = "";
       let sessionId = "";
-      const conn = StdioRpc.spawn(bare ? await resolvedCommandAsync(config.command) : config.command, config.args, { cwd, env }, {
+      const { command, args } = await launch();
+      const conn = StdioRpc.spawn(command, args, { cwd, env }, {
         onNotification: (method, params) => {
           if (method !== "session/update") return;
           const update = (params as { update: SessionUpdate }).update;
@@ -1333,7 +1384,7 @@ export function createAcpDriver(
         // OpenCode's prompt usage is its last model call only; the export sums
         // every call this turn made (any failure keeps the reported numbers).
         if (config.turnUsageVia === "opencode-export" && l.sessionId) {
-          const sum = await exportTurnUsage({ command: l.command, env: l.env, sessionId: l.sessionId, sinceMs: started });
+          const sum = await exportTurnUsage({ command: l.command, env: l.env, sessionId: l.sessionId, sinceMs: started, major: cliMajor });
           if (sum) lastUsage = { ...normalizeUsage({ inputTokens: sum.input, outputTokens: sum.output, reasoningTokens: sum.reasoning, cacheReadTokens: sum.cacheRead, cacheWriteTokens: sum.cacheWrite, provenance: "reported" }), contextUsed: lastUsage.contextUsed, contextSize: lastUsage.contextSize };
         }
         if (fresh) {
@@ -1412,6 +1463,40 @@ export function toolSummary(u: ToolCallFields, command: string | undefined): str
 /** A rawInput worth waiting for: anything but null or an empty object. */
 function hasInput(raw: unknown): boolean {
   return raw !== null && raw !== undefined && !(typeof raw === "object" && Object.keys(raw as object).length === 0);
+}
+
+/** An OpenCode v2 Code Mode call's script (its `execute` tool, kind other, input `{ code }`), or null for any other call. */
+export function codeModeScript(u: Pick<ToolCallFields, "title" | "kind" | "rawInput">): string | null {
+  if (u.title !== "execute" || (u.kind && u.kind !== "other")) return null;
+  const code = (u.rawInput as { code?: unknown } | null | undefined)?.code;
+  return typeof code === "string" ? code : null;
+}
+
+/** The calls a Code Mode script made, from its rawOutput's `metadata.toolCalls` (OpenCode v2), in order. */
+export function scriptSteps(rawOutput: unknown): { tool: string; status: string; input?: unknown }[] {
+  const calls = rawOutputOf(rawOutputOf(rawOutput)?.metadata)?.toolCalls;
+  if (!Array.isArray(calls)) return [];
+  return calls
+    .map((c) => rawOutputOf(c))
+    .filter((c): c is Record<string, unknown> => typeof c?.tool === "string")
+    .map((c) => ({ tool: c.tool as string, status: typeof c.status === "string" ? c.status : "completed", input: c.input }));
+}
+
+/** A script call's row name: OpenCode's own and CubiQ's tools bare ("read"), another server's "server · tool". */
+export function scriptStepName(tool: string): string {
+  const dot = tool.indexOf(".");
+  if (dot < 0) return tool;
+  const server = tool.slice(0, dot);
+  const name = tool.slice(dot + 1);
+  return server === "opencode" || server === TOOL_SERVER_NAME ? name : `${server} · ${name}`;
+}
+
+/** A script call's summary: its main string argument, else its input as one line. */
+export function scriptStepSummary(input: unknown): string {
+  if (!hasInput(input) || typeof input !== "object") return "";
+  const raw = input as Record<string, unknown>;
+  const arg = ["filePath", "path", "pattern", "query", "url", "command", "name"].map((k) => raw[k]).find((v): v is string => typeof v === "string");
+  return clipSummary(arg ?? JSON.stringify(input));
 }
 
 export function harnessTool(u: Pick<ToolCallFields, "title" | "kind" | "rawInput">): { name: string; summary: string } | null {
@@ -1568,4 +1653,14 @@ export function resultPayload(
   const error = typeof rawOutput?.error === "string" ? rawOutput.error : "";
   if (error) return error;
   return text || null;
+}
+
+/** The spawn args for a CLI at `major`: the newest `argsByMajor` entry at or below it, else `args`. */
+export function argsFor(config: Pick<AcpAgentConfig, "args" | "argsByMajor">, major: number | null): string[] {
+  if (major === null || !config.argsByMajor) return config.args;
+  const keys = Object.keys(config.argsByMajor)
+    .map(Number)
+    .filter((k) => Number.isFinite(k) && k <= major)
+    .sort((a, b) => b - a);
+  return keys.length ? config.argsByMajor[String(keys[0])]! : config.args;
 }

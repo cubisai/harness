@@ -49,7 +49,8 @@ import { discoverModels, ModelsDev, pickSmallModel } from "./models-catalog";
 import { injectionFor } from "./inject";
 import { redactSecrets } from "./inject/redact";
 import { opencodeVariants, withOpenCodeReadDirs, withOpenCodeTeam, withOpenCodeVariant } from "./inject/opencode";
-import { ensureOpenCodeGuard, withOpenCodeGuard } from "./inject/opencode-guard";
+import { ensureOpenCodeGuard, ensureOpenCodeGuardV2, withOpenCodeGuard } from "./inject/opencode-guard";
+import { withOpenCodeV2 } from "./inject/opencode-v2";
 import { BUILT_IN_GUARD, findPython } from "./guard";
 import { PROVIDER_AGENT_PREFIX } from "./harness/driver";
 import { ProviderAgents } from "./harness/register";
@@ -654,8 +655,11 @@ async function main(): Promise<void> {
         injection: (ctx) => {
           let plan = injectionFor(settings, config.id, process.env);
           // Always loaded: it asks CubiQ before edits and commands; the git guard inside needs Python.
+          // OpenCode v2 (the driver reads the CLI's major version) takes a plugin package and v2-shaped config.
+          const v2 = (ctx?.major ?? 1) >= 2;
           if (config.guardPlugin === "opencode") {
-            plan = withOpenCodeGuard(plan, { pluginUrl: ensureOpenCodeGuard(join(userData, "opencode")), ...(python ? { script: guardScript, python } : {}) });
+            const dir = join(userData, "opencode");
+            plan = withOpenCodeGuard(plan, { pluginUrl: v2 ? ensureOpenCodeGuardV2(dir) : ensureOpenCodeGuard(dir), ...(python ? { script: guardScript, python } : {}) });
           }
           // After the guard, so both the plugin and the variant survive.
           if (ctx?.effort) plan = withOpenCodeVariant(plan, ctx.effort);
@@ -663,6 +667,8 @@ async function main(): Promise<void> {
           if (ctx?.team?.length && config.injector === "opencode") plan = withOpenCodeTeam(plan, ctx.team, [ctx.teamLead ?? "build", "build"]);
           // The expert's private package skills sit outside the project: let its agents read them without a prompt.
           if (ctx?.expertRoot && config.injector === "opencode") plan = withOpenCodeReadDirs(plan, [ctx.expertRoot]);
+          // Last, so every injector above writes the v1 shape and is translated once.
+          if (v2 && config.injector === "opencode") plan = withOpenCodeV2(plan);
           return plan;
         },
       });

@@ -231,7 +231,17 @@ export async function warmBinaries(commands: string[]): Promise<void> {
  * resolution, so it never blocks the event loop on a probe.
  */
 export async function resolvedCommandAsync(command: string): Promise<string> {
+  return (await resolvedInstallAsync(command))?.path ?? command;
+}
+
+/** The install `command` resolves to (path and version), from the same cache; null when nothing parses. */
+export async function resolvedInstallAsync(command: string): Promise<BinaryResolution | null> {
   const hit = fresh(command, Date.now());
-  const value = hit ? hit.value : await refresh(command);
-  return value?.path ?? command;
+  return hit ? hit.value : await refresh(command);
+}
+
+/** The major version number, or null when there's no version to read. */
+export function majorOf(version: string | null | undefined): number | null {
+  const parts = version ? semverParts(version) : null;
+  return parts ? parts[0] : null;
 }

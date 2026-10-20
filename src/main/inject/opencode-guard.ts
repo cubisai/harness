@@ -114,18 +114,55 @@ export default async () => ({
 });
 `;
 
-/** Write the plugin into `dir` (rewriting only when the content changed) and return its file:// URL. */
-export function ensureOpenCodeGuard(dir: string): string {
-  mkdirSync(dir, { recursive: true });
-  const file = join(dir, "opencode-guard.mjs");
+/**
+ * The same guard for OpenCode v2 (checked on 2.1.0): a plugin is a package
+ * exporting `{ id, setup(ctx) }`, and `ctx.tool.hook("execute.before")` passes
+ * one event, `{ tool, input, id, sessionID }`. v2 calls the shell tool "shell"
+ * (v1 "bash") and edits take `path`, which summaryOf already reads; throwing
+ * still rejects the call. The v1 functions above are reused unchanged.
+ */
+export const OPENCODE_GUARD_V2_SOURCE = `${OPENCODE_GUARD_SOURCE.slice(0, OPENCODE_GUARD_SOURCE.lastIndexOf("export default"))}export default {
+  id: "cubiq.guard",
+  async setup(ctx) {
+    await ctx.tool.hook("execute.before", async (event) => {
+      const input = { tool: event.tool === "shell" ? "bash" : event.tool, callID: event.id, sessionID: event.sessionID };
+      const output = { args: event.input || {} };
+      guard(input, output);
+      await ask(input, output);
+    });
+  },
+};
+`;
+
+/** v2 loads a local plugin only from a directory, as a package. */
+const V2_PACKAGE_JSON = `${JSON.stringify({ name: "cubiq-guard", version: "1.0.0", private: true, type: "module", main: "index.mjs", exports: { ".": "./index.mjs" } }, null, 2)}\n`;
+
+/** Write `content` to `file` unless it already holds exactly that. */
+function writeIfChanged(file: string, content: string): void {
   let existing: string | null = null;
   try {
     existing = readFileSync(file, "utf8");
   } catch {
     // Not written yet.
   }
-  if (existing !== OPENCODE_GUARD_SOURCE) writeFileSync(file, OPENCODE_GUARD_SOURCE);
+  if (existing !== content) writeFileSync(file, content);
+}
+
+/** Write the plugin into `dir` (rewriting only when the content changed) and return its file:// URL. */
+export function ensureOpenCodeGuard(dir: string): string {
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, "opencode-guard.mjs");
+  writeIfChanged(file, OPENCODE_GUARD_SOURCE);
   return pathToFileURL(file).href;
+}
+
+/** Write the v2 plugin package into `<dir>/cubiq-guard-v2` and return the folder's file:// URL. */
+export function ensureOpenCodeGuardV2(dir: string): string {
+  const pkg = join(dir, "cubiq-guard-v2");
+  mkdirSync(pkg, { recursive: true });
+  writeIfChanged(join(pkg, "package.json"), V2_PACKAGE_JSON);
+  writeIfChanged(join(pkg, "index.mjs"), OPENCODE_GUARD_V2_SOURCE);
+  return pathToFileURL(pkg).href;
 }
 
 /**
