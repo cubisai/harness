@@ -1,3 +1,39 @@
+# Handoff: M5 tracks — background controls, worktree review & merge, OpenCode v1+v2, /doctor, code mode (2026-10-20) — see "Resume here — M5"
+
+## Resume here — M5 (2026-10-20, Mac, session 2)
+
+Plan, status, next tasks and probe tools: **`.ai/plans/m5-five-tracks.md`** (sections "C0 probe results" and "Status at handoff").
+
+**The five track worktrees are still UNMERGED.** `../aiharness-wt/m5-{oc2,code,doctor,bg,merge}` sit on their own branches, from `m4@204df19`. Another Claude session works on `m4`. Merge tomorrow, only with the user's OK: order oc2 → code → doctor → bg → merge, using the conflict notes in the plan's "Status at handoff" §4. DB migration 31 (m5-merge) must still be free on `m4`.
+
+Done this session (Claude-verified: typecheck, full `bun run test` green on all 5 branches, 3149–3189 tests each, 0 failures):
+- **C2** (`m5-oc2` `fd98726`):
+  - v2's Code Mode `execute` shows as a `run_code` row: its script under a "Code" section, and one child row per call from `rawOutput.metadata.toolCalls`.
+  - `opencode session export <id> --standalone` (v2) has flat `type:"assistant"` messages. `sumExportUsage` reads them, and the sum matched the ACP prompt usage exactly.
+- **E2** (`m5-code` `2f9d927`, `d100e26`, `81b994f`):
+  - `run_code` on the cubiq MCP server: the `?c=<threadId>` URL flag, put on by the driver; Claude gets it in-process.
+  - One broker for native and MCP (`harness/tools/code-broker.ts`, ≤8 in flight).
+  - Read-only script tools: read/glob/grep scoped to the thread's folder, the read-only app tools, search_tools.
+  - Child rows nest via `Service.scriptParent` (matches the open run_code row by its code).
+  - OpenCode 2+ is skipped (`hasOwnCodeMode`). Code mode is fixed per thread for the app run (`codeModes`).
+  - Settings → Agents & Providers → Code mode: Off / Read-only + MCP / Only.
+  - "Only": native hides read/glob/grep. Claude hides Grep/Glob only, because its Edit needs Read. Claude and Codex get one hint line.
+- **D** (`m5-doctor` `6629f62`): a pinned agent now offers "Use the newest automatically" (drops the pin).
+- **Live, dark theme** (own worktrees, scratch `--user-data-dir`, port 9466):
+  - C: v1 1.19 Ask card + Deny blocks. v2 2.1.0 (its bin dir first on PATH, isolated `XDG_*` dirs) Ask card + Deny blocks, and `execute` renders as run_code with child rows.
+  - E: run_code with nested Grep/Read on Claude sonnet, Codex GPT-6-Luna and OpenCode v1 Zen.
+  - D: /doctor finds Claude ×3 and OpenCode ×3; pin, re-check, unpin.
+  - A: Run at once = 2 → the third Alt+Enter shows "Queued", Stop on one row admits it, Stop all works.
+  - B: **not yet live-tested** (worktree thread → Generate → Commit → Squash merge → Remove; a conflict case). Do it before merging m5-merge.
+
+Found, not fixed:
+- Claude in "Only" still searches with Bash `grep`, even with the hint. Its Bash can't be hidden, the same as Codex.
+- Several OpenCode threads starting at the same instant → "database is locked" (OpenCode's own startup race). Stagger the starts, or retry once on that error.
+- The "Code" input section for run_code (renderer) is on m5-oc2; m5-code shows raw JSON until oc2 merges.
+
+**Tomorrow, next:** (1) B live pass. (2) Merge the five branches with the user's OK, in the order above. (3) **Track G, background shells** (user: "i ask it to run docker or project … like claude code shell bg"): plan in **`.ai/plans/m5-bg-shells.md`**, awaiting approval. Track A (background *threads*) stays as built.
+
+
 # Handoff: TGP closed (2026-10-17) — all 6 open items done, live on OpenCode, Codex and Claude, m4 pushed — see "Resume here — session 7"; next: Windows PC run
 
 ## Resume here — session 7: TGP closed (2026-10-17, Mac)
