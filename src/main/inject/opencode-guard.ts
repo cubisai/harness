@@ -89,6 +89,8 @@ async function ask(input, output) {
       method: "POST",
       headers: { "content-type": "application/json", authorization: "Bearer " + token },
       body: JSON.stringify({ tool: input.tool, kind, summary: summaryOf(kind, output.args || {}), callID: input.callID, sessionID: input.sessionID }),
+      // The answer is the user's, so it may take minutes: OpenCode's Bun times a fetch out at 300 s otherwise.
+      timeout: false,
     });
     if (res.ok) decision = (await res.json()).decision;
   } catch {

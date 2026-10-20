@@ -122,6 +122,18 @@ describe("the generated plugin's ask", () => {
     ]);
   });
 
+  it("waits as long as the user takes: the ask turns off Bun's 300 s fetch timeout", async () => {
+    withEnv({ CUBIQ_ASK_URL: "http://127.0.0.1:9/ask", CUBIQ_ASK_TOKEN: "t", UNSKILLED_GUARD_SCRIPT: undefined });
+    const inits: RequestInit[] = [];
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (_url: unknown, init: RequestInit) => (inits.push(init), new Response(JSON.stringify({ decision: "allow-once" })))) as typeof fetch;
+    closeAfter(() => void (globalThis.fetch = real));
+    const before = await hook();
+    await expect(before({ tool: "bash", callID: "c" }, { args: { command: "ls" } })).resolves.toBeUndefined();
+    expect(inits).toHaveLength(1);
+    expect((inits[0] as RequestInit & { timeout?: unknown }).timeout).toBe(false);
+  });
+
   it("fails closed when the app can't be reached, and asks nothing without the app's address", async () => {
     withEnv({ CUBIQ_ASK_URL: "http://127.0.0.1:9/ask", CUBIQ_ASK_TOKEN: "t", UNSKILLED_GUARD_SCRIPT: undefined });
     const before = await hook();
