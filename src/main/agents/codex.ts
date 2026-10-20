@@ -8,6 +8,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { forCodex, mcpChangeNotice } from "../mcp/servers";
 import { withCode, withDesign, withProject } from "../mcp-http";
+import { CODE_ONLY_HINT } from "../code-hint";
 import { normalizeUsage } from "../usage";
 import type { InjectionPlan } from "../inject";
 import { RpcError, StdioRpc } from "./rpc";
@@ -136,8 +137,6 @@ export const CODEX_TOOL_SERVER = "cubiq";
 /** Stored threads and agents that predate the rename still call the server "unskilled". */
 const TOOL_SERVERS = new Set([CODEX_TOOL_SERVER, "unskilled"]);
 
-/** Code mode "only": Codex's shell can't be hidden, so it gets one fixed line instead. */
-export const CODE_ONLY_HINT = "To read or search files, write one cubiq run_code script that chains read, grep and glob, instead of separate shell commands.";
 
 export const CODEX_DEFAULT_MODEL = "default";
 

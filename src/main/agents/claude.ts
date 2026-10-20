@@ -9,6 +9,7 @@ import { canonicalTool, clipAgentSummary, clipSummary, type EditResult, type Run
 import { diffSummary, unifiedDiff } from "../../shared/diff";
 import type { ToolDiff } from "../../shared/tools";
 import { forClaude } from "../mcp/servers";
+import { CODE_ONLY_HINT } from "../code-hint";
 import { checkCommand } from "../guard";
 import type { InjectionPlan } from "../inject";
 import { normalizeUsage } from "../usage";
@@ -450,8 +451,9 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
 
       const guideText = config.guide?.(input.cwd, input.design) ?? "";
       const memoryText = input.projectId ? config.memory?.(input.projectId, input.threadId, input.sessionId ?? null) ?? null : null;
-      const systemAppend = [guideText, input.expert, memoryText].filter((part): part is string => Boolean(part)).join("\n\n");
       const codeMode = input.threadId && config.codeTool ? (config.codeMode?.(input.threadId) ?? "off") : "off";
+      // "Only" hides Grep and Glob, but Bash can still grep: one fixed line points reads at run_code.
+      const systemAppend = [guideText, input.expert, memoryText, codeMode === "only" ? CODE_ONLY_HINT : null].filter((part): part is string => Boolean(part)).join("\n\n");
       const harnessTools = codeMode !== "off" ? [...input.tools, config.codeTool!(input.threadId)] : input.tools;
       const options: Options = {
         cwd: input.cwd,
