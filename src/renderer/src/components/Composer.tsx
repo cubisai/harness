@@ -269,6 +269,7 @@ export function Composer({
     else if (c.name === "model") s.requestModelPicker();
     else if (c.name === "context") s.openContextSheet(threadId);
     else if (c.name === "mcp") s.openMcpSheet();
+    else if (c.name === "doctor") s.openDoctor();
     else if (c.name === "compact") {
       if (threadId) void s.compact(threadId, null);
     }
