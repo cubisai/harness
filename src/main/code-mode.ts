@@ -23,6 +23,9 @@ export const CODE_TOOL = "run_code";
 /** Tools a script never gets, even when they only read: no nested scripts or questions. */
 const NEVER = new Set([CODE_TOOL, "ask_user"]);
 
+/** The native tools' exact argument names, which models otherwise guess from their own tools (`filePath`). */
+const SCRIPT_EXAMPLES = "Arguments: `await tools.read({ path: \"src/a.ts\", offset: 1, limit: 200 })`, `await tools.grep({ pattern: \"TODO\", path: \"src\", glob: \"*.ts\" })`, `await tools.glob({ pattern: \"**/*.md\" })`; each returns text.";
+
 /** How long a script waits for the agent's driver to show its row before its calls go up as top-level rows. */
 const PARENT_WAIT_MS = 2000;
 
@@ -116,7 +119,7 @@ export function createCodeServer(deps: CodeServerDeps): { tool(threadId: string)
       if (!tool) {
         tool = {
           name: CODE_TOOL,
-          description: `${CODE_DESCRIPTION} Scripts here only read: \`tools\` holds read, glob, grep and CubiQ's read-only tools, scoped to this thread's folder; make edits, run commands and ask questions yourself.`,
+          description: `${CODE_DESCRIPTION} Scripts here only read: \`tools\` holds read, glob, grep and CubiQ's read-only tools, scoped to this thread's folder; make edits, run commands and ask questions yourself. ${SCRIPT_EXAMPLES}`,
           input: { code: z.string().describe("The JavaScript to run, as the body of an async function.") },
           autoAllow: true,
           effect: "read",

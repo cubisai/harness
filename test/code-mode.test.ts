@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { HarnessTool } from "../src/main/agents/types";
 import { hasOwnCodeMode, harnessTool } from "../src/main/agents/acp/driver";
+import { summarizeToolInput } from "../src/main/agents/summarize";
 import { codeModes, createCodeServer, CODE_TOOL, type CodeServerDeps } from "../src/main/code-mode";
 import { createCodeBroker, MAX_IN_FLIGHT } from "../src/main/harness/tools/code-broker";
 import type { LoopTool } from "../src/main/harness/loop";
@@ -161,6 +162,12 @@ describe("createCodeServer", () => {
     expect(tool.autoAllow).toBe(true);
     expect(tool.effect).toBe("read");
     expect(codes.tool("t")).toBe(tool);
+    // The native tools' argument names are spelled out: models guess `filePath` otherwise.
+    expect(tool.description).toContain('tools.read({ path: "src/a.ts"');
+  });
+
+  it("summarises a run_code call by its script on Claude and Codex rows", () => {
+    expect(summarizeToolInput("mcp__cubiq__run_code", { code: "const a = 1;\nreturn a;" })).toBe("const a = 1; return a;");
   });
 
   it("exposes only read tools to a script", async () => {

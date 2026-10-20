@@ -16,7 +16,9 @@ export function summarizeToolInput(name: string, input: Record<string, unknown>)
     str(input.description) ??
     str(input.url) ??
     str(input.query) ??
-    str(input.prompt);
+    str(input.prompt) ??
+    // run_code's script, as one line.
+    str(input.code);
   if (pick) return clip(pick);
   // Questions and plans read as their text, not as JSON.
   const questions = Array.isArray(input.questions) ? input.questions : null;
