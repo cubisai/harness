@@ -272,8 +272,8 @@ export function Composer({
     else if (c.name === "compact") {
       if (threadId) void s.compact(threadId, null);
     }
-    else if (c.name === "plan" || c.name === "ask" || c.name === "auto-edit" || c.name === "full") {
-      const mode: PermissionMode = c.name;
+    else if (c.name === "plan") {
+      const mode: PermissionMode = "plan";
       if (threadId) void s.updateThread({ permissionMode: mode });
       else s.setDraft({ permissionMode: mode });
     }
