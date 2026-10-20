@@ -33,3 +33,18 @@ export function anchorFor(summary: Element, scroller: Element, margin = 8): Scro
 export function anchorDelta(anchor: ScrollAnchor): number {
   return anchor.node.getBoundingClientRect().top - anchor.top;
 }
+
+/** How close to the bottom counts as "at the bottom", so the transcript follows new content. */
+export const PIN_SLACK_PX = 80;
+
+/**
+ * Whether the transcript still follows new content after a scroll from `prevTop`. Moving up away
+ * from the bottom unpins at once: a wheel scroll is animated, and its first frames are only a few
+ * px from the bottom, where streaming text would otherwise pull the view back down every frame.
+ * Reaching the bottom again (or a clamp that leaves it there) pins it.
+ */
+export function stillPinned(prevTop: number, el: { scrollTop: number; scrollHeight: number; clientHeight: number }): boolean {
+  const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+  if (el.scrollTop < prevTop - 0.5 && distance > 1) return false;
+  return distance < PIN_SLACK_PX;
+}

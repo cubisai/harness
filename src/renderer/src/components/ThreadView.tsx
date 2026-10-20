@@ -6,7 +6,7 @@ import { skillsOf } from "../../../shared/skill-list";
 import type { ArtifactKind, StoredEvent, ThreadEvent } from "../../../shared/types";
 import type { TurnScore } from "../../../shared/learn";
 import { prettyTool, type RunResult } from "../../../shared/tools";
-import { anchorDelta, anchorFor, collapseTarget, type ScrollAnchor } from "../disclosure";
+import { anchorDelta, anchorFor, collapseTarget, stillPinned, type ScrollAnchor } from "../disclosure";
 import { displayOrder } from "../event-order";
 import { type FileRef, parseFileRef } from "../fileref";
 import { emptyLive, liveReasoningMode, visibleItems } from "../live";
@@ -206,6 +206,8 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
 
   // Stay pinned to the bottom while the user hasn't scrolled away.
   const pinned = useRef(true);
+  // The last scroll position seen, so a scroll can tell which way it moved.
+  const lastTop = useRef(0);
   // A disclosure the user just opened or folded keeps its header where it was, instead of the
   // pinned view jumping to the new bottom under the pointer; cleared once the layout settles.
   const userAnchor = useRef<ScrollAnchor | null>(null);
@@ -400,10 +402,16 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
       className="thread-scroll"
       ref={scroller}
       onClick={onTranscriptClick}
+      onWheel={(e) => {
+        // A wheel up means the reader is leaving the bottom, before its animated scroll moves far
+        // (only when there is somewhere to go: a short thread keeps following).
+        if (e.deltaY < 0 && e.currentTarget.scrollTop > 0) pinned.current = false;
+      }}
       onScroll={(e) => {
         const el = e.currentTarget;
         trimSpace(el);
-        pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        pinned.current = stillPinned(lastTop.current, el);
+        lastTop.current = el.scrollTop;
         if (windowing) scheduleView();
         // Near the top, pull the next older page in; loadOlder itself guards against repeats.
         if (el.scrollTop < 200) loadEarlier();

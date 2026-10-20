@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { anchorDelta, anchorFor, BODY_COLLAPSIBLE, collapseTarget } from "../src/renderer/src/disclosure";
+import { anchorDelta, anchorFor, BODY_COLLAPSIBLE, collapseTarget, stillPinned } from "../src/renderer/src/disclosure";
 
 /** A details element as collapseTarget sees it: open or not, and whether it is one of the transcript's foldable kinds. */
 function details(open: boolean, foldable: boolean): HTMLDetailsElement {
@@ -52,5 +52,24 @@ describe("anchorFor / anchorDelta", () => {
     const anchor = anchorFor(summary, box(46));
     top = 244;
     expect(anchorDelta(anchor)).toBe(-56);
+  });
+});
+
+describe("stillPinned", () => {
+  const at = (scrollTop: number, scrollHeight = 900, clientHeight = 600) => ({ scrollTop, scrollHeight, clientHeight });
+
+  it("unpins on the first frame of a scroll up, even a few px from the bottom", () => {
+    // Bottom is 300; an animated wheel scroll's first frame moves 6 px.
+    expect(stillPinned(300, at(294))).toBe(false);
+  });
+
+  it("stays pinned at the bottom and re-pins when the reader scrolls back near it", () => {
+    expect(stillPinned(300, at(300))).toBe(true);
+    expect(stillPinned(200, at(250))).toBe(true);
+    expect(stillPinned(100, at(150))).toBe(false);
+  });
+
+  it("stays pinned when shrinking content clamps the view up onto the new bottom", () => {
+    expect(stillPinned(300, at(250, 850))).toBe(true);
   });
 });
