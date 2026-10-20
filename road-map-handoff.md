@@ -7,6 +7,47 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 
 **Rules:** one commit per point. Typecheck and the full vitest suite must be green before each commit. At the end of each phase that changes the app runtime, do one live turn each on Claude, Codex and OpenCode (AgentRouter `deepseek-v4-flash`; Zen free rate-limits).
 
+## Session 6 (2026-10-20, Mac): OpenCode ask live-checked, 6 fixes, reply link cards
+
+**Checks on `m4`:** typecheck green, design:check 0 errors, vitest 3114 passed / 0 failed. A lone `mcp-http` "progress heartbeat" failure under full-suite load passed alone (timing flake).
+
+**Live (app, OpenCode on Zen free `opencode/deepseek-v4.1-flash-free` from now on, owner's call; AgentRouter kept returning "sensitive words detected" retries):**
+- Item 1 of session 5 is closed:
+  - Ask: an edit card and a command card; Deny blocks and the model reports it.
+  - Auto-edit: edit silent, command asks.
+  - Full: silent.
+  - Plan: read-only plan card, unchanged.
+  - Team turn in Ask (Software Delivery Team): the member's edit and command each showed a card in the lead's thread; nothing hung.
+  - Claude Sonnet and Codex GPT-6-Luna sanity turns with cards.
+
+**Fixed (commits on `m4`):**
+- `d9e79ff` **Compact permission card** (owner asked): one row with a tool chip, the command or file, and the buttons. The git-guard note shows only on command cards (`Bash`/`Run`). The plan card shares `.permission-card` but is unchanged (new styles are scoped to `.permission-ask`).
+- `62511cd` **OpenCode cards never expire.** OpenCode's embedded Bun 1.3.14 times a plain `fetch` out at 300 s, so a card left unanswered for 5 min blocked the edit ("CubiQ couldn't ask the user…"). The plugin's ask now passes `timeout: false`. Timing test: default `TimeoutError` at 300.0 s, `timeout:false` OK at 320 s. Live: a card left open 331 s, then allowed, applied.
+- `2698176` **Plan → "Yes, manually approve edits" asks again.** The implementing round kept the turn's `permissionMode: "plan"`, so the OpenCode plugin deferred (allowed everything) and ACP asks would have denied. The ACP and Codex plan loops now give each round's turn state the round's mode. Two real-OpenCode tests added; live: the edit card now appears after manual approval.
+- `eb3066d` **OpenCode git guardrail blocks in every mode without Python.** The app checks every plugin-asked command with `checkCommand(guardScript)` (the script, or the built-in rules), before the mode decides. OpenCode now reports `guardEnforcement: block` whenever its plugin loads. The model receives the guard's reason (`BLOCKED: … git push is blocked …`), not "The user denied". Live: `git push --force` blocked in Full and in Ask; the card says "Git guardrails on".
+- `b30f234` **Transcript scroll** (owner report: a short chat scrolled itself down while a turn ran). Pinning was distance-only (< 80 px): an animated wheel scroll's first frames stayed inside that band, and every streamed frame pulled the view back. Now `stillPinned()` (`disclosure.ts`) unpins on any upward move off the bottom, and a wheel-up unpins at once when there's room to scroll. The owner confirmed the fix.
+- `dcca245` **claude-e2e test:** newer Claude Code (2.1.304) defers MCP tools behind ToolSearch (the request lists `ToolSearch` + `DeferredToolPlaceholder`), so the test sets `ENABLE_TOOL_SEARCH=false`. Note for the app: Claude turns now reach CubiQ's MCP tools through ToolSearch too (works, fewer tokens).
+- `eef6e8f` **Reply links** (session 5's open question; plan `.ai/plans/link-chips.md`). The owner first picked inline chips, then said "doesn't look like ChatGPT" and picked rich link cards. Both shipped:
+  - Every https link (labelled or bare) is a chip: favicon or globe, plus the label (the site name when the label is the URL). A 300 ms hover card shows site, title, description and URL.
+  - Under each paragraph or list: up to 3 cards with the page's `og:image`, title, a description line and favicon + site.
+  - Main: `linkPreviews.meta()` + IPC `ui:link-meta`, the same SSRF rules as card images. Everything is gated by Settings › Load link previews: off, chips show a globe and no cards appear.
+  - Built by two opencode workers (Zen DeepSeek, first try); cards added directly.
+
+**Left (in order):**
+1. **Windows PC gate** (unchanged from session 5, plus this session's items):
+   - the plugin's `fetch` to 127.0.0.1 with `timeout: false` inside OpenCode on Windows;
+   - the `file://` plugin URL;
+   - the eval `XDG_CONFIG_HOME` override;
+   - `tar -xf` in replay's `materializeCase`, CRLF in git output, the scrollbar gutter;
+   - the compact card at 900 px; link chips/cards (favicon `.ico` decoding);
+   - the guardrail block in Full without Python (the Windows PC has no Python).
+2. **Live lesson promotion** (session 5 item 4): needs a case a rule can fix (e.g. the agent also touched a file it was told not to).
+3. Optional follow-ups noticed:
+   - A plugin ask whose HTTP request is dropped leaves its card up: the server doesn't withdraw a card when the client disconnects. Not seen after the timeout fix.
+   - Scripted CDP wheel events didn't scroll the background dev window, so the scroll fix was verified by the owner by hand plus unit tests.
+
+**Scratch state (Mac, safe to delete):** project `vite-proj` (id `c0ffee00-…v17e`) now points at this session's scratchpad repo (`…/c3a6753f-…/scratchpad/vite-proj`; its files `probe.txt`, `team.txt`, `made-by-*.txt`), plus this session's test threads in it.
+
 ## Session 5 (2026-10-19, Mac): P8 live checks closed, moved to `m4`
 
 **Checks on `m4`:** typecheck green, vitest 3090 passed / 0 failed; CI (windows-latest) green on `b83913f`.
