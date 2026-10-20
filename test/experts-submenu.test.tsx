@@ -175,6 +175,7 @@ describe("ExpertsSubmenu", () => {
       threads: { p: [THREAD] },
       events: { t1: [] },
       running: {},
+      selectedProjectId: "p",
       selectedThreadId: "t1",
       experts: [mk("e1", "Alpha")],
       setThreadExpert: setExpert,
@@ -186,6 +187,31 @@ describe("ExpertsSubmenu", () => {
       expect(setExpert).toHaveBeenCalledWith("t1", "e1");
       expect(summon).not.toHaveBeenCalled();
       expect(close).toHaveBeenCalledOnce();
+    } finally {
+      useStore.setState(saved);
+    }
+  });
+
+  it("starts a new thread when the selection is left over from another project", () => {
+    const setExpert = vi.fn<(threadId: string, id: string) => Promise<void>>(async () => {});
+    const summon = vi.fn<(id: string, prompt?: string) => Promise<string | null>>(async () => null);
+    const saved = useStore.getInitialState();
+    // Project q's start page is on screen, but the selection still names p's thread, which has messages.
+    useStore.setState({
+      threads: { p: [THREAD], q: [] },
+      events: { t1: [{ seq: 1 } as never, { seq: 2 } as never] },
+      running: {},
+      selectedProjectId: "q",
+      selectedThreadId: "t1",
+      experts: [mk("e1", "Alpha")],
+      setThreadExpert: setExpert,
+      summonExpert: summon,
+    });
+    try {
+      const close = vi.fn<() => void>();
+      expect(chooseExpert("e1", close)).toBe("new");
+      expect(summon).toHaveBeenCalledWith("e1");
+      expect(setExpert).not.toHaveBeenCalled();
     } finally {
       useStore.setState(saved);
     }

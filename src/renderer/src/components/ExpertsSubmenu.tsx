@@ -39,8 +39,9 @@ export function pickMode(input: { thread: { kind: string; expertId?: string } | 
  */
 export function chooseExpert(id: string, close: () => void): "here" | "same" | "confirm" | "new" {
   const s = useStore.getState();
-  const threadId = s.selectedThreadId;
-  const thread = threadId ? Object.values(s.threads).flat().find((t) => t.id === threadId) : undefined;
+  // The thread on screen, as useSelectedThread finds it: a selection left over from another project shows a blank start page.
+  const thread = s.selectedProjectId && s.selectedThreadId ? s.threads[s.selectedProjectId]?.find((t) => t.id === s.selectedThreadId) : undefined;
+  const threadId = thread?.id ?? null;
   // A suffix-only load must not read as an empty thread: count the server totals plus anything newer.
   const messages = eventCount(threadId ? s.events[threadId] : undefined, threadId ? s.history[threadId]?.totals : undefined);
   const running = Boolean(threadId ? s.running[threadId] : false);
