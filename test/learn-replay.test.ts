@@ -237,6 +237,26 @@ describe("verifyLesson", () => {
     expect(calls).toBe(2); // it stopped at the first run, and nothing was cached, so it ran again
   });
 
+  it("stops between runs once the budget is spent, and the next try picks up from the cache", async () => {
+    const { root, src, o1, o2, db } = scene();
+    const ran: string[] = [];
+    const runCase = async (c: CaseFile, lessons: string | null) => {
+      ran.push(`${c.id}:${lessons ? "with" : "without"}`);
+      return { pass: c.id === src.id ? lessons !== null : true, tokens: 10 };
+    };
+    const deps: ReplayDeps = { casesRoot: root, otherCases: () => [o1, o2], runCase, db, runtime: RT, now: () => 1, budget: 15 };
+    const first = await verifyLesson(lesson({ caseId: src.id }), deps);
+    expect(first).toMatchObject({ verification: null, promote: false, tokens: 20 });
+    expect(first.why).toContain("budget ran out");
+    expect(ran).toHaveLength(2); // before + after; transfer waited
+    const second = await verifyLesson(lesson({ caseId: src.id }), deps);
+    expect(second.tokens).toBe(20);
+    expect(ran).toHaveLength(4); // o1 both sides, nothing re-run
+    const third = await verifyLesson(lesson({ caseId: src.id }), deps);
+    expect(third.promote).toBe(true);
+    expect(ran).toHaveLength(6);
+  });
+
   it("never promotes on a 'without' run that didn't finish (a hung provider isn't a failure)", async () => {
     const { root, src, o1, o2, db } = scene();
     const runCase = async (c: CaseFile, lessons: string | null) => {

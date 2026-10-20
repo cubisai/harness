@@ -26,6 +26,8 @@ export interface ReplayDeps {
   rollouts?: number;
   /** Other cases to check transfer on (default 3). */
   transferCases?: number;
+  /** Tokens this verification may spend; a fresh run is not started once they're gone (default: no limit). */
+  budget?: number;
 }
 
 /** Other cases of the project to check transfer on: held-out first, then newest. */
@@ -63,6 +65,8 @@ export async function verifyLesson(l: Lesson, deps: ReplayDeps): Promise<{ verif
     const key = replayKey(target.id, lessonId, deps.runtime, rollout);
     const hit = deps.db.cachedReplay(key);
     if (hit) return hit.pass;
+    // Stop between runs once the day's budget is gone; what ran is cached, so the next try picks up from there.
+    if (deps.budget !== undefined && tokens >= deps.budget) throw new NoEvidence("today's background budget ran out");
     let r: { pass: boolean; tokens: number };
     try {
       r = await deps.runCase(target, text);

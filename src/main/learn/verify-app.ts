@@ -41,7 +41,8 @@ export function createVerifier(deps: VerifyAppDeps): (l: Lesson) => Promise<{ ve
     const bg = pickBackground({ learn, projectId: l.projectId, drivers: deps.drivers() });
     if (!bg) return { verification: null, promote: false, why: "no background model can run a replay", tokens: 0 };
     const day = today(now());
-    if (deps.db.spent(l.projectId, day) >= learn.dailyTokens) return { verification: null, promote: false, why: "today's background budget is spent; try again tomorrow", tokens: 0 };
+    const spent = deps.db.spent(l.projectId, day);
+    if (spent >= learn.dailyTokens) return { verification: null, promote: false, why: "today's background budget is spent; try again tomorrow", tokens: 0 };
     const casesRoot = deps.casesRoot(l.projectId);
     const projectPath = deps.projectPath(l.projectId);
     const result = await verifyLesson(l, {
@@ -49,6 +50,7 @@ export function createVerifier(deps: VerifyAppDeps): (l: Lesson) => Promise<{ ve
       db: deps.db,
       runtime: { model: bg.model, agent: bg.driver.id, appVersion: deps.appVersion },
       now,
+      budget: learn.dailyTokens - spent,
       runCase: async (c, lessons) => {
         const root = mkdtempSync(join(tmpdir(), "cubiq-replay-"));
         try {
