@@ -14,6 +14,7 @@ export const COMPOSER_COMMANDS: ComposerCommand[] = [
   { name: "mcp", description: "MCP servers: status, sign-in, tools; /mcp <url or command> adds one" },
   { name: "compact", description: "Compact the conversation now; add a focus: /compact keep the API decisions" },
   { name: "new", description: "Start a new thread" },
+  { name: "doctor", description: "Check agent installs, versions and conflicts, and fix them" },
 ];
 
 /** Commands matching the query: name-prefix matches first, then any name substring. */

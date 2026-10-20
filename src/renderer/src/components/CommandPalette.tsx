@@ -61,6 +61,7 @@ function Palette() {
     if (selectedProjectId) action("files", "Show Files", () => s.showInspector("files"), { keywords: "tree explorer open file" });
     action("browser", "Show Browser", () => s.showInspector("browser"), { shortcut: mac ? "⌘⇧B" : "Ctrl+Shift+B", keywords: "web page preview" });
     action("terminal", "Toggle Terminal", () => s.toggleTerminal(), { shortcut: "⌃`", keywords: "shell console" });
+    action("doctor", "Run Doctor", () => s.openDoctor(), { keywords: "check install version conflict agents codex claude opencode fix" });
     if (selectedProjectId) {
       const preferred = settings?.editor ?? null;
       const ordered = [...editors].sort((a, b) => Number(b.id === preferred) - Number(a.id === preferred));

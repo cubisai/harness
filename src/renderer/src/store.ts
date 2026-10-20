@@ -83,6 +83,10 @@ interface State {
   mcpSheetPrefill: string;
   openMcpSheet(prefill?: string): void;
   closeMcpSheet(): void;
+  /** The /doctor sheet: agent installs, versions, conflicts and their fixes. */
+  doctorOpen: boolean;
+  openDoctor(): void;
+  closeDoctor(): void;
   appUpdate: AppUpdateStatus | null;
   /** Plan rate limits by agent id, as the agents last reported them. */
   limits: Record<string, AgentLimits>;
@@ -434,6 +438,13 @@ export const useStore = create<State>((set, get) => ({
   },
   mcpSheetOpen: false,
   mcpSheetPrefill: "",
+  doctorOpen: false,
+  openDoctor() {
+    set({ doctorOpen: true });
+  },
+  closeDoctor() {
+    set({ doctorOpen: false });
+  },
   openMcpSheet(prefill) {
     set({ mcpSheetOpen: true, mcpSheetPrefill: prefill ?? "" });
   },

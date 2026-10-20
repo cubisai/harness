@@ -23,7 +23,9 @@ import { designTools } from "./design/tools";
 import { selectorFor } from "./browser/picker";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
-import { warmBinaries } from "./agents/binaries";
+import { setBinaryPins, warmBinaries } from "./agents/binaries";
+import { createDoctor, pinsByCommand } from "./doctor";
+import type { GatherDeps } from "./doctor/gather";
 import { claudeOneShot, createClaudeDriver, resolvePackagedClaudeBinary } from "./agents/claude";
 import { createCodexDriver } from "./agents/codex";
 import { acpCapabilities, CLAUDE_CAPABILITIES, CODEX_CAPABILITIES } from "./agents/capabilities";
@@ -1685,6 +1687,31 @@ async function main(): Promise<void> {
   ipcMain.handle("pending:get", () => service.pendingState());
   ipcMain.handle("question:respond", (_e, requestId: string, answer: unknown) => service.respondQuestion(requestId, questionAnswerOf(answer)));
   ipcMain.handle("diff:get", (_e, projectId: string, threadId?: string | null) => service.getDiff(projectId, threadId));
+  // /doctor: the core CLIs always, plus the other ACP agents found; a fix is looked up in the app's own last report.
+  const doctorAgents = (): GatherDeps["agents"] => {
+    const core = [
+      { id: "claude", label: "Claude Code", command: "claude", installHint: "curl -fsSL https://claude.ai/install.sh | bash" },
+      { id: "codex", label: "Codex", command: "codex", installHint: "npm install -g @openai/codex" },
+      { id: "opencode", label: "OpenCode", command: "opencode", installHint: "npm install -g opencode-ai" },
+    ];
+    const ids = new Set(core.map((a) => a.id));
+    const extra = acpAgents.filter((a) => !ids.has(a.id) && !a.command.includes("/") && !a.command.includes("\\")).map((a) => ({ id: a.id, label: a.label, command: a.command, installHint: a.install ?? null }));
+    return [...core, ...extra];
+  };
+  const pinned = (): Record<string, string> => settings.get().agentBinary ?? {};
+  const doctor = createDoctor({
+    agents: doctorAgents,
+    pinned,
+    savePin: (agent, path) => {
+      const { [agent]: _old, ...rest } = pinned();
+      settings.update({ agentBinary: path ? { ...rest, [agent]: path } : rest });
+    },
+    worktreesDir: join(userData, "worktrees"),
+    liveWorktreeIds: () => new Set(Object.values(store.listAllThreads()).flat().filter((t) => t.worktreePath).map((t) => t.id)),
+  });
+  setBinaryPins(pinsByCommand({ agents: doctorAgents, pinned }));
+  ipcMain.handle("doctor:run", () => doctor.run());
+  ipcMain.handle("doctor:fix", (_e, findingId: unknown, fixIndex: unknown) => doctor.fix(String(findingId), Number(fixIndex)));
   ipcMain.handle("search:query", (_e, query: SearchQuery) =>
     store.search({
       text: typeof query?.text === "string" ? query.text.slice(0, 500) : "",

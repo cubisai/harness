@@ -167,6 +167,11 @@ export class SettingsStore {
       next.defaultPermissionMode = patch.defaultPermissionMode;
     }
     if (typeof patch.autoUpdate === "boolean") next.autoUpdate = patch.autoUpdate;
+    if (patch.agentBinary && typeof patch.agentBinary === "object" && !Array.isArray(patch.agentBinary)) {
+      const pins: Record<string, string> = {};
+      for (const [agent, path] of Object.entries(patch.agentBinary)) if (typeof path === "string" && path) pins[agent] = path;
+      next.agentBinary = pins;
+    }
     if (patch.editor !== undefined) next.editor = typeof patch.editor === "string" ? patch.editor : null;
     if (patch.paneLayout !== undefined) next.paneLayout = sanitizeLayout(patch.paneLayout);
     if (patch.skills && typeof patch.skills === "object" && Array.isArray(patch.skills.disabled)) {

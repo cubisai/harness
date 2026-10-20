@@ -675,6 +675,16 @@ export function installMock(): void {
     terminalClose: async () => {},
     projectBranch: async () => (scene === "thread" ? "feat/rate-limit" : null),
     listFiles: async (_projectId, _threadId) => ({ files: ["README.md", "package.json", "src/app.ts", "src/middleware/rateLimit.ts", "src/middleware/rateLimit.test.ts", "src/routes/login.ts"], truncated: false }),
+    runDoctor: async () => ({
+      at: Date.now(),
+      findings: [
+        { id: "claude:installed", group: "agents" as const, agent: "claude", level: "ok" as const, title: "Claude Code 2.4.1 at ~/.local/bin/claude", detail: "Installed via native.", fixes: [] },
+        { id: "opencode:duplicates", group: "agents" as const, agent: "opencode", level: "warn" as const, title: "OpenCode is installed 3 times", detail: "~/.local/bin/opencode (1.19.0, npm)\n/usr/local/bin/opencode (1.0.126, npm)\n/opt/homebrew/bin/opencode (0.0.55, homebrew)\nCubiQ uses ~/.local/bin/opencode.", fixes: [{ kind: "pin" as const, label: "Use 1.0.126 at /usr/local/bin/opencode", agent: "opencode", path: "/usr/local/bin/opencode" }, { kind: "copy" as const, label: "Copy uninstall command", text: "npm uninstall -g opencode-ai" }] },
+        { id: "codex:auth", group: "agents" as const, agent: "codex", level: "warn" as const, title: "Codex isn't signed in", detail: "Run `codex login`, then run /doctor again.", fixes: [{ kind: "copy" as const, label: "Copy login command", text: "codex login" }] },
+        { id: "environment:python", group: "environment" as const, level: "warn" as const, title: "Python not found: the git guard is off", detail: "Install Python 3 to turn the git guard back on.", fixes: [] },
+      ],
+    }),
+    doctorFix: async () => ({ ok: true, message: "Done." }),
     getDiff: async (_projectId, _threadId) => [
       {
         path: "src/middleware/rateLimit.ts",

@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { COMPOSER_COMMANDS, matchCommands } from "../src/renderer/src/commands";
 
 describe("COMPOSER_COMMANDS", () => {
-  it("lists plan mode, the model picker, context, mcp, compact, and a new thread (the other modes live on the mode chip)", () => {
-    expect(COMPOSER_COMMANDS.map((c) => c.name)).toEqual(["plan", "model", "context", "mcp", "compact", "new"]);
+  it("lists plan mode, the model picker, context, mcp, compact, a new thread and doctor (the other modes live on the mode chip)", () => {
+    expect(COMPOSER_COMMANDS.map((c) => c.name)).toEqual(["plan", "model", "context", "mcp", "compact", "new", "doctor"]);
   });
 });
 
@@ -11,7 +11,7 @@ describe("matchCommands", () => {
   const names = (query: string) => matchCommands(query).map((c) => c.name);
 
   it("returns every command for an empty query, in order", () => {
-    expect(names("")).toEqual(["plan", "model", "context", "mcp", "compact", "new"]);
+    expect(names("")).toEqual(["plan", "model", "context", "mcp", "compact", "new", "doctor"]);
   });
 
   it("puts name-prefix matches before substring matches", () => {

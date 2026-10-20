@@ -174,6 +174,29 @@ interface CachedResolution {
 }
 
 const resolutions = new Map<string, CachedResolution>();
+
+/** Installs the user pinned in /doctor (command → path); a pin wins over "newest" while it's still installed. */
+let pins: Record<string, string> = {};
+
+/** Replace the pinned installs; a command whose pin changed resolves again next time. */
+export function setBinaryPins(next: Record<string, string>): void {
+  for (const command of new Set([...Object.keys(pins), ...Object.keys(next)])) {
+    if (pins[command] !== next[command]) resolutions.delete(command);
+  }
+  pins = { ...next };
+}
+
+/** The install pinned for `command`, if any. */
+export const pinFor = (command: string): string | undefined => pins[command];
+
+/** The resolution with the pinned install first, when the pin is one of the installs found. */
+export function applyPin(value: BinaryResolution | null, pin: string | undefined): BinaryResolution | null {
+  if (!value || !pin || value.path === pin) return value;
+  const all: BinaryInstall[] = [{ path: value.path, version: value.version }, ...value.others];
+  const pinned = all.find((install) => install.path === pin);
+  if (!pinned) return value;
+  return { ...pinned, others: all.filter((install) => install.path !== pin) };
+}
 /** In-flight resolutions, so concurrent callers share one probe. */
 const inflight = new Map<string, Promise<BinaryResolution | null>>();
 
@@ -191,7 +214,8 @@ function refresh(command: string): Promise<BinaryResolution | null> {
   const running = inflight.get(command);
   if (running) return running;
   const probe = newestInstallAsync(command)
-    .then((value) => {
+    .then((found) => {
+      const value = applyPin(found, pins[command]);
       resolutions.set(command, { value, at: Date.now() });
       return value;
     })

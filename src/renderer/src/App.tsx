@@ -24,6 +24,7 @@ import { TeamStrip } from "./components/experts/TeamStrip";
 import { AboutSheet } from "./components/AboutSheet";
 import { ContextSheet } from "./components/ContextSheet";
 import { McpSheet } from "./components/McpSheet";
+import { DoctorSheet } from "./components/DoctorSheet";
 import { ThreadView } from "./components/ThreadView";
 import { IconArrowLeft, IconChat, IconDiff, IconFolder, IconGlobe, IconSparkle, IconTerminal } from "./icons";
 import { usePaneLayout } from "./hooks/usePaneLayout";
@@ -355,6 +356,7 @@ export function App() {
       <AboutSheet />
       <ContextSheet />
       <McpSheet />
+      <DoctorSheet />
       <Splash />
     </div>
   );
