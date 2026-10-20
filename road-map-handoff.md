@@ -9,7 +9,7 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 
 ## Session 7 (2026-10-20, Mac): live lesson promotion, scroll reserve, card withdrawal
 
-**Checks on `m4`:** typecheck green, vitest 3123 passed / 0 failed.
+**Checks on `m4`:** typecheck green, design:check 0 errors, vitest 3141 passed / 0 failed.
 
 **Live (app):**
 - **P8 lesson promotion seen live** (session 5 item 4, closed). Scratch project `learn-proj` (id `1ea51e55-…c0de`, path in this session's scratchpad). Its check `node <scratchpad>/learn-check/check.mjs` lives outside the repo and fails when a `src/*.js` isn't listed in `config/registry.json`; `check_fix_rounds` 0.
@@ -31,6 +31,19 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 **Left (in order):**
 1. **Windows PC gate** (unchanged, see session 6), plus: card withdrawal when OpenCode's plugin fetch is cut on Windows; the fold reserve (scrollbar gutter) at 900 px.
 2. Optional: a picker for the Self-improve background model (today only via settings); the drafter guessed "package.json exports/index" for the registry because it can't see the repo. A path hint from the turn's changed files could help.
+
+**Later the same day (owner requests, plan `.ai/plans/learn-picker-paths.md`):**
+- `0d86cbb` Lesson drafts get the turn's changed files and `git ls-files` names (≤ 80 shown) and may name only those (a draft had guessed "package.json exports" for `config/registry.json`). Built by an opencode implementer (Zen DeepSeek), reviewed.
+- `66573d6` Library → Learned: per-project **background model picker** (Automatic, or an agent + one of its cheap models; long lists show only `CHEAP_MODEL_HINTS` models, now shared in `shared/learn.ts`).
+- `35f43cd` Settings: **Rich replies** = Off / On / On + link previews, over the same two settings (`uiBlocks`, `linkPreviews`).
+- `5bfd800` Link previews:
+  - Far sites load: Electron's Node gives each address 250 ms (happy eyeballs), so Wikipedia's IPv4 was dropped from Asia, then IPv6 failed (`autoSelectFamilyAttemptTimeout: 2500`).
+  - Failed lookups retry after 60 s (main and renderer). Before, they were cached for the run.
+  - Unreadable pages (Stack Overflow 403) get a plain card from the URL.
+  - **Sources** row under a turn for pages it fetched (`Fetch`) or opened (`browser_open`) but didn't link.
+  - URLs keep balanced parentheses, and bold/italic/strike parse inline code and links.
+- `ef8fc59` Lessons count helpful/harmful only on related turns (paths/keywords; general lessons always), retire when all their plain paths are gone (pinned kept). Memory block marks a project note naming only missing files "(may be stale: …)". Verified live (memory is globally off in the owner's settings, so the block was checked through `MemoryStore` on the real data).
+- Live: YouTube fails TLS on this network (curl exit 60), not an app bug.
 
 **Scratch state (Mac, safe to delete):** project `learn-proj` and its threads; `learn/1ea51e55-…/cases`; the active lesson in it; `learn-check/` in the scratchpad.
 
