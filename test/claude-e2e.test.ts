@@ -90,6 +90,8 @@ describe("Claude end to end (real Claude Code, fake API)", () => {
       ANTHROPIC_API_KEY: "sk-ant-test",
       CLAUDE_CONFIG_DIR: mkdtempSync(join(tmpdir(), "unskilled-claude-config-")),
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+      // Newer Claude Code defers MCP tools behind ToolSearch; load them up front so the request lists them.
+      ENABLE_TOOL_SEARCH: "false",
     });
 
     const limits: LimitsPatch[] = [];
