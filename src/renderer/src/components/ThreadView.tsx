@@ -901,7 +901,8 @@ export function ToolRow(props: {
   const hasOutput = result?.payload !== undefined && diffs === null && run === null;
   // A Run's input is its command; a payload carrying a prompt shows that as text, not JSON.
   const command = runPayloadOf(tool.payload);
-  const agent = command === null ? agentPromptOf(tool.payload) : null;
+  const script = command === null ? codePayloadOf(tool.payload) : null;
+  const agent = command === null && script === null ? agentPromptOf(tool.payload) : null;
   const resultNote = result?.summary ?? "";
   return (
     <details className="tool" open={open} onToggle={(e) => onToggle(e.currentTarget.open)}>
@@ -966,9 +967,9 @@ export function ToolRow(props: {
           )}
           {hasInput && (
             <div className="tool-section">
-              <div className="tool-label">{command !== null ? "Command" : agent !== null ? "Prompt" : "Input"}</div>
+              <div className="tool-label">{command !== null ? "Command" : script !== null ? "Code" : agent !== null ? "Prompt" : "Input"}</div>
               <pre className="tool-pre">
-                {command !== null ? `$ ${command}` : agent !== null ? (agent.subagent ? `subagent: ${agent.subagent}\n${agent.prompt}` : agent.prompt) : payloadText(tool.payload)}
+                {command !== null ? `$ ${command}` : script !== null ? script : agent !== null ? (agent.subagent ? `subagent: ${agent.subagent}\n${agent.prompt}` : agent.prompt) : payloadText(tool.payload)}
               </pre>
             </div>
           )}
@@ -1004,6 +1005,13 @@ function runPayloadOf(v: unknown): string | null {
   if (!v || typeof v !== "object" || Array.isArray(v) || Object.keys(v).length !== 1) return null;
   const command = (v as { command?: unknown }).command;
   return typeof command === "string" ? command : null;
+}
+
+/** A run_code input's script (native, or OpenCode v2's Code Mode `{ code }`), or null for any other payload. */
+function codePayloadOf(v: unknown): string | null {
+  if (!v || typeof v !== "object" || Array.isArray(v) || Object.keys(v).length !== 1) return null;
+  const code = (v as { code?: unknown }).code;
+  return typeof code === "string" ? code : null;
 }
 
 /** An Agent tool input's prompt (and subagent kind), or null for any other payload. */

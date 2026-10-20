@@ -269,6 +269,10 @@ interface TurnState {
       /** The last plan emitted for a todowrite call, so a repeat isn't re-sent. */
       planKey?: string;
       locations?: ToolCallFields["locations"];
+      /** An OpenCode v2 Code Mode script (`execute`), shown as run_code with a child row per call it made. */
+      script?: boolean;
+      /** Which of the script's calls have had their tool-use / tool-result sent, by index. */
+      steps?: { announced: boolean; done: boolean }[];
     }
   >;
   /** Permission toolCallIds seen this turn, to spot a mismatch from the real call. */
@@ -623,20 +627,22 @@ export function createAcpDriver(
           const raw = merged.rawInput as Record<string, unknown> | null | undefined;
           const command = typeof raw?.command === "string" ? raw.command : undefined;
           const own = harnessTool(merged);
+          const script = codeModeScript(merged);
           const subagent = merged.kind === "think" && typeof raw?.subagent_type === "string";
-          const summary = own?.summary ?? (subagent ? subagentSummary(raw!, merged.title) : toolSummary(merged, command));
+          const summary = script !== null ? clipSummary(script) : (own?.summary ?? (subagent ? subagentSummary(raw!, merged.title) : toolSummary(merged, command)));
           // Vague: nothing to show, or only the tool's bare name ("bash", "edit").
           const vague = summary === "" || (/^[a-z_]+$/.test(summary) && summary === merged.title);
           if (!vague || text || terminal) {
             tool.announced = true;
             // An execute call's payload names the command even when rawInput
             // doesn't carry one (the title does), like the other adapters' Run.
-            const payload = toolUsePayload(merged.kind, merged.rawInput, command ?? merged.title ?? "");
+            const payload = script !== null ? { code: script } : toolUsePayload(merged.kind, merged.rawInput, command ?? merged.title ?? "");
             tool.payload = payload;
+            tool.script = script !== null;
             t.input.onEvent({
               kind: "tool-use",
               toolUseId: u.toolCallId,
-              name: own?.name ?? (subagent ? "Agent" : kindLabel(merged.kind)),
+              name: script !== null ? "run_code" : (own?.name ?? (subagent ? "Agent" : kindLabel(merged.kind))),
               summary,
               ...(payload !== undefined ? { payload } : {}),
             });
@@ -649,6 +655,24 @@ export function createAcpDriver(
           const added = text.startsWith(sent) ? text.slice(sent.length) : `\n${text}`;
           if (added) t.input.onToolOutputDelta?.({ toolUseId: u.toolCallId, text: added });
           tool.streamed = text;
+        }
+        if (tool.script && !tool.done) {
+          // Each call the script made becomes a child row, as native run_code's are;
+          // v2 lists them only in rawOutput, so a call can't outlive its script's row.
+          const steps = (tool.steps ??= []);
+          scriptSteps(tool.rawOutput).forEach((s, i) => {
+            const toolUseId = `${u.toolCallId}:${i + 1}`;
+            const seen = (steps[i] ??= { announced: false, done: false });
+            if (!seen.announced) {
+              seen.announced = true;
+              t.input.onEvent({ kind: "tool-use", toolUseId, name: scriptStepName(s.tool), summary: scriptStepSummary(s.input), ...(hasInput(s.input) ? { payload: s.input } : {}), parentId: u.toolCallId });
+            }
+            if (!seen.done && (terminal || (s.status !== "running" && s.status !== "pending"))) {
+              seen.done = true;
+              const failed = s.status !== "completed";
+              t.input.onEvent({ kind: "tool-result", toolUseId, isError: failed, summary: failed ? "Failed" : "Done", parentId: u.toolCallId });
+            }
+          });
         }
         if (!tool.done && (u.status === "completed" || u.status === "failed")) {
           tool.done = true;
@@ -1439,6 +1463,40 @@ export function toolSummary(u: ToolCallFields, command: string | undefined): str
 /** A rawInput worth waiting for: anything but null or an empty object. */
 function hasInput(raw: unknown): boolean {
   return raw !== null && raw !== undefined && !(typeof raw === "object" && Object.keys(raw as object).length === 0);
+}
+
+/** An OpenCode v2 Code Mode call's script (its `execute` tool, kind other, input `{ code }`), or null for any other call. */
+export function codeModeScript(u: Pick<ToolCallFields, "title" | "kind" | "rawInput">): string | null {
+  if (u.title !== "execute" || (u.kind && u.kind !== "other")) return null;
+  const code = (u.rawInput as { code?: unknown } | null | undefined)?.code;
+  return typeof code === "string" ? code : null;
+}
+
+/** The calls a Code Mode script made, from its rawOutput's `metadata.toolCalls` (OpenCode v2), in order. */
+export function scriptSteps(rawOutput: unknown): { tool: string; status: string; input?: unknown }[] {
+  const calls = rawOutputOf(rawOutputOf(rawOutput)?.metadata)?.toolCalls;
+  if (!Array.isArray(calls)) return [];
+  return calls
+    .map((c) => rawOutputOf(c))
+    .filter((c): c is Record<string, unknown> => typeof c?.tool === "string")
+    .map((c) => ({ tool: c.tool as string, status: typeof c.status === "string" ? c.status : "completed", input: c.input }));
+}
+
+/** A script call's row name: OpenCode's own and CubiQ's tools bare ("read"), another server's "server · tool". */
+export function scriptStepName(tool: string): string {
+  const dot = tool.indexOf(".");
+  if (dot < 0) return tool;
+  const server = tool.slice(0, dot);
+  const name = tool.slice(dot + 1);
+  return server === "opencode" || server === TOOL_SERVER_NAME ? name : `${server} · ${name}`;
+}
+
+/** A script call's summary: its main string argument, else its input as one line. */
+export function scriptStepSummary(input: unknown): string {
+  if (!hasInput(input) || typeof input !== "object") return "";
+  const raw = input as Record<string, unknown>;
+  const arg = ["filePath", "path", "pattern", "query", "url", "command", "name"].map((k) => raw[k]).find((v): v is string => typeof v === "string");
+  return clipSummary(arg ?? JSON.stringify(input));
 }
 
 export function harnessTool(u: Pick<ToolCallFields, "title" | "kind" | "rawInput">): { name: string; summary: string } | null {

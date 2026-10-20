@@ -32,8 +32,10 @@ export function sumExportUsage(stdout: string, sinceMs: number): TurnTokens | nu
   const out: TurnTokens = { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 };
   let matched = false;
   for (const msg of root.messages) {
-    const info = (msg as { info?: unknown })?.info as { role?: unknown; time?: { created?: unknown }; tokens?: { input?: unknown; output?: unknown; reasoning?: unknown; cache?: { read?: unknown; write?: unknown } } } | null | undefined;
-    if (!info || info.role !== "assistant") continue;
+    // v1 nests each message under `info` with a role; v2's messages are flat, typed "assistant".
+    const v1 = (msg as { info?: unknown })?.info;
+    const info = (v1 ?? msg) as { role?: unknown; type?: unknown; time?: { created?: unknown }; tokens?: { input?: unknown; output?: unknown; reasoning?: unknown; cache?: { read?: unknown; write?: unknown } } } | null | undefined;
+    if (!info || (v1 ? info.role : info.type) !== "assistant") continue;
     const created = (info.time as { created?: unknown } | undefined)?.created;
     if (typeof created !== "number" || created < sinceMs) continue;
     matched = true;

@@ -43,6 +43,14 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     } else if (text === "task") {
       update(sid, { sessionUpdate: "tool_call", toolCallId: "a1", title: "task", kind: "think", rawInput: { description: "research", prompt: "find it", subagent_type: "explore" }, status: "pending" });
       update(sid, { sessionUpdate: "tool_call_update", toolCallId: "a1", status: "completed", rawOutput: { output: ${JSON.stringify(TASK_OUTPUT)} } });
+    } else if (text === "codemode") {
+      // OpenCode v2.1.0's Code Mode, as recorded: empty input first, the script on an update, its calls only in rawOutput.
+      update(sid, { sessionUpdate: "tool_call", toolCallId: "x1", name: "execute", title: "execute", kind: "other", status: "pending", locations: [], rawInput: {} });
+      update(sid, { sessionUpdate: "tool_call_update", toolCallId: "x1", status: "in_progress", kind: "other", title: "execute", locations: [], rawInput: { code: "const w = await tools.probe.weather({ city: \\"Paris\\" });\\nreturn w;" } });
+      update(sid, { sessionUpdate: "tool_call_update", toolCallId: "x1", status: "completed", locations: [], content: [{ type: "content", content: { type: "text", text: "Paris: 21C" } }], rawOutput: { metadata: { toolCalls: [
+        { tool: "probe.weather", status: "completed", input: { city: "Paris" } },
+        { tool: "opencode.read", status: "error", input: { filePath: "/x/a.txt" } }
+      ], truncated: false } } });
     } else if (text === "todo") {
       update(sid, { sessionUpdate: "tool_call", toolCallId: "p1", title: "todowrite", kind: "other", rawInput: { todos: [
         { content: "one", status: "completed", priority: "high" },
@@ -1036,6 +1044,22 @@ describe("ACP tool payloads", () => {
     const result = t.events.find((e) => e.kind === "tool-result");
     expect((result as { payload: unknown }).payload).toBe("Found it\nmore");
     expect((result as { summary: string }).summary.startsWith("Found it")).toBe(true);
+  });
+
+  it("shows an OpenCode v2 Code Mode script as run_code, with a child row per call it made", async () => {
+    const d = inlineDriver();
+    const t = turn("codemode");
+    await d.runTurn(t.input);
+    const rows = t.events.filter((e) => e.kind === "tool-use" || e.kind === "tool-result");
+    const code = 'const w = await tools.probe.weather({ city: "Paris" });\nreturn w;';
+    expect(rows).toEqual([
+      { kind: "tool-use", toolUseId: "x1", name: "run_code", summary: 'const w = await tools.probe.weather({ city: "Paris" }); return w;', payload: { code } },
+      { kind: "tool-use", toolUseId: "x1:1", name: "probe · weather", summary: '{"city":"Paris"}', payload: { city: "Paris" }, parentId: "x1" },
+      { kind: "tool-result", toolUseId: "x1:1", isError: false, summary: "Done", parentId: "x1" },
+      { kind: "tool-use", toolUseId: "x1:2", name: "read", summary: "/x/a.txt", payload: { filePath: "/x/a.txt" }, parentId: "x1" },
+      { kind: "tool-result", toolUseId: "x1:2", isError: true, summary: "Failed", parentId: "x1" },
+      expect.objectContaining({ kind: "tool-result", toolUseId: "x1", isError: false, payload: "Paris: 21C" }),
+    ]);
   });
 
   it("folds an OpenCode todowrite into one plan event with no tool row", async () => {

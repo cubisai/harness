@@ -49,6 +49,26 @@ describe("sumExportUsage", () => {
     expect(sumExportUsage(noMatch, since)).toBeNull();
   });
 
+  it("reads OpenCode v2's flat export (`session export --standalone`, 2.1.0), matching the turn's ACP prompt usage", () => {
+    // Trimmed from a real 2.1.0 export: session totals (title generation included) sit on `info`, never summed.
+    const v2 = (type: string, created: number, tokens?: Record<string, unknown>) => ({ id: `msg_${created}`, time: { created }, type, ...(tokens ? { tokens, finish: "stop" } : {}) });
+    const stdout = JSON.stringify({
+      info: { id: "ses_x", tokens: { input: 8218, output: 193, reasoning: 256, cache: { read: 22528, write: 0 } }, time: { created: since } },
+      messages: [
+        v2("model-switched", since + 1),
+        v2("user", since + 2),
+        v2("assistant", since + 3, { input: 3654, output: 52, reasoning: 139, cache: { read: 6144, write: 0 } }),
+        v2("system", since + 4),
+        v2("assistant", since + 5, { input: 245, output: 106, reasoning: 19, cache: { read: 9856, write: 0 } }),
+        v2("assistant", since + 6, { input: 4127, output: 24, reasoning: 0, cache: { read: 6144, write: 0 } }),
+        v2("idle", since + 7),
+      ],
+    });
+    // ACP prompt usage for the same turn: inputTokens 8026, outputTokens 182, thoughtTokens 158, cachedReadTokens 22144.
+    expect(sumExportUsage(stdout, since)).toEqual({ input: 8026, output: 182, reasoning: 158, cacheRead: 22144, cacheWrite: 0 });
+    expect(sumExportUsage(stdout, since + 6)).toEqual({ input: 4127, output: 24, reasoning: 0, cacheRead: 6144, cacheWrite: 0 });
+  });
+
   it("counts missing numeric fields as zero", () => {
     const stdout = JSON.stringify({ messages: [msg("assistant", since + 1)] });
     expect(sumExportUsage(stdout, since)).toEqual({ input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 });
