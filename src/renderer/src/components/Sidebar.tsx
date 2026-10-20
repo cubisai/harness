@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Project, Thread } from "../../../shared/types";
-import { IconChevron, IconCompose, IconFolder, IconGear, IconLibrary, IconMore, IconPlus, IconSearch } from "../icons";
+import { IconChat, IconChevron, IconCompose, IconFolder, IconGear, IconLibrary, IconMore, IconPlus, IconSearch } from "../icons";
 import { api } from "../api";
 import { elapsed, inboxModel, shortTime, waitingThreads } from "../sections";
 import { ThreadRow, type ThreadStatus } from "./ThreadRow";
@@ -68,6 +68,8 @@ function ProjectRow({
       className={`project-row${menuOpen ? " menu-open" : ""}`}
       onContextMenu={(e) => {
         e.preventDefault();
+        // Chats' folder is the app's own: nothing to locate, open, check or remove.
+        if (project.builtin) return;
         setMenuOpen(true);
         setConfirming(false);
         setCheckEditing(false);
@@ -75,7 +77,7 @@ function ProjectRow({
     >
       <button
         className="project-toggle"
-        title={project.missing ? `Folder missing: ${project.path}` : project.path}
+        title={project.builtin ? "Chats with no project folder" : project.missing ? `Folder missing: ${project.path}` : project.path}
         aria-expanded={open}
         onClick={onToggle}
       >
@@ -102,20 +104,22 @@ function ProjectRow({
         >
           <IconPlus size={14} />
         </button>
-        <button
-          className="icon-button project-action"
-          title="Project options"
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          onClick={(e) => {
-            e.stopPropagation();
-            setMenuOpen((m) => !m);
-            setConfirming(false);
-            setCheckEditing(false);
-          }}
-        >
-          <IconMore size={14} />
-        </button>
+        {!project.builtin && (
+          <button
+            className="icon-button project-action"
+            title="Project options"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={(e) => {
+              e.stopPropagation();
+              setMenuOpen((m) => !m);
+              setConfirming(false);
+              setCheckEditing(false);
+            }}
+          >
+            <IconMore size={14} />
+          </button>
+        )}
       </span>
       {menuOpen && (
         <div className="thread-menu" role="menu" onClick={(e) => e.stopPropagation()}>
@@ -238,7 +242,7 @@ export function Sidebar() {
   const grouped = useStore((s) => s.settings?.sidebarGroupByProject ?? true);
   const collapsed = useStore((s) => s.collapsedProjects);
   const kind = useStore((s) => s.threadKind);
-  const { setThreadKind, addProject, selectProject, selectThread, newThread, setSearchOpen, toggleProjectCollapsed } = useStore.getState();
+  const { setThreadKind, addProject, newChat, selectProject, selectThread, newThread, setSearchOpen, toggleProjectCollapsed } = useStore.getState();
   const [archivedOpen, setArchivedOpen] = useState<Record<string, boolean>>({});
   const mac = api().platform === "darwin";
   const newThreadKey = mac ? "⌘N" : "Ctrl N";
@@ -249,8 +253,10 @@ export function Sidebar() {
   // Only a question (no approval or plan) waits for an answer rather than an approval.
   const answering = new Set([...waitingThreads(questions)].filter((id) => !waitingThreads(permissions, plans).has(id)));
   const unread = new Set(finished.map((f) => f.threadId));
+  // Chats comes first, then the projects by name.
+  const ordered = [...projects.filter((p) => p.builtin), ...projects.filter((p) => !p.builtin)];
   const model = inboxModel(
-    projects.map((p) => p.id),
+    ordered.map((p) => p.id),
     threads,
     { running, waiting, kind },
   );
@@ -342,6 +348,12 @@ export function Sidebar() {
           <span>{newLabel}</span>
           <kbd>{newThreadKey}</kbd>
         </button>
+        {kind === "chat" && (
+          <button className="nav-row" title="New chat, with no project folder" onClick={() => void newChat()}>
+            <IconChat />
+            <span>New chat</span>
+          </button>
+        )}
         <button className="nav-row" title={`Search (${searchKey})`} onClick={() => setSearchOpen(true)}>
           <IconSearch />
           <span>Search</span>
@@ -403,7 +415,7 @@ export function Sidebar() {
         {!grouped && projects.length > 0 && (
           <section className="inbox-section" aria-label="Projects">
             <div className="section-label">Projects</div>
-            {projects.map((p) => (
+            {ordered.map((p) => (
               <div className="project" key={p.id}>
                 {projectRow(p)}
                 {!collapsed[p.id] && archived(p.id)}
