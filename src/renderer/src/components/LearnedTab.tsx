@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { GraduationCap, Pin } from "lucide-react";
-import { LEARN_DEFAULTS, type LearnOverview, type Lesson, type LessonAction, type LessonVerification } from "../../../shared/learn";
+import { CHEAP_MODEL_HINTS, LEARN_DEFAULTS, type LearnOverview, type Lesson, type LessonAction, type LessonVerification } from "../../../shared/learn";
+import type { AgentInfo } from "../../../shared/types";
 import { api } from "../api";
 import { useStore } from "../store";
+import { Select, type SelectOption } from "./Select";
 import "../styles/learned.css";
 
 /** A lesson button's id: the API actions, plus Verify, which is the one primary button. */
@@ -58,6 +60,32 @@ export function compact(n: number): string {
   return `${n}`;
 }
 
+/** An agent with at most this many models lists them all; a longer list shows only its cheap ones. */
+const SHORT_LIST = 12;
+
+const isCheap = (m: { id: string; label: string }) => CHEAP_MODEL_HINTS.some((h) => m.id.toLowerCase().includes(h) || m.label.toLowerCase().includes(h));
+
+/**
+ * What the background-model picker offers: "Automatic" plus each agent with a
+ * model to pick, and per agent its models (cheap ones only for a long list),
+ * always including the current pick.
+ */
+export function backgroundChoices(agents: AgentInfo[], current: { agent: string; model: string } | null): { agents: SelectOption<string>[]; models(agentId: string): SelectOption<string>[] } {
+  const models = (agentId: string): SelectOption<string>[] => {
+    const agent = agents.find((a) => a.id === agentId);
+    if (!agent) return current?.agent === agentId ? [{ value: current.model, label: current.model }] : [];
+    const listed = agent.models.length <= SHORT_LIST ? agent.models : agent.models.filter(isCheap);
+    const options = listed.map((m) => ({ value: m.id, label: m.label }));
+    if (current?.agent === agentId && !options.some((o) => o.value === current.model)) {
+      options.unshift({ value: current.model, label: agent.models.find((m) => m.id === current.model)?.label ?? current.model });
+    }
+    return options;
+  };
+  const offered = agents.filter((a) => models(a.id).length > 0).map((a) => ({ value: a.id, label: a.label }));
+  if (current && !offered.some((o) => o.value === current.agent)) offered.push({ value: current.agent, label: current.agent });
+  return { agents: [{ value: "", label: "Automatic", detail: "The cheapest model available" }, ...offered], models };
+}
+
 function errorText(err: unknown): string {
   const text = err instanceof Error ? err.message : String(err);
   return text.replace(/^Error invoking remote method '[^']+': (Error: )?/, "");
@@ -77,6 +105,7 @@ export function LearnedTab({ overview: initial }: { overview?: LearnOverview | n
   const [notice, setNotice] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
   const learnSettings = useStore((s) => s.settings?.learn);
+  const agents = useStore((s) => s.agents);
 
   const reload = useCallback(() => {
     if (initial !== undefined || !projectId) return;
@@ -129,6 +158,30 @@ export function LearnedTab({ overview: initial }: { overview?: LearnOverview | n
     }
   };
 
+  // The project's own background model; Automatic removes the override.
+  const chosen = (projectId && learnSettings?.backgroundByProject[projectId]) || null;
+  const choices = backgroundChoices(agents, chosen);
+  const setBackground = async (pick: { agent: string; model: string } | null) => {
+    if (!projectId) return;
+    const current = learnSettings ?? LEARN_DEFAULTS;
+    const { [projectId]: _old, ...others } = current.backgroundByProject;
+    setError(null);
+    try {
+      const next = await api().updateSettings({ learn: { ...current, backgroundByProject: pick ? { ...others, [projectId]: pick } : others } });
+      useStore.setState({ settings: next });
+      reload();
+    } catch (err) {
+      setError(errorText(err));
+    }
+  };
+  const pickAgent = (agent: string) => {
+    if (!agent) return void setBackground(null);
+    // A new agent starts on its cheap tier, as background work should.
+    const options = choices.models(agent);
+    const model = (options.find((o) => isCheap({ id: o.value, label: o.label })) ?? options[0])?.value;
+    if (model) void setBackground({ agent, model });
+  };
+
   const act = async (target: Lesson, action: LearnAction) => {
     setError(null);
     if (action !== "verify") {
@@ -161,6 +214,13 @@ export function LearnedTab({ overview: initial }: { overview?: LearnOverview | n
           <span className="learned-meta">{`Today: ${compact(data.usedToday)} / ${compact(data.dailyTokens)} tokens`}</span>
         </div>
         <p className="learned-meta learned-cases">{`${data.cases.length} captured cases (${heldOut} held out)`}</p>
+        <div className="learned-bg">
+          <span className="label">Background model</span>
+          <div className="learned-bg-picks">
+            <Select value={chosen?.agent ?? ""} options={choices.agents} onChange={pickAgent} ariaLabel="Background agent for this project" />
+            {chosen && <Select value={chosen.model} options={choices.models(chosen.agent)} onChange={(model) => void setBackground({ agent: chosen.agent, model })} ariaLabel="Background model for this project" />}
+          </div>
+        </div>
         <div className="learned-switch">
           <span className="label">Self-improve</span>
           <div className="segmented" role="group" aria-label="Self-improve for this project">

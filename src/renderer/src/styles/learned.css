@@ -19,6 +19,12 @@
 .learned-tab .learned-switch { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; margin: 4px 4px 8px; }
 .learned-tab .learned-switch .label { font-size: 12.5px; color: var(--text); }
 
+/* Background model: agent, then its model; the pickers share the row and wrap when narrow (DESIGN.md §7.7). */
+.learned-tab .learned-bg { display: flex; flex-direction: column; gap: 4px; min-width: 0; margin: 0 4px 8px; }
+.learned-tab .learned-bg .label { font-size: 12.5px; color: var(--text); }
+.learned-tab .learned-bg-picks { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.learned-tab .learned-bg-picks > .select-button { flex: 1 1 110px; min-width: 0; }
+
 /* Status group headings: quiet meta, sentence case (DESIGN.md §3). */
 .learned-tab .learned-group {
   padding: 12px 10px 4px;

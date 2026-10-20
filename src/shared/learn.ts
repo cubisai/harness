@@ -119,6 +119,9 @@ export interface LearnSettings {
   backgroundByProject: Record<string, { agent: string; model: string }>;
 }
 
+/** Cheapest-first name hints for background models (without "free": a free tier can be the slowest). */
+export const CHEAP_MODEL_HINTS = ["flash", "haiku", "mini", "nano", "lite", "luna", "small"];
+
 export const LEARN_DEFAULTS: LearnSettings = { enabledProjects: [], dailyTokens: 50_000, memoryDailyTokens: 200_000, background: null, backgroundByProject: {} };
 
 /** What a hidden background model call was for: shared memory extraction, or a lesson draft. */

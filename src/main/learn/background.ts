@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ModelOption } from "../../shared/types";
-import type { LearnSettings } from "../../shared/learn";
+import { CHEAP_MODEL_HINTS, type LearnSettings } from "../../shared/learn";
 import type { AgentDriver } from "../agents/types";
 import { pickExtractorModel } from "../memory/extractor";
 import { PROVIDER_AGENT_PREFIX } from "../harness/driver";
@@ -18,12 +18,10 @@ export interface BackgroundModel {
   label: string;
 }
 
-/** Cheapest-first name hints (the extractor's list, without "free": a free tier can be the slowest). */
-const CHEAP = ["flash", "haiku", "mini", "nano", "lite", "luna", "small"];
 const EFFORTS = ["none", "minimal", "low"];
 
 const cheapest = (models: ModelOption[]): ModelOption | null => {
-  for (const hint of CHEAP) {
+  for (const hint of CHEAP_MODEL_HINTS) {
     const m = models.find((x) => x.id.toLowerCase().includes(hint) || x.label.toLowerCase().includes(hint));
     if (m) return m;
   }

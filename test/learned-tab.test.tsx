@@ -183,4 +183,22 @@ describe("LearnedTab", () => {
     expect(compact(50_000)).toBe("50k");
     expect(compact(1_200_000)).toBe("1.2M");
   });
+
+  it("offers Automatic, each agent's models (only cheap ones for a long list) and keeps the current pick", async () => {
+    vi.stubGlobal("window", { unskilled: {} });
+    const { backgroundChoices } = await import("../src/renderer/src/components/LearnedTab");
+    const agent = (id: string, models: string[]) => ({ id, label: id.toUpperCase(), models: models.map((m) => ({ id: m, label: m })), defaultModel: models[0]!, capabilities: {} }) as unknown as import("../src/shared/types").AgentInfo;
+    const many = Array.from({ length: 20 }, (_, n) => `big-${n}`).concat(["deepseek-v4-flash", "gpt-5-mini"]);
+    const agents = [agent("codex", ["gpt-6", "gpt-6-luna"]), agent("opencode", many), agent("none", [])];
+    const auto = backgroundChoices(agents, null);
+    expect(auto.agents.map((o) => o.value)).toEqual(["", "codex", "opencode"]);
+    expect(auto.agents[0]!.label).toBe("Automatic");
+    expect(auto.models("codex").map((o) => o.value)).toEqual(["gpt-6", "gpt-6-luna"]);
+    expect(auto.models("opencode").map((o) => o.value)).toEqual(["deepseek-v4-flash", "gpt-5-mini"]);
+    const picked = backgroundChoices(agents, { agent: "opencode", model: "big-3" });
+    expect(picked.models("opencode")[0]).toEqual({ value: "big-3", label: "big-3" });
+    const gone = backgroundChoices(agents, { agent: "removed", model: "m" });
+    expect(gone.agents.at(-1)).toEqual({ value: "removed", label: "removed" });
+    expect(gone.models("removed")).toEqual([{ value: "m", label: "m" }]);
+  });
 });
