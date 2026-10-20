@@ -14,7 +14,7 @@ Plan, status, next tasks and probe tools: **`.ai/plans/m5-five-tracks.md`** (sec
   - `SettingsSheet.tsx`: Threads = New threads, Commit messages, Background, Editor.
 - One semantic fix in the merge: the Review & merge bar shows only when the thread has a branch (`DiffPanel.tsx`). m4's Chats give chat threads a `worktreePath` with no branch.
 - Checks on the merged result (Claude-run): typecheck green, `design:check` 0 errors (48 baseline warnings), full `bun run test` **3309 passed** / 0 failed. The merged app launched (welcome screen with Chats, doctor IPC answers).
-- The track branches and worktrees (`m5-{oc2,code,doctor,bg,merge,all}`) are kept. Remove them once you're happy: `git worktree remove ../aiharness-wt/m5-<t>`, then `git branch -d m5-<t>`.
+- The track worktrees and branches (`m5-{oc2,code,doctor,bg,merge,all}`) were removed after the merge (all clean and contained in m4).
 
 **Untested in the live app, on the merged m4 (do these first at home):**
 1. **B, worktree review & merge, never clicked through.** Worktree thread (palette "New Thread in Worktree") → edit → Generate (Automatic and a picked model; co-author on/off) → Commit → Squash merge → Remove worktree. Then a conflict case (dirty project / both sides edit a line → refused or aborted, both folders untouched). Also check a **Chat** thread shows no Review & merge bar.
