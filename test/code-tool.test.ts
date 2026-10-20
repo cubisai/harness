@@ -26,8 +26,8 @@ const fake = (name: string, description = name): LoopTool => ({
 
 const ok: CodeToolOptions["broker"] = async () => ({ text: "ok", isError: false });
 
-async function exec(code: string, tools: LoopTool[], broker: CodeToolOptions["broker"], opts: { timeoutMs?: number; signal?: AbortSignal } = {}) {
-  const tool = createCodeTool({ tools: () => tools, broker, outputDir: tmp(), timeoutMs: opts.timeoutMs });
+async function exec(code: string, tools: LoopTool[], broker: CodeToolOptions["broker"], opts: { timeoutMs?: number; signal?: AbortSignal; state?: Map<string, string> } = {}) {
+  const tool = createCodeTool({ tools: () => tools, broker, outputDir: tmp(), timeoutMs: opts.timeoutMs, state: opts.state });
   return tool.run({ code }, { id: "c1", signal: opts.signal ?? new AbortController().signal, onOutput: () => {} });
 }
 
@@ -100,14 +100,60 @@ describe("run_code", () => {
     const tools = [fake("alpha"), fake("gamma"), fake("run_code"), fake("task"), fake("propose_plan"), fake("ask_user")];
     const code = [
       "const hits = searchTools('alpha').map((t) => t.name);",
-      "const params = describeTool('alpha').properties;",
+      "const decl = describeTool('alpha');",
       "const exposed = [typeof tools.run_code, typeof tools.task, typeof tools.propose_plan, typeof tools.ask_user, typeof tools.gamma];",
-      "return JSON.stringify({ hits, hasX: Boolean(params.x), exposed });",
+      "return JSON.stringify({ hits, declared: decl.includes('declare function alpha') && decl.includes('x?: string'), exposed });",
     ].join("\n");
     const r = await exec(code, tools, ok);
-    const parsed = JSON.parse(r.text.replace(/^=> /, "")) as { hits: string[]; hasX: boolean; exposed: string[] };
+    const parsed = JSON.parse(r.text.replace(/^=> /, "")) as { hits: string[]; declared: boolean; exposed: string[] };
     expect(parsed.hits).toEqual(["alpha"]);
-    expect(parsed.hasX).toBe(true);
+    expect(parsed.declared).toBe(true);
     expect(parsed.exposed).toEqual(["undefined", "undefined", "undefined", "undefined", "function"]);
+  });
+
+  it("stores and loads JSON within one script", async () => {
+    const r = await exec("store('k', { n: 1 }); return [load('k').n, load('missing')];", [fake("alpha")], ok);
+    expect(r.text).toBe("=> [1,null]");
+  });
+
+  it("keeps state across scripts through the shared map", async () => {
+    const state = new Map<string, string>();
+    const first = await exec("store('seen', [1, 2]); return 'saved';", [fake("alpha")], ok, { state });
+    expect(first.isError).toBeFalsy();
+    expect(state.get("seen")).toBe("[1,2]");
+    const second = await exec("return load('seen').length;", [fake("alpha")], ok, { state });
+    expect(second.text).toBe("=> 2");
+  });
+
+  it("drops a failed script's writes", async () => {
+    const state = new Map<string, string>([["kept", '"before"']]);
+    const r = await exec("store('kept', 'after'); store('fresh', true); throw new Error('boom');", [fake("alpha")], ok, { state });
+    expect(r.isError).toBe(true);
+    expect(state.get("kept")).toBe('"before"');
+    expect(state.has("fresh")).toBe(false);
+  });
+
+  it("throws inside the script for an over-size value", async () => {
+    const r = await exec("try { store('big', 'x'.repeat(300 * 1024)); return 'stored'; } catch (e) { return e.message; }", [fake("alpha")], ok);
+    expect(r.isError).toBeFalsy();
+    expect(r.text).toContain("may not exceed");
+  });
+
+  it("throws inside the script when the staged total is too large", async () => {
+    const r = await exec("try { for (let i = 0; i < 5; i++) store('k' + i, 'x'.repeat(250 * 1024)); return 'stored'; } catch (e) { return e.message; }", [fake("alpha")], ok);
+    expect(r.isError).toBeFalsy();
+    expect(r.text).toContain("session state may not exceed");
+  });
+
+  it("lists every exposed tool in ALL_TOOLS", async () => {
+    const tools = [fake("alpha"), fake("gamma"), fake("run_code"), fake("task"), fake("propose_plan"), fake("ask_user")];
+    const r = await exec("return ALL_TOOLS.map((t) => t.name);", tools, ok);
+    expect(r.text).toBe('=> ["alpha","gamma"]');
+  });
+
+  it("ranks a tool whose description matches the query", async () => {
+    const tools = [fake("alpha", "Reads a file from disk."), fake("beta", "Runs a shell command."), fake("gamma", "Fetches a URL.")];
+    const r = await exec("return searchTools('shell command').map((t) => t.name);", tools, ok);
+    expect(r.text).toBe('=> ["beta"]');
   });
 });

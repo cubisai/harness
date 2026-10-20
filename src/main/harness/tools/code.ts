@@ -4,14 +4,20 @@
 // them.
 
 import { getQuickJS, isFail, shouldInterruptAfterDeadline, type QuickJSContext, type QuickJSHandle, type QuickJSRuntime, type QuickJSWASMModule } from "quickjs-emscripten";
+import { bm25Rank } from "../../search/bm25";
 import type { LoopTool } from "../loop";
 import { bound } from "./bound";
+import { toTsDeclaration } from "./ts-decl";
 
 /** Tools a script may never call: no nested agents, plans or questions from code. */
 const EXCLUDED = new Set(["run_code", "task", "propose_plan", "ask_user"]);
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MEMORY_BYTES = 64 * 1024 * 1024;
+
+/** Limits on what a script may keep in the session state, in characters. */
+const MAX_STATE_VALUE_CHARS = 256 * 1024;
+const MAX_STATE_CHARS = 1024 * 1024;
 
 export interface CodeToolOptions {
   /** Every tool the loop offers; `run_code` and the agent-ish ones are hidden from a script. */
@@ -21,13 +27,16 @@ export interface CodeToolOptions {
   outputDir: string;
   timeoutMs?: number;
   memoryBytes?: number;
+  /** Values kept across scripts in one session, as JSON text; a script's writes commit only when it succeeds. */
+  state?: Map<string, string>;
 }
 
 const DESCRIPTION = [
   "Run a JavaScript program in a sandbox and return what it prints and returns.",
-  "The code is the body of an async function. Call the other tools as `await tools.<name>(args)`, which returns the tool's text output; a tool error throws an Error. `searchTools(query)` lists the tools whose name or description matches, and `describeTool(name)` gives one tool's JSON parameters.",
+  "The code is the body of an async function: call tools as `await tools.<name>(args)`, which returns the tool's text output and throws on an error; `ALL_TOOLS` lists them, `searchTools(query)` ranks them, and `describeTool(name)` returns a TypeScript declaration.",
+  "`store(key, value)` and `load(key)` keep JSON between scripts in this session, and a failed script's writes are dropped.",
   "`console.log(...)` lines plus the returned value (JSON-stringified unless it's a string) are the result.",
-  "The sandbox has no filesystem, network, process or timers. Calls made before an error are not undone.",
+  "The sandbox has no filesystem, network, process or timers, and calls made before an error are not undone.",
 ].join(" ");
 
 let modulePromise: Promise<QuickJSWASMModule> | null = null;
@@ -79,7 +88,9 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
           return false;
         });
         context = live.newContext();
-        install(context, live, o, logs, call.id, call.signal);
+        // Writes go to a copy; only a successful run commits them to the session.
+        const staged = new Map<string, string>(o.state);
+        install(context, live, o, logs, call.id, call.signal, staged);
 
         const evaluated = context.evalCode(`(async () => {\n${code}\n})()`);
         if (isFail(evaluated)) {
@@ -111,6 +122,10 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
         }
         const rendered = render(context, settled.value);
         settled.value.dispose();
+        if (o.state) {
+          o.state.clear();
+          for (const [key, value] of staged) o.state.set(key, value);
+        }
         const text = [...logs, `=> ${rendered}`].join("\n");
         return { text: bound(text, { outputDir: o.outputDir, callId: call.id }) };
       } catch (err) {
@@ -127,8 +142,8 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
 const STOPPED = "Interrupted by the user.";
 const timingOut = (timeoutMs: number): string => `Stopped after ${Math.round(timeoutMs / 1000)}s: the time limit was reached.`;
 
-/** The globals a script sees: `tools`, `searchTools`, `describeTool` and `console.log`. */
-function install(context: QuickJSContext, runtime: QuickJSRuntime, o: CodeToolOptions, logs: string[], parentId: string, signal: AbortSignal): void {
+/** The globals a script sees: `tools`, `ALL_TOOLS`, `searchTools`, `describeTool`, `store`, `load` and `console.log`. */
+function install(context: QuickJSContext, runtime: QuickJSRuntime, o: CodeToolOptions, logs: string[], parentId: string, signal: AbortSignal, staged: Map<string, string>): void {
   const console_ = context.newObject();
   const log = context.newFunction("log", (...handles) => {
     logs.push(handles.map((h) => format(context.dump(h))).join(" "));
@@ -138,25 +153,75 @@ function install(context: QuickJSContext, runtime: QuickJSRuntime, o: CodeToolOp
   context.setProp(context.global, "console", console_);
   console_.dispose();
 
-  const search = context.newFunction("searchTools", (queryHandle) => {
-    const query = queryHandle ? context.getString(queryHandle).toLowerCase() : "";
-    const hits = o
-      .tools()
-      .filter((t) => !EXCLUDED.has(t.definition.name) && (t.definition.name.toLowerCase().includes(query) || t.definition.description.toLowerCase().includes(query)))
-      .slice(0, 25)
-      .map((t) => ({ name: t.definition.name, description: t.definition.description }));
-    return toHandle(context, hits);
+  const exposed = (): LoopTool[] => o.tools().filter((t) => !EXCLUDED.has(t.definition.name));
+
+  const all = context.newArray();
+  exposed().forEach((tool, i) => {
+    const handle = toHandle(context, { name: tool.definition.name, description: firstSentence(tool.definition.description) });
+    context.setProp(all, i, handle);
+    handle.dispose();
+  });
+  context.setProp(context.global, "ALL_TOOLS", all);
+  all.dispose();
+
+  const search = context.newFunction("searchTools", (queryHandle, limitHandle) => {
+    const query = queryHandle ? context.getString(queryHandle) : "";
+    const wanted = limitHandle ? context.dump(limitHandle) : undefined;
+    const limit = typeof wanted === "number" && wanted > 0 ? Math.floor(wanted) : 8;
+    const tools = exposed();
+    const ranked = bm25Rank(tools, (t) => `${t.definition.name} ${t.definition.description}`, query, limit).map(({ item }) => item);
+    // No BM25 hit (a short, partial word, say): keep the old substring filter.
+    const hits = ranked.length
+      ? ranked
+      : tools.filter((t) => t.definition.name.toLowerCase().includes(query.toLowerCase()) || t.definition.description.toLowerCase().includes(query.toLowerCase())).slice(0, limit);
+    return toHandle(
+      context,
+      hits.map((t) => ({ name: t.definition.name, description: t.definition.description })),
+    );
   });
   context.setProp(context.global, "searchTools", search);
   search.dispose();
 
   const describe = context.newFunction("describeTool", (nameHandle) => {
     const name = nameHandle ? context.getString(nameHandle) : "";
-    const tool = o.tools().find((t) => t.definition.name === name && !EXCLUDED.has(t.definition.name));
-    return tool ? toHandle(context, tool.definition.parameters) : context.null;
+    const tool = exposed().find((t) => t.definition.name === name);
+    return tool ? context.newString(toTsDeclaration(tool.definition.name, tool.definition.description, tool.definition.parameters)) : context.null;
   });
   context.setProp(context.global, "describeTool", describe);
   describe.dispose();
+
+  const fail = (message: string): { error: QuickJSHandle } => ({ error: context.newError(message) });
+  const store = context.newFunction("store", (keyHandle, valueHandle) => {
+    if (!keyHandle || context.typeof(keyHandle) !== "string" || !context.getString(keyHandle)) return fail("store(key, value): key must be a non-empty string.");
+    const key = context.getString(keyHandle);
+    let text: string | undefined;
+    try {
+      text = JSON.stringify(valueHandle ? context.dump(valueHandle) : undefined);
+    } catch {
+      text = undefined;
+    }
+    if (text === undefined) return fail("store(key, value): the value is not JSON-serialisable.");
+    if (text.length > MAX_STATE_VALUE_CHARS) return fail(`store(key, value): one value may not exceed ${MAX_STATE_VALUE_CHARS} characters.`);
+    let total = key.length + text.length;
+    for (const [k, v] of staged) if (k !== key) total += k.length + v.length;
+    if (total > MAX_STATE_CHARS) return fail(`store(key, value): the session state may not exceed ${MAX_STATE_CHARS} characters.`);
+    staged.set(key, text);
+  });
+  context.setProp(context.global, "store", store);
+  store.dispose();
+
+  const load = context.newFunction("load", (keyHandle) => {
+    const key = keyHandle ? context.getString(keyHandle) : "";
+    const text = staged.get(key);
+    if (text === undefined) return context.undefined;
+    try {
+      return toHandle(context, JSON.parse(text));
+    } catch {
+      return context.undefined;
+    }
+  });
+  context.setProp(context.global, "load", load);
+  load.dispose();
 
   const tools = context.newObject();
   for (const tool of o.tools()) {
@@ -234,6 +299,13 @@ function errorText(context: QuickJSContext, handle: QuickJSHandle): string {
 const render = (context: QuickJSContext, handle: QuickJSHandle): string => format(context.dump(handle));
 
 const format = (value: unknown): string => (typeof value === "string" ? value : json(value));
+
+/** The first sentence of a tool description, cut to `max` characters. */
+function firstSentence(text: string, max = 120): string {
+  const line = text.split("\n").find((l) => l.trim())?.trim() ?? "";
+  const sentence = line.split(/(?<=[.!?])\s+/)[0] ?? "";
+  return sentence.length > max ? `${sentence.slice(0, max - 1)}…` : sentence;
+}
 
 function json(value: unknown): string {
   try {
