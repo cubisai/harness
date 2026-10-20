@@ -54,6 +54,8 @@ export function createVerifier(deps: VerifyAppDeps): (l: Lesson) => Promise<{ ve
         try {
           materializeCase(c, { casesRoot, projectPath, into: join(root, "case") });
           const t = await runTrial({ task: caseTask(c, "case", lessons), fixturesRoot: root, driver: () => keepAlive(bg.driver), model: bg.model });
+          // Only a finished, graded run is evidence; a provider error or a hung stream (budget-stop) decides nothing.
+          if (t.status !== "passed" && t.status !== "failed") throw new Error(t.harnessError ?? t.status);
           return { pass: t.status === "passed", tokens: t.inputTokens + t.outputTokens };
         } finally {
           rmSync(root, { recursive: true, force: true });

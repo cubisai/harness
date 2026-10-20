@@ -17,7 +17,7 @@ export interface ReplayDeps {
   casesRoot: string;
   /** Up to `max` other cases of the project, held-out ones first; never `excludeId`. */
   otherCases?(excludeId: string, max: number): CaseFile[];
-  /** Run one replay: the case's tree, its prompt (with `lessons` prepended when non-null), its graders. */
+  /** Run one replay: the case's tree, its prompt (with `lessons` prepended when non-null), its graders. Throws when the run is no evidence (it couldn't run, or didn't finish). */
   runCase(c: CaseFile, lessons: string | null): Promise<{ pass: boolean; tokens: number }>;
   db: Pick<LearnDb, "cachedReplay" | "saveReplay">;
   runtime: Runtime;
@@ -35,6 +35,9 @@ function otherCasesFirst(root: string, excludeId: string, max: number): CaseFile
     .sort((a, b) => Number(b.heldOut) - Number(a.heldOut))
     .slice(0, max);
 }
+
+/** A replay that is no evidence: it threw, or ended without a pass/fail. */
+export class NoEvidence extends Error {}
 
 /** The cache key of one replay: tied to the runtime and rollout that produced it. */
 export function replayKey(caseId: string, lessonId: string | null, rt: Runtime, rollout: number): string {
@@ -60,48 +63,58 @@ export async function verifyLesson(l: Lesson, deps: ReplayDeps): Promise<{ verif
     const key = replayKey(target.id, lessonId, deps.runtime, rollout);
     const hit = deps.db.cachedReplay(key);
     if (hit) return hit.pass;
+    let r: { pass: boolean; tokens: number };
     try {
-      const r = await deps.runCase(target, text);
-      deps.db.saveReplay(key, target.id, lessonId, r.pass, r.tokens);
-      tokens += r.tokens;
-      return r.pass;
-    } catch {
-      // A run that threw is not evidence: a failure, and never cached.
-      return false;
+      r = await deps.runCase(target, text);
+    } catch (err) {
+      throw new NoEvidence(err instanceof Error ? err.message : String(err));
     }
+    deps.db.saveReplay(key, target.id, lessonId, r.pass, r.tokens);
+    tokens += r.tokens;
+    return r.pass;
   };
 
-  const before: ReplayScore = { passed: 0, of: rollouts };
-  for (let i = 0; i < rollouts; i++) if (await run(c, null, null, i)) before.passed++;
-  const after: ReplayScore = { passed: 0, of: rollouts };
-  for (let i = 0; i < rollouts; i++) if (await run(c, l.id, block, i)) after.passed++;
+  const decide = async (): Promise<{ verification: LessonVerification; promote: boolean; why: string; tokens: number }> => {
+    const before: ReplayScore = { passed: 0, of: rollouts };
+    for (let i = 0; i < rollouts; i++) if (await run(c, null, null, i)) before.passed++;
+    const after: ReplayScore = { passed: 0, of: rollouts };
+    for (let i = 0; i < rollouts; i++) if (await run(c, l.id, block, i)) after.passed++;
 
-  // Once the case already passes without it, or still fails with it, transfer can't change the verdict: don't spend on it.
-  if (before.passed === before.of || after.passed < after.of) {
-    const verification: LessonVerification = { model: deps.runtime.model, agent: deps.runtime.agent, appVersion: deps.runtime.appVersion, at: deps.now(), before, after, transfer: { held: 0, of: 0 } };
+    // Once the case already passes without it, or still fails with it, transfer can't change the verdict: don't spend on it.
+    if (before.passed === before.of || after.passed < after.of) {
+      const verification: LessonVerification = { model: deps.runtime.model, agent: deps.runtime.agent, appVersion: deps.runtime.appVersion, at: deps.now(), before, after, transfer: { held: 0, of: 0 } };
+      const p = promotion(verification);
+      return { verification, promote: p.promote, why: p.why, tokens };
+    }
+
+    const others = (deps.otherCases ? deps.otherCases(c.id, transferMax) : otherCasesFirst(deps.casesRoot, c.id, transferMax)).slice(0, transferMax);
+    let held = 0;
+    for (const o of others) {
+      const without = await run(o, null, null, 0);
+      const withLesson = await run(o, l.id, block, 0);
+      // Only a case the lesson breaks counts against it; one it also fixes is the transfer it should have.
+      if (!without || withLesson) held++;
+    }
+    const verification: LessonVerification = {
+      model: deps.runtime.model,
+      agent: deps.runtime.agent,
+      appVersion: deps.runtime.appVersion,
+      at: deps.now(),
+      before,
+      after,
+      transfer: { held, of: others.length },
+    };
     const p = promotion(verification);
     return { verification, promote: p.promote, why: p.why, tokens };
-  }
-
-  const others = (deps.otherCases ? deps.otherCases(c.id, transferMax) : otherCasesFirst(deps.casesRoot, c.id, transferMax)).slice(0, transferMax);
-  let held = 0;
-  for (const o of others) {
-    const without = await run(o, null, null, 0);
-    const withLesson = await run(o, l.id, block, 0);
-    // Only a case the lesson breaks counts against it; one it also fixes is the transfer it should have.
-    if (!without || withLesson) held++;
-  }
-  const verification: LessonVerification = {
-    model: deps.runtime.model,
-    agent: deps.runtime.agent,
-    appVersion: deps.runtime.appVersion,
-    at: deps.now(),
-    before,
-    after,
-    transfer: { held, of: others.length },
   };
-  const p = promotion(verification);
-  return { verification, promote: p.promote, why: p.why, tokens };
+
+  try {
+    return await decide();
+  } catch (err) {
+    // A run that couldn't run or finish is no evidence either way: a hung "without" would fake the fix.
+    if (!(err instanceof NoEvidence)) throw err;
+    return { verification: null, promote: false, why: `a replay couldn't finish (${err.message.slice(0, 160)}); nothing was decided`, tokens };
+  }
 }
 
 /** Copy every file under `from` into `into`, keeping relative paths. */

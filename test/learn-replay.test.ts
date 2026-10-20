@@ -221,7 +221,7 @@ describe("verifyLesson", () => {
     expect(saved).toHaveLength(6);
   });
 
-  it("treats a throwing run as a failure and never caches it", async () => {
+  it("decides nothing when a run throws, and never caches it", async () => {
     const { root, src, db, saved } = scene();
     let calls = 0;
     const runCase = async () => {
@@ -230,11 +230,22 @@ describe("verifyLesson", () => {
     };
     const deps: ReplayDeps = { casesRoot: root, runCase, db, runtime: RT, now: () => 1 };
     const r = await verifyLesson(lesson({ caseId: src.id }), deps);
-    expect(r.tokens).toBe(0);
-    expect(r.verification).toMatchObject({ before: { passed: 0, of: 1 }, after: { passed: 0, of: 1 } });
+    expect(r).toMatchObject({ verification: null, promote: false, tokens: 0 });
+    expect(r.why).toContain("replay exploded");
     expect(saved).toEqual([]);
     await verifyLesson(lesson({ caseId: src.id }), deps);
-    expect(calls).toBe(4); // nothing was cached, so it ran again
+    expect(calls).toBe(2); // it stopped at the first run, and nothing was cached, so it ran again
+  });
+
+  it("never promotes on a 'without' run that didn't finish (a hung provider isn't a failure)", async () => {
+    const { root, src, o1, o2, db } = scene();
+    const runCase = async (c: CaseFile, lessons: string | null) => {
+      if (c.id === src.id && lessons === null) throw new Error("budget-stop");
+      return { pass: true, tokens: 1 };
+    };
+    const r = await verifyLesson(lesson({ caseId: src.id }), { casesRoot: root, otherCases: () => [o1, o2], runCase, db, runtime: RT, now: () => 1 });
+    expect(r.promote).toBe(false);
+    expect(r.verification).toBeNull();
   });
 
   it("picks other cases held-out first by default", async () => {
