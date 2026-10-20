@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { existsSync, type Dirent } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { parseUnifiedDiff } from "../shared/diff";
@@ -247,4 +248,197 @@ export async function removeWorktree(repo: string, dir: string): Promise<boolean
   } catch {
     return false;
   }
+}
+
+/** The branch checked out at `cwd`, or null when HEAD is detached or `cwd` isn't a repository. */
+export async function currentBranch(cwd: string): Promise<string | null> {
+  try {
+    return (await run("git", ["symbolic-ref", "--quiet", "--short", "HEAD"], { cwd })).stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/** The commit HEAD points at, or null before the first commit or outside a repository. */
+export async function headSha(cwd: string): Promise<string | null> {
+  try {
+    return (await run("git", ["rev-parse", "HEAD"], { cwd })).stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/** The fork point of two commits, or null when they share no history. */
+export async function mergeBase(cwd: string, a: string, b: string): Promise<string | null> {
+  try {
+    return (await run("git", ["merge-base", a, b], { cwd })).stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/** How many commits `branch` has that `base` doesn't (`ahead`) and how many `base` has that it doesn't (`behind`). */
+export async function aheadBehind(cwd: string, base: string, branch: string): Promise<{ ahead: number; behind: number }> {
+  const out = (await run("git", ["rev-list", "--left-right", "--count", `${base}...${branch}`], { cwd })).stdout.trim();
+  const [behind = "0", ahead = "0"] = out.split(/\s+/);
+  return { ahead: Number(ahead), behind: Number(behind) };
+}
+
+/** What a thread's worktree holds since `baseSha`: the summary lines, one patch per file, and untracked paths. */
+export interface BranchDiff {
+  nameStatus: string;
+  stat: string;
+  files: { path: string; patch: string }[];
+  untracked: string[];
+}
+
+/**
+ * Everything in `cwd`'s working tree since `baseSha` (committed, staged and
+ * unstaged tracked changes) plus untracked files, whose content isn't read.
+ */
+export async function branchDiff(cwd: string, baseSha: string): Promise<BranchDiff> {
+  const status = (await run("git", ["diff", "--name-status", baseSha], { cwd })).stdout;
+  const stat = (await run("git", ["diff", "--stat", baseSha], { cwd })).stdout;
+  const patch = (await run("git", ["diff", "--no-color", "--no-ext-diff", baseSha], { cwd, maxBuffer: 32 * 1024 * 1024 })).stdout;
+
+  const files: { path: string; patch: string }[] = [];
+  let current: { path: string; lines: string[] } | null = null;
+  for (const line of patch.split("\n")) {
+    if (line.startsWith("diff --git ")) {
+      if (current) files.push({ path: current.path, patch: current.lines.join("\n") });
+      const header = line.slice("diff --git ".length);
+      const at = header.indexOf(" b/");
+      current = { path: at >= 0 ? header.slice(at + 3) : header, lines: [line] };
+    } else if (current) {
+      current.lines.push(line);
+    }
+  }
+  if (current) files.push({ path: current.path, patch: current.lines.join("\n") });
+
+  const untracked = (await run("git", ["ls-files", "--others", "--exclude-standard", "-z"], { cwd })).stdout
+    .split("\0")
+    .filter(Boolean);
+  const nameStatus = status
+    .split("\n")
+    .filter(Boolean)
+    .concat(untracked.map((path) => `A\t${path}`))
+    .join("\n");
+  for (const path of untracked) files.push({ path, patch: `new file: ${path}` });
+  return { nameStatus, stat, files, untracked };
+}
+
+/** Stage every change in `cwd` and commit it; throws when there is nothing to commit. */
+export async function commitAll(cwd: string, message: string): Promise<string> {
+  await run("git", ["add", "-A"], { cwd });
+  let nothingStaged = false;
+  try {
+    await run("git", ["diff", "--cached", "--quiet"], { cwd });
+    nothingStaged = true;
+  } catch {
+    // Exit 1 means there are staged changes.
+  }
+  if (nothingStaged) throw new Error("Nothing to commit.");
+  const sha = await withMessageFile(message, async (file) => {
+    await run("git", ["commit", "-q", "-F", file], { cwd });
+    return headSha(cwd);
+  });
+  if (!sha) throw new Error("Commit failed: no HEAD after commit.");
+  return sha;
+}
+
+/** A merge that either landed on `sha` or was refused/rolled back with a reason and any conflicting paths. */
+export type MergeResult = { ok: true; sha: string } | { ok: false; reason: string; conflicts: string[] };
+
+/**
+ * Bring `o.branch` into `o.base` in `repo`, squashed or as a merge commit.
+ * Refuses on a dirty project, the wrong current branch, or nothing to merge;
+ * a conflict is rolled back so the project is left exactly as it was.
+ */
+export async function mergeInto(
+  repo: string,
+  o: { branch: string; base: string; mode: "squash" | "merge"; message: string },
+): Promise<MergeResult> {
+  const fail = (reason: string, conflicts: string[] = []): MergeResult => ({ ok: false, reason, conflicts });
+  try {
+    const dirty = (await run("git", ["status", "--porcelain", "--untracked-files=no"], { cwd: repo })).stdout.trim();
+    if (dirty) return fail("The project has uncommitted changes. Commit or stash them first.");
+
+    const cur = await currentBranch(repo);
+    if (cur !== o.base) return fail(`The project is on ${cur ?? "a detached HEAD"}, not ${o.base}. Switch to ${o.base} first.`);
+
+    if ((await aheadBehind(repo, o.base, o.branch)).ahead === 0) {
+      return fail("Nothing to merge: the branch has no commits the base doesn't have.");
+    }
+
+    if (o.mode === "squash") {
+      try {
+        await run("git", ["merge", "--squash", o.branch], { cwd: repo });
+      } catch {
+        const conflicts = await mergeConflicts(repo);
+        await abortMerge(repo);
+        return fail("Merge conflicts: nothing was changed.", conflicts);
+      }
+      const sha = await withMessageFile(o.message, async (file) => {
+        await run("git", ["commit", "-q", "-F", file], { cwd: repo });
+        return headSha(repo);
+      });
+      if (!sha) throw new Error("Merge failed: no HEAD after commit.");
+      return { ok: true, sha };
+    }
+
+    try {
+      await withMessageFile(o.message, (file) => run("git", ["merge", "--no-ff", "-q", "-F", file, o.branch], { cwd: repo }));
+    } catch {
+      const conflicts = await mergeConflicts(repo);
+      await abortMerge(repo);
+      return fail("Merge conflicts: nothing was changed.", conflicts);
+    }
+    const sha = await headSha(repo);
+    if (!sha) throw new Error("Merge failed: no HEAD after merge.");
+    return { ok: true, sha };
+  } catch (err) {
+    await abortMerge(repo);
+    return fail(firstLine(err));
+  }
+}
+
+/** Run `fn` with a temp file holding `message`, so commit messages never go through a shell. */
+async function withMessageFile<T>(message: string, fn: (file: string) => Promise<T>): Promise<T> {
+  const dir = await mkdtemp(join(tmpdir(), "cubiq-message-"));
+  try {
+    const file = join(dir, "message.txt");
+    await writeFile(file, message, "utf8");
+    return await fn(file);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+/** The paths git left unmerged after a failed merge. */
+async function mergeConflicts(repo: string): Promise<string[]> {
+  try {
+    return (await run("git", ["diff", "--name-only", "--diff-filter=U"], { cwd: repo })).stdout.split("\n").filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/** Leave no merge half-applied: abort one if present, then reset the index. */
+async function abortMerge(repo: string): Promise<void> {
+  try {
+    await run("git", ["merge", "--abort"], { cwd: repo });
+  } catch {
+    // No merge in progress (e.g. a squash conflict).
+  }
+  try {
+    await run("git", ["reset", "-q", "--merge"], { cwd: repo });
+  } catch {
+    // Nothing to reset.
+  }
+}
+
+/** The first line of an error's message, for showing to the user. */
+function firstLine(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.split("\n")[0]!.trim() || "The merge failed.";
 }
