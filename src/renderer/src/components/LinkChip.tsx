@@ -1,6 +1,7 @@
 import { Globe } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { LinkMeta } from "../../../shared/types";
+import { useStore } from "../store";
 
 /** The card's width (kept in step with .link-card), its window inset, and the hover delay. */
 const CARD_W = 300;
@@ -40,8 +41,9 @@ export function chipText(href: string, label: string, siteName: string | null): 
   return isSelf || isHost ? (siteName ?? host) : label;
 }
 
-/** One request per URL per session; a failure counts as "no card" for good. */
+/** One request per URL per session; a failure is asked again after a minute (the main process retries it too). */
 const metaCache = new Map<string, Promise<LinkMeta | null>>();
+const FAIL_TTL_MS = 60_000;
 
 function linkMeta(url: string): Promise<LinkMeta | null> {
   const hit = metaCache.get(url);
@@ -54,6 +56,9 @@ function linkMeta(url: string): Promise<LinkMeta | null> {
           () => null,
         );
   metaCache.set(url, asked);
+  void asked.then((meta) => {
+    if (meta === null) setTimeout(() => metaCache.get(url) === asked && metaCache.delete(url), FAIL_TTL_MS);
+  });
   return asked;
 }
 
@@ -62,12 +67,12 @@ function linkMeta(url: string): Promise<LinkMeta | null> {
  * favicon or a globe, then the link text. After a short hover or focus it
  * shows the page's name, title, description and host from its <head>.
  */
-/** A URL's metadata once it arrives (null until then, and for good when previews are off or it fails). */
-function useLinkMeta(href: string): LinkMeta | null {
-  const [meta, setMeta] = useState<LinkMeta | null>(null);
+/** A URL's metadata: undefined while it loads, null when previews are off or the page couldn't be read. */
+function useLinkMeta(href: string): LinkMeta | null | undefined {
+  const [meta, setMeta] = useState<LinkMeta | null | undefined>(undefined);
   useEffect(() => {
     let live = true;
-    setMeta(null);
+    setMeta(undefined);
     void linkMeta(href).then((m) => {
       if (live) setMeta(m);
     });
@@ -189,8 +194,9 @@ const CARDS_MAX = 3;
 /**
  * Link cards under a paragraph or list, like a chat app's link unfurl: the page's
  * preview image, title, favicon and site, and a line of its description. A card
- * shows only once the page's metadata arrives, so with Rich replies "+ link previews" off
- * (or a page with no title) nothing is drawn.
+ * shows once the page's metadata arrives; a page that can't be read (a bot wall,
+ * no title) gets a plain card from its URL. With Rich replies "+ link previews"
+ * off nothing is drawn.
  */
 export function LinkCards({ urls }: { urls: string[] }) {
   const shown = urls.slice(0, CARDS_MAX);
@@ -204,19 +210,31 @@ export function LinkCards({ urls }: { urls: string[] }) {
   );
 }
 
+/** A card's title when the page gave none: its host and path, as a reader would say it. */
+export function urlTitle(href: string): string {
+  const host = hostOf(href);
+  try {
+    const path = decodeURIComponent(new URL(href).pathname).replace(/\/+$/, "");
+    return path ? `${host}${path}` : host;
+  } catch {
+    return host;
+  }
+}
+
 function LinkCard({ href }: { href: string }) {
   const meta = useLinkMeta(href);
-  if (!meta?.title) return null;
+  const previews = useStore((s) => s.settings?.linkPreviews === true);
+  if (!previews || meta === undefined) return null;
   const host = hostOf(href);
   return (
     <a className="link-card-row" href={href} target="_blank" rel="noreferrer" title={href}>
-      {meta.image ? <img className="link-card-thumb" alt="" src={meta.image} /> : null}
+      {meta?.image ? <img className="link-card-thumb" alt="" src={meta.image} /> : null}
       <span className="link-card-main">
-        <span className="link-card-title">{meta.title}</span>
-        {meta.description ? <span className="link-card-snippet">{meta.description}</span> : null}
+        <span className="link-card-title">{meta?.title ?? urlTitle(href)}</span>
+        {meta?.description ? <span className="link-card-snippet">{meta.description}</span> : null}
         <span className="link-card-source">
-          {meta.icon ? <img alt="" src={meta.icon} /> : <Globe size={12} strokeWidth={1.75} aria-hidden />}
-          <span>{meta.siteName ?? host}</span>
+          {meta?.icon ? <img alt="" src={meta.icon} /> : <Globe size={12} strokeWidth={1.75} aria-hidden />}
+          <span>{meta?.siteName ?? host}</span>
         </span>
       </span>
     </a>

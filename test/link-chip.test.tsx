@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { chipText } from "../src/renderer/src/components/LinkChip";
+import { chipText, urlTitle } from "../src/renderer/src/components/LinkChip";
 import { linkUrls, Markdown } from "../src/renderer/src/markdown";
 
 /** Markup of one snippet through the renderer under test. */
@@ -58,5 +58,22 @@ describe("link cards", () => {
   it("draws no card before the page's metadata arrives (and none with previews off)", () => {
     const html = render("Read [the guide](https://vite.dev/guide/).");
     expect(html).not.toContain("link-card-row");
+  });
+
+  it("titles a card for a page that couldn't be read from its host and path", () => {
+    expect(urlTitle("https://stackoverflow.com/questions/11227809/why-is-it-faster/")).toBe("stackoverflow.com/questions/11227809/why-is-it-faster");
+    expect(urlTitle("https://www.reddit.com/")).toBe("reddit.com");
+    expect(urlTitle("https://ja.wikipedia.org/wiki/%E6%9D%B1%E4%BA%AC")).toBe("ja.wikipedia.org/wiki/東京");
+    expect(urlTitle("https://a.dev/%E0%A4%A")).toBe("a.dev");
+  });
+
+  it("keeps balanced parentheses in a URL, labelled or bare, and leaves a closing one that isn't its own", () => {
+    const wiki = "https://en.wikipedia.org/wiki/Electron_(software_framework)";
+    expect(linkUrls(`See [Electron](${wiki}), then more.`)).toEqual([wiki]);
+    expect(linkUrls(`See ${wiki}.`)).toEqual([wiki]);
+    expect(linkUrls("(see https://vite.dev/guide)")).toEqual(["https://vite.dev/guide"]);
+    const html = render(`See [Electron](${wiki}), then more.`);
+    expect(html).toContain(`href="${wiki}"`);
+    expect(html).not.toMatch(/<\/a>\)/);
   });
 });

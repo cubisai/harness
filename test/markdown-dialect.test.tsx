@@ -26,6 +26,14 @@ describe("markdown dialect", () => {
     expect(render("1. a")).toContain("<ol><li>a</li></ol>");
   });
 
+  it("parses code, links and emphasis inside bold, italic and strikethrough", () => {
+    const html = render("**1. `onorca.dev/docs` — loads fine.** and *see `a.ts`* and ~~`old`~~");
+    expect(html).toContain("<strong>1. <code>onorca.dev/docs</code> — loads fine.</strong>");
+    expect(html).toContain("<em>see <code>a.ts</code></em>");
+    expect(html).toContain("<del><code>old</code></del>");
+    expect(html).not.toContain("`");
+  });
+
   it("renders inline code, bold, em, underscore em, and strikethrough", () => {
     expect(render("`code`")).toContain("<code>code</code>");
     expect(render("**bold**")).toContain("<strong>bold</strong>");
@@ -76,5 +84,34 @@ describe("markdown dialect", () => {
     // Without a file handler it still reads as the label, not the raw link.
     expect(render("See [notes.js](/tmp/app/notes.js).")).toBe("<p>See <code>notes.js</code>.</p>");
     expect(render("[docs](https://example.com)")).toContain('<a class="link-chip" href="https://example.com"');
+  });
+});
+
+describe("turn sources", () => {
+  it("collects the https pages a turn fetched, once each, and resets per turn", async () => {
+    const { createSegmenter, fetchedUrl } = await import("../src/renderer/src/turns");
+    expect(fetchedUrl({ name: "Fetch", payload: { url: "https://a.dev/x" } })).toBe("https://a.dev/x");
+    expect(fetchedUrl({ name: "WebFetch", payload: { url: "https://a.dev/x" } })).toBe("https://a.dev/x");
+    expect(fetchedUrl({ name: "Fetch", payload: { url: "http://a.dev/x" } })).toBeNull();
+    expect(fetchedUrl({ name: "Read", payload: { url: "https://a.dev/x" } })).toBeNull();
+    expect(fetchedUrl({ name: "browser_open", payload: { url: "https://www.reddit.com/" } })).toBe("https://www.reddit.com/");
+    expect(fetchedUrl({ name: "mcp__cubiq__browser_open", payload: { url: "https://b.dev/" } })).toBe("https://b.dev/");
+    expect(fetchedUrl({ name: "browser_open", payload: { url: "http://localhost:5173/" } })).toBeNull();
+    let seq = 0;
+    const ev = (event: object) => ({ seq: ++seq, createdAt: seq, event }) as never;
+    const events = [
+      ev({ kind: "user", text: "check" }),
+      ev({ kind: "tool-use", toolUseId: "1", name: "Fetch", summary: "", payload: { url: "https://a.dev/x" } }),
+      ev({ kind: "tool-result", toolUseId: "1", isError: false, summary: "" }),
+      ev({ kind: "tool-use", toolUseId: "2", name: "Fetch", summary: "", payload: { url: "https://a.dev/x" } }),
+      ev({ kind: "tool-use", toolUseId: "3", name: "WebFetch", summary: "", payload: { url: "https://b.dev/" } }),
+      ev({ kind: "assistant-text", text: "done" }),
+      ev({ kind: "turn-end", costUsd: null, inputTokens: 0, outputTokens: 0, durationMs: 0 }),
+      ev({ kind: "user", text: "again" }),
+      ev({ kind: "assistant-text", text: "ok" }),
+      ev({ kind: "turn-end", costUsd: null, inputTokens: 0, outputTokens: 0, durationMs: 0 }),
+    ];
+    const ends = createSegmenter()(events, false).filter((s: { kind: string }) => s.kind === "turn-end") as { sources: string[] }[];
+    expect(ends.map((e) => e.sources)).toEqual([["https://a.dev/x", "https://b.dev/"], []]);
   });
 });

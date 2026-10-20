@@ -1,7 +1,7 @@
 import { lookup as dnsLookup, type LookupAddress } from "node:dns";
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { request } from "node:https";
+import { request, type RequestOptions } from "node:https";
 import type { IncomingMessage } from "node:http";
 import { isIP } from "node:net";
 import { resolveInside } from "./artifacts";
@@ -23,6 +23,14 @@ const PAGE_MAX = 512 * 1024;
 const TIMEOUT_MS = 8_000;
 const REDIRECTS_MAX = 3;
 const CACHE_MAX = 200;
+/** How long a failed fetch is remembered before the next ask tries again (a blip mustn't cost the link its card for the whole run). */
+const FAIL_TTL_MS = 60_000;
+/**
+ * How long each address of a host gets to connect before the next one is tried.
+ * Node's default (250 ms) gives up on far servers before their IPv4 answers, then
+ * fails on IPv6 where the network has none: Wikipedia timed out from Asia.
+ */
+const ATTEMPT_MS = 2_500;
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"]);
 /** Largest favicon accepted, in bytes. */
 const ICON_MAX = 64 * 1024;
@@ -90,7 +98,9 @@ type Fetched = { type: string; body: Buffer; url: URL };
  */
 function get(url: URL, max: number, accept: string, hops = 0, truncate = false): Promise<Fetched | null> {
   return new Promise((resolve) => {
-    const req = request(url, { method: "GET", lookup: publicLookup as never, timeout: TIMEOUT_MS, headers: { accept, "user-agent": "CubiQ link preview" } }, (res: IncomingMessage) => {
+    // The socket option passes through to net.connect; RequestOptions doesn't declare it.
+    const options: RequestOptions & { autoSelectFamilyAttemptTimeout: number } = { method: "GET", lookup: publicLookup as never, timeout: TIMEOUT_MS, autoSelectFamilyAttemptTimeout: ATTEMPT_MS, headers: { accept, "user-agent": "CubiQ link preview" } };
+    const req = request(url, options, (res: IncomingMessage) => {
       const status = res.statusCode ?? 0;
       if (status >= 300 && status < 400 && res.headers.location) {
         res.resume();
@@ -267,6 +277,16 @@ async function pageMetaOf(raw: string): Promise<LinkMeta | null> {
 }
 
 /** Cached pictures for card rows (`kind` "image" fetches the URL as an image, "page" its preview image) and reply link chips. */
+/** Drop a failed result after FAIL_TTL_MS, unless a newer try already replaced it. */
+function forgetFailure<T>(cache: Map<string, Promise<T | null>>, key: string, pending: Promise<T | null>): void {
+  void pending.then((v) => {
+    if (v !== null) return;
+    setTimeout(() => {
+      if (cache.get(key) === pending) cache.delete(key);
+    }, FAIL_TTL_MS).unref?.();
+  });
+}
+
 export function createLinkPreviews(): {
   image(raw: string, kind: "image" | "page"): Promise<string | null>;
   meta(raw: string): Promise<LinkMeta | null>;
@@ -285,6 +305,7 @@ export function createLinkPreviews(): {
       }
       const pending = (kind === "image" ? imageData(raw) : pageImage(raw)).catch(() => null);
       cache.set(key, pending);
+      forgetFailure(cache, key, pending);
       if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value!);
       return pending;
     },
@@ -298,6 +319,7 @@ export function createLinkPreviews(): {
       }
       const pending = pageMetaOf(raw).catch(() => null);
       metaCache.set(raw, pending);
+      forgetFailure(metaCache, raw, pending);
       if (metaCache.size > CACHE_MAX) metaCache.delete(metaCache.keys().next().value!);
       return pending;
     },

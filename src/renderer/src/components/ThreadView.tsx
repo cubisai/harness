@@ -10,7 +10,8 @@ import { anchorDelta, anchorFor, collapseTarget, stillPinned, trimmedReserve, ty
 import { displayOrder } from "../event-order";
 import { type FileRef, parseFileRef } from "../fileref";
 import { emptyLive, liveReasoningMode, visibleItems } from "../live";
-import { Markdown } from "../markdown";
+import { linkUrls, Markdown } from "../markdown";
+import { LinkCards, LinkChip } from "./LinkChip";
 import { relativeToThread, useStore } from "../store";
 import { dockedPlan } from "../todo";
 import { DiffView, diffsOf } from "./DiffView";
@@ -504,6 +505,7 @@ function SegmentRow({ seg, results, children, running, threadId, last }: { seg: 
       <>
         <FileCards files={seg.changes?.files ?? []} turnSeq={seg.stored.seq} />
         {seg.changes && <ChangesCard changes={seg.changes} />}
+        <TurnSources urls={seg.sources} answer={seg.answer} />
         <TurnFooter seg={seg} threadId={threadId} running={running} last={last} />
       </>
     );
@@ -602,6 +604,31 @@ function ChangesCard({ changes }: { changes: TurnChanges }) {
       <button className="button" onClick={() => useStore.getState().showInspector("changes")}>
         Review
       </button>
+    </div>
+  );
+}
+
+/** Most chips in a turn's Sources row. */
+const SOURCES_MAX = 6;
+
+/**
+ * The web pages a turn fetched that its answer didn't link itself, as chips and
+ * (with Rich replies "+ link previews" on) cards: an agent that read a page
+ * seldom writes its URL back.
+ */
+function TurnSources({ urls, answer }: { urls: string[]; answer: string }) {
+  const previews = useStore((s) => s.settings?.linkPreviews === true);
+  const linked = linkUrls(answer);
+  const shown = urls.filter((u) => !linked.includes(u)).slice(0, SOURCES_MAX);
+  if (!shown.length) return null;
+  // With previews the cards say it all; without, cards can't load and the chips stand in.
+  return (
+    <div className="turn-sources">
+      <div className="turn-sources-row">
+        <span className="turn-sources-label">Sources</span>
+        {!previews && shown.map((u) => <LinkChip key={u} href={u} label={u} />)}
+      </div>
+      {previews && <LinkCards urls={shown} />}
     </div>
   );
 }

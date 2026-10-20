@@ -155,13 +155,16 @@ function buildingUi(tail: string): string | null {
   return /^(```|~~~)\s*ui:([a-z][a-z0-9-]*)/.exec(tail.trimStart())?.[2] ?? null;
 }
 
-const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*|_[^_\s][^_]*_)|(\[[^\]]+\]\(((?:https?|file):\/\/[^)\s]+|\/[^)\s]+|[A-Za-z]:[\\/][^)\s]+)\))|(~~[^~]+~~)|(https?:\/\/[^\s<>()\[\]]+)/g;
+// A web URL may hold balanced parentheses (Wikipedia's "Electron_(software_framework)").
+const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*|_[^_\s][^_]*_)|(\[[^\]]+\]\(((?:https?|file):\/\/(?:[^()\s]|\([^()\s]*\))+|\/[^)\s]+|[A-Za-z]:[\\/][^)\s]+)\))|(~~[^~]+~~)|(https?:\/\/(?:[^\s<>()\[\]]|\([^\s<>()\[\]]*\))+)/g;
 
 /** A bare URL without the sentence punctuation after it: [url, the punctuation]. */
 function splitTrailing(raw: string): [string, string] {
   let url = raw;
   let trailing = "";
-  while (/[.,;:!?'"]$/.test(url) || url.endsWith(")")) {
+  // A closing parenthesis is the sentence's only when the URL doesn't open one too.
+  const unbalanced = (u: string) => (u.match(/\)/g)?.length ?? 0) > (u.match(/\(/g)?.length ?? 0);
+  while (/[.,;:!?'"]$/.test(url) || (url.endsWith(")") && unbalanced(url))) {
     trailing = url.slice(-1) + trailing;
     url = url.slice(0, -1);
   }
@@ -199,8 +202,9 @@ function inline(text: string, onFile?: (ref: FileRef) => void): ReactNode {
         ),
       );
     }
-    else if (m[2]) out.push(<strong key={key++}>{tok.slice(2, -2)}</strong>);
-    else if (m[3]) out.push(<em key={key++}>{tok.slice(1, -1)}</em>);
+    // Bold, italic and strikethrough hold inline markup too: `**1. `a.ts` — done**` keeps its code.
+    else if (m[2]) out.push(<strong key={key++}>{inline(tok.slice(2, -2), onFile)}</strong>);
+    else if (m[3]) out.push(<em key={key++}>{inline(tok.slice(1, -1), onFile)}</em>);
     else if (m[4]) {
       const label = /^\[([^\]]+)\]/.exec(tok)?.[1] ?? tok;
       if (!/^https?:/.test(m[5]!)) {
@@ -221,7 +225,7 @@ function inline(text: string, onFile?: (ref: FileRef) => void): ReactNode {
       }
       out.push(<LinkChip key={key++} href={m[5]!} label={label} />);
     }
-    else if (m[6]) out.push(<del key={key++}>{tok.slice(2, -2)}</del>);
+    else if (m[6]) out.push(<del key={key++}>{inline(tok.slice(2, -2), onFile)}</del>);
     else if (m[7]) {
       // A bare URL in prose: chip it, and leave any sentence punctuation as text.
       const [url, trailing] = splitTrailing(m[7]!);

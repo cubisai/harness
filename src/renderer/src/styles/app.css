@@ -1056,6 +1056,12 @@ button.design-crumb:hover { background: var(--bg-hover); color: var(--text); }
 /* Link cards under a paragraph or list: the page's image, title, a line of description and its site. */
 .link-cards { display: flex; flex-direction: column; gap: 8px; max-width: 560px; margin: 4px 0 12px; }
 .link-cards:empty { display: none; }
+/* A turn's Sources: the pages it fetched, as quiet chips, then their cards. */
+.turn-sources { margin: 4px 0 0; }
+.turn-sources-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }
+.turn-sources-label { font-size: 11px; font-weight: 600; color: var(--text-tertiary); margin-right: 2px; }
+/* No card could load (no title, or offline): no lone label. */
+.turn-sources:has(> .link-cards:empty) { display: none; }
 .msg-assistant a.link-card-row,
 .link-card-row { display: flex; align-items: stretch; gap: 12px; min-width: 0; padding: 8px; border: 1px solid var(--hairline); border-radius: var(--radius-l); background: var(--bg-elevated); color: var(--text); text-decoration: none; transition: background 120ms var(--ease), border-color 120ms var(--ease); }
 .msg-assistant a.link-card-row:hover,

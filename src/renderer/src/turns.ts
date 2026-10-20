@@ -7,14 +7,21 @@ export type Segment =
   | { kind: "event"; stored: StoredEvent }
   /** Consecutive tool calls (and the thinking between them). `done` = something came after, so it folds. */
   | { kind: "work"; key: number; items: StoredEvent[]; startedAt: number; endedAt: number; done: boolean }
-  /** A turn's end: its final answer (for Copy), the message that started it (for Retry, and its seq for the turn's score), and what it changed. */
-  | { kind: "turn-end"; stored: StoredEvent; answer: string; prompt: { text: string; skills?: string[] } | null; userSeq: number | null; changes: TurnChanges | null };
+  /** A turn's end: its final answer (for Copy), the message that started it (for Retry, and its seq for the turn's score), what it changed, and the web pages it fetched. */
+  | { kind: "turn-end"; stored: StoredEvent; answer: string; prompt: { text: string; skills?: string[] } | null; userSeq: number | null; changes: TurnChanges | null; sources: string[] };
 
 export interface TurnChanges {
   files: string[];
   /** Line counts, or null when no edit in the turn reported a "+a −d" stat. */
   additions: number | null;
   deletions: number | null;
+}
+
+/** The https page a Fetch call read or the browser pane opened (`browser_open`, MCP-prefixed or not), or null. */
+export function fetchedUrl(ev: { name: string; payload?: unknown }): string | null {
+  if (canonicalTool(ev.name) !== "Fetch" && !/(^|__)browser_open$/.test(ev.name)) return null;
+  const url = (ev.payload as { url?: unknown } | undefined)?.url;
+  return typeof url === "string" && /^https:\/\/[^\s]+$/.test(url) ? url : null;
 }
 
 /** A tool call or the thinking between calls: what a "Worked for" fold holds. */
@@ -47,6 +54,7 @@ function segmentRun(events: StoredEvent[], running: boolean, results: Map<string
   let userSeq: number | null = carry.userSeq;
   let edits = new Map<string, { additions: number; deletions: number }>();
   let statKnown = false;
+  let sources: string[] = [];
 
   const flush = (done: boolean, endedAt: number) => {
     if (!run.length) return;
@@ -84,6 +92,10 @@ function segmentRun(events: StoredEvent[], running: boolean, results: Map<string
         }
       }
     }
+    if (ev.kind === "tool-use") {
+      const url = fetchedUrl(ev);
+      if (url && !sources.includes(url)) sources.push(url);
+    }
     if (isWork(e) || (run.length > 0 && ev.kind === "assistant-text" && moreWork[i])) {
       run.push(e);
       continue;
@@ -96,6 +108,7 @@ function segmentRun(events: StoredEvent[], running: boolean, results: Map<string
       answer = [];
       edits = new Map();
       statKnown = false;
+      sources = [];
     }
     if (ev.kind === "assistant-text") answer.push(ev.text);
     if (ev.kind === "turn-end") {
@@ -107,10 +120,11 @@ function segmentRun(events: StoredEvent[], running: boolean, results: Map<string
             deletions: statKnown ? [...edits.values()].reduce((n, s) => n + s.deletions, 0) : null,
           }
         : null;
-      out.push({ kind: "turn-end", stored: e, answer: answer.join("\n\n"), prompt, userSeq, changes });
+      out.push({ kind: "turn-end", stored: e, answer: answer.join("\n\n"), prompt, userSeq, changes, sources });
       answer = [];
       edits = new Map();
       statKnown = false;
+      sources = [];
       continue;
     }
     out.push({ kind: "event", stored: e });
