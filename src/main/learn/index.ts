@@ -14,7 +14,7 @@ import { backgroundShot, estimateTokens, pickBackground } from "./background";
 import { captureCase, caseView, listCases } from "./cases";
 import type { LearnDb, ScoreRow } from "./db";
 import { buildDraftPrompt, findDuplicate, parseLesson, pulledOutsideContent } from "./draft";
-import { applyAction, autoRetire, countOutcome, lessonsBlock, relevantLessons, revalidation, type Runtime } from "./lifecycle";
+import { applyAction, autoRetire, countOutcome, lessonRelated, lessonsBlock, relevantLessons, revalidation, staleLesson, type Runtime } from "./lifecycle";
 import { healthOf, isCorrection, mergeSignals, roundSignals } from "./signals";
 import { fileBytes, preBytes, sha256, snapshotPre, type PreTurn } from "./snapshot";
 
@@ -86,6 +86,8 @@ export interface LearnerDeps {
   existing?: (projectId: string) => string[];
   /** The project's tracked file names at `cwd` (names only), for the drafter; absent = none. */
   projectFiles?: (cwd: string) => string[];
+  /** Whether a project-relative path exists in the project; absent = lessons are never checked for staleness. */
+  pathExists?: (projectId: string, rel: string) => boolean;
   /** Replay a lesson's case and report the verdict (S3); absent = verification is off. */
   verifyLesson?: (l: Lesson) => Promise<{ verification: LessonVerification | null; promote: boolean; why: string; tokens: number } | null>;
   now?: () => number;
@@ -461,12 +463,13 @@ export function createLearner(deps: LearnerDeps): Learner {
         }
         // A turn that failed on its own (a correction or revert can still arrive and add a contrast first).
         if (row.health === "fail") await learn(keyOf(rec.thread.id, rec.rootSeq), null);
-        // Lessons that rode this turn: count it once, at the root turn's end.
+        // Lessons that rode this turn: count it once, at the root turn's end, and only as evidence when the turn bore on them.
+        const turn = recent.get(keyOf(rec.thread.id, rec.rootSeq))?.rec ?? rec;
         let changed = false;
         for (const id of new Set(row.injected)) {
           const l = deps.db.getLesson(id);
           if (!l || l.status !== "active") continue;
-          const patch = countOutcome(l, row.health);
+          const patch = countOutcome(l, row.health, lessonRelated(l, { changed: turn.changed, request: turn.request }));
           const retire = autoRetire({ ...l, ...patch });
           deps.db.updateLesson(id, { ...patch, ...(retire ?? {}) });
           changed = true;
@@ -484,7 +487,17 @@ export function createLearner(deps: LearnerDeps): Learner {
     lessonsBlockFor(projectId, threadId) {
       try {
         if (!enabled(projectId)) return null;
-        const lessons = relevantLessons(deps.db.lessons(projectId, ["active"]));
+        // A lesson whose files are all gone retires (undo brings it back); one the user pinned stays.
+        const exists = deps.pathExists;
+        let retired = false;
+        const live = deps.db.lessons(projectId, ["active"]).filter((l) => {
+          if (!exists || l.pinned || !staleLesson(l, (rel) => exists(projectId, rel))) return true;
+          deps.db.updateLesson(l.id, { status: "retired", note: `retired: its files are gone (${l.scope.paths.slice(0, 3).join(", ")})` });
+          retired = true;
+          return false;
+        });
+        if (retired) learnChanged(projectId);
+        const lessons = relevantLessons(live);
         if (threadId) injectedByThread.set(threadId, lessons.map((l) => l.id));
         return lessonsBlock(lessons);
       } catch {

@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { BLOCK_CAP, GLOBAL_SCOPE, INDEX_CAP, MemoryStore, parseFact, serializeFact, slugFor } from "../src/main/memory/store";
+import { BLOCK_CAP, GLOBAL_SCOPE, INDEX_CAP, MemoryStore, namedPaths, parseFact, serializeFact, slugFor, staleMark } from "../src/main/memory/store";
 import { tempDir } from "./helpers";
 
 /** The fact files a memory block names, in the order they appear. */
@@ -317,5 +317,33 @@ describe("MemoryStore correction metadata", () => {
       'Global (about the user, every project; read with scope "global"):\n- [Terse](terse.md) — prefers terse answers\nThis project:\n- [Commit Style](commit-style.md) — Max 150',
     );
     expect(store.meta("p1")).toEqual({});
+  });
+});
+
+describe("memory notes that name missing files", () => {
+  it("finds project-relative file paths in a note's text", () => {
+    expect(namedPaths("Registry lives in config/registry.json; see ./src/a.ts and src/a.ts")).toEqual(["config/registry.json", "src/a.ts"]);
+    expect(namedPaths("Use https://x.dev/a/b.html, v1.2.3, package.json and ../up/x.ts")).toEqual([]);
+  });
+
+  it("marks a note only when every file it names is gone", () => {
+    const has = (rel: string) => rel === "src/a.ts";
+    expect(staleMark("old: src/gone.ts", has)).toBe(" (may be stale: src/gone.ts is gone)");
+    expect(staleMark("src/gone.ts and lib/x.js", has)).toBe(" (may be stale: src/gone.ts, lib/x.js are gone)");
+    expect(staleMark("src/gone.ts or src/a.ts", has)).toBe("");
+    expect(staleMark("no files here", has)).toBe("");
+  });
+
+  it("flags project notes in the block, never global ones, and leaves the block unchanged without a check", () => {
+    const store = new MemoryStore(tempDir());
+    store.write("p1", { name: "Registry", description: "modules are listed in config/registry.json", type: "project", body: "x" });
+    store.write("p1", { name: "Entry", description: "the app starts in src/main.ts", type: "project", body: "x" });
+    store.write(GLOBAL_SCOPE, { name: "Style", description: "user likes notes/style.md", type: "user", body: "x" });
+    const exists = (rel: string) => rel === "src/main.ts";
+    const text = store.blockIndex("p1", exists).text;
+    expect(text).toContain("config/registry.json (may be stale: config/registry.json is gone)");
+    expect(text).not.toContain("src/main.ts (may be stale");
+    expect(text).not.toContain("notes/style.md (may be stale");
+    expect(store.blockIndex("p1").text).not.toContain("may be stale");
   });
 });

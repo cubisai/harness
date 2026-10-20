@@ -467,6 +467,11 @@ async function main(): Promise<void> {
       // Best-effort housekeeping.
     }
   });
+  /** The memory block for a project, with notes that name only missing files flagged; every caller uses this, so frozen blocks and their update diffs agree. */
+  const memoryBlockFor = (projectId: string) => {
+    const root = store.getProject(projectId).path;
+    return memory.store.blockIndex(projectId, (rel) => existsSync(join(root, rel)));
+  };
   // The learner is created below, after memoryPromptFor needs it: a late-bound reference.
   let learnerRef: Learner | null = null;
   /**
@@ -481,7 +486,7 @@ async function main(): Promise<void> {
         const parts: string[] = [];
         if (memoryOn(settings.get(), projectId)) {
           memory.ensure(projectId, store.getProject(projectId).path);
-          const block = memoryPrompt(memory.store.blockIndex(projectId).text);
+          const block = memoryPrompt(memoryBlockFor(projectId).text);
           if (block) parts.push(block);
         }
         const lessons = learnerRef?.lessonsBlockFor(projectId, threadId);
@@ -503,7 +508,7 @@ async function main(): Promise<void> {
     try {
       if (!memoryOn(settings.get(), projectId)) return null;
       memory.ensure(projectId, store.getProject(projectId).path);
-      return memorySnapshots.updates(threadId, memory.store.blockIndex(projectId).text);
+      return memorySnapshots.updates(threadId, memoryBlockFor(projectId).text);
     } catch {
       return null;
     }
@@ -1071,6 +1076,7 @@ async function main(): Promise<void> {
     casesRoot: (projectId) => join(userData, "learn", projectId, "cases"),
     checkCommand: (projectId) => store.getProject(projectId).checkCommand?.trim() || null,
     existing: (projectId) => memory.store.list(projectId).map((n) => n.description),
+    pathExists: (projectId, rel) => existsSync(join(store.getProject(projectId).path, rel)),
     // Names only (never contents), so a drafted lesson points at files that exist.
     projectFiles: (cwd) => {
       try {
@@ -1430,7 +1436,7 @@ async function main(): Promise<void> {
       tools: harnessTools(thread ?? undefined).filter((t) => !(thread && drivers.find((d) => d.id === thread.agent)?.capabilities.nativeMemory && (t.name === MEMORY_READ_TOOL || t.name === MEMORY_WRITE_TOOL))),
       skills: thread && delivery ? skillsInputFor(delivery, cwd, thread.kind === "design") : null,
       mcp: servers.map((s) => ({ name: s.name, listed: mcpTools.peek(s.spec), deferred })),
-      memoryIndex: pid && memoryOn(settings.get(), pid) ? (({ lines, tokens }) => ({ lines, tokens }))(memory.store.blockIndex(pid)) : null,
+      memoryIndex: pid && memoryOn(settings.get(), pid) ? (({ lines, tokens }) => ({ lines, tokens }))(memoryBlockFor(pid)) : null,
     });
   });
   ipcMain.handle("memory:overview", (_e, projectId: string) => memoryApi.overview(projectId));

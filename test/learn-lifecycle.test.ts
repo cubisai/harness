@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Lesson, LessonVerification } from "../src/shared/learn";
-import { MAX_INJECTED, applyAction, autoRetire, countOutcome, lessonsBlock, promotion, relevantLessons, revalidation } from "../src/main/learn/lifecycle";
+import { MAX_INJECTED, applyAction, autoRetire, countOutcome, lessonRelated, lessonsBlock, pathMatches, promotion, relevantLessons, revalidation, staleLesson } from "../src/main/learn/lifecycle";
 
 function lesson(over: Partial<Lesson> = {}): Lesson {
   return {
@@ -181,5 +181,44 @@ describe("promotion", () => {
 
   it("refuses when transfer changed other cases", () => {
     expect(promotion(verification({ transfer: { held: 1, of: 3 } }))).toEqual({ promote: false, why: "made 2 of 3 other cases fail" });
+  });
+});
+
+describe("lesson paths", () => {
+  it("matches files, folders and globs", () => {
+    expect(pathMatches("config/registry.json", "config/registry.json")).toBe(true);
+    expect(pathMatches("./src/", "src/a/b.ts")).toBe(true);
+    expect(pathMatches("src", "src/a.ts")).toBe(true);
+    expect(pathMatches("src", "srcx/a.ts")).toBe(false);
+    expect(pathMatches("src/*.js", "src/mul.js")).toBe(true);
+    expect(pathMatches("src/*.js", "src/a/mul.js")).toBe(false);
+    expect(pathMatches("src/**/*.ts", "src/a.ts")).toBe(true);
+    expect(pathMatches("src/**/*.ts", "src/a/b/c.ts")).toBe(true);
+    expect(pathMatches("**/*.test.ts", "test/x.test.ts")).toBe(true);
+    expect(pathMatches("a.?s", "a.ts")).toBe(true);
+    expect(pathMatches("src\\a.ts", "src/a.ts")).toBe(true);
+    expect(pathMatches("", "src/a.ts")).toBe(false);
+  });
+
+  it("calls a lesson related by its paths or keywords, and a lesson with neither always related", () => {
+    const scoped = { scope: { paths: ["src/"], keywords: ["module registry"] } };
+    expect(lessonRelated(scoped, { changed: ["src/a.js"], request: "" })).toBe(true);
+    expect(lessonRelated(scoped, { changed: ["docs/a.md"], request: "update the Module Registry" })).toBe(true);
+    expect(lessonRelated(scoped, { changed: ["docs/a.md"], request: "fix docs" })).toBe(false);
+    expect(lessonRelated({ scope: { paths: [], keywords: [] } }, { changed: [], request: "" })).toBe(true);
+  });
+
+  it("counts an unrelated outcome as sent but neither helpful nor harmful", () => {
+    const l = lesson({ relevant: 1, helpful: 1, harmful: 0 });
+    expect(countOutcome(l, "fail", false)).toEqual({ relevant: 2, helpful: 1, harmful: 0 });
+    expect(countOutcome(l, "fail")).toEqual({ relevant: 2, helpful: 1, harmful: 1 });
+  });
+
+  it("is stale only when it names plain paths and every one is gone", () => {
+    const has = (rel: string) => rel === "src/a.ts";
+    expect(staleLesson({ scope: { paths: ["src/gone.ts", "lib/"], keywords: [] } }, has)).toBe(true);
+    expect(staleLesson({ scope: { paths: ["src/gone.ts", "./src/a.ts"], keywords: [] } }, has)).toBe(false);
+    expect(staleLesson({ scope: { paths: ["src/gone.ts", "src/**/*.ts"], keywords: [] } }, has)).toBe(false);
+    expect(staleLesson({ scope: { paths: [], keywords: ["x"] } }, has)).toBe(false);
   });
 });

@@ -72,7 +72,7 @@ const lesson = (over: Partial<Lesson> = {}): Lesson => ({
 });
 
 /** A real LearnDb on a temp Store, with fake deps and no background drivers by default. */
-function setup(opts: { enabled?: boolean; drivers?: AgentDriver[]; verifyLesson?: LearnerDeps["verifyLesson"] } = {}) {
+function setup(opts: { enabled?: boolean; drivers?: AgentDriver[]; verifyLesson?: LearnerDeps["verifyLesson"]; pathExists?: LearnerDeps["pathExists"] } = {}) {
   const store = new Store(join(tempDir(), "t.db"));
   closeAfter(() => store.close());
   // Scores reference threads; these tests drive the learner with ids ("p1", "t1") no project or thread row backs.
@@ -89,6 +89,7 @@ function setup(opts: { enabled?: boolean; drivers?: AgentDriver[]; verifyLesson?
     debounceMs: 60_000,
     log: () => {},
     ...(opts.verifyLesson ? { verifyLesson: opts.verifyLesson } : {}),
+    ...(opts.pathExists ? { pathExists: opts.pathExists } : {}),
   });
   closeAfter(() => learner.dispose());
   return { db, learner, updates, settings };
@@ -122,6 +123,19 @@ describe("lessonsBlockFor / injectedFor", () => {
     expect(learner.injectedFor("t1")).toEqual(["a"]);
     expect(learner.injectedFor("t2")).toEqual([]);
   });
+
+  it("retires an active lesson whose files are all gone, keeps a pinned one, and stops sending it", () => {
+    const { db, learner, updates } = setup({ pathExists: (_p, rel) => rel === "src/kept.ts" });
+    db.putLesson(lesson({ id: "gone", rule: "Gone rule.", scope: { paths: ["src/old.ts", "lib/old/"], keywords: [] } }));
+    db.putLesson(lesson({ id: "kept", rule: "Kept rule.", scope: { paths: ["src/old.ts", "src/kept.ts"], keywords: [] } }));
+    db.putLesson(lesson({ id: "glob", rule: "Glob rule.", scope: { paths: ["old/**/*.ts"], keywords: [] } }));
+    db.putLesson(lesson({ id: "pinned", rule: "Pinned rule.", pinned: true, scope: { paths: ["src/old.ts"], keywords: [] } }));
+    const block = learner.lessonsBlockFor("p1", "t1")!;
+    expect(block).not.toContain("Gone rule.");
+    expect(db.getLesson("gone")).toMatchObject({ status: "retired", note: "retired: its files are gone (src/old.ts, lib/old/)" });
+    expect(learner.injectedFor("t1").sort()).toEqual(["glob", "kept", "pinned"]);
+    expect(updates).toContainEqual({ type: "learn-changed", projectId: "p1" });
+  });
 });
 
 describe("counting a turn's lessons", () => {
@@ -134,6 +148,18 @@ describe("counting a turn's lessons", () => {
     expect(db.getLesson("b")).toMatchObject({ relevant: 0, helpful: 0, harmful: 0 });
     await learner.afterTurn(turn({ rootSeq: 2, injected: ["a"], check: { command: "npm test", ok: false, tail: "" } }), null);
     expect(db.getLesson("a")).toMatchObject({ relevant: 2, helpful: 1, harmful: 1 });
+  });
+
+  it("counts a scoped lesson as evidence only on turns that touch its paths or name its keywords", async () => {
+    const { db, learner } = setup();
+    db.putLesson(lesson({ id: "a", status: "active", scope: { paths: ["src/"], keywords: ["registry"] } }));
+    const failed = { command: "npm test", ok: false, tail: "" };
+    await learner.afterTurn(turn({ rootSeq: 1, injected: ["a"], check: failed, changed: ["docs/readme.md"], request: "fix the docs" }), null);
+    expect(db.getLesson("a")).toMatchObject({ relevant: 1, helpful: 0, harmful: 0 });
+    await learner.afterTurn(turn({ rootSeq: 2, injected: ["a"], check: failed, changed: ["src/mul.js"], request: "add mul" }), null);
+    expect(db.getLesson("a")).toMatchObject({ relevant: 2, helpful: 0, harmful: 1 });
+    await learner.afterTurn(turn({ rootSeq: 3, injected: ["a"], changed: [], request: "Update the Registry entry" }), null);
+    expect(db.getLesson("a")).toMatchObject({ relevant: 3, helpful: 1, harmful: 1 });
   });
 
   it("retires a lesson no helpful turn has saved after three harmful ones", async () => {

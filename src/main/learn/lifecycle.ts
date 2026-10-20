@@ -40,9 +40,49 @@ export function lessonsBlock(lessons: Lesson[]): string | null {
   ].join("\n");
 }
 
-/** A real turn the lessons were sent with ended `health`: relevant+1; ok → helpful+1; fail → harmful+1; warn → neither. */
-export function countOutcome(l: Lesson, health: Health): Pick<Lesson, "relevant" | "helpful" | "harmful"> {
-  return { relevant: l.relevant + 1, helpful: l.helpful + (health === "ok" ? 1 : 0), harmful: l.harmful + (health === "fail" ? 1 : 0) };
+/**
+ * Whether a project-relative `file` falls under a lesson path: a file, a folder
+ * (`src/` or `src`), or a glob (`*` and `?` within one segment, `**` across them).
+ */
+export function pathMatches(pattern: string, file: string): boolean {
+  const p = pattern.trim().replace(/\\/g, "/").replace(/^\.\//, "");
+  const f = file.replace(/\\/g, "/").replace(/^\.\//, "");
+  if (!p) return false;
+  if (!/[*?]/.test(p)) {
+    const dir = p.replace(/\/+$/, "");
+    return f === dir || f.startsWith(`${dir}/`);
+  }
+  const esc = (s: string) => s.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  const re = p
+    .split("**/")
+    .map((part) => part.split("**").map((seg) => seg.split("*").map((s) => s.split("?").map(esc).join("[^/]")).join("[^/]*")).join(".*"))
+    .join("(?:.*/)?");
+  return new RegExp(`^${re}$`).test(f);
+}
+
+/** Whether a turn bears on a lesson: it changed a file under its paths, or its request names one of its keywords. A lesson with neither is general. */
+export function lessonRelated(l: Pick<Lesson, "scope">, turn: { changed: string[]; request: string }): boolean {
+  const { paths, keywords } = l.scope;
+  if (!paths.length && !keywords.length) return true;
+  if (paths.some((p) => turn.changed.some((f) => pathMatches(p, f)))) return true;
+  const words = new Set(turn.request.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
+  return keywords.some((k) => k.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).every((w) => words.has(w)));
+}
+
+/**
+ * A real turn the lessons were sent with ended `health`: relevant+1 (it was sent);
+ * when the turn bore on it, ok → helpful+1 and fail → harmful+1. An unrelated
+ * failure says nothing about the lesson.
+ */
+export function countOutcome(l: Lesson, health: Health, related = true): Pick<Lesson, "relevant" | "helpful" | "harmful"> {
+  return { relevant: l.relevant + 1, helpful: l.helpful + (related && health === "ok" ? 1 : 0), harmful: l.harmful + (related && health === "fail" ? 1 : 0) };
+}
+
+/** Whether every file a lesson names is gone (plain paths only: a glob can't be checked cheaply, so a lesson with one is never stale). */
+export function staleLesson(l: Pick<Lesson, "scope">, exists: (rel: string) => boolean): boolean {
+  const paths = l.scope.paths.map((p) => p.trim()).filter(Boolean);
+  if (!paths.length || paths.some((p) => /[*?]/.test(p))) return false;
+  return paths.every((p) => !exists(p.replace(/^\.\//, "").replace(/\/+$/, "")));
 }
 
 /** An active lesson that keeps hurting retires itself: harmful ≥ 3 and harmful > 2 × helpful. */

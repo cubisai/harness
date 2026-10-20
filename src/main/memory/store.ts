@@ -33,6 +33,19 @@ export const GLOBAL_SCOPE = "_global";
 /** The index file's budget: whole lines only, plus one line for the truncation notice. */
 export const INDEX_CAP = { lines: 200, chars: 4800 };
 
+/** Project-relative file paths a note's text names: at least one folder and an extension (`src/a.ts`, `config/x.json`). */
+export function namedPaths(text: string): string[] {
+  const found = text.match(/(?<![\w/.:-])(?:\.\/)?[\w.-]+(?:\/[\w.-]+)+\.[A-Za-z0-9]{1,6}(?![\w/])/g) ?? [];
+  return [...new Set(found.map((p) => p.replace(/^\.\//, "")).filter((p) => !p.startsWith("../")))];
+}
+
+/** " (may be stale: … is gone)" when every file a note names is missing, else "". */
+export function staleMark(text: string, exists: (rel: string) => boolean): string {
+  const paths = namedPaths(text);
+  if (!paths.length || paths.some(exists)) return "";
+  return ` (may be stale: ${paths.slice(0, 2).join(", ")} ${paths.length === 1 ? "is" : "are"} gone)`;
+}
+
 /** The memory block's per-scope budget in characters: global notes first, then the project's. */
 export const BLOCK_CAP = { global: 1200, project: 3600 };
 
@@ -334,7 +347,7 @@ export class MemoryStore {
    * a section corrections come first (newest marked first), then the rest
    * newest-first (by `updated` or last use); each section is capped.
    */
-  blockIndex(projectId: string): { text: string; lines: number; tokens: number; shown: number; total: number } {
+  blockIndex(projectId: string, exists?: (rel: string) => boolean): { text: string; lines: number; tokens: number; shown: number; total: number } {
     const scopes = projectId === GLOBAL_SCOPE ? [GLOBAL_SCOPE] : [GLOBAL_SCOPE, projectId];
     const sections: string[] = [];
     let shown = 0;
@@ -359,7 +372,9 @@ export class MemoryStore {
       const kept: string[] = [];
       let chars = header.length;
       for (const f of sorted) {
-        const line = `- [${f.name}](${f.file}) — ${f.description}`;
+        // A project note naming only files that are gone is flagged, so the agent checks and fixes it; it is never dropped.
+        const mark = exists && scope !== GLOBAL_SCOPE ? staleMark(`${f.name} ${f.description}`, exists) : "";
+        const line = `- [${f.name}](${f.file}) — ${f.description}${mark}`;
         const extra = 1 + line.length;
         if (chars + extra > cap) break;
         kept.push(line);

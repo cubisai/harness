@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { MemoryNote, MemoryOverview, MemoryScope, MemoryType, Settings } from "../../shared/types";
 import { importNativeMemory } from "./import";
 import { GLOBAL_SCOPE, type MemoryStore } from "./store";
@@ -22,7 +24,8 @@ export function createMemoryApi(deps: {
     const s = deps.settings.get();
     const dir = deps.memory.ensure(projectId, deps.projectPath(projectId));
     const idx = deps.memory.store.index(projectId);
-    const block = deps.memory.store.blockIndex(projectId);
+    const root = deps.projectPath(projectId);
+    const block = deps.memory.store.blockIndex(projectId, (rel) => existsSync(join(root, rel)));
     return {
       enabled: s.memory?.enabled ?? true,
       projectOn: !(s.memory?.disabledProjects ?? []).includes(projectId),
