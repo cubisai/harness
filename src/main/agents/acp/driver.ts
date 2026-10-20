@@ -1243,7 +1243,9 @@ export function createAcpDriver(
         for (let round = 0; round < 6; round++) {
           // A Stop between rounds must end the run, never start another round.
           if (round > 0 && input.signal.aborted) break;
-          const turn: TurnState = { input, text: "", thought: "", tools: new Map(), permissionIds: new Set(), planned: false, usage: { used: 0, costUsd: null, contextUsed: null, size: null }, run: 0, logErrors: new Set(), askIds: new Set(), askTimers: new Map() };
+          // An approved plan's implementing round runs in Ask or Auto-edit: its asks are decided by that mode.
+          const roundInput = mode === input.permissionMode ? input : { ...input, permissionMode: mode };
+          const turn: TurnState = { input: roundInput, text: "", thought: "", tools: new Map(), permissionIds: new Set(), planned: false, usage: { used: 0, costUsd: null, contextUsed: null, size: null }, run: 0, logErrors: new Set(), askIds: new Set(), askTimers: new Map() };
           if (l.turn) clearAskTimers(l.turn);
           current = turn;
           l.turn = turn;

@@ -1239,7 +1239,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
 
         let resolveTurn!: (t: Turn) => void;
         const finished = new Promise<Turn>((r) => (resolveTurn = r));
-        const state: TurnState = { input, threadId, turnId: null, deltas: new Map(), reasoning: new Map(), usage: null, contextSize: null, retrying: new Set(), compacted: false, planText: null, agentText: "", done: resolveTurn };
+        // An approved plan's implementing round answers approvals by its own mode, not the turn's "plan".
+        const state: TurnState = { input: mode === input.permissionMode ? input : { ...input, permissionMode: mode }, threadId, turnId: null, deltas: new Map(), reasoning: new Map(), usage: null, contextSize: null, retrying: new Set(), compacted: false, planText: null, agentText: "", done: resolveTurn };
         turns.set(threadId, state);
         const onAbort = () => {
           if (state.turnId) void conn.request("turn/interrupt", { threadId, turnId: state.turnId }).catch(() => {});

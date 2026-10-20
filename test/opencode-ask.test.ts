@@ -143,8 +143,8 @@ describe("the generated plugin's ask", () => {
   });
 });
 
-/** A fake chat endpoint: the first request with tools answers one bash call (`command`), the rest say done. */
-function fakeToolChat(command: string): Promise<{ server: Server; url: string; bodies: unknown[] }> {
+/** A fake chat endpoint: the first request with tools (and `after` in its body, when given) answers one bash call (`command`), the rest say done. */
+function fakeToolChat(command: string, after?: string): Promise<{ server: Server; url: string; bodies: unknown[] }> {
   const bodies: unknown[] = [];
   let sent = false;
   const server = createServer((req, res) => {
@@ -157,7 +157,7 @@ function fakeToolChat(command: string): Promise<{ server: Server; url: string; b
       const model = parsed.model ?? "unknown";
       const chunk = (delta: unknown, finish: string | null, extra: Record<string, unknown> = {}) => `data: ${JSON.stringify({ id: "c", object: "chat.completion.chunk", created: 1, model, choices: [{ index: 0, delta, finish_reason: finish }], ...extra })}\n\n`;
       res.writeHead(200, { "content-type": "text/event-stream" });
-      if (Array.isArray(parsed.tools) && parsed.tools.length > 0 && !sent) {
+      if (Array.isArray(parsed.tools) && parsed.tools.length > 0 && !sent && (!after || body.includes(after))) {
         sent = true;
         res.end(chunk({ role: "assistant", content: null, tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "bash", arguments: JSON.stringify({ command, description: "run it" }) } }] }, null) + chunk({}, "tool_calls") + "data: [DONE]\n\n");
       } else {
@@ -184,11 +184,11 @@ describe.skipIf(!onPath("opencode"))("OpenCode asks CubiQ before a command (real
     });
   }
 
-  async function turn(mode: PermissionMode, answer: PermissionDecision, ownBash: "allow" | "ask" = "allow") {
+  async function turn(mode: PermissionMode, answer: PermissionDecision, ownBash: "allow" | "ask" = "allow", plan?: "auto" | "manual") {
     isolate();
     const cwd = tempDir();
     const marker = join(cwd, "ran.txt");
-    const fake = await fakeToolChat(`echo ran > ${JSON.stringify(marker)}`);
+    const fake = await fakeToolChat(`echo ran > ${JSON.stringify(marker)}`, plan ? "Implement the plan." : undefined);
     closeAfter(() => void fake.server.close());
     const pluginUrl = ensureOpenCodeGuard(tempDir());
     const preset = ACP_PRESETS.find((p) => p.id === "opencode")!;
@@ -222,7 +222,7 @@ describe.skipIf(!onPath("opencode"))("OpenCode asks CubiQ before a command (real
       onTextDelta: () => {},
       onSession: () => {},
       requestPermission: async (r) => (asked.push(r), answer),
-      requestPlanDecision: async () => ({ keep: "" }),
+      requestPlanDecision: async () => plan ?? { keep: "" },
     });
     return { asked, ran: existsSync(marker) && readFileSync(marker, "utf8").includes("ran"), seen: fake.bodies.map((b) => JSON.stringify(b)).join("\n") };
   }
@@ -245,6 +245,18 @@ describe.skipIf(!onPath("opencode"))("OpenCode asks CubiQ before a command (real
   it("Ask: when OpenCode's own config also asks, its ACP ask for the approved call isn't a second card", async () => {
     const r = await turn("ask", "allow-once", "ask");
     expect(r.asked).toHaveLength(1);
+    expect(r.ran).toBe(true);
+  }, 120_000);
+
+  it("Plan approved with manual edits: the implementing round's command waits for a card", async () => {
+    const r = await turn("plan", "deny", "allow", "manual");
+    expect(r.asked.map((a) => a.toolName)).toEqual(["Run"]);
+    expect(r.ran).toBe(false);
+  }, 120_000);
+
+  it("Plan approved with auto-accepted edits: the implementing round still asks before a command", async () => {
+    const r = await turn("plan", "allow-once", "allow", "auto");
+    expect(r.asked.map((a) => a.toolName)).toEqual(["Run"]);
     expect(r.ran).toBe(true);
   }, 120_000);
 
