@@ -595,6 +595,7 @@ export function installMock(): void {
       ],
     }),
     uiImage: async () => null,
+    uiLinkMeta: async () => null,
     contextPreview: async () => ({
       guide: [{ source: "bundled", path: "CUBIQ.md", tokens: 1240 }],
       tools: [

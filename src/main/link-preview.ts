@@ -5,23 +5,28 @@ import { request } from "node:https";
 import type { IncomingMessage } from "node:http";
 import { isIP } from "node:net";
 import { resolveInside } from "./artifacts";
+import type { LinkMeta } from "../shared/types";
 
 /**
- * Pictures for `ui:cards` rows: a remote image, or a web page's `og:image`.
+ * Pictures for `ui:cards` rows (a remote image, or a web page's `og:image`) and
+ * reply link chips and cards (a page's site name, title, description, favicon and preview image).
  * Only public https hosts are reached. The address check runs inside the
  * socket's own DNS lookup, so the checked address is the one connected to
- * (no rebinding window), and again on every redirect hop. Results are image
- * bytes only, capped, and cached by URL (misses too).
+ * (no rebinding window), and again on every redirect hop. Bodies are read as
+ * bytes, capped, and cached by URL (misses too).
  */
 
 /** Largest image accepted, in bytes. */
 export const IMAGE_MAX = 2 * 1024 * 1024;
-/** Most HTML read while looking for `og:image`. */
+/** Most HTML read while looking for `og:image` or link metadata. */
 const PAGE_MAX = 512 * 1024;
 const TIMEOUT_MS = 8_000;
 const REDIRECTS_MAX = 3;
 const CACHE_MAX = 200;
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"]);
+/** Largest favicon accepted, in bytes. */
+const ICON_MAX = 64 * 1024;
+const ICON_TYPES = new Set([...IMAGE_TYPES, "image/x-icon", "image/vnd.microsoft.icon", "image/svg+xml"]);
 
 /** Whether an IP address is on the public internet (not loopback, private, link-local, CGNAT, multicast or reserved). */
 export function isPublicAddress(address: string): boolean {
@@ -141,6 +146,91 @@ export function ogImage(html: string, base: URL): string | null {
   return null;
 }
 
+/** Decode the HTML entities a page's `<head>` is likely to use (`&amp;`, `&#39;`, `&#x2014;`). */
+function decodeEntities(value: string): string {
+  return value.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot);/gi, (whole, name: string) => {
+    const key = name.toLowerCase();
+    if (key === "amp") return "&";
+    if (key === "lt") return "<";
+    if (key === "gt") return ">";
+    if (key === "quot") return '"';
+    const code = key.startsWith("#x") ? parseInt(key.slice(2), 16) : parseInt(key.slice(1), 10);
+    return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+  });
+}
+
+/** Text from a `<head>` value: entities decoded, whitespace collapsed and trimmed; empty is null. */
+function cleanText(value: string | null): string | null {
+  if (!value) return null;
+  const text = decodeEntities(value).replace(/\s+/g, " ").trim();
+  return text || null;
+}
+
+/** A title or description cut to `max` characters, with an ellipsis when it was longer. */
+function capped(value: string | null, max: number): string | null {
+  return value && value.length > max ? `${value.slice(0, max)}…` : value;
+}
+
+/** The `content` of the first `<meta>` whose property or name matches `key`. */
+function metaContent(html: string, key: RegExp): string | null {
+  for (const tag of html.match(/<meta\b[^>]*>/gi) ?? []) {
+    const name = /\b(?:property|name)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag);
+    if (!name || !key.test(name[1] ?? name[2] ?? name[3] ?? "")) continue;
+    const content = /\bcontent\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag);
+    const value = content?.[1] ?? content?.[2] ?? content?.[3];
+    if (value !== undefined) return value;
+  }
+  return null;
+}
+
+/** The page's `<title>` text, or null when there is none. */
+function titleText(html: string): string | null {
+  const match = /<title\b[^>]*>([\s\S]*?)<\/title\s*>/i.exec(html);
+  return match ? match[1]! : null;
+}
+
+/** The first icon `<link>`'s href, preferring a PNG one; null when the page has no icon link. */
+function iconHref(html: string): string | null {
+  let fallback: string | null = null;
+  for (const tag of html.match(/<link\b[^>]*>/gi) ?? []) {
+    const rel = /\brel\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag);
+    const relValue = rel?.[1] ?? rel?.[2] ?? rel?.[3];
+    if (!relValue || !/\bicon\b/i.test(relValue)) continue;
+    const href = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag);
+    const hrefValue = href?.[1] ?? href?.[2] ?? href?.[3];
+    if (!hrefValue) continue;
+    if (/\bpng\b/i.test(hrefValue) || /\btype\s*=\s*["']?image\/png/i.test(tag)) return hrefValue;
+    fallback ??= hrefValue;
+  }
+  return fallback;
+}
+
+/** What a reply link chip shows, parsed from a page's `<head>`; `iconUrl` falls back to /favicon.ico. */
+export function pageMeta(html: string, base: URL): { siteName: string | null; title: string | null; description: string | null; iconUrl: string } {
+  const siteName = cleanText(metaContent(html, /^og:site_name$/i));
+  const title = cleanText(metaContent(html, /^og:title$/i)) ?? cleanText(metaContent(html, /^twitter:title$/i)) ?? cleanText(titleText(html));
+  const description = cleanText(metaContent(html, /^og:description$/i)) ?? cleanText(metaContent(html, /^twitter:description$/i)) ?? cleanText(metaContent(html, /^description$/i));
+  const href = iconHref(html);
+  let iconUrl = new URL("/favicon.ico", base).toString();
+  if (href) {
+    try {
+      iconUrl = new URL(decodeEntities(href), base).toString();
+    } catch {
+      // an unusable href keeps the default
+    }
+  }
+  return { siteName, title: capped(title, 200), description: capped(description, 400), iconUrl };
+}
+
+/** A favicon as a data URL, or null when it isn't a fetchable, small enough image. */
+async function iconData(raw: string): Promise<string | null> {
+  const url = fetchableUrl(raw);
+  if (!url) return null;
+  const got = await get(url, ICON_MAX, "image/png,image/x-icon,image/svg+xml,image/*;q=0.8");
+  if (!got || !ICON_TYPES.has(got.type) || !got.body.length) return null;
+  return `data:${got.type};base64,${got.body.toString("base64")}`;
+}
+
 /** An image as a data URL, or null when it isn't a fetchable, small enough raster image. */
 async function imageData(raw: string): Promise<string | null> {
   const url = fetchableUrl(raw);
@@ -163,9 +253,26 @@ async function pageImage(raw: string): Promise<string | null> {
   return og ? imageData(og) : null;
 }
 
-/** Cached pictures for card rows; `kind` "image" fetches the URL as an image, "page" its preview image. */
-export function createLinkPreviews(): { image(raw: string, kind: "image" | "page"): Promise<string | null> } {
+/** A page's link metadata, or null when it isn't a fetchable HTML page; a missing icon or image only nulls that field. */
+async function pageMetaOf(raw: string): Promise<LinkMeta | null> {
+  const url = fetchableUrl(raw);
+  if (!url) return null;
+  const got = await get(url, PAGE_MAX, "text/html", 0, true);
+  if (!got || got.type !== "text/html") return null;
+  const html = got.body.toString("utf8");
+  const meta = pageMeta(html, got.url);
+  const og = ogImage(html, got.url);
+  const [icon, image] = await Promise.all([iconData(meta.iconUrl).catch(() => null), og ? imageData(og).catch(() => null) : null]);
+  return { siteName: meta.siteName, title: meta.title, description: meta.description, icon, image };
+}
+
+/** Cached pictures for card rows (`kind` "image" fetches the URL as an image, "page" its preview image) and reply link chips. */
+export function createLinkPreviews(): {
+  image(raw: string, kind: "image" | "page"): Promise<string | null>;
+  meta(raw: string): Promise<LinkMeta | null>;
+} {
   const cache = new Map<string, Promise<string | null>>();
+  const metaCache = new Map<string, Promise<LinkMeta | null>>();
   return {
     image(raw, kind) {
       const key = `${kind}\0${raw}`;
@@ -179,6 +286,19 @@ export function createLinkPreviews(): { image(raw: string, kind: "image" | "page
       const pending = (kind === "image" ? imageData(raw) : pageImage(raw)).catch(() => null);
       cache.set(key, pending);
       if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value!);
+      return pending;
+    },
+    meta(raw) {
+      const hit = metaCache.get(raw);
+      if (hit) {
+        // Refresh its place: the oldest entry is evicted first.
+        metaCache.delete(raw);
+        metaCache.set(raw, hit);
+        return hit;
+      }
+      const pending = pageMetaOf(raw).catch(() => null);
+      metaCache.set(raw, pending);
+      if (metaCache.size > CACHE_MAX) metaCache.delete(metaCache.keys().next().value!);
       return pending;
     },
   };

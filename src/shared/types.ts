@@ -1190,6 +1190,8 @@ export interface UnskilledApi {
    * (`kind` "image") or a page whose preview image is wanted (`kind` "page").
    */
   uiImage(threadId: string | null, src: string, kind: "image" | "page"): Promise<string | null>;
+  /** A reply link's metadata, or null (always null unless Settings › Load link previews is on). */
+  uiLinkMeta(url: string): Promise<LinkMeta | null>;
   /** Scheduled automations: one project's list plus the templates to start from. */
   automationsOverview(projectId: string): Promise<AutomationsOverview>;
   /** Create (no id) or update an automation; rejects with the reason when the schedule is invalid. */
@@ -1321,6 +1323,17 @@ export interface UnskilledApi {
   teamMemberFile(threadId: string, memberId: string): Promise<string | null>;
   /** Unified diff of a version against the one before it (or against git HEAD / empty for the first); null when not text. */
   artifactDiff(threadId: string, path: string, version?: number | null): Promise<string | null>;
+}
+
+/** What a reply's link chip shows on hover: from the page's <head>; any field may be missing. */
+export interface LinkMeta {
+  siteName: string | null;
+  title: string | null;
+  description: string | null;
+  /** A data: URL. */
+  icon: string | null;
+  /** The page's preview image (`og:image`), as a data: URL. */
+  image: string | null;
 }
 
 /** What the About sheet shows: the app, its runtime, and the git build stamp. */

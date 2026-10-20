@@ -4,7 +4,7 @@ import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, powerMonitor, protocol, safeStorage, shell, utilityProcess } from "electron";
-import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, DesignDevice, DesignExportFormat, DesignSystemEdit, DesignSystemOption, DevicePreset, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryScope, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
+import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, DesignDevice, DesignExportFormat, DesignSystemEdit, DesignSystemOption, DevicePreset, LinkMeta, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryScope, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
 import type { AutomationInput } from "../shared/automations";
@@ -1401,6 +1401,11 @@ async function main(): Promise<void> {
     } catch {
       return null;
     }
+  });
+  // Link chips in replies: a page's name, title, description and favicon, only with Load link previews on.
+  ipcMain.handle("ui:link-meta", async (_e, url: unknown): Promise<LinkMeta | null> => {
+    if (typeof url !== "string" || !url || url.length > 2048) return null;
+    return settings.get().linkPreviews === true ? linkPreviews.meta(url) : null;
   });
   ipcMain.handle("context:preview", async (_e, threadId: string | null, projectId: string | null): Promise<ContextPreview> => {
     const thread = threadId ? store.getThread(threadId) : null;

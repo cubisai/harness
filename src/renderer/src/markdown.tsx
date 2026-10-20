@@ -1,4 +1,5 @@
 import { Fragment, type ReactNode, useState } from "react";
+import { LinkCards, LinkChip } from "./components/LinkChip";
 import { type FileRef, fileUrlRef, parseFileRef } from "./fileref";
 import { SmartTable } from "./genui/SmartTable";
 import { UiBlock } from "./genui/UiBlock";
@@ -76,11 +77,14 @@ export function Markdown({ text, streaming, onFile }: { text: string; streaming?
             }
             const L = b.ordered ? "ol" : "ul";
             return (
-              <L key={i}>
-                {b.items.map((it, j) => (
-                  <li key={j}>{inline(it, onFile)}</li>
-                ))}
-              </L>
+              <Fragment key={i}>
+                <L>
+                  {b.items.map((it, j) => (
+                    <li key={j}>{inline(it, onFile)}</li>
+                  ))}
+                </L>
+                <LinkCards urls={linkUrls(b.items.join("\n"))} />
+              </Fragment>
             );
           }
           case "table":
@@ -109,7 +113,12 @@ export function Markdown({ text, streaming, onFile }: { text: string; streaming?
               </table>
             );
           default:
-            return <p key={i}>{inline(b.text, onFile)}</p>;
+            return (
+              <Fragment key={i}>
+                <p>{inline(b.text, onFile)}</p>
+                <LinkCards urls={linkUrls(b.text)} />
+              </Fragment>
+            );
         }
       })}
       {streaming ? (
@@ -146,7 +155,28 @@ function buildingUi(tail: string): string | null {
   return /^(```|~~~)\s*ui:([a-z][a-z0-9-]*)/.exec(tail.trimStart())?.[2] ?? null;
 }
 
-const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*|_[^_\s][^_]*_)|(\[[^\]]+\]\(((?:https?|file):\/\/[^)\s]+|\/[^)\s]+|[A-Za-z]:[\\/][^)\s]+)\))|(~~[^~]+~~)/g;
+const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*|_[^_\s][^_]*_)|(\[[^\]]+\]\(((?:https?|file):\/\/[^)\s]+|\/[^)\s]+|[A-Za-z]:[\\/][^)\s]+)\))|(~~[^~]+~~)|(https?:\/\/[^\s<>()\[\]]+)/g;
+
+/** A bare URL without the sentence punctuation after it: [url, the punctuation]. */
+function splitTrailing(raw: string): [string, string] {
+  let url = raw;
+  let trailing = "";
+  while (/[.,;:!?'"]$/.test(url) || url.endsWith(")")) {
+    trailing = url.slice(-1) + trailing;
+    url = url.slice(0, -1);
+  }
+  return [url, trailing];
+}
+
+/** The web links a block's text holds (labelled and bare, not inside code), once each, in order: its link cards. */
+export function linkUrls(text: string): string[] {
+  const urls: string[] = [];
+  for (const m of text.matchAll(INLINE)) {
+    const url = m[5] && /^https:\/\//.test(m[5]) ? m[5] : m[7] ? splitTrailing(m[7])[0] : null;
+    if (url && /^https:\/\//.test(url) && !urls.includes(url)) urls.push(url);
+  }
+  return urls;
+}
 
 function inline(text: string, onFile?: (ref: FileRef) => void): ReactNode {
   const out: ReactNode[] = [];
@@ -189,13 +219,15 @@ function inline(text: string, onFile?: (ref: FileRef) => void): ReactNode {
         last = idx + tok.length;
         continue;
       }
-      out.push(
-        <a key={key++} href={m[5]} target="_blank" rel="noreferrer">
-          {label}
-        </a>,
-      );
+      out.push(<LinkChip key={key++} href={m[5]!} label={label} />);
     }
     else if (m[6]) out.push(<del key={key++}>{tok.slice(2, -2)}</del>);
+    else if (m[7]) {
+      // A bare URL in prose: chip it, and leave any sentence punctuation as text.
+      const [url, trailing] = splitTrailing(m[7]!);
+      out.push(<LinkChip key={key++} href={url} label={url} />);
+      if (trailing) out.push(trailing);
+    }
     last = idx + tok.length;
   }
   if (last < text.length) out.push(text.slice(last));

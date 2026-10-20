@@ -35,7 +35,7 @@ describe("markdown dialect", () => {
   });
 
   it("renders links with their href", () => {
-    expect(render("[x](https://e.com)")).toContain('<a href="https://e.com"');
+    expect(render("[x](https://e.com)")).toContain('<a class="link-chip" href="https://e.com"');
   });
 
   it("renders a GFM table with alignment", () => {
@@ -75,6 +75,6 @@ describe("markdown dialect", () => {
     }
     // Without a file handler it still reads as the label, not the raw link.
     expect(render("See [notes.js](/tmp/app/notes.js).")).toBe("<p>See <code>notes.js</code>.</p>");
-    expect(render("[docs](https://example.com)")).toContain('<a href="https://example.com"');
+    expect(render("[docs](https://example.com)")).toContain('<a class="link-chip" href="https://example.com"');
   });
 });

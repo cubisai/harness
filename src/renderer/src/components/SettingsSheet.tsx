@@ -196,7 +196,7 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
           </div>
           <p className="note">Lets agents answer with small interactive blocks, and makes reply tables sortable. Adds about 120 tokens to each new session; off costs nothing. Blocks agents write anyway always render.</p>
           <div className="row">
-            <span className="label" title="Thumbnails for links and images in card lists">Load link previews</span>
+            <span className="label" title="Favicons, titles and thumbnails for links">Load link previews</span>
             <div className="segmented">
               {[true, false].map((on) => (
                 <button key={String(on)} className={(settings.linkPreviews ?? false) === on ? "on" : ""} onClick={() => update({ linkPreviews: on })}>
@@ -205,7 +205,7 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
               ))}
             </div>
           </div>
-          <p className="note">Fetches thumbnails for links in card lists from public https sites, which tells those sites your IP address. Off, cards show an icon and nothing is fetched.</p>
+          <p className="note">Fetches favicons, titles and thumbnails for links in replies and card lists from public https sites, which tells those sites your IP address. Off, links show a globe icon and nothing is fetched.</p>
           <div className="row">
             <span className="label" title="The looping clip shown while CubiQ starts">Splash screen</span>
             <div className="segmented">
