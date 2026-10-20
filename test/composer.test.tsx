@@ -135,7 +135,7 @@ describe("queued send", () => {
     it("starts the message in its own thread and leaves the current one selected", async () => {
       useStore.setState({ selectedProjectId: "p", selectedThreadId: "keep", running: {}, threads: {}, events: {} });
       await useStore.getState().sendInBackground("do it", ["tdd"], undefined, ["src/a.ts"]);
-      expect(sent).toEqual([{ threadId: "t-bg", text: "do it", skills: ["tdd"], mentions: ["src/a.ts"] }]);
+      expect(sent).toEqual([{ threadId: "t-bg", text: "do it", skills: ["tdd"], mentions: ["src/a.ts"], background: true }]);
       expect(useStore.getState().selectedThreadId).toBe("keep");
       expect(useStore.getState().threads.p!.map((t) => t.id)).toEqual(["t-bg"]);
     });

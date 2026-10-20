@@ -1023,6 +1023,8 @@ export interface SendRequest {
   checkRound?: number;
   /** Compact the session instead of sending a message (/compact [focus]). */
   compact?: { focus: string | null };
+  /** Sent with Alt+Enter: waits in the queue when Settings › Run at once is reached. */
+  background?: boolean;
 }
 
 /** A viewport the browser pane can emulate; desktop means no emulation. */
@@ -1052,6 +1054,8 @@ export type LiveUpdate =
   | { type: "event"; threadId: string; stored: StoredEvent }
   | { type: "delta"; threadId: string; delta: LiveDelta }
   | { type: "running"; threadId: string; running: boolean }
+  /** A background send is waiting for a free slot (true) or has started or been stopped (false). */
+  | { type: "queued"; threadId: string; queued: boolean }
   | { type: "permission"; request: PermissionRequest }
   | { type: "permission-withdrawn"; requestId: string }
   | { type: "plan-approval"; request: PlanRequest }

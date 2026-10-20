@@ -1067,6 +1067,8 @@ async function main(): Promise<void> {
     },
   });
   service.setTurnListener((d) => extractor.schedule(d));
+  // Settings › Run at once: background sends past it wait for a free slot.
+  service.setRunLimit(() => settings.get().background?.maxRunning ?? 0);
   const learner = createLearner({
     db: learnDb,
     settings: () => settings.get().learn,

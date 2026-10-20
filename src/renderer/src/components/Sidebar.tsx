@@ -225,6 +225,7 @@ export function Sidebar() {
   const projects = useStore((s) => s.projects);
   const threads = useStore((s) => s.threads);
   const running = useStore((s) => s.running);
+  const queued = useStore((s) => s.queued);
   const permissions = useStore((s) => s.permissions);
   const plans = useStore((s) => s.plans);
   const questions = useStore((s) => s.questions);
@@ -279,6 +280,7 @@ export function Sidebar() {
             </>
           ) : (
             <>
+              {queued[t.id] && "Queued · "}
               {projectName(t.projectId)} · {agentOf(t)?.label ?? t.agent}
             </>
           )

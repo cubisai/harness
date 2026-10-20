@@ -133,6 +133,8 @@ interface State {
   history: Record<string, { firstSeq: number; hasMore: boolean; loadingOlder: boolean; totals: ThreadTotals | null }>;
   live: Record<string, LiveThread>; // streaming state not yet stored
   running: Record<string, boolean>;
+  /** Background threads waiting for a free slot under Settings › Run at once. */
+  queued: Record<string, boolean>;
   /** Pin or unpin a thread; pins are stored with the thread. */
   togglePin(threadId: string): Promise<void>;
   renameThread(threadId: string, title: string): Promise<void>;
@@ -259,7 +261,7 @@ interface State {
   /** Step the open thread's reasoning effort down (-1) or up (+1), wrapping through Default. */
   cycleEffort(dir: 1 | -1): void;
   /** Start a turn on the open thread (or `threadId`); resolves false when it couldn't start (no thread, already running, or the send failed). */
-  send(text: string, skills?: string[], threadId?: string, mentions?: string[]): Promise<boolean>;
+  send(text: string, skills?: string[], threadId?: string, mentions?: string[], opts?: { background?: boolean }): Promise<boolean>;
   /** Compact a thread's session now (/compact), with an optional focus for the summary. */
   compact(threadId: string, focus: string | null): Promise<void>;
   /** Messages sent while a turn ran, by thread: each goes out as the next turn, in order. Stop clears them; never persisted. */
@@ -550,6 +552,7 @@ export const useStore = create<State>((set, get) => ({
   history: {},
   live: {},
   running: {},
+  queued: {},
   async togglePin(threadId) {
     const thread = findThread(get().threads, threadId);
     if (!thread) return;
@@ -1050,7 +1053,7 @@ export const useStore = create<State>((set, get) => ({
       draft: {},
       lastAgent: thread.agent,
     }));
-    await get().send(text, skills, thread.id, mentions);
+    await get().send(text, skills, thread.id, mentions, { background: true });
     get().showNotice("Started in the background. The Message Center says when it's done.");
   },
 
@@ -1156,12 +1159,12 @@ export const useStore = create<State>((set, get) => ({
     });
   },
 
-  async send(text, skills, threadId, mentions) {
+  async send(text, skills, threadId, mentions, opts) {
     const id = threadId ?? get().selectedThreadId;
     if (!id || get().running[id]) return false;
     set((s) => ({ running: { ...s.running, [id]: true } }));
     try {
-      await api().send({ threadId: id, text, ...(skills?.length ? { skills } : {}), ...(mentions?.length ? { mentions } : {}) });
+      await api().send({ threadId: id, text, ...(skills?.length ? { skills } : {}), ...(mentions?.length ? { mentions } : {}), ...(opts?.background ? { background: true } : {}) });
       return true;
     } catch (err) {
       set((s) => ({ running: { ...s.running, [id]: false } }));
@@ -1359,6 +1362,9 @@ export const useStore = create<State>((set, get) => ({
         }
         return;
       }
+      case "queued":
+        set((s) => ({ queued: { ...s.queued, [update.threadId]: update.queued } }));
+        return;
       case "running":
         if (!update.running) void api().listAgents().then((agents) => set({ agents }));
         // A turn may have switched branches.
