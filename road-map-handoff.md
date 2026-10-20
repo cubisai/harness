@@ -7,6 +7,33 @@ Implements `plan/docs/13-harness-optimization-roadmap.md` (the owner's roadmap, 
 
 **Rules:** one commit per point. Typecheck and the full vitest suite must be green before each commit. At the end of each phase that changes the app runtime, do one live turn each on Claude, Codex and OpenCode (AgentRouter `deepseek-v4-flash`; Zen free rate-limits).
 
+## Session 7 (2026-10-20, Mac): live lesson promotion, scroll reserve, card withdrawal
+
+**Checks on `m4`:** typecheck green, vitest 3123 passed / 0 failed.
+
+**Live (app):**
+- **P8 lesson promotion seen live** (session 5 item 4, closed). Scratch project `learn-proj` (id `1ea51e55-…c0de`, path in this session's scratchpad). Its check `node <scratchpad>/learn-check/check.mjs` lives outside the repo and fails when a `src/*.js` isn't listed in `config/registry.json`; `check_fix_rounds` 0.
+  - With the check in the repo, OpenCode read it and passed, so the rule had to be hidden.
+  - "Add a new module src/dec.js …" on OpenCode Zen free → check failed → case `e267405d` (not held out) → candidate drafted on **AgentRouter `deepseek-v4-flash`** (the owner's call: the project's `backgroundByProject` is OpenCode `agentrouter/deepseek-v4-flash`; there is no UI for it, it was set via `updateSettings`).
+  - Verify on AgentRouter: without 0/1, with 1/1, transfer held 3/3 (cases `845f0a70`, `543a48aa` held out, `cf0d7c35`) → **active**. Each replay ≈ 28k tokens.
+  - These replays ran before `e654fb0`, so a timeout would have counted as a fail. The source "without" run finished in 7 min (limit 10), and all four "without" runs used about the same tokens as the passes.
+- Card withdrawal: an OpenCode Ask turn's own card was up; a second ask sent with `curl --max-time 6` to the plugin's ask server showed "+1 more waiting", then cleared when curl gave up. The first card stayed, and Allow ran the command.
+- Sanity turns with cards: OpenCode Zen free (Run card), Claude Opus (Write card; `echo` alone gets no card, since Claude Code allows read-only commands itself), Codex GPT-6-Luna (two Run cards).
+
+**Fixed (commits on `m4`):**
+- `182a8f2` **Transcript fold reserve only shrinks** (owner report: auto-scroll into blank space). After a fold, `trimSpace` grew `min-height` to `needed`; the scroller holds ~10 px more than `.thread-inner` (the waiting dock), so pinned follow and trim fed each other: 1.6k → 9.4k px in 15 s. Now `trimmedReserve()` (`disclosure.ts`).
+- `52db1e8` Folding with the view at the top reserves nothing (a short thread kept a blank band under its last row: the owner's screenshot).
+- `9c0a62e` **Transfer counts only cases a lesson makes fail.** A lesson that also fixed other cases of the same mistake was "changed the result" and could never be promoted. The live run above would have been 0/3.
+- `e654fb0` **A replay that errors or doesn't finish decides nothing** (`NoEvidence`; trial status other than passed/failed throws in `verify-app.ts`). Before, a hung "without" run counted as a failure and could fake a fix.
+- `4bf555f` **Verify stops between replays once the day's budget is spent.** It checked only at the start and ran 229k of 50k. Cached runs resume on the next try.
+- `3209af7` **OpenCode: a dropped plugin ask withdraws its card** (session 6 follow-up). Ask server aborts on request close → `requestPermission({ signal })` → `permission-withdrawn` broadcast; not counted as a user denial.
+
+**Left (in order):**
+1. **Windows PC gate** (unchanged, see session 6), plus: card withdrawal when OpenCode's plugin fetch is cut on Windows; the fold reserve (scrollbar gutter) at 900 px.
+2. Optional: a picker for the Self-improve background model (today only via settings); the drafter guessed "package.json exports/index" for the registry because it can't see the repo. A path hint from the turn's changed files could help.
+
+**Scratch state (Mac, safe to delete):** project `learn-proj` and its threads; `learn/1ea51e55-…/cases`; the active lesson in it; `learn-check/` in the scratchpad.
+
 ## Session 6 (2026-10-20, Mac): OpenCode ask live-checked, 6 fixes, reply link cards
 
 **Checks on `m4`:** typecheck green, design:check 0 errors, vitest 3114 passed / 0 failed. A lone `mcp-http` "progress heartbeat" failure under full-suite load passed alone (timing flake).
