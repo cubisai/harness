@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { anchorDelta, anchorFor, BODY_COLLAPSIBLE, collapseTarget, stillPinned } from "../src/renderer/src/disclosure";
+import { anchorDelta, anchorFor, BODY_COLLAPSIBLE, collapseTarget, stillPinned, trimmedReserve } from "../src/renderer/src/disclosure";
 
 /** A details element as collapseTarget sees it: open or not, and whether it is one of the transcript's foldable kinds. */
 function details(open: boolean, foldable: boolean): HTMLDetailsElement {
@@ -71,5 +71,22 @@ describe("stillPinned", () => {
 
   it("stays pinned when shrinking content clamps the view up onto the new bottom", () => {
     expect(stillPinned(300, at(250, 850))).toBe(true);
+  });
+});
+
+describe("trimmedReserve", () => {
+  it("shrinks the reserve to what the view still needs as the reader scrolls up", () => {
+    expect(trimmedReserve(2000, 1700.4, 1400)).toBe(1701);
+  });
+
+  it("never grows it: at the bottom the scroller needs a little more than the reserve", () => {
+    // Pinned, the view sits ~10 px past the transcript (the waiting dock): growing to that fed itself every frame.
+    let reserve = 1639;
+    for (let frame = 0; frame < 60; frame++) reserve = trimmedReserve(reserve, reserve + 10, 1399) ?? 0;
+    expect(reserve).toBe(1639);
+  });
+
+  it("releases once the content alone reaches the view's bottom", () => {
+    expect(trimmedReserve(2000, 1400, 1400)).toBeNull();
   });
 });

@@ -48,3 +48,14 @@ export function stillPinned(prevTop: number, el: { scrollTop: number; scrollHeig
   if (el.scrollTop < prevTop - 0.5 && distance > 1) return false;
   return distance < PIN_SLACK_PX;
 }
+
+/**
+ * The transcript's reserved height after a scroll: null once the content alone reaches the view's
+ * bottom (release it), else the smaller of the reserve and what the view still needs. It only ever
+ * shrinks: the scroller holds a little more than the transcript (the waiting dock), so at the bottom
+ * `needed` exceeds the reserve, and growing to it fed the pinned follow a few px every frame.
+ */
+export function trimmedReserve(reserve: number, needed: number, natural: number): number | null {
+  if (needed <= natural + 1) return null;
+  return Math.min(reserve, Math.ceil(needed));
+}

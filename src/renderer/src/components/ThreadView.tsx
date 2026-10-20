@@ -6,7 +6,7 @@ import { skillsOf } from "../../../shared/skill-list";
 import type { ArtifactKind, StoredEvent, ThreadEvent } from "../../../shared/types";
 import type { TurnScore } from "../../../shared/learn";
 import { prettyTool, type RunResult } from "../../../shared/tools";
-import { anchorDelta, anchorFor, collapseTarget, stillPinned, type ScrollAnchor } from "../disclosure";
+import { anchorDelta, anchorFor, collapseTarget, stillPinned, trimmedReserve, type ScrollAnchor } from "../disclosure";
 import { displayOrder } from "../event-order";
 import { type FileRef, parseFileRef } from "../fileref";
 import { emptyLive, liveReasoningMode, visibleItems } from "../live";
@@ -251,8 +251,9 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
     const rect = body.getBoundingClientRect();
     const natural = (last ? last.getBoundingClientRect().bottom - rect.top : 0) + parseFloat(getComputedStyle(body).paddingBottom);
     const needed = el.scrollTop + el.clientHeight - (rect.top - el.getBoundingClientRect().top + el.scrollTop);
-    if (needed <= natural + 1) releaseSpace();
-    else body.style.minHeight = `${Math.ceil(needed)}px`;
+    const next = trimmedReserve(parseFloat(body.style.minHeight) || 0, needed, natural);
+    if (next === null) releaseSpace();
+    else body.style.minHeight = `${next}px`;
   };
   // A plain click inside an open block's body folds it, so a long one needn't be scrolled back to its header.
   // It waits out a double-click, which selects a word instead.
