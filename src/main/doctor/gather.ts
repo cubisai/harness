@@ -21,6 +21,8 @@ export interface GatherDeps {
   liveWorktreeIds: Set<string>;
   quickjsLoads: () => Promise<boolean>;
   homedir: string;
+  /** Where a path's symlinks lead; the path itself when it can't be resolved. Optional for tests. */
+  realpath?: (path: string) => string;
 }
 
 /** The x.y.z in `git --version`'s output, or null when there is none. */
@@ -64,7 +66,11 @@ export function parseCodexProfiles(toml: string): string[] {
 /** One agent's installs, chosen path and pin, from the newest-install probe. */
 async function gatherAgent(agent: GatherDeps["agents"][number], d: GatherDeps): Promise<AgentSnapshot> {
   const r = await d.newestInstall(agent.command);
-  const installs: AgentInstall[] = r ? [{ path: r.path, version: r.version }, ...r.others] : [];
+  const real = (path: string): { realPath?: string } => {
+    const target = d.realpath?.(path);
+    return target && target !== path ? { realPath: target } : {};
+  };
+  const installs: AgentInstall[] = r ? [{ path: r.path, version: r.version }, ...r.others].map((i) => ({ ...i, ...real(i.path) })) : [];
   const pinned = d.pinned[agent.id] ?? null;
   // A pin only counts while its path is still one of the installs found.
   const chosen = pinned !== null && installs.some((install) => install.path === pinned) ? pinned : r?.path ?? null;

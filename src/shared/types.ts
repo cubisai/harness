@@ -6,6 +6,7 @@ import type { ExpertDef, ExpertImportResult } from "./experts";
 import type { CommentTarget, DesignComment } from "./comments";
 import type { LearnCase, LearnOverview, LearnSettings, Lesson, LessonAction, TurnScore } from "./learn";
 import type { AutomationInput, AutomationNotice, AutomationsOverview, AutomationView } from "./automations";
+import type { DoctorFixResult, DoctorReport } from "./doctor";
 
 export type Invocation = "model" | "user";
 
@@ -196,6 +197,8 @@ export interface Settings {
   defaultPermissionMode: PermissionMode;
   /** Download new versions in the background and install them on quit. */
   autoUpdate: boolean;
+  /** Installs pinned in /doctor: CLI command → the path CubiQ uses instead of the newest. */
+  agentBinary?: Record<string, string>;
   /** The editor "Open in editor" uses; null = the first one found. */
   editor: string | null;
   /** Panel sizes and which panels are collapsed; SettingsStore.get() always fills it in. */
@@ -1145,6 +1148,10 @@ export interface UnskilledApi {
   pendingState(): Promise<PendingState>;
   /** The working-tree diff of the project, or of `threadId`'s worktree when it has one. */
   getDiff(projectId: string, threadId?: string | null): Promise<DiffFile[]>;
+  /** Check every agent CLI install, the environment and leftover worktrees. */
+  runDoctor(): Promise<DoctorReport>;
+  /** Apply fix `fixIndex` of finding `findingId` from the last report (the main process looks it up; nothing else runs). */
+  doctorFix(findingId: string, fixIndex: number): Promise<DoctorFixResult>;
   /** The project's files (git-tracked plus untracked-not-ignored), for the Files tab. */
   listFiles(projectId: string, threadId?: string | null): Promise<{ files: string[]; truncated: boolean }>;
   /** The project's current branch; null on its default branch, detached, or outside git. */

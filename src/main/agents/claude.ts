@@ -17,7 +17,7 @@ import { CLAUDE_CAPABILITIES } from "./capabilities";
 import { claudeLimitsPatch, claudeUsagePatch, type ClaudeUsage, type LimitsListener, type LimitsPatch } from "./limits";
 import { summarizeToolInput, summarizeToolResult } from "./summarize";
 import { MODEL_TTL_MS } from "./model-ttl";
-import { newestInstallAsync, PREFERRED } from "./binaries";
+import { applyPin, newestInstallAsync, pinFor, PREFERRED } from "./binaries";
 import type { BinaryResolution } from "./binaries";
 import type { AgentDriver, HarnessTool, ToolContext, ToolOutput, TurnInput } from "./types";
 import { claudeAnnotations, claudeAnswers, fromClaudeQuestions, SKIPPED_TEXT } from "../questions";
@@ -181,7 +181,7 @@ export function bundledClaudeVersion(): string | null {
   }
 }
 
-let executable: { value: string | undefined; at: number; found: BinaryResolution | null } | null = null;
+let executable: { value: string | undefined; at: number; found: BinaryResolution | null; pin: string | undefined } | null = null;
 /** The in-flight probe, so concurrent callers share one `--version` sweep. */
 let resolving: Promise<void> | null = null;
 
@@ -193,18 +193,21 @@ let resolving: Promise<void> | null = null;
  * probes must never block the main process.
  */
 export function claudeExecutableAsync(now: number = Date.now()): Promise<string | undefined> {
-  if (executable && now - executable.at < MODEL_TTL_MS) return Promise.resolve(executable.value);
+  // A pin set in /doctor resolves again at once instead of waiting out the TTL.
+  if (executable && now - executable.at < MODEL_TTL_MS && executable.pin === pinFor("claude")) return Promise.resolve(executable.value);
   resolving ??= (async () => {
     let found: BinaryResolution | null = null;
+    const pin = pinFor("claude");
     try {
-      found = await newestInstallAsync("claude", { preferred: PREFERRED.claude });
+      found = applyPin(await newestInstallAsync("claude", { preferred: PREFERRED.claude }), pin);
     } catch {
       // A probe that fails falls back to the SDK's bundled binary.
       found = null;
     }
     const installed = found ? { path: found.path, version: found.version } : null;
-    const value = pickClaudeExecutable({ bundledVersion: bundledClaudeVersion(), installed, packaged: resolvePackagedClaudeBinary() });
-    executable = { value, at: Date.now(), found };
+    // A pinned install is used as is, even when the bundled copy is newer.
+    const value = pin && installed?.path === pin ? pin : pickClaudeExecutable({ bundledVersion: bundledClaudeVersion(), installed, packaged: resolvePackagedClaudeBinary() });
+    executable = { value, at: Date.now(), found, pin };
   })().finally(() => {
     resolving = null;
   });

@@ -30,3 +30,9 @@ export interface DoctorReport {
   at: number;
   findings: DoctorFinding[];
 }
+
+/** What a fix did, in one line for the Doctor sheet. */
+export interface DoctorFixResult {
+  ok: boolean;
+  message: string;
+}

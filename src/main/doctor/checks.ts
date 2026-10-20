@@ -7,7 +7,12 @@ import type { DoctorFinding, DoctorFix } from "../../shared/doctor";
 export interface AgentInstall {
   path: string;
   version: string | null;
+  /** Where the path's symlinks lead (an npm shim in /usr/local/bin is really under lib/node_modules). */
+  realPath?: string;
 }
+
+/** An install's source, read from where it really lives. */
+const sourceOf = (install: AgentInstall): InstallSource => installSource(install.realPath ?? install.path);
 
 /** Everything the doctor knows about one agent CLI. */
 export interface AgentSnapshot {
@@ -71,7 +76,7 @@ export function installSource(path: string): InstallSource {
   if (p.includes("/node_modules/") || p.includes("/npm/") || p.includes("/.npm-global/") || p.includes("/lib/node_modules")) {
     return "npm";
   }
-  if (p.includes("/.local/bin/claude") || p.includes("/.opencode/bin/") || p.includes("/.codex/bin/") || p.includes("/.cursor/")) {
+  if (p.includes("/.local/bin/claude") || p.includes("/.local/share/claude/") || p.includes("/.opencode/bin/") || p.includes("/.codex/bin/") || p.includes("/.cursor/")) {
     return "native";
   }
   return "other";
@@ -166,7 +171,7 @@ function installedFinding(agent: AgentSnapshot, install: AgentInstall): DoctorFi
     agent: agent.id,
     level: "ok",
     title: install.version ? `${agent.label} ${install.version} at ${install.path}` : `${agent.label} at ${install.path}`,
-    detail: `Installed via ${installSource(install.path)}.${pinned}`,
+    detail: `Installed via ${sourceOf(install)}.${pinned}`,
     fixes: [],
   };
 }
@@ -292,7 +297,7 @@ export function runChecks(s: DoctorSnapshot): DoctorFinding[] {
     if (agent.installs.length < 2) continue;
     const chosen = chosenInstall(agent);
     const lines = agent.installs.map(
-      (install) => `${install.path} (${install.version ?? "unknown"}, ${installSource(install.path)})`,
+      (install) => `${install.path} (${install.version ?? "unknown"}, ${sourceOf(install)})`,
     );
     lines.push(chosen ? `CubiQ uses ${chosen.path}.` : "CubiQ doesn't use any of them.");
     const fixes: DoctorFix[] = [];
@@ -305,7 +310,7 @@ export function runChecks(s: DoctorSnapshot): DoctorFinding[] {
         path: install.path,
       });
       const pkg = NPM_PACKAGES[agent.id];
-      if (pkg && installSource(install.path) === "npm") {
+      if (pkg && sourceOf(install) === "npm") {
         fixes.push({ kind: "copy", label: "Copy uninstall command", text: `npm uninstall -g ${pkg}` });
       }
     }
@@ -339,7 +344,7 @@ export function runChecks(s: DoctorSnapshot): DoctorFinding[] {
       continue;
     }
     if (!olderThan(install.version!, min)) continue;
-    const upgrade = upgradeCommand(agent.id, installSource(install.path), s.platform);
+    const upgrade = upgradeCommand(agent.id, sourceOf(install), s.platform);
     const fixes: DoctorFix[] = upgrade
       ? [{ kind: "run", label: `Upgrade ${agent.label}`, command: upgrade.command, args: upgrade.args }]
       : [];

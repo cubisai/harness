@@ -417,3 +417,37 @@ describe("runChecks", () => {
     for (const finding of out) expect(Array.isArray(finding.fixes)).toBe(true);
   });
 });
+
+describe("install source from the resolved path", () => {
+  it("reads Claude's native versions folder as native", () => {
+    expect(installSource("/Users/me/.local/share/claude/versions/2.1.304")).toBe("native");
+  });
+  it("classifies a symlinked npm shim by where it leads", () => {
+    const findings = runChecks({
+      platform: "darwin",
+      agents: [
+        {
+          id: "opencode",
+          label: "OpenCode",
+          command: "opencode",
+          installs: [
+            { path: "/Users/me/.local/bin/opencode", version: "1.19.0", realPath: "/Users/me/.local/share/fnm/node-versions/v22/installation/lib/node_modules/opencode-ai/bin/opencode" },
+            { path: "/usr/local/bin/opencode", version: "1.0.126", realPath: "/usr/local/lib/node_modules/opencode-ai/bin/opencode" },
+          ],
+          chosen: "/Users/me/.local/bin/opencode",
+          pinned: null,
+          installHint: null,
+        },
+      ],
+      git: { version: "2.50.1" },
+      python: "python3",
+      claude: { bundledVersion: null, configDir: null },
+      codex: { home: "/Users/me/.codex", hasAuth: true, authMode: "chatgpt", profiles: [] },
+      worktrees: { orphanDirs: [] },
+      quickjs: true,
+    });
+    const dup = findings.find((f) => f.id === "opencode:duplicates")!;
+    expect(dup.detail).toContain("/usr/local/bin/opencode (1.0.126, npm)");
+    expect(dup.fixes.some((f) => f.kind === "copy" && f.text === "npm uninstall -g opencode-ai")).toBe(true);
+  });
+});
