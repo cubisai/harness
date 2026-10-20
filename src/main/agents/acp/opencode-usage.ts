@@ -101,7 +101,10 @@ export async function exportTurnUsage(o: {
   sinceMs: number;
   timeoutMs?: number;
   run?: typeof runForStdout;
+  /** OpenCode's major version: v2 moved `export` under `session` (standalone, so no shared service starts). */
+  major?: number | null;
 }): Promise<TurnTokens | null> {
-  const out = await (o.run ?? runForStdout)(o.command, ["export", o.sessionId], o.env, o.timeoutMs ?? 3000);
+  const args = (o.major ?? 1) >= 2 ? ["session", "export", o.sessionId, "--standalone"] : ["export", o.sessionId];
+  const out = await (o.run ?? runForStdout)(o.command, args, o.env, o.timeoutMs ?? 3000);
   return out === null ? null : sumExportUsage(out, o.sinceMs);
 }

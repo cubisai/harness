@@ -35,6 +35,8 @@ export const ACP_PRESETS: AcpAgentConfig[] = [
     // --print-logs/--log-level: OpenCode's logfmt stderr explains a retrying
     // model call or a permission ask it never sends over ACP (stdout stays JSON-RPC).
     args: ["acp", "--print-logs", "--log-level", "INFO"],
+    // v2 takes only lowercase levels (and v1 only uppercase): checked on 2.1.0 and 1.19.0.
+    argsByMajor: { "2": ["acp", "--print-logs", "--log-level", "info"] },
     capabilities: { mcpStdio: true, interrupt: true, perMessageModel: true, permissionGranularity: "perTool", skillsDelivery: { mode: "tool", prefix: "", reads: ["project", "projectClaude", "shared"] }, mcpRouter: true, manualCompact: true, subagentTeams: true },
     injector: "opencode",
     guardPlugin: "opencode",
