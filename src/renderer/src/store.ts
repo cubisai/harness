@@ -34,6 +34,7 @@ import { DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
 import { IDLE, takeOverReducer, type TakeOverState } from "./takeover";
 import { threadSeen, turnEnded, type FinishedTurn } from "./inbox";
 import { threadKind } from "./sections";
+import { readSession, restoreDraft, restoreTarget, writeSession } from "./session";
 import { buildInCodePrompt, buildThreadPatch, designDirName, handoffPath } from "../../shared/design";
 import type { SelectedElement } from "../../shared/selection";
 import type { PrototypeTier } from "../../shared/tiers";
@@ -357,6 +358,8 @@ function ipcErrorText(err: unknown): string {
 }
 
 let initialized = false;
+/** Launch has restored the last session; until then the empty start state must not overwrite it. */
+let restored = false;
 let subscribed = false;
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -785,12 +788,15 @@ export const useStore = create<State>((set, get) => ({
         plans: [...s.plans, ...pending.plans.filter((p) => !s.plans.some((x) => x.requestId === p.requestId))],
         questions: [...s.questions, ...pending.questions.filter((q) => !s.questions.some((x) => x.requestId === q.requestId))],
       }));
-      const first = projects[0];
-      if (first) {
-        await get().selectProject(first.id);
-        const recent = threads[first.id]?.[0];
+      // Reopen where the user left off: the project, thread and new-thread picks of the last launch.
+      const saved = readSession();
+      set(restoreDraft(saved, agents));
+      restored = true;
+      const target = restoreTarget(saved, projects, threads);
+      if (target) {
+        await get().selectProject(target.projectId);
         // Open the selected thread before the per-project branch loads, which are not on the critical path.
-        const opening = recent ? get().selectThread(recent.id) : Promise.resolve();
+        const opening = target.threadId ? get().selectThread(target.threadId) : Promise.resolve();
         for (const p of projects) void get().loadBranch(p.id);
         await opening;
       }
@@ -1470,6 +1476,15 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 }));
+
+// Remember where the user is for the next launch. A selection left over from another project shows that project's
+// start page, so it's saved as one.
+useStore.subscribe((s, prev) => {
+  if (!restored) return;
+  if (s.selectedProjectId === prev.selectedProjectId && s.selectedThreadId === prev.selectedThreadId && s.draft === prev.draft && s.lastAgent === prev.lastAgent && s.threads === prev.threads) return;
+  const open = s.selectedProjectId && s.selectedThreadId && s.threads[s.selectedProjectId]?.some((t) => t.id === s.selectedThreadId);
+  writeSession({ projectId: s.selectedProjectId, threadId: open ? s.selectedThreadId : null, lastAgent: s.lastAgent, draft: s.draft });
+});
 
 /** Whether `path` (relative to the thread's folder) is inside a design thread's own folder. */
 function isDesignFile(s: Pick<State, "threads">, threadId: string, path: string): boolean {
