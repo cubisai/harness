@@ -65,6 +65,9 @@ export function installSource(path: string): InstallSource {
   }
   if (p.includes("/.volta/")) return "volta";
   if (p.includes("/pnpm/") || p.includes("/.pnpm")) return "pnpm";
+  if (p.includes("/fnm/") || p.includes("/fnm_multishells/") || p.includes("/.fnm/") || p.includes("/nvm/") || p.includes("/.nvm/")) {
+    return "npm";
+  }
   if (p.includes("/node_modules/") || p.includes("/npm/") || p.includes("/.npm-global/") || p.includes("/lib/node_modules")) {
     return "npm";
   }

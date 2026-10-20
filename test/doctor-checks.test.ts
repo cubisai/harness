@@ -41,6 +41,8 @@ describe("installSource", () => {
       ["/Users/me/.bun/bin/opencode", "bun"],
       ["/Users/me/.volta/bin/claude", "volta"],
       ["/Users/me/.pnpm/global/bin/opencode", "pnpm"],
+      ["/Users/me/.local/state/fnm_multishells/123_456/bin/opencode", "npm"],
+      ["/Users/me/.nvm/versions/node/v22.1.0/bin/codex", "npm"],
       ["/Users/me/.npm-global/bin/claude", "npm"],
       ["/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js", "npm"],
       ["/usr/local/bin/claude", "other"],
