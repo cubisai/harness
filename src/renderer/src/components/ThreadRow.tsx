@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { AgentInfo, Thread } from "../../../shared/types";
-import { IconArchive, IconMore, IconPin } from "../icons";
+import { IconArchive, IconMore, IconPin, IconStop } from "../icons";
 import { useStore } from "../store";
 import { UnsupportedChip } from "./UnsupportedChip";
 
@@ -28,6 +28,7 @@ export function ThreadRow({
   time,
   sub,
   onOpen,
+  onStop,
 }: {
   thread: Thread;
   agent: AgentInfo | undefined;
@@ -39,6 +40,8 @@ export function ThreadRow({
   /** A second line (Running rows: project · agent, or Needs approval). */
   sub?: ReactNode;
   onOpen(): void;
+  /** Stops the thread's running turn; shown on Running rows. */
+  onStop?: () => void;
 }) {
   const [menu, setMenu] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -113,6 +116,11 @@ export function ThreadRow({
       )}
       {!renaming && (
         <span className="thread-actions">
+          {onStop && (
+            <button className="icon-button" title="Stop" aria-label="Stop this thread" onClick={onStop}>
+              <IconStop />
+            </button>
+          )}
           {!thread.archived && (
             <button className="icon-button" title="Archive" onClick={() => void setArchived(thread.id, true)}>
               <IconArchive />

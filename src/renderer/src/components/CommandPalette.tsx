@@ -35,6 +35,7 @@ function Palette() {
   const inspectorOpen = useStore((s) => s.inspectorOpen);
   const thread = useSelectedThread();
   const running = useStore((s) => (thread ? Boolean(s.running[thread.id]) : false));
+  const runningThreads = useStore((s) => s.running);
   const [query, setQuery] = useState(() => useStore.getState().paletteQuery);
   const [index, setIndex] = useState(0);
   const input = useRef<HTMLInputElement>(null);
@@ -70,6 +71,7 @@ function Palette() {
     }
     if (inspectorOpen) action("hide-inspector", "Hide Side Panel", () => s.toggleInspector(), { keywords: "inspector close" });
     if (thread && running) action("stop", "Stop the Running Turn", () => void s.interrupt(), { shortcut: "Esc", keywords: "interrupt cancel" });
+    if (Object.values(runningThreads).filter(Boolean).length > 1) action("stop-all", "Stop All Running Threads", () => void s.stopAllRunning(), { keywords: "interrupt cancel background" });
     if (thread && !running) {
       for (const m of MODES) {
         if (m.id !== thread.permissionMode) action(`mode:${m.id}`, `Permissions: ${m.label}`, () => void s.updateThread({ permissionMode: m.id }), { keywords: "mode" });
@@ -123,7 +125,7 @@ function Palette() {
       out.push({ id: `project:${p.id}`, section: "Projects", title: p.name, detail: p.path, run: () => void s.selectProject(p.id) });
     }
     return out;
-  }, [projects, threads, skills, agents, settings, editors, selectedProjectId, inspectorOpen, thread, running]);
+  }, [projects, threads, skills, agents, settings, editors, selectedProjectId, inspectorOpen, thread, running, runningThreads]);
 
   const results = useMemo(() => rankCommands(commands, query), [commands, query]);
   useEffect(() => setIndex(0), [query]);

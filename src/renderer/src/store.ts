@@ -33,7 +33,7 @@ import { appendDelta, applyLiveEvent, emptyLive, flushPending, type LiveThread }
 import { DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
 import { IDLE, takeOverReducer, type TakeOverState } from "./takeover";
 import { threadSeen, turnEnded, type FinishedTurn } from "./inbox";
-import { threadKind } from "./sections";
+import { threadKind, waitingThreads } from "./sections";
 import { buildInCodePrompt, buildThreadPatch, designDirName, handoffPath } from "../../shared/design";
 import type { SelectedElement } from "../../shared/selection";
 import type { PrototypeTier } from "../../shared/tiers";
@@ -268,6 +268,10 @@ interface State {
   /** Remove the queued message at `index`; drops the thread's key once its queue is empty. */
   dequeue(threadId: string, index: number): void;
   interrupt(): Promise<void>;
+  /** Stop one thread's turn, dropping the messages queued behind it. */
+  interruptThread(threadId: string): Promise<void>;
+  /** Stop every running thread, and any paused on a permission, plan or question. */
+  stopAllRunning(): Promise<void>;
   respond(requestId: string, decision: "allow-once" | "allow-always" | "deny"): Promise<void>;
   respondPlan(requestId: string, decision: PlanDecision): Promise<void>;
   respondQuestion(requestId: string, answer: QuestionAnswer): Promise<void>;
@@ -1180,12 +1184,23 @@ export const useStore = create<State>((set, get) => ({
   async interrupt() {
     const id = get().selectedThreadId;
     if (!id) return;
+    await get().interruptThread(id);
+  },
+
+  async interruptThread(threadId) {
     // Stop means stop: queued messages go too, before the turn's end could deliver one.
     set((s) => {
-      const { [id]: _dropped, ...outbox } = s.outbox;
+      const { [threadId]: _dropped, ...outbox } = s.outbox;
       return { outbox };
     });
-    await api().interrupt(id);
+    await api().interrupt(threadId);
+  },
+
+  async stopAllRunning() {
+    const s = get();
+    const waiting = waitingThreads(s.permissions, s.plans, s.questions);
+    const ids = new Set([...Object.keys(s.running).filter((id) => s.running[id]), ...waiting]);
+    await Promise.all([...ids].map((id) => get().interruptThread(id)));
   },
 
   async respond(requestId, decision) {

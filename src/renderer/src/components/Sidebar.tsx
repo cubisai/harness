@@ -285,6 +285,7 @@ export function Sidebar() {
         ) : undefined
       }
       onOpen={() => open(t)}
+      onStop={live ? () => void useStore.getState().interruptThread(t.id) : undefined}
     />
   );
   const archived = (projectId: string) => {
@@ -358,6 +359,11 @@ export function Sidebar() {
           <section className="inbox-section" aria-label="Running">
             <div className="section-label">
               Running <span className="count">{model.running.length}</span>
+              {model.running.length > 1 && (
+                <button className="section-action" onClick={() => void useStore.getState().stopAllRunning()} title="Stop every running thread">
+                  Stop all
+                </button>
+              )}
             </div>
             {model.running.map((t) => row(t, true))}
           </section>
