@@ -33,7 +33,7 @@ import { appendDelta, applyLiveEvent, emptyLive, flushPending, type LiveThread }
 import { DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
 import { IDLE, takeOverReducer, type TakeOverState } from "./takeover";
 import { threadSeen, turnEnded, type FinishedTurn } from "./inbox";
-import { threadKind } from "./sections";
+import { threadKind, waitingThreads } from "./sections";
 import { readSession, restoreDraft, restoreTarget, writeSession } from "./session";
 import { buildInCodePrompt, buildThreadPatch, designDirName, handoffPath } from "../../shared/design";
 import type { SelectedElement } from "../../shared/selection";
@@ -138,6 +138,8 @@ interface State {
   history: Record<string, { firstSeq: number; hasMore: boolean; loadingOlder: boolean; totals: ThreadTotals | null }>;
   live: Record<string, LiveThread>; // streaming state not yet stored
   running: Record<string, boolean>;
+  /** Background threads waiting for a free slot under Settings › Run at once. */
+  queued: Record<string, boolean>;
   /** Pin or unpin a thread; pins are stored with the thread. */
   togglePin(threadId: string): Promise<void>;
   renameThread(threadId: string, title: string): Promise<void>;
@@ -266,7 +268,7 @@ interface State {
   /** Step the open thread's reasoning effort down (-1) or up (+1), wrapping through Default. */
   cycleEffort(dir: 1 | -1): void;
   /** Start a turn on the open thread (or `threadId`); resolves false when it couldn't start (no thread, already running, or the send failed). */
-  send(text: string, skills?: string[], threadId?: string, mentions?: string[]): Promise<boolean>;
+  send(text: string, skills?: string[], threadId?: string, mentions?: string[], opts?: { background?: boolean }): Promise<boolean>;
   /** Compact a thread's session now (/compact), with an optional focus for the summary. */
   compact(threadId: string, focus: string | null): Promise<void>;
   /** Messages sent while a turn ran, by thread: each goes out as the next turn, in order. Stop clears them; never persisted. */
@@ -275,6 +277,10 @@ interface State {
   /** Remove the queued message at `index`; drops the thread's key once its queue is empty. */
   dequeue(threadId: string, index: number): void;
   interrupt(): Promise<void>;
+  /** Stop one thread's turn, dropping the messages queued behind it. */
+  interruptThread(threadId: string): Promise<void>;
+  /** Stop every running thread, and any paused on a permission, plan or question. */
+  stopAllRunning(): Promise<void>;
   respond(requestId: string, decision: "allow-once" | "allow-always" | "deny"): Promise<void>;
   respondPlan(requestId: string, decision: PlanDecision): Promise<void>;
   respondQuestion(requestId: string, answer: QuestionAnswer): Promise<void>;
@@ -562,6 +568,7 @@ export const useStore = create<State>((set, get) => ({
   history: {},
   live: {},
   running: {},
+  queued: {},
   async togglePin(threadId) {
     const thread = findThread(get().threads, threadId);
     if (!thread) return;
@@ -1069,7 +1076,7 @@ export const useStore = create<State>((set, get) => ({
     let thread: Thread;
     const draft = get().draft;
     try {
-      thread = await api().createThread(projectId, draft.agent ?? get().lastAgent ?? undefined, createOpts(get().threadKind, draft, opts));
+      thread = await api().createThread(projectId, draft.agent ?? get().lastAgent ?? undefined, createOpts(get().threadKind, draft, opts ?? (get().settings?.background?.worktree ? { worktree: true } : undefined)));
       const patch = draftPatch(draft, thread);
       if (Object.keys(patch).length) thread = await api().updateThread(thread.id, patch);
     } catch (err) {
@@ -1083,7 +1090,7 @@ export const useStore = create<State>((set, get) => ({
       draft: {},
       lastAgent: thread.agent,
     }));
-    await get().send(text, skills, thread.id, mentions);
+    await get().send(text, skills, thread.id, mentions, { background: true });
     get().showNotice("Started in the background. The Message Center says when it's done.");
   },
 
@@ -1189,12 +1196,12 @@ export const useStore = create<State>((set, get) => ({
     });
   },
 
-  async send(text, skills, threadId, mentions) {
+  async send(text, skills, threadId, mentions, opts) {
     const id = threadId ?? get().selectedThreadId;
     if (!id || get().running[id]) return false;
     set((s) => ({ running: { ...s.running, [id]: true } }));
     try {
-      await api().send({ threadId: id, text, ...(skills?.length ? { skills } : {}), ...(mentions?.length ? { mentions } : {}) });
+      await api().send({ threadId: id, text, ...(skills?.length ? { skills } : {}), ...(mentions?.length ? { mentions } : {}), ...(opts?.background ? { background: true } : {}) });
       return true;
     } catch (err) {
       set((s) => ({ running: { ...s.running, [id]: false } }));
@@ -1217,12 +1224,23 @@ export const useStore = create<State>((set, get) => ({
   async interrupt() {
     const id = get().selectedThreadId;
     if (!id) return;
+    await get().interruptThread(id);
+  },
+
+  async interruptThread(threadId) {
     // Stop means stop: queued messages go too, before the turn's end could deliver one.
     set((s) => {
-      const { [id]: _dropped, ...outbox } = s.outbox;
+      const { [threadId]: _dropped, ...outbox } = s.outbox;
       return { outbox };
     });
-    await api().interrupt(id);
+    await api().interrupt(threadId);
+  },
+
+  async stopAllRunning() {
+    const s = get();
+    const waiting = waitingThreads(s.permissions, s.plans, s.questions);
+    const ids = new Set([...Object.keys(s.running).filter((id) => s.running[id]), ...waiting]);
+    await Promise.all([...ids].map((id) => get().interruptThread(id)));
   },
 
   async respond(requestId, decision) {
@@ -1381,6 +1399,9 @@ export const useStore = create<State>((set, get) => ({
         }
         return;
       }
+      case "queued":
+        set((s) => ({ queued: { ...s.queued, [update.threadId]: update.queued } }));
+        return;
       case "running":
         if (!update.running) void api().listAgents().then((agents) => set({ agents }));
         // A turn may have switched branches.

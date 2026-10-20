@@ -201,6 +201,8 @@ export interface Settings {
   autoUpdate: boolean;
   /** Installs pinned in /doctor: CLI command → the path CubiQ uses instead of the newest. */
   agentBinary?: Record<string, string>;
+  /** Background threads: how many turns may run at once (0 = no limit; over it, background sends wait in a queue) and whether Alt+Enter starts them in their own worktree. Absent = { maxRunning: 0, worktree: false }. */
+  background?: { maxRunning: number; worktree: boolean };
   /** The editor "Open in editor" uses; null = the first one found. */
   editor: string | null;
   /** Panel sizes and which panels are collapsed; SettingsStore.get() always fills it in. */
@@ -1033,6 +1035,8 @@ export interface SendRequest {
   checkRound?: number;
   /** Compact the session instead of sending a message (/compact [focus]). */
   compact?: { focus: string | null };
+  /** Sent with Alt+Enter: waits in the queue when Settings › Run at once is reached. */
+  background?: boolean;
 }
 
 /** A viewport the browser pane can emulate; desktop means no emulation. */
@@ -1062,6 +1066,8 @@ export type LiveUpdate =
   | { type: "event"; threadId: string; stored: StoredEvent }
   | { type: "delta"; threadId: string; delta: LiveDelta }
   | { type: "running"; threadId: string; running: boolean }
+  /** A background send is waiting for a free slot (true) or has started or been stopped (false). */
+  | { type: "queued"; threadId: string; queued: boolean }
   | { type: "permission"; request: PermissionRequest }
   | { type: "permission-withdrawn"; requestId: string }
   | { type: "plan-approval"; request: PlanRequest }
@@ -1379,3 +1385,6 @@ export interface ContextPreview {
   /** The shared memory index, once memory exists (null until then). */
   memoryIndex: { lines: number; tokens: number } | null;
 }
+
+/** The background-turn limits Settings offers; 0 means no limit. */
+export const MAX_RUNNING_CHOICES = [0, 2, 3, 4, 6] as const;

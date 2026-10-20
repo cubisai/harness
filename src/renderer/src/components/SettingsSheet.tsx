@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Density, Motion, PermissionMode, SettingsView, Theme } from "../../../shared/types";
+import { MAX_RUNNING_CHOICES } from "../../../shared/types";
 import { api } from "../api";
 import { ProvidersSection } from "./ProviderSheet";
 import { useStore, type LibraryTab } from "../store";
@@ -38,7 +39,7 @@ const MODES: { id: PermissionMode; label: string }[] = [
 /** The left-nav groups, in order, and the sections each shows. */
 export const SETTINGS_GROUPS = [
   { id: "appearance", label: "Appearance", sections: ["Appearance"] },
-  { id: "threads", label: "Threads", sections: ["New threads", "Editor"] },
+  { id: "threads", label: "Threads", sections: ["New threads", "Background", "Editor"] },
   { id: "agents", label: "Agents & Providers", sections: ["Providers", "Agents", "Antigravity"] },
   { id: "skills", label: "Skills & MCP", sections: ["Skills", "MCP servers"] },
   { id: "data", label: "Data & Security", sections: ["Data"] },
@@ -257,6 +258,38 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
                 ))}
               </div>
             </div>
+          </section>
+          <section>
+            <h3>Background</h3>
+            <div className="row">
+              <span className="label">Run at once</span>
+              <div className="segmented">
+                {MAX_RUNNING_CHOICES.map((n) => (
+                  <button
+                    key={n}
+                    className={(settings.background?.maxRunning ?? 0) === n ? "on" : ""}
+                    onClick={() => update({ background: { maxRunning: n, worktree: settings.background?.worktree ?? false } })}
+                  >
+                    {n === 0 ? "No limit" : n}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="row">
+              <span className="label">Own worktree</span>
+              <div className="segmented">
+                {([true, false] as const).map((on) => (
+                  <button
+                    key={String(on)}
+                    className={(settings.background?.worktree ?? false) === on ? "on" : ""}
+                    onClick={() => update({ background: { maxRunning: settings.background?.maxRunning ?? 0, worktree: on } })}
+                  >
+                    {on ? "On" : "Off"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="note">Alt+Enter sends a message to a new thread in the background. With a limit, extra background threads wait in the Running list and start when one finishes. With Own worktree on, each starts on its own git branch so its edits stay off your checkout.</p>
           </section>
           <section>
             <h3>Editor</h3>

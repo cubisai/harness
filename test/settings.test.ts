@@ -292,3 +292,30 @@ describe("Service defaults for new threads", () => {
     expect(service.createThread(project.id, "b")).toMatchObject({ agent: "b" });
   });
 });
+
+describe("background settings", () => {
+  it("accepts and persists valid values", () => {
+    const file = fresh();
+    const s = new SettingsStore(file, box);
+    s.update({ background: { maxRunning: 3, worktree: true } });
+    expect(new SettingsStore(file, box).get().background).toEqual({ maxRunning: 3, worktree: true });
+  });
+
+  it("rejects a maxRunning outside the choices, keeping the previous value", () => {
+    const s = new SettingsStore(fresh(), box);
+    s.update({ background: { maxRunning: 2, worktree: false } });
+    s.update({ background: { maxRunning: 5, worktree: false } });
+    expect(s.get().background).toEqual({ maxRunning: 2, worktree: false });
+  });
+
+  it("ignores a non-boolean worktree", () => {
+    const s = new SettingsStore(fresh(), box);
+    s.update({ background: { maxRunning: 0, worktree: true } });
+    s.update({ background: { maxRunning: 0, worktree: "yes" as never } });
+    expect(s.get().background).toEqual({ maxRunning: 0, worktree: true });
+  });
+
+  it("leaves background absent until it is set", () => {
+    expect(new SettingsStore(fresh(), box).get().background).toBeUndefined();
+  });
+});

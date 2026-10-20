@@ -229,6 +229,7 @@ export function Sidebar() {
   const projects = useStore((s) => s.projects);
   const threads = useStore((s) => s.threads);
   const running = useStore((s) => s.running);
+  const queued = useStore((s) => s.queued);
   const permissions = useStore((s) => s.permissions);
   const plans = useStore((s) => s.plans);
   const questions = useStore((s) => s.questions);
@@ -285,12 +286,14 @@ export function Sidebar() {
             </>
           ) : (
             <>
+              {queued[t.id] && "Queued · "}
               {projectName(t.projectId)} · {agentOf(t)?.label ?? t.agent}
             </>
           )
         ) : undefined
       }
       onOpen={() => open(t)}
+      onStop={live ? () => void useStore.getState().interruptThread(t.id) : undefined}
     />
   );
   const archived = (projectId: string) => {
@@ -370,6 +373,11 @@ export function Sidebar() {
           <section className="inbox-section" aria-label="Running">
             <div className="section-label">
               Running <span className="count">{model.running.length}</span>
+              {model.running.length > 1 && (
+                <button className="section-action" onClick={() => void useStore.getState().stopAllRunning()} title="Stop every running thread">
+                  Stop all
+                </button>
+              )}
             </div>
             {model.running.map((t) => row(t, true))}
           </section>

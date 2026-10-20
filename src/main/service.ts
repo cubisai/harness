@@ -671,8 +671,49 @@ export class Service {
     return stored;
   }
 
+  /** How many turns may run at once before background sends wait (0 = no limit). */
+  private runLimit: () => number = () => 0;
+  /** Background sends waiting for a slot, oldest first; resolve(false) means it was stopped while waiting. */
+  private waiting: { threadId: string; resolve: (go: boolean) => void }[] = [];
+  /** Slots handed to waiting sends that haven't marked themselves running yet. */
+  private admitting = 0;
+
+  /** Settings › Run at once: background sends over the limit wait for a free slot. */
+  setRunLimit(limit: () => number): void {
+    this.runLimit = limit;
+  }
+
+  /** Start waiting background sends while there's room under the limit. */
+  private admitWaiting(): void {
+    const limit = this.runLimit();
+    while (this.waiting.length && (limit <= 0 || this.running.size + this.admitting < limit)) {
+      this.admitting++;
+      this.waiting.shift()!.resolve(true);
+    }
+  }
+
+  /**
+   * A background send waits here while the limit is reached. False when it
+   * was stopped before a slot came free.
+   */
+  private async waitForSlot(req: SendRequest): Promise<boolean> {
+    const limit = this.runLimit();
+    if (!req.background || limit <= 0 || this.running.size + this.admitting < limit) return true;
+    this.emit(req.threadId, { kind: "notice", text: `Queued: ${limit} threads are already running. This one starts when one of them finishes.` });
+    this.broadcast({ type: "queued", threadId: req.threadId, queued: true });
+    const go = await new Promise<boolean>((resolve) => this.waiting.push({ threadId: req.threadId, resolve }));
+    this.broadcast({ type: "queued", threadId: req.threadId, queued: false });
+    if (go) this.admitting--;
+    return go;
+  }
+
   async send(req: SendRequest): Promise<void> {
-    if (this.running.has(req.threadId)) throw new Error("This thread is already running.");
+    if (this.running.has(req.threadId) || this.waiting.some((w) => w.threadId === req.threadId)) throw new Error("This thread is already running.");
+    if (!(await this.waitForSlot(req))) {
+      this.emit(req.threadId, { kind: "notice", text: "Stopped before it started." });
+      this.broadcast({ type: "running", threadId: req.threadId, running: false });
+      return;
+    }
     let thread = this.store.getThread(req.threadId);
     const project = this.store.getProject(thread.projectId);
     const cwd = this.cwdOf(thread);
@@ -688,6 +729,7 @@ export class Service {
       // The renderer marks the thread running as it sends; settle that too.
       this.broadcast({ type: "running", threadId: thread.id, running: false });
       this.broadcast({ type: "projects-changed" });
+      this.admitWaiting();
       return;
     }
     const driver = this.driverFor(thread.agent);
@@ -711,6 +753,7 @@ export class Service {
         : `Nothing to compact yet: this thread has no ${driver.label} session.`;
       this.emit(thread.id, { kind: "notice", text });
       this.broadcast({ type: "running", threadId: thread.id, running: false });
+      this.admitWaiting();
       return;
     }
     // The project's verification gate: off when there's no command; `round` counts the automatic fixes.
@@ -1080,12 +1123,16 @@ export class Service {
         void this.send(next).catch((e) => this.emit(thread.id, { kind: "error", message: e instanceof Error ? e.message : String(e) }));
       } else {
         this.broadcast({ type: "running", threadId: thread.id, running: false });
+        // A slot came free (a fix round keeps it): the oldest waiting background send starts.
+        this.admitWaiting();
       }
       this.broadcast({ type: "thread", thread: this.store.updateThread(thread.id, {}) });
     }
   }
 
   interrupt(threadId: string): void {
+    const waiting = this.waiting.findIndex((w) => w.threadId === threadId);
+    if (waiting >= 0) this.waiting.splice(waiting, 1)[0]!.resolve(false);
     this.running.get(threadId)?.abort();
   }
 
