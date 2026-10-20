@@ -4,8 +4,9 @@ import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, powerMonitor, protocol, safeStorage, shell, utilityProcess } from "electron";
-import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, DesignDevice, DesignExportFormat, DesignSystemEdit, DesignSystemOption, DevicePreset, LinkMeta, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryScope, MemoryType, OpenResult, PermissionDecision, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
+import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, DesignDevice, DesignExportFormat, DesignSystemEdit, DesignSystemOption, DevicePreset, LinkMeta, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryScope, MemoryType, OpenResult, PermissionDecision, Project, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
+import { CHATS_NAME, chatsRoot, isChatsRoot } from "./chats";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
 import type { AutomationInput } from "../shared/automations";
 import { DESIGN_SCHEME, designDirName, designUrl, entryFile, serveDesign } from "./design/serve";
@@ -231,6 +232,8 @@ async function main(): Promise<void> {
 
   const userData = app.getPath("userData");
   mkdirSync(userData, { recursive: true });
+  // The built-in Chats project's folder: made only when the user starts a chat.
+  const chats = chatsRoot(userData);
   const shotsDir = join(userData, "screenshots");
   const shotInfo = (path: string): ScreenshotInfo => ({ path, url: `unskilled-shot://${basename(path).toLowerCase()}` });
   // Only bare .png names inside the screenshots folder: nothing else is reachable.
@@ -809,6 +812,7 @@ async function main(): Promise<void> {
     knownSecrets,
     join(userData, "worktrees"),
     experts,
+    chats,
   );
   // Each saved provider is its own agent on CubiQ's own harness, kept in step with Settings.
   const providerAgents = new ProviderAgents({
@@ -1460,7 +1464,17 @@ async function main(): Promise<void> {
   ipcMain.handle("limits:list", () => limits.all());
   ipcMain.handle("app:install-update", () => updater.install());
 
-  ipcMain.handle("projects:list", () => store.listProjects().map((p) => ({ ...p, missing: !existsSync(p.path) })));
+  // The Chats project shows under its own name; its folder is the app's, so a missing one is made again.
+  const projectView = (p: Project): Project => {
+    if (!isChatsRoot(p.path, chats)) return { ...p, missing: !existsSync(p.path) };
+    mkdirSync(p.path, { recursive: true });
+    return { ...p, name: CHATS_NAME, builtin: true, missing: false };
+  };
+  ipcMain.handle("projects:list", () => store.listProjects().map(projectView));
+  ipcMain.handle("projects:chats", () => {
+    mkdirSync(chats, { recursive: true });
+    return projectView(store.addProject(chats));
+  });
   ipcMain.handle("projects:add", async (event) => {
     const owner = BrowserWindow.fromWebContents(event.sender);
     const options: Electron.OpenDialogOptions = {
@@ -1469,9 +1483,10 @@ async function main(): Promise<void> {
     };
     const res = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
     const path = res.filePaths[0];
-    return res.canceled || !path ? null : store.addProject(path);
+    return res.canceled || !path ? null : projectView(store.addProject(path));
   });
   ipcMain.handle("projects:relocate", async (event, id: string) => {
+    if (isChatsRoot(store.getProject(id).path, chats)) throw new Error("Chats live in the app's own folder and can't be moved.");
     const owner = BrowserWindow.fromWebContents(event.sender);
     const options: Electron.OpenDialogOptions = {
       title: "Locate the project folder",

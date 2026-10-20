@@ -1197,3 +1197,73 @@ describe("Service async questions", () => {
     expect(service.pendingState()).toEqual({ running: [], permissions: [], plans: [], questions: [] });
   });
 });
+
+describe("Chats (no project)", () => {
+  const setupChats = (driver: AgentDriver) => {
+    const store = new Store(join(tempDir(), "t.db"));
+    closeAfter(() => store.close());
+    const root = join(tempDir(), "chats");
+    mkdirSync(root, { recursive: true });
+    const service = new Service(store, () => catalog(), [driver], () => {}, undefined, undefined, undefined, undefined, null, null, root);
+    return { store, service, project: store.addProject(root) };
+  };
+
+  it("gives each chat its own folder, with no branch, and runs its turns there", async () => {
+    const cwds: string[] = [];
+    const { store, service, project } = setupChats(fakeDriver(async (input) => void cwds.push(input.cwd)));
+
+    const a = service.createThread(project.id);
+    const b = service.createThread(project.id);
+    expect(a.worktreePath).toBe(join(project.path, a.id));
+    expect(b.worktreePath).toBe(join(project.path, b.id));
+    expect(a.branch).toBeNull();
+    expect(existsSync(a.worktreePath!)).toBe(true);
+    expect(store.getThread(a.id).worktreePath).toBe(a.worktreePath);
+
+    await service.send({ threadId: a.id, text: "hi" });
+    expect(cwds).toEqual([a.worktreePath]);
+  });
+
+  it("makes a chat's folder again when it's gone", async () => {
+    const cwds: string[] = [];
+    const { service, project } = setupChats(fakeDriver(async (input) => void cwds.push(input.cwd)));
+    const chat = service.createThread(project.id);
+    rmSync(chat.worktreePath!, { recursive: true });
+
+    await service.send({ threadId: chat.id, text: "hi" });
+    expect(cwds).toEqual([chat.worktreePath]);
+  });
+
+  it("asks for no git: a worktree thread in Chats is a plain chat", async () => {
+    const { service, project } = setupChats(fakeDriver(async () => {}));
+    const chat = await service.createWorktreeThread(project.id);
+    expect(chat.branch).toBeNull();
+    expect(chat.worktreePath).toBe(join(project.path, chat.id));
+  });
+
+  it("deletes a chat's folder with the chat, and nothing outside it", async () => {
+    const { store, service, project } = setupChats(fakeDriver(async () => {}));
+    const chat = service.createThread(project.id);
+    const other = service.createThread(project.id);
+    writeFileSync(join(chat.worktreePath!, "notes.md"), "x");
+
+    await service.deleteThread(chat.id);
+    expect(existsSync(chat.worktreePath!)).toBe(false);
+    expect(existsSync(other.worktreePath!)).toBe(true);
+    expect(existsSync(project.path)).toBe(true);
+    expect(store.listThreads(project.id).map((t) => t.id)).toEqual([other.id]);
+  });
+
+  it("refuses to remove Chats", async () => {
+    const { store, service, project } = setupChats(fakeDriver(async () => {}));
+    service.createThread(project.id);
+    await expect(service.deleteProject(project.id)).rejects.toThrow(/Chats can't be removed/);
+    expect(store.listThreads(project.id)).toHaveLength(1);
+  });
+
+  it("leaves other projects' threads in the project folder", () => {
+    const { store, service } = setupChats(fakeDriver(async () => {}));
+    const other = store.addProject(tempDir());
+    expect(service.createThread(other.id).worktreePath ?? null).toBeNull();
+  });
+});

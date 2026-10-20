@@ -90,7 +90,7 @@ Full access mode shows its chip in `--danger`.
 ## 7. Components
 
 ### 7.1 Sidebar (inbox style)
-- Top: brand row (iQ mark 22px, "CubiQ", collapse toggle), then nav rows **New thread ⌘N · Search ⌘K · Library**.
+- Top: brand row (iQ mark 22px, "CubiQ", collapse toggle), then nav rows **New thread ⌘N · New chat (Chat mode only) · Search ⌘K · Library**. New chat starts a thread in the built-in **Chats** project (no folder needed), which lists first under Recent and has no ⋯ project menu.
 - Sections:
   - **Running**: live dot, title, elapsed time on the right, sub-line with project · agent · diff stat. "Needs approval" in `--warning`.
   - **Pinned**.

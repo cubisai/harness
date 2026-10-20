@@ -221,6 +221,8 @@ interface State {
 
   init(): Promise<void>;
   addProject(): Promise<void>;
+  /** Open the built-in Chats project (made on first use) and start a chat there: no project folder needed. */
+  newChat(): Promise<string | null>;
   /** Point a project at a newly picked folder and apply the returned row. */
   relocateProject(id: string): Promise<void>;
   deleteProject(id: string): Promise<void>;
@@ -825,6 +827,24 @@ export const useStore = create<State>((set, get) => ({
       threads: { ...s.threads, [project.id]: threads },
     }));
     await get().selectProject(project.id);
+  },
+
+  async newChat() {
+    let chats: Project;
+    try {
+      chats = await api().openChats();
+    } catch (err) {
+      get().showNotice(`Couldn't start a chat: ${ipcErrorText(err)}`);
+      return null;
+    }
+    set((s) => ({
+      projects: s.projects.some((p) => p.id === chats.id) ? s.projects : [...s.projects, chats].sort((a, b) => a.name.localeCompare(b.name)),
+      threads: s.threads[chats.id] ? s.threads : { ...s.threads, [chats.id]: [] },
+    }));
+    await get().selectProject(chats.id);
+    // A chat, even from Design mode: Chats is for talking, and its threads open in Chat.
+    if (get().threadKind !== "chat") await get().setThreadKind("chat");
+    return get().newThread();
   },
 
   async relocateProject(id) {

@@ -7,6 +7,7 @@ const api: UnskilledApi = {
   smoke: process.argv.includes("--unskilled-smoke"),
   listProjects: () => ipcRenderer.invoke("projects:list"),
   addProject: () => ipcRenderer.invoke("projects:add"),
+  openChats: () => ipcRenderer.invoke("projects:chats"),
   relocateProject: (projectId) => ipcRenderer.invoke("projects:relocate", projectId),
   deleteProject: (projectId) => ipcRenderer.invoke("projects:delete", projectId),
   setCheckCommand: (projectId, command, fixRounds) => ipcRenderer.invoke("projects:set-check-command", projectId, command, fixRounds),

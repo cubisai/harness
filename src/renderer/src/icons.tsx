@@ -18,6 +18,7 @@ import {
   Folder,
   Globe,
   Library,
+  MessageCircle,
   PanelLeftClose,
   PanelLeftOpen,
   Pin,
@@ -42,6 +43,7 @@ const icon = (Glyph: LucideIcon, fallback = 16) =>
   };
 
 export const IconCompose = icon(SquarePen);
+export const IconChat = icon(MessageCircle);
 export const IconBell = icon(Bell);
 export const IconCheck = icon(Check, 12);
 export const IconTodo = icon(Circle, 12);

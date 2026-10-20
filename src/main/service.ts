@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createTurnWatchdog, STALL_NOTICE_MS, STALL_STOP_MS, type TurnWatchdog } from "./watchdog";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import type {
   AgentInfo,
@@ -66,6 +66,7 @@ import { artifactDiff, listArtifacts, opensByItself, readArtifact, recordPlan, r
 import { runCheck, tailOf } from "./check";
 import { evidenceFlags, isTestPath, markerCounts, newMarkers, addedLines as diffAddedLines } from "./evidence";
 import type { Store } from "./db";
+import { isChatDir, isChatsRoot } from "./chats";
 import { addedSinceHead, branchLabel, createWorktree, dirtyPaths, hasGitDir, isTracked, listProjectFiles, removeWorktree, workingTreeDiff, worktreeBranch } from "./git";
 import {
   bloatSignal,
@@ -144,6 +145,8 @@ export class Service {
     private worktreesDir: string | null = null,
     /** The expert catalogue: a thread's expertId resolves to a persona injected into its turns. */
     private experts: { get(id: string): ExpertDef | null; packageSkills?(id: string): ExpertSkill[]; skillsDir?(id: string): string | null } | null = null,
+    /** The built-in Chats project's folder (chats with no project); null turns Chats off. */
+    private chatsRoot: string | null = null,
   ) {
     if (!drivers.length) throw new Error("no agent drivers");
     this.drivers = new Map(drivers.map((d) => [d.id, d]));
@@ -209,12 +212,17 @@ export class Service {
   }
 
   createThread(projectId: string, agent?: string, kind: ThreadKind = "chat", designSystem: string | null = null, expertId: string | null = null): Thread {
-    this.store.getProject(projectId);
+    const project = this.store.getProject(projectId);
     const d = this.defaults();
     const wanted = agent ?? d.agent;
     // A default agent that's no longer installed falls back to the first one.
     const driver = (wanted && this.drivers.get(wanted)) || [...this.drivers.values()][0]!;
-    return this.store.createThread(projectId, driver.id, driver.defaultModel, d.permissionMode, kind, designSystem, expertId);
+    const thread = this.store.createThread(projectId, driver.id, driver.defaultModel, d.permissionMode, kind, designSystem, expertId);
+    if (!isChatsRoot(project.path, this.chatsRoot)) return thread;
+    // A chat works in its own folder, so files one chat writes never show up in another.
+    const dir = join(project.path, thread.id);
+    mkdirSync(dir, { recursive: true });
+    return this.store.setWorktree(thread.id, null, dir);
   }
 
   /**
@@ -222,8 +230,10 @@ export class Service {
    * the project's checkout. Nothing is left behind when the worktree can't be made.
    */
   async createWorktreeThread(projectId: string, agent?: string, kind: ThreadKind = "chat", designSystem: string | null = null, expertId: string | null = null): Promise<Thread> {
-    if (!this.worktreesDir) throw new Error("Worktree threads aren't available here.");
     const project = this.store.getProject(projectId);
+    // Chats have no git: a chat already gets its own folder.
+    if (isChatsRoot(project.path, this.chatsRoot)) return this.createThread(projectId, agent, kind, designSystem, expertId);
+    if (!this.worktreesDir) throw new Error("Worktree threads aren't available here.");
     const thread = this.createThread(projectId, agent, kind, designSystem, expertId);
     const branch = worktreeBranch(project.name, thread.id);
     const dir = join(this.worktreesDir, thread.id);
@@ -236,11 +246,12 @@ export class Service {
     return this.store.setWorktree(thread.id, branch, dir);
   }
 
-  /** Delete a thread; its worktree goes too when it has nothing uncommitted (the branch always stays). */
+  /** Delete a thread; its worktree goes too when it has nothing uncommitted (the branch always stays), and a chat's own folder always. */
   async deleteThread(id: string): Promise<void> {
     this.interrupt(id);
     const thread = this.store.getThread(id);
-    if (thread.worktreePath) await removeWorktree(this.store.getProject(thread.projectId).path, thread.worktreePath);
+    if (thread.worktreePath && isChatDir(thread.worktreePath, this.chatsRoot)) rmSync(thread.worktreePath, { recursive: true, force: true });
+    else if (thread.worktreePath) await removeWorktree(this.store.getProject(thread.projectId).path, thread.worktreePath);
     this.store.deleteThread(id);
   }
 
@@ -252,6 +263,7 @@ export class Service {
     } catch {
       // already gone
     }
+    if (projectPath && isChatsRoot(projectPath, this.chatsRoot)) throw new Error("Chats can't be removed. Delete the chats themselves instead.");
     const threads = this.store.listThreads(id);
     for (const thread of threads) {
       this.interrupt(thread.id);
@@ -660,6 +672,8 @@ export class Service {
     let thread = this.store.getThread(req.threadId);
     const project = this.store.getProject(thread.projectId);
     const cwd = this.cwdOf(thread);
+    // A chat's own folder is the app's: one that's gone is simply made again.
+    if (thread.worktreePath && isChatDir(cwd, this.chatsRoot)) mkdirSync(cwd, { recursive: true });
     // A folder that's been moved or deleted fails the agent with a misleading error;
     // say what's wrong instead, without starting anything or leaving the thread running.
     if (!existsSync(cwd)) {

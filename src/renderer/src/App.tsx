@@ -25,7 +25,7 @@ import { AboutSheet } from "./components/AboutSheet";
 import { ContextSheet } from "./components/ContextSheet";
 import { McpSheet } from "./components/McpSheet";
 import { ThreadView } from "./components/ThreadView";
-import { IconArrowLeft, IconDiff, IconFolder, IconGlobe, IconSparkle, IconTerminal } from "./icons";
+import { IconArrowLeft, IconChat, IconDiff, IconFolder, IconGlobe, IconSparkle, IconTerminal } from "./icons";
 import { usePaneLayout } from "./hooks/usePaneLayout";
 import { BOUNDS, DEFAULT_LAYOUT, DESIGN_FLOOR, designChatWidth, isWideInspector } from "./layout";
 import { ESCAPE_OWNERS, escapeStopsTurn, type EscapeTarget } from "./escape";
@@ -44,7 +44,7 @@ export function App() {
   const agents = useStore((s) => s.agents);
   const thread = useSelectedThread();
   const running = useStore((s) => (thread ? Boolean(s.running[thread.id]) : false));
-  const { init, newThread, showInspector, updateThread, interrupt, addProject } = useStore.getState();
+  const { init, newThread, showInspector, updateThread, interrupt, addProject, newChat } = useStore.getState();
   const project = projects.find((p) => p.id === selectedProjectId) ?? null;
   const initError = useStore((s) => s.initError);
 
@@ -205,10 +205,15 @@ export function App() {
                 <div className="empty">
                   <div>
                     <h1>Welcome to CubiQ</h1>
-                    <p>Open a project folder to start. Claude works inside it, with the skilled workflow built in.</p>
-                    <button className="button primary" onClick={() => void addProject()}>
-                      <IconFolder /> Open Project…
-                    </button>
+                    <p>Open a project folder to work on its code, or start a chat with no folder needed.</p>
+                    <div className="empty-actions">
+                      <button className="button primary" onClick={() => void addProject()}>
+                        <IconFolder /> Open Project…
+                      </button>
+                      <button className="button ghost" onClick={() => void newChat()}>
+                        <IconChat /> Start a chat
+                      </button>
+                    </div>
                   </div>
                 </div>
               )
@@ -219,6 +224,11 @@ export function App() {
                     <>
                       <h1>What should we design in {project.name}?</h1>
                       <p>Describe a page, screen or component. The design opens on a canvas beside this chat.</p>
+                    </>
+                  ) : project.builtin ? (
+                    <>
+                      <h1>What's on your mind?</h1>
+                      <p>Ask anything. Each chat has its own scratch folder for any files it makes. Type $ for a skill or / for a command.</p>
                     </>
                   ) : (
                     <>

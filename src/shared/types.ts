@@ -52,6 +52,8 @@ export interface Project {
   checkFixRounds?: number | null;
   /** The folder no longer exists (computed when listed, not stored). */
   missing?: boolean;
+  /** The built-in Chats project (chats with no project folder; computed when listed, not stored). */
+  builtin?: boolean;
 }
 
 export type PermissionMode = "ask" | "auto-edit" | "plan" | "full";
@@ -1104,6 +1106,8 @@ export interface UnskilledApi {
   smoke?: boolean;
   listProjects(): Promise<Project[]>;
   addProject(): Promise<Project | null>;
+  /** The built-in Chats project, made on first use. */
+  openChats(): Promise<Project>;
   /** Point a project at a newly picked folder; null when the dialog was cancelled. */
   relocateProject(projectId: string): Promise<Project | null>;
   deleteProject(projectId: string): Promise<void>;

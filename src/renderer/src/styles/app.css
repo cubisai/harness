@@ -1376,6 +1376,7 @@ button.qc-option.other { cursor: pointer; }
 }
 .empty h1 { font: 600 26px/1.2 var(--font-display); letter-spacing: -0.02em; margin: 0 0 8px; }
 .empty p { color: var(--text-secondary); margin: 0 auto 20px; max-width: 380px; font-size: 14px; }
+.empty-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 .empty .hints { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 24px; }
 .hint-card {
   border: 1px solid var(--hairline);

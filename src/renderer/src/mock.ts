@@ -265,6 +265,15 @@ export function installMock(): void {
       threads[project.id] = [];
       return project;
     },
+    openChats: async () => {
+      let chats = projects.find((p) => p.builtin);
+      if (!chats) {
+        chats = { id: "chats", path: "/Users/you/Library/Application Support/CubiQ/chats", name: "Chats", createdAt: Date.now(), builtin: true };
+        projects.push(chats);
+        threads[chats.id] = [];
+      }
+      return chats;
+    },
     deleteProject: async (pid) => {
       const idx = projects.findIndex((p) => p.id === pid);
       if (idx >= 0) projects.splice(idx, 1);
