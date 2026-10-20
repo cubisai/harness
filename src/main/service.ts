@@ -886,7 +886,7 @@ export class Service {
             this.broadcast({ type: "thread", thread: this.store.updateThread(thread.id, { sessionId }) });
           }
         },
-        requestPermission: (p) => {
+        requestPermission: ({ signal, ...p }) => {
           const approvals = this.approvalsFor(project.id);
           // The drivers run the git guard before calling requestPermission, so
           // a remembered approval never skips a guardrail block. Answer
@@ -903,6 +903,18 @@ export class Service {
             };
             this.pendingPermissions.set(requestId, done);
             controller.signal.addEventListener("abort", () => done("deny"), { once: true });
+            // The asker went away (a dropped plugin request): take the card down; nobody denied it.
+            signal?.addEventListener(
+              "abort",
+              () => {
+                if (!this.pendingPermissions.has(requestId)) return;
+                this.pendingPermissions.delete(requestId);
+                this.permissionRequests.delete(requestId);
+                this.broadcast({ type: "permission-withdrawn", requestId });
+                resolve("deny");
+              },
+              { once: true },
+            );
             const request = { requestId, threadId: thread.id, ...p };
             this.permissionRequests.set(requestId, request);
             this.broadcast({ type: "permission", request });

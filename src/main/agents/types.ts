@@ -92,7 +92,8 @@ export interface TurnInput {
   onSessionRebuilt?(): void;
   /** The stored session couldn't be reopened (reason is the agent's own error). The driver starts a new session and applies the returned seed; null means start without history. */
   onSessionLost?(reason: string): Promise<SessionSeed | null>;
-  requestPermission(req: { toolName: string; summary: string; canAlwaysAllow: boolean }): Promise<PermissionDecision>;
+  /** `signal` withdraws the card unanswered (the asker went away); the call then resolves "deny". */
+  requestPermission(req: { toolName: string; summary: string; canAlwaysAllow: boolean; signal?: AbortSignal }): Promise<PermissionDecision>;
   /** Plan mode: the agent presented a plan and waits for the user's decision. */
   requestPlanDecision(p: { plan: string }): Promise<PlanDecision>;
   /** The agent asks the user questions (Claude's AskUserQuestion, Codex's request_user_input); resolves "dismiss" when skipped or stopped. Absent: the driver answers "dismiss". */

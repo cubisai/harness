@@ -1384,6 +1384,9 @@ export const useStore = create<State>((set, get) => ({
             : { permissions: [...s.permissions, update.request] },
         );
         return;
+      case "permission-withdrawn":
+        set((s) => ({ permissions: s.permissions.filter((p) => p.requestId !== update.requestId) }));
+        return;
       case "plan-approval":
         set((s) =>
           s.plans.some((p) => p.requestId === update.request.requestId) ? {} : { plans: [...s.plans, update.request] },

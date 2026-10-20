@@ -156,12 +156,12 @@ export function pickPermission(
  * defers to OpenCode's own plan agent and its ACP asks, as before the plugin
  * asked (null = defer).
  */
-export async function decidePluginAsk(input: Pick<TurnInput, "permissionMode" | "requestPermission">, ask: PluginAsk): Promise<PermissionDecision | null> {
+export async function decidePluginAsk(input: Pick<TurnInput, "permissionMode" | "requestPermission">, ask: PluginAsk, signal?: AbortSignal): Promise<PermissionDecision | null> {
   if (input.permissionMode === "plan") return null;
   const picked = pickPermission(input.permissionMode, ask.kind);
   if (picked === "allow") return "allow-once";
   if (picked === "deny") return "deny";
-  return input.requestPermission({ toolName: kindLabel(ask.kind), summary: ask.summary || ask.tool, canAlwaysAllow: false });
+  return input.requestPermission({ toolName: kindLabel(ask.kind), summary: ask.summary || ask.tool, canAlwaysAllow: false, ...(signal ? { signal } : {}) });
 }
 
 export function optionFor(options: PermissionOption[], decision: PermissionDecision): string | undefined {
@@ -358,7 +358,7 @@ export function createAcpDriver(
   let askServer: Promise<AskServer> | null = null;
 
   /** One plugin ask from a thread's process: no live turn means nobody can approve it. */
-  const answerPluginAsk = async (l: Live | undefined, ask: PluginAsk): Promise<PluginAnswer> => {
+  const answerPluginAsk = async (l: Live | undefined, ask: PluginAsk, signal?: AbortSignal): Promise<PluginAnswer> => {
     const t = l?.turn;
     if (!l || !t) return "deny";
     // The git guardrail vetoes a command in every mode, Plan and Full included, before anyone is asked;
@@ -371,7 +371,7 @@ export function createAcpDriver(
         return { decision: "deny", reason: verdict.reason || "Blocked by git guardrails." };
       }
     }
-    const decision = await decidePluginAsk(t.input, ask);
+    const decision = await decidePluginAsk(t.input, ask, signal);
     if (decision === null) return "allow-once";
     if (decision !== "deny" && ask.callID) l.approvedCalls.add(ask.callID);
     return decision;
@@ -727,7 +727,7 @@ export function createAcpDriver(
     let asks: { server: AskServer; token: string } | null = null;
     if (pluginAsks) {
       const server = await (askServer ??= startAskServer());
-      asks = { server, token: server.register((ask) => answerPluginAsk(l, ask)) };
+      asks = { server, token: server.register((ask, signal) => answerPluginAsk(l, ask, signal)) };
       env.CUBIQ_ASK_URL = server.url;
       env.CUBIQ_ASK_TOKEN = asks.token;
     }

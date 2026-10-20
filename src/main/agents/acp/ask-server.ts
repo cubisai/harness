@@ -25,8 +25,8 @@ export type PluginAnswer = PermissionDecision | { decision: "deny"; reason: stri
 
 export interface AskServer {
   url: string;
-  /** A token for one agent process; its asks go to `answer` until `revoke`. */
-  register(answer: (ask: PluginAsk) => Promise<PluginAnswer>): string;
+  /** A token for one agent process; its asks go to `answer` until `revoke`. `signal` aborts when the request closes unanswered. */
+  register(answer: (ask: PluginAsk, signal: AbortSignal) => Promise<PluginAnswer>): string;
   revoke(token: string): void;
   close(): Promise<void>;
 }
@@ -34,7 +34,7 @@ export interface AskServer {
 const MAX_BODY = 64 * 1024;
 
 export async function startAskServer(): Promise<AskServer> {
-  const handlers = new Map<string, (ask: PluginAsk) => Promise<PluginAnswer>>();
+  const handlers = new Map<string, (ask: PluginAsk, signal: AbortSignal) => Promise<PluginAnswer>>();
   const handlerFor = (header: string | undefined) => {
     const m = /^Bearer (\S+)$/.exec(header ?? "");
     if (!m) return null;
@@ -67,8 +67,13 @@ export async function startAskServer(): Promise<AskServer> {
       const reply = (answer: PluginAnswer) => {
         if (!res.writableEnded) res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(typeof answer === "string" ? { decision: answer } : answer));
       };
+      // The plugin gave up (its process died or its fetch was cut): withdraw whatever card it raised.
+      const gone = new AbortController();
+      res.on("close", () => {
+        if (!res.writableEnded) gone.abort();
+      });
       // An answer that throws is a refusal: the plugin fails closed either way.
-      answer({ ...ask, summary: String(ask.summary ?? "") }).then(reply, () => reply("deny"));
+      answer({ ...ask, summary: String(ask.summary ?? "") }, gone.signal).then(reply, () => reply("deny"));
     });
   });
   // A user may take minutes to answer a card: never time the request out.

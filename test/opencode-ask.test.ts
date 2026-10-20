@@ -40,6 +40,32 @@ describe("startAskServer", () => {
     server.revoke(a);
     expect((await post(server.url, a, ask())).status).toBe(401);
   });
+
+  it("aborts the handler's signal when the plugin's request closes unanswered, and not after an answer", async () => {
+    const server = await startAskServer();
+    closeAfter(() => void server.close());
+    let withdrawn!: () => void;
+    const aborted = new Promise<void>((resolve) => (withdrawn = resolve));
+    const waiting = server.register((_ask, signal) => {
+      signal.addEventListener("abort", () => withdrawn(), { once: true });
+      return new Promise<never>(() => {}); // the user never answers
+    });
+    const cut = new AbortController();
+    const req = fetch(server.url, { method: "POST", headers: { authorization: `Bearer ${waiting}` }, body: JSON.stringify(ask()), signal: cut.signal }).catch(() => null);
+    await new Promise((r) => setTimeout(r, 100));
+    cut.abort();
+    await req;
+    await aborted;
+
+    let abortedAfterAnswer = false;
+    const answered = server.register(async (_ask, signal) => {
+      signal.addEventListener("abort", () => (abortedAfterAnswer = true));
+      return "allow-once";
+    });
+    expect(await post(server.url, answered, ask())).toEqual({ status: 200, decision: "allow-once" });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(abortedAfterAnswer).toBe(false);
+  });
 });
 
 describe("decidePluginAsk", () => {
@@ -62,6 +88,13 @@ describe("decidePluginAsk", () => {
   it("Ask asks before both and returns the user's answer", async () => {
     expect(await run("ask", "edit", "deny")).toEqual({ decision: "deny", asked: [{ toolName: "Edit", summary: "src/a.ts", canAlwaysAllow: false }] });
     expect((await run("ask", "execute")).decision).toBe("allow-once");
+  });
+
+  it("passes the ask's signal to the card, so a dropped request can withdraw it", async () => {
+    const gone = new AbortController();
+    let got: AbortSignal | undefined;
+    await decidePluginAsk({ permissionMode: "ask", requestPermission: async (r) => ((got = r.signal), "deny") }, ask(), gone.signal);
+    expect(got).toBe(gone.signal);
   });
 
   it("Plan defers to OpenCode's plan agent and its ACP asks, as before", async () => {

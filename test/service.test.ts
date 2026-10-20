@@ -207,6 +207,24 @@ describe("Service.send", () => {
     expect(decision).toBe("allow-once");
   });
 
+  it("takes a card down when its asker goes away, and a late answer changes nothing", async () => {
+    let decision = "";
+    const gone = new AbortController();
+    const { service, thread, updates } = setup(async (input) => {
+      decision = await input.requestPermission({ toolName: "Run", summary: "ls", canAlwaysAllow: false, signal: gone.signal });
+    });
+    const sending = service.send({ threadId: thread.id, text: "go" });
+    await new Promise((r) => setTimeout(r, 10));
+    const req = updates.find((u) => u.type === "permission") as Extract<LiveUpdate, { type: "permission" }>;
+    expect(req.request).not.toHaveProperty("signal");
+    gone.abort();
+    await sending;
+    expect(decision).toBe("deny");
+    expect(updates).toContainEqual({ type: "permission-withdrawn", requestId: req.request.requestId });
+    service.respondPermission(req.request.requestId, "allow-once");
+    expect(decision).toBe("deny");
+  });
+
   it("denies pending permissions when interrupted", async () => {
     let decision = "";
     const { service, thread } = setup(async (input) => {

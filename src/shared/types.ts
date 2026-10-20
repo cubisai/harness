@@ -1051,6 +1051,7 @@ export type LiveUpdate =
   | { type: "delta"; threadId: string; delta: LiveDelta }
   | { type: "running"; threadId: string; running: boolean }
   | { type: "permission"; request: PermissionRequest }
+  | { type: "permission-withdrawn"; requestId: string }
   | { type: "plan-approval"; request: PlanRequest }
   | { type: "plan-approval-done"; requestId: string }
   | { type: "question"; request: QuestionRequest }
