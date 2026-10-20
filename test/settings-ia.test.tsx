@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { FORMER_SECTIONS, SETTINGS_GROUPS, SettingsGroupContent } from "../src/renderer/src/components/SettingsSheet";
+import { FORMER_SECTIONS, SETTINGS_GROUPS, SettingsGroupContent, richRepliesOf, richRepliesPatch } from "../src/renderer/src/components/SettingsSheet";
 import type { SettingsView } from "../src/shared/types";
 import { DEFAULT_LAYOUT } from "../src/shared/layout";
 
@@ -53,5 +53,25 @@ describe("Settings IA", () => {
     expect(html.appearance).toMatch(/class="on"[^>]*>CubiQ agent</);
     expect(html.appearance).toContain(">Night voyage<");
     expect(html.appearance).toContain(">Preview<");
+  });
+});
+
+describe("Rich replies", () => {
+  it("is one row with three stops in place of Interactive answers and Load link previews", () => {
+    const all = Object.values(html).join("");
+    expect(all).toContain(">Rich replies<");
+    expect(all).toContain(">On + link previews<");
+    expect(all).not.toContain(">Interactive answers<");
+    expect(all).not.toContain(">Load link previews<");
+  });
+
+  it("maps each stop to the two settings and back", () => {
+    for (const stop of ["off", "on", "links"] as const) expect(richRepliesOf(richRepliesPatch(stop))).toBe(stop);
+    expect(richRepliesPatch("off")).toEqual({ uiBlocks: false, linkPreviews: false });
+    expect(richRepliesPatch("on")).toEqual({ uiBlocks: true, linkPreviews: false });
+    expect(richRepliesPatch("links")).toEqual({ uiBlocks: true, linkPreviews: true });
+    expect(richRepliesOf({})).toBe("off");
+    // Previews on with blocks off (set before the merge) shows as the fullest stop.
+    expect(richRepliesOf({ uiBlocks: false, linkPreviews: true })).toBe("links");
   });
 });

@@ -1398,7 +1398,7 @@ async function main(): Promise<void> {
       return { skills, mcp };
     };
   }
-  // Pictures for ui:cards rows: thread-folder images always; the web only with Load link previews on.
+  // Pictures for ui:cards rows: thread-folder images always; the web only with Rich replies "+ link previews" on.
   const linkPreviews = createLinkPreviews();
   ipcMain.handle("ui:image", async (_e, threadId: unknown, src: unknown, kind: unknown): Promise<string | null> => {
     if (typeof src !== "string" || !src || src.length > 2048) return null;
@@ -1410,7 +1410,7 @@ async function main(): Promise<void> {
       return null;
     }
   });
-  // Link chips in replies: a page's name, title, description and favicon, only with Load link previews on.
+  // Link chips in replies: a page's name, title, description and favicon, only with Rich replies "+ link previews" on.
   ipcMain.handle("ui:link-meta", async (_e, url: unknown): Promise<LinkMeta | null> => {
     if (typeof url !== "string" || !url || url.length > 2048) return null;
     return settings.get().linkPreviews === true ? linkPreviews.meta(url) : null;

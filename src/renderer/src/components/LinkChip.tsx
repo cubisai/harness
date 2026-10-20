@@ -189,7 +189,7 @@ const CARDS_MAX = 3;
 /**
  * Link cards under a paragraph or list, like a chat app's link unfurl: the page's
  * preview image, title, favicon and site, and a line of its description. A card
- * shows only once the page's metadata arrives, so with Load link previews off
+ * shows only once the page's metadata arrives, so with Rich replies "+ link previews" off
  * (or a page with no title) nothing is drawn.
  */
 export function LinkCards({ urls }: { urls: string[] }) {

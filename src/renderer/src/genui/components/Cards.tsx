@@ -265,7 +265,7 @@ function CardThumb({ src, kind }: { src: string; kind: "image" | "page" }) {
 
 /** Rows in one card: a lead icon or thumbnail, a bold title, an optional link line and text. */
 export function Cards({ spec }: { spec: CardsSpec }) {
-  // Web pictures need Settings › Load link previews; off, rows keep their icon or go without.
+  // Web pictures need Settings › Rich replies "+ link previews"; off, rows keep their icon or go without.
   const web = useStore((s) => s.settings?.linkPreviews === true);
   return (
     <>

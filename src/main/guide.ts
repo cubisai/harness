@@ -43,7 +43,7 @@ export function designNote(dir: string): string {
 
 /**
  * The inline UI block catalog (renderer: src/renderer/src/genui), sent only when
- * Settings › Interactive answers is on. Teaches only the shorter line form; a
+ * Settings › Rich replies is on. Teaches only the shorter line form; a
  * JSON body still renders. Kept to one line: it rides in every session's stable
  * prefix.
  */

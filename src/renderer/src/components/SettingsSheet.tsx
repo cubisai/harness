@@ -62,6 +62,26 @@ export const FORMER_SECTIONS: Record<string, SettingsGroup> = {
 };
 
 /** Settings, as a sheet over the window (⌘, / Ctrl+,): a left nav of groups, one group's sections at a time. */
+/** Rich replies, one control over two settings: interactive blocks (guide tokens) and link previews (network). */
+export type RichReplies = "off" | "on" | "links";
+
+const RICH_REPLIES: { value: RichReplies; label: string }[] = [
+  { value: "off", label: "Off" },
+  { value: "on", label: "On" },
+  { value: "links", label: "On + link previews" },
+];
+
+/** The stop the two settings sit on; link previews alone (an older setup) shows as the fullest stop. */
+export function richRepliesOf(s: Pick<SettingsView, "uiBlocks" | "linkPreviews">): RichReplies {
+  if (s.linkPreviews) return "links";
+  return s.uiBlocks ? "on" : "off";
+}
+
+/** The two settings a stop writes. */
+export function richRepliesPatch(stop: RichReplies): Pick<SettingsView, "uiBlocks" | "linkPreviews"> {
+  return { uiBlocks: stop !== "off", linkPreviews: stop === "links" };
+}
+
 export function SettingsSheet() {
   const open = useStore((s) => s.settingsOpen);
   const settings = useStore((s) => s.settings);
@@ -185,27 +205,16 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
             </div>
           </div>
           <div className="row">
-            <span className="label" title="Checklists, calculators, comparisons, timelines, charts, reply buttons, forms, stat tiles and cards inside replies">Interactive answers</span>
+            <span className="label" title="Checklists, calculators, comparisons, timelines, charts, reply buttons, forms, stat tiles and cards inside replies; link previews">Rich replies</span>
             <div className="segmented">
-              {[true, false].map((on) => (
-                <button key={String(on)} className={(settings.uiBlocks ?? false) === on ? "on" : ""} onClick={() => update({ uiBlocks: on })}>
-                  {on ? "On" : "Off"}
+              {RICH_REPLIES.map((o) => (
+                <button key={o.value} className={richRepliesOf(settings) === o.value ? "on" : ""} onClick={() => update(richRepliesPatch(o.value))}>
+                  {o.label}
                 </button>
               ))}
             </div>
           </div>
-          <p className="note">Lets agents answer with small interactive blocks, and makes reply tables sortable. Adds about 120 tokens to each new session; off costs nothing. Blocks agents write anyway always render.</p>
-          <div className="row">
-            <span className="label" title="Favicons, titles and thumbnails for links">Load link previews</span>
-            <div className="segmented">
-              {[true, false].map((on) => (
-                <button key={String(on)} className={(settings.linkPreviews ?? false) === on ? "on" : ""} onClick={() => update({ linkPreviews: on })}>
-                  {on ? "On" : "Off"}
-                </button>
-              ))}
-            </div>
-          </div>
-          <p className="note">Fetches favicons, titles and thumbnails for links in replies and card lists from public https sites, which tells those sites your IP address. Off, links show a globe icon and nothing is fetched.</p>
+          <p className="note">Lets agents answer with small interactive blocks and makes reply tables sortable: about 120 tokens per new session, and blocks agents write anyway always render. "+ link previews" also fetches favicons, titles and thumbnails from the linked https sites, which see your IP address; without it nothing is fetched.</p>
           <div className="row">
             <span className="label" title="The looping clip shown while CubiQ starts">Splash screen</span>
             <div className="segmented">

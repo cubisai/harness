@@ -1187,11 +1187,11 @@ export interface UnskilledApi {
   contextPreview(threadId: string | null, projectId: string | null): Promise<ContextPreview>;
   /**
    * A picture for a `ui:cards` row as a data: URL, or null. `src` is an image in the
-   * thread's folder, or (only with Settings › Load link previews on) an https image
+   * thread's folder, or (only with Settings › Rich replies "+ link previews" on) an https image
    * (`kind` "image") or a page whose preview image is wanted (`kind` "page").
    */
   uiImage(threadId: string | null, src: string, kind: "image" | "page"): Promise<string | null>;
-  /** A reply link's metadata, or null (always null unless Settings › Load link previews is on). */
+  /** A reply link's metadata, or null (always null unless Settings › Rich replies "+ link previews" is on). */
   uiLinkMeta(url: string): Promise<LinkMeta | null>;
   /** Scheduled automations: one project's list plus the templates to start from. */
   automationsOverview(projectId: string): Promise<AutomationsOverview>;
