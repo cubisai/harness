@@ -235,7 +235,8 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
   const reserved = useRef(false);
   const reserveSpace = () => {
     const body = inner.current;
-    if (!body) return;
+    // At the top nothing can be clamped: a reserve would only leave blank space under a short thread.
+    if (!body || !scroller.current?.scrollTop) return;
     body.style.minHeight = `${body.offsetHeight}px`;
     reserved.current = true;
   };
