@@ -343,6 +343,12 @@ export class Store {
       },
       // 30: whether an automation runs unattended (full access, guardrails on) or asks before tools.
       { applied: () => this.hasColumn("automations", "permissions"), sql: "ALTER TABLE automations ADD COLUMN permissions TEXT NOT NULL DEFAULT 'unattended'" },
+      // 31: where a worktree thread branched from (the project's branch and commit then), for review and merge.
+      {
+        applied: () => this.hasColumn("threads", "base_sha"),
+        sql: `ALTER TABLE threads ADD COLUMN base_branch TEXT;
+          ALTER TABLE threads ADD COLUMN base_sha TEXT;`,
+      },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;
@@ -520,8 +526,14 @@ export class Store {
   }
 
   /** Record the worktree and branch a thread runs in (set once, when it is created); a chat's own folder has no branch. */
-  setWorktree(id: string, branch: string | null, worktreePath: string): Thread {
-    this.db.prepare("UPDATE threads SET branch = ?, worktree_path = ? WHERE id = ?").run(branch, worktreePath, id);
+  setWorktree(id: string, branch: string | null, worktreePath: string, base: { branch: string | null; sha: string | null } = { branch: null, sha: null }): Thread {
+    this.db.prepare("UPDATE threads SET branch = ?, worktree_path = ?, base_branch = ?, base_sha = ? WHERE id = ?").run(branch, worktreePath, base.branch, base.sha, id);
+    return this.getThread(id);
+  }
+
+  /** Forget a thread's worktree folder once it's removed; the branch label and base stay for its history. */
+  clearWorktreePath(id: string): Thread {
+    this.db.prepare("UPDATE threads SET worktree_path = NULL WHERE id = ?").run(id);
     return this.getThread(id);
   }
 
@@ -951,7 +963,7 @@ export class Store {
 }
 
 const THREAD_COLS =
-  "id, project_id, agent, title, session_id, bindings, model, effort, context_window, permission_mode, created_at, updated_at, pinned, archived, branch, worktree_path, kind, design_system, prototype_tier, expert_id, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
+  "id, project_id, agent, title, session_id, bindings, model, effort, context_window, permission_mode, created_at, updated_at, pinned, archived, branch, worktree_path, base_branch, base_sha, kind, design_system, prototype_tier, expert_id, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
 
 export interface LedgerTarget {
   threadId: string;
@@ -1023,6 +1035,8 @@ interface ThreadRow {
   archived: number;
   branch: string | null;
   worktree_path: string | null;
+  base_branch: string | null;
+  base_sha: string | null;
   kind: string | null;
   design_system: string | null;
   prototype_tier: string | null;
@@ -1087,6 +1101,7 @@ function toThread(r: ThreadRow): Thread {
     archived: r.archived === 1,
     branch: r.branch,
     worktreePath: r.worktree_path,
+    ...(r.base_sha ? { baseBranch: r.base_branch, baseSha: r.base_sha } : {}),
     kind: r.kind === "design" ? "design" : "chat",
     ...(r.kind === "design" && r.design_system ? { designSystem: r.design_system } : {}),
     ...(r.kind === "design" && readTier(r.prototype_tier) ? { prototypeTier: readTier(r.prototype_tier)! } : {}),

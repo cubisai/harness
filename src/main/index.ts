@@ -97,6 +97,7 @@ import { defaultSkillsCandidates, findSkillsRoot } from "./skills/catalog";
 import { ensureModelSkillsDir, ensurePlugin } from "./skills/plugin";
 import { SkillCatalogs, forAgent } from "./skills/sources";
 import { skillTool } from "./skills/tool";
+import { commitThread, draftMessage, mergeThread, removeThreadWorktree, reviewState, type ReviewDeps } from "./worktree-review";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const smoke = process.argv.includes("--smoke");
@@ -1714,6 +1715,29 @@ async function main(): Promise<void> {
   setBinaryPins(pinsByCommand({ agents: doctorAgents, pinned }));
   ipcMain.handle("doctor:run", () => doctor.run());
   ipcMain.handle("doctor:fix", (_e, findingId: unknown, fixIndex: unknown) => doctor.fix(String(findingId), Number(fixIndex)));
+  // Review & merge for worktree threads: the app runs git itself (never the agent), and never pushes.
+  const reviewDeps: ReviewDeps = { thread: (id) => store.getThread(id), project: (id) => store.getProject(id), drivers: () => drivers, settings: () => settings.get() };
+  const afterGit = (threadId: string) => broadcast({ type: "thread", thread: store.getThread(threadId) });
+  ipcMain.handle("worktree:review", (_e, threadId: string) => reviewState(reviewDeps, threadId));
+  ipcMain.handle("worktree:message", (_e, threadId: string) => draftMessage(reviewDeps, threadId, AbortSignal.timeout(180_000)));
+  ipcMain.handle("worktree:commit", async (_e, threadId: string, message: string) => {
+    const sha = await commitThread(reviewDeps, threadId, typeof message === "string" ? message : "");
+    afterGit(threadId);
+    return sha;
+  });
+  ipcMain.handle("worktree:merge", async (_e, threadId: string, opts: { mode?: unknown; message?: unknown }) => {
+    const result = await mergeThread(reviewDeps, threadId, { mode: opts?.mode === "merge" ? "merge" : "squash", message: typeof opts?.message === "string" ? opts.message : "" });
+    afterGit(threadId);
+    return result;
+  });
+  ipcMain.handle("worktree:remove", async (_e, threadId: string) => {
+    const removed = await removeThreadWorktree(reviewDeps, threadId);
+    if (removed) {
+      store.clearWorktreePath(threadId);
+      afterGit(threadId);
+    }
+    return removed;
+  });
   ipcMain.handle("search:query", (_e, query: SearchQuery) =>
     store.search({
       text: typeof query?.text === "string" ? query.text.slice(0, 500) : "",

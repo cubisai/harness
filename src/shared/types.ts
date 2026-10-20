@@ -225,6 +225,8 @@ export interface Settings {
   splash?: Splash;
   /** Self-improve (scorecard, lessons, verified promotion): off unless a project is listed. SettingsStore.get() always fills it in. */
   learn?: LearnSettings;
+  /** Worktree commits: the model that writes messages (null = the background model rule) and whether to add a Co-authored-by line (off by default). */
+  git?: GitSettings;
 }
 
 export type MemoryType = "user" | "feedback" | "project" | "reference";
@@ -478,6 +480,10 @@ export interface Thread {
   branch?: string | null;
   /** Where the thread's tools run when it has its own worktree. */
   worktreePath?: string | null;
+  /** The project branch a worktree thread branched from; absent for older worktree threads. */
+  baseBranch?: string | null;
+  /** The commit it branched from. */
+  baseSha?: string | null;
   /** "design" threads open with the design canvas; absent = "chat" (older rows and exports). */
   kind?: ThreadKind;
   /** A design thread's design system id (see DesignSystemOption); absent = the default. */
@@ -1169,6 +1175,16 @@ export interface UnskilledApi {
   runDoctor(): Promise<DoctorReport>;
   /** Apply fix `fixIndex` of finding `findingId` from the last report (the main process looks it up; nothing else runs). */
   doctorFix(findingId: string, fixIndex: number): Promise<DoctorFixResult>;
+  /** A worktree thread's branch against its base: counts, state of both folders, and the files changed since the base. */
+  worktreeReview(threadId: string): Promise<WorktreeReview>;
+  /** An AI-written commit message for the worktree's uncommitted changes (or, when clean, everything since the base). */
+  worktreeMessage(threadId: string): Promise<{ message: string; model: string }>;
+  /** Commit everything in the thread's worktree; resolves to the new commit. */
+  worktreeCommit(threadId: string, message: string): Promise<string>;
+  /** Merge the thread's branch into its base in the project folder; a conflict leaves both untouched. */
+  worktreeMerge(threadId: string, opts: { mode: "squash" | "merge"; message: string }): Promise<{ ok: true; sha: string } | { ok: false; reason: string; conflicts: string[] }>;
+  /** Remove the thread's worktree folder when it's clean (the branch stays); resolves to whether it went. */
+  worktreeRemove(threadId: string): Promise<boolean>;
   /** The project's files (git-tracked plus untracked-not-ignored), for the Files tab. */
   listFiles(projectId: string, threadId?: string | null): Promise<{ files: string[]; truncated: boolean }>;
   /** The project's current branch; null on its default branch, detached, or outside git. */
@@ -1388,3 +1404,28 @@ export interface ContextPreview {
 
 /** The background-turn limits Settings offers; 0 means no limit. */
 export const MAX_RUNNING_CHOICES = [0, 2, 3, 4, 6] as const;
+/** Commit-message settings for worktree threads. */
+export interface GitSettings {
+  /** The agent and model that write commit messages; null = the background model rule (a cheap model). */
+  commitModel: { agent: string; model: string } | null;
+  /** Add `Co-authored-by: <agent> <noreply address>` for the thread's agent. Off by default. */
+  coAuthor: boolean;
+}
+
+/** A worktree thread's branch, compared with the branch it came from. */
+export interface WorktreeReview {
+  branch: string;
+  /** The project branch it branched from; null when that can't be told. */
+  base: string | null;
+  baseSha: string | null;
+  /** Commits on the branch the base doesn't have, and the reverse. */
+  ahead: number;
+  behind: number;
+  /** Uncommitted paths in the worktree. */
+  uncommitted: number;
+  /** The branch the project folder has checked out now, and whether its tracked files have changes. */
+  projectBranch: string | null;
+  projectDirty: boolean;
+  /** Everything changed since the base: committed, uncommitted and untracked. */
+  files: DiffFile[];
+}

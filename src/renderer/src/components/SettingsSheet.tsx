@@ -5,11 +5,13 @@ import { api } from "../api";
 import { ProvidersSection } from "./ProviderSheet";
 import { useStore, type LibraryTab } from "../store";
 import { ANTIGRAVITY_ACK_VERSION } from "../../../shared/provider-rules";
+import { CHEAP_MODEL_HINTS } from "../../../shared/learn";
 import { ZOOM_STEPS } from "../../../shared/zoom";
 import { StepSlider } from "./StepSlider";
 import { UnsupportedChip } from "./UnsupportedChip";
 import { Select, selectPopupOpen } from "./Select";
 import { SPLASHES, playSplash, splashVisible } from "./Splash";
+import { backgroundChoices } from "./LearnedTab";
 
 const THEMES: { id: Theme; label: string }[] = [
   { id: "system", label: "System" },
@@ -36,10 +38,13 @@ const MODES: { id: PermissionMode; label: string }[] = [
   { id: "full", label: "Full" },
 ];
 
+/** A cheap model, by the same hints the Learned tab's background picker uses. */
+const isCheap = (m: { id: string; label: string }) => CHEAP_MODEL_HINTS.some((h) => m.id.toLowerCase().includes(h) || m.label.toLowerCase().includes(h));
+
 /** The left-nav groups, in order, and the sections each shows. */
 export const SETTINGS_GROUPS = [
   { id: "appearance", label: "Appearance", sections: ["Appearance"] },
-  { id: "threads", label: "Threads", sections: ["New threads", "Background", "Editor"] },
+  { id: "threads", label: "Threads", sections: ["New threads", "Commit messages", "Background", "Editor"] },
   { id: "agents", label: "Agents & Providers", sections: ["Providers", "Agents", "Antigravity"] },
   { id: "skills", label: "Skills & MCP", sections: ["Skills", "MCP servers"] },
   { id: "data", label: "Data & Security", sections: ["Data"] },
@@ -231,7 +236,16 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
           </div>
         </section>
       );
-    case "threads":
+    case "threads": {
+      const commitPick = settings.git?.commitModel ?? null;
+      const commitChoices = backgroundChoices(agents, commitPick);
+      const pickCommitAgent = (agent: string) => {
+        if (!agent) return update({ git: { commitModel: null, coAuthor: settings.git?.coAuthor ?? false } });
+        // A new agent starts on its cheap tier, as commit messages should.
+        const options = commitChoices.models(agent);
+        const model = (options.find((o) => isCheap({ id: o.value, label: o.label })) ?? options[0])?.value;
+        if (model) update({ git: { commitModel: { agent, model }, coAuthor: settings.git?.coAuthor ?? false } });
+      };
       return (
         <>
           <section>
@@ -258,6 +272,42 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
                 ))}
               </div>
             </div>
+          </section>
+          <section>
+            <h3>Commit messages</h3>
+            <div className="row">
+              <span className="label">Model</span>
+              <Select
+                value={commitPick?.agent ?? ""}
+                options={commitChoices.agents}
+                onChange={pickCommitAgent}
+                ariaLabel="Commit message agent"
+              />
+              {commitPick && (
+                <Select
+                  value={commitPick.model}
+                  options={commitChoices.models(commitPick.agent)}
+                  onChange={(model) => update({ git: { commitModel: { agent: commitPick.agent, model }, coAuthor: settings.git?.coAuthor ?? false } })}
+                  ariaLabel="Commit message model"
+                />
+              )}
+            </div>
+            <div className="row">
+              <span className="label">Co-author line</span>
+              <div className="segmented">
+                {[true, false].map((on) => (
+                  <button
+                    key={String(on)}
+                    type="button"
+                    className={(settings.git?.coAuthor ?? false) === on ? "on" : ""}
+                    onClick={() => update({ git: { commitModel: settings.git?.commitModel ?? null, coAuthor: on } })}
+                  >
+                    {on ? "On" : "Off"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="note">Used by Generate in a worktree thread's Review &amp; merge bar. Automatic picks a cheap model. The co-author line credits the thread's agent (Claude, Codex, OpenCode or Cursor) with a Co-authored-by trailer.</p>
           </section>
           <section>
             <h3>Background</h3>
@@ -313,6 +363,7 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
           </section>
         </>
       );
+    }
     case "agents":
       return (
         <>

@@ -67,7 +67,7 @@ import { runCheck, tailOf } from "./check";
 import { evidenceFlags, isTestPath, markerCounts, newMarkers, addedLines as diffAddedLines } from "./evidence";
 import type { Store } from "./db";
 import { isChatDir, isChatsRoot } from "./chats";
-import { addedSinceHead, branchLabel, createWorktree, dirtyPaths, hasGitDir, isTracked, listProjectFiles, removeWorktree, workingTreeDiff, worktreeBranch } from "./git";
+import { addedSinceHead, branchLabel, createWorktree, currentBranch, dirtyPaths, hasGitDir, headSha, isTracked, listProjectFiles, removeWorktree, workingTreeDiff, worktreeBranch } from "./git";
 import {
   bloatSignal,
   buildCheckpoint,
@@ -240,13 +240,16 @@ export class Service {
     const thread = this.createThread(projectId, agent, kind, designSystem, expertId);
     const branch = worktreeBranch(project.name, thread.id);
     const dir = join(this.worktreesDir, thread.id);
+    // Where it branches from, so Review & merge can compare and merge back later.
+    let base: { branch: string | null; sha: string | null } = { branch: null, sha: null };
     try {
+      base = { branch: await currentBranch(project.path), sha: await headSha(project.path) };
       await createWorktree(project.path, dir, branch);
     } catch (err) {
       this.store.deleteThread(thread.id);
       throw err;
     }
-    return this.store.setWorktree(thread.id, branch, dir);
+    return this.store.setWorktree(thread.id, branch, dir, base);
   }
 
   /** Delete a thread; its worktree goes too when it has nothing uncommitted (the branch always stays), and a chat's own folder always. */

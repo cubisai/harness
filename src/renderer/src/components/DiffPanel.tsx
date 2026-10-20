@@ -1,34 +1,73 @@
 import { useCallback, useEffect, useState } from "react";
-import type { DiffFile } from "../../../shared/types";
+import type { DiffFile, WorktreeReview } from "../../../shared/types";
 import { api } from "../api";
 import { IconChevron, IconOpen } from "../icons";
-import { useStore } from "../store";
+import { useSelectedThread, useStore } from "../store";
+import { ReviewMergeBar } from "./ReviewMergeBar";
 
 /** The working tree's changes against HEAD, refreshed after every turn. */
 export function DiffPanel({ projectId, refreshKey }: { projectId: string; refreshKey: number }) {
   const diffVersion = useStore((s) => s.diffVersion);
   // A worktree thread has its own changes: follow the open thread.
   const threadId = useStore((s) => s.selectedThreadId);
+  const thread = useSelectedThread();
   const [files, setFiles] = useState<DiffFile[] | null>(null);
   const [closed, setClosed] = useState<Record<string, boolean>>({});
+  const [scope, setScope] = useState<"uncommitted" | "base">("uncommitted");
+  const [baseFiles, setBaseFiles] = useState<DiffFile[] | null>(null);
+  const [base, setBase] = useState<string | null>(null);
 
   const load = useCallback(() => {
     void api().getDiff(projectId, threadId).then(setFiles);
   }, [projectId, threadId]);
   useEffect(load, [load, diffVersion, refreshKey]);
 
-  const adds = files?.reduce((n, f) => n + f.additions, 0) ?? 0;
-  const dels = files?.reduce((n, f) => n + f.deletions, 0) ?? 0;
+  // A new thread starts on its uncommitted changes, not the last thread's base.
+  useEffect(() => {
+    setScope("uncommitted");
+    setBaseFiles(null);
+    setBase(null);
+  }, [thread?.id]);
 
-  if (files === null) return <div className="diff-summary">Loading…</div>;
-  if (files.length === 0) return <div className="diff-summary">No uncommitted changes.</div>;
+  const list = scope === "base" ? baseFiles : files;
+  const adds = list?.reduce((n, f) => n + f.additions, 0) ?? 0;
+  const dels = list?.reduce((n, f) => n + f.deletions, 0) ?? 0;
+  // A git worktree thread only: a chat's own folder has a path but no branch.
+  const bar = thread?.worktreePath && thread.branch ? (
+    <ReviewMergeBar
+      threadId={thread.id}
+      onScope={(next, review: WorktreeReview) => {
+        setScope(next);
+        setBase(review.base);
+        setBaseFiles(review.files);
+      }}
+    />
+  ) : null;
+
+  if (list === null) {
+    return (
+      <>
+        {bar}
+        <div className="diff-summary">Loading…</div>
+      </>
+    );
+  }
+  if (list.length === 0) {
+    return (
+      <>
+        {bar}
+        <div className="diff-summary">{scope === "base" ? `No changes since ${base ?? "base"}.` : "No uncommitted changes."}</div>
+      </>
+    );
+  }
   return (
     <>
+      {bar}
       <div className="diff-summary">
-        {files.length} file{files.length === 1 ? "" : "s"} changed · <span style={{ color: "var(--success)" }}>+{adds}</span>{" "}
-        <span style={{ color: "var(--danger)" }}>−{dels}</span>
+        {`${list.length} file${list.length === 1 ? "" : "s"} changed${scope === "base" ? ` since ${base ?? "base"}` : ""}`} ·{" "}
+        <span style={{ color: "var(--success)" }}>+{adds}</span> <span style={{ color: "var(--danger)" }}>−{dels}</span>
       </div>
-      {files.map((f) => {
+      {list.map((f) => {
         const open = !closed[f.path];
         return (
           <div className="diff-file" key={f.path}>
