@@ -519,8 +519,8 @@ export class Store {
     return this.getThread(id);
   }
 
-  /** Record the worktree and branch a thread runs in (set once, when it is created). */
-  setWorktree(id: string, branch: string, worktreePath: string): Thread {
+  /** Record the worktree and branch a thread runs in (set once, when it is created); a chat's own folder has no branch. */
+  setWorktree(id: string, branch: string | null, worktreePath: string): Thread {
     this.db.prepare("UPDATE threads SET branch = ?, worktree_path = ? WHERE id = ?").run(branch, worktreePath, id);
     return this.getThread(id);
   }
