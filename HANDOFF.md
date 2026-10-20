@@ -1,10 +1,27 @@
-# Handoff: M5 tracks — background controls, worktree review & merge, OpenCode v1+v2, /doctor, code mode (2026-10-20) — see "Resume here — M5"
+# Handoff: M5 merged into m4 (OpenCode v1+v2, code mode everywhere, /doctor, background threads, worktree review & merge) — 2026-10-20 — see "Resume here — M5": untested list + Track G background-shells plan
 
 ## Resume here — M5 (2026-10-20, Mac, session 2)
 
 Plan, status, next tasks and probe tools: **`.ai/plans/m5-five-tracks.md`** (sections "C0 probe results" and "Status at handoff").
 
-**The five track worktrees are still UNMERGED.** `../aiharness-wt/m5-{oc2,code,doctor,bg,merge}` sit on their own branches, from `m4@204df19`. Another Claude session works on `m4`. Merge tomorrow, only with the user's OK: order oc2 → code → doctor → bg → merge, using the conflict notes in the plan's "Status at handoff" §4. DB migration 31 (m5-merge) must still be free on `m4`.
+**All five tracks are MERGED into `m4`** (user: "just merge all wt", 2026-10-20). Order oc2 → code → doctor → bg → merge, done in an integration worktree `../aiharness-wt/m5-all` (branch `m5-all`), then m4 fast-forwarded to `0b209dc` and pushed.
+- Conflicts resolved, all additive:
+  - `test/commands.test.ts`: m4 dropped ask/auto-edit/full, doctor adds `doctor`.
+  - `settings.ts` / `types.ts` / `store.ts`: agentBinary + background.
+  - `db.ts`: `setWorktree(branch: string | null, …, base)` + `clearWorktreePath`.
+  - `index.ts` / `preload` / `mock.ts`: doctor + worktree IPC.
+  - `service.ts`: chats import + git imports.
+  - `SettingsSheet.tsx`: Threads = New threads, Commit messages, Background, Editor.
+- One semantic fix in the merge: the Review & merge bar shows only when the thread has a branch (`DiffPanel.tsx`). m4's Chats give chat threads a `worktreePath` with no branch.
+- Checks on the merged result (Claude-run): typecheck green, `design:check` 0 errors (48 baseline warnings), full `bun run test` **3309 passed** / 0 failed. The merged app launched (welcome screen with Chats, doctor IPC answers).
+- The track branches and worktrees (`m5-{oc2,code,doctor,bg,merge,all}`) are kept. Remove them once you're happy: `git worktree remove ../aiharness-wt/m5-<t>`, then `git branch -d m5-<t>`.
+
+**Untested in the live app, on the merged m4 (do these first at home):**
+1. **B, worktree review & merge, never clicked through.** Worktree thread (palette "New Thread in Worktree") → edit → Generate (Automatic and a picked model; co-author on/off) → Commit → Squash merge → Remove worktree. Then a conflict case (dirty project / both sides edit a line → refused or aborted, both folders untouched). Also check a **Chat** thread shows no Review & merge bar.
+2. **The combined build, end to end:** one live turn each on Claude, Codex and OpenCode on merged m4 (the tracks were live-tested separately, not together). Code mode on (Settings → Agents & Providers) → `run_code` with child rows; OpenCode v2 `execute` rows show the "Code" section (m5-code's own run lacked it until oc2 merged).
+3. A: "Own worktree" (Alt+Enter starts in a worktree) was not tried live; Run at once / Stop / Stop all were.
+4. D: the Run fixes (`claude update`, `opencode upgrade`, `npm i -g …`) and "Prune worktrees" were not clicked live.
+5. Windows PC run for all of M5 (doctor's `where`/`.cmd`, worktree merge, the v2 plugin dir URL, code mode paths).
 
 Done this session (Claude-verified: typecheck, full `bun run test` green on all 5 branches, 3149–3189 tests each, 0 failures):
 - **C2** (`m5-oc2` `fd98726`):
@@ -24,14 +41,53 @@ Done this session (Claude-verified: typecheck, full `bun run test` green on all 
   - E: run_code with nested Grep/Read on Claude sonnet, Codex GPT-6-Luna and OpenCode v1 Zen.
   - D: /doctor finds Claude ×3 and OpenCode ×3; pin, re-check, unpin.
   - A: Run at once = 2 → the third Alt+Enter shows "Queued", Stop on one row admits it, Stop all works.
-  - B: **not yet live-tested** (worktree thread → Generate → Commit → Squash merge → Remove; a conflict case). Do it before merging m5-merge.
+  - B: **not live-tested** (see the Untested list above).
 
 Found, not fixed:
 - Claude in "Only" still searches with Bash `grep`, even with the hint. Its Bash can't be hidden, the same as Codex.
 - Several OpenCode threads starting at the same instant → "database is locked" (OpenCode's own startup race). Stagger the starts, or retry once on that error.
-- The "Code" input section for run_code (renderer) is on m5-oc2; m5-code shows raw JSON until oc2 merges.
+- The "Code" input section for run_code (renderer) came from m5-oc2. It is now in m4 for native, MCP and v2 rows; check it live (Untested item 2).
 
-**Tomorrow, next:** (1) B live pass. (2) Merge the five branches with the user's OK, in the order above. (3) **Track G, background shells** (user: "i ask it to run docker or project … like claude code shell bg"): plan in **`.ai/plans/m5-bg-shells.md`**, awaiting approval. Track A (background *threads*) stays as built.
+**Next:** (1) the Untested list above, on merged m4. (2) **Track G, background shells** (user: "i ask it to run docker or project … like claude code shell bg"): plan below (also in `.ai/plans/m5-bg-shells.md` on the work Mac), awaiting approval. Track A (background *threads*) stays as built. The full M5 plan `.ai/plans/m5-five-tracks.md` is also on the work Mac only; this section carries what's needed.
+
+### Track G plan: background shells (draft, awaiting approval; copied from `.ai/plans/m5-bg-shells.md`, which is gitignored)
+
+Status: **draft, awaiting approval** (2026-10-20). User: "background shell example i ask it to run docker or project … like claude code shell bg". Track A (background *threads*) stays as built.
+
+#### What the user wants
+The agent starts `docker compose up`, `bun run dev`, a watcher… The command keeps running after the tool call returns. The thread shows it as a live background shell: name, status, latest output, Stop. The agent can read its output later and stop it.
+
+#### Evidence (2026-10-20)
+- **Claude**: Claude Code's Bash already has `run_in_background`, plus BashOutput / KillShell. CubiQ shows the rows but has no place to watch the output or stop the process. Team threads turn it off (`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, `agents/claude.ts:476`).
+- **Native agent**: `harness/tools/bash.ts` has no background mode. `server &` only returns early (`bash.ts:162`, a 250 ms grace after exit); the job is orphaned and invisible.
+- **Codex**: only `commandExecution` items (`agents/codex.ts:29`). There's no background-terminal API we use.
+- **OpenCode v1/v2**: its shell tool blocks until the command exits or times out.
+- The Terminal panel's PTYs: `src/main/terminal.ts` (`TerminalManager`, 75 lines: write/resize/close/dispose).
+- The cubiq MCP server already carries per-thread tools to every engine (`mcp-http.ts`, `?t=`/`?c=`; see Track E), so one tool set can reach all engines.
+
+#### Design (proposal)
+1. **CubiQ-run shells**, `main/shells.ts`: `ShellManager` with `start(threadId, cwd, command, name?)`, `output(id, {since?, tail?})`, `stop(id)`, `list(threadId)`. Each spawn uses the native bash runner's shell choice (`shellFor`, Windows PowerShell/cmd parity) in the thread's folder or worktree. Output goes to a ring buffer (≈256 KB per shell) plus a log file under userData. The whole process tree is killed (`killTree`) on Stop, thread delete, worktree removal and app quit.
+2. **Tools** on the cubiq server, for every engine, and in the native loop:
+   - `shell_start({ command, name? })` → `{ id, name }`, returns at once;
+   - `shell_output({ id, tail?, since? })` → new or last lines, plus status and exit code;
+   - `shell_stop({ id })`.
+
+   Permission: `shell_start` is a shell call. It asks in Ask mode and goes through the git guardrail (`checkCommand`), like Run. Output and stop are reads.
+3. **Claude's own background Bash**: map its `run_in_background` rows and BashOutput/KillShell into the same model where the SDK exposes the shell id. Otherwise leave them on Claude's own tools and just label the row "Background".
+4. **UI**: a "Background shells" strip above the composer for the selected thread: one chip per shell (name · running/exited · uptime), click → its live output in the Terminal panel (read-only tab) with Stop. The sidebar's Running row shows "1 shell running". DESIGN.md row/chip patterns; dark screenshot.
+5. **Limits**: at most 4 live shells per thread and 12 app-wide (refuse with a clear message); idle output kept 1 h after exit.
+6. **Prompt**: one fixed guide line, "for servers and watchers use shell_start, not `&`", the same every session (cache-safe).
+
+#### Phases
+- G1 main: ShellManager + tools + tests (real child processes; a Windows path test).
+- G2 UI: strip + Terminal tab + sidebar hint.
+- G3 Claude background-Bash mapping.
+- Live: on Claude, Codex, OpenCode and native, start `python3 -m http.server`, read its output, stop it, delete the thread → process gone.
+
+#### Questions
+1. Should the shells also show in the Terminal panel as interactive PTYs, or read-only output only? (Recommend read-only plus Stop; interactive input is out of scope.)
+2. Keep processes alive across an app restart? (Recommend no: kill on quit and say so.)
+
 
 
 # Handoff: TGP closed (2026-10-17) — all 6 open items done, live on OpenCode, Codex and Claude, m4 pushed — see "Resume here — session 7"; next: Windows PC run
