@@ -21,10 +21,17 @@ m4 = `eb2bdd0` + this handoff, pushed. The main checkout's `D road-map-handoff.m
 - Codex left as is: its list is its own skills and plugins (imagegen, documents, spreadsheets, work-pets…) plus CubiQ's; only possible trim is CubiQ's Office skills duplicating Codex's document plugins. Native first request ~6.4k (already lean).
 - Live all-agent skills check after both: Claude, Codex, OpenCode Zen, TokenHarbor, PGS Grove all answered, no errors.
 
-**Next:**
-1. **First-prompt tokens**: done for Claude and OpenCode (above). Was: Claude's first request is ~27k, with **Skills 7–10k** (the SDK's own skill listing: user skills in ~/.claude/skills plus CubiQ's plugin) and Memory files 3–3.8k; Codex ~23k and OpenCode ~46k are mostly their own prompts (ours: tools ~1.6k after browser on demand, guide 0.45k, skills ~0.5k); native 7.6k. Proposed rule: always load a small core plus a one-line index per category, fetch the rest on demand. Waiting on the user.
-2. ~~OpenCode "Web search cancelled"~~: dropped. The user saw it on a workmate's PC, not this setup.
-3. Session-3 leftovers: Own worktree, /doctor, ShellDock polish, Windows run.
+**Next (all optional, none blocking; everything the user asked for in session 6 is done and pushed):**
+1. **Older untested items** (built in M5 / Track G, never checked in the real app):
+   - **"Own worktree"**: Settings → Background option; a message sent with Alt+Enter starts a background thread in its own git worktree. Test it live.
+   - **/doctor "Prune worktrees"** (the safe fix). Its "Run fix" buttons run real global upgrades (`claude update`, `opencode upgrade`, `npm i -g`): ask the user before clicking any.
+   - **ShellDock polish**: the background-shell bar above the message box sits slightly wider than the composer; a sidebar "1 shell running" hint (plan G2, not built); a Terminal-panel tab for a shell (plan G2; the inline dock was built instead).
+2. **Windows test run** of the shell features, on the user's Windows PC: `taskkill` tree kill, Git Bash / PowerShell `shellFor`, `backgroundsItself` on PowerShell syntax. Also worth a pass there: browser tools on demand, `/codemode`, the Claude skills allowlist (`skillFolders` follows junctions) and the OpenCode synced-skill hide (Windows paths).
+3. **Small token ideas:**
+   - **Codex**: drop CubiQ's Office skills (docx, pdf, pptx, xlsx) for Codex, since they duplicate Codex's own document plugins (documents, presentations, spreadsheets, pdf:pdf). Small saving.
+   - **OpenCode cache**: find out why it reuses its prompt cache less than the others (`bun run cache:report`: about 83% warm hits vs 95–99% for Claude and Codex).
+
+Dropped: OpenCode "Web search cancelled" (seen on a workmate's PC, not this setup).
 
 ## Resume here — 2026-10-21 (Mac, session 5)
 
