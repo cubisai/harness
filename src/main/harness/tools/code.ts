@@ -40,7 +40,7 @@ export const CODE_DESCRIPTION = [
   "Batch: one broad call (a grep pattern like `a|b|c`, then filtering in JavaScript) beats a call per item, and Promise.all runs calls together.",
   "`store(key, value)` and `load(key)` keep JSON between scripts in this session, and a failed script's writes are dropped.",
   "`console.log(...)` lines plus the returned value (JSON-stringified unless it's a string) are the result: return only what you need.",
-  "The sandbox has no filesystem, network, process or timers, and calls made before an error are not undone.",
+  "The sandbox has no filesystem, network, process, timers or modules (no require or import: reach files only through `tools`), and calls made before an error are not undone.",
 ].join(" ");
 
 let modulePromise: Promise<QuickJSWASMModule> | null = null;

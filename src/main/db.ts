@@ -944,6 +944,18 @@ export class Store {
     };
   }
 
+  /** The running cost a session had at the thread's latest turn-end for it (Claude's sessionCost), or null. */
+  lastSessionCost(threadId: string, sessionId: string): number | null {
+    const row = this.db
+      .prepare(
+        `SELECT json_extract(payload, '$.sessionCost.usd') AS usd FROM events
+         WHERE thread_id = ? AND json_extract(payload, '$.kind') = 'turn-end' AND json_extract(payload, '$.sessionCost.sessionId') = ?
+         ORDER BY seq DESC LIMIT 1`,
+      )
+      .get(threadId, sessionId) as { usd: number | null } | undefined;
+    return typeof row?.usd === "number" ? row.usd : null;
+  }
+
   /**
    * Every turn-end usage across all threads with created_at in [from, to), in
    * time order — the raw material for a rollback window's cache figures. A

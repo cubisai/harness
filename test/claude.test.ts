@@ -6,6 +6,8 @@ import { bundledClaudeVersion, createClaudeDriver, FIRST_RELIST_MS, fromSdk, han
 import { MODEL_TTL_MS } from "../src/main/agents/model-ttl";
 import { MEMORY_READ_TOOL, MEMORY_WRITE_TOOL } from "../src/main/memory/tool";
 import type { HarnessTool, ToolContext, TurnInput } from "../src/main/agents/types";
+import { CODE_ONLY_DENY } from "../src/main/code-hint";
+import { BACKGROUND_BASH_DENY } from "../src/main/shell-tools";
 import type { ThreadEvent } from "../src/shared/types";
 import { tempDir } from "./helpers";
 
@@ -632,6 +634,40 @@ describe("Claude stream mapping", () => {
     expect(events.find((e) => e.kind === "tool-result")).toMatchObject({ kind: "tool-result", toolUseId: "g1", payload: "src/a.ts:1:foo" });
   });
 
+  const bashResult = (id: string, command: string, content: string) => {
+    const { input, events } = recorder();
+    const turn = newTurnState();
+    feed(input, turn, { type: "assistant", parent_tool_use_id: null, message: { id: "m1", model: "claude-x", content: [{ type: "tool_use", id, name: "Bash", input: { command } }] } });
+    feed(input, turn, { type: "user", parent_tool_use_id: null, message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content, is_error: true }] } });
+    return events.find((e) => e.kind === "tool-result");
+  };
+
+  it("shows the app's own hook denials as guidance, not errors", () => {
+    expect(bashResult("b1", "grep -rn foo src", CODE_ONLY_DENY)).toMatchObject({ isError: false });
+    expect(bashResult("b2", "npm run dev &", `PreToolUse:Bash hook: ${BACKGROUND_BASH_DENY}`)).toMatchObject({ isError: false });
+    expect(bashResult("b3", "rm -rf build", "The user denied this command.")).toMatchObject({ isError: true });
+  });
+
+  it("shows a grep or rg with no match as No matches, not an error", () => {
+    expect(bashResult("g1", "grep -rn foo src", "Exit code 1")).toMatchObject({ isError: false, summary: "No matches", payload: { exitCode: 1, output: "No matches" } });
+    expect(bashResult("g2", "cd src && rg foo", "Exit code 1")).toMatchObject({ isError: false });
+    // A real grep failure, or any other command's exit 1, stays an error.
+    expect(bashResult("g3", "grep foo missing.txt", "Exit code 2\ngrep: missing.txt: No such file or directory")).toMatchObject({ isError: true });
+    expect(bashResult("g4", "npm test", "Exit code 1")).toMatchObject({ isError: true });
+  });
+
+  it("takes the resumed session's earlier total off a turn's cost", () => {
+    const { input, events } = recorder();
+    const message = { type: "result", subtype: "success", session_id: "s1", duration_ms: 10, total_cost_usd: 0.008225, usage: { input_tokens: 3452, output_tokens: 43 } };
+    feed({ ...input, sessionId: "s1", priorSessionCostUsd: 0.004558 }, newTurnState(), message);
+    // A lost session's retry is a new session, so its total is all its own.
+    feed({ ...input, sessionId: "s0", priorSessionCostUsd: 0.004558 }, newTurnState(), message);
+    const ends = events.filter((e) => e.kind === "turn-end");
+    expect(ends[0]).toMatchObject({ sessionCost: { sessionId: "s1", usd: 0.008225 } });
+    expect(ends[0]!.kind === "turn-end" && ends[0]!.costUsd).toBeCloseTo(0.003667, 9);
+    expect(ends[1]).toMatchObject({ costUsd: 0.008225 });
+  });
+
   it("names a Task call Agent and summarises description · subagent", () => {
     const { input, events } = recorder();
     feed(input, newTurnState(), {
@@ -822,6 +858,14 @@ describe("turnEndFromResult", () => {
     } as unknown as SDKResultMessage;
     const event = turnEnd(turnEndFromResult(message, 42000, "claude-unknown"));
     expect(event.usage?.contextSize).toBe(500000);
+  });
+
+  it("keeps the session total and reports the whole of it without a prior total", () => {
+    const message = { ...result({ input_tokens: 1, output_tokens: 1 }), session_id: "s1" } as SDKResultMessage;
+    expect(turnEndFromResult(message)).toMatchObject({ costUsd: 0.42, sessionCost: { sessionId: "s1", usd: 0.42 } });
+    // A prior above the total can't be the same running total, so the total stands.
+    expect(turnEndFromResult(message, null, null, undefined, 0.5)).toMatchObject({ costUsd: 0.42 });
+    expect(turnEnd(turnEndFromResult(message, null, null, undefined, 0.4)).costUsd).toBeCloseTo(0.02, 9);
   });
 
   it("reports no context figures without a reported window", () => {

@@ -62,6 +62,8 @@ export interface TurnInput {
   compact?: { focus: string | null };
   /** The agent's session to resume, or null for a new conversation. */
   sessionId: string | null;
+  /** The resumed session's running cost at the end of its last turn (a turn-end's sessionCost); absent = unknown. */
+  priorSessionCostUsd?: number | null;
   model: string;
   /** Reasoning effort for this turn; null or absent keeps the model's default. */
   effort?: string | null;

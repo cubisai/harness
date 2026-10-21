@@ -874,6 +874,7 @@ export class Service {
         prompt: turnPrompt,
         ...(compact ? { compact } : {}),
         sessionId: current.sessionId,
+        ...(current.sessionId !== null ? { priorSessionCostUsd: this.store.lastSessionCost(thread.id, current.sessionId) } : {}),
         model: thread.model,
         effort: thread.effort,
         contextWindow: thread.contextWindow ?? null,

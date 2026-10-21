@@ -664,6 +664,22 @@ describe("Store paged events and thread totals", () => {
     expect(["user", "turn-start"]).toContain(page.events[0]!.event.kind);
   });
 
+  it("finds a session's latest running cost in a thread", () => {
+    const store = new Store(join(tempDir(), "session-cost.db"));
+    closeAfter(() => store.close());
+    const t = store.createThread(store.addProject("/tmp/session-cost").id, "claude", "m", "ask");
+    const end = (usd: number, sessionId?: string) =>
+      store.appendEvent(t.id, { kind: "turn-end", costUsd: usd, inputTokens: 0, outputTokens: 0, durationMs: 0, ...(sessionId ? { sessionCost: { sessionId, usd } } : {}) });
+    expect(store.lastSessionCost(t.id, "a")).toBeNull();
+    end(0.1, "a");
+    end(0.3, "a");
+    end(0.2, "b");
+    end(0.5);
+    expect(store.lastSessionCost(t.id, "a")).toBe(0.3);
+    expect(store.lastSessionCost(t.id, "b")).toBe(0.2);
+    expect(store.lastSessionCost(t.id, "c")).toBeNull();
+  });
+
   it("totals a thread like UsageMeter, and reports an empty thread as zeros", () => {
     const store = new Store(join(tempDir(), "totals.db"));
     closeAfter(() => store.close());

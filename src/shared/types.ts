@@ -659,6 +659,8 @@ export type ThreadEvent = (
       steps?: number;
       /** Tool outputs cleared from history this turn to fit the context (native agent). */
       pruned?: number;
+      /** Claude's running session cost (the SDK's total, which carries over on resume), so a resumed turn's costUsd can be its own share. */
+      sessionCost?: { sessionId: string; usd: number };
     }
   /** One-line-per-category token breakdown of a brand-new session's first turn. */
   | { kind: "context-breakdown"; rows: { label: string; tokens: number }[]; total: number | null; estimated: boolean }

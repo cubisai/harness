@@ -726,13 +726,18 @@ export function newTurnState(): TurnState {
  * The turn-end event for a `result` message. inputTokens is uncached (net-new)
  * only — folding cache reads in would make the hit-rate denominator unknowable.
  * `contextUsed` is the last main-thread assistant call's full input (cached
- * included), and `contextSize` the model's window.
+ * included), and `contextSize` the model's window. `total_cost_usd` is the
+ * session's running total and carries over on resume, so `priorUsd` (the same
+ * session's total after its last turn) is taken off to leave this turn's share.
  */
-export function turnEndFromResult(message: SDKResultMessage, contextUsed?: number | null, model?: string | null, pricing?: ModelPricing | null): ThreadEvent {
+export function turnEndFromResult(message: SDKResultMessage, contextUsed?: number | null, model?: string | null, pricing?: ModelPricing | null, priorUsd?: number | null): ThreadEvent {
+  const total = typeof message.total_cost_usd === "number" ? message.total_cost_usd : null;
+  const own = total !== null && typeof priorUsd === "number" && total >= priorUsd ? total - priorUsd : total;
   return {
     kind: "turn-end",
     // Claude Code prices a model it doesn't know as one it does; a provider's own prices (or none) replace that.
-    costUsd: pricing !== undefined ? priceUsage(message.usage, pricing) : typeof message.total_cost_usd === "number" ? message.total_cost_usd : null,
+    costUsd: pricing !== undefined ? priceUsage(message.usage, pricing) : own,
+    ...(total !== null && typeof message.session_id === "string" ? { sessionCost: { sessionId: message.session_id, usd: total } } : {}),
     inputTokens: message.usage.input_tokens,
     outputTokens: message.usage.output_tokens,
     durationMs: message.duration_ms,
@@ -886,27 +891,33 @@ export function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnS
             turn.planToolIds.delete(block.tool_use_id);
             continue;
           }
-          const isError = Boolean(block.is_error);
+          const used = turn.toolPayloads.get(block.tool_use_id);
+          const text = resultText(block.content);
+          // The app's own hooks point a call at run_code or shell_start (guidance, not a failure); grep and rg exit 1 on no match.
+          const redirected = text.includes(CODE_ONLY_DENY) || text.includes(BACKGROUND_BASH_DENY);
+          const noMatches = Boolean(used && "command" in used && isGrepNoMatch(used.command, text));
+          const isError = Boolean(block.is_error) && !redirected && !noMatches;
           // A background Agent's immediate result is launch metadata, not its answer:
           // keep the row open for the task_notification instead of showing it.
-          if (turn.agentIds.has(block.tool_use_id) && !isError && (turn.backgroundAgents.has(block.tool_use_id) || resultText(block.content).startsWith("Async agent launched"))) {
+          if (turn.agentIds.has(block.tool_use_id) && !isError && (turn.backgroundAgents.has(block.tool_use_id) || text.startsWith("Async agent launched"))) {
             turn.backgroundAgents.add(block.tool_use_id);
             continue;
           }
           // Shape the result like the other adapters: a Run carries its output,
           // an Edit carries the diff its call described (with a +/− stat).
-          const used = turn.toolPayloads.get(block.tool_use_id);
           turn.toolPayloads.delete(block.tool_use_id);
           let payload: RunResult | EditResult | string | undefined;
           let summary = summarizeToolResult(block.content);
-          if (used && "command" in used) {
-            payload = { exitCode: null, output: resultText(block.content) };
+          if (noMatches) {
+            payload = { exitCode: 1, output: "No matches" };
+            summary = "No matches";
+          } else if (used && "command" in used) {
+            payload = { exitCode: null, output: text };
           } else if (used && "diff" in used && used.diff.length && !isError) {
             payload = { diff: used.diff };
             summary = diffSummary(used.diff);
           } else {
             // Any other tool's result keeps its text, so the row's Output has it.
-            const text = resultText(block.content);
             if (text) payload = text;
           }
           input.onEvent({
@@ -922,7 +933,9 @@ export function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnS
       return;
     }
     case "result": {
-      input.onEvent(turnEndFromResult(message, turn.contextInputTokens, turn.model));
+      // Only the session this turn resumed carries the prior total (a lost session's retry starts a new one).
+      const priorUsd = message.session_id === input.sessionId ? input.priorSessionCostUsd : null;
+      input.onEvent(turnEndFromResult(message, turn.contextInputTokens, turn.model, undefined, priorUsd));
       if (message.subtype !== "success") {
         input.onEvent({ kind: "error", message: `The turn ended early (${message.subtype}).` });
       }
@@ -1019,6 +1032,11 @@ function emitAssistantBlock(block: AssistantBlock, itemId: string, input: TurnIn
   // Only shaped payloads drive the result shape below; a generic input
   // must not be mistaken for a Run command or an Edit diff.
   turn.toolPayloads.set(block.id, payload);
+}
+
+/** Whether a Bash result is only grep's (or rg's…) exit 1 with no output: nothing matched, which isn't a failure. */
+function isGrepNoMatch(command: string, result: string): boolean {
+  return /^\s*(?:cd\s+\S+\s*&&\s*)?(?:grep|egrep|fgrep|rg|ag|ack)\b/.test(command) && result.trim() === "Exit code 1";
 }
 
 /** A tool_result's full text, joined the way summarizeToolResult joins it. */
