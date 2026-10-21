@@ -187,6 +187,24 @@ export function withOpenCodeReadDirs(plan: InjectionPlan | undefined, dirs: stri
   return out;
 }
 
+/**
+ * Leave these skills out of OpenCode's own skill list: top-level `permission.skill`
+ * gets `deny` for each name (OpenCode hides a denied skill from the model). Rules
+ * already in the config stay; a bare string rule becomes the `*` default.
+ */
+export function withOpenCodeHiddenSkills(plan: InjectionPlan, names: string[], env: NodeJS.ProcessEnv = process.env): InjectionPlan {
+  // Nothing to hide: the plan stays exactly as it was (no inline config for nothing).
+  if (!names.length) return plan;
+  const { out, config } = injectedConfig(plan, env);
+  const permission = (config.permission && typeof config.permission === "object" ? config.permission : {}) as Record<string, unknown>;
+  const current = permission.skill;
+  const rules: Record<string, unknown> = current && typeof current === "object" ? { ...(current as Record<string, unknown>) } : typeof current === "string" ? { "*": current } : {};
+  for (const name of names) if (rules[name] === undefined) rules[name] = "deny";
+  config.permission = { ...permission, skill: rules };
+  out.env.OPENCODE_CONFIG_CONTENT = JSON.stringify(config);
+  return out;
+}
+
 /** The plan to extend (a fresh one inheriting `env` when absent) and its parsed inline OpenCode config. */
 function injectedConfig(plan: InjectionPlan | undefined, env: NodeJS.ProcessEnv): { out: InjectionPlan; config: Record<string, unknown> } {
   let out = plan;

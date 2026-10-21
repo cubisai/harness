@@ -52,7 +52,8 @@ import { testConnection } from "./providers";
 import { discoverModels, ModelsDev, pickSmallModel } from "./models-catalog";
 import { injectionFor } from "./inject";
 import { redactSecrets } from "./inject/redact";
-import { opencodeVariants, withOpenCodeReadDirs, withOpenCodeTeam, withOpenCodeVariant } from "./inject/opencode";
+import { opencodeVariants, withOpenCodeHiddenSkills, withOpenCodeReadDirs, withOpenCodeTeam, withOpenCodeVariant } from "./inject/opencode";
+import { claudeAiSyncedSkills } from "./skills/folders";
 import { ensureOpenCodeGuard, ensureOpenCodeGuardV2, withOpenCodeGuard } from "./inject/opencode-guard";
 import { withOpenCodeV2 } from "./inject/opencode-v2";
 import { BUILT_IN_GUARD, findPython } from "./guard";
@@ -738,6 +739,11 @@ async function main(): Promise<void> {
           if (ctx?.team?.length && config.injector === "opencode") plan = withOpenCodeTeam(plan, ctx.team, [ctx.teamLead ?? "build", "build"]);
           // The expert's private package skills sit outside the project: let its agents read them without a prompt.
           if (ctx?.expertRoot && config.injector === "opencode") plan = withOpenCodeReadDirs(plan, [ctx.expertRoot]);
+          // OpenCode reads ~/.claude/skills all the way down, claude.ai's synced copies too: hide those (they need claude.ai's tools).
+          if (config.injector === "opencode") {
+            const home = homedir();
+            plan = withOpenCodeHiddenSkills(plan, claudeAiSyncedSkills(join(home, ".claude", "skills"), [join(home, ".agents", "skills"), join(home, ".config", "opencode", "skill"), join(home, ".config", "opencode", "skills")]));
+          }
           // Last, so every injector above writes the v1 shape and is translated once.
           if (v2 && config.injector === "opencode") plan = withOpenCodeV2(plan);
           return plan;

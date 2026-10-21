@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { InjectionPlan } from "../src/main/inject";
-import { parseOpenCodeVariants, withOpenCodeReadDirs, withOpenCodeTeam, withOpenCodeVariant } from "../src/main/inject/opencode";
+import { parseOpenCodeVariants, withOpenCodeHiddenSkills, withOpenCodeReadDirs, withOpenCodeTeam, withOpenCodeVariant } from "../src/main/inject/opencode";
+import { toOpenCodeV2Config } from "../src/main/inject/opencode-v2";
 
 describe("parseOpenCodeVariants", () => {
   const fixture = readFileSync(join(__dirname, "fixtures", "opencode-models.txt"), "utf8");
@@ -131,5 +132,26 @@ describe("withOpenCodeTeam steps", () => {
     expect(JSON.parse(withModel.env.OPENCODE_CONFIG_CONTENT!).agent.a).toEqual({ mode: "subagent", description: "A", prompt: "Do.", model: "opencode/x" });
     const plain = withOpenCodeTeam(undefined, [{ id: "b", description: "B", prompt: "Do." }], [], {});
     expect(JSON.parse(plain.env.OPENCODE_CONFIG_CONTENT!).agent.b).not.toHaveProperty("model");
+  });
+});
+
+describe("withOpenCodeHiddenSkills", () => {
+  it("denies each named skill, keeping the rules already there and a bare rule as the default", () => {
+    const plan: InjectionPlan = { env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ permission: { bash: "ask", skill: { mine: "allow", docs: "allow" } } }) }, byok: false };
+    const config = JSON.parse(withOpenCodeHiddenSkills(plan, ["docs", "morning"]).env.OPENCODE_CONFIG_CONTENT!);
+    // A rule the user set wins over the hide.
+    expect(config.permission).toEqual({ bash: "ask", skill: { mine: "allow", docs: "allow", morning: "deny" } });
+    const bare: InjectionPlan = { env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ permission: { skill: "ask" } }) }, byok: false };
+    expect(JSON.parse(withOpenCodeHiddenSkills(bare, ["morning"]).env.OPENCODE_CONFIG_CONTENT!).permission.skill).toEqual({ "*": "ask", morning: "deny" });
+  });
+
+  it("leaves the plan as it is when there's nothing to hide", () => {
+    const plan: InjectionPlan = { env: { A: "1" }, byok: false };
+    expect(withOpenCodeHiddenSkills(plan, [])).toBe(plan);
+  });
+
+  it("reaches OpenCode 2 as skill deny rules", () => {
+    const config = JSON.parse(withOpenCodeHiddenSkills({ env: {}, byok: false }, ["morning"]).env.OPENCODE_CONFIG_CONTENT!);
+    expect(toOpenCodeV2Config(config).permissions).toEqual([{ action: "skill", resource: "morning", effect: "deny" }]);
   });
 });
