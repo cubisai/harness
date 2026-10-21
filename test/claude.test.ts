@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ModelInfo, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
-import { bundledClaudeVersion, createClaudeDriver, FIRST_RELIST_MS, fromSdk, handleMessage, harnessToolOptions, newTurnState, pickClaudeExecutable, priceUsage, resolvePackagedClaudeBinary, TOOL_SERVER, turnEndFromResult } from "../src/main/agents/claude";
+import { bundledClaudeVersion, CLAUDE_KEPT_BUILTIN_SKILLS, createClaudeDriver, sessionSkills, skillFolders, FIRST_RELIST_MS, fromSdk, handleMessage, harnessToolOptions, newTurnState, pickClaudeExecutable, priceUsage, resolvePackagedClaudeBinary, TOOL_SERVER, turnEndFromResult } from "../src/main/agents/claude";
 import { MODEL_TTL_MS } from "../src/main/agents/model-ttl";
 import { MEMORY_READ_TOOL, MEMORY_WRITE_TOOL } from "../src/main/memory/tool";
 import type { HarnessTool, ToolContext, TurnInput } from "../src/main/agents/types";
@@ -201,6 +201,47 @@ describe("Claude driver models", () => {
       now.mockRestore();
       sdk.models = [];
     }
+  });
+});
+
+describe("Claude session skills", () => {
+  it("lists the user's and project's own, the plugin's and the kept built-ins, sorted, and nothing synced from claude.ai", () => {
+    const plugin = tempDir();
+    for (const name of ["docx", "browser"]) {
+      mkdirSync(join(plugin, "skills", name), { recursive: true });
+      writeFileSync(join(plugin, "skills", name, "SKILL.md"), `---\nname: ${name}\n---\n`);
+    }
+    const list = sessionSkills(["design-system", "agent-browser", "code-review"], plugin);
+    expect(list).toEqual([...list].sort());
+    expect(list).toEqual(expect.arrayContaining(["agent-browser", "design-system", "harness-skills:browser", "harness-skills:docx", ...CLAUDE_KEPT_BUILTIN_SKILLS]));
+    expect(new Set(list).size).toBe(list.length);
+    for (const dropped of ["update-config", "keybindings-help", "fewer-permission-prompts", "schedule", "loop", "anthropic-skills:docx", "google-workspace"]) expect(list).not.toContain(dropped);
+    expect(sessionSkills([], null)).toEqual([...CLAUDE_KEPT_BUILTIN_SKILLS].sort());
+  });
+
+  it("finds skill folders by their SKILL.md, symlinked ones too, and skips folders without one (claude.ai's synced/)", () => {
+    const home = tempDir();
+    const real = tempDir();
+    mkdirSync(join(home, "plain"));
+    writeFileSync(join(home, "plain", "SKILL.md"), "---\nname: plain\n---\n");
+    mkdirSync(join(real, "linked"));
+    writeFileSync(join(real, "linked", "SKILL.md"), "---\nname: linked\n---\n");
+    symlinkSync(join(real, "linked"), join(home, "linked"), "junction");
+    mkdirSync(join(home, "synced", "docs"), { recursive: true });
+    writeFileSync(join(home, "synced", "docs", "SKILL.md"), "x");
+    expect(skillFolders([home, join(home, "missing")]).sort()).toEqual(["linked", "plain"]);
+  });
+
+  it("passes the list to the SDK only when the app says where Claude's own skills live", async () => {
+    const own = tempDir();
+    mkdirSync(join(own, "mine"));
+    writeFileSync(join(own, "mine", "SKILL.md"), "---\nname: mine\n---\n");
+    sdk.calls.length = 0;
+    await createClaudeDriver({ pluginDir: () => null, ownSkillDirs: () => [own] }).runTurn(turnInput().input);
+    expect(sdk.calls[0]?.options.skills).toEqual(["mine", ...CLAUDE_KEPT_BUILTIN_SKILLS].sort());
+    sdk.calls.length = 0;
+    await createClaudeDriver({ pluginDir: () => null }).runTurn(turnInput().input);
+    expect(sdk.calls[0]?.options).not.toHaveProperty("skills");
   });
 });
 

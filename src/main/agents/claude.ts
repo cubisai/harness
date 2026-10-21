@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
@@ -255,11 +255,50 @@ function claudeInstall(): BinaryResolution | null {
   return executable?.found ?? null;
 }
 
+/**
+ * Claude Code's built-in skills that work inside CubiQ. The rest change Claude Code's own
+ * settings, key bindings, permissions, loops or cloud schedules, which CubiQ handles itself.
+ */
+export const CLAUDE_KEPT_BUILTIN_SKILLS = ["code-review", "security-review", "simplify", "claude-api", "dataviz", "init", "run"];
+
+/**
+ * The skills a Claude session lists (the SDK's `skills` allowlist): the project's and the
+ * user's own, CubiQ's plugin skills, and the kept built-ins. Skills synced from claude.ai
+ * are left out: their tools (connectors, computer use, Chrome) aren't in CubiQ, and its
+ * plugin has its own Office ones. About 3.9k tokens less on every request (measured on
+ * Claude Code 2.1.306). Sorted, so the list (and the prompt cache) is stable.
+ */
+export function sessionSkills(own: string[], pluginPath: string | null): string[] {
+  const plugin = pluginPath ? skillFolders([join(pluginPath, "skills")]).map((name) => `${PLUGIN_NAME}:${name}`) : [];
+  return [...new Set([...own, ...plugin, ...CLAUDE_KEPT_BUILTIN_SKILLS])].sort();
+}
+
+/** The skill folders (holding a SKILL.md) in these directories, by folder name, the name the SDK's allowlist matches. Symlinked skills count, as Claude Code follows them. */
+export function skillFolders(dirs: string[]): string[] {
+  return dirs.flatMap((dir) => {
+    let names: string[];
+    try {
+      names = readdirSync(dir);
+    } catch {
+      return [];
+    }
+    return names.filter((name) => {
+      try {
+        return statSync(join(dir, name, "SKILL.md")).isFile();
+      } catch {
+        return false;
+      }
+    });
+  });
+}
+
 export interface ClaudeDriverConfig {
   /** The generated plugin carrying model-invoked skills for this turn's cwd (plus the design-only ones in a design thread), or null if none; `threadId` adds that thread's expert's own skills. */
   pluginDir?: (cwd: string, design?: boolean, threadId?: string) => string | null;
   /** Skill folders outside any project (the app's bundled and the user's own), which a design thread's skills read their assets from. */
   skillDirs?: () => string[];
+  /** The skill folders Claude Code loads itself for this cwd (the user's ~/.claude/skills and the project's .claude/skills); with it, the session lists only their skills, the plugin's and CLAUDE_KEPT_BUILTIN_SKILLS. */
+  ownSkillDirs?: (cwd: string) => string[];
   /** Git guardrails script, if installed. */
   guardScript?: string;
   /** Plan rate limits, as Claude reports them during turns (claude.ai logins only). */
@@ -451,6 +490,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
 
       const pluginPath = config.pluginDir?.(input.cwd, !!input.design, input.threadId);
       const plugins: { type: "local"; path: string }[] = pluginPath ? [{ type: "local", path: pluginPath }] : [];
+      const skills = config.ownSkillDirs ? sessionSkills(skillFolders(config.ownSkillDirs(input.cwd)), pluginPath ?? null) : null;
       // A design thread's skills keep their scaffolds and scripts outside the project; reading them shouldn't ask (Claude asks for paths outside its directories even in Full access).
       const skillRoots = input.design ? [...(pluginPath ? [pluginPath] : []), ...(config.skillDirs?.() ?? [])] : [];
       // The expert's private package skills: readable, but never a skill root (they're indexed in the prompts).
@@ -493,6 +533,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         ...(input.effort ? { effort: input.effort as EffortLevel } : {}),
         ...(adaptiveThinking.get(input.model) === true ? { thinking: { type: "adaptive" as const, display: "summarized" as const } } : {}),
         plugins,
+        ...(skills ? { skills } : {}),
         // An expert team's members, as subagents the lead hands steps to (Agent tool, subagent_type = member id).
         // Members don't get the Skill tool: their toolkit is their own skills index, and the user's whole skill list would ride every step.
         ...(input.team?.length

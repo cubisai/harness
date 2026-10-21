@@ -440,6 +440,7 @@ async function main(): Promise<void> {
         join(userData, "harness-plugin", skillsKey(cwd, design)),
       ),
     skillDirs: () => [skills.dirs(null).bundled, skills.dirs(null).harness],
+    ownSkillDirs: (cwd) => [join(homedir(), ".claude", "skills"), join(cwd, ".claude", "skills")],
     guardScript,
     // Deferred: memoryPromptFor is declared after this driver is created.
     memory: (projectId, threadId, sessionKey) => memoryPromptFor(projectId, threadId, sessionKey),
