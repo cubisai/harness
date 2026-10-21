@@ -2,10 +2,10 @@
 
 ## Resume here — 2026-10-21 (Mac, session 5)
 
-m4 = `50d459e` + this handoff commit, **not pushed**. The uncommitted `D road-map-handoff.md` in the main checkout still isn't ours: leave it.
+m4 pushed to origin (session 5 end). The uncommitted `D road-map-handoff.md` in the main checkout still isn't ours: leave it.
 
 - `50d459e` **Settings**: Code mode moved from Agents & Providers to a new last group **Experiments**; the middle stop reads "Read-only + MCP (Recommended)"; the note describes the new Only (Claude and CubiQ's own agents lose direct search tools, Claude keeps Read, shell searches turned away; Codex and OpenCode get a one-line hint). `settings-ia.test.tsx` pins the group and label. Suite 3357 passed; screenshotted dark.
-- Sidebar question from a workmate (expanded projects empty): not a bug. In the flat **"All"** Recent view the Projects list only holds archived threads; "By project" (default) lists threads under each project. Offered: hide the chevron, or list threads there, in flat view; no answer yet.
+- Sidebar question from a workmate (expanded projects empty): not a bug. In the flat **"All"** Recent view the Projects list only holds archived threads; "By project" (default) lists threads under each project. Fixed per user: in flat view a project starts folded and opening it lists its threads, then Archived (Sidebar-local `flatOpen`; the grouped view's `collapsedProjects` is untouched).
 
 **Only rerun** (session-4 item 2), build `50d459e`, same task and ground truth as session 4 (3 consts; types count as wrong):
 
@@ -24,7 +24,7 @@ m4 = `50d459e` + this handoff commit, **not pushed**. The uncommitted `D road-ma
 - **"Only" removed** (user agreed). Code mode is Off / Read-only + MCP; a settings file that still says `only` reads as `on`. Gone: `code-hint.ts` (hint, `CODE_ONLY_DENY`, `isShellSearch`), Claude's Grep/Glob disallow and Bash search hook, the native read/glob/grep filter and `ToolContext.searchOnly`, the Codex/ACP hint lines. Suite 3355 passed; live "on" turn on Claude, Codex, OpenCode Zen and native TokenHarbor: 1 run_code each, all correct.
 - Bench driver (scratchpad, gone after the session): same as session 4, plus 30 s between runs, codeMode set once before all runs, results as JSONL (turn-end payload, top-level tool-use counts, red rows, errors, last assistant text).
 
-**Next:** sidebar flat-view tweak if wanted; OpenCode "Web search cancelled" (ask where they saw it); session-4 items 4–5.
+**Next:** OpenCode "Web search cancelled" (ask where they saw it); session-4 items 4–5.
 
 ## Resume here — 2026-10-21 (Mac, session 4)
 
