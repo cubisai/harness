@@ -11,6 +11,7 @@ import type { ToolDiff } from "../../shared/tools";
 import { forClaude } from "../mcp/servers";
 import { CODE_ONLY_DENY, CODE_ONLY_HINT, isShellSearch } from "../code-hint";
 import { CODE_TOOL } from "../code-mode";
+import { BACKGROUND_BASH_DENY } from "../shell-tools";
 import { checkCommand } from "../guard";
 import type { InjectionPlan } from "../inject";
 import { normalizeUsage } from "../usage";
@@ -448,6 +449,14 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: CODE_ONLY_DENY } };
       };
 
+      // With the app's shell tools on hand, a background Bash is pointed at shell_start (see BACKGROUND_BASH_DENY).
+      const hasShells = input.tools.some((t) => t.name === "shell_start");
+      const noBackgroundBash: HookCallback = async (hookInput) => {
+        if (hookInput.hook_event_name !== "PreToolUse") return {};
+        if ((hookInput.tool_input as { run_in_background?: unknown } | undefined)?.run_in_background !== true) return {};
+        return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: BACKGROUND_BASH_DENY } };
+      };
+
       const pluginPath = config.pluginDir?.(input.cwd, !!input.design, input.threadId);
       const plugins: { type: "local"; path: string }[] = pluginPath ? [{ type: "local", path: pluginPath }] : [];
       // A design thread's skills keep their scaffolds and scripts outside the project; reading them shouldn't ask (Claude asks for paths outside its directories even in Full access).
@@ -472,6 +481,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
       // "Only" hides Grep and Glob, but Bash can still grep: one fixed line points reads at run_code.
       const systemAppend = [guideText, input.expert, memoryText, codeMode === "only" ? CODE_ONLY_HINT : null].filter((part): part is string => Boolean(part)).join("\n\n");
       const harnessTools = codeMode !== "off" ? [...input.tools, config.codeTool!(input.threadId)] : input.tools;
+      const bashHooks = [...(hasShells ? [noBackgroundBash] : []), ...(codeMode === "only" ? [searchOnly] : []), guard];
       const options: Options = {
         cwd: input.cwd,
         abortController,
@@ -504,7 +514,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         ...(input.team?.length ? { env: { ...(plan?.env ?? process.env), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1" } } : plan ? { env: plan.env } : {}),
         ...(codeMode === "only" ? { disallowedTools: SCRIPT_ONLY_TOOLS } : {}),
         ...withUserServers(harnessToolOptions(harnessTools, { ...(input.projectId ? { projectId: input.projectId } : {}), ...(input.threadId ? { threadId: input.threadId } : {}) }), input.mcpServers),
-        hooks: { PreToolUse: [{ matcher: "Bash", hooks: codeMode === "only" ? [searchOnly, guard] : [guard] }] },
+        hooks: { PreToolUse: [{ matcher: "Bash", hooks: bashHooks }] },
         canUseTool: async (toolName, toolInput, { suggestions }): Promise<PermissionResult> => {
           // Plan mode's own gate: Claude presents its plan, the user decides how
           // to proceed, and the answer sets the mode for the accepted edits.

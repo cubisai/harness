@@ -119,6 +119,14 @@ export function withDesign(url: string, threadId: string | undefined): string {
   return u.toString();
 }
 
+/** A tool-server URL that adds a thread's background-shell tools (`?s=`), without naming it as the caller. */
+export function withShells(url: string, threadId: string | undefined): string {
+  if (!threadId) return url;
+  const u = new URL(url);
+  u.searchParams.set("s", threadId);
+  return u.toString();
+}
+
 /** A tool-server URL that adds code mode's run_code for a thread (`?c=`), without naming it as the caller. */
 export function withCode(url: string, threadId: string | undefined): string {
   if (!threadId) return url;
@@ -144,7 +152,8 @@ export function withCode(url: string, threadId: string | undefined): string {
  * thread (named by `?d=`, or `?t=`) also gets `design(threadId)`, the design
  * tools; `?d=` alone names no caller, so it adds no thread tools. `?c=<threadId>`
  * adds `code(threadId)`, code mode's run_code for that thread; the driver puts
- * it on the URL at session start, so a session's list never changes.
+ * it on the URL at session start, so a session's list never changes. `?s=<threadId>`
+ * adds that thread's background-shell tools, on the same terms.
  */
 export async function startToolServer(
   tools: () => HarnessTool[],
@@ -155,6 +164,7 @@ export async function startToolServer(
   upstream?: (req: IncomingMessage, res: ServerResponse, scope: string, name: string) => Promise<void>,
   design?: (threadId: string) => HarnessTool[],
   code?: (threadId: string) => HarnessTool[],
+  shells?: (threadId: string) => HarnessTool[],
 ): Promise<ToolServer> {
   const token = randomBytes(24).toString("hex");
   const http = createServer(async (req, res) => {
@@ -177,6 +187,7 @@ export async function startToolServer(
     const threadId = query.get("t") ?? undefined;
     const designId = query.get("d") ?? threadId;
     const codeId = query.get("c") ?? undefined;
+    const shellId = query.get("s") ?? undefined;
     if (req.method !== "POST") {
       // Stateless servers have no server-initiated stream to offer.
       res.writeHead(405, { Allow: "POST" }).end();
@@ -199,6 +210,7 @@ export async function startToolServer(
     const waiting = threadId ? (threadTools?.() ?? []) : [];
     list.push(...waiting);
     if (codeId) list.push(...(code?.(codeId) ?? []));
+    if (shellId) list.push(...(shells?.(shellId) ?? []));
     const waitingNames = new Set(waiting.map((t) => t.name));
     // A call the agent abandons (the request closes before the answer) aborts, so a waiting ask_user card goes away.
     const gone = new AbortController();

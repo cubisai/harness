@@ -690,6 +690,9 @@ export function installMock(): void {
     worktreeCommit: async () => "1111111",
     worktreeMerge: async () => ({ ok: true as const, sha: "2222222" }),
     worktreePush: async () => ({ remote: "origin", branch: "harness/demo-a1b2c3" }),
+    listShells: async () => [],
+    shellOutput: async () => null,
+    stopShell: async () => {},
     worktreeRemove: async () => true,
     getDiff: async (_projectId, _threadId) => [
       {

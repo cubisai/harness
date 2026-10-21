@@ -13,7 +13,8 @@ import { binaryInfo, majorOf, resolvedInstallAsync } from "../binaries";
 import type { AgentDriver, SessionSeed, TurnInput } from "../types";
 import { acpCapabilities, withCapabilities } from "../capabilities";
 import { forAcpWithReport, mcpChangeNotice } from "../../mcp/servers";
-import { TOOL_SERVER_NAME, withCode, withProject, withThread } from "../../mcp-http";
+import { TOOL_SERVER_NAME, withCode, withProject, withShells, withThread } from "../../mcp-http";
+import { SHELL_TOOL_NAMES } from "../../shell-tools";
 import { ASK_USER_TOOL } from "../../questions";
 import { checkCommand } from "../../guard";
 import { RpcError, StdioRpc } from "../rpc";
@@ -919,7 +920,9 @@ export function createAcpDriver(
         const skillsTarget = capabilities.skillsDelivery.mode === "tool" ? (skillsUrl ?? url) : url;
         const target = routed ? (routedUrl ?? skillsUrl ?? url) : skillsTarget;
         const code = (deps.codeMode?.(input.threadId) ?? "off") !== "off" && !hasOwnCodeMode(l.init);
-        servers.push({ type: "http", name: TOOL_SERVER_NAME, url: withCode(withThread(withProject(target, input.projectId), input.threadId), code ? input.threadId : undefined), headers: [{ name: "Authorization", value: `Bearer ${token}` }] } as { name: string });
+        const shells = input.tools.some((t) => (SHELL_TOOL_NAMES as readonly string[]).includes(t.name)) ? input.threadId : undefined;
+        const toolUrl = withShells(withCode(withThread(withProject(target, input.projectId), input.threadId), code ? input.threadId : undefined), shells);
+        servers.push({ type: "http", name: TOOL_SERVER_NAME, url: toolUrl, headers: [{ name: "Authorization", value: `Bearer ${token}` }] } as { name: string });
         l.askUser = true;
       } else dropped.push("the app's browser tools");
     }

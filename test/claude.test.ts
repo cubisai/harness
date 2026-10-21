@@ -212,6 +212,32 @@ describe("Claude driver guide", () => {
     expect(sdk.calls[0]?.options.systemPrompt).toEqual({ type: "preset", preset: "claude_code", append: "GUIDE" });
   });
 
+  it("turns a background Bash toward shell_start when the shell tools are there, and shell searches away only in code mode Only", async () => {
+    type Hook = (input: Record<string, unknown>) => Promise<{ hookSpecificOutput?: { permissionDecision?: string; permissionDecisionReason?: string } }>;
+    const hooksOf = (i: number): Hook[] => ((sdk.calls[i]?.options.hooks as { PreToolUse: { hooks: Hook[] }[] }).PreToolUse[0]!.hooks);
+    const decide = async (hooks: Hook[], toolInput: Record<string, unknown>) => {
+      for (const h of hooks) {
+        const out = await h({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: toolInput });
+        if (out.hookSpecificOutput?.permissionDecision === "deny") return out.hookSpecificOutput.permissionDecisionReason ?? "deny";
+      }
+      return "allow";
+    };
+    const shellStart: HarnessTool = { name: "shell_start", description: "", input: {}, autoAllow: false, run: async () => ({ text: "" }) };
+    const codeTool = (): HarnessTool => ({ name: "run_code", description: "", input: {}, autoAllow: true, run: async () => ({ text: "" }) });
+
+    sdk.calls.length = 0;
+    const plain = turnInput();
+    await createClaudeDriver({ pluginDir: () => null }).runTurn(plain.input);
+    expect(await decide(hooksOf(0), { command: "bun run dev", run_in_background: true })).toBe("allow");
+
+    const withShells = turnInput();
+    withShells.input.tools = [shellStart];
+    await createClaudeDriver({ pluginDir: () => null, codeTool, codeMode: () => "only" }).runTurn(withShells.input);
+    expect(await decide(hooksOf(1), { command: "bun run dev", run_in_background: true })).toContain("shell_start");
+    expect(await decide(hooksOf(1), { command: "bun run test" })).toBe("allow");
+    expect(await decide(hooksOf(1), { command: "rg -l TODO src" })).toContain("run_code");
+  });
+
   it("leaves systemPrompt out when there's no guide", async () => {
     sdk.calls.length = 0;
     const d = createClaudeDriver({ pluginDir: () => null });

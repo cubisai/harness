@@ -5,6 +5,7 @@ import { Library } from "./components/Library";
 import { Composer } from "./components/Composer";
 import { RequestDock } from "./components/RequestDock";
 import { TodoDock } from "./components/TodoDock";
+import { ShellDock } from "./components/ShellDock";
 import { ThreadMeters } from "./components/Meters";
 import { DraftMode, DraftModel, ThreadMode, ThreadModel } from "./components/ThreadControls";
 import { ThreadDesignSettings } from "./components/DesignSettingsMenu";
@@ -257,6 +258,7 @@ export function App() {
               <>
                 <ThreadView threadId={thread.id} expertId={thread.expertId} />
                 <TodoDock threadId={thread.id} />
+                <ShellDock threadId={thread.id} />
                 <RequestDock threadId={thread.id} />
                 {thread.expertId && <TeamStrip threadId={thread.id} expertId={thread.expertId} agent={thread.agent} leadModel={thread.model} />}
                 <Composer

@@ -97,6 +97,8 @@ import { defaultSkillsCandidates, findSkillsRoot } from "./skills/catalog";
 import { ensureModelSkillsDir, ensurePlugin } from "./skills/plugin";
 import { SkillCatalogs, forAgent } from "./skills/sources";
 import { skillTool } from "./skills/tool";
+import { shellTools } from "./shell-tools";
+import { ShellManager } from "./shells";
 import { commitThread, draftMessage, mergeThread, pushThread, removeThreadWorktree, reviewState, type ReviewDeps } from "./worktree-review";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
@@ -589,6 +591,27 @@ async function main(): Promise<void> {
     if (!list) designThreadTools.set(thread.id, (list = [...allTools, ...designToolsOf(thread.id)]));
     return team.length ? [...list, ...team] : list;
   };
+  // Background shells (Track G): one manager for the app, killed on quit. Every agent gets
+  // shell_start/output/stop/list, bound to its thread (Claude's own background Bash is turned away).
+  const shells = new ShellManager({ onChange: (shell) => broadcast({ type: "shell", shell }) });
+  const shellToolLists = new Map<string, HarnessTool[]>();
+  const shellToolsOf = (threadId: string): HarnessTool[] => {
+    let list = shellToolLists.get(threadId);
+    if (!list) {
+      list = shellTools(threadId, {
+        manager: shells,
+        cwdOf: (id) => {
+          const thread = threadOf(id);
+          return thread ? service.cwdOf(thread) : null;
+        },
+        guardScript,
+      });
+      shellToolLists.set(threadId, list);
+    }
+    return list;
+  };
+  // A turn's tools: the app's, plus the thread's shell tools (not in a design thread, whose tools are its own).
+  const turnTools = (thread?: Thread): HarnessTool[] => (thread && thread.kind !== "design" ? [...harnessTools(thread), ...shellToolsOf(thread.id)] : harnessTools(thread));
   // Code mode, fixed per thread for this app run (a session's tool list never changes).
   const codeModeOf = codeModes(() => settings.get().codeMode);
   const threadOf = (threadId: string): Thread | null => {
@@ -635,6 +658,8 @@ async function main(): Promise<void> {
       (tid) => [...(isDesignThread(tid) ? designToolsOf(tid) : []), ...teamToolsOf(tid)],
       // `?c=` (put on by a driver whose thread has code mode on) adds that thread's run_code.
       (tid) => (codeModeOf(tid) !== "off" ? [codeServer.tool(tid)] : []),
+      // `?s=` (put on by a driver whose thread's tools carry them) adds that thread's background-shell tools.
+      (tid) => shellToolsOf(tid),
     ));
   // Served only on a thread's own URL (`?t=`): ACP agents' question tool, answered in the app's card.
   const threadTools: HarnessTool[] = [askUserTool((threadId: string, questions: Question[], signal?: AbortSignal) => service.askFromTool(threadId, questions, signal))];
@@ -847,7 +872,7 @@ async function main(): Promise<void> {
     (cwd: string | null) => skillsFor(cwd),
     drivers,
     broadcast,
-    harnessTools,
+    turnTools,
     () => {
       const s = settings.get();
       return { agent: s.defaultAgent, permissionMode: s.defaultPermissionMode };
@@ -1483,7 +1508,7 @@ async function main(): Promise<void> {
     return buildContextPreview({
       guideParts: cwd ? guide.partsForCwd(cwd) : [],
       // An agent that keeps the shared memory itself doesn't need the memory tools.
-      tools: harnessTools(thread ?? undefined).filter((t) => !(thread && drivers.find((d) => d.id === thread.agent)?.capabilities.nativeMemory && (t.name === MEMORY_READ_TOOL || t.name === MEMORY_WRITE_TOOL))),
+      tools: turnTools(thread ?? undefined).filter((t) => !(thread && drivers.find((d) => d.id === thread.agent)?.capabilities.nativeMemory && (t.name === MEMORY_READ_TOOL || t.name === MEMORY_WRITE_TOOL))),
       skills: thread && delivery ? skillsInputFor(delivery, cwd, thread.kind === "design") : null,
       mcp: servers.map((s) => ({ name: s.name, listed: mcpTools.peek(s.spec), deferred })),
       memoryIndex: pid && memoryOn(settings.get(), pid) ? (({ lines, tokens }) => ({ lines, tokens }))(memoryBlockFor(pid)) : null,
@@ -1543,7 +1568,18 @@ async function main(): Promise<void> {
     if (res.canceled || !path) return null;
     return { ...store.setProjectPath(id, path), missing: false };
   });
-  ipcMain.handle("projects:delete", (_e, id: string) => service.deleteProject(id));
+  ipcMain.handle("projects:delete", async (_e, id: string) => {
+    for (const shell of shells.list()) if (threadOf(shell.threadId)?.projectId === id) await shells.stop(shell.id);
+    return service.deleteProject(id);
+  });
+  ipcMain.handle("shells:list", (_e, threadId: string) => shells.list(threadId));
+  ipcMain.handle("shells:output", (_e, id: string, since?: number) => {
+    const out = shells.output(id, typeof since === "number" ? { since } : { tail: 400 });
+    return out ? { text: out.text, next: out.next, dropped: out.dropped } : null;
+  });
+  ipcMain.handle("shells:stop", async (_e, id: string) => {
+    await shells.stop(id);
+  });
   // A project mutation returns the row, as add/delete do; the renderer store applies it.
   ipcMain.handle("projects:set-check-command", (_e, projectId: string, command: string | null, fixRounds?: number | null) =>
     store.setCheckCommand(projectId, command, fixRounds),
@@ -1606,6 +1642,8 @@ async function main(): Promise<void> {
     service.updateThread(id, pick(patch, ["title", "model", "effort", "contextWindow", "permissionMode", "agent", "pinned", "archived"])),
   );
   ipcMain.handle("threads:delete", async (_e, id: string) => {
+    await shells.stopThread(id);
+    shellToolLists.delete(id);
     await service.deleteThread(id);
     // Its team workspace and Codex member roles go with it.
     teamToolLists.delete(id);
@@ -1740,6 +1778,9 @@ async function main(): Promise<void> {
     return result;
   });
   ipcMain.handle("worktree:remove", async (_e, threadId: string) => {
+    // A shell running in the worktree would hold the folder open: stop it first.
+    const dir = store.getThread(threadId).worktreePath;
+    if (dir) await shells.stopUnder(dir);
     const removed = await removeThreadWorktree(reviewDeps, threadId);
     if (removed) {
       store.clearWorktreePath(threadId);
@@ -1923,6 +1964,7 @@ async function main(): Promise<void> {
     shooter.close();
     terminals.dispose();
     devServers.stopAll();
+    shells.dispose();
     automations.dispose();
     mcpTools.flush();
     void toolServer?.then((s) => s.close());

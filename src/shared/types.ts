@@ -1068,8 +1068,24 @@ export interface BrowserState {
 }
 
 /** Pushed from main to renderer while a turn runs. */
+/** A background shell an agent started (Track G): what the strip above the composer shows. */
+export interface BackgroundShell {
+  id: string;
+  threadId: string;
+  name: string;
+  command: string;
+  cwd: string;
+  status: "running" | "exited" | "stopped";
+  exitCode: number | null;
+  startedAt: number;
+  endedAt: number | null;
+  pid: number | null;
+}
+
 export type LiveUpdate =
   | { type: "event"; threadId: string; stored: StoredEvent }
+  /** A background shell started, exited or was stopped. */
+  | { type: "shell"; shell: BackgroundShell }
   | { type: "delta"; threadId: string; delta: LiveDelta }
   | { type: "running"; threadId: string; running: boolean }
   /** A background send is waiting for a free slot (true) or has started or been stopped (false). */
@@ -1183,6 +1199,12 @@ export interface UnskilledApi {
   worktreeCommit(threadId: string, message: string): Promise<string>;
   /** Merge the thread's branch into `target` (default: its base) where that branch is checked out; a conflict leaves both untouched. */
   worktreeMerge(threadId: string, opts: { mode: "squash" | "merge"; message: string; target?: string }): Promise<{ ok: true; sha: string } | { ok: false; reason: string; conflicts: string[] }>;
+  /** The thread's background shells, newest first. */
+  listShells(threadId: string): Promise<BackgroundShell[]>;
+  /** A shell's output from an offset (`next` of the last read), or its last lines. */
+  shellOutput(id: string, since?: number): Promise<{ text: string; next: number; dropped: boolean } | null>;
+  /** Stop a background shell and its process tree. */
+  stopShell(id: string): Promise<void>;
   /** Push the thread's branch to its remote (and track it). */
   worktreePush(threadId: string): Promise<{ remote: string; branch: string }>;
   /** Remove the thread's worktree folder when it's clean (the branch stays); resolves to whether it went. */

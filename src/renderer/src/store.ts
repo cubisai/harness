@@ -2,6 +2,7 @@ import type { ExpertDef } from "../../shared/experts";
 import type { AutomationNotice } from "../../shared/automations";
 import { create } from "zustand";
 import type {
+  BackgroundShell,
   ArtifactFile,
   BrowserState,
   DevicePreset,
@@ -140,6 +141,8 @@ interface State {
   running: Record<string, boolean>;
   /** Background threads waiting for a free slot under Settings › Run at once. */
   queued: Record<string, boolean>;
+  /** Background shells agents started, by shell id (Track G). */
+  shells: Record<string, BackgroundShell>;
   /** Pin or unpin a thread; pins are stored with the thread. */
   togglePin(threadId: string): Promise<void>;
   renameThread(threadId: string, title: string): Promise<void>;
@@ -569,6 +572,7 @@ export const useStore = create<State>((set, get) => ({
   live: {},
   running: {},
   queued: {},
+  shells: {},
   async togglePin(threadId) {
     const thread = findThread(get().threads, threadId);
     if (!thread) return;
@@ -1401,6 +1405,9 @@ export const useStore = create<State>((set, get) => ({
       }
       case "queued":
         set((s) => ({ queued: { ...s.queued, [update.threadId]: update.queued } }));
+        return;
+      case "shell":
+        set((s) => ({ shells: { ...s.shells, [update.shell.id]: update.shell } }));
         return;
       case "running":
         if (!update.running) void api().listAgents().then((agents) => set({ agents }));
