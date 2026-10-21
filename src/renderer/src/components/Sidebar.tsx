@@ -245,6 +245,8 @@ export function Sidebar() {
   const kind = useStore((s) => s.threadKind);
   const { setThreadKind, addProject, newChat, selectProject, selectThread, newThread, setSearchOpen, toggleProjectCollapsed } = useStore.getState();
   const [archivedOpen, setArchivedOpen] = useState<Record<string, boolean>>({});
+  // The flat view's Projects list starts folded (Recent already lists every thread); opening a project there shows its threads.
+  const [flatOpen, setFlatOpen] = useState<Record<string, boolean>>({});
   const mac = api().platform === "darwin";
   const newThreadKey = mac ? "⌘N" : "Ctrl N";
   const searchKey = mac ? "⌘K" : "Ctrl K";
@@ -316,14 +318,15 @@ export function Sidebar() {
       </details>
     );
   };
-  const projectRow = (p: Project) => (
+  const projectRow = (p: Project, flat = false) => (
     <ProjectRow
       project={p}
-      open={!collapsed[p.id]}
+      open={flat ? Boolean(flatOpen[p.id]) : !collapsed[p.id]}
       branch={branches[p.id]}
       onToggle={() => {
         void selectProject(p.id);
-        toggleProjectCollapsed(p.id);
+        if (flat) setFlatOpen((o) => ({ ...o, [p.id]: !o[p.id] }));
+        else toggleProjectCollapsed(p.id);
       }}
     />
   );
@@ -425,8 +428,13 @@ export function Sidebar() {
             <div className="section-label">Projects</div>
             {ordered.map((p) => (
               <div className="project" key={p.id}>
-                {projectRow(p)}
-                {!collapsed[p.id] && archived(p.id)}
+                {projectRow(p, true)}
+                {flatOpen[p.id] && (
+                  <>
+                    {model.groups.find((g) => g.projectId === p.id)?.threads.map((t) => row(t))}
+                    {archived(p.id)}
+                  </>
+                )}
               </div>
             ))}
           </section>

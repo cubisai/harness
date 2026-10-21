@@ -40,6 +40,18 @@ describe("Chats in the sidebar", () => {
   });
 });
 
+describe("flat Recent view", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("starts each project folded in the Projects list, so Recent's threads aren't listed twice", () => {
+    vi.stubGlobal("window", { unskilled: { platform: "darwin" } });
+    const t = { ...chat, id: "t1", projectId: "p1", title: "fix the parser", worktreePath: "/code/app" } as Thread;
+    const html = render({ projects: [APP], threads: { p1: [t] }, threadKind: "chat", settings: { sidebarGroupByProject: false } as never });
+    expect(html).toContain(">Projects<");
+    expect(html.match(/class="thread-row"/g)).toHaveLength(1);
+  });
+});
+
 describe("newChat", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
