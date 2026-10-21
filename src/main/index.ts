@@ -96,6 +96,7 @@ import { MCP_ROUTER_MIN_TOOLS, McpClientPool, routerTools } from "./mcp/router";
 import { providerWarning } from "../shared/provider-rules";
 import { Updater, type UpdaterBackend } from "./updater";
 import { defaultSkillsCandidates, findSkillsRoot } from "./skills/catalog";
+import { codexCoveredSkills, withoutCodexCovered } from "./skills/codex-plugins";
 import { ensureModelSkillsDir, ensurePlugin } from "./skills/plugin";
 import { SkillCatalogs, forAgent } from "./skills/sources";
 import { skillTool } from "./skills/tool";
@@ -689,13 +690,14 @@ async function main(): Promise<void> {
             extensions: extensionsFor("codex"),
             // Per project: Codex reads .agents/skills itself, but not .cubiq or .claude.
             // A design thread's set adds the design-only skills, in a folder of its own.
+            // The bundled Office skills that Codex's own document plugins cover stay out (skills/codex-plugins.ts).
             skillsDir: (cwd, design) =>
               cwd
                 ? ensureModelSkillsDir(
-                    forAgent(skillsFor(cwd), CODEX_CAPABILITIES.skillsDelivery, new Set(), { design }),
+                    withoutCodexCovered(forAgent(skillsFor(cwd), CODEX_CAPABILITIES.skillsDelivery, new Set(), { design }), codexCoveredSkills()),
                     join(`${modelSkillsDir}-projects`, skillsKey(cwd, design)),
                   )
-                : ensureModelSkillsDir(forAgent(skills.global(), CODEX_CAPABILITIES.skillsDelivery), modelSkillsDir),
+                : ensureModelSkillsDir(withoutCodexCovered(forAgent(skills.global(), CODEX_CAPABILITIES.skillsDelivery), codexCoveredSkills()), modelSkillsDir),
             toolServer: getToolServer,
             codeMode: codeModeOf,
             onLimits: limits.for("codex"),
@@ -1240,7 +1242,13 @@ async function main(): Promise<void> {
     const cwd = projectPathOf(projectId ?? null);
     // Claude Code's own skill folders, the same ones its plugin skips (see pluginDir above); plugin delivery = Claude Code.
     const claudeOwn = skills.namesIn([join(homedir(), ".claude", "skills"), ...(cwd ? [join(cwd, ".claude", "skills")] : [])]);
-    return skillDetail(skills.forProject(cwd), name, catalogOfAgents(), (a) => (a.capabilities?.skillsDelivery.mode === "plugin" ? claudeOwn : new Set()));
+    const catalog = skills.forProject(cwd);
+    // Codex (extra skills roots) skips a bundled skill one of its own enabled plugins covers (its skillsDir above).
+    const codexOwn = catalog.byName.get(name)?.origin === "bundled" ? codexCoveredSkills() : new Set<string>();
+    return skillDetail(catalog, name, catalogOfAgents(), (a) => {
+      const mode = a.capabilities?.skillsDelivery.mode;
+      return mode === "plugin" ? claudeOwn : mode === "extraRoots" ? codexOwn : new Set<string>();
+    });
   });
   ipcMain.handle("skills:set-enabled", (_e, origin: SkillOrigin, name: string, enabled: boolean) => {
     const key = `${origin}:${name}`;
