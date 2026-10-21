@@ -1,4 +1,82 @@
-# Handoff: M5 merged into m4 (OpenCode v1+v2, code mode everywhere, /doctor, background threads, worktree review & merge) — 2026-10-20 — see "Resume here — M5": untested list + Track G background-shells plan
+# Handoff: M5 + Track G (background shells) + code-mode fixes on m4 — 2026-10-21 — see "Resume here — 2026-10-21": next steps, benchmark, research
+
+## Resume here — 2026-10-21 (Mac, session 3)
+
+m4 = `7383838`, pushed. All work merged; no open worktrees or branches. Commits this session:
+- `90ee2df` **Review & merge** (live-tested): Push, the "Into ▾" target-branch picker, and Settings → Commit messages → Instructions. A target no folder has checked out merges in a throwaway worktree.
+  - The default commit instructions are `DEFAULT_COMMIT_INSTRUCTIONS` in `shared/types.ts`: plain Conventional Commits, no AI filler. User: "human readable not ai slop", "easy to trace back". Merges get a `Branch:` trailer.
+  - Fixed: Merge stayed disabled after Commit; diff/bar stale; scope toggle stretched.
+- `257026a` **Code mode fixes** (from live runs and the benchmark below):
+  - Scripts get **typed values**: `glob` → `string[]`, `grep` → `string[]` / `{path: count}` / `[{path, line, text}]`, `read` → raw text. `ToolContext.script` / `ToolResult.data`. Results that come back empty are `[]`, never prose. Past 5000 results the call throws, never a marker line.
+  - **QuickJS leak fixed**: pending host promises are disposed before the context. It was the red "Aborted(Assertion failed: list_empty… JS_FreeRuntime)" plus unhandled `newError` rejections.
+  - Child rows are capped at 40 per script plus one "Note" row (a Codex script had made 2279 rows).
+  - `run_code` text says to batch: one grep `a|b|c`, then filter in JS.
+  - Claude: `run_code` is `alwaysLoad` (it sat behind ToolSearch, so Claude never used it).
+  - "Only": a PreToolUse hook turns away Bash `grep`/`rg`/`find`.
+  - OpenCode: `onceMoreIfLocked` retries "database is locked" once.
+- `4cc060e` + `7383838` **Track G, background shells** (plan `.ai/plans/m5-bg-shells.md`, approved):
+  - `main/shells.ts` ShellManager: ring buffer, kills the process tree, 4 shells per thread and 12 app-wide, forgotten 1 h after exit.
+  - `main/shell-tools.ts`: `shell_start`, `shell_output`, `shell_stop`, `shell_list`, bound to one thread.
+  - Every agent gets them. Native in-process; Codex/OpenCode through `?s=<thread>` on the cubiq server; Claude through its in-process server, `alwaysLoad`.
+  - **Claude's own background Bash is turned away by a hook** (`run_in_background`, a lone `&`, nohup, setsid, disown), toward `shell_start`. Verified live: Claude's own background task kept the SDK query (and so the turn) "running" for as long as the server lived, and Stop killed it.
+  - Guide line in `resources/CUBIQ.md`; the guide is at its 600-token budget exactly.
+  - `ShellDock` above the composer: chips, live output (read-only, polled 1 s), Stop, and × to hide.
+  - Shells stop on thread delete, worktree removal, project delete and app quit (SIGTERM verified).
+
+**Live-verified 2026-10-21** (dark theme, scratch profile, port 9466):
+- Shells: Claude Sonnet 5.5, Codex GPT-6-Luna, OpenCode Zen `deepseek-v4.1-flash-free`, and the **native provider agent** with TokenHarbor `deepseek-v4.1-flash:free` and PGS Grove `deepseek-v4-flash-0731`. All used `shell_start`; the server ran on; the dock showed it. Stop and thread delete killed it.
+- Third-party providers go through the **native provider agent, not OpenCode** (user, 2026-10-21). Set them up with `secret: {kind:"envRef", envVar:"TOKENHARBOR_API_KEY" | "PGS_API_KEY"}` and launch the app with `.env` loaded (`set -a; source .env`), so keys never appear in commands or files.
+  - Base URLs: `https://tokenharbor.ai/v1`, `https://api.pgsgrove.com/v1`, wire `openai-chat`. They show as agents `provider-tokenharbor` / `provider-pgsgrove`.
+- Cache: Claude's second turn hit 94.5% (68k read, 4k write).
+- Full suite on the final branch: **3348 passed**, 0 failed; design:check 0 errors.
+
+**Code-mode benchmark** (same task: "find exported functions/consts in src/shared/*.ts nothing imports", answer = 4 symbols; all runs found 4):
+
+| Run | Cost | Time | Cache read | Out | Tool use | Red rows |
+|---|---|---|---|---|---|---|
+| Claude Sonnet off (before fixes) | $0.162 | 46 s | 186.5k | 3.5k | 5 Bash | 0 |
+| Claude Sonnet off (after) | $0.237 | 53 s | 238.6k | 3.4k | 6 Bash | 2 (grep exit 1) |
+| **Claude on (after)** | **$0.027** | **14 s** | 60k | 0.9k | 1 run_code | 0 |
+| Claude only (after) | $0.092 | 21 s | 116k | 1.5k | 2 run_code + 1 Bash | 1 (hook deny) |
+| Codex Luna off (after) | — (sub) | 32 s | 15k | 0.6k | 5 shell | 0 |
+| Codex Luna on (after) | — | 81 s | 33k | 0.7k | 9 shell, no run_code | 0 |
+| Codex only, before fixes | — | **187 s** | 46k | 0.5k | 20 run_code, **2279 child calls** | 6 |
+| Codex only (after) | — | 68 s | 43k | 0.3k | 8 run_code, 110 children | 4 (script bugs) |
+| PGS Grove (native) on | $0.016 | 207 s | 381k | 9.9k | 18 Bash + 1 run_code | 1 (`require` in sandbox) |
+| PGS Grove (native) only | $0.006 | 71 s | 80k | 2.9k | 8 Bash | 0 |
+
+Caveats:
+- The free-model runs (OpenCode Zen, TokenHarbor, PGS off) are **invalid**. The driver's "turn over" check read the screen, so the next run started early and overlapped. Re-run them with the fixed driver (below).
+- Codex token figures look like last-request usage, not per-turn totals; compare times only.
+
+Benchmark tooling (scratchpad, gone after this session; recreate from here):
+- New thread in project `cubiq` (a `git clone --depth 1` of this repo, registered by inserting a `projects` row into the scratch profile's `unskilled.db`).
+- `window.unskilled.updateThread(id, {agent, model})`, then **verify the DB row before sending**. Code mode is set with `window.unskilled.updateSettings({codeMode})`; a thread fixes it at creation.
+- Wait for a **new `turn-end` event in the DB** for that thread, not for on-screen text.
+- Read usage from `events.payload` where kind = `turn-end` (`usage.cacheReadTokens`, `hitRate`, `costUsd`, `durationMs`).
+
+**Next, in order:**
+1. **Re-run the free-model benchmark** (OpenCode Zen, native TokenHarbor, native PGS Grove; off/on/only) with the DB-based wait. Run Claude on/only twice more to check variance.
+2. **Red rows still seen:**
+   - Code-mode hook denials show as errors. Mark Claude tool results whose text is `CODE_ONLY_DENY` / `BACKGROUND_BASH_DENY` as non-errors in `handleMessage` (claude.ts).
+   - Claude's Bash `grep` with no match = exit 1 = red. Consider showing exit 1 from a `grep`/`rg` as "no matches", not an error.
+   - Scripts calling `require` / non-functions. The `run_code` text could say "no require/import; only `tools.*`".
+3. **Codex in "on" ignores run_code** (9 shell commands). It has no hook. Consider the CODE_ONLY_HINT-style fixed line for "on" too, or leave it (on = optional).
+4. **Claude cost on a resumed turn looks cumulative.** Turn 2 showed $0.124 = turn 1's $0.099 + about $0.025 (its own tokens price at about $0.04). `turnEndFromResult` uses `total_cost_usd` (claude.ts ~735). Check whether the SDK's total is per-session on resume; if so, subtract the previous total. Unverified.
+5. Untested from the M5 list: **A "Own worktree"** (Settings → Background → Own worktree, Alt+Enter); **D /doctor** "Prune worktrees" (safe). Its Run-fix buttons run real global upgrades (`claude update`, `opencode upgrade`, `npm i -g`): ask the user before clicking. Also review & merge with a picked commit model and co-author On.
+6. ShellDock polish: match the composer's width (it sits slightly wider); a sidebar "1 shell running" hint (plan G2, not done); a Terminal-panel tab for a shell (plan G2; the inline dock was built instead).
+7. Windows PC run for all of M5 and Track G (`taskkill` tree kill, Git Bash/PowerShell `shellFor`, `backgroundsItself` on PowerShell syntax). The user skipped it this session ("all except 5").
+
+**Research (2026-10-21) behind the code-mode changes:**
+- Anthropic, programmatic tool calling docs:
+  - "Provide detailed descriptions of your tool's output format… Return structured data… Keep responses concise."
+  - Strong fit: fan-out, big results to filter, agentic search. Weak fit: strictly sequential single calls, and a few small calls on the first turn.
+  - Numbers: about 38% fewer input tokens on a 75-tool benchmark, +11% accuracy and −24% input tokens on agentic search, about 8% *more* cost on τ²-bench. https://platform.claude.com/docs/en/agents-and-tools/tool-use/programmatic-tool-calling
+- Anthropic, "Code execution with MCP": progressive disclosure (`search_tools` with detail levels), filter data in code, loops and control flow in code, keep state and skills. One example went from 150k to 2k tokens. Sandboxing has a real cost. https://www.anthropic.com/engineering/code-execution-with-mcp
+- Cloudflare Code Mode: MCP tools become a TypeScript API in a V8 isolate per snippet, with no network. Bindings carry credentials, and results come back via `console.log`. No measured numbers. https://blog.cloudflare.com/code-mode/
+- CodeAct (ICML 2024): up to +20% success and 30% fewer actions on multi-tool tasks; the gains grow with model strength. https://arxiv.org/abs/2402.01030
+- Command Code ("commandcode"): only a directory listing found; it has a "background sandbox mode", no isolation details. Our `run_code` already runs in a QuickJS WASM sandbox (no fs, network, process or timers; tools only through the thread-scoped broker). OS-level sandboxing of shell commands (Claude Code's seatbelt/bubblewrap style) would be a separate feature; ask the user if that's what they meant.
+- Takeaways applied: typed results, documented return types (`describeTool` shows `Promise<string[]>`), batching guidance, `alwaysLoad`. Still to try: `search_tools` detail levels for big MCP sets; a fixed "no require/import" line.
 
 ## Resume here — M5 (2026-10-20, Mac, session 2)
 
