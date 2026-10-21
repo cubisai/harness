@@ -11,7 +11,7 @@ import type { ToolDiff } from "../../shared/tools";
 import { forClaude } from "../mcp/servers";
 import { CODE_ONLY_DENY, CODE_ONLY_HINT, isShellSearch } from "../code-hint";
 import { CODE_TOOL } from "../code-mode";
-import { BACKGROUND_BASH_DENY } from "../shell-tools";
+import { BACKGROUND_BASH_DENY, backgroundsItself, SHELL_TOOL_NAMES } from "../shell-tools";
 import { checkCommand } from "../guard";
 import type { InjectionPlan } from "../inject";
 import { normalizeUsage } from "../usage";
@@ -53,7 +53,8 @@ export function harnessToolOptions(tools: HarnessTool[], ctx?: ToolContext): Pic
         ...(t.effect ? { annotations: { readOnlyHint: t.effect === "read" } } : {}),
         // run_code stays in the prompt instead of behind tool search: deferred, Claude never reaches for it
         // unless told to. Its schema is fixed per thread, so the cached prefix doesn't move.
-        ...(t.name === CODE_TOOL ? { alwaysLoad: true } : {}),
+        // The shell tools too: deferred, Claude backgrounds with `&` or nohup instead (2026-10-21 live test).
+        ...(t.name === CODE_TOOL || (SHELL_TOOL_NAMES as readonly string[]).includes(t.name) ? { alwaysLoad: true } : {}),
       }),
     ),
   });
@@ -453,7 +454,9 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
       const hasShells = input.tools.some((t) => t.name === "shell_start");
       const noBackgroundBash: HookCallback = async (hookInput) => {
         if (hookInput.hook_event_name !== "PreToolUse") return {};
-        if ((hookInput.tool_input as { run_in_background?: unknown } | undefined)?.run_in_background !== true) return {};
+        const toolInput = hookInput.tool_input as { run_in_background?: unknown; command?: unknown } | undefined;
+        const backgrounded = toolInput?.run_in_background === true || (typeof toolInput?.command === "string" && backgroundsItself(toolInput.command));
+        if (!backgrounded) return {};
         return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: BACKGROUND_BASH_DENY } };
       };
 

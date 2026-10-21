@@ -25,6 +25,13 @@ export interface ShellToolDeps {
 export const BACKGROUND_BASH_DENY =
   "In this app a background Bash keeps your turn open until the process exits. Start long-running commands with the cubiq shell_start tool instead: it returns at once, the process keeps running, and shell_output / shell_stop manage it.";
 
+/** Whether a shell command backgrounds a job itself: a lone `&` (not `&&`, `2>&1` or `&>`), nohup, setsid or disown. */
+export function backgroundsItself(command: string): boolean {
+  // Quoted text can't background anything ('&amp;', "a & b").
+  const bare = command.replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, "''");
+  return /(^|[^&>|])&(?![&>])/.test(bare) || /\b(nohup|setsid|disown)\b/.test(bare);
+}
+
 /** The names of the four background-shell tools. */
 export const SHELL_TOOL_NAMES = ["shell_start", "shell_output", "shell_stop", "shell_list"] as const;
 

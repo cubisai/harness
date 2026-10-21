@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { BackgroundShell } from "../../../shared/types";
 import { api } from "../api";
-import { IconStop, IconTerminal } from "../icons";
+import { IconClose, IconStop, IconTerminal } from "../icons";
 import { useStore } from "../store";
 
 /** "42s", "3m 05s", "1h 02m": how long a shell has run (or ran). */
@@ -57,13 +57,20 @@ function ShellOutput({ shell }: { shell: BackgroundShell }) {
   );
 }
 
+/** Shells hidden with the dock's ×, per thread, for this window session; a shell started later shows again. */
+const hiddenByThread = new Map<string, Set<string>>();
+
 /**
  * The thread's background shells, docked above the message box: one chip per
  * shell (name, state, uptime); a chip opens its live output with Stop.
  */
 export function ShellDock({ threadId }: { threadId: string }) {
   const all = useStore((s) => s.shells);
-  const shells = useMemo(() => Object.values(all).filter((s) => s.threadId === threadId).sort((a, b) => b.startedAt - a.startedAt), [all, threadId]);
+  const [hidden, setHidden] = useState<Set<string>>(() => hiddenByThread.get(threadId) ?? new Set());
+  const shells = useMemo(
+    () => Object.values(all).filter((s) => s.threadId === threadId && !hidden.has(s.id)).sort((a, b) => b.startedAt - a.startedAt),
+    [all, threadId, hidden],
+  );
   const [open, setOpen] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const running = shells.filter((s) => s.status === "running").length;
@@ -74,6 +81,7 @@ export function ShellDock({ threadId }: { threadId: string }) {
       .listShells(threadId)
       .then((list) => useStore.setState((s) => ({ shells: { ...s.shells, ...Object.fromEntries(list.map((x) => [x.id, x])) } })));
     setOpen(null);
+    setHidden(hiddenByThread.get(threadId) ?? new Set());
   }, [threadId]);
 
   useEffect(() => {
@@ -84,6 +92,13 @@ export function ShellDock({ threadId }: { threadId: string }) {
 
   if (!shells.length) return null;
   const selected = shells.find((s) => s.id === open) ?? null;
+  // Hides what's listed now; running shells keep running, and a new one brings the dock back.
+  const close = () => {
+    const next = new Set([...hidden, ...shells.map((s) => s.id)]);
+    hiddenByThread.set(threadId, next);
+    setHidden(next);
+    setOpen(null);
+  };
   return (
     <div className="shell-dock">
       <section className="shell-card" aria-label="Background shells">
@@ -109,6 +124,15 @@ export function ShellDock({ threadId }: { threadId: string }) {
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            className="icon-button shell-close"
+            aria-label="Hide background shells"
+            title={running ? "Hide (the shells keep running; Stop ends one)" : "Hide"}
+            onClick={close}
+          >
+            <IconClose />
+          </button>
         </div>
         {selected && (
           <div className="shell-body">

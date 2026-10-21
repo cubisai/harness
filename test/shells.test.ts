@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { BUILT_IN_GUARD } from "../src/main/guard";
-import { shellTools } from "../src/main/shell-tools";
+import { backgroundsItself, shellTools } from "../src/main/shell-tools";
 import { ShellLimitError, ShellManager, type ShellInfo, type ShellManagerOptions } from "../src/main/shells";
 import { tempDir } from "./helpers";
 
@@ -191,5 +191,14 @@ describe("tool server ?s=", () => {
     const withThread = await connect(withShells(server.url, "t1"));
     expect((await withThread.listTools()).tools.map((t) => t.name)).toEqual(["base", "shell_start", "shell_output", "shell_stop", "shell_list"]);
     await withThread.close();
+  });
+});
+
+describe("backgroundsItself", () => {
+  it("spots a job sent to the background", () => {
+    for (const c of ["python3 -m http.server 8000 &", "bun run dev & sleep 2 && curl localhost:3000", "nohup node server.js > log 2>&1", "setsid ./run.sh", "./x & disown"]) expect(backgroundsItself(c)).toBe(true);
+  });
+  it("leaves && chains and redirections alone", () => {
+    for (const c of ["bun install && bun run build", "make 2>&1 | tee log", "cmd &> out.txt", "echo a || echo b", "grep -c '&amp;' page.html"]) expect(backgroundsItself(c)).toBe(false);
   });
 });
