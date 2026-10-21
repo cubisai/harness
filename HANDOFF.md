@@ -23,7 +23,7 @@ m4 = `eb2bdd0` + this handoff, pushed. The main checkout's `D road-map-handoff.m
 
 **Next:**
 1. **First-prompt tokens**: done for Claude and OpenCode (above). Was: Claude's first request is ~27k, with **Skills 7–10k** (the SDK's own skill listing: user skills in ~/.claude/skills plus CubiQ's plugin) and Memory files 3–3.8k; Codex ~23k and OpenCode ~46k are mostly their own prompts (ours: tools ~1.6k after browser on demand, guide 0.45k, skills ~0.5k); native 7.6k. Proposed rule: always load a small core plus a one-line index per category, fetch the rest on demand. Waiting on the user.
-2. OpenCode "Web search cancelled": still need where it was seen.
+2. ~~OpenCode "Web search cancelled"~~: dropped. The user saw it on a workmate's PC, not this setup.
 3. Session-3 leftovers: Own worktree, /doctor, ShellDock polish, Windows run.
 
 ## Resume here — 2026-10-21 (Mac, session 5)
