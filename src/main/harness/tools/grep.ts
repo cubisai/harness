@@ -222,7 +222,9 @@ export const grepTool: NativeTool = {
     const pattern = str(args, "pattern", true);
     const ignoreCase = bool(args, "ignore_case");
     const glob = str(args, "glob");
-    const modeArg = str(args, "output_mode") ?? "files_with_matches";
+    // "files" is how models often spell files_with_matches.
+    const rawMode = str(args, "output_mode") ?? "files_with_matches";
+    const modeArg = rawMode === "files" ? "files_with_matches" : rawMode;
     if (!MODES.includes(modeArg as OutputMode)) {
       throw new ToolError(`Unknown output_mode "${modeArg}"; use files_with_matches, content, or count.`);
     }

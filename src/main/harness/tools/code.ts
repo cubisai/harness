@@ -32,6 +32,13 @@ export interface CodeToolOptions {
   state?: Map<string, string>;
 }
 
+/** A tool's one required string parameter, which a bare string argument fills; undefined when it has none or several. */
+function mainArg(tool: LoopTool): string | undefined {
+  const { required, properties } = tool.definition.parameters as { required?: unknown; properties?: Record<string, { type?: unknown }> };
+  if (!Array.isArray(required) || required.length !== 1 || typeof required[0] !== "string") return undefined;
+  return properties?.[required[0]]?.type === "string" ? required[0] : undefined;
+}
+
 export const CODE_DESCRIPTION = [
   "Run a JavaScript program in a sandbox and return what it prints and returns.",
   "The code is the body of an async function: call tools as `await tools.<name>(args)`, which throws on an error (wrap a call that may fail in try/catch).",
@@ -252,8 +259,10 @@ function install(
         try {
           const dumped = context.dump(first);
           if (dumped && typeof dumped === "object" && !Array.isArray(dumped)) callArgs = dumped as Record<string, unknown>;
+          // A bare string is the tool's one required text argument: tools.read("a.ts"), tools.glob("**/*.md").
+          else if (typeof dumped === "string" && mainArg(tool)) callArgs = { [mainArg(tool)!]: dumped };
         } catch {
-          // Non-object arguments reach the tool as {}; its own validation reports the shape.
+          // Anything else reaches the tool as {}; its own validation reports the shape.
         }
       }
       const settle = (r: { text: string; isError: boolean; data?: unknown }): void => {

@@ -50,6 +50,19 @@ describe("run_code script values", () => {
     });
   });
 
+  it("takes a bare string as the main argument, and output_mode files as files_with_matches", async () => {
+    const { run } = setup();
+    const res = await run(`
+      const files = await tools.glob("src/*.ts");
+      const first = (await tools.read("src/a.ts")).split("\\n")[0];
+      const listing = await tools.read("src");
+      const hits = await tools.grep({ pattern: "import", path: "src", output_mode: "files" });
+      return { files: files.sort(), first, listing: listing.sort(), hits };
+    `);
+    expect(res.isError).toBeFalsy();
+    expect(JSON.parse(res.text.slice(res.text.indexOf("=> ") + 3))).toEqual({ files: ["src/a.ts", "src/b.ts"], first: "export const A = 1;", listing: ["a.ts", "b.ts"], hits: ["src/b.ts"] });
+  });
+
   it("answers no match with an empty value instead of a sentence a script could read as a path", async () => {
     const { run } = setup();
     const res = await run(`
