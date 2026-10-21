@@ -16,6 +16,7 @@ import { forAcpWithReport, mcpChangeNotice } from "../../mcp/servers";
 import { TOOL_SERVER_NAME, withCode, withProject, withShells, withThread } from "../../mcp-http";
 import { SHELL_TOOL_NAMES } from "../../shell-tools";
 import { ASK_USER_TOOL } from "../../questions";
+import { CODE_ONLY_HINT } from "../../code-hint";
 import { checkCommand } from "../../guard";
 import { RpcError, StdioRpc } from "../rpc";
 import { classifyOpenCodeLog } from "./opencode-log";
@@ -1275,13 +1276,15 @@ export function createAcpDriver(
       const e = l.guidePending ? input.expert ?? "" : "";
       const m = l.guidePending && input.projectId ? deps.memory?.(input.projectId, input.threadId, null) ?? "" : "";
       const fresh = l.guidePending;
+      // Code mode "only": the agent's own search tools can't be hidden (and a rejected permission ends an OpenCode turn), so one fixed line points it at run_code.
+      const only = g && (deps.codeMode?.(input.threadId) ?? "off") === "only" && !hasOwnCodeMode(l.init) ? CODE_ONLY_HINT : "";
       // Warm the extensions estimate (MCP tool listings) so the breakdown at the end of this turn has it.
       if (fresh) deps.extensions?.(input.cwd, input.projectId ?? null);
       if (g || e || m) l.guidePending = false;
       const h = l.historyPending;
       l.historyPending = null;
       const lead = [
-        ...(g ? [{ type: "text", text: `<harness-guide>\n${g}\n</harness-guide>` }] : []),
+        ...(g ? [{ type: "text", text: `<harness-guide>\n${g}${only ? `\n\n${only}` : ""}\n</harness-guide>` }] : []),
         ...(e ? [{ type: "text", text: e }] : []),
         ...(m ? [{ type: "text", text: m }] : []),
         ...(h ? [{ type: "text", text: `${h}\n---` }] : []),

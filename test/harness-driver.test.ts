@@ -1,3 +1,4 @@
+import { CODE_ONLY_DENY, CODE_ONLY_HINT } from "../src/main/code-hint";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -723,6 +724,23 @@ describe("provider driver", () => {
     await t.driver.runTurn(t.input("again", t.session()));
     const next = (t.requests[3]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!;
     expect(next.text).toContain("=> 2");
+  });
+
+  it("in code mode only, adds the fixed run_code line to the system prompt and turns a shell search away", async () => {
+    const t = setup(
+      [[{ type: "tool-call", id: "b1", name: "bash", input: { command: "grep -rn hello ." } }], [{ type: "text", text: "ok" }]],
+      { codeMode: () => "only" },
+    );
+    writeFileSync(join(t.cwd, "a.txt"), "hello\n");
+    await t.driver.runTurn(t.input("go"));
+    expect(t.requests[0]!.system).toContain(CODE_ONLY_HINT);
+    const result = (t.requests[1]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!;
+    expect(result.text).toBe(CODE_ONLY_DENY);
+    expect(t.events.find((e) => e.kind === "tool-result")).toMatchObject({ isError: false });
+
+    const on = setup([[{ type: "text", text: "ok" }]], { codeMode: () => "on" });
+    await on.driver.runTurn(on.input("hi"));
+    expect(on.requests[0]!.system).not.toContain(CODE_ONLY_HINT);
   });
 
   it("authorizes each run_code inner call and surfaces a denial inside the script", async () => {

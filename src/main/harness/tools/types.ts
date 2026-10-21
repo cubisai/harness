@@ -23,6 +23,8 @@ export interface ToolContext {
   onOutput?(text: string): void;
   /** The call comes from a run_code script: read, glob and grep answer with `data` (plain values), not prose. */
   script?: boolean;
+  /** Code mode "only": Bash turns a shell search away toward run_code instead of running it. */
+  searchOnly?: boolean;
   /** Test seam and platform override. */
   platform?: NodeJS.Platform;
   env?: NodeJS.ProcessEnv;

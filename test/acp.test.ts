@@ -1,3 +1,4 @@
+import { CODE_ONLY_HINT } from "../src/main/code-hint";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -267,6 +268,21 @@ describe("ACP driver", () => {
     const second = turn("hello", { sessionId: first.sessions[0]! });
     await d.runTurn(second.input);
     expect(second.deltas.join("")).not.toContain("<harness-guide>");
+  });
+
+  it("adds the code-mode-only line to the guide only when code mode is only", async () => {
+    for (const mode of ["only", "on"] as const) {
+      const d = createAcpDriver(
+        { id: "mock", label: "Mock", command: process.execPath, args: [MOCK] },
+        { clientVersion: "test", guide: () => "GUIDE", codeMode: () => mode },
+      );
+      closeAfter(() => d.dispose?.());
+      const first = turn("hello");
+      await d.runTurn(first.input);
+      const text = first.deltas.join("");
+      if (mode === "only") expect(text).toContain(`<harness-guide>\nGUIDE\n\n${CODE_ONLY_HINT}\n</harness-guide>`);
+      else expect(text).toContain("<harness-guide>\nGUIDE\n</harness-guide>");
+    }
   });
 
   it("sends the expert block once, right after the guide, on a new session's first prompt", async () => {

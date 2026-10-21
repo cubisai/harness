@@ -18,6 +18,7 @@ import { runLoop, type Authorization, type LoopTool } from "./loop";
 import { decide, refusal } from "./permissions";
 import { createProposePlanTool, PLAN_MODE_NOTE } from "./plan";
 import { systemPrompt } from "./prompt";
+import { CODE_ONLY_HINT } from "../code-hint";
 import { SessionStore, repairHistory } from "./session";
 import { createTaskTool } from "./subagent";
 import { prefixKey, unbindThinking } from "./context/binding";
@@ -250,6 +251,8 @@ async function runTurn(
   // Read after the session id is settled so the block is frozen per session:
   // resuming a session gets the same block it first saw, a new one computes it.
   const memory = input.projectId ? deps.memory(input.projectId, input.threadId, sid) : null;
+  // Fixed for a thread at creation, so the hint below keeps the cache prefix stable.
+  const codeMode = deps.codeMode?.(input.threadId) ?? "off";
   const system = systemPrompt({
     cwd: input.cwd,
     platform,
@@ -261,6 +264,8 @@ async function runTurn(
     contextFiles: files,
     date: new Date(`${meta.startedOn}T00:00:00Z`),
   });
+  // "Only" leaves Bash in place, so a fixed line points searches at run_code (Bash also turns them away).
+  if (codeMode === "only") system.push(CODE_ONLY_HINT);
   // Plan mode's note goes last, after the environment, so the stable parts keep their cache prefix.
   if (input.permissionMode === "plan") system.push(PLAN_MODE_NOTE);
 
@@ -323,6 +328,7 @@ async function runTurn(
   if (!reads) readsBySession.set(sid, (reads = new Map<string, number>()));
   const toolCtx = (callId: string, signal: AbortSignal, onOutput: (t: string) => void, script?: boolean): ToolContext => ({
     ...(script ? { script } : {}),
+    ...(codeMode === "only" ? { searchOnly: true } : {}),
     cwd: input.cwd,
     signal,
     outputDir: deps.outputDir,
@@ -386,7 +392,6 @@ async function runTurn(
   // Code mode: one sandboxed script can chain the other tools. Every call the
   // script makes goes back through authorize, so ask mode still asks and the
   // thread still shows each call.
-  const codeMode = deps.codeMode?.(input.threadId) ?? "off";
   let codeState = codeStateBySession.get(sid);
   if (!codeState) codeStateBySession.set(sid, (codeState = new Map<string, string>()));
   const codeLoop: LoopTool | null =
