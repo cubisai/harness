@@ -21,10 +21,10 @@ m4 = `50d459e` + this handoff commit, **not pushed**. The uncommitted `D road-ma
 
 - Only, both sessions together: OpenCode 2/2, Codex 2/2, Claude 1/3, TokenHarbor 1/3, PGS 0/3. "On" was 6/6 in session 4.
 - The native agent sidesteps Only: `isShellSearch` only catches commands that start with grep/rg/find…, so models write node scripts to `/tmp` through Bash. Codex ignored the hint this time.
-- **Recommendation: drop "Only"** (or leave it in Experiments, clearly unrecommended). It costs accuracy without saving time. Waiting on the user.
+- **"Only" removed** (user agreed). Code mode is Off / Read-only + MCP; a settings file that still says `only` reads as `on`. Gone: `code-hint.ts` (hint, `CODE_ONLY_DENY`, `isShellSearch`), Claude's Grep/Glob disallow and Bash search hook, the native read/glob/grep filter and `ToolContext.searchOnly`, the Codex/ACP hint lines. Suite 3355 passed; live "on" turn on Claude, Codex, OpenCode Zen and native TokenHarbor: 1 run_code each, all correct.
 - Bench driver (scratchpad, gone after the session): same as session 4, plus 30 s between runs, codeMode set once before all runs, results as JSONL (turn-end payload, top-level tool-use counts, red rows, errors, last assistant text).
 
-**Next:** user decision on Only; sidebar flat-view tweak if wanted; OpenCode "Web search cancelled" (ask where they saw it); session-4 items 4–5.
+**Next:** sidebar flat-view tweak if wanted; OpenCode "Web search cancelled" (ask where they saw it); session-4 items 4–5.
 
 ## Resume here — 2026-10-21 (Mac, session 4)
 
