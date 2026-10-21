@@ -64,6 +64,8 @@ export function acpCapabilities(config: { skillsDirEnv?: string; capabilities?: 
  */
 export const CLAUDE_CAPABILITIES: AgentCapabilities = Object.freeze({
   mcpStdio: true,
+  // Claude Code defers MCP tools behind its own tool search.
+  toolSearch: true,
   mcpHttp: true,
   preToolGuard: true,
   resume: true,

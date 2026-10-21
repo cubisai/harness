@@ -559,6 +559,7 @@ export function appLoopTool(tool: HarnessTool, input: Pick<TurnInput, "projectId
     // Permission and scheduling are separate: a tool may be safe to run without asking yet still change state.
     parallel: tool.effect ? tool.effect === "read" : tool.autoAllow,
     summarize: (args) => {
+      if (tool.summarize) return tool.summarize(args);
       const first = Object.values(args).find((v) => typeof v === "string");
       return typeof first === "string" ? first : tool.name;
     },

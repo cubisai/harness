@@ -38,6 +38,8 @@ export interface HarnessTool<Shape extends ZodRawShape = ZodRawShape> {
   /** What running it does, for scheduling (not permission): "read" calls may overlap; "mutate" calls run alone, in order. Absent: the legacy rule (autoAllow runs like a read). */
   effect?: "read" | "mutate";
   run(args: z.infer<z.ZodObject<Shape>>, ctx?: ToolContext): Promise<ToolOutput>;
+  /** The call's one-line summary for its row, when the main argument alone doesn't say it (browser_call). */
+  summarize?(args: Record<string, unknown>): string;
 }
 
 /** How a new session catches up when the stored one is gone: Codex takes history items, first-message agents a prompt prefix. */

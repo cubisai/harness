@@ -34,6 +34,7 @@ import { LimitsRefresher } from "./limits-refresher";
 import { loadAcpAgents, onPath } from "./agents/registry";
 import { BrowserController, isAllowedUrl } from "./browser/controller";
 import { browserTools } from "./browser/tools";
+import { withBrowserOnDemand } from "./browser/on-demand";
 import { DevServers } from "./devserver/registry";
 import { devServerTools } from "./devserver/tools";
 import { Store } from "./db";
@@ -610,8 +611,20 @@ async function main(): Promise<void> {
     }
     return list;
   };
+  // Browser tools on demand (Experiments), read once per thread per app run like code mode, so a session's tool list never changes.
+  const browserOnDemandOf = new Map<string, boolean>();
+  const browserOnDemand = (thread: Thread): boolean => {
+    let on = browserOnDemandOf.get(thread.id);
+    if (on === undefined) browserOnDemandOf.set(thread.id, (on = settings.get().browserOnDemand === true));
+    // Only for agents that load every tool up front; Claude finds deferred tools itself.
+    return on && drivers.find((d) => d.id === thread.agent)?.capabilities.toolSearch !== true;
+  };
   // A turn's tools: the app's, plus the thread's shell tools (not in a design thread, whose tools are its own).
-  const turnTools = (thread?: Thread): HarnessTool[] => (thread && thread.kind !== "design" ? [...harnessTools(thread), ...shellToolsOf(thread.id)] : harnessTools(thread));
+  const turnTools = (thread?: Thread): HarnessTool[] => {
+    if (!thread || thread.kind === "design") return harnessTools(thread);
+    const list = [...harnessTools(thread), ...shellToolsOf(thread.id)];
+    return browserOnDemand(thread) ? withBrowserOnDemand(list) : list;
+  };
   // Code mode, fixed per thread for this app run (a session's tool list never changes).
   const codeModeOf = codeModes(() => settings.get().codeMode);
   const threadOf = (threadId: string): Thread | null => {

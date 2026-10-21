@@ -49,7 +49,7 @@ export const SETTINGS_GROUPS = [
   { id: "skills", label: "Skills & MCP", sections: ["Skills", "MCP servers"] },
   { id: "data", label: "Data & Security", sections: ["Data"] },
   { id: "updates", label: "Updates", sections: ["Updates"] },
-  { id: "experiments", label: "Experiments", sections: ["Code mode"] },
+  { id: "experiments", label: "Experiments", sections: ["Code mode", "Browser tools"] },
 ] as const;
 
 export type SettingsGroup = (typeof SETTINGS_GROUPS)[number]["id"];
@@ -478,22 +478,40 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
       );
     case "experiments":
       return (
-        <section>
-          <h3>Code mode</h3>
-          <div className="row">
-            <span className="label">Code mode</span>
-            <div className="segmented">
-              {([["off", "Off"], ["on", "Read-only + MCP (Recommended)"]] as const).map(([value, label]) => (
-                <button key={value} className={(settings.codeMode ?? "off") === value ? "on" : ""} onClick={() => update({ codeMode: value })}>
-                  {label}
-                </button>
-              ))}
+        <>
+          <section>
+            <h3>Code mode</h3>
+            <div className="row">
+              <span className="label">Code mode</span>
+              <div className="segmented">
+                {([["off", "Off"], ["on", "Read-only + MCP (Recommended)"]] as const).map(([value, label]) => (
+                  <button key={value} className={(settings.codeMode ?? "off") === value ? "on" : ""} onClick={() => update({ codeMode: value })}>
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-          <p className="note">
-            Agents get run_code: one sandboxed script that chains read, grep, glob and other read-only tools, so a multi-step search costs one call. The agent keeps its own read, search and edit tools. OpenCode 2 uses its own Code Mode. Applies to new threads.
-          </p>
-        </section>
+            <p className="note">
+              Agents get run_code: one sandboxed script that chains read, grep, glob and other read-only tools, so a multi-step search costs one call. The agent keeps its own read, search and edit tools. OpenCode 2 uses its own Code Mode. Applies to new threads.
+            </p>
+          </section>
+          <section>
+            <h3>Browser tools</h3>
+            <div className="row">
+              <span className="label">Browser tools</span>
+              <div className="segmented">
+                {([[false, "Always loaded"], [true, "On demand"]] as const).map(([value, label]) => (
+                  <button key={label} className={(settings.browserOnDemand ?? false) === value ? "on" : ""} onClick={() => update({ browserOnDemand: value })}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="note">
+              On demand: Codex, OpenCode and CubiQ's own agents get two small tools in place of the seven browser tools that never ask, and look those up when they need the browser: about 1.3k fewer tokens on every request. Claude already finds tools this way. Applies to new threads.
+            </p>
+          </section>
+        </>
       );
     case "updates":
       return (

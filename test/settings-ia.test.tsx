@@ -41,7 +41,7 @@ describe("Settings IA", () => {
 
   it("puts each control in exactly one group", () => {
     // Providers render only with the store's settings; their group is pinned above.
-    const controls = ["Theme", "Motion", "Density", "Splash screen", "Agent", "Permissions", "Open files in", "Installed", "Skills", "MCP tool search", "Keys", "Data folder", "Version", "Auto-update", "Code mode"];
+    const controls = ["Theme", "Motion", "Density", "Splash screen", "Agent", "Permissions", "Open files in", "Installed", "Skills", "MCP tool search", "Keys", "Data folder", "Version", "Auto-update", "Code mode", "Browser tools"];
     for (const label of controls) {
       const where = groupIds.filter((id) => html[id]!.includes(`class="label"`) && new RegExp(`class="label"[^>]*>${label}<`).test(html[id]!));
       expect(where, label).toHaveLength(1);
@@ -50,7 +50,9 @@ describe("Settings IA", () => {
   });
 
   it("keeps Code mode in Experiments, with Read-only + MCP marked Recommended", () => {
-    expect(SETTINGS_GROUPS.find((g) => g.id === "experiments")?.sections).toEqual(["Code mode"]);
+    expect(SETTINGS_GROUPS.find((g) => g.id === "experiments")?.sections).toEqual(["Code mode", "Browser tools"]);
+    // Browser tools on demand is off until the user turns it on.
+    expect(html.experiments).toMatch(/class="on"[^>]*>Always loaded</);
     expect(html.agents).not.toContain("Code mode");
     expect(html.experiments).toContain(">Read-only + MCP (Recommended)<");
     expect(html.experiments).toMatch(/class="on"[^>]*>Off</);

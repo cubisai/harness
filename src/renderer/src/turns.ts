@@ -17,8 +17,10 @@ export interface TurnChanges {
   deletions: number | null;
 }
 
-/** The https page a Fetch call read or the browser pane opened (`browser_open`, MCP-prefixed or not), or null. */
+/** The https page a Fetch call read or the browser pane opened (`browser_open`, MCP-prefixed or not, or through `browser_call`), or null. */
 export function fetchedUrl(ev: { name: string; payload?: unknown }): string | null {
+  const call = /(^|_)browser_call$/.test(ev.name) ? (ev.payload as { tool?: unknown; arguments?: unknown } | undefined) : undefined;
+  if (call) return call.tool === "browser_open" ? fetchedUrl({ name: "browser_open", payload: call.arguments }) : null;
   if (canonicalTool(ev.name) !== "Fetch" && !/(^|__)browser_open$/.test(ev.name)) return null;
   const url = (ev.payload as { url?: unknown } | undefined)?.url;
   return typeof url === "string" && /^https:\/\/[^\s]+$/.test(url) ? url : null;

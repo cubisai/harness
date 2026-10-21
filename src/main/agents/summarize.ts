@@ -7,6 +7,12 @@ function str(v: unknown): string | undefined {
 }
 
 export function summarizeToolInput(name: string, input: Record<string, unknown>): string {
+  // browser_call (Browser tools on demand) reads as the tool it runs.
+  if (/(^|_)browser_call$/.test(name) && typeof input.tool === "string") {
+    const args = input.arguments && typeof input.arguments === "object" ? (input.arguments as Record<string, unknown>) : {};
+    const inner = summarizeToolInput(input.tool, args);
+    return inner === input.tool ? input.tool : clip(`${input.tool} · ${inner}`);
+  }
   const pick =
     str(input.command) ??
     str(input.file_path) ??

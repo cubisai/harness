@@ -7,7 +7,8 @@ import { createHash } from "node:crypto";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { forCodex, mcpChangeNotice } from "../mcp/servers";
-import { withCode, withDesign, withProject, withShells } from "../mcp-http";
+import { withBrowserOnDemandFlag, withCode, withDesign, withProject, withShells } from "../mcp-http";
+import { BROWSER_CALL } from "../browser/on-demand";
 import { SHELL_TOOL_NAMES } from "../shell-tools";
 import { normalizeUsage } from "../usage";
 import type { InjectionPlan } from "../inject";
@@ -983,7 +984,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     // Background shells too (`&s=`), when the thread's tools carry them.
     const shells = input.tools.some((t) => (SHELL_TOOL_NAMES as readonly string[]).includes(t.name)) ? input.threadId : undefined;
     const toolUrl = server
-      ? withShells(withCode(withDesign(withProject(server.url, input.projectId), input.design || input.team?.length ? input.threadId : undefined), codeMode !== "off" ? input.threadId : undefined), shells)
+      ? withBrowserOnDemandFlag(withShells(withCode(withDesign(withProject(server.url, input.projectId), input.design || input.team?.length ? input.threadId : undefined), codeMode !== "off" ? input.threadId : undefined), shells), input.tools.some((t) => t.name === BROWSER_CALL))
       : "";
     let threadConfig = codexToolConfig(server ? { ...server, url: toolUrl } : null, input.tools, input.permissionMode, input.mcpServers);
     // The caller freezes the block per session: a resume passes the session id

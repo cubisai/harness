@@ -13,7 +13,8 @@ import { binaryInfo, majorOf, resolvedInstallAsync } from "../binaries";
 import type { AgentDriver, SessionSeed, TurnInput } from "../types";
 import { acpCapabilities, withCapabilities } from "../capabilities";
 import { forAcpWithReport, mcpChangeNotice } from "../../mcp/servers";
-import { TOOL_SERVER_NAME, withCode, withProject, withShells, withThread } from "../../mcp-http";
+import { TOOL_SERVER_NAME, withBrowserOnDemandFlag, withCode, withProject, withShells, withThread } from "../../mcp-http";
+import { BROWSER_CALL } from "../../browser/on-demand";
 import { SHELL_TOOL_NAMES } from "../../shell-tools";
 import { ASK_USER_TOOL } from "../../questions";
 import { checkCommand } from "../../guard";
@@ -921,7 +922,7 @@ export function createAcpDriver(
         const target = routed ? (routedUrl ?? skillsUrl ?? url) : skillsTarget;
         const code = (deps.codeMode?.(input.threadId) ?? "off") !== "off" && !hasOwnCodeMode(l.init);
         const shells = input.tools.some((t) => (SHELL_TOOL_NAMES as readonly string[]).includes(t.name)) ? input.threadId : undefined;
-        const toolUrl = withShells(withCode(withThread(withProject(target, input.projectId), input.threadId), code ? input.threadId : undefined), shells);
+        const toolUrl = withBrowserOnDemandFlag(withShells(withCode(withThread(withProject(target, input.projectId), input.threadId), code ? input.threadId : undefined), shells), input.tools.some((t) => t.name === BROWSER_CALL));
         servers.push({ type: "http", name: TOOL_SERVER_NAME, url: toolUrl, headers: [{ name: "Authorization", value: `Bearer ${token}` }] } as { name: string });
         l.askUser = true;
       } else dropped.push("the app's browser tools");

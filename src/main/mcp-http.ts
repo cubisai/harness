@@ -7,6 +7,7 @@ import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/proto
 import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { HarnessTool, ToolOutput } from "./agents/types";
 import { parseGatewayPath } from "./mcp/gateway";
+import { withBrowserOnDemand } from "./browser/on-demand";
 
 export const TOOL_SERVER_NAME = "cubiq";
 
@@ -136,6 +137,18 @@ export function withCode(url: string, threadId: string | undefined): string {
 }
 
 /**
+ * A tool-server URL whose browser tools come on demand (`?b=1`): browser_tools and
+ * browser_call in place of the ones that never ask. The driver sets it when the
+ * turn's own tool list has browser_call, so both lists agree.
+ */
+export function withBrowserOnDemandFlag(url: string, on: boolean): string {
+  if (!on) return url;
+  const u = new URL(url);
+  u.searchParams.set("b", "1");
+  return u.toString();
+}
+
+/**
  * The harness's own tools (the browser pane's) as a Streamable HTTP MCP
  * server on 127.0.0.1, for agents that take tools over MCP rather than
  * in-process (ACP agents such as OpenCode). `/mcp` serves `tools`;
@@ -153,7 +166,8 @@ export function withCode(url: string, threadId: string | undefined): string {
  * tools; `?d=` alone names no caller, so it adds no thread tools. `?c=<threadId>`
  * adds `code(threadId)`, code mode's run_code for that thread; the driver puts
  * it on the URL at session start, so a session's list never changes. `?s=<threadId>`
- * adds that thread's background-shell tools, on the same terms.
+ * adds that thread's background-shell tools, on the same terms. `?b=1` swaps the
+ * browser tools that never ask for browser_tools/browser_call (Browser tools on demand).
  */
 export async function startToolServer(
   tools: () => HarnessTool[],
@@ -188,6 +202,7 @@ export async function startToolServer(
     const designId = query.get("d") ?? threadId;
     const codeId = query.get("c") ?? undefined;
     const shellId = query.get("s") ?? undefined;
+    const browserOnDemand = query.get("b") === "1";
     if (req.method !== "POST") {
       // Stateless servers have no server-initiated stream to offer.
       res.writeHead(405, { Allow: "POST" }).end();
@@ -211,6 +226,7 @@ export async function startToolServer(
     list.push(...waiting);
     if (codeId) list.push(...(code?.(codeId) ?? []));
     if (shellId) list.push(...(shells?.(shellId) ?? []));
+    if (browserOnDemand) list.splice(0, list.length, ...withBrowserOnDemand(list));
     const waitingNames = new Set(waiting.map((t) => t.name));
     // A call the agent abandons (the request closes before the answer) aborts, so a waiting ask_user card goes away.
     const gone = new AbortController();
