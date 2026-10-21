@@ -3,6 +3,7 @@
 // app's guide, memory, browser and MCP tools, and a JSONL session per thread.
 
 import { randomUUID } from "node:crypto";
+import { CODE_HINT } from "../code-hint";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -260,6 +261,8 @@ async function runTurn(
     contextFiles: files,
     date: new Date(`${meta.startedOn}T00:00:00Z`),
   });
+  // Code mode: one fixed line on when a run_code script beats the shell.
+  if (codeMode !== "off") system.push(CODE_HINT);
   // Plan mode's note goes last, after the environment, so the stable parts keep their cache prefix.
   if (input.permissionMode === "plan") system.push(PLAN_MODE_NOTE);
 

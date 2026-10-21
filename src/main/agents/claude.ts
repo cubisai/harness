@@ -10,6 +10,7 @@ import { diffSummary, unifiedDiff } from "../../shared/diff";
 import type { ToolDiff } from "../../shared/tools";
 import { forClaude } from "../mcp/servers";
 import { CODE_TOOL } from "../code-mode";
+import { CODE_HINT } from "../code-hint";
 import { BACKGROUND_BASH_DENY, backgroundsItself, SHELL_TOOL_NAMES } from "../shell-tools";
 import { checkCommand } from "../guard";
 import type { InjectionPlan } from "../inject";
@@ -469,7 +470,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
       const guideText = config.guide?.(input.cwd, input.design) ?? "";
       const memoryText = input.projectId ? config.memory?.(input.projectId, input.threadId, input.sessionId ?? null) ?? null : null;
       const codeMode = input.threadId && config.codeTool ? (config.codeMode?.(input.threadId) ?? "off") : "off";
-      const systemAppend = [guideText, input.expert, memoryText].filter((part): part is string => Boolean(part)).join("\n\n");
+      const systemAppend = [guideText, input.expert, memoryText, codeMode !== "off" ? CODE_HINT : null].filter((part): part is string => Boolean(part)).join("\n\n");
       const harnessTools = codeMode !== "off" ? [...input.tools, config.codeTool!(input.threadId)] : input.tools;
       const bashHooks = [...(hasShells ? [noBackgroundBash] : []), guard];
       const options: Options = {

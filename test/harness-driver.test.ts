@@ -1,3 +1,4 @@
+import { CODE_HINT } from "../src/main/code-hint";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -734,6 +735,11 @@ describe("provider driver", () => {
     await t.driver.runTurn(t.input("go"));
     const result = (t.requests[1]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!;
     expect(result.text).toContain("a.txt");
+    // One fixed line says when a run_code script beats the shell; off has none.
+    expect(t.requests[0]!.system).toContain(CODE_HINT);
+    const off = setup([[{ type: "text", text: "ok" }]]);
+    await off.driver.runTurn(off.input("hi"));
+    expect(off.requests[0]!.system).not.toContain(CODE_HINT);
   });
 
   it("authorizes each run_code inner call and surfaces a denial inside the script", async () => {

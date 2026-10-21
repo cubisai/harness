@@ -1,4 +1,5 @@
 import type { CodeMode, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, ThreadEvent } from "../../shared/types";
+import { CODE_HINT } from "../code-hint";
 import type { RunPayload, RunResult, ToolDiff } from "../../shared/tools";
 import { clipAgentSummary, clipSummary } from "../../shared/tools";
 import { diffSummary } from "../../shared/diff";
@@ -1000,7 +1001,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     if (typeof input.contextWindow === "number" && input.contextWindow > 0) {
       threadConfig = { ...(threadConfig ?? {}), model_context_window: input.contextWindow };
     }
-    const guideText = config.guide?.(input.cwd, input.design) ?? "";
+    const guideText = [config.guide?.(input.cwd, input.design) ?? "", codeMode !== "off" && server ? CODE_HINT : ""].filter(Boolean).join("\n\n");
     const signature = JSON.stringify(threadConfig ?? null);
     let threadId = "";
     let threadModel: string | null = null;

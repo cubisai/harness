@@ -9,6 +9,7 @@ import type { HarnessTool, ToolContext, TurnInput } from "../src/main/agents/typ
 import { BACKGROUND_BASH_DENY } from "../src/main/shell-tools";
 import type { ThreadEvent } from "../src/shared/types";
 import { tempDir } from "./helpers";
+import { CODE_HINT } from "../src/main/code-hint";
 
 // The SDK's `query` is faked so the per-turn `options` (where the guide lands)
 // can be read without launching Claude Code. Everything else is the real SDK.
@@ -211,6 +212,16 @@ describe("Claude driver guide", () => {
     await d.runTurn(input);
     expect(sdk.calls).toHaveLength(1);
     expect(sdk.calls[0]?.options.systemPrompt).toEqual({ type: "preset", preset: "claude_code", append: "GUIDE" });
+  });
+
+  it("adds the run_code line after the guide in code mode only", async () => {
+    const codeTool = (): HarnessTool => ({ name: "run_code", description: "", input: {}, autoAllow: true, run: async () => ({ text: "" }) });
+    for (const mode of ["on", "off"] as const) {
+      sdk.calls.length = 0;
+      const { input } = turnInput();
+      await createClaudeDriver({ pluginDir: () => null, guide: () => "GUIDE", codeTool, codeMode: () => mode }).runTurn(input);
+      expect(sdk.calls[0]?.options.systemPrompt).toEqual({ type: "preset", preset: "claude_code", append: mode === "on" ? `GUIDE\n\n${CODE_HINT}` : "GUIDE" });
+    }
   });
 
   it("turns a background Bash toward shell_start when the shell tools are there, and shell searches away only in code mode Only", async () => {

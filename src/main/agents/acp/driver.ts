@@ -1,4 +1,5 @@
 import type { AgentCapabilities, CodeMode, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, PlanEntry } from "../../../shared/types";
+import { CODE_HINT } from "../../code-hint";
 import type { TeamAgent } from "../../../shared/experts";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
@@ -1276,13 +1277,15 @@ export function createAcpDriver(
       const e = l.guidePending ? input.expert ?? "" : "";
       const m = l.guidePending && input.projectId ? deps.memory?.(input.projectId, input.threadId, null) ?? "" : "";
       const fresh = l.guidePending;
+      // Code mode (when run_code is attached, and the agent has no Code Mode of its own): one fixed line inside the guide.
+      const hint = g && (deps.codeMode?.(input.threadId) ?? "off") !== "off" && !hasOwnCodeMode(l.init) && Boolean(l.init.agentCapabilities?.mcpCapabilities?.http) && input.tools.length > 0 && !!deps.toolServer ? CODE_HINT : "";
       // Warm the extensions estimate (MCP tool listings) so the breakdown at the end of this turn has it.
       if (fresh) deps.extensions?.(input.cwd, input.projectId ?? null);
       if (g || e || m) l.guidePending = false;
       const h = l.historyPending;
       l.historyPending = null;
       const lead = [
-        ...(g ? [{ type: "text", text: `<harness-guide>\n${g}\n</harness-guide>` }] : []),
+        ...(g ? [{ type: "text", text: `<harness-guide>\n${g}${hint ? `\n\n${hint}` : ""}\n</harness-guide>` }] : []),
         ...(e ? [{ type: "text", text: e }] : []),
         ...(m ? [{ type: "text", text: m }] : []),
         ...(h ? [{ type: "text", text: `${h}\n---` }] : []),

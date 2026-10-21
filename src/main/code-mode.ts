@@ -24,7 +24,7 @@ export const CODE_TOOL = "run_code";
 const NEVER = new Set([CODE_TOOL, "ask_user"]);
 
 /** The native tools' exact argument names, which models otherwise guess from their own tools (`filePath`). */
-const SCRIPT_EXAMPLES = "Arguments: `await tools.read({ path: \"src/a.ts\", offset: 1, limit: 200 })`, `await tools.grep({ pattern: \"TODO\", path: \"src\", glob: \"*.ts\" })`, `await tools.glob({ pattern: \"**/*.md\" })`; read returns the file's text, glob and grep return arrays (an empty one when nothing matches).";
+const SCRIPT_EXAMPLES = "Arguments: `await tools.read({ path: \"src/a.ts\", offset: 1, limit: 200 })`, `await tools.grep({ pattern: \"TODO\", path: \"src\", glob: \"*.ts\" })`, `await tools.glob({ pattern: \"**/*.md\" })`; read returns the file's text (or, for a folder, its entries, with folders ending in \"/\"), glob and grep return arrays (an empty one when nothing matches).";
 
 /** How long a script waits for the agent's driver to show its row before its calls go up as top-level rows. */
 const PARENT_WAIT_MS = 2000;
