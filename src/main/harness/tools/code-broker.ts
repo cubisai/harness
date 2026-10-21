@@ -10,6 +10,8 @@ import type { CodeToolOptions } from "./code";
 
 /** At most this many of one script's tool calls run at once; the rest wait their turn. */
 export const MAX_IN_FLIGHT = 8;
+/** One script's calls shown as rows; past this, one note row stands in for the rest (a loop can make thousands). */
+export const MAX_LISTED_CALLS = 40;
 
 export interface CodeBrokerOptions {
   /** The tools a script may call, by definition name. */
@@ -43,6 +45,7 @@ export function createCodeBroker(o: CodeBrokerOptions): CodeToolOptions["broker"
     else active -= 1;
   };
 
+  const listed = new Map<string, number>();
   return async (name, args, scriptId, signal) => {
     const tool = o.tools().find((t) => t.definition.name === name);
     if (!tool) return { text: `There's no tool named "${name}".`, isError: true };
@@ -56,21 +59,33 @@ export function createCodeBroker(o: CodeBrokerOptions): CodeToolOptions["broker"
     const nest = parentId ? { parentId } : {};
     // The row goes up before the permission ask, so a refused call shows in the thread too.
     const toolUseId = `${parentId ?? scriptId}:${++childCalls}`;
-    o.emit({ kind: "tool-use", toolUseId, name: tool.displayName, summary, ...nest });
+    const rowKey = parentId ?? scriptId;
+    const n = (listed.get(rowKey) ?? 0) + 1;
+    listed.set(rowKey, n);
+    const shown = n <= MAX_LISTED_CALLS;
+    if (n === MAX_LISTED_CALLS + 1) {
+      o.emit({ kind: "tool-use", toolUseId: `${rowKey}:more`, name: "Note", summary: `Calls after the first ${MAX_LISTED_CALLS} run without their own rows`, ...nest });
+      o.emit({ kind: "tool-result", toolUseId: `${rowKey}:more`, isError: false, summary: "Not listed", ...nest });
+    }
+    const emit = (e: Parameters<CodeBrokerOptions["emit"]>[0]): void => {
+      if (shown) o.emit(e);
+    };
+    emit({ kind: "tool-use", toolUseId, name: tool.displayName, summary, ...nest });
     const auth = o.authorize ? await o.authorize(tool, args, summary) : ({ ok: true } as const);
     if (!auth.ok) {
-      o.emit({ kind: "tool-result", toolUseId, isError: true, summary: oneLine(auth.reason), ...nest });
+      emit({ kind: "tool-result", toolUseId, isError: true, summary: oneLine(auth.reason), ...nest });
       return { text: auth.reason, isError: true };
     }
     await acquire();
     try {
-      const result = await tool.run(args, { id: toolUseId, signal, onOutput: () => {} });
+      // `script` asks read, glob and grep for plain values; the row shows a bounded copy of the text.
+      const result = await tool.run(args, { id: toolUseId, signal, onOutput: () => {}, script: true });
       const text = bound(result.text, { outputDir: o.outputDir, callId: toolUseId });
-      o.emit({ kind: "tool-result", toolUseId, isError: result.isError === true, summary: oneLine(text), payload: result.display?.result ?? text, ...nest });
-      return { text, isError: result.isError === true };
+      emit({ kind: "tool-result", toolUseId, isError: result.isError === true, summary: oneLine(text), payload: result.display?.result ?? text, ...nest });
+      return result.data !== undefined ? { text: result.text, isError: result.isError === true, data: result.data } : { text, isError: result.isError === true };
     } catch (err) {
       const text = `${tool.displayName} failed: ${err instanceof Error ? err.message : String(err)}`;
-      o.emit({ kind: "tool-result", toolUseId, isError: true, summary: oneLine(text), ...nest });
+      emit({ kind: "tool-result", toolUseId, isError: true, summary: oneLine(text), ...nest });
       return { text, isError: true };
     } finally {
       release();

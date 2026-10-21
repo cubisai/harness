@@ -321,7 +321,8 @@ async function runTurn(
 
   let reads = readsBySession.get(sid);
   if (!reads) readsBySession.set(sid, (reads = new Map<string, number>()));
-  const toolCtx = (callId: string, signal: AbortSignal, onOutput: (t: string) => void): ToolContext => ({
+  const toolCtx = (callId: string, signal: AbortSignal, onOutput: (t: string) => void, script?: boolean): ToolContext => ({
+    ...(script ? { script } : {}),
     cwd: input.cwd,
     signal,
     outputDir: deps.outputDir,
@@ -520,9 +521,10 @@ async function runTurn(
 }
 
 /** A built-in tool in the loop; TodoWrite also updates the thread's plan. */
-function nativeLoopTool(tool: NativeTool, ctxFor: (callId: string, signal: AbortSignal, onOutput: (t: string) => void) => ToolContext, input: TurnInput): LoopTool {
+function nativeLoopTool(tool: NativeTool, ctxFor: (callId: string, signal: AbortSignal, onOutput: (t: string) => void, script?: boolean) => ToolContext, input: TurnInput): LoopTool {
   return {
     definition: { name: tool.name, description: tool.description, parameters: tool.parameters },
+    ...(tool.returns ? { returns: tool.returns } : {}),
     displayName: tool.displayName,
     access: tool.access,
     summarize: (args) => tool.summarize(args),
@@ -536,7 +538,7 @@ function nativeLoopTool(tool: NativeTool, ctxFor: (callId: string, signal: Abort
       }
     },
     run: async (args, call) => {
-      const result = await tool.run(args, ctxFor(call.id, call.signal, call.onOutput));
+      const result = await tool.run(args, ctxFor(call.id, call.signal, call.onOutput, call.script));
       if (tool.name === "todowrite") input.onEvent({ kind: "plan", entries: todosOf(args) });
       return result;
     },

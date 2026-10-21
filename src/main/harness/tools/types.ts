@@ -21,6 +21,8 @@ export interface ToolContext {
   guardScript: string;
   /** Live output (Bash), shown while the call runs. */
   onOutput?(text: string): void;
+  /** The call comes from a run_code script: read, glob and grep answer with `data` (plain values), not prose. */
+  script?: boolean;
   /** Test seam and platform override. */
   platform?: NodeJS.Platform;
   env?: NodeJS.ProcessEnv;
@@ -45,6 +47,8 @@ export interface ToolResult {
   display?: ToolDisplay;
   /** A subagent call's own usage, carried onto its tool-result event. */
   runUsage?: RunUsage;
+  /** For a script call (ToolContext.script): the value the script's `await` gets instead of `text`. */
+  data?: unknown;
 }
 
 export interface NativeTool {
@@ -56,6 +60,8 @@ export interface NativeTool {
   /** JSON Schema of the arguments: `{ type: "object", properties, required }`. */
   parameters: Record<string, unknown>;
   access: ToolAccess;
+  /** The TypeScript type a script's call resolves to (describeTool shows it); absent = string. */
+  returns?: string;
   /** One line for the thread and the permission card, from the raw arguments. */
   summarize(args: Record<string, unknown>): string;
   run(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult>;

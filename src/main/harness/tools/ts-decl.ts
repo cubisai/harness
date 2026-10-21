@@ -7,11 +7,11 @@ type Schema = Record<string, unknown>;
 const MAX_DEPTH = 4;
 
 /** `declare function <name>(args: ...)`, documented with the tool's description. */
-export function toTsDeclaration(name: string, description: string, schema: unknown): string {
+export function toTsDeclaration(name: string, description: string, schema: unknown, returns = "string"): string {
   const root = isSchema(schema) ? schema : null;
   const args = root && properties(root).length ? `args: ${objectType(root, 0)}` : "args?: Record<string, never>";
   const summary = firstLine(description);
-  return `${summary ? `/** ${escape(summary)} */` : "/** */"}\ndeclare function ${name}(${args}): Promise<string>;`;
+  return `${summary ? `/** ${escape(summary)} */` : "/** */"}\ndeclare function ${name}(${args}): Promise<${returns}>;`;
 }
 
 /** An inline object type; objects nested deeper than MAX_DEPTH fall back to a record. */

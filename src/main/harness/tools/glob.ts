@@ -5,13 +5,15 @@ import { statSync, type Dirent } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { resolvePath } from "./paths";
-import { str, type NativeTool } from "./types";
+import { str, ToolError, type NativeTool } from "./types";
 
 /** Folders a search never descends into: they are large and never the target. */
 const SKIP_DIRS = new Set(["node_modules", ".git", "dist-electron", "out", ".next"]);
 
 /** At most this many matches are listed; the rest collapse to a hint. */
 const MAX_MATCHES = 100;
+/** A script (code mode) gets every match up to this many, as data; past it the call fails instead of cutting silently. */
+export const SCRIPT_MAX_MATCHES = 5000;
 
 function escapeRegExp(ch: string): string {
   return ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -103,6 +105,7 @@ export const globTool: NativeTool = {
     required: ["pattern"],
   },
   access: "read",
+  returns: "string[]",
   summarize(args) {
     return str(args, "pattern", true);
   },
@@ -122,8 +125,13 @@ export const globTool: NativeTool = {
       matches.push({ rel: file.rel, mtimeMs });
     }
     const display = { summary: pattern };
-    if (matches.length === 0) return { text: `No files match ${pattern}`, display };
     matches.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    if (ctx.script) {
+      if (matches.length > SCRIPT_MAX_MATCHES) throw new ToolError(`More than ${SCRIPT_MAX_MATCHES} files match ${pattern}; narrow the pattern or the path.`);
+      const paths = matches.map((m) => m.rel);
+      return { text: paths.join("\n"), data: paths, display };
+    }
+    if (matches.length === 0) return { text: `No files match ${pattern}`, display };
     let text = matches.slice(0, MAX_MATCHES).map((m) => m.rel).join("\n");
     if (matches.length > MAX_MATCHES) text += `\n[${matches.length - MAX_MATCHES} more; narrow the pattern]`;
     return { text, display };

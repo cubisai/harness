@@ -9,7 +9,8 @@ import { canonicalTool, clipAgentSummary, clipSummary, type EditResult, type Run
 import { diffSummary, unifiedDiff } from "../../shared/diff";
 import type { ToolDiff } from "../../shared/tools";
 import { forClaude } from "../mcp/servers";
-import { CODE_ONLY_HINT } from "../code-hint";
+import { CODE_ONLY_DENY, CODE_ONLY_HINT, isShellSearch } from "../code-hint";
+import { CODE_TOOL } from "../code-mode";
 import { checkCommand } from "../guard";
 import type { InjectionPlan } from "../inject";
 import { normalizeUsage } from "../usage";
@@ -47,7 +48,12 @@ export function harnessToolOptions(tools: HarnessTool[], ctx?: ToolContext): Pic
     name: TOOL_SERVER,
     version: "1.0.0",
     tools: tools.map((t) =>
-      tool(t.name, t.description, t.input, async (args) => toCallToolResult(await t.run(args, ctx)), t.effect ? { annotations: { readOnlyHint: t.effect === "read" } } : undefined),
+      tool(t.name, t.description, t.input, async (args) => toCallToolResult(await t.run(args, ctx)), {
+        ...(t.effect ? { annotations: { readOnlyHint: t.effect === "read" } } : {}),
+        // run_code stays in the prompt instead of behind tool search: deferred, Claude never reaches for it
+        // unless told to. Its schema is fixed per thread, so the cached prefix doesn't move.
+        ...(t.name === CODE_TOOL ? { alwaysLoad: true } : {}),
+      }),
     ),
   });
   return {
@@ -434,6 +440,14 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         };
       };
 
+      // Code mode "only": Claude's Bash can't be hidden, so a shell search is turned away toward run_code.
+      const searchOnly: HookCallback = async (hookInput) => {
+        if (hookInput.hook_event_name !== "PreToolUse") return {};
+        const command = (hookInput.tool_input as { command?: unknown } | undefined)?.command;
+        if (typeof command !== "string" || !isShellSearch(command)) return {};
+        return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: CODE_ONLY_DENY } };
+      };
+
       const pluginPath = config.pluginDir?.(input.cwd, !!input.design, input.threadId);
       const plugins: { type: "local"; path: string }[] = pluginPath ? [{ type: "local", path: pluginPath }] : [];
       // A design thread's skills keep their scaffolds and scripts outside the project; reading them shouldn't ask (Claude asks for paths outside its directories even in Full access).
@@ -490,7 +504,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         ...(input.team?.length ? { env: { ...(plan?.env ?? process.env), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1" } } : plan ? { env: plan.env } : {}),
         ...(codeMode === "only" ? { disallowedTools: SCRIPT_ONLY_TOOLS } : {}),
         ...withUserServers(harnessToolOptions(harnessTools, { ...(input.projectId ? { projectId: input.projectId } : {}), ...(input.threadId ? { threadId: input.threadId } : {}) }), input.mcpServers),
-        hooks: { PreToolUse: [{ matcher: "Bash", hooks: [guard] }] },
+        hooks: { PreToolUse: [{ matcher: "Bash", hooks: codeMode === "only" ? [searchOnly, guard] : [guard] }] },
         canUseTool: async (toolName, toolInput, { suggestions }): Promise<PermissionResult> => {
           // Plan mode's own gate: Claude presents its plan, the user decides how
           // to proceed, and the answer sets the mode for the accepted edits.

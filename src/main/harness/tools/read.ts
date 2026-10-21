@@ -10,12 +10,15 @@ import { ToolError, str, int, type NativeTool } from "./types";
 const MAX_ENTRIES = 500;
 const BINARY_SNIFF_BYTES = 8 * 1024;
 const MAX_LINE_CHARS = 2000;
+/** The most a script (code mode) may read in one call. */
+export const SCRIPT_MAX_READ_BYTES = 2 * 1024 * 1024;
 
 /** Read a file (or list a directory) for the model to see its contents. */
 export const readTool: NativeTool = {
   name: "read",
   displayName: "Read",
   access: "read",
+  returns: "string /* a file's raw text */ | string[] /* a directory's entries */",
   description:
     "Read a file from the thread's folder, or list a directory when the path is a directory. " +
     "Text files come back as numbered lines and can be paged with offset and limit; when the window leaves lines behind, the result says how to read the rest. " +
@@ -44,6 +47,7 @@ export const readTool: NativeTool = {
       const entries = readdirSync(p.abs, { withFileTypes: true })
         .map((e) => (e.isDirectory() ? `${e.name}/` : e.name))
         .sort();
+      if (ctx.script) return { text: entries.join("\n"), data: entries, display: { summary: p.shown } };
       const shown = entries.slice(0, MAX_ENTRIES);
       const more = entries.length - shown.length;
       const text = shown.join("\n") + (more > 0 ? `\n[${more} more entries]` : "");
@@ -58,6 +62,21 @@ export const readTool: NativeTool = {
     if (buf.subarray(0, BINARY_SNIFF_BYTES).includes(0)) throw new ToolError(`${p.shown} is a binary file.`);
 
     const content = buf.toString("utf8");
+    // A script gets the raw text (or the offset/limit window of it), with no line numbers to strip.
+    if (ctx.script) {
+      if (buf.length > SCRIPT_MAX_READ_BYTES) throw new ToolError(`${p.shown} is over ${SCRIPT_MAX_READ_BYTES / 1024 / 1024} MB; read it with offset and limit, or grep it.`);
+      const offset = int(args, "offset");
+      const limit = int(args, "limit");
+      const raw =
+        offset === undefined && limit === undefined
+          ? content
+          : content
+              .split("\n")
+              .slice(Math.max(1, offset ?? 1) - 1, Math.max(1, offset ?? 1) - 1 + Math.max(1, limit ?? Number.MAX_SAFE_INTEGER))
+              .join("\n");
+      noteRead(ctx, p.abs);
+      return { text: raw, data: raw, display: { summary: p.shown } };
+    }
     const lines = content.split("\n").map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line));
     // A final newline ends the last line; it doesn't start another.
     if (lines.length > 1 && lines.at(-1) === "") lines.pop();

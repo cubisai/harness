@@ -17,6 +17,11 @@ const MODES: OutputMode[] = ["files_with_matches", "content", "count"];
 const MAX_FILES = 200;
 const MAX_CONTENT_LINES = 250;
 const MAX_LINE_CHARS = 300;
+/** A script (code mode) gets up to this many files or lines as data; past it the call fails instead of cutting silently. */
+export const SCRIPT_MAX_RESULTS = 5000;
+
+/** The caps for a call: the model's, or the larger script ones. */
+const capsOf = (ctx: ToolContext): { files: number; lines: number } => (ctx.script ? { files: SCRIPT_MAX_RESULTS + 1, lines: SCRIPT_MAX_RESULTS + 1 } : { files: MAX_FILES, lines: MAX_CONTENT_LINES });
 const MAX_FILE_BYTES = 1024 * 1024;
 const BINARY_SNIFF = 8 * 1024;
 
@@ -66,7 +71,7 @@ function spawnRg(args: string[], cwd: string, signal: AbortSignal): Promise<{ co
 }
 
 /** Shape ripgrep's stdout into the mode's output lines (paths relative to cwd). */
-async function runRipgrep(pattern: string, opts: SearchOptions, ctx: ToolContext): Promise<{ text: string; display: { summary: string } }> {
+async function runRipgrep(pattern: string, opts: SearchOptions, ctx: ToolContext): Promise<{ text: string; display: { summary: string }; data?: GrepData }> {
   const args = ["--no-heading", "--line-number", "--color", "never"];
   if (opts.ignoreCase) args.push("-i");
   if (opts.glob) args.push("--glob", opts.glob);
@@ -76,7 +81,7 @@ async function runRipgrep(pattern: string, opts: SearchOptions, ctx: ToolContext
 
   const display = { summary: pattern };
   const { code, stdout, stderr } = await spawnRg(args, ctx.cwd, ctx.signal);
-  if (code === 1) return { text: `No matches for ${pattern}`, display };
+  if (code === 1) return finish([], pattern, display, ctx, opts.mode);
   if (code !== 0) throw new ToolError(stderr.trim() || `ripgrep exited with code ${code ?? "null"}.`);
 
   const lines = stdout.split(/\r?\n/).filter((line) => line !== "");
@@ -92,24 +97,49 @@ async function runRipgrep(pattern: string, opts: SearchOptions, ctx: ToolContext
       return { rel, mtimeMs };
     });
     hits.sort((a, b) => b.mtimeMs - a.mtimeMs);
-    return finish(hits.slice(0, MAX_FILES).map((h) => h.rel), pattern, display, ctx);
+    return finish(hits.slice(0, capsOf(ctx).files).map((h) => h.rel), pattern, display, ctx, opts.mode);
   }
   if (opts.mode === "count") {
     const out = lines.map((line) => {
       const i = line.lastIndexOf(":");
       return i < 0 ? line : `${relToCwd(ctx.cwd, line.slice(0, i))}:${line.slice(i + 1)}`;
     });
-    return finish(out, pattern, display, ctx);
+    return finish(out, pattern, display, ctx, opts.mode);
   }
-  const out = lines.slice(0, MAX_CONTENT_LINES).map((line) => {
+  const out = lines.slice(0, capsOf(ctx).lines).map((line) => {
     const m = /^(.*?):(\d+):(.*)$/.exec(line);
     return m ? `${relToCwd(ctx.cwd, m[1]!)}:${m[2]}:${m[3]!.slice(0, MAX_LINE_CHARS)}` : line;
   });
-  return finish(out, pattern, display, ctx);
+  return finish(out, pattern, display, ctx, opts.mode);
 }
 
-/** Join output lines, bound them, or report that nothing matched. */
-function finish(lines: string[], pattern: string, display: { summary: string }, ctx: ToolContext): { text: string; display: { summary: string } } {
+type GrepData = string[] | Record<string, number> | { path: string; line: number; text: string }[];
+
+/** A script's value for the mode's output lines: paths, path → count, or { path, line, text } rows. */
+function scriptData(lines: string[], mode: OutputMode): GrepData {
+  if (mode === "files_with_matches") return lines;
+  if (mode === "count") {
+    return Object.fromEntries(
+      lines.map((line) => {
+        const i = line.lastIndexOf(":");
+        return [line.slice(0, i), Number(line.slice(i + 1))];
+      }),
+    );
+  }
+  return lines.map((line) => {
+    const m = /^(.*?):(\d+):(.*)$/.exec(line);
+    return m ? { path: m[1]!, line: Number(m[2]), text: m[3]! } : { path: "", line: 0, text: line };
+  });
+}
+
+/** Join output lines, bound them, or report that nothing matched; a script gets the lines as data instead. */
+function finish(lines: string[], pattern: string, display: { summary: string }, ctx: ToolContext, mode: OutputMode): { text: string; display: { summary: string }; data?: GrepData } {
+  if (ctx.script) {
+    if (lines.length > SCRIPT_MAX_RESULTS) {
+      throw new ToolError(`More than ${SCRIPT_MAX_RESULTS} results for ${pattern}; narrow the pattern, path or glob, or use output_mode "files_with_matches" or "count".`);
+    }
+    return { text: lines.join("\n"), data: scriptData(lines, mode), display };
+  }
   return lines.length ? { text: bound(lines.join("\n"), ctx), display } : { text: `No matches for ${pattern}`, display };
 }
 
@@ -120,8 +150,9 @@ function scanFiles(
   files: { abs: string; rel: string }[],
   mode: OutputMode,
   ctx: ToolContext,
-): { text: string; display: { summary: string } } {
+): { text: string; display: { summary: string }; data?: GrepData } {
   const display = { summary: pattern };
+  const caps = capsOf(ctx);
   const fileHits: { rel: string; mtimeMs: number }[] = [];
   const countLines: string[] = [];
   const contentLines: string[] = [];
@@ -148,7 +179,7 @@ function scanFiles(
       const count = lines.reduce((n, line) => (re.test(line) ? n + 1 : n), 0);
       if (count > 0) countLines.push(`${file.rel}:${count}`);
     } else {
-      for (let i = 0; i < lines.length && contentLines.length < MAX_CONTENT_LINES; i++) {
+      for (let i = 0; i < lines.length && contentLines.length < caps.lines; i++) {
         const line = lines[i]!;
         if (re.test(line)) contentLines.push(`${file.rel}:${i + 1}:${line.slice(0, MAX_LINE_CHARS)}`);
       }
@@ -156,9 +187,9 @@ function scanFiles(
   }
   if (mode === "files_with_matches") {
     fileHits.sort((a, b) => b.mtimeMs - a.mtimeMs);
-    return finish(fileHits.slice(0, MAX_FILES).map((h) => h.rel), pattern, display, ctx);
+    return finish(fileHits.slice(0, caps.files).map((h) => h.rel), pattern, display, ctx, mode);
   }
-  return finish(mode === "count" ? countLines : contentLines, pattern, display, ctx);
+  return finish(mode === "count" ? countLines : contentLines, pattern, display, ctx, mode);
 }
 
 /** Search file contents by regular expression. */
@@ -183,6 +214,7 @@ export const grepTool: NativeTool = {
     required: ["pattern"],
   },
   access: "read",
+  returns: 'string[] /* files_with_matches */ | Record<string, number> /* count */ | { path: string; line: number; text: string }[] /* content */',
   summarize(args) {
     return str(args, "pattern", true);
   },

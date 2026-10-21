@@ -3,7 +3,7 @@
 // so dependent calls chain and large results are reduced before the model sees
 // them.
 
-import { getQuickJS, isFail, shouldInterruptAfterDeadline, type QuickJSContext, type QuickJSHandle, type QuickJSRuntime, type QuickJSWASMModule } from "quickjs-emscripten";
+import { getQuickJS, isFail, shouldInterruptAfterDeadline, type QuickJSContext, type QuickJSDeferredPromise, type QuickJSHandle, type QuickJSRuntime, type QuickJSWASMModule } from "quickjs-emscripten";
 import { bm25Rank } from "../../search/bm25";
 import type { LoopTool } from "../loop";
 import { bound } from "./bound";
@@ -23,7 +23,8 @@ export interface CodeToolOptions {
   /** Every tool the loop offers; `run_code` and the agent-ish ones are hidden from a script. */
   tools: () => LoopTool[];
   /** Run one tool call for the sandbox; the driver authorizes and traces it. */
-  broker: (name: string, args: Record<string, unknown>, parentId: string, signal: AbortSignal) => Promise<{ text: string; isError: boolean }>;
+  /** `data`, when set, is what the script's `await` gets (read/glob/grep values); otherwise the text. */
+  broker: (name: string, args: Record<string, unknown>, parentId: string, signal: AbortSignal) => Promise<{ text: string; isError: boolean; data?: unknown }>;
   outputDir: string;
   timeoutMs?: number;
   memoryBytes?: number;
@@ -33,9 +34,12 @@ export interface CodeToolOptions {
 
 export const CODE_DESCRIPTION = [
   "Run a JavaScript program in a sandbox and return what it prints and returns.",
-  "The code is the body of an async function: call tools as `await tools.<name>(args)`, which returns the tool's text output and throws on an error; `ALL_TOOLS` lists them, `searchTools(query)` ranks them, and `describeTool(name)` returns a TypeScript declaration.",
+  "The code is the body of an async function: call tools as `await tools.<name>(args)`, which throws on an error (wrap a call that may fail in try/catch).",
+  'read, glob and grep return plain values, not text: glob gives string[] paths (empty when nothing matches); grep gives string[] files, or { path: count } with output_mode "count", or [{ path, line, text }] with "content"; read gives the file\'s text. Other tools return their text output.',
+  "`ALL_TOOLS` lists the tools, `searchTools(query)` ranks them, and `describeTool(name)` returns a TypeScript declaration.",
+  "Batch: one broad call (a grep pattern like `a|b|c`, then filtering in JavaScript) beats a call per item, and Promise.all runs calls together.",
   "`store(key, value)` and `load(key)` keep JSON between scripts in this session, and a failed script's writes are dropped.",
-  "`console.log(...)` lines plus the returned value (JSON-stringified unless it's a string) are the result.",
+  "`console.log(...)` lines plus the returned value (JSON-stringified unless it's a string) are the result: return only what you need.",
   "The sandbox has no filesystem, network, process or timers, and calls made before an error are not undone.",
 ].join(" ");
 
@@ -69,6 +73,8 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
       let runtime: QuickJSRuntime | null = null;
       let context: QuickJSContext | null = null;
       let stop: { promise: Promise<void>; done: () => void } | null = null;
+      // Host promises of tool calls still in flight: freed before the context, or QuickJS aborts on a leak.
+      const pending = new Set<QuickJSDeferredPromise>();
       try {
         const QuickJS = await quickJS();
         runtime = QuickJS.newRuntime();
@@ -90,7 +96,7 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
         context = live.newContext();
         // Writes go to a copy; only a successful run commits them to the session.
         const staged = new Map<string, string>(o.state);
-        install(context, live, o, logs, call.id, call.signal, staged);
+        install(context, live, o, logs, call.id, call.signal, staged, pending);
 
         const evaluated = context.evalCode(`(async () => {\n${code}\n})()`);
         if (isFail(evaluated)) {
@@ -132,6 +138,8 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
         const message = err instanceof Error ? err.message : String(err);
         return { text: failure(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs), isError: true };
       } finally {
+        for (const deferred of pending) if (deferred.alive) deferred.dispose();
+        pending.clear();
         context?.dispose();
         runtime?.dispose();
       }
@@ -143,7 +151,16 @@ const STOPPED = "Interrupted by the user.";
 const timingOut = (timeoutMs: number): string => `Stopped after ${Math.round(timeoutMs / 1000)}s: the time limit was reached.`;
 
 /** The globals a script sees: `tools`, `ALL_TOOLS`, `searchTools`, `describeTool`, `store`, `load` and `console.log`. */
-function install(context: QuickJSContext, runtime: QuickJSRuntime, o: CodeToolOptions, logs: string[], parentId: string, signal: AbortSignal, staged: Map<string, string>): void {
+function install(
+  context: QuickJSContext,
+  runtime: QuickJSRuntime,
+  o: CodeToolOptions,
+  logs: string[],
+  parentId: string,
+  signal: AbortSignal,
+  staged: Map<string, string>,
+  pending: Set<QuickJSDeferredPromise>,
+): void {
   const console_ = context.newObject();
   const log = context.newFunction("log", (...handles) => {
     logs.push(handles.map((h) => format(context.dump(h))).join(" "));
@@ -185,7 +202,7 @@ function install(context: QuickJSContext, runtime: QuickJSRuntime, o: CodeToolOp
   const describe = context.newFunction("describeTool", (nameHandle) => {
     const name = nameHandle ? context.getString(nameHandle) : "";
     const tool = exposed().find((t) => t.definition.name === name);
-    return tool ? context.newString(toTsDeclaration(tool.definition.name, tool.definition.description, tool.definition.parameters)) : context.null;
+    return tool ? context.newString(toTsDeclaration(tool.definition.name, tool.definition.description, tool.definition.parameters, tool.returns)) : context.null;
   });
   context.setProp(context.global, "describeTool", describe);
   describe.dispose();
@@ -228,6 +245,7 @@ function install(context: QuickJSContext, runtime: QuickJSRuntime, o: CodeToolOp
     if (EXCLUDED.has(tool.definition.name)) continue;
     const fn = context.newFunction(tool.definition.name, (...handles) => {
       const deferred = context.newPromise();
+      pending.add(deferred);
       const first = handles[0];
       let callArgs: Record<string, unknown> = {};
       if (first) {
@@ -238,14 +256,15 @@ function install(context: QuickJSContext, runtime: QuickJSRuntime, o: CodeToolOp
           // Non-object arguments reach the tool as {}; its own validation reports the shape.
         }
       }
-      const settle = (r: { text: string; isError: boolean }): void => {
-        if (!deferred.alive) return;
+      const settle = (r: { text: string; isError: boolean; data?: unknown }): void => {
+        pending.delete(deferred);
+        if (!deferred.alive || !context.alive) return;
         if (r.isError) {
           const error = context.newError(r.text);
           deferred.reject(error);
           error.dispose();
         } else {
-          const value = context.newString(r.text);
+          const value = r.data !== undefined ? toHandle(context, r.data) : context.newString(r.text);
           deferred.resolve(value);
           value.dispose();
         }

@@ -22,7 +22,9 @@ export interface LoopTool {
   inputPayload?(args: Record<string, unknown>): unknown;
   /** True when the call reaches outside the thread's folder (edits there ask). */
   outside?(args: Record<string, unknown>): boolean;
-  run(args: Record<string, unknown>, call: { id: string; signal: AbortSignal; onOutput(text: string): void }): Promise<ToolResult>;
+  run(args: Record<string, unknown>, call: { id: string; signal: AbortSignal; onOutput(text: string): void; script?: boolean }): Promise<ToolResult>;
+  /** The TypeScript type a script's call resolves to (code mode); absent = string. */
+  returns?: string;
 }
 
 export interface LoopEmitter {

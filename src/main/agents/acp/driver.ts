@@ -98,6 +98,20 @@ interface ConfigOption {
   currentValue: string | boolean;
   options?: ({ value: string; name: string } | { group: string; name: string; options: { value: string; name: string }[] })[];
 }
+/**
+ * OpenCode's own startup race: sessions opening at the same moment can fail
+ * with "database is locked". Wait a moment and try once more.
+ */
+export async function onceMoreIfLocked<T>(run: () => Promise<T>, waitMs = 300 + Math.random() * 700): Promise<T> {
+  try {
+    return await run();
+  } catch (err) {
+    if (!/database is locked|SQLITE_BUSY/i.test(err instanceof Error ? err.message : String(err))) throw err;
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+    return run();
+  }
+}
+
 /** ACP's native session modes, advertised by session/new when the agent has them. */
 interface SessionModeState {
   currentModeId: string;
@@ -1235,8 +1249,9 @@ export function createAcpDriver(
       const key = input.threadId;
       let l: Live;
       try {
-        l = await connect(key, input);
-        await openSession(l, input);
+        l = await onceMoreIfLocked(() => connect(key, input));
+        const live = l;
+        await onceMoreIfLocked(() => openSession(live, input));
         rememberConfig(l.configOptions, l.threadKey);
         input.onSession(l.sessionId!);
         await applyModel(l, input.model);
