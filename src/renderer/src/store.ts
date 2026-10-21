@@ -385,6 +385,21 @@ let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 const queued: { threadId: string; delta: LiveDelta }[] = [];
 let timer: ReturnType<typeof setTimeout> | null = null;
 
+// Tool calls that only look leave the working tree alone; any other finished call may have
+// changed files, so the Changes panel refreshes mid-turn, not only when the turn ends.
+const LOOK_TOOLS = /^(Read|Search|Fetch|Grep|Glob|LS|list_files|WebSearch|WebFetch|web_search|TodoWrite|todo_write)$/i;
+let diffTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Whether a finished tool call may have changed files: unknown tools count as changing. */
+export function mayChangeFiles(events: StoredEvent[] | undefined, toolUseId: string): boolean {
+  if (!events) return true;
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i]!.event;
+    if (e.kind === "tool-use" && e.toolUseId === toolUseId) return !LOOK_TOOLS.test(e.name);
+  }
+  return true;
+}
+
 /** Apply every queued delta, flush each touched thread, and empty the queue. */
 function drainQueue(s: State): Record<string, LiveThread> {
   const live = { ...s.live };
@@ -1388,6 +1403,16 @@ export const useStore = create<State>((set, get) => ({
             .listArtifacts(id)
             .then((files) => set((x) => ({ artifactFiles: { ...x.artifactFiles, [id]: files } })))
             .catch(() => {});
+        }
+        {
+          const e = update.stored.event;
+          // Coalesce a burst of edits into one diff reload.
+          if (e.kind === "tool-result" && !e.isError && !diffTimer && mayChangeFiles(get().events[update.threadId], e.toolUseId)) {
+            diffTimer = setTimeout(() => {
+              diffTimer = null;
+              set((s) => ({ diffVersion: s.diffVersion + 1 }));
+            }, 300);
+          }
         }
         set((s) => {
           const list = s.events[update.threadId];

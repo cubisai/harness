@@ -26,6 +26,7 @@ import {
   Search,
   RefreshCw,
   Settings,
+  ShieldCheck,
   Sparkles,
   SquarePen,
   SquareTerminal,
@@ -63,6 +64,7 @@ export const IconGlobe = icon(Globe);
 export const IconTarget = icon(Crosshair);
 export const IconTerminal = icon(SquareTerminal);
 export const IconGear = icon(Settings);
+export const IconShield = icon(ShieldCheck, 12);
 export const IconLibrary = icon(Library);
 export const IconCopy = icon(Copy, 14);
 export const IconOpen = icon(ExternalLink, 14);
