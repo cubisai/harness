@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import type { DiffFile, WorktreeReview } from "../../../shared/types";
 import { api } from "../api";
 import { IconChevron, IconOpen } from "../icons";
@@ -17,10 +17,16 @@ export function DiffPanel({ projectId, refreshKey }: { projectId: string; refres
   const [baseFiles, setBaseFiles] = useState<DiffFile[] | null>(null);
   const [base, setBase] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    void api().getDiff(projectId, threadId).then(setFiles);
-  }, [projectId, threadId]);
-  useEffect(load, [load, diffVersion, refreshKey]);
+  // Reloads now land mid-turn too: a slower, older reply must not overwrite a newer one.
+  useEffect(() => {
+    let current = true;
+    void api()
+      .getDiff(projectId, threadId)
+      .then((next) => current && setFiles(next));
+    return () => {
+      current = false;
+    };
+  }, [projectId, threadId, diffVersion, refreshKey]);
 
   // A new thread starts on its uncommitted changes, not the last thread's base.
   useEffect(() => {

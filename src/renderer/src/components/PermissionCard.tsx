@@ -1,4 +1,5 @@
 import type { GuardEnforcement, PermissionDecision, PermissionRequest } from "../../../shared/types";
+import { IconDiff, IconShield, IconSparkle, IconTerminal } from "../icons";
 import { useStore } from "../store";
 
 /** Card titles that mean a shell command: Claude and the native harness say Bash, ACP and Codex say Run. */
@@ -17,13 +18,30 @@ export function PermissionCardView({
 }) {
   // The git guardrail only concerns shell commands, so edit and tool cards skip its note.
   const isCommand = COMMAND_TOOLS.has(request.toolName);
+  const isEdit = request.toolName === "Edit";
+  const title = isCommand ? "Run this command?" : isEdit ? "Apply this edit?" : `Allow ${request.toolName}?`;
   return (
-    <div className="permission-card permission-ask" role="alertdialog" aria-label={`Allow ${request.toolName}?`}>
-      <div className="permission-row">
-        <span className="permission-tool">{request.toolName}</span>
+    <div className="permission-card permission-ask" role="alertdialog" aria-label={title}>
+      <div className="permission-head">
+        <span className="permission-icon">{isCommand ? <IconTerminal size={14} /> : isEdit ? <IconDiff size={14} /> : <IconSparkle size={14} />}</span>
+        <span className="permission-title">{title}</span>
+        <span className="permission-agent">{agentLabel}</span>
+      </div>
+      <pre className={isCommand ? "permission-body command" : "permission-body"}>
         <code>{request.summary}</code>
+      </pre>
+      <div className="permission-foot">
+        {isCommand && guard === "warnOnly" && (
+          <div className="permission-guard warn">Git guardrails are warn-only for {agentLabel} here: check git commands before allowing.</div>
+        )}
+        {isCommand && guard === "block" && (
+          <div className="permission-guard">
+            <IconShield />
+            Git guardrails on: dangerous git commands are blocked before they run.
+          </div>
+        )}
         <div className="actions">
-          <button className="button danger" onClick={() => onRespond("deny")}>
+          <button className="button ghost danger" onClick={() => onRespond("deny")}>
             Deny
           </button>
           {request.canAlwaysAllow && (
@@ -36,10 +54,6 @@ export function PermissionCardView({
           </button>
         </div>
       </div>
-      {isCommand && guard === "warnOnly" && (
-        <div className="permission-guard warn">Git guardrails are warn-only for {agentLabel} here: check git commands before allowing.</div>
-      )}
-      {isCommand && guard === "block" && <div className="permission-guard">Git guardrails on: dangerous git commands are blocked before they run.</div>}
     </div>
   );
 }
