@@ -221,6 +221,7 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
     anchorClear.current = window.setTimeout(() => {
       userAnchor.current = null;
       anchorClear.current = 0;
+      settleSpace();
     }, 300);
   };
   const keepAnchor = (el: HTMLElement): boolean => {
@@ -234,10 +235,13 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
   // Folding a block near the end would shrink the transcript under the pointer and clamp the scroll:
   // the transcript keeps its height for now, and the reserve shrinks as the reader scrolls up.
   const reserved = useRef(false);
+  const settleTimer = useRef(0);
   const reserveSpace = () => {
     const body = inner.current;
     // At the top nothing can be clamped: a reserve would only leave blank space under a short thread.
     if (!body || !scroller.current?.scrollTop) return;
+    clearTimeout(settleTimer.current);
+    body.style.transition = "";
     body.style.minHeight = `${body.offsetHeight}px`;
     reserved.current = true;
   };
@@ -246,12 +250,30 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
     reserved.current = false;
     if (inner.current) inner.current.style.minHeight = "";
   };
+  // The transcript's height without the reserve.
+  const naturalHeight = (body: HTMLElement) => {
+    const last = body.lastElementChild;
+    return (last ? last.getBoundingClientRect().bottom - body.getBoundingClientRect().top : 0) + parseFloat(getComputedStyle(body).paddingBottom);
+  };
+  // Once the header has held through the fold, the blank room left at the end glides shut instead of
+  // waiting for a scroll up or the next event; the view clamps down with it.
+  const settleSpace = () => {
+    const body = inner.current;
+    if (!reserved.current || !body) return;
+    const still = document.documentElement.dataset.motion === "instant" || Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+    if (still) return releaseSpace();
+    body.style.transition = "min-height 200ms var(--ease)";
+    body.style.minHeight = `${naturalHeight(body)}px`;
+    settleTimer.current = window.setTimeout(() => {
+      body.style.transition = "";
+      releaseSpace();
+    }, 220);
+  };
   const trimSpace = (el: HTMLElement) => {
     const body = inner.current;
     if (!reserved.current || !body) return;
-    const last = body.lastElementChild;
     const rect = body.getBoundingClientRect();
-    const natural = (last ? last.getBoundingClientRect().bottom - rect.top : 0) + parseFloat(getComputedStyle(body).paddingBottom);
+    const natural = naturalHeight(body);
     const needed = el.scrollTop + el.clientHeight - (rect.top - el.getBoundingClientRect().top + el.scrollTop);
     const next = trimmedReserve(parseFloat(body.style.minHeight) || 0, needed, natural);
     if (next === null) releaseSpace();
@@ -288,6 +310,7 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
     () => () => {
       clearTimeout(pendingFold.current);
       clearTimeout(anchorClear.current);
+      clearTimeout(settleTimer.current);
     },
     [],
   );
@@ -405,6 +428,11 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
       className="thread-scroll"
       ref={scroller}
       onClick={onTranscriptClick}
+      onMouseDown={(e) => {
+        // A pressed disclosure header doesn't take focus, or the next keypress (a screenshot shortcut, say) rings it.
+        // The click still toggles it, and Tab still reaches it.
+        if (e.button === 0 && (e.target as Element).closest("summary")) e.preventDefault();
+      }}
       onWheel={(e) => {
         // A wheel up means the reader is leaving the bottom, before its animated scroll moves far
         // (only when there is somewhere to go: a short thread keeps following).

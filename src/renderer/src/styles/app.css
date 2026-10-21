@@ -1165,6 +1165,7 @@ details.tool > summary::-webkit-details-marker { display: none; }
 .thinking summary { cursor: default; list-style: none; }
 .thinking summary::before { content: "›"; display: inline-block; width: 12px; transition: transform 150ms var(--ease); }
 .thinking[open] summary::before { transform: rotate(90deg); }
+.thinking summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-s); }
 /* Long unbroken tokens (URLs, paths) wrap instead of widening the whole thread. */
 .thinking .body { white-space: pre-wrap; overflow-wrap: anywhere; padding: 6px 0 0 12px; }
 .thinking .body.muted { color: var(--text-secondary); }
