@@ -1,4 +1,62 @@
-# Handoff: M5 + Track G (background shells) + code-mode fixes on m4 — 2026-10-21 — see "Resume here — 2026-10-21": next steps, benchmark, research
+# Handoff: code-mode benchmark + Only fix + Claude per-turn cost on m4 — 2026-10-21 — see "Resume here — 2026-10-21 (Mac, session 4)"
+
+## Resume here — 2026-10-21 (Mac, session 4)
+
+m4 = `aaa52ea` + this handoff commit (fast-forwarded from `m5-redrows`), **not pushed**. Worktree removed. The main checkout has an uncommitted `D road-map-handoff.md` that isn't from this session: leave it.
+
+**Commits:**
+- `946590c` **fix(claude)** (handoff items 2 + 4):
+  - Per-turn cost on resumed sessions. Verified with the SDK: `total_cost_usd` is the session's running total and carries over on resume (turn 2 = turn 1 + its own). Every Claude turn-end now stores `sessionCost: {sessionId, usd}`. `service.ts` passes `priorSessionCostUsd` (`Store.lastSessionCost(thread, session)`), and `turnEndFromResult` subtracts it when the session matches. Live: turn 2 recorded $0.0116 (own share) instead of $0.0400. Old threads keep their inflated rows.
+  - Red rows: tool results containing `CODE_ONLY_DENY` / `BACKGROUND_BASH_DENY` are not errors. A grep-led command (`grep|rg|ag|ack…`, optional `cd x &&`) whose result is exactly `Exit code 1` shows "No matches" (exit 1). The SDK already handles a plain `grep` with no match ("(Bash completed with no output)", not an error); the fix covers cases like `grep -q x f && echo yes`. Checked live in dark theme.
+  - `run_code` description: "no require or import: reach files only through `tools`". PGS still tried `require` once.
+- `aaa52ea` **fix(code-mode): Only** for the native agent and OpenCode:
+  - Native: `CODE_ONLY_HINT` goes in the system prompt (before the plan note; cache-stable per thread), and `ToolContext.searchOnly` makes Bash return `CODE_ONLY_DENY` as a normal result for `isShellSearch` commands.
+  - OpenCode: the hint is added inside `<harness-guide>` on a new session's first prompt (unless OpenCode has its own code mode). There's no hard block: rejecting an ACP permission ends OpenCode's turn, and its grep/glob can't be hidden per thread.
+  - `CODE_ONLY_HINT` now says "run_code" (was "cubiq run_code"), so it fits every agent.
+- Item 3 (Codex ignores run_code in "on"): left as is, on purpose ("on" = optional).
+- Full suite after both: **3356 passed**, 0 failed; typecheck clean. Live: Claude, Codex Luna, OpenCode Zen, native TokenHarbor and PGS Grove all ran.
+
+**Benchmark** (scratch profile, project = `git clone --depth 1` of m4 @17b3eba). Task: "exported functions/consts in src/shared/*.ts no other file imports". **Ground truth = 3**: `AUTO_OPEN`, `PROVIDER_MODEL_PREFIX`, `VARIANT_RE`; verified by parsing every import/re-export. Not answers: `RUN_MANIFEST_VERSION` (imported by evals/run.ts), `codexCompatible` (re-exported by main/providers.ts). No rate limits hit on any free run.
+
+| Run | Cost | Time | Cache read | Out | Tools | Correct |
+|---|---|---|---|---|---|---|
+| Claude off #1 / #2 | $0.197 / $0.056 | 26 / 24 s | 108k / 96k | 1.6k / 1.2k | 3 / 2 Bash | ✓ ✓ |
+| **Claude on #1 / #2** | **$0.146 / $0.028** | **15 / 15 s** | 30k / 60k | 0.9k / 1.0k | 1 run_code | ✓ ✓ |
+| Claude only #1 / #2 | $0.111 / $0.073 | 20 / 22 s | 75k / 49k | 1.5k / 1.0k | 2 / 1 run_code | ✓ ✗ (+RUN_MANIFEST_VERSION) |
+| Codex Luna off / on / only | sub | 41 / 28 / 42 s | — | — | 8 shell / 4 shell / 5 run_code | ✓ ✓ ✓ |
+| OpenCode Zen off / on / only | free | 51 / 82 / 64 s | 142k / 453k / 223k | 3.0k / 5.7k / 4.1k | 7 shell / 14 run_code / 12 shell | ✓ ✓ ✓ |
+| TokenHarbor off / on / only | free | 109 / 67 / 220 s | 195k / 150k / 981k | 8.0k / 5.2k / 13.2k | 14 / 11 / 34 (32 Bash) | ✓ ✓ ✗ (+11 types) |
+| PGS Grove off / on / only | $0.029 / $0.006 / $0.029 | 141 / 77 / 441 s | 707k / 125k / 636k | 5.6k / 2.6k / 18.5k | 38 / 10 / 27 Bash | ✓ ✓ ✗ (+10 types) |
+| **After `aaa52ea`:** TokenHarbor only | free | **56 s** | 90k | 3.8k | 11 run_code, 0 Bash | ✓ |
+| **After `aaa52ea`:** PGS Grove only | $0.010 | **120 s** | 229k | 6.1k | 13 run_code + 3 Bash | ✗ (headline "18 unused by src/"; lists the right 3 as "not imported by anything") |
+
+- Claude #1 runs follow an app restart and pay cache writes; the #2 runs are the fair cost comparison.
+- **"On" is the best mode**: 6/6 correct; faster than off for Claude (−40%), Codex (−32%), TokenHarbor (−39%) and PGS (−45%), and cheaper (Claude $0.028 vs $0.056 warm; PGS 5×). OpenCode Zen was the exception (82 vs 51 s: 14 small scripts).
+- All misses were in "Only". Before the fix the native agent never used run_code in "only" (Bash for everything).
+- The post-fix rerun stopped early: OpenCode Zen only stalled (no activity for 3 min; probably the free tier), and the Claude only, Codex only, TokenHarbor #2 and PGS #2 runs never ran.
+
+Benchmark tooling (scratchpad, gone after this session; recreate from here):
+- Driver `bench.mjs`: new thread per run → `updateThread({agent, model, permissionMode:"full"})` → verify the DB row → `send` → poll for a new top-level `turn-end` (`parent_id IS NULL`) every 5 s, timeout 15 min.
+- Free providers: at least 90 s between runs of one provider; on `/rate.?limit|429|quota|allowance|exhausted/` wait 180 s and retry once.
+- **`execFileSync('sqlite3', …)` needs `maxBuffer: 256 MB`** (ENOBUFS lost one run's stats).
+- Code mode is set with `updateSettings({codeMode})` *before* `createThread`; a thread fixes it at creation.
+- Register the project by inserting a `projects` row (id, path, name, created_at). Providers via `saveProvider({…, secret:{kind:"envRef", envVar}})` with the app launched after `set -a; source .env`.
+
+**Next, in order:**
+1. **Settings UI** (user, 2026-10-21; follow DESIGN.md + `design-system` skill, screenshot in dark theme):
+   - Mark "Read-only + MCP" as **(Recommended)** on the Code mode switch.
+   - Move Code mode out of Settings → Agents into a **new "Experiments" section**.
+   - Rewrite the note under the switch for the new Only behaviour: Claude and the native agent lose direct search tools and have shell searches turned away; Codex and OpenCode get a one-line hint. Today it reads "Only also hides the direct read and search tools where the agent allows it…" (`SettingsSheet.tsx` ~398).
+2. **Finish the Only rerun** with the fixed build: OpenCode Zen, Claude, Codex, plus a second TokenHarbor and PGS run. Then decide whether "Only" stays offered, given "on" is better everywhere.
+3. **OpenCode "Web search cancelled"** (user pasted: `Tool websearch` input `{"query":"top technology news today October 212026"}` → Error "Web search cancelled"). Not found:
+   - in any `unskilled.db` on this Mac (CubiQ, AI Harness, UnSkilled, scratch profiles);
+   - in the OpenCode 1.19.3 binary's strings;
+   - in our `src/`.
+
+   Ask the user where they saw it (Windows PC? which build/agent?). Suspects: an ACP permission answered `cancelled` (`optionFor` returned null → `{outcome:"cancelled"}` in `acp/driver.ts` onRequest), or a turn abort (`session/cancel`) while the search ran.
+4. Still open from the session-3 list: native PGS scripts call `tools.glob` without `pattern`, and Claude used grep `output_mode: "files"`. Consider accepting `"files"` as an alias of `files_with_matches`, and a clearer "missing pattern" error. Also items 5–7 there (Own worktree, /doctor, ShellDock polish, Windows run).
+5. Push m4 when the user agrees.
+
 
 ## Resume here — 2026-10-21 (Mac, session 3)
 
