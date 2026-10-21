@@ -1,4 +1,13 @@
-# Handoff: code-mode defaults, browser tools on demand, run_code hint + arg fixes, cache report — 2026-10-21 — see "Resume here — 2026-10-21 (Mac, session 6)"
+# Handoff: Codex Office-skills trim, OpenCode cache finding — 2026-10-21 — see "Resume here — 2026-10-21 (Mac, session 7)"
+
+## Resume here — 2026-10-21 (Mac, session 7)
+
+- `00206ef` **Codex Office skills** (session-6 item 3a): when Codex's `config.toml` (`CODEX_HOME` or `~/.codex`) enables `documents` / `pdf` / `presentations` / `spreadsheets` (`[plugins."<name>@…"] enabled = true`, the Codex app installs them), CubiQ's bundled docx / pdf / pptx / xlsx stay out of Codex's skills root (`skills/codex-plugins.ts`); a CLI-only Codex without the plugins keeps them, and a project skill of the same name always stays. Library → skill shows Codex "Has its own copy". ~270 tokens a request. Live: Codex listed its own `documents:documents`, `pdf:pdf`… and none of CubiQ's; Claude and OpenCode turns fine. Suite 3389 passed.
+- **OpenCode cache (item 3b): nothing to fix on our side.** A logging proxy in front of Zen / AgentRouter (OpenCode `provider.<id>.options.baseURL` via `OPENCODE_CONFIG_CONTENT`) showed the request prefix (system, tools, history) byte-identical across turns, across an OpenCode process restart (the 10-min `IDLE_MS` path) and across permission-mode switches (the plan-mode block rides at the end of the user message). OpenCode already sends session-affinity headers (`x-opencode-session` for Zen, `x-session-affinity` otherwise). Still, one identical-prefix turn got 1,024 of 14,749 cached: the relays spread requests over backends, so ~83% warm is upstream. Replaying one body 8× straight to AgentRouter hit every time after the first. Cross-thread first turns miss early because OpenCode's `<env>` (cwd) sits near the top of its system prompt.
+- **A workmate's "code mode doesn't work"** (screenshot: Claude Haiku ran 5 shell commands, no run_code): Haiku itself is fine (here: 2 run_code, 0 shell). Told the user: after pulling m4 run `bun i` (quickjs-emscripten came in 10-18) and fully restart `bun run dev`; a thread fixes its code mode the first time it runs, until the app restarts (`codeModes`), so turn it on, restart, new thread. Not confirmed on their PC yet; if it persists, compare `claude --version` (here 2.1.306; run_code relies on `alwaysLoad`).
+- Zen free DeepSeek was rate-limited ("FreeUsageLimitError") for most of the session; AgentRouter `deepseek-v4-flash` worked (with some "sensitive words" retries).
+
+**Next:** session-6 items 1 (Own worktree, /doctor Prune worktrees, ShellDock polish) and 2 (Windows run) are still open.
 
 ## Resume here — 2026-10-21 (Mac, session 6)
 
