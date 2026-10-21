@@ -1,6 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -309,6 +309,25 @@ describe("SettingsStore codeMode", () => {
     expect(s.get().codeMode).toBe("off");
     s.update({ codeMode: "bogus" as never });
     expect(s.get().codeMode).toBe("off");
+  });
+
+  it("defaults a new install to on and keeps an older file that never chose a mode on off", () => {
+    expect(new SettingsStore(fresh(), box).get().codeMode).toBe("on");
+    const old = fresh();
+    writeFileSync(old, JSON.stringify({ schemaVersion: 3, settings: { theme: "dark" } }));
+    const store = new SettingsStore(old, box);
+    expect(store.get().codeMode).toBe("off");
+    // Startup writes nothing; the next save records the choice and v4.
+    expect(JSON.parse(readFileSync(old, "utf-8")).schemaVersion).toBe(3);
+    expect(new SettingsStore(old, box).get().codeMode).toBe("off");
+    store.update({ theme: "light" });
+    const disk = JSON.parse(readFileSync(old, "utf-8"));
+    expect(disk.schemaVersion).toBe(4);
+    expect(disk.settings).toMatchObject({ theme: "light", codeMode: "off" });
+    // A chosen mode is left alone.
+    const chose = fresh();
+    writeFileSync(chose, JSON.stringify({ schemaVersion: 3, settings: { codeMode: "on" } }));
+    expect(new SettingsStore(chose, box).get().codeMode).toBe("on");
   });
 
   it("reads a stored only as on", () => {

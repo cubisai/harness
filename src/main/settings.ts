@@ -33,7 +33,7 @@ export interface SecretBox {
   decrypt(b64: string): string;
 }
 
-const DEFAULTS: Settings = { theme: "system", motion: "full", density: "comfortable", zoom: 1, antigravity: false, antigravityAck: null, defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, paneLayout: { ...DEFAULT_LAYOUT }, memory: { enabled: true, disabledProjects: [] } };
+const DEFAULTS: Settings = { theme: "system", motion: "full", density: "comfortable", zoom: 1, antigravity: false, antigravityAck: null, defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, paneLayout: { ...DEFAULT_LAYOUT }, memory: { enabled: true, disabledProjects: [] }, codeMode: "on" };
 
 /** A settings export file. */
 export interface SettingsExport {
@@ -69,6 +69,7 @@ export class SettingsStore {
     this.data = this.read();
     this.migrate();
     this.migrateDeepseekDefault();
+    this.migrateCodeModeDefault();
   }
 
   private read(): FileShape {
@@ -141,6 +142,19 @@ export class SettingsStore {
     }
     this.data.schemaVersion = 3;
     if (existed && added) this.write();
+  }
+
+  /**
+   * One-shot v3 → v4: code mode now defaults to "on" (Read-only + MCP) for new
+   * installs. A file from before that never chose a mode keeps the old default,
+   * "off"; a brand-new install gets the new one. Nothing is written at startup
+   * (a corrupt file must stay as it is): the next update() persists v4, and
+   * until then each start pins "off" again.
+   */
+  private migrateCodeModeDefault(): void {
+    if ((this.data.schemaVersion ?? 1) >= 4) return;
+    if (existsSync(this.file) && this.data.settings?.codeMode === undefined) (this.data.settings ??= {}).codeMode = "off";
+    this.data.schemaVersion = 4;
   }
 
   get(): Settings & { paneLayout: PaneLayout } {

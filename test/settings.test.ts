@@ -43,9 +43,9 @@ describe("SettingsStore", () => {
   it("starts from defaults and persists updates", () => {
     const file = fresh();
     const s = new SettingsStore(file, box);
-    expect(s.get()).toEqual({ theme: "system", motion: "full", density: "comfortable", zoom: 1, antigravity: false, antigravityAck: null, defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, paneLayout: DEFAULT_LAYOUT, memory: { enabled: true, disabledProjects: [] }, learn: LEARN_DEFAULTS });
+    expect(s.get()).toEqual({ theme: "system", motion: "full", density: "comfortable", zoom: 1, antigravity: false, antigravityAck: null, defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, paneLayout: DEFAULT_LAYOUT, memory: { enabled: true, disabledProjects: [] }, codeMode: "on", learn: LEARN_DEFAULTS });
     s.update({ theme: "dark", defaultAgent: "codex", defaultPermissionMode: "auto-edit", autoUpdate: false, editor: "zed" });
-    expect(new SettingsStore(file, box).get()).toEqual({ theme: "dark", motion: "full", density: "comfortable", zoom: 1, antigravity: false, antigravityAck: null, defaultAgent: "codex", defaultPermissionMode: "auto-edit", autoUpdate: false, editor: "zed", paneLayout: DEFAULT_LAYOUT, memory: { enabled: true, disabledProjects: [] }, learn: LEARN_DEFAULTS });
+    expect(new SettingsStore(file, box).get()).toEqual({ theme: "dark", motion: "full", density: "comfortable", zoom: 1, antigravity: false, antigravityAck: null, defaultAgent: "codex", defaultPermissionMode: "auto-edit", autoUpdate: false, editor: "zed", paneLayout: DEFAULT_LAYOUT, memory: { enabled: true, disabledProjects: [] }, codeMode: "on", learn: LEARN_DEFAULTS });
   });
 
   it("keeps the user's commit instructions, and stores blank or the default text as null", () => {
