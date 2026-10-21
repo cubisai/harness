@@ -23,8 +23,8 @@ const groupIds = SETTINGS_GROUPS.map((g) => g.id);
 const html = Object.fromEntries(groupIds.map((id) => [id, renderToStaticMarkup(<SettingsGroupContent group={id} settings={settings} />)]));
 
 describe("Settings IA", () => {
-  it("has the six groups in order", () => {
-    expect(SETTINGS_GROUPS.map((g) => g.label)).toEqual(["Appearance", "Threads", "Agents & Providers", "Skills & MCP", "Data & Security", "Updates"]);
+  it("has the seven groups in order", () => {
+    expect(SETTINGS_GROUPS.map((g) => g.label)).toEqual(["Appearance", "Threads", "Agents & Providers", "Skills & MCP", "Data & Security", "Updates", "Experiments"]);
   });
 
   it("maps every former section heading to exactly one group", () => {
@@ -41,12 +41,19 @@ describe("Settings IA", () => {
 
   it("puts each control in exactly one group", () => {
     // Providers render only with the store's settings; their group is pinned above.
-    const controls = ["Theme", "Motion", "Density", "Splash screen", "Agent", "Permissions", "Open files in", "Installed", "Skills", "MCP tool search", "Keys", "Data folder", "Version", "Auto-update"];
+    const controls = ["Theme", "Motion", "Density", "Splash screen", "Agent", "Permissions", "Open files in", "Installed", "Skills", "MCP tool search", "Keys", "Data folder", "Version", "Auto-update", "Code mode"];
     for (const label of controls) {
       const where = groupIds.filter((id) => html[id]!.includes(`class="label"`) && new RegExp(`class="label"[^>]*>${label}<`).test(html[id]!));
       expect(where, label).toHaveLength(1);
     }
     expect(html.skills).toContain("Open MCP Servers");
+  });
+
+  it("keeps Code mode in Experiments, with Read-only + MCP marked Recommended", () => {
+    expect(SETTINGS_GROUPS.find((g) => g.id === "experiments")?.sections).toEqual(["Code mode"]);
+    expect(html.agents).not.toContain("Code mode");
+    expect(html.experiments).toContain(">Read-only + MCP (Recommended)<");
+    expect(html.experiments).toMatch(/class="on"[^>]*>Off</);
   });
 
   it("offers both splash clips and Off, with the agent clip on when unset", () => {

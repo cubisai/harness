@@ -49,6 +49,7 @@ export const SETTINGS_GROUPS = [
   { id: "skills", label: "Skills & MCP", sections: ["Skills", "MCP servers"] },
   { id: "data", label: "Data & Security", sections: ["Data"] },
   { id: "updates", label: "Updates", sections: ["Updates"] },
+  { id: "experiments", label: "Experiments", sections: ["Code mode"] },
 ] as const;
 
 export type SettingsGroup = (typeof SETTINGS_GROUPS)[number]["id"];
@@ -385,22 +386,6 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
             </div>
             <p className="note">Add ACP agents in agents.json in the data folder (Data &amp; Security), then restart the app. The Library lists every agent it knows.</p>
           </section>
-          <section>
-            <h3>Code mode</h3>
-            <div className="row">
-              <span className="label">Code mode</span>
-              <div className="segmented">
-                {([["off", "Off"], ["on", "Read-only + MCP"], ["only", "Only"]] as const).map(([value, label]) => (
-                  <button key={value} className={(settings.codeMode ?? "off") === value ? "on" : ""} onClick={() => update({ codeMode: value })}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <p className="note">
-              Agents get run_code: one sandboxed script that chains read, grep, glob and other read-only tools, so a multi-step search costs one call. Only also hides the direct read and search tools where the agent allows it (CubiQ's own agents; Claude's Grep and Glob). OpenCode 2 uses its own Code Mode. Applies to new threads.
-            </p>
-          </section>
           <AntigravityOptIn settings={settings} update={update} />
         </>
       );
@@ -489,6 +474,25 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
             another machine, enter them again. Importing replaces your providers.
           </p>
           <p className="note">Threads, settings, agents.json and mcp.json live here. Export a thread from the command palette to keep or move it.</p>
+        </section>
+      );
+    case "experiments":
+      return (
+        <section>
+          <h3>Code mode</h3>
+          <div className="row">
+            <span className="label">Code mode</span>
+            <div className="segmented">
+              {([["off", "Off"], ["on", "Read-only + MCP (Recommended)"], ["only", "Only"]] as const).map(([value, label]) => (
+                <button key={value} className={(settings.codeMode ?? "off") === value ? "on" : ""} onClick={() => update({ codeMode: value })}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="note">
+            Agents get run_code: one sandboxed script that chains read, grep, glob and other read-only tools, so a multi-step search costs one call. Only goes further: Claude and CubiQ's own agents lose their direct search tools (Claude keeps Read) and have shell searches like grep and find turned away; Codex and OpenCode get a one-line hint to use run_code. OpenCode 2 uses its own Code Mode. Applies to new threads.
+          </p>
         </section>
       );
     case "updates":
