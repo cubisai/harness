@@ -41,6 +41,7 @@ const api: UnskilledApi = {
   worktreeMessage: (threadId) => ipcRenderer.invoke("worktree:message", threadId),
   worktreeCommit: (threadId, message) => ipcRenderer.invoke("worktree:commit", threadId, message),
   worktreeMerge: (threadId, opts) => ipcRenderer.invoke("worktree:merge", threadId, opts),
+  worktreePush: (threadId) => ipcRenderer.invoke("worktree:push", threadId),
   worktreeRemove: (threadId) => ipcRenderer.invoke("worktree:remove", threadId),
   listFiles: (projectId, threadId) => ipcRenderer.invoke("files:list", projectId, threadId),
   projectBranch: (projectId) => ipcRenderer.invoke("project:branch", projectId),

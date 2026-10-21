@@ -5,7 +5,7 @@ import { Store } from "../src/main/db";
 import { Service } from "../src/main/service";
 import { SettingsStore, type SecretBox } from "../src/main/settings";
 import * as settingsModule from "../src/main/settings";
-import type { ProviderInput } from "../src/shared/types";
+import { DEFAULT_COMMIT_INSTRUCTIONS, type ProviderInput } from "../src/shared/types";
 import { DEFAULT_LAYOUT } from "../src/shared/layout";
 import type { AgentDriver } from "../src/main/agents/types";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
@@ -46,6 +46,18 @@ describe("SettingsStore", () => {
     expect(s.get()).toEqual({ theme: "system", motion: "full", density: "comfortable", zoom: 1, antigravity: false, antigravityAck: null, defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: true, editor: null, paneLayout: DEFAULT_LAYOUT, memory: { enabled: true, disabledProjects: [] }, learn: LEARN_DEFAULTS });
     s.update({ theme: "dark", defaultAgent: "codex", defaultPermissionMode: "auto-edit", autoUpdate: false, editor: "zed" });
     expect(new SettingsStore(file, box).get()).toEqual({ theme: "dark", motion: "full", density: "comfortable", zoom: 1, antigravity: false, antigravityAck: null, defaultAgent: "codex", defaultPermissionMode: "auto-edit", autoUpdate: false, editor: "zed", paneLayout: DEFAULT_LAYOUT, memory: { enabled: true, disabledProjects: [] }, learn: LEARN_DEFAULTS });
+  });
+
+  it("keeps the user's commit instructions, and stores blank or the default text as null", () => {
+    const s = new SettingsStore(fresh(), box);
+    s.update({ git: { commitModel: null, coAuthor: false, instructions: "  - One line only.  " } });
+    expect(s.get().git?.instructions).toBe("- One line only.");
+    s.update({ git: { commitModel: null, coAuthor: true } });
+    expect(s.get().git).toEqual({ commitModel: null, coAuthor: true, instructions: "- One line only." });
+    s.update({ git: { commitModel: null, coAuthor: true, instructions: DEFAULT_COMMIT_INSTRUCTIONS } });
+    expect(s.get().git?.instructions).toBeNull();
+    s.update({ git: { commitModel: null, coAuthor: true, instructions: "   " } });
+    expect(s.get().git?.instructions).toBeNull();
   });
 
   it("keeps the splash choice unset by default and accepts only the known clips", () => {

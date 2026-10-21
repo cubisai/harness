@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AgentDriver } from "../src/main/agents/types";
 import { createWorktree } from "../src/main/git";
-import { commitThread, draftMessage, mergeThread, removeThreadWorktree, reviewState, type ReviewDeps } from "../src/main/worktree-review";
-import type { Project, Settings, Thread } from "../src/shared/types";
+import { commitThread, draftMessage, mergeThread, pushThread, removeThreadWorktree, reviewState, type ReviewDeps } from "../src/main/worktree-review";
+import { DEFAULT_COMMIT_INSTRUCTIONS, type Project, type Settings, type Thread } from "../src/shared/types";
 import { tempDir } from "./helpers";
 
 function setup(opts: { recordBase?: boolean } = {}) {
@@ -87,6 +87,61 @@ describe("worktree review", () => {
     expect(result.ok).toBe(true);
     expect(readFileSync(join(w.repo, "b.txt"), "utf8")).toBe("hi\n");
     expect(w.git(w.repo, "log", "-1", "--format=%s")).toBe("Add b (squashed)");
+    expect(w.git(w.repo, "log", "-1", "--format=%(trailers:key=Branch,valueonly)")).toBe("harness/demo-abc123");
+  });
+
+  it("merges into a branch no folder has out in a throwaway worktree, leaving the project folder alone", async () => {
+    const w = await withWorktree();
+    w.git(w.repo, "branch", "release");
+    writeFileSync(join(w.dir, "b.txt"), "hi\n");
+    await commitThread(w.deps, "t1", "Add b");
+    expect((await reviewState(w.deps, "t1")).targets).toEqual(["main", "release"]);
+    const result = await mergeThread(w.deps, "t1", { mode: "squash", message: "feat: add b", target: "release" });
+    expect(result.ok).toBe(true);
+    expect(w.git(w.repo, "log", "-1", "--format=%s", "release")).toBe("feat: add b");
+    expect(w.git(w.repo, "branch", "--show-current")).toBe("main");
+    expect(w.git(w.repo, "status", "--porcelain")).toBe("");
+    expect(w.git(w.repo, "worktree", "list").split("\n")).toHaveLength(2);
+  });
+
+  it("refuses an unknown target or the thread's own branch", async () => {
+    const w = await withWorktree();
+    writeFileSync(join(w.dir, "b.txt"), "hi\n");
+    await commitThread(w.deps, "t1", "Add b");
+    expect(await mergeThread(w.deps, "t1", { mode: "squash", message: "x", target: "nope" })).toMatchObject({ ok: false, reason: "There's no local branch named nope." });
+    expect(await mergeThread(w.deps, "t1", { mode: "squash", message: "x", target: "harness/demo-abc123" })).toMatchObject({ ok: false });
+  });
+
+  it("pushes the branch to the remote and tracks it", async () => {
+    const w = await withWorktree();
+    const remote = tempDir();
+    w.git(remote, "init", "-q", "--bare");
+    w.git(w.repo, "remote", "add", "origin", remote);
+    expect(await reviewState(w.deps, "t1")).toMatchObject({ remote: "origin", unpushed: null });
+    writeFileSync(join(w.dir, "b.txt"), "hi\n");
+    await commitThread(w.deps, "t1", "Add b");
+    expect(await pushThread(w.deps, "t1")).toEqual({ remote: "origin", branch: "harness/demo-abc123" });
+    expect(w.git(remote, "log", "-1", "--format=%s", "harness/demo-abc123")).toBe("Add b");
+    expect((await reviewState(w.deps, "t1")).unpushed).toBe(0);
+  });
+
+  it("says so when there's no remote to push to", async () => {
+    const w = await withWorktree();
+    expect((await reviewState(w.deps, "t1")).remote).toBeNull();
+    await expect(pushThread(w.deps, "t1")).rejects.toThrow("no git remote");
+  });
+
+  it("gives the model the default style rules, or the user's own", async () => {
+    const w = await withWorktree();
+    writeFileSync(join(w.dir, "b.txt"), "hi\n");
+    await draftMessage(w.deps, "t1", new AbortController().signal);
+    expect(w.prompts[0]).toContain(DEFAULT_COMMIT_INSTRUCTIONS);
+    const own = await withWorktree({ settings: { git: { commitModel: { agent: "claude", model: "haiku" }, coAuthor: false, instructions: "- One short line, no body." } } as Partial<Settings> });
+    writeFileSync(join(own.dir, "b.txt"), "hi\n");
+    await draftMessage(own.deps, "t1", new AbortController().signal);
+    expect(own.prompts[0]).toContain("- One short line, no body.");
+    expect(own.prompts[0]).not.toContain(DEFAULT_COMMIT_INSTRUCTIONS);
+    expect(own.prompts[0]).toContain("Output only the message");
   });
 
   it("refuses to merge while the worktree has uncommitted changes", async () => {

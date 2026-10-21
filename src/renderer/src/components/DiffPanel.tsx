@@ -36,6 +36,7 @@ export function DiffPanel({ projectId, refreshKey }: { projectId: string; refres
   const bar = thread?.worktreePath && thread.branch ? (
     <ReviewMergeBar
       threadId={thread.id}
+      refreshKey={refreshKey}
       onScope={(next, review: WorktreeReview) => {
         setScope(next);
         setBase(review.base);

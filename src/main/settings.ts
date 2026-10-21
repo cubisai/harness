@@ -13,7 +13,7 @@ import type {
   Settings,
   SettingsView,
 } from "../shared/types";
-import { MAX_RUNNING_CHOICES } from "../shared/types";
+import { DEFAULT_COMMIT_INSTRUCTIONS, MAX_RUNNING_CHOICES } from "../shared/types";
 import { DEFAULT_LAYOUT, sanitizeLayout } from "../shared/layout";
 import { isZoom } from "../shared/zoom";
 import { LEARN_DEFAULTS, type LearnSettings } from "../shared/learn";
@@ -194,7 +194,7 @@ export class SettingsStore {
       next.memory = { enabled, disabledProjects };
     }
     if (patch.learn && typeof patch.learn === "object" && !Array.isArray(patch.learn)) next.learn = sanitizeLearn({ ...next.learn, ...patch.learn });
-    if (patch.git && typeof patch.git === "object" && !Array.isArray(patch.git)) next.git = sanitizeGit({ ...(next.git ?? { commitModel: null, coAuthor: false }), ...patch.git });
+    if (patch.git && typeof patch.git === "object" && !Array.isArray(patch.git)) next.git = sanitizeGit({ ...(next.git ?? { commitModel: null, coAuthor: false, instructions: null }), ...patch.git });
     if (patch.mcpRouter === "auto" || patch.mcpRouter === "off") next.mcpRouter = patch.mcpRouter;
     if (patch.codeMode === "off" || patch.codeMode === "on" || patch.codeMode === "only") next.codeMode = patch.codeMode;
     if (typeof patch.sidebarGroupByProject === "boolean") next.sidebarGroupByProject = patch.sidebarGroupByProject;
@@ -462,8 +462,11 @@ export function sanitizeLearn(value: Partial<LearnSettings> | undefined): LearnS
 }
 
 /** Commit-message settings: a picked agent+model (both strings) or null, and the co-author switch (off unless true). */
-function sanitizeGit(v: { commitModel?: unknown; coAuthor?: unknown }): GitSettings {
+function sanitizeGit(v: { commitModel?: unknown; coAuthor?: unknown; instructions?: unknown }): GitSettings {
   const m = v.commitModel as { agent?: unknown; model?: unknown } | null | undefined;
   const commitModel = m && typeof m.agent === "string" && m.agent && typeof m.model === "string" && m.model ? { agent: m.agent, model: m.model } : null;
-  return { commitModel, coAuthor: v.coAuthor === true };
+  // Blank or the default text is stored as null, so a later default change reaches it.
+  const text = typeof v.instructions === "string" ? v.instructions.trim().slice(0, 4000) : "";
+  const instructions = text && text !== DEFAULT_COMMIT_INSTRUCTIONS ? text : null;
+  return { commitModel, coAuthor: v.coAuthor === true, instructions };
 }

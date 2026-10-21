@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Density, Motion, PermissionMode, SettingsView, Theme } from "../../../shared/types";
-import { MAX_RUNNING_CHOICES } from "../../../shared/types";
+import { DEFAULT_COMMIT_INSTRUCTIONS, MAX_RUNNING_CHOICES } from "../../../shared/types";
 import { api } from "../api";
 import { ProvidersSection } from "./ProviderSheet";
 import { useStore, type LibraryTab } from "../store";
@@ -307,7 +307,16 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
                 ))}
               </div>
             </div>
-            <p className="note">Used by Generate in a worktree thread's Review &amp; merge bar. Automatic picks a cheap model. The co-author line credits the thread's agent (Claude, Codex, OpenCode or Cursor) with a Co-authored-by trailer.</p>
+            <CommitInstructions
+              value={settings.git?.instructions ?? null}
+              onSave={(instructions) =>
+                update({ git: { commitModel: settings.git?.commitModel ?? null, coAuthor: settings.git?.coAuthor ?? false, instructions } })
+              }
+            />
+            <p className="note">
+              Used by Generate in a worktree thread's Review &amp; merge bar. Automatic picks a cheap model. The instructions set the style; the default asks for a plain,
+              Conventional Commits message. The co-author line credits the thread's agent (Claude, Codex, OpenCode or Cursor) with a Co-authored-by trailer.
+            </p>
           </section>
           <section>
             <h3>Background</h3>
@@ -567,5 +576,33 @@ export function AntigravityOptIn({ settings, update }: { settings: SettingsView;
         </>
       )}
     </section>
+  );
+}
+
+/** The commit-message style rules: the default until edited, saved when the box loses focus. */
+function CommitInstructions({ value, onSave }: { value: string | null; onSave(instructions: string | null): void }) {
+  const [draft, setDraft] = useState(value ?? DEFAULT_COMMIT_INSTRUCTIONS);
+  useEffect(() => setDraft(value ?? DEFAULT_COMMIT_INSTRUCTIONS), [value]);
+  const save = (text: string) => {
+    const next = text.trim() && text.trim() !== DEFAULT_COMMIT_INSTRUCTIONS ? text.trim() : null;
+    if (next !== value) onSave(next);
+  };
+  return (
+    <div className="row commit-instructions">
+      <span className="label">Instructions</span>
+      <textarea
+        className="text-input"
+        rows={8}
+        aria-label="Commit message instructions"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => save(draft)}
+      />
+      {value !== null && (
+        <button type="button" className="button" onClick={() => save("")}>
+          Reset to default
+        </button>
+      )}
+    </div>
   );
 }

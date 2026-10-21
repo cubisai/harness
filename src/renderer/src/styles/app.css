@@ -1557,6 +1557,11 @@ button.qc-option.other { cursor: pointer; }
 .review-branch { font: 11.5px var(--mono); color: var(--text); }
 .review-message { width: 100%; min-width: 0; resize: vertical; font: inherit; font-size: 12.5px; padding: 6px 8px; border: 1px solid var(--hairline); border-radius: 6px; background: var(--bg); color: var(--text); }
 .review-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+/* The scope toggle sits at its own width, not stretched across the grid cell. */
+.review-bar > .segmented { justify-self: start; }
+.review-merge { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.review-merge .select { min-width: 0; max-width: 180px; }
+.review-merge .review-into { font-size: 12px; color: var(--text-secondary); }
 .review-hint, .review-notice { font-size: 11.5px; color: var(--text-tertiary); margin: 0; }
 .review-error { font-size: 11.5px; color: var(--danger); margin: 0; }
 .diff-file { border-bottom: 1px solid var(--hairline); }
@@ -1835,6 +1840,11 @@ button.qc-option.other { cursor: pointer; }
 .sheet .label { width: 110px; flex-shrink: 0; color: var(--text-secondary); }
 .sheet .value { color: var(--text); display: inline-flex; align-items: center; gap: 6px; }
 .sheet .note { color: var(--text-secondary); font-size: 12px; margin: 2px 0 8px; }
+/* Commit-message instructions: the label beside a tall box, Reset wrapping under the box. */
+.sheet .row.commit-instructions { align-items: flex-start; flex-wrap: wrap; padding: 4px 0; }
+.sheet .row.commit-instructions .label { padding-top: 6px; }
+.commit-instructions textarea { flex: 1 1 240px; min-width: 0; height: auto; min-height: 168px; padding: 6px 8px; resize: vertical; font-size: 12px; line-height: 1.5; }
+.commit-instructions .button { margin-left: 122px; }
 .switch-sheet { width: min(520px, calc(100vw - 48px)); }
 .switch-list { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 .switch-list.muted { color: var(--text-secondary); }

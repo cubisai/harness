@@ -685,10 +685,11 @@ export function installMock(): void {
       ],
     }),
     doctorFix: async () => ({ ok: true, message: "Done." }),
-    worktreeReview: async () => ({ branch: "harness/demo-a1b2c3", base: "main", baseSha: "0000000", ahead: 2, behind: 0, uncommitted: 1, projectBranch: "main", projectDirty: false, files: [] }),
+    worktreeReview: async () => ({ branch: "harness/demo-a1b2c3", base: "main", baseSha: "0000000", ahead: 2, behind: 0, uncommitted: 1, projectBranch: "main", projectDirty: false, files: [], targets: ["dev", "main"], remote: "origin", unpushed: null }),
     worktreeMessage: async () => ({ message: "Add the review bar to worktree threads", model: "Claude · Haiku" }),
     worktreeCommit: async () => "1111111",
     worktreeMerge: async () => ({ ok: true as const, sha: "2222222" }),
+    worktreePush: async () => ({ remote: "origin", branch: "harness/demo-a1b2c3" }),
     worktreeRemove: async () => true,
     getDiff: async (_projectId, _threadId) => [
       {

@@ -4,6 +4,8 @@
  * No I/O and no model calls, so it can be tested on its own.
  */
 
+import { DEFAULT_COMMIT_INSTRUCTIONS } from "../shared/types";
+
 /** A changed file and its unified-diff patch. */
 export interface CommitDiffFile {
   path: string;
@@ -17,6 +19,8 @@ export interface CommitPromptInput {
   stat: string;
   files: CommitDiffFile[];
   budget?: number;
+  /** The user's style rules; DEFAULT_COMMIT_INSTRUCTIONS when missing or blank. */
+  instructions?: string | null;
 }
 
 /** The patch characters a prompt spends before omitting the rest. */
@@ -111,9 +115,8 @@ export function buildCommitPrompt(i: CommitPromptInput): string {
   const sections = [
     [
       "Write a git commit message for the changes below.",
-      "- First line: an imperative summary of at most 72 characters, with no trailing period.",
-      "- If the change needs it, add a blank line and a short body (wrapped at 72 columns) saying what changed and why.",
-      "- Describe only what the diff shows.",
+      i.instructions?.trim() || DEFAULT_COMMIT_INSTRUCTIONS,
+      // Fixed whatever the style: parseCommitMessage relies on it.
       '- Output only the message: no code fences, no quotes, no "Subject:" label, no Co-authored-by or Signed-off-by lines.',
     ].join("\n"),
   ];
@@ -196,4 +199,19 @@ export function formatCommitMessage(m: { subject: string; body: string }, coAuth
   const trailer = `Co-authored-by: ${coAuthor.name} <${coAuthor.email}>`;
   if (out.split("\n").some((line) => line.trim() === trailer)) return out;
   return `${out}\n\n${trailer}`;
+}
+
+/**
+ * The message with a `Branch: <branch>` trailer, so a squash merge can be traced
+ * back to the thread's branch. It joins a trailer block the message already ends
+ * with (keeping Co-authored-by in the block git reads), and isn't added twice.
+ */
+export function withBranchTrailer(message: string, branch: string): string {
+  const text = message.trim();
+  const trailer = `Branch: ${branch}`;
+  if (text.split("\n").some((line) => line.trim() === trailer)) return text;
+  const paragraphs = text.split(/\n{2,}/);
+  const last = paragraphs.at(-1) ?? "";
+  const isTrailerBlock = paragraphs.length > 1 && last.split("\n").every((line) => /^[A-Za-z][\w-]*: \S/.test(line));
+  return isTrailerBlock ? `${text}\n${trailer}` : `${text}\n\n${trailer}`;
 }

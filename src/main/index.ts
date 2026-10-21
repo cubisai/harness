@@ -97,7 +97,7 @@ import { defaultSkillsCandidates, findSkillsRoot } from "./skills/catalog";
 import { ensureModelSkillsDir, ensurePlugin } from "./skills/plugin";
 import { SkillCatalogs, forAgent } from "./skills/sources";
 import { skillTool } from "./skills/tool";
-import { commitThread, draftMessage, mergeThread, removeThreadWorktree, reviewState, type ReviewDeps } from "./worktree-review";
+import { commitThread, draftMessage, mergeThread, pushThread, removeThreadWorktree, reviewState, type ReviewDeps } from "./worktree-review";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const smoke = process.argv.includes("--smoke");
@@ -1725,8 +1725,17 @@ async function main(): Promise<void> {
     afterGit(threadId);
     return sha;
   });
-  ipcMain.handle("worktree:merge", async (_e, threadId: string, opts: { mode?: unknown; message?: unknown }) => {
-    const result = await mergeThread(reviewDeps, threadId, { mode: opts?.mode === "merge" ? "merge" : "squash", message: typeof opts?.message === "string" ? opts.message : "" });
+  ipcMain.handle("worktree:merge", async (_e, threadId: string, opts: { mode?: unknown; message?: unknown; target?: unknown }) => {
+    const result = await mergeThread(reviewDeps, threadId, {
+      mode: opts?.mode === "merge" ? "merge" : "squash",
+      message: typeof opts?.message === "string" ? opts.message : "",
+      target: typeof opts?.target === "string" ? opts.target : undefined,
+    });
+    afterGit(threadId);
+    return result;
+  });
+  ipcMain.handle("worktree:push", async (_e, threadId: string) => {
+    const result = await pushThread(reviewDeps, threadId);
     afterGit(threadId);
     return result;
   });

@@ -402,6 +402,101 @@ export async function mergeInto(
   }
 }
 
+/** The folder that has `branch` checked out (the project or one of its worktrees), or null. */
+export async function branchCheckout(repo: string, branch: string): Promise<string | null> {
+  const out = (await run("git", ["worktree", "list", "--porcelain"], { cwd: repo })).stdout;
+  let path: string | null = null;
+  for (const line of out.split("\n")) {
+    if (line.startsWith("worktree ")) path = line.slice("worktree ".length);
+    else if (line === `branch refs/heads/${branch}` && path) return path;
+  }
+  return null;
+}
+
+/**
+ * Merge `branch` into `target` where `target` is checked out. When no folder
+ * has it out, merge in a throwaway worktree of it, so the project folder never
+ * switches branch.
+ */
+export async function mergeIntoBranch(
+  repo: string,
+  o: { branch: string; target: string; mode: "squash" | "merge"; message: string },
+): Promise<MergeResult> {
+  const merge = { branch: o.branch, base: o.target, mode: o.mode, message: o.message };
+  const holder = await branchCheckout(repo, o.target);
+  if (holder) return mergeInto(holder, merge);
+  const dir = await mkdtemp(join(tmpdir(), "cubiq-merge-"));
+  try {
+    await run("git", ["worktree", "add", "--quiet", dir, o.target], { cwd: repo });
+  } catch (err) {
+    await rm(dir, { recursive: true, force: true });
+    return { ok: false, reason: gitError(err), conflicts: [] };
+  }
+  try {
+    return await mergeInto(dir, merge);
+  } finally {
+    await run("git", ["worktree", "remove", "--force", dir], { cwd: repo }).catch(() => undefined);
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+/** Local branch names, sorted. */
+export async function localBranches(repo: string): Promise<string[]> {
+  try {
+    const out = (await run("git", ["for-each-ref", "--format=%(refname:short)", "refs/heads"], { cwd: repo })).stdout;
+    return out.split("\n").map((b) => b.trim()).filter(Boolean).sort();
+  } catch {
+    return [];
+  }
+}
+
+/** The remote `branch` pushes to: its configured one, else origin, else the first; null without remotes. */
+export async function pushRemote(cwd: string, branch: string): Promise<string | null> {
+  try {
+    const set = (await run("git", ["config", "--get", `branch.${branch}.remote`], { cwd })).stdout.trim();
+    if (set) return set;
+  } catch {
+    // Not pushed yet: fall back to the repository's remotes.
+  }
+  try {
+    const remotes = (await run("git", ["remote"], { cwd })).stdout.split("\n").map((r) => r.trim()).filter(Boolean);
+    return remotes.includes("origin") ? "origin" : (remotes[0] ?? null);
+  } catch {
+    return null;
+  }
+}
+
+/** Commits on `branch` its upstream doesn't have; null when it has no upstream yet. */
+export async function unpushedCount(cwd: string, branch: string): Promise<number | null> {
+  try {
+    return Number((await run("git", ["rev-list", "--count", `${branch}@{upstream}..${branch}`], { cwd })).stdout.trim());
+  } catch {
+    return null;
+  }
+}
+
+/** Push `branch` to `remote` and track it. Never waits on a credential prompt: it fails instead. */
+export async function pushBranch(cwd: string, remote: string, branch: string): Promise<void> {
+  try {
+    await run("git", ["push", "--quiet", "-u", remote, `${branch}:${branch}`], {
+      cwd,
+      timeout: 60_000,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never" },
+    });
+  } catch (err) {
+    throw new Error(gitError(err));
+  }
+}
+
+/** Git's own reason from a failed call: its last fatal/error line, else the first line of the message. */
+function gitError(err: unknown): string {
+  const stderr = String((err as { stderr?: unknown })?.stderr ?? "");
+  const lines = stderr.split("\n").map((l) => l.trim()).filter(Boolean);
+  const reason = [...lines].reverse().find((l) => /^(fatal|error):/i.test(l)) ?? lines.at(-1);
+  if ((err as { killed?: boolean })?.killed) return "git timed out.";
+  return reason ? reason.replace(/^(fatal|error):\s*/i, "") : firstLine(err);
+}
+
 /** Run `fn` with a temp file holding `message`, so commit messages never go through a shell. */
 async function withMessageFile<T>(message: string, fn: (file: string) => Promise<T>): Promise<T> {
   const dir = await mkdtemp(join(tmpdir(), "cubiq-message-"));

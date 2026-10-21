@@ -13,6 +13,9 @@ const review: WorktreeReview = {
   projectBranch: "main",
   projectDirty: false,
   files: [],
+  targets: ["dev", "main"],
+  remote: "origin",
+  unpushed: null,
 };
 
 const noop = () => {};
@@ -28,12 +31,15 @@ function render(overrides: Partial<ReviewMergeBarViewProps> = {}): string {
       notice={null}
       merged={false}
       mode="squash"
+      target="main"
       onScope={noop}
       onMessage={noop}
       onGenerate={noop}
       onCommit={noop}
       onMerge={noop}
       onMode={noop}
+      onTarget={noop}
+      onPush={noop}
       onRemove={noop}
       {...overrides}
     />,
@@ -54,19 +60,47 @@ describe("ReviewMergeBarView", () => {
   it("offers the merge when the worktree is clean and on the base branch", () => {
     const html = render();
     expect(html).not.toContain("review-hint");
-    expect(html).toMatch(labelled("Merge into main"));
-    expect(html).not.toMatch(disabled("Merge into main"));
+    expect(html).toMatch(labelled("Merge"));
+    expect(html).not.toMatch(disabled("Merge"));
+    expect(html).toContain('aria-label="Branch to merge into"');
   });
 
-  it("asks to switch the project branch when it is not the base", () => {
-    const html = render({ review: { ...review, projectBranch: "dev" } });
-    expect(html).toContain("The project is on dev; switch it to main to merge.");
+  it("merges into the base even when the project folder is on another branch", () => {
+    const html = render({ review: { ...review, projectBranch: "dev", projectDirty: true } });
+    expect(html).not.toContain("review-hint");
+    expect(html).not.toMatch(disabled("Merge"));
+  });
+
+  it("blocks a dirty project folder only when it has the target checked out", () => {
+    const html = render({ review: { ...review, projectDirty: true } });
+    expect(html).toContain("The project folder has uncommitted changes.");
+    expect(html).toMatch(disabled("Merge"));
+  });
+
+  it("says why Merge is off when the message is empty, instead of a silent grey button", () => {
+    const html = render({ message: "" });
+    expect(html).toContain("Write the merge commit&#x27;s message, or Generate one.");
+    expect(html).toMatch(disabled("Merge"));
+  });
+
+  it("counts commits ahead against the base only, not another target", () => {
+    expect(render({ review: { ...review, ahead: 0 } })).toContain("Nothing to merge yet.");
+    expect(render({ review: { ...review, ahead: 0 }, target: "dev" })).not.toContain("Nothing to merge yet.");
+  });
+
+  it("offers Push with a remote and holds it without one or when all is pushed", () => {
+    expect(render()).not.toMatch(disabled("Push"));
+    expect(render({ review: { ...review, remote: null } })).toMatch(disabled("Push"));
+    const pushed = render({ review: { ...review, unpushed: 0 } });
+    expect(pushed).toMatch(disabled("Push"));
+    expect(pushed).toContain('title="Everything is pushed."');
+    expect(render({ review: { ...review, unpushed: 2 } })).toContain("· 2 unpushed");
   });
 
   it("shows Remove worktree once merged, and no merge button", () => {
     const html = render({ merged: true, notice: "Merged into main (2222222)." });
     expect(html).toContain("Remove worktree");
-    expect(html).not.toContain("Merge into");
+    expect(html).not.toMatch(labelled("Merge"));
   });
 
   it("renders an error as an alert", () => {

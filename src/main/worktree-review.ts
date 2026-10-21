@@ -5,11 +5,11 @@
 import { LEARN_DEFAULTS } from "../shared/learn";
 import type { DiffFile, GitSettings, Project, Settings, Thread, WorktreeReview } from "../shared/types";
 import type { AgentDriver } from "./agents/types";
-import { aheadBehind, branchDiff, commitAll, currentBranch, dirtyPaths, hasTrackedChanges, mergeBase, mergeInto, parseUnifiedDiff, removeWorktree, workingTreeDiff, type MergeResult } from "./git";
-import { buildCommitPrompt, coAuthorFor, formatCommitMessage, parseCommitMessage } from "./git-message";
+import { aheadBehind, branchDiff, commitAll, currentBranch, dirtyPaths, hasTrackedChanges, localBranches, mergeBase, mergeIntoBranch, parseUnifiedDiff, pushBranch, pushRemote, removeWorktree, unpushedCount, workingTreeDiff, type MergeResult } from "./git";
+import { buildCommitPrompt, coAuthorFor, formatCommitMessage, parseCommitMessage, withBranchTrailer } from "./git-message";
 import { backgroundShot, pickBackground, type BackgroundModel } from "./learn/background";
 
-export const GIT_DEFAULTS: GitSettings = { commitModel: null, coAuthor: false };
+export const GIT_DEFAULTS: GitSettings = { commitModel: null, coAuthor: false, instructions: null };
 
 export interface ReviewDeps {
   thread: (id: string) => Thread;
@@ -39,7 +39,14 @@ async function baseOf(thread: Thread, project: Project, dir: string): Promise<{ 
 export async function reviewState(d: ReviewDeps, threadId: string): Promise<WorktreeReview> {
   const { thread, project, dir, branch } = worktreeOf(d, threadId);
   const base = await baseOf(thread, project, dir);
-  const [uncommitted, projectBranch, projectDirty] = await Promise.all([dirtyPaths(dir), currentBranch(project.path), hasTrackedChanges(project.path)]);
+  const [uncommitted, projectBranch, projectDirty, branches, remote, unpushed] = await Promise.all([
+    dirtyPaths(dir),
+    currentBranch(project.path),
+    hasTrackedChanges(project.path),
+    localBranches(project.path),
+    pushRemote(dir, branch),
+    unpushedCount(dir, branch),
+  ]);
   const counts = base.branch ? await aheadBehind(project.path, base.branch, branch).catch(() => ({ ahead: 0, behind: 0 })) : { ahead: 0, behind: 0 };
   let files: DiffFile[] = [];
   if (base.sha) {
@@ -48,7 +55,20 @@ export async function reviewState(d: ReviewDeps, threadId: string): Promise<Work
     const untracked = (await workingTreeDiff(dir)).filter((f) => f.status === "untracked");
     files.push(...untracked);
   }
-  return { branch, base: base.branch, baseSha: base.sha, ahead: counts.ahead, behind: counts.behind, uncommitted: uncommitted.length, projectBranch, projectDirty, files };
+  return {
+    branch,
+    base: base.branch,
+    baseSha: base.sha,
+    ahead: counts.ahead,
+    behind: counts.behind,
+    uncommitted: uncommitted.length,
+    projectBranch,
+    projectDirty,
+    files,
+    targets: branches.filter((b) => b !== branch),
+    remote,
+    unpushed,
+  };
 }
 
 /** The model commit messages are written on: the one picked in Settings, else the background model rule. */
@@ -80,11 +100,12 @@ export async function draftMessage(d: ReviewDeps, threadId: string, signal: Abor
   if (!since) throw new Error("Couldn't find where this branch started, so there's nothing to describe.");
   const diff = await branchDiff(dir, since);
   if (!diff.nameStatus.trim()) throw new Error("There are no changes to describe.");
-  const prompt = buildCommitPrompt({ threadTitle: thread.title, nameStatus: diff.nameStatus, stat: diff.stat, files: diff.files });
+  const git = d.settings().git ?? GIT_DEFAULTS;
+  const prompt = buildCommitPrompt({ threadTitle: thread.title, nameStatus: diff.nameStatus, stat: diff.stat, files: diff.files, instructions: git.instructions });
   const { text } = await backgroundShot(bg, prompt, signal);
   const parsed = parseCommitMessage(text);
   if (!parsed) throw new Error(`${bg.label} didn't return a message. Try again or write one.`);
-  const coAuthor = (d.settings().git ?? GIT_DEFAULTS).coAuthor ? coAuthorFor(thread.agent) : null;
+  const coAuthor = git.coAuthor ? coAuthorFor(thread.agent) : null;
   return { message: formatCommitMessage(parsed, coAuthor), model: bg.label };
 }
 
@@ -94,14 +115,29 @@ export async function commitThread(d: ReviewDeps, threadId: string, message: str
   return commitAll(worktreeOf(d, threadId).dir, message.trim());
 }
 
-/** Merge the thread's branch into its base in the project folder. Uncommitted worktree changes aren't included. */
-export async function mergeThread(d: ReviewDeps, threadId: string, o: { mode: "squash" | "merge"; message: string }): Promise<MergeResult> {
+/**
+ * Merge the thread's branch into `target` (default: its base), where that branch
+ * is checked out or in a throwaway worktree. Uncommitted worktree changes aren't
+ * included. The message gets a `Branch:` trailer so the merge traces back.
+ */
+export async function mergeThread(d: ReviewDeps, threadId: string, o: { mode: "squash" | "merge"; message: string; target?: string }): Promise<MergeResult> {
   const { thread, project, dir, branch } = worktreeOf(d, threadId);
-  const base = await baseOf(thread, project, dir);
-  if (!base.branch) return { ok: false, reason: "Couldn't tell which branch this worktree came from.", conflicts: [] };
+  const target = o.target?.trim() || (await baseOf(thread, project, dir)).branch;
+  if (!target) return { ok: false, reason: "Couldn't tell which branch this worktree came from.", conflicts: [] };
+  if (target === branch) return { ok: false, reason: "A branch can't be merged into itself.", conflicts: [] };
+  if (!(await localBranches(project.path)).includes(target)) return { ok: false, reason: `There's no local branch named ${target}.`, conflicts: [] };
   if ((await dirtyPaths(dir)).length) return { ok: false, reason: "The worktree has uncommitted changes. Commit them first.", conflicts: [] };
   if (!o.message.trim()) return { ok: false, reason: "Write a commit message first.", conflicts: [] };
-  return mergeInto(project.path, { branch, base: base.branch, mode: o.mode, message: o.message.trim() });
+  return mergeIntoBranch(project.path, { branch, target, mode: o.mode, message: withBranchTrailer(o.message, branch) });
+}
+
+/** Push the thread's branch to its remote and track it; throws with git's reason. */
+export async function pushThread(d: ReviewDeps, threadId: string): Promise<{ remote: string; branch: string }> {
+  const { dir, branch } = worktreeOf(d, threadId);
+  const remote = await pushRemote(dir, branch);
+  if (!remote) throw new Error("This project has no git remote to push to.");
+  await pushBranch(dir, remote, branch);
+  return { remote, branch };
 }
 
 /** Remove the thread's worktree folder when it's clean (its branch stays); returns whether it went. */

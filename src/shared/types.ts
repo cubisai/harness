@@ -1181,8 +1181,10 @@ export interface UnskilledApi {
   worktreeMessage(threadId: string): Promise<{ message: string; model: string }>;
   /** Commit everything in the thread's worktree; resolves to the new commit. */
   worktreeCommit(threadId: string, message: string): Promise<string>;
-  /** Merge the thread's branch into its base in the project folder; a conflict leaves both untouched. */
-  worktreeMerge(threadId: string, opts: { mode: "squash" | "merge"; message: string }): Promise<{ ok: true; sha: string } | { ok: false; reason: string; conflicts: string[] }>;
+  /** Merge the thread's branch into `target` (default: its base) where that branch is checked out; a conflict leaves both untouched. */
+  worktreeMerge(threadId: string, opts: { mode: "squash" | "merge"; message: string; target?: string }): Promise<{ ok: true; sha: string } | { ok: false; reason: string; conflicts: string[] }>;
+  /** Push the thread's branch to its remote (and track it). */
+  worktreePush(threadId: string): Promise<{ remote: string; branch: string }>;
   /** Remove the thread's worktree folder when it's clean (the branch stays); resolves to whether it went. */
   worktreeRemove(threadId: string): Promise<boolean>;
   /** The project's files (git-tracked plus untracked-not-ignored), for the Files tab. */
@@ -1410,7 +1412,21 @@ export interface GitSettings {
   commitModel: { agent: string; model: string } | null;
   /** Add `Co-authored-by: <agent> <noreply address>` for the thread's agent. Off by default. */
   coAuthor: boolean;
+  /** How Generate should write the message; null or missing = DEFAULT_COMMIT_INSTRUCTIONS. */
+  instructions?: string | null;
 }
+
+/** The style rules Generate gives the model unless Settings has the user's own. */
+export const DEFAULT_COMMIT_INSTRUCTIONS = [
+  "- Subject: `type(scope): summary`, at most 72 characters, imperative mood, lowercase after the colon, no trailing period.",
+  "  type is one of feat, fix, refactor, perf, test, docs, style, build, ci, chore. scope is the main module or folder touched; leave it out when there isn't one.",
+  '  Say the concrete change ("fix(auth): retry the token refresh once on 401"), not a vague one ("improve auth handling").',
+  '- Body only when the why isn\'t obvious from the subject: a blank line, then 1-3 short plain sentences or "- " bullets, wrapped at 72 columns.',
+  "- Write like a careful human teammate: plain words, naming the real functions, files and settings.",
+  '  No filler or hype ("enhance", "streamline", "robust", "comprehensive", "seamless", "leverage", "various improvements"), no "This commit…", no emoji, no walking through the diff line by line.',
+  '- If the thread names an issue or ticket (#123, ABC-45), end with a "Refs: <id>" line.',
+  "- Describe only what the diff shows. Don't guess at intent.",
+].join("\n");
 
 /** A worktree thread's branch, compared with the branch it came from. */
 export interface WorktreeReview {
@@ -1428,4 +1444,10 @@ export interface WorktreeReview {
   projectDirty: boolean;
   /** Everything changed since the base: committed, uncommitted and untracked. */
   files: DiffFile[];
+  /** Local branches it can merge into (its own left out). */
+  targets: string[];
+  /** The remote Push sends the branch to; null when the project has none. */
+  remote: string | null;
+  /** Commits its upstream lacks; null before the first push. */
+  unpushed: number | null;
 }

@@ -1,15 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  CO_AUTHORS,
-  DEFAULT_PATCH_BUDGET,
-  buildCommitPrompt,
-  coAuthorFor,
-  fitPatches,
-  formatCommitMessage,
-  isNoisePath,
-  parseCommitMessage,
-  type CommitDiffFile,
-} from "../src/main/git-message";
+import { CO_AUTHORS, DEFAULT_PATCH_BUDGET, buildCommitPrompt, coAuthorFor, fitPatches, formatCommitMessage, isNoisePath, parseCommitMessage, type CommitDiffFile, withBranchTrailer } from "../src/main/git-message";
 
 describe("isNoisePath", () => {
   it("matches lockfiles and generated files", () => {
@@ -179,5 +169,22 @@ describe("co-author trailers", () => {
     const deduped = formatCommitMessage({ subject: "Fix x", body }, CO_AUTHORS.claude);
     expect(deduped).toBe(`Fix x\n\n${body}`);
     expect(deduped.split(already)).toHaveLength(2);
+  });
+});
+
+describe("withBranchTrailer", () => {
+  it("adds the branch as its own trailer paragraph", () => {
+    expect(withBranchTrailer("fix(auth): retry once on 401", "harness/a")).toBe("fix(auth): retry once on 401\n\nBranch: harness/a");
+    expect(withBranchTrailer("feat: add b\n\n- Adds b.txt.", "harness/a")).toBe("feat: add b\n\n- Adds b.txt.\n\nBranch: harness/a");
+  });
+
+  it("joins a trailer block the message already ends with, so Co-authored-by still counts", () => {
+    expect(withBranchTrailer("feat: add b\n\nCo-authored-by: Claude <noreply@anthropic.com>", "harness/a")).toBe(
+      "feat: add b\n\nCo-authored-by: Claude <noreply@anthropic.com>\nBranch: harness/a",
+    );
+  });
+
+  it("isn't added twice", () => {
+    expect(withBranchTrailer("feat: add b\n\nBranch: harness/a\n", "harness/a")).toBe("feat: add b\n\nBranch: harness/a");
   });
 });

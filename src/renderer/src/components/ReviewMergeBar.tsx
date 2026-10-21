@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorktreeReview } from "../../../shared/types";
 import { api } from "../api";
 import { useStore } from "../store";
+import { Select } from "./Select";
 
 export type ReviewScope = "uncommitted" | "base";
-export type ReviewBusy = "message" | "commit" | "merge" | "remove";
+export type ReviewBusy = "message" | "commit" | "merge" | "push" | "remove";
 
 /** Strip Electron's IPC wrapper, the way the Learned tab does. */
 function errorText(err: unknown): string {
@@ -12,12 +13,24 @@ function errorText(err: unknown): string {
   return text.replace(/^Error invoking remote method '[^']+': (Error: )?/, "");
 }
 
-/** The first reason Merge can't run, in the order the bar should say it. */
-export function reviewHint(review: WorktreeReview): string | null {
+/**
+ * The first reason Merge into `target` can't run, in the order the bar should
+ * say it. A target the project folder doesn't have out is merged in a
+ * throwaway worktree, so only the folder's own branch cares that it's dirty.
+ */
+export function reviewHint(review: WorktreeReview, target: string | null, message: string): string | null {
   if (review.uncommitted > 0) return "Commit the worktree's changes first.";
-  if (review.projectDirty) return "The project folder has uncommitted changes.";
-  if (review.projectBranch !== review.base) return `The project is on ${review.projectBranch ?? "a detached HEAD"}; switch it to ${review.base} to merge.`;
-  if (review.ahead === 0) return "Nothing to merge yet.";
+  if (!target) return "Pick a branch to merge into.";
+  if (review.projectDirty && target === review.projectBranch) return "The project folder has uncommitted changes.";
+  if (target === review.base && review.ahead === 0) return "Nothing to merge yet.";
+  if (!message.trim()) return "Write the merge commit's message, or Generate one.";
+  return null;
+}
+
+/** Why Push can't run, or null when it can. */
+function pushBlock(review: WorktreeReview): string | null {
+  if (!review.remote) return "This project has no git remote.";
+  if (review.unpushed === 0) return "Everything is pushed.";
   return null;
 }
 
@@ -30,12 +43,15 @@ export interface ReviewMergeBarViewProps {
   notice: string | null;
   merged: boolean;
   mode: "squash" | "merge";
+  target: string | null;
   onScope(scope: ReviewScope): void;
   onMessage(text: string): void;
   onGenerate(): void;
   onCommit(): void;
   onMerge(): void;
   onMode(mode: "squash" | "merge"): void;
+  onTarget(target: string): void;
+  onPush(): void;
   onRemove(): void;
 }
 
@@ -49,18 +65,21 @@ export function ReviewMergeBarView({
   notice,
   merged,
   mode,
+  target,
   onScope,
   onMessage,
   onGenerate,
   onCommit,
   onMerge,
   onMode,
+  onTarget,
+  onPush,
   onRemove,
 }: ReviewMergeBarViewProps) {
-  const hint = reviewHint(review);
-  const mergeDisabled =
-    !review.base || review.ahead === 0 || review.uncommitted > 0 || review.projectDirty || review.projectBranch !== review.base || !message.trim() || busy !== null;
-  const mergeLabel = review.base ? `Merge into ${review.base}` : "Merge";
+  const hint = reviewHint(review, target, message);
+  const mergeDisabled = hint !== null || busy !== null;
+  const pushWhy = pushBlock(review);
+  const targets = target && !review.targets.includes(target) ? [target, ...review.targets] : review.targets;
 
   return (
     <div className="review-bar">
@@ -70,6 +89,7 @@ export function ReviewMergeBarView({
         <span>{`${review.ahead} commit${review.ahead === 1 ? "" : "s"} ahead`}</span>
         {review.behind > 0 && <span>{`· ${review.behind} behind`}</span>}
         {review.uncommitted > 0 && <span>{`· ${review.uncommitted} uncommitted`}</span>}
+        {review.remote && review.unpushed !== null && review.unpushed > 0 && <span>{`· ${review.unpushed} unpushed`}</span>}
       </div>
       <div className="segmented compact" role="group" aria-label="Changes scope">
         <button type="button" className={scope === "uncommitted" ? "on" : ""} onClick={() => onScope("uncommitted")}>
@@ -100,30 +120,46 @@ export function ReviewMergeBarView({
         >
           Commit
         </button>
-        {!merged && (
-          <>
-            <div className="segmented compact" role="group" aria-label="Merge mode">
-              <button type="button" className={mode === "squash" ? "on" : ""} onClick={() => onMode("squash")}>
-                Squash
-              </button>
-              <button type="button" className={mode === "merge" ? "on" : ""} onClick={() => onMode("merge")}>
-                Merge commit
-              </button>
-            </div>
-            <button type="button" className="button primary" disabled={mergeDisabled} onClick={onMerge}>
-              {mergeLabel}
-            </button>
-          </>
-        )}
-        {merged && (
-          <>
-            {notice && <p className="review-notice">{notice}</p>}
-            <button type="button" className="button" title="Delete the worktree folder; the branch stays" disabled={busy !== null} onClick={onRemove}>
-              Remove worktree
-            </button>
-          </>
-        )}
+        <button
+          type="button"
+          className="button"
+          title={pushWhy ?? `Push ${review.branch} to ${review.remote}`}
+          disabled={pushWhy !== null || busy !== null}
+          onClick={onPush}
+        >
+          {busy === "push" ? "Pushing…" : "Push"}
+        </button>
       </div>
+      {!merged && (
+        <div className="review-merge">
+          <span className="review-into">Into</span>
+          <Select
+            value={target ?? ""}
+            options={targets.length ? targets.map((b) => ({ value: b, label: b })) : [{ value: "", label: "No branches" }]}
+            onChange={onTarget}
+            ariaLabel="Branch to merge into"
+          />
+          <div className="segmented compact" role="group" aria-label="Merge mode">
+            <button type="button" className={mode === "squash" ? "on" : ""} onClick={() => onMode("squash")}>
+              Squash
+            </button>
+            <button type="button" className={mode === "merge" ? "on" : ""} onClick={() => onMode("merge")}>
+              Merge commit
+            </button>
+          </div>
+          <button type="button" className="button primary" disabled={mergeDisabled} onClick={onMerge}>
+            {busy === "merge" ? "Merging…" : "Merge"}
+          </button>
+        </div>
+      )}
+      {merged && (
+        <div className="review-merge">
+          {notice && <p className="review-notice">{notice}</p>}
+          <button type="button" className="button" title="Delete the worktree folder; the branch stays" disabled={busy !== null} onClick={onRemove}>
+            Remove worktree
+          </button>
+        </div>
+      )}
       {!merged && hint && <p className="review-hint">{hint}</p>}
       {!merged && notice && <p className="review-notice">{notice}</p>}
       {error && (
@@ -135,8 +171,17 @@ export function ReviewMergeBarView({
   );
 }
 
-/** Review and merge for a worktree thread: commits, scope, and the merge itself. */
-export function ReviewMergeBar({ threadId, onScope }: { threadId: string; onScope(scope: ReviewScope, review: WorktreeReview): void }) {
+/** Review and merge for a worktree thread: commits, scope, push, and the merge itself. */
+export function ReviewMergeBar({
+  threadId,
+  refreshKey,
+  onScope,
+}: {
+  threadId: string;
+  /** Bumped by the panel's Refresh button. */
+  refreshKey: number;
+  onScope(scope: ReviewScope, review: WorktreeReview): void;
+}) {
   const diffVersion = useStore((s) => s.diffVersion);
   const [review, setReview] = useState<WorktreeReview | null>(null);
   const [scope, setScope] = useState<ReviewScope>("uncommitted");
@@ -146,6 +191,8 @@ export function ReviewMergeBar({ threadId, onScope }: { threadId: string; onScop
   const [notice, setNotice] = useState<string | null>(null);
   const [merged, setMerged] = useState(false);
   const [mode, setMode] = useState<"squash" | "merge">("squash");
+  // null = follow the base; set once the user picks another branch.
+  const [picked, setPicked] = useState<string | null>(null);
   // The open scope, so a reload after a turn refreshes the "since base" list too.
   const scopeRef = useRef<ReviewScope>("uncommitted");
   scopeRef.current = scope;
@@ -161,7 +208,9 @@ export function ReviewMergeBar({ threadId, onScope }: { threadId: string; onScop
       })
       .catch((err: unknown) => setError(errorText(err)));
   }, [threadId]);
-  useEffect(load, [load, diffVersion]);
+  useEffect(load, [load, diffVersion, refreshKey]);
+  // Commit, merge, push and remove change the diff too: reload it and this bar together.
+  const changed = () => useStore.setState((s) => ({ diffVersion: s.diffVersion + 1 }));
 
   // A new thread starts clean: no message or notice carried over.
   useEffect(() => {
@@ -172,9 +221,11 @@ export function ReviewMergeBar({ threadId, onScope }: { threadId: string; onScop
     setError(null);
     setNotice(null);
     setMerged(false);
+    setPicked(null);
   }, [threadId]);
 
   if (!review) return null;
+  const target = picked ?? review.base;
 
   const changeScope = (next: ReviewScope) => {
     setScope(next);
@@ -202,9 +253,9 @@ export function ReviewMergeBar({ threadId, onScope }: { threadId: string; onScop
     setNotice(null);
     try {
       await api().worktreeCommit(threadId, message);
-      setMessage("");
+      // The message stays: it is the natural message for a squash merge next.
       setNotice("Committed.");
-      load();
+      changed();
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -217,14 +268,30 @@ export function ReviewMergeBar({ threadId, onScope }: { threadId: string; onScop
     setError(null);
     setNotice(null);
     try {
-      const result = await api().worktreeMerge(threadId, { mode, message });
+      const result = await api().worktreeMerge(threadId, { mode, message, target: target ?? undefined });
       if (result.ok) {
         setMerged(true);
-        setNotice(`Merged into ${review.base ?? "base"} (${result.sha.slice(0, 7)}).`);
+        setNotice(`Merged into ${target ?? "base"} (${result.sha.slice(0, 7)}).`);
         setMessage("");
+        changed();
       } else {
         setError(result.reason + (result.conflicts.length ? ` Conflicts: ${result.conflicts.join(", ")}` : ""));
       }
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const push = async () => {
+    setBusy("push");
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await api().worktreePush(threadId);
+      setNotice(`Pushed to ${result.remote}/${result.branch}.`);
+      changed();
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -238,8 +305,10 @@ export function ReviewMergeBar({ threadId, onScope }: { threadId: string; onScop
     setNotice(null);
     try {
       const ok = await api().worktreeRemove(threadId);
-      if (ok) setNotice("Worktree removed; the branch stays.");
-      else setError("The worktree has uncommitted changes, so it was kept.");
+      if (ok) {
+        setNotice("Worktree removed; the branch stays.");
+        changed();
+      } else setError("The worktree has uncommitted changes, so it was kept.");
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -257,12 +326,21 @@ export function ReviewMergeBar({ threadId, onScope }: { threadId: string; onScop
       notice={notice}
       merged={merged}
       mode={mode}
+      target={target}
       onScope={changeScope}
       onMessage={setMessage}
       onGenerate={() => void generate()}
       onCommit={() => void commit()}
       onMerge={() => void merge()}
-      onMode={setMode}
+      onMode={(next) => {
+        setMode(next);
+        setError(null);
+      }}
+      onTarget={(next) => {
+        setPicked(next);
+        setError(null);
+      }}
+      onPush={() => void push()}
       onRemove={() => void remove()}
     />
   );
