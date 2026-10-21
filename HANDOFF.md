@@ -1,4 +1,23 @@
-# Handoff: Experiments settings + Only rerun on m4 — 2026-10-21 — see "Resume here — 2026-10-21 (Mac, session 5)"
+# Handoff: code-mode defaults, browser tools on demand, run_code hint + arg fixes, cache report — 2026-10-21 — see "Resume here — 2026-10-21 (Mac, session 6)"
+
+## Resume here — 2026-10-21 (Mac, session 6)
+
+m4 = `eb2bdd0` + this handoff, pushed. The main checkout's `D road-map-handoff.md`, `pland.md` and the user's screenshots aren't ours: leave them.
+
+**Commits (all on m4, pushed):**
+- `5305317` Code mode defaults to Read-only + MCP for **new installs** (settings schemaVersion 4). An older settings file that never chose keeps Off; pinned in memory only, persisted on the next save (a corrupt file is never rewritten at startup).
+- `8d55dbe` `bun run cache:report [db] [--days N] [--json]` (`scripts/cache-report.ts`): hit rate, warm hit rate (without each thread's first turn), reads/writes, cost and miss causes per agent and model; default DB = the installed CubiQ profile on each OS. On the user's profile, warm: Claude Sonnet 95%, Codex Luna 99%, OpenCode DeepSeek ~83% (worth a look).
+- `9a1b08d` + `9e86e1e` **Browser tools on demand, always on** (user: no Experiments row). Agents without their own tool search (capability `toolSearch` is set only on Claude) get `browser_tools` (lists the rest with schemas) and `browser_call` (runs one) in place of the 7 browser tools that never ask; `browser_eval` (asks) stays loaded, so no permission changes. ~1.3k fewer tokens per request (pinned by a test against the real tools). Native gets it through `turnTools` in index.ts; Codex and OpenCode through the HTTP tool server's `?b=1` (set when the turn's list has browser_call). Rows read "browser_open · url"; `fetchedUrl` understands browser_call. Design threads keep the full list. Live: TokenHarbor, OpenCode Zen, Codex Luna and Claude all did a type-and-click page task correctly (TokenHarbor 16 s vs 10 s: one extra lookup call).
+- `a31380a` **Code mode hint**: when code mode is on, one fixed line (`CODE_HINT`, `src/main/code-hint.ts`) tells Claude (system append), the native agent (system), Codex (developer instructions, when run_code is attached) and ACP agents (inside `<harness-guide>`, not OpenCode 2) to explore with one run_code script and keep the shell for git, builds, tests and edits. run_code's description now says read on a folder lists it. Live "explore this code base": Claude 1, Codex 5, OpenCode 5, TokenHarbor 7 run_code calls, **0 shell calls** (before: the user saw Bash ls/cat/git).
+- `eb2bdd0` run_code failure fixes: of 84 script calls in the bench profile, 10 failed; 6 were `tools.glob("x")` / `tools.read(f)` (a bare string became `{}`) and grep `output_mode: "files"`. Now a bare string fills the tool's one required string parameter (`mainArg` in `harness/tools/code.ts`) and grep takes "files" as files_with_matches. The rest were model mistakes (missing path, calling a method on a folder listing).
+- Earlier this session: Experiments section, Only removed, sidebar flat view (see session 5 above).
+
+**Full suite 3373 passed.** `test/mcp-http.test.ts` heartbeat test failed once under full-suite load and passed 3/3 alone (timing flake).
+
+**Next:**
+1. **First-prompt tokens** (user asked for a clean strategy): Claude's first request is ~27k, with **Skills 7–10k** (the SDK's own skill listing: user skills in ~/.claude/skills plus CubiQ's plugin) and Memory files 3–3.8k; Codex ~23k and OpenCode ~46k are mostly their own prompts (ours: tools ~1.6k after browser on demand, guide 0.45k, skills ~0.5k); native 7.6k. Proposed rule: always load a small core plus a one-line index per category, fetch the rest on demand. Waiting on the user.
+2. OpenCode "Web search cancelled": still need where it was seen.
+3. Session-3 leftovers: Own worktree, /doctor, ShellDock polish, Windows run.
 
 ## Resume here — 2026-10-21 (Mac, session 5)
 
