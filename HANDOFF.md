@@ -14,8 +14,15 @@ m4 = `eb2bdd0` + this handoff, pushed. The main checkout's `D road-map-handoff.m
 
 **Full suite 3373 passed.** `test/mcp-http.test.ts` heartbeat test failed once under full-suite load and passed 3/3 alone (timing flake).
 
+**Later in session 6 (pushed):**
+- `5178b93` `/codemode` in the message box: flips code mode for new threads, `/codemode on|off` sets it; a notice says the result (works from Enter and Alt+Enter).
+- `2a6da24` **Claude skills allowlist** (SDK `skills` option): the session lists only `~/.claude/skills` + project `.claude/skills` folders (by folder name, symlinks followed: `skills/folders.ts` `skillFolders`), CubiQ's plugin skills (`harness-skills:*`) and `CLAUDE_KEPT_BUILTIN_SKILLS` (code-review, security-review, simplify, claude-api, dataviz, init, run). Dropped: claude.ai-synced skills and Claude Code's config/keys/permissions/loop/schedule/plugin-authoring built-ins. Measured on installed Claude Code 2.1.306: first request 20,850 → 16,935 tokens (the SDK's breakdown moves some of it to "System tools"; trust the request usage). The SDK-bundled CLI truncates descriptions (~2k), the installed one doesn't (~7k).
+- `2f5b824` **OpenCode hides claude.ai-synced skills**: it reads `~/.claude/skills` recursively, so `synced/<account>/*` showed up (about 20 skills, 3 accounts). Injection adds `permission.skill: {name: "deny"}` for each synced name that isn't also a real skill in `~/.claude/skills`, `~/.agents/skills` or `~/.config/opencode/skill(s)`; v2 gets `{action: "skill", effect: "deny"}` rules. Live: first request 17,868 → 13,013 tokens.
+- Codex left as is: its list is its own skills and plugins (imagegen, documents, spreadsheets, work-pets…) plus CubiQ's; only possible trim is CubiQ's Office skills duplicating Codex's document plugins. Native first request ~6.4k (already lean).
+- Live all-agent skills check after both: Claude, Codex, OpenCode Zen, TokenHarbor, PGS Grove all answered, no errors.
+
 **Next:**
-1. **First-prompt tokens** (user asked for a clean strategy): Claude's first request is ~27k, with **Skills 7–10k** (the SDK's own skill listing: user skills in ~/.claude/skills plus CubiQ's plugin) and Memory files 3–3.8k; Codex ~23k and OpenCode ~46k are mostly their own prompts (ours: tools ~1.6k after browser on demand, guide 0.45k, skills ~0.5k); native 7.6k. Proposed rule: always load a small core plus a one-line index per category, fetch the rest on demand. Waiting on the user.
+1. **First-prompt tokens**: done for Claude and OpenCode (above). Was: Claude's first request is ~27k, with **Skills 7–10k** (the SDK's own skill listing: user skills in ~/.claude/skills plus CubiQ's plugin) and Memory files 3–3.8k; Codex ~23k and OpenCode ~46k are mostly their own prompts (ours: tools ~1.6k after browser on demand, guide 0.45k, skills ~0.5k); native 7.6k. Proposed rule: always load a small core plus a one-line index per category, fetch the rest on demand. Waiting on the user.
 2. OpenCode "Web search cancelled": still need where it was seen.
 3. Session-3 leftovers: Own worktree, /doctor, ShellDock polish, Windows run.
 
