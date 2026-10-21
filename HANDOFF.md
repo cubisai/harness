@@ -1,4 +1,30 @@
-# Handoff: code-mode benchmark + Only fix + Claude per-turn cost on m4 — 2026-10-21 — see "Resume here — 2026-10-21 (Mac, session 4)"
+# Handoff: Experiments settings + Only rerun on m4 — 2026-10-21 — see "Resume here — 2026-10-21 (Mac, session 5)"
+
+## Resume here — 2026-10-21 (Mac, session 5)
+
+m4 = `50d459e` + this handoff commit, **not pushed**. The uncommitted `D road-map-handoff.md` in the main checkout still isn't ours: leave it.
+
+- `50d459e` **Settings**: Code mode moved from Agents & Providers to a new last group **Experiments**; the middle stop reads "Read-only + MCP (Recommended)"; the note describes the new Only (Claude and CubiQ's own agents lose direct search tools, Claude keeps Read, shell searches turned away; Codex and OpenCode get a one-line hint). `settings-ia.test.tsx` pins the group and label. Suite 3357 passed; screenshotted dark.
+- Sidebar question from a workmate (expanded projects empty): not a bug. In the flat **"All"** Recent view the Projects list only holds archived threads; "By project" (default) lists threads under each project. Offered: hide the chevron, or list threads there, in flat view; no answer yet.
+
+**Only rerun** (session-4 item 2), build `50d459e`, same task and ground truth as session 4 (3 consts; types count as wrong):
+
+| Run (only) | Time | Cost | Cache read | Out | Tools | Correct |
+|---|---|---|---|---|---|---|
+| OpenCode Zen | 90 s | free | 508k | 6.1k | 15 run_code | ✓ |
+| TokenHarbor #1 | 102 s | free | 379k | 12.0k | 21 run_code | ✗ (+11 types) |
+| Claude Sonnet (cold, after app start) | 20 s | $0.137 | 27k | 1.4k | 1 run_code | ✗ (+RUN_MANIFEST_VERSION, +11 types; text match on "shared") |
+| PGS Grove #1 | 100 s | $0.0065 | 139k | 4.2k | 11 run_code + 2 Bash | ✗ (missed AUTO_OPEN, PROVIDER_MODEL_PREFIX; +9 types) |
+| Codex Luna | 47 s | sub | 22k | 0.3k | **5 shell (rg/node), 0 run_code** | ✓ |
+| TokenHarbor #2 | 1108 s | free | 355k | 9.9k | 14 run_code + 4 Bash + Write/Edit of `/tmp/*.mjs` | ✗ (no answer: "no activity from TokenHarbor for 10 minutes") |
+| PGS Grove #2 | 87 s | $0.0058 | 99k | 5.3k | **8 Bash, 0 run_code** (`cat > /tmp/*.mjs` + node) | ✗ (+10 types) |
+
+- Only, both sessions together: OpenCode 2/2, Codex 2/2, Claude 1/3, TokenHarbor 1/3, PGS 0/3. "On" was 6/6 in session 4.
+- The native agent sidesteps Only: `isShellSearch` only catches commands that start with grep/rg/find…, so models write node scripts to `/tmp` through Bash. Codex ignored the hint this time.
+- **Recommendation: drop "Only"** (or leave it in Experiments, clearly unrecommended). It costs accuracy without saving time. Waiting on the user.
+- Bench driver (scratchpad, gone after the session): same as session 4, plus 30 s between runs, codeMode set once before all runs, results as JSONL (turn-end payload, top-level tool-use counts, red rows, errors, last assistant text).
+
+**Next:** user decision on Only; sidebar flat-view tweak if wanted; OpenCode "Web search cancelled" (ask where they saw it); session-4 items 4–5.
 
 ## Resume here — 2026-10-21 (Mac, session 4)
 
