@@ -1,4 +1,4 @@
-/** The message box's "/" commands: plan mode, the model picker, context, MCP servers, and a new thread. The other permission modes live on the mode chip (and ⇧Tab). */
+/** The message box's "/" commands: plan mode, the model picker, context, MCP servers, a new thread, doctor and code mode. The other permission modes live on the mode chip (and ⇧Tab). */
 
 /** One command the message box can run when the text starts with "/name". */
 export interface ComposerCommand {
@@ -15,6 +15,7 @@ export const COMPOSER_COMMANDS: ComposerCommand[] = [
   { name: "compact", description: "Compact the conversation now; add a focus: /compact keep the API decisions" },
   { name: "new", description: "Start a new thread" },
   { name: "doctor", description: "Check agent installs, versions and conflicts, and fix them" },
+  { name: "codemode", description: "Turn code mode (run_code) on or off for new threads; /codemode on or /codemode off" },
 ];
 
 /** Commands matching the query: name-prefix matches first, then any name substring. */

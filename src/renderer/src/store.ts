@@ -115,6 +115,8 @@ interface State {
   /** Set when a startup IPC call fails, so the window can offer a retry instead of a blank welcome. */
   initError: string | null;
   showNotice(text: string): void;
+  /** /codemode: set code mode, or flip it when no mode is given; says what new threads will get. */
+  setCodeMode(mode?: "on" | "off"): Promise<void>;
   /** Open a file (relative to the project, at a line) or the project itself in an editor. */
   openInEditor(target: { path?: string; line?: number; column?: number }, editor?: string): Promise<void>;
   /** The Library sheet's tab, or null when it's closed. */
@@ -477,6 +479,15 @@ export const useStore = create<State>((set, get) => ({
     set({ notice: text });
     clearTimeout(noticeTimer);
     noticeTimer = setTimeout(() => set({ notice: null }), 3500);
+  },
+  async setCodeMode(mode) {
+    const next = mode ?? ((get().settings?.codeMode ?? "off") === "on" ? "off" : "on");
+    try {
+      set({ settings: await api().updateSettings({ codeMode: next }) });
+      get().showNotice(next === "on" ? "Code mode on: new threads get run_code" : "Code mode off for new threads");
+    } catch {
+      get().showNotice("Couldn't change code mode");
+    }
   },
   async openInEditor(target, editor) {
     const s = get();

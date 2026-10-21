@@ -270,6 +270,7 @@ export function Composer({
     else if (c.name === "context") s.openContextSheet(threadId);
     else if (c.name === "mcp") s.openMcpSheet();
     else if (c.name === "doctor") s.openDoctor();
+    else if (c.name === "codemode") void s.setCodeMode();
     else if (c.name === "compact") {
       if (threadId) void s.compact(threadId, null);
     }
@@ -287,6 +288,14 @@ export function Composer({
     if (compactMatch) {
       if (!threadId || running) return;
       void useStore.getState().compact(threadId, compactMatch[1]?.trim() || null);
+      setText("");
+      setCaret(0);
+      return;
+    }
+    // "/codemode [on|off]" sets code mode for new threads (no argument flips it); it never goes to the agent.
+    const codeMatch = !picked.length && /^\/codemode(?:\s+(on|off))?$/i.exec(text.trim());
+    if (codeMatch) {
+      void useStore.getState().setCodeMode(codeMatch[1]?.toLowerCase() as "on" | "off" | undefined);
       setText("");
       setCaret(0);
       return;
@@ -322,6 +331,14 @@ export function Composer({
 
   // Alt+Return starts the message as its own thread in the background and leaves this one open.
   const submitInBackground = () => {
+    // "/codemode [on|off]" sets code mode for new threads (no argument flips it); it never goes to the agent.
+    const codeMatch = !picked.length && /^\/codemode(?:\s+(on|off))?$/i.exec(text.trim());
+    if (codeMatch) {
+      void useStore.getState().setCodeMode(codeMatch[1]?.toLowerCase() as "on" | "off" | undefined);
+      setText("");
+      setCaret(0);
+      return;
+    }
     // "/mcp <url|command|json>" opens the MCP sheet with that text up for review; it never goes to the agent.
     const mcpMatch = !picked.length && /^\/mcp(?:\s+([\s\S]*))?$/.exec(text.trim());
     if (mcpMatch) {
