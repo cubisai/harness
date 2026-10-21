@@ -611,14 +611,8 @@ async function main(): Promise<void> {
     }
     return list;
   };
-  // Browser tools on demand (Experiments), read once per thread per app run like code mode, so a session's tool list never changes.
-  const browserOnDemandOf = new Map<string, boolean>();
-  const browserOnDemand = (thread: Thread): boolean => {
-    let on = browserOnDemandOf.get(thread.id);
-    if (on === undefined) browserOnDemandOf.set(thread.id, (on = settings.get().browserOnDemand === true));
-    // Only for agents that load every tool up front; Claude finds deferred tools itself.
-    return on && drivers.find((d) => d.id === thread.agent)?.capabilities.toolSearch !== true;
-  };
+  // Browser tools on demand, for agents that load every tool up front; Claude finds deferred tools itself.
+  const browserOnDemand = (thread: Thread): boolean => drivers.find((d) => d.id === thread.agent)?.capabilities.toolSearch !== true;
   // A turn's tools: the app's, plus the thread's shell tools (not in a design thread, whose tools are its own).
   const turnTools = (thread?: Thread): HarnessTool[] => {
     if (!thread || thread.kind === "design") return harnessTools(thread);

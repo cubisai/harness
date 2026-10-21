@@ -330,17 +330,6 @@ describe("SettingsStore codeMode", () => {
     expect(new SettingsStore(chose, box).get().codeMode).toBe("on");
   });
 
-  it("keeps browserOnDemand to a boolean, off by default", () => {
-    const s = new SettingsStore(fresh(), box);
-    expect(s.get().browserOnDemand).toBeUndefined();
-    s.update({ browserOnDemand: true });
-    expect(s.get().browserOnDemand).toBe(true);
-    s.update({ browserOnDemand: "yes" as never });
-    expect(s.get().browserOnDemand).toBe(true);
-    s.update({ browserOnDemand: false });
-    expect(s.get().browserOnDemand).toBe(false);
-  });
-
   it("reads a stored only as on", () => {
     const file = fresh();
     writeFileSync(file, JSON.stringify({ settings: { codeMode: "only" } }));

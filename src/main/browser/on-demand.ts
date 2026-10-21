@@ -1,7 +1,6 @@
-// Browser tools on demand (Settings › Experiments). Agents without their own
-// tool search (Codex, OpenCode, CubiQ's own agents) load every tool definition
-// up front, and the browser pane's are most of the app's. Behind this setting
-// they get two small tools instead: browser_tools lists the rest with their
+// Browser tools on demand. Agents without their own tool search (Codex,
+// OpenCode, CubiQ's own agents) load every tool definition up front, and the
+// browser pane's are most of the app's. So they get two small tools instead: browser_tools lists the rest with their
 // schemas, browser_call runs one. Only tools that run without asking move:
 // browser_eval asks, so it stays as it is and no agent's permissions change.
 

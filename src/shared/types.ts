@@ -215,8 +215,6 @@ export interface Settings {
   mcpRouter?: "auto" | "off";
   /** run_code, a sandboxed script that chains read-only tools: Off (default), "on" = Read-only + MCP. */
   codeMode?: CodeMode;
-  /** Experiments: agents without their own tool search get browser_tools/browser_call in place of the browser tools that never ask. Off by default. */
-  browserOnDemand?: boolean;
   /** Sidebar Recent section grouped by project (true, the default when unset) or one flat list (false). */
   sidebarGroupByProject?: boolean;
   /** Tell agents they may answer with inline UI blocks (checklist, calculator, …). Off unless set: it costs guide tokens. */
@@ -1002,7 +1000,7 @@ export interface AgentCapabilities {
   sandbox: "none" | "workspace" | "full";
   /** The agent keeps the shared memory itself (reads and writes it natively), so the harness never extracts for it. */
   nativeMemory?: boolean;
-  /** The agent finds deferred tools itself (Claude's tool search), so the app never defers its own tools for it (Browser tools on demand). */
+  /** The agent finds deferred tools itself (Claude's tool search), so the app never defers its own tools for it (browser_tools/browser_call). */
   toolSearch?: boolean;
   /** The app may route this agent's MCP servers through its own search_tools/call_mcp_tool when many tools are enabled (agents without native tool search). */
   mcpRouter?: boolean;
