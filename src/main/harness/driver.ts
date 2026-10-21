@@ -18,7 +18,6 @@ import { runLoop, type Authorization, type LoopTool } from "./loop";
 import { decide, refusal } from "./permissions";
 import { createProposePlanTool, PLAN_MODE_NOTE } from "./plan";
 import { systemPrompt } from "./prompt";
-import { CODE_ONLY_HINT } from "../code-hint";
 import { SessionStore, repairHistory } from "./session";
 import { createTaskTool } from "./subagent";
 import { prefixKey, unbindThinking } from "./context/binding";
@@ -51,7 +50,7 @@ export interface ProviderDriverDeps {
   mcpTools(projectId?: string): HarnessTool[];
   /** The model-invoked skills tool for this folder, or null when there are none; `threadId` adds that thread's expert's own skills. */
   skills?(cwd: string, design: boolean, threadId?: string): HarnessTool | null;
-  /** The thread's code mode: "on" offers the `run_code` sandbox tool, "only" also leaves the read tools to scripts. */
+  /** The thread's code mode: "on" offers the `run_code` sandbox tool. */
   codeMode?: (threadId: string) => CodeMode;
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform;
@@ -154,9 +153,6 @@ export function createProviderDriver(providerId: string, deps: ProviderDriverDep
     },
   };
 }
-
-/** The native read tools code mode "only" leaves to scripts. */
-const SCRIPT_ONLY = new Set(["read", "glob", "grep"]);
 
 /** One line of text for a thread row: the first line, trimmed to a summary length. */
 const oneLine = (text: string, max = 160): string => {
@@ -264,8 +260,6 @@ async function runTurn(
     contextFiles: files,
     date: new Date(`${meta.startedOn}T00:00:00Z`),
   });
-  // "Only" leaves Bash in place, so a fixed line points searches at run_code (Bash also turns them away).
-  if (codeMode === "only") system.push(CODE_ONLY_HINT);
   // Plan mode's note goes last, after the environment, so the stable parts keep their cache prefix.
   if (input.permissionMode === "plan") system.push(PLAN_MODE_NOTE);
 
@@ -328,7 +322,6 @@ async function runTurn(
   if (!reads) readsBySession.set(sid, (reads = new Map<string, number>()));
   const toolCtx = (callId: string, signal: AbortSignal, onOutput: (t: string) => void, script?: boolean): ToolContext => ({
     ...(script ? { script } : {}),
-    ...(codeMode === "only" ? { searchOnly: true } : {}),
     cwd: input.cwd,
     signal,
     outputDir: deps.outputDir,
@@ -404,8 +397,7 @@ async function runTurn(
         })
       : null;
   const scriptable: LoopTool[] = [...nativeLoop, ...appTools, ...(skillLoop ? [skillLoop] : []), ...(planLoop ? [planLoop] : []), ...(askLoop ? [askLoop] : []), taskLoop, ...(codeLoop ? [codeLoop] : [])].filter((t, i, all) => all.findIndex((o) => o.definition.name === t.definition.name) === i);
-  // "Only": the read tools are reached from scripts, not offered directly.
-  const tools: LoopTool[] = codeMode === "only" ? scriptable.filter((t) => !SCRIPT_ONLY.has(t.definition.name)) : scriptable;
+  const tools: LoopTool[] = scriptable;
 
   // A brand-new session's first turn gets a one-line token breakdown of what it starts with.
   if (createdNew) {

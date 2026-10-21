@@ -483,7 +483,7 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
           <div className="row">
             <span className="label">Code mode</span>
             <div className="segmented">
-              {([["off", "Off"], ["on", "Read-only + MCP (Recommended)"], ["only", "Only"]] as const).map(([value, label]) => (
+              {([["off", "Off"], ["on", "Read-only + MCP (Recommended)"]] as const).map(([value, label]) => (
                 <button key={value} className={(settings.codeMode ?? "off") === value ? "on" : ""} onClick={() => update({ codeMode: value })}>
                   {label}
                 </button>
@@ -491,7 +491,7 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
             </div>
           </div>
           <p className="note">
-            Agents get run_code: one sandboxed script that chains read, grep, glob and other read-only tools, so a multi-step search costs one call. Only goes further: Claude and CubiQ's own agents lose their direct search tools (Claude keeps Read) and have shell searches like grep and find turned away; Codex and OpenCode get a one-line hint to use run_code. OpenCode 2 uses its own Code Mode. Applies to new threads.
+            Agents get run_code: one sandboxed script that chains read, grep, glob and other read-only tools, so a multi-step search costs one call. The agent keeps its own read, search and edit tools. OpenCode 2 uses its own Code Mode. Applies to new threads.
           </p>
         </section>
       );

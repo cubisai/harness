@@ -145,7 +145,9 @@ export class SettingsStore {
 
   get(): Settings & { paneLayout: PaneLayout } {
     const stored = this.data.settings;
-    return { ...DEFAULTS, ...stored, paneLayout: sanitizeLayout({ ...DEFAULT_LAYOUT, ...stored?.paneLayout }), memory: { ...DEFAULTS.memory!, ...stored?.memory }, learn: sanitizeLearn(stored?.learn) };
+    // "only" was removed (2026-10-21): a file that still has it gets "on".
+    const codeMode = (stored?.codeMode as string | undefined) === "only" ? { codeMode: "on" as const } : {};
+    return { ...DEFAULTS, ...stored, ...codeMode, paneLayout: sanitizeLayout({ ...DEFAULT_LAYOUT, ...stored?.paneLayout }), memory: { ...DEFAULTS.memory!, ...stored?.memory }, learn: sanitizeLearn(stored?.learn) };
   }
 
   view(): SettingsView {
@@ -196,7 +198,7 @@ export class SettingsStore {
     if (patch.learn && typeof patch.learn === "object" && !Array.isArray(patch.learn)) next.learn = sanitizeLearn({ ...next.learn, ...patch.learn });
     if (patch.git && typeof patch.git === "object" && !Array.isArray(patch.git)) next.git = sanitizeGit({ ...(next.git ?? { commitModel: null, coAuthor: false, instructions: null }), ...patch.git });
     if (patch.mcpRouter === "auto" || patch.mcpRouter === "off") next.mcpRouter = patch.mcpRouter;
-    if (patch.codeMode === "off" || patch.codeMode === "on" || patch.codeMode === "only") next.codeMode = patch.codeMode;
+    if (patch.codeMode === "off" || patch.codeMode === "on") next.codeMode = patch.codeMode;
     if (typeof patch.sidebarGroupByProject === "boolean") next.sidebarGroupByProject = patch.sidebarGroupByProject;
     if (typeof patch.uiBlocks === "boolean") next.uiBlocks = patch.uiBlocks;
     if (typeof patch.linkPreviews === "boolean") next.linkPreviews = patch.linkPreviews;

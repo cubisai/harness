@@ -110,7 +110,7 @@ describe("createCodeBroker", () => {
 
 describe("codeModes", () => {
   it("fixes a thread's mode on its first read", () => {
-    let value: "off" | "on" | "only" | undefined = "on";
+    let value: "off" | "on" | undefined = "on";
     const of = codeModes(() => value);
     expect(of("a")).toBe("on");
     value = "off";
@@ -299,13 +299,21 @@ describe("SettingsStore codeMode", () => {
 
   const fresh = () => join(tempDir(), "settings.json");
 
-  it("accepts on/only and ignores an unknown value", () => {
+  it("accepts off/on and ignores an unknown value, including the removed only", () => {
     const s = new SettingsStore(fresh(), box);
-    s.update({ codeMode: "only" });
-    expect(s.get().codeMode).toBe("only");
     s.update({ codeMode: "on" });
     expect(s.get().codeMode).toBe("on");
+    s.update({ codeMode: "off" });
+    expect(s.get().codeMode).toBe("off");
+    s.update({ codeMode: "only" as never });
+    expect(s.get().codeMode).toBe("off");
     s.update({ codeMode: "bogus" as never });
-    expect(s.get().codeMode).toBe("on");
+    expect(s.get().codeMode).toBe("off");
+  });
+
+  it("reads a stored only as on", () => {
+    const file = fresh();
+    writeFileSync(file, JSON.stringify({ settings: { codeMode: "only" } }));
+    expect(new SettingsStore(file, box).get().codeMode).toBe("on");
   });
 });

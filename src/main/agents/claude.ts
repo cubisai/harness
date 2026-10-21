@@ -9,7 +9,6 @@ import { canonicalTool, clipAgentSummary, clipSummary, type EditResult, type Run
 import { diffSummary, unifiedDiff } from "../../shared/diff";
 import type { ToolDiff } from "../../shared/tools";
 import { forClaude } from "../mcp/servers";
-import { CODE_ONLY_DENY, CODE_ONLY_HINT, isShellSearch } from "../code-hint";
 import { CODE_TOOL } from "../code-mode";
 import { BACKGROUND_BASH_DENY, backgroundsItself, SHELL_TOOL_NAMES } from "../shell-tools";
 import { checkCommand } from "../guard";
@@ -272,14 +271,11 @@ export interface ClaudeDriverConfig {
   useInstalledCli?: boolean;
   /** CubiQ's memory block for this thread's agent session, or null when memory is off. */
   memory?: (projectId: string, threadId?: string, sessionKey?: string | null) => string | null;
-  /** The thread's code mode: "on" adds `run_code` (from `codeTool`) to the cubiq server, "only" also turns off Claude's Grep and Glob. */
+  /** The thread's code mode: "on" adds `run_code` (from `codeTool`) to the cubiq server. */
   codeMode?: (threadId: string) => CodeMode;
   /** The thread's run_code harness tool. */
   codeTool?: (threadId: string) => HarnessTool;
 }
-
-/** Claude's own search tools, which code mode "only" leaves to run_code scripts. Read stays: Claude's Edit refuses a file it hasn't Read. */
-const SCRIPT_ONLY_TOOLS = ["Grep", "Glob"];
 
 /**
  * Claude through the Agent SDK: Claude Code's own loop and tools, with the
@@ -442,14 +438,6 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         };
       };
 
-      // Code mode "only": Claude's Bash can't be hidden, so a shell search is turned away toward run_code.
-      const searchOnly: HookCallback = async (hookInput) => {
-        if (hookInput.hook_event_name !== "PreToolUse") return {};
-        const command = (hookInput.tool_input as { command?: unknown } | undefined)?.command;
-        if (typeof command !== "string" || !isShellSearch(command)) return {};
-        return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: CODE_ONLY_DENY } };
-      };
-
       // With the app's shell tools on hand, a background Bash is pointed at shell_start (see BACKGROUND_BASH_DENY).
       const hasShells = input.tools.some((t) => t.name === "shell_start");
       const noBackgroundBash: HookCallback = async (hookInput) => {
@@ -481,10 +469,9 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
       const guideText = config.guide?.(input.cwd, input.design) ?? "";
       const memoryText = input.projectId ? config.memory?.(input.projectId, input.threadId, input.sessionId ?? null) ?? null : null;
       const codeMode = input.threadId && config.codeTool ? (config.codeMode?.(input.threadId) ?? "off") : "off";
-      // "Only" hides Grep and Glob, but Bash can still grep: one fixed line points reads at run_code.
-      const systemAppend = [guideText, input.expert, memoryText, codeMode === "only" ? CODE_ONLY_HINT : null].filter((part): part is string => Boolean(part)).join("\n\n");
+      const systemAppend = [guideText, input.expert, memoryText].filter((part): part is string => Boolean(part)).join("\n\n");
       const harnessTools = codeMode !== "off" ? [...input.tools, config.codeTool!(input.threadId)] : input.tools;
-      const bashHooks = [...(hasShells ? [noBackgroundBash] : []), ...(codeMode === "only" ? [searchOnly] : []), guard];
+      const bashHooks = [...(hasShells ? [noBackgroundBash] : []), guard];
       const options: Options = {
         cwd: input.cwd,
         abortController,
@@ -515,7 +502,6 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         // A team's members run in the foreground, inside the lead's turn: a backgrounded member outlives
         // the turn, and with it the permission stream its tool calls need.
         ...(input.team?.length ? { env: { ...(plan?.env ?? process.env), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1" } } : plan ? { env: plan.env } : {}),
-        ...(codeMode === "only" ? { disallowedTools: SCRIPT_ONLY_TOOLS } : {}),
         ...withUserServers(harnessToolOptions(harnessTools, { ...(input.projectId ? { projectId: input.projectId } : {}), ...(input.threadId ? { threadId: input.threadId } : {}) }), input.mcpServers),
         hooks: { PreToolUse: [{ matcher: "Bash", hooks: bashHooks }] },
         canUseTool: async (toolName, toolInput, { suggestions }): Promise<PermissionResult> => {
@@ -893,8 +879,8 @@ export function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnS
           }
           const used = turn.toolPayloads.get(block.tool_use_id);
           const text = resultText(block.content);
-          // The app's own hooks point a call at run_code or shell_start (guidance, not a failure); grep and rg exit 1 on no match.
-          const redirected = text.includes(CODE_ONLY_DENY) || text.includes(BACKGROUND_BASH_DENY);
+          // The app's own hook points a background Bash at shell_start (guidance, not a failure); grep and rg exit 1 on no match.
+          const redirected = text.includes(BACKGROUND_BASH_DENY);
           const noMatches = Boolean(used && "command" in used && isGrepNoMatch(used.command, text));
           const isError = Boolean(block.is_error) && !redirected && !noMatches;
           // A background Agent's immediate result is launch metadata, not its answer:

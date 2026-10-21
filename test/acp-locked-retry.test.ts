@@ -1,15 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { onceMoreIfLocked } from "../src/main/agents/acp/driver";
-import { isShellSearch } from "../src/main/code-hint";
-
-describe("code mode only: shell searches", () => {
-  it("spots grep, rg and find, also after a cd", () => {
-    for (const c of ["grep -rn foo src", "rg -l 'x|y'", "find . -name '*.ts'", "cd src && rg foo", "  fd main"]) expect(isShellSearch(c)).toBe(true);
-  });
-  it("leaves other commands alone", () => {
-    for (const c of ["bun run test", "git status", "cat package.json", "echo grep", "ls src | grep ts", "findutils --version"]) expect(isShellSearch(c)).toBe(false);
-  });
-});
 
 describe("onceMoreIfLocked", () => {
   it("retries once after a database-is-locked failure", async () => {

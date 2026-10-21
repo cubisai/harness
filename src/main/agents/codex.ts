@@ -9,7 +9,6 @@ import { join } from "node:path";
 import { forCodex, mcpChangeNotice } from "../mcp/servers";
 import { withCode, withDesign, withProject, withShells } from "../mcp-http";
 import { SHELL_TOOL_NAMES } from "../shell-tools";
-import { CODE_ONLY_HINT } from "../code-hint";
 import { normalizeUsage } from "../usage";
 import type { InjectionPlan } from "../inject";
 import { RpcError, StdioRpc } from "./rpc";
@@ -81,7 +80,7 @@ export interface CodexConfig {
   skillsDir?: (cwd?: string, design?: boolean, threadId?: string) => string | null;
   /** The harness's tools over HTTP MCP (the browser pane's), attached per thread. */
   toolServer?: () => Promise<{ url: string; token: string }>;
-  /** The thread's code mode: on adds run_code to its tool server URL (`&c=`); Codex's shell can't be hidden, so "only" adds one hint line. */
+  /** The thread's code mode: on adds run_code to its tool server URL (`&c=`). */
   codeMode?: (threadId: string) => CodeMode;
   /** Plan rate limits, from the notifications Codex sends with its responses. */
   onLimits?: LimitsListener;
@@ -1000,7 +999,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     if (typeof input.contextWindow === "number" && input.contextWindow > 0) {
       threadConfig = { ...(threadConfig ?? {}), model_context_window: input.contextWindow };
     }
-    const guideText = [config.guide?.(input.cwd, input.design) ?? "", codeMode === "only" && server ? CODE_ONLY_HINT : ""].filter(Boolean).join("\n\n");
+    const guideText = config.guide?.(input.cwd, input.design) ?? "";
     const signature = JSON.stringify(threadConfig ?? null);
     let threadId = "";
     let threadModel: string | null = null;

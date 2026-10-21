@@ -2,7 +2,6 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { CODE_ONLY_DENY } from "../src/main/code-hint";
 import { BUILT_IN_GUARD } from "../src/main/guard";
 import { bashTool, shellFor } from "../src/main/harness/tools/bash";
 import { todoTool, todosOf } from "../src/main/harness/tools/todo";
@@ -33,21 +32,6 @@ afterEach(() => {
 });
 
 const posix = it.skipIf(process.platform === "win32");
-
-describe("bash in code mode only", () => {
-  posix("turns a shell search away without running it, and runs anything else", async () => {
-    const cwd = tmp();
-    const denied = await bashTool.run({ command: "grep -rn x . > ran.txt" }, ctx(cwd, { searchOnly: true }));
-    expect(denied).toMatchObject({ text: CODE_ONLY_DENY });
-    expect(denied.isError).toBeFalsy();
-    expect(existsSync(join(cwd, "ran.txt"))).toBe(false);
-    const ran = await bashTool.run({ command: "echo fine" }, ctx(cwd, { searchOnly: true }));
-    expect(ran.text).toContain("fine");
-    // Without the flag a search runs as before.
-    const search = await bashTool.run({ command: "grep -c x ran.txt || true" }, ctx(cwd));
-    expect(search.text).not.toContain(CODE_ONLY_DENY);
-  });
-});
 
 describe("shellFor", () => {
   it("picks bash (or sh) on POSIX", () => {

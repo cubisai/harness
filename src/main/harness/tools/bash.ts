@@ -5,7 +5,6 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { CODE_ONLY_DENY, isShellSearch } from "../../code-hint";
 import { checkCommand } from "../../guard";
 import { bound } from "./bound";
 import { int, str, ToolError, type NativeTool, type ToolContext, type ToolResult } from "./types";
@@ -78,7 +77,6 @@ async function runBash(args: Record<string, unknown>, ctx: ToolContext): Promise
   if (verdict.blocked) throw new ToolError(`Blocked by the git guardrail: ${verdict.reason}`);
   const summary = summarizeCommand(command);
   // Guidance, not a failure: the model is pointed at run_code and carries on.
-  if (ctx.searchOnly && isShellSearch(command)) return { text: CODE_ONLY_DENY, display: { summary, input: { command }, result: { exitCode: null, output: CODE_ONLY_DENY } } };
   const timeout = Math.min(Math.max(int(args, "timeout") ?? DEFAULT_TIMEOUT_MS, 1), MAX_TIMEOUT_MS);
   const platform = ctx.platform ?? process.platform;
   const shell = shellFor(platform, ctx.env ?? process.env);

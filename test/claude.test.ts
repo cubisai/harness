@@ -6,7 +6,6 @@ import { bundledClaudeVersion, createClaudeDriver, FIRST_RELIST_MS, fromSdk, han
 import { MODEL_TTL_MS } from "../src/main/agents/model-ttl";
 import { MEMORY_READ_TOOL, MEMORY_WRITE_TOOL } from "../src/main/memory/tool";
 import type { HarnessTool, ToolContext, TurnInput } from "../src/main/agents/types";
-import { CODE_ONLY_DENY } from "../src/main/code-hint";
 import { BACKGROUND_BASH_DENY } from "../src/main/shell-tools";
 import type { ThreadEvent } from "../src/shared/types";
 import { tempDir } from "./helpers";
@@ -234,10 +233,11 @@ describe("Claude driver guide", () => {
 
     const withShells = turnInput();
     withShells.input.tools = [shellStart];
-    await createClaudeDriver({ pluginDir: () => null, codeTool, codeMode: () => "only" }).runTurn(withShells.input);
+    await createClaudeDriver({ pluginDir: () => null, codeTool, codeMode: () => "on" }).runTurn(withShells.input);
     expect(await decide(hooksOf(1), { command: "bun run dev", run_in_background: true })).toContain("shell_start");
     expect(await decide(hooksOf(1), { command: "bun run test" })).toBe("allow");
-    expect(await decide(hooksOf(1), { command: "rg -l TODO src" })).toContain("run_code");
+    // Code mode leaves shell searches alone.
+    expect(await decide(hooksOf(1), { command: "rg -l TODO src" })).toBe("allow");
   });
 
   it("leaves systemPrompt out when there's no guide", async () => {
@@ -643,7 +643,6 @@ describe("Claude stream mapping", () => {
   };
 
   it("shows the app's own hook denials as guidance, not errors", () => {
-    expect(bashResult("b1", "grep -rn foo src", CODE_ONLY_DENY)).toMatchObject({ isError: false });
     expect(bashResult("b2", "npm run dev &", `PreToolUse:Bash hook: ${BACKGROUND_BASH_DENY}`)).toMatchObject({ isError: false });
     expect(bashResult("b3", "rm -rf build", "The user denied this command.")).toMatchObject({ isError: true });
   });

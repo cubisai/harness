@@ -1,4 +1,3 @@
-import { CODE_ONLY_DENY, CODE_ONLY_HINT } from "../src/main/code-hint";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -82,7 +81,7 @@ function setup(
     plan?: PlanDecision;
     requestUserInput?: TurnInput["requestUserInput"];
     memory?: ProviderDriverDeps["memory"];
-    codeMode?: () => "off" | "on" | "only";
+    codeMode?: () => "off" | "on";
   } = {},
 ) {
   const cwd = tmp();
@@ -698,7 +697,7 @@ describe("provider driver", () => {
     expect(on.requests[0]!.tools.map((x) => x.name)).toContain("run_code");
   });
 
-  it("in code mode only, leaves read, glob and grep to scripts and keeps store/load across turns", async () => {
+  it("in code mode, offers run_code beside read, glob and grep and keeps store/load across turns", async () => {
     const first = "store('n', 1); const r = await tools.read({ path: 'a.txt' }); return r.includes('hello');";
     const second = "return load('n') + 1;";
     const t = setup(
@@ -708,15 +707,15 @@ describe("provider driver", () => {
         [{ type: "tool-call", id: "c2", name: "run_code", input: { code: second } }],
         [{ type: "text", text: "ok" }],
       ],
-      { codeMode: () => "only" },
+      { codeMode: () => "on" },
     );
     writeFileSync(join(t.cwd, "a.txt"), "hello\n");
     await t.driver.runTurn(t.input("go"));
     const names = t.requests[0]!.tools.map((x) => x.name);
     expect(names).toContain("run_code");
-    expect(names).not.toContain("read");
-    expect(names).not.toContain("glob");
-    expect(names).not.toContain("grep");
+    expect(names).toContain("read");
+    expect(names).toContain("glob");
+    expect(names).toContain("grep");
     expect(names).toContain("edit");
     const result = (t.requests[1]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!;
     expect(result.text).toContain("=> true");
@@ -726,21 +725,15 @@ describe("provider driver", () => {
     expect(next.text).toContain("=> 2");
   });
 
-  it("in code mode only, adds the fixed run_code line to the system prompt and turns a shell search away", async () => {
+  it("in code mode, runs a shell search as usual", async () => {
     const t = setup(
       [[{ type: "tool-call", id: "b1", name: "bash", input: { command: "grep -rn hello ." } }], [{ type: "text", text: "ok" }]],
-      { codeMode: () => "only" },
+      { codeMode: () => "on" },
     );
     writeFileSync(join(t.cwd, "a.txt"), "hello\n");
     await t.driver.runTurn(t.input("go"));
-    expect(t.requests[0]!.system).toContain(CODE_ONLY_HINT);
     const result = (t.requests[1]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!;
-    expect(result.text).toBe(CODE_ONLY_DENY);
-    expect(t.events.find((e) => e.kind === "tool-result")).toMatchObject({ isError: false });
-
-    const on = setup([[{ type: "text", text: "ok" }]], { codeMode: () => "on" });
-    await on.driver.runTurn(on.input("hi"));
-    expect(on.requests[0]!.system).not.toContain(CODE_ONLY_HINT);
+    expect(result.text).toContain("a.txt");
   });
 
   it("authorizes each run_code inner call and surfaces a denial inside the script", async () => {
