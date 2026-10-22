@@ -4,7 +4,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { PermissionDecision, ThreadEvent } from "../src/shared/types";
 import { z } from "zod";
-import { blockingQuestionCatalog, codexAuthStamp, codexDecision, codexWindows, codexPolicy, codexToolConfig, createCodexDriver, toolFor, turnEndFromUsage } from "../src/main/agents/codex";
+import { blockingQuestionCatalog, codexAuthStamp, codexDecision, codexWindows, codexPolicy, codexToolConfig, createCodexDriver, PLAN_HINT, toolFor, turnEndFromUsage } from "../src/main/agents/codex";
+
+/** The guide as Codex gets it: the plan hint always follows. */
+const GUIDE = `GUIDE\n\n${PLAN_HINT}`;
 import type { LimitsPatch } from "../src/main/agents/limits";
 import type { HarnessTool, SeedRequest, TurnInput } from "../src/main/agents/types";
 import { Store } from "../src/main/db";
@@ -483,9 +486,11 @@ describe("Codex driver", () => {
     } finally {
       delete process.env.GUIDE_PROBE;
     }
-    const sent = JSON.parse(readFileSync(probe, "utf8")) as { method: string; params: { developerInstructions?: string } };
+    const sent = JSON.parse(readFileSync(probe, "utf8")) as { method: string; params: { developerInstructions?: string; config?: Record<string, unknown> } };
     expect(sent.method).toBe("thread/start");
-    expect(sent.params.developerInstructions).toBe("GUIDE");
+    expect(sent.params.developerInstructions).toBe(GUIDE);
+    // Codex's own todo list tool is off by default; it's what turn/plan/updated reports.
+    expect(sent.params.config?.tools).toEqual({ update_plan: { enabled: true } });
   });
 
   it("sends model_context_window on start and resume only when the thread sets one", async () => {
@@ -1255,7 +1260,7 @@ describe("Codex shared memory", () => {
       await d.runTurn(turn("hi", { projectId: "p1" }).input);
       const start = sent();
       expect(start.method).toBe("thread/start");
-      expect(start.params.developerInstructions).toBe("GUIDE\n\n<harness-memory>MEM</harness-memory>");
+      expect(start.params.developerInstructions).toBe(GUIDE + "\n\n<harness-memory>MEM</harness-memory>");
       expect(start.params.config?.memories).toEqual({ use_memories: false, generate_memories: false });
       // A new thread is started with a null session key, so the block is fresh.
       expect(calls).toContainEqual(["p1", "t", null]);
@@ -1270,7 +1275,7 @@ describe("Codex shared memory", () => {
     try {
       await d.runTurn(turn("hi", { projectId: "p1" }).input);
       const start = sent();
-      expect(start.params.developerInstructions).toBe("GUIDE");
+      expect(start.params.developerInstructions).toBe(GUIDE);
       expect(start.params.config?.memories).toBeUndefined();
     } finally {
       delete process.env.GUIDE_PROBE;
@@ -1284,7 +1289,7 @@ describe("Codex shared memory", () => {
       await d.runTurn(turn("hi", { projectId: "p1", expert: "<expert>Be terse.</expert>" }).input);
       const start = sent();
       expect(start.method).toBe("thread/start");
-      expect(start.params.developerInstructions).toBe("GUIDE\n\n<expert>Be terse.</expert>\n\n<harness-memory>MEM</harness-memory>");
+      expect(start.params.developerInstructions).toBe(GUIDE + "\n\n<expert>Be terse.</expert>\n\n<harness-memory>MEM</harness-memory>");
     } finally {
       delete process.env.GUIDE_PROBE;
     }
@@ -1295,7 +1300,7 @@ describe("Codex shared memory", () => {
     const { d, sent } = probeDriver(memory);
     try {
       await d.runTurn(turn("hi", { projectId: "p1" }).input);
-      expect(sent().params.developerInstructions).toBe("GUIDE");
+      expect(sent().params.developerInstructions).toBe(GUIDE);
     } finally {
       delete process.env.GUIDE_PROBE;
     }
@@ -1315,7 +1320,7 @@ describe("Codex shared memory", () => {
       expect(resumed.method).toBe("thread/resume");
       // The resume passes the session id, and the block comes from the memory function, not in-RAM state.
       expect(calls).toContainEqual(["p1", "t", "probe-thread"]);
-      expect(resumed.params.developerInstructions).toBe("GUIDE\n\n<harness-memory>probe-thread</harness-memory>");
+      expect(resumed.params.developerInstructions).toBe(GUIDE + "\n\n<harness-memory>probe-thread</harness-memory>");
       expect(resumed.params.developerInstructions).not.toContain("FRESH");
     } finally {
       delete process.env.GUIDE_PROBE;

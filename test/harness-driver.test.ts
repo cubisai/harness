@@ -8,7 +8,7 @@ import type { PermissionMode, PlanDecision, Provider, Question, ThreadEvent } fr
 import type { HarnessTool, TurnInput } from "../src/main/agents/types";
 import { BUILT_IN_GUARD } from "../src/main/guard";
 import { ASK_USER_TOOL } from "../src/main/questions";
-import { createProviderDriver, providerAgentId, type ProviderDriverDeps } from "../src/main/harness/driver";
+import { createProviderDriver, LOOK_AROUND, providerAgentId, RUN_CODE_TIP, type ProviderDriverDeps } from "../src/main/harness/driver";
 import { PLAN_MODE_NOTE, PROPOSE_PLAN_TOOL } from "../src/main/harness/plan";
 import { ProviderAgents } from "../src/main/harness/register";
 import { EXPLORE_PROMPT, TASK_TOOL } from "../src/main/harness/subagent";
@@ -293,6 +293,44 @@ describe("provider driver", () => {
     const t = setup([[{ type: "tool-call", id: "c1", name: "todowrite", input: { todos: [{ content: "Read code", status: "in_progress" }] } }], [{ type: "text", text: "ok" }]]);
     await t.driver.runTurn(t.input("plan"));
     expect(t.events.find((e) => e.kind === "plan")).toEqual({ kind: "plan", entries: [{ content: "Read code", status: "in_progress" }] });
+    // Like Claude's and OpenCode's: a plan, not a tool row; the model still gets the short summary.
+    expect(t.events.some((e) => e.kind === "tool-use" || e.kind === "tool-result")).toBe(false);
+    const result = (t.requests[1]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!;
+    // While parts are open the result reminds the model to keep the list current.
+    expect(result.text).toBe("1 todos: 1 in progress, 0 completed, 0 pending. Update this list as each part finishes, and before your final reply.");
+  });
+
+  it("in code mode, points the first look-around shell command of a turn at run_code, once", async () => {
+    const calls = [
+      [{ type: "tool-call", id: "c1", name: "bash", input: { command: "ls" } }],
+      [{ type: "tool-call", id: "c2", name: "bash", input: { command: "cat a.txt" } }],
+      [{ type: "text", text: "ok" }],
+    ] as const;
+    const on = setup(calls.map((c) => [...c]), { codeMode: () => "on" });
+    await on.driver.runTurn(on.input("look"));
+    const text = (n: number) => (on.requests[n]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!.text;
+    expect(text(1)).toContain(RUN_CODE_TIP);
+    expect(text(2)).not.toContain(RUN_CODE_TIP);
+    // The row shows the command's own output, not the tip.
+    expect(JSON.stringify(on.events.filter((e) => e.kind === "tool-result"))).not.toContain("Tip:");
+
+    const off = setup(calls.map((c) => [...c]));
+    await off.driver.runTurn(off.input("look"));
+    expect((off.requests[1]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!.text).not.toContain(RUN_CODE_TIP);
+  });
+
+  it("counts only listing, reading and searching commands as looking around", () => {
+    for (const c of ["ls -la", "cd /x && cat a.ts", "grep -rn foo src", "find . -name '*.ts'"]) expect(LOOK_AROUND.test(c)).toBe(true);
+    for (const c of ["npm test", "git status", "node --test", "cd /x && npm run build"]) expect(LOOK_AROUND.test(c)).toBe(false);
+  });
+
+  it("shows no plan for a bad todo list and tells the model why", async () => {
+    const t = setup([[{ type: "tool-call", id: "c1", name: "todowrite", input: { todos: [{ content: "a", status: "doing" }] } }], [{ type: "text", text: "ok" }]]);
+    await t.driver.runTurn(t.input("plan"));
+    expect(t.events.some((e) => e.kind === "plan")).toBe(false);
+    const result = (t.requests[1]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!;
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain('"status" must be');
   });
 
   it("reports a removed provider and a lost session", async () => {

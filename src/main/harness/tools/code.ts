@@ -40,6 +40,8 @@ function mainArg(tool: LoopTool): string | undefined {
 }
 
 export const CODE_DESCRIPTION = [
+  // The trigger leads: models pick tools by description, and without it they reach for one read or shell call after another.
+  "Use this to look around the project instead of two or more read, glob, grep, ls or cat calls: one script lists, reads and searches it all in one step.",
   "Run a JavaScript program in a sandbox and return what it prints and returns.",
   "The code is the body of an async function: call tools as `await tools.<name>(args)`, which throws on an error (wrap a call that may fail in try/catch).",
   'read, glob and grep return plain values, not text: glob gives string[] paths (empty when nothing matches); grep gives string[] files, or { path: count } with output_mode "count", or [{ path, line, text }] with "content"; read gives the file\'s text. Other tools return their text output.',

@@ -88,6 +88,7 @@ import { redactDeep, redactSecrets } from "./inject/redact";
 import type { TurnDelta } from "./memory/extractor";
 import type { Learner } from "./learn";
 import { answersMessage } from "./questions";
+import { samePlan } from "../shared/plan";
 import { canonicalTool } from "../shared/tools";
 
 /**
@@ -127,6 +128,8 @@ export class Service {
   private memoryUpdates: ((projectId: string, threadId: string) => string | null) | null = null;
   /** Each thread's last user message seq, so an automatic fix round scores as part of the turn it fixes. */
   private rootSeqs = new Map<string, number>();
+  /** Each thread's last plan this turn: agents resend the whole list, often unchanged. */
+  private lastPlans = new Map<string, StoredEvent>();
 
   private drivers: Map<string, AgentDriver>;
 
@@ -668,9 +671,17 @@ export class Service {
   }
 
   private emit(threadId: string, event: ThreadEvent, provenance: Provenance | null = null): StoredEvent {
+    // The one dedupe point for every agent: an unchanged resend of this turn's list isn't stored again.
+    if (event.kind === "plan") {
+      const last = this.lastPlans.get(threadId);
+      if (last?.event.kind === "plan" && samePlan(last.event.entries, event.entries)) return last;
+    } else if (event.kind === "user" || event.kind === "turn-start" || event.kind === "turn-end") {
+      this.lastPlans.delete(threadId);
+    }
     this.trackScripts(threadId, event);
     const stored = this.store.appendEvent(threadId, redactDeep(event, this.secrets()), provenance);
     this.broadcast({ type: "event", threadId, stored });
+    if (event.kind === "plan") this.lastPlans.set(threadId, stored);
     return stored;
   }
 

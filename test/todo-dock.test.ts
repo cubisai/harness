@@ -5,6 +5,7 @@ import { dockedPlan, todoProgress } from "../src/renderer/src/todo";
 const ev = (seq: number, event: unknown) => ({ seq, event }) as unknown as StoredEvent;
 const plan = (seq: number, ...status: string[]) => ev(seq, { kind: "plan", entries: status.map((s, i) => ({ content: `step ${i}`, status: s })) });
 const user = (seq: number) => ev(seq, { kind: "user", text: "go" });
+const end = (seq: number) => ev(seq, { kind: "turn-end" });
 
 describe("todo dock", () => {
   it("shows only the latest plan of the thread", () => {
@@ -21,6 +22,19 @@ describe("todo dock", () => {
   it("ignores empty plans and sub-agent plans", () => {
     expect(dockedPlan([user(1), plan(2)])).toBeNull();
     expect(dockedPlan([user(1), ev(2, { kind: "plan", parentId: "x", entries: [{ content: "a", status: "pending" }] })])).toBeNull();
+  });
+  it("marks an unfinished list Paused once its turn has ended, and live again when the agent updates it", () => {
+    expect(dockedPlan([user(1), plan(2, "completed", "pending")])?.paused).toBe(false);
+    expect(dockedPlan([user(1), plan(2, "completed", "pending"), end(3)])?.paused).toBe(true);
+    expect(dockedPlan([user(1), plan(2, "completed", "pending"), end(3), user(4)])?.paused).toBe(true);
+    expect(dockedPlan([user(1), plan(2, "completed", "pending"), end(3), user(4), plan(5, "completed", "in_progress")])?.paused).toBe(false);
+    // A finished list is never Paused.
+    expect(dockedPlan([user(1), plan(2, "completed", "completed"), end(3)])?.paused).toBe(false);
+  });
+  it("docks no more once the user dismisses that list, until a new one arrives", () => {
+    const events = [user(1), plan(2, "pending"), end(3)];
+    expect(dockedPlan(events, 2)).toBeNull();
+    expect(dockedPlan([...events, plan(4, "in_progress")], 2)?.seq).toBe(4);
   });
   it("reports progress and the current step", () => {
     const d = dockedPlan([user(1), plan(2, "completed", "in_progress", "pending")])!;

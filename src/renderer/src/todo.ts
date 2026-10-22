@@ -1,26 +1,34 @@
 import type { StoredEvent } from "../../shared/types";
 
-export type Todo = { seq: number; entries: Extract<StoredEvent["event"], { kind: "plan" }>["entries"] };
+export type Todo = {
+  seq: number;
+  entries: Extract<StoredEvent["event"], { kind: "plan" }>["entries"];
+  /** Unfinished, and its turn has ended: nothing is working through it right now. */
+  paused: boolean;
+};
 
 /**
  * The plan the todo dock shows: the thread's latest `plan` row, while it is
  * still open or was written after the last top-level user message. Agents
- * resend the whole list on each update, so only the latest one matters.
+ * resend the whole list on each update, so only the latest one matters. A
+ * list the user dismissed (`dismissedSeq`) docks no more.
  */
-export function dockedPlan(events: StoredEvent[]): Todo | null {
-  let plan: Todo | null = null;
+export function dockedPlan(events: StoredEvent[], dismissedSeq?: number): Todo | null {
+  let plan: Omit<Todo, "paused"> | null = null;
   let fresh = false;
+  let ended = false;
   for (const e of events) {
     const ev = e.event;
     if (ev.kind === "user" && !ev.parentId) fresh = false;
     else if (ev.kind === "plan" && !ev.parentId) {
       plan = { seq: e.seq, entries: ev.entries };
       fresh = true;
-    }
+      ended = false;
+    } else if (ev.kind === "turn-end" && plan) ended = true;
   }
-  if (!plan || plan.entries.length === 0) return null;
+  if (!plan || plan.entries.length === 0 || plan.seq === dismissedSeq) return null;
   const open = plan.entries.some((p) => p.status !== "completed");
-  return open || fresh ? plan : null;
+  return open || fresh ? { ...plan, paused: open && ended } : null;
 }
 
 export function todoProgress(entries: Todo["entries"]): { done: number; total: number; current: string | null } {

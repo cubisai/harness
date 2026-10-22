@@ -140,10 +140,10 @@ describe("bashTool (POSIX)", () => {
 });
 
 describe("todosOf", () => {
-  it("converts a valid list to plan entries", () => {
+  it("converts a valid list to plan entries, without a priority (no agent shows one)", () => {
     expect(todosOf({ todos: [{ content: "a", status: "completed" }, { content: "b", status: "in_progress", priority: "high" }] })).toEqual([
       { content: "a", status: "completed" },
-      { content: "b", status: "in_progress", priority: "high" },
+      { content: "b", status: "in_progress" },
     ]);
   });
 
@@ -152,7 +152,6 @@ describe("todosOf", () => {
     expect(() => todosOf({ todos: "nope" })).toThrow(ToolError);
     expect(() => todosOf({ todos: [{ content: "a", status: "nope" }] })).toThrow(ToolError);
     expect(() => todosOf({ todos: [{ content: "", status: "pending" }] })).toThrow(ToolError);
-    expect(() => todosOf({ todos: [{ content: "a", status: "pending", priority: "urgent" }] })).toThrow(ToolError);
     expect(() => todosOf({ todos: [{ content: "a", status: "in_progress" }, { content: "b", status: "in_progress" }] })).toThrow(ToolError);
   });
 });
@@ -163,8 +162,11 @@ describe("todoTool", () => {
       { todos: [{ content: "a", status: "completed" }, { content: "b", status: "in_progress" }, { content: "c", status: "pending" }] },
       ctx(),
     );
-    expect(res.text).toBe("3 todos: 1 in progress, 1 completed, 1 pending.");
+    expect(res.text).toBe("3 todos: 1 in progress, 1 completed, 1 pending. Update this list as each part finishes, and before your final reply.");
     expect(res.display?.summary).toBe("b");
+    // Nothing left to update once every part is done.
+    const done = await todoTool.run({ todos: [{ content: "a", status: "completed" }] }, ctx());
+    expect(done.text).toBe("1 todos: 0 in progress, 1 completed, 0 pending.");
   });
 
   it("summarizes the raw list for the permission card", () => {

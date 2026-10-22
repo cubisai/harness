@@ -25,6 +25,15 @@ describe("live stream state", () => {
     expect(visibleItems(state, "reasoning")).toHaveLength(1);
   });
 
+  it("shows no empty text block for whitespace-only text between tool calls", () => {
+    let state = emptyLive();
+    for (const id of ["t1", "t2"]) state = appendDelta(state, { kind: "text-delta", itemId: id, text: "\n\n" });
+    state = flushPending(state);
+    expect(visibleItems(state, "text")).toEqual([]);
+    state = flushPending(appendDelta(state, { kind: "text-delta", itemId: "t2", text: "Done." }));
+    expect(visibleItems(state, "text")).toHaveLength(1);
+  });
+
   it("keeps streaming text when a mid-turn tool-use lands", () => {
     let state = appendDelta(emptyLive(), { kind: "text-delta", itemId: "a", text: "hello" });
     state = flushPending(state);

@@ -20,6 +20,8 @@ export interface LoopTool {
   summarize(args: Record<string, unknown>): string;
   /** The tool-use payload the thread shows; the arguments when absent. */
   inputPayload?(args: Record<string, unknown>): unknown;
+  /** Stores no tool-use or tool-result rows: the todo list shows as the thread's plan instead. */
+  silent?: boolean;
   /** True when the call reaches outside the thread's folder (edits there ask). */
   outside?(args: Record<string, unknown>): boolean;
   run(args: Record<string, unknown>, call: { id: string; signal: AbortSignal; onOutput(text: string): void; script?: boolean }): Promise<ToolResult>;
@@ -224,6 +226,7 @@ type Planned = { call: ToolCallPart; tool: LoopTool | undefined };
 async function runCalls(input: LoopInput, calls: ToolCallPart[], byName: Map<string, LoopTool>, recent: string[], fails: Map<string, number>, nudge: { repeat: boolean }): Promise<LlmToolResult[]> {
   const planned: Planned[] = calls.map((call) => ({ call, tool: byName.get(call.name) }));
   for (const { call, tool } of planned) {
+    if (tool?.silent) continue;
     const summary = tool ? safeSummary(tool, call.input) : call.name;
     input.emit.event({ kind: "tool-use", toolUseId: call.id, name: tool?.displayName ?? call.name, summary, payload: tool?.inputPayload ? tool.inputPayload(call.input) : call.input });
   }
@@ -277,7 +280,7 @@ async function runOne(input: LoopInput, { call, tool }: Planned, recent: string[
 }
 
 function finish(input: LoopInput, { call, tool }: Planned, r: ToolResult, fails: Map<string, number>, nudge: { repeat: boolean }): LlmToolResult {
-  input.emit.event({ kind: "tool-result", toolUseId: call.id, isError: r.isError === true, summary: oneLine(r.text), payload: r.display?.result ?? r.text, ...(r.runUsage ? { runUsage: r.runUsage } : {}) });
+  if (!tool?.silent) input.emit.event({ kind: "tool-result", toolUseId: call.id, isError: r.isError === true, summary: oneLine(r.text), payload: r.display?.result ?? r.text, ...(r.runUsage ? { runUsage: r.runUsage } : {}) });
   let text = r.text;
   if (r.isError === true) {
     const key = `${call.name}:${JSON.stringify(call.input)}`;

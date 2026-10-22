@@ -13,11 +13,12 @@ import { emptyLive, liveReasoningMode, visibleItems } from "../live";
 import { linkUrls, Markdown } from "../markdown";
 import { LinkCards, LinkChip } from "./LinkChip";
 import { relativeToThread, useStore } from "../store";
-import { dockedPlan } from "../todo";
+import { dockedPlan, todoProgress } from "../todo";
 import { DiffView, diffsOf } from "./DiffView";
 import { ExpertIntro } from "./experts/ExpertChip";
 import { ReasoningBlock } from "./ReasoningBlock";
 import { SubagentCard } from "./SubagentCard";
+import { useDismissedPlans } from "./TodoDock";
 import { activityOf, WaitingLine } from "./WaitingLine";
 import { useSmoothText } from "../hooks/useSmoothText";
 import { createSegmenter, type Segment, type TurnChanges, workDuration, workSummary } from "../turns";
@@ -107,6 +108,7 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
     }
     return map;
   }, [events]);
+  const dismissedPlan = useDismissedPlans((s) => s.seqs[threadId]);
   // Agents resend the whole todo list on every update: show only a turn's latest plan.
   const stalePlans = useMemo(() => {
     const stale = new Set<number>();
@@ -119,10 +121,10 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
       }
     }
     // The latest plan lives in the todo dock above the message box, not in the timeline.
-    const docked = dockedPlan(events);
+    const docked = dockedPlan(events, dismissedPlan);
     if (docked) stale.add(docked.seq);
     return stale;
-  }, [events]);
+  }, [events, dismissedPlan]);
   // The current turn: everything after the last top-level user message.
   const turnEvents = useMemo(() => {
     let start = 0;
@@ -775,10 +777,12 @@ export function EventRow({ stored, results, children, running, threadId }: { sto
       return <div className="error-card">{e.message}</div>;
     case "notice":
       return <div className="notice">{e.text}</div>;
-    case "plan":
+    case "plan": {
+      // The live list is in the todo dock; history keeps one quiet line that opens to the list.
+      const { done, total } = todoProgress(e.entries);
       return (
-        <div className="plan-row">
-          <div className="plan-title">Plan</div>
+        <details className="thinking plan-row">
+          <summary>{`Plan · ${done}/${total} done`}</summary>
           <ul>
             {e.entries.map((p, i) => (
               <li key={i} className={`plan-item ${p.status}`}>
@@ -787,8 +791,9 @@ export function EventRow({ stored, results, children, running, threadId }: { sto
               </li>
             ))}
           </ul>
-        </div>
+        </details>
       );
+    }
     case "plan-proposal":
       return (
         <details className="tool plan-proposal">

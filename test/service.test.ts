@@ -56,6 +56,21 @@ describe("Service.send", () => {
     expect(service.isRunning(thread.id)).toBe(false);
   });
 
+  it("stores an unchanged resend of this turn's todo list once, and the same list again in a new turn", async () => {
+    const list = [{ content: "a", status: "in_progress" as const }];
+    const { store, service, thread, updates } = setup(async (input) => {
+      input.onEvent({ kind: "plan", entries: list });
+      input.onEvent({ kind: "plan", entries: [...list] });
+      input.onEvent({ kind: "plan", entries: [{ content: "a", status: "completed" }] });
+      input.onEvent({ kind: "plan", entries: [{ content: "a", status: "completed" }] });
+    });
+    await service.send({ threadId: thread.id, text: "go" });
+    expect(store.listEvents(thread.id).filter((e) => e.event.kind === "plan")).toHaveLength(2);
+    expect(updates.filter((u) => u.type === "event" && u.stored.event.kind === "plan")).toHaveLength(2);
+    await service.send({ threadId: thread.id, text: "again" });
+    expect(store.listEvents(thread.id).filter((e) => e.event.kind === "plan")).toHaveLength(4);
+  });
+
   it("nests a cubiq run_code script's calls under its own row, and only while the turn runs", async () => {
     let seen: { parent?: string; fallback?: string; other?: string } = {};
     const { store, service, thread } = setup(async (input) => {

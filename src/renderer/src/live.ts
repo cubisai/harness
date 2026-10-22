@@ -84,8 +84,9 @@ export function applyLiveEvent(state: LiveThread, stored: StoredEvent): LiveThre
  * level's, or with `parentId` one subagent's.
  */
 export function visibleItems(state: LiveThread, channel: LiveItem["channel"], parentId?: string): LiveItem[] {
-  // Reasoning that is only whitespace (a model streaming "\n" between thoughts) has nothing to show.
-  return state.items.filter((it) => it.channel === channel && it.parentId === parentId && (channel === "reasoning" ? it.text.trim().length > 0 : it.text.length > 0));
+  // Text or reasoning that is only whitespace (a model streaming "\n\n" between tool calls, as DeepSeek
+  // on CoralBricks does) has nothing to show: it would sit in the timeline as an empty cursor block.
+  return state.items.filter((it) => it.channel === channel && it.parentId === parentId && it.text.trim().length > 0);
 }
 
 /** Which half of a reasoning block to show: its text, or only a token count. */

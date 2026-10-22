@@ -3,14 +3,18 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
-import type { EffortLevel, HookCallback, ModelInfo, ModelUsage, Options, PermissionResult, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
+import { z } from "zod";
+import type { EffortLevel, HookCallback, ModelInfo, ModelUsage, Options, PermissionResult, SDKMessage, SDKResultMessage, StopHookInput } from "@anthropic-ai/claude-agent-sdk";
 import type { CodeMode, McpServerEntry, ModelOption, ModelPricing, PermissionMode, PlanEntry, ThreadEvent } from "../../shared/types";
 import { canonicalTool, clipAgentSummary, clipSummary, type EditResult, type RunPayload, type RunResult } from "../../shared/tools";
 import { diffSummary, unifiedDiff } from "../../shared/diff";
+import { normalizePlan } from "../../shared/plan";
 import type { ToolDiff } from "../../shared/tools";
 import { forClaude } from "../mcp/servers";
 import { CODE_TOOL } from "../code-mode";
 import { CODE_HINT } from "../code-hint";
+import { todoResult, todosOf, todoTool } from "../harness/tools/todo";
+import { ToolError } from "../harness/tools/types";
 import { BACKGROUND_BASH_DENY, backgroundsItself, SHELL_TOOL_NAMES } from "../shell-tools";
 import { checkCommand } from "../guard";
 import type { InjectionPlan } from "../inject";
@@ -30,6 +34,36 @@ import { claudeAnnotations, claudeAnswers, fromClaudeQuestions, SKIPPED_TEXT } f
 
 /** MCP server name for harness tools: they reach Claude as mcp__cubiq__<tool>. */
 export const TOOL_SERVER = "cubiq";
+
+/** The todo list tool Claude gets on the cubiq server: the native harness's own definition, so every agent keeps its list alike. */
+export const TODO_TOOL = todoTool.name;
+
+/** The line that makes Claude start its list unasked (2.1.307 live test: without it, no list even for a 5-part task). */
+export const TODO_HINT = `When a request has 3 or more parts (several files, or code plus tests or docs), your first tool call is ${TODO_TOOL} with those parts, even if you could do it all in one go: the user follows progress there. Mark each part completed as it finishes. Requests with one or two parts don't need it.`;
+
+/** The Stop hook's one nudge when the list still shows open parts. */
+export const STALE_LIST = `Your ${TODO_TOOL} list still shows unfinished parts. Call ${TODO_TOOL} once with each part's real status, then end your turn.`;
+
+/** Claude Code's own prompt points it at Read, Glob and Grep, so code mode says which calls run_code replaces. */
+export const CODE_NUDGE = "That means one run_code script in place of two or more Read, Glob or Grep calls in a row.";
+
+/** Its calls become the thread's plan as they're made (see emitAssistantBlock); the result only tells the model it landed. */
+const claudeTodoTool: HarnessTool = {
+  name: TODO_TOOL,
+  description: todoTool.description,
+  input: { todos: z.array(z.object({ content: z.string().describe("A few words."), status: z.enum(["pending", "in_progress", "completed"]) })) },
+  autoAllow: true,
+  effect: "read",
+  run: async (args) => {
+    try {
+      return { text: todoResult(todosOf(args)) };
+    } catch (err) {
+      // A malformed list goes back to the model to fix, like the native tool's.
+      if (err instanceof ToolError) return { text: err.message, isError: true };
+      throw err;
+    }
+  },
+};
 
 /**
  * After the first model listing, Claude Code's cached server config can still be
@@ -57,7 +91,8 @@ export function harnessToolOptions(tools: HarnessTool[], ctx?: ToolContext): Pic
         // run_code stays in the prompt instead of behind tool search: deferred, Claude never reaches for it
         // unless told to. Its schema is fixed per thread, so the cached prefix doesn't move.
         // The shell tools too: deferred, Claude backgrounds with `&` or nohup instead (2026-10-21 live test).
-        ...(t.name === CODE_TOOL || (SHELL_TOOL_NAMES as readonly string[]).includes(t.name) ? { alwaysLoad: true } : {}),
+        // The todo list too: headless Claude Code has none of its own, and one behind tool search goes unused.
+        ...(t.name === CODE_TOOL || t.name === TODO_TOOL || (SHELL_TOOL_NAMES as readonly string[]).includes(t.name) ? { alwaysLoad: true } : {}),
       }),
     ),
   });
@@ -495,9 +530,17 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
       const guideText = config.guide?.(input.cwd, input.design) ?? "";
       const memoryText = input.projectId ? config.memory?.(input.projectId, input.threadId, input.sessionId ?? null) ?? null : null;
       const codeMode = input.threadId && config.codeTool ? (config.codeMode?.(input.threadId) ?? "off") : "off";
-      const systemAppend = [guideText, input.expert, memoryText, codeMode !== "off" ? CODE_HINT : null].filter((part): part is string => Boolean(part)).join("\n\n");
-      const harnessTools = codeMode !== "off" ? [...input.tools, config.codeTool!(input.threadId)] : input.tools;
+      const systemAppend = [guideText, TODO_HINT, input.expert, memoryText, codeMode !== "off" ? `${CODE_HINT} ${CODE_NUDGE}` : null].filter((part): part is string => Boolean(part)).join("\n\n");
+      const harnessTools = [...input.tools, ...(codeMode !== "off" ? [config.codeTool!(input.threadId)] : []), claudeTodoTool];
       const bashHooks = [...(hasShells ? [noBackgroundBash] : []), guard];
+      // Claude writes its list up front and rarely comes back to it: stopping with parts still open,
+      // it's asked once to bring the list up to date, so the dock doesn't show finished work as pending.
+      // Its reply already stands, so any text after that is dropped.
+      const staleList: HookCallback = async (hookInput) => {
+        if (turn.quiet || (hookInput as StopHookInput).stop_hook_active || !turn.openPlan) return {};
+        turn.quiet = true;
+        return { decision: "block", reason: STALE_LIST };
+      };
       const options: Options = {
         cwd: input.cwd,
         abortController,
@@ -530,7 +573,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         // the turn, and with it the permission stream its tool calls need.
         ...(input.team?.length ? { env: { ...(plan?.env ?? process.env), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1" } } : plan ? { env: plan.env } : {}),
         ...withUserServers(harnessToolOptions(harnessTools, { ...(input.projectId ? { projectId: input.projectId } : {}), ...(input.threadId ? { threadId: input.threadId } : {}) }), input.mcpServers),
-        hooks: { PreToolUse: [{ matcher: "Bash", hooks: bashHooks }] },
+        hooks: { PreToolUse: [{ matcher: "Bash", hooks: bashHooks }], Stop: [{ hooks: [staleList] }] },
         canUseTool: async (toolName, toolInput, { suggestions }): Promise<PermissionResult> => {
           // Plan mode's own gate: Claude presents its plan, the user decides how
           // to proceed, and the answer sets the mode for the accepted edits.
@@ -692,6 +735,10 @@ export interface TurnState {
   toolPayloads: Map<string, RunPayload | { diff: ToolDiff[] } | undefined>;
   /** tool_use ids of TodoWrite calls, whose plan replaced their tool rows; their results are skipped too. */
   planToolIds: Set<string>;
+  /** The thread's latest plan this turn still has unfinished parts. */
+  openPlan: boolean;
+  /** Asked to bring the list up to date as it stopped: its reply stands, so later text is dropped. */
+  quiet: boolean;
   /** tool_use ids of Agent (Task) calls, so a background launch can be told apart from a result. */
   agentIds: Set<string>;
   /** Agent calls running in the background: their row waits for the task_notification, not the placeholder result. */
@@ -727,6 +774,8 @@ export function newTurnState(): TurnState {
     pending: new Map(),
     toolPayloads: new Map(),
     planToolIds: new Set(),
+    openPlan: false,
+    quiet: false,
     agentIds: new Set(),
     backgroundAgents: new Set(),
     reportedError: null,
@@ -832,6 +881,7 @@ export function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnS
         const itemId = `${turn.messageId ?? "m"}:${ev.index}`;
         switch (ev.delta.type) {
           case "text_delta": {
+            if (turn.quiet) return;
             input.onTextDelta(ev.delta.text, itemId);
             const prev = turn.pending.get(itemId);
             turn.pending.set(itemId, { kind: "text", text: (prev?.text ?? "") + ev.delta.text });
@@ -969,6 +1019,7 @@ type AssistantBlock = Extract<SDKMessage, { type: "assistant" }>["message"]["con
 function emitAssistantBlock(block: AssistantBlock, itemId: string, input: TurnInput, turn: TurnState, parentId: string | undefined): void {
   if (block.type === "text" && block.text.trim()) {
     turn.pending.delete(itemId);
+    if (turn.quiet && !parentId) return;
     input.onEvent({ kind: "assistant-text", text: block.text, itemId, ...(parentId ? { parentId } : {}) });
     return;
   }
@@ -994,11 +1045,14 @@ function emitAssistantBlock(block: AssistantBlock, itemId: string, input: TurnIn
   const toolInput = (block.input ?? {}) as Record<string, unknown>;
   // TodoWrite is a plan, not a tool: emit plan entries and skip both its row and
   // (below) its tool_result. A subagent's todo list is not the thread's plan.
-  if (block.name === "TodoWrite" && Array.isArray(toolInput.todos)) {
-    const entries = todoPlanEntries(toolInput.todos);
+  if ((block.name === "TodoWrite" || block.name === `mcp__${TOOL_SERVER}__${TODO_TOOL}`) && Array.isArray(toolInput.todos)) {
+    const entries = normalizePlan(toolInput.todos);
     if (entries) {
       turn.planToolIds.add(block.id);
-      if (!parentId) input.onEvent({ kind: "plan", entries });
+      if (!parentId) {
+        turn.openPlan = entries.some((e) => e.status !== "completed");
+        input.onEvent({ kind: "plan", entries });
+      }
       return;
     }
   }
@@ -1057,19 +1111,6 @@ function resultText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content.map((b) => (b && typeof b === "object" && "text" in b && typeof b.text === "string" ? b.text : "")).join(" ");
-}
-
-/** A TodoWrite's todos as canonical plan entries, or null when the list isn't one. */
-function todoPlanEntries(todos: unknown[]): PlanEntry[] | null {
-  const entries: PlanEntry[] = [];
-  for (const item of todos) {
-    if (!item || typeof item !== "object") return null;
-    const { content, status } = item as { content?: unknown; status?: unknown };
-    if (typeof content !== "string" || typeof status !== "string") return null;
-    if (status !== "pending" && status !== "in_progress" && status !== "completed") continue;
-    entries.push({ content, status });
-  }
-  return entries;
 }
 
 function describeError(code: string): string {
