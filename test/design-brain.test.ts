@@ -190,15 +190,18 @@ describe("Service design systems", () => {
     expect(prompts[2]).toBe("third");
   });
 
-  it("defaults to the project's DESIGN.md, then Clean", async () => {
-    const { service, project, projectDir } = setup(join(RESOURCES, "design-systems"));
+  it("defaults to the project's DESIGN.md, then Clean, for a thread with no stored system; Auto follows the project's own", async () => {
+    const { service, store, project, projectDir, prompts } = setup(join(RESOURCES, "design-systems"));
     const a = service.createThread(project.id, undefined, "design");
+    expect(a.designSystem).toBe("auto");
+    store.setDesignSystem(a.id, null);
     await service.send({ threadId: a.id, text: "x" });
     expect(readFileSync(join(projectDir, "designs", a.id.slice(0, 8), "system", ".system"), "utf8")).toBe("clean");
 
     writeFileSync(join(projectDir, "DESIGN.md"), "# Ours");
     const b = service.createThread(project.id, undefined, "design");
     await service.send({ threadId: b.id, text: "x" });
+    expect(prompts[1]).toContain('follows the project\'s own DESIGN.md. Before you build, call design_set_direction once with the surface, mode and tier; use style "project".');
     const dir = join(projectDir, "designs", b.id.slice(0, 8), "system");
     expect(readFileSync(join(dir, "DESIGN.md"), "utf8")).toBe("# Ours");
     expect(existsSync(join(dir, "tokens.css"))).toBe(false);

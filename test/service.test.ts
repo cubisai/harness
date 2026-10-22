@@ -427,7 +427,8 @@ describe("Service.send", () => {
     });
     const project = store.addProject(tempDir());
     const chat = service.createThread(project.id);
-    const design = service.createThread(project.id, undefined, "design");
+    // A thread on a fixed system (an Auto thread hears its tier from design_set_direction instead).
+    const design = service.createThread(project.id, undefined, "design", "clean");
     expect(() => service.setPrototypeTier(chat.id, "quick")).toThrow(/design thread/);
     await service.send({ threadId: design.id, text: "one" });
     await service.send({ threadId: design.id, text: "two" });

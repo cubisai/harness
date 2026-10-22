@@ -46,7 +46,9 @@ import { saveRef } from "./design/refs";
 import { addComment, deleteComment, loadComments, saveComments, updateComment } from "./design/comments";
 import { applyStyleEdit, applyTextEdit } from "./design/textedit";
 import { keepTweaks } from "./design/tweaks";
-import { forkSystem, listDesignSystems, materializeSystem, resolveDesignSystem, type DesignSystemInfo } from "./design/systems";
+import { forkSystem, listDesignStyles, listDesignSystems, materializeSystem, resolveDesignSystem, type DesignStyleInfo, type DesignSystemInfo } from "./design/systems";
+import { AUTO_SYSTEM, isAuto, modeLabel, STYLE_PREFIX, type DesignDirection } from "../shared/direction";
+import { DESIGN_DIRECTION_TOOL } from "./design/tools";
 import { parseTokens, setToken } from "./design/tokens";
 import { skillsOf } from "../shared/skill-list";
 import type { AgentDriver, HarnessTool, ModelSwitch, SessionSeed } from "./agents/types";
@@ -101,6 +103,8 @@ export class Service {
   private openScripts = new Map<string, { toolUseId: string; code: string | null }[]>();
   private artifacts: ArtifactDeps | null = null;
   private designSystemsDir: string | null = null;
+  private designStylesDir: string | null = null;
+  private designFontsDir: string | null = null;
   /** Projects already warned about loading the same conventions twice: said once, not every turn. */
   private scopeChecked = new Set<string>();
   private pendingPermissions = new Map<string, (d: PermissionDecision) => void>();
@@ -223,7 +227,9 @@ export class Service {
     const wanted = agent ?? d.agent;
     // A default agent that's no longer installed falls back to the first one.
     const driver = (wanted && this.drivers.get(wanted)) || [...this.drivers.values()][0]!;
-    const thread = this.store.createThread(projectId, driver.id, driver.defaultModel, d.permissionMode, kind, designSystem, expertId);
+    // A design thread nobody picked a system for starts on Auto: the agent picks the style (the project's own still wins).
+    const system = kind === "design" ? (designSystem ?? AUTO_SYSTEM) : designSystem;
+    const thread = this.store.createThread(projectId, driver.id, driver.defaultModel, d.permissionMode, kind, system, expertId);
     if (!isChatsRoot(project.path, this.chatsRoot)) return thread;
     // A chat works in its own folder, so files one chat writes never show up in another.
     const dir = join(project.path, thread.id);
@@ -1383,9 +1389,25 @@ export class Service {
     this.designSystemsDir = dir;
   }
 
+  /** Where the style library and its font pack live; without them Auto threads get only their project's own system. */
+  setDesignStylesDir(stylesDir: string, fontsDir: string): void {
+    this.designStylesDir = stylesDir;
+    this.designFontsDir = fontsDir;
+  }
+
+  /** The style library (bundled), in folder order. */
+  designStyles(): DesignStyleInfo[] {
+    return this.designStylesDir ? listDesignStyles(this.designStylesDir, this.designFontsDir ?? "") : [];
+  }
+
+  /** Every system a project's design thread can resolve to: its own, the built-ins, then the styles. */
+  private allSystems(projectId: string | null): DesignSystemInfo[] {
+    return [...listDesignSystems(this.projectPath(projectId), this.designSystemsDir ?? ""), ...this.designStyles()];
+  }
+
   /** The design systems a project's design threads can use, for the composer's picker. */
   designSystems(projectId: string | null): DesignSystemOption[] {
-    return listDesignSystems(this.projectPath(projectId), this.designSystemsDir ?? "").map(({ id, name, description, swatches, source }) => ({
+    return this.allSystems(projectId).map(({ id, name, description, swatches, source }) => ({
       id,
       name,
       description,
@@ -1394,10 +1416,73 @@ export class Service {
     }));
   }
 
-  /** A design thread's resolved system with its files, or null (not a design thread, or no system at all). */
+  /**
+   * A design thread's resolved system with its files, or null (not a design thread, no system at all, or an Auto
+   * thread whose agent hasn't picked a style yet). Auto follows the project's own DESIGN.md when it has one.
+   */
   private threadSystem(thread: Thread): DesignSystemInfo | null {
     if (thread.kind !== "design") return null;
-    return resolveDesignSystem(listDesignSystems(this.projectPath(thread.projectId), this.designSystemsDir ?? ""), thread.designSystem);
+    const list = this.allSystems(thread.projectId);
+    if (isAuto(thread)) {
+      const style = list.find((s) => s.id === "project") ? "project" : thread.designDirection?.style;
+      return style ? (list.find((s) => s.id === style) ?? null) : null;
+    }
+    return resolveDesignSystem(list, thread.designSystem);
+  }
+
+  /** The styles other design threads in the project used most recently (newest first, at most 3), to avoid repeats. */
+  private recentStyles(thread: Thread): string[] {
+    const out: string[] = [];
+    for (const t of this.store.listThreads(thread.projectId).sort((a, b) => b.updatedAt - a.updatedAt)) {
+      const style = t.id !== thread.id ? t.designDirection?.style : undefined;
+      if (style?.startsWith(STYLE_PREFIX) && !out.includes(style)) out.push(style);
+      if (out.length === 3) break;
+    }
+    return out.map((s) => s.slice(STYLE_PREFIX.length));
+  }
+
+  /**
+   * Record the direction an Auto design thread's agent chose and put its style in `<design folder>/system/` right
+   * away, so the agent can read it in the same turn. Returns the tool's reply. A thread on a fixed system keeps it:
+   * only surface, mode and tier are recorded then.
+   */
+  setDesignDirection(threadId: string, direction: DesignDirection): string {
+    const thread = this.store.getThread(threadId);
+    if (thread.kind !== "design") throw new Error("Only a design thread has a direction.");
+    const list = this.allSystems(thread.projectId);
+    const hasProject = list.some((s) => s.id === "project");
+    const auto = isAuto(thread);
+    let style = direction.style.trim();
+    if (auto) {
+      if (hasProject) style = "project";
+      else {
+        if (!style.startsWith(STYLE_PREFIX)) style = `${STYLE_PREFIX}${style}`;
+        if (!list.some((s) => s.id === style)) {
+          const names = this.designStyles().map((s) => s.id.slice(STYLE_PREFIX.length));
+          throw new Error(`Unknown style "${direction.style}". Pick one of: ${names.join(", ")}.`);
+        }
+      }
+    }
+    const saved = this.store.setDesignDirection(threadId, { ...direction, style: auto ? style : (thread.designSystem ?? "default") });
+    // The chip shows what Auto picked.
+    this.broadcast({ type: "thread", thread: saved });
+    const system = this.threadSystem(saved);
+    const root = this.designRoot(threadId);
+    const tier = tierOf(saved);
+    if (root) {
+      if (system) materializeSystem(system, join(root, "system"));
+      try {
+        writeFileSync(join(root, ".tier"), tier);
+      } catch {
+        // The tier note below still reaches the agent.
+      }
+    }
+    const folder = designOf(saved);
+    const head = `Direction: ${direction.surface}, ${modeLabel(direction.mode)}, tier ${tier}.`;
+    const where = system
+      ? ` \`${folder}/system/\` now holds ${system.name}${auto && !hasProject ? " (the style you picked)" : ""}: read its DESIGN.md before you build, link \`system/tokens.css\` and use its custom properties${system.fontFiles?.length ? "; it declares its fonts from `system/fonts/`" : ""}.`
+      : "";
+    return `${head}${where}\n${tierNote(tier)}`;
   }
 
   /** The System tab's view of a system: DESIGN.md and its tokens, plus whether (and how) it can be edited. */
@@ -1415,8 +1500,8 @@ export class Service {
       id: system.id,
       name: system.name,
       source: system.source,
-      editable: system.source !== "builtin" || project !== null,
-      copyOnWrite: system.source === "builtin",
+      editable: (system.source !== "builtin" && system.source !== "style") || project !== null,
+      copyOnWrite: system.source === "builtin" || system.source === "style",
       designMd: read(system.designMd),
       groups: parseTokens(read(system.tokensCss)),
     };
@@ -1438,7 +1523,7 @@ export class Service {
     let thread = this.store.getThread(threadId);
     let system = this.threadSystem(thread);
     if (!system) throw new Error("Only a design thread has a design system.");
-    if (system.source === "builtin") {
+    if (system.source === "builtin" || system.source === "style") {
       const project = this.projectPath(thread.projectId);
       if (!project) throw new Error("Open a project folder to customize a built-in design system.");
       system = forkSystem(system, project);
@@ -1456,10 +1541,14 @@ export class Service {
     return { doc: this.systemDoc(thread, system), thread };
   }
 
-  /** Pick a design thread's system (null = the default); the next turn copies it in and tells the agent. */
+  /**
+   * Pick a design thread's system (null = the default); the next turn copies it in and tells the agent. Switching to
+   * Auto drops any earlier direction, so the agent picks one afresh on its next turn.
+   */
   setDesignSystem(threadId: string, id: string | null): Thread {
     const thread = this.store.getThread(threadId);
     if (thread.kind !== "design") throw new Error("Only a design thread has a design system.");
+    if (id === AUTO_SYSTEM && thread.designSystem !== AUTO_SYSTEM) this.store.setDesignDirection(threadId, null);
     return this.store.setDesignSystem(threadId, id);
   }
 
@@ -1487,6 +1576,8 @@ export class Service {
   private prepareDesignTier(thread: Thread): string {
     const root = this.designRoot(thread.id);
     if (!root) return "";
+    // An Auto thread's tier comes with its direction: design_set_direction's reply says it.
+    if (isAuto(thread) && !thread.prototypeTier && !thread.designDirection) return "";
     const tier = tierOf(thread);
     const marker = join(root, ".tier");
     let said = "";
@@ -1505,6 +1596,16 @@ export class Service {
     return `\n\n(CubiQ: ${tierNote(tier)})`;
   }
 
+  /** What an Auto thread is told until its agent picks a direction: call the tool first, and which styles to avoid. */
+  private autoNote(thread: Thread, system: DesignSystemInfo | null): string {
+    if (system?.id === "project") {
+      return `\n\n(CubiQ: this design thread is on Auto and follows the project's own DESIGN.md. Before you build, call ${DESIGN_DIRECTION_TOOL} once with the surface, mode and tier; use style "project".)`;
+    }
+    const recent = this.recentStyles(thread);
+    const avoid = recent.length ? ` Recently used in this project: ${recent.join(", ")}; pick a different style unless the brief asks for one of them.` : "";
+    return `\n\n(CubiQ: this design thread is on Auto. Before you build, call ${DESIGN_DIRECTION_TOOL} once with the surface, mode, tier and the style that fits this brief.${avoid})`;
+  }
+
   /**
    * Copy a design thread's system into `<design folder>/system/` when it's
    * missing or changed (the canvas can only load files from that folder, and the
@@ -1515,8 +1616,9 @@ export class Service {
     const root = this.designRoot(thread.id);
     if (!root) return "";
     try {
-      const system = resolveDesignSystem(listDesignSystems(this.projectPath(thread.projectId), this.designSystemsDir ?? ""), thread.designSystem);
-      if (!system) return "";
+      const system = this.threadSystem(thread);
+      const ask = isAuto(thread) && !thread.designDirection ? this.autoNote(thread, system) : "";
+      if (!system) return ask;
       const dir = join(root, "system");
       let before = "";
       try {
@@ -1525,9 +1627,11 @@ export class Service {
         // First turn: nothing there yet.
       }
       materializeSystem(system, dir);
-      return before && before !== system.id
-        ? `\n\n(CubiQ: the design system is now ${system.name}; \`${designOf(thread)}/system/\` was replaced. Read its DESIGN.md and restyle with its tokens.)`
-        : "";
+      const switched =
+        before && before !== system.id
+          ? `\n\n(CubiQ: the design system is now ${system.name}; \`${designOf(thread)}/system/\` was replaced. Read its DESIGN.md and restyle with its tokens.)`
+          : "";
+      return switched + ask;
     } catch {
       // A failed copy leaves the last system in place; never fail the turn over it.
       return "";

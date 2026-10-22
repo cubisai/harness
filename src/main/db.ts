@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { bindingKey } from "../shared/bindings";
 import { readTier } from "../shared/tiers";
 import type { PrototypeTier } from "../shared/tiers";
+import { readDirection, type DesignDirection } from "../shared/direction";
 import type {
   ArtifactVersion,
   EventPage,
@@ -355,6 +356,8 @@ export class Store {
         sql: `ALTER TABLE threads ADD COLUMN merged_sha TEXT;
           ALTER TABLE threads ADD COLUMN merged_into TEXT;`,
       },
+      // 33: an Auto design thread's direction (surface, mode, style, tier) as JSON; null until the agent picks one.
+      { applied: () => this.hasColumn("threads", "design_direction"), sql: "ALTER TABLE threads ADD COLUMN design_direction TEXT" },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;
@@ -516,6 +519,12 @@ export class Store {
   /** A design thread's design system (null = the default). Not activity: the thread keeps its place. */
   setDesignSystem(id: string, designSystem: string | null): Thread {
     this.db.prepare("UPDATE threads SET design_system = ? WHERE id = ?").run(designSystem, id);
+    return this.getThread(id);
+  }
+
+  /** An Auto design thread's direction (null = not chosen yet). Not activity: the thread keeps its place. */
+  setDesignDirection(id: string, direction: DesignDirection | null): Thread {
+    this.db.prepare("UPDATE threads SET design_direction = ? WHERE id = ?").run(direction ? JSON.stringify(direction) : null, id);
     return this.getThread(id);
   }
 
@@ -987,7 +996,7 @@ export class Store {
 }
 
 const THREAD_COLS =
-  "id, project_id, agent, title, session_id, bindings, model, effort, context_window, permission_mode, created_at, updated_at, pinned, archived, branch, worktree_path, base_branch, base_sha, merged_sha, merged_into, kind, design_system, prototype_tier, expert_id, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
+  "id, project_id, agent, title, session_id, bindings, model, effort, context_window, permission_mode, created_at, updated_at, pinned, archived, branch, worktree_path, base_branch, base_sha, merged_sha, merged_into, kind, design_system, prototype_tier, design_direction, expert_id, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
 
 export interface LedgerTarget {
   threadId: string;
@@ -1066,6 +1075,7 @@ interface ThreadRow {
   kind: string | null;
   design_system: string | null;
   prototype_tier: string | null;
+  design_direction: string | null;
   expert_id: string | null;
   project_path: string | null;
 }
@@ -1132,6 +1142,7 @@ function toThread(r: ThreadRow): Thread {
     kind: r.kind === "design" ? "design" : "chat",
     ...(r.kind === "design" && r.design_system ? { designSystem: r.design_system } : {}),
     ...(r.kind === "design" && readTier(r.prototype_tier) ? { prototypeTier: readTier(r.prototype_tier)! } : {}),
+    ...(r.kind === "design" && readDirection(r.design_direction) ? { designDirection: readDirection(r.design_direction)! } : {}),
     ...(r.expert_id ? { expertId: r.expert_id } : {}),
   };
 }

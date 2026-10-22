@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
+import { STYLE_PREFIX } from "../../shared/direction";
 
 /** One design system a design thread can be started from. */
 export interface DesignSystemInfo {
@@ -10,11 +11,22 @@ export interface DesignSystemInfo {
   description: string;
   /** Up to 4 CSS colors from index.md `swatches:` (comma-separated), for the picker. */
   swatches: string[];
-  source: "project" | "projectFolder" | "builtin";
+  source: "project" | "projectFolder" | "builtin" | "style";
   /** Absolute path of its DESIGN.md. */
   designMd: string;
   /** Absolute path of its tokens.css, when it has one. */
   tokensCss?: string;
+  /** Font files (absolute) copied into `system/fonts/` with it: a style's faces from the bundled font pack. */
+  fontFiles?: string[];
+}
+
+/** A style from the style library: a design system plus what the agent matches it by. */
+export interface DesignStyleInfo extends DesignSystemInfo {
+  source: "style";
+  tags: string[];
+  modes: string[];
+  /** web | mobile | deck | any */
+  platform: string;
 }
 
 /** Strip one pair of surrounding single or double quotes. */
@@ -25,21 +37,34 @@ function unquote(value: string): string {
   return value;
 }
 
+/** Scalar `key: value` lines between two leading `---` lines, keys lowercased; empty without frontmatter. */
+function frontmatter(text: string): Map<string, string> {
+  const fields = new Map<string, string>();
+  const lines = text.split(/\r?\n/);
+  if (lines[0]?.trim() !== "---") return fields;
+  const end = lines.findIndex((l, i) => i > 0 && l.trim() === "---");
+  if (end === -1) return fields;
+  for (const line of lines.slice(1, end)) {
+    const match = /^([A-Za-z][\w-]*):\s*(.*)$/.exec(line.trim());
+    if (match) fields.set(match[1]!.toLowerCase(), unquote(match[2]!.trim()));
+  }
+  return fields;
+}
+
+/** A comma-separated frontmatter list, trimmed, empties dropped. */
+function list(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 /**
  * The frontmatter a design system's `index.md` uses: scalar `key: value` lines
  * between two `---` lines. `swatches` is a comma-separated list, at most four.
  */
 export function parseSystemIndex(text: string): { type?: string; name?: string; description?: string; swatches: string[] } {
-  const lines = text.split(/\r?\n/);
-  if (lines[0]?.trim() !== "---") return { swatches: [] };
-  const end = lines.indexOf("---", 1);
-  if (end === -1) return { swatches: [] };
-
-  const fields = new Map<string, string>();
-  for (const line of lines.slice(1, end)) {
-    const match = /^([A-Za-z][\w-]*):\s*(.*)$/.exec(line.trim());
-    if (match) fields.set(match[1]!.toLowerCase(), unquote(match[2]!.trim()));
-  }
+  const fields = frontmatter(text);
   const swatches = (fields.get("swatches") ?? "")
     .split(",")
     .map((s) => s.trim())
@@ -103,6 +128,7 @@ function collectSystems(
     if (!isFile(designMd)) continue;
     seen.add(id);
     const tokensCss = join(dir, "tokens.css");
+    const fontFiles = fontsIn(dir);
     out.push({
       id,
       name: index.name || folder,
@@ -111,6 +137,7 @@ function collectSystems(
       source,
       designMd,
       ...(isFile(tokensCss) ? { tokensCss } : {}),
+      ...(fontFiles.length ? { fontFiles } : {}),
     });
   }
 }
@@ -134,6 +161,63 @@ export function listDesignSystems(projectPath: string | null, builtinDir: string
   }
   collectSystems(builtinDir, "builtin", out, seen);
   return out;
+}
+
+/**
+ * The style library in `stylesDir`: one folder per style with `index.md`
+ * (`type: design-style`, name, description, swatches, tags, modes, platform,
+ * fonts), `DESIGN.md` and `tokens.css`. `fonts` names files in `fontsDir` that
+ * travel with it. Sorted by folder; anything malformed is skipped.
+ */
+export function listDesignStyles(stylesDir: string, fontsDir: string): DesignStyleInfo[] {
+  let folders: string[];
+  try {
+    folders = readdirSync(stylesDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && /^[a-z0-9][a-z0-9-]*$/.test(e.name))
+      .map((e) => e.name)
+      .sort();
+  } catch {
+    return [];
+  }
+  const out: DesignStyleInfo[] = [];
+  for (const folder of folders) {
+    const dir = join(stylesDir, folder);
+    const fields = frontmatter(readText(join(dir, "index.md")) ?? "");
+    const designMd = join(dir, "DESIGN.md");
+    const tokensCss = join(dir, "tokens.css");
+    if (fields.get("type") !== "design-style" || !isFile(designMd) || !isFile(tokensCss)) continue;
+    const fontFiles = list(fields.get("fonts"))
+      .filter((f) => /^[\w.-]+\.woff2$/.test(f))
+      .map((f) => join(fontsDir, f))
+      .filter(isFile);
+    out.push({
+      id: `${STYLE_PREFIX}${folder}`,
+      name: fields.get("name") || folder,
+      description: fields.get("description") || "",
+      swatches: list(fields.get("swatches")).slice(0, 4),
+      source: "style",
+      designMd,
+      tokensCss,
+      ...(fontFiles.length ? { fontFiles } : {}),
+      tags: list(fields.get("tags")),
+      modes: list(fields.get("modes")),
+      platform: fields.get("platform") || "any",
+    });
+  }
+  return out;
+}
+
+/**
+ * The style index the agent picks from, one short line per style (it rides in a tool description on every design
+ * turn): the description's first clause, three tags, modes and platform. The full note arrives once a style is picked.
+ */
+export function styleIndex(styles: DesignStyleInfo[]): string {
+  return styles
+    .map((s) => {
+      const gist = s.description.split(/[:.;]/)[0]!.trim();
+      return `${s.id.slice(STYLE_PREFIX.length)}: ${gist} [${s.tags.slice(0, 3).join(", ")}; ${s.modes.join("/")}; ${s.platform}]`;
+    })
+    .join("\n");
 }
 
 /** The entry with `id`, else the project's own, else "clean", else the first. */
@@ -211,7 +295,33 @@ export function materializeSystem(system: DesignSystemInfo, destDir: string): bo
       }
     }
   }
+  changed = syncFonts(system.fontFiles ?? [], join(destDir, "fonts")) || changed;
   changed = writeIfChanged(join(destDir, ".system"), system.id) || changed;
+  return changed;
+}
+
+/** Make `fontsDir` hold exactly `files` (by name): copy new or changed ones, delete other .woff2 files there. */
+function syncFonts(files: string[], fontsDir: string): boolean {
+  const want = new Set(files.map((f) => basename(f)));
+  let changed = false;
+  let present: string[] = [];
+  try {
+    present = readdirSync(fontsDir).filter((f) => f.endsWith(".woff2"));
+  } catch {
+    // No fonts folder yet.
+  }
+  for (const name of present) {
+    if (want.has(name)) continue;
+    try {
+      rmSync(join(fontsDir, name));
+      changed = true;
+    } catch {
+      // Leave it; a stray font is harmless.
+    }
+  }
+  if (!files.length) return changed;
+  mkdirSync(fontsDir, { recursive: true });
+  for (const file of files) changed = copyIfChanged(file, join(fontsDir, basename(file))) || changed;
   return changed;
 }
 
@@ -221,9 +331,10 @@ export function materializeSystem(system: DesignSystemInfo, destDir: string): bo
  * unchanged; an existing copy is left as-is and its own index read back.
  */
 export function forkSystem(system: DesignSystemInfo, projectPath: string): DesignSystemInfo {
-  if (system.source !== "builtin") return system;
-  if (!/^[\w.-]+$/.test(system.id)) throw new Error("Can't copy this design system.");
-  const folder = `${system.id}-custom`;
+  if (system.source !== "builtin" && system.source !== "style") return system;
+  const base = system.source === "style" ? system.id.slice(STYLE_PREFIX.length) : system.id;
+  if (!/^[\w.-]+$/.test(base)) throw new Error("Can't copy this design system.");
+  const folder = `${base}-custom`;
   const dir = join(projectPath, ".agents", "design-systems", folder);
   const index = join(dir, "index.md");
   const designMd = join(dir, "DESIGN.md");
@@ -231,6 +342,7 @@ export function forkSystem(system: DesignSystemInfo, projectPath: string): Desig
 
   if (isFile(index) && isFile(designMd)) {
     const parsed = parseSystemIndex(readText(index) ?? "");
+    const fontFiles = fontsIn(dir);
     return {
       id: `project:${folder}`,
       name: parsed.name || folder,
@@ -239,6 +351,7 @@ export function forkSystem(system: DesignSystemInfo, projectPath: string): Desig
       source: "projectFolder",
       designMd,
       ...(isFile(tokensCss) ? { tokensCss } : {}),
+      ...(fontFiles.length ? { fontFiles } : {}),
     };
   }
 
@@ -250,6 +363,12 @@ export function forkSystem(system: DesignSystemInfo, projectPath: string): Desig
   writeFileSync(index, lines.join("\n"));
   copyFileSync(system.designMd, designMd);
   if (system.tokensCss) copyFileSync(system.tokensCss, tokensCss);
+  // A style's faces travel with the copy, so its tokens.css keeps finding them.
+  if (system.fontFiles?.length) {
+    mkdirSync(join(dir, "fonts"), { recursive: true });
+    for (const file of system.fontFiles) copyFileSync(file, join(dir, "fonts", basename(file)));
+  }
+  const fontFiles = fontsIn(dir);
 
   return {
     id: `project:${folder}`,
@@ -259,5 +378,18 @@ export function forkSystem(system: DesignSystemInfo, projectPath: string): Desig
     source: "projectFolder",
     designMd,
     ...(isFile(tokensCss) ? { tokensCss } : {}),
+    ...(fontFiles.length ? { fontFiles } : {}),
   };
+}
+
+/** The .woff2 files in a system folder's `fonts/`, absolute and sorted; [] when it has none. */
+function fontsIn(dir: string): string[] {
+  try {
+    return readdirSync(join(dir, "fonts"))
+      .filter((f) => f.endsWith(".woff2"))
+      .sort()
+      .map((f) => join(dir, "fonts", f));
+  } catch {
+    return [];
+  }
 }

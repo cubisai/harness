@@ -17,6 +17,7 @@ import { readTarget } from "../shared/comments";
 import { bridgeScript } from "./design/bridge";
 import { buildDesignExport, exportFileName, pageTitleSource, type DesignExportDeps } from "./design/export";
 import { lintScript } from "./design/lint";
+import { styleIndex } from "./design/systems";
 import { electronShotWindow } from "./design/shot-window";
 import { Shooter } from "./design/shooter";
 import { designTools } from "./design/tools";
@@ -557,6 +558,8 @@ async function main(): Promise<void> {
           evaluate: (url, width, height, script) => shooter.evaluate(url, width, height, script),
           lintScript: designLintJs,
           saveCritique: (id, markdown) => service.saveCritique(id, markdown),
+          setDirection: (id, direction) => service.setDesignDirection(id, direction),
+          styleIndex: () => styleIndex(service.designStyles()),
         },
         threadId,
       );
@@ -921,6 +924,10 @@ async function main(): Promise<void> {
   const syncProviderAgents = () => service.syncDrivers(PROVIDER_AGENT_PREFIX, providerAgents.list());
   syncProviderAgents();
   service.setDesignSystemsDir(app.isPackaged ? join(process.resourcesPath, "design-systems") : join(app.getAppPath(), "resources", "design-systems"));
+  service.setDesignStylesDir(
+    app.isPackaged ? join(process.resourcesPath, "design-styles") : join(app.getAppPath(), "resources", "design-styles"),
+    app.isPackaged ? join(process.resourcesPath, "design-fonts") : join(app.getAppPath(), "resources", "design-fonts"),
+  );
   // The artifact panel: versions in the store's blobs, office files parsed in a utility process.
   const previews = new PreviewHost(utilityFork(utilityProcess, join(here, "preview-worker.js")));
   const fileUrl = (threadId: string, rel: string) => `cubiq-file://f/${encodeURIComponent(threadId)}/${rel.split("/").map(encodeURIComponent).join("/")}`;

@@ -5,10 +5,12 @@ import type { HarnessTool, ToolOutput } from "../agents/types";
 import { resolveInside } from "../artifacts";
 import { formatLint, type LintResult } from "./lint";
 import type { Shot } from "./shooter";
+import { MODES, SURFACES, type DesignDirection } from "../../shared/direction";
 
 export const DESIGN_SCREENSHOT_TOOL = "design_screenshot";
 export const DESIGN_LINT_TOOL = "design_lint";
 export const DESIGN_CRITIQUE_SAVE_TOOL = "design_critique_save";
+export const DESIGN_DIRECTION_TOOL = "design_set_direction";
 
 /** The longest critique the save tool keeps. */
 export const CRITIQUE_MAX_CHARS = 32_000;
@@ -27,6 +29,10 @@ export interface DesignToolDeps {
   lintScript: string;
   /** Save the next critique version; null when the text is unchanged. */
   saveCritique(threadId: string, markdown: string): { version: number } | null;
+  /** Record the direction and put its style in place; returns what to tell the agent, throws on a bad style. */
+  setDirection(threadId: string, direction: DesignDirection): string;
+  /** The style library as one line per style, for the direction tool's description. */
+  styleIndex(): string;
 }
 
 function define<S extends z.ZodRawShape>(t: HarnessTool<S>): HarnessTool {
@@ -92,7 +98,7 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
     define({
       name: DESIGN_LINT_TOOL,
       description:
-        "Check a page of this design against the design rules: text contrast (4.5:1, 3:1 large), tap targets (44×44), spacing on the 4px grid, and colors that aren't --color-* tokens. Returns findings with CSS selectors, worst first.",
+        "Check a page of this design against the design rules: text contrast (4.5:1, 3:1 large), tap targets (44×44), spacing on the 4px grid, colors that aren't --color-* tokens, and generic-AI tells (eyebrow labels, gradient text, side stripes, hard shadows, identical card grids, emoji icons, overused display fonts). Returns findings with CSS selectors, worst first.",
       input: {
         path: z.string().optional().describe("Page inside the design folder; default index.html"),
         width: z.number().optional().describe("Viewport width in CSS px, 320-2560; default 1440"),
@@ -130,6 +136,32 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
           return { text: saved ? `Saved as Critique v${saved.version}.` : "Unchanged from the last critique; no new version." };
         } catch (err) {
           return failed("Saving the critique", err);
+        }
+      },
+    }),
+    define({
+      name: DESIGN_DIRECTION_TOOL,
+      description: [
+        "Set this design's direction before you build (an Auto thread must call it first; call it again only to change course).",
+        "surface: component (one card, badge, modal: no page chrome), page (scrolling site: nav, hero, sections, footer), screen (one task: login, settings), workspace (dashboard, admin, data), deck (16:9 slides), mobile (a 390×844 app screen).",
+        "mode, from what the visitor must achieve on this surface (not from the product): persuade (landing, pricing: decide and act; bold, committed), operate (app UI, dashboards, settings: get a task done; precise, restrained), read (docs, articles: understand; calm structure), experience (portfolio, gallery, game: the work leads).",
+        "tier: quick (rough exploration), working (everyday: tokens, states, tweaks), real-app (product-grade, critique and handoff). Use quick only when the user asks for a sketch, real-app when they ask for production or handoff.",
+        "style: the style whose world fits the brief's subject and audience (a style the brief names wins). Styles:",
+        deps.styleIndex(),
+      ].join("\n"),
+      input: {
+        surface: z.enum(SURFACES).describe("What is being designed"),
+        mode: z.enum(MODES).describe("What the visitor must achieve"),
+        tier: z.enum(["quick", "working", "real-app"]).describe("How much discipline the prototype gets"),
+        style: z.string().describe("A style id from the list (e.g. one of the ids before the colon)"),
+      },
+      autoAllow: true,
+      effect: "mutate",
+      run: async (args) => {
+        try {
+          return { text: deps.setDirection(threadId, { surface: args.surface, mode: args.mode, tier: args.tier, style: args.style }) };
+        } catch (err) {
+          return { text: err instanceof Error ? err.message : String(err), isError: true };
         }
       },
     }),

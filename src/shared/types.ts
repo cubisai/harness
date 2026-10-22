@@ -2,6 +2,7 @@
 // crosses the preload bridge is one of these types.
 
 import type { PrototypeTier } from "./tiers";
+import type { DesignDirection } from "./direction";
 import type { ExpertDef, ExpertImportResult } from "./experts";
 import type { CommentTarget, DesignComment } from "./comments";
 import type { LearnCase, LearnOverview, LearnSettings, Lesson, LessonAction, TurnScore } from "./learn";
@@ -489,10 +490,12 @@ export interface Thread {
   mergedInto?: string;
   /** "design" threads open with the design canvas; absent = "chat" (older rows and exports). */
   kind?: ThreadKind;
-  /** A design thread's design system id (see DesignSystemOption); absent = the default. */
+  /** A design thread's design system id (see DesignSystemOption): "auto" lets the agent pick a style; absent = the default. */
   designSystem?: string;
-  /** A design thread's prototype tier; absent = working (and always absent on chat threads). */
+  /** A design thread's prototype tier; absent = the direction's, else working (and always absent on chat threads). */
   prototypeTier?: PrototypeTier;
+  /** What the agent chose for an Auto design thread (surface, mode, style, tier); absent until it chooses. */
+  designDirection?: DesignDirection;
   /** The expert this thread was summoned with (ExpertDef id); absent = none. */
   expertId?: string;
 }
@@ -871,13 +874,13 @@ export interface ArtifactVersion {
 /** A file an agent wrote in a thread, relative to the thread's folder (forward slashes), newest version last. */
 /** A design system a design thread can use, for the composer's picker. */
 export interface DesignSystemOption {
-  /** "project" (the repo's DESIGN.md), "project:<folder>" (.agents/design-systems), or a built-in's folder name. */
+  /** "project" (the repo's DESIGN.md), "project:<folder>" (.agents/design-systems), a built-in's folder name, or "style:<folder>" (the style library). */
   id: string;
   name: string;
   description: string;
   /** Up to 4 CSS colors to preview it. */
   swatches: string[];
-  source: "project" | "projectFolder" | "builtin";
+  source: "project" | "projectFolder" | "builtin" | "style";
 }
 
 /** One custom property in a design system's tokens.css: its light (`:root`) value and its dark override, if any. */

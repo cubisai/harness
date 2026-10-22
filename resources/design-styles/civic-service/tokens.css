@@ -1,0 +1,98 @@
+/* Civic Service: a CubiQ style. Link this file and use the custom properties, not raw values. */
+@font-face {
+  font-family: "Hanken Grotesk";
+  src: url("fonts/hanken-grotesk.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+:root {
+  color-scheme: light;
+
+  /* Color */
+  --color-bg: #FFFFFF;
+  --color-surface: #F3F2F1;
+  --color-surface-2: #E5E4E2;
+  --color-text: #0B0C0C;
+  --color-text-muted: #4B4F52;
+  --color-border: #B1B4B6;
+  --color-primary: #00703C;
+  --color-on-primary: #FFFFFF;
+  --color-accent: #1D70B8;
+  --color-success: #00703C;
+  --color-warning: #8A5A00;
+  --color-danger: #D4351C;
+  --color-focus: #FFDD00;
+
+  /* Type */
+  --font-sans: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --text-xs: 12px;
+  --leading-xs: 16px;
+  --text-sm: 14px;
+  --leading-sm: 20px;
+  --text-md: 16px;
+  --leading-md: 24px;
+  --text-lg: 20px;
+  --leading-lg: 28px;
+  --text-xl: 24px;
+  --leading-xl: 32px;
+  --text-2xl: 32px;
+  --leading-2xl: 40px;
+  --text-3xl: 48px;
+  --leading-3xl: 56px;
+  --text-4xl: 64px;
+  --leading-4xl: 72px;
+  --text-display: 48px;
+  --leading-display: 56px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 700;
+
+  /* Space: the 8pt scale (4 is for type and icon nudges only) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* Size */
+  --target-min: 44px;
+  --content-max: 960px;
+  --measure: 68ch;
+
+  /* Radius */
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-full: 9999px;
+
+  /* Elevation */
+  --shadow-1: none;
+  --shadow-2: 0 2px 0 rgb(11 12 12 / 1);
+  --shadow-3: none;
+
+  /* Motion */
+  --duration-fast: 120ms;
+  --duration: 220ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration: 0ms;
+  }
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}

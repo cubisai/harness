@@ -1,0 +1,98 @@
+/* Chalk Keynote: a CubiQ style. Link this file and use the custom properties, not raw values. */
+@font-face {
+  font-family: "Schibsted Grotesk";
+  src: url("fonts/schibsted-grotesk.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+}
+:root {
+  color-scheme: dark;
+
+  /* Color */
+  --color-bg: #0E3B2E;
+  --color-surface: #124A3A;
+  --color-surface-2: #175946;
+  --color-text: #F4F1E8;
+  --color-text-muted: #BFD0C6;
+  --color-border: #2F6B57;
+  --color-primary: #F4C95D;
+  --color-on-primary: #0E3B2E;
+  --color-accent: #F4C95D;
+  --color-success: #9BE3B4;
+  --color-warning: #F4C95D;
+  --color-danger: #FF9C8A;
+  --color-focus: #F4C95D;
+
+  /* Type */
+  --font-sans: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --text-xs: 12px;
+  --leading-xs: 16px;
+  --text-sm: 14px;
+  --leading-sm: 20px;
+  --text-md: 16px;
+  --leading-md: 24px;
+  --text-lg: 20px;
+  --leading-lg: 28px;
+  --text-xl: 24px;
+  --leading-xl: 32px;
+  --text-2xl: 32px;
+  --leading-2xl: 40px;
+  --text-3xl: 48px;
+  --leading-3xl: 56px;
+  --text-4xl: 64px;
+  --leading-4xl: 72px;
+  --text-display: 160px;
+  --leading-display: 152px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 700;
+
+  /* Space: the 8pt scale (4 is for type and icon nudges only) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* Size */
+  --target-min: 44px;
+  --content-max: 1920px;
+  --measure: 68ch;
+
+  /* Radius */
+  --radius-sm: 0px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+  --radius-full: 9999px;
+
+  /* Elevation */
+  --shadow-1: none;
+  --shadow-2: none;
+  --shadow-3: none;
+
+  /* Motion */
+  --duration-fast: 120ms;
+  --duration: 220ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration: 0ms;
+  }
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
