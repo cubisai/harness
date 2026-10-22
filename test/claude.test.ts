@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ModelInfo, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
-import { bundledClaudeVersion, CLAUDE_KEPT_BUILTIN_SKILLS, createClaudeDriver, sessionSkills, skillFolders, FIRST_RELIST_MS, fromSdk, handleMessage, harnessToolOptions, newTurnState, pickClaudeExecutable, priceUsage, resolvePackagedClaudeBinary, TOOL_SERVER, turnEndFromResult } from "../src/main/agents/claude";
+import { bundledClaudeVersion, CLAUDE_KEPT_BUILTIN_SKILLS, CODE_NUDGE, createClaudeDriver, STALE_LIST, TODO_HINT, sessionSkills, skillFolders, FIRST_RELIST_MS, fromSdk, handleMessage, harnessToolOptions, newTurnState, pickClaudeExecutable, priceUsage, resolvePackagedClaudeBinary, TOOL_SERVER, turnEndFromResult } from "../src/main/agents/claude";
 import { MODEL_TTL_MS } from "../src/main/agents/model-ttl";
 import { MEMORY_READ_TOOL, MEMORY_WRITE_TOOL } from "../src/main/memory/tool";
 import type { HarnessTool, ToolContext, TurnInput } from "../src/main/agents/types";
@@ -252,7 +252,7 @@ describe("Claude driver guide", () => {
     const { input } = turnInput();
     await d.runTurn(input);
     expect(sdk.calls).toHaveLength(1);
-    expect(sdk.calls[0]?.options.systemPrompt).toEqual({ type: "preset", preset: "claude_code", append: "GUIDE" });
+    expect(sdk.calls[0]?.options.systemPrompt).toEqual({ type: "preset", preset: "claude_code", append: `GUIDE\n\n${TODO_HINT}` });
   });
 
   it("adds the run_code line after the guide in code mode only", async () => {
@@ -261,7 +261,7 @@ describe("Claude driver guide", () => {
       sdk.calls.length = 0;
       const { input } = turnInput();
       await createClaudeDriver({ pluginDir: () => null, guide: () => "GUIDE", codeTool, codeMode: () => mode }).runTurn(input);
-      expect(sdk.calls[0]?.options.systemPrompt).toEqual({ type: "preset", preset: "claude_code", append: mode === "on" ? `GUIDE\n\n${CODE_HINT}` : "GUIDE" });
+      expect(sdk.calls[0]?.options.systemPrompt).toEqual({ type: "preset", preset: "claude_code", append: mode === "on" ? `GUIDE\n\n${TODO_HINT}\n\n${CODE_HINT} ${CODE_NUDGE}` : `GUIDE\n\n${TODO_HINT}` });
     }
   });
 
@@ -292,13 +292,13 @@ describe("Claude driver guide", () => {
     expect(await decide(hooksOf(1), { command: "rg -l TODO src" })).toBe("allow");
   });
 
-  it("leaves systemPrompt out when there's no guide", async () => {
+  it("appends only the todo line when there's no guide", async () => {
     sdk.calls.length = 0;
     const d = createClaudeDriver({ pluginDir: () => null });
     const { input } = turnInput();
     await d.runTurn(input);
     expect(sdk.calls).toHaveLength(1);
-    expect(sdk.calls[0]?.options).not.toHaveProperty("systemPrompt");
+    expect(sdk.calls[0]?.options.systemPrompt).toEqual({ type: "preset", preset: "claude_code", append: TODO_HINT });
   });
 
   it("appends the expert block between the guide and the memory", async () => {
@@ -308,7 +308,7 @@ describe("Claude driver guide", () => {
     input.expert = "<expert>Be terse.</expert>";
     await d.runTurn(input);
     expect(sdk.calls).toHaveLength(1);
-    expect(sdk.calls[0]?.options.systemPrompt).toEqual({ type: "preset", preset: "claude_code", append: "GUIDE\n\n<expert>Be terse.</expert>" });
+    expect(sdk.calls[0]?.options.systemPrompt).toEqual({ type: "preset", preset: "claude_code", append: `GUIDE\n\n${TODO_HINT}\n\n<expert>Be terse.</expert>` });
     expect(sdk.calls[0]?.options).not.toHaveProperty("agents");
   });
 
@@ -377,7 +377,7 @@ describe("Claude driver memory", () => {
     expect(calls).toEqual([{ projectId: "p1", threadId: "t1", sessionKey: null }]);
     expect(sdk.calls[0]?.options.settings).toEqual({ autoMemoryEnabled: false });
     expect(sdk.calls[0]?.options.settings).not.toHaveProperty("autoMemoryDirectory");
-    expect(sdk.calls[0]?.options.systemPrompt).toEqual({ type: "preset", preset: "claude_code", append: "GUIDE\n\nMEMORY" });
+    expect(sdk.calls[0]?.options.systemPrompt).toEqual({ type: "preset", preset: "claude_code", append: `GUIDE\n\n${TODO_HINT}\n\nMEMORY` });
   });
 
   it("passes the agent session id so a resumed session keeps the block it first saw", async () => {
@@ -512,6 +512,24 @@ describe("Claude context breakdown", () => {
   const successResult = { type: "result", subtype: "success", duration_ms: 1, total_cost_usd: null, usage: { input_tokens: 10, output_tokens: 5 } };
   // The query's first frame; getContextUsage() is only valid before the result.
   const initMessage = { type: "system", subtype: "init", session_id: "s1" };
+
+  it("asks once, as Claude stops, to bring a todo list with open parts up to date", async () => {
+    const stopHook = async (todos: unknown[]) => {
+      sdk.calls.length = 0;
+      sdk.attempts.length = 0;
+      const write = { type: "assistant", parent_tool_use_id: null, message: { id: "m1", model: "claude-x", content: [{ type: "tool_use", id: "w1", name: `mcp__${TOOL_SERVER}__todowrite`, input: { todos } }] } };
+      sdk.attempts.push({ messages: [initMessage, write, successResult] });
+      const { input } = turnInput();
+      await createClaudeDriver({ pluginDir: () => null }).runTurn(input);
+      const hooks = sdk.calls[0]!.options.hooks as { Stop: { hooks: ((i: unknown) => Promise<unknown>)[] }[] };
+      return hooks.Stop[0]!.hooks[0]!;
+    };
+    const open = await stopHook([{ content: "a", status: "completed" }, { content: "b", status: "pending" }]);
+    expect(await open({ hook_event_name: "Stop", stop_hook_active: false })).toEqual({ decision: "block", reason: STALE_LIST });
+    expect(await open({ hook_event_name: "Stop", stop_hook_active: false })).toEqual({});
+    const done = await stopHook([{ content: "a", status: "completed" }]);
+    expect(await done({ hook_event_name: "Stop", stop_hook_active: false })).toEqual({});
+  });
 
   it("emits one breakdown before turn-end for a new session's first result", async () => {
     sdk.calls.length = 0;
@@ -671,6 +689,29 @@ describe("Claude stream mapping", () => {
       { kind: "plan", entries: [{ content: "one", status: "completed" }, { content: "two", status: "pending" }] },
     ]);
     expect(events.some((e) => e.kind === "tool-use" || e.kind === "tool-result")).toBe(false);
+  });
+
+  it("folds the cubiq todowrite into the plan the same way, and knows when the list still has open parts", () => {
+    const { input, events } = recorder();
+    const turn = newTurnState();
+    const write = (id: string, todos: unknown[]) => {
+      feed(input, turn, { type: "assistant", parent_tool_use_id: null, message: { id: `m-${id}`, model: "claude-x", content: [{ type: "tool_use", id, name: `mcp__${TOOL_SERVER}__todowrite`, input: { todos } }] } });
+      feed(input, turn, { type: "user", parent_tool_use_id: null, message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: "ok" }] } });
+    };
+    write("w1", [{ content: "a", status: "in_progress" }, { content: "b", status: "pending" }]);
+    expect(turn.openPlan).toBe(true);
+    write("w2", [{ content: "a", status: "completed" }, { content: "b", status: "completed" }]);
+    expect(turn.openPlan).toBe(false);
+    expect(events.filter((e) => e.kind === "plan")).toHaveLength(2);
+    expect(events.some((e) => e.kind === "tool-use" || e.kind === "tool-result")).toBe(false);
+  });
+
+  it("drops the main thread's text once asked to bring the list up to date: its reply already stands", () => {
+    const { input, events } = recorder();
+    const turn = newTurnState();
+    turn.quiet = true;
+    feed(input, turn, { type: "assistant", parent_tool_use_id: null, message: { id: "m1", model: "claude-x", content: [{ type: "text", text: "All parts are done." }] } });
+    expect(events.some((e) => e.kind === "assistant-text")).toBe(false);
   });
 
   it("keeps a generic tool's input as its payload and its result text", () => {

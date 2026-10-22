@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { clipAgentSummary, clipSummary } from "../../../shared/tools";
 import type { EditResult, RunPayload, RunResult, ToolDiff } from "../../../shared/tools";
 import { diffSummary, unifiedDiff } from "../../../shared/diff";
+import { normalizePlan } from "../../../shared/plan";
 import { summarizeToolResult } from "../summarize";
 import { MODEL_TTL_MS } from "../model-ttl";
 import { binaryInfo, majorOf, resolvedInstallAsync } from "../binaries";
@@ -739,7 +740,8 @@ export function createAcpDriver(
       case "plan":
         if (t) {
           t.planned = true;
-          t.input.onEvent({ kind: "plan", entries: (update as { entries: PlanEntry[] }).entries });
+          const entries = normalizePlan((update as { entries?: unknown }).entries);
+          if (entries) t.input.onEvent({ kind: "plan", entries });
         }
         return;
       case "config_option_update":
@@ -1597,21 +1599,11 @@ function subagentSummary(raw: Record<string, unknown>, title: string | null | un
 
 /**
  * A todowrite's `todos` as canonical plan entries, or null when the input is
- * not one. Cancelled items are dropped; a priority rides along only when known.
+ * not one.
  */
 export function planEntriesFromTodos(raw: unknown): PlanEntry[] | null {
   if (!raw || typeof raw !== "object") return null;
-  const todos = (raw as { todos?: unknown }).todos;
-  if (!Array.isArray(todos)) return null;
-  const entries: PlanEntry[] = [];
-  for (const item of todos) {
-    if (!item || typeof item !== "object") return null;
-    const { content, status, priority } = item as { content?: unknown; status?: unknown; priority?: unknown };
-    if (typeof content !== "string" || typeof status !== "string") return null;
-    if (status !== "pending" && status !== "in_progress" && status !== "completed") continue;
-    entries.push({ content, status, ...(priority === "high" || priority === "medium" || priority === "low" ? { priority } : {}) });
-  }
-  return entries;
+  return normalizePlan((raw as { todos?: unknown }).todos);
 }
 
 /** The text inside a `<task_result>…</task_result>` wrapper, or the whole output when there is none. */

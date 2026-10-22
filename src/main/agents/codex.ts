@@ -3,6 +3,7 @@ import { CODE_HINT } from "../code-hint";
 import type { RunPayload, RunResult, ToolDiff } from "../../shared/tools";
 import { clipAgentSummary, clipSummary } from "../../shared/tools";
 import { diffSummary } from "../../shared/diff";
+import { normalizePlan } from "../../shared/plan";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { homedir, tmpdir } from "node:os";
@@ -335,6 +336,9 @@ export function turnEndFromUsage(usage: TokenBreakdown | undefined, durationMs: 
   };
 }
 
+/** The one line that makes Codex start its list unasked: without it, it never calls update_plan (checked on 0.159.2). */
+export const PLAN_HINT = "For a task with 3+ distinct steps (several files, or code plus tests or docs), call update_plan with the steps before your first edit, then update it as each one finishes. Skip it for smaller tasks.";
+
 /**
  * The thread config that attaches MCP servers: the user's (mcp.json) and,
  * once the browser is open, the harness's own tool server. Safe harness
@@ -642,11 +646,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         return;
       }
       case "turn/plan/updated": {
-        const plan = (params as { plan: { step: string; status: "pending" | "inProgress" | "completed" }[] }).plan;
-        t.input.onEvent({
-          kind: "plan",
-          entries: plan.map((e) => ({ content: e.step, status: e.status === "inProgress" ? "in_progress" : e.status })),
-        });
+        const entries = normalizePlan((params as { plan?: unknown }).plan);
+        if (entries) t.input.onEvent({ kind: "plan", entries });
         return;
       }
       case "thread/compacted":
@@ -1001,7 +1002,9 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     if (typeof input.contextWindow === "number" && input.contextWindow > 0) {
       threadConfig = { ...(threadConfig ?? {}), model_context_window: input.contextWindow };
     }
-    const guideText = [config.guide?.(input.cwd, input.design) ?? "", codeMode !== "off" && server ? CODE_HINT : ""].filter(Boolean).join("\n\n");
+    // Codex ships its own todo list tool off (0.159); on, the list arrives as turn/plan/updated and shows as the plan.
+    threadConfig = { ...(threadConfig ?? {}), tools: { update_plan: { enabled: true } } };
+    const guideText = [config.guide?.(input.cwd, input.design) ?? "", codeMode !== "off" && server ? CODE_HINT : "", PLAN_HINT].filter(Boolean).join("\n\n");
     const signature = JSON.stringify(threadConfig ?? null);
     let threadId = "";
     let threadModel: string | null = null;

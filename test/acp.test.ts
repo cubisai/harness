@@ -436,8 +436,8 @@ describe("ACP driver", () => {
     expect(t.events.find((e) => e.kind === "plan")).toMatchObject({
       kind: "plan",
       entries: [
-        { content: "Read the code", priority: "high", status: "completed" },
-        { content: "Write the fix", priority: "medium", status: "pending" },
+        { content: "Read the code", status: "completed" },
+        { content: "Write the fix", status: "pending" },
       ],
     });
   });
@@ -1081,7 +1081,7 @@ describe("ACP tool payloads", () => {
       {
         kind: "plan",
         entries: [
-          { content: "one", status: "completed", priority: "high" },
+          { content: "one", status: "completed" },
           { content: "two", status: "in_progress" },
         ],
       },

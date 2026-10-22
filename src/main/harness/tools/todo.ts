@@ -1,33 +1,39 @@
 // The TodoWrite tool: the model's short task list for multi-step work. It is a
 // plan for the thread rather than a file or shell tool, so its access is "other".
 
+import { normalizePlan } from "../../../shared/plan";
 import type { PlanEntry } from "../../../shared/types";
 import { ToolError, type NativeTool } from "./types";
 
 /** Validate the raw `todos` argument and convert it to plan entries; throws ToolError on bad input. */
 export function todosOf(args: Record<string, unknown>): PlanEntry[] {
   const raw = args.todos;
-  if (!Array.isArray(raw)) throw new ToolError('Argument "todos" must be an array of { content, status, priority? }.');
-  const todos: PlanEntry[] = [];
+  if (!Array.isArray(raw)) throw new ToolError('Argument "todos" must be an array of { content, status }.');
   let inProgress = 0;
   raw.forEach((item, index) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) throw new ToolError(`Todo ${index + 1} must be an object.`);
     const rec = item as Record<string, unknown>;
-    const content = rec.content;
-    if (typeof content !== "string" || !content.trim()) throw new ToolError(`Todo ${index + 1} needs a non-empty "content" string.`);
+    if (typeof rec.content !== "string" || !rec.content.trim()) throw new ToolError(`Todo ${index + 1} needs a non-empty "content" string.`);
     const status = rec.status;
     if (status !== "pending" && status !== "in_progress" && status !== "completed") {
       throw new ToolError(`Todo ${index + 1} "status" must be "pending", "in_progress", or "completed".`);
     }
-    const priority = rec.priority;
-    if (priority !== undefined && priority !== "high" && priority !== "medium" && priority !== "low") {
-      throw new ToolError(`Todo ${index + 1} "priority" must be "high", "medium", or "low".`);
-    }
     if (status === "in_progress") inProgress++;
-    todos.push(priority === undefined ? { content, status } : { content, status, priority });
   });
   if (inProgress > 1) throw new ToolError("Only one todo may be in_progress at a time.");
-  return todos;
+  // Strict above so the model learns the shape; the stored list is the shared canonical one.
+  return normalizePlan(raw) ?? [];
+}
+
+/**
+ * What a todowrite call tells the model: the counts, and while parts are open a reminder to
+ * keep the list current (fresh in context right when it matters; without it models write the
+ * list once and never come back to it).
+ */
+export function todoResult(todos: PlanEntry[]): string {
+  const count = (s: PlanEntry["status"]) => todos.filter((t) => t.status === s).length;
+  const open = count("completed") < todos.length;
+  return `${todos.length} todos: ${count("in_progress")} in progress, ${count("completed")} completed, ${count("pending")} pending.${open ? " Update this list as each part finishes, and before your final reply." : ""}`;
 }
 
 /** The in-progress item's content, else the count; tolerates raw args for the permission card. */
@@ -46,20 +52,19 @@ function summarizeTodos(raw: unknown): string {
 export const todoTool: NativeTool = {
   name: "todowrite",
   displayName: "TodoWrite",
+  // The trigger leads: models pick tools by their descriptions more than by system-prompt lines (live tests).
   description:
-    "Keep a short task list for multi-step work so progress stays visible. Send the whole list every time, not just the changed items: it replaces the previous list. Mark exactly one item in_progress while working on it, and completed as soon as it is done.",
+    "Call this first, before any other tool, for any request with 3+ parts (several files, or code plus tests or docs), then again each time a part finishes (it completed, the next in_progress) and once more before your final reply. Send the whole list each call; it replaces the last.",
   parameters: {
     type: "object",
     properties: {
       todos: {
         type: "array",
-        description: "The complete task list, in order.",
         items: {
           type: "object",
           properties: {
-            content: { type: "string", description: "The task, in a few words." },
+            content: { type: "string", description: "A few words." },
             status: { type: "string", enum: ["pending", "in_progress", "completed"] },
-            priority: { type: "string", enum: ["high", "medium", "low"] },
           },
           required: ["content", "status"],
         },
@@ -73,13 +78,10 @@ export const todoTool: NativeTool = {
   },
   async run(args) {
     const todos = todosOf(args);
-    const inProgress = todos.filter((t) => t.status === "in_progress").length;
-    const done = todos.filter((t) => t.status === "completed").length;
-    const pending = todos.filter((t) => t.status === "pending").length;
     const active = todos.find((t) => t.status === "in_progress");
     return {
-      text: `${todos.length} todos: ${inProgress} in progress, ${done} completed, ${pending} pending.`,
-      display: { summary: active ? active.content : `${todos.length} todos`, result: { todos } },
+      text: todoResult(todos),
+      display: { summary: active ? active.content : `${todos.length} todos` },
     };
   },
 };
