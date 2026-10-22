@@ -1,0 +1,12 @@
+{
+  "id": "one-step-edit",
+  "about": "A one-line edit. Negative control for todos: a plan list here is noise.",
+  "fixture": "greet",
+  "git": true,
+  "prompt": "In src/greet.js, change the greeting word in greet() from \"Hello\" to \"Hi\". Change nothing else.",
+  "expect": { "todo": "none" },
+  "graders": [
+    { "type": "command", "run": "node bench-check.mjs" },
+    { "type": "file", "path": "README.md", "unchanged": true }
+  ]
+}

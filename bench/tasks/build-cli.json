@@ -1,0 +1,9 @@
+{
+  "id": "build-cli",
+  "about": "A 7-part build. Todos: a list before the first edit, all parts completed at the end.",
+  "fixture": "notes",
+  "git": true,
+  "prompt": "Build a small note-taking command-line tool in this folder, in plain Node.js (ES modules, no dependencies). It has these parts:\n1. A file `notes.mjs` at the root, run as `node notes.mjs <command> [args]`.\n2. Notes are saved as JSON in `notes.json` in the current folder (created on the first add): an array of `{ \"id\": number, \"text\": string, \"done\": boolean }`. A new note's id is one more than the largest id so far (1 when there are none).\n3. `add <text...>` joins the words into the note text, saves it and prints `Added #<id>`.\n4. `list` prints one line per note, `#<id> [ ] <text>`, or `#<id> [x] <text>` when it's done; with no notes it prints `No notes`.\n5. `done <id>` marks the note done and prints `Done #<id>`; an unknown id prints `No note #<id>` to stderr and exits with code 1.\n6. `remove <id>` deletes the note and prints `Removed #<id>`, with the same unknown-id rule.\n7. `help` prints a usage text that lists every command; an unknown command prints that usage to stderr and exits with code 1. Also update README.md with a usage section showing `node notes.mjs` examples.",
+  "expect": { "todo": "before-edit" },
+  "graders": [{ "type": "command", "run": "node bench-check.mjs" }]
+}

@@ -1,0 +1,12 @@
+{
+  "id": "skill-trigger",
+  "about": "The project has a changelog-entry skill (.cubiq/skills, served to every agent). The prompt never names it; the skill's (#none) rule proves it was followed.",
+  "fixture": "changelog",
+  "git": true,
+  "prompt": "We just shipped the --verbose flag in src/cli.js. Record it in the changelog.",
+  "sentinels": { "BENCH-SKILL-c41f9e": "changelog-entry" },
+  "expect": { "skills": ["changelog-entry"] },
+  "graders": [
+    { "type": "file", "path": "CHANGELOG.md", "matches": "## \\[Unreleased\\][\\s\\S]*verbose[^\\n]*\\(#none\\)[\\s\\S]*## \\[2\\.3\\.0\\]" }
+  ]
+}

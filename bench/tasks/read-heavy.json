@@ -1,0 +1,11 @@
+{
+  "id": "read-heavy",
+  "about": "A question that needs many reads, on this repo pinned at 17b3eba (no CLAUDE.md/AGENTS.md). Code mode: one run_code script beats file-by-file reads. Ground truth checked by parsing every import and re-export.",
+  "pinned": "17b3eba",
+  "prompt": "Which exported functions and constants (not types or interfaces) in src/shared/*.ts are never imported or re-exported by any other file in this repository? Answer with the final list of names.",
+  "expect": { "runCode": true },
+  "graders": [
+    { "type": "answer", "contains": ["AUTO_OPEN", "PROVIDER_MODEL_PREFIX", "VARIANT_RE"] },
+    { "type": "answer", "matches": "^(?![\\s\\S]*RUN_MANIFEST_VERSION)(?![\\s\\S]*codexCompatible)" }
+  ]
+}
