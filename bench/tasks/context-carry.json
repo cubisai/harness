@@ -1,0 +1,29 @@
+{
+  "id": "context-carry",
+  "suite": "context",
+  "core": true,
+  "about": "Turn 2 needs two numbers turn 1 found, without restating them. Also shows how much of turn 2 came from the prompt cache.",
+  "repo": {
+    "commit": "17b3eba"
+  },
+  "git": true,
+  "prompt": "Read src/main/check.ts and tell me how many lines and how many characters `tailOf` keeps by default.",
+  "then": [
+    {
+      "prompt": "Write those two defaults into a new file docs/check.md, as `maxLines: <n>` and `maxChars: <n>`, each on its own line."
+    }
+  ],
+  "expect": {},
+  "graders": [
+    {
+      "type": "file",
+      "path": "docs/check.md",
+      "contains": "maxLines: 80"
+    },
+    {
+      "type": "file",
+      "path": "docs/check.md",
+      "contains": "maxChars: 6000"
+    }
+  ]
+}

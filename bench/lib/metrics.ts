@@ -6,7 +6,7 @@ import type { ThreadEvent } from "../../src/shared/types";
 /** A stored thread event; `parentId` marks a subagent's events. */
 export type BenchEvent = ThreadEvent;
 
-export type ToolClass = "code" | "look" | "shell" | "edit" | "todo" | "skill" | "other";
+export type ToolClass = "code" | "look" | "shell" | "edit" | "todo" | "skill" | "memory" | "other";
 
 /** Every agent names its tools differently (Claude Read/Grep, native read/grep, Codex Run…). */
 export function toolClass(name: string): ToolClass {
@@ -17,7 +17,15 @@ export function toolClass(name: string): ToolClass {
   if (["edit", "write", "multiedit", "apply_patch", "notebookedit"].includes(n)) return "edit";
   if (["todowrite", "update_plan"].includes(n)) return "todo";
   if (n === "skill") return "skill";
+  if (n.endsWith("memory_read") || n.endsWith("memory_write")) return "memory";
   return "other";
+}
+
+/** A shell command that runs tests or a typecheck: the agent checked its own work. */
+const VERIFY = /\b(vitest|jest|mocha|pytest|tsc|typecheck|node --test|bun (run )?test|npm (run )?test|pnpm (run )?test|yarn test|cargo test|go test)\b/;
+
+export function isVerifyCommand(command: string): boolean {
+  return VERIFY.test(command);
 }
 
 export interface RunMetrics {
@@ -44,6 +52,14 @@ export interface RunMetrics {
   tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number };
   costUsd: number | null;
   durationMs: number;
+  /** CubiQ memory tool calls. */
+  memory: { reads: number; writes: number };
+  /** The project check the app runs after a turn that changed files: results, first result, fix rounds, last result. */
+  check: { runs: number; firstOk: boolean | null; fixRounds: number; finalOk: boolean | null };
+  /** The evidence gate's flags ("Worth a second look: …"). */
+  evidence: string[];
+  /** Shell commands that ran tests or a typecheck. */
+  verifyRuns: number;
   /** Model calls (native agent only). */
   steps: number | null;
   errors: string[];
@@ -59,7 +75,7 @@ export function runMetrics(events: BenchEvent[], sentinels: Map<string, string> 
   const uses = top.filter((e): e is Extract<BenchEvent, { kind: "tool-use" }> => e.kind === "tool-use");
   const failed = new Set(top.filter((e) => e.kind === "tool-result" && e.isError).map((e) => (e as Extract<BenchEvent, { kind: "tool-result" }>).toolUseId));
   const byName: Record<string, number> = {};
-  const count: Record<ToolClass, number> = { code: 0, look: 0, shell: 0, edit: 0, todo: 0, skill: 0, other: 0 };
+  const count: Record<ToolClass, number> = { code: 0, look: 0, shell: 0, edit: 0, todo: 0, skill: 0, memory: 0, other: 0 };
   for (const u of uses) {
     byName[u.name] = (byName[u.name] ?? 0) + 1;
     count[toolClass(u.name)]++;
@@ -75,6 +91,12 @@ export function runMetrics(events: BenchEvent[], sentinels: Map<string, string> 
   const costs = ends.map((e) => e.costUsd);
 
   const raw = JSON.stringify(events);
+  const checks = top.filter((e): e is Extract<BenchEvent, { kind: "check" }> => e.kind === "check" && e.ok !== null);
+  const evidence = top.flatMap((e) => (e.kind === "notice" && e.evidence ? e.evidence : []));
+  const commandOf = (u: Extract<BenchEvent, { kind: "tool-use" }>): string => {
+    const p = u.payload as { command?: unknown } | undefined;
+    return typeof p?.command === "string" ? p.command : u.summary;
+  };
   const texts = top.filter((e): e is Extract<BenchEvent, { kind: "assistant-text" }> => e.kind === "assistant-text");
 
   return {
@@ -100,6 +122,18 @@ export function runMetrics(events: BenchEvent[], sentinels: Map<string, string> 
       cacheWrite: sum((e) => e.usage?.cacheWriteTokens),
       reasoning: sum((e) => e.usage?.reasoningTokens),
     },
+    memory: {
+      reads: uses.filter((u) => u.name.toLowerCase().endsWith("memory_read")).length,
+      writes: uses.filter((u) => u.name.toLowerCase().endsWith("memory_write")).length,
+    },
+    check: {
+      runs: checks.length,
+      firstOk: checks[0] ? checks[0].ok === true : null,
+      fixRounds: checks.reduce((n, c) => Math.max(n, c.round ?? 0), 0),
+      finalOk: checks.length ? checks.at(-1)!.ok === true : null,
+    },
+    evidence,
+    verifyRuns: uses.filter((u) => toolClass(u.name) === "shell" && isVerifyCommand(commandOf(u))).length,
     costUsd: costs.length && costs.every((c) => c !== null) ? costs.reduce((n, c) => n + (c ?? 0), 0) : null,
     durationMs: sum((e) => e.durationMs),
     steps: ends.some((e) => e.steps !== undefined) ? sum((e) => e.steps) : null,

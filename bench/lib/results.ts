@@ -11,15 +11,21 @@ import type { RunResult } from "./types";
 export interface RunRow {
   date: string;
   task: string;
+  /** Rows written before suites existed read as "behaviour". */
+  suite: string;
+  tier: string;
   agent: string;
   model: string;
   trial: number;
   status: string;
   pass: boolean;
+  /** Share of grader weight passed, 0..1. */
+  score: number;
   /** Behaviour checks: true, false or null (the task sets none). */
   todoOk: boolean | null;
   runCodeOk: boolean | null;
   skillsOk: boolean | null;
+  memoryOk: boolean | null;
   todoUpdates: number;
   todoBeforeEdit: boolean | null;
   todoClosed: boolean | null;
@@ -36,6 +42,19 @@ export interface RunRow {
   costUsd: number | null;
   durationMs: number;
   skills: string;
+  memReads: number;
+  memWrites: number;
+  /** The app's project check: first result, fix rounds used, last result (null = no check ran). */
+  checkFirstOk: boolean | null;
+  fixRounds: number;
+  checkFinalOk: boolean | null;
+  /** Evidence-gate flags raised. */
+  evidence: number;
+  /** Test or typecheck commands the agent ran itself. */
+  verifyRuns: number;
+  /** Self-improve's worst turn score ("ok", "warn", "fail"; "" when off) and the project's lessons. */
+  health: string;
+  lessons: number;
   commit: string;
   dirty: boolean;
   versions: string;
@@ -44,26 +63,33 @@ export interface RunRow {
 }
 
 const COLUMNS: (keyof RunRow)[] = [
-  "date", "task", "agent", "model", "trial", "status", "pass", "todoOk", "runCodeOk", "skillsOk", "todoUpdates", "todoBeforeEdit", "todoClosed",
-  "tools", "runCode", "runCodeFailed", "look", "shell", "edit", "tokensIn", "cacheRead", "cacheWrite", "tokensOut", "costUsd", "durationMs",
-  "skills", "commit", "dirty", "versions", "why",
+  "date", "suite", "tier", "task", "agent", "model", "trial", "status", "pass", "score", "todoOk", "runCodeOk", "skillsOk", "memoryOk",
+  "todoUpdates", "todoBeforeEdit", "todoClosed", "tools", "runCode", "runCodeFailed", "look", "shell", "edit", "tokensIn", "cacheRead", "cacheWrite",
+  "tokensOut", "costUsd", "durationMs", "skills", "memReads", "memWrites", "checkFirstOk", "fixRounds", "checkFinalOk", "evidence", "verifyRuns",
+  "health", "lessons", "commit", "dirty", "versions", "why",
 ];
-const BOOLS = new Set<keyof RunRow>(["pass", "todoOk", "runCodeOk", "skillsOk", "todoBeforeEdit", "todoClosed", "dirty"]);
-const NUMS = new Set<keyof RunRow>(["trial", "todoUpdates", "tools", "runCode", "runCodeFailed", "look", "shell", "edit", "tokensIn", "cacheRead", "cacheWrite", "tokensOut", "costUsd", "durationMs"]);
+const BOOLS = new Set<keyof RunRow>(["pass", "todoOk", "runCodeOk", "skillsOk", "memoryOk", "todoBeforeEdit", "todoClosed", "checkFirstOk", "checkFinalOk", "dirty"]);
+const NUMS = new Set<keyof RunRow>(["trial", "score", "todoUpdates", "tools", "runCode", "runCodeFailed", "look", "shell", "edit", "tokensIn", "cacheRead", "cacheWrite", "tokensOut", "costUsd", "durationMs", "memReads", "memWrites", "fixRounds", "evidence", "verifyRuns", "lessons"]);
+/** Columns that can be empty on purpose (unknown), not zero. */
+const NULLABLE_NUMS = new Set<keyof RunRow>(["costUsd"]);
 
 export function toRow(r: RunResult): RunRow {
   const m = r.metrics;
   return {
     date: r.date,
     task: r.task,
+    suite: r.suite,
+    tier: r.tier ?? "",
     agent: r.agent,
     model: r.model,
     trial: r.trial,
     status: r.status,
     pass: r.pass,
+    score: Math.round(r.score * 100) / 100,
     todoOk: r.checks.todo,
     runCodeOk: r.checks.runCode,
     skillsOk: r.checks.skills,
+    memoryOk: r.checks.memory,
     todoUpdates: m.todo.updates,
     todoBeforeEdit: m.todo.beforeFirstEdit,
     todoClosed: m.todo.allCompleted,
@@ -80,6 +106,15 @@ export function toRow(r: RunResult): RunRow {
     costUsd: m.costUsd,
     durationMs: m.durationMs,
     skills: m.skills.join(" "),
+    memReads: m.memory.reads,
+    memWrites: m.memory.writes,
+    checkFirstOk: m.check.firstOk,
+    fixRounds: m.check.fixRounds,
+    checkFinalOk: m.check.finalOk,
+    evidence: m.evidence.length,
+    verifyRuns: m.verifyRuns,
+    health: r.learn?.health[0] ?? "",
+    lessons: r.learn?.lessons ?? 0,
     commit: r.harness.commit.slice(0, 7),
     dirty: r.harness.dirty,
     versions: Object.entries(r.harness.versions).map(([k, v]) => `${k} ${v}`).join(" · "),
@@ -137,8 +172,12 @@ export function fromCsv(text: string): RunRow[] {
     header.forEach((name, i) => {
       const key = name as keyof RunRow;
       const raw = fields[i] ?? "";
-      row[key] = BOOLS.has(key) ? (raw === "" ? null : raw === "1") : NUMS.has(key) ? (raw === "" ? null : Number(raw)) : raw;
+      row[key] = BOOLS.has(key) ? (raw === "" ? null : raw === "1") : NUMS.has(key) ? (raw === "" ? (NULLABLE_NUMS.has(key) ? null : 0) : Number(raw)) : raw;
     });
+    // Columns added later: older rows read as their defaults.
+    for (const key of COLUMNS) if (!(key in row)) row[key] = BOOLS.has(key) ? null : NUMS.has(key) && !NULLABLE_NUMS.has(key) ? 0 : NULLABLE_NUMS.has(key) ? null : "";
+    if (!row.suite) row.suite = "behaviour";
+    if (!header.includes("score")) row.score = row.pass ? 1 : 0;
     return row as unknown as RunRow;
   });
 }

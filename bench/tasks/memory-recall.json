@@ -1,0 +1,27 @@
+{
+  "id": "memory-recall",
+  "suite": "memory",
+  "core": true,
+  "about": "A project memory note says where end-to-end tests go; the repo itself has no such folder, so only memory can tell.",
+  "repo": {
+    "commit": "17b3eba"
+  },
+  "git": true,
+  "hiddenDir": "memory-recall.hidden",
+  "memory": [
+    {
+      "name": "End-to-end test location",
+      "description": "Where end-to-end tests go and how they're named",
+      "type": "project",
+      "body": "End-to-end tests live in test/e2e/ and are named <feature>.e2e.test.ts (for example test/e2e/doctor.e2e.test.ts). Unit tests stay in test/."
+    }
+  ],
+  "prompt": "Add an end-to-end test skeleton for the /codemode command: one vitest `describe` block with a single `it.todo(\"flips code mode for new threads\")`. Put it where this project keeps its end-to-end tests.",
+  "expect": {},
+  "graders": [
+    {
+      "type": "command",
+      "run": "node bench-check-memory-recall.mjs"
+    }
+  ]
+}

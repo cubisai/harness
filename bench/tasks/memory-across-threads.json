@@ -1,0 +1,28 @@
+{
+  "id": "memory-across-threads",
+  "suite": "memory",
+  "core": true,
+  "about": "A convention is told in one thread (\"remember this\"); a new thread needs it. Checks that a memory note was written and the new thread applied it.",
+  "repo": {
+    "commit": "17b3eba"
+  },
+  "git": true,
+  "hiddenDir": "memory-across-threads.hidden",
+  "prompt": "A rule for this project from now on, please remember it for future sessions: every new IPC channel must also get a line in docs/ipc.md, in the form - `<channel>`: <what it does>. Nothing to change right now.",
+  "then": [
+    {
+      "newThread": true,
+      "afterMemory": true,
+      "prompt": "Add a new IPC channel `app:ping` in the main process (src/main/index.ts) that returns the string \"pong\", and expose it in the preload (src/preload/index.ts) as `ping()`."
+    }
+  ],
+  "expect": {
+    "memoryWritten": true
+  },
+  "graders": [
+    {
+      "type": "command",
+      "run": "node bench-check-memory-across-threads.mjs"
+    }
+  ]
+}

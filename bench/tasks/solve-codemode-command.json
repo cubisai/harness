@@ -1,0 +1,42 @@
+{
+  "id": "solve-codemode-command",
+  "suite": "solve",
+  "tier": "medium",
+  "core": false,
+  "about": "Replays 5178b93 (renderer: commands, Composer, store). Graded by its tests.",
+  "repo": {
+    "commit": "5178b93^",
+    "install": true,
+    "hidden": {
+      "commit": "5178b93",
+      "paths": [
+        "test/codemode-command.test.tsx",
+        "test/commands.test.ts"
+      ]
+    }
+  },
+  "git": true,
+  "check": {
+    "command": "bun run typecheck",
+    "fixRounds": 1
+  },
+  "learn": true,
+  "prompt": "Add a `/codemode` command to the message box. `/codemode` with no argument flips code mode for new threads (the `codeMode` setting, \"on\" or \"off\"; treat a missing setting as off); `/codemode on` and `/codemode off` set it. Like `/mcp`, the text never goes to the agent, and it works from both Enter and Alt+Enter. List it last in the \"/\" menu (src/renderer/src/commands.ts) with the description \"Turn code mode (run_code) on or off for new threads; /codemode on or /codemode off\"; picking it from the menu flips it.\n\nPut the logic in the renderer store (src/renderer/src/store.ts) as `setCodeMode(mode?: \"on\" | \"off\"): Promise<void>`: it saves the setting with `updateSettings({ codeMode })`, keeps the settings it returns, and shows a notice: \"Code mode on: new threads get run_code\" or \"Code mode off for new threads\" (on failure: \"Couldn't change code mode\"). Update the existing command tests and add tests for the store method.",
+  "expect": {},
+  "graders": [
+    {
+      "type": "command",
+      "run": "bunx vitest run test/codemode-command.test.tsx test/commands.test.ts",
+      "timeoutMs": 300000,
+      "weight": 3
+    },
+    {
+      "type": "command",
+      "run": "bun run typecheck",
+      "timeoutMs": 300000,
+      "required": false,
+      "weight": 1
+    }
+  ],
+  "timeoutMs": 1200000
+}

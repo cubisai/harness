@@ -1,0 +1,37 @@
+{
+  "id": "memory-correction",
+  "suite": "memory",
+  "core": false,
+  "about": "Two notes: an old fact and a newer correction. The answer must follow the correction.",
+  "repo": {
+    "commit": "17b3eba"
+  },
+  "memory": [
+    {
+      "name": "Staging host",
+      "description": "Where staging deploys go",
+      "type": "project",
+      "body": "Staging deploys go to staging-1.cubiq.internal."
+    },
+    {
+      "name": "Staging host (correction)",
+      "description": "Correction: the staging host changed",
+      "type": "project",
+      "body": "Correction: staging-1 was retired. Staging deploys now go to staging-2.cubiq.internal."
+    }
+  ],
+  "prompt": "Which host do staging deploys go to? Just the host name.",
+  "expect": {},
+  "graders": [
+    {
+      "type": "answer",
+      "contains": [
+        "staging-2.cubiq.internal"
+      ]
+    },
+    {
+      "type": "answer",
+      "matches": "^(?![\\s\\S]*staging-1\\.cubiq)"
+    }
+  ]
+}

@@ -1,38 +1,45 @@
 // Daily harness bench: drives the real app (its own dev copy over CDP) through
 // a fixed task set per agent and model, then grades and measures each run.
-//   bun run bench [--agents a,b] [--tasks x,y] [--k 3] [--serial] [--port 9466]
-//                 [--attach <port> --user-data-dir <dir>] [--dry]
+//   bun run bench [--suite core|full|behaviour|solve|memory|context] [--agents a,b] [--tasks x,y]
+//                 [--k 3] [--parallel 3] [--serial] [--port 9488] [--attach <port> --user-data-dir <dir>] [--dry] [--scratch]
 // Committed: bench/results/history.csv (a row per run), <YYYY-MM-DD>.md and README.md.
 // Local: bench/.state/runs/<YYYY-MM-DD>/<agent>--<task>--t<n>.json (the full record).
-// Plan: .ai/plans/bench-daily.md.
+// Plans: .ai/plans/bench-daily.md, .ai/plans/bench-v2.md.
 
-import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { grade, score } from "../evals/lib/graders";
 import { compact } from "../evals/lib/runner";
 import type { CompactEvent, Task } from "../evals/lib/types";
 import { runCheck } from "../src/main/check";
 import { execCommandSync } from "../src/main/winspawn";
+import type { Health, LearnOverview, TurnScore } from "../src/shared/learn";
+import type { MemoryOverview } from "../src/shared/types";
 import { launchApp, registerProject, threadEvents, threadRow, type App } from "./lib/app";
 import { Cdp } from "./lib/cdp";
 import { runMetrics, todoOk, type BenchEvent } from "./lib/metrics";
+import { resetProject, revealHidden, sourceOf } from "./lib/project";
 import { appendHistory, toRow, writeReports } from "./lib/results";
 import type { BenchAgent, BenchTask, RunResult } from "./lib/types";
 
 const ROOT = join(import.meta.dirname, "..");
 const BENCH = join(ROOT, "bench");
 const STATE = join(BENCH, ".state");
-const RESULTS = join(BENCH, "results");
 const POLL_MS = 5_000;
 const TIMEOUT_MS = 15 * 60_000;
 /** No new event for this long = stalled (free tiers sometimes never answer): interrupt and retry once. */
 const STALL_MS = 5 * 60_000;
+/** A thread is idle once its turns have all ended, no check is running and nothing new arrived for this long (a check's fix round starts within it). */
+const QUIET_MS = 10_000;
+/** How long a follow-up waits for the memory note the previous message asked for. */
+const MEMORY_WAIT_MS = 120_000;
 /** Free or rate-limited providers: at least this long between two of their runs. */
 const SPACING_MS = 90_000;
-/** After a rate-limit error: wait, then retry the run once. */
-const RATE_LIMIT_WAIT_MS = 180_000;
+/** After a rate-limit error or a stall: wait, then retry the run once. */
+const RETRY_WAIT_MS = 180_000;
 const RATE_LIMIT = /rate.?limit|429|quota|allowance|exhausted/i;
+/** Self-improve's background model, when its provider is in the run (cheap and fast). */
+const LEARN_BACKGROUND = { agentId: "coralbricks-deepseek" };
 
 const argv = process.argv.slice(2);
 const flag = (name: string): string | undefined => {
@@ -41,6 +48,8 @@ const flag = (name: string): string | undefined => {
 };
 const has = (name: string): boolean => argv.includes(`--${name}`);
 const list = (name: string): string[] | undefined => flag(name)?.split(",").map((s) => s.trim()).filter(Boolean);
+/** --scratch keeps a trial run's results out of the committed history. */
+const RESULTS = has("scratch") ? join(STATE, "scratch-results") : join(BENCH, "results");
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const log = (msg: string) => console.log(`[${new Date().toTimeString().slice(0, 8)}] ${msg}`);
@@ -50,13 +59,18 @@ function localDate(d = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function loadTasks(only?: string[]): BenchTask[] {
+function loadTasks(suite: string, only?: string[]): BenchTask[] {
   const all = readdirSync(join(BENCH, "tasks"))
     .filter((f) => f.endsWith(".json"))
     .map((f) => JSON.parse(readFileSync(join(BENCH, "tasks", f), "utf8")) as BenchTask);
   const unknown = only?.filter((id) => !all.some((t) => t.id === id)) ?? [];
   if (unknown.length) throw new Error(`unknown task ${unknown.join(", ")}; have ${all.map((t) => t.id).join(", ")}`);
-  return only ? all.filter((t) => only.includes(t.id)) : all;
+  if (only) return all.filter((t) => only.includes(t.id));
+  if (suite === "full") return all;
+  if (suite === "core") return all.filter((t) => t.core);
+  const picked = all.filter((t) => t.suite === suite);
+  if (!picked.length) throw new Error(`unknown suite ${suite}; use core, full, behaviour, solve, memory or context`);
+  return picked;
 }
 
 function loadAgents(only?: string[]): BenchAgent[] {
@@ -86,35 +100,6 @@ function harnessInfo(): RunResult["harness"] {
   return { commit, dirty, versions };
 }
 
-/** A clean copy of this repo at `sha`, extracted once; agent guide files left out so every agent starts equal. */
-function pinnedTree(sha: string): string {
-  const dir = join(STATE, "pinned", sha);
-  if (existsSync(join(dir, ".bench-ready"))) return dir;
-  rmSync(dir, { recursive: true, force: true });
-  mkdirSync(dir, { recursive: true });
-  const tar = join(STATE, "pinned", `${sha}.tar`);
-  execFileSync("git", ["archive", "-o", tar, sha], { cwd: ROOT });
-  execFileSync("tar", ["-xf", tar, "-C", dir]);
-  rmSync(tar, { force: true });
-  for (const p of ["CLAUDE.md", "AGENTS.md", ".claude", ".ai", ".agents", ".cubiq", ".opencode"]) rmSync(join(dir, p), { recursive: true, force: true });
-  writeFileSync(join(dir, ".bench-ready"), "");
-  return dir;
-}
-
-/** Empties the run's project folder and lays the task's starting state into it. */
-function resetProject(task: BenchTask, dir: string): void {
-  rmSync(dir, { recursive: true, force: true });
-  mkdirSync(dir, { recursive: true });
-  const from = task.pinned ? pinnedTree(task.pinned) : join(BENCH, "fixtures", task.fixture!);
-  cpSync(from, dir, { recursive: true, filter: (src) => !src.endsWith(".bench-ready") });
-  if (task.git) {
-    const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=bench", "-c", "user.email=bench@localhost", "-c", "core.autocrlf=false", ...args], { cwd: dir, stdio: "ignore" });
-    git("init", "-q", "-b", "main");
-    git("add", "-A");
-    git("commit", "-q", "-m", "start");
-  }
-}
-
 /** The text after the last top-level tool call: the agent's final answer, not its working notes. */
 function finalAnswerEvents(events: BenchEvent[]): CompactEvent[] {
   const top = events.filter((e) => !e.parentId);
@@ -130,52 +115,107 @@ interface Ctx {
   date: string;
   harness: RunResult["harness"];
   projects: Map<string, { id: string; dir: string }>;
+  /** Self-improve on per project id, applied before each run. */
+  learnFor(projectId: string, on: boolean): Promise<void>;
 }
 
 const projectKey = (task: BenchTask, agent: BenchAgent) => `${task.id}/${agent.id}`;
 
-async function runOnce(ctx: Ctx, agent: BenchAgent, task: BenchTask, trial: number): Promise<RunResult> {
-  const project = ctx.projects.get(projectKey(task, agent))!;
-  resetProject(task, project.dir);
-  const startedAt = new Date().toISOString();
-  const thread = await ctx.cdp.call<{ id: string }>("createThread", project.id, agent.agent);
+type WaitEnd = "ended" | "stalled" | "timeout";
+
+/** Waits until the thread has ended `sends` turns (plus any check fix rounds) and gone quiet. */
+async function waitIdle(ctx: Ctx, threadId: string, sends: number, until: number): Promise<WaitEnd> {
+  let count = -1;
+  let lastChange = Date.now();
+  while (Date.now() < until) {
+    await sleep(POLL_MS);
+    const events = threadEvents(ctx.userDataDir, threadId);
+    if (events.length !== count) {
+      count = events.length;
+      lastChange = Date.now();
+    }
+    const top = events.filter((e) => !e.parentId);
+    const starts = top.filter((e) => e.kind === "turn-start").length;
+    const ends = top.filter((e) => e.kind === "turn-end").length;
+    const lastCheck = top.findLast((e) => e.kind === "check");
+    const checking = lastCheck?.kind === "check" && lastCheck.ok === null;
+    if (ends >= sends && ends >= starts && !checking && Date.now() - lastChange >= QUIET_MS) return "ended";
+    if (Date.now() - lastChange > STALL_MS) return "stalled";
+  }
+  return "timeout";
+}
+
+async function newThread(ctx: Ctx, agent: BenchAgent, projectId: string): Promise<string> {
+  const thread = await ctx.cdp.call<{ id: string }>("createThread", projectId, agent.agent);
   await ctx.cdp.call("updateThread", thread.id, { agent: agent.agent, model: agent.model, permissionMode: "full" });
   const row = threadRow(ctx.userDataDir, thread.id);
   if (row?.agent !== agent.agent || row.model !== agent.model || row.permission_mode !== "full") {
     throw new Error(`thread ${thread.id} is ${JSON.stringify(row)}, wanted ${agent.agent}/${agent.model}/full`);
   }
-  // Not awaited: send can resolve late; the turn's end is read from the database.
-  await ctx.cdp.evaluate(`(window.unskilled.send(${JSON.stringify({ threadId: thread.id, text: task.prompt })}).catch((e) => console.error("bench send", e)), true)`);
+  return thread.id;
+}
 
+const send = (ctx: Ctx, threadId: string, text: string) =>
+  // Not awaited: send can resolve late; the turn's end is read from the database.
+  ctx.cdp.evaluate(`(window.unskilled.send(${JSON.stringify({ threadId, text })}).catch((e) => console.error("bench send", e)), true)`);
+
+const projectNotes = async (ctx: Ctx, projectId: string): Promise<MemoryOverview> => ctx.cdp.call<MemoryOverview>("memoryOverview", projectId);
+
+/** Clears the project's own memory notes and writes the task's. */
+async function seedMemory(ctx: Ctx, projectId: string, task: BenchTask): Promise<void> {
+  const overview = await projectNotes(ctx, projectId);
+  if (!overview.projectOn) await ctx.cdp.call("memorySetEnabled", projectId, true);
+  for (const n of overview.notes) await ctx.cdp.call("memoryDelete", projectId, n.file, "project");
+  for (const note of task.memory ?? []) await ctx.cdp.call("memoryWrite", projectId, note, "project");
+}
+
+const HEALTH_ORDER: Health[] = ["fail", "warn", "ok"];
+
+async function runOnce(ctx: Ctx, agent: BenchAgent, task: BenchTask, trial: number): Promise<RunResult> {
+  const project = ctx.projects.get(projectKey(task, agent))!;
+  resetProject(task, project.dir);
+  await ctx.cdp.call("setCheckCommand", project.id, task.check?.command ?? null, task.check?.fixRounds ?? null);
+  await ctx.learnFor(project.id, Boolean(task.learn));
+  // Memory tasks start from exactly their notes; other projects keep what the harness remembered.
+  if (task.suite === "memory") await seedMemory(ctx, project.id, task);
+  const notesBefore = (await projectNotes(ctx, project.id)).notes.length;
+
+  const startedAt = new Date().toISOString();
   const timeout = task.timeoutMs ?? TIMEOUT_MS;
   const until = Date.now() + timeout;
-  let events: BenchEvent[] = [];
-  let ended = false;
-  let stalled = false;
-  let lastChange = Date.now();
-  while (Date.now() < until) {
-    await sleep(POLL_MS);
-    const now = threadEvents(ctx.userDataDir, thread.id);
-    if (now.length !== events.length) lastChange = Date.now();
-    events = now;
-    if (events.some((e) => e.kind === "turn-end" && !e.parentId)) {
-      ended = true;
+  const threadIds: string[] = [];
+  let end: WaitEnd = "ended";
+  let memoryHeld: boolean | null = null;
+  const steps = [{ prompt: task.prompt, newThread: true, afterMemory: false }, ...(task.then ?? [])];
+  let sends = 0;
+  for (const step of steps) {
+    if (step.afterMemory) {
+      const wait = Date.now() + MEMORY_WAIT_MS;
+      let notes = (await projectNotes(ctx, project.id)).notes.length;
+      while (notes <= notesBefore && Date.now() < wait) {
+        await sleep(POLL_MS);
+        notes = (await projectNotes(ctx, project.id)).notes.length;
+      }
+      memoryHeld = notes > notesBefore;
+    }
+    if (step.newThread || !threadIds.length) {
+      threadIds.push(await newThread(ctx, agent, project.id));
+      sends = 0;
+    }
+    const threadId = threadIds.at(-1)!;
+    await send(ctx, threadId, step.prompt);
+    sends++;
+    end = await waitIdle(ctx, threadId, sends, until);
+    if (end !== "ended") {
+      await ctx.cdp.call("interrupt", threadId).catch(() => undefined);
+      await sleep(10_000);
       break;
     }
-    if (Date.now() - lastChange > STALL_MS) {
-      stalled = true;
-      break;
-    }
-  }
-  if (!ended) {
-    await ctx.cdp.call("interrupt", thread.id).catch(() => undefined);
-    await sleep(10_000);
-    events = threadEvents(ctx.userDataDir, thread.id);
   }
 
-  const fixtureDir = task.pinned ? pinnedTree(task.pinned) : join(BENCH, "fixtures", task.fixture!);
-  const hidden = task.fixture ? join(BENCH, "fixtures", `${task.fixture}.hidden`) : null;
-  if (hidden && existsSync(hidden)) cpSync(hidden, project.dir, { recursive: true, force: true });
+  const events = threadIds.flatMap((id) => threadEvents(ctx.userDataDir, id));
+  const fixtureDir = sourceOf(task);
+  revealHidden(task, project.dir);
   const evalTask = { id: task.id, tags: ["regression"], tier: "smoke", fixture: task.fixture ?? "", prompt: task.prompt, mode: "full", graders: task.graders, budget: { maxSteps: 0, maxInputTokens: 0, timeoutMs: timeout } } satisfies Task;
   const graders = await grade({
     task: evalTask,
@@ -190,26 +230,40 @@ async function runOnce(ctx: Ctx, agent: BenchAgent, task: BenchTask, trial: numb
   });
   const graded = score(graders);
   const metrics = runMetrics(events, new Map(Object.entries(task.sentinels ?? {})));
-  const checks = {
-    todo: todoOk(metrics, task.expect.todo),
-    runCode: task.expect.runCode === undefined ? null : task.expect.runCode === metrics.tools.runCode > 0,
-    skills: task.expect.skills ? task.expect.skills.every((s) => metrics.skills.includes(s)) : null,
-  };
+  const notesAfter = (await projectNotes(ctx, project.id)).notes.length;
+  if (task.expect.memoryWritten && memoryHeld === null) memoryHeld = notesAfter > notesBefore;
+  let learn: RunResult["learn"] = null;
+  if (task.learn) {
+    const scores = (await Promise.all(threadIds.map((id) => ctx.cdp.call<TurnScore[]>("learnScores", id)))).flat();
+    const overview = await ctx.cdp.call<LearnOverview>("learnOverview", project.id);
+    learn = { health: scores.map((s) => s.health).sort((a, b) => HEALTH_ORDER.indexOf(a) - HEALTH_ORDER.indexOf(b)), lessons: overview.lessons.filter((l) => l.status === "active" || l.status === "candidate").length };
+  }
+  const ended = end === "ended";
   return {
     date: ctx.date,
     startedAt,
     task: task.id,
+    suite: task.suite,
+    tier: task.tier ?? null,
     agent: agent.id,
     model: agent.model,
     trial,
     harness: ctx.harness,
-    threadId: thread.id,
-    status: stalled ? "stalled" : !ended ? "timeout" : metrics.errors.length && !graded.pass ? "error" : graded.pass ? "passed" : "failed",
+    threadIds,
+    status: end === "stalled" ? "stalled" : end === "timeout" ? "timeout" : metrics.errors.length && !graded.pass ? "error" : graded.pass ? "passed" : "failed",
     pass: ended && graded.pass,
+    score: graded.score,
     graders,
-    checks,
+    checks: {
+      todo: todoOk(metrics, task.expect.todo),
+      runCode: task.expect.runCode === undefined ? null : task.expect.runCode === metrics.tools.runCode > 0,
+      skills: task.expect.skills ? task.expect.skills.every((s) => metrics.skills.includes(s)) : null,
+      memory: task.expect.memoryWritten ? memoryHeld === true : null,
+    },
     metrics: { ...metrics, answer: metrics.answer.slice(0, 2000) },
-    ...(ended ? {} : { note: stalled ? `no activity for ${STALL_MS / 60_000} min` : `no turn-end within ${Math.round(timeout / 60_000)} min` }),
+    memoryNotes: { before: notesBefore, after: notesAfter },
+    learn,
+    ...(ended ? {} : { note: end === "stalled" ? `no activity for ${STALL_MS / 60_000} min` : `not done within ${Math.round(timeout / 60_000)} min` }),
   };
 }
 
@@ -217,8 +271,8 @@ async function runWithRetry(ctx: Ctx, agent: BenchAgent, task: BenchTask, trial:
   const first = await runOnce(ctx, agent, task, trial);
   const why = first.status === "stalled" ? "a stall" : !first.pass && first.metrics.errors.some((e) => RATE_LIMIT.test(e)) ? "a rate limit" : null;
   if (!why) return first;
-  log(`${agent.id} ${task.id}: ${why}, retrying in ${RATE_LIMIT_WAIT_MS / 1000} s`);
-  await sleep(RATE_LIMIT_WAIT_MS);
+  log(`${agent.id} ${task.id}: ${why}, retrying in ${RETRY_WAIT_MS / 1000} s`);
+  await sleep(RETRY_WAIT_MS);
   const second = await runOnce(ctx, agent, task, trial);
   return { ...second, note: [second.note, `retried after ${why}`].filter(Boolean).join("; ") };
 }
@@ -250,25 +304,55 @@ async function ensureProviders(cdp: Cdp, agents: BenchAgent[]): Promise<BenchAge
   return ready;
 }
 
+/** Self-improve settings: a project-by-project switch, and the cheap background model its drafts and memory extraction run on. */
+async function learnSwitch(cdp: Cdp, agents: BenchAgent[]): Promise<Ctx["learnFor"]> {
+  const all = JSON.parse(readFileSync(join(BENCH, "agents.json"), "utf8")) as BenchAgent[];
+  const bg = all.find((a) => a.id === LEARN_BACKGROUND.agentId);
+  const settings = await cdp.call<{ learn?: { enabledProjects: string[]; background: { agent: string; model: string } | null } & Record<string, unknown> }>("getSettings");
+  const learn = settings.learn ?? { enabledProjects: [], background: null };
+  if (bg?.provider && process.env[bg.provider.envVar] && agents.some((a) => a.id === bg.id)) {
+    await cdp.call("updateSettings", { learn: { ...learn, background: { agent: bg.agent, model: bg.model } } });
+  }
+  return async (projectId, on) => {
+    const current = (await cdp.call<typeof settings>("getSettings")).learn ?? learn;
+    const set = new Set(current.enabledProjects);
+    if (on === set.has(projectId)) return;
+    if (on) set.add(projectId);
+    else set.delete(projectId);
+    await cdp.call("updateSettings", { learn: { ...current, enabledProjects: [...set] } });
+  };
+}
+
+/** Runs `jobs` with at most `limit` going at once. */
+async function pool(limit: number, jobs: (() => Promise<void>)[]): Promise<void> {
+  const queue = [...jobs];
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, queue.length)) }, async () => {
+    for (let job = queue.shift(); job; job = queue.shift()) await job();
+  }));
+}
+
 async function main(): Promise<void> {
-  const tasks = loadTasks(list("tasks"));
+  const tasks = loadTasks(flag("suite") ?? "core", list("tasks"));
   let agents = loadAgents(list("agents"));
   const k = Number(flag("k") ?? 1);
   const date = flag("date") ?? localDate();
   const attach = flag("attach");
-  const port = Number(attach ?? flag("port") ?? 9466);
+  const port = Number(attach ?? flag("port") ?? 9488);
   const userDataDir = flag("user-data-dir") ?? join(STATE, "ud");
+  const parallel = has("serial") ? 1 : Number(flag("parallel") ?? 3);
   if (attach && !flag("user-data-dir")) throw new Error("--attach needs --user-data-dir <that app's profile folder>");
 
-  log(`${date}: ${tasks.length} tasks × ${agents.length} agents × k=${k} = ${tasks.length * agents.length * k} runs`);
+  log(`${date}: ${tasks.length} tasks × ${agents.length} agents × k=${k} = ${tasks.length * agents.length * k} runs, ${parallel} agents at a time`);
   if (has("dry")) {
-    for (const a of agents) for (const t of tasks) log(`  ${a.id} (${a.agent} ${a.model}) · ${t.id}`);
+    for (const t of tasks) log(`  ${t.suite}${t.tier ? `/${t.tier}` : ""} · ${t.id}`);
+    for (const a of agents) log(`  ${a.id} (${a.agent} ${a.model})`);
     return;
   }
 
+  // Trees first (a repo task's install can take a minute), then one project per task × agent.
+  for (const t of tasks) sourceOf(t);
   const projects = new Map<string, { id: string; dir: string }>();
   for (const t of tasks) {
-    if (t.pinned) pinnedTree(t.pinned);
     for (const a of agents) {
       const dir = join(STATE, "work", t.id, a.id);
       mkdirSync(dir, { recursive: true });
@@ -287,10 +371,10 @@ async function main(): Promise<void> {
   try {
     await cdp.call("updateSettings", { codeMode: "on" });
     agents = await ensureProviders(cdp, agents);
-    const ctx: Ctx = { cdp, userDataDir, date, harness: harnessInfo(), projects };
+    const ctx: Ctx = { cdp, userDataDir, date, harness: harnessInfo(), projects, learnFor: await learnSwitch(cdp, agents) };
 
-    // One chain per agent; chains run side by side unless --serial (each agent has its own project folders).
-    const chain = async (agent: BenchAgent) => {
+    // One chain per agent (each has its own project folders); at most `parallel` chains at once.
+    const chain = (agent: BenchAgent) => async () => {
       let lastEnd = 0;
       for (let trial = 1; trial <= k; trial++) {
         for (const task of tasks) {
@@ -307,12 +391,11 @@ async function main(): Promise<void> {
           writeFileSync(join(out, `${agent.id}--${task.id}--t${trial}.json`), `${JSON.stringify(result, null, 2)}\n`);
           appendHistory(RESULTS, [toRow(result)]);
           const m = result.metrics;
-          log(`${agent.id} · ${task.id} · t${trial}: ${result.status} in ${Math.round(m.durationMs / 1000)} s, run_code ${m.tools.runCode}, todo ${m.todo.updates}, checks ${JSON.stringify(result.checks)}`);
+          log(`${agent.id} · ${task.id} · t${trial}: ${result.status} in ${Math.round(m.durationMs / 1000)} s, score ${result.score.toFixed(2)}, run_code ${m.tools.runCode}, todo ${m.todo.updates}, checks ${JSON.stringify(result.checks)}`);
         }
       }
     };
-    if (has("serial")) for (const a of agents) await chain(a);
-    else await Promise.all(agents.map(chain));
+    await pool(parallel, agents.map(chain));
   } finally {
     cdp.close();
     await app?.stop();

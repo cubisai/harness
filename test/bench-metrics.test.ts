@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { runMetrics, todoOk, toolClass, type BenchEvent } from "../bench/lib/metrics";
+import { withoutDelegation } from "../bench/lib/guides";
+import { isVerifyCommand, runMetrics, todoOk, toolClass, type BenchEvent } from "../bench/lib/metrics";
 import { fromCsv, toCsv, toRow, type RunRow } from "../bench/lib/results";
 import { cells, flags, overview, summarize, type Cell } from "../bench/lib/summary";
 import type { RunResult } from "../bench/lib/types";
@@ -80,20 +81,25 @@ describe("runMetrics", () => {
   });
 });
 
-const result_ = (o: { task?: string; agent?: string; pass?: boolean; time?: number; trial?: number; todo?: boolean | null; date?: string }): RunResult => ({
+const result_ = (o: { task?: string; agent?: string; pass?: boolean; time?: number; trial?: number; todo?: boolean | null; date?: string; suite?: RunResult["suite"]; tier?: RunResult["tier"] }): RunResult => ({
   date: o.date ?? "2026-10-22",
   startedAt: "",
   task: o.task ?? "build-cli",
+  suite: o.suite ?? "behaviour",
+  tier: o.tier ?? null,
   agent: o.agent ?? "claude-sonnet",
   model: "sonnet",
   trial: o.trial ?? 1,
   harness: { commit: "abcdef1234", dirty: false, versions: { claude: "2.1.307" } },
-  threadId: "t",
+  threadIds: ["t"],
   status: o.pass === false ? "failed" : "passed",
   pass: o.pass ?? true,
+  score: o.pass === false ? 0 : 1,
   graders: o.pass === false ? [{ type: "command", pass: false, required: true, weight: 1, why: "node bench-check.mjs failed" }] : [],
-  checks: { todo: o.todo === undefined ? true : o.todo, runCode: null, skills: null },
+  checks: { todo: o.todo === undefined ? true : o.todo, runCode: null, skills: null, memory: null },
   metrics: { ...runMetrics([end({ durationMs: o.time ?? 60_000 })]) },
+  memoryNotes: { before: 0, after: 0 },
+  learn: null,
 });
 const run = (o: Parameters<typeof result_>[0]): RunRow => toRow(result_(o));
 
@@ -123,7 +129,7 @@ describe("summary", () => {
     expect(md).toContain("# Bench 2026-10-22");
     expect(md).toContain("Harness abcdef1 · claude 2.1.307");
     expect(md).toContain("**1/2 runs passed**");
-    expect(md).toContain("| claude-sonnet | 1/2 | 2/2 | 150 s | $0.020 | 200 | 0 |");
+    expect(md).toContain("| claude-sonnet | – / – / – | 1/2 | 2/2 | 150 s | $0.020 | 200 | 0 |");
     expect(md).toContain("90 s (+50%)");
     expect(md).toContain("- **read-heavy · claude-sonnet**: verdict pass → fail (0/1)");
     expect(md).toContain("- **read-heavy · claude-sonnet**: failed: node bench-check.mjs failed");
@@ -136,11 +142,60 @@ describe("summary", () => {
     ]);
     expect(md).toContain("## Latest: [2026-10-22](2026-10-22.md)");
     expect(md).toContain("- **build-cli · claude-sonnet**: verdict pass → fail (0/1)");
-    expect(md.indexOf("[2026-10-22](2026-10-22.md) | abcdef1 | 0/1")).toBeLessThan(md.indexOf("[2026-10-21](2026-10-21.md) | abcdef1 | 1/1"));
+    expect(md.indexOf("[2026-10-22](2026-10-22.md) | abcdef1 | – / – / – | 0/1")).toBeLessThan(md.indexOf("[2026-10-21](2026-10-21.md) | abcdef1 | – / – / – | 1/1"));
+    expect(md.indexOf("[2026-10-21](2026-10-21.md)")).toBeGreaterThan(0);
   });
 
   it("history.csv round-trips rows, nulls and quoted text", () => {
     const rows = [run({ pass: false }), { ...run({ todo: null }), costUsd: null, why: 'a, "quoted"\nline' }];
     expect(fromCsv(toCsv(rows))).toEqual(rows);
+  });
+});
+
+describe("v2 metrics", () => {
+  it("counts memory calls, the check gate, evidence flags and the agent's own test runs", () => {
+    const check = (ok: boolean | null, round: number): BenchEvent => ({ kind: "check", command: "bun run typecheck", ok, exitCode: ok ? 0 : 1, timedOut: false, durationMs: 1, tail: "", round });
+    const m = runMetrics([
+      use("mcp__cubiq__memory_write", "m1"),
+      use("memory_read", "m2"),
+      { kind: "tool-use", toolUseId: "r1", name: "Run", summary: "bunx vitest run test/a.test.ts", payload: { command: "bunx vitest run test/a.test.ts" } },
+      { kind: "tool-use", toolUseId: "r2", name: "Bash", summary: "ls src" },
+      end(),
+      check(null, 0),
+      check(false, 0),
+      { kind: "notice", text: "Worth a second look: …", evidence: ["claims tests pass without running them"] },
+      check(null, 1),
+      check(true, 1),
+    ]);
+    expect(m.memory).toEqual({ reads: 1, writes: 1 });
+    expect(m.check).toEqual({ runs: 2, firstOk: false, fixRounds: 1, finalOk: true });
+    expect(m.evidence).toEqual(["claims tests pass without running them"]);
+    expect(m.verifyRuns).toBe(1);
+  });
+
+  it("knows a verify command when it sees one", () => {
+    expect(["bun run typecheck", "npx tsc -p tsconfig.node.json --noEmit", "node --test", "bunx vitest run x"].every(isVerifyCommand)).toBe(true);
+    expect(["ls src", "cat package.json", "git status"].some(isVerifyCommand)).toBe(false);
+  });
+
+  it("strips only the opencode-delegation section from CLAUDE.md", () => {
+    const text = "## UI design rules\n\nRead DESIGN.md.\n\n## opencode delegation (custom)\n\nDelegate to workers.\n\n## Later\n\nKeep me.\n";
+    expect(withoutDelegation(text)).toBe("## UI design rules\n\nRead DESIGN.md.\n\n## Later\n\nKeep me.\n");
+    expect(withoutDelegation("## UI\n\n## opencode delegation\n\nx\n")).toBe("## UI\n");
+    expect(withoutDelegation("no sections")).toBe("no sections");
+  });
+
+  it("reads history rows written before suites existed as behaviour runs", () => {
+    const old = "date,task,agent,model,trial,status,pass,todoOk,runCodeOk,skillsOk,costUsd,durationMs\n2026-10-22,build-cli,claude-sonnet,sonnet,1,passed,1,1,,,0.08,13000\n";
+    const [row] = fromCsv(old);
+    expect(row).toMatchObject({ suite: "behaviour", score: 1, memoryOk: null, memWrites: 0, checkFirstOk: null, costUsd: 0.08, health: "" });
+  });
+
+  it("puts solve runs in a solved-by-tier column and a suite section", () => {
+    const md = summarize({ date: "2026-10-23", runs: [run({ task: "solve-a", suite: "solve", tier: "easy" }), run({ task: "solve-b", suite: "solve", tier: "hard", pass: false })] }, []);
+    expect(md).toContain("**1/2 real changes solved**");
+    expect(md).toContain("| claude-sonnet | 1/1 / – / 0/1 |");
+    expect(md).toContain("## Solve: real changes to this repo");
+    expect(md).toContain("### solve-a (easy)");
   });
 });
