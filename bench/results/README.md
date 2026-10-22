@@ -4,7 +4,7 @@ Daily runs of `bun run bench` (how it works: [../README.md](../README.md)). One 
 
 ## Latest: [2026-10-22](2026-10-22.md)
 
-Harness 9178757, f84a974 (uncommitted changes) · claude 2.1.308 · codex 0.159.2 · opencode 1.19.3
+Harness 26f6c48, 26f6c48 (uncommitted changes) · claude 2.1.308 · codex 0.159.2 · opencode 1.19.3
 
 No flags.
 
@@ -12,36 +12,36 @@ No flags.
 
 ### claude-sonnet
 
-| Day | Harness | Passed | Checks held | Time | Cost | Tokens in | run_code |
-|---|---|---|---|---|---|---|---|
-| [2026-10-22](2026-10-22.md) | 9178757 | 3/4 | 3/4 | 79 s | $0.367 | 486.1k | 4 |
+| Day | Harness | Solved easy / medium / hard | Passed (all) | Checks held | Time | Cost | Tokens in | run_code |
+|---|---|---|---|---|---|---|---|---|
+| [2026-10-22](2026-10-22.md) | 26f6c48 | 1/1 / 1/1 / – | 9/9 | 2/5 | 284 s | $0.957 | 1411.7k | 2 |
 
 ### codex-luna
 
-| Day | Harness | Passed | Checks held | Time | Cost | Tokens in | run_code |
-|---|---|---|---|---|---|---|---|
-| [2026-10-22](2026-10-22.md) | 9178757 | 3/4 | 4/4 | 223 s | – | 109.5k | 10 |
+| Day | Harness | Solved easy / medium / hard | Passed (all) | Checks held | Time | Cost | Tokens in | run_code |
+|---|---|---|---|---|---|---|---|---|
+| [2026-10-22](2026-10-22.md) | 26f6c48 | 1/1 / 1/1 / – | 9/9 | 5/5 | 479 s | – | 369.8k | 33 |
 
 ### coralbricks-deepseek
 
-| Day | Harness | Passed | Checks held | Time | Cost | Tokens in | run_code |
-|---|---|---|---|---|---|---|---|
-| [2026-10-22](2026-10-22.md) | 9178757 | 4/4 | 4/4 | 78 s | $0.020 | 313.3k | 6 |
+| Day | Harness | Solved easy / medium / hard | Passed (all) | Checks held | Time | Cost | Tokens in | run_code |
+|---|---|---|---|---|---|---|---|---|
+| [2026-10-22](2026-10-22.md) | 26f6c48 | 1/1 / 1/1 / – | 7/9 | 5/5 | 990 s | $0.109 | 2842.3k | 56 |
 
 ### opencode-zen-deepseek
 
-| Day | Harness | Passed | Checks held | Time | Cost | Tokens in | run_code |
-|---|---|---|---|---|---|---|---|
-| [2026-10-22](2026-10-22.md) | 9178757, f84a974 | 3/4 | 2/4 | 550 s | $0 | 413.5k | 2 |
+| Day | Harness | Solved easy / medium / hard | Passed (all) | Checks held | Time | Cost | Tokens in | run_code |
+|---|---|---|---|---|---|---|---|---|
+| [2026-10-22](2026-10-22.md) | 26f6c48 | 1/1 / 1/1 / – | 8/9 | 3/5 | 1641 s | $0 | 2110.9k | 11 |
 
 ### pgs-deepseek
 
-| Day | Harness | Passed | Checks held | Time | Cost | Tokens in | run_code |
-|---|---|---|---|---|---|---|---|
-| [2026-10-22](2026-10-22.md) | 9178757 | 4/4 | 3/4 | 236 s | $0.014 | 312.8k | 15 |
+| Day | Harness | Solved easy / medium / hard | Passed (all) | Checks held | Time | Cost | Tokens in | run_code |
+|---|---|---|---|---|---|---|---|---|
+| [2026-10-22](2026-10-22.md) | 26f6c48 | 1/1 / 0/1 / – | 5/9 | 3/5 | 656 s | – | 1858.2k | 16 |
 
 ### tokenharbor-deepseek
 
-| Day | Harness | Passed | Checks held | Time | Cost | Tokens in | run_code |
-|---|---|---|---|---|---|---|---|
-| [2026-10-22](2026-10-22.md) | 9178757 | 4/4 | 4/4 | 165 s | $0 | 440.3k | 3 |
+| Day | Harness | Solved easy / medium / hard | Passed (all) | Checks held | Time | Cost | Tokens in | run_code |
+|---|---|---|---|---|---|---|---|---|
+| [2026-10-22](2026-10-22.md) | 26f6c48 | 1/1 / 1/1 / – | 7/9 | 5/5 | 425 s | $0 | 2111.8k | 28 |

@@ -366,7 +366,7 @@ async function main(): Promise<void> {
     app = await launchApp({ root: ROOT, port, userDataDir, log: join(STATE, "app.log") });
   }
   const cdp = await Cdp.connect(port);
-  const out = join(STATE, "runs", date);
+  const out = join(STATE, has("scratch") ? "scratch-runs" : "runs", date);
   mkdirSync(out, { recursive: true });
   try {
     await cdp.call("updateSettings", { codeMode: "on" });
