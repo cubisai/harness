@@ -38,10 +38,11 @@ export function DiffPanel({ projectId, refreshKey }: { projectId: string; refres
   const list = scope === "base" ? baseFiles : files;
   const adds = list?.reduce((n, f) => n + f.additions, 0) ?? 0;
   const dels = list?.reduce((n, f) => n + f.deletions, 0) ?? 0;
-  // A git worktree thread only: a chat's own folder has a path but no branch.
-  const bar = thread?.worktreePath && thread.branch ? (
+  // Every thread in a git folder; a chat's own folder has a path but no branch, and no git.
+  const bar = thread && !(thread.worktreePath && !thread.branch) ? (
     <ReviewMergeBar
       threadId={thread.id}
+      worktree={Boolean(thread.worktreePath && thread.branch)}
       refreshKey={refreshKey}
       onScope={(next, review: WorktreeReview) => {
         setScope(next);

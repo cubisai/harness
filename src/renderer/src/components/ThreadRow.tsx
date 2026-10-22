@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { AgentInfo, Thread } from "../../../shared/types";
+import { api } from "../api";
 import { IconArchive, IconMore, IconPin, IconStop } from "../icons";
 import { useStore } from "../store";
 import { UnsupportedChip } from "./UnsupportedChip";
@@ -45,6 +46,21 @@ export function ThreadRow({
 }) {
   const [menu, setMenu] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  // Uncommitted files in the thread's worktree: deleting keeps that folder, so say so before.
+  const [worktreeDirty, setWorktreeDirty] = useState(0);
+  const hasWorktree = Boolean(thread.worktreePath && thread.branch);
+  useEffect(() => {
+    setWorktreeDirty(0);
+    if (!confirming || !hasWorktree) return;
+    let current = true;
+    void api()
+      .gitFolder(thread.id)
+      .then((f) => current && setWorktreeDirty(f?.worktree ? f.uncommitted : 0))
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [confirming, hasWorktree, thread.id]);
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState(thread.title);
   const box = useRef<HTMLDivElement>(null);
@@ -136,6 +152,11 @@ export function ThreadRow({
           {confirming ? (
             <>
               <p className="thread-menu-note">Delete “{thread.title}” and its history? This can't be undone.</p>
+              {worktreeDirty > 0 && (
+                <p className="thread-menu-note warn">
+                  Its worktree has {worktreeDirty} uncommitted file{worktreeDirty === 1 ? "" : "s"}: that folder is kept so they aren't lost. Commit them from Changes first to tidy up.
+                </p>
+              )}
               <button role="menuitem" className="danger" onClick={act(() => deleteThread(thread.id))}>
                 Delete for Good
               </button>

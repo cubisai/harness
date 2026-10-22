@@ -37,6 +37,7 @@ const api: UnskilledApi = {
   getDiff: (projectId, threadId) => ipcRenderer.invoke("diff:get", projectId, threadId),
   runDoctor: () => ipcRenderer.invoke("doctor:run"),
   doctorFix: (findingId, fixIndex) => ipcRenderer.invoke("doctor:fix", findingId, fixIndex),
+  gitFolder: (threadId) => ipcRenderer.invoke("git:folder", threadId),
   worktreeReview: (threadId) => ipcRenderer.invoke("worktree:review", threadId),
   worktreeMessage: (threadId) => ipcRenderer.invoke("worktree:message", threadId),
   worktreeCommit: (threadId, message) => ipcRenderer.invoke("worktree:commit", threadId, message),

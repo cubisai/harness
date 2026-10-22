@@ -118,7 +118,7 @@ Full access mode shows its chip in `--danger`.
 - **Agent**: no bubble or avatar, full column width, line height 1.6.
   - Tool calls collapse into one line: "Worked for 41s · read 1 file · edited 1 · ran 1 command". Expanded, the rows sit behind a 1px left rule. Every file path in them is clickable and opens the panel.
   - Code blocks have a 1px border, a header with the language and Copy, and a body on `--bg`.
-  - A changes card at the end of a turn: "2 files changed +38 −0 · Review · Undo".
+  - A changes card at the end of a turn: "2 files changed +38 −0 · Review". There is no Undo (dropped 2026-10-22).
   - Hover actions: Copy, Retry, Branch, plus the meta line (model · effort · tokens · cost) in mono `--text-tertiary`.
 - Reasoning shows as a muted "Thought for 6s" disclosure.
 
@@ -140,6 +140,13 @@ Full access mode shows its chip in `--danger`.
 | pptx | macOS: Quick Look slide images. Windows and fallback: slide XML → titles, text and images per slide |
 
 Parsing runs in an Electron `utilityProcess`, with a 25 MB cap and a 10 s timeout, and results are cached by path and mtime. A failure shows "Can't preview · Open in…". It must never take the window down.
+
+### 7.6a Changes panel: git
+- Every thread in a git folder gets the git bar above its file list. Its top line says where the thread works: branch icon, branch (mono), then "own worktree · from main" or "project folder", and Push on the right ("Push 2" with unpushed commits, "✓ Pushed" when there are none, hidden without a remote). Counts sit under it in `--text-secondary`: "2 commits ahead · 1 behind · 3 files not committed".
+- A project-folder thread gets one Commit box (message, Generate as a ghost button, Commit as the primary) while files are uncommitted.
+- A worktree thread gets three numbered steps home: **1 Commit → 2 Merge into <base> → 3 Clean up**. The current step's mark is filled `--primary`, done steps show ✓ in `--success`, later steps are outlined. Only the open step shows its controls, on `--bg-subtle`; any step's row opens it. Merge picks the target and "One squashed commit" / "Merge commit" from two selects. A merge is remembered (it survives reopening); new commits after it open step 2 again. Clean up removes the worktree folder; the branch stays.
+- Under a worktree's steps, the file list scope is "Not committed" / "Whole branch".
+- Disabled actions always say why in a hint line under them, never a silent grey button.
 
 ### 7.7 Forms and sheets (Settings, Provider editor)
 - Label column 140px; the value column is `minmax(0, 1fr)`.

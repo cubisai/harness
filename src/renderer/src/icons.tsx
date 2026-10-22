@@ -15,6 +15,7 @@ import {
   Ellipsis,
   ExternalLink,
   FileDiff,
+  GitBranch,
   Folder,
   Globe,
   Library,
@@ -56,6 +57,7 @@ export const IconFolder = icon(Folder);
 export const IconPlus = icon(Plus);
 export const IconArrowUp = icon(ArrowUp);
 export const IconDiff = icon(FileDiff);
+export const IconBranch = icon(GitBranch, 14);
 export const IconRefresh = icon(RefreshCw);
 export const IconSparkle = icon(Sparkles);
 export const IconArrowLeft = icon(ArrowLeft);
