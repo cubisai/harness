@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { runMetrics, todoOk, toolClass, type BenchEvent } from "../bench/lib/metrics";
-import { cells, flags, summarize, type Cell } from "../bench/lib/summary";
+import { fromCsv, toCsv, toRow, type RunRow } from "../bench/lib/results";
+import { cells, flags, overview, summarize, type Cell } from "../bench/lib/summary";
 import type { RunResult } from "../bench/lib/types";
 
 const use = (name: string, id = name, parentId?: string): BenchEvent => ({ kind: "tool-use", toolUseId: id, name, summary: name, ...(parentId ? { parentId } : {}) });
@@ -36,6 +37,16 @@ describe("runMetrics", () => {
     expect(todoOk(open, "before-edit")).toBe(false);
   });
 
+  it("a closed list with no edit call (shell writes) passes before-edit", () => {
+    expect(todoOk(runMetrics([plan("pending"), use("Run"), plan("completed"), end()]), "before-edit")).toBe(true);
+  });
+
+  it("a skill-tool call that names the skill counts as loaded (Claude's result has no body)", () => {
+    const skills = new Map([["SENT-1", "changelog-entry"]]);
+    expect(runMetrics([{ kind: "tool-use", toolUseId: "s", name: "Skill", summary: "harness-skills:changelog-entry" }, end()], skills).skills).toEqual(["changelog-entry"]);
+    expect(runMetrics([{ kind: "tool-use", toolUseId: "s", name: "Skill", summary: "changelog-entry-old" }, end()], skills).skills).toEqual([]);
+  });
+
   it("no list: none holds, null fields", () => {
     const m = runMetrics([use("Edit"), end()]);
     expect(m.todo).toEqual({ updates: 0, parts: 0, beforeFirstEdit: null, allCompleted: null });
@@ -69,7 +80,7 @@ describe("runMetrics", () => {
   });
 });
 
-const run = (o: { task?: string; agent?: string; pass?: boolean; time?: number; trial?: number; todo?: boolean | null; date?: string }): RunResult => ({
+const result_ = (o: { task?: string; agent?: string; pass?: boolean; time?: number; trial?: number; todo?: boolean | null; date?: string }): RunResult => ({
   date: o.date ?? "2026-10-22",
   startedAt: "",
   task: o.task ?? "build-cli",
@@ -84,6 +95,7 @@ const run = (o: { task?: string; agent?: string; pass?: boolean; time?: number; 
   checks: { todo: o.todo === undefined ? true : o.todo, runCode: null, skills: null },
   metrics: { ...runMetrics([end({ durationMs: o.time ?? 60_000 })]) },
 });
+const run = (o: Parameters<typeof result_>[0]): RunRow => toRow(result_(o));
 
 describe("summary", () => {
   it("folds trials into medians", () => {
@@ -110,8 +122,25 @@ describe("summary", () => {
     ]);
     expect(md).toContain("# Bench 2026-10-22");
     expect(md).toContain("Harness abcdef1 · claude 2.1.307");
+    expect(md).toContain("**1/2 runs passed**");
+    expect(md).toContain("| claude-sonnet | 1/2 | 2/2 | 150 s | $0.020 | 200 | 0 |");
     expect(md).toContain("90 s (+50%)");
     expect(md).toContain("- **read-heavy · claude-sonnet**: verdict pass → fail (0/1)");
-    expect(md).toContain("- read-heavy · claude-sonnet t1: failed: node bench-check.mjs failed");
+    expect(md).toContain("- **read-heavy · claude-sonnet**: failed: node bench-check.mjs failed");
+  });
+
+  it("overview lists each agent day by day, newest first", () => {
+    const md = overview([
+      { date: "2026-10-21", runs: [run({ date: "2026-10-21" })] },
+      { date: "2026-10-22", runs: [run({ pass: false })] },
+    ]);
+    expect(md).toContain("## Latest: [2026-10-22](2026-10-22.md)");
+    expect(md).toContain("- **build-cli · claude-sonnet**: verdict pass → fail (0/1)");
+    expect(md.indexOf("[2026-10-22](2026-10-22.md) | abcdef1 | 0/1")).toBeLessThan(md.indexOf("[2026-10-21](2026-10-21.md) | abcdef1 | 1/1"));
+  });
+
+  it("history.csv round-trips rows, nulls and quoted text", () => {
+    const rows = [run({ pass: false }), { ...run({ todo: null }), costUsd: null, why: 'a, "quoted"\nline' }];
+    expect(fromCsv(toCsv(rows))).toEqual(rows);
   });
 });

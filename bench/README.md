@@ -8,7 +8,7 @@ bun run bench --agents claude-sonnet,codex-luna --tasks build-cli
 bun run bench --k 3                              # three tries each: use on days a harness change lands
 bun run bench --serial                           # one agent at a time (default: agents side by side)
 bun run bench --dry                              # list the runs, start nothing
-bun run bench:report [YYYY-MM-DD]                # re-render a day's summary.md, no model calls
+bun run bench:report [YYYY-MM-DD]                # re-render a day's report and results/README.md, no model calls
 ```
 
 `bun run bench` loads `.env`, which the native providers' keys come from (`envRef`; keys are never written anywhere).
@@ -19,7 +19,7 @@ bun run bench:report [YYYY-MM-DD]                # re-render a day's summary.md,
 2. Each task × agent has its own project folder (`bench/.state/work/<task>/<agent>`), reset before every run: the fixture copied in and committed to a fresh git repo, or this repo at a pinned commit without CLAUDE.md/AGENTS.md.
 3. Code mode is set to "on". Then: new thread → `updateThread({agent, model, permissionMode: "full"})` → the DB row is checked → `send` → the run waits for the top-level `turn-end` in `unskilled.db` (timeout 15 min).
 4. `<fixture>.hidden/` is copied in, the task's graders run (`evals/lib/graders.ts`: file, command, answer…), and the metrics are read from the thread's events (`bench/lib/metrics.ts`).
-5. Free providers (`"spaced": true`) wait at least 90 s between runs; after a rate-limit error a run waits 180 s and retries once.
+5. Free providers (`"spaced": true`) wait at least 90 s between runs. After a rate-limit error, or a stall (no new event for 5 min), a run waits 180 s and retries once.
 
 ## What is measured
 
@@ -28,7 +28,7 @@ bun run bench:report [YYYY-MM-DD]                # re-render a day's summary.md,
 | Pass | the task's graders: hidden tests, file checks, the answer |
 | Todo | lists (`plan` events, from any agent's todo tool): before the first edit? updates, all completed at the end; the one-step task expects **none** |
 | Code mode | `run_code` calls and failed scripts vs look (read/grep/glob), shell and edit calls; top-level only |
-| Skills | a sentinel string that sits only in the skill's body shows up in the run's events |
+| Skills | a sentinel string that sits only in the skill's body shows up in the run's events, or a skill-tool call names the skill (Claude's Skill result is only "Launching skill: …") |
 | Tokens, cost, time | from the top-level `turn-end` (input, output, cache read/write, `costUsd`, `durationMs`) |
 | Errors | `error` events |
 
@@ -45,4 +45,11 @@ Agents and models are in `agents.json`. To add a task, put a JSON file in `tasks
 
 ## Reading results
 
-`results/<YYYY-MM-DD>/` holds one JSON per run (`<agent>--<task>--t<n>.json`, with the harness commit and CLI versions) and `summary.md`. Deltas in the summary are against the previous day. A **flag** needs a pass/fail flip, or a value outside the last 7 days' min–max (±10%) once at least 3 days exist: one run is noisy, so a single-day wobble is not a change. Results are committed, so the history is the same on both machines.
+Committed (small, readable, the same on both machines):
+- `results/README.md`: the latest flags and every agent day by day.
+- `results/<YYYY-MM-DD>.md`: the day's report: at a glance per agent, flags, one table per task, why runs missed.
+- `results/history.csv`: one row per run (pass, checks, todo, tool counts, tokens, cost, time, harness commit, CLI versions). Reports and day-to-day deltas are built from it.
+
+Local only: `.state/runs/<date>/<agent>--<task>--t<n>.json`, the full record of a run (graders, metrics, final answer, thread id). The thread itself stays in the bench profile (`.state/ud`).
+
+Deltas are against the previous day. A **flag** needs a pass/fail flip, or a value outside the last 7 days' min–max (±10%) once at least 3 days exist: one run is noisy, so a single-day wobble is not a change.

@@ -2,7 +2,8 @@
 // a fixed task set per agent and model, then grades and measures each run.
 //   bun run bench [--agents a,b] [--tasks x,y] [--k 3] [--serial] [--port 9466]
 //                 [--attach <port> --user-data-dir <dir>] [--dry]
-// Results: bench/results/<YYYY-MM-DD>/<agent>--<task>--t<n>.json + summary.md.
+// Committed: bench/results/history.csv (a row per run), <YYYY-MM-DD>.md and README.md.
+// Local: bench/.state/runs/<YYYY-MM-DD>/<agent>--<task>--t<n>.json (the full record).
 // Plan: .ai/plans/bench-daily.md.
 
 import { execFileSync } from "node:child_process";
@@ -16,7 +17,7 @@ import { execCommandSync } from "../src/main/winspawn";
 import { launchApp, registerProject, threadEvents, threadRow, type App } from "./lib/app";
 import { Cdp } from "./lib/cdp";
 import { runMetrics, todoOk, type BenchEvent } from "./lib/metrics";
-import { readDays, writeSummary } from "./lib/results";
+import { appendHistory, toRow, writeReports } from "./lib/results";
 import type { BenchAgent, BenchTask, RunResult } from "./lib/types";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -25,6 +26,8 @@ const STATE = join(BENCH, ".state");
 const RESULTS = join(BENCH, "results");
 const POLL_MS = 5_000;
 const TIMEOUT_MS = 15 * 60_000;
+/** No new event for this long = stalled (free tiers sometimes never answer): interrupt and retry once. */
+const STALL_MS = 5 * 60_000;
 /** Free or rate-limited providers: at least this long between two of their runs. */
 const SPACING_MS = 90_000;
 /** After a rate-limit error: wait, then retry the run once. */
@@ -148,11 +151,19 @@ async function runOnce(ctx: Ctx, agent: BenchAgent, task: BenchTask, trial: numb
   const until = Date.now() + timeout;
   let events: BenchEvent[] = [];
   let ended = false;
+  let stalled = false;
+  let lastChange = Date.now();
   while (Date.now() < until) {
     await sleep(POLL_MS);
-    events = threadEvents(ctx.userDataDir, thread.id);
+    const now = threadEvents(ctx.userDataDir, thread.id);
+    if (now.length !== events.length) lastChange = Date.now();
+    events = now;
     if (events.some((e) => e.kind === "turn-end" && !e.parentId)) {
       ended = true;
+      break;
+    }
+    if (Date.now() - lastChange > STALL_MS) {
+      stalled = true;
       break;
     }
   }
@@ -193,22 +204,23 @@ async function runOnce(ctx: Ctx, agent: BenchAgent, task: BenchTask, trial: numb
     trial,
     harness: ctx.harness,
     threadId: thread.id,
-    status: !ended ? "timeout" : metrics.errors.length && !graded.pass ? "error" : graded.pass ? "passed" : "failed",
+    status: stalled ? "stalled" : !ended ? "timeout" : metrics.errors.length && !graded.pass ? "error" : graded.pass ? "passed" : "failed",
     pass: ended && graded.pass,
     graders,
     checks,
     metrics: { ...metrics, answer: metrics.answer.slice(0, 2000) },
-    ...(ended ? {} : { note: `no turn-end within ${Math.round(timeout / 60_000)} min` }),
+    ...(ended ? {} : { note: stalled ? `no activity for ${STALL_MS / 60_000} min` : `no turn-end within ${Math.round(timeout / 60_000)} min` }),
   };
 }
 
 async function runWithRetry(ctx: Ctx, agent: BenchAgent, task: BenchTask, trial: number): Promise<RunResult> {
   const first = await runOnce(ctx, agent, task, trial);
-  if (first.pass || !first.metrics.errors.some((e) => RATE_LIMIT.test(e))) return first;
-  log(`${agent.id} ${task.id}: rate limited, retrying in ${RATE_LIMIT_WAIT_MS / 1000} s`);
+  const why = first.status === "stalled" ? "a stall" : !first.pass && first.metrics.errors.some((e) => RATE_LIMIT.test(e)) ? "a rate limit" : null;
+  if (!why) return first;
+  log(`${agent.id} ${task.id}: ${why}, retrying in ${RATE_LIMIT_WAIT_MS / 1000} s`);
   await sleep(RATE_LIMIT_WAIT_MS);
   const second = await runOnce(ctx, agent, task, trial);
-  return { ...second, note: [second.note, "retried after a rate limit"].filter(Boolean).join("; ") };
+  return { ...second, note: [second.note, `retried after ${why}`].filter(Boolean).join("; ") };
 }
 
 /** Registers each native provider once per bench profile; an agent whose key is missing is dropped. */
@@ -270,7 +282,7 @@ async function main(): Promise<void> {
     app = await launchApp({ root: ROOT, port, userDataDir, log: join(STATE, "app.log") });
   }
   const cdp = await Cdp.connect(port);
-  const out = join(RESULTS, date);
+  const out = join(STATE, "runs", date);
   mkdirSync(out, { recursive: true });
   try {
     await cdp.call("updateSettings", { codeMode: "on" });
@@ -293,6 +305,7 @@ async function main(): Promise<void> {
           }
           lastEnd = Date.now();
           writeFileSync(join(out, `${agent.id}--${task.id}--t${trial}.json`), `${JSON.stringify(result, null, 2)}\n`);
+          appendHistory(RESULTS, [toRow(result)]);
           const m = result.metrics;
           log(`${agent.id} · ${task.id} · t${trial}: ${result.status} in ${Math.round(m.durationMs / 1000)} s, run_code ${m.tools.runCode}, todo ${m.todo.updates}, checks ${JSON.stringify(result.checks)}`);
         }
@@ -304,8 +317,7 @@ async function main(): Promise<void> {
     cdp.close();
     await app?.stop();
   }
-  const file = writeSummary(RESULTS, date, readDays(RESULTS));
-  log(`summary: ${file}`);
+  log(`report: ${writeReports(RESULTS, date)}`);
 }
 
 main().catch((err) => {

@@ -35,7 +35,7 @@ export interface BenchAgent {
   provider?: { id: string; label: string; baseURL: string; envVar: string };
 }
 
-export type RunStatus = "passed" | "failed" | "timeout" | "error";
+export type RunStatus = "passed" | "failed" | "timeout" | "stalled" | "error";
 
 export interface RunResult {
   date: string;

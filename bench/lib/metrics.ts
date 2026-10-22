@@ -47,7 +47,7 @@ export interface RunMetrics {
   /** Model calls (native agent only). */
   steps: number | null;
   errors: string[];
-  /** Skill names whose sentinel shows up anywhere in the run's events. */
+  /** Skills seen loaded: the sentinel in their body shows up in the events, or a skill-tool call names them (Claude's Skill result is only "Launching skill: <name>"). */
   skills: string[];
   /** The last top-level assistant text. */
   answer: string;
@@ -104,16 +104,25 @@ export function runMetrics(events: BenchEvent[], sentinels: Map<string, string> 
     durationMs: sum((e) => e.durationMs),
     steps: ends.some((e) => e.steps !== undefined) ? sum((e) => e.steps) : null,
     errors: events.filter((e): e is Extract<BenchEvent, { kind: "error" }> => e.kind === "error").map((e) => e.message),
-    skills: [...new Set([...sentinels].filter(([s]) => raw.includes(s)).map(([, name]) => name))],
+    skills: [
+      ...new Set([
+        ...[...sentinels].filter(([s]) => raw.includes(s)).map(([, name]) => name),
+        ...[...sentinels.values()].filter((name) => uses.some((u) => toolClass(u.name) === "skill" && new RegExp(`(^|[\\s:/])${name}$`).test(u.summary.trim()))),
+      ]),
+    ],
     answer: texts.at(-1)?.text ?? "",
   };
 }
 
 export type TodoExpect = "none" | "before-edit";
 
-/** Whether the run's todo use matches what the task expects; null when the task doesn't say. */
+/**
+ * Whether the run's todo use matches what the task expects; null when the task doesn't say.
+ * "before-edit": a list, closed at the end, not started after the first edit. An agent that writes
+ * files only through the shell (Codex often does) has no edit call to compare with.
+ */
 export function todoOk(m: RunMetrics, expect: TodoExpect | undefined): boolean | null {
   if (!expect) return null;
   if (expect === "none") return m.todo.updates === 0;
-  return m.todo.beforeFirstEdit === true && m.todo.allCompleted === true;
+  return m.todo.updates > 0 && m.todo.beforeFirstEdit !== false && m.todo.allCompleted === true;
 }

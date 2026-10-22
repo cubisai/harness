@@ -36,6 +36,10 @@ try {
   assert.match(bad.err, /add/);
   assert.ok(existsSync("README.md") && /node notes\.mjs/.test(readFileSync("README.md", "utf8")), "README.md shows usage");
   console.log("notes ok");
+} catch (err) {
+  // One short line: the grader keeps only the output's tail.
+  console.error(`FAIL ${err.message.replace(/\s+/g, " ")}`);
+  process.exitCode = 1;
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
