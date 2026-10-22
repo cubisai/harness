@@ -1,4 +1,21 @@
-# Handoff: todos + code mode on every agent, git bar, benchmark plan — 2026-10-22 — see "Resume here — 2026-10-22 (Mac, session 8)"
+# Handoff: daily bench (bench/) — 2026-10-22 — see "Resume here — 2026-10-22 (Mac, session 9)"
+
+## Resume here — 2026-10-22 (Mac, session 9)
+
+**`bench/`: day-by-day harness benchmark** (research and design: `.ai/plans/bench-daily.md`, local only). `bun run bench` starts its own dev app (CDP 9466, profile `bench/.state/ud`), runs every agent in `bench/agents.json` on the 4 tasks in `bench/tasks/` through the real app (code mode on, permission full), grades with `evals/lib/graders.ts` and reads todo / run_code / skill / tokens / cost / time from the thread's events. Flags: `--agents`, `--tasks`, `--k 3` (on days a harness change lands), `--serial`, `--dry`, `--attach <port> --user-data-dir <dir>`. Committed output: `bench/results/history.csv`, `<date>.md`, `README.md`; full per-run JSON stays in `bench/.state/runs/`. Full run ≈ 16 min (agents side by side), ≈ $0.40 Claude. How to read it: `bench/README.md`.
+- Why not `evals/`: its drivers never turn code mode on and skip the app wiring (skills allowlist, plugin skills, MCP router), and its trial cache has no date, so a daily rerun would be served from cache.
+- Detection notes: Claude's Skill result is only "Launching skill: …", so a skill counts as loaded when the sentinel is in the events *or* a skill-tool call names it. Codex often writes files through the shell (no Edit call), so "todo before first edit" falls back to "a list, closed at the end".
+- Zen free DeepSeek stalled once (turn-start, then nothing): a run with no new event for 5 min is interrupted and retried once after 180 s.
+
+**First day (2026-10-22, `bench/results/2026-10-22.md`)**: 21/24 passed, 20/24 behaviour checks held.
+- Claude Sonnet failed the one-step edit: its Edit replaced "`Hello, " with "`Hi," (dropped the space).
+- Codex Luna and OpenCode Zen answered only `VARIANT_RE` on read-heavy (missed `AUTO_OPEN`, `PROVIDER_MODEL_PREFIX`; ground truth re-checked). OpenCode used 11 shell calls, no run_code.
+- No todo list on the 7-part build: Claude (2 shell calls, 13 s), OpenCode, PGS. Codex, CoralBricks and TokenHarbor listed and closed one.
+- Every agent loaded the unnamed `.cubiq` skill and followed its `(#none)` rule.
+
+**Also:** `.ai/` and `.claude/` are no longer tracked (user: don't push them); both are fully ignored, local files kept. The two design skills (`.claude/skills/design-system`, `token-change`) must be copied to the Windows PC by hand now.
+
+**Next:** run `bun run bench` daily; look into Claude skipping todos on the 7-part build (handoff session 8 had 9/10 planning) and OpenCode ignoring run_code on read-heavy. Windows: the bench uses `bun run dev`, `tar`, `git` and `node:sqlite`; not yet run on the PC.
 
 ## Resume here — 2026-10-22 (Mac, session 8)
 
