@@ -301,6 +301,15 @@ describe("Store migrations", () => {
     expect(store.getThread(t.id)).toMatchObject({ branch: "harness/fresh-abc123", worktreePath: "/wt/fresh" });
   });
 
+  it("remembers a worktree thread's last merge, absent until there is one", () => {
+    const store = new Store(join(tempDir(), "merged.db"));
+    closeAfter(() => store.close());
+    const p = store.addProject("/tmp/p");
+    const t = store.createThread(p.id, "claude", "opus", "ask");
+    expect(store.getThread(t.id).mergedSha).toBeUndefined();
+    expect(store.setMerged(t.id, "abc1234", "main")).toMatchObject({ mergedSha: "abc1234", mergedInto: "main" });
+  });
+
   it("opens a fresh database twice without throwing", () => {
     const file = join(tempDir(), "fresh.db");
     new Store(file).close();

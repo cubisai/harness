@@ -102,7 +102,7 @@ import { SkillCatalogs, forAgent } from "./skills/sources";
 import { skillTool } from "./skills/tool";
 import { shellTools } from "./shell-tools";
 import { ShellManager } from "./shells";
-import { commitThread, draftMessage, mergeThread, pushThread, removeThreadWorktree, reviewState, type ReviewDeps } from "./worktree-review";
+import { commitThread, draftMessage, folderState, mergeThread, pushThread, removeThreadWorktree, reviewState, type ReviewDeps } from "./worktree-review";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const smoke = process.argv.includes("--smoke");
@@ -1214,6 +1214,14 @@ async function main(): Promise<void> {
       return false;
     }
   };
+  // A thread's own folder (its worktree, or a chat's folder); null when it works in the project folder.
+  const threadFolderOf = (threadId: string | null | undefined) => {
+    try {
+      return threadId ? (store.getThread(threadId).worktreePath ?? null) : null;
+    } catch {
+      return null;
+    }
+  };
   const projectPathOf = (projectId: string | null) => {
     try {
       return projectId ? store.getProject(projectId).path : null;
@@ -1355,8 +1363,8 @@ async function main(): Promise<void> {
   ipcMain.handle("editors:list", () => editors.list());
   ipcMain.handle(
     "editors:open",
-    async (_e, target: { projectId: string | null; path: string; line?: number; column?: number }, editorId?: string): Promise<OpenResult> => {
-      const base = projectPathOf(target.projectId);
+    async (_e, target: { projectId: string | null; threadId?: string | null; path: string; line?: number; column?: number }, editorId?: string): Promise<OpenResult> => {
+      const base = threadFolderOf(target.threadId) ?? projectPathOf(target.projectId);
       const raw = target.path.startsWith("~/") ? join(homedir(), target.path.slice(2)) : target.path;
       const path = isAbsolute(raw) ? raw : base ? resolve(base, raw) : null;
       if (!path || !existsSync(path)) return { ok: false, error: `${target.path} doesn't exist.` };
@@ -1776,8 +1784,9 @@ async function main(): Promise<void> {
   ipcMain.handle("doctor:run", () => doctor.run());
   ipcMain.handle("doctor:fix", (_e, findingId: unknown, fixIndex: unknown) => doctor.fix(String(findingId), Number(fixIndex)));
   // Review & merge for worktree threads: the app runs git itself (never the agent), and never pushes.
-  const reviewDeps: ReviewDeps = { thread: (id) => store.getThread(id), project: (id) => store.getProject(id), drivers: () => drivers, settings: () => settings.get() };
+  const reviewDeps: ReviewDeps = { thread: (id) => store.getThread(id), project: (id) => store.getProject(id), drivers: () => drivers, settings: () => settings.get(), recordMerge: (id, sha, into) => void store.setMerged(id, sha, into) };
   const afterGit = (threadId: string) => broadcast({ type: "thread", thread: store.getThread(threadId) });
+  ipcMain.handle("git:folder", (_e, threadId: string) => folderState(reviewDeps, threadId));
   ipcMain.handle("worktree:review", (_e, threadId: string) => reviewState(reviewDeps, threadId));
   ipcMain.handle("worktree:message", (_e, threadId: string) => draftMessage(reviewDeps, threadId, AbortSignal.timeout(180_000)));
   ipcMain.handle("worktree:commit", async (_e, threadId: string, message: string) => {

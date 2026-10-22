@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AgentDriver } from "../src/main/agents/types";
 import { createWorktree } from "../src/main/git";
-import { commitThread, draftMessage, mergeThread, pushThread, removeThreadWorktree, reviewState, type ReviewDeps } from "../src/main/worktree-review";
+import { commitThread, draftMessage, folderState, mergeThread, pushThread, removeThreadWorktree, reviewState, type ReviewDeps } from "../src/main/worktree-review";
 import { DEFAULT_COMMIT_INSTRUCTIONS, type Project, type Settings, type Thread } from "../src/shared/types";
 import { tempDir } from "./helpers";
 
@@ -171,5 +171,53 @@ describe("worktree review", () => {
     expect(await removeThreadWorktree(w.deps, "t1")).toBe(false);
     await commitThread(w.deps, "t1", "Add b");
     expect(await removeThreadWorktree(w.deps, "t1")).toBe(true);
+  });
+
+  it("remembers a squash merge, so the same commits aren't merged twice and new ones can be", async () => {
+    const w = await withWorktree();
+    const t = w.thread as Thread & { mergedSha?: string; mergedInto?: string };
+    w.deps.recordMerge = (_id, sha, into) => {
+      t.mergedSha = sha;
+      t.mergedInto = into;
+    };
+    writeFileSync(join(w.dir, "b.txt"), "hi\n");
+    await commitThread(w.deps, "t1", "Add b");
+    expect((await reviewState(w.deps, "t1")).merged).toBeNull();
+    expect((await mergeThread(w.deps, "t1", { mode: "squash", message: "Add b" })).ok).toBe(true);
+    expect(t.mergedSha).toBe(w.git(w.dir, "rev-parse", "HEAD"));
+    // A squash leaves the branch "ahead", but it is merged and up to date.
+    const after = await reviewState(w.deps, "t1");
+    expect(after.ahead).toBe(1);
+    expect(after.merged).toEqual({ into: "main", upToDate: true });
+    const again = await mergeThread(w.deps, "t1", { mode: "squash", message: "Add b" });
+    expect(again).toMatchObject({ ok: false, reason: "Already merged into main: there are no new commits since." });
+    writeFileSync(join(w.dir, "c.txt"), "more\n");
+    await commitThread(w.deps, "t1", "Add c");
+    expect((await reviewState(w.deps, "t1")).merged).toEqual({ into: "main", upToDate: false });
+    expect((await mergeThread(w.deps, "t1", { mode: "squash", message: "Add c" })).ok).toBe(true);
+    expect(readFileSync(join(w.repo, "c.txt"), "utf8")).toBe("more\n");
+  });
+
+  it("commits and describes changes in the project folder for a thread without a worktree", async () => {
+    const w = await withWorktree();
+    const plain = { ...w.thread, branch: null, worktreePath: null } as unknown as Thread;
+    const deps: ReviewDeps = { ...w.deps, thread: () => plain };
+    expect(await folderState(deps, "t1")).toMatchObject({ branch: "main", worktree: false, uncommitted: 0, remote: null });
+    writeFileSync(join(w.repo, "p.txt"), "proj\n");
+    expect((await folderState(deps, "t1"))?.uncommitted).toBe(1);
+    const { message } = await draftMessage(deps, "t1", new AbortController().signal);
+    expect(message).toBe("Add b.txt with a greeting");
+    await commitThread(deps, "t1", "Add p");
+    expect(w.git(w.repo, "log", "-1", "--format=%s")).toBe("Add p");
+    expect((await folderState(deps, "t1"))?.uncommitted).toBe(0);
+    await expect(draftMessage(deps, "t1", new AbortController().signal)).rejects.toThrow("There are no changes to describe.");
+    await expect(pushThread(deps, "t1")).rejects.toThrow("no git remote");
+  });
+
+  it("reports the worktree as the folder of a worktree thread, and nothing for a chat's own folder", async () => {
+    const w = await withWorktree();
+    expect(await folderState(w.deps, "t1")).toMatchObject({ branch: "harness/demo-abc123", worktree: true });
+    const chat = { ...w.thread, branch: null, worktreePath: tempDir() } as unknown as Thread;
+    expect(await folderState({ ...w.deps, thread: () => chat }, "t1")).toBeNull();
   });
 });

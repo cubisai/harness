@@ -349,6 +349,12 @@ export class Store {
         sql: `ALTER TABLE threads ADD COLUMN base_branch TEXT;
           ALTER TABLE threads ADD COLUMN base_sha TEXT;`,
       },
+      // 32: the branch commit a worktree thread was last merged at and where to, so "merged" survives a reload.
+      {
+        applied: () => this.hasColumn("threads", "merged_sha"),
+        sql: `ALTER TABLE threads ADD COLUMN merged_sha TEXT;
+          ALTER TABLE threads ADD COLUMN merged_into TEXT;`,
+      },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;
@@ -528,6 +534,12 @@ export class Store {
   /** Record the worktree and branch a thread runs in (set once, when it is created); a chat's own folder has no branch. */
   setWorktree(id: string, branch: string | null, worktreePath: string, base: { branch: string | null; sha: string | null } = { branch: null, sha: null }): Thread {
     this.db.prepare("UPDATE threads SET branch = ?, worktree_path = ?, base_branch = ?, base_sha = ? WHERE id = ?").run(branch, worktreePath, base.branch, base.sha, id);
+    return this.getThread(id);
+  }
+
+  /** Record that the thread's branch, at commit `sha`, was merged into `into`. */
+  setMerged(id: string, sha: string, into: string): Thread {
+    this.db.prepare("UPDATE threads SET merged_sha = ?, merged_into = ? WHERE id = ?").run(sha, into, id);
     return this.getThread(id);
   }
 
@@ -975,7 +987,7 @@ export class Store {
 }
 
 const THREAD_COLS =
-  "id, project_id, agent, title, session_id, bindings, model, effort, context_window, permission_mode, created_at, updated_at, pinned, archived, branch, worktree_path, base_branch, base_sha, kind, design_system, prototype_tier, expert_id, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
+  "id, project_id, agent, title, session_id, bindings, model, effort, context_window, permission_mode, created_at, updated_at, pinned, archived, branch, worktree_path, base_branch, base_sha, merged_sha, merged_into, kind, design_system, prototype_tier, expert_id, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
 
 export interface LedgerTarget {
   threadId: string;
@@ -1049,6 +1061,8 @@ interface ThreadRow {
   worktree_path: string | null;
   base_branch: string | null;
   base_sha: string | null;
+  merged_sha: string | null;
+  merged_into: string | null;
   kind: string | null;
   design_system: string | null;
   prototype_tier: string | null;
@@ -1114,6 +1128,7 @@ function toThread(r: ThreadRow): Thread {
     branch: r.branch,
     worktreePath: r.worktree_path,
     ...(r.base_sha ? { baseBranch: r.base_branch, baseSha: r.base_sha } : {}),
+    ...(r.merged_sha && r.merged_into ? { mergedSha: r.merged_sha, mergedInto: r.merged_into } : {}),
     kind: r.kind === "design" ? "design" : "chat",
     ...(r.kind === "design" && r.design_system ? { designSystem: r.design_system } : {}),
     ...(r.kind === "design" && readTier(r.prototype_tier) ? { prototypeTier: readTier(r.prototype_tier)! } : {}),

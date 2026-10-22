@@ -507,9 +507,11 @@ export const useStore = create<State>((set, get) => ({
   async openInEditor(target, editor) {
     const s = get();
     const project = s.projects.find((p) => p.id === s.selectedProjectId);
-    const path = target.path ?? project?.path;
+    const thread = Object.values(s.threads).flat().find((t) => t.id === s.selectedThreadId);
+    // A worktree thread's files (and its folder) live in its worktree, not the project folder.
+    const path = target.path ?? thread?.worktreePath ?? project?.path;
     if (!path) return;
-    const res = await api().openInEditor({ projectId: s.selectedProjectId, path, line: target.line, column: target.column }, editor);
+    const res = await api().openInEditor({ projectId: s.selectedProjectId, threadId: s.selectedThreadId, path, line: target.line, column: target.column }, editor);
     if (!res.ok) get().showNotice(res.error);
   },
   setPaletteOpen(open, query = "") {

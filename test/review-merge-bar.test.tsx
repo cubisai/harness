@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { WorktreeReview } from "../src/shared/types";
-import { ReviewMergeBarView, type ReviewMergeBarViewProps } from "../src/renderer/src/components/ReviewMergeBar";
+import type { FolderGit, WorktreeReview } from "../src/shared/types";
+import { currentStep, ReviewMergeBarView, type ReviewMergeBarViewProps } from "../src/renderer/src/components/ReviewMergeBar";
 
 const review: WorktreeReview = {
   branch: "harness/demo",
@@ -16,22 +16,28 @@ const review: WorktreeReview = {
   targets: ["dev", "main"],
   remote: "origin",
   unpushed: null,
+  merged: null,
 };
+
+const folder: FolderGit = { branch: "harness/demo", worktree: true, uncommitted: 0, remote: "origin", unpushed: null, hasCommits: true };
 
 const noop = () => {};
 
 function render(overrides: Partial<ReviewMergeBarViewProps> = {}): string {
+  const r = overrides.review === undefined ? review : overrides.review;
   return renderToStaticMarkup(
     <ReviewMergeBarView
-      review={review}
+      folder={folder}
+      review={r}
+      open={r ? currentStep(r) : "commit"}
       scope="uncommitted"
       message="Add the review bar"
       busy={null}
       error={null}
       notice={null}
-      merged={false}
       mode="squash"
       target="main"
+      onOpen={noop}
       onScope={noop}
       onMessage={noop}
       onGenerate={noop}
@@ -46,15 +52,40 @@ function render(overrides: Partial<ReviewMergeBarViewProps> = {}): string {
   );
 }
 
+const dirty = (n: number) => ({ review: { ...review, uncommitted: n }, folder: { ...folder, uncommitted: n } });
 const labelled = (label: string) => new RegExp(`<button[^>]*>${label}</button>`);
 const disabled = (label: string) => new RegExp(`<button[^>]*disabled[^>]*>${label}</button>`);
 
+describe("currentStep", () => {
+  it("is commit while anything is uncommitted, merge with commits ahead, clean up once merged", () => {
+    expect(currentStep({ ...review, uncommitted: 1 })).toBe("commit");
+    expect(currentStep(review)).toBe("merge");
+    expect(currentStep({ ...review, merged: { into: "main", upToDate: true } })).toBe("cleanup");
+    // New commits after a merge are something to merge again.
+    expect(currentStep({ ...review, merged: { into: "main", upToDate: false } })).toBe("merge");
+    expect(currentStep({ ...review, ahead: 0 })).toBe("commit");
+  });
+});
+
 describe("ReviewMergeBarView", () => {
-  it("says to commit first when the worktree has uncommitted changes", () => {
-    const html = render({ review: { ...review, uncommitted: 1 } });
-    expect(html).toContain("Commit the worktree&#x27;s changes first.");
+  it("shows where the thread works: its branch, its own worktree and the base", () => {
+    const html = render();
+    expect(html).toContain("harness/demo");
+    expect(html).toContain("own worktree · from main");
+  });
+
+  it("opens the commit step when the worktree has uncommitted changes", () => {
+    const html = render(dirty(1));
+    expect(html).toContain("1 file to commit");
     expect(html).toMatch(labelled("Commit"));
     expect(html).not.toMatch(disabled("Commit"));
+    expect(html).not.toContain('aria-label="Branch to merge into"');
+  });
+
+  it("says why Commit is off when the message is empty", () => {
+    const html = render({ ...dirty(2), message: "" });
+    expect(html).toMatch(disabled("Commit"));
+    expect(html).toContain("Write a message, or Generate one.");
   });
 
   it("offers the merge when the worktree is clean and on the base branch", () => {
@@ -63,6 +94,7 @@ describe("ReviewMergeBarView", () => {
     expect(html).toMatch(labelled("Merge"));
     expect(html).not.toMatch(disabled("Merge"));
     expect(html).toContain('aria-label="Branch to merge into"');
+    expect(html).toContain("2 commits to merge");
   });
 
   it("merges into the base even when the project folder is on another branch", () => {
@@ -84,23 +116,43 @@ describe("ReviewMergeBarView", () => {
   });
 
   it("counts commits ahead against the base only, not another target", () => {
-    expect(render({ review: { ...review, ahead: 0 } })).toContain("Nothing to merge yet.");
-    expect(render({ review: { ...review, ahead: 0 }, target: "dev" })).not.toContain("Nothing to merge yet.");
+    expect(render({ review: { ...review, ahead: 0 }, open: "merge" })).toContain("Nothing to merge yet.");
+    expect(render({ review: { ...review, ahead: 0 }, open: "merge", target: "dev" })).not.toContain("Nothing to merge yet.");
   });
 
-  it("offers Push with a remote and holds it without one or when all is pushed", () => {
-    expect(render()).not.toMatch(disabled("Push"));
-    expect(render({ review: { ...review, remote: null } })).toMatch(disabled("Push"));
-    const pushed = render({ review: { ...review, unpushed: 0 } });
-    expect(pushed).toMatch(disabled("Push"));
-    expect(pushed).toContain('title="Everything is pushed."');
-    expect(render({ review: { ...review, unpushed: 2 } })).toContain("· 2 unpushed");
-  });
-
-  it("shows Remove worktree once merged, and no merge button", () => {
-    const html = render({ merged: true, notice: "Merged into main (2222222)." });
+  it("remembers a merge: clean up is next, and merging the same commits again is refused", () => {
+    const merged = { ...review, merged: { into: "main", upToDate: true } };
+    const html = render({ review: merged });
+    expect(html).toContain("Merged into main");
     expect(html).toContain("Remove worktree");
     expect(html).not.toMatch(labelled("Merge"));
+    const again = render({ review: merged, open: "merge" });
+    expect(again).toContain("Already merged into main: no new commits since.");
+    expect(again).toMatch(disabled("Merge"));
+  });
+
+  it("offers Push with a remote, says Pushed when all is pushed, and hides it without a remote", () => {
+    expect(render()).toMatch(labelled("Push"));
+    expect(render({ folder: { ...folder, unpushed: 2 } })).toMatch(labelled("Push 2"));
+    expect(render({ folder: { ...folder, unpushed: 0 } })).toContain("Pushed");
+    expect(render({ folder: { ...folder, remote: null } })).not.toMatch(/>Push/);
+  });
+
+  it("gives a project-folder thread Commit and Push but no merge steps or scopes", () => {
+    const project: FolderGit = { branch: "main", worktree: false, uncommitted: 3, remote: "origin", unpushed: 1, hasCommits: true };
+    const html = render({ folder: project, review: null });
+    expect(html).toContain("project folder");
+    expect(html).toContain("3 files not committed");
+    expect(html).toMatch(labelled("Commit"));
+    expect(html).toMatch(labelled("Push 1"));
+    expect(html).not.toContain("git-steps");
+    expect(html).not.toContain("Changes scope");
+  });
+
+  it("labels the scopes in plain words", () => {
+    const html = render();
+    expect(html).toContain("Not committed");
+    expect(html).toContain("Whole branch");
   });
 
   it("renders an error as an alert", () => {
@@ -110,7 +162,6 @@ describe("ReviewMergeBarView", () => {
   });
 
   it("says Writing… while the message is generated", () => {
-    const html = render({ busy: "message" });
-    expect(html).toContain("Writing…");
+    expect(render({ busy: "message" })).toContain("Writing…");
   });
 });

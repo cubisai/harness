@@ -484,6 +484,9 @@ export interface Thread {
   baseBranch?: string | null;
   /** The commit it branched from. */
   baseSha?: string | null;
+  /** The branch commit it was last merged at, and the branch it went into; absent until a merge. */
+  mergedSha?: string;
+  mergedInto?: string;
   /** "design" threads open with the design canvas; absent = "chat" (older rows and exports). */
   kind?: ThreadKind;
   /** A design thread's design system id (see DesignSystemOption); absent = the default. */
@@ -1195,6 +1198,8 @@ export interface UnskilledApi {
   /** Apply fix `fixIndex` of finding `findingId` from the last report (the main process looks it up; nothing else runs). */
   doctorFix(findingId: string, fixIndex: number): Promise<DoctorFixResult>;
   /** A worktree thread's branch against its base: counts, state of both folders, and the files changed since the base. */
+  /** Where the thread's Commit and Push act and what's waiting there; null outside a repository. */
+  gitFolder(threadId: string): Promise<FolderGit | null>;
   worktreeReview(threadId: string): Promise<WorktreeReview>;
   /** An AI-written commit message for the worktree's uncommitted changes (or, when clean, everything since the base). */
   worktreeMessage(threadId: string): Promise<{ message: string; model: string }>;
@@ -1326,7 +1331,8 @@ export interface UnskilledApi {
    * last one used, else the first found. A relative path is taken from the
    * project's folder.
    */
-  openInEditor(target: { projectId: string | null; path: string; line?: number; column?: number }, editor?: string): Promise<OpenResult>;
+  /** A relative path resolves against the thread's folder (its worktree) when `threadId` is given, else the project's. */
+  openInEditor(target: { projectId: string | null; threadId?: string | null; path: string; line?: number; column?: number }, editor?: string): Promise<OpenResult>;
   /** Quit and install the downloaded update. */
   installUpdate(): Promise<void>;
   onUpdate(listener: (update: LiveUpdate) => void): () => void;
@@ -1454,6 +1460,22 @@ export const DEFAULT_COMMIT_INSTRUCTIONS = [
 ].join("\n");
 
 /** A worktree thread's branch, compared with the branch it came from. */
+/** The git folder a thread's Commit and Push act on: its own worktree, else the project folder. */
+export interface FolderGit {
+  /** The branch checked out there; null on a detached HEAD. */
+  branch: string | null;
+  /** True for the thread's own worktree, false for the project folder. */
+  worktree: boolean;
+  /** Uncommitted paths, untracked included. */
+  uncommitted: number;
+  /** The remote Push sends to; null when the project has none. */
+  remote: string | null;
+  /** Commits its upstream lacks; null before the first push. */
+  unpushed: number | null;
+  /** False in a repository with no commits yet. */
+  hasCommits: boolean;
+}
+
 export interface WorktreeReview {
   branch: string;
   /** The project branch it branched from; null when that can't be told. */
@@ -1475,4 +1497,6 @@ export interface WorktreeReview {
   remote: string | null;
   /** Commits its upstream lacks; null before the first push. */
   unpushed: number | null;
+  /** The last merge: where it went, and whether the branch has new commits since. Null before any merge. */
+  merged: { into: string; upToDate: boolean } | null;
 }
