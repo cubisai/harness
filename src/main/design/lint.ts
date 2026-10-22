@@ -95,7 +95,7 @@ export function colorKey(c: Rgba): string {
 }
 
 /** The lint rules the design lint runs. */
-export type LintRule = "contrast" | "targets" | "spacing" | "color";
+export type LintRule = "contrast" | "targets" | "spacing" | "color" | "slop";
 
 /** One lint finding. */
 export interface LintFinding {
@@ -111,10 +111,273 @@ export interface LintResult {
   scanned: number;
 }
 
+/** A plain-data snapshot of one element for the slop rules. */
+export interface SlopNode {
+  selector: string;
+  tag: string;
+  text: string;
+  nextTag: string | null;
+  fontPx: number;
+  textTransform: string;
+  letterSpacingPx: number;
+  fontFamily: string;
+  backgroundImage: string;
+  backgroundClip: string;
+  borderPx: { top: number; right: number; bottom: number; left: number };
+  boxShadow: string;
+  cardLike: boolean;
+  childSig: string;
+  parentSelector: string | null;
+  width: number;
+}
+
+/** Snapshot every element for the slop rules; runs inside the page. */
+export function collectSlop(selectorFor: (el: Element) => string): SlopNode[] {
+  const skipTags: Record<string, boolean> = {
+    script: true,
+    style: true,
+    path: true,
+    g: true,
+    defs: true,
+    use: true,
+    circle: true,
+    rect: true,
+    line: true,
+    polyline: true,
+    polygon: true,
+    ellipse: true,
+  };
+
+  /** True when a computed background-color paints something. */
+  const painted = (value: string): boolean => {
+    const text = value.trim().toLowerCase();
+    if (!text || text === "transparent") return false;
+    const fn = /^rgba?\(([^)]*)\)$/.exec(text);
+    if (!fn) return true;
+    const body = fn[1]!.trim();
+    const parts = body.includes(",") ? body.split(",").map((p) => p.trim()) : body.split(/[\s/]+/).filter(Boolean);
+    if (parts.length < 4) return true;
+    const alpha = Number.parseFloat(parts[3]!);
+    return !Number.isFinite(alpha) || alpha > 0;
+  };
+
+  const nodes: SlopNode[] = [];
+  const body = document.body;
+  if (!body) return nodes;
+  const elements = body.querySelectorAll("*");
+  const limit = Math.min(elements.length, 3000);
+  for (let i = 0; i < limit; i += 1) {
+    const el = elements[i];
+    if (!el) continue;
+    const tag = el.tagName.toLowerCase();
+    if (skipTags[tag]) continue;
+    try {
+      const cs = getComputedStyle(el);
+      const borderPx = {
+        top: Number.parseFloat(cs.getPropertyValue("border-top-width")) || 0,
+        right: Number.parseFloat(cs.getPropertyValue("border-right-width")) || 0,
+        bottom: Number.parseFloat(cs.getPropertyValue("border-bottom-width")) || 0,
+        left: Number.parseFloat(cs.getPropertyValue("border-left-width")) || 0,
+      };
+      const fontFamily = (cs.fontFamily.split(",")[0] ?? "").trim().replace(/^["']|["']$/g, "");
+      const letterSpacing = cs.letterSpacing;
+      const descendants = el.querySelectorAll("*");
+      const childTags: string[] = [];
+      const childLimit = Math.min(descendants.length, 12);
+      for (let j = 0; j < childLimit; j += 1) {
+        const child = descendants[j];
+        if (child) childTags.push(child.tagName.toLowerCase());
+      }
+      const next = el.nextElementSibling;
+      nodes.push({
+        selector: selectorFor(el),
+        tag,
+        text: (el.textContent ?? "").trim().slice(0, 80),
+        nextTag: next ? next.tagName.toLowerCase() : null,
+        fontPx: Number.parseFloat(cs.fontSize) || 0,
+        textTransform: cs.textTransform || "none",
+        letterSpacingPx: letterSpacing === "normal" ? 0 : Number.parseFloat(letterSpacing) || 0,
+        fontFamily,
+        backgroundImage: cs.backgroundImage || "none",
+        backgroundClip: cs.getPropertyValue("background-clip") || cs.getPropertyValue("-webkit-background-clip") || "border-box",
+        borderPx,
+        boxShadow: cs.boxShadow || "none",
+        cardLike:
+          painted(cs.backgroundColor) ||
+          borderPx.top >= 1 ||
+          borderPx.right >= 1 ||
+          borderPx.bottom >= 1 ||
+          borderPx.left >= 1 ||
+          (cs.boxShadow !== "" && cs.boxShadow !== "none"),
+        childSig: childTags.join(","),
+        parentSelector: el.parentElement ? selectorFor(el.parentElement) : null,
+        width: Math.round(el.getBoundingClientRect().width),
+      });
+    } catch {
+      // One element never aborts the snapshot.
+    }
+  }
+  return nodes;
+}
+
+/** Turn collected element snapshots into slop findings; pure and self-contained. */
+export function slopFindings(nodes: SlopNode[]): LintFinding[] {
+  const findings: LintFinding[] = [];
+  const push = (selector: string, detail: string): void => {
+    findings.push({ rule: "slop", selector, detail });
+  };
+
+  const headingTags: Record<string, boolean> = { h1: true, h2: true, h3: true };
+  const hasHeading = (sig: string): boolean => {
+    for (const tag of sig.split(",")) {
+      if (tag === "h2" || tag === "h3" || tag === "h4") return true;
+    }
+    return false;
+  };
+  const overused = [
+    "inter",
+    "roboto",
+    "poppins",
+    "montserrat",
+    "open sans",
+    "lato",
+    "playfair display",
+    "fraunces",
+    "cormorant",
+    "cormorant garamond",
+    "lora",
+    "newsreader",
+    "space grotesk",
+    "space mono",
+    "syne",
+    "dm sans",
+    "dm serif display",
+    "outfit",
+    "plus jakarta sans",
+    "instrument sans",
+    "ibm plex sans",
+    "ibm plex mono",
+  ];
+
+  // Eyebrow: a small uppercase or widely tracked label directly above a heading.
+  for (const node of nodes) {
+    const tracked = node.fontPx > 0 && node.letterSpacingPx / node.fontPx >= 0.06;
+    if (
+      node.text.length >= 1 &&
+      node.text.length <= 40 &&
+      node.fontPx <= 14 &&
+      (node.textTransform === "uppercase" || tracked) &&
+      node.nextTag !== null &&
+      headingTags[node.nextTag]
+    ) {
+      push(node.selector, `eyebrow label "${node.text}" above a heading`);
+    }
+  }
+
+  // Gradient text: a gradient clipped to the glyphs.
+  for (const node of nodes) {
+    if (node.backgroundClip.includes("text") && node.backgroundImage.includes("gradient")) {
+      push(node.selector, "gradient text");
+    }
+  }
+
+  // Side stripe: one heavy left or right border, the other sides hairline.
+  for (const node of nodes) {
+    if (node.tag === "blockquote") continue;
+    const b = node.borderPx;
+    const left = b.left > 1;
+    const right = b.right > 1;
+    if (left === right) continue;
+    const others = left ? [b.top, b.right, b.bottom] : [b.top, b.bottom, b.left];
+    if (others.every((v) => v <= 1)) push(node.selector, `${left ? b.left : b.right}px side stripe on one edge`);
+  }
+
+  // Hard offset shadow: a non-inset shadow layer with zero blur.
+  const shadowLayers = (value: string): string[] => {
+    const parts: string[] = [];
+    let depth = 0;
+    let start = 0;
+    for (let i = 0; i < value.length; i += 1) {
+      const ch = value[i];
+      if (ch === "(") depth += 1;
+      else if (ch === ")") depth = Math.max(0, depth - 1);
+      else if (ch === "," && depth === 0) {
+        parts.push(value.slice(start, i).trim());
+        start = i + 1;
+      }
+    }
+    parts.push(value.slice(start).trim());
+    return parts;
+  };
+  for (const node of nodes) {
+    if (!node.boxShadow || node.boxShadow === "none") continue;
+    for (const layer of shadowLayers(node.boxShadow)) {
+      if (!layer || /\binset\b/.test(layer)) continue;
+      const nums = (layer.match(/-?\d+(?:\.\d+)?px/g) ?? []).map((v) => Number.parseFloat(v));
+      const x = nums[0] ?? 0;
+      const y = nums[1] ?? 0;
+      const blur = nums[2] ?? 0;
+      if (blur === 0 && (x !== 0 || y !== 0)) {
+        push(node.selector, "hard offset shadow (no blur)");
+        break;
+      }
+    }
+  }
+
+  // Identical cards: three or more same-structure, same-width card children.
+  const byParent: Record<string, SlopNode[]> = {};
+  for (const node of nodes) {
+    const parent = node.parentSelector;
+    if (parent === null || !node.cardLike || !hasHeading(node.childSig)) continue;
+    (byParent[parent] ??= []).push(node);
+  }
+  for (const parent of Object.keys(byParent)) {
+    const group = byParent[parent]!;
+    if (group.length < 3) continue;
+    const bySig: Record<string, SlopNode[]> = {};
+    for (const node of group) {
+      (bySig[node.childSig] ??= []).push(node);
+    }
+    for (const sig of Object.keys(bySig)) {
+      const same = bySig[sig]!;
+      if (same.length < 3) continue;
+      let min = same[0]!.width;
+      let max = same[0]!.width;
+      for (const node of same) {
+        if (node.width < min) min = node.width;
+        if (node.width > max) max = node.width;
+      }
+      if (max - min > 2) continue;
+      push(parent, `${same.length} identical cards (${sig})`);
+      break;
+    }
+  }
+
+  // Emoji icon: a glyph (or two) used as the only content.
+  const emoji = /^(\p{Extended_Pictographic}️?){1,2}$/u;
+  for (const node of nodes) {
+    if (emoji.test(node.text)) push(node.selector, "emoji used as an icon");
+  }
+
+  // Overused display font: headings set in a default-looking face.
+  const seenFonts: Record<string, boolean> = {};
+  for (const node of nodes) {
+    if (node.tag !== "h1" && node.tag !== "h2") continue;
+    const family = node.fontFamily.trim().toLowerCase();
+    if (overused.indexOf(family) === -1) continue;
+    if (seenFonts[family]) continue;
+    seenFonts[family] = true;
+    push(node.selector, `"${node.fontFamily}" display face is an overused default`);
+  }
+
+  return findings;
+}
+
 /**
- * Lint a design page: contrast, tap targets, 4px spacing, and color tokens.
- * Runs inside the page (serialized with `toString`), so it uses only its
- * parameters and DOM globals; the color helpers are passed in as `h`.
+ * Lint a design page: contrast, tap targets, 4px spacing, color tokens, and
+ * the slop rules for generic AI design tells. Runs inside the page (serialized
+ * with `toString`), so it uses only its parameters and DOM globals; the color
+ * helpers are passed in as `h`.
  */
 export function designLint(
   selectorFor: (el: Element) => string,
@@ -125,6 +388,8 @@ export function designLint(
     minContrast: typeof minContrast;
     onGrid: typeof onGrid;
     colorKey: typeof colorKey;
+    collectSlop: typeof collectSlop;
+    slopFindings: typeof slopFindings;
   },
 ): LintResult {
   const findings: LintFinding[] = [];
@@ -419,12 +684,19 @@ export function designLint(
     }
   }
 
+  // Slop: generic AI design tells, from a snapshot of every element.
+  try {
+    findings.push(...h.slopFindings(h.collectSlop(selectorFor)));
+  } catch {
+    skipped.push("slop");
+  }
+
   return { findings, skipped, scanned };
 }
 
-/** The design lint as one page expression, embedding the selector and color helpers. */
+/** The design lint as one page expression, embedding the selector and helpers. */
 export function lintScript(selectorFor: (el: Element) => string): string {
-  return `(() => JSON.stringify((${designLint.toString()})(${selectorFor.toString()}, { parseColor: ${parseColor.toString()}, blend: ${blend.toString()}, contrastRatio: ${contrastRatio.toString()}, minContrast: ${minContrast.toString()}, onGrid: ${onGrid.toString()}, colorKey: ${colorKey.toString()} })))()`;
+  return `(() => JSON.stringify((${designLint.toString()})(${selectorFor.toString()}, { parseColor: ${parseColor.toString()}, blend: ${blend.toString()}, contrastRatio: ${contrastRatio.toString()}, minContrast: ${minContrast.toString()}, onGrid: ${onGrid.toString()}, colorKey: ${colorKey.toString()}, collectSlop: ${collectSlop.toString()}, slopFindings: ${slopFindings.toString()} })))()`;
 }
 
 /** How many findings `formatLint` prints before eliding the rest. */
@@ -432,7 +704,7 @@ export const LINT_MAX = 40;
 
 /** Render a lint result as a compact report for the agent. */
 export function formatLint(result: LintResult): string {
-  const order: LintRule[] = ["contrast", "targets", "spacing", "color"];
+  const order: LintRule[] = ["contrast", "targets", "spacing", "color", "slop"];
   const deduped: LintFinding[] = [];
   const seen = new Set<string>();
   for (const rule of order) {
@@ -445,7 +717,7 @@ export function formatLint(result: LintResult): string {
     }
   }
 
-  const counts: Record<LintRule, number> = { contrast: 0, targets: 0, spacing: 0, color: 0 };
+  const counts: Record<LintRule, number> = { contrast: 0, targets: 0, spacing: 0, color: 0, slop: 0 };
   for (const finding of deduped) counts[finding.rule] += 1;
 
   const lines: string[] = [];
@@ -453,7 +725,7 @@ export function formatLint(result: LintResult): string {
     lines.push(`design_lint: no findings (${result.scanned} elements)`);
   } else {
     lines.push(
-      `design_lint: ${deduped.length} findings — contrast ${counts.contrast}, targets ${counts.targets}, spacing ${counts.spacing}, color ${counts.color} (${result.scanned} elements)`,
+      `design_lint: ${deduped.length} findings — contrast ${counts.contrast}, targets ${counts.targets}, spacing ${counts.spacing}, color ${counts.color}, slop ${counts.slop} (${result.scanned} elements)`,
     );
     const shown = deduped.slice(0, LINT_MAX);
     for (const finding of shown) lines.push(`- [${finding.rule}] ${finding.selector} — ${finding.detail}`);
