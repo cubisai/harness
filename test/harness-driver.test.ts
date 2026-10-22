@@ -300,23 +300,26 @@ describe("provider driver", () => {
     expect(result.text).toBe("1 todos: 1 in progress, 0 completed, 0 pending. Update this list as each part finishes, and before your final reply.");
   });
 
-  it("in code mode, points the first look-around shell command of a turn at run_code, once", async () => {
+  it("in code mode, points the second look-around call of a turn at run_code, once", async () => {
     const calls = [
       [{ type: "tool-call", id: "c1", name: "bash", input: { command: "ls" } }],
-      [{ type: "tool-call", id: "c2", name: "bash", input: { command: "cat a.txt" } }],
+      [{ type: "tool-call", id: "c2", name: "read", input: { path: "a.txt" } }],
+      [{ type: "tool-call", id: "c3", name: "grep", input: { pattern: "hello" } }],
       [{ type: "text", text: "ok" }],
     ] as const;
     const on = setup(calls.map((c) => [...c]), { codeMode: () => "on" });
+    writeFileSync(join(on.cwd, "a.txt"), "hello");
     await on.driver.runTurn(on.input("look"));
     const text = (n: number) => (on.requests[n]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!.text;
-    expect(text(1)).toContain(RUN_CODE_TIP);
-    expect(text(2)).not.toContain(RUN_CODE_TIP);
+    expect(text(1)).not.toContain(RUN_CODE_TIP);
+    expect(text(2)).toContain(RUN_CODE_TIP);
+    expect(text(3)).not.toContain(RUN_CODE_TIP);
     // The row shows the command's own output, not the tip.
     expect(JSON.stringify(on.events.filter((e) => e.kind === "tool-result"))).not.toContain("Tip:");
 
     const off = setup(calls.map((c) => [...c]));
     await off.driver.runTurn(off.input("look"));
-    expect((off.requests[1]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!.text).not.toContain(RUN_CODE_TIP);
+    expect((off.requests[2]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!.text).not.toContain(RUN_CODE_TIP);
   });
 
   it("counts only listing, reading and searching commands as looking around", () => {

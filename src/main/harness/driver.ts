@@ -335,7 +335,7 @@ async function runTurn(
     env,
     platform,
   });
-  const tip = { codeMode: codeMode !== "off", shown: false };
+  const tip = { codeMode: codeMode !== "off", shown: false, looks: 0 };
   const nativeLoop = nativeTools(wire).map((t) => nativeLoopTool(t, toolCtx, input, tip));
   // The turn's live mode: plan mode's propose_plan flips it once the user approves.
   let mode: PermissionMode = input.permissionMode;
@@ -525,14 +525,17 @@ async function runTurn(
 /** A shell command that only looks around (lists, reads, searches), after an optional `cd <dir> &&`. */
 export const LOOK_AROUND = /^\s*(?:cd\s+\S+\s*(?:&&|;)\s*)?(?:ls|cat|head|tail|find|grep|rg|tree|wc)\b/;
 
-/** Told once a turn, in the result of the first look-around shell command: the system line alone doesn't move small models off the shell (live test). */
-export const RUN_CODE_TIP = "Tip: one run_code script lists, reads and searches in a single step; use it instead of the shell to look around.";
+/**
+ * Told once a turn, in the result of the second look-around call (read, glob, grep, or a shell
+ * ls/cat/grep…): the system line alone doesn't move small models off one-file-at-a-time reading (live test).
+ */
+export const RUN_CODE_TIP = "Tip: one run_code script lists, reads and searches in a single step; use it instead of separate read, grep or shell calls to look around.";
 
 function nativeLoopTool(
   tool: NativeTool,
   ctxFor: (callId: string, signal: AbortSignal, onOutput: (t: string) => void, script?: boolean) => ToolContext,
   input: TurnInput,
-  tip: { codeMode: boolean; shown: boolean } = { codeMode: false, shown: false },
+  tip: { codeMode: boolean; shown: boolean; looks: number } = { codeMode: false, shown: false, looks: 0 },
 ): LoopTool {
   return {
     definition: { name: tool.name, description: tool.description, parameters: tool.parameters },
@@ -554,7 +557,8 @@ function nativeLoopTool(
       // The list shows as the call starts, like every other agent's; a bad list throws before it shows.
       if (tool.name === "todowrite") input.onEvent({ kind: "plan", entries: todosOf(args) });
       const result = await tool.run(args, ctxFor(call.id, call.signal, call.onOutput, call.script));
-      if (tool.name !== "bash" || !tip.codeMode || tip.shown || call.script || !LOOK_AROUND.test(String(args.command ?? ""))) return result;
+      const looks = ["read", "glob", "grep"].includes(tool.name) || (tool.name === "bash" && LOOK_AROUND.test(String(args.command ?? "")));
+      if (!looks || !tip.codeMode || tip.shown || call.script || ++tip.looks < 2) return result;
       tip.shown = true;
       // The model reads the tip; the row keeps showing the command's own output.
       return { ...result, text: `${result.text}\n\n${RUN_CODE_TIP}`, display: { summary: "", ...result.display, result: result.display?.result ?? result.text } };
