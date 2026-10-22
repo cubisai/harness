@@ -26,6 +26,7 @@ import { startAskServer, type AskServer, type PluginAnswer, type PluginAsk } fro
 import { exportTurnUsage } from "./opencode-usage";
 import { normalizeUsage } from "../../usage";
 import type { InjectionPlan } from "../../inject";
+import { designWriteAllowed } from "../../design/write-scope";
 
 /** An ACP agent the app can drive: OpenCode, Cursor, or any agent that speaks ACP over stdio. */
 export interface AcpAgentConfig {
@@ -169,6 +170,15 @@ You are in plan mode: read-only. Reads and searches run; edits and commands are 
 /** What an agent with its own plan mode is told: its question tool doesn't reach the app over ACP, ask_user does. */
 export const PLAN_MODE_HINT = "<harness-plan-mode>To ask the user a question, call ask_user (2-4 options, recommended first).</harness-plan-mode>\n\n";
 
+/** The files an ACP edit call names: its locations, else the path in its raw input; [] when it names none. */
+export function acpEditTargets(call: Pick<ToolCallFields, "locations" | "rawInput">): string[] {
+  const located = (call.locations ?? []).map((l) => l.path).filter((p) => typeof p === "string" && p !== "");
+  if (located.length) return located;
+  const raw = (call.rawInput ?? {}) as Record<string, unknown>;
+  for (const key of ["filePath", "file_path", "path"]) if (typeof raw[key] === "string" && raw[key]) return [raw[key] as string];
+  return [];
+}
+
 export function pickPermission(
   mode: PermissionMode,
   kind: ToolKind | null | undefined,
@@ -187,11 +197,17 @@ export function pickPermission(
  * defers to OpenCode's own plan agent and its ACP asks, as before the plugin
  * asked (null = defer).
  */
-export async function decidePluginAsk(input: Pick<TurnInput, "permissionMode" | "requestPermission">, ask: PluginAsk, signal?: AbortSignal): Promise<PermissionDecision | null> {
+export async function decidePluginAsk(
+  input: Pick<TurnInput, "permissionMode" | "requestPermission"> & Partial<Pick<TurnInput, "cwd" | "design">>,
+  ask: PluginAsk,
+  signal?: AbortSignal,
+): Promise<PermissionDecision | null> {
   if (input.permissionMode === "plan") return null;
   const picked = pickPermission(input.permissionMode, ask.kind);
   if (picked === "allow") return "allow-once";
   if (picked === "deny") return "deny";
+  // A design thread's own folder is its canvas: an edit there (the summary is its file) doesn't ask.
+  if (ask.kind === "edit" && input.cwd && designWriteAllowed(input.permissionMode, input.cwd, input.design, ask.summary ? [ask.summary] : [])) return "allow-once";
   return input.requestPermission({ toolName: kindLabel(ask.kind), summary: ask.summary || ask.tool, canAlwaysAllow: false, ...(signal ? { signal } : {}) });
 }
 
@@ -840,6 +856,8 @@ export function createAcpDriver(
           if (l.approvedCalls.delete(p.toolCall.toolCallId)) return "allow-once";
           const picked = pickPermission(t.input.permissionMode, p.toolCall.kind);
           if (picked === "allow") return "allow-once";
+          // A design thread's own folder is its canvas: file edits there don't ask.
+          if (p.toolCall.kind === "edit" && designWriteAllowed(t.input.permissionMode, t.input.cwd, t.input.design, acpEditTargets(p.toolCall))) return "allow-once";
           // The harness's own safe tools (browser snapshot, click, ...) run without asking.
           const title = `${p.toolCall.title ?? ""}`;
           if (t.input.tools.some((tool) => tool.autoAllow && title.includes(tool.name))) return "allow-once";

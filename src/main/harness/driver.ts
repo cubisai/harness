@@ -31,6 +31,8 @@ import { bound } from "./tools/bound";
 import { createCodeTool } from "./tools/code";
 import { createCodeBroker } from "./tools/code-broker";
 import { resolvePath } from "./tools/paths";
+import { parsePatch } from "./tools/apply-patch";
+import { designWriteAllowed } from "../design/write-scope";
 
 /** Agent ids of provider agents: `provider-<providerId>`. */
 export const PROVIDER_AGENT_PREFIX = "provider-";
@@ -423,6 +425,8 @@ async function runTurn(
     const verdict = decide(mode, tool.access, tool.outside?.(args) ?? false);
     if (verdict === "allow") return { ok: true };
     if (verdict === "deny") return { ok: false, reason: refusal(mode, "deny") };
+    // A design thread's own folder is its canvas: file edits there don't ask.
+    if (tool.targets && designWriteAllowed(mode, input.cwd, input.design, tool.targets(args))) return { ok: true };
     const decision = await input.requestPermission({ toolName: tool.displayName, summary, canAlwaysAllow: true });
     return decision === "deny" ? { ok: false, reason: refusal(mode, "denied-by-user") } : { ok: true };
   };
@@ -531,6 +535,19 @@ export const LOOK_AROUND = /^\s*(?:cd\s+\S+\s*(?:&&|;)\s*)?(?:ls|cat|head|tail|f
  */
 export const RUN_CODE_TIP = "Tip: one run_code script lists, reads and searches in a single step; use it instead of separate read, grep or shell calls to look around.";
 
+/** The native tools that only write files (run_code and the shell can do anything, so they never qualify). */
+const FILE_EDITS = new Set(["write", "edit", "apply_patch"]);
+
+/** The files a native file edit writes: its `path`, or every path (and move target) in a patch; [] when unreadable. */
+export function editTargets(name: string, args: Record<string, unknown>): string[] {
+  if (name !== "apply_patch") return typeof args.path === "string" ? [args.path] : [];
+  try {
+    return parsePatch(typeof args.patch === "string" ? args.patch : "").flatMap((f) => (f.moveTo ? [f.path, f.moveTo] : [f.path]));
+  } catch {
+    return [];
+  }
+}
+
 function nativeLoopTool(
   tool: NativeTool,
   ctxFor: (callId: string, signal: AbortSignal, onOutput: (t: string) => void, script?: boolean) => ToolContext,
@@ -545,6 +562,7 @@ function nativeLoopTool(
     summarize: (args) => tool.summarize(args),
     ...(tool.name === "todowrite" ? { silent: true } : {}),
     ...(tool.displayName === "Bash" ? { inputPayload: (args: Record<string, unknown>) => ({ command: String(args.command ?? "") }) } : {}),
+    ...(FILE_EDITS.has(tool.name) ? { targets: (args: Record<string, unknown>) => editTargets(tool.name, args) } : {}),
     outside: (args) => {
       if (tool.access !== "edit" || typeof args.path !== "string") return false;
       try {

@@ -24,6 +24,8 @@ export interface LoopTool {
   silent?: boolean;
   /** True when the call reaches outside the thread's folder (edits there ask). */
   outside?(args: Record<string, unknown>): boolean;
+  /** The files a file edit writes, as given (relative to the thread's folder or absolute); absent = not a file edit. */
+  targets?(args: Record<string, unknown>): string[];
   run(args: Record<string, unknown>, call: { id: string; signal: AbortSignal; onOutput(text: string): void; script?: boolean }): Promise<ToolResult>;
   /** The TypeScript type a script's call resolves to (code mode); absent = string. */
   returns?: string;
