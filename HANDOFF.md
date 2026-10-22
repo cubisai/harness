@@ -1,4 +1,26 @@
-# Handoff: Codex Office-skills trim, OpenCode cache finding — 2026-10-21 — see "Resume here — 2026-10-21 (Mac, session 7)"
+# Handoff: todos + code mode on every agent, git bar, benchmark plan — 2026-10-22 — see "Resume here — 2026-10-22 (Mac, session 8)"
+
+## Resume here — 2026-10-22 (Mac, session 8)
+
+m4 now has three merges (not pushed): `ffa8db9` live Changes refresh + approval card, `303a122` **track/git-ux**, `daaeafe` **track/todos**. The main checkout's `D road-map-handoff.md`, `pland.md`, `migrate-to-rust-plan.md` and screenshots aren't ours: leave them.
+
+**Git (track/git-ux, `8a534a4`):** Changes panel git bar for every non-chat thread: where-strip (branch, own worktree or project folder, Push N / Pushed), plain-word scopes, worktree steps Commit → Merge → Clean up; merges are remembered (db migration 32 `merged_sha`/`merged_into`, re-merging the same commits refused); normal threads get Commit + Push; delete warns about uncommitted worktree files; Undo dropped from DESIGN.md. Live-tested commit/merge/remove; **Push not live-tested** (test repo had no remote).
+
+**Todos + code mode (track/todos, `5629c14`, `bf54d47`):** one plan shape (`src/shared/plan.ts` normalizePlan/samePlan), one dedupe point (`service.emit`), Paused chip + × on every docked list, history shows a collapsible "Plan · d/t done" line.
+- **Codex 0.159**: its own `update_plan` is off by default → thread config `tools: { update_plan: { enabled: true } }` + `PLAN_HINT` line. Plans unasked, updates 3–4×.
+- **Claude (SDK 2.1.307)**: no TodoWrite headless; Task tools are deferred and never used. Claude gets the app's `todowrite` on the cubiq SDK server (`alwaysLoad`), `TODO_HINT`, a reminder in the result, and a **Stop hook** that blocks once when the list still has open parts (text after it is dropped). 9/10 runs of a 7-part task planned; one-step tasks don't.
+- **Native (PGS, CoralBricks, TokenHarbor)**: same todowrite definition (trigger leads the description), list closes completed every run.
+- **Code mode**: `run_code` description now leads with when to use it; Claude gets `CODE_NUDGE`; native gets `RUN_CODE_TIP` in the result of the 2nd look-around call of a turn. Read-heavy question on the real repo: Claude 1 script, Codex 6, OpenCode 14 (+1 shell), CoralBricks 8, TokenHarbor 4. **PGS still mixed** (one run switched to run_code after the tip, one kept grepping file by file).
+- CoralBricks UI: whitespace-only live text ("\n\n" between tool calls) no longer shows empty cursor blocks (`live.ts visibleItems`).
+- **OpenCode v2 not live-tested**: unreleased (only a `2.0` branch upstream; npm latest 1.19.3). Ask the user for a build path.
+- `test/opencode-ask.test.ts` times out (120 s) sometimes on m4 too: pre-existing flake.
+
+**Next (user, 2026-10-22): a benchmark folder to track harness performance day by day.**
+- New folder `bench/` with: `tasks/` (fixed prompts: one-step edit, 7-part build `bench/tasks/build-cli.txt`, read-heavy question, a skill-triggering task), `fixtures/` (a tiny repo reset before each run + a pinned copy of this repo for read-heavy runs, without CLAUDE.md/AGENTS.md), `run.ts` (drives a dev app copy over CDP like this session's `runturn.sh`/`waitturn.sh`: create thread via `window.unskilled.createThread/updateThread/send`, wait for `turn-end` in `unskilled.db`), `report.ts`.
+- Per run, per agent+model (Claude sonnet, Codex gpt-6-luna, OpenCode Zen deepseek, native PGS / CoralBricks / TokenHarbor): **todo** (listed before first edit? updates, final all-completed, none on one-step tasks), **code mode** (run_code vs separate read/grep/glob/shell calls, failed scripts), **tokens** (in/out/cached from turn-end usage; reuse `scripts/cache-report.ts`), **skills** (loaded when the task matches), **duration**, **cost**, tool-call count, errors.
+- Results: `bench/results/YYYY-MM-DD/<agent>-<model>-<task>.json` + a daily `summary.md` with deltas vs the previous day, so a change (prompt line, tool description) shows its effect. Keep runs cheap (Claude limit was at 91% this session); a `--agents`/`--tasks` filter.
+- Scenario scripts from this session (scratchpad, will be gone): runturn.sh, runbig.sh (task file, project override `window.__proj`), waitturn.sh, explore-all.sh. Native providers: `saveProvider({…, secret:{kind:"envRef", envVar}})` with models given explicitly (capabilities, contextWindow, maxOutput); CoralBricks base `https://inference.coralbricks.ai/v1` model `deepseek-v4.1-flash-fast`, PGS `https://api.pgsgrove.com/v1`.
+
 
 ## Resume here — 2026-10-21 (Mac, session 7)
 
