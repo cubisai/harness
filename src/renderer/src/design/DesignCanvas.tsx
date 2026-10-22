@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { flushSync } from "react-dom";
-import { Columns2, Download, Eraser, FolderOpen, Grid3x3, Hammer, LayoutGrid, MessageSquarePlus, MousePointer2, PanelRight, Pencil, Play, Smartphone, Type, Undo2, Workflow } from "lucide-react";
+import { Columns2, Download, Eraser, FolderOpen, Grid3x3, Hammer, LayoutGrid, MessageSquarePlus, MousePointer2, Palette, PanelRight, Pencil, Play, Smartphone, Type, Undo2, Workflow } from "lucide-react";
 import type { DesignEntry, DesignExportFormat } from "../../../shared/types";
 import { api } from "../api";
 import { fileManagerName } from "../components/OpenIn";
@@ -719,6 +719,30 @@ export default function DesignCanvas({ threadId }: { threadId: string }) {
           </span>
         )}
         <div className="design-tools" ref={toolsEl}>
+          {entry && version === 0 && (
+            <button
+              className="icon-button"
+              title="More styles: the same design in 3 other styles, side by side"
+              aria-label="More styles"
+              disabled={agentRunning}
+              onClick={() => {
+                api()
+                  .designMoreStyles(threadId)
+                  .then((names) => {
+                    setNotice({ text: `Building ${names.join(", ")} beside this design.` });
+                    if (picking) {
+                      setPicking(false);
+                      post({ type: "pick", on: false });
+                    }
+                    setCompare(false);
+                    setBoard(true);
+                  })
+                  .catch((err: unknown) => setNotice({ text: ipcError(err), error: true }));
+              }}
+            >
+              <Palette size={16} strokeWidth={1.75} aria-hidden />
+            </button>
+          )}
           {entry && entry.pages.length > 1 && version === 0 && (
             <button
               className={`icon-button${board ? " active" : ""}`}

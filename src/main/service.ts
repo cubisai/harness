@@ -1675,6 +1675,70 @@ export class Service {
     if (!root || !dir) throw new Error("Only a design thread has variants.");
     promoteVariant(root, rel, (page) => this.recordDesignPage(threadId, root, dir, page));
     if (this.artifacts) this.broadcast({ type: "artifact-ready", threadId, path: `${dir}/index.html`, files: [`${dir}/index.html`] });
+    // A "More styles" variant brings its style along: the next turn moves system/ to it and tells the agent.
+    const style = this.designStyles().find((s) => rel === `variant-${s.id.slice(STYLE_PREFIX.length)}.html`);
+    if (!style) return;
+    const updated =
+      isAuto(thread) && thread.designDirection
+        ? this.store.setDesignDirection(threadId, { ...thread.designDirection, style: style.id })
+        : this.store.setDesignSystem(threadId, style.id);
+    this.broadcast({ type: "thread", thread: updated });
+  }
+
+  /**
+   * Styles for a "More styles" round: ones that fit the design's surface (slides, mobile or web), unlike its current
+   * style and unlike each other (fewest shared tags), preferring ones made for its mode.
+   */
+  private moreStylesFor(thread: Thread, count: number): DesignStyleInfo[] {
+    const styles = this.designStyles();
+    const current = this.threadSystem(thread);
+    const direction = thread.designDirection;
+    const surface = direction?.surface;
+    const platforms = surface === "deck" ? ["deck"] : surface === "mobile" ? ["mobile", "any"] : ["web", "any"];
+    const currentTags = new Set(styles.find((s) => s.id === current?.id)?.tags ?? []);
+    const pool = styles.filter((s) => s.id !== current?.id && platforms.includes(s.platform));
+    const picked: DesignStyleInfo[] = [];
+    const shared = (a: Iterable<string>, b: string[]): number => b.filter((t) => new Set(a).has(t)).length;
+    while (picked.length < count) {
+      let best: DesignStyleInfo | null = null;
+      let bestScore = Infinity;
+      for (const s of pool) {
+        if (picked.includes(s)) continue;
+        const score =
+          shared(currentTags, s.tags) * 2 + picked.reduce((n, p) => n + shared(p.tags, s.tags), 0) + (direction && !s.modes.includes(direction.mode) ? 3 : 0);
+        if (score < bestScore) {
+          best = s;
+          bestScore = score;
+        }
+      }
+      if (!best) break;
+      picked.push(best);
+    }
+    return picked;
+  }
+
+  /**
+   * "More styles": copy a few other styles into `<design folder>/styles/<id>/` and return the turn that asks the agent
+   * (as an ordinary message the user sees) to build `variant-<id>.html` in each beside index.html.
+   */
+  prepareMoreStyles(threadId: string, count = 3): { names: string[]; text: string } {
+    const thread = this.store.getThread(threadId);
+    const root = this.designRoot(threadId);
+    if (!root) throw new Error("Only a design thread has styles.");
+    if (!existsSync(join(root, "index.html"))) throw new Error("Build the design first.");
+    const styles = this.moreStylesFor(thread, Math.max(1, Math.min(4, count)));
+    if (!styles.length) throw new Error("No other styles fit this design.");
+    for (const s of styles) materializeSystem(s, join(root, "styles", s.id.slice(STYLE_PREFIX.length)));
+    const lines = styles.map((s) => {
+      const id = s.id.slice(STYLE_PREFIX.length);
+      return `- \`variant-${id}.html\`: ${s.name}. Follow \`styles/${id}/DESIGN.md\` and link \`styles/${id}/tokens.css\` instead of \`system/tokens.css\`.`;
+    });
+    const text = [
+      `More styles: rebuild index.html in ${styles.length === 1 ? "another style" : `${styles.length} other styles`}, one variant page each beside it:`,
+      ...lines,
+      "Same content and purpose as index.html, but commit to each style's world: its layout moves, type and signature, not just its colours. Leave index.html and system/ as they are.",
+    ].join("\n");
+    return { names: styles.map((s) => s.name), text };
   }
 
   /**

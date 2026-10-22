@@ -768,6 +768,7 @@ export function installMock(): void {
     designEntry: async () => null,
     designFiles: async () => [],
     designPromote: async () => {},
+    designMoreStyles: async () => ["Swiss Grid", "Night Studio", "Field Guide"],
     designKeepTweaks: async () => false,
     designSaveRef: async () => "designs/mock/refs/ref-1.png",
     designEditText: async () => {},

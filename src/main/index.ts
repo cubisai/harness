@@ -1028,6 +1028,15 @@ async function main(): Promise<void> {
     if (typeof rel !== "string") throw new Error("Not a variant.");
     service.promoteDesignVariant(threadId, rel);
   });
+  // More styles: the styles are copied in now; the turn that builds their variants runs like any sent message.
+  ipcMain.handle("design:more-styles", (_e, threadId: string) => {
+    const { names, text } = service.prepareMoreStyles(threadId);
+    service.send({ threadId, text }).catch((err: unknown) => {
+      broadcast({ type: "running", threadId, running: false });
+      console.error(redactSecrets(err instanceof Error ? (err.stack ?? err.message) : String(err), knownSecrets()));
+    });
+    return names;
+  });
   ipcMain.handle("design:comments", (_e, threadId: string) => service.designComments(threadId));
   ipcMain.handle("design:comment-add", (_e, threadId: string, input: { page?: unknown; target?: unknown; label?: unknown; text?: unknown }) => {
     const target = readTarget(input?.target);

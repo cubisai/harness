@@ -1349,6 +1349,8 @@ export interface UnskilledApi {
   designFiles(threadId: string): Promise<string[]>;
   /** Make a design's `variant-*.html` its `index.html`; the old and new index are saved as versions. */
   designPromote(threadId: string, rel: string): Promise<void>;
+  /** More styles: copy a few other styles into the design folder and start the turn that builds a variant in each; their names. */
+  designMoreStyles(threadId: string): Promise<string[]>;
   /** Write the canvas's tweak values into a design page (Keep), saving versions; false when nothing changed. */
   designKeepTweaks(threadId: string, rel: string, values: Record<string, string>): Promise<boolean>;
   /** Save a pasted reference image (png/jpg/webp/gif, ≤ 10 MB) into a design thread's `refs/`; its path relative to the thread's folder. */

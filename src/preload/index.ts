@@ -116,6 +116,7 @@ const api: UnskilledApi = {
   designEntry: (threadId, rel) => ipcRenderer.invoke("design:entry", threadId, rel ?? null),
   designFiles: (threadId) => ipcRenderer.invoke("design:files", threadId),
   designPromote: (threadId, rel) => ipcRenderer.invoke("design:promote", threadId, rel),
+  designMoreStyles: (threadId) => ipcRenderer.invoke("design:more-styles", threadId),
   designKeepTweaks: (threadId, rel, values) => ipcRenderer.invoke("design:keep-tweaks", threadId, rel, values),
   designSaveRef: (threadId, bytes) => ipcRenderer.invoke("design:save-ref", threadId, bytes),
   designCapture: (threadId, rect) => ipcRenderer.invoke("design:capture", threadId, rect),

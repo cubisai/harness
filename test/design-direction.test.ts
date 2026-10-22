@@ -160,6 +160,61 @@ describe("Auto design threads", () => {
   });
 });
 
+describe("More styles", () => {
+  /** A service on the real bundled style library. */
+  function realSetup() {
+    const store = new Store(join(tempDir(), "t.db"));
+    closeAfter(() => store.close());
+    const service = new Service(store, () => catalog(), [fakeDriver()], () => {});
+    const RESOURCES = join(__dirname, "..", "resources");
+    service.setDesignSystemsDir(join(RESOURCES, "design-systems"));
+    service.setDesignStylesDir(join(RESOURCES, "design-styles"), join(RESOURCES, "design-fonts"));
+    const project = store.addProject(tempDir());
+    return { store, service, project };
+  }
+
+  it("needs a built design, then copies 3 different styles that fit the surface and asks for one variant each", () => {
+    const { service, project } = realSetup();
+    const thread = service.createThread(project.id, undefined, "design");
+    service.setDesignDirection(thread.id, { surface: "page", mode: "persuade", tier: "working", style: "riso-print" });
+    expect(() => service.prepareMoreStyles(thread.id)).toThrow("Build the design first.");
+    const root = service.designRoot(thread.id)!;
+    writeFileSync(join(root, "index.html"), "<h1>x</h1>");
+    const { names, text } = service.prepareMoreStyles(thread.id);
+    expect(names).toHaveLength(3);
+    expect(new Set(names).size).toBe(3);
+    expect(names).not.toContain("Riso Print");
+    const ids = [...text.matchAll(/`variant-([a-z0-9-]+)\.html`/g)].map((m) => m[1]!);
+    expect(ids).toHaveLength(3);
+    for (const id of ids) {
+      expect(existsSync(join(root, "styles", id, "DESIGN.md"))).toBe(true);
+      expect(existsSync(join(root, "styles", id, "tokens.css"))).toBe(true);
+      expect(text).toContain(`link \`styles/${id}/tokens.css\``);
+    }
+    expect(text).toContain("Leave index.html and system/ as they are.");
+  });
+
+  it("keeps a deck to deck styles", () => {
+    const { service, project } = realSetup();
+    const thread = service.createThread(project.id, undefined, "design");
+    service.setDesignDirection(thread.id, { surface: "deck", mode: "read", tier: "working", style: "data-report" });
+    writeFileSync(join(service.designRoot(thread.id)!, "index.html"), "<section></section>");
+    expect(service.prepareMoreStyles(thread.id).names).toEqual(["Chalk Keynote"]);
+  });
+
+  it("promoting a style's variant moves an Auto thread's direction to that style", () => {
+    const { service, store, project } = realSetup();
+    const thread = service.createThread(project.id, undefined, "design");
+    service.setDesignDirection(thread.id, { surface: "page", mode: "persuade", tier: "working", style: "riso-print" });
+    const root = service.designRoot(thread.id)!;
+    writeFileSync(join(root, "index.html"), "<h1>old</h1>");
+    writeFileSync(join(root, "variant-swiss-grid.html"), "<h1>swiss</h1>");
+    service.promoteDesignVariant(thread.id, "variant-swiss-grid.html");
+    expect(store.getThread(thread.id).designDirection?.style).toBe("style:swiss-grid");
+    expect(store.getThread(thread.id).designSystem).toBe("auto");
+  });
+});
+
 describe("the bundled style library", () => {
   const RESOURCES = join(__dirname, "..", "resources");
   const styles = listDesignStyles(join(RESOURCES, "design-styles"), join(RESOURCES, "design-fonts"));
