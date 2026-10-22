@@ -2,7 +2,7 @@
   "id": "memory-recall",
   "suite": "memory",
   "core": true,
-  "about": "A project memory note says where end-to-end tests go; the repo itself has no such folder, so only memory can tell.",
+  "about": "A project memory note says where release notes go and their format; the repo has no release notes, so only memory can tell.",
   "repo": {
     "commit": "17b3eba"
   },
@@ -10,13 +10,13 @@
   "hiddenDir": "memory-recall.hidden",
   "memory": [
     {
-      "name": "End-to-end test location",
-      "description": "Where end-to-end tests go and how they're named",
+      "name": "Release notes",
+      "description": "Where release notes go and their format",
       "type": "project",
-      "body": "End-to-end tests live in test/e2e/ and are named <feature>.e2e.test.ts (for example test/e2e/doctor.e2e.test.ts). Unit tests stay in test/."
+      "body": "Release notes live in docs/releases/<version>.md (for example docs/releases/2.3.0.md). Each file starts with a `# v<version>` heading, then one `- ` line per user-visible change."
     }
   ],
-  "prompt": "Add an end-to-end test skeleton for the /codemode command: one vitest `describe` block with a single `it.todo(\"flips code mode for new threads\")`. Put it where this project keeps its end-to-end tests.",
+  "prompt": "Write the release notes for version 2.4.0. There's one change: the new /codemode command, which turns code mode on or off for new threads. Put them where this project keeps its release notes.",
   "expect": {},
   "graders": [
     {

@@ -1,4 +1,43 @@
-# Handoff: daily bench (bench/) — 2026-10-22 — see "Resume here — 2026-10-22 (Mac, session 9)"
+# Handoff: bench v2 findings to fix — 2026-10-22 — see "Resume here — 2026-10-22 (Mac, session 10)"
+
+## Resume here — 2026-10-22 (Mac, session 10)
+
+**bench v2** (`26f6c48`+, plan `.ai/plans/bench-v2.md`, local): the bench now runs on this repo. Suites:
+- **solve**: 4 real commits replayed from their parent and graded by that commit's own tests; check gate `bun run typecheck` with 1 fix round, self-improve on.
+- **memory**: recall, across threads, correction.
+- **context**: a later turn needs what an earlier one found.
+- **behaviour**: the v1 tasks.
+
+Daily core = 9 tasks × 6 agents, 3 agents at a time, ≈ 60 min, ≈ $1 of Claude. Weekly: `--suite full --k 3`. `bun bench/validate.ts` proves the tasks are fair with no model calls: the untouched start fails, the real commit passes. Default CDP port is 9488 (9466 was taken by another session's app). `--scratch` keeps trial runs out of the history.
+
+**First v2 day** (`bench/results/2026-10-22.md`): 11/12 real changes solved; Claude 9/9.
+
+### Fix tomorrow (user: "add these to finding we fix tmr")
+
+1. **Claude ignores CubiQ memory on a project with no notes yet.**
+   - What happens: `memoryPromptFor` (`src/main/index.ts` ~500) returns null when the memory block is empty (`memoryPrompt("")` → ""). Claude's driver only sets `settings: { autoMemoryEnabled: false }` when memoryText is non-null (`src/main/agents/claude.ts:571`). So Claude gets no CubiQ memory instructions, keeps its own auto-memory and saves "remember this" to `~/.claude/projects/<project>/memory/`.
+   - Seen in memory-across-threads: 0 memory_write calls; it passed only through its own memory.
+   - Fix: when CubiQ memory is on, always send the instruction block (even with 0 notes) and always turn auto-memory off. Same check for the other agents' empty-memory path.
+2. **The memory prompt makes agents drop conventions.**
+   - What happens: `memoryPrompt` says "Notes date from when written: check what they name still exists". OpenCode's reasoning: "Rule stale; docs/ipc.md doesn't exist… maybe not create."
+   - In memory-across-threads, every non-Claude agent wrote the note in thread 1. In thread 2, CoralBricks, OpenCode, PGS and TokenHarbor never created docs/ipc.md; Codex did, but as a table instead of the given `- \`channel\`:` form.
+   - Fix: limit the staleness line to facts about existing code. Rules and conventions apply as written. Rerun memory-across-threads to confirm.
+3. **OpenCode hangs in Full mode on `external_directory`.**
+   - What happens: a sub-agent touching `/tmp/*` raises an ACP permission CubiQ can't answer. Notice: "OpenCode is waiting for a permission it can't ask here: external_directory /tmp/*". The bench caught it as a stall.
+   - Fix: in Full mode, allow `external_directory` in OpenCode's injected config (or answer that ask).
+4. **No todo list on the 7-part build:** Claude (2 of 2 days), OpenCode, PGS. Codex, CoralBricks and TokenHarbor plan and close.
+   - Claude's Stop hook only blocks when a list is still open; nothing nudges when there's no list at all.
+   - Fix: nudge once when a multi-part request has had several edits and no list. Run `--tasks build-cli --k 3` first to confirm.
+5. **Self-improve drafted 0 lessons all day**, even after failed turns (Codex medium solve: check failed after its fix round, learn = fail).
+   - The learner drafts only while no turn runs, and the bench stops the app right after the last run.
+   - Fix (bench): wait for the learner's queue to drain before stopping, then record lessons. Then check that lessons appear and are sent on later days.
+6. **Code mode on read-heavy:** Claude, OpenCode and PGS used shell, not run_code. CoralBricks made 34 run_code calls, used 1.16M tokens in and got the answer wrong.
+7. **Codex usage looks wrong:** output tokens of 15–255 for real answers. Check how `codex.ts` fills turn-end `outputTokens`; it may count only the last response.
+8. **PGS Grove account is out of credits** ("You have insufficient credits"): its skill run errored with 0 tokens. Top up, or take `pgs-deepseek` out of `bench/agents.json`.
+9. **Bench isolation:** OpenCode loads the user's global agents (`implementer`, `orchestrator` in `~/.config/opencode`) and delegated to them. For clean numbers, give the bench app's OpenCode its own config dir. Claude also writes auto-memory under the user's `~/.claude/projects/` for bench paths (goes away with fix 1).
+10. **Claude cost:** $0.97 for 9 tasks vs ≤ $0.11 for the others; about 77k tokens in for a one-line edit. Compare with `bun run cache:report` and the context breakdown.
+
+Graders fixed on the day: memory-recall moved to release notes (the repo's own `test/*-e2e.test.ts` files contradicted the old note). memory-across-threads now requires that the rule carried over (docs/ipc.md mentions app:ping); the exact form is scored, not required.
 
 ## Resume here — 2026-10-22 (Mac, session 9)
 

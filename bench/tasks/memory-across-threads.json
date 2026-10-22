@@ -22,7 +22,14 @@
   "graders": [
     {
       "type": "command",
-      "run": "node bench-check-memory-across-threads.mjs"
+      "run": "node bench-check-memory-across-threads.mjs",
+      "weight": 2
+    },
+    {
+      "type": "command",
+      "run": "node bench-check-memory-across-threads.mjs --format",
+      "required": false,
+      "weight": 1
     }
   ]
 }
