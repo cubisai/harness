@@ -1,4 +1,5 @@
-import { Suspense, lazy, useEffect, type CSSProperties } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState, type CSSProperties, type Ref } from "react";
+import { ChevronUp, PanelBottom } from "lucide-react";
 import { CommandPalette } from "./components/CommandPalette";
 import { SearchDialog } from "./components/SearchDialog";
 import { Library } from "./components/Library";
@@ -30,7 +31,8 @@ import { ThreadView } from "./components/ThreadView";
 import { IconArrowLeft, IconChat, IconDiff, IconFolder, IconGlobe, IconSparkle, IconTerminal } from "./icons";
 import { usePaneLayout } from "./hooks/usePaneLayout";
 import { BOUNDS, DEFAULT_LAYOUT, DESIGN_FLOOR, designChatWidth, isWideInspector } from "./layout";
-import { ESCAPE_OWNERS, escapeStopsTurn, type EscapeTarget } from "./escape";
+import { ESCAPE_OWNERS, ESCAPE_OWNERS_OVER_DRAWER, escapeStopsTurn, type EscapeTarget } from "./escape";
+import { lastAgentLine } from "./prompt-bar";
 import { inboxModel, nthVisibleThread, threadKind, waitingThreads } from "./sections";
 import { useSelectedThread, useStore } from "./store";
 
@@ -139,10 +141,46 @@ export function App() {
   // A design thread's chat column: automatic (the CSS default) until the user drags its splitter.
   const designChat = designChatWidth(pane.width - pane.sidebar - (inspectorVisible && pane.inspector !== null ? pane.inspector : 0), layout.designChat);
   const designMode = useStore((s) => s.threadKind) === "design";
+  // Canvas-first: the canvas fills the main area and the chat is a prompt bar over its foot, the transcript a drawer.
+  const canvasFirst = design && Boolean(thread) && layout.designLayout === "canvas";
+  // The main header's slot the canvas puts its own header into (canvas-first only): one top bar, not two.
+  const [headSlot, setHeadSlot] = useState<HTMLDivElement | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const hasMessages = useStore((s) => (thread ? (s.events[thread.id]?.length ?? 0) > 0 : false));
+  const drawerHandle = useRef<HTMLButtonElement>(null);
+  // Esc closes the open transcript drawer first (ESCAPE_OWNERS keeps it from stopping the turn), unless a menu or
+  // sheet over it owns the key. preventDefault tells the turn-stopping handler too, whichever listener runs first.
+  useEffect(() => {
+    if (!canvasFirst || !drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || document.querySelector(ESCAPE_OWNERS_OVER_DRAWER)) return;
+      e.preventDefault();
+      if (document.activeElement?.closest(".design-drawer")) drawerHandle.current?.focus();
+      setDrawerOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [canvasFirst, drawerOpen]);
+  // The prompt bar's height, so the single-page stage keeps its frame clear of it (the board stays overlaid).
+  const barObserver = useRef<ResizeObserver | null>(null);
+  const barRef = useCallback((el: HTMLDivElement | null) => {
+    barObserver.current?.disconnect();
+    barObserver.current = null;
+    const app = el?.closest<HTMLElement>(".app");
+    if (!el || !app || typeof ResizeObserver === "undefined") return;
+    barObserver.current = new ResizeObserver(() => app.style.setProperty("--design-prompt-h", `${el.offsetHeight}px`));
+    barObserver.current.observe(el);
+  }, []);
 
   return (
-    <div className={`app${inspectorVisible && pane.inspector !== null ? " with-inspector" : ""}${wide ? " browser-wide" : ""}${layout.sidebarCollapsed ? " sidebar-collapsed" : ""}${design ? " design-thread" : ""}`}
-      style={design && layout.designChat !== null ? ({ "--design-chat-w": `${designChat.width}px` } as CSSProperties) : undefined}
+    <div className={`app${inspectorVisible && pane.inspector !== null ? " with-inspector" : ""}${wide ? " browser-wide" : ""}${layout.sidebarCollapsed ? " sidebar-collapsed" : ""}${design ? " design-thread" : ""}${canvasFirst ? " canvas-first" : ""}`}
+      style={
+        canvasFirst
+          ? ({ "--design-rail-w": layout.designRail ? "232px" : "0px" } as CSSProperties)
+          : design && layout.designChat !== null
+            ? ({ "--design-chat-w": `${designChat.width}px` } as CSSProperties)
+            : undefined
+      }
     >
       {layout.sidebarCollapsed ? <PaneRail /> : <Sidebar />}
       <main className="main" id="main">
@@ -158,7 +196,19 @@ export function App() {
                 {thread ? thread.title : project ? project.name : "CubiQ"}
                 {thread && project && <span className="sub">{project.name}</span>}
               </div>
+              {canvasFirst && <div className="main-header-design" ref={setHeadSlot} />}
               {thread?.expertId && <ExpertChip expertId={thread.expertId} />}
+              {design && thread && (
+                <button
+                  className={`icon-button${canvasFirst ? " active" : ""}`}
+                  aria-pressed={canvasFirst}
+                  aria-label="Canvas first"
+                  title={canvasFirst ? "Canvas first is on: turn it off to put the chat beside the canvas" : "Canvas first: the canvas fills the window, the chat sits under it"}
+                  onClick={() => setPaneLayout({ designLayout: canvasFirst ? "split" : "canvas" }, true)}
+                >
+                  <PanelBottom size={16} strokeWidth={1.75} aria-hidden />
+                </button>
+              )}
               {project && (
                 <>
                   <button
@@ -255,12 +305,25 @@ export function App() {
                 />
               </>
             ) : (
-              <>
-                <ThreadView threadId={thread.id} expertId={thread.expertId} />
+              // Always these wrappers (display: contents outside canvas-first), so switching layouts never remounts the
+              // transcript or the composer, and a chat thread lays out exactly as before.
+              <div className="thread-pane">
+                <div
+                  id="design-drawer"
+                  className={`thread-drawer${canvasFirst ? " design-drawer" : ""}`}
+                  hidden={canvasFirst && !drawerOpen}
+                  role={canvasFirst ? "region" : undefined}
+                  aria-label={canvasFirst ? "Chat" : undefined}
+                >
+                  <ThreadView threadId={thread.id} expertId={thread.expertId} />
+                  {canvasFirst && !hasMessages && <p className="design-drawer-empty">No messages yet. Describe what to design below.</p>}
+                </div>
+                <div className="thread-bar" ref={barRef}>
                 <TodoDock threadId={thread.id} />
                 <ShellDock threadId={thread.id} />
                 <RequestDock threadId={thread.id} />
                 {thread.expertId && <TeamStrip threadId={thread.id} expertId={thread.expertId} agent={thread.agent} leadModel={thread.model} />}
+                {canvasFirst && <DrawerHandle buttonRef={drawerHandle} threadId={thread.id} open={drawerOpen} onToggle={() => setDrawerOpen(!drawerOpen)} />}
                 <Composer
                   threadId={thread.id}
                   mode={
@@ -289,7 +352,8 @@ export function App() {
                   model={<ThreadModel thread={thread} running={running} />}
                   meters={<ThreadMeters agent={thread.agent} threadId={thread.id} />}
                 />
-              </>
+                </div>
+              </div>
             )}
           </>
         )}
@@ -298,10 +362,10 @@ export function App() {
       </main>
       {design && thread && (
         <Suspense fallback={<section className="design-canvas" aria-label="Design canvas" />}>
-          <DesignCanvas threadId={thread.id} />
+          <DesignCanvas threadId={thread.id} canvasFirst={canvasFirst} headSlot={canvasFirst ? headSlot : null} />
         </Suspense>
       )}
-      {design && thread && (
+      {design && thread && !canvasFirst && (
         <Splitter
           orientation="vertical"
           controls="main"
@@ -387,6 +451,24 @@ function SearchHost() {
       onActions={(query) => s.setPaletteOpen(true, query)}
       onClose={() => s.setSearchOpen(false)}
     />
+  );
+}
+
+/**
+ * A canvas-first design thread's handle above the composer: it opens the transcript drawer, with a heartbeat while the
+ * agent runs and its latest line, so the chat can stay closed while you watch the canvas.
+ */
+function DrawerHandle({ buttonRef, threadId, open, onToggle }: { buttonRef: Ref<HTMLButtonElement>; threadId: string; open: boolean; onToggle: () => void }) {
+  const running = useStore((s) => Boolean(s.running[threadId]));
+  const line = useStore((s) => lastAgentLine(s.events[threadId], s.live[threadId]));
+  return (
+    <button ref={buttonRef} className="design-drawer-handle" aria-expanded={open} aria-controls="design-drawer" title={open ? "Hide the chat (Esc)" : "Show the chat"} onClick={onToggle}>
+      <IconChat />
+      <span className="design-drawer-label">Chat</span>
+      {running && <span className="thread-dot running" aria-label="Running" />}
+      <span className="design-drawer-preview">{line || (running ? "Working…" : "")}</span>
+      <ChevronUp size={14} strokeWidth={2} className="design-drawer-chev" aria-hidden />
+    </button>
   );
 }
 

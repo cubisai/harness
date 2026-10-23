@@ -65,6 +65,26 @@ describe("DesignWatcher", () => {
     }
   });
 
+  it("leaves an atomic write's temp file out, so the burst names just the page", () => {
+    vi.useFakeTimers();
+    try {
+      const h = harness();
+      h.watcher.watch("t", tempDir());
+      // Claude's Write/Edit: the temp file appears, then is renamed onto the page.
+      h.fire("index.html.tmp.40323.56af1717c752");
+      h.fire("index.html");
+      h.fire("sub\\about.html.tmp.7.abc");
+      vi.advanceTimersByTime(150);
+      expect(h.onChange).toHaveBeenCalledWith("t", ["index.html"]);
+      // A file that only looks a bit like one still counts.
+      h.fire("notes.tmp.html");
+      vi.advanceTimersByTime(150);
+      expect(h.onChange).toHaveBeenLastCalledWith("t", ["notes.tmp.html"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("reports null once a burst names more than 200 paths", () => {
     vi.useFakeTimers();
     try {

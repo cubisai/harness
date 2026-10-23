@@ -48,6 +48,12 @@ export function chipSystem(options: DesignSystemOption[], value: string | undefi
   return s && { id: s.id, name: s.name, swatches: s.swatches, title: `Design system: ${s.name}` };
 }
 
+/** The style a thread's design is drawn in, by name (the board's `Page · Style` labels): Auto's pick, else the fixed system. */
+export function designStyleName(options: DesignSystemOption[], value: string | undefined, direction?: DesignDirection | null): string | undefined {
+  if (value === AUTO_SYSTEM) return direction ? options.find((o) => o.id === direction.style)?.name : undefined;
+  return shownSystem(options, value)?.name;
+}
+
 /** The menu's sections: Auto, then the design systems, then the style library. */
 export function systemGroups(options: DesignSystemOption[]): { label: string; options: DesignSystemOption[] }[] {
   const systems = options.filter((o) => o.source !== "style");

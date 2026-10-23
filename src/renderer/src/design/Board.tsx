@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Maximize2, Play } from "lucide-react";
-import { BOARD_HEADER, BOARD_TITLE_BAND, boardLayout, boardSections, clampZoom, fitBoard, zoomAt, type BoardFrame, flowPath } from "./board-layout";
+import { BOARD_HEADER, BOARD_TITLE_BAND, boardLayout, boardSections, clampZoom, dotSpacing, fitBoard, zoomAt, type BoardFrame, type BoardPage, flowPath } from "./board-layout";
+import { Beam } from "../components/Beam";
 import { affectedPages } from "../store";
 import type { DesignEntry } from "../../../shared/types";
 
@@ -36,6 +37,8 @@ export function Board({
   flow,
   changes,
   manual,
+  labelOf,
+  writing,
   onFocus,
   onPresent,
 }: {
@@ -46,6 +49,10 @@ export function Board({
   changes?: { n: number; paths: string[] | null };
   /** The canvas's manual Reload counter: it remounts every artboard. */
   manual: number;
+  /** An artboard's label (`Page · Style`); the page's own label without it. */
+  labelOf?: (page: BoardPage) => string;
+  /** Pages the running agent is writing right now: their frames wear the running beam. */
+  writing?: ReadonlySet<string>;
   onFocus: (rel: string) => void;
   onPresent: (rel: string) => void;
 }) {
@@ -99,9 +106,13 @@ export function Board({
   const fit = useCallback(() => {
     const el = stageRef.current;
     if (!el) return;
-    const fitted = fitBoard(sections, { width: el.clientWidth, height: el.clientHeight });
+    // Room the canvas's floating tools and prompt bar take at the left and the foot (CSS sets them where they float).
+    const css = getComputedStyle(el);
+    const left = parseFloat(css.getPropertyValue("--board-inset-left")) || 0;
+    const bottom = parseFloat(css.getPropertyValue("--board-inset-bottom")) || 0;
+    const fitted = fitBoard(sections, { width: Math.max(1, el.clientWidth - left), height: Math.max(1, el.clientHeight - bottom) });
     setSectionGap(fitted.sectionGap);
-    setView(fitted.view);
+    setView({ ...fitted.view, x: fitted.view.x + left });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `sections` follows `pageKey`
   }, [pageKey]);
   useEffect(() => {
@@ -176,9 +187,12 @@ export function Board({
   const isVisible = (f: BoardFrame) => f.x < visible.right && f.x + f.width > visible.left && f.y < visible.bottom && f.y + f.height > visible.top;
 
   const step = (factor: number) => setView((v) => zoomAt(v, factor, stage.width / 2, stage.height / 2));
+  // The dotted surface moves and scales with the board, so it reads as one infinite canvas.
+  const dots = dotSpacing(view.zoom);
+  const surface = { "--dot-size": `${dots}px`, "--dot-x": `${view.x}px`, "--dot-y": `${view.y}px` } as CSSProperties;
 
   return (
-    <div className="design-board" ref={stageRef} role="region" aria-label="Board: every page" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag}>
+    <div className="design-board" ref={stageRef} style={surface} role="region" aria-label="Board: every page" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag}>
       <div className="design-board-content" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`, transformOrigin: "0 0" }}>
         {flow && arrows.length > 0 && (
           <svg
@@ -212,25 +226,29 @@ export function Board({
               const x = section.x + frame.x;
               const y = section.y + frame.y;
               const shown = isVisible({ ...frame, x, y });
+              const label = labelOf ? labelOf(frame.page) : frame.page.label;
+              const busy = writing?.has(frame.page.rel) ?? false;
               return (
-                <div key={frame.page.rel} className="design-board-frame-wrap" style={{ left: x, top: y, width: frame.width }} role="group" aria-label={frame.page.label} onDoubleClick={() => onFocus(frame.page.rel)}>
+                <div key={frame.page.rel} className="design-board-frame-wrap" style={{ left: x, top: y, width: frame.width }} role="group" aria-label={label} aria-busy={busy || undefined} onDoubleClick={() => onFocus(frame.page.rel)}>
                   <div className="design-board-frame-head" style={{ width: frame.width * view.zoom, transform: `scale(${1 / view.zoom}) translateY(-100%)` }}>
                     <span className="design-board-frame-label" title={frame.page.rel}>
-                      {frame.page.label}
+                      {label}
                     </span>
                     {/* Too narrow on screen for the buttons: the label alone (double-click the frame opens it). */}
                     {frame.width * view.zoom >= HEAD_BUTTONS_MIN && (
                       <>
-                        <button className="button ghost" aria-label={`Present ${frame.page.label}`} onClick={() => onPresent(frame.page.rel)}>
+                        <button className="button ghost" aria-label={`Present ${label}`} onClick={() => onPresent(frame.page.rel)}>
                           <Play size={16} strokeWidth={1.75} aria-hidden />
                         </button>
-                        <button className="button ghost" aria-label={`Open ${frame.page.label}`} onClick={() => onFocus(frame.page.rel)}>
+                        <button className="button ghost" aria-label={`Open ${label}`} onClick={() => onFocus(frame.page.rel)}>
                           <Maximize2 size={16} strokeWidth={1.75} aria-hidden />
                         </button>
                       </>
                     )}
                   </div>
-                  <div className="design-board-frame">
+                  <div className={`design-board-frame${busy ? " writing" : ""}`} style={busy ? ({ "--z": view.zoom } as CSSProperties) : undefined}>
+                    {/* The agent is writing this page: it wears the send button's beam, kept a steady size on screen. */}
+                    {busy && <Beam edge={Math.round(28 / view.zoom)} />}
                     {shown ? (
                       <iframe
                         key={`${frame.page.rel}-${counts.current.get(frame.page.rel) ?? 0}-${manual}`}
@@ -244,7 +262,7 @@ export function Board({
                       />
                     ) : (
                       <div className="design-board-placeholder" style={{ width: frame.width, height: frame.height }}>
-                        {frame.page.label}
+                        {label}
                       </div>
                     )}
                   </div>

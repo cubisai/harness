@@ -181,6 +181,10 @@ export interface PaneLayout {
   inspectorWide: boolean;
   /** A design thread's chat width the user dragged to; null = automatic (45% of the room, 260–420px). */
   designChat: number | null;
+  /** A design thread's layout: the canvas fills the main area with the chat as a prompt bar under it, or chat | canvas. */
+  designLayout: "canvas" | "split";
+  /** The canvas-first layout's Pages and Layers rail is open. */
+  designRail: boolean;
 }
 
 export interface Settings {
