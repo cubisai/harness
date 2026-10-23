@@ -292,7 +292,14 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
         text === "cached"
           ? { inputTokens: 9000, cachedInputTokens: 8000, outputTokens: 12, totalTokens: 9012, reasoningOutputTokens: 0, cacheWriteInputTokens: 0 }
           : { inputTokens: 900, cachedInputTokens: 0, outputTokens: 12, totalTokens: 912, reasoningOutputTokens: 0, cacheWriteInputTokens: 0 };
-      notify("thread/tokenUsage/updated", { threadId, turnId: turn.id, tokenUsage: { last: usage, total: {}, modelContextWindow: null } });
+      if (text === "steps") {
+        // Two model responses in one turn (a tool call, then the answer), on a thread that already spent 5000/40.
+        const first = { inputTokens: 800, cachedInputTokens: 600, outputTokens: 150, reasoningOutputTokens: 0, cacheWriteInputTokens: 0 };
+        notify("thread/tokenUsage/updated", { threadId, turnId: turn.id, tokenUsage: { last: first, total: { inputTokens: 5800, cachedInputTokens: 4600, outputTokens: 190, reasoningOutputTokens: 0, cacheWriteInputTokens: 0 }, modelContextWindow: null } });
+        notify("thread/tokenUsage/updated", { threadId, turnId: turn.id, tokenUsage: { last: usage, total: { inputTokens: 6700, cachedInputTokens: 4600, outputTokens: 202, reasoningOutputTokens: 0, cacheWriteInputTokens: 0 }, modelContextWindow: null } });
+      } else {
+        notify("thread/tokenUsage/updated", { threadId, turnId: turn.id, tokenUsage: { last: usage, total: {}, modelContextWindow: null } });
+      }
       // Codex sends these as responses arrive: sparse, account-wide, no threadId.
       notify("account/rateLimits/updated", { rateLimits: { limitId: "codex", primary: { usedPercent: 37, windowDurationMins: 300, resetsAt: 1790000000 }, secondary: null, planType: "plus" } });
       return done("completed");

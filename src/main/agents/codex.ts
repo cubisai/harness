@@ -73,6 +73,23 @@ interface TokenBreakdown {
   netNewInputTokens?: number;
 }
 
+const USAGE_KEYS = ["inputTokens", "cachedInputTokens", "outputTokens", "cacheWriteInputTokens", "reasoningOutputTokens", "netNewInputTokens"] as const;
+
+/** `a + sign × b` per field; a field either side lacks stays absent (optional ones) or 0. */
+function combineUsage(a: TokenBreakdown, b: TokenBreakdown, sign: 1 | -1): TokenBreakdown {
+  const out: Record<string, number> = {};
+  for (const key of USAGE_KEYS) {
+    const x = a[key];
+    const y = b[key];
+    if (typeof x === "number" || typeof y === "number") out[key] = Math.max(0, (x ?? 0) + sign * (y ?? 0));
+  }
+  return { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, ...out };
+}
+
+function isUsage(u: unknown): u is TokenBreakdown {
+  return !!u && typeof (u as TokenBreakdown).inputTokens === "number" && typeof (u as TokenBreakdown).outputTokens === "number";
+}
+
 export interface CodexConfig {
   command: string;
   args: string[];
@@ -303,7 +320,7 @@ function stubInput(over: { threadId: string; cwd: string; prompt: string; model:
  * top-level `inputTokens` is net-new only. `netNewInputTokens`, when the
  * server sends it, is authoritative over the subtraction.
  */
-export function turnEndFromUsage(usage: TokenBreakdown | undefined, durationMs: number, contextSize?: number | null): ThreadEvent {
+export function turnEndFromUsage(usage: TokenBreakdown | undefined, durationMs: number, contextSize?: number | null, contextUsed?: number | null): ThreadEvent {
   if (!usage) {
     return {
       kind: "turn-end",
@@ -329,8 +346,8 @@ export function turnEndFromUsage(usage: TokenBreakdown | undefined, durationMs: 
         cacheReadTokens: usage.cachedInputTokens ?? null,
         cacheWriteTokens: usage.cacheWriteInputTokens ?? null,
       }),
-      // The raw input (cached included) is what occupies the context window.
-      contextUsed: usage.inputTokens,
+      // The last request's raw input (cached included) is what occupies the context window.
+      contextUsed: contextUsed ?? usage.inputTokens,
       contextSize: contextSize ?? null,
     },
   };
@@ -378,7 +395,12 @@ interface TurnState {
   deltas: Map<string, string>;
   /** Verbatim reasoning text per itemId; never mixed into `deltas` (that flushes as assistant text). */
   reasoning: Map<string, string>;
+  /** The turn's own usage so far: every model response in it, not only the last. */
   usage: TokenBreakdown | null;
+  /** The thread's total before this turn's first response, so `usage` = total − base. */
+  usageBase?: TokenBreakdown;
+  /** The last response's raw input: what the context holds. */
+  contextUsed?: number;
   /** The model's context window from thread/tokenUsage/updated, or null. */
   contextSize: number | null;
   /** Retrying errors already shown this turn, so each shows once. */
@@ -631,10 +653,18 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         if (p.item) onItemCompleted(t, p.item);
         return;
       case "thread/tokenUsage/updated": {
-        const tokenUsage = (params as { tokenUsage: { last: TokenBreakdown; modelContextWindow?: number | null } }).tokenUsage;
+        const tokenUsage = (params as { tokenUsage: { last: TokenBreakdown; total?: unknown; modelContextWindow?: number | null } }).tokenUsage;
         const last = tokenUsage.last;
         const contextSize = typeof tokenUsage.modelContextWindow === "number" ? tokenUsage.modelContextWindow : null;
-        t.usage = last;
+        // `last` is one model response; a turn with tool calls makes several, so the
+        // turn's usage is the thread total minus where it stood before this turn.
+        if (isUsage(tokenUsage.total)) {
+          t.usageBase ??= combineUsage(tokenUsage.total, last, -1);
+          t.usage = combineUsage(tokenUsage.total, t.usageBase, -1);
+        } else {
+          t.usage = last;
+        }
+        t.contextUsed = last.inputTokens;
         t.contextSize = contextSize;
         t.input.onUsageUpdate?.({
           inputTokens: last.inputTokens,
@@ -1206,7 +1236,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       const started = Date.now();
       // Accumulated across runOne rounds (the assignments happen inside the
       // closure, so a holder keeps the compiler from narrowing these to null).
-      const last: { usage?: TokenBreakdown; contextSize?: number | null; turn?: Turn } = {};
+      const last: { usage?: TokenBreakdown; contextUsed?: number; contextSize?: number | null; turn?: Turn } = {};
       /** Whether the previous runOne ran in plan mode, so leaving it re-sends a default collaboration mode. */
       let previousPlan = false;
 
@@ -1228,7 +1258,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
           if (turn.status === "interrupted") input.onEvent({ kind: "notice", text: "Stopped." });
           else if (turn.status === "failed") input.onEvent({ kind: "error", message: `Codex: ${turn.error?.message ?? "compaction failed."}` });
           else if (!state.compacted) emitCompaction(state);
-          input.onEvent(turnEndFromUsage(state.usage ?? undefined, Date.now() - started, state.contextSize));
+          input.onEvent(turnEndFromUsage(state.usage ?? undefined, Date.now() - started, state.contextSize, state.contextUsed));
         } catch (err) {
           input.onEvent({ kind: "error", message: `Codex couldn't compact: ${err instanceof Error ? err.message : String(err)}` });
         } finally {
@@ -1286,7 +1316,9 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
           for (const [itemId, text] of state.deltas) if (text.trim()) input.onEvent({ kind: "assistant-text", text, itemId });
           if (turn.status === "interrupted") input.onEvent({ kind: "notice", text: "Stopped." });
           else if (turn.status === "failed") input.onEvent({ kind: "error", message: `Codex: ${turn.error?.message ?? "the turn failed."}` });
-          last.usage = state.usage ?? undefined;
+          // A plan round and the round implementing it add up to one turn.
+          last.usage = last.usage && state.usage ? combineUsage(last.usage, state.usage, 1) : (state.usage ?? last.usage);
+          if (state.contextUsed !== undefined) last.contextUsed = state.contextUsed;
           last.contextSize = state.contextSize;
           last.turn = turn;
           return { turn, planText: state.planText ?? proposedPlanText(state.agentText) };
@@ -1342,10 +1374,10 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
           ]
             .filter((r) => r.tokens > 0)
             .sort((a, b) => b.tokens - a.tokens);
-          if (rows.length) input.onEvent({ kind: "context-breakdown", rows, total: last.usage?.inputTokens ?? null, estimated: true });
+          if (rows.length) input.onEvent({ kind: "context-breakdown", rows, total: last.contextUsed ?? last.usage?.inputTokens ?? null, estimated: true });
         }
-        // One turn-end for the whole runTurn, on the last round's usage.
-        input.onEvent(turnEndFromUsage(last.usage, last.turn?.durationMs ?? Date.now() - started, last.contextSize));
+        // One turn-end for the whole runTurn: every round's usage, the last request's context.
+        input.onEvent(turnEndFromUsage(last.usage, last.turn?.durationMs ?? Date.now() - started, last.contextSize, last.contextUsed));
       } catch (err) {
         input.onEvent({ kind: "error", message: err instanceof Error ? err.message : String(err) });
       }
