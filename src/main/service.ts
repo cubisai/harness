@@ -818,6 +818,8 @@ export class Service {
     this.broadcast({ type: "running", threadId: thread.id, running: true });
     // Set when a failed check schedules the next automatic fix; fired after this send's finally.
     let followUp: SendRequest | null = null;
+    // Set once the agent starts: the pages written since are linted after the turn, however it ends (a stopped turn too).
+    let lintSince: number | null = null;
     try {
       // Snapshot the working tree before the turn, so an edit the agent reports
       // (or a path git now sees) is what triggers the check and the evidence gate.
@@ -893,6 +895,7 @@ export class Service {
       this.noteTeamFallback(thread, driver);
       // Files the turn writes by command are found by mtime; 2 s of slack covers coarse filesystem clocks.
       const turnStartedAt = Date.now() - 2000;
+      if (!compact) lintSince = turnStartedAt;
       await driver.runTurn({
         threadId: thread.id,
         cwd,
@@ -963,7 +966,6 @@ export class Service {
           if (event.kind === "turn-end") {
             this.emitSignal(thread.id, event.usage);
             this.recordArtifacts(thread.id, cwd, stored.seq, turnStartedAt);
-            if (!compact) this.queueAutoLint(thread.id, turnStartedAt);
           }
         },
         // Live text is scrubbed like stored events. A key split across two deltas can
@@ -1144,6 +1146,7 @@ export class Service {
       }
     } finally {
       watchdog?.dispose();
+      if (lintSince !== null) this.queueAutoLint(thread.id, lintSince);
       this.running.delete(thread.id);
       // An async answer that missed the turn goes out as the next message (unless a check fix round is next).
       const late = this.afterTurn.get(thread.id);

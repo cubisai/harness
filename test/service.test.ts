@@ -442,9 +442,11 @@ describe("Service.send", () => {
     const prompts: string[] = [];
     const turnEnd = { kind: "turn-end" as const, costUsd: null, inputTokens: 10, outputTokens: 0, durationMs: 5 };
     let write: string | null = null;
+    let stop = false;
     const { service, store } = setup(async (input) => {
       prompts.push(input.prompt);
       if (write) writeFileSync(join(service.designRoot(design.id)!, write), "<p>x</p>");
+      if (stop) throw new Error("stopped");
       input.onEvent(turnEnd);
     });
     const project = store.addProject(tempDir());
@@ -465,14 +467,21 @@ describe("Service.send", () => {
     await service.send({ threadId: design.id, text: "three" });
     await service.send({ threadId: design.id, text: "four" });
     await service.send({ threadId: chat.id, text: "chat" });
+    // A turn that fails after writing (no turn-end) is linted too.
+    stop = true;
+    finding.detail = "gradient text";
+    await service.send({ threadId: design.id, text: "five" }).catch(() => {});
+    stop = false;
+    await service.send({ threadId: design.id, text: "six" });
     // Turn two wrote nothing: no lint after it, and the page turn one wrote isn't linted again.
-    expect(linted).toEqual([["index.html"], ["index.html"], ["index.html"]]);
+    expect(linted).toEqual(Array(5).fill(["index.html"]));
     const notes = prompts.map((p) => /automatic design_lint[^]*\)$/.exec(p)?.[0] ?? null);
     expect(notes[0]).toBeNull();
     expect(notes[1]).toContain("- index.html [slop] p.kicker: eyebrow label above a heading");
     // Spacing stays with design_lint; the same finding, still there, isn't said again.
     expect(notes[1]).not.toContain("13px");
-    expect(notes.slice(2)).toEqual([null, null, null]);
+    expect(notes.slice(2, 6)).toEqual([null, null, null, null]);
+    expect(notes[6]).toContain("- index.html [slop] p.kicker: gradient text");
   });
 
   it("sets an expert only on a thread with no messages yet", async () => {
