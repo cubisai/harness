@@ -142,7 +142,7 @@ describe("the background model", () => {
 });
 
 /** A repo project, a service whose agent fails the check, and a learner drafting on a fake cheap model. */
-function setupLearn(script: (input: TurnInput, n: number) => Promise<void>, reply: (prompt: string) => string, opts: { now?: () => number; cap?: number } = {}) {
+function setupLearn(script: (input: TurnInput, n: number) => Promise<void>, reply: (prompt: string) => string | Promise<string>, opts: { now?: () => number; cap?: number } = {}) {
   const store = new Store(join(tempDir(), "t.db"));
   closeAfter(() => store.close());
   const dir = tempDir();
@@ -220,6 +220,24 @@ describe("the learner drafts lessons from failed turns", () => {
     expect(env.prompts[0]).toContain("- check-failed (fail):");
     expect(env.db.spent(env.project.id, new Date(t).toISOString().slice(0, 10))).toBeGreaterThan(0);
     expect(env.updates.some((u) => u.type === "learn-changed")).toBe(true);
+  });
+
+  it("counts a failed turn as drafting until its lesson is drafted (the bench waits on it)", async () => {
+    let t = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const env = setupLearn(failing, async () => (await gate, LESSON), { now: () => t });
+    t = trainTime(env.thread.id, 1);
+    env.store.setCheckCommand(env.project.id, `"${process.execPath}" -e "process.exit(3)"`, 0);
+    expect(env.learner.overview(env.project.id).drafting).toBe(0);
+    await env.service.send({ threadId: env.thread.id, text: "fix a" });
+    await waitFor(() => env.learner.overview(env.project.id).drafting === 1);
+    expect(env.learner.overview(env.project.id).drafting).toBe(1);
+    expect(env.learner.overview("other").drafting).toBe(0);
+    release();
+    await waitFor(() => env.learner.overview(env.project.id).drafting === 0);
+    expect(env.learner.overview(env.project.id).drafting).toBe(0);
+    expect(env.db.lessons(env.project.id)).toHaveLength(1);
   });
 
   it("drafts nothing for a healthy turn, a turn that read the web, or once the budget is spent", async () => {

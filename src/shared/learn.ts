@@ -104,6 +104,8 @@ export interface LearnOverview {
   trend: { day: string; ok: number; warn: number; fail: number }[];
   lessons: Lesson[];
   cases: LearnCase[];
+  /** Failed turns still waiting for (or in) a lesson draft: drafting runs only while no turn does. */
+  drafting: number;
 }
 
 /** The project's self-improve settings; off unless the project is listed. */

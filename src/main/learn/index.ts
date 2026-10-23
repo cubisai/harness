@@ -151,6 +151,8 @@ export function createLearner(deps: LearnerDeps): Learner {
   const jobs: DraftJob[] = [];
   let jobTimer: ReturnType<typeof setTimeout> | null = null;
   let working = false;
+  /** The project of the job being drafted, while `working`. */
+  let workingProject: string | null = null;
   const controller = new AbortController();
   let disposed = false;
   const debounceMs = deps.debounceMs ?? 30_000;
@@ -261,12 +263,14 @@ export function createLearner(deps: LearnerDeps): Learner {
     const job = jobs.shift();
     if (!job) return;
     working = true;
+    workingProject = job.projectId;
     try {
       await draft(job);
     } catch (err) {
       log(`learn: draft failed (${job.key}): ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       working = false;
+      workingProject = null;
       if (jobs.length) schedule(1000);
     }
   };
@@ -561,6 +565,7 @@ export function createLearner(deps: LearnerDeps): Learner {
         trend: [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day)),
         lessons: deps.db.lessons(projectId),
         cases: deps.casesRoot ? listCases(deps.casesRoot(projectId)).map(caseView) : [],
+        drafting: jobs.filter((j) => j.projectId === projectId).length + (workingProject === projectId ? 1 : 0),
       };
     },
 
