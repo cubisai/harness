@@ -91,7 +91,7 @@ export interface RunResult {
   metrics: RunMetrics;
   /** Project memory notes before the first message and at the end. */
   memoryNotes: { before: number; after: number };
-  /** Self-improve's own score of each turn (learn tasks), worst first; and the project's lessons at the end. */
+  /** Self-improve's own score of each turn (learn tasks), worst first; and the project's lessons once the learner has drafted (the bench waits for its queue after the last run). */
   learn: { health: Health[]; lessons: number } | null;
   note?: string;
 }

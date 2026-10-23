@@ -40,6 +40,10 @@ const RETRY_WAIT_MS = 180_000;
 const RATE_LIMIT = /rate.?limit|429|quota|allowance|exhausted/i;
 /** Self-improve's background model, when its provider is in the run (cheap and fast). */
 const LEARN_BACKGROUND = { agentId: "coralbricks-deepseek" };
+/** Lesson drafts start 30 s after a failed turn, and only while no turn runs: give the last one this long before checking. */
+const DRAFT_SETTLE_MS = 35_000;
+/** Longest wait for the learner's queue to drain after the last run. */
+const DRAIN_MS = 10 * 60_000;
 
 const argv = process.argv.slice(2);
 const flag = (name: string): string | undefined => {
@@ -236,7 +240,7 @@ async function runOnce(ctx: Ctx, agent: BenchAgent, task: BenchTask, trial: numb
   if (task.learn) {
     const scores = (await Promise.all(threadIds.map((id) => ctx.cdp.call<TurnScore[]>("learnScores", id)))).flat();
     const overview = await ctx.cdp.call<LearnOverview>("learnOverview", project.id);
-    learn = { health: scores.map((s) => s.health).sort((a, b) => HEALTH_ORDER.indexOf(a) - HEALTH_ORDER.indexOf(b)), lessons: overview.lessons.filter((l) => l.status === "active" || l.status === "candidate").length };
+    learn = { health: scores.map((s) => s.health).sort((a, b) => HEALTH_ORDER.indexOf(a) - HEALTH_ORDER.indexOf(b)), lessons: activeLessons(overview) };
   }
   const ended = end === "ended";
   return {
@@ -331,6 +335,21 @@ async function pool(limit: number, jobs: (() => Promise<void>)[]): Promise<void>
   }));
 }
 
+const activeLessons = (o: LearnOverview) => o.lessons.filter((l) => l.status === "active" || l.status === "candidate").length;
+
+/** Waits (capped) until no lesson draft is queued for these projects; true when they all drained. */
+async function drainLearner(cdp: Cdp, projectIds: string[], lastEnd: number): Promise<boolean> {
+  await sleep(Math.max(0, lastEnd + DRAFT_SETTLE_MS - Date.now()));
+  const until = Date.now() + DRAIN_MS;
+  for (;;) {
+    const waiting = (await Promise.all(projectIds.map((id) => cdp.call<LearnOverview>("learnOverview", id)))).reduce((n, o) => n + o.drafting, 0);
+    if (!waiting) return true;
+    if (Date.now() >= until) return false;
+    log(`self-improve: ${waiting} lesson draft${waiting === 1 ? "" : "s"} still to go`);
+    await sleep(POLL_MS);
+  }
+}
+
 async function main(): Promise<void> {
   const tasks = loadTasks(flag("suite") ?? "core", list("tasks"));
   let agents = loadAgents(list("agents"));
@@ -373,12 +392,20 @@ async function main(): Promise<void> {
     agents = await ensureProviders(cdp, agents);
     const ctx: Ctx = { cdp, userDataDir, date, harness: harnessInfo(), projects, learnFor: await learnSwitch(cdp, agents) };
 
+    // Learn tasks' records wait for the learner: it drafts lessons only once no turn runs.
+    const held: { result: RunResult; file: string; projectId: string }[] = [];
+    let lastEnd = 0;
+    const record = (result: RunResult, file: string) => {
+      writeFileSync(file, `${JSON.stringify(result, null, 2)}\n`);
+      appendHistory(RESULTS, [toRow(result)]);
+    };
+
     // One chain per agent (each has its own project folders); at most `parallel` chains at once.
     const chain = (agent: BenchAgent) => async () => {
-      let lastEnd = 0;
+      let lastRun = 0;
       for (let trial = 1; trial <= k; trial++) {
         for (const task of tasks) {
-          if (agent.spaced) await sleep(Math.max(0, lastEnd + SPACING_MS - Date.now()));
+          if (agent.spaced) await sleep(Math.max(0, lastRun + SPACING_MS - Date.now()));
           log(`${agent.id} · ${task.id} · t${trial}: start`);
           let result: RunResult;
           try {
@@ -387,15 +414,34 @@ async function main(): Promise<void> {
             log(`${agent.id} · ${task.id}: harness error ${err instanceof Error ? err.message : err}`);
             continue;
           }
-          lastEnd = Date.now();
-          writeFileSync(join(out, `${agent.id}--${task.id}--t${trial}.json`), `${JSON.stringify(result, null, 2)}\n`);
-          appendHistory(RESULTS, [toRow(result)]);
+          lastRun = lastEnd = Date.now();
+          const file = join(out, `${agent.id}--${task.id}--t${trial}.json`);
+          if (result.learn) held.push({ result, file, projectId: ctx.projects.get(projectKey(task, agent))!.id });
+          else record(result, file);
           const m = result.metrics;
           log(`${agent.id} · ${task.id} · t${trial}: ${result.status} in ${Math.round(m.durationMs / 1000)} s, score ${result.score.toFixed(2)}, run_code ${m.tools.runCode}, todo ${m.todo.updates}, checks ${JSON.stringify(result.checks)}`);
         }
       }
     };
     await pool(parallel, agents.map(chain));
+
+    if (held.length) {
+      const ids = [...new Set(held.map((h) => h.projectId))];
+      log(`self-improve: waiting for lesson drafts on ${ids.length} project${ids.length === 1 ? "" : "s"}`);
+      let drained = false;
+      let lessons = new Map<string, number>();
+      try {
+        drained = await drainLearner(cdp, ids, lastEnd);
+        if (!drained) log(`self-improve: drafts still queued after ${DRAIN_MS / 60_000} min; recording what is there`);
+        lessons = new Map(await Promise.all(ids.map(async (id) => [id, activeLessons(await cdp.call<LearnOverview>("learnOverview", id))] as const)));
+      } catch (err) {
+        log(`self-improve: couldn't read the learner (${err instanceof Error ? err.message : err}); recording lessons as of each run`);
+      }
+      for (const h of held) {
+        const note = drained ? h.result.note : [h.result.note, "lesson drafts still queued at the end"].filter(Boolean).join("; ");
+        record({ ...h.result, learn: { ...h.result.learn!, lessons: lessons.get(h.projectId) ?? h.result.learn!.lessons }, ...(note ? { note } : {}) }, h.file);
+      }
+    }
   } finally {
     cdp.close();
     await app?.stop();
