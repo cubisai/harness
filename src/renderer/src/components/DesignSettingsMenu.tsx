@@ -1,11 +1,11 @@
 import { Check, ChevronDown } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { TIERS, tierOf } from "../../../shared/tiers";
 import type { Thread } from "../../../shared/types";
 import { MODE_ORDER } from "../modes";
 import { focusOption, focusSelectedOption } from "../option-keys";
 import { useStore } from "../store";
-import { shownSystem, Swatches, useDesignSystemOptions } from "./DesignSystemMenu";
+import { chipSystem, Swatches, systemGroups, useDesignSystemOptions } from "./DesignSystemMenu";
 import { MODES } from "./ThreadControls";
 
 /**
@@ -33,7 +33,7 @@ export function ThreadDesignSettings({ thread, running }: { thread: Thread; runn
   }, [open]);
 
   const mode = MODES[thread.permissionMode];
-  const system = shownSystem(systems, thread.designSystem);
+  const system = chipSystem(systems, thread.designSystem, thread.designDirection);
   const tier = tierOf(thread);
   const tierLabel = (TIERS.find((t) => t.value === tier) ?? TIERS[1]!).label;
   const summary = [mode.label, system?.name, tierLabel].filter(Boolean).join(" · ");
@@ -94,22 +94,26 @@ export function ThreadDesignSettings({ thread, running }: { thread: Thread; runn
               <span className="label">{MODES[id].label}</span>
             </button>
           ))}
-          <div className="model-group">Design system</div>
-          {systems.map((o) => (
-            <button
-              key={o.id}
-              role="option"
-              aria-selected={o.id === system?.id}
-              title={o.description || undefined}
-              className={`model-item${o.id === system?.id ? " current" : ""}`}
-              onClick={() => pick(() => o.id !== system?.id && void setDesignSystem(thread.id, o.id))}
-            >
-              <Check size={13} className="check" />
-              <span className="label ds-name">
-                {o.name}
-                <Swatches colors={o.swatches} />
-              </span>
-            </button>
+          {systemGroups(systems).map((group) => (
+            <Fragment key={group.label || "auto"}>
+              <div className="model-group">{group.label || "Design system"}</div>
+              {group.options.map((o) => (
+                <button
+                  key={o.id}
+                  role="option"
+                  aria-selected={o.id === system?.id}
+                  title={o.description || undefined}
+                  className={`model-item${o.id === system?.id ? " current" : ""}`}
+                  onClick={() => pick(() => o.id !== system?.id && void setDesignSystem(thread.id, o.id))}
+                >
+                  <Check size={13} className="check" />
+                  <span className="label ds-name">
+                    {o.name}
+                    <Swatches colors={o.swatches} />
+                  </span>
+                </button>
+              ))}
+            </Fragment>
           ))}
           <div className="model-group">Prototype tier</div>
           {TIERS.map((t) => (

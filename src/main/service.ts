@@ -46,7 +46,10 @@ import { saveRef } from "./design/refs";
 import { addComment, deleteComment, loadComments, saveComments, updateComment } from "./design/comments";
 import { applyStyleEdit, applyTextEdit } from "./design/textedit";
 import { keepTweaks } from "./design/tweaks";
-import { forkSystem, listDesignSystems, materializeSystem, resolveDesignSystem, type DesignSystemInfo } from "./design/systems";
+import { forkSystem, listDesignStyles, listDesignSystems, materializeSystem, resolveDesignSystem, type DesignStyleInfo, type DesignSystemInfo } from "./design/systems";
+import { AUTO_SYSTEM, isAuto, modeLabel, STYLE_PREFIX, type DesignDirection } from "../shared/direction";
+import { DESIGN_DIRECTION_TOOL } from "./design/tools";
+import { AUTO_LINT_WAIT_MS, autoLintNote, changedPages, type PageLint } from "./design/autolint";
 import { parseTokens, setToken } from "./design/tokens";
 import { skillsOf } from "../shared/skill-list";
 import type { AgentDriver, HarnessTool, ModelSwitch, SessionSeed } from "./agents/types";
@@ -101,6 +104,16 @@ export class Service {
   private openScripts = new Map<string, { toolUseId: string; code: string | null }[]>();
   private artifacts: ArtifactDeps | null = null;
   private designSystemsDir: string | null = null;
+  private designStylesDir: string | null = null;
+  private designFontsDir: string | null = null;
+  /** Lints a design thread's pages off screen; without it no automatic lint runs. */
+  private designAutoLint: ((threadId: string, root: string, rels: string[]) => Promise<PageLint[]>) | null = null;
+  /** Per design thread, the automatic lint of its last turn's pages, for the next turn's prompt. */
+  private autoLints = new Map<string, Promise<{ text: string; said: Set<string> }>>();
+  /** Per design thread, the automatic lint findings already told and still there. */
+  private lintSaid = new Map<string, Set<string>>();
+  /** Per design thread, each page's mtime when it was last linted: unchanged since, it isn't linted again. */
+  private lintedPages = new Map<string, Map<string, number>>();
   /** Projects already warned about loading the same conventions twice: said once, not every turn. */
   private scopeChecked = new Set<string>();
   private pendingPermissions = new Map<string, (d: PermissionDecision) => void>();
@@ -223,7 +236,9 @@ export class Service {
     const wanted = agent ?? d.agent;
     // A default agent that's no longer installed falls back to the first one.
     const driver = (wanted && this.drivers.get(wanted)) || [...this.drivers.values()][0]!;
-    const thread = this.store.createThread(projectId, driver.id, driver.defaultModel, d.permissionMode, kind, designSystem, expertId);
+    // A design thread nobody picked a system for starts on Auto: the agent picks the style (the project's own still wins).
+    const system = kind === "design" ? (designSystem ?? AUTO_SYSTEM) : designSystem;
+    const thread = this.store.createThread(projectId, driver.id, driver.defaultModel, d.permissionMode, kind, system, expertId);
     if (!isChatsRoot(project.path, this.chatsRoot)) return thread;
     // A chat works in its own folder, so files one chat writes never show up in another.
     const dir = join(project.path, thread.id);
@@ -803,6 +818,8 @@ export class Service {
     this.broadcast({ type: "running", threadId: thread.id, running: true });
     // Set when a failed check schedules the next automatic fix; fired after this send's finally.
     let followUp: SendRequest | null = null;
+    // Set once the agent starts: the pages written since are linted after the turn, however it ends (a stopped turn too).
+    let lintSince: number | null = null;
     try {
       // Snapshot the working tree before the turn, so an edit the agent reports
       // (or a path git now sees) is what triggers the check and the evidence gate.
@@ -866,7 +883,9 @@ export class Service {
       };
       const scrub = (text: string) => redactSecrets(text, this.secrets());
       const catchUp = compact ? null : await this.catchUp(thread.id, driver, userEvent.seq);
-      const basePrompt = catchUp ? `${catchUp}\n---\n${prompt}` : prompt;
+      // What the automatic lint found in the last turn's pages; the stored user event stays as sent.
+      const lintNote = compact ? "" : await this.takeAutoLint(thread.id);
+      const basePrompt = (catchUp ? `${catchUp}\n---\n${prompt}` : prompt) + lintNote;
       // A resumed session keeps the block its cache was built on; tell it once what changed since. The stored user event stays as sent.
       const update = current.sessionId !== null ? (this.memoryUpdates?.(thread.projectId, thread.id) ?? null) : null;
       const turnPrompt = update ? `${update}\n\n${basePrompt}` : basePrompt;
@@ -876,6 +895,7 @@ export class Service {
       this.noteTeamFallback(thread, driver);
       // Files the turn writes by command are found by mtime; 2 s of slack covers coarse filesystem clocks.
       const turnStartedAt = Date.now() - 2000;
+      if (!compact) lintSince = turnStartedAt;
       await driver.runTurn({
         threadId: thread.id,
         cwd,
@@ -1126,6 +1146,7 @@ export class Service {
       }
     } finally {
       watchdog?.dispose();
+      if (lintSince !== null) this.queueAutoLint(thread.id, lintSince);
       this.running.delete(thread.id);
       // An async answer that missed the turn goes out as the next message (unless a check fix round is next).
       const late = this.afterTurn.get(thread.id);
@@ -1383,9 +1404,68 @@ export class Service {
     this.designSystemsDir = dir;
   }
 
+  /** Where the style library and its font pack live; without them Auto threads get only their project's own system. */
+  setDesignStylesDir(stylesDir: string, fontsDir: string): void {
+    this.designStylesDir = stylesDir;
+    this.designFontsDir = fontsDir;
+  }
+
+  /** How design pages are linted off screen, for the automatic lint after a turn's writes. */
+  setDesignAutoLint(lint: (threadId: string, root: string, rels: string[]) => Promise<PageLint[]>): void {
+    this.designAutoLint = lint;
+  }
+
+  /** Lint the pages a design turn wrote, in the background; the next turn's prompt carries what's new. */
+  private queueAutoLint(threadId: string, since: number): void {
+    const lint = this.designAutoLint;
+    const root = this.designRoot(threadId);
+    const dir = designOf(this.store.getThread(threadId));
+    if (!lint || !root || !dir) return;
+    // The turn's start has slack for coarse clocks; a page the last run already took, unchanged, isn't this turn's.
+    const linted = this.lintedPages.get(threadId) ?? new Map<string, number>();
+    const pages = changedPages(root, since, linted);
+    if (!pages.length) return;
+    for (const { rel, mtime } of pages) linted.set(rel, mtime);
+    this.lintedPages.set(threadId, linted);
+    const run = lint(threadId, root, pages.map((p) => p.rel))
+      .then((results) => autoLintNote(dir, results, this.lintSaid.get(threadId) ?? new Set()))
+      .catch(() => ({ text: "", said: this.lintSaid.get(threadId) ?? new Set<string>() }));
+    this.autoLints.set(threadId, run);
+  }
+
+  /**
+   * The automatic lint note for this turn, waiting at most `AUTO_LINT_WAIT_MS`
+   * for a run still going; one that isn't done by then is dropped (the pages
+   * are about to change), and what it found isn't marked as said.
+   */
+  private async takeAutoLint(threadId: string): Promise<string> {
+    const run = this.autoLints.get(threadId);
+    if (!run) return "";
+    this.autoLints.delete(threadId);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), AUTO_LINT_WAIT_MS);
+    });
+    const note = await Promise.race([run, late]);
+    clearTimeout(timer);
+    if (!note) return "";
+    this.lintSaid.set(threadId, note.said);
+    return note.text;
+  }
+
+  /** The style library (bundled), in folder order. */
+  designStyles(): DesignStyleInfo[] {
+    return this.designStylesDir ? listDesignStyles(this.designStylesDir, this.designFontsDir ?? "") : [];
+  }
+
+  /** Every system a project's design thread can resolve to: its own, the built-ins, then the styles. */
+  private allSystems(projectId: string | null): DesignSystemInfo[] {
+    return [...listDesignSystems(this.projectPath(projectId), this.designSystemsDir ?? ""), ...this.designStyles()];
+  }
+
   /** The design systems a project's design threads can use, for the composer's picker. */
   designSystems(projectId: string | null): DesignSystemOption[] {
-    return listDesignSystems(this.projectPath(projectId), this.designSystemsDir ?? "").map(({ id, name, description, swatches, source }) => ({
+    return this.allSystems(projectId).map(({ id, name, description, swatches, source }) => ({
       id,
       name,
       description,
@@ -1394,10 +1474,73 @@ export class Service {
     }));
   }
 
-  /** A design thread's resolved system with its files, or null (not a design thread, or no system at all). */
+  /**
+   * A design thread's resolved system with its files, or null (not a design thread, no system at all, or an Auto
+   * thread whose agent hasn't picked a style yet). Auto follows the project's own DESIGN.md when it has one.
+   */
   private threadSystem(thread: Thread): DesignSystemInfo | null {
     if (thread.kind !== "design") return null;
-    return resolveDesignSystem(listDesignSystems(this.projectPath(thread.projectId), this.designSystemsDir ?? ""), thread.designSystem);
+    const list = this.allSystems(thread.projectId);
+    if (isAuto(thread)) {
+      const style = list.find((s) => s.id === "project") ? "project" : thread.designDirection?.style;
+      return style ? (list.find((s) => s.id === style) ?? null) : null;
+    }
+    return resolveDesignSystem(list, thread.designSystem);
+  }
+
+  /** The styles other design threads in the project used most recently (newest first, at most 3), to avoid repeats. */
+  private recentStyles(thread: Thread): string[] {
+    const out: string[] = [];
+    for (const t of this.store.listThreads(thread.projectId).sort((a, b) => b.updatedAt - a.updatedAt)) {
+      const style = t.id !== thread.id ? t.designDirection?.style : undefined;
+      if (style?.startsWith(STYLE_PREFIX) && !out.includes(style)) out.push(style);
+      if (out.length === 3) break;
+    }
+    return out.map((s) => s.slice(STYLE_PREFIX.length));
+  }
+
+  /**
+   * Record the direction an Auto design thread's agent chose and put its style in `<design folder>/system/` right
+   * away, so the agent can read it in the same turn. Returns the tool's reply. A thread on a fixed system keeps it:
+   * only surface, mode and tier are recorded then.
+   */
+  setDesignDirection(threadId: string, direction: DesignDirection): string {
+    const thread = this.store.getThread(threadId);
+    if (thread.kind !== "design") throw new Error("Only a design thread has a direction.");
+    const list = this.allSystems(thread.projectId);
+    const hasProject = list.some((s) => s.id === "project");
+    const auto = isAuto(thread);
+    let style = direction.style.trim();
+    if (auto) {
+      if (hasProject) style = "project";
+      else {
+        if (!style.startsWith(STYLE_PREFIX)) style = `${STYLE_PREFIX}${style}`;
+        if (!list.some((s) => s.id === style)) {
+          const names = this.designStyles().map((s) => s.id.slice(STYLE_PREFIX.length));
+          throw new Error(`Unknown style "${direction.style}". Pick one of: ${names.join(", ")}.`);
+        }
+      }
+    }
+    const saved = this.store.setDesignDirection(threadId, { ...direction, style: auto ? style : (thread.designSystem ?? "default") });
+    // The chip shows what Auto picked.
+    this.broadcast({ type: "thread", thread: saved });
+    const system = this.threadSystem(saved);
+    const root = this.designRoot(threadId);
+    const tier = tierOf(saved);
+    if (root) {
+      if (system) materializeSystem(system, join(root, "system"));
+      try {
+        writeFileSync(join(root, ".tier"), tier);
+      } catch {
+        // The tier note below still reaches the agent.
+      }
+    }
+    const folder = designOf(saved);
+    const head = `Direction: ${direction.surface}, ${modeLabel(direction.mode)}, tier ${tier}.`;
+    const where = system
+      ? ` \`${folder}/system/\` now holds ${system.name}${auto && !hasProject ? " (the style you picked)" : ""}: read its DESIGN.md before you build, link \`system/tokens.css\` and use its custom properties${system.fontFiles?.length ? "; it declares its fonts from `system/fonts/`" : ""}.`
+      : "";
+    return `${head}${where}\n${tierNote(tier)}`;
   }
 
   /** The System tab's view of a system: DESIGN.md and its tokens, plus whether (and how) it can be edited. */
@@ -1415,8 +1558,8 @@ export class Service {
       id: system.id,
       name: system.name,
       source: system.source,
-      editable: system.source !== "builtin" || project !== null,
-      copyOnWrite: system.source === "builtin",
+      editable: (system.source !== "builtin" && system.source !== "style") || project !== null,
+      copyOnWrite: system.source === "builtin" || system.source === "style",
       designMd: read(system.designMd),
       groups: parseTokens(read(system.tokensCss)),
     };
@@ -1438,7 +1581,7 @@ export class Service {
     let thread = this.store.getThread(threadId);
     let system = this.threadSystem(thread);
     if (!system) throw new Error("Only a design thread has a design system.");
-    if (system.source === "builtin") {
+    if (system.source === "builtin" || system.source === "style") {
       const project = this.projectPath(thread.projectId);
       if (!project) throw new Error("Open a project folder to customize a built-in design system.");
       system = forkSystem(system, project);
@@ -1456,10 +1599,14 @@ export class Service {
     return { doc: this.systemDoc(thread, system), thread };
   }
 
-  /** Pick a design thread's system (null = the default); the next turn copies it in and tells the agent. */
+  /**
+   * Pick a design thread's system (null = the default); the next turn copies it in and tells the agent. Switching to
+   * Auto drops any earlier direction, so the agent picks one afresh on its next turn.
+   */
   setDesignSystem(threadId: string, id: string | null): Thread {
     const thread = this.store.getThread(threadId);
     if (thread.kind !== "design") throw new Error("Only a design thread has a design system.");
+    if (id === AUTO_SYSTEM && thread.designSystem !== AUTO_SYSTEM) this.store.setDesignDirection(threadId, null);
     return this.store.setDesignSystem(threadId, id);
   }
 
@@ -1487,6 +1634,8 @@ export class Service {
   private prepareDesignTier(thread: Thread): string {
     const root = this.designRoot(thread.id);
     if (!root) return "";
+    // An Auto thread's tier comes with its direction: design_set_direction's reply says it.
+    if (isAuto(thread) && !thread.prototypeTier && !thread.designDirection) return "";
     const tier = tierOf(thread);
     const marker = join(root, ".tier");
     let said = "";
@@ -1505,6 +1654,16 @@ export class Service {
     return `\n\n(CubiQ: ${tierNote(tier)})`;
   }
 
+  /** What an Auto thread is told until its agent picks a direction: call the tool first, and which styles to avoid. */
+  private autoNote(thread: Thread, system: DesignSystemInfo | null): string {
+    if (system?.id === "project") {
+      return `\n\n(CubiQ: this design thread is on Auto and follows the project's own DESIGN.md. Before you build, call ${DESIGN_DIRECTION_TOOL} once with the surface, mode and tier; use style "project".)`;
+    }
+    const recent = this.recentStyles(thread);
+    const avoid = recent.length ? ` Recently used in this project: ${recent.join(", ")}; pick a different style unless the brief asks for one of them.` : "";
+    return `\n\n(CubiQ: this design thread is on Auto. Before you build, call ${DESIGN_DIRECTION_TOOL} once with the surface, mode, tier and the style that fits this brief.${avoid})`;
+  }
+
   /**
    * Copy a design thread's system into `<design folder>/system/` when it's
    * missing or changed (the canvas can only load files from that folder, and the
@@ -1515,8 +1674,9 @@ export class Service {
     const root = this.designRoot(thread.id);
     if (!root) return "";
     try {
-      const system = resolveDesignSystem(listDesignSystems(this.projectPath(thread.projectId), this.designSystemsDir ?? ""), thread.designSystem);
-      if (!system) return "";
+      const system = this.threadSystem(thread);
+      const ask = isAuto(thread) && !thread.designDirection ? this.autoNote(thread, system) : "";
+      if (!system) return ask;
       const dir = join(root, "system");
       let before = "";
       try {
@@ -1525,9 +1685,11 @@ export class Service {
         // First turn: nothing there yet.
       }
       materializeSystem(system, dir);
-      return before && before !== system.id
-        ? `\n\n(CubiQ: the design system is now ${system.name}; \`${designOf(thread)}/system/\` was replaced. Read its DESIGN.md and restyle with its tokens.)`
-        : "";
+      const switched =
+        before && before !== system.id
+          ? `\n\n(CubiQ: the design system is now ${system.name}; \`${designOf(thread)}/system/\` was replaced. Read its DESIGN.md and restyle with its tokens.)`
+          : "";
+      return switched + ask;
     } catch {
       // A failed copy leaves the last system in place; never fail the turn over it.
       return "";
@@ -1571,6 +1733,70 @@ export class Service {
     if (!root || !dir) throw new Error("Only a design thread has variants.");
     promoteVariant(root, rel, (page) => this.recordDesignPage(threadId, root, dir, page));
     if (this.artifacts) this.broadcast({ type: "artifact-ready", threadId, path: `${dir}/index.html`, files: [`${dir}/index.html`] });
+    // A "More styles" variant brings its style along: the next turn moves system/ to it and tells the agent.
+    const style = this.designStyles().find((s) => rel === `variant-${s.id.slice(STYLE_PREFIX.length)}.html`);
+    if (!style) return;
+    const updated =
+      isAuto(thread) && thread.designDirection
+        ? this.store.setDesignDirection(threadId, { ...thread.designDirection, style: style.id })
+        : this.store.setDesignSystem(threadId, style.id);
+    this.broadcast({ type: "thread", thread: updated });
+  }
+
+  /**
+   * Styles for a "More styles" round: ones that fit the design's surface (slides, mobile or web), unlike its current
+   * style and unlike each other (fewest shared tags), preferring ones made for its mode.
+   */
+  private moreStylesFor(thread: Thread, count: number): DesignStyleInfo[] {
+    const styles = this.designStyles();
+    const current = this.threadSystem(thread);
+    const direction = thread.designDirection;
+    const surface = direction?.surface;
+    const platforms = surface === "deck" ? ["deck"] : surface === "mobile" ? ["mobile", "any"] : ["web", "any"];
+    const currentTags = new Set(styles.find((s) => s.id === current?.id)?.tags ?? []);
+    const pool = styles.filter((s) => s.id !== current?.id && platforms.includes(s.platform));
+    const picked: DesignStyleInfo[] = [];
+    const shared = (a: Iterable<string>, b: string[]): number => b.filter((t) => new Set(a).has(t)).length;
+    while (picked.length < count) {
+      let best: DesignStyleInfo | null = null;
+      let bestScore = Infinity;
+      for (const s of pool) {
+        if (picked.includes(s)) continue;
+        const score =
+          shared(currentTags, s.tags) * 2 + picked.reduce((n, p) => n + shared(p.tags, s.tags), 0) + (direction && !s.modes.includes(direction.mode) ? 3 : 0);
+        if (score < bestScore) {
+          best = s;
+          bestScore = score;
+        }
+      }
+      if (!best) break;
+      picked.push(best);
+    }
+    return picked;
+  }
+
+  /**
+   * "More styles": copy a few other styles into `<design folder>/styles/<id>/` and return the turn that asks the agent
+   * (as an ordinary message the user sees) to build `variant-<id>.html` in each beside index.html.
+   */
+  prepareMoreStyles(threadId: string, count = 3): { names: string[]; text: string } {
+    const thread = this.store.getThread(threadId);
+    const root = this.designRoot(threadId);
+    if (!root) throw new Error("Only a design thread has styles.");
+    if (!existsSync(join(root, "index.html"))) throw new Error("Build the design first.");
+    const styles = this.moreStylesFor(thread, Math.max(1, Math.min(4, count)));
+    if (!styles.length) throw new Error("No other styles fit this design.");
+    for (const s of styles) materializeSystem(s, join(root, "styles", s.id.slice(STYLE_PREFIX.length)));
+    const lines = styles.map((s) => {
+      const id = s.id.slice(STYLE_PREFIX.length);
+      return `- \`variant-${id}.html\`: ${s.name}. Follow \`styles/${id}/DESIGN.md\` and link \`styles/${id}/tokens.css\` instead of \`system/tokens.css\`.`;
+    });
+    const text = [
+      `More styles: rebuild index.html in ${styles.length === 1 ? "another style" : `${styles.length} other styles`}, one variant page each beside it:`,
+      ...lines,
+      "Same content and purpose as index.html, but commit to each style's world: its layout moves, type and signature, not just its colours. Leave index.html and system/ as they are.",
+    ].join("\n");
+    return { names: styles.map((s) => s.name), text };
   }
 
   /**

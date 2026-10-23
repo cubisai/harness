@@ -118,6 +118,11 @@ function toolDeps(root: string | null, over: Partial<DesignToolDeps> = {}): Desi
     evaluate: async (url, width, height, script) => (evals.push({ url, width, height, script }), JSON.stringify({ findings: [], skipped: [], scanned: 4 })),
     lintScript: "LINT",
     saveCritique: (_id, md) => (saved.includes(md) ? null : (saved.push(md), { version: saved.length })),
+    setDirection: (_id, d) => {
+      if (d.style !== "riso") throw new Error(`Unknown style "${d.style}". Pick one of: riso.`);
+      return `Direction: ${d.surface}, ${d.mode}, tier ${d.tier}.`;
+    },
+    styleIndex: () => "riso: Riso print [print, warm; persuade; web]",
     ...over,
   };
 }
@@ -129,9 +134,9 @@ function tool(deps: DesignToolDeps, name: string) {
 }
 
 describe("design tools", () => {
-  it("offers exactly the three design tools, all safe to run without asking", () => {
+  it("offers exactly the four design tools, all safe to run without asking", () => {
     const list = designTools(toolDeps(tempDir()), "t");
-    expect(list.map((t) => t.name)).toEqual(["design_screenshot", "design_lint", "design_critique_save"]);
+    expect(list.map((t) => t.name)).toEqual(["design_screenshot", "design_lint", "design_critique_save", "design_set_direction"]);
     expect(list.every((t) => t.autoAllow)).toBe(true);
   });
 

@@ -1,5 +1,8 @@
 /** Overlays and popovers that own Escape; while one is open, Escape closes it instead of stopping the turn. */
-export const ESCAPE_OWNERS = ".skill-menu, .palette, .search-dialog, .sheet, .library, .model-menu, .open-menu, .thread-menu, .artifact-menu";
+export const ESCAPE_OWNERS = ".skill-menu, .palette, .search-dialog, .sheet, .library, .model-menu, .open-menu, .thread-menu, .artifact-menu, .design-drawer:not([hidden])";
+
+/** The same owners without the design transcript drawer: while one of these is open, Escape is theirs, not the drawer's. */
+export const ESCAPE_OWNERS_OVER_DRAWER = ESCAPE_OWNERS.replace(", .design-drawer:not([hidden])", "");
 
 export interface EscapeTarget {
   tagName?: string;

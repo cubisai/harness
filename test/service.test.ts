@@ -427,7 +427,8 @@ describe("Service.send", () => {
     });
     const project = store.addProject(tempDir());
     const chat = service.createThread(project.id);
-    const design = service.createThread(project.id, undefined, "design");
+    // A thread on a fixed system (an Auto thread hears its tier from design_set_direction instead).
+    const design = service.createThread(project.id, undefined, "design", "clean");
     expect(() => service.setPrototypeTier(chat.id, "quick")).toThrow(/design thread/);
     await service.send({ threadId: design.id, text: "one" });
     await service.send({ threadId: design.id, text: "two" });
@@ -435,6 +436,52 @@ describe("Service.send", () => {
     await service.send({ threadId: design.id, text: "three" });
     await service.send({ threadId: chat.id, text: "chat" });
     expect(prompts.map((p) => /Prototype tier: (\w+)/.exec(p)?.[1] ?? null)).toEqual(["Working", null, "Quick", null]);
+  });
+
+  it("lints the pages a design turn wrote and tells the next turn what's new, once", async () => {
+    const prompts: string[] = [];
+    const turnEnd = { kind: "turn-end" as const, costUsd: null, inputTokens: 10, outputTokens: 0, durationMs: 5 };
+    let write: string | null = null;
+    let stop = false;
+    const { service, store } = setup(async (input) => {
+      prompts.push(input.prompt);
+      if (write) writeFileSync(join(service.designRoot(design.id)!, write), "<p>x</p>");
+      if (stop) throw new Error("stopped");
+      input.onEvent(turnEnd);
+    });
+    const project = store.addProject(tempDir());
+    const design = service.createThread(project.id, undefined, "design", "clean");
+    const chat = service.createThread(project.id);
+    mkdirSync(service.designRoot(design.id)!, { recursive: true });
+    const linted: string[][] = [];
+    const finding = { rule: "slop" as const, selector: "p.kicker", detail: "eyebrow label above a heading" };
+    service.setDesignAutoLint(async (_id, _root, rels) => {
+      linted.push(rels);
+      return rels.map((rel) => ({ rel, result: { findings: [finding, { rule: "spacing" as const, selector: "p", detail: "13px" }], skipped: [], scanned: 3 } }));
+    });
+    write = "index.html";
+    await service.send({ threadId: design.id, text: "one" });
+    write = null;
+    await service.send({ threadId: design.id, text: "two" });
+    write = "index.html";
+    await service.send({ threadId: design.id, text: "three" });
+    await service.send({ threadId: design.id, text: "four" });
+    await service.send({ threadId: chat.id, text: "chat" });
+    // A turn that fails after writing (no turn-end) is linted too.
+    stop = true;
+    finding.detail = "gradient text";
+    await service.send({ threadId: design.id, text: "five" }).catch(() => {});
+    stop = false;
+    await service.send({ threadId: design.id, text: "six" });
+    // Turn two wrote nothing: no lint after it, and the page turn one wrote isn't linted again.
+    expect(linted).toEqual(Array(5).fill(["index.html"]));
+    const notes = prompts.map((p) => /automatic design_lint[^]*\)$/.exec(p)?.[0] ?? null);
+    expect(notes[0]).toBeNull();
+    expect(notes[1]).toContain("- index.html [slop] p.kicker: eyebrow label above a heading");
+    // Spacing stays with design_lint; the same finding, still there, isn't said again.
+    expect(notes[1]).not.toContain("13px");
+    expect(notes.slice(2, 6)).toEqual([null, null, null, null]);
+    expect(notes[6]).toContain("- index.html [slop] p.kicker: gradient text");
   });
 
   it("sets an expert only on a thread with no messages yet", async () => {

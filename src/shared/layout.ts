@@ -29,6 +29,8 @@ export const DEFAULT_LAYOUT: PaneLayout = {
   browserWide: false,
   inspectorWide: false,
   designChat: null,
+  designLayout: "canvas",
+  designRail: true,
 };
 
 /** The narrowest the chat gets beside a wide panel: 20% of the space right of the sidebar, never under `mainFloor`. */
@@ -59,6 +61,8 @@ export function sanitizeLayout(value: unknown): PaneLayout {
     browserWide: bool(v.browserWide, DEFAULT_LAYOUT.browserWide),
     inspectorWide: bool(v.inspectorWide, DEFAULT_LAYOUT.inspectorWide),
     designChat: typeof v.designChat === "number" && Number.isFinite(v.designChat) ? clamp(v.designChat, BOUNDS.designChat.min, BOUNDS.designChat.max) : null,
+    designLayout: v.designLayout === "split" ? "split" : "canvas",
+    designRail: bool(v.designRail, DEFAULT_LAYOUT.designRail),
   };
 }
 

@@ -16,9 +16,9 @@ export function readTier(v: unknown): PrototypeTier | null {
   return v === "quick" || v === "working" || v === "real-app" ? v : null;
 }
 
-/** A thread's tier, defaulting to `DEFAULT_TIER`. */
-export function tierOf(thread: { prototypeTier?: PrototypeTier }): PrototypeTier {
-  return thread.prototypeTier ?? DEFAULT_TIER;
+/** A thread's tier: the user's pick, else the one its Auto direction chose, else `DEFAULT_TIER`. */
+export function tierOf(thread: { prototypeTier?: PrototypeTier; designDirection?: { tier: PrototypeTier } }): PrototypeTier {
+  return thread.prototypeTier ?? thread.designDirection?.tier ?? DEFAULT_TIER;
 }
 
 /** What a tier turns on in the design UI and the agent's guide. */

@@ -31,6 +31,14 @@ import { applyPin, newestInstallAsync, pinFor, PREFERRED } from "./binaries";
 import type { BinaryResolution } from "./binaries";
 import type { AgentDriver, HarnessTool, ToolContext, ToolOutput, TurnInput } from "./types";
 import { claudeAnnotations, claudeAnswers, fromClaudeQuestions, SKIPPED_TEXT } from "../questions";
+import { designWriteAllowed } from "../design/write-scope";
+
+/** The file a Claude file-writing tool writes, or [] for any other tool. */
+export function claudeWriteTargets(toolName: string, toolInput: Record<string, unknown>): string[] {
+  if (toolName === "Write" || toolName === "Edit" || toolName === "MultiEdit") return typeof toolInput.file_path === "string" ? [toolInput.file_path] : [];
+  if (toolName === "NotebookEdit") return typeof toolInput.notebook_path === "string" ? [toolInput.notebook_path] : [];
+  return [];
+}
 
 /** MCP server name for harness tools: they reach Claude as mcp__cubiq__<tool>. */
 export const TOOL_SERVER = "cubiq";
@@ -613,6 +621,10 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
           // callback even under bypassPermissions, so answer them here. The
           // git guard hook runs before this and still denies its commands.
           if (input.permissionMode === "full") return { behavior: "allow", updatedInput: toolInput };
+          // A design thread's own folder is its canvas: file writes there don't ask.
+          if (designWriteAllowed(input.permissionMode, input.cwd, input.design, claudeWriteTargets(toolName, toolInput))) {
+            return { behavior: "allow", updatedInput: toolInput };
+          }
           const decision = await input.requestPermission({
             toolName,
             summary: summarizeToolInput(toolName, toolInput),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BOARD_HEADER, BOARD_LABEL_ROOM, BOARD_SIZES, BOARD_TITLE_BAND, boardLayout, boardSections, clampZoom, fitBoard, fitView, flowOrder, parsePage, zoomAt } from "../src/renderer/src/design/board-layout";
+import { BOARD_HEADER, BOARD_LABEL_ROOM, BOARD_SIZES, BOARD_TITLE_BAND, boardLayout, boardSections, clampZoom, dotSpacing, fitBoard, fitView, flowOrder, frameLabel, parsePage, zoomAt } from "../src/renderer/src/design/board-layout";
 import { flowPath } from "../src/renderer/src/design/board-layout";
 
 const pair = (rel: string) => ({ rel, url: `cubiq-design://d/t1/${rel}` });
@@ -102,7 +102,33 @@ describe("design board flow order", () => {
   });
 });
 
+describe("design board frame labels", () => {
+  const styles: Record<string, string> = { "swiss-grid": "Swiss grid", noir: "Noir" };
+  const styleOf = (id: string) => styles[id];
+
+  it("reads Page · Style, or the page alone without a style", () => {
+    expect(frameLabel(parsePage("pricing.html", "u"), "Editorial", styleOf)).toBe("Pricing · Editorial");
+    expect(frameLabel(parsePage("pricing.html", "u"), undefined, styleOf)).toBe("Pricing");
+  });
+
+  it("names a More styles variant after its own style", () => {
+    expect(frameLabel(parsePage("variant-swiss-grid.html", "u"), "Editorial", styleOf)).toBe("Option · Swiss grid");
+    expect(frameLabel(parsePage("variant-Noir.HTML", "u"), undefined, styleOf)).toBe("Option · Noir");
+    // A variant that isn't a style keeps its own label.
+    expect(frameLabel(parsePage("variant-dense-hero.html", "u"), "Editorial", styleOf)).toBe("Option Dense hero");
+  });
+});
+
 describe("design board view maths", () => {
+  it("spaces the dots 24 board px apart, never closer than 12px on screen", () => {
+    expect(dotSpacing(1)).toBe(24);
+    expect(dotSpacing(2)).toBe(48);
+    expect(dotSpacing(0.5)).toBe(12);
+    expect(dotSpacing(0.25)).toBe(12);
+    expect(dotSpacing(0.3)).toBeCloseTo(14.4);
+    for (const z of [0.05, 0.07, 0.11, 0.4, 0.9]) expect(dotSpacing(z)).toBeGreaterThanOrEqual(12);
+  });
+
   it("keeps zoom within 5% and 200%", () => {
     expect(clampZoom(0)).toBe(0.05);
     expect(clampZoom(5)).toBe(2);

@@ -90,6 +90,13 @@ describe("sanitizeLayout", () => {
   it("returns the defaults for a non-object", () => {
     expect(sanitizeLayout(null)).toEqual(DEFAULT_LAYOUT);
   });
+
+  it("starts design threads canvas-first with the rail open, and keeps a valid stored choice", () => {
+    expect(DEFAULT_LAYOUT.designLayout).toBe("canvas");
+    expect(DEFAULT_LAYOUT.designRail).toBe(true);
+    expect(sanitizeLayout({ designLayout: "split", designRail: false })).toMatchObject({ designLayout: "split", designRail: false });
+    expect(sanitizeLayout({ designLayout: "sideways", designRail: "no" })).toMatchObject({ designLayout: "canvas", designRail: true });
+  });
 });
 
 describe("design chat width", () => {

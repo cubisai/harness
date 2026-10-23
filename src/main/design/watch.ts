@@ -16,9 +16,17 @@ export const UNWATCHED = new Set(["comments.json", ".tier"]);
 /** How many distinct paths a burst may name before the change is treated as unknown (reload everything). */
 const MAX_PATHS = 200;
 
-/** Whether a reported change is CubiQ's own bookkeeping (no reload for it). */
+/**
+ * An atomic write's temp file (`index.html.tmp.<pid>.<id>`, as Claude's Write and Edit leave for a moment): it is
+ * renamed onto the real file at once, and that rename reports the page itself.
+ */
+const ATOMIC_TEMP = /\.tmp\.\d+\.[0-9a-z]+$/i;
+
+/** Whether a reported change is CubiQ's own bookkeeping or an atomic write's temp file (no reload for it). */
 export function ignoredChange(file: string | undefined): boolean {
-  return file !== undefined && UNWATCHED.has(file.replace(/\\/g, "/"));
+  if (file === undefined) return false;
+  const rel = file.replace(/\\/g, "/");
+  return UNWATCHED.has(rel) || ATOMIC_TEMP.test(rel);
 }
 
 export interface DesignWatcherOptions {

@@ -25,6 +25,7 @@ import { binaryInfo, resolvedCommandAsync } from "./binaries";
 import type { AgentDriver, HarnessTool, SessionSeed, TurnInput } from "./types";
 import type { TeamAgent } from "../../shared/experts";
 import { codexAnswers, fromCodexAsyncQuestions, fromCodexQuestions } from "../questions";
+import { designWriteAllowed } from "../design/write-scope";
 
 // The slices of Codex's app-server protocol (`codex app-server generate-ts`) this driver uses.
 type ThreadItem =
@@ -396,6 +397,8 @@ interface TurnState {
   parent?: TurnState;
   /** The Agent row this child's events hang under (its toolUseId). */
   rowId?: string;
+  /** Each started fileChange item's paths, by item id: its approval request carries none. */
+  changePaths?: Map<string, string[]>;
 }
 
 /**
@@ -678,6 +681,13 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   };
 
   const onItemStarted = (t: TurnState, item: ThreadItem) => {
+    if (item.type === "fileChange") {
+      const changes = (item as { changes?: { path?: unknown }[] }).changes ?? [];
+      (t.changePaths ??= new Map()).set(
+        item.id,
+        changes.map((c) => c.path).filter((p): p is string => typeof p === "string"),
+      );
+    }
     // A root thread's subagent bookkeeping: the Agent row its child thread's
     // items hang under. Once registered, a later subAgentActivity says nothing.
     if (!t.parent) {
@@ -798,6 +808,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       if (isCommand && typeof p.command === "string" && t.input.expertRoot && isSkillRead(p.command, [t.input.expertRoot])) return { decision: "accept" };
       // Auto-edit auto-approves edits, like Claude's acceptEdits; commands still ask.
       if (!isCommand && t.input.permissionMode === "auto-edit") return { decision: "accept" };
+      // A design thread's own folder is its canvas: file changes there don't ask.
+      if (!isCommand && designWriteAllowed(t.input.permissionMode, t.input.cwd, t.input.design, t.changePaths?.get(p.itemId) ?? [])) return { decision: "accept" };
       const decision = await t.input.requestPermission({
         toolName: isCommand ? "Run" : "Edit",
         summary: (isCommand ? p.command : p.reason) ?? (isCommand ? "a command" : "file changes"),

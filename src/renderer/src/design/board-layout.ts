@@ -83,6 +83,19 @@ export function parsePage(rel: string, url: string, device?: DesignDevice): Boar
   return { rel, url, section, label, step, kind: device ?? kindOf(section, raw), variant };
 }
 
+/**
+ * An artboard's label, `Page · Style`: the page's own label and the style the design is drawn in. A More styles variant
+ * (`variant-<style id>.html`) is the design redone in that style, so it reads `Option · <its style>`. Without a known
+ * style the page's label stands alone.
+ */
+export function frameLabel(page: BoardPage, style: string | undefined, styleOf: (id: string) => string | undefined): string {
+  if (page.variant) {
+    const own = styleOf(page.rel.replace(/^variant-|\.html?$/gi, "").toLowerCase());
+    return own ? `Option · ${own}` : page.label;
+  }
+  return style ? `${page.label} · ${style}` : page.label;
+}
+
 /** The board's sections in first-seen order, with "Options" always last and stepped pages sorted by step. */
 export function boardSections(pages: { rel: string; url: string; device?: DesignDevice }[]): { title: string; pages: BoardPage[] }[] {
   const map = new Map<string, BoardPage[]>();
@@ -161,6 +174,13 @@ export function boardLayout(sections: { title: string; pages: BoardPage[] }[], g
 /** A zoom kept within what the board allows: 5% to 200%. */
 export function clampZoom(z: number): number {
   return Math.min(2, Math.max(0.05, z));
+}
+
+/** The dotted surface's spacing on screen at a zoom: 24 board px, doubled until the dots sit at least 12px apart. */
+export function dotSpacing(zoom: number): number {
+  let gap = 24 * clampZoom(zoom);
+  while (gap < 12) gap *= 2;
+  return gap;
 }
 
 /** Zooms a view by `factor` around the screen point (px, py), which stays fixed on screen. */

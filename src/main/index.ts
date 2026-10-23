@@ -16,7 +16,9 @@ import { readTier } from "../shared/tiers";
 import { readTarget } from "../shared/comments";
 import { bridgeScript } from "./design/bridge";
 import { buildDesignExport, exportFileName, pageTitleSource, type DesignExportDeps } from "./design/export";
-import { lintScript } from "./design/lint";
+import { lintScript, type LintResult } from "./design/lint";
+import { lintWidth, type PageLint } from "./design/autolint";
+import { styleIndex } from "./design/systems";
 import { electronShotWindow } from "./design/shot-window";
 import { Shooter } from "./design/shooter";
 import { designTools } from "./design/tools";
@@ -557,6 +559,8 @@ async function main(): Promise<void> {
           evaluate: (url, width, height, script) => shooter.evaluate(url, width, height, script),
           lintScript: designLintJs,
           saveCritique: (id, markdown) => service.saveCritique(id, markdown),
+          setDirection: (id, direction) => service.setDesignDirection(id, direction),
+          styleIndex: () => styleIndex(service.designStyles()),
         },
         threadId,
       );
@@ -921,6 +925,23 @@ async function main(): Promise<void> {
   const syncProviderAgents = () => service.syncDrivers(PROVIDER_AGENT_PREFIX, providerAgents.list());
   syncProviderAgents();
   service.setDesignSystemsDir(app.isPackaged ? join(process.resourcesPath, "design-systems") : join(app.getAppPath(), "resources", "design-systems"));
+  service.setDesignStylesDir(
+    app.isPackaged ? join(process.resourcesPath, "design-styles") : join(app.getAppPath(), "resources", "design-styles"),
+    app.isPackaged ? join(process.resourcesPath, "design-fonts") : join(app.getAppPath(), "resources", "design-fonts"),
+  );
+  // After a design turn writes pages, they're linted off screen (one at a time); a page that fails to render is skipped.
+  service.setDesignAutoLint(async (threadId, root, rels) => {
+    const pages: PageLint[] = [];
+    for (const rel of rels) {
+      try {
+        const raw = await shooter.evaluate(designUrl(threadId, rel), lintWidth(root, rel), 900, designLintJs);
+        pages.push({ rel, result: JSON.parse(String(raw)) as LintResult });
+      } catch {
+        // Skipped.
+      }
+    }
+    return pages;
+  });
   // The artifact panel: versions in the store's blobs, office files parsed in a utility process.
   const previews = new PreviewHost(utilityFork(utilityProcess, join(here, "preview-worker.js")));
   const fileUrl = (threadId: string, rel: string) => `cubiq-file://f/${encodeURIComponent(threadId)}/${rel.split("/").map(encodeURIComponent).join("/")}`;
@@ -1020,6 +1041,15 @@ async function main(): Promise<void> {
   ipcMain.handle("design:promote", (_e, threadId: string, rel: string) => {
     if (typeof rel !== "string") throw new Error("Not a variant.");
     service.promoteDesignVariant(threadId, rel);
+  });
+  // More styles: the styles are copied in now; the turn that builds their variants runs like any sent message.
+  ipcMain.handle("design:more-styles", (_e, threadId: string) => {
+    const { names, text } = service.prepareMoreStyles(threadId);
+    service.send({ threadId, text }).catch((err: unknown) => {
+      broadcast({ type: "running", threadId, running: false });
+      console.error(redactSecrets(err instanceof Error ? (err.stack ?? err.message) : String(err), knownSecrets()));
+    });
+    return names;
   });
   ipcMain.handle("design:comments", (_e, threadId: string) => service.designComments(threadId));
   ipcMain.handle("design:comment-add", (_e, threadId: string, input: { page?: unknown; target?: unknown; label?: unknown; text?: unknown }) => {

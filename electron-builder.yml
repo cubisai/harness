@@ -21,6 +21,11 @@ extraResources:
     to: DESIGN-MODE.md
   - from: resources/design-systems
     to: design-systems
+  # The style library Auto design threads pick from, and the font pack its styles use.
+  - from: resources/design-styles
+    to: design-styles
+  - from: resources/design-fonts
+    to: design-fonts
 # The Agent SDK spawns its bundled Claude Code binary; binaries can't run
 # from inside an asar archive.
 asarUnpack:
