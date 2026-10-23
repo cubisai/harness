@@ -16,7 +16,8 @@ import { readTier } from "../shared/tiers";
 import { readTarget } from "../shared/comments";
 import { bridgeScript } from "./design/bridge";
 import { buildDesignExport, exportFileName, pageTitleSource, type DesignExportDeps } from "./design/export";
-import { lintScript } from "./design/lint";
+import { lintScript, type LintResult } from "./design/lint";
+import { lintWidth, type PageLint } from "./design/autolint";
 import { styleIndex } from "./design/systems";
 import { electronShotWindow } from "./design/shot-window";
 import { Shooter } from "./design/shooter";
@@ -928,6 +929,19 @@ async function main(): Promise<void> {
     app.isPackaged ? join(process.resourcesPath, "design-styles") : join(app.getAppPath(), "resources", "design-styles"),
     app.isPackaged ? join(process.resourcesPath, "design-fonts") : join(app.getAppPath(), "resources", "design-fonts"),
   );
+  // After a design turn writes pages, they're linted off screen (one at a time); a page that fails to render is skipped.
+  service.setDesignAutoLint(async (threadId, root, rels) => {
+    const pages: PageLint[] = [];
+    for (const rel of rels) {
+      try {
+        const raw = await shooter.evaluate(designUrl(threadId, rel), lintWidth(root, rel), 900, designLintJs);
+        pages.push({ rel, result: JSON.parse(String(raw)) as LintResult });
+      } catch {
+        // Skipped.
+      }
+    }
+    return pages;
+  });
   // The artifact panel: versions in the store's blobs, office files parsed in a utility process.
   const previews = new PreviewHost(utilityFork(utilityProcess, join(here, "preview-worker.js")));
   const fileUrl = (threadId: string, rel: string) => `cubiq-file://f/${encodeURIComponent(threadId)}/${rel.split("/").map(encodeURIComponent).join("/")}`;

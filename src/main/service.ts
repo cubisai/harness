@@ -49,6 +49,7 @@ import { keepTweaks } from "./design/tweaks";
 import { forkSystem, listDesignStyles, listDesignSystems, materializeSystem, resolveDesignSystem, type DesignStyleInfo, type DesignSystemInfo } from "./design/systems";
 import { AUTO_SYSTEM, isAuto, modeLabel, STYLE_PREFIX, type DesignDirection } from "../shared/direction";
 import { DESIGN_DIRECTION_TOOL } from "./design/tools";
+import { AUTO_LINT_WAIT_MS, autoLintNote, changedPages, type PageLint } from "./design/autolint";
 import { parseTokens, setToken } from "./design/tokens";
 import { skillsOf } from "../shared/skill-list";
 import type { AgentDriver, HarnessTool, ModelSwitch, SessionSeed } from "./agents/types";
@@ -105,6 +106,14 @@ export class Service {
   private designSystemsDir: string | null = null;
   private designStylesDir: string | null = null;
   private designFontsDir: string | null = null;
+  /** Lints a design thread's pages off screen; without it no automatic lint runs. */
+  private designAutoLint: ((threadId: string, root: string, rels: string[]) => Promise<PageLint[]>) | null = null;
+  /** Per design thread, the automatic lint of its last turn's pages, for the next turn's prompt. */
+  private autoLints = new Map<string, Promise<{ text: string; said: Set<string> }>>();
+  /** Per design thread, the automatic lint findings already told and still there. */
+  private lintSaid = new Map<string, Set<string>>();
+  /** Per design thread, each page's mtime when it was last linted: unchanged since, it isn't linted again. */
+  private lintedPages = new Map<string, Map<string, number>>();
   /** Projects already warned about loading the same conventions twice: said once, not every turn. */
   private scopeChecked = new Set<string>();
   private pendingPermissions = new Map<string, (d: PermissionDecision) => void>();
@@ -872,7 +881,9 @@ export class Service {
       };
       const scrub = (text: string) => redactSecrets(text, this.secrets());
       const catchUp = compact ? null : await this.catchUp(thread.id, driver, userEvent.seq);
-      const basePrompt = catchUp ? `${catchUp}\n---\n${prompt}` : prompt;
+      // What the automatic lint found in the last turn's pages; the stored user event stays as sent.
+      const lintNote = compact ? "" : await this.takeAutoLint(thread.id);
+      const basePrompt = (catchUp ? `${catchUp}\n---\n${prompt}` : prompt) + lintNote;
       // A resumed session keeps the block its cache was built on; tell it once what changed since. The stored user event stays as sent.
       const update = current.sessionId !== null ? (this.memoryUpdates?.(thread.projectId, thread.id) ?? null) : null;
       const turnPrompt = update ? `${update}\n\n${basePrompt}` : basePrompt;
@@ -952,6 +963,7 @@ export class Service {
           if (event.kind === "turn-end") {
             this.emitSignal(thread.id, event.usage);
             this.recordArtifacts(thread.id, cwd, stored.seq, turnStartedAt);
+            if (!compact) this.queueAutoLint(thread.id, turnStartedAt);
           }
         },
         // Live text is scrubbed like stored events. A key split across two deltas can
@@ -1393,6 +1405,49 @@ export class Service {
   setDesignStylesDir(stylesDir: string, fontsDir: string): void {
     this.designStylesDir = stylesDir;
     this.designFontsDir = fontsDir;
+  }
+
+  /** How design pages are linted off screen, for the automatic lint after a turn's writes. */
+  setDesignAutoLint(lint: (threadId: string, root: string, rels: string[]) => Promise<PageLint[]>): void {
+    this.designAutoLint = lint;
+  }
+
+  /** Lint the pages a design turn wrote, in the background; the next turn's prompt carries what's new. */
+  private queueAutoLint(threadId: string, since: number): void {
+    const lint = this.designAutoLint;
+    const root = this.designRoot(threadId);
+    const dir = designOf(this.store.getThread(threadId));
+    if (!lint || !root || !dir) return;
+    // The turn's start has slack for coarse clocks; a page the last run already took, unchanged, isn't this turn's.
+    const linted = this.lintedPages.get(threadId) ?? new Map<string, number>();
+    const pages = changedPages(root, since, linted);
+    if (!pages.length) return;
+    for (const { rel, mtime } of pages) linted.set(rel, mtime);
+    this.lintedPages.set(threadId, linted);
+    const run = lint(threadId, root, pages.map((p) => p.rel))
+      .then((results) => autoLintNote(dir, results, this.lintSaid.get(threadId) ?? new Set()))
+      .catch(() => ({ text: "", said: this.lintSaid.get(threadId) ?? new Set<string>() }));
+    this.autoLints.set(threadId, run);
+  }
+
+  /**
+   * The automatic lint note for this turn, waiting at most `AUTO_LINT_WAIT_MS`
+   * for a run still going; one that isn't done by then is dropped (the pages
+   * are about to change), and what it found isn't marked as said.
+   */
+  private async takeAutoLint(threadId: string): Promise<string> {
+    const run = this.autoLints.get(threadId);
+    if (!run) return "";
+    this.autoLints.delete(threadId);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), AUTO_LINT_WAIT_MS);
+    });
+    const note = await Promise.race([run, late]);
+    clearTimeout(timer);
+    if (!note) return "";
+    this.lintSaid.set(threadId, note.said);
+    return note.text;
   }
 
   /** The style library (bundled), in folder order. */
