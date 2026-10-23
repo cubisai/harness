@@ -7,10 +7,14 @@ export function memoryOn(settings: Settings, projectId: string): boolean {
   return (settings.memory?.enabled ?? true) && !(settings.memory?.disabledProjects ?? []).includes(projectId);
 }
 
-/** The memory block (global then project titles) wrapped in its instructions, or "" when there are no notes yet. */
+/**
+ * The memory block (global then project titles) wrapped in its instructions.
+ * With no notes yet the instructions still go out, so the agent saves to CubiQ
+ * memory instead of its own (Claude's auto-memory is off whenever this is sent).
+ */
 export function memoryPrompt(blockText: string): string {
-  if (!blockText.trim()) return "";
-  return `<harness-memory>\nCubiQ memory, shared by every agent and session. Lines are titles: memory_read gives a note (file), searches (query) or lists all.\nCheck it before asking the user something they may have told you. Save preferences, corrections and facts the code doesn't show with memory_write (scope "global" for things about the user in every project). Fix or delete a wrong note instead of adding one. Notes date from when written: check what they name still exists. No secrets.\n${blockText}\n</harness-memory>`;
+  const notes = blockText.trim() ? blockText : "(no notes yet)";
+  return `<harness-memory>\nCubiQ memory, shared by every agent and session. Lines are titles: memory_read gives a note (file), searches (query) or lists all.\nCheck it before asking the user something they may have told you. Save preferences, corrections and facts the code doesn't show with memory_write (scope "global" for things about the user in every project). Fix or delete a wrong note instead of adding one. Code facts date from when written: check what they cite still exists. Rules and conventions apply as written. No secrets.\n${notes}\n</harness-memory>`;
 }
 
 export function createMemory(opts: { root: string; home: string; codexHome?: string }): {

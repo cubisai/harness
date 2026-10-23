@@ -10,12 +10,13 @@ import type { PermissionDecision } from "../../../shared/types";
 
 /** What the plugin sends for one tool call. */
 export interface PluginAsk {
-  /** OpenCode's tool id (bash, edit, write, ...). */
+  /** OpenCode's tool id (bash, edit, write, ...), or the permission a sub-agent asks for (external_directory, ...). */
   tool: string;
-  kind: "edit" | "execute";
-  /** The command, or the file the edit touches. */
+  /** "permission": a sub-agent's own OpenCode ask, which never reaches ACP. */
+  kind: "edit" | "execute" | "permission";
+  /** The command, the file the edit touches, or the ask's patterns. */
   summary: string;
-  /** OpenCode's call id: the same id its own ACP ask (if any) arrives under. */
+  /** OpenCode's call id: the same id its own ACP ask (if any) arrives under. A permission ask's own id (`per_…`). */
   callID?: string;
   sessionID?: string;
 }
@@ -63,7 +64,7 @@ export async function startAskServer(): Promise<AskServer> {
       } catch {
         return void res.writeHead(400).end();
       }
-      if ((ask.kind !== "edit" && ask.kind !== "execute") || typeof ask.tool !== "string") return void res.writeHead(400).end();
+      if ((ask.kind !== "edit" && ask.kind !== "execute" && ask.kind !== "permission") || typeof ask.tool !== "string") return void res.writeHead(400).end();
       const reply = (answer: PluginAnswer) => {
         if (!res.writableEnded) res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(typeof answer === "string" ? { decision: answer } : answer));
       };

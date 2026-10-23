@@ -106,10 +106,50 @@ async function ask(input, output) {
   throw new Error(decision === "deny" ? reason || "The user denied this " + noun + "." : "CubiQ couldn't ask the user about this " + noun + ", so it was blocked.");
 }
 
-export default async () => ({
+// A sub-agent's own permission ask (external_directory, webfetch...) never
+// reaches ACP, so OpenCode would wait on it for good: the app decides it like
+// an edit (Full allows, Ask shows a card) and the plugin replies. The main
+// session's asks still go over ACP.
+async function answerAsk(client, request) {
+  const url = process.env.CUBIQ_ASK_URL;
+  const token = process.env.CUBIQ_ASK_TOKEN;
+  if (!url || !token || !client || !request || !request.id || !request.sessionID) return;
+  let parentID = null;
+  try {
+    const session = await client.session.get({ path: { id: request.sessionID } });
+    parentID = session && session.data ? session.data.parentID : null;
+  } catch {
+    return;
+  }
+  if (!parentID) return;
+  let decision = null;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer " + token },
+      body: JSON.stringify({ tool: String(request.permission || ""), kind: "permission", summary: (Array.isArray(request.patterns) ? request.patterns : []).join(", "), callID: request.id, sessionID: request.sessionID }),
+      timeout: false,
+    });
+    if (res.ok) decision = (await res.json()).decision;
+  } catch {
+    decision = null;
+  }
+  // Fail closed like an edit: without the app's answer the sub-agent is refused, not left waiting.
+  const response = decision === "allow-once" || decision === "allow-always" ? "once" : "reject";
+  try {
+    await client.postSessionIdPermissionsPermissionId({ path: { id: request.sessionID, permissionID: request.id }, body: { response } });
+  } catch {
+    // Already answered (or the session is gone): nothing left to do.
+  }
+}
+
+export default async (ctx) => ({
   "tool.execute.before": async (input, output) => {
     guard(input, output);
     await ask(input, output);
+  },
+  event: async ({ event }) => {
+    if (event && event.type === "permission.asked") await answerAsk(ctx && ctx.client, event.properties);
   },
 });
 `;
