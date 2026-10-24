@@ -559,7 +559,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
       // Its reply already stands, so any text after that is dropped.
       const staleList: HookCallback = async (hookInput) => {
         if (turn.quiet || (hookInput as StopHookInput).stop_hook_active) return {};
-        const reason = turn.openPlan ? STALE_LIST : !turn.planMade && turn.edits >= 3 && multiPartRequest(input.prompt) ? NO_LIST : null;
+        const reason = turn.openPlan ? STALE_LIST : !turn.planMade && turn.edits >= 2 && multiPartRequest(input.prompt) ? NO_LIST : null;
         if (!reason) return {};
         turn.quiet = true;
         return { decision: "block", reason };

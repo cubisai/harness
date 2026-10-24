@@ -557,8 +557,8 @@ describe("Claude context breakdown", () => {
     expect(await hook({ hook_event_name: "Stop", stop_hook_active: false })).toEqual({});
   });
 
-  it("does not ask for a list when a multi-part request got only two edits", async () => {
-    const hook = await stopHookFor(MULTI, [edit("e1"), edit("e2")]);
+  it("does not ask for a list when a multi-part request got only one edit", async () => {
+    const hook = await stopHookFor(MULTI, [edit("e1")]);
     expect(await hook({ hook_event_name: "Stop", stop_hook_active: false })).toEqual({});
   });
 
