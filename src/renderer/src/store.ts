@@ -1571,7 +1571,12 @@ export const useStore = create<State>((set, get) => ({
           threads: { ...s.threads, [update.thread.projectId]: upsertThread(s.threads[update.thread.projectId], update.thread) },
         }));
         // A thread for a project this window hasn't listed yet (made elsewhere): fetch the list so it can show.
-        if (unknown) void api().listProjects().then((projects) => set({ projects }));
+        // Best effort, off this call: a failed fetch mustn't break whoever applied the thread.
+        if (unknown)
+          void Promise.resolve()
+            .then(() => api().listProjects())
+            .then((projects) => set({ projects }))
+            .catch(() => undefined);
         return;
       }
     }
