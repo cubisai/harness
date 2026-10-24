@@ -44,7 +44,7 @@ Repo tasks run on this repo at a pinned commit: CLAUDE.md (minus its opencode-de
 | Check gate | the app's project check after the turn: passed first time, fix rounds, passed in the end |
 | Ran tests | the agent ran tests or a typecheck itself |
 | Evidence flags | the app's "worth a second look" notices (claims without proof) |
-| Learn | self-improve's own score of the turns (ok / warn / fail) and the project's lessons |
+| Learn | self-improve's own score of the turns (ok / warn / fail) and the project's lessons, counted after the bench waits (up to 10 min) for the learner to finish drafting |
 | Memory | memory_read / memory_write calls; a note written when the task needs one |
 | Todo | lists (`plan` events from any agent's todo tool): before the first edit, updates, closed at the end |
 | Code mode | top-level `run_code` calls and failed scripts vs look (read/grep/glob), shell and edit calls |

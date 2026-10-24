@@ -50,6 +50,7 @@ const overview: LearnOverview = {
     { id: "case1", createdAt: 1, grader: "check command passes", heldOut: true, threadId: "t1", userSeq: 1 },
     { id: "case2", createdAt: 2, grader: "check command passes", heldOut: false, threadId: "t1", userSeq: 2 },
   ],
+  drafting: 0,
 };
 
 describe("LearnedTab", () => {

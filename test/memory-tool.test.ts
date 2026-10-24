@@ -7,9 +7,19 @@ import { tempDir } from "./helpers";
 const ctx = { projectId: "p1" };
 
 describe("memoryPrompt", () => {
-  it("returns nothing for empty or whitespace-only text", () => {
-    expect(memoryPrompt("")).toBe("");
-    expect(memoryPrompt("  \n ")).toBe("");
+  it("still sends the instructions when there are no notes yet", () => {
+    for (const empty of ["", "  \n "]) {
+      const out = memoryPrompt(empty);
+      expect(out).toContain("with memory_write");
+      expect(out).toContain("\n(no notes yet)\n</harness-memory>");
+    }
+  });
+
+  it("keeps rules and conventions in force while code facts get checked", () => {
+    const out = memoryPrompt("- [IPC docs](ipc-docs.md) — list channels in docs/ipc.md");
+    expect(out).toContain("Code facts date from when written");
+    expect(out).toContain("Rules and conventions apply as written.");
+    expect(out).not.toContain("check what they name still exists");
   });
 
   it("wraps the block with the shared-memory instructions", () => {
@@ -26,7 +36,7 @@ describe("memoryPrompt", () => {
     // These lines ride on every agent's first request of a session;
     // ~4 chars/token, with the one-char block subtracted.
     const tokens = Math.ceil(memoryPrompt("x").length / 4) - 1;
-    expect(tokens).toBeLessThanOrEqual(130);
+    expect(tokens).toBeLessThanOrEqual(140);
   });
 });
 

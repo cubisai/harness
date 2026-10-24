@@ -191,24 +191,30 @@ export function pickPermission(
   return "ask";
 }
 
+/** The tool kind an OpenCode permission covers, for a sub-agent's own ask; anything else (external_directory, task...) is "other". */
+const PERMISSION_KINDS: Record<string, ToolKind> = { read: "read", list: "read", glob: "search", grep: "search", codesearch: "search", edit: "edit", bash: "execute", webfetch: "fetch", websearch: "fetch" };
+
 /**
  * An edit or command OpenCode's CubiQ plugin asks about, decided like an ACP
  * ask: Full allows, Auto-edit allows edits, Ask asks the user. Plan mode
  * defers to OpenCode's own plan agent and its ACP asks, as before the plugin
- * asked (null = defer).
+ * asked (null = defer). A sub-agent's own permission ask is decided in every
+ * mode, Plan included: nothing else will answer it.
  */
 export async function decidePluginAsk(
   input: Pick<TurnInput, "permissionMode" | "requestPermission"> & Partial<Pick<TurnInput, "cwd" | "design">>,
   ask: PluginAsk,
   signal?: AbortSignal,
 ): Promise<PermissionDecision | null> {
-  if (input.permissionMode === "plan") return null;
-  const picked = pickPermission(input.permissionMode, ask.kind);
+  const own = ask.kind === "permission";
+  if (input.permissionMode === "plan" && !own) return null;
+  const kind: ToolKind = ask.kind === "permission" ? (PERMISSION_KINDS[ask.tool] ?? "other") : ask.kind;
+  const picked = pickPermission(input.permissionMode, kind);
   if (picked === "allow") return "allow-once";
   if (picked === "deny") return "deny";
   // A design thread's own folder is its canvas: an edit there (the summary is its file) doesn't ask.
   if (ask.kind === "edit" && input.cwd && designWriteAllowed(input.permissionMode, input.cwd, input.design, ask.summary ? [ask.summary] : [])) return "allow-once";
-  return input.requestPermission({ toolName: kindLabel(ask.kind), summary: ask.summary || ask.tool, canAlwaysAllow: false, ...(signal ? { signal } : {}) });
+  return input.requestPermission({ toolName: own ? ask.tool : kindLabel(kind), summary: ask.summary || ask.tool, canAlwaysAllow: false, ...(signal ? { signal } : {}) });
 }
 
 export function optionFor(options: PermissionOption[], decision: PermissionDecision): string | undefined {
@@ -441,9 +447,15 @@ export function createAcpDriver(
         return { decision: "deny", reason: verdict.reason || "Blocked by git guardrails." };
       }
     }
+    if (ask.kind === "permission" && ask.callID) {
+      // Being answered, so not the stall the stderr watcher warns about.
+      t.askIds.add(ask.callID);
+      clearTimeout(t.askTimers.get(ask.callID));
+      t.askTimers.delete(ask.callID);
+    }
     const decision = await decidePluginAsk(t.input, ask, signal);
     if (decision === null) return "allow-once";
-    if (decision !== "deny" && ask.callID) l.approvedCalls.add(ask.callID);
+    if (decision !== "deny" && ask.callID && ask.kind !== "permission") l.approvedCalls.add(ask.callID);
     return decision;
   };
 

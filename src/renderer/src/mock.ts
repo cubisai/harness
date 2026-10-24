@@ -649,7 +649,7 @@ export function installMock(): void {
       const a = automations.find((x) => x.id === id);
       return a?.lastRun ? [a.lastRun] : [];
     },
-    learnOverview: async () => ({ enabled: false, background: null, dailyTokens: 50_000, usedToday: 0, trend: [], lessons: [], cases: [] }),
+    learnOverview: async () => ({ enabled: false, background: null, dailyTokens: 50_000, usedToday: 0, trend: [], lessons: [], cases: [], drafting: 0 }),
     learnSetLesson: async () => null,
     learnVerify: async () => null,
     memoryOverview: async () => memoryView(),

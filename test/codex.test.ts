@@ -403,6 +403,17 @@ describe("Codex driver", () => {
     expect(d.models().map((m) => m.id)).toEqual(["default", "gpt-mock"]);
   });
 
+  it("turn-end counts every model response in the turn, with the last one's input as the context", async () => {
+    const d = driver();
+    const t = turn("steps");
+    await d.runTurn(t.input);
+    // 800 + 900 in (600 cached), 150 + 12 out; not just the final response's 12.
+    expect(t.events.at(-1)).toMatchObject({ kind: "turn-end", inputTokens: 1100, outputTokens: 162 });
+    const end = t.events.at(-1);
+    if (end?.kind !== "turn-end") return;
+    expect(end.usage).toMatchObject({ cacheReadTokens: 600, contextUsed: 900 });
+  });
+
   it("loads models at startup without a turn", async () => {
     const d = driver();
     expect(d.models().map((m) => m.id)).toEqual(["default"]);

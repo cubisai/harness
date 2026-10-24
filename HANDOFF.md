@@ -1,4 +1,25 @@
-# Handoff: bench v2 findings to fix — 2026-10-22 — see "Resume here — 2026-10-22 (Mac, session 10)"
+# Handoff: bench v2 fixes in progress — 2026-10-23 — see "Resume here — 2026-10-23 (Mac, session 11)"
+
+## Resume here — 2026-10-23 (Mac, session 11)
+
+Working on session 10's "Fix tomorrow" list in worktree **`../aiharness-wt/bench-fixes`** (branch `track/bench-fixes`, from m4 `028a968`; `node_modules` is a symlink to the main checkout's). **Not merged into m4 yet, not pushed.** Typecheck is clean and the touched suites pass; the full suite hasn't run. **No bench or live-model runs this session** (user: some agents are at their limits). Ask before spending any.
+
+**Done (3 commits on track/bench-fixes):**
+- `f7b365e` **Items 1–3.**
+  - `memoryPrompt` always sends its instructions, with "(no notes yet)" when there are none. So Claude's auto-memory is always off when CubiQ memory is on, and every agent gets the memory_write instructions on a project with no notes.
+  - The staleness line now reads "Code facts date from when written: check what they cite still exists. Rules and conventions apply as written." The token budget test went from 130 to 140.
+  - **OpenCode sub-agent permission asks** (e.g. `external_directory /tmp/*`) never reach ACP, and OpenCode 1.19 has no plugin hook that can answer them. Fix: the guard plugin's `event` hook catches `permission.asked`. It acts only for sessions with a `parentID`; the main session still asks over ACP. It POSTs `kind: "permission"` to the ask server, which decides via `decidePluginAsk` in every mode: Full allows, Ask/Auto-edit show a card named after the permission, Plan allows reads only. The plugin then replies with `client.postSessionIdPermissionsPermissionId`. Without an answer from the app it rejects rather than hangs. The driver clears the stderr "can't ask here" notice for that ask.
+  - A config-level allow was rejected: OpenCode isn't restarted on a mode switch, so it would leak into Ask mode.
+  - Real-OpenCode e2e tests in `test/opencode-ask.test.ts` (fake model, `task` → sub-agent `read` outside the project): Full passes with no card; Ask shows one card, and a deny keeps the file out. Without the fix the Full test times out, which is the bench's stall. v2 plugin not done (v2 is unreleased).
+- `dfa6bc3` **Item 7, Codex usage.** Turn-end used `tokenUsage.last`, which is only the final model response. Now it's the turn's sum: thread `total` minus the total before the turn's first response. Plan and implement rounds add up. `contextUsed` and the context-breakdown total stay on the last request's input. Codex 0.159 `generate-ts` confirms `ThreadTokenUsage = { total, last, modelContextWindow }`. Mock scenario `"steps"` plus a test.
+- `1b47383` **Item 5 (app half).** `LearnOverview.drafting` counts this project's queued draft jobs plus the one being drafted. Drafting runs 30 s after a failed turn and only while no turn runs anywhere, so with 3 agents side by side it waited until after the bench had quit.
+
+**Next, in order:**
+1. **Item 5, bench half** (`bench/run.ts` `main`): after `pool(...)`, for the projects of tasks with `learn`, poll `learnOverview(projectId)` over CDP until `drafting === 0`, capped at about 10 min. Leave ≥ 35 s first, so the 30 s debounce has fired. Then recount lessons (`active`/`candidate`), rewrite those runs' JSON, and append their history rows after the drain. Defer only learn tasks' `appendHistory`; the rest stay per run. Later: check that lessons are sent on later days (`learner.injectedFor`).
+2. **Item 9, bench isolation:** give the bench app's OpenCode its own config dir (it currently loads the user's `~/.config/opencode` `implementer`/`orchestrator` agents). Probably `XDG_CONFIG_HOME` in `launchApp`'s env or in the bench profile. Check that it doesn't drop the provider auth OpenCode keeps under `XDG_DATA_HOME`.
+3. **Item 4, todo nudge:** first `bun run bench --tasks build-cli --k 3 --scratch` (costs: ask). Then, in Claude's Stop hook (`staleList`, `src/main/agents/claude.ts`), nudge once when a multi-part request had several edits and no list.
+4. **Before merging:** full `bun run test`, then a live check in the real app: memory-across-threads (`--tasks memory-across-threads --scratch`, which needs model calls) and one OpenCode Full turn with a sub-agent. Then merge track/bench-fixes into m4 (the main checkout's own uncommitted files aren't ours: leave them).
+5. Still open from session 10: item 6 (code mode on read-heavy), item 8 (PGS Grove out of credits: top up or drop `pgs-deepseek` from `bench/agents.json`, the user's call), item 10 (Claude's cost: compare with `bun run cache:report`).
 
 ## Resume here — 2026-10-22 (Mac, session 10)
 
