@@ -34,6 +34,27 @@ export function isPreviewable(path: string): boolean {
 }
 
 
+/** Kinds a page or note is rendered into (a PDF, a Word file, a deck, a sheet). */
+const EXPORTS: ReadonlySet<ArtifactKind> = new Set<ArtifactKind>(["pdf", "docx", "pptx", "sheet"]);
+
+/** A path's file name without its extension, lower-cased: output/pdf/Estimate.pdf -> estimate. */
+function stem(path: string): string {
+  return (path.split(/[/\\]/).pop() ?? path).replace(/\.[^.]+$/, "").toLowerCase();
+}
+
+/**
+ * The files a turn wrote, less an HTML or Markdown source it rendered into an
+ * export of the same name (estimate.html -> estimate.pdf): the export is the
+ * deliverable, so it gets the card and the panel, not its source too.
+ */
+export function withoutExportSources(paths: readonly string[]): string[] {
+  const exported = new Set(paths.filter((p) => EXPORTS.has(artifactKind(p))).map(stem));
+  return paths.filter((p) => {
+    const kind = artifactKind(p);
+    return !((kind === "html" || kind === "md") && exported.has(stem(p)));
+  });
+}
+
 /**
  * Kinds that open the panel on their own when a turn ends. Markdown and code
  * don't (user decision 2026-10-02): their file card has a Preview button instead.

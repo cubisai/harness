@@ -36,7 +36,7 @@ import type {
 } from "../shared/types";
 import { bindingKey } from "../shared/bindings";
 import { bindExpertSkills, expertBlock, teamAgents, type ExpertDef, type ExpertSkill, type TeamAgent } from "../shared/experts";
-import { CRITIQUE_ARTIFACT, teamArtifact } from "../shared/artifact-kind";
+import { CRITIQUE_ARTIFACT, teamArtifact, withoutExportSources } from "../shared/artifact-kind";
 import type { TweakValues } from "../shared/tweaks";
 import { tierFeatures, tierNote, tierOf, type PrototypeTier } from "../shared/tiers";
 import type { CommentTarget, DesignComment } from "../shared/comments";
@@ -1381,7 +1381,7 @@ export class Service {
         .filter((t) => t.id !== threadId)
         .flatMap((t) => designOf(t) ?? []);
       const { files } = recordTurnArtifacts(this.artifacts, { threadId, root, events: this.store.listEvents(threadId), turnSeq, turnStartedAt, skipDirs });
-      const path = files.filter(opensByItself).at(-1);
+      const path = withoutExportSources(files.filter(opensByItself)).at(-1);
       if (path) this.broadcast({ type: "artifact-ready", threadId, path, files });
     } catch (err) {
       console.warn("artifact recording failed", err);

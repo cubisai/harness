@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { ChevronRight, Copy, Pencil, RotateCcw, X } from "lucide-react";
-import { artifactKind, isPreviewable, PLAN_ARTIFACT, TEAM_ARTIFACT_PREFIX } from "../../../shared/artifact-kind";
+import { artifactKind, isPreviewable, PLAN_ARTIFACT, TEAM_ARTIFACT_PREFIX, withoutExportSources } from "../../../shared/artifact-kind";
 import { skillsOf } from "../../../shared/skill-list";
 import type { ArtifactKind, StoredEvent, ThreadEvent } from "../../../shared/types";
 import type { TurnScore } from "../../../shared/learn";
@@ -591,7 +591,7 @@ function FileCards({ files, turnSeq }: { files: string[]; turnSeq: number }) {
   const toRel = (path: string) => (threadId ? relativeToThread({ threads, projects }, threadId, path) : path);
   const written = (recorded ?? []).filter((f) => f.versions.some((v) => v.turnSeq === turnSeq)).map((f) => f.path);
   const unique = [...new Map([...files, ...written].map((f) => [toRel(f), f])).values()];
-  const shown = unique.filter(isPreviewable).slice(-3);
+  const shown = withoutExportSources(unique.filter(isPreviewable)).slice(-3);
   if (!shown.length) return null;
   return (
     <div className="file-cards">

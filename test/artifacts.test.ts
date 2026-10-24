@@ -21,7 +21,7 @@ import {
 } from "../src/main/artifacts";
 import type { PreviewResult } from "../src/main/preview/host";
 import type { ArtifactKind, ArtifactVersion, StoredEvent, ThreadEvent } from "../src/shared/types";
-import { isPseudoArtifact, pseudoArtifactLabel, teamArtifact } from "../src/shared/artifact-kind";
+import { isPseudoArtifact, pseudoArtifactLabel, teamArtifact, withoutExportSources } from "../src/shared/artifact-kind";
 import { tempDir } from "./helpers";
 
 let seq = 0;
@@ -475,5 +475,17 @@ describe("team result artifacts", () => {
     expect(isPseudoArtifact("team/dana-facts-a.md")).toBe(false);
     expect(recordPseudo(deps, path, { threadId: "t", text: "# Facts\n", turnSeq: 1 })?.version).toBe(1);
     expect(await readArtifact(deps, { threadId: "t", root, path })).toMatchObject({ ok: true, kind: "md", text: "# Facts\n", path });
+  });
+});
+
+describe("withoutExportSources", () => {
+  it("drops an HTML or Markdown source rendered into an export of the same name, wherever each was written", () => {
+    expect(withoutExportSources(["output/estimates/website-update-estimate.html", "output/pdf/website-update-estimate.pdf"])).toEqual(["output/pdf/website-update-estimate.pdf"]);
+    expect(withoutExportSources(["notes/Report.md", "out/report.docx", "deck.html", "deck.pptx"])).toEqual(["out/report.docx", "deck.pptx"]);
+  });
+
+  it("keeps sources with no export of their name, and exports themselves", () => {
+    expect(withoutExportSources(["index.html", "estimate.pdf", "readme.md"])).toEqual(["index.html", "estimate.pdf", "readme.md"]);
+    expect(withoutExportSources(["chart.svg", "chart.pdf"])).toEqual(["chart.svg", "chart.pdf"]);
   });
 });
