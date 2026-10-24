@@ -26,14 +26,21 @@ export interface App {
   stop(): Promise<void>;
 }
 
-/** `bun run dev` from `root` with its own `--user-data-dir`; output goes to `log`. */
+/**
+ * `bun run dev` from `root` with its own `--user-data-dir`; output goes to `log`.
+ * OpenCode (and anything else reading XDG_CONFIG_HOME) gets an empty config dir
+ * under the profile, so the user's global agents don't leak in; provider auth
+ * lives under XDG_DATA_HOME and stays.
+ */
 export async function launchApp(o: { root: string; port: number; userDataDir: string; log: string }): Promise<App> {
   if (await portInUse(o.port)) throw new Error(`port ${o.port} is taken: stop that app or pass --attach ${o.port}`);
   mkdirSync(o.userDataDir, { recursive: true });
+  const xdgConfig = join(o.userDataDir, "xdg-config");
+  mkdirSync(xdgConfig, { recursive: true });
   const out = openSync(o.log, "a");
   const child = spawnCommand("bun", ["run", "dev", "--remoteDebuggingPort", String(o.port), "--", `--user-data-dir=${o.userDataDir}`], {
     cwd: o.root,
-    env: process.env,
+    env: { ...process.env, XDG_CONFIG_HOME: xdgConfig },
     stdio: ["ignore", out, out],
   });
   return { stop: () => stopApp(child, o.port) };

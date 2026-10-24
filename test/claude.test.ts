@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ModelInfo, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
-import { bundledClaudeVersion, CLAUDE_KEPT_BUILTIN_SKILLS, CODE_NUDGE, createClaudeDriver, STALE_LIST, TODO_HINT, sessionSkills, skillFolders, FIRST_RELIST_MS, fromSdk, handleMessage, harnessToolOptions, newTurnState, pickClaudeExecutable, priceUsage, resolvePackagedClaudeBinary, TOOL_SERVER, turnEndFromResult } from "../src/main/agents/claude";
+import { bundledClaudeVersion, CLAUDE_KEPT_BUILTIN_SKILLS, CODE_NUDGE, createClaudeDriver, multiPartRequest, NO_LIST, STALE_LIST, TODO_HINT, sessionSkills, skillFolders, FIRST_RELIST_MS, fromSdk, handleMessage, harnessToolOptions, newTurnState, pickClaudeExecutable, priceUsage, resolvePackagedClaudeBinary, TOOL_SERVER, turnEndFromResult } from "../src/main/agents/claude";
 import { MODEL_TTL_MS } from "../src/main/agents/model-ttl";
 import { MEMORY_READ_TOOL, MEMORY_WRITE_TOOL } from "../src/main/memory/tool";
 import type { HarnessTool, ToolContext, TurnInput } from "../src/main/agents/types";
@@ -529,6 +529,55 @@ describe("Claude context breakdown", () => {
     expect(await open({ hook_event_name: "Stop", stop_hook_active: false })).toEqual({});
     const done = await stopHook([{ content: "a", status: "completed" }]);
     expect(await done({ hook_event_name: "Stop", stop_hook_active: false })).toEqual({});
+  });
+
+  /** A Stop hook after a turn whose main-thread message holds `content`, with `prompt` as the request. */
+  const stopHookFor = async (prompt: string, content: unknown[]) => {
+    sdk.calls.length = 0;
+    sdk.attempts.length = 0;
+    const message = { type: "assistant", parent_tool_use_id: null, message: { id: "m1", model: "claude-x", content } };
+    sdk.attempts.push({ messages: [initMessage, message, successResult] });
+    const { input } = turnInput();
+    input.prompt = prompt;
+    await createClaudeDriver({ pluginDir: () => null }).runTurn(input);
+    const hooks = sdk.calls[0]!.options.hooks as { Stop: { hooks: ((i: unknown) => Promise<unknown>)[] }[] };
+    return hooks.Stop[0]!.hooks[0]!;
+  };
+  const edit = (id: string) => ({ type: "tool_use", id, name: "Edit", input: { file_path: "/x", old_string: "a", new_string: "b" } });
+  const MULTI = "Do these:\n1. a\n2. b\n3. c";
+
+  it("asks once to make a list when a multi-part request got several edits and none", async () => {
+    const hook = await stopHookFor(MULTI, [edit("e1"), edit("e2"), edit("e3")]);
+    expect(await hook({ hook_event_name: "Stop", stop_hook_active: false })).toEqual({ decision: "block", reason: NO_LIST });
+    expect(await hook({ hook_event_name: "Stop", stop_hook_active: false })).toEqual({});
+  });
+
+  it("does not ask for a list on a one-part request, however many edits", async () => {
+    const hook = await stopHookFor("fix the typo", [edit("e1"), edit("e2"), edit("e3")]);
+    expect(await hook({ hook_event_name: "Stop", stop_hook_active: false })).toEqual({});
+  });
+
+  it("does not ask for a list when a multi-part request got only two edits", async () => {
+    const hook = await stopHookFor(MULTI, [edit("e1"), edit("e2")]);
+    expect(await hook({ hook_event_name: "Stop", stop_hook_active: false })).toEqual({});
+  });
+
+  it("does not ask for a list when the request already made one", async () => {
+    const list = { type: "tool_use", id: "w1", name: `mcp__${TOOL_SERVER}__todowrite`, input: { todos: [{ content: "a", status: "completed" }] } };
+    const hook = await stopHookFor(MULTI, [list, edit("e1"), edit("e2"), edit("e3")]);
+    expect(await hook({ hook_event_name: "Stop", stop_hook_active: false })).toEqual({});
+  });
+
+  describe("multiPartRequest", () => {
+    it("sees three numbered or bulleted lines as several parts", () => {
+      expect(multiPartRequest("Do these:\n1. a\n2. b\n3. c")).toBe(true);
+      expect(multiPartRequest("Do these:\n- a\n- b\n- c")).toBe(true);
+    });
+
+    it("needs three, and ignores prose", () => {
+      expect(multiPartRequest("Do these:\n- a\n- b")).toBe(false);
+      expect(multiPartRequest("Please fix the typo in the readme.")).toBe(false);
+    });
   });
 
   it("emits one breakdown before turn-end for a new session's first result", async () => {
