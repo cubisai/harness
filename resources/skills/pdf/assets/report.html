@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Q3 Reliability Review</title>
+<style>
+  /* Page: A4 (use "Letter" for US), margins, and page numbers. Keep this block. */
+  @page { size: A4; margin: 18mm 17mm 20mm; @bottom-right { content: counter(page) " / " counter(pages); font: 9pt "Segoe UI", Arial, sans-serif; color: #6b7280; } }
+  :root { --ink: #1b2430; --muted: #5b6573; --line: #d8dee6; --accent: #2f5597; --tint: #eef3fa; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 10.5pt/1.5 "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: var(--ink); }
+  header { border-bottom: 2px solid var(--accent); padding-bottom: 8pt; margin-bottom: 14pt; }
+  header .kicker { font-size: 9pt; color: var(--muted); }
+  h1 { font-size: 22pt; line-height: 1.2; margin: 2pt 0 0; }
+  h2 { font-size: 13.5pt; margin: 16pt 0 6pt; color: var(--accent); break-after: avoid; }
+  h3 { font-size: 11pt; margin: 12pt 0 4pt; break-after: avoid; }
+  p { margin: 0 0 7pt; }
+  ul, ol { margin: 0 0 8pt; padding-left: 16pt; }
+  li { margin: 0 0 3pt; }
+  table { width: 100%; border-collapse: collapse; margin: 4pt 0 10pt; font-size: 9.5pt; }
+  th, td { text-align: left; padding: 5pt 7pt; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--tint); font-weight: 600; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr, figure, .callout, .figures { break-inside: avoid; }
+  .callout { border-left: 3px solid var(--accent); background: var(--tint); padding: 7pt 10pt; margin: 8pt 0 10pt; }
+  .figures { display: flex; gap: 10pt; margin: 6pt 0 12pt; }
+  .figures div { flex: 1; border: 1px solid var(--line); padding: 7pt 9pt; }
+  .figures b { display: block; font-size: 16pt; line-height: 1.2; }
+  .figures span { font-size: 8.5pt; color: var(--muted); }
+  .new-page { break-before: page; }
+  img { max-width: 100%; }
+</style>
+</head>
+<body>
+  <!-- Replace the example content below with the real content. Keep the <style> block.
+       Use real elements (h2, p, ul, table); no absolute positioning, no fixed heights.
+       Images: files next to this one, linked relatively (img/chart.png). -->
+  <header>
+    <div class="kicker">Platform team · October 2026</div>
+    <h1>Q3 Reliability Review</h1>
+  </header>
+
+  <p>Reliability held at <b>99.95%</b> this quarter. Twelve incidents were reviewed; the two largest came from one configuration change.</p>
+
+  <div class="figures">
+    <div><b>99.95%</b><span>Uptime</span></div>
+    <div><b>18 min</b><span>Median time to restore</span></div>
+    <div><b>12</b><span>Incidents reviewed</span></div>
+  </div>
+
+  <h2>What changed</h2>
+  <ul>
+    <li>Weekly failover drills in every region.</li>
+    <li>Every alert now names an owner.</li>
+  </ul>
+
+  <h2>By service</h2>
+  <table>
+    <thead><tr><th>Service</th><th>Owner</th><th class="num">Incidents</th><th class="num">Uptime</th></tr></thead>
+    <tbody>
+      <tr><td>Checkout</td><td>Payments</td><td class="num">5</td><td class="num">99.93%</td></tr>
+      <tr><td>Search</td><td>Platform</td><td class="num">4</td><td class="num">99.96%</td></tr>
+      <tr><td>Billing</td><td>Finance</td><td class="num">3</td><td class="num">99.97%</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout"><b>Decision:</b> ship the rollback tool before the next peak, even if the drill slips by a week.</div>
+
+  <h2 class="new-page">Appendix</h2>
+  <p>The raw figures are in the warehouse table <code>reliability_q3</code>.</p>
+</body>
+</html>

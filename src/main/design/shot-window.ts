@@ -1,11 +1,12 @@
 import { BrowserWindow } from "electron";
+import { DOC_SCHEME } from "../documents/serve";
 import { DESIGN_SCHEME } from "./serve";
 import type { ShotWindow } from "./shooter";
 
 /**
  * The shooter's hidden window: off-screen rendering, sandboxed, no preload or
- * node, default session (where `cubiq-design://` is served with its no-network
- * CSP). It can't navigate away or open windows.
+ * node, default session (where `cubiq-design://` and `cubiq-doc://` are served
+ * with their no-network CSPs). It can't navigate away or open windows.
  */
 export function electronShotWindow(): ShotWindow {
   const win = new BrowserWindow({
@@ -20,7 +21,7 @@ export function electronShotWindow(): ShotWindow {
   wc.setAudioMuted(true);
   wc.setWindowOpenHandler(() => ({ action: "deny" }));
   const guard = (e: { preventDefault(): void }, url: string): void => {
-    if (!url.startsWith(`${DESIGN_SCHEME}://`)) e.preventDefault();
+    if (!url.startsWith(`${DESIGN_SCHEME}://`) && !url.startsWith(`${DOC_SCHEME}://`)) e.preventDefault();
   };
   wc.on("will-navigate", (e) => guard(e, e.url));
   wc.on("will-redirect", (e) => guard(e, e.url));

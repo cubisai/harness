@@ -1,3 +1,4 @@
+import { DOC_SCHEME } from "../documents/serve";
 import { DESIGN_SCHEME } from "./serve";
 
 /** The part of a hidden BrowserWindow the shooter drives; injected so it stays testable. */
@@ -46,7 +47,8 @@ const SCROLL_HEIGHT = `Math.max(document.documentElement.scrollHeight, document.
 /**
  * Renders design pages off screen for the design tools and Export: one hidden
  * window, made on first use, reused for queued jobs (one at a time), destroyed
- * after a minute unused. It loads only `cubiq-design://` URLs.
+ * after a minute unused. It loads only `cubiq-design://` URLs and, to print
+ * documents, `cubiq-doc://`.
  */
 export class Shooter {
   private win: ShotWindow | null = null;
@@ -83,6 +85,15 @@ export class Shooter {
     return this.job(url, width, 900, (win) => win.pdf());
   }
 
+  /** A document page at `url` printed to PDF, with its text and a PNG of its top, laid out A4 wide (794 CSS px). */
+  document(url: string): Promise<{ pdf: Buffer; text: string; png: Buffer }> {
+    return this.job(url, 794, 1123, async (win) => {
+      const text = String(await win.evaluate("document.body ? document.body.innerText : ''"));
+      const png = await win.capture(794, 1123);
+      return { pdf: await win.pdf(), text, png };
+    });
+  }
+
   /** Destroy the window now (app quit); later jobs are refused. */
   close(): void {
     this.closed = true;
@@ -92,7 +103,7 @@ export class Shooter {
   private job<T>(url: string, width: number, height: number, work: (win: ShotWindow) => Promise<T>): Promise<T> {
     const run = async (): Promise<T> => {
       if (this.closed) throw new Error("The design renderer is closed.");
-      if (!url.startsWith(`${DESIGN_SCHEME}://`)) throw new Error("Only design pages can be rendered.");
+      if (!url.startsWith(`${DESIGN_SCHEME}://`) && !url.startsWith(`${DOC_SCHEME}://`)) throw new Error("Only design pages and documents can be rendered.");
       if (this.idle) clearTimeout(this.idle);
       this.idle = null;
       try {

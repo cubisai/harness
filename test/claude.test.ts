@@ -353,7 +353,7 @@ describe("Claude driver design threads", () => {
       ["/tmp/project", false],
       ["/tmp/project", true],
     ]);
-    expect(sdk.calls[0]?.options).not.toHaveProperty("additionalDirectories");
+    expect(sdk.calls[0]?.options.additionalDirectories).toEqual(["/tmp/plugin", "/app/skills", "/data/skills"]);
     expect(sdk.calls[1]?.options.additionalDirectories).toEqual(["/tmp/plugin-design", "/app/skills", "/data/skills"]);
   });
 });

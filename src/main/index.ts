@@ -21,6 +21,8 @@ import { lintWidth, type PageLint } from "./design/autolint";
 import { styleIndex } from "./design/systems";
 import { electronShotWindow } from "./design/shot-window";
 import { Shooter } from "./design/shooter";
+import { DOC_SCHEME, documentUrl, pdfPageCount, serveDocument } from "./documents/serve";
+import { documentTools } from "./documents/tools";
 import { designTools } from "./design/tools";
 import { selectorFor } from "./browser/picker";
 import { spawnSync } from "node:child_process";
@@ -237,6 +239,8 @@ async function main(): Promise<void> {
     { scheme: "cubiq-file", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
     // cubiq-design:// serves a design thread's folder to the canvas's sandboxed frame (scripts on, no network).
     { scheme: DESIGN_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+    // cubiq-doc:// serves a thread's folder to the hidden window that prints its HTML documents (no scripts, no network).
+    { scheme: DOC_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
   ]);
   await app.whenReady();
   // A dev run is the stock Electron binary: give its Dock tile the app's own icon.
@@ -620,10 +624,47 @@ async function main(): Promise<void> {
   };
   // Browser tools on demand, for agents that load every tool up front; Claude finds deferred tools itself.
   const browserOnDemand = (thread: Thread): boolean => drivers.find((d) => d.id === thread.agent)?.capabilities.toolSearch !== true;
-  // A turn's tools: the app's, plus the thread's shell tools (not in a design thread, whose tools are its own).
+  // Word, PowerPoint, Excel and PDF files built in the app from the model's content: same for every agent and mode.
+  const bundledSkills = skills.dirs(null).bundled;
+  const documentToolLists = new Map<string, HarnessTool[]>();
+  const documentToolsOf = (threadId: string): HarnessTool[] => {
+    let list = documentToolLists.get(threadId);
+    if (!list) {
+      const folder = (id: string): string | null => {
+        const thread = threadOf(id);
+        return thread ? service.cwdOf(thread) : null;
+      };
+      list = documentTools(
+        {
+          folder,
+          scriptsDir: bundledSkills,
+          packagesRoot: app.getAppPath(),
+          pdfTemplate: join(bundledSkills, "pdf", "assets", "report.html"),
+          printPdf: async (id, htmlRel, pdfRel) => {
+            const root = folder(id);
+            if (!root) throw new Error("This thread has no folder.");
+            const printed = await shooter.document(documentUrl(id, htmlRel));
+            writeFileSync(join(root, pdfRel), printed.pdf);
+            return { pages: pdfPageCount(printed.pdf), text: printed.text, png: printed.png };
+          },
+        },
+        threadId,
+      );
+      documentToolLists.set(threadId, list);
+    }
+    return list;
+  };
+  // A thread's own tools, served over MCP on `?s=`: its background shells and its document tools.
+  const threadToolLists = new Map<string, HarnessTool[]>();
+  const threadOwnTools = (threadId: string): HarnessTool[] => {
+    let list = threadToolLists.get(threadId);
+    if (!list) threadToolLists.set(threadId, (list = [...shellToolsOf(threadId), ...documentToolsOf(threadId)]));
+    return list;
+  };
+  // A turn's tools: the app's, plus the thread's shell and document tools (not in a design thread, whose tools are its own).
   const turnTools = (thread?: Thread): HarnessTool[] => {
     if (!thread || thread.kind === "design") return harnessTools(thread);
-    const list = [...harnessTools(thread), ...shellToolsOf(thread.id)];
+    const list = [...harnessTools(thread), ...threadOwnTools(thread.id)];
     return browserOnDemand(thread) ? withBrowserOnDemand(list) : list;
   };
   // Code mode, fixed per thread for this app run (a session's tool list never changes).
@@ -672,8 +713,8 @@ async function main(): Promise<void> {
       (tid) => [...(isDesignThread(tid) ? designToolsOf(tid) : []), ...teamToolsOf(tid)],
       // `?c=` (put on by a driver whose thread has code mode on) adds that thread's run_code.
       (tid) => (codeModeOf(tid) !== "off" ? [codeServer.tool(tid)] : []),
-      // `?s=` (put on by a driver whose thread's tools carry them) adds that thread's background-shell tools.
-      (tid) => shellToolsOf(tid),
+      // `?s=` (put on by a driver whose thread's tools carry them) adds that thread's background-shell and document tools.
+      (tid) => threadOwnTools(tid),
     ));
   // Served only on a thread's own URL (`?t=`): ACP agents' question tool, answered in the app's card.
   const threadTools: HarnessTool[] = [askUserTool((threadId: string, questions: Question[], signal?: AbortSignal) => service.askFromTool(threadId, questions, signal))];
@@ -970,6 +1011,10 @@ async function main(): Promise<void> {
   });
   // Design threads: their folder only, with the canvas bridge injected into pages and a no-network CSP on every response.
   const designBridgeJs = bridgeScript(selectorFor);
+  protocol.handle(DOC_SCHEME, (req) => serveDocument(req.url, (id) => {
+    const thread = threadOf(id);
+    return thread ? service.cwdOf(thread) : null;
+  }));
   protocol.handle(DESIGN_SCHEME, (req) =>
     serveDesign(req.url, {
       designRoot: (threadId) => service.designRoot(threadId),
