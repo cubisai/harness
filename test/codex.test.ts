@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { PermissionDecision, ThreadEvent } from "../src/shared/types";
 import { z } from "zod";
-import { blockingQuestionCatalog, codexAuthStamp, codexDecision, codexWindows, codexPolicy, codexToolConfig, createCodexDriver, turnPolicy, PLAN_HINT, toolFor, turnEndFromUsage } from "../src/main/agents/codex";
+import { blockingQuestionCatalog, codexAuthStamp, codexDecision, codexWindows, codexPolicy, codexToolConfig, createCodexDriver, designSkillsLine, turnPolicy, PLAN_HINT, toolFor, turnEndFromUsage } from "../src/main/agents/codex";
 
 /** The guide as Codex gets it: the plan hint always follows. */
 const GUIDE = `GUIDE\n\n${PLAN_HINT}`;
@@ -1428,5 +1428,11 @@ describe("turnPolicy", () => {
     expect(turnPolicy("full", "designs/abcd1234")).toEqual({ approvalPolicy: "untrusted", sandbox: "read-only" });
     expect(turnPolicy("full")).toEqual(codexPolicy("full"));
     expect(turnPolicy("ask", "designs/abcd1234")).toEqual(codexPolicy("ask"));
+  });
+});
+
+describe("designSkillsLine", () => {
+  it("names the delivered skills root and the SKILL.md path to read", () => {
+    expect(designSkillsLine("/ud/harness-skills-projects/ab12")).toBe("CubiQ's design skills for this thread are in `/ud/harness-skills-projects/ab12`: read `/ud/harness-skills-projects/ab12/<skill>/SKILL.md` (e.g. design-prototype).");
   });
 });

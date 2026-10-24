@@ -187,6 +187,11 @@ export function turnPolicy(mode: PermissionMode, design?: string): { approvalPol
   return design && mode === "full" ? { approvalPolicy: "untrusted", sandbox: "read-only" } : codexPolicy(mode);
 }
 
+/** Where a design thread's CubiQ skills are, so Codex reads them there instead of guessing a root. */
+export function designSkillsLine(root: string): string {
+  return `CubiQ's design skills for this thread are in \`${root}\`: read \`${root}/<skill>/SKILL.md\` (e.g. design-prototype).`;
+}
+
 /** Codex's per-turn sandbox policy, as the app-server schema spells it. */
 type CodexSandboxPolicy =
   | { type: "dangerFullAccess" }
@@ -1070,7 +1075,10 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     }
     // Codex ships its own todo list tool off (0.159); on, the list arrives as turn/plan/updated and shows as the plan.
     threadConfig = { ...(threadConfig ?? {}), tools: { update_plan: { enabled: true } } };
-    const guideText = [config.guide?.(input.cwd, input.design) ?? "", codeMode !== "off" && server ? CODE_HINT : "", PLAN_HINT].filter(Boolean).join("\n\n");
+    // Codex pins a design skill onto the wrong skills root (another plugin's) on its first read: say where CubiQ's are.
+    const skillRoot = input.design ? config.skillsDir?.(input.cwd, true, input.threadId) : null;
+    const skillLine = skillRoot ? designSkillsLine(skillRoot) : "";
+    const guideText = [config.guide?.(input.cwd, input.design) ?? "", skillLine, codeMode !== "off" && server ? CODE_HINT : "", PLAN_HINT].filter(Boolean).join("\n\n");
     const signature = JSON.stringify(threadConfig ?? null);
     let threadId = "";
     let threadModel: string | null = null;
