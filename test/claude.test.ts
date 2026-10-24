@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ModelInfo, SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
-import { bundledClaudeVersion, CLAUDE_KEPT_BUILTIN_SKILLS, CODE_NUDGE, createClaudeDriver, multiPartRequest, NO_LIST, STALE_LIST, TODO_HINT, sessionSkills, skillFolders, FIRST_RELIST_MS, fromSdk, handleMessage, harnessToolOptions, newTurnState, pickClaudeExecutable, priceUsage, resolvePackagedClaudeBinary, TOOL_SERVER, turnEndFromResult } from "../src/main/agents/claude";
+import { bundledClaudeVersion, CLAUDE_KEPT_BUILTIN_SKILLS, CODE_NUDGE, createClaudeDriver, multiPartRequest, NO_LIST, shellWrites, STALE_LIST, TODO_HINT, sessionSkills, skillFolders, FIRST_RELIST_MS, fromSdk, handleMessage, harnessToolOptions, newTurnState, pickClaudeExecutable, priceUsage, resolvePackagedClaudeBinary, TOOL_SERVER, turnEndFromResult } from "../src/main/agents/claude";
 import { MODEL_TTL_MS } from "../src/main/agents/model-ttl";
 import { MEMORY_READ_TOOL, MEMORY_WRITE_TOOL } from "../src/main/memory/tool";
 import type { HarnessTool, ToolContext, TurnInput } from "../src/main/agents/types";
@@ -546,7 +546,7 @@ describe("Claude context breakdown", () => {
   const edit = (id: string) => ({ type: "tool_use", id, name: "Edit", input: { file_path: "/x", old_string: "a", new_string: "b" } });
   const MULTI = "Do these:\n1. a\n2. b\n3. c";
 
-  it("asks once to make a list when a multi-part request got several edits and none", async () => {
+  it("asks once to make a list when a multi-part request changed files and made none", async () => {
     const hook = await stopHookFor(MULTI, [edit("e1"), edit("e2"), edit("e3")]);
     expect(await hook({ hook_event_name: "Stop", stop_hook_active: false })).toEqual({ decision: "block", reason: NO_LIST });
     expect(await hook({ hook_event_name: "Stop", stop_hook_active: false })).toEqual({});
@@ -557,8 +557,8 @@ describe("Claude context breakdown", () => {
     expect(await hook({ hook_event_name: "Stop", stop_hook_active: false })).toEqual({});
   });
 
-  it("does not ask for a list when a multi-part request got only one edit", async () => {
-    const hook = await stopHookFor(MULTI, [edit("e1")]);
+  it("does not ask for a list when a multi-part request changed no files", async () => {
+    const hook = await stopHookFor(MULTI, [{ type: "tool_use", id: "r1", name: "Read", input: { file_path: "/x" } }]);
     expect(await hook({ hook_event_name: "Stop", stop_hook_active: false })).toEqual({});
   });
 
@@ -566,6 +566,23 @@ describe("Claude context breakdown", () => {
     const list = { type: "tool_use", id: "w1", name: `mcp__${TOOL_SERVER}__todowrite`, input: { todos: [{ content: "a", status: "completed" }] } };
     const hook = await stopHookFor(MULTI, [list, edit("e1"), edit("e2"), edit("e3")]);
     expect(await hook({ hook_event_name: "Stop", stop_hook_active: false })).toEqual({});
+  });
+
+  it("counts shell commands that write files as edits", async () => {
+    const bash = (id: string, command: string) => ({ type: "tool_use", id, name: "Bash", input: { command } });
+    const hook = await stopHookFor(MULTI, [bash("b1", "cat > notes.mjs <<'EOF'\nx\nEOF"), bash("b2", "ls -la 2>/dev/null"), bash("b3", "sed -i '' 's/a/b/' README.md")]);
+    expect(await hook({ hook_event_name: "Stop", stop_hook_active: false })).toEqual({ decision: "block", reason: NO_LIST });
+    const reads = await stopHookFor(MULTI, [bash("b1", "ls -la 2>/dev/null"), bash("b2", "cat README.md >/dev/null"), bash("b3", "grep -n x a.ts 2>&1")]);
+    expect(await reads({ hook_event_name: "Stop", stop_hook_active: false })).toEqual({});
+  });
+
+  describe("shellWrites", () => {
+    it("sees redirects into files, tee, sed -i, cp, mv, touch and mkdir", () => {
+      for (const c of ["echo hi > a.txt", "cat >> log <<EOF", "node x | tee out.txt", "sed -i 's/a/b/' f", "cp a b", "mkdir -p src", "cd x && mv a b", "touch f"]) expect(shellWrites(c), c).toBe(true);
+    });
+    it("ignores reads and redirects to /dev/null or between streams", () => {
+      for (const c of ["ls -la", "cat a 2>/dev/null", "node t.mjs >/dev/null 2>&1", "grep -n x a.ts 2>&1", "git diff", "echo a && sed -n 1,5p f"]) expect(shellWrites(c), c).toBe(false);
+    });
   });
 
   describe("multiPartRequest", () => {

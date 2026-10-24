@@ -52,8 +52,8 @@ export const TODO_HINT = `When a request has 3 or more parts (several files, or 
 /** The Stop hook's one nudge when the list still shows open parts. */
 export const STALE_LIST = `Your ${TODO_TOOL} list still shows unfinished parts. Call ${TODO_TOOL} once with each part's real status, then end your turn.`;
 
-/** The Stop hook's one nudge when a multi-part request got several edits and no list. */
-export const NO_LIST = `This request has several parts and you've made several edits without a ${TODO_TOOL} list. Call ${TODO_TOOL} once with each part and its real status, then end your turn.`;
+/** The Stop hook's one nudge when a multi-part request changed files and got no list. */
+export const NO_LIST = `This request has several parts and you changed files without a ${TODO_TOOL} list. Call ${TODO_TOOL} once with each part and its real status, then end your turn.`;
 
 /** Whether a prompt lists three or more parts on their own numbered or bulleted lines. */
 export function multiPartRequest(prompt: string): boolean {
@@ -62,6 +62,11 @@ export function multiPartRequest(prompt: string): boolean {
     if (/^\s*(?:\d+[.)]|[-*•])\s/.test(line) && ++parts >= 3) return true;
   }
   return false;
+}
+
+/** Whether a shell command writes files: a redirect into a file (not a numbered or /dev/null one), tee, sed -i, cp, mv, touch or mkdir. */
+export function shellWrites(command: string): boolean {
+  return /(?:^|[^\d<>&|])>{1,2}\s*(?!\/dev\/null\b)[^\s&]|\btee\b|\bsed\s+-i\b|(?:^|[;&|]\s*|\s)(?:cp|mv|touch|mkdir)\s/.test(command);
 }
 
 /** Claude Code's own prompt points it at Read, Glob and Grep, so code mode says which calls run_code replaces. */
@@ -555,11 +560,11 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
       const bashHooks = [...(hasShells ? [noBackgroundBash] : []), guard];
       // Claude writes its list up front and rarely comes back to it: stopping with parts still open,
       // it's asked once to bring the list up to date, so the dock doesn't show finished work as pending.
-      // And a multi-part request that got several edits but no list is asked once to make one.
+      // And a multi-part request that changed files but got no list is asked once to make one.
       // Its reply already stands, so any text after that is dropped.
       const staleList: HookCallback = async (hookInput) => {
         if (turn.quiet || (hookInput as StopHookInput).stop_hook_active) return {};
-        const reason = turn.openPlan ? STALE_LIST : !turn.planMade && turn.edits >= 2 && multiPartRequest(input.prompt) ? NO_LIST : null;
+        const reason = turn.openPlan ? STALE_LIST : !turn.planMade && turn.edits > 0 && multiPartRequest(input.prompt) ? NO_LIST : null;
         if (!reason) return {};
         turn.quiet = true;
         return { decision: "block", reason };
@@ -766,7 +771,7 @@ export interface TurnState {
   openPlan: boolean;
   /** A main-thread list was written this turn. */
   planMade: boolean;
-  /** Main-thread file edits this turn (Edit, MultiEdit, Write, NotebookEdit). */
+  /** Main-thread file edits this turn (Edit, MultiEdit, Write, NotebookEdit, or a shell command that writes files). */
   edits: number;
   /** Asked to bring the list up to date as it stopped: its reply stands, so later text is dropped. */
   quiet: boolean;
@@ -1076,7 +1081,7 @@ function emitAssistantBlock(block: AssistantBlock, itemId: string, input: TurnIn
   if (block.type !== "tool_use") return;
   turn.pending.delete(itemId);
   // Blocks reach here once each (handleMessage's blocksSeen), so this is one edit per block.
-  if (!parentId && ["Edit", "MultiEdit", "Write", "NotebookEdit"].includes(block.name)) turn.edits += 1;
+  if (!parentId && (["Edit", "MultiEdit", "Write", "NotebookEdit"].includes(block.name) || (block.name === "Bash" && shellWrites(String((block.input as { command?: unknown } | undefined)?.command ?? ""))))) turn.edits += 1;
   const toolInput = (block.input ?? {}) as Record<string, unknown>;
   // TodoWrite is a plan, not a tool: emit plan entries and skip both its row and
   // (below) its tool_result. A subagent's todo list is not the thread's plan.
