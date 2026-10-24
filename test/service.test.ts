@@ -344,6 +344,22 @@ describe("Service.send", () => {
     expect(seen).not.toContain("none");
   });
 
+  it("runs a design thread in Full whatever mode it has stored, and starts one in Full", async () => {
+    const store = new Store(join(tempDir(), "t.db"));
+    closeAfter(() => store.close());
+    const modes: TurnInput["permissionMode"][] = [];
+    const driver = fakeDriver(async (input) => void modes.push(input.permissionMode));
+    const service = new Service(store, () => catalog(), [driver], () => {});
+    const project = store.addProject(tempDir());
+    const chat = service.createThread(project.id);
+    const design = service.createThread(project.id, undefined, "design");
+    expect(design.permissionMode).toBe("full");
+    store.updateThread(design.id, { permissionMode: "ask" });
+    await service.send({ threadId: chat.id, text: "a" });
+    await service.send({ threadId: design.id, text: "b" });
+    expect(modes).toEqual([chat.permissionMode, "full"]);
+  });
+
   it("saves a design thread's critique as versions of its Critique artifact, and refuses a chat thread", () => {
     const { service, store, updates } = setup(async () => {});
     service.setArtifacts({

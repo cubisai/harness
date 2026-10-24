@@ -238,7 +238,8 @@ export class Service {
     const driver = (wanted && this.drivers.get(wanted)) || [...this.drivers.values()][0]!;
     // A design thread nobody picked a system for starts on Auto: the agent picks the style (the project's own still wins).
     const system = kind === "design" ? (designSystem ?? AUTO_SYSTEM) : designSystem;
-    const thread = this.store.createThread(projectId, driver.id, driver.defaultModel, d.permissionMode, kind, system, expertId);
+    // A design thread is always Full: its folder fence stands in for asking.
+    const thread = this.store.createThread(projectId, driver.id, driver.defaultModel, kind === "design" ? "full" : d.permissionMode, kind, system, expertId);
     if (!isChatsRoot(project.path, this.chatsRoot)) return thread;
     // A chat works in its own folder, so files one chat writes never show up in another.
     const dir = join(project.path, thread.id);
@@ -440,8 +441,9 @@ export class Service {
     const last = resumes ? this.lastModel(thread.id, agent) : null;
     const pick = model ?? (last && driver.models().some((m) => m.id === last) ? last : driver.defaultModel);
     // Trust doesn't carry across agents: the default permission mode again, and
-    // approvals are kept per agent, so none of the old agent's apply.
-    const permissionMode = this.defaults().permissionMode;
+    // approvals are kept per agent, so none of the old agent's apply. A design
+    // thread stays Full whatever it was before the switch.
+    const permissionMode = thread.kind === "design" ? "full" : this.defaults().permissionMode;
     // An effort the new agent's model doesn't offer goes back to the model's default.
     const efforts = driver.models().find((m) => m.id === pick)?.efforts;
     const effort = thread.effort && efforts?.includes(thread.effort) ? thread.effort : null;
@@ -499,7 +501,7 @@ export class Service {
         design: designOf(thread),
         ...this.expertInput(thread),
         model: thread.model,
-        permissionMode: thread.permissionMode,
+        permissionMode: turnMode(thread),
         tools: this.harnessTools(thread),
         mcpServers: this.mcpServers(thread.projectId),
         items,
@@ -528,7 +530,7 @@ export class Service {
           sessionId: null,
           model: thread.model,
           effort: thread.effort,
-          permissionMode: thread.permissionMode,
+          permissionMode: turnMode(thread),
           signal: controller.signal,
           tools: this.harnessTools(thread),
           mcpServers: this.mcpServers(thread.projectId),
@@ -909,7 +911,7 @@ export class Service {
         model: thread.model,
         effort: thread.effort,
         contextWindow: thread.contextWindow ?? null,
-        permissionMode: thread.permissionMode,
+        permissionMode: turnMode(thread),
         signal: controller.signal,
         tools: this.harnessTools(thread),
         mcpServers: this.mcpServers(thread.projectId),
@@ -1990,6 +1992,11 @@ export class Service {
 /** A design thread's folder relative to its working folder, else undefined. */
 function designOf(thread: Thread): string | undefined {
   return thread.kind === "design" ? designDirName(thread.id) : undefined;
+}
+
+/** The mode a turn runs in: a design thread is always Full (its folder fence stands in for asking). */
+function turnMode(thread: Thread): PermissionMode {
+  return thread.kind === "design" ? "full" : thread.permissionMode;
 }
 
 function formatK(n: number): string {

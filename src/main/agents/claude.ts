@@ -32,6 +32,7 @@ import type { BinaryResolution } from "./binaries";
 import type { AgentDriver, HarnessTool, ToolContext, ToolOutput, TurnInput } from "./types";
 import { claudeAnnotations, claudeAnswers, fromClaudeQuestions, SKIPPED_TEXT } from "../questions";
 import { designWriteAllowed } from "../design/write-scope";
+import { fenceCommand, fenceWrite } from "../design/fence";
 
 /** The file a Claude file-writing tool writes, or [] for any other tool. */
 export function claudeWriteTargets(toolName: string, toolInput: Record<string, unknown>): string[] {
@@ -523,6 +524,33 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         };
       };
 
+      // A design thread's fence: writes outside its folder and destructive commands
+      // are denied, never asked, even in Full access.
+      const designFence: HookCallback = async (hookInput) => {
+        if (!input.design || hookInput.hook_event_name !== "PreToolUse") return {};
+        const toolInput = (hookInput.tool_input ?? {}) as Record<string, unknown>;
+        const command = toolInput.command;
+        let reason: string | null;
+        let what: string;
+        if (hookInput.tool_name === "Bash" && typeof command === "string") {
+          reason = fenceCommand(input.cwd, input.design, command);
+          what = command;
+        } else {
+          const targets = claudeWriteTargets(hookInput.tool_name, toolInput);
+          reason = fenceWrite(input.cwd, input.design, targets);
+          what = targets.join(", ");
+        }
+        if (!reason) return {};
+        input.onEvent({ kind: "notice", text: `Blocked in this design thread: ${what}` });
+        return {
+          hookSpecificOutput: {
+            hookEventName: "PreToolUse",
+            permissionDecision: "deny",
+            permissionDecisionReason: reason,
+          },
+        };
+      };
+
       // With the app's shell tools on hand, a background Bash is pointed at shell_start (see BACKGROUND_BASH_DENY).
       const hasShells = input.tools.some((t) => t.name === "shell_start");
       const noBackgroundBash: HookCallback = async (hookInput) => {
@@ -601,7 +629,13 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         // the turn, and with it the permission stream its tool calls need.
         ...(input.team?.length ? { env: { ...(plan?.env ?? process.env), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1" } } : plan ? { env: plan.env } : {}),
         ...withUserServers(harnessToolOptions(harnessTools, { ...(input.projectId ? { projectId: input.projectId } : {}), ...(input.threadId ? { threadId: input.threadId } : {}) }), input.mcpServers),
-        hooks: { PreToolUse: [{ matcher: "Bash", hooks: bashHooks }], Stop: [{ hooks: [staleList] }] },
+        hooks: {
+          PreToolUse: [
+            { matcher: "Bash", hooks: bashHooks },
+            ...(input.design ? [{ matcher: "Bash|Write|Edit|MultiEdit|NotebookEdit", hooks: [designFence] }] : []),
+          ],
+          Stop: [{ hooks: [staleList] }],
+        },
         canUseTool: async (toolName, toolInput, { suggestions }): Promise<PermissionResult> => {
           // Plan mode's own gate: Claude presents its plan, the user decides how
           // to proceed, and the answer sets the mode for the accepted edits.

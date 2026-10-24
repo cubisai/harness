@@ -576,6 +576,39 @@ describe("Claude context breakdown", () => {
     expect(await reads({ hook_event_name: "Stop", stop_hook_active: false })).toEqual({});
   });
 
+  it("fences a design thread's writes and destructive commands with a PreToolUse hook", async () => {
+    sdk.calls.length = 0;
+    sdk.attempts.length = 0;
+    sdk.attempts.push({ messages: [initMessage, successResult] });
+    const { input, events } = turnInput();
+    const cwd = tempDir();
+    mkdirSync(join(cwd, "designs/abcd1234"), { recursive: true });
+    input.design = "designs/abcd1234";
+    input.cwd = cwd;
+    input.permissionMode = "full";
+    await createClaudeDriver({ pluginDir: () => null }).runTurn(input);
+    type FenceHook = (i: unknown) => Promise<{ hookSpecificOutput?: { permissionDecision?: string } }>;
+    const hooks = sdk.calls[0]!.options.hooks as { PreToolUse: { matcher?: string; hooks: FenceHook[] }[] };
+    const fence = hooks.PreToolUse.find((h) => h.matcher === "Bash|Write|Edit|MultiEdit|NotebookEdit")!.hooks[0]!;
+    const write = (file_path: string) => fence({ hook_event_name: "PreToolUse", tool_name: "Write", tool_input: { file_path } });
+    const bash = (command: string) => fence({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command } });
+    expect((await write(join(cwd, "src/app.ts"))).hookSpecificOutput?.permissionDecision).toBe("deny");
+    expect(await write(join(cwd, "designs/abcd1234/index.html"))).toEqual({});
+    expect((await bash("rm -rf src")).hookSpecificOutput?.permissionDecision).toBe("deny");
+    expect(await bash("ls")).toEqual({});
+    expect(events.some((e) => e.kind === "notice" && e.text === "Blocked in this design thread: rm -rf src")).toBe(true);
+  });
+
+  it("adds no design fence outside a design thread", async () => {
+    sdk.calls.length = 0;
+    sdk.attempts.length = 0;
+    sdk.attempts.push({ messages: [initMessage, successResult] });
+    const { input } = turnInput();
+    await createClaudeDriver({ pluginDir: () => null }).runTurn(input);
+    const hooks = sdk.calls[0]!.options.hooks as { PreToolUse: { matcher?: string }[] };
+    expect(hooks.PreToolUse.some((h) => h.matcher === "Bash|Write|Edit|MultiEdit|NotebookEdit")).toBe(false);
+  });
+
   describe("shellWrites", () => {
     it("sees redirects into files, tee, sed -i, cp, mv, touch and mkdir", () => {
       for (const c of ["echo hi > a.txt", "cat >> log <<EOF", "node x | tee out.txt", "sed -i 's/a/b/' f", "cp a b", "mkdir -p src", "cd x && mv a b", "touch f"]) expect(shellWrites(c), c).toBe(true);

@@ -33,6 +33,7 @@ import { createCodeBroker } from "./tools/code-broker";
 import { resolvePath } from "./tools/paths";
 import { parsePatch } from "./tools/apply-patch";
 import { designWriteAllowed } from "../design/write-scope";
+import { fenceCommand, fenceWrite } from "../design/fence";
 
 /** Agent ids of provider agents: `provider-<providerId>`. */
 export const PROVIDER_AGENT_PREFIX = "provider-";
@@ -422,6 +423,19 @@ async function runTurn(
   }
 
   const authorize = async (tool: LoopTool, args: Record<string, unknown>, summary: string): Promise<Authorization> => {
+    // A design thread's fence: writes outside its folder and destructive commands are denied, never asked.
+    if (input.design) {
+      const targets = tool.targets?.(args);
+      const reason = targets
+        ? fenceWrite(input.cwd, input.design, targets)
+        : tool.access === "shell" && typeof args.command === "string"
+          ? fenceCommand(input.cwd, input.design, args.command)
+          : null;
+      if (reason) {
+        input.onEvent({ kind: "notice", text: `Blocked in this design thread: ${targets ? targets.join(", ") : String(args.command)}` });
+        return { ok: false, reason };
+      }
+    }
     const verdict = decide(mode, tool.access, tool.outside?.(args) ?? false);
     if (verdict === "allow") return { ok: true };
     if (verdict === "deny") return { ok: false, reason: refusal(mode, "deny") };

@@ -361,9 +361,13 @@ export function Composer({
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Tab" && e.shiftKey && !e.nativeEvent.isComposing) {
-      // Shift+Tab cycles the permission mode: the open thread's, or the draft's.
+      // Shift+Tab cycles the permission mode: the open thread's, or the draft's (design threads are always Full).
       e.preventDefault();
       const s = useStore.getState();
+      const design = threadId
+        ? Object.values(s.threads).flat().find((t) => t.id === threadId)?.kind === "design"
+        : s.threadKind === "design";
+      if (design) return;
       const current = threadId
         ? (Object.values(s.threads).flat().find((t) => t.id === threadId)?.permissionMode ?? "ask")
         : (s.draft.permissionMode ?? s.settings?.defaultPermissionMode ?? "ask");

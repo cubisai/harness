@@ -310,15 +310,16 @@ describe("composer actions row", () => {
 describe("ThreadDesignSettings", () => {
   const design = (over: Partial<Thread>): Thread => ({ id: "t", projectId: "p", agent: "claude", title: "D", sessionId: null, bindings: {}, model: "m", effort: null, permissionMode: "ask", createdAt: 0, updatedAt: 0, kind: "design", ...over }) as Thread;
 
-  it("folds mode and tier into one chip that names both", () => {
+  it("folds the fenced Full mode and tier into one chip that names both, whatever mode is stored", () => {
     const html = renderToStaticMarkup(<ThreadDesignSettings thread={design({ prototypeTier: "real-app" } as Partial<Thread>)} running={false} />);
     expect(html).toContain("design-settings-chip");
-    expect(html).toMatch(/aria-label="Mode, design system and tier: Ask · Real app"/);
+    expect(html).toMatch(/aria-label="Design system and tier: Full access, fenced to this design&#x27;s folder · Real app"/);
   });
 
-  it("keeps Full access in the danger colour and disables while running", () => {
+  it("shows fenced Full without the danger colour and disables while running", () => {
     const html = renderToStaticMarkup(<ThreadDesignSettings thread={design({ permissionMode: "full" })} running />);
-    expect(html).toMatch(/class="chip-button mode-chip design-settings-chip danger"/);
+    expect(html).toMatch(/class="chip-button mode-chip design-settings-chip"/);
+    expect(html).not.toContain("Permissions");
     expect(html).toContain("disabled");
   });
 });

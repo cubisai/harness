@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { PermissionDecision, ThreadEvent } from "../src/shared/types";
 import { z } from "zod";
-import { blockingQuestionCatalog, codexAuthStamp, codexDecision, codexWindows, codexPolicy, codexToolConfig, createCodexDriver, PLAN_HINT, toolFor, turnEndFromUsage } from "../src/main/agents/codex";
+import { blockingQuestionCatalog, codexAuthStamp, codexDecision, codexWindows, codexPolicy, codexToolConfig, createCodexDriver, turnPolicy, PLAN_HINT, toolFor, turnEndFromUsage } from "../src/main/agents/codex";
 
 /** The guide as Codex gets it: the plan hint always follows. */
 const GUIDE = `GUIDE\n\n${PLAN_HINT}`;
@@ -1420,5 +1420,13 @@ describe("blockingQuestionCatalog", () => {
     expect(blockingQuestionCatalog({ models: [{ slug: "a", experimental_supported_tools: ["clock"] }, { slug: "b" }] })).toBeNull();
     expect(blockingQuestionCatalog(null)).toBeNull();
     expect(blockingQuestionCatalog({})).toBeNull();
+  });
+});
+
+describe("turnPolicy", () => {
+  it("runs a design thread's Full read-only with approvals, so the fence sees every write; other threads keep their mode's policy", () => {
+    expect(turnPolicy("full", "designs/abcd1234")).toEqual({ approvalPolicy: "untrusted", sandbox: "read-only" });
+    expect(turnPolicy("full")).toEqual(codexPolicy("full"));
+    expect(turnPolicy("ask", "designs/abcd1234")).toEqual(codexPolicy("ask"));
   });
 });

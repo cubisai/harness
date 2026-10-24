@@ -26,6 +26,7 @@ import type { AgentDriver, HarnessTool, SessionSeed, TurnInput } from "./types";
 import type { TeamAgent } from "../../shared/experts";
 import { codexAnswers, fromCodexAsyncQuestions, fromCodexQuestions } from "../questions";
 import { designWriteAllowed } from "../design/write-scope";
+import { fenceCommand, fenceWrite } from "../design/fence";
 
 // The slices of Codex's app-server protocol (`codex app-server generate-ts`) this driver uses.
 type ThreadItem =
@@ -175,6 +176,15 @@ export function codexPolicy(mode: PermissionMode): { approvalPolicy: string; san
     default:
       return { approvalPolicy: "untrusted", sandbox: "workspace-write" };
   }
+}
+
+/**
+ * A design thread's Full runs read-only with approvals, so every write and every
+ * writing command comes to the fence as a request, which answers it without a
+ * card. (Workspace-write would apply patches anywhere in the project unasked.)
+ */
+export function turnPolicy(mode: PermissionMode, design?: string): { approvalPolicy: string; sandbox: string } {
+  return design && mode === "full" ? { approvalPolicy: "untrusted", sandbox: "read-only" } : codexPolicy(mode);
 }
 
 /** Codex's per-turn sandbox policy, as the app-server schema spells it. */
@@ -797,7 +807,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     if (item.type === "commandExecution") {
       const c = item as { command: string; aggregatedOutput: string | null; exitCode: number | null };
       // Full mode runs without an approval callback, so the guard can only warn.
-      if (t.input.permissionMode === "full" && config.guardScript) {
+      // A design thread's Full runs on Ask, where the guard already denied on the request.
+      if (!t.input.design && t.input.permissionMode === "full" && config.guardScript) {
         void checkCommand(config.guardScript, "Bash", c.command).then((verdict) => {
           if (verdict.blocked) {
             t.input.onEvent({
@@ -833,6 +844,19 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
           t.input.onEvent({ kind: "notice", text: `Blocked by git guardrails: ${p.command}` });
           return { decision: "decline" };
         }
+      }
+      // A design thread's fence, answered here without a card: writes outside its
+      // folder and destructive commands are denied.
+      if (t.input.design && t.input.permissionMode === "full") {
+        const paths = t.changePaths?.get(p.itemId) ?? [];
+        const command = typeof p.command === "string" ? p.command : null;
+        // A command with no text can't be checked, so it's refused like an edit with no files.
+        const reason = isCommand ? (command !== null ? fenceCommand(t.input.cwd, t.input.design, command) : "Blocked in a design thread: couldn't read this command") : fenceWrite(t.input.cwd, t.input.design, paths);
+        if (reason) {
+          t.input.onEvent({ kind: "notice", text: `Blocked in this design thread: ${isCommand ? command : paths.join(", ")}` });
+          return { decision: "decline" };
+        }
+        return { decision: "accept" };
       }
       // A team member reading its own skill files (Codex reads with the shell) never asks.
       if (isCommand && typeof p.command === "string" && t.input.expertRoot && isSkillRead(p.command, [t.input.expertRoot])) return { decision: "accept" };
@@ -1016,7 +1040,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
   const openThread = async (
     input: Pick<TurnInput, "threadId" | "projectId" | "design" | "expert" | "team" | "cwd" | "model" | "contextWindow" | "permissionMode" | "sessionId" | "tools" | "mcpServers" | "onEvent" | "onSession" | "onSessionRebuilt" | "onSessionLost">,
   ): Promise<{ threadId: string; model: string | null; wire?: string; memory: string }> => {
-    const policy = codexPolicy(input.permissionMode);
+    const policy = turnPolicy(input.permissionMode, input.design);
     const model = input.model === CODEX_DEFAULT_MODEL ? null : input.model;
     await start(input.cwd);
     const conn = rpc!;
@@ -1282,7 +1306,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       }
 
       const runOne = async (prompt: string, mode: PermissionMode): Promise<{ turn: Turn; planText: string | null }> => {
-        const policy = codexPolicy(mode);
+        const policy = turnPolicy(mode, input.design);
         // Plan mode is a native collaboration mode; leaving it must say so
         // explicitly, since the mode sticks to the thread between turns.
         const collaborationMode: CollaborationMode | undefined =

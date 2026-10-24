@@ -27,6 +27,7 @@ import { exportTurnUsage } from "./opencode-usage";
 import { normalizeUsage } from "../../usage";
 import type { InjectionPlan } from "../../inject";
 import { designWriteAllowed } from "../../design/write-scope";
+import { fenceCommand, fenceWrite } from "../../design/fence";
 
 /** An ACP agent the app can drive: OpenCode, Cursor, or any agent that speaks ACP over stdio. */
 export interface AcpAgentConfig {
@@ -447,6 +448,15 @@ export function createAcpDriver(
         return { decision: "deny", reason: verdict.reason || "Blocked by git guardrails." };
       }
     }
+    // A design thread's fence: edits outside its folder and destructive commands are denied.
+    if (t.input.design && t.input.cwd) {
+      const paths = ask.kind === "edit" ? ask.summary.split(", ").filter(Boolean) : [];
+      const reason = ask.kind === "execute" ? fenceCommand(t.input.cwd, t.input.design, ask.summary) : ask.kind === "edit" ? fenceWrite(t.input.cwd, t.input.design, paths) : null;
+      if (reason) {
+        t.input.onEvent({ kind: "notice", text: `Blocked in this design thread: ${ask.kind === "edit" ? paths.join(", ") : ask.summary}` });
+        return { decision: "deny", reason };
+      }
+    }
     if (ask.kind === "permission" && ask.callID) {
       // Being answered, so not the stall the stderr watcher warns about.
       t.askIds.add(ask.callID);
@@ -852,9 +862,9 @@ export function createAcpDriver(
         if (t) clearAskTimers(t);
         // The git guardrail vetoes shell commands in every mode, even Full:
         // before the user is asked (or not), the command is checked.
+        const raw = p.toolCall.rawInput as { command?: unknown; cmd?: unknown } | null | undefined;
+        const command = typeof raw?.command === "string" ? raw.command : typeof raw?.cmd === "string" ? raw.cmd : `${p.toolCall.title ?? ""}`;
         if (p.toolCall.kind === "execute" && deps.guardScript) {
-          const raw = p.toolCall.rawInput as { command?: unknown; cmd?: unknown } | null | undefined;
-          const command = typeof raw?.command === "string" ? raw.command : typeof raw?.cmd === "string" ? raw.cmd : `${p.toolCall.title ?? ""}`;
           const verdict = await checkCommand(deps.guardScript, "Bash", command);
           if (verdict.blocked) {
             t?.input.onEvent({ kind: "notice", text: `Blocked by git guardrails: ${command}` });
@@ -866,6 +876,20 @@ export function createAcpDriver(
           if (!t) return "deny";
           // The user (or the mode) already answered this call through the CubiQ plugin.
           if (l.approvedCalls.delete(p.toolCall.toolCallId)) return "allow-once";
+          // A design thread's fence: edits outside its folder and destructive commands are denied.
+          if (t.input.design) {
+            const editPaths = acpEditTargets(p.toolCall);
+            const reason =
+              p.toolCall.kind === "edit"
+                ? fenceWrite(t.input.cwd, t.input.design, editPaths)
+                : p.toolCall.kind === "execute"
+                  ? fenceCommand(t.input.cwd, t.input.design, command)
+                  : null;
+            if (reason) {
+              t.input.onEvent({ kind: "notice", text: `Blocked in this design thread: ${p.toolCall.kind === "edit" ? editPaths.join(", ") : command}` });
+              return "deny";
+            }
+          }
           const picked = pickPermission(t.input.permissionMode, p.toolCall.kind);
           if (picked === "allow") return "allow-once";
           // A design thread's own folder is its canvas: file edits there don't ask.

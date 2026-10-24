@@ -291,16 +291,7 @@ export function App() {
                 </div>
                 <Composer
                   threadId={null}
-                  mode={
-                    designMode ? (
-                      <>
-                        <DraftMode />
-                        <DraftDesignSystem />
-                      </>
-                    ) : (
-                      <DraftMode />
-                    )
-                  }
+                  mode={designMode ? <DraftDesignSystem /> : <DraftMode />}
                   model={<DraftModel />}
                 />
               </>
@@ -329,7 +320,6 @@ export function App() {
                   mode={
                     designThread ? (
                       <>
-                        <ThreadMode thread={thread} running={running} />
                         <ThreadDesignSystem thread={thread} running={running} />
                         <ThreadTier thread={thread} running={running} />
                         {thread.expertId && <ExpertChip expertId={thread.expertId} threadId={thread.id} />}
