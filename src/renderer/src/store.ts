@@ -1565,11 +1565,15 @@ export const useStore = create<State>((set, get) => ({
       case "automation-delivered":
         // The delivered thread's own Finished row already covers it.
         return;
-      case "thread":
+      case "thread": {
+        const unknown = !get().projects.some((p) => p.id === update.thread.projectId);
         set((s) => ({
           threads: { ...s.threads, [update.thread.projectId]: upsertThread(s.threads[update.thread.projectId], update.thread) },
         }));
+        // A thread for a project this window hasn't listed yet (made elsewhere): fetch the list so it can show.
+        if (unknown) void api().listProjects().then((projects) => set({ projects }));
         return;
+      }
     }
   },
 }));

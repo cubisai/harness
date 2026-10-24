@@ -418,11 +418,13 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .branch-chip::before { content: "⎇ "; }
 .thread-row:hover { background: var(--bg-hover); }
 .thread-row.selected { background: var(--bg-selected); }
-/* Hover swaps the time for archive and ⋯. */
+/* Hover swaps the time for the row's buttons, and the title makes room for them. */
 .thread-actions { position: absolute; top: 3px; right: 4px; display: none; align-items: center; gap: 1px; }
 .thread-actions .icon-button { width: 22px; height: 22px; }
 .thread-row:hover .thread-actions, .thread-row.menu-open .thread-actions, .thread-row:focus-within .thread-actions { display: flex; }
-.thread-row:hover .thread-time, .thread-row.menu-open .thread-time, .thread-row:focus-within .thread-time { visibility: hidden; }
+.thread-row:hover .thread-time, .thread-row.menu-open .thread-time, .thread-row:focus-within .thread-time { display: none; }
+.thread-row:hover .thread-open, .thread-row.menu-open .thread-open, .thread-row:focus-within .thread-open { padding-right: 56px; }
+.thread-row:has(.thread-actions > :nth-child(3)):is(:hover, .menu-open, :focus-within) .thread-open { padding-right: 78px; }
 .thread-menu {
   position: absolute;
   top: calc(100% - 2px);
@@ -872,7 +874,7 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .sys-error { margin: 0; padding: 0 12px 8px; font-size: 11.5px; color: var(--danger); }
 /* Layer tree (Elements tab): one row per element, indented by depth, the selected row tinted. */
 .el-tree { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: auto; }
-.el-row { display: flex; align-items: center; gap: 6px; width: 100%; height: 24px; padding-right: 8px; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 12.5px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.el-row { display: flex; align-items: center; gap: 6px; width: 100%; height: 24px; flex-shrink: 0; padding-right: 8px; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 12.5px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .el-row:hover { background: var(--bg-hover); }
 .el-row.on { background: var(--bg-selected); }
 .el-tag { flex-shrink: 0; font: 500 12.5px var(--mono); color: var(--text); }

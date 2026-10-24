@@ -142,7 +142,7 @@ export function App() {
   const designChat = designChatWidth(pane.width - pane.sidebar - (inspectorVisible && pane.inspector !== null ? pane.inspector : 0), layout.designChat);
   const designMode = useStore((s) => s.threadKind) === "design";
   // Canvas-first: the canvas fills the main area and the chat is a prompt bar over its foot, the transcript a drawer.
-  const canvasFirst = design && Boolean(thread) && layout.designLayout === "canvas";
+  const canvasFirst = design && Boolean(thread) && Boolean(project) && layout.designLayout === "canvas";
   // The main header's slot the canvas puts its own header into (canvas-first only): one top bar, not two.
   const [headSlot, setHeadSlot] = useState<HTMLDivElement | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -360,12 +360,12 @@ export function App() {
         {/* Outside the wide branch: the shells stay mounted (hidden) while the browser has the main area. */}
         <TerminalDrawer />
       </main>
-      {design && thread && (
+      {design && thread && project && (
         <Suspense fallback={<section className="design-canvas" aria-label="Design canvas" />}>
           <DesignCanvas threadId={thread.id} canvasFirst={canvasFirst} headSlot={canvasFirst ? headSlot : null} />
         </Suspense>
       )}
-      {design && thread && !canvasFirst && (
+      {design && thread && project && !canvasFirst && (
         <Splitter
           orientation="vertical"
           controls="main"
