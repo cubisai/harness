@@ -186,8 +186,9 @@ async function flow(outDir, file) {
     save();
     // Stitch sometimes builds fewer screens than the batch describes: build the missing ones one at a time.
     const parts = spec.batches[i].split(/\n\s*\n/);
-    const intro = parts.filter((p) => !/^Screen \d+/i.test(p.trim())).join("\n\n");
-    const screens = parts.filter((p) => /^Screen \d+/i.test(p.trim()));
+    // Mobile prompts number their parts "Screen 1", web prompts "Page 1".
+    const intro = parts.filter((p) => !/^(Screen|Page) \d+/i.test(p.trim())).join("\n\n");
+    const screens = parts.filter((p) => /^(Screen|Page) \d+/i.test(p.trim()));
     // Stitch may still be adding the batch's screens: wait until the count holds for two 30 s polls (max 4 min).
     let count = (await uiScreens(projectId)).length;
     for (let w = 0, still = 0; w < 8 && still < 2; w++) {
@@ -237,6 +238,15 @@ async function flow(outDir, file) {
       : await generate("generate_screen_from_text", { projectId, prompt: withDs(`${spec.title}, same design as the other screens: ${prompt}`), deviceType: spec.device, modelId: "GEMINI_3_8_FLASH", ...(st.designSystem ? { designSystem: st.designSystem } : {}) }, projectId);
     st.steps[key] = r.failed ? `failed: ${r.failed.slice(0, 100)}` : "ok";
     save();
+  }
+  // Desktop screens keep landing minutes after their call returns (w03/w04 2026-10-26: 1 → 11 on a later list):
+  // wait until the count holds for three 60 s polls (max 12 min) before downloading.
+  let settled = (await listScreens(projectId)).length;
+  for (let w = 0, still = 0; w < 12 && still < 3; w++) {
+    await sleep(60_000);
+    const now = (await listScreens(projectId)).length;
+    still = now === settled ? still + 1 : 0;
+    settled = now;
   }
   const done = new Set(st.downloaded ?? []);
   await downloadAll(projectId, dir, done);
