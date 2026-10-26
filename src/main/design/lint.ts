@@ -277,6 +277,10 @@ export interface SlopPage {
   overflowPx: number;
   text: string;
   ctas: string[];
+  /** Every distinct computed `font-family` stack that sets visible text. */
+  fontStacks?: string[];
+  /** The visible text outside code, pre, kbd and samp, where identifiers belong. */
+  proseText?: string;
 }
 
 /** Snapshot page overflow, body copy, and visible calls to action; runs in the page. */
@@ -300,7 +304,24 @@ export function collectSlopPage(): SlopPage {
     ctas.push(label);
     if (ctas.length >= 80) break;
   }
-  return { overflowPx, text, ctas };
+  const stacks: Record<string, boolean> = {};
+  const fontStacks: string[] = [];
+  let proseText = "";
+  if (document.body) {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(), seen = 0; n && seen < 4000; n = walker.nextNode(), seen += 1) {
+      const value = (n.nodeValue ?? "").trim();
+      const parent = n.parentElement;
+      if (!value || !parent || parent.closest("script, style, noscript, template")) continue;
+      const stack = getComputedStyle(parent).fontFamily;
+      if (stack && !stacks[stack] && fontStacks.length < 20) {
+        stacks[stack] = true;
+        fontStacks.push(stack);
+      }
+      if (proseText.length < 8000 && !parent.closest("code, pre, kbd, samp")) proseText += `${value} `;
+    }
+  }
+  return { overflowPx, text, ctas, fontStacks, proseText };
 }
 
 /** Turn collected element snapshots into slop findings; pure and self-contained. */
@@ -676,6 +697,30 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
     push(node.selector, "image without alt text");
   }
 
+  // Running text in capitals: a sentence or more set uppercase (by CSS or typed that way) reads slowly. Short labels
+  // and display headlines are fine; only the innermost block with inline-only children is reported.
+  const inlineTags: Record<string, boolean> = { a: true, b: true, strong: true, em: true, i: true, span: true, br: true, small: true, code: true };
+  const capsBlocks = nodes.filter((node) => {
+    if (node.fontPx >= 32 || (node.textLen ?? node.text.length) < 60) return false;
+    if (node.childSig && node.childSig.split(",").some((t) => !inlineTags[t])) return false;
+    if (node.text.split(/\s+/).length < 8) return false;
+    // Child elements without sentence punctuation are a row of labels, not running text.
+    if (node.childSig && !/[.!?,;:]\s/.test(node.text)) return false;
+    if (node.textTransform === "uppercase") return true;
+    const letters = node.text.match(/[A-Za-z]/g) ?? [];
+    const upper = node.text.match(/[A-Z]/g) ?? [];
+    return letters.length >= 40 && upper.length / letters.length >= 0.9;
+  });
+  const capsParents: Record<string, boolean> = {};
+  for (const node of capsBlocks) if (node.parentSelector) capsParents[node.parentSelector] = true;
+  let capsCount = 0;
+  for (const node of capsBlocks) {
+    if (capsParents[node.selector]) continue;
+    capsCount += 1;
+    if (capsCount > 3) break;
+    push(node.selector, `running text in capitals ("${node.text.slice(0, 40)}…"): set sentences in sentence case, keep caps for short labels`);
+  }
+
   if (page) {
     if (page.overflowPx > 1) {
       push("html", `page scrolls sideways by ${page.overflowPx}px at this width`);
@@ -738,6 +783,43 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
       );
     if (placeholderCopy) {
       push("body", `placeholder copy "${placeholderCopy[0] ?? ""}": use real, specific names and content`);
+    }
+
+    // A font stack with no generic family: while the web font loads (or if it fails) text drops to the browser's
+    // default serif. Icon fonts are exempt: a fallback face would only show the ligature names.
+    const generics: Record<string, boolean> = {
+      serif: true,
+      "sans-serif": true,
+      monospace: true,
+      cursive: true,
+      fantasy: true,
+      "system-ui": true,
+      "ui-serif": true,
+      "ui-sans-serif": true,
+      "ui-monospace": true,
+      "ui-rounded": true,
+      math: true,
+      emoji: true,
+      fangsong: true,
+      "-apple-system": true,
+      blinkmacsystemfont: true,
+    };
+    let stackCount = 0;
+    for (const stack of page.fontStacks ?? []) {
+      const families = stack.split(",").map((f) => f.trim().replace(/^["']|["']$/g, "").toLowerCase());
+      if (families.some((f) => generics[f]) || /icon|symbol|awesome/.test(families[0] ?? "")) continue;
+      stackCount += 1;
+      if (stackCount > 3) break;
+      push("body", `font stack "${stack}" has no generic fallback: end it with sans-serif, serif or monospace`);
+    }
+
+    // Pseudo-data: system-looking filler (SCREAMING_SNAKE ids, null hashes) in prose, where it means nothing to the
+    // reader. Code blocks are left out, so docs pages can show real identifiers.
+    const pseudo = (page.proseText ?? "").match(/\b[A-Z][A-Z0-9]*_[A-Z0-9_]*[A-Z0-9]\b|\b0[xX]0{4,}\b|\bNULL\b/g) ?? [];
+    const pseudoSeen: string[] = [];
+    for (const hit of pseudo) if (pseudoSeen.indexOf(hit) === -1) pseudoSeen.push(hit);
+    if (pseudoSeen.length >= 2) {
+      push("body", `pseudo-data in copy (${pseudoSeen.slice(0, 3).join(", ")}): every label and meta line should state a real fact`);
     }
   }
 

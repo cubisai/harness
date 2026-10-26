@@ -13,6 +13,7 @@ import {
   type LintFinding,
   type LintResult,
   type SlopNode,
+  type SlopPage,
 } from "../src/main/design/lint";
 
 const BLACK = { r: 0, g: 0, b: 0, a: 1 };
@@ -433,6 +434,38 @@ describe("slopFindings", () => {
       ctas: [],
     });
     expect(out.some((f) => f.detail.includes('placeholder copy "Acme"'))).toBe(true);
+  });
+
+  const page = (over: Partial<SlopPage>): SlopPage => ({ overflowPx: 0, text: "", ctas: [], ...over });
+
+  it("flags a font stack with no generic fallback, but not an icon font", () => {
+    const out = slopFindings([node({})], page({ fontStacks: ['Figtree', '"Bricolage Grotesque", sans-serif', '"Material Symbols Outlined"'] }));
+    expect(out.map((f) => f.detail)).toEqual(['font stack "Figtree" has no generic fallback: end it with sans-serif, serif or monospace']);
+  });
+
+  it("flags pseudo-data in prose, not a single identifier", () => {
+    const out = slopFindings([node({})], page({ proseText: "WALLET // ACTIVE_SYNC  SECURITY HASH 0X00000000  SLOT: 00-WALLET-NULL" }));
+    expect(out.some((f) => f.detail.startsWith("pseudo-data in copy (ACTIVE_SYNC, 0X00000000, NULL)"))).toBe(true);
+    expect(slopFindings([node({})], page({ proseText: "Set API_KEY before you run the CLI." }))).toEqual([]);
+  });
+
+  it("flags running text in capitals, innermost block only", () => {
+    const sentence = "Your digital wallet is empty. Saved gigs and encrypted passes will appear here once purchased.";
+    const out = slopFindings([
+      node({ selector: ".empty", tag: "div", childSig: "p", text: sentence, textLen: sentence.length, textTransform: "uppercase" }),
+      node({ selector: ".empty p", tag: "p", parentSelector: ".empty", text: sentence, textLen: sentence.length, textTransform: "uppercase" }),
+      node({ selector: ".typed", tag: "p", text: sentence.toUpperCase(), textLen: sentence.length }),
+    ]);
+    expect(out.map((f) => f.selector)).toEqual([".empty p", ".typed"]);
+  });
+
+  it("does not flag short caps labels or a display headline", () => {
+    expect(
+      slopFindings([
+        node({ selector: ".label", text: "DOORS 20:00 // LIVE 21:30", textLen: 25, textTransform: "uppercase" }),
+        node({ selector: "h1", tag: "h1", fontPx: 56, text: "THE MEKONG STATIC SPECIAL ALBUM RELEASE SHOW AT ROOFTOP 51 THIS FRIDAY", textLen: 70 }),
+      ]),
+    ).toEqual([]);
   });
 });
 
