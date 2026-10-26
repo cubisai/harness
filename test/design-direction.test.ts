@@ -170,6 +170,7 @@ describe("More styles", () => {
     service.setDesignSystemsDir(join(RESOURCES, "design-systems"));
     service.setDesignStylesDir(join(RESOURCES, "design-styles"), join(RESOURCES, "design-fonts"));
     service.setDesignPatternsDir(join(RESOURCES, "design-patterns"));
+    service.setDesignIconsDir(join(RESOURCES, "design-icons"));
     const project = store.addProject(tempDir());
     return { store, service, project };
   }
@@ -225,6 +226,24 @@ describe("More styles", () => {
     expect(reply).toContain("brief.md");
     service.setDesignDirection(thread.id, { surface: "mobile", mode: "operate", tier: "working", style: "control-room" });
     expect(readFileSync(join(root, "system", "patterns.md"), "utf8")).toContain("# Mobile patterns");
+  });
+
+  it("copies the icon sprite into system/ and names it in the reply", () => {
+    const { service, project } = realSetup();
+    const thread = service.createThread(project.id, undefined, "design");
+    const reply = service.setDesignDirection(thread.id, { surface: "page", mode: "persuade", tier: "working", style: "glacier" });
+    const root = service.designRoot(thread.id)!;
+    expect(readFileSync(join(root, "system", "icons.svg"), "utf8")).toContain('<symbol id="search"');
+    expect(reply).toContain("system/icons.svg");
+  });
+
+  it("ships a sprite of stroked line icons without the stock AI-magic ones", () => {
+    const sprite = readFileSync(join(__dirname, "..", "resources", "design-icons", "icons.svg"), "utf8");
+    const ids = [...sprite.matchAll(/<symbol id="([^"]+)"/g)].map((m) => m[1]);
+    expect(ids.length).toBeGreaterThanOrEqual(100);
+    expect(ids).not.toContain("sparkles");
+    expect(ids).not.toContain("rocket");
+    for (const symbol of sprite.match(/<symbol id=[^>]*>/g) ?? []) expect(symbol).toContain('stroke="currentColor"');
   });
 
   it("ships pattern notes for every surface", () => {
