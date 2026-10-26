@@ -1,10 +1,10 @@
 # Toybox
 
 ## World
-Learning and play for kids and families: saturated primaries on warm cream, rounded friendly type, big soft shapes, sticker badges. Joyful, but the controls are clear enough for a seven-year-old and their parent.
+Learning and play for kids and families: saturated primaries on a clear sky-blue field, rounded friendly type, big soft shapes, sticker badges. Joyful, but the controls are clear enough for a seven-year-old and their parent.
 
 ## Colour: full palette
-- `--color-bg` warm cream, `--color-surface` white cards, `--color-surface-2` sunny yellow wells.
+- `--color-bg` sky-blue tint, `--color-surface` white cards, `--color-surface-2` sunny yellow wells.
 - `--color-primary` royal blue for main actions; `--color-accent` raspberry for rewards and highlights; success green for correct answers.
 - Each section may take one bright field colour, but text stays on light surfaces.
 
@@ -28,7 +28,7 @@ A progress path (stepping stones or a winding road in SVG) showing where the lea
 ## Rules
 - Make it easy to hit and read: big targets, text at 18px or more (not small text or thin hairlines).
 - Write warmly and plainly (not sarcasm).
-- Keep the bright cream page; light is the default and the dark pair only follows the device setting.
+- Keep the bright sky-blue page; light is the default and the dark pair only follows the device setting.
 - Draw characters and shapes in SVG (not corporate stock layouts).
 
 ## Motion

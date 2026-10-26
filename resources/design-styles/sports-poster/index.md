@@ -2,7 +2,7 @@
 type: design-style
 name: Sports Poster
 description: Match-day energy: condensed display type at huge sizes, diagonal cuts, team red and navy, big numbers that mean something.
-swatches: #F5F3EF, #0D1B2A, #C8102E, #0D1B2A
+swatches: #FFFFFF, #0D1B2A, #C8102E, #0D1B2A
 tags: bold, sport, energetic, condensed, poster, fitness
 modes: persuade, experience
 platform: any

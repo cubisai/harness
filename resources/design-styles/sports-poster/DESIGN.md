@@ -4,7 +4,7 @@
 Match-day energy: condensed type at huge sizes, diagonal cuts, team red and navy, numbers that mean something (scores, times, distances). For sport, fitness and events.
 
 ## Colour: committed
-- `--color-bg` off-white, `--color-text` navy.
+- `--color-bg` stark white, `--color-surface-2` concrete grey bands, `--color-text` navy.
 - `--color-primary` team red carries big diagonal fields and the main action; navy (`--color-accent`) for the counter-field.
 - Photography in duotone (navy + red) via CSS filters or SVG, when photos are used.
 

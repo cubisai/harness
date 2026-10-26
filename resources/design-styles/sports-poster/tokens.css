@@ -22,12 +22,12 @@
   color-scheme: light;
 
   /* Color */
-  --color-bg: #F5F3EF;
+  --color-bg: #FFFFFF;
   --color-surface: #FFFFFF;
-  --color-surface-2: #E6E2DA;
+  --color-surface-2: #E8ECF1;
   --color-text: #0D1B2A;
   --color-text-muted: #4A5568;
-  --color-border: #CFC8BC;
+  --color-border: #C9D1DB;
   --color-primary: #C8102E;
   --color-on-primary: #FFFFFF;
   --color-accent: #0D1B2A;
@@ -35,10 +35,10 @@
   --color-warning: #9A5B00;
   --color-danger: #C8102E;
   --color-focus: #0D1B2A;
-  --color-surface-3: #D9D6CF;
-  --color-border-strong: #898A87;
+  --color-surface-3: #DBDFE5;
+  --color-border-strong: #858F9B;
   --color-accent-text: #0D1B2A;
-  --color-on-accent: #F5F3EF;
+  --color-on-accent: #FFFFFF;
   --color-accent-soft: #DDDFE1;
   --color-success-soft: #E6F0EA;
   --color-warning-soft: #F4EDE3;

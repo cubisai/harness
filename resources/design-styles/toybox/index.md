@@ -2,7 +2,7 @@
 type: design-style
 name: Toybox
 description: Kids and learning: saturated primaries, rounded friendly type, big soft shapes and sticker-like badges. Joyful, never childish in usability.
-swatches: #FFF9EC, #231942, #3B4CCA, #E8487A
+swatches: #EEF6FF, #231942, #3B4CCA, #E8487A
 tags: playful, friendly, kids, education, rounded, colorful
 modes: persuade, experience, operate
 platform: any

@@ -1,10 +1,10 @@
 # Docs Workbench
 
 ## World
-Documentation developers stay in: tinted paper, a calm sans, a code face that earns its place, and wayfinding that always tells you where you are.
+Documentation developers stay in: a cool grey-white page, a calm sans, a code face that earns its place, and wayfinding that always tells you where you are.
 
 ## Colour: restrained
-- `--color-bg` tinted paper, `--color-surface` white code panels and callouts, `--color-surface-2` for inline code and table headers.
+- `--color-bg` cool grey-white, `--color-surface` white code panels and callouts, `--color-surface-2` for inline code and table headers.
 - `--color-primary` blue for links and the active nav item; `--color-accent` rust for one kind of callout (warnings).
 
 ## Type

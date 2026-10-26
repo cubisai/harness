@@ -15,12 +15,12 @@
   color-scheme: light;
 
   /* Color */
-  --color-bg: #FFF9EC;
+  --color-bg: #EEF6FF;
   --color-surface: #FFFFFF;
   --color-surface-2: #FFEFC9;
   --color-text: #231942;
   --color-text-muted: #5A4E7C;
-  --color-border: #F0DFB4;
+  --color-border: #D3E3F7;
   --color-primary: #3B4CCA;
   --color-on-primary: #FFFFFF;
   --color-accent: #E8487A;
@@ -29,7 +29,7 @@
   --color-danger: #C8293C;
   --color-focus: #3B4CCA;
   --color-surface-3: #F2E2C1;
-  --color-border-strong: #968882;
+  --color-border-strong: #868AA7;
   --color-accent-text: #B93D6D;
   --color-on-accent: #000000;
   --color-accent-soft: #FCEBF0;
