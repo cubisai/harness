@@ -144,6 +144,10 @@ export interface SlopNode {
   labelled?: boolean;
   hasAlt?: boolean;
   ariaHidden?: boolean;
+  /** Computed text-align. */
+  textAlign?: string;
+  /** A card-like box holding a big figure (own text a number, 24px or larger). */
+  bigNumber?: boolean;
 }
 
 /** Snapshot every element for the slop rules; runs inside the page. */
@@ -207,6 +211,26 @@ export function collectSlop(selectorFor: (el: Element) => string): SlopNode[] {
       const rect = el.getBoundingClientRect();
       const lineHeightPx = cs.lineHeight === "normal" ? 0 : Number.parseFloat(cs.lineHeight) || 0;
       const textLen = Math.min((el.textContent ?? "").trim().length, 2000);
+      const cardish =
+        painted(cs.backgroundColor) ||
+        borderPx.top >= 1 ||
+        borderPx.right >= 1 ||
+        borderPx.bottom >= 1 ||
+        borderPx.left >= 1 ||
+        (cs.boxShadow !== "" && cs.boxShadow !== "none");
+      let bigNumber: boolean | undefined;
+      if (cardish) {
+        const inner = el.querySelectorAll("*");
+        const innerLimit = Math.min(inner.length, 40);
+        for (let j = 0; j < innerLimit && !bigNumber; j += 1) {
+          const d = inner[j];
+          if (!d) continue;
+          let own = "";
+          for (const c of Array.from(d.childNodes)) if (c.nodeType === 3) own += c.textContent ?? "";
+          own = own.trim();
+          if (own && /^[+\-−$€£¥]?\s?\d[\d.,]*\s?(%|[kKmMbB])?$/.test(own) && (Number.parseFloat(getComputedStyle(d).fontSize) || 0) >= 24) bigNumber = true;
+        }
+      }
       const isField = tag === "input" || tag === "textarea" || tag === "select";
       let placeholder: string | undefined;
       let labelled: boolean | undefined;
@@ -239,13 +263,7 @@ export function collectSlop(selectorFor: (el: Element) => string): SlopNode[] {
         backgroundClip: cs.getPropertyValue("background-clip") || cs.getPropertyValue("-webkit-background-clip") || "border-box",
         borderPx,
         boxShadow: cs.boxShadow || "none",
-        cardLike:
-          painted(cs.backgroundColor) ||
-          borderPx.top >= 1 ||
-          borderPx.right >= 1 ||
-          borderPx.bottom >= 1 ||
-          borderPx.left >= 1 ||
-          (cs.boxShadow !== "" && cs.boxShadow !== "none"),
+        cardLike: cardish,
         childSig: childTags.join(","),
         parentSelector: el.parentElement ? selectorFor(el.parentElement) : null,
         width: Math.round(rect.width),
@@ -264,6 +282,8 @@ export function collectSlop(selectorFor: (el: Element) => string): SlopNode[] {
         labelled,
         hasAlt,
         ariaHidden,
+        textAlign: cs.textAlign || "",
+        bigNumber,
       });
     } catch {
       // One element never aborts the snapshot.
@@ -455,6 +475,51 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
       push(parent, `${same.length} identical cards (${sig})`);
       break;
     }
+  }
+
+  // Metric row: three to five equal cards that each lead with a big figure. Slides and panels are bigger than a card.
+  const metricsByParent: Record<string, SlopNode[]> = {};
+  for (const node of nodes) {
+    if (node.parentSelector === null || !node.cardLike || node.bigNumber !== true) continue;
+    // Hidden boxes (an inactive slide) measure 0 and would all look equal.
+    if (node.width < 80 || node.width > 480 || (node.height ?? 0) < 40 || (node.height ?? 0) > 320) continue;
+    (metricsByParent[node.parentSelector] ??= []).push(node);
+  }
+  let metricRows = 0;
+  for (const parent of Object.keys(metricsByParent)) {
+    const row = metricsByParent[parent]!;
+    if (row.length < 3 || row.length > 5) continue;
+    let min = row[0]!.width;
+    let max = row[0]!.width;
+    for (const node of row) {
+      if (node.width < min) min = node.width;
+      if (node.width > max) max = node.width;
+    }
+    if (max - min > 4) continue;
+    push(parent, `${row.length} equal metric cards in a row: lead with the number that matters, put the rest in a table or a sentence`);
+    metricRows += 1;
+    if (metricRows >= 2) break;
+  }
+
+  // Index labels: zero-padded section numbers as decoration ("01 / WORK", "[ 00 / OVERVIEW ]", "02 · TENANCY").
+  const indexLabels = nodes.filter(
+    (node) => node.fontPx > 0 && node.fontPx <= 14 && node.text.length <= 40 && /^\[?\s*0\d\s*[\/·.|—–-]\s*[A-Za-zÀ-ɏ]/.test(node.text),
+  );
+  const indexParents: Record<string, boolean> = {};
+  for (const node of indexLabels) if (node.parentSelector) indexParents[node.parentSelector] = true;
+  const innermostIndex = indexLabels.filter((node) => !indexParents[node.selector]);
+  if (innermostIndex.length >= 2) {
+    push(
+      innermostIndex[0]!.selector,
+      `${innermostIndex.length} index labels as decoration ("${innermostIndex[0]!.text}", "${innermostIndex[1]!.text}"): let the heading name the section`,
+    );
+  }
+
+  // Centred running text: most paragraphs centred.
+  const paragraphs = nodes.filter((node) => (node.tag === "p" || node.tag === "li") && (node.textLen ?? node.text.length) >= 60);
+  const centred = paragraphs.filter((node) => node.textAlign === "center" || node.textAlign === "-webkit-center").length;
+  if (paragraphs.length >= 5 && centred / paragraphs.length >= 0.7) {
+    push("body", `${centred} of ${paragraphs.length} paragraphs centred: align running text to the left, centre only short headlines`);
   }
 
   // Emoji icon: a glyph (or two) used as the only content.

@@ -467,6 +467,51 @@ describe("slopFindings", () => {
       ]),
     ).toEqual([]);
   });
+
+  it("flags a row of equal metric cards", () => {
+    const kpis = [0, 1, 2, 3].map((i) => node({ selector: `.kpi${i}`, parentSelector: ".kpis", cardLike: true, bigNumber: true, width: 280, height: 140 }));
+    const out = slopFindings(kpis);
+    expect(out.some((f) => f.selector === ".kpis" && f.detail.startsWith("4 equal metric cards in a row"))).toBe(true);
+  });
+
+  it("does not flag metric cards of different widths, two cards, or cards without a big figure", () => {
+    const uneven = [280, 280, 280, 560].map((w, i) => node({ selector: `.k${i}`, parentSelector: ".row", cardLike: true, bigNumber: true, width: w }));
+    const two = [0, 1].map((i) => node({ selector: `.t${i}`, parentSelector: ".two", cardLike: true, bigNumber: true, width: 280 }));
+    const plain = [0, 1, 2].map((i) => node({ selector: `.p${i}`, parentSelector: ".plain", cardLike: true, bigNumber: false, width: 280 }));
+    const slides = [0, 1, 2, 3].map((i) => node({ selector: `.s${i}`, parentSelector: ".deck", cardLike: true, bigNumber: true, width: 1280, height: 720 }));
+    const hidden = [0, 1, 2, 3].map((i) => node({ selector: `.h${i}`, parentSelector: ".deck2", cardLike: true, bigNumber: true, width: 0, height: 0 }));
+    for (const set of [uneven, two, plain, slides, hidden]) expect(slopFindings(set).some((f) => f.detail.includes("metric cards"))).toBe(false);
+  });
+
+  it("flags zero-padded index labels used as decoration", () => {
+    const out = slopFindings([
+      node({ selector: ".i1", text: "01 / WORK", fontPx: 12 }),
+      node({ selector: ".i2", text: "[ 02 / ABOUT ]", fontPx: 12 }),
+    ]);
+    expect(out.some((f) => f.selector === ".i1" && f.detail.startsWith('2 index labels as decoration ("01 / WORK", "[ 02 / ABOUT ]")'))).toBe(true);
+  });
+
+  it("does not flag one index label, times, dates or large numbers", () => {
+    const cases = [
+      [node({ selector: ".a", text: "01 / WORK", fontPx: 12 })],
+      [node({ selector: ".b", text: "07:00 PM", fontPx: 12 }), node({ selector: ".c", text: "05/12/2026", fontPx: 12 })],
+      [node({ selector: ".d", text: "01 / WORK", fontPx: 20 }), node({ selector: ".e", text: "02 / ABOUT", fontPx: 20 })],
+    ];
+    for (const set of cases) expect(slopFindings(set).some((f) => f.detail.includes("index labels"))).toBe(false);
+  });
+
+  it("flags mostly centred paragraphs", () => {
+    const long = "Plan the week from your backlog in ten minutes and keep the team on the same page every Monday.";
+    const ps = [0, 1, 2, 3, 4, 5].map((i) => node({ selector: `p${i}`, tag: "p", text: long.slice(0, 80), textLen: long.length, textAlign: i < 5 ? "center" : "left" }));
+    expect(slopFindings(ps).some((f) => f.detail.startsWith("5 of 6 paragraphs centred"))).toBe(true);
+  });
+
+  it("does not flag a few centred paragraphs", () => {
+    const long = "Plan the week from your backlog in ten minutes and keep the team on the same page every Monday.";
+    const some = [0, 1, 2, 3, 4].map((i) => node({ selector: `p${i}`, tag: "p", text: long.slice(0, 80), textLen: long.length, textAlign: i < 2 ? "center" : "left" }));
+    const few = [0, 1, 2, 3].map((i) => node({ selector: `q${i}`, tag: "p", text: long.slice(0, 80), textLen: long.length, textAlign: "center" }));
+    for (const set of [some, few]) expect(slopFindings(set).some((f) => f.detail.includes("paragraphs centred"))).toBe(false);
+  });
 });
 
 describe("lintScript", () => {
