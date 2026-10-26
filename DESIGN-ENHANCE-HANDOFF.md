@@ -6,7 +6,7 @@ Goal (user): design mode should make the **best-looking UI, even on a small mode
   - Hide the pickers; Auto only.
   - Ship in phases.
   - Higher token spend is fine if the UI gets nicer.
-- Research and taste notes: `.ai/plans/design-enhance-research.md`. Read it first; it holds every finding so far.
+- Research and taste notes: `.ai/plans/design-enhance-research.md`. Read it first; it holds every finding so far. Raw worker research: `.ai/plans/design-enhance-research/p3*.result.md` (a = styles, c = component/page/screen rules, d = workspace/deck rules, e = 30 template tells).
 
 ## Where the work is
 
