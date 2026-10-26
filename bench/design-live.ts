@@ -69,6 +69,9 @@ function range(spec: string | undefined): number[] {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** A CDP call that can't hang the run (the app may be busy stopping a turn). */
+const within = <T>(p: Promise<T>, ms = 30_000): Promise<T | undefined> => Promise.race([p, sleep(ms).then(() => undefined)]);
+
 async function waitIdle(userDataDir: string, threadId: string, until: number): Promise<DesignRun["end"]> {
   let count = -1;
   let lastChange = Date.now();
@@ -138,10 +141,10 @@ async function runAgent(cdp: Cdp, userDataDir: string, project: { id: string; di
     await cdp.evaluate(`(window.unskilled.send(${JSON.stringify({ threadId: thread.id, text: prompt })}).catch((e) => console.error("design-live send", e)), true)`);
     const end = await waitIdle(userDataDir, thread.id, Date.now() + TURN_MS);
     if (end !== "ended") {
-      await cdp.call("interrupt", thread.id).catch(() => undefined);
+      await within(cdp.call("interrupt", thread.id).catch(() => undefined));
       await sleep(10_000);
     }
-    const threads = await cdp.call<Array<{ id: string; designDirection?: { style: string; surface: string } }>>("listThreads", project.id);
+    const threads = (await within(cdp.call<Array<{ id: string; designDirection?: { style: string; surface: string } }>>("listThreads", project.id).catch(() => []))) ?? [];
     const direction = threads.find((t) => t.id === thread.id)?.designDirection;
     const dir = join(project.dir, designDirName(thread.id));
     const run: DesignRun = {

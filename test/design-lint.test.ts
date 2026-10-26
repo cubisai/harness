@@ -281,6 +281,159 @@ describe("slopFindings", () => {
     expect(typeof collectSlop).toBe("function");
     expect(collectSlop.toString()).toContain("querySelectorAll");
   });
+
+  it("flags display leading on large headings", () => {
+    const out = slopFindings([node({ selector: ".hero", tag: "h1", text: "Hero", fontPx: 48, lineHeightPx: 72 })]);
+    expect(out.some((f) => f.detail.includes("px heading at line-height 1.50"))).toBe(true);
+  });
+
+  it("does not flag display type set tight", () => {
+    expect(
+      slopFindings([node({ tag: "h1", text: "Hero", fontPx: 48, lineHeightPx: 52.8 })]),
+    ).toEqual([]);
+  });
+
+  it("flags long paragraph measure on two or more paragraphs", () => {
+    const out = slopFindings([
+      node({ selector: ".p1", tag: "p", textLen: 200, width: 800 }),
+      node({ selector: ".p2", tag: "p", textLen: 200, width: 800 }),
+    ]);
+    expect(out.filter((f) => f.detail.includes("paragraph runs about 100 characters a line"))).toHaveLength(2);
+  });
+
+  it("does not flag a long measure with only one paragraph", () => {
+    expect(slopFindings([node({ tag: "p", textLen: 200, width: 800 })])).toEqual([]);
+  });
+
+  it("flags transition: all on most controls", () => {
+    const nodes = Array.from({ length: 8 }, (_v, i) =>
+      node({ selector: `.btn${i}`, tag: "button", transitionProperty: "all", transitionDuration: "0.2s" }),
+    );
+    const out = slopFindings(nodes);
+    expect(out.some((f) => f.detail.includes("transition: all on 8 of 8 controls"))).toBe(true);
+  });
+
+  it("ignores the default computed transition (all, 0s)", () => {
+    const nodes = Array.from({ length: 8 }, (_v, i) => node({ selector: `.btn${i}`, tag: "button", transitionProperty: "all", transitionDuration: "0s" }));
+    expect(slopFindings(nodes)).toEqual([]);
+  });
+
+  it("does not flag transition: all on half the controls", () => {
+    const nodes = Array.from({ length: 8 }, (_v, i) =>
+      node({
+        selector: `.btn${i}`,
+        tag: "button",
+        transitionProperty: i < 4 ? "all" : "opacity",
+        transitionDuration: "0.2s",
+      }),
+    );
+    expect(slopFindings(nodes)).toEqual([]);
+  });
+
+  it("flags overshooting cubic-bezier easing", () => {
+    const out = slopFindings([
+      node({ selector: ".pop", transitionTiming: "cubic-bezier(0.34, 1.56, 0.64, 1)" }),
+    ]);
+    expect(out.some((f) => f.detail.includes("overshooting easing cubic-bezier(0.34, 1.56, 0.64, 1)"))).toBe(true);
+  });
+
+  it("flags coloured glow shadows on two or more nodes", () => {
+    const out = slopFindings([
+      node({ selector: ".glow1", boxShadow: "0px 0px 30px rgba(0, 128, 255, 0.5)" }),
+      node({ selector: ".glow2", boxShadow: "0px 0px 30px rgba(0, 128, 255, 0.5)" }),
+    ]);
+    expect(out.filter((f) => f.detail.includes("coloured glow shadow"))).toHaveLength(2);
+  });
+
+  it("flags a large blurred decorative blob", () => {
+    const out = slopFindings([
+      node({ selector: ".blob", position: "absolute", width: 400, height: 400, filter: "blur(60px)" }),
+    ]);
+    expect(out.some((f) => f.detail.includes("blurred decorative blob"))).toBe(true);
+  });
+
+  it("flags a frosted glass panel holding content", () => {
+    const out = slopFindings([
+      node({ selector: ".panel", tag: "section", backdropFilter: "blur(20px)", cardLike: true, textLen: 60 }),
+    ]);
+    expect(out.some((f) => f.detail.includes("frosted glass panel holding content"))).toBe(true);
+  });
+
+  it("flags one radius applied to every shape", () => {
+    const nodes = Array.from({ length: 9 }, (_v, i) =>
+      node({ selector: `.btn${i}`, tag: "button", radius: 8, width: 100 }),
+    );
+    nodes.push(node({ selector: ".card", cardLike: true, radius: 8, width: 400 }));
+    const out = slopFindings(nodes);
+    expect(out.some((f) => f.detail.includes("one 8px radius on 10 of 10 shapes"))).toBe(true);
+  });
+
+  it("does not flag a single radius on fewer than ten shapes", () => {
+    const nodes = Array.from({ length: 9 }, (_v, i) =>
+      node({ selector: `.btn${i}`, tag: "button", radius: 8, width: 100 }),
+    );
+    expect(slopFindings(nodes)).toEqual([]);
+  });
+
+  it("flags a field labelled only by its placeholder", () => {
+    const out = slopFindings([node({ selector: ".field", tag: "input", labelled: false, placeholder: "Email" })]);
+    expect(out.some((f) => f.detail.includes('field labelled only by its placeholder "Email"'))).toBe(true);
+  });
+
+  it("does not flag a labelled field with a placeholder", () => {
+    expect(
+      slopFindings([node({ tag: "input", labelled: true, placeholder: "Email" })]),
+    ).toEqual([]);
+  });
+
+  it("flags an image without alt text", () => {
+    const out = slopFindings([node({ selector: ".pic", tag: "img", hasAlt: false })]);
+    expect(out.some((f) => f.detail.includes("image without alt text"))).toBe(true);
+  });
+
+  it("flags horizontal page overflow", () => {
+    const out = slopFindings([node({})], { overflowPx: 40, text: "", ctas: [] });
+    expect(out.some((f) => f.detail.includes("page scrolls sideways by 40px"))).toBe(true);
+  });
+
+  it("flags generic copy clichés", () => {
+    const out = slopFindings([node({})], {
+      overflowPx: 0,
+      text: "Supercharge your workflow with a seamless all-in-one platform.",
+      ctas: [],
+    });
+    expect(out.some((f) => f.detail.includes("generic copy (Supercharge, seamless, all-in-one)"))).toBe(true);
+  });
+
+  it("does not flag a single copy cliché", () => {
+    expect(
+      slopFindings([node({})], { overflowPx: 0, text: "Seamless onboarding for teams.", ctas: [] }),
+    ).toEqual([]);
+  });
+
+  it("flags generic calls to action", () => {
+    const out = slopFindings([node({})], {
+      overflowPx: 0,
+      text: "",
+      ctas: ["Get Started", "Learn More", "Book a Demo"],
+    });
+    expect(out.some((f) => f.detail.includes("generic calls to action"))).toBe(true);
+  });
+
+  it("does not flag two generic calls to action", () => {
+    expect(
+      slopFindings([node({})], { overflowPx: 0, text: "", ctas: ["Get Started", "Learn More"] }),
+    ).toEqual([]);
+  });
+
+  it("flags placeholder copy", () => {
+    const out = slopFindings([node({})], {
+      overflowPx: 0,
+      text: "Trusted by Acme to power your company.",
+      ctas: [],
+    });
+    expect(out.some((f) => f.detail.includes('placeholder copy "Acme"'))).toBe(true);
+  });
 });
 
 describe("lintScript", () => {
@@ -294,6 +447,7 @@ describe("lintScript", () => {
     expect(script).toContain("onGrid");
     expect(script).toContain("colorKey");
     expect(script).toContain("collectSlop");
+    expect(script).toContain("collectSlopPage");
     expect(script).toContain("slopFindings");
     expect(() => new Function("return " + script)).not.toThrow();
   });

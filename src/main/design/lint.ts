@@ -129,6 +129,21 @@ export interface SlopNode {
   childSig: string;
   parentSelector: string | null;
   width: number;
+  lineHeightPx?: number;
+  textLen?: number;
+  transitionProperty?: string;
+  transitionDuration?: string;
+  transitionTiming?: string;
+  animationTiming?: string;
+  filter?: string;
+  backdropFilter?: string;
+  position?: string;
+  height?: number;
+  radius?: number;
+  placeholder?: string;
+  labelled?: boolean;
+  hasAlt?: boolean;
+  ariaHidden?: boolean;
 }
 
 /** Snapshot every element for the slop rules; runs inside the page. */
@@ -189,6 +204,28 @@ export function collectSlop(selectorFor: (el: Element) => string): SlopNode[] {
         if (child) childTags.push(child.tagName.toLowerCase());
       }
       const next = el.nextElementSibling;
+      const rect = el.getBoundingClientRect();
+      const lineHeightPx = cs.lineHeight === "normal" ? 0 : Number.parseFloat(cs.lineHeight) || 0;
+      const textLen = Math.min((el.textContent ?? "").trim().length, 2000);
+      const isField = tag === "input" || tag === "textarea" || tag === "select";
+      let placeholder: string | undefined;
+      let labelled: boolean | undefined;
+      if (isField) {
+        placeholder = el.getAttribute("placeholder") || "";
+        const field = el as HTMLInputElement;
+        labelled = Boolean(
+          field.labels?.length ||
+            el.getAttribute("aria-label") ||
+            el.getAttribute("aria-labelledby") ||
+            el.closest("label"),
+        );
+      }
+      let hasAlt: boolean | undefined;
+      let ariaHidden: boolean | undefined;
+      if (tag === "img") {
+        hasAlt = el.hasAttribute("alt");
+        ariaHidden = el.getAttribute("aria-hidden") === "true" || el.getAttribute("role") === "presentation";
+      }
       nodes.push({
         selector: selectorFor(el),
         tag,
@@ -211,7 +248,22 @@ export function collectSlop(selectorFor: (el: Element) => string): SlopNode[] {
           (cs.boxShadow !== "" && cs.boxShadow !== "none"),
         childSig: childTags.join(","),
         parentSelector: el.parentElement ? selectorFor(el.parentElement) : null,
-        width: Math.round(el.getBoundingClientRect().width),
+        width: Math.round(rect.width),
+        lineHeightPx,
+        textLen,
+        transitionProperty: cs.transitionProperty || "",
+        transitionDuration: cs.transitionDuration || "",
+        transitionTiming: cs.transitionTimingFunction || "",
+        animationTiming: cs.animationTimingFunction || "",
+        filter: cs.filter || "",
+        backdropFilter: cs.backdropFilter || cs.getPropertyValue("-webkit-backdrop-filter") || "",
+        position: cs.position || "",
+        height: Math.round(rect.height),
+        radius: Number.parseFloat(cs.borderTopLeftRadius) || 0,
+        placeholder,
+        labelled,
+        hasAlt,
+        ariaHidden,
       });
     } catch {
       // One element never aborts the snapshot.
@@ -220,8 +272,39 @@ export function collectSlop(selectorFor: (el: Element) => string): SlopNode[] {
   return nodes;
 }
 
+/** A plain-data snapshot of page-wide layout and copy for the slop rules. */
+export interface SlopPage {
+  overflowPx: number;
+  text: string;
+  ctas: string[];
+}
+
+/** Snapshot page overflow, body copy, and visible calls to action; runs in the page. */
+export function collectSlopPage(): SlopPage {
+  const overflowPx = Math.max(
+    0,
+    document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  const text = (document.body ? document.body.innerText : "").slice(0, 8000);
+  const ctas: string[] = [];
+  const controls = document.querySelectorAll("button, a, [role=button]");
+  const limit = Math.min(controls.length, 500);
+  for (let i = 0; i < limit; i += 1) {
+    const el = controls[i];
+    if (!el) continue;
+    const label = (el.textContent ?? "").trim();
+    if (label.length < 1 || label.length > 40) continue;
+    const rect = el.getBoundingClientRect();
+    const visible = (rect.width > 0 && rect.height > 0) || (el as HTMLElement).offsetParent !== null;
+    if (!visible) continue;
+    ctas.push(label);
+    if (ctas.length >= 80) break;
+  }
+  return { overflowPx, text, ctas };
+}
+
 /** Turn collected element snapshots into slop findings; pure and self-contained. */
-export function slopFindings(nodes: SlopNode[]): LintFinding[] {
+export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] {
   const findings: LintFinding[] = [];
   const push = (selector: string, detail: string): void => {
     findings.push({ rule: "slop", selector, detail });
@@ -370,6 +453,294 @@ export function slopFindings(nodes: SlopNode[]): LintFinding[] {
     push(node.selector, `"${node.fontFamily}" display face is an overused default`);
   }
 
+  // Display leading: hero type set with paragraph leading.
+  let displayLeading = 0;
+  for (const node of nodes) {
+    if (displayLeading >= 3) break;
+    // Text elements only: a wrapper inherits the size of the heading inside it.
+    if (!/^(h[1-6]|p|span|a|blockquote|strong|em)$/.test(node.tag)) continue;
+    if (node.fontPx < 28 || node.text.length === 0) continue;
+    const lineHeight = node.lineHeightPx ?? 0;
+    if (lineHeight <= 0) continue;
+    const ratio = lineHeight / node.fontPx;
+    if (ratio < 1.45) continue;
+    displayLeading += 1;
+    push(
+      node.selector,
+      `${Math.round(node.fontPx)}px heading at line-height ${ratio.toFixed(2)}: set display type at 1.0–1.2`,
+    );
+  }
+
+  // Long measure: prose so wide its lines run past a readable character count.
+  const longMeasure: SlopNode[] = [];
+  for (const node of nodes) {
+    if (node.tag !== "p" && node.tag !== "li") continue;
+    if (node.fontPx <= 0 || (node.textLen ?? 0) < 160) continue;
+    if (node.width / (node.fontPx * 0.5) <= 90) continue;
+    longMeasure.push(node);
+  }
+  if (longMeasure.length >= 2) {
+    const shown = Math.min(longMeasure.length, 3);
+    for (let i = 0; i < shown; i += 1) {
+      const node = longMeasure[i]!;
+      const chars = Math.round(node.width / (node.fontPx * 0.5));
+      push(node.selector, `paragraph runs about ${chars} characters a line: cap prose at 65–75ch`);
+    }
+  }
+
+  // Transition all: controls that animate every property.
+  const interactiveTags: Record<string, boolean> = {
+    a: true,
+    button: true,
+    input: true,
+    select: true,
+    textarea: true,
+    summary: true,
+  };
+  let interactive = 0;
+  let transitionAll = 0;
+  for (const node of nodes) {
+    if (!interactiveTags[node.tag]) continue;
+    interactive += 1;
+    // Every element computes "all" with a 0s duration by default: only a timed "all" counts.
+    const props = (node.transitionProperty ?? "").split(",");
+    const durations = (node.transitionDuration ?? "").split(",");
+    for (let i = 0; i < props.length; i += 1) {
+      const duration = Number.parseFloat(durations[i % Math.max(durations.length, 1)] ?? "") || 0;
+      if (props[i]!.trim() === "all" && duration > 0) {
+        transitionAll += 1;
+        break;
+      }
+    }
+  }
+  if (interactive >= 8 && transitionAll / interactive >= 0.6) {
+    push(
+      "body",
+      `transition: all on ${transitionAll} of ${interactive} controls: transition named properties (transform, opacity, color)`,
+    );
+  }
+
+  // Overshoot easing: a cubic-bezier whose control point leaves 0–1.
+  const cubic = /cubic-bezier\(([^)]*)\)/g;
+  const overshootSeen: Record<string, boolean> = {};
+  let overshootCount = 0;
+  for (const node of nodes) {
+    if (overshootCount >= 2) break;
+    const timings = [node.transitionTiming ?? "", node.animationTiming ?? ""];
+    for (const timing of timings) {
+      cubic.lastIndex = 0;
+      let match = cubic.exec(timing);
+      while (match) {
+        const nums = (match[1] ?? "").split(",").map((v) => Number.parseFloat(v.trim()));
+        const y1 = nums[1];
+        const y2 = nums[3];
+        if (y1 !== undefined && y2 !== undefined && (y1 < 0 || y1 > 1 || y2 < 0 || y2 > 1)) {
+          const value = match[0] ?? "";
+          if (!overshootSeen[value]) {
+            overshootSeen[value] = true;
+            overshootCount += 1;
+            push(node.selector, `overshooting easing ${value}: use an ease-out without bounce`);
+            if (overshootCount >= 2) break;
+          }
+        }
+        match = cubic.exec(timing);
+      }
+      if (overshootCount >= 2) break;
+    }
+  }
+
+  // Coloured glow: a large, saturated, non-inset shadow.
+  const glowNodes: SlopNode[] = [];
+  for (const node of nodes) {
+    if (!node.boxShadow || node.boxShadow === "none") continue;
+    let glow = false;
+    for (const layer of shadowLayers(node.boxShadow)) {
+      if (!layer || /\binset\b/.test(layer)) continue;
+      const colour = /rgba?\(([^)]*)\)/.exec(layer);
+      if (!colour) continue;
+      const body = (colour[1] ?? "").trim();
+      const parts = body.includes(",")
+        ? body.split(",").map((p) => p.trim())
+        : body.split(/[\s/]+/).filter(Boolean);
+      const r = Number.parseFloat(parts[0] ?? "") / 255;
+      const g = Number.parseFloat(parts[1] ?? "") / 255;
+      const b = Number.parseFloat(parts[2] ?? "") / 255;
+      if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) continue;
+      const alpha = parts.length >= 4 ? Number.parseFloat(parts[3] ?? "") : 1;
+      if (!Number.isFinite(alpha)) continue;
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      const denom = 1 - Math.abs(max + min - 1);
+      const saturation = max === min || denom === 0 ? 0 : (max - min) / denom;
+      const lengths = (layer.match(/-?\d+(?:\.\d+)?px/g) ?? []).map((v) => Number.parseFloat(v));
+      const blur = lengths[2] ?? 0;
+      if (alpha > 0.2 && saturation > 0.4 && blur >= 24) {
+        glow = true;
+        break;
+      }
+    }
+    if (glow) glowNodes.push(node);
+  }
+  if (glowNodes.length >= 2) {
+    const shown = Math.min(glowNodes.length, 3);
+    for (let i = 0; i < shown; i += 1) {
+      push(glowNodes[i]!.selector, "coloured glow shadow: use one neutral elevation or surface tone");
+    }
+  }
+
+  // Blurred blob: a big blurred decorative layer.
+  let blobs = 0;
+  for (const node of nodes) {
+    if (blobs >= 2) break;
+    const position = node.position ?? "";
+    if (position !== "absolute" && position !== "fixed") continue;
+    if (node.width < 300 || (node.height ?? 0) < 300) continue;
+    const blur = /blur\(\s*(-?\d+(?:\.\d+)?)px\s*\)/.exec(node.filter ?? "");
+    if (!blur) continue;
+    if ((Number.parseFloat(blur[1] ?? "") || 0) < 40) continue;
+    blobs += 1;
+    push(node.selector, "blurred decorative blob: show the product instead");
+  }
+
+  // Glass content panel: frosted backdrop over real content.
+  const panelTags: Record<string, boolean> = { header: true, nav: true, dialog: true, menu: true };
+  let glassed = 0;
+  for (const node of nodes) {
+    if (glassed >= 2) break;
+    if (!(node.backdropFilter ?? "").includes("blur(")) continue;
+    if (panelTags[node.tag] || !node.cardLike) continue;
+    if ((node.textLen ?? 0) < 40) continue;
+    glassed += 1;
+    push(node.selector, "frosted glass panel holding content: give it a solid surface");
+  }
+
+  // One radius everywhere: a single corner value across every shape.
+  const radiusCounts: Record<string, number> = {};
+  const radiusCandidates: SlopNode[] = [];
+  for (const node of nodes) {
+    if ((node.radius ?? 0) <= 0) continue;
+    const control =
+      node.tag === "button" ||
+      node.tag === "input" ||
+      node.tag === "select" ||
+      node.tag === "textarea" ||
+      node.tag === "img";
+    if (!control && !(node.cardLike && node.width >= 200)) continue;
+    radiusCandidates.push(node);
+    const key = String(Math.round(node.radius ?? 0));
+    radiusCounts[key] = (radiusCounts[key] ?? 0) + 1;
+  }
+  if (radiusCandidates.length >= 10) {
+    let commonRadius = 0;
+    let commonCount = 0;
+    for (const key of Object.keys(radiusCounts)) {
+      const count = radiusCounts[key]!;
+      if (count > commonCount) {
+        commonCount = count;
+        commonRadius = Number.parseInt(key, 10);
+      }
+    }
+    let narrowest = radiusCandidates[0]!.width;
+    let widest = radiusCandidates[0]!.width;
+    for (const node of radiusCandidates) {
+      if (node.width < narrowest) narrowest = node.width;
+      if (node.width > widest) widest = node.width;
+    }
+    // A sharp style (0–2px everywhere) is a decision, not a habit.
+    if (commonRadius > 2 && commonCount / radiusCandidates.length >= 0.8 && widest > narrowest * 3) {
+      push(
+        "body",
+        `one ${commonRadius}px radius on ${commonCount} of ${radiusCandidates.length} shapes: set radius by role (controls smaller, cards larger, media 0)`,
+      );
+    }
+  }
+
+  // Placeholder-only field: a control whose only label is its placeholder.
+  let placeholderOnly = 0;
+  for (const node of nodes) {
+    if (placeholderOnly >= 4) break;
+    if (node.tag !== "input" && node.tag !== "textarea" && node.tag !== "select") continue;
+    if (node.labelled !== false) continue;
+    const placeholder = node.placeholder ?? "";
+    if (!placeholder) continue;
+    placeholderOnly += 1;
+    push(node.selector, `field labelled only by its placeholder "${placeholder}"`);
+  }
+
+  // Missing alt: an exposed image with no alt text.
+  let missingAlt = 0;
+  for (const node of nodes) {
+    if (missingAlt >= 4) break;
+    if (node.tag !== "img" || node.hasAlt !== false || node.ariaHidden === true) continue;
+    missingAlt += 1;
+    push(node.selector, "image without alt text");
+  }
+
+  if (page) {
+    if (page.overflowPx > 1) {
+      push("html", `page scrolls sideways by ${page.overflowPx}px at this width`);
+    }
+
+    // Copy clichés: stock marketing language.
+    const cliches: RegExp[] = [
+      /\b(supercharge|unlock|empower|streamline|revolutioni[sz]e)\b/i,
+      /\bseamless(ly)?\b/i,
+      /\b(all[- ]in[- ]one)\b/i,
+      /\bnext[- ]gen(eration)?\b/i,
+      /\bAI[- ](powered|driven|native)\b/i,
+      /\b(build|shape) the future\b/i,
+      /\bgame[- ]chang(er|ing)\b/i,
+    ];
+    const matchedCopy: string[] = [];
+    for (const cliche of cliches) {
+      const match = cliche.exec(page.text);
+      if (match) matchedCopy.push(match[0] ?? "");
+    }
+    if (matchedCopy.length >= 2) {
+      push(
+        "body",
+        `generic copy (${matchedCopy.join(", ")}): name the audience, the task and a concrete outcome`,
+      );
+    }
+
+    // Generic calls to action: interchangeable button labels.
+    const genericCtas: Record<string, boolean> = {
+      "get started": true,
+      "learn more": true,
+      "try it free": true,
+      "try for free": true,
+      "start for free": true,
+      "book a demo": true,
+      "request a demo": true,
+      "sign up": true,
+      "contact sales": true,
+      "click here": true,
+    };
+    let genericCount = 0;
+    const examples: string[] = [];
+    for (const cta of page.ctas) {
+      const label = cta.trim().toLowerCase();
+      if (!genericCtas[label]) continue;
+      genericCount += 1;
+      if (examples.indexOf(label) === -1) examples.push(label);
+    }
+    if (genericCount >= 3) {
+      push(
+        "body",
+        `${genericCount} generic calls to action ("${examples.slice(0, 3).join(", ")}"): name what each one does`,
+      );
+    }
+
+    // Placeholder copy: lorem ipsum and stand-in names.
+    const placeholderCopy =
+      /lorem ipsum|\bjohn doe\b|\bjane doe\b|\bacme\b|\bfeature (one|two|three|[1-9])\b|\byour company\b|\bcompany name\b/i.exec(
+        page.text,
+      );
+    if (placeholderCopy) {
+      push("body", `placeholder copy "${placeholderCopy[0] ?? ""}": use real, specific names and content`);
+    }
+  }
+
   return findings;
 }
 
@@ -389,6 +760,7 @@ export function designLint(
     onGrid: typeof onGrid;
     colorKey: typeof colorKey;
     collectSlop: typeof collectSlop;
+    collectSlopPage: typeof collectSlopPage;
     slopFindings: typeof slopFindings;
   },
 ): LintResult {
@@ -686,7 +1058,7 @@ export function designLint(
 
   // Slop: generic AI design tells, from a snapshot of every element.
   try {
-    findings.push(...h.slopFindings(h.collectSlop(selectorFor)));
+    findings.push(...h.slopFindings(h.collectSlop(selectorFor), h.collectSlopPage()));
   } catch {
     skipped.push("slop");
   }
@@ -696,7 +1068,7 @@ export function designLint(
 
 /** The design lint as one page expression, embedding the selector and helpers. */
 export function lintScript(selectorFor: (el: Element) => string): string {
-  return `(() => JSON.stringify((${designLint.toString()})(${selectorFor.toString()}, { parseColor: ${parseColor.toString()}, blend: ${blend.toString()}, contrastRatio: ${contrastRatio.toString()}, minContrast: ${minContrast.toString()}, onGrid: ${onGrid.toString()}, colorKey: ${colorKey.toString()}, collectSlop: ${collectSlop.toString()}, slopFindings: ${slopFindings.toString()} })))()`;
+  return `(() => JSON.stringify((${designLint.toString()})(${selectorFor.toString()}, { parseColor: ${parseColor.toString()}, blend: ${blend.toString()}, contrastRatio: ${contrastRatio.toString()}, minContrast: ${minContrast.toString()}, onGrid: ${onGrid.toString()}, colorKey: ${colorKey.toString()}, collectSlop: ${collectSlop.toString()}, collectSlopPage: ${collectSlopPage.toString()}, slopFindings: ${slopFindings.toString()} })))()`;
 }
 
 /** How many findings `formatLint` prints before eliding the rest. */
