@@ -301,10 +301,14 @@ export interface SlopPage {
   fontStacks?: string[];
   /** The visible text outside code, pre, kbd and samp, where identifiers belong. */
   proseText?: string;
+  /** Text a hidden-overflow box cuts off (deliberate ellipsis and line clamps excepted). */
+  clipped?: { selector: string; text: string; px: number }[];
+  /** Text drawn over other text (neither inside the other). */
+  overlaps?: { selector: string; text: string; other: string }[];
 }
 
-/** Snapshot page overflow, body copy, and visible calls to action; runs in the page. */
-export function collectSlopPage(): SlopPage {
+/** Snapshot page overflow, body copy, visible calls to action and (given `selectorFor`) clipped or overlapping text; runs in the page. */
+export function collectSlopPage(selectorFor?: (el: Element) => string): SlopPage {
   const overflowPx = Math.max(
     0,
     document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -341,7 +345,99 @@ export function collectSlopPage(): SlopPage {
       if (proseText.length < 8000 && !parent.closest("code, pre, kbd, samp")) proseText += `${value} `;
     }
   }
-  return { overflowPx, text, ctas, fontStacks, proseText };
+  // Text fit: each visible text node's line boxes, checked against the nearest hidden-overflow box and against other text.
+  const clipped: { selector: string; text: string; px: number }[] = [];
+  const overlaps: { selector: string; text: string; other: string }[] = [];
+  if (selectorFor && document.body) {
+    const leaves: { el: Element; lines: DOMRect[]; text: string; pinned: Element | null }[] = [];
+    const taken = new Set<Element>();
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(), seen = 0; n && seen < 4000 && leaves.length < 400; n = walker.nextNode(), seen += 1) {
+      const value = (n.nodeValue ?? "").trim();
+      const parent = n.parentElement;
+      if (value.length < 2 || !parent || taken.has(parent)) continue;
+      if (parent.closest("script, style, noscript, template, svg, [aria-hidden=true]")) continue;
+      taken.add(parent);
+      const cs = getComputedStyle(parent);
+      const alpha = /rgba?\([^)]*[,/]\s*([\d.]+)\s*\)/.exec(cs.color);
+      if (cs.visibility !== "visible" || Number(cs.opacity) < 0.5 || (alpha && Number(alpha[1]) < 0.5)) continue;
+      // Inside a closed <details>, a hidden or faded ancestor: not on screen at all.
+      const check = (parent as unknown as { checkVisibility?: (o: object) => boolean }).checkVisibility;
+      if (check && !check.call(parent, { opacityProperty: true, visibilityProperty: true })) continue;
+      // Icon-font ligatures ("arrow_forward") are glyphs, not text.
+      if (/icons|symbols/i.test(cs.fontFamily)) continue;
+      const range = document.createRange();
+      range.selectNodeContents(n);
+      const lines = Array.prototype.slice.call(range.getClientRects(), 0, 6).filter((r: DOMRect) => r.width >= 1 && r.height >= 1) as DOMRect[];
+      if (!lines.length) continue;
+      const text = value.replace(/\s+/g, " ").slice(0, 40);
+      // The fixed or sticky bar it sits in (page content scrolls under a bar by design), and the part of
+      // its lines that every scrolling or clipping box around it leaves in view.
+      let pinned: Element | null = null;
+      let faded = false;
+      let view = { left: -1e9, top: -1e9, right: 1e9, bottom: 1e9 };
+      for (let a: Element | null = parent.parentElement; a && a !== document.body && a !== document.documentElement; a = a.parentElement) {
+        const as = getComputedStyle(a);
+        if (Number(as.opacity) < 0.5) faded = true;
+        if (!pinned && (as.position === "fixed" || as.position === "sticky")) pinned = a;
+        if (as.overflowX !== "visible" || as.overflowY !== "visible") {
+          const r = a.getBoundingClientRect();
+          view = { left: Math.max(view.left, r.left), top: Math.max(view.top, r.top), right: Math.min(view.right, r.right), bottom: Math.min(view.bottom, r.bottom) };
+        }
+      }
+      if (!pinned && (cs.position === "fixed" || cs.position === "sticky")) pinned = parent;
+      // Each line's ink band (the font box less its ascent and descent room), as far as it is in view.
+      const shown: DOMRect[] = [];
+      for (const r of faded ? [] : lines) {
+        const left = Math.max(r.left, view.left);
+        const top = Math.max(r.top + r.height * 0.25, view.top);
+        const right = Math.min(r.right, view.right);
+        const bottom = Math.min(r.bottom - r.height * 0.2, view.bottom);
+        if (right - left >= 1 && bottom - top >= 1) shown.push(new DOMRect(left, top, right - left, bottom - top));
+      }
+      if (shown.length) leaves.push({ el: parent, lines: shown, text, pinned });
+      if (clipped.length >= 8) continue;
+      const rect = range.getBoundingClientRect();
+      for (let a: Element | null = parent; a && a !== document.body && a !== document.documentElement; a = a.parentElement) {
+        const s = getComputedStyle(a);
+        const cx = s.overflowX === "hidden" || s.overflowX === "clip";
+        const cy = s.overflowY === "hidden" || s.overflowY === "clip";
+        if (!cx && !cy) continue;
+        // An ellipsis or a line clamp is a deliberate cut.
+        const clamp = (s as unknown as { webkitLineClamp?: string }).webkitLineClamp;
+        if (s.textOverflow === "ellipsis" || (clamp && clamp !== "none")) break;
+        const box = a.getBoundingClientRect();
+        // Screen-reader-only text and collapsed panels are meant to be out of sight.
+        if (box.width < 16 || box.height < 8) break;
+        const inside = Math.min(rect.right, box.right) - Math.max(rect.left, box.left) > 0 && Math.min(rect.bottom, box.bottom) - Math.max(rect.top, box.top) > 0;
+        const px = Math.round(Math.max(cx ? box.left - rect.left : 0, cx ? rect.right - box.right : 0, cy ? box.top - rect.top : 0, cy ? rect.bottom - box.bottom : 0));
+        // Only text the box shows in part: wholly hidden text is a closed menu or an off-screen slide.
+        if (inside && px > 4) clipped.push({ selector: selectorFor(parent), text, px });
+        break;
+      }
+    }
+    for (let i = 0; i < leaves.length && overlaps.length < 8; i += 1) {
+      const a = leaves[i]!;
+      for (let j = i + 1; j < leaves.length; j += 1) {
+        const b = leaves[j]!;
+        if (a.el.contains(b.el) || b.el.contains(a.el) || a.pinned !== b.pinned) continue;
+        let hit = false;
+        for (const ra of a.lines) {
+          for (const rb of b.lines) {
+            const w = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left);
+            const h = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);
+            // Ink over ink, not tightly stacked lines whose font boxes touch.
+            if (w > 4 && h > 1) hit = true;
+          }
+        }
+        if (hit) {
+          overlaps.push({ selector: selectorFor(b.el), text: b.text, other: a.text });
+          break;
+        }
+      }
+    }
+  }
+  return { overflowPx, text, ctas, fontStacks, proseText, clipped, overlaps };
 }
 
 /** Turn collected element snapshots into slop findings; pure and self-contained. */
@@ -791,6 +887,14 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
       push("html", `page scrolls sideways by ${page.overflowPx}px at this width`);
     }
 
+    // Text cut off by its box, or drawn over other text: titles under bars, clipped chips, colliding labels.
+    for (const c of page.clipped ?? []) {
+      push(c.selector, `text "${c.text}" is cut off by its box (${c.px}px hidden): let it wrap, shorten it, or make the row scroll`);
+    }
+    for (const o of page.overlaps ?? []) {
+      push(o.selector, `text "${o.text}" overlaps "${o.other}": give each its own space`);
+    }
+
     // Copy clichés: stock marketing language.
     const cliches: RegExp[] = [
       /\b(supercharge|unlock|empower|streamline|revolutioni[sz]e)\b/i,
@@ -1205,7 +1309,7 @@ export function designLint(
 
   // Slop: generic AI design tells, from a snapshot of every element.
   try {
-    findings.push(...h.slopFindings(h.collectSlop(selectorFor), h.collectSlopPage()));
+    findings.push(...h.slopFindings(h.collectSlop(selectorFor), h.collectSlopPage(selectorFor)));
   } catch {
     skipped.push("slop");
   }

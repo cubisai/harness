@@ -397,6 +397,19 @@ describe("slopFindings", () => {
     expect(out.some((f) => f.detail.includes("page scrolls sideways by 40px"))).toBe(true);
   });
 
+  it("flags text its box cuts off and text drawn over other text", () => {
+    const out = slopFindings([node({})], {
+      overflowPx: 0,
+      text: "",
+      ctas: [],
+      clipped: [{ selector: "footer button", text: "Schedule private viewing", px: 94 }],
+      overlaps: [{ selector: "nav span", text: "Map", other: "$310,000" }],
+    });
+    expect(out).toContainEqual({ rule: "slop", selector: "footer button", detail: expect.stringContaining('"Schedule private viewing" is cut off by its box (94px hidden)') });
+    expect(out).toContainEqual({ rule: "slop", selector: "nav span", detail: expect.stringContaining('"Map" overlaps "$310,000"') });
+    expect(slopFindings([node({})], { overflowPx: 0, text: "", ctas: [], clipped: [], overlaps: [] })).toEqual([]);
+  });
+
   it("flags generic copy clichés", () => {
     const out = slopFindings([node({})], {
       overflowPx: 0,
