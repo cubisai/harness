@@ -32,9 +32,9 @@ const STITCH_SECTIONS = [
 describe("Design mode guide (DESIGN-MODE.md)", () => {
   const designMode = join(RESOURCES, "DESIGN-MODE.md");
 
-  it("stays within its 900-token budget", () => {
+  it("stays within its 1300-token budget (the brief step, 2026-10-26)", () => {
     const text = readFileSync(designMode, "utf8").replace(/\r\n?/g, "\n").trim();
-    expect(estimateTokens(text)).toBeLessThanOrEqual(900);
+    expect(estimateTokens(text)).toBeLessThanOrEqual(1300);
   });
 
   it("ends a design thread's guide with Design mode's text for its folder, stable across calls", () => {

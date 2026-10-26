@@ -970,6 +970,7 @@ async function main(): Promise<void> {
     app.isPackaged ? join(process.resourcesPath, "design-styles") : join(app.getAppPath(), "resources", "design-styles"),
     app.isPackaged ? join(process.resourcesPath, "design-fonts") : join(app.getAppPath(), "resources", "design-fonts"),
   );
+  service.setDesignPatternsDir(app.isPackaged ? join(process.resourcesPath, "design-patterns") : join(app.getAppPath(), "resources", "design-patterns"));
   // After a design turn writes pages, they're linted off screen (one at a time); a page that fails to render is skipped.
   service.setDesignAutoLint(async (threadId, root, rels) => {
     const pages: PageLint[] = [];

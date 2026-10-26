@@ -6,7 +6,7 @@ import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
 import { Store } from "../src/main/db";
 import { listDesignStyles, materializeSystem, styleIndex } from "../src/main/design/systems";
 import { Service } from "../src/main/service";
-import { readDirection } from "../src/shared/direction";
+import { readDirection, SURFACES } from "../src/shared/direction";
 import { tierOf } from "../src/shared/tiers";
 import { catalog, closeAfter, tempDir } from "./helpers";
 
@@ -169,6 +169,7 @@ describe("More styles", () => {
     const RESOURCES = join(__dirname, "..", "resources");
     service.setDesignSystemsDir(join(RESOURCES, "design-systems"));
     service.setDesignStylesDir(join(RESOURCES, "design-styles"), join(RESOURCES, "design-fonts"));
+    service.setDesignPatternsDir(join(RESOURCES, "design-patterns"));
     const project = store.addProject(tempDir());
     return { store, service, project };
   }
@@ -212,6 +213,22 @@ describe("More styles", () => {
     service.promoteDesignVariant(thread.id, "variant-swiss-grid.html");
     expect(store.getThread(thread.id).designDirection?.style).toBe("style:swiss-grid");
     expect(store.getThread(thread.id).designSystem).toBe("auto");
+  });
+
+  it("copies the surface's pattern notes into system/ and asks for a brief", () => {
+    const { service, project } = realSetup();
+    const thread = service.createThread(project.id, undefined, "design");
+    const reply = service.setDesignDirection(thread.id, { surface: "workspace", mode: "operate", tier: "working", style: "control-room" });
+    const root = service.designRoot(thread.id)!;
+    expect(readFileSync(join(root, "system", "patterns.md"), "utf8")).toContain("# Workspace patterns");
+    expect(reply).toContain("system/patterns.md");
+    expect(reply).toContain("brief.md");
+    service.setDesignDirection(thread.id, { surface: "mobile", mode: "operate", tier: "working", style: "control-room" });
+    expect(readFileSync(join(root, "system", "patterns.md"), "utf8")).toContain("# Mobile patterns");
+  });
+
+  it("ships pattern notes for every surface", () => {
+    for (const s of SURFACES) expect(existsSync(join(__dirname, "..", "resources", "design-patterns", `${s}.md`))).toBe(true);
   });
 });
 

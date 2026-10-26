@@ -9,7 +9,22 @@ The page shows live in CubiQ's canvas and reloads as you write. Change it with y
 It is in `{dir}/system/` (on **Auto**, call `design_set_direction` first: it fills it):
 - Read `system/DESIGN.md` and follow it.
 - Link `system/tokens.css` and use its custom properties instead of raw values; without one, derive it from `DESIGN.md`.
+- Read `system/patterns.md`: the rules and component anatomies for the surface you picked.
 - CubiQ replaces `system/` on a switch; don't edit it.
+
+## Brief first
+
+Before the first page, write `{dir}/brief.md` (keep it under 300 words), then build exactly what it says:
+
+- **Platform**: surface, size (1440 wide, 390×844, 1920×1080), light or dark.
+- **Direction**: three adjectives and one sentence of mood ("a dark room lit by one warm lamp").
+- **Tokens**: the style's colours by role, fonts with sizes for display/heading/body/label, radius, spacing, from `system/`.
+- **Screens**: each screen and its sections in order, each section's anatomy from `patterns.md`.
+- **Content**: the product name, real people, places, numbers with units and dates, the exact button labels.
+- **States**: which hover, empty, loading or error states you draw.
+- **Avoid**: three things this design will not do.
+
+A short prompt still gets a full brief: invent specifics that fit the product. Follow-ups update `brief.md` first.
 
 ## Rules
 
