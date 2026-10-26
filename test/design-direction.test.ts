@@ -27,12 +27,11 @@ function fakeDriver(): AgentDriver & { prompts: string[] } {
   };
 }
 
-/** A style library with two styles (one with a font) and a font pack, plus a built-in "clean" system. */
-function library(): { styles: string; fonts: string; systems: string } {
+/** A style library with two styles (one with a font) and a font pack. */
+function library(): { styles: string; fonts: string } {
   const root = tempDir();
   const styles = join(root, "styles");
   const fonts = join(root, "fonts");
-  const systems = join(root, "systems");
   mkdirSync(fonts, { recursive: true });
   writeFileSync(join(fonts, "riso-display.woff2"), "FONT");
   const style = (folder: string, extra: string) => {
@@ -45,11 +44,7 @@ function library(): { styles: string; fonts: string; systems: string } {
   style("swiss", "");
   mkdirSync(join(styles, "broken"), { recursive: true });
   writeFileSync(join(styles, "broken", "index.md"), "---\ntype: design-style\n---\n");
-  mkdirSync(join(systems, "clean"), { recursive: true });
-  writeFileSync(join(systems, "clean", "index.md"), "---\ntype: design-system\nname: Clean\n---\n");
-  writeFileSync(join(systems, "clean", "DESIGN.md"), "# Clean\n");
-  writeFileSync(join(systems, "clean", "tokens.css"), ":root{}\n");
-  return { styles, fonts, systems };
+  return { styles, fonts };
 }
 
 function setup() {
@@ -58,7 +53,6 @@ function setup() {
   const driver = fakeDriver();
   const service = new Service(store, () => catalog(), [driver], () => {});
   const lib = library();
-  service.setDesignSystemsDir(lib.systems);
   service.setDesignStylesDir(lib.styles, lib.fonts);
   const project = store.addProject(tempDir());
   return { store, service, driver, project, lib };
@@ -88,10 +82,11 @@ describe("style library", () => {
 });
 
 describe("Auto design threads", () => {
-  it("start on Auto when no system is picked; an explicit pick and chat threads are unchanged", () => {
+  it("start on Auto when no system (or a gone one) is picked; an explicit pick and chat threads are unchanged", () => {
     const { service, project } = setup();
     expect(service.createThread(project.id, undefined, "design").designSystem).toBe("auto");
-    expect(service.createThread(project.id, undefined, "design", "clean").designSystem).toBe("clean");
+    expect(service.createThread(project.id, undefined, "design", "style:swiss").designSystem).toBe("style:swiss");
+    expect(service.createThread(project.id, undefined, "design", "clean").designSystem).toBe("auto");
     expect(service.createThread(project.id).designSystem).toBeUndefined();
   });
 
@@ -149,14 +144,14 @@ describe("Auto design threads", () => {
     });
   });
 
-  it("leave a legacy thread (no system stored) on the old default", async () => {
+  it("give a legacy row the migration missed (no system stored) no fixed fallback palette", async () => {
     const { service, store, driver, project } = setup();
     const legacy = service.createThread(project.id, undefined, "design");
     store.setDesignSystem(legacy.id, null);
     await service.send({ threadId: legacy.id, text: "x" });
     expect(driver.prompts[0]).not.toContain("design_set_direction");
     expect(driver.prompts[0]).toContain("Prototype tier: Working.");
-    expect(readFileSync(join(service.designRoot(legacy.id)!, "system", "DESIGN.md"), "utf8")).toBe("# Clean\n");
+    expect(existsSync(join(service.designRoot(legacy.id)!, "system", "DESIGN.md"))).toBe(false);
   });
 });
 
@@ -167,7 +162,6 @@ describe("More styles", () => {
     closeAfter(() => store.close());
     const service = new Service(store, () => catalog(), [fakeDriver()], () => {});
     const RESOURCES = join(__dirname, "..", "resources");
-    service.setDesignSystemsDir(join(RESOURCES, "design-systems"));
     service.setDesignStylesDir(join(RESOURCES, "design-styles"), join(RESOURCES, "design-fonts"));
     service.setDesignPatternsDir(join(RESOURCES, "design-patterns"));
     service.setDesignIconsDir(join(RESOURCES, "design-icons"));

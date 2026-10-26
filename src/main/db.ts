@@ -206,7 +206,7 @@ export class Store {
       },
       // 20: design threads (Design mode); every existing thread is a chat.
       { applied: () => this.hasColumn("threads", "kind"), sql: "ALTER TABLE threads ADD COLUMN kind TEXT NOT NULL DEFAULT 'chat'" },
-      // 21: a design thread's chosen design system (null = the default: the project's DESIGN.md, else Clean).
+      // 21: a design thread's chosen design system (null = the default until step 34; now always set).
       { applied: () => this.hasColumn("threads", "design_system"), sql: "ALTER TABLE threads ADD COLUMN design_system TEXT" },
       // 22: a design thread's prototype tier (null = the default: working).
       { applied: () => this.hasColumn("threads", "prototype_tier"), sql: "ALTER TABLE threads ADD COLUMN prototype_tier TEXT" },
@@ -358,6 +358,12 @@ export class Store {
       },
       // 33: an Auto design thread's direction (surface, mode, style, tier) as JSON; null until the agent picks one.
       { applied: () => this.hasColumn("threads", "design_direction"), sql: "ALTER TABLE threads ADD COLUMN design_direction TEXT" },
+      // 34: the built-in design systems (clean, dashboard, editorial, mono, playful) are gone, as is "the default": those
+      // design threads become Auto and pick a style on their next turn.
+      {
+        applied: () => false,
+        sql: "UPDATE threads SET design_system = 'auto', design_direction = NULL WHERE kind = 'design' AND (design_system IS NULL OR design_system IN ('clean', 'dashboard', 'editorial', 'mono', 'playful'))",
+      },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;

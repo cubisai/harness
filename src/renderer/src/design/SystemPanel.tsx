@@ -123,7 +123,7 @@ export function SystemPanel({ threadId, reloadKey }: { threadId: string; reloadK
   for (const t of tokens) sections[sectionOf(t)].push(t);
   const hasOverview = system.designMd.trim().length > 0 || editable;
   const subline = system.copyOnWrite
-    ? "Built-in · your first edit saves a copy in .agents/design-systems/"
+    ? "Library style · your first edit saves a copy in .agents/design-systems/"
     : !editable
       ? "Read-only: open a project folder to customize it."
       : "Project copy · edits apply live";

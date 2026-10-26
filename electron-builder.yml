@@ -16,11 +16,9 @@ extraResources:
     to: skills
   - from: resources/CUBIQ.md
     to: CUBIQ.md
-  # Design mode: its guide and the built-in design systems.
+  # Design mode: its guide.
   - from: resources/DESIGN-MODE.md
     to: DESIGN-MODE.md
-  - from: resources/design-systems
-    to: design-systems
   # The style library Auto design threads pick from, and the font pack its styles use.
   - from: resources/design-styles
     to: design-styles

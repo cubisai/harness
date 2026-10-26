@@ -28,9 +28,9 @@ Then build a one-page specimen at the design folder's `index.html` (linking `../
 - Derive a dark theme when the source has none (invert surfaces, keep hue of primary, re-check contrast) and mark it as derived.
 - Fonts: keep the source's family names first in the stack, then system fallbacks; the canvas has no network, so web fonts will fall back.
 
-## 3. tokens.css contract (same names as CubiQ's built-ins)
+## 3. tokens.css contract (same names as CubiQ's styles)
 
-`:root` with `color-scheme`, `--color-{bg,surface,surface-2,text,text-muted,border,primary,on-primary,accent,success,warning,danger,focus}`, `--font-{sans,display,mono}`, `--text-{xs..4xl}` + `--leading-{xs..4xl}`, `--weight-{regular,medium,bold}`, `--space-{1,2,3,4,6,8,10,12,16,20,24}` (4…96px), `--target-min: 44px`, `--content-max`, `--measure`, `--radius-{sm,md,lg,full}`, `--shadow-{1,2,3}`, `--duration-fast`, `--duration`, `--ease`; dark colors under `@media (prefers-color-scheme: dark)`; zero durations under `prefers-reduced-motion`. A built-in for reference: `system/tokens.css` in the design folder.
+`:root` with `color-scheme`, `--color-{bg,surface,surface-2,text,text-muted,border,primary,on-primary,accent,success,warning,danger,focus}`, `--font-{sans,display,mono}`, `--text-{xs..4xl}` + `--leading-{xs..4xl}`, `--weight-{regular,medium,bold}`, `--space-{1,2,3,4,6,8,10,12,16,20,24}` (4…96px), `--target-min: 44px`, `--content-max`, `--measure`, `--radius-{sm,md,lg,full}`, `--shadow-{1,2,3}`, `--duration-fast`, `--duration`, `--ease`; dark colors under `@media (prefers-color-scheme: dark)`; zero durations under `prefers-reduced-motion`. For reference: a style's `system/tokens.css` in a design folder.
 
 ## 4. DESIGN.md sections
 

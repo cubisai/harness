@@ -15,7 +15,7 @@ export interface ExpertPreset {
   kind?: "design";
   /** Skills added to the first message as chips. */
   skills?: string[];
-  /** A design system id; absent = the project's default. */
+  /** A design system id; absent = Auto (the agent picks a style, or the project's own DESIGN.md). */
   designSystem?: string;
 }
 
@@ -30,7 +30,6 @@ export const EXPERTS: ExpertPreset[] = [
     tags: ["Prototype", "Web", "States"],
     kind: "design",
     skills: ["design-prototype"],
-    designSystem: "clean",
   },
   {
     id: "mobile-designer",
@@ -42,7 +41,6 @@ export const EXPERTS: ExpertPreset[] = [
     tags: ["iOS", "Android", "Flows"],
     kind: "design",
     skills: ["design-mobile"],
-    designSystem: "clean",
   },
   {
     id: "slide-designer",
@@ -54,7 +52,6 @@ export const EXPERTS: ExpertPreset[] = [
     tags: ["Slides", "Storytelling", "PDF"],
     kind: "design",
     skills: ["design-slides"],
-    designSystem: "editorial",
   },
   {
     id: "design-system-architect",

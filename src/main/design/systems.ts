@@ -5,13 +5,13 @@ import { STYLE_PREFIX } from "../../shared/direction";
 
 /** One design system a design thread can be started from. */
 export interface DesignSystemInfo {
-  /** "project" (repo-root DESIGN.md), "project:<folder>" (.agents/design-systems), or the built-in folder name. */
+  /** "project" (repo-root DESIGN.md), "project:<folder>" (.agents/design-systems), or "style:<folder>" (the style library). */
   id: string;
   name: string;
   description: string;
   /** Up to 4 CSS colors from index.md `swatches:` (comma-separated), for the picker. */
   swatches: string[];
-  source: "project" | "projectFolder" | "builtin" | "style";
+  source: "project" | "projectFolder" | "style";
   /** Absolute path of its DESIGN.md. */
   designMd: string;
   /** Absolute path of its tokens.css, when it has one. */
@@ -99,16 +99,11 @@ function readText(file: string): string | null {
 }
 
 /**
- * Design-system folders under `root`, sorted by name. A folder counts when its
+ * Design-system folders under `root` (a project's `.agents/design-systems`), sorted by name. A folder counts when its
  * `index.md` says `type: design-system` and it has a `DESIGN.md`; anything else
  * is skipped silently.
  */
-function collectSystems(
-  root: string,
-  source: "projectFolder" | "builtin",
-  out: DesignSystemInfo[],
-  seen: Set<string>,
-): void {
+function collectSystems(root: string, out: DesignSystemInfo[], seen: Set<string>): void {
   let folders: string[];
   try {
     folders = readdirSync(root, { withFileTypes: true })
@@ -119,7 +114,7 @@ function collectSystems(
     return;
   }
   for (const folder of folders) {
-    const id = source === "projectFolder" ? `project:${folder}` : folder;
+    const id = `project:${folder}`;
     if (seen.has(id)) continue;
     const dir = join(root, folder);
     const index = parseSystemIndex(readText(join(dir, "index.md")) ?? "");
@@ -134,7 +129,7 @@ function collectSystems(
       name: index.name || folder,
       description: index.description || "",
       swatches: index.swatches,
-      source,
+      source: "projectFolder",
       designMd,
       ...(isFile(tokensCss) ? { tokensCss } : {}),
       ...(fontFiles.length ? { fontFiles } : {}),
@@ -143,12 +138,10 @@ function collectSystems(
 }
 
 /**
- * The design systems available at `projectPath` (its own `DESIGN.md` and
- * `.agents/design-systems`), then the built-ins in `builtinDir`. Earlier
- * sources win a duplicate id; a missing or unreadable folder contributes
- * nothing.
+ * The design systems available at `projectPath`: its own `DESIGN.md`, then
+ * `.agents/design-systems`. A missing or unreadable folder contributes nothing.
  */
-export function listDesignSystems(projectPath: string | null, builtinDir: string): DesignSystemInfo[] {
+export function listDesignSystems(projectPath: string | null): DesignSystemInfo[] {
   const out: DesignSystemInfo[] = [];
   const seen = new Set<string>();
   if (projectPath) {
@@ -157,9 +150,8 @@ export function listDesignSystems(projectPath: string | null, builtinDir: string
       seen.add("project");
       out.push({ id: "project", name: "Project", description: "This project's DESIGN.md", swatches: [], source: "project", designMd });
     }
-    collectSystems(join(projectPath, ".agents", "design-systems"), "projectFolder", out, seen);
+    collectSystems(join(projectPath, ".agents", "design-systems"), out, seen);
   }
-  collectSystems(builtinDir, "builtin", out, seen);
   return out;
 }
 
@@ -220,13 +212,13 @@ export function styleIndex(styles: DesignStyleInfo[]): string {
     .join("\n");
 }
 
-/** The entry with `id`, else the project's own, else "clean", else the first. */
+/** The entry with `id`, else the project's own DESIGN.md, else null. */
 export function resolveDesignSystem(list: DesignSystemInfo[], id: string | null | undefined): DesignSystemInfo | null {
   if (id) {
     const exact = list.find((s) => s.id === id);
     if (exact) return exact;
   }
-  return list.find((s) => s.id === "project") ?? list.find((s) => s.id === "clean") ?? list[0] ?? null;
+  return list.find((s) => s.id === "project") ?? null;
 }
 
 /** True when `src` and `dest` hold the same bytes; a missing dest is different. */
@@ -326,13 +318,13 @@ function syncFonts(files: string[], fontsDir: string): boolean {
 }
 
 /**
- * Copy a built-in design system into the project's `.agents/design-systems` as
- * `<id>-custom`, for edits to land in the project. A non-built-in passes through
+ * Copy a style from the library into the project's `.agents/design-systems` as
+ * `<id>-custom`, for edits to land in the project. Anything else passes through
  * unchanged; an existing copy is left as-is and its own index read back.
  */
 export function forkSystem(system: DesignSystemInfo, projectPath: string): DesignSystemInfo {
-  if (system.source !== "builtin" && system.source !== "style") return system;
-  const base = system.source === "style" ? system.id.slice(STYLE_PREFIX.length) : system.id;
+  if (system.source !== "style") return system;
+  const base = system.id.slice(STYLE_PREFIX.length);
   if (!/^[\w.-]+$/.test(base)) throw new Error("Can't copy this design system.");
   const folder = `${base}-custom`;
   const dir = join(projectPath, ".agents", "design-systems", folder);

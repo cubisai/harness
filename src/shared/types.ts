@@ -878,13 +878,13 @@ export interface ArtifactVersion {
 /** A file an agent wrote in a thread, relative to the thread's folder (forward slashes), newest version last. */
 /** A design system a design thread can use, for the composer's picker. */
 export interface DesignSystemOption {
-  /** "project" (the repo's DESIGN.md), "project:<folder>" (.agents/design-systems), a built-in's folder name, or "style:<folder>" (the style library). */
+  /** "project" (the repo's DESIGN.md), "project:<folder>" (.agents/design-systems) or "style:<folder>" (the style library). */
   id: string;
   name: string;
   description: string;
   /** Up to 4 CSS colors to preview it. */
   swatches: string[];
-  source: "project" | "projectFolder" | "builtin" | "style";
+  source: "project" | "projectFolder" | "style";
 }
 
 /** One custom property in a design system's tokens.css: its light (`:root`) value and its dark override, if any. */
@@ -907,9 +907,9 @@ export interface DesignSystemDoc {
   id: string;
   name: string;
   source: DesignSystemOption["source"];
-  /** False when an edit has nowhere to go (a built-in on a thread without a project folder). */
+  /** False when an edit has nowhere to go (a library style on a thread without a project folder). */
   editable: boolean;
-  /** True when the first edit copies it into the project's `.agents/design-systems/<id>-custom/` (a built-in). */
+  /** True when the first edit copies it into the project's `.agents/design-systems/<id>-custom/` (a library style). */
   copyOnWrite: boolean;
   designMd: string;
   /** Empty when it has no tokens.css (a project's own DESIGN.md). */
@@ -1385,11 +1385,11 @@ export interface UnskilledApi {
   designReveal(threadId: string): Promise<void>;
   /** Export a design page (the version on screen) through a save dialog; the saved path, or null when cancelled. */
   designExport(threadId: string, format: DesignExportFormat, opts: { rel: string; version: number | null; width: number }): Promise<string | null>;
-  /** The design systems a project's design threads can use: its DESIGN.md, its .agents/design-systems, then the built-ins. */
+  /** The design systems a project's design threads can use: its DESIGN.md, its .agents/design-systems, then the style library. */
   designSystems(projectId: string | null): Promise<DesignSystemOption[]>;
   /** The thread's design system for the System tab, or null for a non-design thread. */
   designSystemDoc(threadId: string): Promise<DesignSystemDoc | null>;
-  /** Edit the thread's design system (a built-in is copied into the project first and the thread switched to the copy). */
+  /** Edit the thread's design system (a library style is copied into the project first and the thread switched to the copy). */
   designSystemEdit(threadId: string, edit: DesignSystemEdit): Promise<{ doc: DesignSystemDoc; thread: Thread }>;
   /** The expert catalogue: bundled experts and teams, then the user's imported ones. */
   listExperts(): Promise<ExpertDef[]>;

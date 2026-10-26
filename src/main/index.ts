@@ -965,7 +965,6 @@ async function main(): Promise<void> {
   });
   const syncProviderAgents = () => service.syncDrivers(PROVIDER_AGENT_PREFIX, providerAgents.list());
   syncProviderAgents();
-  service.setDesignSystemsDir(app.isPackaged ? join(process.resourcesPath, "design-systems") : join(app.getAppPath(), "resources", "design-systems"));
   service.setDesignStylesDir(
     app.isPackaged ? join(process.resourcesPath, "design-styles") : join(app.getAppPath(), "resources", "design-styles"),
     app.isPackaged ? join(process.resourcesPath, "design-fonts") : join(app.getAppPath(), "resources", "design-fonts"),

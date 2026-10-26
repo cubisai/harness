@@ -11,7 +11,6 @@ tags: ["iOS", "Android", "Flows"]
 quickPrompts: ["Design a 4-screen onboarding flow for a habit tracker app", "Create the checkout flow for a food delivery app", "Design a profile screen with settings and a sign-out action"]
 skills: ["design-mobile"]
 threadKind: design
-designSystem: clean
 version: 1.0.0
 ---
 # Mobile Designer
