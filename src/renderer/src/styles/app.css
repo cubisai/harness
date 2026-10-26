@@ -788,6 +788,10 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-rail-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .design-rail-row > svg { flex-shrink: 0; }
 .design-rail-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.design-rail-row.page { height: 36px; }
+.design-rail-thumb { flex-shrink: 0; width: 40px; height: 26px; overflow: hidden; border: 1px solid var(--hairline); border-radius: 4px; background: var(--bg-subtle); }
+.design-rail-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.design-rail-dot { flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--signal-fill); outline: 1px solid var(--text); }
 .design-rail-count { flex-shrink: 0; font: 10.5px var(--mono); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .design-rail-group { padding: 8px 8px 2px; font-size: 11px; font-weight: 600; color: var(--text-tertiary); }
 .design-rail-empty { margin: 0; padding: 2px 14px; font-size: 12.5px; color: var(--text-tertiary); }
@@ -873,13 +877,27 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .sys-shadow { flex: none; width: 24px; height: 16px; border: 1px solid var(--hairline-strong); background: var(--bg); }
 .sys-error { margin: 0; padding: 0 12px 8px; font-size: 11.5px; color: var(--danger); }
 /* Layer tree (Elements tab): one row per element, indented by depth, the selected row tinted. */
+.el-tree-wrap { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.el-search { flex-shrink: 0; display: flex; align-items: center; gap: 6px; height: 28px; margin: 0 6px 6px; padding: 0 8px; border: 1px solid var(--hairline); border-radius: var(--radius-m); background: var(--bg-subtle); color: var(--text-tertiary); }
+.el-search:focus-within { border-color: var(--hairline-strong); }
+.el-search input { flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 12.5px; outline: none; }
+.el-search-clear { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: var(--radius-s); background: transparent; color: var(--text-tertiary); cursor: pointer; }
+.el-search-clear:hover { background: var(--bg-hover); color: var(--text); }
 .el-tree { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: auto; }
-.el-row { display: flex; align-items: center; gap: 6px; width: 100%; height: 24px; flex-shrink: 0; padding-right: 8px; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 12.5px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.el-row:hover { background: var(--bg-hover); }
-.el-row.on { background: var(--bg-selected); }
-.el-tag { flex-shrink: 0; font: 500 12.5px var(--mono); color: var(--text); }
-.el-cls, .el-id, .el-label { min-width: 0; margin-left: 4px; font-size: 11.5px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.el-row { display: flex; align-items: center; gap: 4px; width: 100%; height: 24px; flex-shrink: 0; padding-right: 8px; border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-size: 12.5px; text-align: left; white-space: nowrap; overflow: hidden; cursor: pointer; }
+.el-row:hover { background: var(--bg-hover); color: var(--text); }
+.el-row.on { background: var(--bg-selected); color: var(--text); }
+.el-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.el-twisty { flex-shrink: 0; display: grid; place-items: center; width: 14px; height: 14px; color: var(--text-tertiary); border-radius: 3px; }
+.el-twisty:not(.none):hover { color: var(--text); background: var(--bg-hover); }
+.el-twisty svg { transition: transform 120ms cubic-bezier(.2,.8,.2,1); }
+.el-twisty.open svg { transform: rotate(90deg); }
+.el-icon { flex-shrink: 0; color: var(--text-tertiary); }
+.el-row.on .el-icon { color: var(--text-secondary); }
+.el-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.el-tag { flex-shrink: 0; margin-left: 6px; font: 10.5px var(--mono); color: var(--text-tertiary); }
 .el-empty { margin: 0; padding: 12px; font-size: 12.5px; color: var(--text-secondary); }
+@media (prefers-reduced-motion: reduce) { .el-twisty svg { transition: none; } }
 /* Selection: a count on the Select button, a breadcrumb bar for one element, and a spoken summary. */
 .design-tools .icon-button { position: relative; }
 .design-select-count { position: absolute; top: 1px; right: 0; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: var(--primary); color: var(--on-primary); font: 600 10px/14px var(--mono); font-variant-numeric: tabular-nums; }

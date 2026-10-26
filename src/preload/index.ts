@@ -120,6 +120,7 @@ const api: UnskilledApi = {
   designKeepTweaks: (threadId, rel, values) => ipcRenderer.invoke("design:keep-tweaks", threadId, rel, values),
   designSaveRef: (threadId, bytes) => ipcRenderer.invoke("design:save-ref", threadId, bytes),
   designCapture: (threadId, rect) => ipcRenderer.invoke("design:capture", threadId, rect),
+  designThumb: (threadId, rel) => ipcRenderer.invoke("design:thumb", threadId, rel),
   designRestoreVersion: (threadId, rel, version) => ipcRenderer.invoke("design:restore-version", threadId, rel, version),
   designEditText: (threadId, rel, edit) => ipcRenderer.invoke("design:edit-text", threadId, rel, edit),
   designEditStyle: (threadId, rel, edit) => ipcRenderer.invoke("design:edit-style", threadId, rel, edit),

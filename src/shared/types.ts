@@ -1361,6 +1361,8 @@ export interface UnskilledApi {
   designSaveRef(threadId: string, bytes: Uint8Array): Promise<string>;
   /** Capture a rectangle of the app window (CSS px, e.g. the canvas with a Draw overlay) as a PNG reference image in a design thread's `refs/`: its path relative to the thread's folder and a small data-URL thumbnail. */
   designCapture(threadId: string, rect: { x: number; y: number; width: number; height: number }): Promise<{ path: string; thumb: string }>;
+  /** A small PNG (data URL) of a design page for the Pages rail, cached until the file changes; "" when it can't render. */
+  designThumb(threadId: string, rel: string): Promise<string>;
   /** Copy a stored version of a design page back as its newest version (the current page is kept as a version first). */
   designRestoreVersion(threadId: string, rel: string, version: number): Promise<void>;
   /** Write an in-place text edit into a design page; refuses (throws) unless that `data-agent-id` is unique, text-only and unchanged. */

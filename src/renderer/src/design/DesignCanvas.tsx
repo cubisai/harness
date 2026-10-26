@@ -148,6 +148,8 @@ export default function DesignCanvas({
   const [commentDraft, setCommentDraft] = useState<string | null>(null);
   const [sendingComments, setSendingComments] = useState(false);
   const agentRunning = useStore((s) => Boolean(s.running[threadId]));
+  // Page thumbnails in the rail: one PNG per page, rendered by the main process (empty until it can).
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const pinsRef = useRef<{ n: number; target: DesignComment["target"] }[]>([]);
   const setSelection = useStore((s) => s.setDesignSelection);
   const selected = selection?.elements ?? [];
@@ -166,6 +168,27 @@ export default function DesignCanvas({
   const written = agentRunning && entry && change && turnStart !== null && change.n > turnStart ? affectedPages(change.paths ?? undefined, entry.pages.map((p) => p.rel)) : [];
   const writingKey = written === "all" ? "" : written.join("\n");
   const writing = useMemo(() => new Set(writingKey ? writingKey.split("\n") : []), [writingKey]);
+  // A new thread starts with no thumbnails.
+  useEffect(() => {
+    setThumbs({});
+  }, [threadId]);
+  // The rail's page thumbnails: rendered whenever its pages change, unless a turn is writing them.
+  useEffect(() => {
+    if (!railOpen || !entry || agentRunning) return;
+    let cancelled = false;
+    for (const p of entry.pages) {
+      api()
+        .designThumb(threadId, p.rel)
+        .then((url) => {
+          if (!url || cancelled) return;
+          setThumbs((t) => (t[p.rel] === url ? t : { ...t, [p.rel]: url }));
+        })
+        .catch(() => undefined);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [railOpen, threadId, agentRunning, change?.n, entry?.pages.map((p) => p.rel).join("|")]);
   // Watch the folder while the canvas is open; the main process counts watches per window.
   useEffect(() => {
     void api().designWatch(threadId);
@@ -883,8 +906,10 @@ export default function DesignCanvas({
                 {section.pages.map((p) => {
                   const current = !board && !comparing && entry.rel === p.rel;
                   return (
-                    <button key={p.rel} className={`design-rail-row${current ? " selected" : ""}`} aria-current={current ? "page" : undefined} title={p.rel} onClick={() => openPage(p.rel)}>
+                    <button key={p.rel} className={`design-rail-row page${current ? " selected" : ""}`} aria-current={current ? "page" : undefined} title={p.rel} onClick={() => openPage(p.rel)}>
+                      <span className="design-rail-thumb" aria-hidden>{thumbs[p.rel] ? <img src={thumbs[p.rel]} alt="" draggable={false} /> : null}</span>
                       <span className="design-rail-label">{frameLabel(p, undefined, styleOf)}</span>
+                      {(written === "all" || writing.has(p.rel)) && <span className="design-rail-dot" title="Written this turn" />}
                     </button>
                   );
                 })}
@@ -906,6 +931,7 @@ export default function DesignCanvas({
               if (!picking) chooseTool("select");
               post({ type: "set-selection", targets: [{ ...(n.id ? { id: n.id } : {}), selector: n.selector, tag: n.tag, text: "" }] });
             }}
+            onHover={(n) => post({ type: "hover-layer", target: n ? { ...(n.id ? { id: n.id } : {}), selector: n.selector, tag: n.tag, text: "" } : null })}
           />
         ) : (
           <p className="design-rail-empty">{!entry ? "No page yet." : board ? "Open a page to see its layers." : comparing ? "Open one option to see its layers." : "Back to the latest version to see its layers."}</p>
@@ -1388,6 +1414,7 @@ export default function DesignCanvas({
                   nodes={outline}
                   selected={selected[0] ?? null}
                   onPick={(n) => post({ type: "set-selection", targets: [{ ...(n.id ? { id: n.id } : {}), selector: n.selector, tag: n.tag, text: "" }] })}
+                  onHover={(n) => post({ type: "hover-layer", target: n ? { ...(n.id ? { id: n.id } : {}), selector: n.selector, tag: n.tag, text: "" } : null })}
                 />
               }
               tweaks={

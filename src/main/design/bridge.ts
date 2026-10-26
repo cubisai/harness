@@ -55,7 +55,9 @@ export type CanvasMessage =
   | { source: "cubiq-canvas"; type: "set-pins"; pins: { n: number; target: { id?: string; selector: string; tag: string; text: string } }[] }
   | { source: "cubiq-canvas"; type: "preview-style"; target: { id?: string; selector: string; tag: string; text: string }; prop: string; value: string }
   | { source: "cubiq-canvas"; type: "clear-preview" }
-  | { source: "cubiq-canvas"; type: "outline" };
+  | { source: "cubiq-canvas"; type: "outline" }
+  /** A Layers row is hovered: outline that element on the page (null clears it). Leaves the selection alone. */
+  | { source: "cubiq-canvas"; type: "hover-layer"; target: { id?: string; selector: string; tag: string; text: string } | null };
 
 /** Snap an element to its nearest interactive ancestor, or itself when there is none. */
 export function snapTarget(el: Element): Element {
@@ -157,7 +159,8 @@ export function editableText(el: Element): { ok: true; id: string; text: string 
 
 /**
  * Flatten a page's elements into an outline (layer tree), depth-first in document order. `root` itself is not a
- * node; its children start at depth 0. At most 400 nodes and 8 levels of depth are reported. Runs inside the page
+ * node; its children start at depth 0. At most 400 nodes and 8 levels of depth are reported; an `<svg>` is a leaf. A node
+ * with no text of its own is labelled by its aria-label, alt, title or placeholder. Runs inside the page
  * (passed in with toString), so it must not reference anything outside its own parameters.
  */
 export function outlineOf(root: Element, selectorFor: (el: Element) => string): OutlineNode[] {
@@ -178,10 +181,14 @@ export function outlineOf(root: Element, selectorFor: (el: Element) => string): 
         const text = el.childNodes[i];
         if (text && text.nodeType === 3) own += text.textContent || "";
       }
+      // No text of its own: the name a screen reader would read (an icon button, an image, an input).
+      if (own.trim() === "") own = el.getAttribute("aria-label") || el.getAttribute("alt") || el.getAttribute("title") || el.getAttribute("placeholder") || "";
       const node: OutlineNode = { tag, cls, selector: selectorFor(el), label: own.replace(/\s+/g, " ").trim().slice(0, 40), depth };
       if (rawId && /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(rawId)) node.id = rawId;
       nodes.push(node);
     }
+    // An SVG is one layer: its paths and groups are drawing, not structure.
+    if (tag === "svg") return;
     for (let i = 0; i < el.children.length; i++) {
       const child = el.children[i];
       if (child) walk(child, depth + 1);
@@ -243,6 +250,30 @@ export function designBridge(
 
   const reportOutline = (): void => {
     if (document.body) post("outline", { nodes: outlineOf(document.body, selectorFor) });
+  };
+
+  // The Layers rail's hover: a dashed box over the hovered row's element, kept on it through scrolls.
+  let layerBox: HTMLDivElement | null = null;
+  let layerEl: Element | null = null;
+  const placeLayerBox = (): void => {
+    if (!layerBox || !layerEl) return;
+    const r = layerEl.getBoundingClientRect();
+    Object.assign(layerBox.style, { display: "block", left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+  };
+  const showLayerHover = (el: Element | null): void => {
+    layerEl = el;
+    if (!el) {
+      if (layerBox) layerBox.style.display = "none";
+      return;
+    }
+    if (!layerBox) {
+      layerBox = document.createElement("div");
+      layerBox.style.cssText = "position:fixed;pointer-events:none;z-index:2147483645;border:1.5px dashed #0B0D10;outline:1px solid rgba(247,248,250,.9);background:rgba(11,13,16,.05);border-radius:3px;display:none";
+      document.documentElement.append(layerBox);
+      window.addEventListener("scroll", placeLayerBox, { passive: true, capture: true });
+      window.addEventListener("resize", placeLayerBox);
+    }
+    placeLayerBox();
   };
 
   const announceReady = (): void => {
@@ -632,6 +663,18 @@ export function designBridge(
       previewOriginals.clear();
     } else if (data.type === "outline") {
       reportOutline();
+    } else if (data.type === "hover-layer") {
+      const raw = data.target;
+      let el: Element | null = null;
+      if (raw && typeof raw === "object") {
+        const target = raw as Record<string, unknown>;
+        if (typeof target.selector === "string" && typeof target.tag === "string") {
+          const ref: SelectionTarget = { selector: target.selector, tag: target.tag, text: typeof target.text === "string" ? target.text : "" };
+          if (typeof target.id === "string") ref.id = target.id;
+          el = resolveTarget(document, ref);
+        }
+      }
+      showLayerHover(el);
     }
   });
 }

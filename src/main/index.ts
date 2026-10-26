@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, net, powerMonitor, protocol, safeStorage, shell, utilityProcess } from "electron";
+import { BrowserWindow, Menu, app, dialog, ipcMain, nativeImage, nativeTheme, net, powerMonitor, protocol, safeStorage, shell, utilityProcess } from "electron";
 import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, DesignDevice, DesignExportFormat, DesignSystemEdit, DesignSystemOption, DevicePreset, LinkMeta, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryScope, MemoryType, OpenResult, PermissionDecision, Project, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { CHATS_NAME, chatsRoot, isChatsRoot } from "./chats";
@@ -1141,6 +1141,34 @@ async function main(): Promise<void> {
     const image = await e.sender.capturePage({ x: Math.round(box.x * zoom), y: Math.round(box.y * zoom), width: Math.round(box.width * zoom), height: Math.round(box.height * zoom) });
     const path = service.saveDesignRef(threadId, image.toPNG());
     return { path, thumb: image.resize({ height: 96 }).toDataURL() };
+  });
+  // The Pages rail's thumbnails: one off-screen render per page and file version (by mtime), kept for the session.
+  const designThumbs = new Map<string, string>();
+  ipcMain.handle("design:thumb", async (_e, threadId: string, rel: string) => {
+    if (typeof threadId !== "string" || typeof rel !== "string") return "";
+    const root = service.designRoot(threadId);
+    if (!root || !listDesignPages(root).includes(rel)) return "";
+    let mtime: number;
+    try {
+      mtime = statSync(join(root, rel)).mtimeMs;
+    } catch {
+      return "";
+    }
+    const key = `${threadId}|${rel}|${mtime}`;
+    const hit = designThumbs.get(key);
+    if (hit !== undefined) return hit;
+    let url = "";
+    try {
+      const shot = await shooter.screenshot(designUrl(threadId, rel), { width: 1280, height: 832 });
+      url = nativeImage.createFromBuffer(shot.png).resize({ width: 160 }).toDataURL();
+    } catch {
+      // A page that fails to render has no thumbnail.
+    }
+    // Older versions of the same page are dropped; the map stays small.
+    for (const k of designThumbs.keys()) if (k.startsWith(`${threadId}|${rel}|`)) designThumbs.delete(k);
+    if (designThumbs.size >= 200) designThumbs.delete(designThumbs.keys().next().value!);
+    designThumbs.set(key, url);
+    return url;
   });
   ipcMain.handle("design:restore-version", (_e, threadId: string, rel: string, version: number) => {
     if (typeof rel !== "string" || !Number.isInteger(version) || version < 1) throw new Error("Bad version.");

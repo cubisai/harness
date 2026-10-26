@@ -74,6 +74,26 @@ describe("outlineOf", () => {
     const body = make("body", { children: [make("p", { children: [child], childNodes: [text("  hello   world  "), child] }), make("p", { childNodes: [text("x".repeat(60))] })] });
     expect(outlineOf(asElement(body), sel).map((n) => n.label)).toEqual(["hello world", "ignored", "x".repeat(40)]);
   });
+
+  it("labels an element with no own text by its aria-label, alt, title or placeholder", () => {
+    const body = make("body", {
+      children: [
+        make("button", { attrs: { "aria-label": "Close" } }),
+        make("img", { attrs: { alt: "Team photo" } }),
+        make("input", { attrs: { placeholder: "Email" } }),
+        make("div", { attrs: { title: "Tip" } }),
+        make("p", { attrs: { "aria-label": "ignored" }, childNodes: [text("Own text")] }),
+      ],
+    });
+    expect(outlineOf(asElement(body), sel).map((n) => n.label)).toEqual(["Close", "Team photo", "Email", "Tip", "Own text"]);
+  });
+
+  it("reports an svg as one layer, without its paths", () => {
+    const body = make("body", {
+      children: [make("svg", { children: [make("g", { children: [make("path")] }), make("circle")] }), make("p")],
+    });
+    expect(outlineOf(asElement(body), sel).map((n) => n.tag)).toEqual(["svg", "p"]);
+  });
 });
 
 /** A wire outline node, easy to override per case. */
