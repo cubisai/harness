@@ -142,11 +142,11 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
     define({
       name: DESIGN_DIRECTION_TOOL,
       description: [
-        "Set this design's direction before you build (an Auto thread must call it first; call it again only to change course).",
+        "Set this design's direction before you build (an Auto thread must call it first). Call it again when the user asks for a different look in words (\"make it brutalist\", \"darker, more editorial\"): pick the closest style and rebuild in it.",
         "surface: component (one card, badge, modal: no page chrome), page (scrolling site: nav, hero, sections, footer), screen (one task: login, settings), workspace (dashboard, admin, data), deck (16:9 slides), mobile (a 390×844 app screen).",
         "mode, from what the visitor must achieve on this surface (not from the product): persuade (landing, pricing: decide and act; bold, committed), operate (app UI, dashboards, settings: get a task done; precise, restrained), read (docs, articles: understand; calm structure), experience (portfolio, gallery, game: the work leads).",
         "tier: quick (rough exploration), working (everyday: tokens, states, tweaks), real-app (product-grade, critique and handoff). Use quick only when the user asks for a sketch, real-app when they ask for production or handoff.",
-        "style: the style whose world fits the brief's subject and audience (a style the brief names wins). Styles:",
+        "style: the style whose world fits the brief's subject and audience; a look or style the user names wins. Styles:",
         deps.styleIndex(),
       ].join("\n"),
       input: {

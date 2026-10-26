@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { describePick, type PickedElement } from "../src/main/browser/picker";
 import { chipLabel, commandQuery, composeMessage, skillQueryAt, toggleSkill } from "../src/renderer/src/composer";
 import { Composer } from "../src/renderer/src/components/Composer";
-import { ThreadDesignSettings } from "../src/renderer/src/components/DesignSettingsMenu";
+import { DesignFenceChip } from "../src/renderer/src/components/DesignSettingsMenu";
 import { ThreadView } from "../src/renderer/src/components/ThreadView";
 import { useStore } from "../src/renderer/src/store";
 import type { SendRequest, Thread } from "../src/shared/types";
@@ -307,19 +307,12 @@ describe("composer actions row", () => {
   });
 });
 
-describe("ThreadDesignSettings", () => {
-  const design = (over: Partial<Thread>): Thread => ({ id: "t", projectId: "p", agent: "claude", title: "D", sessionId: null, bindings: {}, model: "m", effort: null, permissionMode: "ask", createdAt: 0, updatedAt: 0, kind: "design", ...over }) as Thread;
-
-  it("folds the fenced Full mode and tier into one chip that names both, whatever mode is stored", () => {
-    const html = renderToStaticMarkup(<ThreadDesignSettings thread={design({ prototypeTier: "real-app" } as Partial<Thread>)} running={false} />);
-    expect(html).toContain("design-settings-chip");
-    expect(html).toMatch(/aria-label="Design system and tier: Full access, fenced to this design&#x27;s folder · Real app"/);
-  });
-
-  it("shows fenced Full without the danger colour and disables while running", () => {
-    const html = renderToStaticMarkup(<ThreadDesignSettings thread={design({ permissionMode: "full" })} running />);
-    expect(html).toMatch(/class="chip-button mode-chip design-settings-chip"/);
-    expect(html).not.toContain("Permissions");
-    expect(html).toContain("disabled");
+describe("DesignFenceChip", () => {
+  it("shows fenced Full access as a chip that can't be clicked or picked", () => {
+    const html = renderToStaticMarkup(<DesignFenceChip />);
+    expect(html).toContain("design-fence-chip");
+    expect(html).toMatch(/aria-label="Full access, fenced to this design&#x27;s folder"/);
+    expect(html).not.toContain("<button");
+    expect(html).not.toContain("listbox");
   });
 });

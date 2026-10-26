@@ -635,6 +635,7 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 }
 .platform-win32 .app:not(.with-inspector) .design-canvas > .design-canvas-head, .platform-linux .app:not(.with-inspector) .design-canvas > .design-canvas-head { padding-right: calc(150px / var(--zoom, 1)); }
 .design-canvas-title { flex: 1 1 auto; font-size: 12.5px; font-weight: 500; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.design-canvas-style { flex-shrink: 1; min-width: 0; max-width: 160px; height: 22px; padding: 0 8px; border-radius: var(--radius-s); background: var(--bg-chip); color: var(--text-secondary); font-size: 11.5px; line-height: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* The file name gives way first (a page picker keeps room for a few letters); the tools keep their size. When they
    still don't fit, DesignCanvas folds them (into More, then the pickers to .design-canvas-pickers), never truncates. */
 .design-tools { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
@@ -3234,17 +3235,8 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 .xs-skill-desc { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-tertiary); font-size: 11.5px; }
 .chip-button .chev { opacity: 0.6; flex: none; }
 .mode-chip.danger, .mode-chip.danger:hover { color: var(--danger); }
-/* A design thread's system chip: up to three swatches and the name; the menu shows each system's four. */
-.ds-chip { color: var(--text-secondary); }
-.ds-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.ds-swatches { display: inline-flex; flex: none; }
-.ds-swatch { width: 10px; height: 10px; border-radius: 999px; box-shadow: 0 0 0 1px var(--hairline-strong); }
-.ds-swatch + .ds-swatch { margin-left: -3px; }
-.ds-menu { width: 280px; padding: 4px; max-height: min(420px, 70vh); overflow-y: auto; }
-.ds-name { display: flex; align-items: center; gap: 8px; }
-/* The menu scrolls; its rows keep their height, and a long description stops at two lines. */
-.ds-menu .model-item { flex: none; }
-.ds-menu .model-item .desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.design-fence-chip { cursor: default; color: var(--text-secondary); }
+.design-fence-chip:hover { background: transparent; }
 .model-picker-button { max-width: 240px; color: var(--text); }
 .model-picker-name { overflow: hidden; text-overflow: ellipsis; }
 .model-picker-effort { color: var(--text-tertiary); }
