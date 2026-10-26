@@ -1,4 +1,9 @@
-/* Memphis Pop: a CubiQ style. Link this file and use the custom properties, not raw values. */
+/* Memphis Pop: a CubiQ style. Link this file and use the custom properties, not raw values. A dark pair follows the system setting.
+ * Roles: --color-accent-text for accent-coloured text (the accent itself may be too light for text);
+ * --color-on-accent on accent fills; --color-*-soft behind status text and selected chips, with the matching
+ * colour (or --color-accent-text) on top; --color-surface-3 for hover/pressed wells; --color-border-strong for
+ * inputs and dividers that must show. --tracking-display/-heading/-label on those roles, --text-display-sm
+ * under 640px, font-variant-numeric: var(--numeric-data) on figures. */
 @font-face {
   font-family: "Hanken Grotesk";
   src: url("fonts/hanken-grotesk.woff2") format("woff2");
@@ -30,6 +35,14 @@
   --color-warning: #A35A00;
   --color-danger: #C8293C;
   --color-focus: #E5357F;
+  --color-surface-3: #F1DBBA;
+  --color-border-strong: #1B1B3A;
+  --color-accent-text: #BD3071;
+  --color-on-accent: #000000;
+  --color-accent-soft: #FBE3ED;
+  --color-success-soft: #F6FAF9;
+  --color-warning-soft: #F5EDE3;
+  --color-danger-soft: #F9E7EA;
 
   /* Type */
   --font-sans: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -56,6 +69,12 @@
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-bold: 700;
+  --tracking-display: -0.02em;
+  --tracking-heading: -0.01em;
+  --tracking-label: 0.04em;
+  --text-display-sm: 48px;
+  --leading-display-sm: 48px;
+  --numeric-data: tabular-nums;
 
   /* Space: the 8pt scale (4 is for type and icon nudges only) */
   --space-1: 4px;
@@ -96,6 +115,36 @@
   :root {
     --duration-fast: 0ms;
     --duration: 0ms;
+  }
+}
+
+/* Dark: the same roles, re-tuned; picked up from the system setting. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --color-bg: #15152B;
+    --color-surface: #1E1E3A;
+    --color-surface-2: #2A2A4D;
+    --color-text: #FFF6E9;
+    --color-text-muted: #BDBBD6;
+    --color-border: #FFF6E9;
+    --color-primary: #FFF6E9;
+    --color-on-primary: #15152B;
+    --color-accent: #FF5C9E;
+    --color-success: #3FD1B0;
+    --color-warning: #FFB547;
+    --color-danger: #FF6B7F;
+    --color-focus: #FF5C9E;
+    --color-surface-3: #3B3A59;
+    --color-border-strong: #FFF6E9;
+    --color-accent-text: #FF5C9E;
+    --color-on-accent: #15152B;
+    --color-accent-soft: #3E2748;
+    --color-success-soft: #254554;
+    --color-warning-soft: #503F3D;
+    --color-danger-soft: #3E2944;
+    --shadow-2: 6px 6px 0 #FFF6E9;
+    --shadow-3: 0 24px 48px rgb(0 0 0 / 0.6);
   }
 }
 

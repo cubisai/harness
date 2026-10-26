@@ -9,6 +9,7 @@ The page shows live in CubiQ's canvas and reloads as you write. Change it with y
 It is in `{dir}/system/` (on **Auto**, call `design_set_direction` first: it fills it):
 - Read `system/DESIGN.md` and follow it.
 - Link `system/tokens.css` and use its custom properties instead of raw values; without one, derive it from `DESIGN.md`.
+- It has a dark pair, so a tokens-only page gets dark mode free; its header says which role to use where. Follow `DESIGN.md` `## Components` sizes and `## Rules`.
 - Read `system/patterns.md`: the rules and component anatomies for the surface you picked.
 - CubiQ replaces `system/` on a switch; don't edit it.
 

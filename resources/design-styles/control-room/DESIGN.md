@@ -19,15 +19,20 @@ An operations console watched for hours: graphite panels in a dim room, status t
 - Tables are the main component: sticky header, 36–40px rows, zebra via `--color-surface-2`.
 
 ## Components
-- Status pill: dot + label, colour from status tokens.
-- Panels: `--radius-md`, 1px `--color-border`, title row with a time range and one overflow menu.
+- Button: 44px, `--radius-sm`, padding 0 `--space-4`; primary amber with `--color-on-primary`, secondary 1px `--color-border-strong`.
+- Panel: `--color-surface`, 1px `--color-border`, `--radius-md`, title row 44px with a time range and one overflow menu.
+- Table row: 40px, hairline divider, numbers right-aligned in `--font-mono` with `--numeric-data`.
+- Status pill: 24px, dot + label, `--color-*-soft` fill.
 - Charts: thin lines (1.5px), no fills except a 10% area under the selected series; gridlines in `--color-border`.
 
 ## Signature
 A live strip along the top: the few numbers that matter right now, each with a sparkline-free delta and a timestamp of the last update.
 
-## Refuses
-Neon glows, glassmorphism, big hero numbers with gradients, decorative illustrations, rounded bubbly controls.
+## Rules
+- Rank the screen: the one number that needs action is largest; everything else is quiet.
+- Draw charts as thin 1.5px lines with a 10% fill only under the selected series (not neon glows).
+- Keep panels flat and opaque (not glass); controls are compact and square-ish (not rounded bubbles).
+- Label every number with a unit and a time range (not hero metrics with gradients).
 
 ## Motion
 Values update in place with a brief cyan flash on the changed cell (300ms). No page-load animation.

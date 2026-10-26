@@ -19,15 +19,17 @@ A risograph zine: two spot inks on warm uncoated paper. Shapes overprint and sli
 - Offset duplicate shapes 3–6px in the other ink to fake misregistration, on one or two elements, not everything.
 
 ## Components
-- Buttons: flat ink fill, `--radius-sm`, a 2px ink outline for secondary.
-- Cards: paper sheets with a 1px `--color-border`, no shadow; tilt one by 1–2deg at most.
-- Badges: stamped circles or tape strips in the accent ink.
+- Button: 44px, `--radius-sm`, flat ink fill; secondary 2px ink outline.
+- Card: paper sheet, 1px `--color-border`, no shadow; tilt one per view by 1–2deg at most.
+- Badge: a stamped circle or tape strip in the accent ink, 48px.
 
 ## Signature
 One hero where the headline sits over a big overprinted shape in both inks, slightly out of register.
 
-## Refuses
-Gradients, glass, soft drop shadows, stock-SaaS card grids, perfect alignment everywhere.
+## Rules
+- Print in two inks with visible overlap and grain (not gradients or glass).
+- Keep sheets flat on the paper (not soft drop shadows).
+- Let one or two elements sit slightly off the grid on purpose (not stock-SaaS card grids).
 
 ## Motion
 One: the hero shapes slide 4px into register on load. Hover on links shifts the underline colour between the two inks.

@@ -17,15 +17,19 @@ Slides for a talk: a deep green board, chalk-white type at billboard size, one i
 - Chalk-like hand-drawn underlines and arrows in SVG (1 per slide at most).
 
 ## Components
+- Slide: one idea, 1–2 lines of display text at `--text-display`, a footer row in `--text-sm` muted.
+- Diagram: boxes and arrows in 3px `--color-text` lines, labels in the sans at `--text-lg`.
+- Highlight: chalk-yellow underline or circle drawn in SVG behind one word.
 - Numbers: huge (240px) with a small label.
-- Diagrams: simple boxes and arrows in 3px chalk lines.
 - Footer: talk title and slide number in small muted text.
 
 ## Signature
 A statement slide: one sentence in huge chalk type with the key word in yellow and a hand-drawn underline.
 
-## Refuses
-Bullet walls, clip art, stock photos, gradients, templates with logos on every slide.
+## Rules
+- Say one thing per slide in a short sentence (not a wall of bullets).
+- Draw the picture with chalk lines (not clip art or stock photos).
+- Leave the board dark green and flat (not gradients); the talk title appears in the footer only.
 
 ## Motion
 Slide-to-slide: none or a quick fade. Builds reveal one point at a time.

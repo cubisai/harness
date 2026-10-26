@@ -1,4 +1,9 @@
-/* Museum Label: a CubiQ style. Link this file and use the custom properties, not raw values. */
+/* Museum Label: a CubiQ style. Link this file and use the custom properties, not raw values. A dark pair follows the system setting.
+ * Roles: --color-accent-text for accent-coloured text (the accent itself may be too light for text);
+ * --color-on-accent on accent fills; --color-*-soft behind status text and selected chips, with the matching
+ * colour (or --color-accent-text) on top; --color-surface-3 for hover/pressed wells; --color-border-strong for
+ * inputs and dividers that must show. --tracking-display/-heading/-label on those roles, --text-display-sm
+ * under 640px, font-variant-numeric: var(--numeric-data) on figures. */
 @font-face {
   font-family: "Hanken Grotesk";
   src: url("fonts/hanken-grotesk.woff2") format("woff2");
@@ -37,6 +42,14 @@
   --color-warning: #8A5A00;
   --color-danger: #A3241D;
   --color-focus: #111111;
+  --color-surface-3: #DFDDD9;
+  --color-border-strong: #8E8D8A;
+  --color-accent-text: #8A1C1C;
+  --color-on-accent: #FFFFFF;
+  --color-accent-soft: #E8D7D6;
+  --color-success-soft: #DBE3DC;
+  --color-warning-soft: #E8E0D2;
+  --color-danger-soft: #EBD9D6;
 
   /* Type */
   --font-sans: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -63,6 +76,12 @@
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-bold: 700;
+  --tracking-display: -0.01em;
+  --tracking-heading: 0em;
+  --tracking-label: 0.04em;
+  --text-display-sm: 60px;
+  --leading-display-sm: 60px;
+  --numeric-data: tabular-nums;
 
   /* Space: the 8pt scale (4 is for type and icon nudges only) */
   --space-1: 4px;
@@ -103,6 +122,35 @@
   :root {
     --duration-fast: 0ms;
     --duration: 0ms;
+  }
+}
+
+/* Dark: the same roles, re-tuned; picked up from the system setting. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --color-bg: #0D0D0D;
+    --color-surface: #161616;
+    --color-surface-2: #202020;
+    --color-text: #F2F2F0;
+    --color-text-muted: #A9A49E;
+    --color-border: #2E2E2E;
+    --color-primary: #F2F2F0;
+    --color-on-primary: #0D0D0D;
+    --color-accent: #E07A72;
+    --color-success: #7CC49A;
+    --color-warning: #E0B25C;
+    --color-danger: #F08A85;
+    --color-focus: #E07A72;
+    --color-surface-3: #313131;
+    --color-border-strong: #656564;
+    --color-accent-text: #E07A72;
+    --color-on-accent: #0D0D0D;
+    --color-accent-soft: #3A2827;
+    --color-success-soft: #2C3C33;
+    --color-warning-soft: #423825;
+    --color-danger-soft: #46302E;
+    --shadow-3: 0 24px 64px rgb(0 0 0 / 0.36);
   }
 }
 

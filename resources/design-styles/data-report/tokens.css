@@ -1,4 +1,9 @@
-/* Data Report: a CubiQ style. Link this file and use the custom properties, not raw values. */
+/* Data Report: a CubiQ style. Link this file and use the custom properties, not raw values. A dark pair follows the system setting.
+ * Roles: --color-accent-text for accent-coloured text (the accent itself may be too light for text);
+ * --color-on-accent on accent fills; --color-*-soft behind status text and selected chips, with the matching
+ * colour (or --color-accent-text) on top; --color-surface-3 for hover/pressed wells; --color-border-strong for
+ * inputs and dividers that must show. --tracking-display/-heading/-label on those roles, --text-display-sm
+ * under 640px, font-variant-numeric: var(--numeric-data) on figures. */
 @font-face {
   font-family: "Archivo";
   src: url("fonts/archivo.woff2") format("woff2");
@@ -23,6 +28,14 @@
   --color-warning: #8F5E00;
   --color-danger: #B42A2A;
   --color-focus: #C2410C;
+  --color-surface-3: #E0E0DC;
+  --color-border-strong: #888987;
+  --color-accent-text: #BC400D;
+  --color-on-accent: #FFFFFF;
+  --color-accent-soft: #F3EBE6;
+  --color-success-soft: #EAEFEA;
+  --color-warning-soft: #EEEAE0;
+  --color-danger-soft: #EDD9D8;
 
   /* Type */
   --font-sans: "Archivo", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -49,6 +62,12 @@
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-bold: 700;
+  --tracking-display: -0.03em;
+  --tracking-heading: -0.015em;
+  --tracking-label: 0.04em;
+  --text-display-sm: 60px;
+  --leading-display-sm: 60px;
+  --numeric-data: tabular-nums;
 
   /* Space: the 8pt scale (4 is for type and icon nudges only) */
   --space-1: 4px;
@@ -89,6 +108,34 @@
   :root {
     --duration-fast: 0ms;
     --duration: 0ms;
+  }
+}
+
+/* Dark: the same roles, re-tuned; picked up from the system setting. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --color-bg: #121212;
+    --color-surface: #1A1A1A;
+    --color-surface-2: #242424;
+    --color-text: #ECECE8;
+    --color-text-muted: #A3A6AC;
+    --color-border: #34353A;
+    --color-primary: #F07A3C;
+    --color-on-primary: #120A05;
+    --color-accent: #F07A3C;
+    --color-success: #5CC98A;
+    --color-warning: #E7B04F;
+    --color-danger: #F2786E;
+    --color-focus: #F07A3C;
+    --color-surface-3: #343434;
+    --color-border-strong: #68686B;
+    --color-accent-text: #F07A3C;
+    --color-on-accent: #121212;
+    --color-accent-soft: #412B20;
+    --color-success-soft: #294033;
+    --color-warning-soft: #473B26;
+    --color-danger-soft: #412B29;
   }
 }
 

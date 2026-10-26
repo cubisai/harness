@@ -18,15 +18,19 @@ Health and wellbeing on a phone: lavender and mint on soft white, rounded friend
 - Charts are simple: rounded bars or a smooth ring, one series highlighted.
 
 ## Components
-- Buttons: `--radius-lg` pills, 52px tall, full width at the bottom of a flow.
-- Cards: white, `--radius-lg`, `--shadow-1`.
-- Inputs: large (52px), rounded, label above.
+- Button: 52px, `--radius-full`, full width at the bottom of a flow.
+- Card: `--color-surface`, `--radius-lg`, `--shadow-1`, padding `--space-6`.
+- Input: 52px, `--radius-md`, label above in `--text-sm`.
+- Status: 28px, `--radius-full`, `--color-*-soft` fill; danger only for a real alert.
 
 ## Signature
 A daily summary ring or arc made of soft mint and lavender segments, with one sentence of encouragement under it.
 
-## Refuses
-Red-heavy dashboards, dense tables, clinical blue-on-white hospital UI, tiny targets, alarming copy.
+## Rules
+- Reassure first: one clear next step per screen, in kind words (not alarming copy).
+- Show readings as a value, a range and a trend (not dense tables or red-heavy dashboards).
+- Use the warm violet and teal (not clinical blue-on-white).
+- Make every target 52px on primary actions, 44px minimum elsewhere.
 
 ## Motion
 Gentle (220–300ms) ease-out; progress rings animate once on open. Respect reduced motion.

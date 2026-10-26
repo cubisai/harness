@@ -1,4 +1,9 @@
-/* Arcade Cabinet: a CubiQ style. Link this file and use the custom properties, not raw values. */
+/* Arcade Cabinet: a CubiQ style. Link this file and use the custom properties, not raw values. Dark by design: no light pair.
+ * Roles: --color-accent-text for accent-coloured text (the accent itself may be too light for text);
+ * --color-on-accent on accent fills; --color-*-soft behind status text and selected chips, with the matching
+ * colour (or --color-accent-text) on top; --color-surface-3 for hover/pressed wells; --color-border-strong for
+ * inputs and dividers that must show. --tracking-display/-heading/-label on those roles, --text-display-sm
+ * under 640px, font-variant-numeric: var(--numeric-data) on figures. */
 @font-face {
   font-family: "Onest";
   src: url("fonts/onest.woff2") format("woff2");
@@ -30,6 +35,14 @@
   --color-warning: #FFD23F;
   --color-danger: #FF5D73;
   --color-focus: #4DE1C1;
+  --color-surface-3: #3A326D;
+  --color-border-strong: #6F66A4;
+  --color-accent-text: #4DE1C1;
+  --color-on-accent: #140F2E;
+  --color-accent-soft: #284460;
+  --color-success-soft: #284460;
+  --color-warning-soft: #504143;
+  --color-danger-soft: #3E224B;
 
   /* Type */
   --font-sans: "Onest", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -56,6 +69,12 @@
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-bold: 700;
+  --tracking-display: 0em;
+  --tracking-heading: 0em;
+  --tracking-label: 0.06em;
+  --text-display-sm: 44px;
+  --leading-display-sm: 48px;
+  --numeric-data: tabular-nums;
 
   /* Space: the 8pt scale (4 is for type and icon nudges only) */
   --space-1: 4px;

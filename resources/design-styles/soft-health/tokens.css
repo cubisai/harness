@@ -1,4 +1,9 @@
-/* Soft Health: a CubiQ style. Link this file and use the custom properties, not raw values. */
+/* Soft Health: a CubiQ style. Link this file and use the custom properties, not raw values. A dark pair follows the system setting.
+ * Roles: --color-accent-text for accent-coloured text (the accent itself may be too light for text);
+ * --color-on-accent on accent fills; --color-*-soft behind status text and selected chips, with the matching
+ * colour (or --color-accent-text) on top; --color-surface-3 for hover/pressed wells; --color-border-strong for
+ * inputs and dividers that must show. --tracking-display/-heading/-label on those roles, --text-display-sm
+ * under 640px, font-variant-numeric: var(--numeric-data) on figures. */
 @font-face {
   font-family: "Onest";
   src: url("fonts/onest.woff2") format("woff2");
@@ -19,10 +24,18 @@
   --color-primary: #5B4BC4;
   --color-on-primary: #FFFFFF;
   --color-accent: #1E8A74;
-  --color-success: #1E8A74;
+  --color-success: #1F7066;
   --color-warning: #8F5E00;
   --color-danger: #B83A4B;
   --color-focus: #5B4BC4;
+  --color-surface-3: #E1DEEC;
+  --color-border-strong: #8C889F;
+  --color-accent-text: #1F7468;
+  --color-on-accent: #000000;
+  --color-accent-soft: #DFEFEC;
+  --color-success-soft: #E0EBEA;
+  --color-warning-soft: #EFE8DB;
+  --color-danger-soft: #F5E3E6;
 
   /* Type */
   --font-sans: "Onest", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -49,6 +62,12 @@
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-bold: 700;
+  --tracking-display: -0.02em;
+  --tracking-heading: -0.01em;
+  --tracking-label: 0.04em;
+  --text-display-sm: 32px;
+  --leading-display-sm: 36px;
+  --numeric-data: tabular-nums;
 
   /* Space: the 8pt scale (4 is for type and icon nudges only) */
   --space-1: 4px;
@@ -89,6 +108,37 @@
   :root {
     --duration-fast: 0ms;
     --duration: 0ms;
+  }
+}
+
+/* Dark: the same roles, re-tuned; picked up from the system setting. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --color-bg: #14121F;
+    --color-surface: #1C1A2B;
+    --color-surface-2: #252238;
+    --color-text: #EEECF7;
+    --color-text-muted: #ADA8C6;
+    --color-border: #322E4A;
+    --color-primary: #A79BFF;
+    --color-on-primary: #17123A;
+    --color-accent: #4CC9AE;
+    --color-success: #4CC9AE;
+    --color-warning: #E7B04F;
+    --color-danger: #F28A9A;
+    --color-focus: #A79BFF;
+    --color-surface-3: #353247;
+    --color-border-strong: #6E6B81;
+    --color-accent-text: #4CC9AE;
+    --color-on-accent: #14121F;
+    --color-accent-soft: #274048;
+    --color-success-soft: #274048;
+    --color-warning-soft: #493B33;
+    --color-danger-soft: #4B3343;
+    --shadow-1: 0 1px 3px rgb(0 0 0 / 0.18);
+    --shadow-2: 0 8px 24px rgb(0 0 0 / 0.24);
+    --shadow-3: 0 24px 56px rgb(0 0 0 / 0.42);
   }
 }
 

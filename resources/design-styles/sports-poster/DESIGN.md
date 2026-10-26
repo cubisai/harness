@@ -19,15 +19,18 @@ Match-day energy: condensed type at huge sizes, diagonal cuts, team red and navy
 - Fixtures and results as tight tables with team names bold.
 
 ## Components
-- Buttons: angled ends (clip-path) or square, red fill, bold uppercase label.
-- Stat block: number at display size, a short label, a unit.
-- Countdown: four large digits blocks for days, hours, minutes, seconds.
+- Button: 52px, angled ends (clip-path) or square, red fill, uppercase label with `--tracking-label`.
+- Stat block: number at display size with `--numeric-data`, a short label, a unit.
+- Countdown: four digit blocks (days, hours, minutes, seconds), `--color-text` fill, `--color-bg` digits.
 
 ## Signature
 A hero split by a diagonal: a duotone athlete photo or bold shape on one side, the event name and date in giant condensed type on the other.
 
-## Refuses
-Soft pastels, rounded friendly UI, hairline elegance, glass, generic feature-card grids.
+## Rules
+- Shout with scale: condensed display type huge, tight crops, hard edges.
+- Use red and navy at full strength (not soft pastels or hairline elegance).
+- Keep blocks square and solid (not rounded friendly UI or glass).
+- Lay out like a fixture poster: one hero, then the schedule (not generic feature-card grids).
 
 ## Motion
 Fast and punchy: one diagonal wipe on load (300ms), numbers tick up once. No floating elements.

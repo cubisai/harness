@@ -19,15 +19,20 @@ Money handled with care: a well-kept ledger on ruled off-white paper, ink navy, 
 - Content max 1200; forms in a single 560px column.
 
 ## Components
-- Buttons: `--radius-sm`, navy fill; secondary is a navy outline.
+- Button: 44px, `--radius-sm`, navy fill, padding 0 `--space-6`; secondary 1px navy outline.
+- Balance: label above in `--text-sm`, amount in the display serif at 48–64 with `--numeric-data`.
+- Table: 44px rows, hairline rules, amounts right-aligned with `--numeric-data`.
+- Badge: 24px, `--radius-sm`, `--color-*-soft` fill, sentence case.
 - Balance block: label above in `--text-sm`, amount in the display serif at 48–64.
-- Badges: small caps-free labels with a tinted background.
 
 ## Signature
 A statement header with a ruled line pattern behind the balance and a brass underline under the period.
 
-## Refuses
-Gradient cards, glowing charts, crypto-style neon, playful illustrations, ambiguous colour-only signals.
+## Rules
+- Show money like a ledger: ruled rows, right-aligned figures, signed amounts with a word (not colour alone).
+- Keep surfaces paper-flat (not gradient cards or glowing charts).
+- Use gold sparingly for the one figure that matters (not crypto neon).
+- Illustrate with figures and tables (not playful illustrations).
 
 ## Motion
 Subtle: numbers count up once on first load (400ms); rows expand smoothly for details.

@@ -18,15 +18,19 @@ Documentation developers stay in: tinted paper, a calm sans, a code face that ea
 - Mobile: nav in a sheet, outline hidden.
 
 ## Components
-- Code block: white panel, 1px border, language label, copy button, optional filename tab.
-- Callouts: note (blue rule), warning (rust rule) with an icon drawn in SVG and a bold first word.
+- Code block: `--color-surface`, 1px `--color-border`, `--radius-md`, mono 14/22, language label and copy button in the top row.
+- Callout: 4px left rule (blue note, rust warning), `--color-*-soft` fill, bold first word, padding `--space-4`.
+- Sidebar link: 32px row, active link in `--color-primary` with a 2px left bar.
 - Tables: hairline rows, header in `--color-surface-2`.
 
 ## Signature
 A tabbed install block (macOS / Linux / Windows) with a "Verify" step that shows expected output.
 
-## Refuses
-Marketing hero sections inside docs, gradient banners, emoji callouts, centred text, cramped code.
+## Rules
+- Open each page with what it helps you do, then the steps (not a marketing hero).
+- Align text left at `--measure` (not centred text).
+- Give code room: `--space-4` padding, real commands that run (not cramped snippets).
+- Draw callout icons as SVG (not emoji); keep banners flat (not gradients).
 
 ## Motion
 Only the nav expand/collapse (150ms) and copy-button feedback ("Copied").

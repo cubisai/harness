@@ -18,15 +18,17 @@
 - Asymmetric, collage-like compositions; one tilted element per section.
 
 ## Components
-- Buttons: ink fill, `--radius-md`, a hard offset shadow (`--shadow-2`) in ink that shifts on press.
-- Cards: ink outline 2px, cream fill, a coloured corner shape.
-- Badges: stars and bursts drawn in SVG.
+- Button: 48px, `--radius-md`, ink fill, 2px ink border, hard offset `--shadow-2` that shifts on press.
+- Card: cream fill, 2px ink outline, `--radius-lg`, padding `--space-6`, one coloured corner shape.
+- Badge: an SVG star or burst, 48px, rotated a few degrees.
 
 ## Signature
 A hero collage: the headline in Unbounded surrounded by Memphis shapes in all three colours, with one squiggle crossing the text block edge.
 
-## Refuses
-Minimal greyscale, soft shadows, glass, corporate stock photos, thin type.
+## Rules
+- Commit to colour: pink, teal and yellow blocks with ink outlines.
+- Cast hard offset shadows in ink (not soft blurred shadows or glass).
+- Use the bold display weights (not thin type); draw shapes in SVG (not stock photos).
 
 ## Motion
 Shapes wobble or rotate a few degrees on hover; one entrance where shapes pop in staggered (each 80ms). Respect reduced motion.

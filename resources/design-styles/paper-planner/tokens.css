@@ -1,4 +1,9 @@
-/* Paper Planner: a CubiQ style. Link this file and use the custom properties, not raw values. */
+/* Paper Planner: a CubiQ style. Link this file and use the custom properties, not raw values. A dark pair follows the system setting.
+ * Roles: --color-accent-text for accent-coloured text (the accent itself may be too light for text);
+ * --color-on-accent on accent fills; --color-*-soft behind status text and selected chips, with the matching
+ * colour (or --color-accent-text) on top; --color-surface-3 for hover/pressed wells; --color-border-strong for
+ * inputs and dividers that must show. --tracking-display/-heading/-label on those roles, --text-display-sm
+ * under 640px, font-variant-numeric: var(--numeric-data) on figures. */
 @font-face {
   font-family: "Hanken Grotesk";
   src: url("fonts/hanken-grotesk.woff2") format("woff2");
@@ -30,6 +35,14 @@
   --color-warning: #8F5E00;
   --color-danger: #B3341F;
   --color-focus: #22409A;
+  --color-surface-3: #E5E3DC;
+  --color-border-strong: #8A8B8E;
+  --color-accent-text: #75691F;
+  --color-on-accent: #1A2238;
+  --color-accent-soft: #FCF7DB;
+  --color-success-soft: #E8F0EB;
+  --color-warning-soft: #EFE8DB;
+  --color-danger-soft: #F4E3E0;
 
   /* Type */
   --font-sans: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -56,6 +69,12 @@
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-bold: 700;
+  --tracking-display: -0.02em;
+  --tracking-heading: -0.01em;
+  --tracking-label: 0.04em;
+  --text-display-sm: 32px;
+  --leading-display-sm: 36px;
+  --numeric-data: tabular-nums;
 
   /* Space: the 8pt scale (4 is for type and icon nudges only) */
   --space-1: 4px;
@@ -96,6 +115,37 @@
   :root {
     --duration-fast: 0ms;
     --duration: 0ms;
+  }
+}
+
+/* Dark: the same roles, re-tuned; picked up from the system setting. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --color-bg: #12141C;
+    --color-surface: #191C27;
+    --color-surface-2: #212534;
+    --color-text: #ECEEF4;
+    --color-text-muted: #A6ACBE;
+    --color-border: #2D3244;
+    --color-primary: #8EA6FF;
+    --color-on-primary: #0D1430;
+    --color-accent: #F2D43D;
+    --color-success: #5CC98A;
+    --color-warning: #E7B04F;
+    --color-danger: #F2786E;
+    --color-focus: #8EA6FF;
+    --color-surface-3: #313543;
+    --color-border-strong: #626775;
+    --color-accent-text: #F2D43D;
+    --color-on-accent: #12141C;
+    --color-accent-soft: #49442C;
+    --color-success-soft: #28423D;
+    --color-warning-soft: #463D30;
+    --color-danger-soft: #402D34;
+    --shadow-1: 0 1px 0 rgb(0 0 0 / 0.24);
+    --shadow-2: 0 6px 18px rgb(0 0 0 / 0.3);
+    --shadow-3: 0 18px 48px rgb(0 0 0 / 0.48);
   }
 }
 

@@ -18,15 +18,20 @@ Food, cafes and markets: saffron and deep teal on warm cream, a soft display ser
 - Hand-cut shapes: irregular blobs (inline SVG) behind images and headings.
 
 ## Components
-- Buttons: `--radius-lg` pills, teal fill; "Book a table" is the one primary.
+- Button: 48px, `--radius-full`, teal fill, padding 0 `--space-6`; "Book a table" is the one primary.
+- Image: `--radius-lg`, caption below in `--text-sm`; no frame.
+- Tag: 28px, `--radius-full`, saffron `--color-accent-soft` with `--color-accent-text`.
 - Cards: no heavy chrome; images with `--radius-lg` and a caption below.
 - Opening hours as a clean table with today highlighted in saffron.
 
 ## Signature
 A menu board section: the day's specials in large serif on a saffron field with hand-drawn underline strokes.
 
-## Refuses
-Corporate SaaS layouts, neon, dark mode by default, stocky icon grids, tiny type.
+## Rules
+- Lead with food and place: real dish names, prices, today's hours.
+- Set body at 16px or larger (not tiny type).
+- Keep the warm cream page; light is the default and the dark pair only follows the device setting.
+- Lay out like a market board: photos and hand-set lists (not corporate SaaS layouts or icon grids).
 
 ## Motion
 Warm and slow: images ease in (400ms); hover lifts a dish card slightly.

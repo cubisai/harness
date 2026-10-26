@@ -19,15 +19,19 @@ A fashion house: dove grey and bone, black, one oxblood. An italic Didone, asymm
 - Collections as an editorial sequence, not a grid of identical tiles; vary image sizes.
 
 ## Components
-- Buttons: black rectangle, uppercase avoided, a 1px underline variant for secondary.
-- Product tile: image, italic name, price; no card chrome.
+- Button: 48px tall, `--radius-sm` (square), padding 0 `--space-8`, ink fill with `--color-on-primary`; secondary is text with a 1px underline.
+- Input: 48px, 1px `--color-border-strong` bottom rule only, label above in `--text-sm`.
+- Product tile: image at 4:5, name below in italic display, price in `--text-sm`; no frame, no border.
 - Navigation: a few words, centred logo wordmark in the display face.
 
 ## Signature
 A cover-like hero: one image, the collection name in giant italic Didone overlapping its edge.
 
-## Refuses
-Badges, discount stickers, rounded corners, gradients, icon rows, busy UI.
+## Rules
+- Let the photograph carry the page: one image per view at full bleed or a strict 4:5 grid (not icon rows or busy UI).
+- Mark sale and status with a short word in `--color-accent-text` (not badges or stickers).
+- Keep every corner square and every surface flat (not rounded cards or gradients).
+- Space generously: `--space-16` or more between sections.
 
 ## Motion
 Slow crossfades (500ms) between images; hover reveals a second image of the product. Nothing bounces.

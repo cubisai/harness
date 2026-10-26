@@ -17,15 +17,20 @@ Slides for numbers: white, charcoal and one orange for the series that matters. 
 - Source line bottom-left in muted text.
 
 ## Components
+- KPI: number at `--text-3xl` or larger with `--numeric-data`, label above in `--text-sm`, delta with an SVG arrow.
+- Table: 40px rows, hairline `--color-border`, numbers right-aligned with `--numeric-data`, header in `--weight-medium`.
+- Chart: inline SVG, gridlines in `--color-border`, direct labels at line ends, the highlighted series in orange.
 - Charts in inline SVG: direct labels on lines instead of legends; gridlines in `--color-border`; only the highlighted series in orange.
 - KPI block: number at 120, label, delta with an arrow drawn in SVG.
-- Tables: hairline rows, right-aligned numbers.
 
 ## Signature
 A chart slide where the orange series is labelled directly at its end point with the number, and everything else is grey.
 
-## Refuses
-Pie charts with many slices, 3D charts, rainbow palettes, decorative icons, titles that only name the topic.
+## Rules
+- Title each chart with its finding ("Returns doubled in Q3"), not only its topic.
+- Use bars and lines with direct labels (not pies with many slices, 3D, or legends to decode).
+- Grey every series except the one the sentence is about (not rainbow palettes).
+- Let numbers and labels carry the page (not decorative icons).
 
 ## Motion
 None; builds may reveal the highlighted series last.

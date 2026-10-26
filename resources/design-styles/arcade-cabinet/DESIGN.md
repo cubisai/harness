@@ -19,15 +19,20 @@ The game's own front end, not a website about it: a deep indigo night, pixel typ
 - Footer hints for controls (Enter, Esc, arrows) drawn as small key caps.
 
 ## Components
+- Button: 48px tall, `--radius-sm`, 2px `--color-border-strong` border, padding 0 `--space-6`; pixel label in caps with `--tracking-label`.
+- Panel: `--color-surface`, 2px `--color-border`, `--radius-md`, padding `--space-4`; no shadow.
+- Status: 24px block chips, `--color-*-soft` fill, the matching status colour for the text.
 - Menu item: full-width row, pixel label, value on the right for settings.
-- Buttons: square-cornered, 2px border, a 2px inner highlight on top for a 'cartridge' feel.
 - Progress: segmented bars (blocks), not smooth bars.
 
 ## Signature
 A title screen with the game's name in large pixel type over a simple parallax of SVG shapes (stars, tiles), and a blinking "Press Enter" line.
 
-## Refuses
-Web-site chrome (top nav, footer links), stock gradients, glassmorphism, emoji, generic card grids.
+## Rules
+- Build every screen as a game menu: a framed stage, full-width rows, the focused row inverted (not web chrome: top nav, footer links).
+- Draw depth with 2px bevels and stepped blocks (not gradients or glass).
+- Draw icons as pixel SVG on the 4px grid (not emoji).
+- Show progress as segmented blocks that fill one at a time.
 
 ## Motion
 Selection moves instantly with a 2-frame flash; the "Press Enter" blink is the one looping animation. Respect reduced motion.

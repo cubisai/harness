@@ -19,15 +19,18 @@ A tool people keep open all day. Cool fog greys, plenty of air, one pine green f
 - Tables with 48px rows and right-aligned numbers.
 
 ## Components
-- Buttons: `--radius-md`, 40px tall (44 on touch); primary pine fill, secondary white with border, ghost text.
-- Inputs: white, 1px border, focus ring 2px pine with 2px offset.
-- Empty states: one line of plain guidance and a single action.
+- Button: 44px, `--radius-md`, padding 0 `--space-4`; primary pine fill, secondary white with 1px `--color-border-strong`, ghost text.
+- Input: 44px, `--color-surface`, 1px `--color-border-strong`, `--radius-md`; focus ring 2px pine with 2px offset.
+- Card: `--color-surface`, 1px `--color-border`, `--radius-lg`, padding `--space-6`; no shadow.
+- Empty state: one line of plain guidance and a single action.
 
 ## Signature
 A detail that rewards attention: a soft progress bar, a keyboard hint in the corner, a friendly empty state with a small line illustration in pine.
 
-## Refuses
-Gradients, heavy shadows, many accent colours, decorative hero metrics, marketing copy inside the app.
+## Rules
+- Keep the app quiet: one accent, flat surfaces, light borders (not gradients or heavy shadows).
+- Write interface copy plainly: what it is, what to do (not marketing copy inside the app).
+- Show numbers where they help a decision (not decorative hero metrics).
 
 ## Motion
 Short (120–220ms) ease-out on panels and menus; nothing moves on its own.

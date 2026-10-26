@@ -17,15 +17,19 @@ A mobile money app: a deep navy hero card with the balance, a white sheet slidin
 - Bottom tab bar: Home, Cards, Payments, Profile.
 
 ## Components
+- Button: 52px, `--radius-md`, navy fill, full width at the bottom of a flow.
 - Quick action: 56px round button with an SVG icon and a label below.
-- Transaction row: merchant initial or logo circle, name, category and time, amount right-aligned.
-- Buttons: `--radius-md`, navy, 52px tall.
+- Transaction row: 64px; logo circle, name, category and time; amount right-aligned with `--numeric-data` and a sign.
+- Tag: 24px, `--radius-full`, `--color-*-soft` fill.
 
 ## Signature
 The white sheet overlapping the navy card, with the balance large on navy and a thin green line showing this month's change.
 
-## Refuses
-Crypto neon, gradient credit cards, cluttered dashboards, colour-only amounts, tiny tap targets.
+## Rules
+- Show the balance and the next action first; keep the rest of the dashboard calm (not cluttered).
+- Sign every amount and name its direction (not colour alone).
+- Keep cards flat on the cool field (not gradient credit cards or crypto neon).
+- Give every control at least 44px (52 for primary actions).
 
 ## Motion
 The sheet slides up 24px on open (250ms); numbers do not count up.

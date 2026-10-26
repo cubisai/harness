@@ -1,4 +1,9 @@
-/* Night Studio: a CubiQ style. Link this file and use the custom properties, not raw values. */
+/* Night Studio: a CubiQ style. Link this file and use the custom properties, not raw values. Dark by design: no light pair.
+ * Roles: --color-accent-text for accent-coloured text (the accent itself may be too light for text);
+ * --color-on-accent on accent fills; --color-*-soft behind status text and selected chips, with the matching
+ * colour (or --color-accent-text) on top; --color-surface-3 for hover/pressed wells; --color-border-strong for
+ * inputs and dividers that must show. --tracking-display/-heading/-label on those roles, --text-display-sm
+ * under 640px, font-variant-numeric: var(--numeric-data) on figures. */
 @font-face {
   font-family: "Onest";
   src: url("fonts/onest.woff2") format("woff2");
@@ -30,6 +35,14 @@
   --color-warning: #FFC15E;
   --color-danger: #FF6B81;
   --color-focus: #C7A6FF;
+  --color-surface-3: #43304A;
+  --color-border-strong: #7A6780;
+  --color-accent-text: #C7A6FF;
+  --color-on-accent: #1B1020;
+  --color-accent-soft: #49365A;
+  --color-success-soft: #364146;
+  --color-warning-soft: #563C37;
+  --color-danger-soft: #4D263B;
 
   /* Type */
   --font-sans: "Onest", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -56,6 +69,12 @@
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-bold: 700;
+  --tracking-display: -0.02em;
+  --tracking-heading: -0.01em;
+  --tracking-label: 0.04em;
+  --text-display-sm: 48px;
+  --leading-display-sm: 48px;
+  --numeric-data: tabular-nums;
 
   /* Space: the 8pt scale (4 is for type and icon nudges only) */
   --space-1: 4px;

@@ -18,15 +18,20 @@ A naturalist's field guide: moss, bark and sand on uncoated paper, topographic l
 - Sections numbered only if they are steps on a route.
 
 ## Components
-- Buttons: `--radius-sm`, moss fill, or an outlined variant.
+- Button: 44px, `--radius-sm`, moss fill or 1px moss outline, padding 0 `--space-6`.
+- Specimen plate: `--color-surface`, 1px `--color-border`, `--radius-md`, image on top, name in italic serif, a label row (habitat, season).
+- Tag: 24px, `--radius-full`, `--color-*-soft` fill.
 - Cards: specimen plates: an illustration or photo, a name in italic serif, a short label row (habitat, season).
 - Maps and figures with thin 1px ink lines.
 
 ## Signature
 A specimen plate layout: a large illustration with hairline callout leaders pointing to labelled parts.
 
-## Refuses
-Neon, glass, gradient blobs, tech-startup card grids, emoji icons.
+## Rules
+- Illustrate with plates, maps and figures in 1px ink lines.
+- Hold to the earth palette: moss, bark and paper (not neon, glass or gradient blobs).
+- Lay entries out as a field journal: plates and notes (not tech-startup card grids).
+- Draw icons as line SVG (not emoji).
 
 ## Motion
 Slow and quiet: contour lines draw in once (800ms); images fade. Nothing bounces.

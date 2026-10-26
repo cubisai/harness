@@ -1,4 +1,9 @@
-/* Ledger Paper: a CubiQ style. Link this file and use the custom properties, not raw values. */
+/* Ledger Paper: a CubiQ style. Link this file and use the custom properties, not raw values. A dark pair follows the system setting.
+ * Roles: --color-accent-text for accent-coloured text (the accent itself may be too light for text);
+ * --color-on-accent on accent fills; --color-*-soft behind status text and selected chips, with the matching
+ * colour (or --color-accent-text) on top; --color-surface-3 for hover/pressed wells; --color-border-strong for
+ * inputs and dividers that must show. --tracking-display/-heading/-label on those roles, --text-display-sm
+ * under 640px, font-variant-numeric: var(--numeric-data) on figures. */
 @font-face {
   font-family: "Hanken Grotesk";
   src: url("fonts/hanken-grotesk.woff2") format("woff2");
@@ -37,6 +42,14 @@
   --color-warning: #8A5A00;
   --color-danger: #B0302A;
   --color-focus: #2B5BD7;
+  --color-surface-3: #E3E0D8;
+  --color-border-strong: #8D8E8F;
+  --color-accent-text: #826421;
+  --color-on-accent: #FAF8F3;
+  --color-accent-soft: #EFEAE0;
+  --color-success-soft: #E0EBE5;
+  --color-warning-soft: #EFE8DB;
+  --color-danger-soft: #F4E2E1;
 
   /* Type */
   --font-sans: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -63,6 +76,12 @@
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-bold: 700;
+  --tracking-display: -0.01em;
+  --tracking-heading: 0em;
+  --tracking-label: 0.04em;
+  --text-display-sm: 32px;
+  --leading-display-sm: 36px;
+  --numeric-data: tabular-nums;
 
   /* Space: the 8pt scale (4 is for type and icon nudges only) */
   --space-1: 4px;
@@ -103,6 +122,37 @@
   :root {
     --duration-fast: 0ms;
     --duration: 0ms;
+  }
+}
+
+/* Dark: the same roles, re-tuned; picked up from the system setting. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --color-bg: #0E1424;
+    --color-surface: #141C30;
+    --color-surface-2: #1C263E;
+    --color-text: #EEF0F5;
+    --color-text-muted: #A8B0C3;
+    --color-border: #2B3652;
+    --color-primary: #EEF0F5;
+    --color-on-primary: #0E1424;
+    --color-accent: #D9B45A;
+    --color-success: #5CC98A;
+    --color-warning: #E7B04F;
+    --color-danger: #F2786E;
+    --color-focus: #D9B45A;
+    --color-surface-3: #2D364D;
+    --color-border-strong: #626A80;
+    --color-accent-text: #D9B45A;
+    --color-on-accent: #0E1424;
+    --color-accent-soft: #3F3D39;
+    --color-success-soft: #244244;
+    --color-warning-soft: #423D37;
+    --color-danger-soft: #3C2D3B;
+    --shadow-1: 0 1px 0 rgb(0 0 0 / 0.24);
+    --shadow-2: 0 6px 18px rgb(0 0 0 / 0.3);
+    --shadow-3: 0 18px 48px rgb(0 0 0 / 0.48);
   }
 }
 

@@ -1,4 +1,9 @@
-/* Toybox: a CubiQ style. Link this file and use the custom properties, not raw values. */
+/* Toybox: a CubiQ style. Link this file and use the custom properties, not raw values. A dark pair follows the system setting.
+ * Roles: --color-accent-text for accent-coloured text (the accent itself may be too light for text);
+ * --color-on-accent on accent fills; --color-*-soft behind status text and selected chips, with the matching
+ * colour (or --color-accent-text) on top; --color-surface-3 for hover/pressed wells; --color-border-strong for
+ * inputs and dividers that must show. --tracking-display/-heading/-label on those roles, --text-display-sm
+ * under 640px, font-variant-numeric: var(--numeric-data) on figures. */
 @font-face {
   font-family: "Fredoka";
   src: url("fonts/fredoka.woff2") format("woff2");
@@ -19,10 +24,18 @@
   --color-primary: #3B4CCA;
   --color-on-primary: #FFFFFF;
   --color-accent: #E8487A;
-  --color-success: #2A8C55;
+  --color-success: #297551;
   --color-warning: #A35A00;
   --color-danger: #C8293C;
   --color-focus: #3B4CCA;
+  --color-surface-3: #F2E2C1;
+  --color-border-strong: #968882;
+  --color-accent-text: #B93D6D;
+  --color-on-accent: #000000;
+  --color-accent-soft: #FCEBF0;
+  --color-success-soft: #E1ECE7;
+  --color-warning-soft: #F5EDE3;
+  --color-danger-soft: #F9E7EA;
 
   /* Type */
   --font-sans: "Fredoka", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -49,6 +62,12 @@
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-bold: 700;
+  --tracking-display: -0.01em;
+  --tracking-heading: 0em;
+  --tracking-label: 0.04em;
+  --text-display-sm: 40px;
+  --leading-display-sm: 44px;
+  --numeric-data: tabular-nums;
 
   /* Space: the 8pt scale (4 is for type and icon nudges only) */
   --space-1: 4px;
@@ -89,6 +108,37 @@
   :root {
     --duration-fast: 0ms;
     --duration: 0ms;
+  }
+}
+
+/* Dark: the same roles, re-tuned; picked up from the system setting. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --color-bg: #17132B;
+    --color-surface: #201B3A;
+    --color-surface-2: #2B2550;
+    --color-text: #FFF9EC;
+    --color-text-muted: #BDB5DA;
+    --color-border: #3B3466;
+    --color-primary: #8C9BFF;
+    --color-on-primary: #10133A;
+    --color-accent: #FF6B98;
+    --color-success: #4CC98A;
+    --color-warning: #FFB547;
+    --color-danger: #FF6B7F;
+    --color-focus: #8C9BFF;
+    --color-surface-3: #3C365C;
+    --color-border-strong: #726B8C;
+    --color-accent-text: #FF6B98;
+    --color-on-accent: #17132B;
+    --color-accent-soft: #48294B;
+    --color-success-soft: #2A414C;
+    --color-warning-soft: #513D3D;
+    --color-danger-soft: #482946;
+    --shadow-1: 0 3px 0 rgb(0 0 0 / 0.36);
+    --shadow-2: 0 8px 0 rgb(0 0 0 / 0.3);
+    --shadow-3: 0 24px 48px rgb(0 0 0 / 0.54);
   }
 }
 

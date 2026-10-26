@@ -18,15 +18,18 @@ Music and creative tools after dark: aubergine rooms, coral and lilac light, wid
 - Asymmetric hero: the display title large on the left, a player or waveform on the right.
 
 ## Components
-- Buttons: `--radius-md`, coral fill with plum text; icon buttons round for play/pause.
-- Player bar: plum surface, coral progress, lilac hover.
-- Track rows: number, title, artist, time; the playing row tinted coral at 12%.
+- Button: 44px, `--radius-md`, coral fill with `--color-on-primary`; play/pause icon buttons round, 48px.
+- Player bar: `--color-surface-2`, coral progress, lilac hover.
+- Track row: 56px; number, title, artist, time in `--numeric-data`; the playing row tinted with `--color-accent-soft`.
 
 ## Signature
 A big waveform across the hero that lights up in coral up to the playhead.
 
-## Refuses
-Pure black with neon green, glassmorphism everywhere, generic SaaS cards, stock gradients.
+## Rules
+- Set the mood with plum and coral on deep night (not pure black with neon green).
+- Use artwork as the colour source: square covers, real titles and durations.
+- Keep surfaces solid (glass only for the one floating player bar, not everywhere).
+- Build with rows and covers (not generic SaaS cards or stock gradients).
 
 ## Motion
 The waveform animates gently while playing; everything else is instant or 200ms. Respect reduced motion.

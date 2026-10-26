@@ -18,15 +18,18 @@ Productivity like a good paper notebook: dot-grid paper, ink blue, highlighter y
 - Sidebar for lists/projects; content max 1200.
 
 ## Components
-- Checkbox: square with a slightly irregular SVG tick in ink blue.
-- Buttons: `--radius-sm`, ink fill; quick-add input at the top of each list.
-- Tags: small mono labels with a highlighter swipe.
+- Button: 44px, `--radius-sm`, ink fill, padding 0 `--space-4`; a quick-add input at the top of each list.
+- Checkbox: 24px square in a 44px row, slightly irregular SVG tick in ink blue.
+- Tag: 24px, mono `--text-xs`, a highlighter swipe in `--color-accent-soft`.
 
 ## Signature
 Today's top three tasks marked with a highlighter swipe and a hand-drawn circle around the most important one.
 
-## Refuses
-Gamified confetti, neon, heavy shadows, dashboards full of charts, emoji icons.
+## Rules
+- Make it feel written: ruled rows, ink ticks, highlighter swipes.
+- Reward progress quietly with a strike-through and a count (not confetti).
+- Keep pages flat on paper (not neon or heavy shadows); draw icons as line SVG (not emoji).
+- Prefer lists and a week grid (not dashboards full of charts).
 
 ## Motion
 Checking a task draws the tick (200ms) and strikes the text through; nothing else animates.

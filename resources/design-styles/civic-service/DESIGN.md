@@ -19,15 +19,20 @@ Public-service clarity: white, black, one link blue, a yellow focus nobody can m
 - Step-by-step navigation for multi-part services.
 
 ## Components
-- Buttons: square, green, with a 2px darker bottom edge; "Start now" with an arrow drawn in SVG.
-- Inputs: 2px black border, 40px tall, label and hint text above, error message in red with a red left border on the group.
+- Button: 44px, `--radius-sm` (0), green fill, 2px darker bottom edge, padding 0 `--space-4`, label in `--weight-bold`.
+- Input: 44px, 2px `--color-text` border, `--radius-sm`, label and hint above; focus is a 3px `--color-focus` outline.
+- Error: the group gets a 4px `--color-danger` left border and the message in `--color-danger` above the field.
+- Tag: 28px, `--color-*-soft` fill, status text in caps-free `--weight-bold`.
 - Summary list: key/value rows with a "Change" link.
 
 ## Signature
 An error summary box at the top that links to each field with an error, and the page title prefixed with "Error:" when present.
 
-## Refuses
-Decorative images, carousels, gradients, rounded marketing cards, placeholder-only labels, colour-only meaning.
+## Rules
+- Start each page with what the person can do here, in one sentence (not decorative images or carousels).
+- Give every field a visible label (not placeholder-only labels).
+- Pair every colour signal with a word or icon (not colour alone).
+- Keep blocks flat and square (not rounded marketing cards or gradients).
 
 ## Motion
 None beyond focus and hover states.

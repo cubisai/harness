@@ -18,15 +18,19 @@ A B2B product site that doesn't look like every other one: icy white-blue air, d
 - One proof section: a few real customer names set as text and a single quote.
 
 ## Components
-- Buttons: `--radius-md`, ink fill; secondary is text with an underline.
-- Product frame: white, `--radius-lg`, `--shadow-3`, a thin `--color-border`.
+- Button: 44px (52 in the hero), `--radius-md`, ink fill, padding 0 `--space-6`; secondary is text with an underline.
+- Product frame: `--color-surface`, `--radius-lg`, `--shadow-3`, 1px `--color-border`.
+- Tag: 24px, `--radius-full`, `--color-accent-soft` with `--color-accent-text`.
 - Pricing: a comparison table, not three floating cards.
 
 ## Signature
 The product UI in the hero is live-ish: one element in it (a status, a counter, a chart line) updates every few seconds.
 
-## Refuses
-Three-column icon feature grids, gradient blobs, purple-pink AI gradients, hero metric rows, eyebrow labels.
+## Rules
+- Explain features by zooming into the product frame with callouts (not three-column icon grids).
+- Keep the field icy and flat; the one colour is the clear blue (not gradient blobs or purple-pink AI gradients).
+- Prove with named customers and one quote (not hero metric rows).
+- Start sections with the headline itself (not eyebrow labels).
 
 ## Motion
 One: the product frame rises 16px and fades in on load; the live detail in it updates quietly.

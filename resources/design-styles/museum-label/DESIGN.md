@@ -18,15 +18,17 @@ A gallery wall. The work hangs alone in a lot of white space; the label beside i
 - Navigation is a few text links at the top edge; nothing sticky.
 
 ## Components
-- Image frames: no radius, no shadow, no border.
-- Buttons are text links with a 1px underline; one solid black button for "Enquire".
-- Lightbox: black background, image centred, caption below.
+- Link button: text with a 1px underline; one solid black 44px button for "Enquire", padding 0 `--space-6`.
+- Image frame: no radius, no shadow, no border; caption below as a wall label (artist, title, year, medium).
+- Lightbox: a black page in both schemes, image centred, caption below in light grey.
 
 ## Signature
 The first viewport is one artwork at near-full height with the title in Bodoni at the edge, and nothing else.
 
-## Refuses
-Cards, icons, rounded corners, gradients, hero metrics, decorative backgrounds, more than one typeface for display.
+## Rules
+- Let the work and its label carry the page: image, then a wall-label caption (not cards or decorative backgrounds).
+- Use one display face; italics for titles.
+- Keep corners square and surfaces flat (not icons, gradients or hero metrics).
 
 ## Motion
 Images fade in slowly (600ms) once as they enter; hover shows the caption. Nothing else moves.

@@ -1,4 +1,9 @@
-/* Chalk Keynote: a CubiQ style. Link this file and use the custom properties, not raw values. */
+/* Chalk Keynote: a CubiQ style. Link this file and use the custom properties, not raw values. Dark by design: no light pair.
+ * Roles: --color-accent-text for accent-coloured text (the accent itself may be too light for text);
+ * --color-on-accent on accent fills; --color-*-soft behind status text and selected chips, with the matching
+ * colour (or --color-accent-text) on top; --color-surface-3 for hover/pressed wells; --color-border-strong for
+ * inputs and dividers that must show. --tracking-display/-heading/-label on those roles, --text-display-sm
+ * under 640px, font-variant-numeric: var(--numeric-data) on figures. */
 @font-face {
   font-family: "Schibsted Grotesk";
   src: url("fonts/schibsted-grotesk.woff2") format("woff2");
@@ -23,6 +28,14 @@
   --color-warning: #F4C95D;
   --color-danger: #FF9C8A;
   --color-focus: #F4C95D;
+  --color-surface-3: #296553;
+  --color-border-strong: #6E9685;
+  --color-accent-text: #F4C95D;
+  --color-on-accent: #0E3B2E;
+  --color-accent-soft: #325C3F;
+  --color-success-soft: #2B6650;
+  --color-warning-soft: #325C3F;
+  --color-danger-soft: #235040;
 
   /* Type */
   --font-sans: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -49,6 +62,12 @@
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-bold: 700;
+  --tracking-display: -0.03em;
+  --tracking-heading: -0.015em;
+  --tracking-label: 0.04em;
+  --text-display-sm: 64px;
+  --leading-display-sm: 64px;
+  --numeric-data: tabular-nums;
 
   /* Space: the 8pt scale (4 is for type and icon nudges only) */
   --space-1: 4px;
