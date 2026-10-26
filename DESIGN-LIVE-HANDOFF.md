@@ -1,4 +1,23 @@
-# Handoff: design live variants + style variety (2026-10-26, Mac, session 1: plan approved, P0 next)
+# Handoff: design live variants + style variety (2026-10-26, Mac, end of session 1: P0 done, P1 next)
+
+## Session 1 status (read this first)
+- **The plan is approved, and the user said to start it.** Continue P1 without asking (memory `autonomy-no-prompts`).
+- **P0 done: every defect seen live.** Details are in the hub `.ai/plans/design-style.md` §1.1; shots in `.ai/plans/design-style-refs/p0/`. P0 ran on the dev app at port 9466, Working tier, dark theme, on Claude's #4 dashboard:
+  - the header Select and rail Select light up together;
+  - Text + a single click only selects, no edit;
+  - Comment is disabled in the Working tier;
+  - Pen: the wheel doesn't scroll while drawing, and a stroke stays at its screen spot when the page scrolls (it drifts off its content);
+  - Inspector turns picking on and leaves it on after it closes.
+- **Worktree created:** `../aiharness-wt/design-live`, branch `track/design-live` at `b9a3ee3` (= m4 + this handoff). `node_modules` is symlinked to the main checkout. No code changes yet.
+- **Next: P1** (the global bar). Then P2a/b/c; P3 (variety) can start in parallel in `../aiharness-wt/design-variety` (not created yet).
+- **Test setup to reuse for live checks:**
+  - profile: copy the P6 bench DB with `sqlite3 <old>/scratchpad/profile/unskilled.db ".backup <new>/ud/unskilled.db"`. The old profile is in session `96f832e5`'s scratchpad. Its design threads point at `.ai/reports/design-enhance-20261026/baseline/project`;
+  - launch from the worktree: `npx electron-vite dev --remoteDebuggingPort 9466 -- --user-data-dir=<ud>`;
+  - theme: `window.unskilled.updateSettings({theme:"dark"})`;
+  - open a thread via `ab snapshot -i` → `ab click @eN` in the same call;
+  - in-frame state: a small CDP script that evaluates on the `type: iframe` target from `curl :9466/json` (the agent-browser tab for the iframe disappears when the frame reloads);
+  - real clicks and drags: `ab mouse move/down/up` on the app tab.
+- The user's own dev app (main checkout, no CDP port) was running all session. Don't kill it.
 
 Goal (user): design mode should work like **Impeccable's live mode video**:
 1. pick an element;
@@ -38,8 +57,8 @@ Design threads only.
 
 | Phase | What | State |
 |---|---|---|
-| P0 | Live repro of the tool defects in the Quick / Working / Real app tiers, dark theme, screenshots | **next** |
-| P1 | Global bar (Pick `V`, Insert, Detect, DESIGN.md, Steer, Compare, Present); header Select out; Text, Comment and Pen out of the rail; Inspector no longer turns picking on | todo |
+| P0 | Live repro of the tool defects, dark theme, screenshots | **done** (session 1) |
+| P1 | Global bar (Pick `V`, Insert, Detect, DESIGN.md, Steer, Compare, Present); header Select out; Text, Comment and Pen out of the rail; Inspector no longer turns picking on | **next** |
 | P2a | Element bar + 4×3 action palette + in-frame marks and notes (page coordinates) + Go message | todo |
 | P2b | `data-cubiq-variant="S-n"` sets in place, bridge detection, cycler, Accept/× in the main process, malformed-set recovery | todo |
 | P2c | Insert (`+`): variants at a gap | todo |
@@ -47,7 +66,7 @@ Design threads only.
 | P4 | ~35 new slop checks, style exemptions, noise gate, skill floor lines, Detect (eye) overlay | todo |
 
 ## Where the work goes
-- No code yet. Branch **`track/design-live`** off `m4` (`db014be`), in its own worktree `../aiharness-wt/design-live` (not created yet).
+- No code yet. Branch **`track/design-live`** off `m4` (`b9a3ee3`), in its own worktree `../aiharness-wt/design-live` (created).
 - P3 goes in a second worktree, `../aiharness-wt/design-variety`.
 - One git worktree per parallel brief (memory `parallel-worktrees`).
 - Main checkout: leave other-session files alone (`resources/DESIGN-MODE.md` one-line diff, the `road-map-handoff.md` deletion, `docs/testing/`, the recordings and screenshots).
