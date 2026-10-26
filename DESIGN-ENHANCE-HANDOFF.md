@@ -67,24 +67,24 @@ Session 2:
 - **Use `/oc` for implementation.** Taste content (palettes, guide wording, icon picks, pattern notes) stays with Claude.
 - Live Claude/Codex runs need the user's OK (P6).
 
-## Next, in order (6 left)
-1. **P4c, new styles** from p3a (research doc sources):
-   - OFL fonts into `resources/design-fonts` + `LICENSES.md`;
-   - drop fonts on the lint's overused list, or exempt a style's own fonts;
-   - accents under 4.5:1 are non-text only (`accent-text` handles text);
-   - avoid cream grounds unless the concept is paper/print;
-   - every new style needs v2 tokens, a dark pair (or "Dark by design"), Components and Rules, and must pass `test/design-styles-contrast.test.ts`;
-   - watch the style index cost in `design_set_direction` (about 690 tokens).
-2. **P5a, skills**: worked examples and before/after in `design-prototype`, `design-mobile` and `design-slides`. Add mobile anatomies to `resources/design-patterns/mobile.md` (≤ 700 tokens): time-first log row, date block, ticket stub, sold-out tier, fee breakdown, map price pins, filter histogram, schedule slots. All are in research §4–5.
-3. **P5b remainder**:
-   - **End-of-turn fix round**: when contrast or targets findings remain at the end of a turn, re-run the lint once and ask for one fix round. Today `src/main/design/autolint.ts` only notes findings for the *next* turn (`service.ts` ~1439). Needs research of the Stop path per agent (Claude Stop hook / Codex / OpenCode) before a brief.
-   - Lint candidate from §6 #10: text clipped by its box, or overlapping text.
-4. **P6**: **ask the user before any live round** (maybe a small model).
+## Session 3 (2026-10-26): done, verified by Claude (typecheck clean, 3720 tests, design:check 0 errors)
+
+| Commit | Phase | What |
+|---|---|---|
+| `352de1f` | **P4c** | 6 new styles: terminal, wayfinding, workshop, y2k-chrome, arena (dark by design), newsroom. Fonts (OFL, Fontsource 5.3): Geist/Geist Mono, Overpass/Overpass Mono, Alfa Slab One, Michroma, Chivo, Chakra Petch, Sora, Source Serif 4, Public Sans. None on the overused list; no cream grounds. Single-cut faces are declared `font-weight: 100 900` so headings never get a synthesized bold. Style index ≈ 870 est. tokens, so the test cap moved 800 → 900 |
+| `946bd15` | **P5b** | End-of-turn fix round: a design turn that ends (turn-end, not stopped) with NEW contrast/targets findings gets one automatic `designFixRound` send right away (`service.ts` finally → `designFixNote`, `autoFixPrompt`). Works for every agent through `Service.send`; no driver changes. Implemented by `/oc` implementer |
+| `f757648` | **P5a** | Before/after and worked examples in design-prototype, design-mobile and design-slides; mobile.md anatomies (log row, date block, ticket stub, tier row, fees, map pins, range filter, slots), ≈ 760 tokens (user OK'd going over 700) |
+| `fd210df` | **P5b** | Lint §6 #10: text cut off by a hidden-overflow box, and ink-over-ink text. Skips fixed/sticky bars vs page content, text scrolled out of its scroll box, closed `<details>`, faded or hidden ancestors, icon-font ligatures, ellipsis and line clamps. 0 hits on the 17 baseline pages at 390 and 1440; hits 7 bad Stitch pages |
+
+Specimen check for new styles (not in repo): one fixed test layout rendered with each style's tokens, light + forced dark. It checks palette, type and contrast only, not what a real turn builds.
+
+## Next, in order
+1. **P6**: **ask the user before any live round** (maybe a small model).
    - Same 10 prompts, `bench/design-live.ts --agents … --prompts …` (resumes).
    - Baseline data: `.ai/reports/design-enhance-20261026/baseline/`.
-   - Score: distinct styles, end-of-turn lint, taste review of screenshots (dark + light), tokens, cost.
-5. **Merge** into m4 (**ask first**), push, watch Windows CI (memory `two-machines`).
-6. Housekeeping: remind the user to **rotate the Stitch API key** (`.env` `STITCH_API_KEY`).
+   - Score: distinct styles (6 new ones now in the index), end-of-turn lint and the fix round, taste review of screenshots (dark + light), tokens, cost.
+2. **Merge** into m4 (**ask first**), push, watch Windows CI (memory `two-machines`).
+3. Housekeeping: remind the user to **rotate the Stitch API key** (`.env` `STITCH_API_KEY`).
 
 ## How to check things
 - **Live UI**: copy `.ai/reports/design-enhance-20261026/baseline/profile` to a scratch dir.
