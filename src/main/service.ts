@@ -106,6 +106,7 @@ export class Service {
   private designSystemsDir: string | null = null;
   private designStylesDir: string | null = null;
   private designPatternsDir: string | null = null;
+  private designIconsDir: string | null = null;
   private designFontsDir: string | null = null;
   /** Lints a design thread's pages off screen; without it no automatic lint runs. */
   private designAutoLint: ((threadId: string, root: string, rels: string[]) => Promise<PageLint[]>) | null = null;
@@ -1418,6 +1419,11 @@ export class Service {
     this.designPatternsDir = dir;
   }
 
+  /** Where the design icon sprite lives (resources/design-icons): icons.svg. */
+  setDesignIconsDir(dir: string): void {
+    this.designIconsDir = dir;
+  }
+
   /** How design pages are linted off screen, for the automatic lint after a turn's writes. */
   setDesignAutoLint(lint: (threadId: string, root: string, rels: string[]) => Promise<PageLint[]>): void {
     this.designAutoLint = lint;
@@ -1536,6 +1542,7 @@ export class Service {
     const root = this.designRoot(threadId);
     const tier = tierOf(saved);
     let patterns = false;
+    let icons = false;
     if (root) {
       if (system) materializeSystem(system, join(root, "system"));
       try {
@@ -1549,6 +1556,16 @@ export class Service {
         // A missing notes file must never break the tool.
       }
       try {
+        const sprite = this.designIconsDir ? join(this.designIconsDir, "icons.svg") : null;
+        if (sprite && existsSync(sprite)) {
+          mkdirSync(join(root, "system"), { recursive: true });
+          writeFileSync(join(root, "system", "icons.svg"), readFileSync(sprite, "utf8"));
+          icons = true;
+        }
+      } catch {
+        // A missing sprite must never break the tool.
+      }
+      try {
         writeFileSync(join(root, ".tier"), tier);
       } catch {
         // The tier note below still reaches the agent.
@@ -1559,7 +1576,7 @@ export class Service {
     const where = system
       ? ` \`${folder}/system/\` now holds ${system.name}${auto && !hasProject ? " (the style you picked)" : ""}: read its DESIGN.md before you build, link \`system/tokens.css\` and use its custom properties${system.fontFiles?.length ? "; it declares its fonts from `system/fonts/`" : ""}.`
       : "";
-    return `${head}${where}${patterns ? ` \`${folder}/system/patterns.md\` has the rules and anatomies for a ${direction.surface}: read it, then write \`${folder}/brief.md\` before the first page.` : ""}\n${tierNote(tier)}`;
+    return `${head}${where}${patterns ? ` \`${folder}/system/patterns.md\` has the rules and anatomies for a ${direction.surface}: read it, then write \`${folder}/brief.md\` before the first page.` : ""}${icons ? ` \`${folder}/system/icons.svg\` has line icons (ids listed at its top): copy the symbols a page uses into the page instead of drawing icons or using emoji.` : ""}\n${tierNote(tier)}`;
   }
 
   /** The System tab's view of a system: DESIGN.md and its tokens, plus whether (and how) it can be edited. */
