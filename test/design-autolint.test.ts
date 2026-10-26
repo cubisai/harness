@@ -1,7 +1,7 @@
 import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { AUTO_LINT_MAX, autoLintNote, changedPages, lintWidth, type PageLint } from "../src/main/design/autolint";
+import { AUTO_LINT_MAX, autoFixPrompt, autoLintNote, changedPages, lintWidth, type PageLint } from "../src/main/design/autolint";
 import { LINT_MAX, type LintFinding } from "../src/main/design/lint";
 import { tempDir } from "./helpers";
 
@@ -86,5 +86,19 @@ describe("autoLintNote", () => {
 
   it("stays within design_lint's own output cap", () => {
     expect(AUTO_LINT_MAX).toBeLessThanOrEqual(LINT_MAX);
+  });
+
+  it("asks for a fix round only for a new contrast or targets finding", () => {
+    const contrast = { rule: "contrast" as const, selector: "p.muted", detail: "2.1:1 on #fff" };
+    expect(autoLintNote("d", [page("index.html", [slop("p.kicker")])], new Set()).fix).toBe(false);
+    const fresh = autoLintNote("d", [page("index.html", [contrast])], new Set());
+    expect(fresh.fix).toBe(true);
+    expect(autoLintNote("d", [page("index.html", [{ rule: "targets" as const, selector: "nav a", detail: "32×20, under 44×44" }])], new Set()).fix).toBe(true);
+    // Still there but already said: nothing new, no fix asked.
+    const again = autoLintNote("d", [page("index.html", [contrast])], fresh.said);
+    expect(again.fix).toBe(false);
+    expect(again.text).toBe("");
+    expect(autoFixPrompt(fresh.text).startsWith("CubiQ checked the pages you just wrote")).toBe(true);
+    expect(autoFixPrompt(fresh.text)).toContain("- index.html [contrast] p.muted: 2.1:1 on #fff");
   });
 });

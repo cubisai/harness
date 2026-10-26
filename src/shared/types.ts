@@ -1052,6 +1052,8 @@ export interface SendRequest {
   mentions?: string[];
   /** Internal: which automatic fix round this send is (0 or absent = the user's). */
   checkRound?: number;
+  /** Internal: this send is the one automatic design-lint fix round after a design turn. */
+  designFixRound?: boolean;
   /** Compact the session instead of sending a message (/compact [focus]). */
   compact?: { focus: string | null };
   /** Sent with Alt+Enter: waits in the queue when Settings › Run at once is reached. */

@@ -500,6 +500,47 @@ describe("Service.send", () => {
     expect(notes[6]).toContain("- index.html [slop] p.kicker: gradient text");
   });
 
+  it("sends one fix round when a design turn ends with new contrast findings, and none after a failed turn", async () => {
+    const prompts: string[] = [];
+    const turnEnd = { kind: "turn-end" as const, costUsd: null, inputTokens: 10, outputTokens: 0, durationMs: 5 };
+    let stop = false;
+    const { service, store } = setup(async (input) => {
+      prompts.push(input.prompt);
+      writeFileSync(join(service.designRoot(design.id)!, "index.html"), "<p>x</p>");
+      if (stop) throw new Error("stopped");
+      input.onEvent(turnEnd);
+    });
+    const project = store.addProject(tempDir());
+    const design = service.createThread(project.id, undefined, "design", "clean");
+    mkdirSync(service.designRoot(design.id)!, { recursive: true });
+    const finding = { rule: "contrast" as const, selector: "p.muted", detail: "2.1:1 on #fff" };
+    service.setDesignAutoLint(async (_id, _root, rels) => rels.map((rel) => ({ rel, result: { findings: [finding], skipped: [], scanned: 3 } })));
+    await service.send({ threadId: design.id, text: "one" });
+    await vi.waitFor(() => expect(prompts).toHaveLength(2), { timeout: 10_000 });
+    await vi.waitFor(() => expect(service.isRunning(design.id)).toBe(false), { timeout: 10_000 });
+    await new Promise((r) => setTimeout(r, 100));
+    // The fix round's own lint still finds the same contrast: it never asks for a second fix.
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]!).toMatch(/^CubiQ checked the pages you just wrote/);
+    expect(prompts[1]!).toContain("- index.html [contrast] p.muted: 2.1:1 on #fff");
+    expect(store.getThread(design.id).title).not.toContain("CubiQ checked");
+    // A stopped turn gets no fix round: its new finding waits for the next turn's ordinary note.
+    finding.detail = "1.9:1 on #fff";
+    stop = true;
+    await service.send({ threadId: design.id, text: "two" }).catch(() => {});
+    await vi.waitFor(() => expect(service.isRunning(design.id)).toBe(false), { timeout: 10_000 });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(prompts).toHaveLength(3);
+    stop = false;
+    await service.send({ threadId: design.id, text: "three" });
+    await vi.waitFor(() => expect(service.isRunning(design.id)).toBe(false), { timeout: 10_000 });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(prompts).toHaveLength(4);
+    expect(prompts[3]!).toContain("automatic design_lint");
+    expect(prompts[3]!).toContain("1.9:1 on #fff");
+    expect(prompts[3]!).not.toMatch(/^CubiQ checked/);
+  });
+
   it("sets an expert only on a thread with no messages yet", async () => {
     const { service, store } = setup(async () => {});
     const project = store.addProject(tempDir());

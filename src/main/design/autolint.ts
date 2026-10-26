@@ -6,6 +6,9 @@ import { LINT_MAX, type LintFinding, type LintResult, type LintRule } from "./li
 /** The rules the automatic lint reports, worst first; spacing and color stay with design_lint. */
 export const AUTO_LINT_RULES: readonly LintRule[] = ["contrast", "targets", "slop"];
 
+/** The rules that, found new at the end of a design turn, earn one automatic fix round right away. */
+export const AUTO_FIX_RULES: readonly LintRule[] = ["contrast", "targets"];
+
 /** The most findings one automatic note carries (well under design_lint's own cap). */
 export const AUTO_LINT_MAX = 12;
 
@@ -57,8 +60,9 @@ const keyOf = (f: LintFinding): string => `${f.rule}|${f.selector}|${f.detail}`;
  * again. `said` for the next run is what is still there of the old plus what
  * this note shows, so a finding cut by the cap is said later, and one that was
  * fixed and comes back is said again. `text` is "" when nothing is new.
+ * `fix` is true when a shown finding is one of `AUTO_FIX_RULES`.
  */
-export function autoLintNote(dir: string, pages: PageLint[], said: ReadonlySet<string>): { text: string; said: Set<string> } {
+export function autoLintNote(dir: string, pages: PageLint[], said: ReadonlySet<string>): { text: string; said: Set<string>; fix: boolean } {
   const fresh: { rel: string; finding: LintFinding }[] = [];
   const present = new Set<string>();
   for (const rule of AUTO_LINT_RULES) {
@@ -73,12 +77,17 @@ export function autoLintNote(dir: string, pages: PageLint[], said: ReadonlySet<s
     }
   }
   const next = new Set([...said].filter((k) => present.has(k)));
-  if (fresh.length === 0) return { text: "", said: next };
+  if (fresh.length === 0) return { text: "", said: next, fix: false };
   const shown = fresh.slice(0, Math.min(AUTO_LINT_MAX, LINT_MAX));
   for (const { finding } of shown) next.add(keyOf(finding));
   const lines = shown.map(({ rel, finding }) => `- ${rel} [${finding.rule}] ${finding.selector}: ${finding.detail}`);
   const rest = fresh.length - shown.length;
   if (rest > 0) lines.push(`… ${rest} more; run design_lint to see them.`);
   const text = `\n\n(CubiQ: an automatic design_lint of ${dir} after your last edits found these; fix the ones that are real, leave deliberate choices:\n${lines.join("\n")}\n)`;
-  return { text, said: next };
+  return { text, said: next, fix: shown.some(({ finding }) => AUTO_FIX_RULES.includes(finding.rule)) };
+}
+
+/** The one automatic fix round's prompt: the note's findings, asked for now. */
+export function autoFixPrompt(note: string): string {
+  return `CubiQ checked the pages you just wrote and found contrast or tap-target problems. Fix them now in one pass, then stop; CubiQ won't ask again this turn.${note}`;
 }

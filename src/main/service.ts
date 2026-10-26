@@ -49,7 +49,7 @@ import { keepTweaks } from "./design/tweaks";
 import { forkSystem, listDesignStyles, listDesignSystems, materializeSystem, resolveDesignSystem, type DesignStyleInfo, type DesignSystemInfo } from "./design/systems";
 import { AUTO_SYSTEM, isAuto, modeLabel, STYLE_PREFIX, type DesignDirection } from "../shared/direction";
 import { DESIGN_DIRECTION_TOOL } from "./design/tools";
-import { AUTO_LINT_WAIT_MS, autoLintNote, changedPages, type PageLint } from "./design/autolint";
+import { AUTO_LINT_WAIT_MS, autoFixPrompt, autoLintNote, changedPages, type PageLint } from "./design/autolint";
 import { parseTokens, setToken } from "./design/tokens";
 import { skillsOf } from "../shared/skill-list";
 import type { AgentDriver, HarnessTool, ModelSwitch, SessionSeed } from "./agents/types";
@@ -111,7 +111,7 @@ export class Service {
   /** Lints a design thread's pages off screen; without it no automatic lint runs. */
   private designAutoLint: ((threadId: string, root: string, rels: string[]) => Promise<PageLint[]>) | null = null;
   /** Per design thread, the automatic lint of its last turn's pages, for the next turn's prompt. */
-  private autoLints = new Map<string, Promise<{ text: string; said: Set<string> }>>();
+  private autoLints = new Map<string, Promise<{ text: string; said: Set<string>; fix: boolean }>>();
   /** Per design thread, the automatic lint findings already told and still there. */
   private lintSaid = new Map<string, Set<string>>();
   /** Per design thread, each page's mtime when it was last linted: unchanged since, it isn't linted again. */
@@ -804,14 +804,14 @@ export class Service {
 
     const userEvent = this.emit(thread.id, { kind: "user", text: req.text, ...(skills.length ? { skills } : {}) });
     // An automatic fix round never names the thread; the user's message does.
-    if (thread.title === "New thread" && !req.checkRound && !compact) {
+    if (thread.title === "New thread" && !req.checkRound && !req.designFixRound && !compact) {
       const title = titleFrom(req.text, skills);
       this.broadcast({ type: "thread", thread: this.store.updateThread(thread.id, { title }) });
     }
 
     // Self-improve sees only opted-in projects' real turns; everything it adds is skipped otherwise.
-    const learner = !compact && this.learner?.enabled(thread.projectId) ? this.learner : null;
-    if (round === 0) this.rootSeqs.set(thread.id, userEvent.seq);
+    const learner = !compact && !req.designFixRound && this.learner?.enabled(thread.projectId) ? this.learner : null;
+    if (round === 0 && !req.designFixRound) this.rootSeqs.set(thread.id, userEvent.seq);
     const rootSeq = this.rootSeqs.get(thread.id) ?? userEvent.seq;
     if (learner && round === 0) learner.onUserMessage({ thread, seq: userEvent.seq, text: req.text });
 
@@ -824,6 +824,8 @@ export class Service {
     let followUp: SendRequest | null = null;
     // Set once the agent starts: the pages written since are linted after the turn, however it ends (a stopped turn too).
     let lintSince: number | null = null;
+    // Set when the agent reports the turn's end; only such a turn may get the design-lint fix round.
+    let turnEnded = false;
     try {
       // Snapshot the working tree before the turn, so an edit the agent reports
       // (or a path git now sees) is what triggers the check and the evidence gate.
@@ -925,6 +927,7 @@ export class Service {
         onSessionLost: (reason) => this.rehydrate(thread.id, driver, reason, userEvent.seq),
         onEvent: (event) => {
           dog.bump();
+          if (event.kind === "turn-end") turnEnded = true;
           if (event.kind === "compaction") {
             compacted = true;
             answered = true;
@@ -1047,7 +1050,7 @@ export class Service {
       // The turn finished cleanly: hand it to the memory extractor. A listener
       // failure is its own concern and never touches the thread. An automatic
       // fix turn isn't user intent, so it never notifies the extractor.
-      if (!controller.signal.aborted && round === 0 && !compact) {
+      if (!controller.signal.aborted && round === 0 && !req.designFixRound && !compact) {
         try {
           const last = [...this.store.listEvents(thread.id)].reverse().find((e) => e.event.kind === "assistant-text" && e.seq > userEvent.seq);
           const answer = last && last.event.kind === "assistant-text" ? last.event.text : "";
@@ -1150,12 +1153,20 @@ export class Service {
       }
     } finally {
       watchdog?.dispose();
-      if (lintSince !== null) this.queueAutoLint(thread.id, lintSince);
+      const lintRun = lintSince !== null ? this.queueAutoLint(thread.id, lintSince) : null;
+      // A design turn that ends with new contrast or target findings gets one fix round now (the thread stays running while it's linted).
+      const fix = lintRun && turnEnded && !followUp && !req.designFixRound && !controller.signal.aborted ? await this.designFixNote(lintRun, controller.signal) : null;
       this.running.delete(thread.id);
       // An async answer that missed the turn goes out as the next message (unless a check fix round is next).
       const late = this.afterTurn.get(thread.id);
       this.afterTurn.delete(thread.id);
       if (!followUp && late?.length) followUp = { threadId: thread.id, text: late.join("\n\n") };
+      // The fix prompt carries the note, so the next turn doesn't get it again.
+      if (!followUp && fix && this.autoLints.get(thread.id) === lintRun) {
+        this.autoLints.delete(thread.id);
+        this.lintSaid.set(thread.id, fix.said);
+        followUp = { threadId: thread.id, text: autoFixPrompt(fix.text), designFixRound: true };
+      }
       if (followUp) {
         // Re-add `running` before the renderer can drain its queued message: no
         // `running: false` between rounds, so the fix and the user's queue can't race.
@@ -1429,22 +1440,23 @@ export class Service {
     this.designAutoLint = lint;
   }
 
-  /** Lint the pages a design turn wrote, in the background; the next turn's prompt carries what's new. */
-  private queueAutoLint(threadId: string, since: number): void {
+  /** Lint the pages a design turn wrote, in the background; the next turn's prompt carries what's new; returns the run, or null when nothing was queued. */
+  private queueAutoLint(threadId: string, since: number): Promise<{ text: string; said: Set<string>; fix: boolean }> | null {
     const lint = this.designAutoLint;
     const root = this.designRoot(threadId);
     const dir = designOf(this.store.getThread(threadId));
-    if (!lint || !root || !dir) return;
+    if (!lint || !root || !dir) return null;
     // The turn's start has slack for coarse clocks; a page the last run already took, unchanged, isn't this turn's.
     const linted = this.lintedPages.get(threadId) ?? new Map<string, number>();
     const pages = changedPages(root, since, linted);
-    if (!pages.length) return;
+    if (!pages.length) return null;
     for (const { rel, mtime } of pages) linted.set(rel, mtime);
     this.lintedPages.set(threadId, linted);
     const run = lint(threadId, root, pages.map((p) => p.rel))
       .then((results) => autoLintNote(dir, results, this.lintSaid.get(threadId) ?? new Set()))
-      .catch(() => ({ text: "", said: this.lintSaid.get(threadId) ?? new Set<string>() }));
+      .catch(() => ({ text: "", said: this.lintSaid.get(threadId) ?? new Set<string>(), fix: false }));
     this.autoLints.set(threadId, run);
+    return run;
   }
 
   /**
@@ -1465,6 +1477,21 @@ export class Service {
     if (!note) return "";
     this.lintSaid.set(threadId, note.said);
     return note.text;
+  }
+
+  /**
+   * The lint run's note when it asks for the fix round: done within
+   * `AUTO_LINT_WAIT_MS`, with a contrast or targets finding, and the turn
+   * not stopped meanwhile; else null (the note waits for the next turn).
+   */
+  private async designFixNote(run: Promise<{ text: string; said: Set<string>; fix: boolean }>, signal: AbortSignal): Promise<{ text: string; said: Set<string>; fix: boolean } | null> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), AUTO_LINT_WAIT_MS);
+    });
+    const note = await Promise.race([run, late]);
+    clearTimeout(timer);
+    return note && note.fix && !signal.aborted ? note : null;
   }
 
   /** The style library (bundled), in folder order. */
