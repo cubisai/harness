@@ -3238,8 +3238,7 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 .xs-skill-desc { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-tertiary); font-size: 11.5px; }
 .chip-button .chev { opacity: 0.6; flex: none; }
 .mode-chip.danger, .mode-chip.danger:hover { color: var(--danger); }
-.design-fence-chip { cursor: default; color: var(--text-secondary); }
-.design-fence-chip:hover { background: transparent; }
+.design-fence-chip { color: var(--text-secondary); }
 .model-picker-button { max-width: 240px; color: var(--text); }
 .model-picker-name { overflow: hidden; text-overflow: ellipsis; }
 .model-picker-effort { color: var(--text-tertiary); }

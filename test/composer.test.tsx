@@ -308,11 +308,12 @@ describe("composer actions row", () => {
 });
 
 describe("DesignFenceChip", () => {
-  it("shows fenced Full access as a chip that can't be clicked or picked", () => {
+  it("shows fenced Full access as a chip that explains itself, with nothing to pick", () => {
     const html = renderToStaticMarkup(<DesignFenceChip />);
     expect(html).toContain("design-fence-chip");
     expect(html).toMatch(/aria-label="Full access, fenced to this design&#x27;s folder"/);
-    expect(html).not.toContain("<button");
+    expect(html).toContain('aria-haspopup="dialog"');
+    expect(html).toContain('aria-expanded="false"');
     expect(html).not.toContain("listbox");
   });
 });
