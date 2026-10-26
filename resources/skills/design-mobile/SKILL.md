@@ -27,6 +27,18 @@ You are designing phone screens the user watches in CubiQ's canvas. Show them as
 - Put a short kebab `data-agent-id` on every screen/slide root, component root and interactive element, and keep the ids when you rewrite. If the message has a `Selected in …` block, change only those elements.
 - **Keyboard / sheets**: show a bottom sheet as its own frame with a 36×4 grabber and `radius-lg` top corners; dim the screen behind with a 40% scrim.
 
+## Worked example and before → after
+
+`system/patterns.md` has the anatomies (log row, date block, ticket stub, tier row, fees, map pins, range filter, slots) with sizes; build from them instead of inventing a card.
+
+A pet-care log, done well: large title "Pepper", a summary card "2 of 4 done today" with the next item ("Heartworm pill · 18:00"), then time-first log rows grouped "Today · 4 entries" (`08:10` | walk icon in a tinted circle | "Morning walk" / "32 min · 2.1 km" | "Done"). One accent: the primary action, the active chip and today's date ring, nothing else.
+
+- **List**: identical rounded cards with an icon, title and chevron → rows with a fixed time column, one meta line of real facts and a status word right.
+- **Empty**: a mascot and "Nothing here yet!" → about this item: "Pepper · 0 entries", one line drawing, "Log first walk" and a text link "or log a meal".
+- **Dates**: each screen invents its own → one "today" (from the brief) used by the calendar, the log and the reminders.
+- **Edges**: chip rows and titles cut at the frame edge → the row scrolls with 16px padding at both ends; titles shorten or wrap to two lines.
+- **Meta**: "SYNC_OK · NODE 04" → "Saved 09:41".
+
 ## 3. Flows
 
 For a flow, lay screens left to right in order and add a short caption under each frame (`.caption`). Link them with `<a href="#screen-id">` for click-through when the user asks for a prototype.

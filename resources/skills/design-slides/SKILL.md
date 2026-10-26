@@ -25,6 +25,16 @@ The deck is one HTML page with one `<section class="slide">` per slide. The user
 - Put a short kebab `data-agent-id` on every screen/slide root, component root and interactive element, and keep the ids when you rewrite. If the message has a `Selected in …` block, change only those elements.
 - Speaker notes, when asked: `<aside class="notes" hidden>…</aside>` inside the slide.
 
+## Worked example and before → after
+
+A 7-slide story for "quarterly results for the onboarding team": 1 title "Onboarding v2: Q3" · 2 statement "New teams now reach their first project in 1 day, not 6" · 3 big number "18% less churn in the first 30 days" · 4 chart "Activation rose the week v2 shipped and held" (one line labelled at its end) · 5 comparison "What changed: 3 steps removed, templates added" · 6 quote from a customer, attributed · 7 closing "Next: invite flow in Q4", one ask.
+
+- **Titles**: a topic ("Churn") → the takeaway as a sentence ("Churn fell 18% after onboarding v2").
+- **Body**: six bullets of 12 words → one number or one line at billboard size, with a source caption.
+- **Charts**: a legend, gridlines and five colours → one highlighted series in the accent, the rest muted, labels at the line ends.
+- **Rhythm**: every slide the same title + bullets layout → alternate statement, number, chart and divider slides; a section divider on the full `primary` ground.
+- **Decoration**: a gradient on every slide and icons on every bullet → plain ground and a single visual per slide.
+
 ## 3. Runtime (already in deck.js)
 
 →/Space/PageDown next, ←/PageUp back, Home/End, **O** overview grid, `#3` in the URL opens slide 3, a slide counter bottom right. Printing (Cmd/Ctrl+P → Save as PDF) gives one 1920×1080 page per slide; check nothing relies on hover.

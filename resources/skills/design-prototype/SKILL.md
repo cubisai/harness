@@ -31,6 +31,18 @@ These read as generated, whatever the subject. Use one only when the brief asks 
 
 Spend boldness in one place and keep the rest quiet. Operate and read surfaces show craft through precision and restraint; persuade and experience surfaces commit to the style's world.
 
+## Before → after
+
+What the defaults produce, and what a designed page puts there instead:
+- **Hero**: "Elevate your mornings" + two buttons + a gradient blob → "This week: Ethiopia Guji, batch 214", tasting notes, a spec strip (1,950 m · washed · light roast), the price in the button ("Shop the roast · $22") and "38 bags left".
+- **Features**: three cards of icon + heading + text → the product itself in HTML (a board with real tickets: "FLW-389 Add Stripe webhook retry", "Synced with main · 2m ago") and two or three callouts pointing at it.
+- **Dashboard**: four equal KPI cards with icons, delta pills and sparklines → the one number that needs action, large, with its unit and time range; the rest as a ranked table with right-aligned tabular figures.
+- **Meta lines**: "WALLET // ACTIVE_SYNC 0x0000" → "Last synced 09:41 · 3 devices". Every meta line is a fact the user would want.
+- **Copy**: "Unlock seamless collaboration" → what it does, for whom, in the user's words ("Assign a ticket from the pull request").
+
+A worked `.direction.md` for "a landing page for a coffee subscription":
+> Thesis: each week is one coffee, sold like a numbered roastery batch. Colour: committed, a deep roast brown carries the hero and footer, one crema accent for the action. Light page, dark hero. Type: the display face at 112 for the coffee's name; sans 16/24 for everything else. Signature: the batch card hero with a spec strip and the price in the button. Refuses: three-up feature grids, stock bean photos, "elevate".
+
 ## 2. Build
 
 - **Structure first**: semantic HTML (`header`, `nav`, `main`, `section`, `footer`, `button`, `label`), one `h1`.
