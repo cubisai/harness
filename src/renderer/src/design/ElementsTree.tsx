@@ -1,7 +1,7 @@
 import { ChevronRight, ClipboardList, Film, Frame, Heading, Image, Link, List, Menu, RectangleHorizontal, Search, Shapes, Square, Table, TextCursorInput, Type, X, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { OutlineNode } from "./frame";
-import { ancestorKeys, layerKey, layerKind, layerName, layerRows, type LayerKind } from "./layers";
+import { ancestorKeys, initialCollapsed, layerKey, layerKind, layerName, layerRows, type LayerKind } from "./layers";
 
 /** Whether a tree row is the canvas's current selection, matched by stable id when both have one, else by selector. */
 export function isSelectedNode(node: OutlineNode, selected: { id?: string; selector: string } | null): boolean {
@@ -52,6 +52,13 @@ export function ElementsTree({
   const listRef = useRef<HTMLDivElement>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   const [query, setQuery] = useState("");
+  // The outline arrives after mount: a large page collapses its deeper groups once, when it first has layers.
+  const seeded = useRef(false);
+  if (!seeded.current && nodes.length > 0) {
+    seeded.current = true;
+    const start = initialCollapsed(nodes);
+    if (start.size) setCollapsed(start);
+  }
   const selKey = selected ? `${selected.id ?? ""}|${selected.selector}` : "";
 
   // A selection made on the page opens the rows above it.
@@ -109,7 +116,7 @@ export function ElementsTree({
       )}
       <div className="el-tree" role="tree" aria-label="Elements" ref={listRef} onMouseLeave={() => onHover?.(null)}>
         {rows.length === 0 && <p className="el-empty">No layer matches “{query.trim()}”.</p>}
-        {rows.map(({ node, index, hasChildren }, r) => {
+        {rows.map(({ node, index, hasChildren, match }, r) => {
           const isSel = isSelectedNode(node, selected);
           const key = layerKey(node);
           const open = searching || !collapsed.has(key);
@@ -118,7 +125,7 @@ export function ElementsTree({
           return (
             <button
               key={`${node.selector}-${index}`}
-              className={`el-row${isSel ? " on" : ""}`}
+              className={`el-row${isSel ? " on" : ""}${match === false ? " context" : match ? " hit" : ""}`}
               role="treeitem"
               aria-level={node.depth + 1}
               aria-selected={isSel}

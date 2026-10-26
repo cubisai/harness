@@ -64,6 +64,8 @@ export interface LayerRow {
   index: number;
   /** The next node is deeper: the row can collapse. */
   hasChildren: boolean;
+  /** With a query: false when the row is only shown as the ancestor of a match. */
+  match?: boolean;
 }
 
 /** A stable key for a node across outline refreshes of the same page. */
@@ -93,7 +95,7 @@ export function layerRows(nodes: OutlineNode[], collapsed: ReadonlySet<string>, 
       }
       path[node.depth] = i;
     });
-    return nodes.flatMap((node, i) => (keep.has(i) ? [{ node, index: i, hasChildren: hasChildren(i) }] : []));
+    return nodes.flatMap((node, i) => (keep.has(i) ? [{ node, index: i, hasChildren: hasChildren(i), match: matches(node, q) }] : []));
   }
   const rows: LayerRow[] = [];
   // Depth of the collapsed row whose subtree is being skipped, or null.
@@ -108,6 +110,18 @@ export function layerRows(nodes: OutlineNode[], collapsed: ReadonlySet<string>, 
     if (kids && collapsed.has(layerKey(node))) skipBelow = node.depth;
   });
   return rows;
+}
+
+/** A page with more layers than this opens with its deeper groups collapsed. */
+export const COLLAPSE_FROM = 60;
+
+/**
+ * The rows a large page opens with collapsed: every row deeper than `depth` that has children, so the first view
+ * is the page's sections rather than hundreds of rows. A small page opens fully expanded.
+ */
+export function initialCollapsed(nodes: OutlineNode[], depth = 2): Set<string> {
+  if (nodes.length <= COLLAPSE_FROM) return new Set();
+  return new Set(nodes.flatMap((node, i) => (node.depth >= depth && (nodes[i + 1]?.depth ?? -1) > node.depth ? [layerKey(node)] : [])));
 }
 
 /** The keys of every ancestor of the node at `index`, so a selection inside a collapsed subtree can be revealed. */

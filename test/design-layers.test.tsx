@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OutlineNode } from "../src/renderer/src/design/frame";
-import { ancestorKeys, humanize, layerKind, layerName, layerRows } from "../src/renderer/src/design/layers";
+import { ancestorKeys, COLLAPSE_FROM, humanize, initialCollapsed, layerKind, layerName, layerRows } from "../src/renderer/src/design/layers";
 
 /** A minimal outline node, easy to override per case. */
 const n = (over: Partial<OutlineNode>): OutlineNode => ({ tag: "div", cls: "", selector: "div", label: "", depth: 0, ...over });
@@ -82,6 +82,14 @@ describe("layerRows", () => {
   it("returns no rows when nothing matches", () => {
     expect(selectors(tree, new Set(["header"]), "zzz")).toEqual([]);
   });
+
+  it("marks the ancestors shown only for context as non-matches", () => {
+    expect(layerRows(tree, new Set<string>(), "pricing").map((r) => [r.node.selector, r.match])).toEqual([
+      ["header", false],
+      ["nav", false],
+      ["a1", true],
+    ]);
+  });
 });
 
 describe("ancestorKeys", () => {
@@ -91,5 +99,25 @@ describe("ancestorKeys", () => {
 
   it("returns nothing for a root node", () => {
     expect(ancestorKeys(tree, 0)).toEqual([]);
+  });
+});
+
+describe("initialCollapsed", () => {
+  it("opens a small page fully expanded", () => {
+    expect(initialCollapsed(tree).size).toBe(0);
+  });
+
+  it("collapses the groups below the second level of a large page", () => {
+    // main > section > card > p, repeated past the threshold.
+    const big: OutlineNode[] = [n({ selector: "main", tag: "main", depth: 0 })];
+    for (let i = 0; big.length <= COLLAPSE_FROM; i++) {
+      big.push(n({ selector: `s${i}`, tag: "section", depth: 1 }), n({ selector: `c${i}`, depth: 2 }), n({ selector: `p${i}`, tag: "p", depth: 3 }));
+    }
+    const keys = initialCollapsed(big);
+    expect(keys.has("main")).toBe(false);
+    expect(keys.has("s0")).toBe(false);
+    expect(keys.has("c0")).toBe(true);
+    expect(keys.has("p0")).toBe(false);
+    expect(selectors(big, keys).slice(0, 4)).toEqual(["main", "s0", "c0", "s1"]);
   });
 });

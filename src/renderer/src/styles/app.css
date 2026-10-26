@@ -888,6 +888,9 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .el-row { display: flex; align-items: center; gap: 4px; width: 100%; height: 24px; flex-shrink: 0; padding-right: 8px; border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-size: 12.5px; text-align: left; white-space: nowrap; overflow: hidden; cursor: pointer; }
 .el-row:hover { background: var(--bg-hover); color: var(--text); }
 .el-row.on { background: var(--bg-selected); color: var(--text); }
+/* While searching, the matches read at full strength and the ancestors shown around them recede. */
+.el-row.hit { color: var(--text); }
+.el-row.context:not(.on, :hover) { color: var(--text-tertiary); }
 .el-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .el-twisty { flex-shrink: 0; display: grid; place-items: center; width: 14px; height: 14px; color: var(--text-tertiary); border-radius: 3px; }
 .el-twisty:not(.none):hover { color: var(--text); background: var(--bg-hover); }

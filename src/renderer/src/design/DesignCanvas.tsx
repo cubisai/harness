@@ -38,6 +38,9 @@ const kebab = (prop: string): string => prop.replace(/[A-Z]/g, (c) => `-${c.toLo
 /** How far the header folds when its tools don't fit: 1 = grid, reload and folder into More; 2 = the pickers to a second row. */
 const MAX_FOLD = 2;
 
+/** The outline while the current page hasn't reported its own: one stable empty list. */
+const NO_NODES: OutlineNode[] = [];
+
 /** Extra room the device chrome needs around a frame (both sides together, in stage px, beyond the usual padding). */
 const DEVICE_CHROME = { none: { width: 0, height: 0 }, phone: { width: 40, height: 40 }, tablet: { width: 56, height: 56 }, browser: { width: 18, height: 54 } } as const;
 
@@ -102,7 +105,8 @@ export default function DesignCanvas({
   // The inspector: the selected element's properties and the page's code, beside the stage.
   const [inspectorOpen, setInspectorOpen] = useState(false);
   // The page's layer tree for the inspector's Elements tab, as its bridge last reported it.
-  const [outline, setOutline] = useState<OutlineNode[]>([]);
+  // Tagged with the page it came from: after a page or thread switch the old outline isn't shown as the new page's.
+  const [pageOutline, setPageOutline] = useState<{ path: string; nodes: OutlineNode[] } | null>(null);
   // The page the Present overlay starts on (null = not presenting).
   const [present, setPresent] = useState<string | null>(null);
   const [promoting, setPromoting] = useState<string | null>(null);
@@ -358,7 +362,7 @@ export default function DesignCanvas({
       } else if (msg.type === "pins") {
         setPinMissing(msg.missing);
       } else if (msg.type === "outline") {
-        setOutline(msg.nodes);
+        if (entry) setPageOutline({ path: `${entry.dir}/${entry.rel}`, nodes: msg.nodes });
       } else if (msg.type === "edit-refused") {
         setNotice({ text: msg.reason });
       } else if (msg.type === "selection") {
@@ -495,6 +499,7 @@ export default function DesignCanvas({
   }, [tool, pickedOne, features.comments]);
 
   const path = entry ? `${entry.dir}/${entry.rel}` : null;
+  const outline = pageOutline && pageOutline.path === path ? pageOutline.nodes : NO_NODES;
   const versions = (files?.find((f) => f.path === path)?.versions ?? []).slice().sort((a, b) => b.version - a.version);
   const src = entry ? (version ? `${entry.url}?v=${version}` : entry.url) : null;
   // The latest file remounts on every change; a saved version stays put.
@@ -924,6 +929,7 @@ export default function DesignCanvas({
         <h2 className="design-rail-head">Layers</h2>
         {layersOn && entry ? (
           <ElementsTree
+            key={path}
             nodes={outline}
             selected={selected[0] ?? null}
             onPick={(n) => {
@@ -1412,6 +1418,7 @@ export default function DesignCanvas({
               }}
               elements={
                 <ElementsTree
+                  key={path ?? ""}
                   nodes={outline}
                   selected={selected[0] ?? null}
                   onPick={(n) => post({ type: "set-selection", targets: [{ ...(n.id ? { id: n.id } : {}), selector: n.selector, tag: n.tag, text: "" }] })}
