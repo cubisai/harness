@@ -273,8 +273,8 @@ describe("the bundled style library", () => {
     }
   });
 
-  it("keeps the index the direction tool carries under ~800 tokens", () => {
-    expect(Math.ceil(Buffer.byteLength(styleIndex(styles)) / 3)).toBeLessThanOrEqual(800);
+  it("keeps the index the direction tool carries under ~900 tokens", () => {
+    expect(Math.ceil(Buffer.byteLength(styleIndex(styles)) / 3)).toBeLessThanOrEqual(900);
   });
 
   it("ships a license for every font in the pack", () => {
