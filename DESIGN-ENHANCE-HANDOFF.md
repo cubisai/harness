@@ -1,4 +1,4 @@
-# Handoff: design enhance (2026-10-26, Mac, end of session 2)
+# Handoff: design enhance (2026-10-26, Mac, end of session 4: merged into m4)
 
 Goal (user): design mode should make the **best-looking UI, even on a small model**.
 - Input: `design-enhance.md`.
@@ -78,13 +78,41 @@ Session 2:
 
 Specimen check for new styles (not in repo): one fixed test layout rendered with each style's tokens, light + forced dark. It checks palette, type and contrast only, not what a real turn builds.
 
-## Next, in order
-1. **P6**: **ask the user before any live round** (maybe a small model).
-   - Same 10 prompts, `bench/design-live.ts --agents … --prompts …` (resumes).
-   - Baseline data: `.ai/reports/design-enhance-20261026/baseline/`.
-   - Score: distinct styles (6 new ones now in the index), end-of-turn lint and the fix round, taste review of screenshots (dark + light), tokens, cost.
-2. **Merge** into m4 (**ask first**), push, watch Windows CI (memory `two-machines`).
-3. Housekeeping: remind the user to **rotate the Stitch API key** (`.env` `STITCH_API_KEY`).
+## Session 4 (2026-10-26): merged into m4, worktree removed. Verified by Claude: typecheck clean, 3717 tests, design:check 0 errors
+
+| Commit | What |
+|---|---|
+| `f12e936` | **Built-in design systems retired** (clean, dashboard, editorial, mono, playful) because fixed palettes make designs look alike. `resources/design-systems/` and its loader/packaging are gone. The 3 design experts are no longer pinned (they start on Auto). Migration 34 moves old design threads on a built-in, or with no system, to Auto. An unknown id falls back to Auto; there is no fallback palette. Project DESIGN.md, `.agents/design-systems` and the style library are unchanged |
+| `1e1df0c` | The design composer's ⚡ (fenced Full access) looked clickable and did nothing. It now opens a read-only Permissions popover. Checked live in dark; light not re-shot (same classes as the mode menu) |
+| `5b0a888` | `bench/design-live.ts --prompts 1,3,4,7,9` (comma lists) |
+
+**P6 live round (5 prompts × Claude Sonnet / Codex luna / OpenCode Zen DeepSeek free)**
+- Data: `.ai/reports/design-enhance-20261026/p6/` (`*.json` per run, `profile/`, `project/designs/`).
+- All 15 pages are sound: no broken layouts, and dark pairs work.
+- Claude cost $1.50 for 5 (the baseline cost $1.16 for the same 5).
+- DeepSeek took 6–11 min per page; #1 hit the time limit. Its only page with lint findings was #9 (29 slop).
+- The fix round fired 0 times: no run ended with contrast or target findings.
+- **Main finding: the same brief gets the same style, which means the same layout.**
+  - Every prompt got the same style from at least 2 of 3 agents.
+  - None of the 6 new styles was picked.
+  - Claude and DeepSeek #1 and #7 are near-identical pages.
+- Taste leftovers:
+  - stray "today" dates on login, dashboard and game-menu headers;
+  - a highlighter band behind a headline word;
+  - a sharp organic blob behind deck illustrations;
+  - Claude's desktop pages render small;
+  - a deck style (data-report) used for a web dashboard.
+- Not done in P6: a written report file. Codex skill loading: `SKILL.md` appears in 8 Codex events, but each read wasn't confirmed. The original plan's full 10-prompt Claude/Codex round was cut to 5 at the user's choice.
+
+## Next (plan in a new session)
+1. **Style variety**: draft plan in `.ai/plans/design-style-variety.md`, not yet approved.
+   - The agent shortlists 3 styles and CubiQ picks one (seeded by thread id, skipping recent styles).
+   - A platform filter.
+   - Taste fixes: date-rule wording, desktop scale, highlighter and hard-blob lint rules.
+   - Then a DeepSeek-only re-run.
+2. Write the P6 report into `.ai/reports/design-enhance-20261026/`.
+3. **Push m4 and watch Windows CI** (memory `two-machines`). m4 is merged locally only, not pushed.
+4. Housekeeping: rotate the Stitch API key (`.env` `STITCH_API_KEY`).
 
 ## How to check things
 - **Live UI**: copy `.ai/reports/design-enhance-20261026/baseline/profile` to a scratch dir.
