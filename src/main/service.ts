@@ -103,7 +103,6 @@ export class Service {
   /** Per thread, the run_code rows still open (no result yet), so a script on the cubiq MCP server can nest its calls under its own row. */
   private openScripts = new Map<string, { toolUseId: string; code: string | null }[]>();
   private artifacts: ArtifactDeps | null = null;
-  private designSystemsDir: string | null = null;
   private designStylesDir: string | null = null;
   private designPatternsDir: string | null = null;
   private designIconsDir: string | null = null;
@@ -239,7 +238,7 @@ export class Service {
     // A default agent that's no longer installed falls back to the first one.
     const driver = (wanted && this.drivers.get(wanted)) || [...this.drivers.values()][0]!;
     // A design thread nobody picked a system for starts on Auto: the agent picks the style (the project's own still wins).
-    const system = kind === "design" ? (designSystem ?? AUTO_SYSTEM) : designSystem;
+    const system = kind === "design" ? this.knownSystem(projectId, designSystem) : designSystem;
     // A design thread is always Full: its folder fence stands in for asking.
     const thread = this.store.createThread(projectId, driver.id, driver.defaultModel, kind === "design" ? "full" : d.permissionMode, kind, system, expertId);
     if (!isChatsRoot(project.path, this.chatsRoot)) return thread;
@@ -1414,11 +1413,6 @@ export class Service {
     return dir ? join(this.threadFolder(threadId), dir) : null;
   }
 
-  /** Where the built-in design systems live; without it a design thread gets only its project's own. */
-  setDesignSystemsDir(dir: string): void {
-    this.designSystemsDir = dir;
-  }
-
   /** Where the style library and its font pack live; without them Auto threads get only their project's own system. */
   setDesignStylesDir(stylesDir: string, fontsDir: string): void {
     this.designStylesDir = stylesDir;
@@ -1499,9 +1493,14 @@ export class Service {
     return this.designStylesDir ? listDesignStyles(this.designStylesDir, this.designFontsDir ?? "") : [];
   }
 
-  /** Every system a project's design thread can resolve to: its own, the built-ins, then the styles. */
+  /** Every system a project's design thread can resolve to: its own, then the styles. */
   private allSystems(projectId: string | null): DesignSystemInfo[] {
-    return [...listDesignSystems(this.projectPath(projectId), this.designSystemsDir ?? ""), ...this.designStyles()];
+    return [...listDesignSystems(this.projectPath(projectId)), ...this.designStyles()];
+  }
+
+  /** `id` when the project's design threads can resolve it, else Auto (null, or a gone one such as a retired built-in). */
+  private knownSystem(projectId: string | null, id: string | null): string {
+    return id && id !== AUTO_SYSTEM && this.allSystems(projectId).some((s) => s.id === id) ? id : AUTO_SYSTEM;
   }
 
   /** The design systems a project's design threads can use, for the composer's picker. */
@@ -1621,8 +1620,8 @@ export class Service {
       id: system.id,
       name: system.name,
       source: system.source,
-      editable: (system.source !== "builtin" && system.source !== "style") || project !== null,
-      copyOnWrite: system.source === "builtin" || system.source === "style",
+      editable: system.source !== "style" || project !== null,
+      copyOnWrite: system.source === "style",
       designMd: read(system.designMd),
       groups: parseTokens(read(system.tokensCss)),
     };
@@ -1636,7 +1635,7 @@ export class Service {
   }
 
   /**
-   * Edit a design thread's system from the System tab. A built-in is copied into the project's
+   * Edit a design thread's system from the System tab. A library style is copied into the project's
    * `.agents/design-systems/<id>-custom/` first and the thread switched to the copy. The result is copied into the design
    * folder right away, so the canvas reloads with it; the marker moves too, so the next turn doesn't announce a switch.
    */
@@ -1644,9 +1643,9 @@ export class Service {
     let thread = this.store.getThread(threadId);
     let system = this.threadSystem(thread);
     if (!system) throw new Error("Only a design thread has a design system.");
-    if (system.source === "builtin" || system.source === "style") {
+    if (system.source === "style") {
       const project = this.projectPath(thread.projectId);
-      if (!project) throw new Error("Open a project folder to customize a built-in design system.");
+      if (!project) throw new Error("Open a project folder to customize a library style.");
       system = forkSystem(system, project);
       thread = this.store.setDesignSystem(threadId, system.id);
     }
@@ -1663,14 +1662,15 @@ export class Service {
   }
 
   /**
-   * Pick a design thread's system (null = the default); the next turn copies it in and tells the agent. Switching to
+   * Pick a design thread's system (null or an unknown id = Auto); the next turn copies it in and tells the agent. Switching to
    * Auto drops any earlier direction, so the agent picks one afresh on its next turn.
    */
   setDesignSystem(threadId: string, id: string | null): Thread {
     const thread = this.store.getThread(threadId);
     if (thread.kind !== "design") throw new Error("Only a design thread has a design system.");
-    if (id === AUTO_SYSTEM && thread.designSystem !== AUTO_SYSTEM) this.store.setDesignDirection(threadId, null);
-    return this.store.setDesignSystem(threadId, id);
+    const next = this.knownSystem(thread.projectId, id);
+    if (next === AUTO_SYSTEM && thread.designSystem !== AUTO_SYSTEM) this.store.setDesignDirection(threadId, null);
+    return this.store.setDesignSystem(threadId, next);
   }
 
   /**

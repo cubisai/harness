@@ -74,25 +74,7 @@
   {
     "code": "design/literal-color",
     "file": "src/renderer/src/mock.ts",
-    "value": "#111827",
-    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
-  },
-  {
-    "code": "design/literal-color",
-    "file": "src/renderer/src/mock.ts",
     "value": "#18181b",
-    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
-  },
-  {
-    "code": "design/literal-color",
-    "file": "src/renderer/src/mock.ts",
-    "value": "#1e3a5f",
-    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
-  },
-  {
-    "code": "design/literal-color",
-    "file": "src/renderer/src/mock.ts",
-    "value": "#1f1a14",
     "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
   },
   {
@@ -116,37 +98,13 @@
   {
     "code": "design/literal-color",
     "file": "src/renderer/src/mock.ts",
-    "value": "#4f46e5",
-    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
-  },
-  {
-    "code": "design/literal-color",
-    "file": "src/renderer/src/mock.ts",
     "value": "#7c3aed",
     "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
   },
   {
     "code": "design/literal-color",
     "file": "src/renderer/src/mock.ts",
-    "value": "#9a3412",
-    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
-  },
-  {
-    "code": "design/literal-color",
-    "file": "src/renderer/src/mock.ts",
     "value": "#c2410c",
-    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
-  },
-  {
-    "code": "design/literal-color",
-    "file": "src/renderer/src/mock.ts",
-    "value": "#f6f7f9",
-    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
-  },
-  {
-    "code": "design/literal-color",
-    "file": "src/renderer/src/mock.ts",
-    "value": "#fbf8f3",
     "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
   },
   {

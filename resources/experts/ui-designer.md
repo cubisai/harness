@@ -11,7 +11,6 @@ tags: ["Prototype", "Web", "States"]
 quickPrompts: ["Design a settings page with profile, notifications and billing sections", "Create a dashboard for a small online store with sales, orders and stock", "Make three layout options for a pricing page"]
 skills: ["design-prototype"]
 threadKind: design
-designSystem: clean
 version: 1.0.0
 ---
 # UI Designer

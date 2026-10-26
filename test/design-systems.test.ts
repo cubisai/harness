@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { forkSystem, listDesignSystems, materializeSystem, parseSystemIndex, resolveDesignSystem, type DesignSystemInfo } from "../src/main/design/systems";
+import { forkSystem, listDesignStyles, listDesignSystems, materializeSystem, parseSystemIndex, resolveDesignSystem, type DesignStyleInfo, type DesignSystemInfo } from "../src/main/design/systems";
 import { tempDir } from "./helpers";
 
 /** A design-system folder: index.md, an optional DESIGN.md (null skips it) and optional tokens.css. */
@@ -14,8 +14,20 @@ function makeSystem(root: string, folder: string, index: string, design: string 
   return dir;
 }
 
-function info(id: string, source: DesignSystemInfo["source"] = "builtin"): DesignSystemInfo {
+function info(id: string, source: DesignSystemInfo["source"] = "projectFolder"): DesignSystemInfo {
   return { id, name: id, description: "", swatches: [], source, designMd: `/x/${id}/DESIGN.md` };
+}
+
+/** A project's own design-system folder root. */
+function ownSystems(project: string): string {
+  return join(project, ".agents", "design-systems");
+}
+
+/** A one-style library in a temp folder; returns the listed style. */
+function makeStyle(folder: string, fields: string, design: string, tokens: string): DesignStyleInfo {
+  const styles = tempDir();
+  makeSystem(styles, folder, `---\ntype: design-style\n${fields}---\n`, design, tokens);
+  return listDesignStyles(styles, tempDir())[0]!;
 }
 
 describe("parseSystemIndex", () => {
@@ -41,15 +53,14 @@ describe("parseSystemIndex", () => {
 });
 
 describe("listDesignSystems", () => {
-  it("lists the project, project folders then builtins, in order", () => {
+  it("lists the project's DESIGN.md, then its folders, in order", () => {
     const project = tempDir();
     writeFileSync(join(project, "DESIGN.md"), "project design");
-    makeSystem(join(project, ".agents", "design-systems"), "warm", "---\ntype: design-system\nname: Warm\ndescription: Warm one\nswatches: #fff,#000\n---\n", "warm design", "warm tokens");
-    const builtin = tempDir();
-    makeSystem(builtin, "clean", "---\ntype: design-system\nname: Clean\n---\n", "clean design");
+    makeSystem(ownSystems(project), "warm", "---\ntype: design-system\nname: Warm\ndescription: Warm one\nswatches: #fff,#000\n---\n", "warm design", "warm tokens");
+    makeSystem(ownSystems(project), "plain", "---\ntype: design-system\nname: Plain\n---\n", "plain design");
 
-    const list = listDesignSystems(project, builtin);
-    expect(list.map((s) => s.id)).toEqual(["project", "project:warm", "clean"]);
+    const list = listDesignSystems(project);
+    expect(list.map((s) => s.id)).toEqual(["project", "project:plain", "project:warm"]);
 
     const own = list[0]!;
     expect(own.name).toBe("Project");
@@ -58,7 +69,7 @@ describe("listDesignSystems", () => {
     expect(own.designMd).toBe(join(project, "DESIGN.md"));
     expect(own.tokensCss).toBeUndefined();
 
-    const warm = list[1]!;
+    const warm = list[2]!;
     expect(warm.name).toBe("Warm");
     expect(warm.description).toBe("Warm one");
     expect(warm.swatches).toEqual(["#fff", "#000"]);
@@ -66,69 +77,56 @@ describe("listDesignSystems", () => {
     expect(warm.designMd).toBe(join(project, ".agents", "design-systems", "warm", "DESIGN.md"));
     expect(warm.tokensCss).toBe(join(project, ".agents", "design-systems", "warm", "tokens.css"));
 
-    const clean = list[2]!;
-    expect(clean.name).toBe("Clean");
-    expect(clean.source).toBe("builtin");
-    expect(clean.tokensCss).toBeUndefined();
+    const plain = list[1]!;
+    expect(plain.name).toBe("Plain");
+    expect(plain.source).toBe("projectFolder");
+    expect(plain.tokensCss).toBeUndefined();
   });
 
   it("skips folders without `type: design-system` or without a DESIGN.md", () => {
-    const builtin = tempDir();
-    makeSystem(builtin, "no-type", "---\nname: Nope\n---\n", "x");
-    makeSystem(builtin, "no-design", "---\ntype: design-system\n---\n", null);
-    makeSystem(builtin, "good", "---\ntype: design-system\n---\n", "x");
-    expect(listDesignSystems(null, builtin).map((s) => s.id)).toEqual(["good"]);
-  });
-
-  it("keeps the first entry when ids collide", () => {
     const project = tempDir();
-    writeFileSync(join(project, "DESIGN.md"), "project design");
-    const builtin = tempDir();
-    makeSystem(builtin, "project", "---\ntype: design-system\nname: Builtin project\n---\n", "builtin design");
-    const list = listDesignSystems(project, builtin);
-    expect(list.map((s) => s.id)).toEqual(["project"]);
-    expect(list[0]!.name).toBe("Project");
+    makeSystem(ownSystems(project), "no-type", "---\nname: Nope\n---\n", "x");
+    makeSystem(ownSystems(project), "no-design", "---\ntype: design-system\n---\n", null);
+    makeSystem(ownSystems(project), "good", "---\ntype: design-system\n---\n", "x");
+    expect(listDesignSystems(project).map((s) => s.id)).toEqual(["project:good"]);
   });
 
-  it("returns nothing for missing folders", () => {
-    expect(listDesignSystems(null, join(tempDir(), "nope"))).toEqual([]);
-    expect(listDesignSystems(join(tempDir(), "missing"), join(tempDir(), "nope"))).toEqual([]);
+  it("returns nothing without a project or for a missing one", () => {
+    expect(listDesignSystems(null)).toEqual([]);
+    expect(listDesignSystems(join(tempDir(), "missing"))).toEqual([]);
   });
 });
 
 describe("resolveDesignSystem", () => {
-  it("takes the exact id, then project, then clean, then the first, then null", () => {
-    const withProject = [info("clean"), info("project"), info("other")];
-    expect(resolveDesignSystem(withProject, "other")!.id).toBe("other");
-    expect(resolveDesignSystem(withProject, "missing")!.id).toBe("project");
+  it("takes the exact id, then the project's DESIGN.md, then null (no fixed fallback palette)", () => {
+    const withProject = [info("project:other"), info("project", "project"), info("style:arena", "style")];
+    expect(resolveDesignSystem(withProject, "style:arena")!.id).toBe("style:arena");
+    expect(resolveDesignSystem(withProject, "clean")!.id).toBe("project");
     expect(resolveDesignSystem(withProject, null)!.id).toBe("project");
 
-    const withClean = [info("clean"), info("other")];
-    expect(resolveDesignSystem(withClean, undefined)!.id).toBe("clean");
-
-    expect(resolveDesignSystem([info("other"), info("second")], "nope")!.id).toBe("other");
+    expect(resolveDesignSystem([info("project:other"), info("style:arena", "style")], "clean")).toBeNull();
     expect(resolveDesignSystem([], "x")).toBeNull();
   });
 });
 
 describe("materializeSystem", () => {
   it("writes DESIGN.md, tokens.css and .system, then reports no change", () => {
-    const builtin = tempDir();
-    makeSystem(builtin, "warm", "---\ntype: design-system\n---\n", "warm design", "warm tokens");
-    const [warm] = listDesignSystems(null, builtin);
+    const project = tempDir();
+    makeSystem(ownSystems(project), "warm", "---\ntype: design-system\n---\n", "warm design", "warm tokens");
+    const [warm] = listDesignSystems(project);
     const dest = join(tempDir(), "dest");
 
     expect(materializeSystem(warm!, dest)).toBe(true);
     expect(readFileSync(join(dest, "DESIGN.md"), "utf-8")).toBe("warm design");
     expect(readFileSync(join(dest, "tokens.css"), "utf-8")).toBe("warm tokens");
-    expect(readFileSync(join(dest, ".system"), "utf-8")).toBe("warm");
+    expect(readFileSync(join(dest, ".system"), "utf-8")).toBe("project:warm");
     expect(materializeSystem(warm!, dest)).toBe(false);
   });
 
   it("rewrites when the source tokens.css changes", () => {
-    const builtin = tempDir();
-    const src = makeSystem(builtin, "warm", "---\ntype: design-system\n---\n", "warm design", "warm tokens");
-    const [warm] = listDesignSystems(null, builtin);
+    const project = tempDir();
+    const src = makeSystem(ownSystems(project), "warm", "---\ntype: design-system\n---\n", "warm design", "warm tokens");
+    const [warm] = listDesignSystems(project);
     const dest = join(tempDir(), "dest");
 
     expect(materializeSystem(warm!, dest)).toBe(true);
@@ -139,27 +137,27 @@ describe("materializeSystem", () => {
   });
 
   it("deletes a stale tokens.css when the system has none", () => {
-    const builtin = tempDir();
-    makeSystem(builtin, "warm", "---\ntype: design-system\n---\n", "warm design", "warm tokens");
-    makeSystem(builtin, "clean", "---\ntype: design-system\n---\n", "clean design");
-    const list = listDesignSystems(null, builtin);
-    const warm = list.find((s) => s.id === "warm")!;
-    const clean = list.find((s) => s.id === "clean")!;
+    const project = tempDir();
+    makeSystem(ownSystems(project), "warm", "---\ntype: design-system\n---\n", "warm design", "warm tokens");
+    makeSystem(ownSystems(project), "plain", "---\ntype: design-system\n---\n", "plain design");
+    const list = listDesignSystems(project);
+    const warm = list.find((s) => s.id === "project:warm")!;
+    const plain = list.find((s) => s.id === "project:plain")!;
     const dest = join(tempDir(), "dest");
 
     expect(materializeSystem(warm, dest)).toBe(true);
     expect(existsSync(join(dest, "tokens.css"))).toBe(true);
 
-    expect(materializeSystem(clean, dest)).toBe(true);
+    expect(materializeSystem(plain, dest)).toBe(true);
     expect(existsSync(join(dest, "tokens.css"))).toBe(false);
-    expect(readFileSync(join(dest, ".system"), "utf-8")).toBe("clean");
-    expect(materializeSystem(clean, dest)).toBe(false);
+    expect(readFileSync(join(dest, ".system"), "utf-8")).toBe("project:plain");
+    expect(materializeSystem(plain, dest)).toBe(false);
   });
 
   it("keeps the tokens.css the agent derived for a system without one, turn after turn", () => {
     const project = tempDir();
     writeFileSync(join(project, "DESIGN.md"), "project design");
-    const [own] = listDesignSystems(project, tempDir());
+    const [own] = listDesignSystems(project);
     const dest = join(tempDir(), "dest");
 
     expect(materializeSystem(own!, dest)).toBe(true);
@@ -170,10 +168,8 @@ describe("materializeSystem", () => {
 });
 
 describe("forkSystem", () => {
-  it("copies a built-in into the project and lists it as a project folder", () => {
-    const builtin = tempDir();
-    makeSystem(builtin, "warm", "---\ntype: design-system\nname: Warm\ndescription: Warm one\nswatches: #fff,#000\n---\n", "warm design", "warm tokens");
-    const [warm] = listDesignSystems(null, builtin);
+  it("copies a library style into the project and lists it as a project folder", () => {
+    const warm = makeStyle("warm", "name: Warm\ndescription: Warm one\nswatches: #fff,#000\n", "warm design", "warm tokens");
     const project = tempDir();
 
     const forked = forkSystem(warm!, project);
@@ -192,15 +188,13 @@ describe("forkSystem", () => {
       "---\ntype: design-system\nname: Warm (custom)\ndescription: Warm one\nswatches: #fff, #000\n---\n\nA copy of Warm, edited in CubiQ's System tab. Rules in `DESIGN.md`, tokens in `tokens.css`.\n",
     );
 
-    const listed = listDesignSystems(project, builtin).find((s) => s.id === forked.id);
+    const listed = listDesignSystems(project).find((s) => s.id === forked.id);
     expect(listed?.source).toBe("projectFolder");
     expect(listed?.name).toBe("Warm (custom)");
   });
 
   it("keeps a second fork's edits instead of overwriting the copy", () => {
-    const builtin = tempDir();
-    makeSystem(builtin, "warm", "---\ntype: design-system\nname: Warm\n---\n", "warm design", "warm tokens");
-    const [warm] = listDesignSystems(null, builtin);
+    const warm = makeStyle("warm", "name: Warm\n", "warm design", "warm tokens");
     const project = tempDir();
     const copy = join(project, ".agents", "design-systems", "warm-custom", "tokens.css");
 
@@ -212,12 +206,12 @@ describe("forkSystem", () => {
     expect(readFileSync(copy, "utf-8")).toBe("edited tokens");
   });
 
-  it("returns a non-built-in system unchanged", () => {
+  it("returns a system that isn't a library style unchanged", () => {
     const system = info("project:warm", "projectFolder");
     expect(forkSystem(system, tempDir())).toBe(system);
   });
 
-  it("refuses a built-in whose id has unsafe characters", () => {
-    expect(() => forkSystem(info("bad/id!", "builtin"), tempDir())).toThrow("Can't copy this design system.");
+  it("refuses a style whose id has unsafe characters", () => {
+    expect(() => forkSystem(info("style:bad/id!", "style"), tempDir())).toThrow("Can't copy this design system.");
   });
 });

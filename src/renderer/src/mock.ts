@@ -801,11 +801,8 @@ export function installMock(): void {
       throw new Error("no thread");
     },
     designSystems: async () => [
-      { id: "clean", name: "Clean", description: "Neutral and calm: white surfaces, one blue accent, soft radii.", swatches: ["#ffffff", "#18181b", "#2563eb", "#0e7490"], source: "builtin" },
-      { id: "dashboard", name: "Dashboard", description: "Dense and data-first.", swatches: ["#f6f7f9", "#111827", "#4f46e5", "#0e7490"], source: "builtin" },
-      { id: "editorial", name: "Editorial", description: "Warm paper and a serif display face.", swatches: ["#fbf8f3", "#1f1a14", "#9a3412", "#1e3a5f"], source: "builtin" },
-      { id: "mono", name: "Mono", description: "Black, white and one gray ramp.", swatches: ["#ffffff", "#0a0a0a", "#0a0a0a", "#404040"], source: "builtin" },
-      { id: "playful", name: "Playful", description: "Bright and friendly, big radii.", swatches: ["#fffaf5", "#2a1b3d", "#7c3aed", "#c2410c"], source: "builtin" },
+      { id: "style:swiss-grid", name: "Swiss Grid", description: "White field, black type set big and flush left, one red.", swatches: ["#ffffff", "#0a0a0a", "#c2410c", "#404040"], source: "style" },
+      { id: "style:night-studio", name: "Night Studio", description: "Dark by design.", swatches: ["#2a1b3d", "#fffaf5", "#c2410c", "#7c3aed"], source: "style" },
     ],
     designSystemDoc: async () => mockSystemDoc,
     designSystemEdit: async (threadId) => {
@@ -892,12 +889,12 @@ export function installMock(): void {
 
 /** A few experts for the UI preview (the app reads resources/experts). */
 const mockSystemDoc: DesignSystemDoc = {
-  id: "clean",
-  name: "Clean",
-  source: "builtin",
+  id: "style:swiss-grid",
+  name: "Swiss Grid",
+  source: "style",
   editable: true,
   copyOnWrite: true,
-  designMd: "# Clean\n\n## 1. Visual theme and atmosphere\n\nNeutral and calm: white surfaces, one blue accent, soft radii.\n",
+  designMd: "# Swiss Grid\n\n## 1. Visual theme and atmosphere\n\nWhite field, black type set big and flush left, one red.\n",
   groups: [
     {
       title: "Color",

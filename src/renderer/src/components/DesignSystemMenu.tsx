@@ -3,9 +3,9 @@ import { AUTO_SYSTEM, type DesignDirection } from "../../../shared/direction";
 import type { DesignSystemOption } from "../../../shared/types";
 import { api } from "../api";
 
-/** The system a thread uses when it names none (or one that's gone): the project's own, else Clean, else the first. */
+/** The system a thread uses when it names none (or one that's gone): the project's own, else none (never a stand-in palette). */
 export function shownSystem(options: DesignSystemOption[], id: string | undefined): DesignSystemOption | undefined {
-  return (id ? options.find((o) => o.id === id) : undefined) ?? options.find((o) => o.id === "project") ?? options.find((o) => o.id === "clean") ?? options[0];
+  return (id ? options.find((o) => o.id === id) : undefined) ?? options.find((o) => o.id === "project");
 }
 
 /** The style a thread's design is drawn in, by name (the board's `Page · Style` labels): Auto's pick, else the fixed system. */

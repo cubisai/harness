@@ -10,25 +10,11 @@ import { estimateTokens } from "../src/main/handoff";
 import { discoverSkills } from "../src/main/skills/discover";
 import { mergeCatalog } from "../src/main/skills/catalog";
 import { forAgent } from "../src/main/skills/sources";
-import { listDesignSystems } from "../src/main/design/systems";
 import { EXPERTS } from "../src/shared/experts";
 import { catalog, closeAfter, tempDir } from "./helpers";
 
 const RESOURCES = join(__dirname, "..", "resources");
 const DESIGN_SKILLS = ["design-critique", "design-handoff", "design-mobile", "design-prototype", "design-slides", "design-system-extract"];
-const BUILT_INS = ["clean", "dashboard", "editorial", "mono", "playful"];
-const STITCH_SECTIONS = [
-  "## 1. Visual theme and atmosphere",
-  "## 2. Color palette and roles",
-  "## 3. Typography rules",
-  "## 4. Component stylings",
-  "## 5. Layout principles",
-  "## 6. Depth and elevation",
-  "## 7. Do's and don'ts",
-  "## 8. Responsive behavior",
-  "## 9. Agent prompt guide",
-];
-
 describe("Design mode guide (DESIGN-MODE.md)", () => {
   const designMode = join(RESOURCES, "DESIGN-MODE.md");
 
@@ -99,51 +85,8 @@ describe("bundled design skills", () => {
   });
 });
 
-describe("built-in design systems", () => {
-  const systems = listDesignSystems(null, join(RESOURCES, "design-systems"));
-
-  it("lists the five built-ins with names, descriptions and four swatches", () => {
-    expect(systems.map((s) => s.id)).toEqual(BUILT_INS);
-    for (const s of systems) {
-      expect(s.source).toBe("builtin");
-      expect(s.name.length).toBeGreaterThan(0);
-      expect(s.description.length).toBeGreaterThan(0);
-      expect(s.swatches).toHaveLength(4);
-      expect(s.tokensCss).toBeDefined();
-    }
-  });
-
-  it("has a DESIGN.md with the nine Stitch sections in order", () => {
-    for (const s of systems) {
-      const text = readFileSync(s.designMd, "utf8");
-      let at = -1;
-      for (const heading of STITCH_SECTIONS) {
-        const i = text.indexOf(heading);
-        expect(i, `${s.id}: ${heading}`).toBeGreaterThan(at);
-        at = i;
-      }
-    }
-  });
-
-  it("puts every spacing token on the 8pt scale and shares one token contract", () => {
-    const scale = new Set([4, 8, 12, 16, 24, 32, 40, 48, 64, 80, 96]);
-    const names = (css: string) => [...css.matchAll(/(--[\w-]+):/g)].map((m) => m[1]).sort();
-    const first = names(readFileSync(systems[0]!.tokensCss!, "utf8"));
-    for (const s of systems) {
-      const css = readFileSync(s.tokensCss!, "utf8");
-      const spaces = [...css.matchAll(/--space-\d+:\s*(\d+)px/g)].map((m) => Number(m[1]));
-      expect(spaces.length).toBe(11);
-      for (const px of spaces) expect(scale.has(px), `${s.id}: ${px}px`).toBe(true);
-      for (const lh of [...css.matchAll(/--leading-[\w]+:\s*(\d+)px/g)].map((m) => Number(m[1]))) expect(lh % 4, `${s.id}: leading ${lh}`).toBe(0);
-      // Dashboard adds chart colors; everything else is the same set of names.
-      expect(names(css).filter((n) => !n!.startsWith("--color-chart-"))).toEqual(first);
-      expect(css).not.toMatch(/url\(|@import|https?:/);
-    }
-  });
-});
-
 describe("Service design systems", () => {
-  function setup(designSystemsDir: string) {
+  function setup() {
     const store = new Store(join(tempDir(), "t.db"));
     closeAfter(() => store.close());
     const prompts: string[] = [];
@@ -164,39 +107,43 @@ describe("Service design systems", () => {
       },
     };
     const service = new Service(store, () => catalog(), [driver], () => {});
-    service.setDesignSystemsDir(designSystemsDir);
+    service.setDesignStylesDir(join(RESOURCES, "design-styles"), join(RESOURCES, "design-fonts"));
     const projectDir = tempDir();
     const project = store.addProject(projectDir);
     return { store, service, project, projectDir, prompts, inputs };
   }
 
   it("copies the thread's system into its design folder before the turn, and says a switch once", async () => {
-    const { service, project, projectDir, prompts } = setup(join(RESOURCES, "design-systems"));
-    const thread = service.createThread(project.id, undefined, "design", "editorial");
-    expect(thread.designSystem).toBe("editorial");
+    const { service, project, projectDir, prompts } = setup();
+    const thread = service.createThread(project.id, undefined, "design", "style:swiss-grid");
+    expect(thread.designSystem).toBe("style:swiss-grid");
     await service.send({ threadId: thread.id, text: "a landing page" });
     const dir = join(projectDir, "designs", thread.id.slice(0, 8), "system");
-    expect(readFileSync(join(dir, ".system"), "utf8")).toBe("editorial");
-    expect(readFileSync(join(dir, "tokens.css"), "utf8")).toBe(readFileSync(join(RESOURCES, "design-systems", "editorial", "tokens.css"), "utf8"));
+    expect(readFileSync(join(dir, ".system"), "utf8")).toBe("style:swiss-grid");
+    expect(readFileSync(join(dir, "tokens.css"), "utf8")).toBe(readFileSync(join(RESOURCES, "design-styles", "swiss-grid", "tokens.css"), "utf8"));
     // The first turn also says the prototype tier (once); the system is never named until it changes.
     expect(prompts[0]!.startsWith("a landing page\n\n(CubiQ: Prototype tier: Working.")).toBe(true);
     expect(prompts[0]).not.toContain("design system is now");
 
-    service.setDesignSystem(thread.id, "mono");
+    service.setDesignSystem(thread.id, "style:terminal");
     await service.send({ threadId: thread.id, text: "again" });
-    expect(readFileSync(join(dir, ".system"), "utf8")).toBe("mono");
-    expect(prompts[1]).toContain("the design system is now Mono");
+    expect(readFileSync(join(dir, ".system"), "utf8")).toBe("style:terminal");
+    expect(prompts[1]).toContain("the design system is now Terminal");
     await service.send({ threadId: thread.id, text: "third" });
     expect(prompts[2]).toBe("third");
   });
 
-  it("defaults to the project's DESIGN.md, then Clean, for a thread with no stored system; Auto follows the project's own", async () => {
-    const { service, store, project, projectDir, prompts } = setup(join(RESOURCES, "design-systems"));
+  it("puts a thread on Auto for no system or a retired built-in, never a fixed palette; Auto follows the project's own", async () => {
+    const { service, store, project, projectDir, prompts } = setup();
     const a = service.createThread(project.id, undefined, "design");
     expect(a.designSystem).toBe("auto");
-    store.setDesignSystem(a.id, null);
+    expect(service.createThread(project.id, undefined, "design", "clean").designSystem).toBe("auto");
+    // A row the migration missed (or a project folder deleted since) resolves to no system, not a fallback palette.
+    store.setDesignSystem(a.id, "clean");
     await service.send({ threadId: a.id, text: "x" });
-    expect(readFileSync(join(projectDir, "designs", a.id.slice(0, 8), "system", ".system"), "utf8")).toBe("clean");
+    expect(existsSync(join(projectDir, "designs", a.id.slice(0, 8), "system", ".system"))).toBe(false);
+    expect(service.setDesignSystem(a.id, "editorial").designSystem).toBe("auto");
+    expect(service.setDesignSystem(a.id, null).designSystem).toBe("auto");
 
     writeFileSync(join(projectDir, "DESIGN.md"), "# Ours");
     const b = service.createThread(project.id, undefined, "design");
@@ -205,11 +152,14 @@ describe("Service design systems", () => {
     const dir = join(projectDir, "designs", b.id.slice(0, 8), "system");
     expect(readFileSync(join(dir, "DESIGN.md"), "utf8")).toBe("# Ours");
     expect(existsSync(join(dir, "tokens.css"))).toBe(false);
-    expect(service.designSystems(project.id).map((s) => s.id)).toEqual(["project", ...BUILT_INS]);
+    const ids = service.designSystems(project.id).map((s) => s.id);
+    expect(ids[0]).toBe("project");
+    expect(ids.length).toBeGreaterThan(20);
+    expect(ids.slice(1).every((id) => id.startsWith("style:"))).toBe(true);
   });
 
   it("does nothing for a chat thread, and refuses a system on one", async () => {
-    const { service, project, projectDir, prompts } = setup(join(RESOURCES, "design-systems"));
+    const { service, project, projectDir, prompts } = setup();
     const chat = service.createThread(project.id, undefined, "chat", "mono");
     expect(chat.designSystem).toBeUndefined();
     await service.send({ threadId: chat.id, text: "hi" });
@@ -218,25 +168,27 @@ describe("Service design systems", () => {
     expect(() => service.setDesignSystem(chat.id, "mono")).toThrow();
   });
 
-  it("lists a project's own .agents/design-systems between its DESIGN.md and the built-ins", () => {
-    const { service, project, projectDir } = setup(join(RESOURCES, "design-systems"));
+  it("lists a project's own .agents/design-systems before the style library", () => {
+    const { service, project, projectDir } = setup();
     const own = join(projectDir, ".agents", "design-systems", "brand");
     mkdirSync(own, { recursive: true });
     writeFileSync(join(own, "index.md"), "---\ntype: design-system\nname: Brand\ndescription: Ours\nswatches: #fff, #000\n---\n");
     writeFileSync(join(own, "DESIGN.md"), "# Brand");
-    expect(service.designSystems(project.id).map((s) => s.id)).toEqual(["project:brand", ...BUILT_INS]);
+    const ids = service.designSystems(project.id).map((s) => s.id);
+    expect(ids[0]).toBe("project:brand");
+    expect(ids.slice(1).every((id) => id.startsWith("style:"))).toBe(true);
     expect(readdirSync(projectDir)).not.toContain("designs");
   });
 });
 
 describe("design experts", () => {
-  it("are the five design presets, each with a bundled design skill and a real (or default) system", () => {
+  it("are the five design presets, each with a bundled design skill, all on Auto (no pinned system)", () => {
     const design = EXPERTS.filter((e) => e.kind === "design");
     expect(design.map((e) => e.name)).toEqual(["UI Designer", "Mobile Designer", "Slide Designer", "Design-System Architect", "UX Critic"]);
     for (const e of design) {
       expect(e.skills?.length).toBeGreaterThan(0);
       for (const skill of e.skills!) expect(DESIGN_SKILLS).toContain(skill);
-      if (e.designSystem) expect(BUILT_INS).toContain(e.designSystem);
+      expect(e.designSystem).toBeUndefined();
     }
   });
 });

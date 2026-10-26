@@ -443,8 +443,13 @@ describe("Service.send", () => {
     });
     const project = store.addProject(tempDir());
     const chat = service.createThread(project.id);
-    // A thread on a fixed system (an Auto thread hears its tier from design_set_direction instead).
-    const design = service.createThread(project.id, undefined, "design", "clean");
+    // A thread on a fixed system, the project's own (an Auto thread hears its tier from design_set_direction instead).
+    const fixed = join(project.path, ".agents", "design-systems", "fixed");
+    mkdirSync(fixed, { recursive: true });
+    writeFileSync(join(fixed, "index.md"), "---\ntype: design-system\nname: Fixed\n---\n");
+    writeFileSync(join(fixed, "DESIGN.md"), "# Fixed\n");
+    const design = service.createThread(project.id, undefined, "design", "project:fixed");
+    expect(design.designSystem).toBe("project:fixed");
     expect(() => service.setPrototypeTier(chat.id, "quick")).toThrow(/design thread/);
     await service.send({ threadId: design.id, text: "one" });
     await service.send({ threadId: design.id, text: "two" });
@@ -466,7 +471,7 @@ describe("Service.send", () => {
       input.onEvent(turnEnd);
     });
     const project = store.addProject(tempDir());
-    const design = service.createThread(project.id, undefined, "design", "clean");
+    const design = service.createThread(project.id, undefined, "design");
     const chat = service.createThread(project.id);
     mkdirSync(service.designRoot(design.id)!, { recursive: true });
     const linted: string[][] = [];
@@ -511,7 +516,7 @@ describe("Service.send", () => {
       input.onEvent(turnEnd);
     });
     const project = store.addProject(tempDir());
-    const design = service.createThread(project.id, undefined, "design", "clean");
+    const design = service.createThread(project.id, undefined, "design");
     mkdirSync(service.designRoot(design.id)!, { recursive: true });
     const finding = { rule: "contrast" as const, selector: "p.muted", detail: "2.1:1 on #fff" };
     service.setDesignAutoLint(async (_id, _root, rels) => rels.map((rel) => ({ rel, result: { findings: [finding], skipped: [], scanned: 3 } })));

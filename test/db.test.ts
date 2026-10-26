@@ -412,8 +412,42 @@ describe("Store design systems (migration 21)", () => {
     closeAfter(() => store.close());
     const t = store.getThread("t");
     expect(t.kind).toBe("design");
-    expect(t.designSystem).toBeUndefined();
+    // Migration 34 then moves a design thread with no system to Auto.
+    expect(t.designSystem).toBe("auto");
     expect(store.setDesignSystem("t", "mono").designSystem).toBe("mono");
+  });
+
+  it("moves design threads on a retired built-in (or none) to Auto and clears their direction (migration 34)", () => {
+    const file = join(tempDir(), "pre34.db");
+    const old = new DatabaseSync(file);
+    old.exec(`
+      CREATE TABLE projects (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at INTEGER NOT NULL,
+        check_command TEXT, check_fix_rounds INTEGER);
+      CREATE TABLE threads (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, agent TEXT NOT NULL DEFAULT 'claude', title TEXT NOT NULL,
+        session_id TEXT, bindings TEXT NOT NULL DEFAULT '{}', model TEXT NOT NULL, effort TEXT, permission_mode TEXT NOT NULL,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0, archived INTEGER NOT NULL DEFAULT 0,
+        branch TEXT, worktree_path TEXT, context_window INTEGER, kind TEXT NOT NULL DEFAULT 'chat', design_system TEXT,
+        design_direction TEXT);
+      CREATE TABLE schema_version (version INTEGER NOT NULL);
+      INSERT INTO schema_version VALUES (21);
+      INSERT INTO projects VALUES ('p', '/x', 'x', 1, NULL, NULL);
+      INSERT INTO threads (id, project_id, title, model, permission_mode, created_at, updated_at, kind, design_system, design_direction) VALUES
+        ('clean', 'p', 'a', 'm', 'ask', 1, 1, 'design', 'clean', '{"surface":"web","mode":"persuade","style":"clean"}'),
+        ('none', 'p', 'b', 'm', 'ask', 1, 1, 'design', NULL, NULL),
+        ('style', 'p', 'c', 'm', 'ask', 1, 1, 'design', 'style:arena', NULL),
+        ('own', 'p', 'd', 'm', 'ask', 1, 1, 'design', 'project:brand', NULL),
+        ('chat', 'p', 'e', 'm', 'ask', 1, 1, 'chat', NULL, NULL);
+    `);
+    old.close();
+
+    const store = new Store(file);
+    closeAfter(() => store.close());
+    expect(store.getThread("clean").designSystem).toBe("auto");
+    expect(store.getThread("clean").designDirection).toBeUndefined();
+    expect(store.getThread("none").designSystem).toBe("auto");
+    expect(store.getThread("style").designSystem).toBe("style:arena");
+    expect(store.getThread("own").designSystem).toBe("project:brand");
+    expect(store.getThread("chat").designSystem).toBeUndefined();
   });
 
   it("keeps a design thread's system through create, set (not activity) and restore; never on a chat", () => {

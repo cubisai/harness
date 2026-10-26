@@ -11,7 +11,6 @@ tags: ["Slides", "Storytelling", "PDF"]
 quickPrompts: ["Turn these notes into a 10-slide investor update", "Make a 6-slide project kickoff deck for the team", "Design a one-slide summary of our quarterly results"]
 skills: ["design-slides"]
 threadKind: design
-designSystem: editorial
 version: 1.0.0
 ---
 # Slide Designer
