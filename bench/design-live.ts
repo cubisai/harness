@@ -2,7 +2,7 @@
 // bench's own app copy. Records per turn the style picked, pages written, tools used, the agent's last lint and
 // usage; `bench/design-score.ts` lints and screenshots the pages afterwards.
 //
-//   bun bench/design-live.ts --out <dir> [--root <app checkout>] [--agents claude-sonnet,codex-luna] [--prompts 1-10] [--port 9490]
+//   bun bench/design-live.ts --out <dir> [--root <app checkout>] [--agents claude-sonnet,codex-luna] [--prompts 1-10 | 1,3,4] [--port 9490]
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -61,9 +61,11 @@ function arg(name: string): string | undefined {
 
 function range(spec: string | undefined): number[] {
   if (!spec) return DESIGN_PROMPTS.map((_, i) => i + 1);
-  const [a, b] = spec.split("-").map(Number);
   const out: number[] = [];
-  for (let i = a!; i <= (b ?? a!); i++) out.push(i);
+  for (const part of spec.split(",")) {
+    const [a, b] = part.split("-").map(Number);
+    for (let i = a!; i <= (b ?? a!); i++) out.push(i);
+  }
   return out;
 }
 
