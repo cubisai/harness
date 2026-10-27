@@ -1,6 +1,15 @@
-# Handoff: design live variants + style variety (2026-10-26, Mac, end of session 1: P0 done, P1 next)
+# Handoff: design live variants + style variety (2026-10-27, Mac, session 2: P1 + P2a done, P2b next)
 
-## Session 1 status (read this first)
+## Session 2 status (read this first)
+- **P1 done** (`922f5b5`): `LiveBar.tsx`, one bottom bar in both layouts (Pick `V`, DESIGN.md = the Inspector's System tab, Steer = an inline page-level message, Compare, Present). The header Select, the rail tools and the Inspector's auto-pick are gone; the stage, Compare and the board keep `--live-bar-room` clear.
+- **P2a done** (`9e30964`): `ElementBar.tsx` (tag, prompt, 4×3 actions ×3, dictation hint, Go, Edit text, Comment in Real app, Clear N, repick confirm, "Generating variants…" pill). Bridge: `anchor` / `marks` / `repick-ask` up, `clear-marks` / `repick` / `edit-selected` down. Marks are SVG + note inputs in a page-coordinate layer (`[data-cubiq-marks]`), so they stay on their content through scroll (checked live). `DrawOverlay` deleted.
+- Choices made in P2a (differ slightly from the plan, revisit if wanted): multi-select acts on the selection itself (the scope block lists them), not on their common parent; Go captures the element + marks only when strokes exist (notes go as text); the last action is remembered per thread in memory only (lost on reload).
+- **Go doesn't send the skill or the action paragraph yet**: P2b adds `design-variants` + `resources/design-actions/<action>.md`. `goMessage()` in `ElementBar.tsx` is the hook.
+- **Next: P2b**, then P2c; P3 can run in parallel in its own worktree.
+- Live setup this session (session 1's profile is gone): port **9477** (another session used 9466 on 2026-10-27), fresh `--user-data-dir` in the scratchpad; design thread made with `openChats()` + `createThread(chatsId, "opencode", {kind:"design"})`, then a bench page copied into `ud/chats/<threadId>/designs/<id8>/` (`8b15e090` Harbor dashboard as `index.html`, `daf71ebc` as `variant-a.html`). Tier changes through the API need a window reload to reach the store.
+- A fresh profile's OpenCode default model fails at once (AgentRouter "probation" channel). Two More styles turns were started from the app window at 10:35 (not by the scripts); both failed at once, cost nothing, and wrote nothing. **Set the thread to Zen free DeepSeek before any P2b live run.**
+
+## Session 1 status
 - **The plan is approved, and the user said to start it.** Continue P1 without asking (memory `autonomy-no-prompts`).
 - **P0 done: every defect seen live.** Details are in the hub `.ai/plans/design-style.md` §1.1; shots in `.ai/plans/design-style-refs/p0/`. P0 ran on the dev app at port 9466, Working tier, dark theme, on Claude's #4 dashboard:
   - the header Select and rail Select light up together;
@@ -58,9 +67,9 @@ Design threads only.
 | Phase | What | State |
 |---|---|---|
 | P0 | Live repro of the tool defects, dark theme, screenshots | **done** (session 1) |
-| P1 | Global bar (Pick `V`, Insert, Detect, DESIGN.md, Steer, Compare, Present); header Select out; Text, Comment and Pen out of the rail; Inspector no longer turns picking on | **next** |
-| P2a | Element bar + 4×3 action palette + in-frame marks and notes (page coordinates) + Go message | todo |
-| P2b | `data-cubiq-variant="S-n"` sets in place, bridge detection, cycler, Accept/× in the main process, malformed-set recovery | todo |
+| P1 | Global bar (Pick `V`, Insert, Detect, DESIGN.md, Steer, Compare, Present); header Select out; Text, Comment and Pen out of the rail; Inspector no longer turns picking on | **done** (`922f5b5`) |
+| P2a | Element bar + 4×3 action palette + in-frame marks and notes (page coordinates) + Go message | **done** (`9e30964`) |
+| P2b | `data-cubiq-variant="S-n"` sets in place, bridge detection, cycler, Accept/× in the main process, malformed-set recovery | **next** |
 | P2c | Insert (`+`): variants at a gap | todo |
 | P3 | Style variety (its own plan) + optional `mode` on `design_set_direction` | todo, parallel from P1 |
 | P4 | ~35 new slop checks, style exemptions, noise gate, skill floor lines, Detect (eye) overlay | todo |
