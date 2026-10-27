@@ -72,7 +72,21 @@ export type BridgeMessage =
   | { type: "pins"; missing: number[] }
   | { type: "pick-cancel" }
   | { type: "tweaks"; manifest: string; attrs: Record<string, string>; vars: Record<string, string> }
-  | { type: "outline"; nodes: OutlineNode[] };
+  | { type: "outline"; nodes: OutlineNode[] }
+  | { type: "anchor"; anchor: FrameAnchor | null }
+  | { type: "marks"; marks: PageMarks }
+  | { type: "repick-ask"; label: string };
+
+/** A box in the frame's viewport, in CSS pixels. */
+export type FrameRect = { x: number; y: number; width: number; height: number };
+
+/** Where the picked element is in the frame (and, for the capture, it plus its marks and notes), and whether its text can be edited. */
+export type FrameAnchor = { rect: FrameRect; bounds: FrameRect; editable: boolean; view: { width: number; height: number } };
+
+/** The marks and notes on the picked element, in page coordinates. */
+export type PageMarks = { strokes: { x: number; y: number }[][]; notes: { x: number; y: number; text: string; near: string }[] };
+
+export const NO_MARKS: PageMarks = { strokes: [], notes: [] };
 
 /** One node of the design page's outline (layer tree), as reported by the bridge. Duplicated from main: no cross-import. */
 export interface OutlineNode {
@@ -91,6 +105,13 @@ const strMap = (v: unknown, maxKeys: number): v is Record<string, string> => {
   const entries = Object.entries(v as Record<string, unknown>);
   return entries.length <= maxKeys && entries.every(([k, val]) => str(k, 64) && str(val, 64));
 };
+
+const rect = (v: unknown): v is FrameRect => {
+  if (!v || typeof v !== "object") return false;
+  const r = v as Record<string, unknown>;
+  return num(r.x) && num(r.y) && num(r.width) && num(r.height) && r.width >= 0 && r.height >= 0;
+};
+const point = (v: unknown): v is { x: number; y: number } => !!v && typeof v === "object" && num((v as Record<string, unknown>).x) && num((v as Record<string, unknown>).y);
 
 /** A message from the design page's bridge, checked field by field (the page is untrusted); null otherwise. */
 export function readBridgeMessage(data: unknown): BridgeMessage | null {
@@ -125,6 +146,29 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
     if (!str(d.manifest, 8000) || !strMap(d.attrs, 32) || !strMap(d.vars, 32)) return null;
     return { type: "tweaks", manifest: d.manifest, attrs: d.attrs, vars: d.vars };
   }
+  if (d.type === "anchor") {
+    if (d.rect === null) return { type: "anchor", anchor: null };
+    const view = d.view as Record<string, unknown> | undefined;
+    if (!rect(d.rect) || !rect(d.bounds) || !view || !num(view.width) || !num(view.height)) return null;
+    return { type: "anchor", anchor: { rect: d.rect, bounds: d.bounds, editable: d.editable === true, view: { width: view.width, height: view.height } } };
+  }
+  if (d.type === "marks") {
+    if (!Array.isArray(d.strokes) || d.strokes.length > 40 || !Array.isArray(d.notes) || d.notes.length > 20) return null;
+    const strokes: PageMarks["strokes"] = [];
+    for (const s of d.strokes) {
+      if (!Array.isArray(s) || s.length > 400 || !s.every(point)) return null;
+      strokes.push(s.map((p) => ({ x: p.x, y: p.y })));
+    }
+    const notes: PageMarks["notes"] = [];
+    for (const raw of d.notes) {
+      if (!raw || typeof raw !== "object") return null;
+      const n = raw as Record<string, unknown>;
+      if (!num(n.x) || !num(n.y) || !str(n.text, 200) || !n.text.trim() || !str(n.near, 60)) return null;
+      notes.push({ x: n.x, y: n.y, text: n.text, near: n.near });
+    }
+    return { type: "marks", marks: { strokes, notes } };
+  }
+  if (d.type === "repick-ask") return str(d.label, 80) && d.label ? { type: "repick-ask", label: d.label } : null;
   if (d.type === "outline") {
     if (!Array.isArray(d.nodes) || d.nodes.length > 400) return null;
     const nodes: OutlineNode[] = [];

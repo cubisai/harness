@@ -10,8 +10,10 @@ import "../styles/artifact.css";
 import { affectedPages, useStore } from "../store";
 import { designStyleName, useDesignSystemOptions } from "../components/DesignSystemMenu";
 import { STYLE_PREFIX, readDirection } from "../../../shared/direction";
-import { VIEWPORTS, ZOOMS, deviceFor, frameLayout, pageFromPath, readBridgeMessage, viewportForDevice, type OutlineNode, type Viewport, type Zoom } from "./frame";
-import { announceSelection, elementLabel, selectionKey, type SelectedElement } from "../../../shared/selection";
+import { NO_MARKS, VIEWPORTS, ZOOMS, deviceFor, frameLayout, pageFromPath, readBridgeMessage, viewportForDevice, type FrameAnchor, type FrameRect, type OutlineNode, type PageMarks, type Viewport, type Zoom } from "./frame";
+import { announceSelection, elementLabel, selectionKey, withScope, type SelectedElement } from "../../../shared/selection";
+import { withRefs } from "./refs";
+import { ElementBar, goMessage, placeElementBar, type ActionId } from "./ElementBar";
 import { compareCells, pageOptions, sameEntry, type CompareCell } from "./pages";
 import { changedTweaks, currentTweakValues, parseTweaks, tweakTarget, tweakValue, type Tweak, type TweakValues } from "../../../shared/tweaks";
 import { TweaksBody, TweaksPanel } from "./TweaksPanel";
@@ -37,6 +39,9 @@ const kebab = (prop: string): string => prop.replace(/[A-Z]/g, (c) => `-${c.toLo
  */
 /** How far the header folds when its tools don't fit: 1 = grid, reload and folder into More; 2 = the pickers to a second row. */
 const MAX_FOLD = 2;
+
+/** The element bar's last action per thread (Freeform until one is chosen). */
+const lastAction = new Map<string, ActionId>();
 
 /** The outline while the current page hasn't reported its own: one stable empty list. */
 const NO_NODES: OutlineNode[] = [];
@@ -102,6 +107,23 @@ export default function DesignCanvas({
   // The inspector: the selected element's properties and the page's code, beside the stage.
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("properties");
+  // The element bar: where the picked element is in the frame, the marks and notes on it, an element waiting to be
+  // picked over the marks, the prompt and action, and whether a Go turn is running (or its capture being taken).
+  const [anchor, setAnchor] = useState<FrameAnchor | null>(null);
+  const [marks, setMarks] = useState<PageMarks>(NO_MARKS);
+  const [repick, setRepick] = useState<string | null>(null);
+  const [elementPrompt, setElementPrompt] = useState("");
+  const [action, setActionState] = useState<ActionId>(() => lastAction.get(threadId) ?? "freeform");
+  const setAction = (id: ActionId) => {
+    lastAction.set(threadId, id);
+    setActionState(id);
+  };
+  const [barSize, setBarSize] = useState({ width: 0, height: 0 });
+  const [generating, setGenerating] = useState(false);
+  const [goCapturing, setGoCapturing] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const stageNode = useRef<HTMLDivElement | null>(null);
+  const [, setStageScrolled] = useState(0);
   // The page's layer tree for the inspector's Elements tab, as its bridge last reported it.
   // Tagged with the page it came from: after a page or thread switch the old outline isn't shown as the new page's.
   const [pageOutline, setPageOutline] = useState<{ path: string; nodes: OutlineNode[] } | null>(null);
@@ -201,6 +223,12 @@ export default function DesignCanvas({
   useEffect(() => {
     setVersion(0);
     setPicking(false);
+    setAnchor(null);
+    setMarks(NO_MARKS);
+    setRepick(null);
+    setElementPrompt("");
+    setActionState(lastAction.get(threadId) ?? "freeform");
+    setGenerating(false);
     setDevice(false);
     setViewport(null);
     setExported(null);
@@ -263,6 +291,7 @@ export default function DesignCanvas({
   const stageRef = useCallback((el: HTMLDivElement | null) => {
     stageObserver.current?.disconnect();
     stageObserver.current = null;
+    stageNode.current = el;
     if (!el) return;
     const measure = () => setStage({ width: el.clientWidth, height: el.clientHeight });
     measure();
@@ -312,8 +341,11 @@ export default function DesignCanvas({
       const msg = readBridgeMessage(e.data);
       if (!msg) return;
       if (msg.type === "ready") {
-        // A fresh load: its tweaks (if any) arrive right after.
+        // A fresh load: its tweaks (if any) arrive right after; the marks went with the old document.
         setTweaks(null);
+        setAnchor(null);
+        setMarks(NO_MARKS);
+        setRepick(null);
         // A link inside the page went to another page of the design: follow it (title, versions, export) without
         // loading it a second time.
         const at = msg.path ? pageFromPath(msg.path, threadId) : null;
@@ -359,6 +391,12 @@ export default function DesignCanvas({
         setPinMissing(msg.missing);
       } else if (msg.type === "outline") {
         if (entry) setPageOutline({ path: `${entry.dir}/${entry.rel}`, nodes: msg.nodes });
+      } else if (msg.type === "anchor") {
+        setAnchor(msg.anchor);
+      } else if (msg.type === "marks") {
+        setMarks(msg.marks);
+      } else if (msg.type === "repick-ask") {
+        setRepick(msg.label);
       } else if (msg.type === "edit-refused") {
         setNotice({ text: msg.reason });
       } else if (msg.type === "selection") {
@@ -786,6 +824,115 @@ export default function DesignCanvas({
     />
   ) : null;
 
+  // A Go turn shows "Generating variants…" until the agent stops.
+  useEffect(() => {
+    if (!agentRunning) setGenerating(false);
+  }, [agentRunning]);
+  // A stage that scrolls (a sized frame larger than the stage) moves the element under the bar: place it again.
+  useEffect(() => {
+    const el = stageNode.current;
+    if (!el) return;
+    const onScroll = () => setStageScrolled((n) => n + 1);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [frameEl]);
+
+  // The frame's anchor in the stage wrapper's coordinates, and the part of the frame that shows (the stage's
+  // content box, so the bar never sits on the live bar or the prompt bar).
+  const toWrap = (r: FrameRect): { el: FrameRect; view: FrameRect; origin: { x: number; y: number } } | null => {
+    const frame = frameRef.current;
+    const wrap = wrapRef.current;
+    const stageBox = stageNode.current;
+    if (!frame || !wrap || !stageBox) return null;
+    const fr = frame.getBoundingClientRect();
+    const wr = wrap.getBoundingClientRect();
+    const sr = stageBox.getBoundingClientRect();
+    const scale = frame.offsetWidth ? fr.width / frame.offsetWidth : 1;
+    const padBottom = parseFloat(getComputedStyle(stageBox).paddingBottom) || 0;
+    const top = Math.max(fr.top, sr.top);
+    const bottom = Math.min(fr.bottom, sr.bottom - padBottom);
+    const left = Math.max(fr.left, sr.left);
+    const right = Math.min(fr.right, sr.right);
+    return {
+      el: { x: fr.left - wr.left + r.x * scale, y: fr.top - wr.top + r.y * scale, width: r.width * scale, height: r.height * scale },
+      view: { x: left - wr.left, y: top - wr.top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) },
+      origin: { x: wr.left, y: wr.top },
+    };
+  };
+  const showElementBar = onPage && selected.length > 0 && anchor !== null && !goCapturing;
+  const barBoxes = showElementBar && anchor ? toWrap(anchor.rect) : null;
+  const barPlace = barBoxes && barSize.width > 0 ? placeElementBar(barBoxes.el, barBoxes.view, barSize) : null;
+  const markCount = marks.strokes.length + marks.notes.length;
+  const goWhy = agentRunning ? "Wait for the current turn to finish" : action === "freeform" && !elementPrompt.trim() && markCount === 0 ? "Say what to change, mark it, or pick an action" : null;
+
+  // Go: the action, the prompt and the notes as one message, scoped to the selection; with marks drawn, one capture of
+  // the element and its marks goes with it as a reference image.
+  const go = async () => {
+    if (!entry || !selected.length || goWhy || !anchor) return;
+    const text = goMessage(action, elementPrompt, marks);
+    const refs: string[] = [];
+    if (marks.strokes.length) {
+      setGoCapturing(true);
+      try {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        const boxes = toWrap(anchor.bounds);
+        if (boxes) {
+          const x = Math.max(boxes.el.x, boxes.view.x);
+          const y = Math.max(boxes.el.y, boxes.view.y);
+          const right = Math.min(boxes.el.x + boxes.el.width, boxes.view.x + boxes.view.width);
+          const bottom = Math.min(boxes.el.y + boxes.el.height, boxes.view.y + boxes.view.height);
+          if (right - x >= 8 && bottom - y >= 8) {
+            const res = await api().designCapture(threadId, { x: boxes.origin.x + x, y: boxes.origin.y + y, width: right - x, height: bottom - y });
+            refs.push(res.path);
+          }
+        }
+      } catch (err) {
+        setNotice({ text: `Couldn't capture the marks: ${ipcError(err)}`, error: true });
+        return;
+      } finally {
+        setGoCapturing(false);
+      }
+    }
+    const body = withRefs(withScope(text, `${entry.dir}/${entry.rel}`, selected), refs);
+    const ok = await useStore.getState().send(body, undefined, threadId, refs);
+    if (!ok) return;
+    setElementPrompt("");
+    post({ type: "clear-marks" });
+    setGenerating(true);
+  };
+
+  const elementBar = showElementBar ? (
+    <ElementBar
+      tag={selected.length === 1 ? elementLabel(selected[0]!) : `${selected.length} elements`}
+      place={barPlace}
+      onSize={setBarSize}
+      prompt={elementPrompt}
+      onPrompt={setElementPrompt}
+      action={action}
+      onAction={setAction}
+      marks={marks}
+      onClearMarks={() => post({ type: "clear-marks" })}
+      canGo={goWhy === null}
+      goWhy={goWhy}
+      onGo={() => void go()}
+      generating={generating}
+      onEditText={
+        picking && features.textEdit && selected.length === 1 && anchor?.editable
+          ? () => {
+              frameRef.current?.focus();
+              post({ type: "edit-selected" });
+            }
+          : null
+      }
+      onComment={features.comments && selected.length === 1 && commentDraft === null ? () => setCommentDraft("") : null}
+      repick={repick}
+      onRepick={(ok) => {
+        setRepick(null);
+        post({ type: "repick", ok });
+      }}
+    />
+  ) : null;
+
   // Canvas-first's left rail: the design's pages (a click opens one, All pages opens the board) and the open page's layers.
   const rail = railOpen ? (
     <aside className="design-rail" aria-label="Pages and layers">
@@ -1125,11 +1272,6 @@ export default function DesignCanvas({
             <span className="design-crumb current">{selected.length} elements selected</span>
           )}
           <span className="grow" />
-          {features.comments && selected.length === 1 && commentDraft === null && (
-            <button className="button ghost" onClick={() => setCommentDraft("")}>
-              Comment
-            </button>
-          )}
           <button className="button ghost" onClick={clearSelection}>
             Clear
           </button>
@@ -1227,8 +1369,9 @@ export default function DesignCanvas({
         // One wrapper either way, so opening the inspector never remounts (and reloads) the frame.
         <div className="design-stage-row">
           {/* One wrapper around the stage (and the floating tools), so the inspector never remounts the frame. */}
-          <div className="design-stage-wrap">
+          <div className="design-stage-wrap" ref={wrapRef}>
             {stageEl}
+            {elementBar}
             {liveBar}
           </div>
           {inspectorOpen && (

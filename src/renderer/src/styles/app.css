@@ -773,8 +773,45 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-live-steer-input:focus { outline: none; border-color: var(--hairline-strong); }
 .design-live-steer-input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .design-float-divider { flex-shrink: 0; width: 1px; height: 20px; margin: 0 2px; background: var(--hairline); }
-/* The pen overlay (unused since the live bar; marks move into the frame with the element bar). */
-.design-draw { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: auto; cursor: crosshair; touch-action: none; z-index: 1; }
+/* The element bar: under the picked element (placed by the canvas from the bridge's anchor), a floating overlay. */
+.design-element-bar {
+  position: absolute;
+  z-index: 22;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: calc(100% - 16px);
+  padding: 2px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-l);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-float);
+}
+.design-element-bar > * { flex-shrink: 0; }
+.design-element-tag { max-width: 160px; height: 22px; margin: 0 2px 0 4px; padding: 0 6px; overflow: hidden; border-radius: var(--radius-s); background: var(--bg-chip); color: var(--text-secondary); font: 500 11.5px/22px var(--mono); white-space: nowrap; text-overflow: ellipsis; }
+.design-element-bar .design-element-prompt { flex: 1 1 240px; flex-shrink: 1; min-width: 0; width: 240px; height: 28px; padding: 0 6px; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 12.5px; }
+.design-element-prompt::placeholder { color: var(--text-tertiary); }
+.design-element-prompt:focus { outline: none; }
+.design-element-prompt:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: var(--radius-s); }
+.design-element-clear { height: 22px; padding: 0 6px; border: 0; border-radius: var(--radius-s); background: transparent; color: var(--text-secondary); font: 500 11.5px var(--font); white-space: nowrap; }
+.design-element-clear:hover { background: var(--bg-hover); color: var(--text); }
+.design-element-action-wrap { position: relative; }
+.design-element-action { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border: 0; border-radius: var(--radius-s); background: var(--bg-chip); color: var(--text-secondary); font: inherit; font-size: 12.5px; font-weight: 500; white-space: nowrap; transition: background 120ms var(--ease), color 120ms var(--ease); }
+.design-element-action:hover, .design-element-action.open { background: var(--bg-selected); color: var(--text); }
+.design-element-times { font: 500 11px var(--mono); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.design-element-go { display: inline-grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: var(--radius-s); background: var(--primary); color: var(--on-primary); transition: opacity 120ms var(--ease); }
+.design-element-go:disabled { opacity: 0.4; }
+.design-element-generating { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 10px; color: var(--signal-ink); font-size: 12.5px; font-weight: 500; white-space: nowrap; }
+.design-element-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--signal-fill); outline: 1px solid var(--text); }
+.design-element-ask { padding: 0 8px; font-size: 12.5px; color: var(--text); white-space: nowrap; }
+.design-element-bar .button { height: 28px; }
+/* The action palette: 4 × 3, over the element (up from the bar, or down when the bar sits above it). */
+.design-action-palette { position: absolute; right: 0; top: calc(100% + 8px); z-index: 1; display: grid; grid-template-columns: repeat(4, 76px); gap: 2px; padding: 4px; border: 1px solid var(--hairline); border-radius: var(--radius-l); background: var(--bg-elevated); box-shadow: var(--shadow-float); }
+.design-action-palette.up { top: auto; bottom: calc(100% + 8px); }
+.design-action-cell { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; height: 52px; padding: 0 4px; border: 0; border-radius: var(--radius-m); background: transparent; color: var(--text-secondary); font: inherit; font-size: 11.5px; font-weight: 500; }
+.design-action-cell:hover { background: var(--bg-hover); color: var(--text); }
+.design-action-cell.on { background: var(--bg-selected); color: var(--text); }
+.design-action-cell:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 /* Device chrome around a sized frame: a phone (bezel, island, home indicator), a tablet, or a browser window. Sizes scale with the frame (--s). */
 .device-off { display: contents; }
 .device-shell { position: relative; margin: auto; flex-shrink: 0; box-shadow: var(--shadow-float); }
