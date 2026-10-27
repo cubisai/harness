@@ -37,8 +37,12 @@ function propLabel(prop: string): string {
  * page's layers, its own code and its tweaks. Apply hands the edits to the canvas, which writes them into the page
  * (`writes`: Working and Real app tiers, an element with a data-agent-id) or turns them into a message for the agent.
  */
+export type InspectorTab = "properties" | "elements" | "code" | "system" | "tweaks";
+
 export function InspectorPanel({
   threadId,
+  tab: tabProp,
+  onTab,
   element,
   pageRel,
   designDir,
@@ -51,6 +55,9 @@ export function InspectorPanel({
   tweaks,
 }: {
   threadId: string;
+  /** The open tab, when the canvas holds it (its DESIGN.md button opens System); otherwise the panel keeps its own. */
+  tab?: InspectorTab;
+  onTab?: (tab: InspectorTab) => void;
   element: SelectedElement | null;
   pageRel: string;
   designDir: string;
@@ -65,7 +72,9 @@ export function InspectorPanel({
   /** The Tweaks tab's controls, or null when the page has none (or the tier has no tweaks). */
   tweaks: ReactNode | null;
 }) {
-  const [tab, setTab] = useState<"properties" | "elements" | "code" | "system" | "tweaks">("properties");
+  const [ownTab, setOwnTab] = useState<InspectorTab>("properties");
+  const tab = tabProp ?? ownTab;
+  const setTab = onTab ?? setOwnTab;
   const shownTab = tab === "tweaks" && !tweaks ? "properties" : tab;
   // The user's edits, keyed by prop; an absent key means "still the original".
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -175,7 +184,7 @@ export function InspectorPanel({
         tweaks
       ) : shownTab === "properties" ? (
         !element ? (
-          <p className="design-inspector-empty">Select an element on the canvas to inspect it.</p>
+          <p className="design-inspector-empty">Pick an element on the canvas to inspect it.</p>
         ) : (
           <>
             <div className="design-inspector-head">

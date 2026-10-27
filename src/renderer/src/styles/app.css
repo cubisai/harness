@@ -727,25 +727,53 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-present-screen .design-frame { position: absolute; top: 0; left: 0; }
 /* Inspector (design mode): the selected element's properties and the page's code, beside the stage. */
 .design-stage-row { display: flex; flex: 1; min-height: 0; min-width: 0; }
-/* The stage and the floating tools share a positioned wrapper, so the bar can hover over the frame. */
+/* The stage and the live bar share a positioned wrapper, so the bar can float over the stage's foot. */
 .design-stage-wrap { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; }
-.design-float-tools {
+/* The live bar: the canvas's one tool bar, at the bottom centre in both layouts (above the prompt bar in canvas-first).
+   --live-bar-room is the strip the stage, Compare and the board keep clear for it. */
+.design-canvas { --live-bar-bottom: 12px; --live-bar-room: 56px; }
+.design-live-bar {
   position: absolute;
   left: 50%;
-  bottom: 16px;
+  bottom: var(--live-bar-bottom);
   transform: translateX(-50%);
-  z-index: 2;
+  z-index: 21;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px;
+  gap: 2px;
+  max-width: calc(100% - 24px);
+  padding: 2px;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-l);
   background: var(--bg-elevated);
   box-shadow: var(--shadow-float);
 }
+.design-live-bar > * { flex-shrink: 0; }
+.design-live-pick, .design-live-steer-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px 0 8px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 120ms var(--ease), color 120ms var(--ease);
+}
+.design-live-pick:hover:not(:disabled), .design-live-steer-open:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+.design-live-pick.active { background: var(--primary-soft); color: var(--primary); }
+.design-live-pick:disabled, .design-live-steer-open:disabled { opacity: 0.4; }
+.design-live-steer { display: flex; align-items: center; gap: 2px; flex-shrink: 1; min-width: 0; }
+.design-live-steer-input { flex: 1 1 260px; min-width: 0; width: 260px; height: 28px; padding: 0 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-s); background: var(--bg); color: var(--text); font: inherit; font-size: 12.5px; }
+.design-live-steer-input:focus { outline: none; border-color: var(--hairline-strong); }
+.design-live-steer-input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .design-float-divider { flex-shrink: 0; width: 1px; height: 20px; margin: 0 2px; background: var(--hairline); }
-/* The pen overlay: it fills the frame box and takes every pointer event while the Draw tool is on. */
+/* The pen overlay (unused since the live bar; marks move into the frame with the element bar). */
 .design-draw { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: auto; cursor: crosshair; touch-action: none; z-index: 1; }
 /* Device chrome around a sized frame: a phone (bezel, island, home indicator), a tablet, or a browser window. Sizes scale with the frame (--s). */
 .device-off { display: contents; }
@@ -765,17 +793,20 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .device-address { flex: 0 1 360px; min-width: 0; margin: 0 auto; padding: 4px 12px; border-radius: var(--radius-s); background: var(--bg); font-size: 11.5px; color: var(--text-tertiary); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .device-spacer { flex-shrink: 0; width: 44px; }
 .design-stage.device-phone, .design-stage.device-tablet, .design-stage.device-browser { padding: 32px; }
-/* Canvas-first: the page sits on the canvas clear of the vertical tools (left) and the prompt bar (below). */
-.canvas-first .design-stage, .canvas-first .design-stage.fit { padding: 24px 24px calc(var(--design-prompt-h, 0px) + 28px) 72px; }
+/* Every stage keeps the live bar's strip clear under the page. */
+.design-stage, .design-stage.fit, .design-stage.device-phone, .design-stage.device-tablet, .design-stage.device-browser { padding-bottom: var(--live-bar-room); }
+.design-compare { padding-bottom: var(--live-bar-room); }
+.design-board { --board-inset-bar: var(--live-bar-room); }
+/* Canvas-first: the live bar sits just above the prompt bar, and the page stays clear of both. */
+.canvas-first .design-canvas { --live-bar-bottom: calc(var(--design-prompt-h, 0px) + 12px); }
+.canvas-first .design-stage, .canvas-first .design-stage.fit { padding: 24px 24px calc(var(--design-prompt-h, 0px) + var(--live-bar-room) + 4px); }
 .canvas-first .design-stage.fit .design-frame-box { border: 1px solid var(--hairline); border-radius: var(--radius-m); overflow: hidden; }
-.canvas-first .design-compare { padding: 16px 16px calc(var(--design-prompt-h, 0px) + 28px) 72px; }
+.canvas-first .design-compare { padding: 16px 16px calc(var(--design-prompt-h, 0px) + var(--live-bar-room) + 4px); }
 .canvas-first .design-canvas-empty { padding-bottom: calc(var(--design-prompt-h, 0px) + 24px); }
 /* The board stays under the prompt bar, so its zoom control moves to the top. */
 .canvas-first .design-board-zoom { top: 12px; bottom: auto; }
-/* Fit keeps the frames clear of the vertical tools and the prompt bar (Board.tsx reads these). */
-.canvas-first .design-board { --board-inset-left: 56px; --board-inset-bottom: var(--design-prompt-h, 0px); }
-.design-float-tools.vertical { left: 12px; top: 50%; bottom: auto; transform: translateY(-50%); flex-direction: column; }
-.design-float-tools.vertical .design-float-divider { width: 20px; height: 1px; margin: 2px 0; }
+/* Fit keeps the frames clear of the prompt bar and the live bar (Board.tsx reads these). */
+.canvas-first .design-board { --board-inset-bottom: var(--design-prompt-h, 0px); }
 
 /* Canvas-first's left rail: the design's pages, then the open page's layers. */
 .design-rail { width: var(--design-rail-w, 232px); flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--hairline); background: var(--bg); }

@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal, flushSync } from "react-dom";
-import { Columns2, Download, Eraser, FolderOpen, Grid3x3, Hammer, LayoutGrid, MessageSquarePlus, MousePointer2, Palette, PanelLeft, PanelRight, Paperclip, Pencil, Play, Smartphone, Type, Undo2, Workflow } from "lucide-react";
+import { Download, FolderOpen, Grid3x3, Hammer, LayoutGrid, Palette, PanelLeft, PanelRight, Smartphone, Workflow } from "lucide-react";
 import type { DesignEntry, DesignExportFormat } from "../../../shared/types";
 import { api } from "../api";
 import { fileManagerName } from "../components/OpenIn";
 import { Select } from "../components/Select";
-import { IconClose, IconMore, IconRefresh, IconTarget } from "../icons";
+import { IconClose, IconMore, IconRefresh } from "../icons";
 import "../styles/artifact.css";
 import { affectedPages, useStore } from "../store";
 import { designStyleName, useDesignSystemOptions } from "../components/DesignSystemMenu";
 import { STYLE_PREFIX, readDirection } from "../../../shared/direction";
 import { VIEWPORTS, ZOOMS, deviceFor, frameLayout, pageFromPath, readBridgeMessage, viewportForDevice, type OutlineNode, type Viewport, type Zoom } from "./frame";
-import { DrawOverlay, type Stroke } from "./DrawOverlay";
 import { announceSelection, elementLabel, selectionKey, type SelectedElement } from "../../../shared/selection";
 import { compareCells, pageOptions, sameEntry, type CompareCell } from "./pages";
 import { changedTweaks, currentTweakValues, parseTweaks, tweakTarget, tweakValue, type Tweak, type TweakValues } from "../../../shared/tweaks";
@@ -23,7 +22,8 @@ import { CommentsPanel } from "./CommentsPanel";
 import { boardSections, flowOrder, frameLabel, type BoardPage } from "./board-layout";
 import { Board } from "./Board";
 import { Present } from "./Present";
-import { InspectorPanel } from "./InspectorPanel";
+import { InspectorPanel, type InspectorTab } from "./InspectorPanel";
+import { LiveBar, escapeStep, isPickKey, steerMessage } from "./LiveBar";
 
 const ipcError = (err: unknown): string => (err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err));
 
@@ -66,11 +66,8 @@ export default function DesignCanvas({
   const [zoom, setZoom] = useState<Zoom>("fit");
   const [grid, setGrid] = useState(false);
   const [picking, setPicking] = useState(false);
-  // The floating bar's chosen tool (null = none), the pen strokes over the frame, and the device frame around it.
-  const [tool, setTool] = useState<"select" | "text" | "comment" | "draw" | null>(null);
-  const [strokes, setStrokes] = useState<Stroke[]>([]);
+  // The device frame around the page.
   const [device, setDevice] = useState(false);
-  const [capturing, setCapturing] = useState(false);
   const [restoring, setRestoring] = useState(false);
   // 0 = the file as it is now; N = its saved version N (live reload pauses).
   const [version, setVersion] = useState(0);
@@ -104,6 +101,7 @@ export default function DesignCanvas({
   const [flow, setFlow] = useState(false);
   // The inspector: the selected element's properties and the page's code, beside the stage.
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("properties");
   // The page's layer tree for the inspector's Elements tab, as its bridge last reported it.
   // Tagged with the page it came from: after a page or thread switch the old outline isn't shown as the new page's.
   const [pageOutline, setPageOutline] = useState<{ path: string; nodes: OutlineNode[] } | null>(null);
@@ -203,8 +201,6 @@ export default function DesignCanvas({
   useEffect(() => {
     setVersion(0);
     setPicking(false);
-    setTool(null);
-    setStrokes([]);
     setDevice(false);
     setViewport(null);
     setExported(null);
@@ -436,41 +432,11 @@ export default function DesignCanvas({
     };
   }, [exportOpen]);
 
+  // Pick is the one way to select on the page (the bar's Pick, V, a layer row); in-place text editing follows the tier.
   const togglePick = () => {
     const on = !picking;
     setPicking(on);
-    setTool(on ? "select" : null);
-    if (on) setStrokes([]);
-    post({ type: "pick", on, edit: features.textEdit });
-  };
-
-  // The floating bar's tool: Select picks like the header button; Text edit and Comment pick with the edit flag set
-  // to what the tier allows; Draw puts the pen down. Choosing the current tool again turns everything off.
-  const chooseTool = (t: "select" | "text" | "comment" | "draw") => {
-    if (t === tool) {
-      setTool(null);
-      setStrokes([]);
-      if (picking) {
-        setPicking(false);
-        post({ type: "pick", on: false });
-      }
-      return;
-    }
-    if (t === "select") {
-      setPicking(true);
-      post({ type: "pick", on: true, edit: features.textEdit });
-    } else if (t === "text") {
-      setPicking(true);
-      post({ type: "pick", on: true, edit: true });
-    } else if (t === "comment") {
-      setPicking(true);
-      post({ type: "pick", on: true, edit: false });
-    } else if (picking) {
-      setPicking(false);
-      post({ type: "pick", on: false });
-    }
-    if (t === "draw") setStrokes([]);
-    setTool(t);
+    post(on ? { type: "pick", on, edit: features.textEdit } : { type: "pick", on });
   };
 
   // Esc in the app (focus outside the frame) works like Esc in it: first it clears the selection, then it stops selecting.
@@ -478,25 +444,18 @@ export default function DesignCanvas({
     if (!picking) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      if (useStore.getState().designSelection[threadId]) {
+      const step = escapeStep(Boolean(useStore.getState().designSelection[threadId]), true);
+      if (step === "clear-selection") {
         useStore.getState().setDesignSelection(threadId, null);
         setAnnouncement(announceSelection([]));
         return;
       }
       setPicking(false);
-      setTool(null);
       post({ type: "pick", on: false });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [picking, post, threadId]);
-
-  // Comment tool: picking one element opens the existing comment form (the chips already go with the message).
-  // Only a new pick opens it, so Cancel closes it until the next one.
-  const pickedOne = selected.length === 1 ? selected[0]!.selector : null;
-  useEffect(() => {
-    if (tool === "comment" && pickedOne && features.comments) setCommentDraft((draft) => draft ?? "");
-  }, [tool, pickedOne, features.comments]);
 
   const path = entry ? `${entry.dir}/${entry.rel}` : null;
   const outline = pageOutline && pageOutline.path === path ? pageOutline.nodes : NO_NODES;
@@ -699,28 +658,6 @@ export default function DesignCanvas({
     }
   };
 
-  // Attach: the floating bar steps aside, then the frame box (the page plus the drawing over it) is captured and put
-  // into the composer as a reference image for the next message.
-  const attach = async () => {
-    setCapturing(true);
-    try {
-      // Wait a frame so the bar is gone and the overlay has repainted before the area is read.
-      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-      const box = boxRef.current;
-      if (!box) return;
-      const r = box.getBoundingClientRect();
-      const res = await api().designCapture(threadId, { x: r.left, y: r.top, width: r.width, height: r.height });
-      useStore.getState().addDesignRefs(threadId, [res]);
-      setStrokes([]);
-      setTool(null);
-      setNotice({ text: "Drawing attached to your next message." });
-    } catch (err) {
-      setNotice({ text: ipcError(err), error: true });
-    } finally {
-      setCapturing(false);
-    }
-  };
-
   // The frame itself; with a device on it sits in that device's shell (sized to the screen, so capture and picking are unchanged).
   const frameBox = entry && src ? (
     <div
@@ -737,7 +674,6 @@ export default function DesignCanvas({
         style={fit ? undefined : { width: layout.width, height: layout.height, transform: `scale(${layout.scale})` }}
       />
       {grid && <div className="design-grid" style={{ backgroundSize: `${8 * layout.scale}px ${8 * layout.scale}px` }} aria-hidden />}
-      {tool === "draw" && <DrawOverlay strokes={strokes} onStrokes={setStrokes} />}
     </div>
   ) : null;
 
@@ -800,95 +736,55 @@ export default function DesignCanvas({
   const why = (verb: string) => (board ? `Open a page to ${verb}` : comparing ? `Open one option to ${verb}` : version !== 0 ? `Back to the latest version to ${verb}` : null);
   const presentFrom = entry ? (board ? flowOrder(entry.pages)[0] : entry.rel) : undefined;
 
-  // The canvas tools: a bar floating under the page (side by side), or a vertical rail at the canvas's left edge
-  // (canvas-first), which stays in board and compare too and also holds Compare and Present.
-  const tools = (
-    <div className={`design-float-tools${canvasFirst ? " vertical" : ""}`} role="toolbar" aria-label="Canvas tools" aria-orientation={canvasFirst ? "vertical" : undefined}>
-      <button
-        className={`icon-button${tool === "select" && onPage ? " active" : ""}`}
-        aria-pressed={tool === "select" && onPage}
-        aria-label="Select"
-        title={why("select") ?? "Select elements to change"}
-        disabled={!onPage}
-        onClick={() => chooseTool("select")}
-      >
-        <MousePointer2 size={16} strokeWidth={1.75} aria-hidden />
-      </button>
-      <button
-        className={`icon-button${tool === "text" && onPage ? " active" : ""}`}
-        aria-pressed={tool === "text" && onPage}
-        aria-label="Edit text"
-        title={features.textEdit ? (why("edit its text") ?? "Click text to edit it in place") : "Text editing needs the Working or Real app tier"}
-        disabled={!features.textEdit || !onPage}
-        onClick={() => chooseTool("text")}
-      >
-        <Type size={16} strokeWidth={1.75} aria-hidden />
-      </button>
-      <button
-        className={`icon-button${tool === "comment" && onPage ? " active" : ""}`}
-        aria-pressed={tool === "comment" && onPage}
-        aria-label="Comment"
-        title={features.comments ? (why("comment") ?? "Comment on an element") : "Comments need the Real app tier"}
-        disabled={!features.comments || !onPage}
-        onClick={() => chooseTool("comment")}
-      >
-        <MessageSquarePlus size={16} strokeWidth={1.75} aria-hidden />
-      </button>
-      <button
-        className={`icon-button${tool === "draw" && onPage ? " active" : ""}`}
-        aria-pressed={tool === "draw" && onPage}
-        aria-label="Draw on the design"
-        title={why("draw on it") ?? "Draw on the design"}
-        disabled={!onPage}
-        onClick={() => chooseTool("draw")}
-      >
-        <Pencil size={16} strokeWidth={1.75} aria-hidden />
-      </button>
-      {tool === "draw" && onPage && (
-        <>
-          <span className="design-float-divider" aria-hidden />
-          <button className="icon-button" aria-label="Undo stroke" title="Undo the last stroke" disabled={strokes.length === 0} onClick={() => setStrokes(strokes.slice(0, -1))}>
-            <Undo2 size={16} strokeWidth={1.75} aria-hidden />
-          </button>
-          <button className="icon-button" aria-label="Clear drawing" title="Clear the drawing" disabled={strokes.length === 0} onClick={() => setStrokes([])}>
-            <Eraser size={16} strokeWidth={1.75} aria-hidden />
-          </button>
-          {canvasFirst ? (
-            <button className="icon-button" aria-label="Attach drawing" title="Attach the drawing to your next message" disabled={strokes.length === 0 || capturing} onClick={() => void attach()}>
-              <Paperclip size={16} strokeWidth={1.75} aria-hidden />
-            </button>
-          ) : (
-            <button className="button primary" disabled={strokes.length === 0 || capturing} onClick={() => void attach()}>
-              Attach
-            </button>
-          )}
-        </>
-      )}
-      {canvasFirst && (
-        <>
-          <span className="design-float-divider" aria-hidden />
-          {cells.length > 0 && (
-            <button
-              className={`icon-button${comparing ? " active" : ""}`}
-              title={comparing ? "Back to one page" : "Compare options side by side"}
-              aria-label="Compare options"
-              aria-pressed={comparing}
-              onClick={() => {
-                if (!comparing) stopPicking();
-                setVersion(0);
-                setCompare(!comparing);
-              }}
-            >
-              <Columns2 size={16} strokeWidth={1.75} aria-hidden />
-            </button>
-          )}
-          <button className="icon-button" aria-label="Present" title={board ? "Present from the first screen" : "Present this page"} disabled={!presentFrom} onClick={() => presentFrom && setPresent(presentFrom)}>
-            <Play size={16} strokeWidth={1.75} aria-hidden />
-          </button>
-        </>
-      )}
-    </div>
-  );
+  // V picks, wherever the focus is outside a text field (inside the frame the page has the keyboard).
+  const pickRef = useRef({ onPage, togglePick });
+  pickRef.current = { onPage, togglePick };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.repeat || !isPickKey(e) || !pickRef.current.onPage) return;
+      e.preventDefault();
+      pickRef.current.togglePick();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // The inspector's System tab is the bar's DESIGN.md: it opens there, or closes when it's already showing.
+  const systemOpen = inspectorOpen && inspectorTab === "system";
+  const toggleSystem = () => {
+    if (systemOpen) return setInspectorOpen(false);
+    setInspectorTab("system");
+    setInspectorOpen(true);
+  };
+  const steer = entry
+    ? (text: string) => {
+        const msg = steerMessage(text, onPage ? { page: `${entry.dir}/${entry.rel}` } : { design: entry.dir });
+        return msg ? useStore.getState().send(msg, undefined, threadId) : Promise.resolve(false);
+      }
+    : null;
+
+  // The canvas's one tool bar, at the bottom centre of the stage (or of the board and Compare), in both layouts.
+  const liveBar = entry ? (
+    <LiveBar
+      onPage={onPage}
+      pickWhy={why("pick an element")}
+      picking={picking}
+      textEdit={features.textEdit}
+      onPick={togglePick}
+      systemOpen={systemOpen}
+      onSystem={toggleSystem}
+      onSteer={steer}
+      busy={agentRunning}
+      comparing={cells.length > 0 ? comparing : null}
+      onCompare={() => {
+        if (!comparing) stopPicking();
+        setVersion(0);
+        setCompare(!comparing);
+      }}
+      board={board}
+      onPresent={presentFrom ? () => setPresent(presentFrom) : null}
+    />
+  ) : null;
 
   // Canvas-first's left rail: the design's pages (a click opens one, All pages opens the board) and the open page's layers.
   const rail = railOpen ? (
@@ -933,8 +829,8 @@ export default function DesignCanvas({
             nodes={outline}
             selected={selected[0] ?? null}
             onPick={(n) => {
-              // Picking a layer selects it on the page, so the select tool goes on first.
-              if (!picking) chooseTool("select");
+              // Picking a layer selects it on the page, so Pick goes on first.
+              if (!picking) togglePick();
               post({ type: "set-selection", targets: [{ ...(n.id ? { id: n.id } : {}), selector: n.selector, tag: n.tag, text: "" }] });
             }}
             onHover={(n) => post({ type: "hover-layer", target: n ? { ...(n.id ? { id: n.id } : {}), selector: n.selector, tag: n.tag, text: "" } : null })}
@@ -1025,31 +921,15 @@ export default function DesignCanvas({
             </button>
           )}
           {board && entry && version === 0 && (
-            <>
-              <button
-                className={`icon-button${flow ? " active" : ""}`}
-                aria-pressed={flow}
-                aria-label="Show flow arrows"
-                title="Flow: arrows between linked screens"
-                onClick={() => setFlow(!flow)}
-              >
-                <Workflow size={16} strokeWidth={1.75} aria-hidden />
-              </button>
-              {/* Canvas-first keeps Present in the tool rail. */}
-              {!canvasFirst && (
-                <button
-                  className="icon-button"
-                  aria-label="Present"
-                  title="Present from the first screen"
-                  onClick={() => {
-                    const first = flowOrder(entry.pages)[0];
-                    if (first) setPresent(first);
-                  }}
-                >
-                  <Play size={16} strokeWidth={1.75} aria-hidden />
-                </button>
-              )}
-            </>
+            <button
+              className={`icon-button${flow ? " active" : ""}`}
+              aria-pressed={flow}
+              aria-label="Show flow arrows"
+              title="Flow: arrows between linked screens"
+              onClick={() => setFlow(!flow)}
+            >
+              <Workflow size={16} strokeWidth={1.75} aria-hidden />
+            </button>
           )}
           {!pickersBelow && viewportPicker}
           <button
@@ -1094,49 +974,17 @@ export default function DesignCanvas({
               onSend={() => void sendComments()}
             />
           )}
-          {cells.length > 0 && !canvasFirst && (
-            <button
-              className={`icon-button${comparing ? " active" : ""}`}
-              title={comparing ? "Back to one page" : "Compare options side by side"}
-              aria-label="Compare options"
-              aria-pressed={comparing}
-              onClick={() => {
-                if (!comparing && picking) {
-                  setPicking(false);
-                  post({ type: "pick", on: false });
-                }
-                setVersion(0);
-                setCompare(!comparing);
-              }}
-            >
-              <Columns2 size={16} strokeWidth={1.75} aria-hidden />
-            </button>
-          )}
           {entry && version === 0 && !board && !comparing && (
             <button
               className={`icon-button${inspectorOpen ? " active" : ""}`}
               aria-label="Inspector"
               title="Inspector: properties and code"
               aria-pressed={inspectorOpen}
-              onClick={() => {
-                if (!inspectorOpen && !picking) togglePick();
-                setInspectorOpen(!inspectorOpen);
-              }}
+              onClick={() => setInspectorOpen(!inspectorOpen)}
             >
               <PanelRight size={16} strokeWidth={1.75} aria-hidden />
             </button>
           )}
-          <button
-            className={`icon-button${picking ? " active" : ""}`}
-            title={picking ? `Selecting: click an element, Shift-click for more, ${features.textEdit ? "double-click text to edit it " : ""}(Esc clears, then stops)` : "Select elements to change"}
-            aria-label={selected.length ? `Select elements (${selected.length} selected)` : "Select elements"}
-            aria-pressed={picking}
-            onClick={togglePick}
-            disabled={!entry || version !== 0 || comparing}
-          >
-            <IconTarget />
-            {selected.length > 0 && <span className="design-select-count">{selected.length}</span>}
-          </button>
           {!compactHead && (
             <button className="icon-button" title="Reload" onClick={() => setManual((n) => n + 1)} disabled={!entry}>
               <IconRefresh />
@@ -1381,11 +1229,13 @@ export default function DesignCanvas({
           {/* One wrapper around the stage (and the floating tools), so the inspector never remounts the frame. */}
           <div className="design-stage-wrap">
             {stageEl}
-            {!canvasFirst && onPage && !capturing && tools}
+            {liveBar}
           </div>
           {inspectorOpen && (
             <InspectorPanel
               threadId={threadId}
+              tab={inspectorTab}
+              onTab={setInspectorTab}
               element={selected[0] ?? null}
               pageRel={entry.rel}
               designDir={entry.dir}
@@ -1453,7 +1303,7 @@ export default function DesignCanvas({
           )}
         </div>
       )}
-      {canvasFirst && entry && !capturing && tools}
+      {((board && version === 0) || comparing) && liveBar}
       </div>
       </div>
       </div>

@@ -106,10 +106,10 @@ export function Board({
   const fit = useCallback(() => {
     const el = stageRef.current;
     if (!el) return;
-    // Room the canvas's floating tools and prompt bar take at the left and the foot (CSS sets them where they float).
+    // Room the canvas's live bar and prompt bar take at the foot (CSS sets them where they float).
     const css = getComputedStyle(el);
     const left = parseFloat(css.getPropertyValue("--board-inset-left")) || 0;
-    const bottom = parseFloat(css.getPropertyValue("--board-inset-bottom")) || 0;
+    const bottom = (parseFloat(css.getPropertyValue("--board-inset-bottom")) || 0) + (parseFloat(css.getPropertyValue("--board-inset-bar")) || 0);
     const fitted = fitBoard(sections, { width: Math.max(1, el.clientWidth - left), height: Math.max(1, el.clientHeight - bottom) });
     setSectionGap(fitted.sectionGap);
     setView({ ...fitted.view, x: fitted.view.x + left });
