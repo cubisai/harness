@@ -190,6 +190,8 @@ export function collectSlop(selectorFor: (el: Element) => string): SlopNode[] {
     if (!el) continue;
     const tag = el.tagName.toLowerCase();
     if (skipTags[tag]) continue;
+    // An unresolved variant set: only the shown variant is on the page.
+    if (el.closest("[data-cubiq-variant][hidden]")) continue;
     try {
       const cs = getComputedStyle(el);
       const borderPx = {

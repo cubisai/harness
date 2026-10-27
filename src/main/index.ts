@@ -1181,6 +1181,20 @@ async function main(): Promise<void> {
     for (const [k, v] of Object.entries(values).slice(0, 32)) if (typeof v === "string" && v.length <= 64) clean[k] = v;
     return service.keepDesignTweaks(threadId, rel, clean);
   });
+  // The element bar's action: only the chosen action's paragraph goes with the message (Freeform has none).
+  const designActionsDir = app.isPackaged ? join(process.resourcesPath, "design-actions") : join(app.getAppPath(), "resources", "design-actions");
+  ipcMain.handle("design:action-note", (_e, action: unknown) => {
+    if (typeof action !== "string" || !/^[a-z]{3,12}$/.test(action) || action === "freeform") return "";
+    try {
+      return readFileSync(join(designActionsDir, `${action}.md`), "utf8").trim().slice(0, 2000);
+    } catch {
+      return "";
+    }
+  });
+  ipcMain.handle("design:variant-resolve", (_e, threadId: string, rel: string, set: unknown, keep: unknown) => {
+    if (typeof rel !== "string" || typeof set !== "string" || !(keep === null || (Number.isInteger(keep) && (keep as number) >= 0 && (keep as number) <= 9))) throw new Error("Bad variant choice.");
+    service.resolveDesignVariants(threadId, rel, set, keep as number | null);
+  });
   ipcMain.handle("design:watch", (e, threadId: string) => {
     const root = service.designRoot(threadId);
     if (!root) return;

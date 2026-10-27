@@ -1,6 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   ArrowRight,
+  Check,
+  ChevronLeft,
+  ChevronRight,
   ChevronsDown,
   ChevronsUp,
   Funnel,
@@ -14,6 +17,7 @@ import {
   PenLine,
   Sparkles,
   Type,
+  X,
   Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -306,6 +310,86 @@ export function ElementBar({
             <ArrowRight size={16} strokeWidth={2} aria-hidden />
           </button>
         </>
+      )}
+    </div>
+  );
+}
+
+/** The next variant to show for ← or → (wrapping through 1…count), or null for any other key. */
+export function cycleStep(shown: number, count: number, key: string): number | null {
+  if (count < 1) return null;
+  const at = shown >= 1 && shown <= count ? shown : 1;
+  if (key === "ArrowRight") return (at % count) + 1;
+  if (key === "ArrowLeft") return ((at + count - 2) % count) + 1;
+  return null;
+}
+
+/**
+ * The variant cycler, where the element bar was: `‹ n / 3 ›`, × (back to the original) and Accept. Both choices are
+ * made by the main process with no agent turn. A malformed set offers only the way back.
+ */
+export function VariantCycler({
+  shown,
+  count,
+  malformed,
+  place,
+  onSize,
+  onShow,
+  onAccept,
+  onDiscard,
+  busy,
+}: {
+  shown: number;
+  count: number;
+  malformed: string | null;
+  place: { left: number; top: number } | null;
+  onSize: (size: { width: number; height: number }) => void;
+  onShow: (n: number) => void;
+  onAccept: () => void;
+  onDiscard: () => void;
+  busy: boolean;
+}) {
+  const barRef = useRef<HTMLDivElement>(null);
+  const size = useRef({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    const el = barRef.current;
+    if (!el) return;
+    const next = { width: el.offsetWidth, height: el.offsetHeight };
+    if (next.width !== size.current.width || next.height !== size.current.height) {
+      size.current = next;
+      onSize(next);
+    }
+  });
+  const style: CSSProperties = place ? { left: place.left, top: place.top } : { left: 0, top: 0, visibility: "hidden" };
+  const at = shown >= 1 && shown <= count ? shown : 1;
+  return (
+    <div className="design-element-bar design-variant-cycler" ref={barRef} style={style} role="toolbar" aria-label="Variants">
+      {malformed ? (
+        <span className="design-element-ask" role="status">
+          Variants came back malformed: {malformed}.
+        </span>
+      ) : (
+        <>
+          <button className="icon-button" aria-label="Previous variant" title="Previous variant (←)" disabled={busy} onClick={() => onShow(cycleStep(at, count, "ArrowLeft") ?? 1)}>
+            <ChevronLeft size={16} strokeWidth={1.75} aria-hidden />
+          </button>
+          <span className="design-variant-count" aria-live="polite">
+            {at} / {count}
+          </span>
+          <button className="icon-button" aria-label="Next variant" title="Next variant (→)" disabled={busy} onClick={() => onShow(cycleStep(at, count, "ArrowRight") ?? 1)}>
+            <ChevronRight size={16} strokeWidth={1.75} aria-hidden />
+          </button>
+          <span className="design-float-divider" aria-hidden />
+        </>
+      )}
+      <button className="icon-button" aria-label="Discard the variants" title="Back to the original (the variants are saved as a version)" disabled={busy} onClick={onDiscard}>
+        <X size={16} strokeWidth={1.75} aria-hidden />
+      </button>
+      {!malformed && (
+        <button className="design-variant-accept" disabled={busy} onClick={onAccept} title={`Keep variant ${at} in the page`}>
+          <Check size={14} strokeWidth={2} aria-hidden />
+          Accept
+        </button>
       )}
     </div>
   );

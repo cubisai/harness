@@ -262,7 +262,8 @@ button { cursor: default; }
 .app.design-thread.canvas-first.with-inspector { grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--inspector-w); }
 .app.canvas-first > .sidebar, .app.canvas-first > .pane-rail { grid-column: 1; grid-row: 1 / -1; }
 .app.canvas-first > .inspector { grid-column: 3; grid-row: 1 / -1; }
-.app.canvas-first > .main { grid-column: 2; grid-row: 1 / -1; position: relative; z-index: 3; background: transparent; pointer-events: none; }
+/* Above the canvas's own floating bars (live bar, element bar, cycler: z 20–22), under its Present overlay (z 30). */
+.app.canvas-first > .main { grid-column: 2; grid-row: 1 / -1; position: relative; z-index: 25; background: transparent; pointer-events: none; }
 .app.canvas-first > .main > * { pointer-events: auto; }
 .app.canvas-first > .design-canvas { grid-column: 2; grid-row: 2; border-left: 0; }
 
@@ -567,8 +568,8 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  /* Clear of the Pages rail and the vertical tools on the left. */
-  padding: 0 16px 14px calc(var(--design-rail-w, 0px) + 64px);
+  /* Clear of the Pages rail on the left, centred over the canvas like the live bar. */
+  padding: 0 16px 14px calc(var(--design-rail-w, 0px) + 16px);
   min-width: 0;
   pointer-events: none;
 }
@@ -805,6 +806,10 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-element-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--signal-fill); outline: 1px solid var(--text); }
 .design-element-ask { padding: 0 8px; font-size: 12.5px; color: var(--text); white-space: nowrap; }
 .design-element-bar .button { height: 28px; }
+/* The variant cycler takes the element bar's place: ‹ n / 3 ›, ×, Accept. */
+.design-variant-count { min-width: 44px; text-align: center; font: 500 12px var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+.design-variant-accept { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: var(--radius-s); background: var(--primary); color: var(--on-primary); font: inherit; font-size: 12.5px; font-weight: 500; }
+.design-variant-accept:disabled { opacity: 0.4; }
 /* The action palette: 4 × 3, over the element (up from the bar, or down when the bar sits above it). */
 .design-action-palette { position: absolute; right: 0; top: calc(100% + 8px); z-index: 1; display: grid; grid-template-columns: repeat(4, 76px); gap: 2px; padding: 4px; border: 1px solid var(--hairline); border-radius: var(--radius-l); background: var(--bg-elevated); box-shadow: var(--shadow-float); }
 .design-action-palette.up { top: auto; bottom: calc(100% + 8px); }

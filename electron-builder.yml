@@ -26,6 +26,8 @@ extraResources:
     to: design-fonts
   - from: resources/design-patterns
     to: design-patterns
+  - from: resources/design-actions
+    to: design-actions
   - from: resources/design-icons
     to: design-icons
 # The Agent SDK spawns its bundled Claude Code binary; binaries can't run

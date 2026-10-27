@@ -15,6 +15,9 @@ import { catalog, closeAfter, tempDir } from "./helpers";
 
 const RESOURCES = join(__dirname, "..", "resources");
 const DESIGN_SKILLS = ["design-critique", "design-handoff", "design-mobile", "design-prototype", "design-slides", "design-system-extract"];
+// Skills the canvas sends by name (the element bar's Go): design-only, but not listed in the guide.
+const CANVAS_SKILLS = ["design-variants"];
+const ALL_DESIGN_SKILLS = [...DESIGN_SKILLS, ...CANVAS_SKILLS].sort();
 describe("Design mode guide (DESIGN-MODE.md)", () => {
   const designMode = join(RESOURCES, "DESIGN-MODE.md");
 
@@ -48,9 +51,9 @@ describe("Design mode guide (DESIGN-MODE.md)", () => {
 describe("bundled design skills", () => {
   const bundled = discoverSkills({ origin: "bundled", dir: join(RESOURCES, "skills") });
 
-  it("ships the six design skills, all design-only and model-invoked", () => {
+  it("ships the design skills, all design-only and model-invoked", () => {
     const design = bundled.filter((s) => s.name.startsWith("design-"));
-    expect(design.map((s) => s.name).sort()).toEqual(DESIGN_SKILLS);
+    expect(design.map((s) => s.name).sort()).toEqual(ALL_DESIGN_SKILLS);
     for (const s of design) {
       expect(s.mode).toBe("design");
       expect(s.invocation).toBe("model");
@@ -64,7 +67,7 @@ describe("bundled design skills", () => {
     expect(chat.some((n) => n.startsWith("design-"))).toBe(false);
     // The chat set is exactly the non-design bundled skills, as before D3.
     expect(chat.sort()).toEqual(bundled.filter((s) => s.mode !== "design").map((s) => s.name).sort());
-    expect(design.filter((n) => n.startsWith("design-")).sort()).toEqual(DESIGN_SKILLS);
+    expect(design.filter((n) => n.startsWith("design-")).sort()).toEqual(ALL_DESIGN_SKILLS);
   });
 
   it("references only files that exist in their folders", () => {

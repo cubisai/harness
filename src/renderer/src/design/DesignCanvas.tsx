@@ -10,10 +10,10 @@ import "../styles/artifact.css";
 import { affectedPages, useStore } from "../store";
 import { designStyleName, useDesignSystemOptions } from "../components/DesignSystemMenu";
 import { STYLE_PREFIX, readDirection } from "../../../shared/direction";
-import { NO_MARKS, VIEWPORTS, ZOOMS, deviceFor, frameLayout, pageFromPath, readBridgeMessage, viewportForDevice, type FrameAnchor, type FrameRect, type OutlineNode, type PageMarks, type Viewport, type Zoom } from "./frame";
+import { NO_MARKS, VIEWPORTS, ZOOMS, deviceFor, frameLayout, pageFromPath, readBridgeMessage, viewportForDevice, type FrameAnchor, type FrameRect, type OutlineNode, type PageMarks, type VariantSetInfo, type Viewport, type Zoom } from "./frame";
 import { announceSelection, elementLabel, selectionKey, withScope, type SelectedElement } from "../../../shared/selection";
 import { withRefs } from "./refs";
-import { ElementBar, goMessage, placeElementBar, type ActionId } from "./ElementBar";
+import { ElementBar, VariantCycler, cycleStep, goMessage, placeElementBar, type ActionId } from "./ElementBar";
 import { compareCells, pageOptions, sameEntry, type CompareCell } from "./pages";
 import { changedTweaks, currentTweakValues, parseTweaks, tweakTarget, tweakValue, type Tweak, type TweakValues } from "../../../shared/tweaks";
 import { TweaksBody, TweaksPanel } from "./TweaksPanel";
@@ -39,6 +39,9 @@ const kebab = (prop: string): string => prop.replace(/[A-Z]/g, (c) => `-${c.toLo
  */
 /** How far the header folds when its tools don't fit: 1 = grid, reload and folder into More; 2 = the pickers to a second row. */
 const MAX_FOLD = 2;
+
+/** The skill every Go turn carries: how to write the three variants in place. */
+const VARIANTS_SKILL = "design-variants";
 
 /** The element bar's last action per thread (Freeform until one is chosen). */
 const lastAction = new Map<string, ActionId>();
@@ -121,6 +124,13 @@ export default function DesignCanvas({
   const [barSize, setBarSize] = useState({ width: 0, height: 0 });
   const [generating, setGenerating] = useState(false);
   const [goCapturing, setGoCapturing] = useState(false);
+  // In-place variant sets the agent wrote on this page, the shown variant's box, and an Accept or × on its way.
+  const [variantSets, setVariantSets] = useState<VariantSetInfo[]>([]);
+  const [variantRect, setVariantRect] = useState<{ set: string; rect: FrameRect | null } | null>(null);
+  const [cyclerSize, setCyclerSize] = useState({ width: 0, height: 0 });
+  const [resolving, setResolving] = useState(false);
+  const variantsRef = useRef(false);
+  variantsRef.current = variantSets.length > 0;
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const stageNode = useRef<HTMLDivElement | null>(null);
   const [, setStageScrolled] = useState(0);
@@ -229,6 +239,8 @@ export default function DesignCanvas({
     setElementPrompt("");
     setActionState(lastAction.get(threadId) ?? "freeform");
     setGenerating(false);
+    setVariantSets([]);
+    setVariantRect(null);
     setDevice(false);
     setViewport(null);
     setExported(null);
@@ -346,6 +358,8 @@ export default function DesignCanvas({
         setAnchor(null);
         setMarks(NO_MARKS);
         setRepick(null);
+        setVariantSets([]);
+        setVariantRect(null);
         // A link inside the page went to another page of the design: follow it (title, versions, export) without
         // loading it a second time.
         const at = msg.path ? pageFromPath(msg.path, threadId) : null;
@@ -397,6 +411,13 @@ export default function DesignCanvas({
         setMarks(msg.marks);
       } else if (msg.type === "repick-ask") {
         setRepick(msg.label);
+      } else if (msg.type === "variants") {
+        variantsRef.current = msg.sets.length > 0;
+        setVariantSets(msg.sets);
+        // The picked element is now the hidden original inside the set: the cycler takes over from the element bar.
+        if (msg.sets.length && useStore.getState().designSelection[threadId]) setSelection(threadId, null);
+      } else if (msg.type === "variant-rect") {
+        setVariantRect({ set: msg.set, rect: msg.rect });
       } else if (msg.type === "edit-refused") {
         setNotice({ text: msg.reason });
       } else if (msg.type === "selection") {
@@ -404,7 +425,8 @@ export default function DesignCanvas({
         fromFrame.current = selectionKey(msg.elements);
         setSelection(threadId, { page: entry.rel, elements: msg.elements });
         setAnnouncement(announceSelection(msg.elements));
-        if (msg.lost > 0)
+        // A variant set on the page means the agent replaced the picked element on purpose: no notice for that.
+        if (msg.lost > 0 && !variantsRef.current)
           setNotice({ text: `${msg.lost === 1 ? "A selected element is" : `${msg.lost} selected elements are`} no longer on the page, so the selection dropped ${msg.lost === 1 ? "it" : "them"}.` });
       } else {
         setPicking(false);
@@ -893,13 +915,75 @@ export default function DesignCanvas({
         setGoCapturing(false);
       }
     }
-    const body = withRefs(withScope(text, `${entry.dir}/${entry.rel}`, selected), refs);
-    const ok = await useStore.getState().send(body, undefined, threadId, refs);
+    // The variants skill, plus only the chosen action's paragraph.
+    const note = await api().designActionNote(action).catch(() => "");
+    const body = withRefs(withScope(note ? `${text}\n\n${note}` : text, `${entry.dir}/${entry.rel}`, selected), refs);
+    const ok = await useStore.getState().send(body, [VARIANTS_SKILL], threadId, refs);
     if (!ok) return;
     setElementPrompt("");
     post({ type: "clear-marks" });
     setGenerating(true);
   };
+
+  // The cycler for the page's first variant set (a well-formed one before a malformed one).
+  const activeSet = onPage ? (variantSets.find((v) => v.malformed === null) ?? variantSets[0] ?? null) : null;
+  const showVariant = (n: number) => {
+    if (!activeSet) return;
+    post({ type: "show-variant", set: activeSet.set, n });
+    setVariantSets((list) => list.map((v) => (v.set === activeSet.set ? { ...v, shown: n } : v)));
+  };
+  const resolveSet = async (keep: number | null) => {
+    if (!activeSet || !entry || resolving) return;
+    setResolving(true);
+    try {
+      await api().designVariantResolve(threadId, entry.rel, activeSet.set, keep);
+      setNotice({
+        text: keep === null ? "Back to the original. The variants are saved as a version." : `Kept variant ${keep}. The page before is saved as a version.`,
+        page: entry.rel,
+      });
+    } catch (err) {
+      setNotice({ text: ipcError(err), error: true });
+    } finally {
+      setResolving(false);
+    }
+  };
+  // ← and → cycle the variants while the focus isn't in a text field.
+  const cycleRef = useRef({ activeSet, showVariant });
+  cycleRef.current = { activeSet, showVariant };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const { activeSet: set, showVariant: show } = cycleRef.current;
+      if (!set || set.malformed || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(input|textarea|select)$/i.test(t.tagName))) return;
+      const next = cycleStep(set.shown, set.count, e.key);
+      if (next === null) return;
+      e.preventDefault();
+      show(next);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  const cyclerBoxes = activeSet && variantRect?.set === activeSet.set && variantRect.rect ? toWrap(variantRect.rect) : null;
+  // A set with no box to sit under (malformed, or its element is hidden) docks the cycler to the foot of the frame.
+  const cyclerView = cyclerBoxes?.view ?? (activeSet ? toWrap({ x: 0, y: 0, width: 0, height: 0 })?.view : null);
+  const cyclerPlace =
+    activeSet && cyclerView && cyclerSize.width > 0
+      ? placeElementBar(cyclerBoxes?.el ?? { x: cyclerView.x, y: cyclerView.y + cyclerView.height + 1000, width: cyclerView.width, height: 0 }, cyclerView, cyclerSize)
+      : null;
+  const cycler = activeSet ? (
+    <VariantCycler
+      shown={activeSet.shown}
+      count={activeSet.count}
+      malformed={activeSet.malformed}
+      place={cyclerPlace}
+      onSize={setCyclerSize}
+      onShow={showVariant}
+      onAccept={() => void resolveSet(activeSet.shown >= 1 ? activeSet.shown : 1)}
+      onDiscard={() => void resolveSet(null)}
+      busy={resolving}
+    />
+  ) : null;
 
   const elementBar = showElementBar ? (
     <ElementBar
@@ -1372,6 +1456,7 @@ export default function DesignCanvas({
           <div className="design-stage-wrap" ref={wrapRef}>
             {stageEl}
             {elementBar}
+            {cycler}
             {liveBar}
           </div>
           {inspectorOpen && (

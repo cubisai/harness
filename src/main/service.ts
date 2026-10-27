@@ -46,6 +46,7 @@ import { saveRef } from "./design/refs";
 import { addComment, deleteComment, loadComments, saveComments, updateComment } from "./design/comments";
 import { applyStyleEdit, applyTextEdit } from "./design/textedit";
 import { keepTweaks } from "./design/tweaks";
+import { resolveVariantSet } from "./design/variants";
 import { forkSystem, listDesignStyles, listDesignSystems, materializeSystem, resolveDesignSystem, type DesignStyleInfo, type DesignSystemInfo } from "./design/systems";
 import { AUTO_SYSTEM, isAuto, modeLabel, STYLE_PREFIX, type DesignDirection } from "../shared/direction";
 import { DESIGN_DIRECTION_TOOL } from "./design/tools";
@@ -1882,6 +1883,24 @@ export class Service {
     this.recordDesignPage(threadId, root, dir, rel);
     if (this.artifacts) this.broadcast({ type: "artifact-ready", threadId, path: `${dir}/${rel}`, files: [`${dir}/${rel}`] });
     return true;
+  }
+
+  /**
+   * Accept (`keep` = a variant's number) or discard (`keep` = null) an in-place variant set on a design page: done
+   * here, with no agent turn. The page as it was is saved as a version first, so Restore undoes it.
+   */
+  resolveDesignVariants(threadId: string, rel: string, set: string, keep: number | null): void {
+    const thread = this.store.getThread(threadId);
+    const root = this.designRoot(threadId);
+    const dir = designOf(thread);
+    if (!root || !dir) throw new Error("Only a design thread has variants.");
+    if (!listDesignPages(root).includes(rel)) throw new Error("No such page.");
+    const file = join(root, rel);
+    const after = resolveVariantSet(readFileSync(file, "utf8"), set, keep);
+    this.recordDesignPage(threadId, root, dir, rel);
+    writeFileSync(file, after);
+    this.recordDesignPage(threadId, root, dir, rel);
+    if (this.artifacts) this.broadcast({ type: "artifact-ready", threadId, path: `${dir}/${rel}`, files: [`${dir}/${rel}`] });
   }
 
   /**

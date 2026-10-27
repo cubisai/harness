@@ -44,7 +44,9 @@ export type BridgeMessage =
   | { source: "cubiq-design"; type: "outline"; nodes: OutlineNode[] }
   | { source: "cubiq-design"; type: "anchor"; rect: Rect | null; bounds?: Rect; editable?: boolean; view?: { width: number; height: number } }
   | { source: "cubiq-design"; type: "marks"; strokes: { x: number; y: number }[][]; notes: { x: number; y: number; text: string; near: string }[] }
-  | { source: "cubiq-design"; type: "repick-ask"; label: string };
+  | { source: "cubiq-design"; type: "repick-ask"; label: string }
+  | { source: "cubiq-design"; type: "variants"; sets: { set: string; count: number; shown: number; malformed: string | null }[] }
+  | { source: "cubiq-design"; type: "variant-rect"; set: string; rect: Rect | null };
 
 /** A box in the frame's viewport, in CSS pixels. */
 type Rect = { x: number; y: number; width: number; height: number };
@@ -66,7 +68,8 @@ export type CanvasMessage =
   | { source: "cubiq-canvas"; type: "hover-layer"; target: { id?: string; selector: string; tag: string; text: string } | null }
   | { source: "cubiq-canvas"; type: "clear-marks" }
   | { source: "cubiq-canvas"; type: "repick"; ok: boolean }
-  | { source: "cubiq-canvas"; type: "edit-selected" };
+  | { source: "cubiq-canvas"; type: "edit-selected" }
+  | { source: "cubiq-canvas"; type: "show-variant"; set: string; n: number };
 
 /** Snap an element to its nearest interactive ancestor, or itself when there is none. */
 export function snapTarget(el: Element): Element {
@@ -289,6 +292,7 @@ export function designBridge(
     post("ready", { path: location.pathname });
     reportTweaks();
     reportOutline();
+    findVariants();
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", announceReady, { once: true });
   else announceReady();
@@ -322,7 +326,7 @@ export function designBridge(
   let pins: { n: number; el: Element; dot: HTMLDivElement }[] = [];
   let frame = 0;
   const step = (): void => {
-    frame = selected.length > 0 || pins.length > 0 ? requestAnimationFrame(step) : 0;
+    frame = selected.length > 0 || pins.length > 0 || activeSet !== null ? requestAnimationFrame(step) : 0;
     outlines.forEach((outline, el) => {
       if (!el.isConnected) {
         outline.style.display = "none";
@@ -331,6 +335,7 @@ export function designBridge(
       const r = el.getBoundingClientRect();
       Object.assign(outline.style, { display: "block", left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
     });
+    postVariantRect();
     for (const pin of pins) {
       if (!pin.el.isConnected) {
         pin.dot.style.display = "none";
@@ -357,6 +362,82 @@ export function designBridge(
     editableSel = one !== null && editableText(one).ok;
     if (frame === 0 && (selected.length > 0 || pins.length > 0)) frame = requestAnimationFrame(step);
     if (selected.length === 0) postAnchor();
+  };
+
+  // In-place variant sets (`data-cubiq-variant="<set>-<n>"`, 0 = the original): found when the page loads, one shown
+  // at a time. A shown wrapper is a layout-neutral shell; the canvas cycles them and keeps one (in the main process).
+  let variantSets: { set: string; wrappers: Map<number, Element> }[] = [];
+  let activeSet: string | null = null;
+  let variantKey = "";
+  const findVariants = (): void => {
+    const sets = new Map<string, Map<number, Element>>();
+    const doubled = new Set<string>();
+    document.querySelectorAll("[data-cubiq-variant]").forEach((el) => {
+      const m = /^([a-z][a-z0-9]{0,15})-(\d{1,2})$/.exec(el.getAttribute("data-cubiq-variant") || "");
+      if (!m) return;
+      const name = m[1] as string;
+      const n = Number(m[2]);
+      const list = sets.get(name) ?? new Map<number, Element>();
+      if (list.has(n)) doubled.add(name);
+      list.set(n, el);
+      sets.set(name, list);
+    });
+    variantSets = [...sets].map(([set, wrappers]) => ({ set, wrappers }));
+    if (variantSets.length && !document.getElementById("cubiq-variant-style")) {
+      const style = document.createElement("style");
+      style.id = "cubiq-variant-style";
+      style.textContent = "[data-cubiq-variant]:not([hidden]){display:contents}[data-cubiq-variant][hidden]{display:none!important}";
+      document.head.appendChild(style);
+    }
+    const report = variantSets.map(({ set, wrappers }) => {
+      let count = 0;
+      while (wrappers.has(count + 1)) count++;
+      let malformed: string | null = null;
+      if (doubled.has(set)) malformed = "a variant appears twice";
+      else if (!wrappers.has(0)) malformed = "the original (variant 0) is missing";
+      else if (count < 1 || wrappers.size !== count + 1) malformed = "the variants aren't numbered 1, 2, 3";
+      else
+        wrappers.forEach((el, n) => {
+          const loose = Array.from(el.childNodes).some((c) => c.nodeType === 3 && (c.textContent || "").trim() !== "");
+          if (!malformed && (loose || el.children.length > 1 || (n > 0 && el.children.length === 0))) malformed = `variant ${n} must hold exactly one element`;
+        });
+      let shown = 0;
+      wrappers.forEach((el, n) => {
+        if (!el.hasAttribute("hidden") && n > 0 && shown === 0) shown = n;
+      });
+      return { set, count, shown, malformed };
+    });
+    activeSet = report.find((r) => r.malformed === null)?.set ?? null;
+    if (activeSet !== null && frame === 0) frame = requestAnimationFrame(step);
+    post("variants", { sets: report });
+  };
+  const showVariant = (set: string, n: number): void => {
+    const entry = variantSets.find((v) => v.set === set);
+    if (!entry || !entry.wrappers.has(n)) return;
+    entry.wrappers.forEach((el, k) => {
+      if (k === n) el.removeAttribute("hidden");
+      else el.setAttribute("hidden", "");
+    });
+    activeSet = set;
+    variantKey = "";
+    if (frame === 0) frame = requestAnimationFrame(step);
+  };
+  // The shown variant's box (its one element; the wrapper itself has none), for the canvas's cycler.
+  const postVariantRect = (): void => {
+    const entry = activeSet === null ? undefined : variantSets.find((v) => v.set === activeSet);
+    let rect: { x: number; y: number; width: number; height: number } | null = null;
+    entry?.wrappers.forEach((el) => {
+      if (rect || el.hasAttribute("hidden")) return;
+      const child = el.firstElementChild;
+      if (!child) return;
+      const q = child.getBoundingClientRect();
+      rect = { x: q.left, y: q.top, width: q.width, height: q.height };
+    });
+    const r = rect as { x: number; y: number; width: number; height: number } | null;
+    const key = r ? [r.x, r.y, r.width, r.height].map(Math.round).join(",") : "none";
+    if (key === variantKey || !entry) return;
+    variantKey = key;
+    post("variant-rect", { set: entry.set, rect: r });
   };
 
   // The element bar's anchor: the selection's box (and, for the capture, its box plus the marks and notes), in the
@@ -827,6 +908,8 @@ export function designBridge(
       y?: unknown;
       on?: unknown;
       ok?: unknown;
+      set?: unknown;
+      n?: unknown;
       edit?: unknown;
       attr?: unknown;
       var?: unknown;
@@ -930,6 +1013,8 @@ export function designBridge(
       report(0);
     } else if (data.type === "edit-selected") {
       editSelected?.();
+    } else if (data.type === "show-variant") {
+      if (typeof data.set === "string" && typeof data.n === "number" && Number.isInteger(data.n)) showVariant(data.set, data.n);
     } else if (data.type === "hover-layer") {
       const raw = data.target;
       let el: Element | null = null;

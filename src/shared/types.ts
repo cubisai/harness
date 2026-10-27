@@ -1359,6 +1359,10 @@ export interface UnskilledApi {
   designMoreStyles(threadId: string): Promise<string[]>;
   /** Write the canvas's tweak values into a design page (Keep), saving versions; false when nothing changed. */
   designKeepTweaks(threadId: string, rel: string, values: Record<string, string>): Promise<boolean>;
+  /** Keep variant `keep` of an in-place set (null = the original), with no agent turn; the page before is saved as a version. */
+  designVariantResolve(threadId: string, rel: string, set: string, keep: number | null): Promise<void>;
+  /** The element bar action's paragraph for the agent ("" for Freeform or an unknown action). */
+  designActionNote(action: string): Promise<string>;
   /** Save a pasted reference image (png/jpg/webp/gif, ≤ 10 MB) into a design thread's `refs/`; its path relative to the thread's folder. */
   designSaveRef(threadId: string, bytes: Uint8Array): Promise<string>;
   /** Capture a rectangle of the app window (CSS px, e.g. the canvas with a Draw overlay) as a PNG reference image in a design thread's `refs/`: its path relative to the thread's folder and a small data-URL thumbnail. */

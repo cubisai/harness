@@ -75,7 +75,12 @@ export type BridgeMessage =
   | { type: "outline"; nodes: OutlineNode[] }
   | { type: "anchor"; anchor: FrameAnchor | null }
   | { type: "marks"; marks: PageMarks }
-  | { type: "repick-ask"; label: string };
+  | { type: "repick-ask"; label: string }
+  | { type: "variants"; sets: VariantSetInfo[] }
+  | { type: "variant-rect"; set: string; rect: FrameRect | null };
+
+/** An in-place variant set on the page: how many variants it has, which one shows, and what's wrong with it if anything. */
+export type VariantSetInfo = { set: string; count: number; shown: number; malformed: string | null };
 
 /** A box in the frame's viewport, in CSS pixels. */
 export type FrameRect = { x: number; y: number; width: number; height: number };
@@ -167,6 +172,24 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
       notes.push({ x: n.x, y: n.y, text: n.text, near: n.near });
     }
     return { type: "marks", marks: { strokes, notes } };
+  }
+  if (d.type === "variants") {
+    if (!Array.isArray(d.sets) || d.sets.length > 8) return null;
+    const sets: VariantSetInfo[] = [];
+    for (const raw of d.sets) {
+      if (!raw || typeof raw !== "object") return null;
+      const v = raw as Record<string, unknown>;
+      const int = (x: unknown, max: number): x is number => typeof x === "number" && Number.isInteger(x) && x >= 0 && x <= max;
+      if (!str(v.set, 16) || !/^[a-z][a-z0-9]{0,15}$/.test(v.set) || !int(v.count, 99) || !int(v.shown, 99)) return null;
+      if (v.malformed !== null && !(str(v.malformed, 120) && v.malformed)) return null;
+      sets.push({ set: v.set, count: v.count, shown: v.shown, malformed: v.malformed as string | null });
+    }
+    return { type: "variants", sets };
+  }
+  if (d.type === "variant-rect") {
+    if (!str(d.set, 16) || !/^[a-z][a-z0-9]{0,15}$/.test(d.set)) return null;
+    if (d.rect === null) return { type: "variant-rect", set: d.set, rect: null };
+    return rect(d.rect) ? { type: "variant-rect", set: d.set, rect: d.rect } : null;
   }
   if (d.type === "repick-ask") return str(d.label, 80) && d.label ? { type: "repick-ask", label: d.label } : null;
   if (d.type === "outline") {
