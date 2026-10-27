@@ -1,4 +1,31 @@
-# Handoff: design live variants + style variety (2026-10-27, Mac, end of session 3: P1, P2a, P2b, P2c done; P4 next, P3 parallel)
+# Handoff: design live variants + style variety (2026-10-27, Mac, session 4 in progress: P4 lint checks written and wired, not committed; Detect and skill floor next)
+
+## Session 4 status (read this first)
+- **P4 is half done, all uncommitted** in `../aiharness-wt/design-live` (`track/design-live`). Nothing from P4 is committed yet.
+- **Done (Claude-verified: `tsc -p tsconfig.node.json` clean; lint, autolint and slop tests pass):**
+  - `LintFinding.id` (optional). Every existing slop check now has an id (`eyebrow`, `hard-offset-shadow`, `side-stripe`, … 29 ids). `push(id, selector, detail)` in `slopFindings`; 11 test literals updated.
+  - 4 new check groups, one file each, each a self-contained page collector plus a pure check (serialized via `toString`):
+    - `slop-layout.ts`: nested-cards, icon-tile-stack, heading-rhythm, monotonous-spacing, edge-flush-cards, text-at-viewport-edge, cramped-padding, jagged-mask, image-overlay, broken-image;
+    - `slop-type.ts`: italic-serif-display, hero-chip, oversized-headline, crushed-tracking, flat-hierarchy, justified-text, tight-body-leading, tiny-text, wide-tracked-body, skipped-heading, stub-line;
+    - `slop-surface.ts`: ghost-card, radial-halo, ai-palette, gray-on-color, repeating-stripes, grid-background, glow-border, pulsing-dot, blinking-cursor, marquee, hidden-at-rest, em-dash-overuse, repeated-label, not-x-y, theater, highlighter;
+    - `slop-system.ts` (Claude): token-font, token-size, token-radius vs the `:root` `--font-*`/`--text-*`/`--radius-*` tokens.
+    - Layout, type and surface were written by 3 parallel DeepSeek implementers (briefs in `.ai/tmp/p4/`), then read and fixed by Claude. Tests: `test/design-slop-{layout,type,surface,system}.test.ts`, each with a self-containment test (`new Function(toString)`).
+  - `lint.ts`: `SLOP_GROUPS` → `designLint` `h.groups`, a failing group is reported as `skipped slop <name>`.
+  - **Style exemptions:** `parseAllows` / `styleAllows(root)` / `withoutAllowed` in `autolint.ts`, read from `<design>/system/DESIGN.md` `## Rules` (`- Lint allows: a, b`). Applied in the `design_lint` tool (`tools.ts`) and the auto-lint (`index.ts`). 9 styles got a `Lint allows:` line: atelier, museum-label, field-guide (italic-serif-display), arcade-cabinet (blinking-cursor), chalk-keynote (highlighter), neo-brutal (hard-offset-shadow, highlighter), memphis-pop (hard-offset-shadow), paper-planner (highlighter, grid-background, repeating-stripes), ledger-paper (repeating-stripes).
+  - `bench/stitch/lint-pages.sh` prints the check id and matches the pattern against it.
+- **Real-DOM check:** the fixture page `p4/bad.html` (in this session's scratchpad `865fb0db…/scratchpad/p4/`) trips every new check except pulsing-dot (the fixture's dot was an inline span, 0×0) and em-dash-overuse (the fixture's other prose dilutes it).
+- **Noise gate (first run, before the tweaks below):** 32 good pages (baseline + P6 designs), 5 Stitch pages; per-check table in the scratchpad (`good.txt`, `stitch.txt`). Only **repeated-label fired on > 30% of good pages (34%)**. Next highest: stub-line 21%, repeating-stripes 18%, oversized-headline 15%, highlighter 15%; most of these were our own styles or slide decks.
+- **Tweaks after the gate:**
+  - oversized-headline: fires only above max(96px, the system's `--text-display`), and skips `.slide`;
+  - stub-line: headings only, lines grouped by vertical overlap, "alone" = the word spans the whole last line;
+  - jagged-mask: only `url(` masks (a gradient mask is a fade);
+  - broken-image: `currentSrc`/`srcset` count as a source.
+- **Next, in order:**
+  1. **repeated-label** (still noisy): it treats whole panels, tables, nav bars and phone mockups as one card. Plan: container = nearest `li`/`article` or a card ≤ 600×600, not inside `table`/`nav`; require the two leaves to have different tags; treat `9:41`-style times as numbers.
+  2. Re-run the gate: `AGENT_BROWSER_SESSION=p4gate zsh bench/stitch/lint-pages.sh 1440 . <pages>`, on `.ai/reports/design-enhance-20261026/{baseline,p6}/project/designs/*/index.html` and `stitch/crafted-all/*.html`. Then `bun run typecheck`, the full suite, `bun run design:check` (the styles' DESIGN.md files changed). Then commit P4a (lint + exemptions) on its own.
+  3. **Skill floor** in `design-prototype/SKILL.md`, token-neutral (1467 words now). Already covered: mode → ambition, light/dark from use, one motion moment. To add: theme the browser surfaces (`::selection`, `caret-color`, scrollbars, focus ring, `tabular-nums`); monospace only for code and data; icons from the shipped sprite (`icons.svg`, `service.ts:1586`), never glyphs.
+  4. **Detect (eye)** in `LiveBar`. Plan: an IPC lints the open page through `shooter.evaluate` (as `design_lint` does) with `withoutAllowed`. The renderer sends the findings to the bridge as clickable pins; the current comment pins (`bridge.ts` `setPins`, ~line 670) are `pointer-events:none`, so Detect needs its own message. A click picks the element, and the ElementBar opens with the finding as the prompt and Polish as the action. Cite `DESIGN.md` §1/§5/§6/§7/§9 in any UI brief.
+- Claude and Codex were not run.
 
 ## Session 3 status (read this first)
 - **P2c done** (`81f8b13` on `track/design-live`, not merged into `m4` yet).
