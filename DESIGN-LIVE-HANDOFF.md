@@ -1,4 +1,30 @@
-# Handoff: design live variants + style variety (2026-10-27, Mac, end of session 2: P1, P2a, P2b done; P2c next)
+# Handoff: design live variants + style variety (2026-10-27, Mac, end of session 3: P1, P2a, P2b, P2c done; P4 next, P3 parallel)
+
+## Session 3 status (read this first)
+- **P2c done** (`81f8b13` on `track/design-live`, not merged into `m4` yet).
+  - LiveBar `+` (Insert) sits beside Pick, and the two take turns. Esc clears the gap first, then stops Insert (in the frame and in the app).
+  - Bridge insert mode: a hover line at the nearest gap, a click picks it, and the picked line follows scroll. Messages up: `gap`, `gap-rect`, `insert-cancel`. Down: `insert`, `clear-gap`.
+  - Two pure helpers are serialized into the bridge, both tested:
+    - `gapChoice`: the outermost level whose edge is within 10px, else the innermost level with siblings, by halves;
+    - `childGap`: the pointer is in the space between a container's children, so take the nearest child within 40px.
+  - Insert bar = `ElementBar insert`: the tag, "What goes here?", dictation and Go, with no action chip.
+  - `insertMessage` writes its own anchor line instead of `withScope`, whose "change only this element" contradicts an insert. The skill `design-variants` has an Insert bullet; there's no action note.
+  - `variants.ts` resolve:
+    - a dropped block's comment goes with it;
+    - a copied `[data-cubiq-variant]` rule is removed;
+    - blank runs close up;
+    - `cut` drops one doubled blank line, so × on a spaced-out insert is byte-identical.
+- **Live (DeepSeek v4.1 flash free, Option A Harbor page, dark):**
+  - After the balance card, "savings goals": a well-formed `goals` set in about 60 s, 3 different variants (strip, filled lead, big number). × gave the original file byte for byte (after the `cut` fix).
+  - Between Accounts and Spending in the side column, "next 2 payments": a `pay` set in 65 s. Accept of variant 2 left a clean `<style>` (its own comment and rules) and no `data-cubiq-variant` anywhere.
+  - Checked live: scroll-follow, the Esc order, and Pick↔Insert exclusivity. Claude and Codex were not run.
+- Checks: typecheck, `design:check` (0 errors, 48 old doc warnings), full suite 3773 passed.
+- **Next: P4** (rules + Detect). P3 can run in parallel in `../aiharness-wt/design-variety` (not created yet). Later: merge `track/design-live` into `m4`, and run the Windows CI job.
+- Known nits, not fixed:
+  - The insert bar covers the content just under the gap (as the element bar does).
+  - The Layers rail's hover box shows wherever the real mouse pointer rests.
+  - Agent pages may throw their own script errors (Harbor: `s_load is not defined`); these are unrelated.
+- Live setup is the same as session 2 (port 9477, the profile in session `4a4dda1d`'s scratchpad `ud`). The bench page backup is `before.html` in session `a83c3aaa`'s scratchpad.
 
 ## Session 2 status (read this first)
 - **Work happens in the worktree** `../aiharness-wt/design-live`, branch `track/design-live` (not merged into `m4` yet). The plan is approved: continue without asking (memory `autonomy-no-prompts`).
@@ -105,7 +131,7 @@ Design threads only.
 | P1 | Global bar (Pick `V`, Insert, Detect, DESIGN.md, Steer, Compare, Present); header Select out; Text, Comment and Pen out of the rail; Inspector no longer turns picking on | **done** (`922f5b5`) |
 | P2a | Element bar + 4×3 action palette + in-frame marks and notes (page coordinates) + Go message | **done** (`9e30964`) |
 | P2b | `data-cubiq-variant="S-n"` sets in place, bridge detection, cycler, Accept/× in the main process, malformed-set recovery | **done** (`a34d4ae`) |
-| P2c | Insert (`+`): variants at a gap | **next** |
+| P2c | Insert (`+`): variants at a gap | **done** (`81f8b13`) |
 | P3 | Style variety (its own plan) + optional `mode` on `design_set_direction` | todo, parallel from P1 |
 | P4 | ~35 new slop checks, style exemptions, noise gate, skill floor lines, Detect (eye) overlay | todo |
 
