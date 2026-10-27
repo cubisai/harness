@@ -13,7 +13,7 @@ import type {
   Settings,
   SettingsView,
 } from "../shared/types";
-import { DEFAULT_COMMIT_INSTRUCTIONS, MAX_RUNNING_CHOICES } from "../shared/types";
+import { DEFAULT_COMMIT_INSTRUCTIONS, MAX_RUNNING_CHOICES, SPLASH_IDS } from "../shared/types";
 import { DEFAULT_LAYOUT, sanitizeLayout } from "../shared/layout";
 import { isZoom } from "../shared/zoom";
 import { LEARN_DEFAULTS, type LearnSettings } from "../shared/learn";
@@ -216,7 +216,7 @@ export class SettingsStore {
     if (typeof patch.sidebarGroupByProject === "boolean") next.sidebarGroupByProject = patch.sidebarGroupByProject;
     if (typeof patch.uiBlocks === "boolean") next.uiBlocks = patch.uiBlocks;
     if (typeof patch.linkPreviews === "boolean") next.linkPreviews = patch.linkPreviews;
-    if (patch.splash && ["agent", "voyage", "off"].includes(patch.splash)) next.splash = patch.splash;
+    if (patch.splash && SPLASH_IDS.includes(patch.splash)) next.splash = patch.splash;
     // The Antigravity opt-in: the acknowledgement is stamped here, never trusted from
     // the caller, and the flag turns on only with a current one.
     if (patch.antigravityAck === null) next.antigravityAck = null;

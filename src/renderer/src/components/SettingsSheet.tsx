@@ -224,13 +224,12 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
           <p className="note">Lets agents answer with small interactive blocks and makes reply tables sortable: about 120 tokens per new session, and blocks agents write anyway always render. "+ link previews" also fetches favicons, titles and thumbnails from the linked https sites, which see your IP address; without it nothing is fetched.</p>
           <div className="row">
             <span className="label" title="The looping clip shown while CubiQ starts">Splash screen</span>
-            <div className="segmented">
-              {SPLASHES.map((o) => (
-                <button key={o.id} className={(settings.splash ?? "agent") === o.id ? "on" : ""} onClick={() => update({ splash: o.id })}>
-                  {o.label}
-                </button>
-              ))}
-            </div>
+            <Select
+              value={settings.splash ?? "agent"}
+              options={SPLASHES.map((o) => ({ value: o.id, label: o.label }))}
+              onChange={(splash) => update({ splash })}
+              ariaLabel="Splash screen"
+            />
             <button className="button ghost" disabled={settings.splash === "off"} onClick={playSplash}>
               Preview
             </button>
