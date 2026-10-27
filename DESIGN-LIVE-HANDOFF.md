@@ -1,13 +1,48 @@
-# Handoff: design live variants + style variety (2026-10-27, Mac, session 2: P1 + P2a done, P2b next)
+# Handoff: design live variants + style variety (2026-10-27, Mac, end of session 2: P1, P2a, P2b done; P2c next)
 
 ## Session 2 status (read this first)
-- **P1 done** (`922f5b5`): `LiveBar.tsx`, one bottom bar in both layouts (Pick `V`, DESIGN.md = the Inspector's System tab, Steer = an inline page-level message, Compare, Present). The header Select, the rail tools and the Inspector's auto-pick are gone; the stage, Compare and the board keep `--live-bar-room` clear.
-- **P2a done** (`9e30964`): `ElementBar.tsx` (tag, prompt, 4×3 actions ×3, dictation hint, Go, Edit text, Comment in Real app, Clear N, repick confirm, "Generating variants…" pill). Bridge: `anchor` / `marks` / `repick-ask` up, `clear-marks` / `repick` / `edit-selected` down. Marks are SVG + note inputs in a page-coordinate layer (`[data-cubiq-marks]`), so they stay on their content through scroll (checked live). `DrawOverlay` deleted.
-- Choices made in P2a (differ slightly from the plan, revisit if wanted): multi-select acts on the selection itself (the scope block lists them), not on their common parent; Go captures the element + marks only when strokes exist (notes go as text); the last action is remembered per thread in memory only (lost on reload).
-- **Go doesn't send the skill or the action paragraph yet**: P2b adds `design-variants` + `resources/design-actions/<action>.md`. `goMessage()` in `ElementBar.tsx` is the hook.
-- **Next: P2b**, then P2c; P3 can run in parallel in its own worktree.
-- Live setup this session (session 1's profile is gone): port **9477** (another session used 9466 on 2026-10-27), fresh `--user-data-dir` in the scratchpad; design thread made with `openChats()` + `createThread(chatsId, "opencode", {kind:"design"})`, then a bench page copied into `ud/chats/<threadId>/designs/<id8>/` (`8b15e090` Harbor dashboard as `index.html`, `daf71ebc` as `variant-a.html`). Tier changes through the API need a window reload to reach the store.
-- A fresh profile's OpenCode default model fails at once (AgentRouter "probation" channel). Two More styles turns were started from the app window at 10:35 (not by the scripts); both failed at once, cost nothing, and wrote nothing. **Set the thread to Zen free DeepSeek before any P2b live run.**
+- **Work happens in the worktree** `../aiharness-wt/design-live`, branch `track/design-live` (not merged into `m4` yet). The plan is approved: continue without asking (memory `autonomy-no-prompts`).
+- **P1 done** (`922f5b5`): `LiveBar.tsx` is the one bottom bar in both layouts: Pick `V`, DESIGN.md (opens the Inspector's System tab), Steer (an inline page-level message), Compare, Present. The header Select, the rail tools and the Inspector's auto-pick are gone. The stage, Compare and the board keep `--live-bar-room` clear.
+- **P2a done** (`9e30964`): `ElementBar.tsx` holds the tag, prompt, 4×3 actions ×3, a dictation hint, Go, Edit text, Comment (Real app tier), Clear N, a repick confirm and the "Generating variants…" pill.
+  - Bridge messages up: `anchor`, `marks`, `repick-ask`. Down: `clear-marks`, `repick`, `edit-selected`.
+  - Marks are SVG plus note inputs in a page-coordinate layer (`[data-cubiq-marks]`), so they stay on their content through scroll (checked live).
+  - `DrawOverlay` is deleted.
+- **P2b done** (`a34d4ae`):
+  - `src/main/design/variants.ts`: `listVariantSets` and `resolveVariantSet`, pure text work with no parser.
+    - Accept keeps one wrapper's element, adds a `cq-<set>` class, and rewrites `@scope ([data-cubiq-variant="S-n"])` to `@scope (.cq-<set>)`, with `:scope > C` becoming `:scope:is(C)` and `:scope C` becoming `:is(:scope:is(C), :scope C)`. Shared keyframes stay.
+    - × keeps the original and drops every rule.
+  - `service.resolveDesignVariants` takes a version before and after the write (`recordDesignPage`), so Restore undoes it. IPC is `design:variant-resolve`; the action paragraph comes from `design:action-note`.
+  - Bridge: `findVariants` runs on ready and injects `[data-cubiq-variant]:not([hidden]){display:contents}`. It posts `variants` and `variant-rect`; `show-variant` switches the shown one.
+  - Canvas: `VariantCycler` (`‹ n / 3 ›`, ×, Accept, ←/→). When sets arrive the selection is cleared, without a notice.
+  - Skill `resources/skills/design-variants/SKILL.md` (339 words) plus 11 notes in `resources/design-actions/` (Freeform has none), packaged via `electron-builder.yml`.
+  - Lint `collectSlop` skips `[data-cubiq-variant][hidden]`.
+  - Canvas-first `.main` is now z 25 (it was 3), so the drawer and prompt bar sit over the canvas bars and under Present (z 30). The prompt pane's left pad no longer reserves room for the old rail.
+- **Live results (DeepSeek v4.1 flash free, Zen):**
+  - Go on the Harbor h1 with Bolder: one Edit in 41 s, no screenshot loop.
+  - It returned 3 real, different variants on 3 axes: 48px tighter, a cyan filled block, 64px full row.
+  - The cycler and keys work. Accept and × made no agent turn (the event count was unchanged).
+  - Accept → Restore v1 brought the set and the cycler back. × gave a file byte-identical to the original.
+  - Claude and Codex were not run (ask first).
+- **Choices made** (they differ a little from the plan; revisit if wanted):
+  - Multi-select: Go scopes the selection itself, and the skill says "wrap their nearest shared parent".
+  - Go captures the element plus marks only when strokes exist (notes go as text).
+  - The last action is remembered per thread in memory only.
+  - Resolve doesn't run the fence or lint: the agent's write already passed the fence, and autolint runs at turn end.
+  - The action paragraph shows in the user's chat bubble (sent as text, not hidden).
+- **User decision 2026-10-27: no `NOTICE` file.** Copy Impeccable's ideas and write our own text; never paste its code or text.
+- **Next: P2c (Insert `+`)**, then P4; P3 can run in parallel in `../aiharness-wt/design-variety`. Later: merge `track/design-live` into `m4`, and run the Windows CI job.
+- Known nits, not fixed:
+  - After a reload the bridge's hover target is stale until the mouse moves.
+  - The hover box doesn't follow page scroll (unchanged code).
+  - A click inside the picked element drops a note instead of picking a child (by design). Use the crumbs or Layers to pick a child.
+- **Live setup** (session 1's profile is gone):
+  - Port **9477** (another session used 9466). Launch from the worktree with `npx electron-vite dev --remoteDebuggingPort 9477 -- --user-data-dir=<scratchpad>/ud`.
+  - Main-process or bridge changes need an app restart (`kill -TERM` the 9477 pid): no hot reload there.
+  - Make a design thread with `openChats()` + `createThread(chatsId, "opencode", {kind:"design"})`, then copy a bench page into `ud/chats/<threadId>/designs/<id8>/` (`8b15e090` Harbor as `index.html`, `daf71ebc` as `variant-a.html`).
+  - Tier changes through the API need a window reload.
+  - In-frame checks: a small CDP script that evaluates on the `type: iframe` target from `curl :9477/json`.
+  - **Set the thread to `opencode/deepseek-v4.1-flash-free` before any live run.** A fresh profile's OpenCode default fails at once (AgentRouter "probation").
+  - On 2026-10-27 at 10:35, two More styles turns were started from the app window (not by the scripts). Both failed at once, cost nothing, and wrote nothing.
 
 ## Session 1 status
 - **The plan is approved, and the user said to start it.** Continue P1 without asking (memory `autonomy-no-prompts`).
@@ -57,7 +92,7 @@ Design threads only.
 2. Always ×3.
 3. Mic = it focuses the field so OS dictation can fill it (macOS Fn Fn, Windows Win+H).
 4. Our tokens, Impeccable's layout.
-5. Impeccable is a reference, not a dependency: no binary, hooks or PRODUCT.md. Our own English, token-sized text. Credit in `NOTICE`.
+5. Impeccable is a reference, not a dependency: no binary, hooks or PRODUCT.md. Copy the ideas, reinvent the text: our own English, token-sized, never pasted from Impeccable. **No `NOTICE` file** (user, 2026-10-27).
 6. **Accept and × are done in the main process with no agent turn** (`designVariantResolve`). A version snapshot first, so Restore undoes them.
 7. Only the chosen action's paragraph (`resources/design-actions/<action>.md`) goes to the agent, plus the `design-variants` skill (≈350 tokens).
 8. Per-style `allows:` in a style's `DESIGN.md ## Rules` keeps the new lint from fighting our own styles.
@@ -69,8 +104,8 @@ Design threads only.
 | P0 | Live repro of the tool defects, dark theme, screenshots | **done** (session 1) |
 | P1 | Global bar (Pick `V`, Insert, Detect, DESIGN.md, Steer, Compare, Present); header Select out; Text, Comment and Pen out of the rail; Inspector no longer turns picking on | **done** (`922f5b5`) |
 | P2a | Element bar + 4×3 action palette + in-frame marks and notes (page coordinates) + Go message | **done** (`9e30964`) |
-| P2b | `data-cubiq-variant="S-n"` sets in place, bridge detection, cycler, Accept/× in the main process, malformed-set recovery | **next** |
-| P2c | Insert (`+`): variants at a gap | todo |
+| P2b | `data-cubiq-variant="S-n"` sets in place, bridge detection, cycler, Accept/× in the main process, malformed-set recovery | **done** (`a34d4ae`) |
+| P2c | Insert (`+`): variants at a gap | **next** |
 | P3 | Style variety (its own plan) + optional `mode` on `design_set_direction` | todo, parallel from P1 |
 | P4 | ~35 new slop checks, style exemptions, noise gate, skill floor lines, Detect (eye) overlay | todo |
 
