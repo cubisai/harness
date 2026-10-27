@@ -188,13 +188,20 @@ function addClass(inner: string, cls: string): string {
   return inner;
 }
 
-/** The text with a stretch removed, along with the blank rest of its line. */
+/**
+ * The text with a stretch removed, along with the blank rest of its line. When whole lines go and they sat between two
+ * blank lines (an inserted set the agent spaced out), one blank line goes too, so × leaves the page as it was.
+ */
 function cut(html: string, start: number, end: number): string {
   let s = start;
   while (s > 0 && (html[s - 1] === " " || html[s - 1] === "\t")) s--;
   let e = end;
   const tail = /^[ \t]*\r?\n/.exec(html.slice(e));
-  if (tail && (s === 0 || html[s - 1] === "\n")) e += tail[0].length;
+  if (tail && (s === 0 || html[s - 1] === "\n")) {
+    e += tail[0].length;
+    const blank = /^[ \t]*\r?\n/.exec(html.slice(e));
+    if (blank && /\n[ \t]*\r?\n$/.test(html.slice(0, s))) e += blank[0].length;
+  }
   return html.slice(0, s) + html.slice(e);
 }
 
@@ -231,10 +238,13 @@ export function resolveVariantSet(html: string, set: string, keep: number | null
       if (b.n === n && n > 0) {
         next += `@scope (.${cls}) {${retargetRules(css.slice(b.open + 1, b.end - 1))}}`;
         keptRules = true;
-      }
+      } else next = next.replace(/\s*\/\*(?:(?!\*\/)[\s\S])*\*\/\s*$/, ""); // a dropped block's own comment goes with it
       at = b.end;
     }
     next += css.slice(at);
+    // A rule on the wrappers themselves (the agent's copy of the canvas's display rule) is dead once they go, and the
+    // dropped blocks leave blank runs behind.
+    next = next.replace(/[^{}]*\[\s*data-cubiq-variant[^{}]*\{[^{}]*\}/g, "").replace(/\n[ \t]*(?:\n[ \t]*)+\n/g, "\n\n");
     // The original keeps nothing from the set; a kept variant keeps its rules plus anything shared (keyframes, fonts).
     styles.push({ start: m.index, end: m.index + m[0].length, text: n > 0 && next.trim() ? `<style>${next.trim()}</style>` : "" });
   }

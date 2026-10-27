@@ -21,7 +21,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import type { FrameRect, PageMarks } from "./frame";
+import type { FrameRect, InsertGap, PageMarks } from "./frame";
 
 export type ActionId = "freeform" | "bolder" | "quieter" | "distill" | "polish" | "typeset" | "colorize" | "layout" | "adapt" | "animate" | "delight" | "overdrive";
 
@@ -51,6 +51,17 @@ export function goMessage(action: ActionId, prompt: string, marks: PageMarks): s
   if (prompt.trim()) lines.push(prompt.trim());
   if (marks.notes.length) lines.push("Notes on the page:", ...marks.notes.map((n) => `- ${n.near ? `near ${n.near}: ` : ""}${n.text}`));
   if (marks.strokes.length) lines.push(`The reference image shows the element with ${marks.strokes.length === 1 ? "my mark" : `my ${marks.strokes.length} marks`} on it.`);
+  return lines.join("\n");
+}
+
+/** The message Insert's Go sends: new content at a gap beside an anchor element, which itself stays as it is. */
+export function insertMessage(page: string, gap: InsertGap, prompt: string): string {
+  const a = gap.anchor;
+  const lines = [`Insert 3 variants of a new block ${gap.position} the selected element.`];
+  if (prompt.trim()) lines.push(prompt.trim());
+  lines.push(
+    `Selected in ${page}: <${a.tag}>${a.id ? ` data-agent-id="${a.id}"` : ""} · selector \`${a.selector}\`${gap.size.width > 0 ? ` · ${gap.size.width}px wide` : ""}. Leave it unchanged: write the set right ${gap.position} it, with an empty original.`,
+  );
   return lines.join("\n");
 }
 
@@ -109,9 +120,11 @@ const DICTATION_HINT = MAC ? "Dictate: press Fn twice (macOS dictation)" : "Dict
 
 /**
  * The element bar under the picked element: its tag, a prompt, the action (×3), dictation and Go; Edit text and
- * Comment when they apply; Clear when marks are down. While a Go turn runs it's a "Generating variants…" pill.
+ * Comment when they apply; Clear when marks are down. While a Go turn runs it's a "Generating variants…" pill. As the
+ * insert bar (at a gap picked in Insert mode) it's the tag, a prompt, dictation and Go: there's no action to pick.
  */
 export function ElementBar({
+  insert = false,
   tag,
   place,
   onSize,
@@ -130,6 +143,8 @@ export function ElementBar({
   repick,
   onRepick,
 }: {
+  /** The insert bar: new content at a gap, so no action chip. */
+  insert?: boolean;
   tag: string;
   place: { left: number; top: number; side: "below" | "above" | "dock-top" | "dock-bottom" } | null;
   onSize: (size: { width: number; height: number }) => void;
@@ -213,7 +228,7 @@ export function ElementBar({
 
   const style: CSSProperties = place ? { left: place.left, top: place.top } : { left: 0, top: 0, visibility: "hidden" };
   return (
-    <div className="design-element-bar" ref={barRef} style={style} role="toolbar" aria-label={`Change ${tag}`}>
+    <div className="design-element-bar" ref={barRef} style={style} role="toolbar" aria-label={insert ? `Insert ${tag}` : `Change ${tag}`}>
       {generating ? (
         <span className="design-element-generating" role="status">
           <span className="design-element-dot" aria-hidden />
@@ -248,9 +263,9 @@ export function ElementBar({
           <input
             ref={inputRef}
             className="design-element-prompt"
-            aria-label="What to change"
-            placeholder={markCount ? "Anything else?" : "Refine further…"}
-            title="Say what to change. On the page: drag to mark it, click to leave a note."
+            aria-label={insert ? "What goes here" : "What to change"}
+            placeholder={insert ? "What goes here?" : markCount ? "Anything else?" : "Refine further…"}
+            title={insert ? "Say what to add at this spot." : "Say what to change. On the page: drag to mark it, click to leave a note."}
             value={prompt}
             maxLength={2000}
             onChange={(e) => onPrompt(e.target.value)}
@@ -269,7 +284,7 @@ export function ElementBar({
               Clear {markCount}
             </button>
           )}
-          <div className="design-element-action-wrap">
+          {!insert && <div className="design-element-action-wrap">
             <button
               className={`design-element-action${paletteOpen ? " open" : ""}`}
               aria-haspopup="menu"
@@ -302,11 +317,17 @@ export function ElementBar({
                 ))}
               </div>
             )}
-          </div>
+          </div>}
           <button className="icon-button" aria-label="Dictate" title={DICTATION_HINT} onClick={() => inputRef.current?.focus()}>
             <Mic size={16} strokeWidth={1.75} aria-hidden />
           </button>
-          <button className="design-element-go" aria-label="Make 3 variants" title={goWhy ?? `Make 3 variants (${current.label})`} disabled={!canGo} onClick={onGo}>
+          <button
+            className="design-element-go"
+            aria-label={insert ? "Make 3 options for this spot" : "Make 3 variants"}
+            title={goWhy ?? (insert ? "Make 3 options for this spot" : `Make 3 variants (${current.label})`)}
+            disabled={!canGo}
+            onClick={onGo}
+          >
             <ArrowRight size={16} strokeWidth={2} aria-hidden />
           </button>
         </>

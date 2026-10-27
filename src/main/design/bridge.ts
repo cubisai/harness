@@ -69,11 +69,64 @@ export type CanvasMessage =
   | { source: "cubiq-canvas"; type: "clear-marks" }
   | { source: "cubiq-canvas"; type: "repick"; ok: boolean }
   | { source: "cubiq-canvas"; type: "edit-selected" }
-  | { source: "cubiq-canvas"; type: "show-variant"; set: string; n: number };
+  | { source: "cubiq-canvas"; type: "show-variant"; set: string; n: number }
+  /** Insert mode: hovering shows an insertion line at the nearest gap between two blocks, and a click picks that gap. */
+  | { source: "cubiq-canvas"; type: "insert"; on: boolean }
+  | { source: "cubiq-canvas"; type: "clear-gap" };
 
 /** Snap an element to its nearest interactive ancestor, or itself when there is none. */
 export function snapTarget(el: Element): Element {
   return el.closest("a, button, [role=button], input, select, textarea, label, summary") ?? el;
+}
+
+/** One step up from the hovered element (innermost first): its box, whether its siblings sit beside it, and whether it has any. */
+export type GapLevel = { rect: { x: number; y: number; width: number; height: number }; row: boolean; siblings: boolean };
+
+/**
+ * Where an Insert goes for the pointer at (x, y): the outermost level with siblings whose leading or trailing edge is
+ * within `edge` px (so a section boundary wins over the text inside it), else the innermost level with siblings,
+ * before or after it by which half the pointer is in. Null when no level has siblings.
+ */
+export function gapChoice(chain: GapLevel[], x: number, y: number, edge = 10): { level: number; position: "before" | "after" } | null {
+  for (let i = chain.length - 1; i >= 0; i--) {
+    const c = chain[i]!;
+    if (!c.siblings) continue;
+    const at = c.row ? x : y;
+    const start = c.row ? c.rect.x : c.rect.y;
+    const end = start + (c.row ? c.rect.width : c.rect.height);
+    if (Math.abs(at - start) <= edge) return { level: i, position: "before" };
+    if (Math.abs(at - end) <= edge) return { level: i, position: "after" };
+  }
+  for (let i = 0; i < chain.length; i++) {
+    const c = chain[i]!;
+    if (!c.siblings) continue;
+    const mid = c.row ? c.rect.x + c.rect.width / 2 : c.rect.y + c.rect.height / 2;
+    return { level: i, position: (c.row ? x : y) < mid ? "before" : "after" };
+  }
+  return null;
+}
+
+/**
+ * The gap the pointer is in when it's inside an element but over none of its children (the space between two
+ * sections): the nearest child within `reach` px, before or after it along its flow. Null when the pointer is over a
+ * child or none is that near.
+ */
+export function childGap(kids: GapLevel[], x: number, y: number, reach = 40): { index: number; position: "before" | "after" } | null {
+  let best = -1;
+  let dist = Infinity;
+  for (let i = 0; i < kids.length; i++) {
+    const r = kids[i]!.rect;
+    const d = Math.hypot(Math.max(r.x - x, 0, x - (r.x + r.width)), Math.max(r.y - y, 0, y - (r.y + r.height)));
+    if (d === 0) return null;
+    if (d < dist) {
+      dist = d;
+      best = i;
+    }
+  }
+  if (best < 0 || dist > reach) return null;
+  const k = kids[best]!;
+  const mid = k.row ? k.rect.x + k.rect.width / 2 : k.rect.y + k.rect.height / 2;
+  return { index: best, position: (k.row ? x : y) < mid ? "before" : "after" };
 }
 
 /** Describe an element for the canvas: identity, selector, text, html, rect and ancestor path. */
@@ -225,6 +278,8 @@ export function designBridge(
   resolveTarget: (doc: Document, target: SelectionTarget) => Element | null,
   editableText: (el: Element) => { ok: true; id: string; text: string } | { ok: false; reason: string },
   outlineOf: (root: Element, selectorFor: (el: Element) => string) => OutlineNode[],
+  gapChoice: (chain: GapLevel[], x: number, y: number) => { level: number; position: "before" | "after" } | null,
+  childGap: (kids: GapLevel[], x: number, y: number) => { index: number; position: "before" | "after" } | null,
 ): void {
   const post = (type: string, data?: Record<string, unknown>): void => {
     parent.postMessage({ source: "cubiq-design", type, ...(data ?? {}) }, "*");
@@ -326,7 +381,7 @@ export function designBridge(
   let pins: { n: number; el: Element; dot: HTMLDivElement }[] = [];
   let frame = 0;
   const step = (): void => {
-    frame = selected.length > 0 || pins.length > 0 || activeSet !== null ? requestAnimationFrame(step) : 0;
+    frame = selected.length > 0 || pins.length > 0 || activeSet !== null || gap !== null ? requestAnimationFrame(step) : 0;
     outlines.forEach((outline, el) => {
       if (!el.isConnected) {
         outline.style.display = "none";
@@ -336,6 +391,7 @@ export function designBridge(
       Object.assign(outline.style, { display: "block", left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
     });
     postVariantRect();
+    placeGap();
     for (const pin of pins) {
       if (!pin.el.isConnected) {
         pin.dot.style.display = "none";
@@ -659,6 +715,7 @@ export function designBridge(
   let hovered: Element | null = null;
   const startSelect = (): void => {
     if (stopSelect) return;
+    stopInsert?.();
     const box = document.createElement("div");
     // Under the selection outlines and comment pins (…646), so a hovered pinned element keeps its number readable.
     box.style.cssText = "position:fixed;pointer-events:none;z-index:2147483645;border:2px solid #0B0D10;outline:1px solid #F7F8FA;background:rgba(11,13,16,.06);border-radius:3px;display:none";
@@ -868,6 +925,167 @@ export function designBridge(
     stopSelect = stop;
   };
 
+  // Insert mode: the gap nearest the pointer, between two blocks, shows an insertion line; a click picks it, and the
+  // selection loop keeps its line in place through scrolls. The canvas puts its insert bar at the picked gap.
+  let stopInsert: (() => void) | null = null;
+  let gap: { el: Element; position: "before" | "after"; row: boolean; line: HTMLDivElement } | null = null;
+  let gapKey = "";
+  const LINE_CSS = "position:fixed;pointer-events:none;z-index:2147483646;background:#0B0D10;outline:1px solid #F7F8FA;border-radius:1px;display:none";
+  // The nearest sibling that shows (no scripts, styles, our layers or empty boxes).
+  const shownSibling = (el: Element, dir: "previousElementSibling" | "nextElementSibling"): Element | null => {
+    let s = el[dir];
+    while (s) {
+      const q = s.getBoundingClientRect();
+      if (!/^(SCRIPT|STYLE|TEMPLATE|LINK|META)$/.test(s.tagName) && !s.hasAttribute("data-cubiq-marks") && q.width + q.height > 0) return s;
+      s = s[dir];
+    }
+    return null;
+  };
+  // The line for a gap: halfway between the element's edge and its neighbour's (on the same row or column), else on the edge.
+  const gapLine = (el: Element, position: "before" | "after", row: boolean): { x: number; y: number; width: number; height: number } => {
+    const r = el.getBoundingClientRect();
+    const n = shownSibling(el, position === "before" ? "previousElementSibling" : "nextElementSibling");
+    const q = n ? n.getBoundingClientRect() : null;
+    if (row) {
+      const edge = position === "before" ? r.left : r.right;
+      const near = q && Math.min(r.bottom, q.bottom) > Math.max(r.top, q.top) ? (position === "before" ? q.right : q.left) : edge;
+      return { x: (edge + near) / 2, y: r.top, width: 0, height: r.height };
+    }
+    const edge = position === "before" ? r.top : r.bottom;
+    const near = q && Math.min(r.right, q.right) > Math.max(r.left, q.left) ? (position === "before" ? q.bottom : q.top) : edge;
+    return { x: r.left, y: (edge + near) / 2, width: r.width, height: 0 };
+  };
+  const drawLine = (line: HTMLDivElement, r: { x: number; y: number; width: number; height: number }): void => {
+    Object.assign(line.style, r.width === 0
+      ? { display: "block", left: `${r.x - 1}px`, top: `${r.y}px`, width: "2px", height: `${r.height}px` }
+      : { display: "block", left: `${r.x}px`, top: `${r.y - 1}px`, width: `${r.width}px`, height: "2px" });
+  };
+  // A block's box, whether its siblings sit beside it, and whether it has any; null for inline text and empty boxes.
+  const levelOf = (el: Element): GapLevel | null => {
+    const r = el.getBoundingClientRect();
+    if (r.width < 4 || r.height < 4 || /^(SCRIPT|STYLE|TEMPLATE)$/.test(el.tagName) || getComputedStyle(el).display === "inline") return null;
+    const sib = shownSibling(el, "previousElementSibling") ?? shownSibling(el, "nextElementSibling");
+    let row = false;
+    if (sib) {
+      const q = sib.getBoundingClientRect();
+      row = Math.min(r.bottom, q.bottom) > Math.max(r.top, q.top) && (q.left >= r.right - 1 || q.right <= r.left + 1);
+    }
+    return { rect: { x: r.left, y: r.top, width: r.width, height: r.height }, row, siblings: sib !== null };
+  };
+  // The gap under the pointer. In the space between an element's children (`childGap`), the nearest child's edge;
+  // otherwise the hovered element and its block ancestors, and `gapChoice` picks the level. Variant sets are skipped.
+  const gapAt = (cx: number, cy: number): { el: Element; position: "before" | "after"; row: boolean } | null => {
+    const hit = document.elementFromPoint(cx, cy);
+    if (!hit || hit.closest("[data-cubiq-variant], [data-cubiq-marks]")) return null;
+    const kidEls: Element[] = [];
+    const kids: GapLevel[] = [];
+    for (let i = 0; i < hit.children.length; i++) {
+      const k = hit.children[i] as Element;
+      const lv = levelOf(k);
+      if (!lv) continue;
+      kidEls.push(k);
+      kids.push(lv);
+    }
+    const between = kids.length ? childGap(kids, cx, cy) : null;
+    if (between) return { el: kidEls[between.index] as Element, position: between.position, row: (kids[between.index] as GapLevel).row };
+    const els: Element[] = [];
+    const chain: GapLevel[] = [];
+    for (let el: Element | null = hit; el && el !== document.body && el !== document.documentElement && els.length < 12; el = el.parentElement) {
+      const lv = levelOf(el);
+      if (!lv) continue;
+      els.push(el);
+      chain.push(lv);
+    }
+    const choice = gapChoice(chain, cx, cy);
+    return choice ? { el: els[choice.level] as Element, position: choice.position, row: (chain[choice.level] as GapLevel).row } : null;
+  };
+  const placeGap = (): void => {
+    if (!gap) return;
+    if (!gap.el.isConnected) return clearGap();
+    const r = gapLine(gap.el, gap.position, gap.row);
+    drawLine(gap.line, r);
+    const key = [r.x, r.y, r.width, r.height].map(Math.round).join(",");
+    if (key === gapKey) return;
+    gapKey = key;
+    post("gap-rect", { rect: r });
+  };
+  const setGap = (g: { el: Element; position: "before" | "after"; row: boolean }): void => {
+    const line = gap?.line ?? document.createElement("div");
+    if (!gap) {
+      line.style.cssText = LINE_CSS;
+      document.documentElement.append(line);
+    }
+    gap = { ...g, line };
+    gapKey = "";
+    const r = g.el.getBoundingClientRect();
+    post("gap", { gap: { position: g.position, anchor: describeElement(g.el, selectorFor), size: { width: Math.round(r.width), height: Math.round(r.height) } } });
+    placeGap();
+    if (frame === 0) frame = requestAnimationFrame(step);
+  };
+  const clearGap = (): void => {
+    if (!gap) return;
+    gap.line.remove();
+    gap = null;
+    gapKey = "";
+    post("gap", { gap: null });
+  };
+  const startInsert = (): void => {
+    if (stopInsert) return;
+    stopSelect?.();
+    const hover = document.createElement("div");
+    hover.style.cssText = `${LINE_CSS};opacity:.5`;
+    document.documentElement.append(hover);
+    let hovering: { el: Element; position: "before" | "after"; row: boolean } | null = null;
+    const onMove = (e: MouseEvent): void => {
+      hovering = gapAt(e.clientX, e.clientY);
+      if (hovering) drawLine(hover, gapLine(hovering.el, hovering.position, hovering.row));
+      else hover.style.display = "none";
+    };
+    // The hover line belongs to where the pointer was: a scroll hides it until the pointer moves.
+    const onScroll = (): void => {
+      hover.style.display = "none";
+    };
+    const swallow = (e: Event): void => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    };
+    const onClick = (e: MouseEvent): void => {
+      swallow(e);
+      const g = hovering ?? gapAt(e.clientX, e.clientY);
+      if (g) setGap(g);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "Escape") return;
+      swallow(e);
+      if (gap) clearGap();
+      else {
+        stop();
+        post("insert-cancel");
+      }
+    };
+    const stop = (): void => {
+      document.removeEventListener("mousemove", onMove, true);
+      document.removeEventListener("click", onClick, true);
+      document.removeEventListener("dblclick", swallow, true);
+      document.removeEventListener("mousedown", swallow, true);
+      document.removeEventListener("mouseup", swallow, true);
+      document.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("scroll", onScroll, true);
+      hover.remove();
+      clearGap();
+      if (stopInsert === stop) stopInsert = null;
+    };
+    document.addEventListener("mousemove", onMove, true);
+    document.addEventListener("click", onClick, true);
+    document.addEventListener("dblclick", swallow, true);
+    document.addEventListener("mousedown", swallow, true);
+    document.addEventListener("mouseup", swallow, true);
+    document.addEventListener("keydown", onKey, true);
+    window.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    stopInsert = stop;
+  };
+
   // Live style previews from the inspector: the prop's original inline value is remembered the first time it is
   // touched, so clear-preview can put the page back exactly. Keep these keys in step with STYLE_KEYS in
   // shared/selection.ts (this function is serialized into the page, so it cannot import them).
@@ -1013,6 +1231,11 @@ export function designBridge(
       report(0);
     } else if (data.type === "edit-selected") {
       editSelected?.();
+    } else if (data.type === "insert") {
+      if (data.on) startInsert();
+      else stopInsert?.();
+    } else if (data.type === "clear-gap") {
+      clearGap();
     } else if (data.type === "show-variant") {
       if (typeof data.set === "string" && typeof data.n === "number" && Number.isInteger(data.n)) showVariant(data.set, data.n);
     } else if (data.type === "hover-layer") {
@@ -1033,5 +1256,5 @@ export function designBridge(
 
 /** The bridge as one script body, embedding the page-side helpers it needs. */
 export function bridgeScript(selectorFor: (el: Element) => string): string {
-  return `(${designBridge.toString()})(${selectorFor.toString()}, ${describeElement.toString()}, ${snapTarget.toString()}, ${resolveTarget.toString()}, ${editableText.toString()}, ${outlineOf.toString()});`;
+  return `(${designBridge.toString()})(${selectorFor.toString()}, ${describeElement.toString()}, ${snapTarget.toString()}, ${resolveTarget.toString()}, ${editableText.toString()}, ${outlineOf.toString()}, ${gapChoice.toString()}, ${childGap.toString()});`;
 }

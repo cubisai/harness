@@ -10,10 +10,10 @@ import "../styles/artifact.css";
 import { affectedPages, useStore } from "../store";
 import { designStyleName, useDesignSystemOptions } from "../components/DesignSystemMenu";
 import { STYLE_PREFIX, readDirection } from "../../../shared/direction";
-import { NO_MARKS, VIEWPORTS, ZOOMS, deviceFor, frameLayout, pageFromPath, readBridgeMessage, viewportForDevice, type FrameAnchor, type FrameRect, type OutlineNode, type PageMarks, type VariantSetInfo, type Viewport, type Zoom } from "./frame";
+import { NO_MARKS, VIEWPORTS, ZOOMS, deviceFor, frameLayout, pageFromPath, readBridgeMessage, viewportForDevice, type FrameAnchor, type FrameRect, type InsertGap, type OutlineNode, type PageMarks, type VariantSetInfo, type Viewport, type Zoom } from "./frame";
 import { announceSelection, elementLabel, selectionKey, withScope, type SelectedElement } from "../../../shared/selection";
 import { withRefs } from "./refs";
-import { ElementBar, VariantCycler, cycleStep, goMessage, placeElementBar, type ActionId } from "./ElementBar";
+import { ElementBar, VariantCycler, cycleStep, goMessage, insertMessage, placeElementBar, type ActionId } from "./ElementBar";
 import { compareCells, pageOptions, sameEntry, type CompareCell } from "./pages";
 import { changedTweaks, currentTweakValues, parseTweaks, tweakTarget, tweakValue, type Tweak, type TweakValues } from "../../../shared/tweaks";
 import { TweaksBody, TweaksPanel } from "./TweaksPanel";
@@ -124,6 +124,12 @@ export default function DesignCanvas({
   const [barSize, setBarSize] = useState({ width: 0, height: 0 });
   const [generating, setGenerating] = useState(false);
   const [goCapturing, setGoCapturing] = useState(false);
+  // Insert mode: the gap picked on the page (before or after an anchor element), where its line is, and what goes there.
+  const [inserting, setInserting] = useState(false);
+  const [gap, setGap] = useState<InsertGap | null>(null);
+  const [gapRect, setGapRect] = useState<FrameRect | null>(null);
+  const [insertPrompt, setInsertPrompt] = useState("");
+  const [insertBarSize, setInsertBarSize] = useState({ width: 0, height: 0 });
   // In-place variant sets the agent wrote on this page, the shown variant's box, and an Accept or × on its way.
   const [variantSets, setVariantSets] = useState<VariantSetInfo[]>([]);
   const [variantRect, setVariantRect] = useState<{ set: string; rect: FrameRect | null } | null>(null);
@@ -233,6 +239,10 @@ export default function DesignCanvas({
   useEffect(() => {
     setVersion(0);
     setPicking(false);
+    setInserting(false);
+    setGap(null);
+    setGapRect(null);
+    setInsertPrompt("");
     setAnchor(null);
     setMarks(NO_MARKS);
     setRepick(null);
@@ -294,8 +304,8 @@ export default function DesignCanvas({
     const auto = autoBoard.current;
     if (auto.done || auto.thread !== threadId || !entry || entryThread.current !== threadId || entry.pages.length < 2) return;
     auto.done = true;
-    if (!picking && !compare && version === 0 && !present) setBoard(true);
-  }, [entry, threadId, picking, compare, version, present]);
+    if (!picking && !inserting && !compare && version === 0 && !present) setBoard(true);
+  }, [entry, threadId, picking, inserting, compare, version, present]);
 
   // The stage is measured from whichever element is mounted: it remounts on Board, Compare and the first page, and
   // a stale observer on a detached one would leave sized viewports scaled to nothing.
@@ -360,6 +370,8 @@ export default function DesignCanvas({
         setRepick(null);
         setVariantSets([]);
         setVariantRect(null);
+        setGap(null);
+        setGapRect(null);
         // A link inside the page went to another page of the design: follow it (title, versions, export) without
         // loading it a second time.
         const at = msg.path ? pageFromPath(msg.path, threadId) : null;
@@ -370,6 +382,7 @@ export default function DesignCanvas({
           setPage(to.rel);
         } else if (scroll.current.x || scroll.current.y) post({ type: "restore-scroll", ...scroll.current });
         if (picking) post({ type: "pick", on: true, edit: features.textEdit });
+        if (inserting) post({ type: "insert", on: true });
         if (pinsRef.current.length) post({ type: "set-pins", pins: pinsRef.current });
         if (deviceRef.current) post({ type: "device-chrome", on: true });
         // A reload (the agent rewrote the page): find the selection again; anything gone is dropped and reported.
@@ -418,6 +431,13 @@ export default function DesignCanvas({
         if (msg.sets.length && useStore.getState().designSelection[threadId]) setSelection(threadId, null);
       } else if (msg.type === "variant-rect") {
         setVariantRect({ set: msg.set, rect: msg.rect });
+      } else if (msg.type === "gap") {
+        setGap(msg.gap);
+        if (!msg.gap) setGapRect(null);
+      } else if (msg.type === "gap-rect") {
+        setGapRect(msg.rect);
+      } else if (msg.type === "insert-cancel") {
+        setInserting(false);
       } else if (msg.type === "edit-refused") {
         setNotice({ text: msg.reason });
       } else if (msg.type === "selection") {
@@ -434,7 +454,7 @@ export default function DesignCanvas({
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [entry, picking, post, threadId, version, setSelection, features.textEdit]);
+  }, [entry, picking, inserting, post, threadId, version, setSelection, features.textEdit]);
 
   // Opening the inspector or the Layers rail asks for a fresh outline: a page that renders with script has more layers
   // than at load. The rail asks again for each page it shows (the bridge also reports one when a page loads).
@@ -495,9 +515,41 @@ export default function DesignCanvas({
   // Pick is the one way to select on the page (the bar's Pick, V, a layer row); in-place text editing follows the tier.
   const togglePick = () => {
     const on = !picking;
+    if (on) stopInserting();
     setPicking(on);
     post(on ? { type: "pick", on, edit: features.textEdit } : { type: "pick", on });
   };
+
+  // Insert and Pick take turns: turning one on ends the other (the bridge does the same on its side).
+  const stopInserting = () => {
+    if (!inserting) return;
+    setInserting(false);
+    setGap(null);
+    setGapRect(null);
+    post({ type: "insert", on: false });
+  };
+  const toggleInsert = () => {
+    if (inserting) return stopInserting();
+    if (picking) {
+      setPicking(false);
+      post({ type: "pick", on: false });
+    }
+    clearSelection();
+    setInserting(true);
+    post({ type: "insert", on: true });
+  };
+  // Esc in the app while inserting: first it lets the picked gap go, then it stops inserting.
+  useEffect(() => {
+    if (!inserting) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (gap) return post({ type: "clear-gap" });
+      setInserting(false);
+      post({ type: "insert", on: false });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [inserting, gap, post]);
 
   // Esc in the app (focus outside the frame) works like Esc in it: first it clears the selection, then it stops selecting.
   useEffect(() => {
@@ -773,6 +825,7 @@ export default function DesignCanvas({
 
   // Leaving one page for the board or another page stops selecting there (a selection belongs to one page).
   const stopPicking = () => {
+    stopInserting();
     if (!picking) return;
     setPicking(false);
     post({ type: "pick", on: false });
@@ -831,6 +884,9 @@ export default function DesignCanvas({
       picking={picking}
       textEdit={features.textEdit}
       onPick={togglePick}
+      inserting={inserting}
+      insertWhy={why("insert")}
+      onInsert={toggleInsert}
       systemOpen={systemOpen}
       onSystem={toggleSystem}
       onSteer={steer}
@@ -924,6 +980,43 @@ export default function DesignCanvas({
     post({ type: "clear-marks" });
     setGenerating(true);
   };
+
+  // Insert's bar sits at the picked gap: the anchor, what goes there, and Go (3 options, written in place as a set
+  // with an empty original, so Accept and × work as they do for an element's variants).
+  const showInsertBar = onPage && inserting && gap !== null && gapRect !== null;
+  const insertBoxes = showInsertBar && gapRect ? toWrap(gapRect) : null;
+  const insertPlace = insertBoxes && insertBarSize.width > 0 ? placeElementBar(insertBoxes.el, insertBoxes.view, insertBarSize) : null;
+  const insertGoWhy = agentRunning ? "Wait for the current turn to finish" : !insertPrompt.trim() ? "Say what goes here" : null;
+  const goInsert = async () => {
+    if (!entry || !gap || insertGoWhy) return;
+    const ok = await useStore.getState().send(insertMessage(`${entry.dir}/${entry.rel}`, gap, insertPrompt), [VARIANTS_SKILL], threadId);
+    if (!ok) return;
+    setInsertPrompt("");
+    setGenerating(true);
+  };
+  const insertBar =
+    showInsertBar && gap ? (
+      <ElementBar
+        insert
+        tag={`${gap.position} ${elementLabel(gap.anchor)}`}
+        place={insertPlace}
+        onSize={setInsertBarSize}
+        prompt={insertPrompt}
+        onPrompt={setInsertPrompt}
+        action="freeform"
+        onAction={() => {}}
+        marks={NO_MARKS}
+        onClearMarks={() => {}}
+        canGo={insertGoWhy === null}
+        goWhy={insertGoWhy}
+        onGo={() => void goInsert()}
+        generating={generating}
+        onEditText={null}
+        onComment={null}
+        repick={null}
+        onRepick={() => {}}
+      />
+    ) : null;
 
   // The cycler for the page's first variant set (a well-formed one before a malformed one).
   const activeSet = onPage ? (variantSets.find((v) => v.malformed === null) ?? variantSets[0] ?? null) : null;
@@ -1120,10 +1213,7 @@ export default function DesignCanvas({
                   .designMoreStyles(threadId)
                   .then((names) => {
                     setNotice({ text: `Building ${names.join(", ")} beside this design.` });
-                    if (picking) {
-                      setPicking(false);
-                      post({ type: "pick", on: false });
-                    }
+                    stopPicking();
                     setCompare(false);
                     chooseBoard(true);
                   })
@@ -1140,10 +1230,7 @@ export default function DesignCanvas({
               title={board ? "Back to one page" : "Board: see every page"}
               aria-label="Board view"
               onClick={() => {
-                if (!board && picking) {
-                  setPicking(false);
-                  post({ type: "pick", on: false });
-                }
+                if (!board) stopPicking();
                 if (!board) setCompare(false);
                 chooseBoard(!board);
               }}
@@ -1456,6 +1543,7 @@ export default function DesignCanvas({
           <div className="design-stage-wrap" ref={wrapRef}>
             {stageEl}
             {elementBar}
+            {insertBar}
             {cycler}
             {liveBar}
           </div>

@@ -1,6 +1,6 @@
 ---
 name: design-variants
-description: Write three in-place variants of the picked element on a CubiQ design page, so the canvas can cycle them and keep one. Use when the message asks for 3 variants of the selected element.
+description: Write three in-place variants of the picked element (or of a new block at a gap) on a CubiQ design page, so the canvas can cycle them and keep one. Use when the message asks for 3 variants of, or beside, the selected element.
 mode: design
 ---
 
@@ -28,5 +28,6 @@ mode: design
    - The wrapper is a layout-free shell. Style through `:scope > …` or `:scope …`, never a bare `:scope`.
    - Put shared keyframes in the same style block.
    - With several elements selected, wrap their nearest shared parent.
+   - **Insert** (the message says "Insert … before/after"): the selected element is only the anchor and stays as it is. Write the set right beside it, with an empty `<div data-cubiq-variant="SET-0" hidden></div>`. Each variant is new content in the page's identity, with a new `data-agent-id`.
 5. **Change nothing else.** Don't open or screenshot the page: the canvas is the preview.
 6. **End the turn** with one line per variant: its axis and what changed.

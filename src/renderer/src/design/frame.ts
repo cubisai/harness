@@ -77,7 +77,13 @@ export type BridgeMessage =
   | { type: "marks"; marks: PageMarks }
   | { type: "repick-ask"; label: string }
   | { type: "variants"; sets: VariantSetInfo[] }
-  | { type: "variant-rect"; set: string; rect: FrameRect | null };
+  | { type: "variant-rect"; set: string; rect: FrameRect | null }
+  | { type: "gap"; gap: InsertGap | null }
+  | { type: "gap-rect"; rect: FrameRect }
+  | { type: "insert-cancel" };
+
+/** A gap picked in Insert mode: before or after the anchor element, and the anchor's size (a hint for what fits there). */
+export type InsertGap = { position: "before" | "after"; anchor: SelectedElement; size: { width: number; height: number } };
 
 /** An in-place variant set on the page: how many variants it has, which one shows, and what's wrong with it if anything. */
 export type VariantSetInfo = { set: string; count: number; shown: number; malformed: string | null };
@@ -124,6 +130,16 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
   const d = data as Record<string, unknown>;
   if (d.source !== "cubiq-design") return null;
   if (d.type === "pick-cancel") return { type: "pick-cancel" };
+  if (d.type === "insert-cancel") return { type: "insert-cancel" };
+  if (d.type === "gap") {
+    if (d.gap === null) return { type: "gap", gap: null };
+    const g = d.gap as Record<string, unknown> | undefined;
+    const size = g?.size as Record<string, unknown> | undefined;
+    if (!g || (g.position !== "before" && g.position !== "after") || !size || !num(size.width) || !num(size.height) || size.width < 0 || size.height < 0) return null;
+    const anchor = readSelected(g.anchor);
+    return anchor ? { type: "gap", gap: { position: g.position, anchor, size: { width: size.width, height: size.height } } } : null;
+  }
+  if (d.type === "gap-rect") return rect(d.rect) ? { type: "gap-rect", rect: d.rect } : null;
   if (d.type === "ready") return str(d.path, 2000) ? { type: "ready", path: d.path } : { type: "ready" };
   if (d.type === "scroll") return num(d.x) && num(d.y) ? { type: "scroll", x: d.x, y: d.y } : null;
   if (d.type === "text-edit") {

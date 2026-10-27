@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Columns2, MessageSquareText, MousePointer2, Play, SwatchBook } from "lucide-react";
+import { ArrowUp, Columns2, MessageSquareText, MousePointer2, Play, Plus, SwatchBook } from "lucide-react";
 import { IconClose } from "../icons";
 
 /** What Esc does next while picking: first it clears the selection, then it stops picking. */
@@ -35,6 +35,11 @@ export type LiveBarProps = {
   picking: boolean;
   textEdit: boolean;
   onPick: () => void;
+  /** Insert mode: hovering the page shows the gaps between blocks, a click picks one. Off with Pick (Pick ends it). */
+  inserting: boolean;
+  /** Why Insert is off when it is (null when it works). */
+  insertWhy: string | null;
+  onInsert: () => void;
   /** The inspector is open on its System tab. */
   systemOpen: boolean;
   onSystem: () => void;
@@ -51,10 +56,10 @@ export type LiveBarProps = {
 
 /**
  * The design canvas's one tool bar, floating at the bottom centre in both layouts: Pick (V), DESIGN.md (the inspector's
- * System tab), Steer (a page-level message into this thread), then Compare and Present. Insert (`+`) and Detect join
- * it in later phases.
+ * System tab), Steer (a page-level message into this thread), then Compare and Present. Insert (`+`) sits beside Pick:
+ * new content at a gap between two blocks. Detect joins it in a later phase.
  */
-export function LiveBar({ onPage, pickWhy, picking, textEdit, onPick, systemOpen, onSystem, onSteer, busy, comparing, onCompare, board, onPresent }: LiveBarProps) {
+export function LiveBar({ onPage, pickWhy, picking, textEdit, onPick, inserting, insertWhy, onInsert, systemOpen, onSystem, onSteer, busy, comparing, onCompare, board, onPresent }: LiveBarProps) {
   const [steering, setSteering] = useState(false);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -86,6 +91,16 @@ export function LiveBar({ onPage, pickWhy, picking, textEdit, onPick, systemOpen
       <button className={`design-live-pick${picking && onPage ? " active" : ""}`} aria-pressed={picking && onPage} aria-keyshortcuts="V" title={pickTitle} disabled={!onPage} onClick={onPick}>
         <MousePointer2 size={16} strokeWidth={1.75} aria-hidden />
         <span>Pick</span>
+      </button>
+      <button
+        className={`icon-button${inserting && onPage ? " active" : ""}`}
+        aria-pressed={inserting && onPage}
+        aria-label="Insert"
+        title={insertWhy ?? (inserting ? "Inserting: click a gap between two blocks, then say what goes there. Esc clears, then stops" : "Insert: add something new between two blocks")}
+        disabled={!onPage}
+        onClick={onInsert}
+      >
+        <Plus size={16} strokeWidth={1.75} aria-hidden />
       </button>
       <button className={`icon-button${systemOpen ? " active" : ""}`} aria-pressed={systemOpen} aria-label="DESIGN.md" title="DESIGN.md: the design system's tokens and rules" disabled={!onPage} onClick={onSystem}>
         <SwatchBook size={16} strokeWidth={1.75} aria-hidden />
