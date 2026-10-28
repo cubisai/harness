@@ -12,7 +12,7 @@ You are building a high-fidelity, clickable prototype that the user watches appe
 
 1. Read `system/DESIGN.md` in the design folder (the guide names it). Note its colors, type, radii and the component rules.
 2. If `index.html` doesn't exist yet, copy `assets/index.html` from this skill's folder into the design folder and build from it. It links `system/tokens.css` and sets a small base (box-sizing, body font and color, focus ring).
-3. If the request is vague, pick a sensible concrete product and content yourself and say so in one line at the end; don't stop to ask unless the choice changes everything.
+3. A vague request: pick a concrete product and content yourself and say so in one line at the end; ask only if the choice changes everything.
 4. If the message names a reference image (`refs/ref-1.png` in the design folder), open it with your file or image tool before you design. Take its layout, hierarchy, density, palette and type feel; don't copy its text, logos or photos, and still use the active system's tokens. Say in one line what you took from it.
 5. **Plan the direction** for a new page (skip it for a change to an existing one): write `.direction.md` in the design folder, at most 120 words, never linked from a page.
    - **Thesis**: the one idea this page owns, from the subject's own world (its objects, materials, publications, rituals), not the category's usual page.
@@ -45,14 +45,15 @@ A worked `.direction.md` for "a landing page for a coffee subscription":
 
 ## 2. Build
 
-- **Structure first**: semantic HTML (`header`, `nav`, `main`, `section`, `footer`, `button`, `label`), one `h1`.
+- **Structure first**: semantic HTML (`header`, `main`, `section`, `button`, `label`, …), one `h1`.
 - **Stable ids**: put a short kebab `data-agent-id` on every section root, component root and interactive element (`data-agent-id="pricing-card-pro"`, `data-agent-id="cta-start"`). Keep the same ids when you rewrite, so the user's selection in the canvas still finds them.
 - **Tokens only**: colors `var(--color-*)`, type `var(--text-*)`/`var(--leading-*)`, spacing `var(--space-*)`, radii `var(--radius-*)`, shadows `var(--shadow-*)`. No raw hex or arbitrary px for these.
 - **8pt rule**: every margin, padding, gap, width and height comes from the spacing scale (4 only for type and icon nudges). Line heights on a 4px baseline.
 - **Content**: real, specific copy and plausible data (names, prices, dates). No lorem ipsum, no "Feature 1".
-- **Icons**: inline SVG, 16/20/24 px, `stroke="currentColor"`. No icon fonts or CDNs.
-- **Images**: inline SVG illustrations, CSS gradients from tokens, or `data:` URIs. Real photos the user asks for go in an `img/` folder beside the page, linked by relative path. The canvas has no network: remote image URLs never load there.
-- **Interaction**: small inline `<script>` for tabs, menus, dialogs, toggles, form validation. Keep it vanilla.
+- **Icons**: copy the symbols you need from `system/icons.svg` when it exists, else inline SVG; 16/20/24 px, `stroke="currentColor"`. Never emoji or text glyphs (✓ ★) as icons, no icon fonts.
+- **Browser surfaces**: theme `::selection`, `caret-color`, scrollbars and the focus ring from the tokens; `tabular-nums` on figures that line up. Monospace only for code and data.
+- **Images**: inline SVG, token gradients or `data:` URIs. Photos the user asks for go in `img/` beside the page, linked relatively. The canvas has no network: remote URLs never load.
+- **Interaction**: a small vanilla inline `<script>` for tabs, menus, dialogs, toggles, validation.
 - **Layout**: CSS grid/flex; content max `var(--content-max)`; it must work at 390, 768 and 1440 wide (use `@media`).
 
 Write the page in a few passes (structure, then styling, then states) so the user sees it grow in the canvas.
@@ -64,7 +65,7 @@ Before you finish, every interactive element has:
 - [ ] active/pressed and disabled
 - [ ] targets ≥ 44×44 px
 - [ ] empty, loading and error variants where data appears (show them in a "States" section or behind a toggle when there's no natural place)
-- [ ] text contrast ≥ 4.5:1 (tokens already pass; don't put muted text on `surface-2` at small sizes without checking)
+- [ ] text contrast ≥ 4.5:1 (check small muted text on `surface-2`)
 
 ## Tweaks
 
@@ -82,7 +83,7 @@ Give the page 2–5 tweaks the user can change live in the canvas without a new 
 
 - `choice` and `toggle` set `data-<id>` on `<html>` (a toggle is `on`/`off`). Write the defaults there too (`<html data-theme="light" data-density="comfy" data-badges="on">`) and style every value: `[data-theme="dusk"] { --color-bg: …; }`, `[data-density="compact"] main { … }`, `[data-badges="off"] .badge { display: none; }`.
 - `color` and `range` set that CSS variable on `:root`; use the variable in your CSS.
-- Ids are lowercase-kebab and options lowercase words. When the user clicks Keep, CubiQ writes the chosen values into the file; don't fight them on the next edit.
+- Ids are lowercase-kebab, options lowercase words. Keep writes the chosen values into the file; leave them on the next edit.
 
 ## Options and flows
 
@@ -91,6 +92,6 @@ Give the page 2–5 tweaks the user can change live in the canvas without a new 
 
 ## 4. Finish
 
-Before you call it done, load every page you wrote (`design_screenshot`, or the browser tools) and fix each console error and broken image: one script error stops every interaction on the page. Don't report it working from reading the code.
+Before you call it done, load every page you wrote (`design_screenshot` or the browser tools) and fix each console error and broken image: one script error stops every interaction. Don't report it working from reading the code.
 
-Say in one or two lines what you built and what to try (e.g. "Open the pricing toggle; resize to Mobile"). Don't paste the HTML into the chat. If the message has a `Selected in …` block, change only those elements (find each by its `data-agent-id`, else its selector) and leave the rest of the page as it is; if the change needs more, say so instead.
+Say in one or two lines what you built and what to try ("Open the pricing toggle; resize to Mobile"). Don't paste the HTML. If the message has a `Selected in …` block, change only those elements (find each by its `data-agent-id`, else its selector) and leave the rest of the page as it is; if the change needs more, say so instead.
