@@ -33,6 +33,7 @@ A title screen with the game's name in large pixel type over a simple parallax o
 - Draw depth with 2px bevels and stepped blocks (not gradients or glass).
 - Draw icons as pixel SVG on the 4px grid (not emoji).
 - Show progress as segmented blocks that fill one at a time.
+- Lint allows: blinking-cursor
 
 ## Motion
 Selection moves instantly with a 2-frame flash; the "Press Enter" blink is the one looping animation. Respect reduced motion.

@@ -30,6 +30,7 @@ A statement slide: one sentence in huge chalk type with the key word in yellow a
 - Say one thing per slide in a short sentence (not a wall of bullets).
 - Draw the picture with chalk lines (not clip art or stock photos).
 - Leave the board dark green and flat (not gradients); the talk title appears in the footer only.
+- Lint allows: highlighter
 
 ## Motion
 Slide-to-slide: none or a quick fade. Builds reveal one point at a time.

@@ -30,6 +30,7 @@ Today's top three tasks marked with a highlighter swipe and a hand-drawn circle 
 - Reward progress quietly with a strike-through and a count (not confetti).
 - Keep pages flat on paper (not neon or heavy shadows); draw icons as line SVG (not emoji).
 - Prefer lists and a week grid (not dashboards full of charts).
+- Lint allows: highlighter, grid-background, repeating-stripes
 
 ## Motion
 Checking a task draws the tick (200ms) and strikes the text through; nothing else animates.

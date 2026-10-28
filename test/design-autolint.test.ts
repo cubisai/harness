@@ -1,8 +1,8 @@
 import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { AUTO_LINT_MAX, autoFixPrompt, autoLintNote, changedPages, lintWidth, type PageLint } from "../src/main/design/autolint";
-import { LINT_MAX, type LintFinding } from "../src/main/design/lint";
+import { AUTO_LINT_MAX, autoFixPrompt, autoLintNote, changedPages, lintWidth, parseAllows, styleAllows, withoutAllowed, type PageLint } from "../src/main/design/autolint";
+import { LINT_MAX, type LintFinding, type LintResult } from "../src/main/design/lint";
 import { tempDir } from "./helpers";
 
 const page = (rel: string, findings: LintFinding[]): PageLint => ({ rel, result: { findings, skipped: [], scanned: 10 } });
@@ -100,5 +100,45 @@ describe("autoLintNote", () => {
     expect(again.text).toBe("");
     expect(autoFixPrompt(fresh.text).startsWith("CubiQ checked the pages you just wrote")).toBe(true);
     expect(autoFixPrompt(fresh.text)).toContain("- index.html [contrast] p.muted: 2.1:1 on #fff");
+  });
+});
+
+describe("style exemptions", () => {
+  const md = [
+    "# Neo Brutal",
+    "allows: gradient-text",
+    "## Rules",
+    "- Make structure visible: thick borders, hard offset shadows.",
+    "- Lint allows: hard-offset-shadow, `side-stripe`.",
+    "Allows: Grid-Background",
+    "## Motion",
+    "- allows: pulsing-dot",
+  ].join("\n");
+
+  it("reads allows lines only under ## Rules", () => {
+    expect([...parseAllows(md)].sort()).toEqual(["grid-background", "hard-offset-shadow", "side-stripe"]);
+    expect(parseAllows("# x\n## Rules\n- Keep it flat.").size).toBe(0);
+  });
+
+  it("drops only the exempted check ids", () => {
+    const result: LintResult = {
+      scanned: 3,
+      skipped: [],
+      findings: [
+        { rule: "slop", id: "hard-offset-shadow", selector: ".a", detail: "hard offset shadow (no blur)" },
+        { rule: "slop", id: "eyebrow", selector: ".b", detail: "eyebrow" },
+        { rule: "contrast", selector: ".c", detail: "low contrast" },
+      ],
+    };
+    expect(withoutAllowed(result, parseAllows(md)).findings.map((f) => f.selector)).toEqual([".b", ".c"]);
+    expect(withoutAllowed(result, new Set())).toBe(result);
+  });
+
+  it("reads a design folder's system/DESIGN.md and is empty without one", () => {
+    const root = tempDir();
+    expect(styleAllows(root).size).toBe(0);
+    mkdirSync(join(root, "system"));
+    writeFileSync(join(root, "system", "DESIGN.md"), md);
+    expect(styleAllows(root).has("hard-offset-shadow")).toBe(true);
   });
 });

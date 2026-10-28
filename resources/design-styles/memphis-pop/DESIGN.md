@@ -29,6 +29,7 @@ A hero collage: the headline in Unbounded surrounded by Memphis shapes in all th
 - Commit to colour: pink, teal and yellow blocks with ink outlines.
 - Cast hard offset shadows in ink (not soft blurred shadows or glass).
 - Use the bold display weights (not thin type); draw shapes in SVG (not stock photos).
+- Lint allows: hard-offset-shadow
 
 ## Motion
 Shapes wobble or rotate a few degrees on hover; one entrance where shapes pop in staggered (each 80ms). Respect reduced motion.

@@ -29,6 +29,7 @@ A hero where the headline sits in a bordered yellow block with a big hard shadow
 - Make structure visible: thick borders, hard offset shadows, square corners (not soft shadows or rounded pills).
 - Use flat saturated fills: yellow, orange, black and white (not gradients, glass or pastels).
 - Shift on press instead of fading.
+- Lint allows: hard-offset-shadow, highlighter
 
 ## Motion
 Mechanical: press states shift by the shadow offset (80ms); no easing curves beyond linear-ish.

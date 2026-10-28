@@ -33,6 +33,7 @@ A statement header with a ruled line pattern behind the balance and a brass unde
 - Keep surfaces paper-flat (not gradient cards or glowing charts).
 - Use gold sparingly for the one figure that matters (not crypto neon).
 - Illustrate with figures and tables (not playful illustrations).
+- Lint allows: repeating-stripes
 
 ## Motion
 Subtle: numbers count up once on first load (400ms); rows expand smoothly for details.

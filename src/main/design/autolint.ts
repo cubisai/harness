@@ -18,6 +18,47 @@ export const AUTO_LINT_PAGES = 3;
 /** How long a turn waits for the last turn's automatic lint before going without it. */
 export const AUTO_LINT_WAIT_MS = 5000;
 
+/**
+ * The slop check ids a design system's DESIGN.md exempts: each `allows: a, b`
+ * (or `Lint allows: a, b`) line in its `## Rules` section, bullet or plain, lowercased.
+ * A style that means its offset shadows or grid paper says so here, so the lint
+ * never argues with it.
+ */
+export function parseAllows(designMd: string): Set<string> {
+  const allows = new Set<string>();
+  let inRules = false;
+  for (const line of designMd.split(/\r?\n/)) {
+    const heading = /^##\s+(.+?)\s*$/.exec(line);
+    if (heading) {
+      inRules = heading[1]!.toLowerCase() === "rules";
+      continue;
+    }
+    if (!inRules) continue;
+    const hit = /^\s*(?:[-*]\s+)?(?:lint\s+)?allows:\s*(.+)$/i.exec(line);
+    if (!hit) continue;
+    for (const id of hit[1]!.split(",")) {
+      const clean = id.trim().replace(/[.`]+$/g, "").replace(/^`/, "").toLowerCase();
+      if (/^[a-z0-9-]+$/.test(clean)) allows.add(clean);
+    }
+  }
+  return allows;
+}
+
+/** The exemptions of the design system in place in a design folder (`system/DESIGN.md`); empty when there is none. Never throws. */
+export function styleAllows(root: string): Set<string> {
+  try {
+    return parseAllows(readFileSync(join(root, "system", "DESIGN.md"), "utf8"));
+  } catch {
+    return new Set();
+  }
+}
+
+/** `result` without the slop findings whose check id `allows` names. */
+export function withoutAllowed(result: LintResult, allows: ReadonlySet<string>): LintResult {
+  if (allows.size === 0) return result;
+  return { ...result, findings: result.findings.filter((f) => !(f.id && allows.has(f.id))) };
+}
+
 /** One page's lint result. */
 export interface PageLint {
   rel: string;

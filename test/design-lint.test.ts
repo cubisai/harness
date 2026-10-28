@@ -173,7 +173,7 @@ describe("slopFindings", () => {
     const out = slopFindings([
       node({ text: "New feature", fontPx: 12, textTransform: "uppercase", nextTag: "h2", selector: ".eyebrow" }),
     ]);
-    expect(out).toEqual([{ rule: "slop", selector: ".eyebrow", detail: 'eyebrow label "New feature" above a heading' }]);
+    expect(out).toEqual([{ rule: "slop", id: "eyebrow", selector: ".eyebrow", detail: 'eyebrow label "New feature" above a heading' }]);
   });
 
   it("does not flag an eyebrow without a following heading", () => {
@@ -191,7 +191,7 @@ describe("slopFindings", () => {
         backgroundClip: "text",
       }),
     ]);
-    expect(out).toEqual([{ rule: "slop", selector: ".grad", detail: "gradient text" }]);
+    expect(out).toEqual([{ rule: "slop", id: "gradient-text", selector: ".grad", detail: "gradient text" }]);
   });
 
   it("does not flag a gradient background without text clip", () => {
@@ -204,7 +204,7 @@ describe("slopFindings", () => {
 
   it("flags a single heavy side stripe", () => {
     const out = slopFindings([node({ selector: ".stripe", borderPx: { top: 0, right: 0, bottom: 0, left: 4 } })]);
-    expect(out).toEqual([{ rule: "slop", selector: ".stripe", detail: "4px side stripe on one edge" }]);
+    expect(out).toEqual([{ rule: "slop", id: "side-stripe", selector: ".stripe", detail: "4px side stripe on one edge" }]);
   });
 
   it("does not flag heavy borders on both sides", () => {
@@ -213,7 +213,7 @@ describe("slopFindings", () => {
 
   it("flags a hard offset shadow", () => {
     const out = slopFindings([node({ selector: ".shadow", boxShadow: "0px 4px 0px 0px rgba(0, 0, 0, 0.2)" })]);
-    expect(out).toEqual([{ rule: "slop", selector: ".shadow", detail: "hard offset shadow (no blur)" }]);
+    expect(out).toEqual([{ rule: "slop", id: "hard-offset-shadow", selector: ".shadow", detail: "hard offset shadow (no blur)" }]);
   });
 
   it("does not flag a blurred shadow", () => {
@@ -224,7 +224,7 @@ describe("slopFindings", () => {
     const cards = Array.from({ length: 3 }, (_v, i) =>
       node({ selector: `.card${i}`, cardLike: true, childSig: "h3,p", parentSelector: ".grid" }),
     );
-    expect(slopFindings(cards)).toEqual([{ rule: "slop", selector: ".grid", detail: "3 identical cards (h3,p)" }]);
+    expect(slopFindings(cards)).toEqual([{ rule: "slop", id: "identical-cards", selector: ".grid", detail: "3 identical cards (h3,p)" }]);
   });
 
   it("does not flag only two identical cards", () => {
@@ -245,12 +245,12 @@ describe("slopFindings", () => {
     const cards = Array.from({ length: 5 }, (_v, i) =>
       node({ selector: `.card${i}`, cardLike: true, childSig: "h3,p", parentSelector: ".grid" }),
     );
-    expect(slopFindings(cards)).toEqual([{ rule: "slop", selector: ".grid", detail: "5 identical cards (h3,p)" }]);
+    expect(slopFindings(cards)).toEqual([{ rule: "slop", id: "identical-cards", selector: ".grid", detail: "5 identical cards (h3,p)" }]);
   });
 
   it("flags an emoji used as an icon", () => {
     const out = slopFindings([node({ selector: ".icon", text: "✨" })]);
-    expect(out).toEqual([{ rule: "slop", selector: ".icon", detail: "emoji used as an icon" }]);
+    expect(out).toEqual([{ rule: "slop", id: "emoji-icon", selector: ".icon", detail: "emoji used as an icon" }]);
   });
 
   it("does not flag a word as an emoji", () => {
@@ -260,7 +260,7 @@ describe("slopFindings", () => {
   it("flags an overused display font", () => {
     const out = slopFindings([node({ selector: "h1", tag: "h1", text: "Title", fontFamily: "Inter" })]);
     expect(out).toEqual([
-      { rule: "slop", selector: "h1", detail: '"Inter" display face is an overused default' },
+      { rule: "slop", id: "overused-font", selector: "h1", detail: '"Inter" display face is an overused default' },
     ]);
   });
 
@@ -274,7 +274,7 @@ describe("slopFindings", () => {
       node({ selector: "h2.title", tag: "h2", text: "Two", fontFamily: "Inter" }),
     ]);
     expect(out).toEqual([
-      { rule: "slop", selector: "h1", detail: '"Inter" display face is an overused default' },
+      { rule: "slop", id: "overused-font", selector: "h1", detail: '"Inter" display face is an overused default' },
     ]);
   });
 
@@ -405,8 +405,8 @@ describe("slopFindings", () => {
       clipped: [{ selector: "footer button", text: "Schedule private viewing", px: 94 }],
       overlaps: [{ selector: "nav span", text: "Map", other: "$310,000" }],
     });
-    expect(out).toContainEqual({ rule: "slop", selector: "footer button", detail: expect.stringContaining('"Schedule private viewing" is cut off by its box (94px hidden)') });
-    expect(out).toContainEqual({ rule: "slop", selector: "nav span", detail: expect.stringContaining('"Map" overlaps "$310,000"') });
+    expect(out).toContainEqual({ rule: "slop", id: "clipped-text", selector: "footer button", detail: expect.stringContaining('"Schedule private viewing" is cut off by its box (94px hidden)') });
+    expect(out).toContainEqual({ rule: "slop", id: "text-overlap", selector: "nav span", detail: expect.stringContaining('"Map" overlaps "$310,000"') });
     expect(slopFindings([node({})], { overflowPx: 0, text: "", ctas: [], clipped: [], overlaps: [] })).toEqual([]);
   });
 

@@ -32,6 +32,7 @@ A cover-like hero: one image, the collection name in giant italic Didone overlap
 - Mark sale and status with a short word in `--color-accent-text` (not badges or stickers).
 - Keep every corner square and every surface flat (not rounded cards or gradients).
 - Space generously: `--space-16` or more between sections.
+- Lint allows: italic-serif-display
 
 ## Motion
 Slow crossfades (500ms) between images; hover reveals a second image of the product. Nothing bounces.

@@ -32,6 +32,7 @@ A specimen plate layout: a large illustration with hairline callout leaders poin
 - Hold to the earth palette: moss, bark and paper (not neon, glass or gradient blobs).
 - Lay entries out as a field journal: plates and notes (not tech-startup card grids).
 - Draw icons as line SVG (not emoji).
+- Lint allows: italic-serif-display
 
 ## Motion
 Slow and quiet: contour lines draw in once (800ms); images fade. Nothing bounces.

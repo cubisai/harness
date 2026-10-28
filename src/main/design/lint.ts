@@ -1,5 +1,10 @@
 /// <reference lib="dom" />
 
+import { collectLayoutSlop, layoutSlopFindings } from "./slop-layout";
+import { collectSurfaceSlop, surfaceSlopFindings } from "./slop-surface";
+import { collectSystemSlop, systemSlopFindings } from "./slop-system";
+import { collectTypeSlop, typeSlopFindings } from "./slop-type";
+
 /** An sRGB color: channels 0-255, alpha 0-1. */
 export type Rgba = { r: number; g: number; b: number; a: number };
 
@@ -102,6 +107,8 @@ export interface LintFinding {
   rule: LintRule;
   selector: string;
   detail: string;
+  /** The slop check's kebab-case id (e.g. "hard-offset-shadow"), which a style's `allows:` line can exempt. */
+  id?: string;
 }
 
 /** The full result of a design lint run. */
@@ -445,8 +452,8 @@ export function collectSlopPage(selectorFor?: (el: Element) => string): SlopPage
 /** Turn collected element snapshots into slop findings; pure and self-contained. */
 export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] {
   const findings: LintFinding[] = [];
-  const push = (selector: string, detail: string): void => {
-    findings.push({ rule: "slop", selector, detail });
+  const push = (id: string, selector: string, detail: string): void => {
+    findings.push({ rule: "slop", id, selector, detail });
   };
 
   const headingTags: Record<string, boolean> = { h1: true, h2: true, h3: true };
@@ -492,14 +499,14 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
       node.nextTag !== null &&
       headingTags[node.nextTag]
     ) {
-      push(node.selector, `eyebrow label "${node.text}" above a heading`);
+      push("eyebrow", node.selector, `eyebrow label "${node.text}" above a heading`);
     }
   }
 
   // Gradient text: a gradient clipped to the glyphs.
   for (const node of nodes) {
     if (node.backgroundClip.includes("text") && node.backgroundImage.includes("gradient")) {
-      push(node.selector, "gradient text");
+      push("gradient-text", node.selector, "gradient text");
     }
   }
 
@@ -511,7 +518,7 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
     const right = b.right > 1;
     if (left === right) continue;
     const others = left ? [b.top, b.right, b.bottom] : [b.top, b.bottom, b.left];
-    if (others.every((v) => v <= 1)) push(node.selector, `${left ? b.left : b.right}px side stripe on one edge`);
+    if (others.every((v) => v <= 1)) push("side-stripe", node.selector, `${left ? b.left : b.right}px side stripe on one edge`);
   }
 
   // Hard offset shadow: a non-inset shadow layer with zero blur.
@@ -540,7 +547,7 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
       const y = nums[1] ?? 0;
       const blur = nums[2] ?? 0;
       if (blur === 0 && (x !== 0 || y !== 0)) {
-        push(node.selector, "hard offset shadow (no blur)");
+        push("hard-offset-shadow", node.selector, "hard offset shadow (no blur)");
         break;
       }
     }
@@ -570,7 +577,7 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
         if (node.width > max) max = node.width;
       }
       if (max - min > 2) continue;
-      push(parent, `${same.length} identical cards (${sig})`);
+      push("identical-cards", parent, `${same.length} identical cards (${sig})`);
       break;
     }
   }
@@ -594,7 +601,7 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
       if (node.width > max) max = node.width;
     }
     if (max - min > 4) continue;
-    push(parent, `${row.length} equal metric cards in a row: lead with the number that matters, put the rest in a table or a sentence`);
+    push("metric-row", parent, `${row.length} equal metric cards in a row: lead with the number that matters, put the rest in a table or a sentence`);
     metricRows += 1;
     if (metricRows >= 2) break;
   }
@@ -608,6 +615,7 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
   const innermostIndex = indexLabels.filter((node) => !indexParents[node.selector]);
   if (innermostIndex.length >= 2) {
     push(
+      "index-labels",
       innermostIndex[0]!.selector,
       `${innermostIndex.length} index labels as decoration ("${innermostIndex[0]!.text}", "${innermostIndex[1]!.text}"): let the heading name the section`,
     );
@@ -617,13 +625,13 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
   const paragraphs = nodes.filter((node) => (node.tag === "p" || node.tag === "li") && (node.textLen ?? node.text.length) >= 60);
   const centred = paragraphs.filter((node) => node.textAlign === "center" || node.textAlign === "-webkit-center").length;
   if (paragraphs.length >= 5 && centred / paragraphs.length >= 0.7) {
-    push("body", `${centred} of ${paragraphs.length} paragraphs centred: align running text to the left, centre only short headlines`);
+    push("centred-text", "body", `${centred} of ${paragraphs.length} paragraphs centred: align running text to the left, centre only short headlines`);
   }
 
   // Emoji icon: a glyph (or two) used as the only content.
   const emoji = /^(\p{Extended_Pictographic}️?){1,2}$/u;
   for (const node of nodes) {
-    if (emoji.test(node.text)) push(node.selector, "emoji used as an icon");
+    if (emoji.test(node.text)) push("emoji-icon", node.selector, "emoji used as an icon");
   }
 
   // Overused display font: headings set in a default-looking face.
@@ -634,7 +642,7 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
     if (overused.indexOf(family) === -1) continue;
     if (seenFonts[family]) continue;
     seenFonts[family] = true;
-    push(node.selector, `"${node.fontFamily}" display face is an overused default`);
+    push("overused-font", node.selector, `"${node.fontFamily}" display face is an overused default`);
   }
 
   // Display leading: hero type set with paragraph leading.
@@ -650,6 +658,7 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
     if (ratio < 1.45) continue;
     displayLeading += 1;
     push(
+      "display-leading",
       node.selector,
       `${Math.round(node.fontPx)}px heading at line-height ${ratio.toFixed(2)}: set display type at 1.0–1.2`,
     );
@@ -668,7 +677,7 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
     for (let i = 0; i < shown; i += 1) {
       const node = longMeasure[i]!;
       const chars = Math.round(node.width / (node.fontPx * 0.5));
-      push(node.selector, `paragraph runs about ${chars} characters a line: cap prose at 65–75ch`);
+      push("long-measure", node.selector, `paragraph runs about ${chars} characters a line: cap prose at 65–75ch`);
     }
   }
 
@@ -699,6 +708,7 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
   }
   if (interactive >= 8 && transitionAll / interactive >= 0.6) {
     push(
+      "transition-all",
       "body",
       `transition: all on ${transitionAll} of ${interactive} controls: transition named properties (transform, opacity, color)`,
     );
@@ -723,7 +733,7 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
           if (!overshootSeen[value]) {
             overshootSeen[value] = true;
             overshootCount += 1;
-            push(node.selector, `overshooting easing ${value}: use an ease-out without bounce`);
+            push("overshoot-easing", node.selector, `overshooting easing ${value}: use an ease-out without bounce`);
             if (overshootCount >= 2) break;
           }
         }
@@ -768,7 +778,7 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
   if (glowNodes.length >= 2) {
     const shown = Math.min(glowNodes.length, 3);
     for (let i = 0; i < shown; i += 1) {
-      push(glowNodes[i]!.selector, "coloured glow shadow: use one neutral elevation or surface tone");
+      push("coloured-glow", glowNodes[i]!.selector, "coloured glow shadow: use one neutral elevation or surface tone");
     }
   }
 
@@ -783,7 +793,7 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
     if (!blur) continue;
     if ((Number.parseFloat(blur[1] ?? "") || 0) < 40) continue;
     blobs += 1;
-    push(node.selector, "blurred decorative blob: show the product instead");
+    push("blurred-blob", node.selector, "blurred decorative blob: show the product instead");
   }
 
   // Glass content panel: frosted backdrop over real content.
@@ -795,7 +805,7 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
     if (panelTags[node.tag] || !node.cardLike) continue;
     if ((node.textLen ?? 0) < 40) continue;
     glassed += 1;
-    push(node.selector, "frosted glass panel holding content: give it a solid surface");
+    push("glass-panel", node.selector, "frosted glass panel holding content: give it a solid surface");
   }
 
   // One radius everywhere: a single corner value across every shape.
@@ -833,6 +843,7 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
     // A sharp style (0–2px everywhere) is a decision, not a habit.
     if (commonRadius > 2 && commonCount / radiusCandidates.length >= 0.8 && widest > narrowest * 3) {
       push(
+        "one-radius",
         "body",
         `one ${commonRadius}px radius on ${commonCount} of ${radiusCandidates.length} shapes: set radius by role (controls smaller, cards larger, media 0)`,
       );
@@ -848,7 +859,7 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
     const placeholder = node.placeholder ?? "";
     if (!placeholder) continue;
     placeholderOnly += 1;
-    push(node.selector, `field labelled only by its placeholder "${placeholder}"`);
+    push("placeholder-field", node.selector, `field labelled only by its placeholder "${placeholder}"`);
   }
 
   // Missing alt: an exposed image with no alt text.
@@ -857,7 +868,7 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
     if (missingAlt >= 4) break;
     if (node.tag !== "img" || node.hasAlt !== false || node.ariaHidden === true) continue;
     missingAlt += 1;
-    push(node.selector, "image without alt text");
+    push("missing-alt", node.selector, "image without alt text");
   }
 
   // Running text in capitals: a sentence or more set uppercase (by CSS or typed that way) reads slowly. Short labels
@@ -881,20 +892,20 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
     if (capsParents[node.selector]) continue;
     capsCount += 1;
     if (capsCount > 3) break;
-    push(node.selector, `running text in capitals ("${node.text.slice(0, 40)}…"): set sentences in sentence case, keep caps for short labels`);
+    push("caps-text", node.selector, `running text in capitals ("${node.text.slice(0, 40)}…"): set sentences in sentence case, keep caps for short labels`);
   }
 
   if (page) {
     if (page.overflowPx > 1) {
-      push("html", `page scrolls sideways by ${page.overflowPx}px at this width`);
+      push("page-overflow", "html", `page scrolls sideways by ${page.overflowPx}px at this width`);
     }
 
     // Text cut off by its box, or drawn over other text: titles under bars, clipped chips, colliding labels.
     for (const c of page.clipped ?? []) {
-      push(c.selector, `text "${c.text}" is cut off by its box (${c.px}px hidden): let it wrap, shorten it, or make the row scroll`);
+      push("clipped-text", c.selector, `text "${c.text}" is cut off by its box (${c.px}px hidden): let it wrap, shorten it, or make the row scroll`);
     }
     for (const o of page.overlaps ?? []) {
-      push(o.selector, `text "${o.text}" overlaps "${o.other}": give each its own space`);
+      push("text-overlap", o.selector, `text "${o.text}" overlaps "${o.other}": give each its own space`);
     }
 
     // Copy clichés: stock marketing language.
@@ -914,6 +925,7 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
     }
     if (matchedCopy.length >= 2) {
       push(
+        "generic-copy",
         "body",
         `generic copy (${matchedCopy.join(", ")}): name the audience, the task and a concrete outcome`,
       );
@@ -942,6 +954,7 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
     }
     if (genericCount >= 3) {
       push(
+        "generic-cta",
         "body",
         `${genericCount} generic calls to action ("${examples.slice(0, 3).join(", ")}"): name what each one does`,
       );
@@ -953,7 +966,7 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
         page.text,
       );
     if (placeholderCopy) {
-      push("body", `placeholder copy "${placeholderCopy[0] ?? ""}": use real, specific names and content`);
+      push("placeholder-copy", "body", `placeholder copy "${placeholderCopy[0] ?? ""}": use real, specific names and content`);
     }
 
     // A font stack with no generic family: while the web font loads (or if it fails) text drops to the browser's
@@ -981,7 +994,7 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
       if (families.some((f) => generics[f]) || /icon|symbol|awesome/.test(families[0] ?? "")) continue;
       stackCount += 1;
       if (stackCount > 3) break;
-      push("body", `font stack "${stack}" has no generic fallback: end it with sans-serif, serif or monospace`);
+      push("font-fallback", "body", `font stack "${stack}" has no generic fallback: end it with sans-serif, serif or monospace`);
     }
 
     // Pseudo-data: system-looking filler (SCREAMING_SNAKE ids, null hashes) in prose, where it means nothing to the
@@ -990,7 +1003,7 @@ export function slopFindings(nodes: SlopNode[], page?: SlopPage): LintFinding[] 
     const pseudoSeen: string[] = [];
     for (const hit of pseudo) if (pseudoSeen.indexOf(hit) === -1) pseudoSeen.push(hit);
     if (pseudoSeen.length >= 2) {
-      push("body", `pseudo-data in copy (${pseudoSeen.slice(0, 3).join(", ")}): every label and meta line should state a real fact`);
+      push("pseudo-data", "body", `pseudo-data in copy (${pseudoSeen.slice(0, 3).join(", ")}): every label and meta line should state a real fact`);
     }
   }
 
@@ -1015,6 +1028,8 @@ export function designLint(
     collectSlop: typeof collectSlop;
     collectSlopPage: typeof collectSlopPage;
     slopFindings: typeof slopFindings;
+    /** The slop check groups beyond the core set (slop-*.ts): a page collector and a pure check each. */
+    groups: { name: string; collect: (selectorFor: (el: Element) => string) => unknown; check: (snapshot: never) => LintFinding[] }[];
   },
 ): LintResult {
   const findings: LintFinding[] = [];
@@ -1315,13 +1330,29 @@ export function designLint(
   } catch {
     skipped.push("slop");
   }
+  for (const group of h.groups) {
+    try {
+      findings.push(...group.check(group.collect(selectorFor) as never));
+    } catch {
+      skipped.push(`slop ${group.name}`);
+    }
+  }
 
   return { findings, skipped, scanned };
 }
 
+/** The slop check groups kept in their own files, each a self-contained page collector and pure check. */
+const SLOP_GROUPS = [
+  { name: "layout", collect: collectLayoutSlop, check: layoutSlopFindings },
+  { name: "type", collect: collectTypeSlop, check: typeSlopFindings },
+  { name: "surface", collect: collectSurfaceSlop, check: surfaceSlopFindings },
+  { name: "system", collect: collectSystemSlop, check: systemSlopFindings },
+] as const;
+
 /** The design lint as one page expression, embedding the selector and helpers. */
 export function lintScript(selectorFor: (el: Element) => string): string {
-  return `(() => JSON.stringify((${designLint.toString()})(${selectorFor.toString()}, { parseColor: ${parseColor.toString()}, blend: ${blend.toString()}, contrastRatio: ${contrastRatio.toString()}, minContrast: ${minContrast.toString()}, onGrid: ${onGrid.toString()}, colorKey: ${colorKey.toString()}, collectSlop: ${collectSlop.toString()}, collectSlopPage: ${collectSlopPage.toString()}, slopFindings: ${slopFindings.toString()} })))()`;
+  const groups = SLOP_GROUPS.map((g) => `{ name: ${JSON.stringify(g.name)}, collect: ${g.collect.toString()}, check: ${g.check.toString()} }`).join(", ");
+  return `(() => JSON.stringify((${designLint.toString()})(${selectorFor.toString()}, { parseColor: ${parseColor.toString()}, blend: ${blend.toString()}, contrastRatio: ${contrastRatio.toString()}, minContrast: ${minContrast.toString()}, onGrid: ${onGrid.toString()}, colorKey: ${colorKey.toString()}, collectSlop: ${collectSlop.toString()}, collectSlopPage: ${collectSlopPage.toString()}, slopFindings: ${slopFindings.toString()}, groups: [${groups}] })))()`;
 }
 
 /** How many findings `formatLint` prints before eliding the rest. */

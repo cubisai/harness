@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { HarnessTool, ToolOutput } from "../agents/types";
 import { resolveInside } from "../artifacts";
+import { styleAllows, withoutAllowed } from "./autolint";
 import { formatLint, type LintResult } from "./lint";
 import type { Shot } from "./shooter";
 import { MODES, SURFACES, type DesignDirection } from "../../shared/direction";
@@ -111,7 +112,9 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
         const width = clamp(args.width, 320, 2560, 1440);
         try {
           const raw = await deps.evaluate(deps.url(threadId, page.rel), width, 900, deps.lintScript);
-          const result = JSON.parse(String(raw)) as LintResult;
+          const root = deps.root(threadId);
+          const parsed = JSON.parse(String(raw)) as LintResult;
+          const result = root ? withoutAllowed(parsed, styleAllows(root)) : parsed;
           return { text: `${deps.folder(threadId)}/${page.rel} at ${width}px\n${formatLint(result)}` };
         } catch (err) {
           return failed("Lint", err);

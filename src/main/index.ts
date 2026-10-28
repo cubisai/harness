@@ -17,7 +17,7 @@ import { readTarget } from "../shared/comments";
 import { bridgeScript } from "./design/bridge";
 import { buildDesignExport, exportFileName, pageTitleSource, type DesignExportDeps } from "./design/export";
 import { lintScript, type LintResult } from "./design/lint";
-import { lintWidth, type PageLint } from "./design/autolint";
+import { lintWidth, styleAllows, withoutAllowed, type PageLint } from "./design/autolint";
 import { styleIndex } from "./design/systems";
 import { electronShotWindow } from "./design/shot-window";
 import { Shooter } from "./design/shooter";
@@ -974,10 +974,11 @@ async function main(): Promise<void> {
   // After a design turn writes pages, they're linted off screen (one at a time); a page that fails to render is skipped.
   service.setDesignAutoLint(async (threadId, root, rels) => {
     const pages: PageLint[] = [];
+    const allows = styleAllows(root);
     for (const rel of rels) {
       try {
         const raw = await shooter.evaluate(designUrl(threadId, rel), lintWidth(root, rel), 900, designLintJs);
-        pages.push({ rel, result: JSON.parse(String(raw)) as LintResult });
+        pages.push({ rel, result: withoutAllowed(JSON.parse(String(raw)) as LintResult, allows) });
       } catch {
         // Skipped.
       }

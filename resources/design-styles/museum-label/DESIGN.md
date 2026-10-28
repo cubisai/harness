@@ -29,6 +29,7 @@ The first viewport is one artwork at near-full height with the title in Bodoni a
 - Let the work and its label carry the page: image, then a wall-label caption (not cards or decorative backgrounds).
 - Use one display face; italics for titles.
 - Keep corners square and surfaces flat (not icons, gradients or hero metrics).
+- Lint allows: italic-serif-display
 
 ## Motion
 Images fade in slowly (600ms) once as they enter; hover shows the caption. Nothing else moves.
