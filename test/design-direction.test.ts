@@ -222,6 +222,17 @@ describe("More styles", () => {
     expect(readFileSync(join(root, "system", "patterns.md"), "utf8")).toContain("# Mobile patterns");
   });
 
+  it("copies the AI-parts notes beside the patterns on any surface but slides", () => {
+    const { service, project } = realSetup();
+    const thread = service.createThread(project.id, undefined, "design");
+    const reply = service.setDesignDirection(thread.id, { surface: "screen", mode: "operate", tier: "working", style: "clean-inset" });
+    const root = service.designRoot(thread.id)!;
+    expect(readFileSync(join(root, "system", "ai-parts.md"), "utf8")).toContain("**Tool call card**");
+    expect(reply).toContain("system/ai-parts.md");
+    const deck = service.createThread(project.id, undefined, "design");
+    expect(service.setDesignDirection(deck.id, { surface: "deck", mode: "persuade", tier: "working", style: "chalk-keynote" })).not.toContain("ai-parts");
+  });
+
   it("copies the icon sprite into system/ and names it in the reply", () => {
     const { service, project } = realSetup();
     const thread = service.createThread(project.id, undefined, "design");
@@ -267,8 +278,9 @@ describe("the bundled style library", () => {
     }
   });
 
-  it("keeps the index the direction tool carries under ~900 tokens", () => {
-    expect(Math.ceil(Buffer.byteLength(styleIndex(styles)) / 3)).toBeLessThanOrEqual(900);
+  // 940: 32 styles since the two product-UI styles (2026-10-28); ~29 tokens a line.
+  it("keeps the index the direction tool carries under ~940 tokens", () => {
+    expect(Math.ceil(Buffer.byteLength(styleIndex(styles)) / 3)).toBeLessThanOrEqual(940);
   });
 
   it("ships a license for every font in the pack", () => {

@@ -1595,6 +1595,7 @@ export class Service {
     const root = this.designRoot(threadId);
     const tier = tierOf(saved);
     let patterns = false;
+    let aiParts = false;
     let icons = false;
     if (root) {
       if (system) materializeSystem(system, join(root, "system"));
@@ -1604,6 +1605,13 @@ export class Service {
           mkdirSync(join(root, "system"), { recursive: true });
           writeFileSync(join(root, "system", "patterns.md"), readFileSync(src, "utf8"));
           patterns = true;
+        }
+        // AI-product anatomies (answer, composer, tool call, approval, run): any surface but slides.
+        const parts = this.designPatternsDir ? join(this.designPatternsDir, "ai-parts.md") : null;
+        if (direction.surface !== "deck" && parts && existsSync(parts)) {
+          mkdirSync(join(root, "system"), { recursive: true });
+          writeFileSync(join(root, "system", "ai-parts.md"), readFileSync(parts, "utf8"));
+          aiParts = true;
         }
       } catch {
         // A missing notes file must never break the tool.
@@ -1632,7 +1640,7 @@ export class Service {
     const where = system
       ? ` \`${folder}/system/\` now holds ${system.name}${auto && !hasProject ? pickedNote : ""}: read its DESIGN.md before you build, link \`system/tokens.css\` and use its custom properties${system.fontFiles?.length ? "; it declares its fonts from `system/fonts/`" : ""}.`
       : "";
-    return `${head}${where}${patterns ? ` \`${folder}/system/patterns.md\` has the rules and anatomies for a ${direction.surface}: read it, then write \`${folder}/brief.md\` before the first page.` : ""}${icons ? ` \`${folder}/system/icons.svg\` has line icons (ids listed at its top): copy the symbols a page uses into the page instead of drawing icons or using emoji.` : ""}\n${tierNote(tier)}`;
+    return `${head}${where}${patterns ? ` \`${folder}/system/patterns.md\` has the rules and anatomies for a ${direction.surface}: read it, then write \`${folder}/brief.md\` before the first page.` : ""}${aiParts ? ` If the product has an assistant or agent, \`${folder}/system/ai-parts.md\` has anatomies for its parts (answer, composer, tool call, approval, run).` : ""}${icons ? ` \`${folder}/system/icons.svg\` has line icons (ids listed at its top): copy the symbols a page uses into the page instead of drawing icons or using emoji.` : ""}\n${tierNote(tier)}`;
   }
 
   /** The System tab's view of a system: DESIGN.md and its tokens, plus whether (and how) it can be edited. */
