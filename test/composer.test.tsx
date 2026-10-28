@@ -4,6 +4,8 @@ import { describePick, type PickedElement } from "../src/main/browser/picker";
 import { chipLabel, commandQuery, composeMessage, skillQueryAt, toggleSkill } from "../src/renderer/src/composer";
 import { Composer } from "../src/renderer/src/components/Composer";
 import { DesignFenceChip } from "../src/renderer/src/components/DesignSettingsMenu";
+import { chipStyle, DesignStyleMenu, styleGroups } from "../src/renderer/src/components/DesignSystemMenu";
+import type { DesignSystemOption } from "../src/shared/types";
 import { ThreadView } from "../src/renderer/src/components/ThreadView";
 import { useStore } from "../src/renderer/src/store";
 import type { SendRequest, Thread } from "../src/shared/types";
@@ -315,5 +317,38 @@ describe("DesignFenceChip", () => {
     expect(html).toContain('aria-haspopup="dialog"');
     expect(html).toContain('aria-expanded="false"');
     expect(html).not.toContain("listbox");
+  });
+});
+
+describe("DesignStyleMenu", () => {
+  const opt = (id: string, name: string, source: DesignSystemOption["source"]): DesignSystemOption => ({ id, name, description: "", swatches: ["#000", "#fff"], source });
+  const options = [opt("project", "Project", "project"), opt("style:zinc-console", "Zinc console", "style"), opt("style:clean-inset", "Clean inset", "style")];
+
+  it("reads nothing picked, Auto, or a gone style as Auto, and names Auto's pick once it has one", () => {
+    expect(chipStyle(options, undefined).name).toBe("Auto");
+    expect(chipStyle(options, "auto").id).toBe("auto");
+    expect(chipStyle(options, "style:retired").name).toBe("Auto");
+    expect(chipStyle(options, "auto", { surface: "page", mode: "operate", style: "style:zinc-console", tier: "working" }).name).toBe("Auto · Zinc console");
+  });
+
+  it("shows a fixed style by name", () => {
+    expect(chipStyle(options, "style:clean-inset")).toEqual({ id: "style:clean-inset", name: "Clean inset", title: "Style: Clean inset" });
+  });
+
+  it("lists Auto first, then the project's systems, then the styles", () => {
+    expect(styleGroups(options).map((g) => [g.label, g.options.map((o) => o.id)])).toEqual([
+      ["", ["auto"]],
+      ["Project", ["project"]],
+      ["Styles", ["style:zinc-console", "style:clean-inset"]],
+    ]);
+    expect(styleGroups(options.slice(1)).map((g) => g.label)).toEqual(["", "Styles"]);
+  });
+
+  it("renders a style chip with no palette, disabled while running", () => {
+    const html = renderToStaticMarkup(<DesignStyleMenu projectId={null} value={undefined} disabled onPick={() => {}} />);
+    expect(html).toContain("ds-chip");
+    expect(html).toContain('aria-label="Style: Auto (picks one that fits the brief)"');
+    expect(html).not.toContain("swatch");
+    expect(html).toContain("disabled");
   });
 });

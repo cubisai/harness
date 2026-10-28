@@ -1278,7 +1278,7 @@ export default function DesignCanvas({
             {comparing ? `Comparing ${cells.length}` : entry ? entry.rel : "Canvas"}
           </span>
         )}
-        {styleName && <span className="design-canvas-style" title="The style this design is drawn in. Ask in the chat for a different look.">{styleName}</span>}
+        {styleName && <span className="design-canvas-style" title="The style this design is drawn in. Pick another from the style chip by the prompt, or ask in the chat.">{styleName}</span>}
         <div className="design-tools" ref={toolsEl}>
           {entry && version === 0 && (
             <button

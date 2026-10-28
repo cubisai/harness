@@ -3312,6 +3312,13 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 .chip-button .chev { opacity: 0.6; flex: none; }
 .mode-chip.danger, .mode-chip.danger:hover { color: var(--danger); }
 .design-fence-chip { color: var(--text-secondary); }
+/* A design thread's style chip: an icon and the style's name (no palette: colours come from the style or the prompt). */
+.ds-chip { max-width: 200px; color: var(--text-secondary); }
+.ds-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ds-menu { width: 280px; padding: 4px; max-height: min(420px, 70vh); overflow-y: auto; }
+/* The menu scrolls; its rows keep their height, and a long description stops at two lines. */
+.ds-menu .model-item { flex: none; }
+.ds-menu .model-item .desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .model-picker-button { max-width: 240px; color: var(--text); }
 .model-picker-name { overflow: hidden; text-overflow: ellipsis; }
 .model-picker-effort { color: var(--text-tertiary); }

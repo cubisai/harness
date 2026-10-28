@@ -4,8 +4,8 @@ import { MODES } from "./ThreadControls";
 
 /**
  * A design thread's access: always Full, fenced to its folder, so there is nothing to pick. The chip still opens (it
- * sits where the mode menu does) to say what that means. The style and tier are the agent's (Auto); the user asks for
- * a different look in words.
+ * sits where the mode menu does) to say what that means. The tier is the agent's; the style chip beside it picks the
+ * style (Auto until the user picks one).
  */
 export function DesignFenceChip() {
   const [open, setOpen] = useState(false);

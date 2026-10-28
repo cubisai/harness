@@ -10,6 +10,7 @@ import { ShellDock } from "./components/ShellDock";
 import { ThreadMeters } from "./components/Meters";
 import { DraftMode, DraftModel, ThreadMode, ThreadModel } from "./components/ThreadControls";
 import { DesignFenceChip } from "./components/DesignSettingsMenu";
+import { DraftDesignStyle, ThreadDesignStyle } from "./components/DesignSystemMenu";
 import { Inspector } from "./components/Inspector";
 import { SettingsSheet } from "./components/SettingsSheet";
 import { Splash } from "./components/Splash";
@@ -289,7 +290,16 @@ export function App() {
                 </div>
                 <Composer
                   threadId={null}
-                  mode={designMode ? <DesignFenceChip /> : <DraftMode />}
+                  mode={
+                    designMode ? (
+                      <>
+                        <DesignFenceChip />
+                        <DraftDesignStyle />
+                      </>
+                    ) : (
+                      <DraftMode />
+                    )
+                  }
                   model={<DraftModel />}
                 />
               </>
@@ -319,6 +329,7 @@ export function App() {
                     designThread ? (
                       <>
                         <DesignFenceChip />
+                        <ThreadDesignStyle thread={thread} running={running} />
                         {thread.expertId && <ExpertChip expertId={thread.expertId} threadId={thread.id} />}
                       </>
                     ) : (

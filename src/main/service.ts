@@ -1788,7 +1788,7 @@ export class Service {
       materializeSystem(system, dir);
       const switched =
         before && before !== system.id
-          ? `\n\n(CubiQ: the design system is now ${system.name}; \`${designOf(thread)}/system/\` was replaced. Read its DESIGN.md and restyle with its tokens.)`
+          ? `\n\n(CubiQ: the design system is now ${system.name}; \`${designOf(thread)}/system/\` was replaced. Read its DESIGN.md and restyle with its tokens; a colour the user named still wins.)`
           : "";
       return switched + ask;
     } catch {
