@@ -1,4 +1,17 @@
-# Handoff: design live variants + style variety (2026-10-27, Mac, session 4 in progress: P4 lint checks written and wired, not committed; Detect and skill floor next)
+# Handoff: design live variants + style variety (2026-10-28, Mac, session 5 end: P4 done; P3 and the merge into m4 next)
+
+## Session 5 status (read this first)
+- **P4 done**, three commits on `track/design-live`:
+  - `09b617d` P4a: the 4 slop check groups, ids, `Lint allows:` exemptions. repeated-label now needs a container that is an `li`/`article` or a card ≤ 600×600 outside `table`/`nav`, two different tags, and treats `9:41` as a number. Gate: no check on > 30% of the 32 good pages (top: repeating-stripes 18%); repeated-label 34% → 0, still fires on a real card.
+  - `d752abf` P4b: prototype skill floor (icon sprite, no glyph icons, themed `::selection`/caret/scrollbars/focus, `tabular-nums`, mono only for code and data), 1467 → 1471 words.
+  - `a9d830c` P4c: **Detect** (eye) in `LiveBar`. IPC `design:detect` lints the saved page as the auto-lint does (contrast, targets, slop; `withoutAllowed`), `detectPins` groups per element (≤ 40 pins, ≤ 3 details, body/html apart). Bridge `set-findings` draws amber numbered squares (top-right, clickable, `data-cubiq-finding`); a click selects the element and posts `finding`; the canvas fills the prompt with `Fix: …` and sets Polish. A page reload re-runs it quietly; leaving the page ends it.
+- **User report fixed in P4c:** no way to dismiss a selection. The element bar (and the insert bar) now has a ×; Esc clears a selection with no tool on, in the app (`escClears`: not in a text field, dialog or menu) and in the frame.
+- **Bug found live and fixed in P4c (from P2b):** DeepSeek named a set `hero-em` and wrapped with `span` inside an `h1`. All four parsers (bridge, `variants.ts` ×2, `frame.ts`) now take inner hyphens (≤ 24 chars), the resolver takes `span` wrappers, and `cut` keeps the text's own spaces inline. The skill says "letters and digits" and "a `span` inside text or a heading".
+- **Live (DeepSeek v4.1 flash free, Stillnote page `4a392b27`, dark):** Detect → 2 pins; pin 2 → Polish Go → a `hero-em` set in 46 s; pins re-ran (the band pin left); cycler 1/3; Accept kept the span with `cq-hero-em`, a version saved. The 3 variants were only slightly different (a tiny inline target). Claude and Codex were not run.
+- Checks: typecheck clean, `design:check` 0 errors (48 old warnings), full suite green except `test/opencode-ask.test.ts` (9–10 fail, same on a clean HEAD: the user updated to OpenCode v2).
+- **Next:** P3 (style variety) in `../aiharness-wt/design-variety`; fix `opencode-ask` for OpenCode v2 (separate); then merge `track/design-live` into `m4` and run the Windows CI job.
+- Nits, not fixed: the cycler sits low when the set is inline (no variant rect for `display:contents` spans); the crushed-tracking detail joins `<br>` text ("thoughta place").
+- Live setup this session: port 9477, profile `ud` in session `6407e2d8`'s scratchpad; a thread's design folder is `ud/chats/<thread>/designs/<first 8 of thread id>/`; `fr.mjs` there evaluates in the frame over CDP. agent-browser jumps between the app and frame tabs: pick the "CubiQ - http" tab before each call.
 
 ## Session 4 status (read this first)
 - **P4 is half done, all uncommitted** in `../aiharness-wt/design-live` (`track/design-live`). Nothing from P4 is committed yet.
