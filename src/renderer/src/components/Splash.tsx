@@ -1,20 +1,48 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Splash as SplashKind } from "../../../shared/types";
+import { SPLASH_IDS, type Splash as SplashKind } from "../../../shared/types";
 import { useStore } from "../store";
 import agentClip from "../assets/splash/agent.webm";
 import agentPoster from "../assets/splash/agent.jpg";
 import voyageClip from "../assets/splash/voyage.webm";
 import voyagePoster from "../assets/splash/voyage.jpg";
+import marketClip from "../assets/splash/market.webm";
+import marketPoster from "../assets/splash/market.jpg";
+import broomClip from "../assets/splash/broom.webm";
+import broomPoster from "../assets/splash/broom.jpg";
+import islandClip from "../assets/splash/island.webm";
+import islandPoster from "../assets/splash/island.jpg";
+import sakuraClip from "../assets/splash/sakura.webm";
+import sakuraPoster from "../assets/splash/sakura.jpg";
+import neonClip from "../assets/splash/neon.webm";
+import neonPoster from "../assets/splash/neon.jpg";
+import dragonClip from "../assets/splash/dragon.webm";
+import dragonPoster from "../assets/splash/dragon.jpg";
+import coderClip from "../assets/splash/coder.webm";
+import coderPoster from "../assets/splash/coder.jpg";
 
 /** The launch clips: silent VP9 loops whose last second fades into the first, so they loop without a seam. */
 export const SPLASHES: { id: SplashKind; label: string }[] = [
   { id: "agent", label: "CubiQ agent" },
   { id: "voyage", label: "Night voyage" },
+  { id: "market", label: "Lantern street" },
+  { id: "broom", label: "Broom flight" },
+  { id: "island", label: "Sky island" },
+  { id: "sakura", label: "Sakura pond" },
+  { id: "neon", label: "Neon alley" },
+  { id: "dragon", label: "Dragon temple" },
+  { id: "coder", label: "Late-night code" },
   { id: "off", label: "Off" },
 ];
 const MEDIA: Record<Exclude<SplashKind, "off">, { clip: string; poster: string }> = {
   agent: { clip: agentClip, poster: agentPoster },
   voyage: { clip: voyageClip, poster: voyagePoster },
+  market: { clip: marketClip, poster: marketPoster },
+  broom: { clip: broomClip, poster: broomPoster },
+  island: { clip: islandClip, poster: islandPoster },
+  sakura: { clip: sakuraClip, poster: sakuraPoster },
+  neon: { clip: neonClip, poster: neonPoster },
+  dragon: { clip: dragonClip, poster: dragonPoster },
+  coder: { clip: coderClip, poster: coderPoster },
 };
 
 /** Shown at least this long, and until startup has loaded. */
@@ -26,7 +54,7 @@ const KEY = "cubiq.splash";
 function remembered(): SplashKind {
   try {
     const v = localStorage.getItem(KEY);
-    if (v === "agent" || v === "voyage" || v === "off") return v;
+    if (SPLASH_IDS.includes(v as SplashKind)) return v as SplashKind;
   } catch {
     // Storage blocked: fall back to the default.
   }

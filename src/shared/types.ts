@@ -63,8 +63,9 @@ export type PermissionMode = "ask" | "auto-edit" | "plan" | "full";
 export type Theme = "system" | "light" | "dark";
 /** How much the UI animates. `prefers-reduced-motion: reduce` always wins and means instant. */
 export type Motion = "instant" | "subtle" | "full";
-/** The live-wallpaper clip played at launch, or none. */
-export type Splash = "agent" | "voyage" | "off";
+/** The live-wallpaper clips played at launch, plus none. */
+export const SPLASH_IDS = ["agent", "voyage", "market", "broom", "island", "sakura", "neon", "dragon", "coder", "off"] as const;
+export type Splash = (typeof SPLASH_IDS)[number];
 /** Row spacing in the sidebar and transcript. */
 export type Density = "comfortable" | "compact";
 /** @deprecated a provider id; kept one release */

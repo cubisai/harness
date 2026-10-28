@@ -68,6 +68,8 @@ describe("SettingsStore", () => {
     expect(new SettingsStore(file, box).get().splash).toBe("voyage");
     s.update({ splash: "matrix" as never });
     expect(s.get().splash).toBe("voyage");
+    s.update({ splash: "coder" });
+    expect(s.get().splash).toBe("coder");
     s.update({ splash: "off" });
     expect(s.get().splash).toBe("off");
   });

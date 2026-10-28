@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { FORMER_SECTIONS, SETTINGS_GROUPS, SettingsGroupContent, richRepliesOf, richRepliesPatch } from "../src/renderer/src/components/SettingsSheet";
-import type { SettingsView } from "../src/shared/types";
+import { SPLASH_IDS, type SettingsView } from "../src/shared/types";
+import { SPLASHES } from "../src/renderer/src/components/Splash";
 import { DEFAULT_LAYOUT } from "../src/shared/layout";
 
 const settings: SettingsView = {
@@ -57,10 +58,11 @@ describe("Settings IA", () => {
     expect(html.experiments).toMatch(/class="on"[^>]*>Off</);
   });
 
-  it("offers both splash clips and Off, with the agent clip on when unset", () => {
-    expect(html.appearance).toMatch(/class="on"[^>]*>CubiQ agent</);
-    expect(html.appearance).toContain(">Night voyage<");
+  it("picks the splash clip from a list, with the agent clip shown when unset", () => {
+    expect(html.appearance).toContain('aria-label="Splash screen"');
+    expect(html.appearance).toContain(">CubiQ agent<");
     expect(html.appearance).toContain(">Preview<");
+    expect(SPLASHES.map((o) => o.id)).toEqual([...SPLASH_IDS]);
   });
 });
 
