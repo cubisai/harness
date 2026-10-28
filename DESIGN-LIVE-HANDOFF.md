@@ -1,4 +1,44 @@
-# Handoff: design live variants + style variety (2026-10-27, Mac, session 4 in progress: P4 lint checks written and wired, not committed; Detect and skill floor next)
+# Handoff: design live variants + style variety (2026-10-28, Mac, session 6 end: P0–P4 all done, plus 2 product-UI styles and ai-parts; merge into m4 next)
+
+## Session 6 status (read this first)
+- **Every phase is done** on `track/design-live` (worktree `../aiharness-wt/design-live`). **Not merged into `m4` yet.** The `m4` copy of this file is older; this one (on the branch) is the truth.
+- **P3 done** (`4f6f76b`):
+  - `design_set_direction` takes optional `alternates` (≤ 2, best first). `Service.setDesignDirection(threadId, direction, alternates = [])`, Auto only: the top style must fit the surface (deck ↔ slide styles, else an error listing the ones that fit); candidates = top + valid fitting alternates, de-duplicated; then keep those whose `modes` include the direction's mode, then drop `recentStyles`, each step only if something is left; `pickFromShortlist` (`systems.ts`: FNV-1a + murmur3 finalizer, seeded by the thread id, weights 0.5/0.3/0.2) picks. The reply says "CubiQ picked it from your shortlist…" when the pick isn't the top. `autoNote` asks for "plus up to 2 alternates".
+  - `mode` already existed (required) and the 30 styles already had `modes:` tags, so the plan's "optional mode" was only the pick filter.
+  - Guide (`resources/DESIGN-MODE.md`, 1297/1300 tokens): "dates only where content needs them (all agree)" replaces the "one today date" line.
+  - `design-prototype/SKILL.md` Before → after: a **Desktop scale** line (1499 words).
+  - New lint `organic-blob` (`slop-layout.ts`): an svg ≥ 240×160 whose first shape is a closed, curve-only, filled path covering ≥ 40% of the viewBox. Gate on 37 pages: 3 hits, all real blobs (P6 `218d51d8`, `b207b9be`, baseline `d8996b03`).
+  - The implementer (DeepSeek, `opencode run --standalone`) wrote the pick + tests; Claude added the hash finalizer (the first 400 sequential seeds skewed to 60% top).
+- **New styles + AI parts** (`6b40f8c`, user-asked: "Notion etc inspo", affectui.com, shadcn, two screenshots of dark product dashboards):
+  - `zinc-console`: dark by design (no light pair), Geist + Geist Mono, white primary, one blue, hairlines not shadows, 32px nav rows, mono figures, segmented range control.
+  - `clean-inset`: light with a dark pair, Public Sans + Literata (long reading only) + Geist Mono, a grey frame holding one white inset sheet (`--radius-xl`), pills, `--font-serif`.
+  - No brand names in shipped text. Style index 921 tokens; the test budget is now 940 (`design-direction.test.ts`).
+  - `resources/design-patterns/ai-parts.md`: our own anatomies for answer + sources, composer, working state, tool call card, approval, agent run, change review, usage meter, model picker, decision inbox. `setDesignDirection` copies it into `system/` on every surface but `deck` and names it in the reply ("If the product has an assistant or agent…"). Tested; **not yet used in a live run.**
+  - affectUI facts: GitHub `flohoeller/affectui`, MIT, but only ~18 free components; the AI ones (AI Answer, Chat Composer, Agent Run, Approval…) are paid Pro. React/shadcn, so not usable in our HTML pages anyway; we reinvent (no NOTICE).
+- **Live (user approved Sonnet and Codex this session):** 6 pages, fixed-system threads, prompts "AI gateway usage dashboard" (zinc) and "meeting notes workspace page" (inset), on DeepSeek free, Claude `sonnet`, Codex `gpt-6-luna`. All 6 clean and on-style. Nits: sidebar rows come out ~44px (the skill's target-min wins over the styles' denser rows); Codex's avatar stack overlaps; Sonnet drew 4xx/5xx filters as round pills. Shots: session `26facdbd`'s scratchpad (`ds-*`, `sonnet-*`, `codex-*.png`).
+- **Checks:** typecheck clean; `design:check` 0 errors (48 old warnings); full suite green except `test/opencode-ask.test.ts` (10, OpenCode v2, same on a clean HEAD). Under load (app + 6 runs) acp/agent-browser/db/xlsx tests time out; they pass alone (149/149).
+- **OpenCode v2 dispatch:** `--log-level` must be lowercase (`info`), and use `--standalone`: `perl -e 'alarm shift; exec @ARGV' 1500 opencode run --standalone --agent orchestrator -m opencode/deepseek-v4.1-flash-free --format json --print-logs --log-level info "$(cat brief)" < /dev/null > out.jsonl 2> log`. It finished a 5-file brief in ~4 min.
+- **Live setup:** app from the worktree on port 9477, profile `ud` in session `6407e2d8`'s scratchpad (project id `3eb62a7b…`). App window target = the `type: page` whose url starts with `http`; `window.unskilled.createThread(pid, agent, {kind:"design", designSystem:"style:<id>"})`, `updateThread(id, {model})`, `send({threadId, text})`. Models: claude `sonnet`, codex `gpt-6-luna`, opencode `opencode/deepseek-v4.1-flash-free`. Pages land in `ud/chats/<thread>/designs/<first 8>/index.html`.
+- **Next, in order:**
+  1. Merge `track/design-live` into `m4` (watch `resources/DESIGN-MODE.md`: the main checkout has another session's uncommitted blank-line edit at line 10; no overlap with line 24). Then the Windows CI job.
+  2. A live run that uses `ai-parts.md` (e.g. an agent-run screen in `clean-inset`), and re-check `zinc-console`'s 32px nav rows.
+  3. Optional: soften the 44px rule for sidebar nav rows (desktop pointer UI) in `design-prototype/SKILL.md`.
+  4. Separate task: fix `opencode-ask` tests for OpenCode v2.
+  5. Old nits: the cycler sits low on inline (`span`) sets; the crushed-tracking detail joins `<br>` text.
+
+
+## Session 5 status
+- **P4 done**, three commits on `track/design-live`:
+  - `09b617d` P4a: the 4 slop check groups, ids, `Lint allows:` exemptions. repeated-label now needs a container that is an `li`/`article` or a card ≤ 600×600 outside `table`/`nav`, two different tags, and treats `9:41` as a number. Gate: no check on > 30% of the 32 good pages (top: repeating-stripes 18%); repeated-label 34% → 0, still fires on a real card.
+  - `d752abf` P4b: prototype skill floor (icon sprite, no glyph icons, themed `::selection`/caret/scrollbars/focus, `tabular-nums`, mono only for code and data), 1467 → 1471 words.
+  - `a9d830c` P4c: **Detect** (eye) in `LiveBar`. IPC `design:detect` lints the saved page as the auto-lint does (contrast, targets, slop; `withoutAllowed`), `detectPins` groups per element (≤ 40 pins, ≤ 3 details, body/html apart). Bridge `set-findings` draws amber numbered squares (top-right, clickable, `data-cubiq-finding`); a click selects the element and posts `finding`; the canvas fills the prompt with `Fix: …` and sets Polish. A page reload re-runs it quietly; leaving the page ends it.
+- **User report fixed in P4c:** no way to dismiss a selection. The element bar (and the insert bar) now has a ×; Esc clears a selection with no tool on, in the app (`escClears`: not in a text field, dialog or menu) and in the frame.
+- **Bug found live and fixed in P4c (from P2b):** DeepSeek named a set `hero-em` and wrapped with `span` inside an `h1`. All four parsers (bridge, `variants.ts` ×2, `frame.ts`) now take inner hyphens (≤ 24 chars), the resolver takes `span` wrappers, and `cut` keeps the text's own spaces inline. The skill says "letters and digits" and "a `span` inside text or a heading".
+- **Live (DeepSeek v4.1 flash free, Stillnote page `4a392b27`, dark):** Detect → 2 pins; pin 2 → Polish Go → a `hero-em` set in 46 s; pins re-ran (the band pin left); cycler 1/3; Accept kept the span with `cq-hero-em`, a version saved. The 3 variants were only slightly different (a tiny inline target). Claude and Codex were not run.
+- Checks: typecheck clean, `design:check` 0 errors (48 old warnings), full suite green except `test/opencode-ask.test.ts` (9–10 fail, same on a clean HEAD: the user updated to OpenCode v2).
+- **Next:** P3 (style variety) in `../aiharness-wt/design-variety`; fix `opencode-ask` for OpenCode v2 (separate); then merge `track/design-live` into `m4` and run the Windows CI job.
+- Nits, not fixed: the cycler sits low when the set is inline (no variant rect for `display:contents` spans); the crushed-tracking detail joins `<br>` text ("thoughta place").
+- Live setup this session: port 9477, profile `ud` in session `6407e2d8`'s scratchpad; a thread's design folder is `ud/chats/<thread>/designs/<first 8 of thread id>/`; `fr.mjs` there evaluates in the frame over CDP. agent-browser jumps between the app and frame tabs: pick the "CubiQ - http" tab before each call.
 
 ## Session 4 status (read this first)
 - **P4 is half done, all uncommitted** in `../aiharness-wt/design-live` (`track/design-live`). Nothing from P4 is committed yet.
@@ -159,8 +199,8 @@ Design threads only.
 | P2a | Element bar + 4×3 action palette + in-frame marks and notes (page coordinates) + Go message | **done** (`9e30964`) |
 | P2b | `data-cubiq-variant="S-n"` sets in place, bridge detection, cycler, Accept/× in the main process, malformed-set recovery | **done** (`a34d4ae`) |
 | P2c | Insert (`+`): variants at a gap | **done** (`81f8b13`) |
-| P3 | Style variety (its own plan) + optional `mode` on `design_set_direction` | todo, parallel from P1 |
-| P4 | ~35 new slop checks, style exemptions, noise gate, skill floor lines, Detect (eye) overlay | todo |
+| P3 | Style variety (its own plan) + optional `mode` on `design_set_direction` | **done** (`4f6f76b`); + 2 styles and ai-parts (`6b40f8c`) |
+| P4 | ~35 new slop checks, style exemptions, noise gate, skill floor lines, Detect (eye) overlay | **done** (`09b617d`, `d752abf`, `a9d830c`) |
 
 ## Where the work goes
 - No code yet. Branch **`track/design-live`** off `m4` (`b9a3ee3`), in its own worktree `../aiharness-wt/design-live` (created).
