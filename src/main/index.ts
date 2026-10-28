@@ -563,7 +563,7 @@ async function main(): Promise<void> {
           evaluate: (url, width, height, script) => shooter.evaluate(url, width, height, script),
           lintScript: designLintJs,
           saveCritique: (id, markdown) => service.saveCritique(id, markdown),
-          setDirection: (id, direction) => service.setDesignDirection(id, direction),
+          setDirection: (id, direction, alternates) => service.setDesignDirection(id, direction, alternates),
           styleIndex: () => styleIndex(service.designStyles()),
         },
         threadId,

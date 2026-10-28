@@ -21,7 +21,7 @@ Before the first page, write `{dir}/brief.md` (keep it under 300 words), then bu
 - **Direction**: three adjectives and one sentence of mood ("a dark room lit by one warm lamp"). Pick the ground from the concept: warm paper only for paper or print.
 - **Tokens**: the style's colours by role, fonts with sizes for display/heading/body/label, radius, spacing, from `system/`.
 - **Screens**: each screen and its sections in order, each section's anatomy from `patterns.md`.
-- **Content**: the product name, real people, places, numbers with units, one "today" date every screen agrees with, the exact button labels.
+- **Content**: the product name, real people, places, numbers with units, dates only where content needs them (all agree), the exact button labels.
 - **States**: which hover, empty, loading or error states you draw.
 - **Avoid**: three things this design will not do.
 

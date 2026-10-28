@@ -47,7 +47,7 @@ import { addComment, deleteComment, loadComments, saveComments, updateComment } 
 import { applyStyleEdit, applyTextEdit } from "./design/textedit";
 import { keepTweaks } from "./design/tweaks";
 import { resolveVariantSet } from "./design/variants";
-import { forkSystem, listDesignStyles, listDesignSystems, materializeSystem, resolveDesignSystem, type DesignStyleInfo, type DesignSystemInfo } from "./design/systems";
+import { forkSystem, listDesignStyles, listDesignSystems, materializeSystem, pickFromShortlist, resolveDesignSystem, type DesignStyleInfo, type DesignSystemInfo } from "./design/systems";
 import { AUTO_SYSTEM, isAuto, modeLabel, STYLE_PREFIX, type DesignDirection } from "../shared/direction";
 import { DESIGN_DIRECTION_TOOL } from "./design/tools";
 import { AUTO_LINT_WAIT_MS, autoFixPrompt, autoLintNote, changedPages, type PageLint } from "./design/autolint";
@@ -1543,15 +1543,17 @@ export class Service {
   /**
    * Record the direction an Auto design thread's agent chose and put its style in `<design folder>/system/` right
    * away, so the agent can read it in the same turn. Returns the tool's reply. A thread on a fixed system keeps it:
-   * only surface, mode and tier are recorded then.
+   * only surface, mode and tier are recorded then. `alternates` (up to 2, best first) let Auto pick a style from a
+   * shortlist instead of always taking the top one.
    */
-  setDesignDirection(threadId: string, direction: DesignDirection): string {
+  setDesignDirection(threadId: string, direction: DesignDirection, alternates: string[] = []): string {
     const thread = this.store.getThread(threadId);
     if (thread.kind !== "design") throw new Error("Only a design thread has a direction.");
     const list = this.allSystems(thread.projectId);
     const hasProject = list.some((s) => s.id === "project");
     const auto = isAuto(thread);
     let style = direction.style.trim();
+    let shortlisted = false;
     if (auto) {
       if (hasProject) style = "project";
       else {
@@ -1560,6 +1562,30 @@ export class Service {
           const names = this.designStyles().map((s) => s.id.slice(STYLE_PREFIX.length));
           throw new Error(`Unknown style "${direction.style}". Pick one of: ${names.join(", ")}.`);
         }
+        const styles = this.designStyles();
+        // Slides take deck styles and everything else takes the rest; the top pick has to fit before we build.
+        const fits = (s: DesignStyleInfo): boolean => (direction.surface === "deck") === (s.platform === "deck");
+        const top = styles.find((s) => s.id === style);
+        if (top && !fits(top)) {
+          const names = styles.filter(fits).map((s) => s.id.slice(STYLE_PREFIX.length));
+          const what = direction.surface === "deck" ? "not a slide style" : "made for slides";
+          throw new Error(`Style "${style.slice(STYLE_PREFIX.length)}" is ${what}; this surface is ${direction.surface}. Pick one of: ${names.join(", ")}.`);
+        }
+        // The top pick then its runners-up: trimmed, prefixed, and kept only when they exist and fit this surface.
+        let picks: string[] = [];
+        for (const raw of [style, ...alternates.slice(0, 2)]) {
+          const id = raw.trim().startsWith(STYLE_PREFIX) ? raw.trim() : `${STYLE_PREFIX}${raw.trim()}`;
+          if (picks.includes(id) || !styles.some((s) => s.id === id && fits(s))) continue;
+          picks.push(id);
+        }
+        const withMode = picks.filter((id) => styles.find((s) => s.id === id)?.modes.includes(direction.mode));
+        if (withMode.length) picks = withMode;
+        const recent = this.recentStyles(thread);
+        const fresh = picks.filter((id) => !recent.includes(id.slice(STYLE_PREFIX.length)));
+        if (fresh.length) picks = fresh;
+        const picked = pickFromShortlist(picks, threadId);
+        shortlisted = picked !== style;
+        style = picked;
       }
     }
     const saved = this.store.setDesignDirection(threadId, { ...direction, style: auto ? style : (thread.designSystem ?? "default") });
@@ -1600,8 +1626,11 @@ export class Service {
     }
     const folder = designOf(saved);
     const head = `Direction: ${direction.surface}, ${modeLabel(direction.mode)}, tier ${tier}.`;
+    const pickedNote = shortlisted
+      ? " (CubiQ picked it from your shortlist so designs don't all look alike: build in it)"
+      : " (the style you picked)";
     const where = system
-      ? ` \`${folder}/system/\` now holds ${system.name}${auto && !hasProject ? " (the style you picked)" : ""}: read its DESIGN.md before you build, link \`system/tokens.css\` and use its custom properties${system.fontFiles?.length ? "; it declares its fonts from `system/fonts/`" : ""}.`
+      ? ` \`${folder}/system/\` now holds ${system.name}${auto && !hasProject ? pickedNote : ""}: read its DESIGN.md before you build, link \`system/tokens.css\` and use its custom properties${system.fontFiles?.length ? "; it declares its fonts from `system/fonts/`" : ""}.`
       : "";
     return `${head}${where}${patterns ? ` \`${folder}/system/patterns.md\` has the rules and anatomies for a ${direction.surface}: read it, then write \`${folder}/brief.md\` before the first page.` : ""}${icons ? ` \`${folder}/system/icons.svg\` has line icons (ids listed at its top): copy the symbols a page uses into the page instead of drawing icons or using emoji.` : ""}\n${tierNote(tier)}`;
   }
@@ -1725,7 +1754,7 @@ export class Service {
     }
     const recent = this.recentStyles(thread);
     const avoid = recent.length ? ` Recently used in this project: ${recent.join(", ")}; pick a different style unless the brief asks for one of them.` : "";
-    return `\n\n(CubiQ: this design thread is on Auto. Before you build, call ${DESIGN_DIRECTION_TOOL} once with the surface, mode, tier and the style that fits this brief.${avoid})`;
+    return `\n\n(CubiQ: this design thread is on Auto. Before you build, call ${DESIGN_DIRECTION_TOOL} once with the surface, mode, tier and the style that fits this brief, plus up to 2 alternates.${avoid})`;
   }
 
   /**

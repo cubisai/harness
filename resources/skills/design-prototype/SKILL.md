@@ -38,6 +38,7 @@ What the defaults produce, and what a designed page puts there instead:
 - **Features**: three cards of icon + heading + text → the product itself in HTML (a board with real tickets: "FLW-389 Add Stripe webhook retry", "Synced with main · 2m ago") and two or three callouts pointing at it.
 - **Dashboard**: four equal KPI cards with icons, delta pills and sparklines → the one number that needs action, large, with its unit and time range; the rest as a ranked table with right-aligned tabular figures.
 - **Meta lines**: "WALLET // ACTIVE_SYNC 0x0000" → "Last synced 09:41 · 3 devices". Every meta line is a fact the user would want.
+- **Desktop scale**: at 1440, a phone-width column or a menu box filling a third of the screen → the hero and main content at `--text-display` across `--content-max`.
 - **Copy**: "Unlock seamless collaboration" → what it does, for whom, in the user's words ("Assign a ticket from the pull request").
 
 A worked `.direction.md` for "a landing page for a coffee subscription":

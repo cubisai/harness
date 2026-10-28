@@ -176,6 +176,13 @@ describe("layoutSlopFindings", () => {
     expect(layoutSlopFindings(snap(fade))).toEqual([]);
   });
 
+  it("flags at most two illustrations set on an organic blob", () => {
+    const blob = (selector: string) => node({ selector, tag: "svg", width: 600, height: 600, organicBlob: true });
+    expect(layoutSlopFindings(snap([blob(".a")])).map((f) => f.id)).toEqual(["organic-blob"]);
+    expect(layoutSlopFindings(snap([blob(".a"), blob(".b"), blob(".c")]))).toHaveLength(2);
+    expect(layoutSlopFindings(snap([node({ tag: "svg", width: 600, height: 600 })]))).toEqual([]);
+  });
+
   it("does not flag a five-point polygon or a small shape", () => {
     const five = [
       node({

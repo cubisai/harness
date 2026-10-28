@@ -30,6 +30,8 @@ export interface LayoutSlopElement {
   clipPath: string;
   /** Computed mask-image, including the -webkit- fallback. */
   maskImage: string;
+  /** An svg whose first shape is a large closed curve-only path: a hand-drawn blob backdrop. */
+  organicBlob?: boolean;
   /** The image src attribute, empty when absent. */
   src?: string;
   naturalWidth?: number;
@@ -272,6 +274,23 @@ export function collectLayoutSlop(selectorFor: (el: Element) => string): LayoutS
         height >= 150 &&
         (clipPath.indexOf("polygon(") !== -1 || maskImage.indexOf("url(") !== -1);
 
+      // Organic blob: an illustration whose first shape is a big closed path of curves only, drawn as its backdrop.
+      let organicBlob: boolean | undefined;
+      if (tag === "svg" && width >= 240 && height >= 160) {
+        let first: Element | null = el.firstElementChild;
+        while (first && /^(defs|title|desc|style|symbol|g)$/.test(first.tagName.toLowerCase())) {
+          first = first.tagName.toLowerCase() === "g" ? first.firstElementChild : first.nextElementSibling;
+        }
+        const d = first && first.tagName.toLowerCase() === "path" ? (first.getAttribute("d") || "").trim() : "";
+        const curvesOnly = /[zZ]$/.test(d) && !/[LlHhVvAa]/.test(d) && /[CcSsQqTt]/.test(d);
+        if (first && curvesOnly && (d.match(/-?\d*\.?\d+/g) || []).length >= 20 && getComputedStyle(first).fill !== "none") {
+          const box = (first as SVGGraphicsElement).getBBox();
+          const view = (el as SVGSVGElement).viewBox.baseVal;
+          const area = view && view.width > 0 && view.height > 0 ? view.width * view.height : width * height;
+          organicBlob = box.width * box.height >= area * 0.4;
+        }
+      }
+
       // Images: load state, and whether an opaque layer sits over the centre.
       let src: string | undefined;
       let naturalWidth: number | undefined;
@@ -360,6 +379,7 @@ export function collectLayoutSlop(selectorFor: (el: Element) => string): LayoutS
         textEdge ||
         textInsetPx !== undefined ||
         jaggedCandidate ||
+        organicBlob === true ||
         (tag === "img" && (broken || imageWide)) ||
         edgeFlushScroller;
       if (!keep) continue;
@@ -381,6 +401,7 @@ export function collectLayoutSlop(selectorFor: (el: Element) => string): LayoutS
         textInsetPx,
         clipPath,
         maskImage,
+        organicBlob,
         src,
         naturalWidth,
         complete,
@@ -519,6 +540,15 @@ export function layoutSlopFindings(s: LayoutSlopSnapshot): LintFinding[] {
     if (polygonPoints(node.clipPath) < 6 && !masked) continue;
     jagged += 1;
     push(node.selector, "jagged-mask", "jagged clip-path on a large image or shape: use a plain rectangle or a real radius");
+  }
+
+  // Organic blob: an illustration set on a hand-drawn blob.
+  let blobs = 0;
+  for (const node of s.elements) {
+    if (blobs >= 2) break;
+    if (!node.organicBlob) continue;
+    blobs += 1;
+    push(node.selector, "organic-blob", "illustration set on a hand-drawn blob: drop the blob or give the shape a real job");
   }
 
   // Image overlay: an opaque layer hiding most of an image.

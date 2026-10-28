@@ -212,6 +212,40 @@ export function styleIndex(styles: DesignStyleInfo[]): string {
     .join("\n");
 }
 
+/** FNV-1a 32-bit hash of `text` with murmur3's finalizer (FNV alone leaves the high bits poorly mixed), unsigned. */
+function fnv1a(text: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  hash ^= hash >>> 16;
+  hash = Math.imul(hash, 0x85ebca6b);
+  hash ^= hash >>> 13;
+  hash = Math.imul(hash, 0xc2b2ae35);
+  hash ^= hash >>> 16;
+  return hash >>> 0;
+}
+
+/** The weight each rank of a shortlist gets before renormalizing over what is left. */
+const SHORTLIST_WEIGHTS = [0.5, 0.3, 0.2];
+
+/**
+ * One id from a ranked shortlist (best first), weighted 0.5 / 0.3 / 0.2 by rank and renormalized over what is left,
+ * seeded by `seed` (the thread id) so the same thread and list always get the same answer.
+ */
+export function pickFromShortlist(ids: string[], seed: string): string {
+  const list = ids.slice(0, 3);
+  const r = fnv1a(seed) / 2 ** 32;
+  const total = list.reduce((sum, _, i) => sum + (SHORTLIST_WEIGHTS[i] ?? 0), 0);
+  let cumulative = 0;
+  for (let i = 0; i < list.length; i++) {
+    cumulative += (SHORTLIST_WEIGHTS[i] ?? 0) / total;
+    if (cumulative > r) return list[i]!;
+  }
+  return list[list.length - 1]!;
+}
+
 /** The entry with `id`, else the project's own DESIGN.md, else null. */
 export function resolveDesignSystem(list: DesignSystemInfo[], id: string | null | undefined): DesignSystemInfo | null {
   if (id) {

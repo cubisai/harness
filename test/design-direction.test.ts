@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentDriver, TurnInput } from "../src/main/agents/types";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
 import { Store } from "../src/main/db";
-import { listDesignStyles, materializeSystem, styleIndex } from "../src/main/design/systems";
+import { listDesignStyles, materializeSystem, pickFromShortlist, styleIndex } from "../src/main/design/systems";
 import { Service } from "../src/main/service";
 import { readDirection, SURFACES } from "../src/shared/direction";
 import { tierOf } from "../src/shared/tiers";
@@ -286,3 +286,128 @@ describe("readDirection", () => {
     expect(readDirection(null)).toBeNull();
   });
 });
+
+/** A style library built for shortlists: four web styles, an operate one, and a slide one. */
+function shortlistSetup() {
+  const store = new Store(join(tempDir(), "t.db"));
+  closeAfter(() => store.close());
+  const driver = fakeDriver();
+  const service = new Service(store, () => catalog(), [driver], () => {});
+  const root = tempDir();
+  const stylesDir = join(root, "styles");
+  const fontsDir = join(root, "fonts");
+  mkdirSync(fontsDir, { recursive: true });
+  const style = (folder: string, modes: string, platform: string) => {
+    mkdirSync(join(stylesDir, folder), { recursive: true });
+    writeFileSync(join(stylesDir, folder, "index.md"), `---\ntype: design-style\nname: ${folder} name\ndescription: ${folder} look\ntags: test\nmodes: ${modes}\nplatform: ${platform}\n---\n`);
+    writeFileSync(join(stylesDir, folder, "DESIGN.md"), `# ${folder}\n`);
+    writeFileSync(join(stylesDir, folder, "tokens.css"), `:root { --color-bg: #fff; }\n`);
+  };
+  for (const folder of ["alpha", "beta", "gamma", "delta"]) style(folder, "persuade, experience", "web");
+  style("quiet", "operate", "web");
+  style("slides", "persuade, read", "deck");
+  service.setDesignStylesDir(stylesDir, fontsDir);
+  const project = store.addProject(tempDir());
+  return { store, service, driver, project, stylesDir, fontsDir };
+}
+
+describe("style shortlist", () => {
+  it("picks the same id from the same list and seed, and always the only id", () => {
+    const first = pickFromShortlist(["a", "b", "c"], "thread-1");
+    expect(pickFromShortlist(["a", "b", "c"], "thread-1")).toBe(first);
+    expect(["a", "b", "c"]).toContain(first);
+    expect(pickFromShortlist(["only"], "thread-1")).toBe("only");
+  });
+
+  it("favours the top pick at about half and still reaches the last one", () => {
+    const counts = new Map<string, number>();
+    for (let i = 0; i < 400; i++) {
+      const id = pickFromShortlist(["a", "b", "c"], `t${i}`);
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    expect((counts.get("a") ?? 0) / 400).toBeGreaterThan(0.4);
+    expect((counts.get("a") ?? 0) / 400).toBeLessThan(0.6);
+    expect(counts.get("c") ?? 0).toBeGreaterThan(0);
+  });
+
+  it("stores the given style unchanged when there are no alternates", () => {
+    const { service, store, project } = shortlistSetup();
+    const thread = service.createThread(project.id, undefined, "design");
+    service.setDesignDirection(thread.id, { surface: "page", mode: "persuade", tier: "working", style: "alpha" });
+    expect(store.getThread(thread.id).designDirection?.style).toBe("style:alpha");
+  });
+
+  it("picks the same shortlist style each time on the same thread", () => {
+    const { service, store, project } = shortlistSetup();
+    const thread = service.createThread(project.id, undefined, "design");
+    service.setDesignDirection(thread.id, { surface: "page", mode: "persuade", tier: "working", style: "alpha" }, ["beta", "gamma"]);
+    const once = store.getThread(thread.id).designDirection?.style;
+    service.setDesignDirection(thread.id, { surface: "page", mode: "persuade", tier: "working", style: "alpha" }, ["beta", "gamma"]);
+    expect(store.getThread(thread.id).designDirection?.style).toBe(once);
+    expect(["style:alpha", "style:beta", "style:gamma"]).toContain(once);
+  });
+
+  it("varies the pick across parallel threads without leaving the shortlist", () => {
+    const { service, store, project } = shortlistSetup();
+    const stored: string[] = [];
+    for (let i = 0; i < 30; i++) {
+      const thread = service.createThread(project.id, undefined, "design");
+      service.setDesignDirection(thread.id, { surface: "page", mode: "persuade", tier: "working", style: "alpha" }, ["beta", "gamma"]);
+      stored.push(store.getThread(thread.id).designDirection?.style ?? "");
+    }
+    expect(new Set(stored).size).toBeGreaterThanOrEqual(2);
+    for (const style of stored) expect(["style:alpha", "style:beta", "style:gamma"]).toContain(style);
+  });
+
+  it("says so when CubiQ picked off the shortlist, and says the style was the agent's without alternates", () => {
+    const { service, store, project } = shortlistSetup();
+    let shortlistReply = "";
+    for (let i = 0; i < 40 && !shortlistReply; i++) {
+      const thread = service.createThread(project.id, undefined, "design");
+      const reply = service.setDesignDirection(thread.id, { surface: "page", mode: "persuade", tier: "working", style: "alpha" }, ["beta", "gamma"]);
+      if (store.getThread(thread.id).designDirection?.style !== "style:alpha") shortlistReply = reply;
+    }
+    expect(shortlistReply).toContain("CubiQ picked it from your shortlist");
+    const plain = service.createThread(project.id, undefined, "design");
+    const reply = service.setDesignDirection(plain.id, { surface: "page", mode: "persuade", tier: "working", style: "alpha" });
+    expect(reply).toContain("(the style you picked)");
+  });
+
+  it("ignores alternates that don't exist or don't fit the surface", () => {
+    const { service, store, project } = shortlistSetup();
+    const thread = service.createThread(project.id, undefined, "design");
+    expect(() =>
+      service.setDesignDirection(thread.id, { surface: "page", mode: "persuade", tier: "working", style: "alpha" }, ["nope", "slides"]),
+    ).not.toThrow();
+    expect(store.getThread(thread.id).designDirection?.style).toBe("style:alpha");
+  });
+
+  it("keeps only styles whose modes include the direction's mode", () => {
+    const { service, store, project } = shortlistSetup();
+    const thread = service.createThread(project.id, undefined, "design");
+    service.setDesignDirection(thread.id, { surface: "page", mode: "operate", tier: "working", style: "alpha" }, ["quiet"]);
+    expect(store.getThread(thread.id).designDirection?.style).toBe("style:quiet");
+  });
+
+  it("drops styles other threads used, and still picks when every candidate is recent", () => {
+    const { service, store, project } = shortlistSetup();
+    const a = service.createThread(project.id, undefined, "design");
+    service.setDesignDirection(a.id, { surface: "page", mode: "persuade", tier: "working", style: "alpha" });
+    const b = service.createThread(project.id, undefined, "design");
+    service.setDesignDirection(b.id, { surface: "page", mode: "persuade", tier: "working", style: "alpha" }, ["beta"]);
+    expect(store.getThread(b.id).designDirection?.style).toBe("style:beta");
+    const c = service.createThread(project.id, undefined, "design");
+    service.setDesignDirection(c.id, { surface: "page", mode: "persuade", tier: "working", style: "alpha" });
+    expect(store.getThread(c.id).designDirection?.style).toBe("style:alpha");
+  });
+
+  it("refuses a slide style on a page and a web style on a deck", () => {
+    const { service, project } = shortlistSetup();
+    const thread = service.createThread(project.id, undefined, "design");
+    expect(() => service.setDesignDirection(thread.id, { surface: "page", mode: "read", tier: "working", style: "slides" })).toThrow("made for slides");
+    expect(() => service.setDesignDirection(thread.id, { surface: "deck", mode: "read", tier: "working", style: "alpha" })).toThrow(
+      'Style "alpha" is not a slide style; this surface is deck. Pick one of: slides.',
+    );
+  });
+});
+
