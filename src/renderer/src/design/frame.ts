@@ -80,7 +80,8 @@ export type BridgeMessage =
   | { type: "variant-rect"; set: string; rect: FrameRect | null }
   | { type: "gap"; gap: InsertGap | null }
   | { type: "gap-rect"; rect: FrameRect }
-  | { type: "insert-cancel" };
+  | { type: "insert-cancel" }
+  | { type: "finding"; n: number };
 
 /** A gap picked in Insert mode: before or after the anchor element, and the anchor's size (a hint for what fits there). */
 export type InsertGap = { position: "before" | "after"; anchor: SelectedElement; size: { width: number; height: number } };
@@ -131,6 +132,7 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
   if (d.source !== "cubiq-design") return null;
   if (d.type === "pick-cancel") return { type: "pick-cancel" };
   if (d.type === "insert-cancel") return { type: "insert-cancel" };
+  if (d.type === "finding") return typeof d.n === "number" && Number.isInteger(d.n) && d.n >= 1 && d.n <= 99 ? { type: "finding", n: d.n } : null;
   if (d.type === "gap") {
     if (d.gap === null) return { type: "gap", gap: null };
     const g = d.gap as Record<string, unknown> | undefined;
@@ -196,7 +198,7 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
       if (!raw || typeof raw !== "object") return null;
       const v = raw as Record<string, unknown>;
       const int = (x: unknown, max: number): x is number => typeof x === "number" && Number.isInteger(x) && x >= 0 && x <= max;
-      if (!str(v.set, 16) || !/^[a-z][a-z0-9]{0,15}$/.test(v.set) || !int(v.count, 99) || !int(v.shown, 99)) return null;
+      if (!str(v.set, 24) || !/^[a-z](?:[a-z0-9-]{0,22}[a-z0-9])?$/.test(v.set) || !int(v.count, 99) || !int(v.shown, 99)) return null;
       if (v.malformed !== null && !(str(v.malformed, 120) && v.malformed)) return null;
       sets.push({ set: v.set, count: v.count, shown: v.shown, malformed: v.malformed as string | null });
     }

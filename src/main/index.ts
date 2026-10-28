@@ -17,7 +17,7 @@ import { readTarget } from "../shared/comments";
 import { bridgeScript } from "./design/bridge";
 import { buildDesignExport, exportFileName, pageTitleSource, type DesignExportDeps } from "./design/export";
 import { lintScript, type LintResult } from "./design/lint";
-import { lintWidth, styleAllows, withoutAllowed, type PageLint } from "./design/autolint";
+import { detectPins, lintWidth, styleAllows, withoutAllowed, type PageLint } from "./design/autolint";
 import { styleIndex } from "./design/systems";
 import { electronShotWindow } from "./design/shot-window";
 import { Shooter } from "./design/shooter";
@@ -1191,6 +1191,13 @@ async function main(): Promise<void> {
     } catch {
       return "";
     }
+  });
+  // Detect: the saved page linted off screen, as the auto-lint does, for the canvas's clickable pins.
+  ipcMain.handle("design:detect", async (_e, threadId: string, rel: unknown) => {
+    const root = service.designRoot(threadId);
+    if (!root || typeof rel !== "string" || !/\.html?$/i.test(rel) || !resolveInside(root, rel)) throw new Error("Not a design page.");
+    const raw = await shooter.evaluate(designUrl(threadId, rel), lintWidth(root, rel), 900, designLintJs);
+    return detectPins(withoutAllowed(JSON.parse(String(raw)) as LintResult, styleAllows(root)));
   });
   ipcMain.handle("design:variant-resolve", (_e, threadId: string, rel: string, set: unknown, keep: unknown) => {
     if (typeof rel !== "string" || typeof set !== "string" || !(keep === null || (Number.isInteger(keep) && (keep as number) >= 0 && (keep as number) <= 9))) throw new Error("Bad variant choice.");

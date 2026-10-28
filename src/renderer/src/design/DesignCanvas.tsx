@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { Download, FolderOpen, Grid3x3, Hammer, LayoutGrid, Palette, PanelLeft, PanelRight, Smartphone, Workflow } from "lucide-react";
-import type { DesignEntry, DesignExportFormat } from "../../../shared/types";
+import type { DesignDetect, DesignEntry, DesignExportFormat } from "../../../shared/types";
 import { api } from "../api";
 import { fileManagerName } from "../components/OpenIn";
 import { Select } from "../components/Select";
@@ -25,7 +25,7 @@ import { boardSections, flowOrder, frameLabel, type BoardPage } from "./board-la
 import { Board } from "./Board";
 import { Present } from "./Present";
 import { InspectorPanel, type InspectorTab } from "./InspectorPanel";
-import { LiveBar, escapeStep, isPickKey, steerMessage } from "./LiveBar";
+import { LiveBar, escClears, escapeStep, isPickKey, steerMessage } from "./LiveBar";
 
 const ipcError = (err: unknown): string => (err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err));
 
@@ -191,6 +191,9 @@ export default function DesignCanvas({
   // Page thumbnails in the rail: one PNG per page, rendered by the main process (empty until it can).
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const pinsRef = useRef<{ n: number; target: DesignComment["target"] }[]>([]);
+  // Detect: the open page's lint findings as clickable pins (null = off). A reload of the page runs it again.
+  const [detect, setDetect] = useState<DesignDetect | "busy" | null>(null);
+  const detectRef = useRef<{ run: number; rel: string | null; result: DesignDetect | null }>({ run: 0, rel: null, result: null });
   const setSelection = useStore((s) => s.setDesignSelection);
   const selected = selection?.elements ?? [];
   const selectedKey = selectionKey(selected);
@@ -248,6 +251,8 @@ export default function DesignCanvas({
     setRepick(null);
     setElementPrompt("");
     setActionState(lastAction.get(threadId) ?? "freeform");
+    detectRef.current = { run: detectRef.current.run + 1, rel: null, result: null };
+    setDetect(null);
     setGenerating(false);
     setVariantSets([]);
     setVariantRect(null);
@@ -384,6 +389,7 @@ export default function DesignCanvas({
         if (picking) post({ type: "pick", on: true, edit: features.textEdit });
         if (inserting) post({ type: "insert", on: true });
         if (pinsRef.current.length) post({ type: "set-pins", pins: pinsRef.current });
+        if (!to && entry && detectRef.current.rel === entry.rel) runDetectRef.current(entry.rel, true);
         if (deviceRef.current) post({ type: "device-chrome", on: true });
         // A reload (the agent rewrote the page): find the selection again; anything gone is dropped and reported.
         const sel = useStore.getState().designSelection[threadId];
@@ -438,6 +444,14 @@ export default function DesignCanvas({
         setGapRect(msg.rect);
       } else if (msg.type === "insert-cancel") {
         setInserting(false);
+      } else if (msg.type === "finding") {
+        // A Detect pin picked its element: the element bar opens with the finding as the prompt, set to Polish.
+        const pin = detectRef.current.result?.pins.find((p) => p.n === msg.n);
+        if (!pin) return;
+        stopInsertingRef.current();
+        setElementPrompt(`Fix: ${pin.details.join("; ")}`);
+        lastAction.set(threadId, "polish");
+        setActionState("polish");
       } else if (msg.type === "edit-refused") {
         setNotice({ text: msg.reason });
       } else if (msg.type === "selection") {
@@ -520,6 +534,41 @@ export default function DesignCanvas({
     post(on ? { type: "pick", on, edit: features.textEdit } : { type: "pick", on });
   };
 
+  const stopDetect = () => {
+    detectRef.current = { run: detectRef.current.run + 1, rel: null, result: null };
+    setDetect(null);
+    post({ type: "set-findings", findings: [] });
+  };
+  // `quiet`: a re-run after a reload only moves the pins; the notices were said the first time.
+  const runDetect = (rel: string, quiet = false) => {
+    const run = detectRef.current.run + 1;
+    detectRef.current = { run, rel, result: detectRef.current.result };
+    setDetect("busy");
+    api()
+      .designDetect(threadId, rel)
+      .then((result) => {
+        if (detectRef.current.run !== run) return;
+        detectRef.current = { run, rel, result };
+        setDetect(result);
+        post({ type: "set-findings", findings: result.pins.map((p) => ({ n: p.n, selector: p.selector, detail: p.details.join("\n") })) });
+        if (quiet) return;
+        if (result.total === 0) setNotice({ text: "Detect found no issues on this page." });
+        else if (result.page.length) setNotice({ text: `Whole page: ${result.page.join("; ")}` });
+      })
+      .catch((err: unknown) => {
+        if (detectRef.current.run !== run) return;
+        detectRef.current = { run: run + 1, rel: null, result: null };
+        setDetect(null);
+        setNotice({ text: ipcError(err), error: true });
+      });
+  };
+  const toggleDetect = () => {
+    if (detect !== null) return stopDetect();
+    if (entry) runDetect(entry.rel);
+  };
+  const runDetectRef = useRef(runDetect);
+  runDetectRef.current = runDetect;
+
   // Insert and Pick take turns: turning one on ends the other (the bridge does the same on its side).
   const stopInserting = () => {
     if (!inserting) return;
@@ -528,6 +577,8 @@ export default function DesignCanvas({
     setGapRect(null);
     post({ type: "insert", on: false });
   };
+  const stopInsertingRef = useRef(stopInserting);
+  stopInsertingRef.current = stopInserting;
   const toggleInsert = () => {
     if (inserting) return stopInserting();
     if (picking) {
@@ -550,6 +601,20 @@ export default function DesignCanvas({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [inserting, gap, post]);
+
+  // Esc in the app with a selection but no tool on (a Detect pin, Layers or the crumbs picked it) clears it, unless a
+  // text field, dialog or menu has the key.
+  const hasSelection = selected.length > 0;
+  useEffect(() => {
+    if (picking || inserting || !hasSelection) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || !escClears(e.target)) return;
+      clearSelection();
+      setElementPrompt("");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [picking, inserting, hasSelection, threadId]);
 
   // Esc in the app (focus outside the frame) works like Esc in it: first it clears the selection, then it stops selecting.
   useEffect(() => {
@@ -846,6 +911,11 @@ export default function DesignCanvas({
 
   // The page tools work on one live page: elsewhere they say what to do first.
   const onPage = !!entry && !!src && version === 0 && !board && !comparing;
+  // Detect belongs to one live page: another page, the board, Compare or an old version ends it.
+  useEffect(() => {
+    const rel = detectRef.current.rel;
+    if (rel !== null && (!onPage || rel !== entry?.rel)) stopDetect();
+  }, [onPage, entry?.rel]);
   const why = (verb: string) => (board ? `Open a page to ${verb}` : comparing ? `Open one option to ${verb}` : version !== 0 ? `Back to the latest version to ${verb}` : null);
   const presentFrom = entry ? (board ? flowOrder(entry.pages)[0] : entry.rel) : undefined;
 
@@ -887,6 +957,9 @@ export default function DesignCanvas({
       inserting={inserting}
       insertWhy={why("insert")}
       onInsert={toggleInsert}
+      detect={detect === null || detect === "busy" ? detect : detect.pins.length}
+      detectWhy={why("detect")}
+      onDetect={toggleDetect}
       systemOpen={systemOpen}
       onSystem={toggleSystem}
       onSteer={steer}
@@ -1015,6 +1088,7 @@ export default function DesignCanvas({
         onComment={null}
         repick={null}
         onRepick={() => {}}
+        onClose={() => post({ type: "clear-gap" })}
       />
     ) : null;
 
@@ -1106,6 +1180,10 @@ export default function DesignCanvas({
       onRepick={(ok) => {
         setRepick(null);
         post({ type: "repick", ok });
+      }}
+      onClose={() => {
+        clearSelection();
+        setElementPrompt("");
       }}
     />
   ) : null;

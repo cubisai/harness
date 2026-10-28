@@ -29,6 +29,23 @@ describe("listVariantSets", () => {
     expect(listVariantSets(page("<p>No variants</p>"))).toEqual([]);
   });
 
+  it("takes a set name with inner hyphens (small models write them), and accepts and discards it", () => {
+    const named = set.replace(/"hero(-\d)?"/g, (_m, n: string | undefined) => `"hero-em${n ?? ""}"`);
+    expect(listVariantSets(page(named))).toEqual([{ set: "hero-em", count: 3, malformed: null }]);
+    const kept = resolveVariantSet(page(named), "hero-em", 1);
+    expect(kept).not.toContain("data-cubiq-variant");
+    expect(kept).toContain("@scope (.cq-hero-em) { :scope:is(.hero)");
+    expect(resolveVariantSet(page(named), "hero-em", null)).not.toContain("cq-hero-em");
+  });
+
+  it("takes span wrappers inside a heading", () => {
+    const inline = `<h1>Give it <span data-cubiq-variant="em-0" hidden><span class="m">a place</span></span><span data-cubiq-variant="em-1"><b class="m">a place</b></span><span data-cubiq-variant="em-2" hidden><i class="m">a place</i></span><span data-cubiq-variant="em-3" hidden><u class="m">a place</u></span>.</h1>`;
+    expect(listVariantSets(page(inline))).toEqual([{ set: "em", count: 3, malformed: null }]);
+    // No rules for the kept variant, so no class; the space before the set is the text's and stays.
+    expect(resolveVariantSet(page(inline), "em", 2)).toContain('<h1>Give it <i class="m">a place</i>.</h1>');
+    expect(resolveVariantSet(page(inline), "em", null)).toContain('<h1>Give it <span class="m">a place</span>.</h1>');
+  });
+
   it("names what's wrong with a malformed set", () => {
     expect(listVariantSets(page(set.replace(/<div data-cubiq-variant="hero-0" hidden>[\s\S]*?<\/div>\n/, "")))[0]!.malformed).toBe("the original (variant 0) is missing");
     expect(listVariantSets(page(set.replace("<h1>Two</h1><p>Sub</p></section>", "<h1>Two</h1></section><p>Loose</p>")))[0]!.malformed).toBe("variant 2 must hold exactly one element");

@@ -1,7 +1,7 @@
 import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { AUTO_LINT_MAX, autoFixPrompt, autoLintNote, changedPages, lintWidth, parseAllows, styleAllows, withoutAllowed, type PageLint } from "../src/main/design/autolint";
+import { AUTO_LINT_MAX, autoFixPrompt, autoLintNote, changedPages, detectPins, lintWidth, parseAllows, styleAllows, withoutAllowed, type PageLint } from "../src/main/design/autolint";
 import { LINT_MAX, type LintFinding, type LintResult } from "../src/main/design/lint";
 import { tempDir } from "./helpers";
 
@@ -140,5 +140,37 @@ describe("style exemptions", () => {
     mkdirSync(join(root, "system"));
     writeFileSync(join(root, "system", "DESIGN.md"), md);
     expect(styleAllows(root).has("hard-offset-shadow")).toBe(true);
+  });
+});
+
+describe("detectPins", () => {
+  const result = (findings: LintResult["findings"]): LintResult => ({ scanned: 10, skipped: [], findings });
+
+  it("groups findings per element, worst rule first, and keeps body ones apart", () => {
+    const out = detectPins(
+      result([
+        { rule: "slop", id: "eyebrow", selector: ".hero p", detail: "eyebrow label" },
+        { rule: "contrast", selector: ".hero p", detail: "3.1:1, needs 4.5:1" },
+        { rule: "targets", selector: "a.more", detail: "24×24px, needs 44×44" },
+        { rule: "slop", id: "em-dash-overuse", selector: "body", detail: "em dashes in 5 of 8 sentences" },
+        { rule: "spacing", selector: ".x", detail: "padding off grid" },
+        { rule: "color", selector: ".y", detail: "not a token" },
+      ]),
+    );
+    expect(out.pins).toEqual([
+      { n: 1, selector: ".hero p", details: ["3.1:1, needs 4.5:1", "eyebrow label"] },
+      { n: 2, selector: "a.more", details: ["24×24px, needs 44×44"] },
+    ]);
+    expect(out.page).toEqual(["em dashes in 5 of 8 sentences"]);
+    expect(out.total).toBe(4);
+  });
+
+  it("caps pins at 40 and details at 3, deduped", () => {
+    const many = Array.from({ length: 45 }, (_, i) => ({ rule: "contrast" as const, selector: `.c${i}`, detail: "low" }));
+    const same = Array.from({ length: 5 }, (_, i) => ({ rule: "slop" as const, selector: ".c0", detail: i < 2 ? "dup" : `d${i}` }));
+    const out = detectPins(result([...many, ...same]));
+    expect(out.pins).toHaveLength(40);
+    expect(out.pins[0]?.details).toEqual(["low", "dup", "d2"]);
+    expect(out.total).toBe(50);
   });
 });

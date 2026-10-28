@@ -8,7 +8,7 @@
 //   <div data-cubiq-variant="hero-3" hidden> … </div>
 
 /** A set's name: short, lowercase, so it can sit in a class name (`cq-hero`). */
-export const VARIANT_SET_RE = /^[a-z][a-z0-9]{0,15}$/;
+export const VARIANT_SET_RE = /^[a-z](?:[a-z0-9-]{0,22}[a-z0-9])?$/;
 /** The most variants one set may hold (always 3 today; a little room for a retry that writes one more). */
 export const MAX_VARIANTS = 6;
 
@@ -71,8 +71,9 @@ type Wrapper = { n: number; start: number; end: number; innerStart: number; inne
 function wrappers(html: string): Map<string, Wrapper[]> {
   const sets = new Map<string, Wrapper[]>();
   for (const t of tags(html)) {
-    if (t.closing || t.name !== "div") continue;
-    const m = /\bdata-cubiq-variant\s*=\s*["']([a-z][a-z0-9]{0,15})-(\d{1,2})["']/.exec(html.slice(t.start, t.end));
+    // A `span` wrapper sits inside text or a heading, where a `div` would be invalid.
+    if (t.closing || (t.name !== "div" && t.name !== "span")) continue;
+    const m = /\bdata-cubiq-variant\s*=\s*["']([a-z](?:[a-z0-9-]{0,22}[a-z0-9])?)-(\d{1,2})["']/.exec(html.slice(t.start, t.end));
     if (!m) continue;
     const close = closeOf(html, t);
     if (!close) continue;
@@ -195,6 +196,8 @@ function addClass(inner: string, cls: string): string {
 function cut(html: string, start: number, end: number): string {
   let s = start;
   while (s > 0 && (html[s - 1] === " " || html[s - 1] === "\t")) s--;
+  // Inside a line of text (a span set in a heading) the spaces belong to the text.
+  if (s > 0 && html[s - 1] !== "\n") s = start;
   let e = end;
   const tail = /^[ \t]*\r?\n/.exec(html.slice(e));
   if (tail && (s === 0 || html[s - 1] === "\n")) {

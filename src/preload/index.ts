@@ -120,6 +120,7 @@ const api: UnskilledApi = {
   designKeepTweaks: (threadId, rel, values) => ipcRenderer.invoke("design:keep-tweaks", threadId, rel, values),
   designVariantResolve: (threadId, rel, set, keep) => ipcRenderer.invoke("design:variant-resolve", threadId, rel, set, keep),
   designActionNote: (action) => ipcRenderer.invoke("design:action-note", action),
+  designDetect: (threadId, rel) => ipcRenderer.invoke("design:detect", threadId, rel),
   designSaveRef: (threadId, bytes) => ipcRenderer.invoke("design:save-ref", threadId, bytes),
   designCapture: (threadId, rect) => ipcRenderer.invoke("design:capture", threadId, rect),
   designThumb: (threadId, rel) => ipcRenderer.invoke("design:thumb", threadId, rel),

@@ -106,6 +106,7 @@ describe("insert bar and the + button", () => {
         onComment={null}
         repick={null}
         onRepick={noop}
+        onClose={noop}
         {...over}
       />,
     );
@@ -130,6 +131,9 @@ describe("insert bar and the + button", () => {
     inserting: false,
     insertWhy: null,
     onInsert: noop,
+    detect: null,
+    detectWhy: null,
+    onDetect: noop,
     systemOpen: false,
     onSystem: noop,
     onSteer: async () => true,

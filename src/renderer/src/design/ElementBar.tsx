@@ -22,6 +22,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { FrameRect, InsertGap, PageMarks } from "./frame";
+import { IconClose } from "../icons";
 
 export type ActionId = "freeform" | "bolder" | "quieter" | "distill" | "polish" | "typeset" | "colorize" | "layout" | "adapt" | "animate" | "delight" | "overdrive";
 
@@ -142,6 +143,7 @@ export function ElementBar({
   onComment,
   repick,
   onRepick,
+  onClose,
 }: {
   /** The insert bar: new content at a gap, so no action chip. */
   insert?: boolean;
@@ -166,6 +168,8 @@ export function ElementBar({
   /** An element clicked while marks are down, waiting for a yes or no. */
   repick: string | null;
   onRepick: (ok: boolean) => void;
+  /** × (and Esc): let the element, or the insert gap, go. */
+  onClose: () => void;
 }) {
   const barRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -329,6 +333,9 @@ export function ElementBar({
             onClick={onGo}
           >
             <ArrowRight size={16} strokeWidth={2} aria-hidden />
+          </button>
+          <button className="icon-button" aria-label={insert ? "Close Insert" : "Clear the selection"} title={insert ? "Close (Esc)" : "Clear the selection (Esc)"} onClick={onClose}>
+            <IconClose />
           </button>
         </>
       )}

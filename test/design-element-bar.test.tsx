@@ -112,9 +112,15 @@ describe("ElementBar", () => {
         onComment={null}
         repick={null}
         onRepick={noop}
+        onClose={noop}
         {...over}
       />,
     );
+
+  it("has a close button that clears the selection, and one that closes Insert", () => {
+    expect(render()).toContain('aria-label="Clear the selection" title="Clear the selection (Esc)"');
+    expect(render({ insert: true })).toContain('aria-label="Close Insert"');
+  });
 
   it("shows the tag, the prompt, the action ×3, dictation and Go (off, with why)", () => {
     const html = render();
@@ -125,7 +131,7 @@ describe("ElementBar", () => {
     expect(html).toMatch(/aria-label="Make 3 variants" title="Say what to change, mark it, or pick an action" disabled=""/);
     expect(html).not.toContain('aria-label="Edit text"');
     expect(html).not.toContain('aria-label="Comment"');
-    expect(html).not.toContain("Clear ");
+    expect(html).not.toContain("design-element-clear");
   });
 
   it("adds Edit text, Comment and Clear when they apply", () => {

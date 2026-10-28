@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { InspectorPanel } from "../src/renderer/src/design/InspectorPanel";
-import { LiveBar, escapeStep, isPickKey, steerMessage, type LiveBarProps } from "../src/renderer/src/design/LiveBar";
+import { readBridgeMessage } from "../src/renderer/src/design/frame";
+import { LiveBar, detectTitle, escClears, escapeStep, isPickKey, steerMessage, type LiveBarProps } from "../src/renderer/src/design/LiveBar";
 
 const noop = () => {};
 const props = (over: Partial<LiveBarProps> = {}): LiveBarProps => ({
@@ -15,6 +16,9 @@ const props = (over: Partial<LiveBarProps> = {}): LiveBarProps => ({
   inserting: false,
   insertWhy: null,
   onInsert: noop,
+  detect: null,
+  detectWhy: null,
+  onDetect: noop,
   systemOpen: false,
   onSystem: noop,
   onSteer: async () => true,
@@ -65,6 +69,42 @@ describe("live bar", () => {
   it("disables Steer when there's nothing to steer, and Present without a page", () => {
     expect(bar({ onSteer: null })).toMatch(/title="Nothing to steer yet" disabled=""/);
     expect(bar({ onPresent: null })).toMatch(/aria-label="Present"[^>]*disabled=""/);
+  });
+});
+
+describe("detect", () => {
+  it("is pressed while on, disabled while it checks or away from a page", () => {
+    expect(bar()).toContain('aria-pressed="false" aria-label="Detect"');
+    expect(bar({ detect: 3 })).toContain('aria-pressed="true" aria-label="Detect" title="3 issues marked: click a pin to fix it. Click to hide"');
+    expect(bar({ detect: "busy" })).toMatch(/aria-label="Detect" title="Checking the page…" disabled=""/);
+    expect(bar({ onPage: false, detect: 2, detectWhy: "Open a page to detect" })).toMatch(/aria-pressed="false" aria-label="Detect" title="Open a page to detect" disabled=""/);
+  });
+
+  it("reads a pin click from the page, and nothing malformed", () => {
+    expect(readBridgeMessage({ source: "cubiq-design", type: "finding", n: 4 })).toEqual({ type: "finding", n: 4 });
+    for (const n of [0, 100, 1.5, "4"]) expect(readBridgeMessage({ source: "cubiq-design", type: "finding", n })).toBeNull();
+  });
+
+  it("reads a hyphenated variant set name from the page", () => {
+    const sets = [{ set: "hero-em", count: 3, shown: 1, malformed: null }];
+    expect(readBridgeMessage({ source: "cubiq-design", type: "variants", sets })).toEqual({ type: "variants", sets });
+    for (const bad of ["-hero", "hero-", "Hero"]) expect(readBridgeMessage({ source: "cubiq-design", type: "variants", sets: [{ ...sets[0], set: bad }] })).toBeNull();
+  });
+
+  it("says what it found", () => {
+    expect(detectTitle(null, null)).toBe("Detect: mark design issues on this page");
+    expect(detectTitle(0, null)).toBe("No issues found. Click to hide");
+    expect(detectTitle(1, null)).toContain("1 issue marked");
+  });
+});
+
+describe("escClears", () => {
+  it("clears from the page or a button, never from a text field, dialog or menu", () => {
+    const el = (tagName: string, inside: string | null = null, editable = false) =>
+      ({ tagName, isContentEditable: editable, closest: (s: string) => (inside && s.includes(inside) ? {} : null) }) as unknown as EventTarget;
+    expect(escClears(null)).toBe(true);
+    expect(escClears(el("BUTTON"))).toBe(true);
+    for (const t of [el("INPUT"), el("TEXTAREA"), el("DIV", null, true), el("BUTTON", "dialog"), el("BUTTON", "menu")]) expect(escClears(t)).toBe(false);
   });
 });
 

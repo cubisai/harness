@@ -23,9 +23,9 @@ mode: design
 <div data-cubiq-variant="SET-3" hidden><!-- variant 3 --></div>
 ```
 
-   - `SET` is a short lowercase name for the element (`hero`, `card2`) that isn't on the page yet.
+   - `SET` is a short lowercase name of letters and digits (`hero`, `card2`) that isn't on the page yet.
    - Each wrapper holds exactly one element, with the original's tag and `data-agent-id`.
-   - The wrapper is a layout-free shell. Style through `:scope > …` or `:scope …`, never a bare `:scope`.
+   - The wrapper is a layout-free shell (a `span` inside text or a heading). Style through `:scope > …` or `:scope …`, never a bare `:scope`.
    - Put shared keyframes in the same style block.
    - With several elements selected, wrap their nearest shared parent.
    - **Insert** (the message says "Insert … before/after"): the selected element is only the anchor and stays as it is. Write the set right beside it, with an empty `<div data-cubiq-variant="SET-0" hidden></div>`. Each variant is new content in the page's identity, with a new `data-agent-id`.

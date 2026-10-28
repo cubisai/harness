@@ -1363,6 +1363,8 @@ export interface UnskilledApi {
   designVariantResolve(threadId: string, rel: string, set: string, keep: number | null): Promise<void>;
   /** The element bar action's paragraph for the agent ("" for Freeform or an unknown action). */
   designActionNote(action: string): Promise<string>;
+  /** Detect: lint a saved design page (contrast, targets, slop; the style's `Lint allows:` exempt) for the canvas's pins. */
+  designDetect(threadId: string, rel: string): Promise<DesignDetect>;
   /** Save a pasted reference image (png/jpg/webp/gif, ≤ 10 MB) into a design thread's `refs/`; its path relative to the thread's folder. */
   designSaveRef(threadId: string, bytes: Uint8Array): Promise<string>;
   /** Capture a rectangle of the app window (CSS px, e.g. the canvas with a Draw overlay) as a PNG reference image in a design thread's `refs/`: its path relative to the thread's folder and a small data-URL thumbnail. */
@@ -1516,4 +1518,14 @@ export interface WorktreeReview {
   unpushed: number | null;
   /** The last merge: where it went, and whether the branch has new commits since. Null before any merge. */
   merged: { into: string; upToDate: boolean } | null;
+}
+
+/** Detect's findings on one design page: one pin per element, page-wide ones apart. */
+export interface DesignDetect {
+  /** Numbered from 1, at most 40; each element's details deduped, at most 3. */
+  pins: { n: number; selector: string; details: string[] }[];
+  /** Findings about the whole page (body, html), at most 3. */
+  page: string[];
+  /** Every finding Detect counted, pinned or not. */
+  total: number;
 }

@@ -46,7 +46,9 @@ export type BridgeMessage =
   | { source: "cubiq-design"; type: "marks"; strokes: { x: number; y: number }[][]; notes: { x: number; y: number; text: string; near: string }[] }
   | { source: "cubiq-design"; type: "repick-ask"; label: string }
   | { source: "cubiq-design"; type: "variants"; sets: { set: string; count: number; shown: number; malformed: string | null }[] }
-  | { source: "cubiq-design"; type: "variant-rect"; set: string; rect: Rect | null };
+  | { source: "cubiq-design"; type: "variant-rect"; set: string; rect: Rect | null }
+  /** A Detect pin was clicked: its element is now the selection. */
+  | { source: "cubiq-design"; type: "finding"; n: number };
 
 /** A box in the frame's viewport, in CSS pixels. */
 type Rect = { x: number; y: number; width: number; height: number };
@@ -72,7 +74,9 @@ export type CanvasMessage =
   | { source: "cubiq-canvas"; type: "show-variant"; set: string; n: number }
   /** Insert mode: hovering shows an insertion line at the nearest gap between two blocks, and a click picks that gap. */
   | { source: "cubiq-canvas"; type: "insert"; on: boolean }
-  | { source: "cubiq-canvas"; type: "clear-gap" };
+  | { source: "cubiq-canvas"; type: "clear-gap" }
+  /** Detect's pins (an empty list clears them): clickable, unlike comment pins; a click selects the element. */
+  | { source: "cubiq-canvas"; type: "set-findings"; findings: { n: number; selector: string; detail: string }[] };
 
 /** Snap an element to its nearest interactive ancestor, or itself when there is none. */
 export function snapTarget(el: Element): Element {
@@ -379,9 +383,12 @@ export function designBridge(
   const outlines = new Map<Element, HTMLDivElement>();
   // Comment pins: numbered dots dropped by the canvas onto resolved elements.
   let pins: { n: number; el: Element; dot: HTMLDivElement }[] = [];
+  // Detect pins: numbered amber squares on the elements a lint finding names; a click selects the element.
+  let findings: { n: number; el: Element; dot: HTMLDivElement }[] = [];
+  const onFinding = (e: Event): boolean => e.target instanceof Element && e.target.closest("[data-cubiq-finding]") !== null;
   let frame = 0;
   const step = (): void => {
-    frame = selected.length > 0 || pins.length > 0 || activeSet !== null || gap !== null ? requestAnimationFrame(step) : 0;
+    frame = selected.length > 0 || pins.length > 0 || findings.length > 0 || activeSet !== null || gap !== null ? requestAnimationFrame(step) : 0;
     outlines.forEach((outline, el) => {
       if (!el.isConnected) {
         outline.style.display = "none";
@@ -399,6 +406,15 @@ export function designBridge(
       }
       const r = pin.el.getBoundingClientRect();
       Object.assign(pin.dot.style, { display: "block", left: `${Math.max(2, r.left - 10)}px`, top: `${Math.max(2, r.top - 10)}px` });
+    }
+    // Detect pins sit on the top-right corner, clear of a comment pin on the top-left.
+    for (const f of findings) {
+      if (!f.el.isConnected) {
+        f.dot.style.display = "none";
+        continue;
+      }
+      const r = f.el.getBoundingClientRect();
+      Object.assign(f.dot.style, { display: "block", left: `${Math.max(2, Math.min(innerWidth - 24, r.right - 10))}px`, top: `${Math.max(2, r.top - 10)}px` });
     }
     postAnchor();
   };
@@ -429,7 +445,8 @@ export function designBridge(
     const sets = new Map<string, Map<number, Element>>();
     const doubled = new Set<string>();
     document.querySelectorAll("[data-cubiq-variant]").forEach((el) => {
-      const m = /^([a-z][a-z0-9]{0,15})-(\d{1,2})$/.exec(el.getAttribute("data-cubiq-variant") || "");
+      // A set name may carry inner hyphens (`hero-em-1` is set `hero-em`, variant 1): small models write them.
+      const m = /^([a-z](?:[a-z0-9-]{0,22}[a-z0-9])?)-(\d{1,2})$/.exec(el.getAttribute("data-cubiq-variant") || "");
       if (!m) return;
       const name = m[1] as string;
       const n = Number(m[2]);
@@ -557,7 +574,7 @@ export function designBridge(
   let markSvg: SVGSVGElement | null = null;
   // An element clicked while marks are down: picked only once the canvas confirms (the marks go with it).
   let pendingPick: Element | null = null;
-  const inLayer = (e: Event): boolean => markLayer !== null && e.target instanceof Node && markLayer.contains(e.target);
+  const inLayer = (e: Event): boolean => (markLayer !== null && e.target instanceof Node && markLayer.contains(e.target)) || onFinding(e);
   const ensureLayer = (): void => {
     if (markLayer && markLayer.isConnected && markSvg) return;
     markLayer = document.createElement("div");
@@ -701,6 +718,50 @@ export function designBridge(
     if (frame === 0 && pins.length > 0) frame = requestAnimationFrame(step);
     post("pins", { missing });
   };
+  const setFindings = (raw: unknown): void => {
+    for (const f of findings) f.dot.remove();
+    findings = [];
+    const list = Array.isArray(raw) ? raw : [];
+    for (const entry of list.slice(0, 40)) {
+      if (!entry || typeof entry !== "object") continue;
+      const item = entry as Record<string, unknown>;
+      const n = item.n;
+      if (typeof n !== "number" || !Number.isInteger(n) || n < 1 || n > 99) continue;
+      if (typeof item.selector !== "string" || typeof item.detail !== "string") continue;
+      let el: Element | null = null;
+      try {
+        el = document.querySelector(item.selector);
+      } catch {
+        el = null;
+      }
+      if (!el) continue;
+      const target = el;
+      const dot = document.createElement("div");
+      dot.setAttribute("data-cubiq-finding", String(n));
+      dot.setAttribute("role", "button");
+      dot.setAttribute("aria-label", item.detail.slice(0, 300));
+      dot.tabIndex = 0;
+      dot.title = item.detail.slice(0, 300);
+      dot.style.cssText =
+        "position:fixed;cursor:pointer;z-index:2147483646;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:4px;background:#F5A524;color:#0B0D10;font:600 11px/20px ui-monospace,Menlo,monospace;text-align:center;box-shadow:0 0 0 2px #0B0D10";
+      dot.textContent = String(n);
+      const choose = (e: Event): void => {
+        e.preventDefault();
+        e.stopPropagation();
+        selected = [target];
+        redraw();
+        report(0);
+        post("finding", { n });
+      };
+      dot.addEventListener("click", choose);
+      dot.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") choose(e);
+      });
+      document.documentElement.append(dot);
+      findings.push({ n, el: target, dot });
+    }
+    if (frame === 0 && findings.length > 0) frame = requestAnimationFrame(step);
+  };
   const report = (lost: number): void => {
     post("selection", { elements: selected.map((el) => describeElement(el, selectorFor)), lost });
   };
@@ -751,7 +812,7 @@ export function designBridge(
         }
       }
       const el = document.elementFromPoint(e.clientX, e.clientY);
-      if (!el || el === box || el === tip || markLayer?.contains(el)) return;
+      if (!el || el === box || el === tip || markLayer?.contains(el) || el.closest("[data-cubiq-finding]")) return;
       const target = snapTarget(el);
       hovered = target;
       const r = target.getBoundingClientRect();
@@ -1051,6 +1112,7 @@ export function designBridge(
       e.stopImmediatePropagation();
     };
     const onClick = (e: MouseEvent): void => {
+      if (onFinding(e)) return;
       swallow(e);
       const g = hovering ?? gapAt(e.clientX, e.clientY);
       if (g) setGap(g);
@@ -1117,6 +1179,13 @@ export function designBridge(
   const previewOriginals = new Map<Element, Map<string, string>>();
 
   // Commands from the canvas.
+  // Esc with a selection and no tool on (a Detect pin, Layers or the crumbs picked it): clear it. The page keeps the key.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || stopSelect || stopInsert || selected.length === 0) return;
+    selected = [];
+    redraw();
+    report(0);
+  });
   window.addEventListener("message", (event: MessageEvent) => {
     if (event.source !== parent) return;
     const data = event.data as {
@@ -1134,6 +1203,7 @@ export function designBridge(
       value?: unknown;
       targets?: unknown;
       pins?: unknown;
+      findings?: unknown;
       target?: unknown;
       prop?: unknown;
     } | null;
@@ -1182,6 +1252,8 @@ export function designBridge(
       }
     } else if (data.type === "set-pins") {
       setPins(data.pins);
+    } else if (data.type === "set-findings") {
+      setFindings(data.findings);
     } else if (data.type === "device-chrome") {
       const id = "cubiq-device-chrome";
       const prior = document.getElementById(id);

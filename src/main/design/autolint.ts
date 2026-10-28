@@ -1,6 +1,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { listDesignPages, pageDevice } from "./pages";
+import type { DesignDetect } from "../../shared/types";
 import { LINT_MAX, type LintFinding, type LintResult, type LintRule } from "./lint";
 
 /** The rules the automatic lint reports, worst first; spacing and color stay with design_lint. */
@@ -51,6 +52,33 @@ export function styleAllows(root: string): Set<string> {
   } catch {
     return new Set();
   }
+}
+
+/** Detect's pins: the auto-lint rules' findings grouped per element, worst rule first; body and html findings apart. */
+export function detectPins(result: LintResult): DesignDetect {
+  const pins: DesignDetect["pins"] = [];
+  const page: string[] = [];
+  const bySelector = new Map<string, string[]>();
+  let total = 0;
+  for (const rule of AUTO_LINT_RULES) {
+    for (const f of result.findings) {
+      if (f.rule !== rule) continue;
+      total += 1;
+      if (/^(?:html|body|:root)$/.test(f.selector)) {
+        if (page.length < 3 && !page.includes(f.detail)) page.push(f.detail);
+        continue;
+      }
+      let details = bySelector.get(f.selector);
+      if (!details) {
+        if (pins.length >= 40) continue;
+        details = [];
+        bySelector.set(f.selector, details);
+        pins.push({ n: pins.length + 1, selector: f.selector, details });
+      }
+      if (details.length < 3 && !details.includes(f.detail)) details.push(f.detail);
+    }
+  }
+  return { pins, page, total };
 }
 
 /** `result` without the slop findings whose check id `allows` names. */

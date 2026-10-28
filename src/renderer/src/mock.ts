@@ -772,6 +772,7 @@ export function installMock(): void {
     designKeepTweaks: async () => false,
     designVariantResolve: async () => {},
     designActionNote: async () => "",
+    designDetect: async () => ({ pins: [], page: [], total: 0 }),
     designSaveRef: async () => "designs/mock/refs/ref-1.png",
     designEditText: async () => {},
     designEditStyle: async () => {},
