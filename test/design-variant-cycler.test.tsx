@@ -71,7 +71,8 @@ describe("variant bridge messages", () => {
 
 describe("variant skill and action notes", () => {
   it("ship a design-mode skill with the wrapper contract", () => {
-    const skill = readFileSync(join(RESOURCES, "skills", "design-variants", "SKILL.md"), "utf8");
+    // A Windows checkout may have CRLF line ends.
+    const skill = readFileSync(join(RESOURCES, "skills", "design-variants", "SKILL.md"), "utf8").replace(/\r\n/g, "\n");
     expect(skill).toMatch(/^---\nname: design-variants\n/);
     expect(skill).toContain("mode: design");
     for (const marker of ['data-cubiq-variants="SET"', 'data-cubiq-variant="SET-0" hidden', '@scope ([data-cubiq-variant="SET-1"])']) expect(skill).toContain(marker);

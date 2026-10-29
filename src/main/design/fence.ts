@@ -42,16 +42,14 @@ function scratchPath(abs: string, cwd: string): boolean {
   });
 }
 
+/** The std streams, as written (on Windows `/dev/null` would resolve to `C:\dev\null`; `NUL` is cmd's). */
+const STD_STREAMS = new Set(["/dev/null", "/dev/stdout", "/dev/stderr"]);
+
 /** A resolved path is writable when it is in the design folder, a std stream, or scratch. */
 function allowedPath(cwd: string, design: string, current: string, p: string): boolean {
+  if (STD_STREAMS.has(p) || (process.platform === "win32" && /^nul$/i.test(p))) return true;
   const abs = resolvePath(current, p);
-  return (
-    insideDesignFolder(cwd, design, [abs]) ||
-    abs === "/dev/null" ||
-    abs === "/dev/stdout" ||
-    abs === "/dev/stderr" ||
-    scratchPath(abs, cwd)
-  );
+  return insideDesignFolder(cwd, design, [abs]) || scratchPath(abs, cwd);
 }
 
 /** Drop every heredoc body (through its terminator line): those bytes are never inspected. */

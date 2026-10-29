@@ -13,6 +13,8 @@ const repo = () => {
   git("init", "-q", "-b", "main");
   git("config", "user.email", "t@t");
   git("config", "user.name", "T");
+  // Windows runners default to autocrlf, which would turn the files' "\n" into "\r\n" on checkout.
+  git("config", "core.autocrlf", "false");
   writeFileSync(join(dir, "a.txt"), "one\n");
   git("add", ".");
   git("commit", "-qm", "init");

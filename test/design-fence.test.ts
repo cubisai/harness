@@ -46,7 +46,6 @@ const ALLOWED = [
   "npx prettier --check designs/abcd1234/index.html",
   "cp designs/abcd1234/a.html designs/abcd1234/b.html",
   "mkdir -p designs/abcd1234/img",
-  "echo x > /tmp/scratch.txt",
   "rg -n foo src",
 ];
 
@@ -78,6 +77,23 @@ describe("fenceCommand", () => {
   it.each(ALLOWED)("allows %j", (command: string) => {
     const cwd = threadFolder();
     expect(fenceCommand(cwd, DESIGN, command)).toBeNull();
+  });
+
+  it("allows a write to /tmp, unless the thread itself lives there", () => {
+    const cwd = threadFolder();
+    // Linux's temp dir is /tmp, so the test thread is under it and /tmp is no scratch there (by design).
+    const expected = cwd.startsWith("/tmp/") ? "Blocked in a design thread" : null;
+    const reason = fenceCommand(cwd, DESIGN, "echo x > /tmp/scratch.txt");
+    if (expected) expect(reason).toContain(expected);
+    else expect(reason).toBeNull();
+  });
+
+  it("allows the std streams, and cmd's NUL only on Windows (elsewhere it is a plain file)", () => {
+    const cwd = threadFolder();
+    for (const c of ["node x.js > /dev/null 2>&1", "echo x >/dev/stderr"]) expect(fenceCommand(cwd, DESIGN, c)).toBeNull();
+    const nul = fenceCommand(cwd, DESIGN, "echo x > NUL");
+    if (process.platform === "win32") expect(nul).toBeNull();
+    else expect(nul).toContain("Blocked in a design thread");
   });
 
   it("allows an in-place sed in the threaded design folder", () => {

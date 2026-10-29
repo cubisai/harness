@@ -14,6 +14,8 @@ function setup(opts: { recordBase?: boolean } = {}) {
   git(repo, "init", "-q", "-b", "main");
   git(repo, "config", "user.email", "t@t");
   git(repo, "config", "user.name", "T");
+  // Windows runners default to autocrlf, which would turn the files' "\n" into "\r\n" on checkout.
+  git(repo, "config", "core.autocrlf", "false");
   writeFileSync(join(repo, "a.txt"), "one\n");
   git(repo, "add", "-A");
   git(repo, "commit", "-qm", "first");
