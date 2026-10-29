@@ -109,6 +109,8 @@ describe("ShellManager", () => {
     await m.stopUnder(a);
     expect(m.get(t3.id)?.status).toBe("stopped");
     expect(m.get(t2.id)?.status).toBe("running");
+    // Wait for it to exit: on Windows a running shell holds its folder, so the temp dir can't go.
+    await m.stopThread("t2");
   });
 
   it.skipIf(!posix)("kills the whole process tree, not just the shell", async () => {
