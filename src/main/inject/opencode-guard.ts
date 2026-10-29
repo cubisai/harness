@@ -159,7 +159,8 @@ export default async (ctx) => ({
  * exporting `{ id, setup(ctx) }`, and `ctx.tool.hook("execute.before")` passes
  * one event, `{ tool, input, id, sessionID }`. v2 calls the shell tool "shell"
  * (v1 "bash") and edits take `path`, which summaryOf already reads; throwing
- * still rejects the call. The v1 functions above are reused unchanged.
+ * still rejects the call. The v1 functions above are reused unchanged. No
+ * `answerAsk`: v2 (2.2.0) sends a sub-agent's own permission ask over ACP.
  */
 export const OPENCODE_GUARD_V2_SOURCE = `${OPENCODE_GUARD_SOURCE.slice(0, OPENCODE_GUARD_SOURCE.lastIndexOf("export default"))}export default {
   id: "cubiq.guard",

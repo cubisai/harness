@@ -62,13 +62,25 @@ describe("toOpenCodeV2Config", () => {
         build: { model: "p/m#high", permissions: [{ action: "subagent", resource: "*", effect: "deny" }, { action: "subagent", resource: "cubiq-dana", effect: "allow" }] },
         "cubiq-dana": { mode: "subagent", description: "Dana", system: "You are Dana.", steps: 4 },
       },
-      permissions: [{ action: "shell", resource: "*", effect: "ask" }, { action: "edit", resource: "*.md", effect: "allow" }],
+      permissions: [
+        { action: "external_directory", resource: "*", effect: "ask" },
+        { action: "shell", resource: "*", effect: "ask" },
+        { action: "external_directory", resource: "/x/**", effect: "allow" },
+        { action: "edit", resource: "*.md", effect: "allow" },
+      ],
       providers: { th: { package: "aisdk:@ai-sdk/openai-compatible", name: "TH", settings: { baseURL: "https://h/v1", apiKey: "{env:K}" }, models: { a: { modelID: "wire-a", name: "A", limit: { context: 1, output: 2 } } } } },
       plugins: [{ package: "file:///p/guard" }, { package: "pkg", options: { on: true } }],
     });
   });
-  it("drops external_directory (v2 allows it by default) and ignores non-string rules", () => {
-    expect(toV2Permissions({ external_directory: "ask", edit: { "*": 3 } })).toEqual([]);
+  it("keeps external_directory and ignores non-string rules", () => {
+    expect(toV2Permissions({ external_directory: "ask", edit: { "*": 3 } })).toEqual([{ action: "external_directory", resource: "*", effect: "ask" }]);
+  });
+  it("asks before reading outside the project like v1, unless a later rule says otherwise", () => {
+    const ask = { action: "external_directory", resource: "*", effect: "ask" };
+    expect(toOpenCodeV2Config({}).permissions).toEqual([ask]);
+    expect(toOpenCodeV2Config({ permission: { external_directory: "allow" } }).permissions).toEqual([ask, { action: "external_directory", resource: "*", effect: "allow" }]);
+    // An expert's read dirs (withOpenCodeReadDirs) still go through without a card.
+    expect(toOpenCodeV2Config({ permission: { external_directory: { "/e/**": "allow" } } }).permissions).toEqual([ask, { action: "external_directory", resource: "/e/**", effect: "allow" }]);
   });
   it("leaves a plan without inline config, or with an error, alone", () => {
     const plan = { env: { A: "1" }, byok: false };
@@ -78,7 +90,11 @@ describe("toOpenCodeV2Config", () => {
   });
   it("turns the guard's v1 plugin entry into a v2 package entry", () => {
     const plan = withOpenCodeV2(withOpenCodeGuard({ env: {}, byok: false }, { pluginUrl: "file:///d/cubiq-guard-v2" }));
-    expect(JSON.parse(plan.env.OPENCODE_CONFIG_CONTENT!)).toEqual({ $schema: "https://opencode.ai/config.json", plugins: [{ package: "file:///d/cubiq-guard-v2" }] });
+    expect(JSON.parse(plan.env.OPENCODE_CONFIG_CONTENT!)).toEqual({
+      $schema: "https://opencode.ai/config.json",
+      permissions: [{ action: "external_directory", resource: "*", effect: "ask" }],
+      plugins: [{ package: "file:///d/cubiq-guard-v2" }],
+    });
   });
 });
 
