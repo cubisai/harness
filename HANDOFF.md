@@ -2,6 +2,22 @@
 
 This replaces the old `HANDOFF.md`, `DESIGN-LIVE-HANDOFF.md`, `DESIGN-ENHANCE-HANDOFF.md` and `road-map-handoff.md`. Their full history is in git: `git show 2e2dd54:<file>`.
 
+## Active: issue tracker + PR flow in CubiQ (started 2026-10-29; continue here)
+
+- **Plan:** `.ai/plans/issue-tracker.md`, approved for P1–P3. It holds the user's decisions and a file:line code map for P2/P3, so read it first.
+- **Where:**
+  - worktree `../aiharness-wt/issues`, branch `track/issues` off `m4`, not pushed;
+  - the Read/Write tools are refused there, so edit through Bash, or write in the scratchpad and `cp`;
+  - merge into `m4` after asking.
+- **P1 done (`0f97580`, full suite green):** bundled skills `resources/skills/{issue,issue-setup,triage,pr}`. They're user-invoked (`$issue`, …), cover GitHub, GitLab, Gitea and Local, and include templates and the label set.
+- **Next, P2:** `Thread.issue`, the `issues:list` / `issues:get` IPC over `gh` / `glab api` / `tea api` / local, the composer `/issue` flyout and the `#n title` chip, and a per-turn note: the full issue once, then `Working on #n: title`.
+- **Then P3:** the `/pr` command and the `set_thread_issue` agent tool.
+- **Live checks for P2:**
+  - the chip and the flyout, in dark and light themes at 900px;
+  - one OpenCode turn;
+  - ask before any Claude or Codex run.
+- **opencode:** Zen free DeepSeek hit "Free usage limit reached" at 10:21 UTC (retry after about 14 h). Until it resets, research goes to Haiku Explore and Claude does the edits.
+
 ## Where things stand
 - **Branch `m4`**, pushed: this session's work (R1–R4 of `.ai/plans/release-builds.md`, approved 2026-10-29: every PR push builds installers, Apple Silicon only, plus a shells-test fix) was merged in from `track/release`, along with the other session's `CLAUDE.md`, `DESIGN-MODE.md` and `docs/testing/`. No worktrees are open.
 - **CI (run on `track/release` before the merge):** run `40820793700` (Windows+Ubuntu+extras): both `package` jobs green (the `.dmg` passed `codesign --verify` and the packaged smoke on the macOS runner), Ubuntu and codex-e2e green; Windows failed only on a shells temp-dir race, fixed in `c39b94e` and green in run `40827470388`.
