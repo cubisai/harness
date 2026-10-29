@@ -3,7 +3,9 @@
 ## Session 7 status (read this first)
 - **Style chip back** (`467252b`, user-asked): `DesignStyleMenu` (`DesignSystemMenu.tsx`) sits beside the fence chip in the composer, draft and thread. Nothing picked (or a gone style) = **Auto**; Auto's pick shows as `Auto · <style>`. Names only, no palette (user: "shouldn't display theme, just style"). The hint says colours follow the style unless the prompt names them; the switch note adds "a colour the user named still wins" (the guide's "The brief wins" already covers it). Checked live, dark and light, 900px.
 - `m4` merged into `track/design-live` (`09f9cfc`, clean). Checks: typecheck clean, `design:check` 0 errors, suite green except the 10 OpenCode v2 tests (`opencode-ask` 9, `opencode-guard` 1; same on a clean HEAD).
-- **Next:** fast-forward `m4` to `track/design-live`. It changes `resources/DESIGN-MODE.md`, which has the other session's uncommitted blank line in the main checkout, so the ff needs that one file stashed and popped (no overlap). Then the Windows CI job, then session 6's list from item 2.
+- **UI fixes from the user's screenshots** (`65d1a78`): the Inspector drops its Elements tab while the Layers rail is open (same tree; it comes back when the rail is closed). In canvas-first, the prompt pane keeps clear of an open Inspector (`--design-inspector-w`), so it is centred with the live bar again. The live bar sits 12px above the Chat handle (it used to overlap it by 2px: its offset left out the pane's 14px pad).
+- **Merged:** `m4` fast-forwarded to `65d1a78`. The other session's `DESIGN-MODE.md` blank line was stashed and restored. Worktree `../aiharness-wt/design-live` and branch `track/design-live` are removed.
+- **Next:** the Windows CI job (needs a push: ask first), then session 6's list from item 2.
 
 ## Session 6 status (read this first)
 - **Every phase is done** on `track/design-live` (worktree `../aiharness-wt/design-live`). **Not merged into `m4` yet.** The `m4` copy of this file is older; this one (on the branch) is the truth.
