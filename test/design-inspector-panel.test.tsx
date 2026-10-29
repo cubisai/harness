@@ -14,10 +14,11 @@ const el: SelectedElement = {
   style: { width: "320px", height: "200px" },
 };
 
-const render = (props: { element?: SelectedElement | null; writes?: boolean; tweaks?: string | null }) =>
+const render = (props: { element?: SelectedElement | null; writes?: boolean; tweaks?: string | null; elements?: string | null; tab?: "elements" }) =>
   renderToStaticMarkup(
     <InspectorPanel
       threadId="t"
+      {...(props.tab ? { tab: props.tab } : {})}
       element={props.element === undefined ? el : props.element}
       pageRel="index.html"
       designDir="designs/x"
@@ -26,7 +27,7 @@ const render = (props: { element?: SelectedElement | null; writes?: boolean; twe
       onClearPreview={() => {}}
       onApply={() => {}}
       writes={props.writes ?? true}
-      elements={<p>tree</p>}
+      elements={props.elements === undefined ? <p>tree</p> : props.elements}
       tweaks={props.tweaks === undefined ? null : props.tweaks}
     />,
   );
@@ -49,6 +50,12 @@ describe("InspectorPanel", () => {
     expect(plain).toContain(">Code<");
     expect(plain).not.toContain(">Tweaks<");
     expect(render({ tweaks: "x" })).toContain(">Tweaks<");
+  });
+
+  it("drops the Elements tab when the Layers rail already shows the tree, falling back to Properties", () => {
+    const html = render({ elements: null, tab: "elements" });
+    expect(html).not.toContain(">Elements<");
+    expect(html).toMatch(/aria-selected="true" class="on">Properties</);
   });
 
   it("offers Hug | Fill | Fixed for width and height, with Fixed on for a measured length", () => {

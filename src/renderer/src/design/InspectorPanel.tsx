@@ -67,15 +67,15 @@ export function InspectorPanel({
   onApply: (changes: { prop: string; from: string; to: string }[]) => void;
   /** True when Apply writes into the page file; false when it drafts a message. */
   writes: boolean;
-  /** The Elements tab's layer tree. */
-  elements: ReactNode;
+  /** The Elements tab's layer tree, or null when the Layers rail already shows it (no tab then). */
+  elements: ReactNode | null;
   /** The Tweaks tab's controls, or null when the page has none (or the tier has no tweaks). */
   tweaks: ReactNode | null;
 }) {
   const [ownTab, setOwnTab] = useState<InspectorTab>("properties");
   const tab = tabProp ?? ownTab;
   const setTab = onTab ?? setOwnTab;
-  const shownTab = tab === "tweaks" && !tweaks ? "properties" : tab;
+  const shownTab = (tab === "tweaks" && !tweaks) || (tab === "elements" && !elements) ? "properties" : tab;
   // The user's edits, keyed by prop; an absent key means "still the original".
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [code, setCode] = useState<string | null>(null);
@@ -170,7 +170,7 @@ export function InspectorPanel({
       <div className="design-inspector-tabs">
         <div className="segmented" role="tablist">
           {tabButton("properties", "Properties")}
-          {tabButton("elements", "Elements")}
+          {elements && tabButton("elements", "Elements")}
           {tabButton("code", "Code")}
           {tabButton("system", "System")}
           {tweaks && tabButton("tweaks", "Tweaks")}

@@ -562,14 +562,16 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .main-header .design-canvas-head { flex: 1; min-width: 0; height: auto; align-self: stretch; padding: 0; border: 0; background: none; }
 /* Outside canvas-first these wrappers aren't there to layout: a chat thread is exactly as before. */
 .thread-pane, .thread-drawer, .thread-bar { display: contents; }
+.app.canvas-first { --design-pane-pad: 14px; }
+.app.canvas-first:has(.design-inspector) .main > .thread-pane { padding-right: calc(var(--design-inspector-w) + 16px); }
 .app.canvas-first .main > .thread-pane {
   margin-top: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  /* Clear of the Pages rail on the left, centred over the canvas like the live bar. */
-  padding: 0 16px 14px calc(var(--design-rail-w, 0px) + 16px);
+  /* Clear of the Pages rail on the left (and an open Inspector on the right), centred over the stage like the live bar. */
+  padding: 0 16px var(--design-pane-pad) calc(var(--design-rail-w, 0px) + 16px);
   min-width: 0;
   pointer-events: none;
 }
@@ -733,6 +735,7 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 /* The live bar: the canvas's one tool bar, at the bottom centre in both layouts (above the prompt bar in canvas-first).
    --live-bar-room is the strip the stage, Compare and the board keep clear for it. */
 .design-canvas { --live-bar-bottom: 12px; --live-bar-room: 56px; }
+.app { --design-inspector-w: 300px; } /* the canvas Inspector's width; the canvas-first prompt pane keeps clear of it */
 .design-live-bar {
   position: absolute;
   left: 50%;
@@ -840,15 +843,15 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-compare { padding-bottom: var(--live-bar-room); }
 .design-board { --board-inset-bar: var(--live-bar-room); }
 /* Canvas-first: the live bar sits just above the prompt bar, and the page stays clear of both. */
-.canvas-first .design-canvas { --live-bar-bottom: calc(var(--design-prompt-h, 0px) + 12px); }
-.canvas-first .design-stage, .canvas-first .design-stage.fit { padding: 24px 24px calc(var(--design-prompt-h, 0px) + var(--live-bar-room) + 4px); }
+.canvas-first .design-canvas { --live-bar-bottom: calc(var(--design-prompt-h, 0px) + var(--design-pane-pad, 0px) + 12px); }
+.canvas-first .design-stage, .canvas-first .design-stage.fit { padding: 24px 24px calc(var(--live-bar-bottom) + var(--live-bar-room) - 8px); }
 .canvas-first .design-stage.fit .design-frame-box { border: 1px solid var(--hairline); border-radius: var(--radius-m); overflow: hidden; }
-.canvas-first .design-compare { padding: 16px 16px calc(var(--design-prompt-h, 0px) + var(--live-bar-room) + 4px); }
+.canvas-first .design-compare { padding: 16px 16px calc(var(--live-bar-bottom) + var(--live-bar-room) - 8px); }
 .canvas-first .design-canvas-empty { padding-bottom: calc(var(--design-prompt-h, 0px) + 24px); }
 /* The board stays under the prompt bar, so its zoom control moves to the top. */
 .canvas-first .design-board-zoom { top: 12px; bottom: auto; }
 /* Fit keeps the frames clear of the prompt bar and the live bar (Board.tsx reads these). */
-.canvas-first .design-board { --board-inset-bottom: var(--design-prompt-h, 0px); }
+.canvas-first .design-board { --board-inset-bottom: var(--design-prompt-h, 0px); --board-inset-bar: 70px; } /* the live bar's room + the pane's 14px pad; Board.tsx parses plain px, so no calc */
 
 /* Canvas-first's left rail: the design's pages, then the open page's layers. */
 .design-rail { width: var(--design-rail-w, 232px); flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--hairline); background: var(--bg); }
@@ -872,7 +875,7 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-rail-layers .el-tree { padding: 0 6px; }
 .design-rail-layers .el-row { border-radius: var(--radius-s); }
 .design-rail-layers .el-empty { padding: 2px 14px; color: var(--text-tertiary); }
-.design-inspector { width: 300px; flex-shrink: 0; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; border-left: 1px solid var(--hairline); background: var(--bg-elevated); }
+.design-inspector { width: var(--design-inspector-w); flex-shrink: 0; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; border-left: 1px solid var(--hairline); background: var(--bg-elevated); }
 .design-inspector-tabs { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; padding: 8px; border-bottom: 1px solid var(--hairline); background: var(--bg-elevated); }
 .design-inspector-empty { margin: 0; padding: 12px; font-size: 12.5px; color: var(--text-secondary); }
 .design-inspector-head { display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 10px 12px 4px; }

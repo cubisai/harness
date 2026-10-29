@@ -1661,6 +1661,7 @@ export default function DesignCanvas({
                   });
               }}
               elements={
+                railOpen ? null : (
                 <ElementsTree
                   key={path ?? ""}
                   nodes={outline}
@@ -1668,6 +1669,7 @@ export default function DesignCanvas({
                   onPick={(n) => post({ type: "set-selection", targets: [{ ...(n.id ? { id: n.id } : {}), selector: n.selector, tag: n.tag, text: "" }] })}
                   onHover={(n) => post({ type: "hover-layer", target: n ? { ...(n.id ? { id: n.id } : {}), selector: n.selector, tag: n.tag, text: "" } : null })}
                 />
+                )
               }
               tweaks={
                 showTweaks ? (
