@@ -1,0 +1,26 @@
+name: Enhancement
+description: A new feature or an improvement to an existing one
+labels: [enhancement, needs-triage]
+body:
+  - type: textarea
+    id: purpose
+    attributes:
+      label: Purpose
+      description: Who wants what, and why it matters.
+    validations:
+      required: true
+  - type: textarea
+    id: criteria
+    attributes:
+      label: Acceptance criteria
+      description: Behaviour a user or a test can observe.
+      placeholder: |
+        -
+        -
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Constraints, links, open questions.
