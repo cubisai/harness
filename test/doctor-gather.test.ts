@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { GatherDeps } from "../src/main/doctor/gather";
 import { gatherSnapshot, parseCodexProfiles } from "../src/main/doctor/gather";
@@ -97,14 +98,16 @@ describe("gatherSnapshot", () => {
   });
 
   it("reports worktree folders whose thread ids are no longer live", async () => {
+    const worktreesDir = "/Users/me/Library/Application Support/CubiQ/worktrees";
     const s = await gatherSnapshot(
       deps({
-        worktreesDir: "/Users/me/Library/Application Support/CubiQ/worktrees",
+        worktreesDir,
         listDirs: () => ["live-thread", "old-thread"],
         liveWorktreeIds: new Set(["live-thread"]),
       }),
     );
-    expect(s.worktrees.orphanDirs).toEqual(["/Users/me/Library/Application Support/CubiQ/worktrees/old-thread"]);
+    // The platform's own join: backslashes on Windows.
+    expect(s.worktrees.orphanDirs).toEqual([join(worktreesDir, "old-thread")]);
   });
 
   it("builds the Codex home with backslashes on win32", async () => {

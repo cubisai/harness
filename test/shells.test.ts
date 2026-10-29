@@ -84,12 +84,15 @@ describe("ShellManager", () => {
     expect(m.output(info.id, { tail: 2 })!.text).toBe("line0098\nline0099");
   });
 
-  it("refuses past the per-thread and app-wide limits", () => {
+  it("refuses past the per-thread and app-wide limits", async () => {
     const m = make({ maxPerThread: 1, maxTotal: 2 });
     m.start("t1", tempDir(), SERVER);
     expect(() => m.start("t1", tempDir(), SERVER)).toThrow(ShellLimitError);
     m.start("t2", tempDir(), SERVER);
     expect(() => m.start("t3", tempDir(), SERVER)).toThrow("2 background shells are running");
+    // Wait for both to exit: on Windows a running shell holds its folder, so the temp dir can't go.
+    await m.stopThread("t1");
+    await m.stopThread("t2");
   });
 
   it("stops one thread's shells, or those under a folder, and leaves the rest", async () => {
