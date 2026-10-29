@@ -3,8 +3,8 @@ name: CI
 # Minutes are billed (private repo; Windows 2x, macOS 10x), so ordinary pushes
 # run nothing. Windows check: `git push -f origin HEAD:windows` (Windows job
 # only). Anything else on demand: `gh workflow run ci.yml --ref <branch> -f
-# os=ubuntu|windows+ubuntu|macos|all [-f extras=true]` (extras = codex-e2e and
-# the packaged smoke). PRs to main run Windows + Ubuntu + extras.
+# os=ubuntu|windows+ubuntu|macos|all [-f extras=true]` (extras = codex-e2e, the
+# packaged smoke and the installers). PRs to main run Windows + Ubuntu + extras.
 on:
   push:
     branches: [windows]
@@ -29,7 +29,8 @@ concurrency:
 
 # No provider, Gemini or Antigravity credential is ever a CI secret: every test
 # talks to a local fake endpoint or a mock agent. Jobs set only the variables in
-# this env block plus UNSKILLED_CODEX_BIN (test/ci-workflow.test.ts enforces it).
+# this env block, UNSKILLED_CODEX_BIN and the package job's two signing switches
+# (test/ci-workflow.test.ts enforces it).
 env:
   UNSKILLED_NO_UPDATE: "1"
 
@@ -91,3 +92,45 @@ jobs:
       - run: bun run build
       - run: bunx electron-builder --dir --publish never
       - run: xvfb-run -a node scripts/smoke.mjs
+
+  package:
+    # Installers to download from the run's page for 7 days: the macOS .dmg
+    # (Apple Silicon) and the Windows .exe. No secrets, so unsigned: macOS is
+    # ad-hoc signed (CSC_FOR_PULL_REQUEST lets electron-builder do that on a PR).
+    if: github.event_name == 'pull_request' || inputs.extras
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: --mac dmg --arm64 -c.mac.identity=-
+          - os: windows-latest
+            target: --win nsis --x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - run: bunx electron-builder ${{ matrix.target }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          CSC_FOR_PULL_REQUEST: "true"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cubiq-${{ runner.os }}
+          path: |
+            dist/*.dmg
+            dist/*.exe
+          if-no-files-found: error
+          retention-days: 7
+      - if: runner.os == 'macOS'
+        run: |
+          codesign --verify --deep --strict dist/mac-arm64/CubiQ.app
+          node scripts/smoke.mjs
