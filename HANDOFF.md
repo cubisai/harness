@@ -3,8 +3,8 @@
 This replaces the old `HANDOFF.md`, `DESIGN-LIVE-HANDOFF.md`, `DESIGN-ENHANCE-HANDOFF.md` and `road-map-handoff.md`. Their full history is in git: `git show 2e2dd54:<file>`.
 
 ## Where things stand
-- **Branch `track/release`** (pushed) holds this session's work on top of `m4`: R1–R4 of `.ai/plans/release-builds.md` (approved 2026-10-29: every PR push builds installers, Apple Silicon only) and a shells-test fix. **Not merged into `m4` yet**: the main checkout still has another session's uncommitted `CLAUDE.md`, `resources/DESIGN-MODE.md` and `docs/testing/`. Fast-forward `m4` once that's settled (`git merge --ff-only track/release` in the main checkout), then remove `../aiharness-wt/release` and the branch.
-- **CI on `track/release`:** run `40820793700` (Windows+Ubuntu+extras): both `package` jobs green (the `.dmg` passed `codesign --verify` and the packaged smoke on the macOS runner), Ubuntu and codex-e2e green; Windows failed only on a shells temp-dir race, fixed in `c39b94e` and green in run `40827470388`.
+- **Branch `m4`**, pushed: this session's work (R1–R4 of `.ai/plans/release-builds.md`, approved 2026-10-29: every PR push builds installers, Apple Silicon only, plus a shells-test fix) was merged in from `track/release`, along with the other session's `CLAUDE.md`, `DESIGN-MODE.md` and `docs/testing/`. No worktrees are open.
+- **CI (run on `track/release` before the merge):** run `40820793700` (Windows+Ubuntu+extras): both `package` jobs green (the `.dmg` passed `codesign --verify` and the packaged smoke on the macOS runner), Ubuntu and codex-e2e green; Windows failed only on a shells temp-dir race, fixed in `c39b94e` and green in run `40827470388`.
 - **Local suite:** fully green (3906 passed), the OpenCode v2 tests included.
 - **`release-cubiq.yml` never ran for real**: `workflow_dispatch` needs the file on `main`. After the PR merges: Actions → release-cubiq → Run workflow without **publish** first (build only), then a tag or **publish**.
 
@@ -19,7 +19,7 @@ This replaces the old `HANDOFF.md`, `DESIGN-LIVE-HANDOFF.md`, `DESIGN-ENHANCE-HA
 - `c39b94e` Windows CI: the shells stop-scope test stops its last shell before cleanup.
 
 ## Next
-- Open the PR from `m4` (after the merge above) to `main`. Its `package` job uploads the installers.
+- Open the PR from `m4` to `main`. Its `package` job uploads the installers.
 - The first real release (above). Signing remains the user's step; see below.
 
 ### Unsigned builds (works today)
