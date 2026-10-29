@@ -1506,13 +1506,19 @@ export class Service {
 
   /** The design systems a project's design threads can use, for the composer's picker. */
   designSystems(projectId: string | null): DesignSystemOption[] {
-    return this.allSystems(projectId).map(({ id, name, description, swatches, source }) => ({
+    return this.allSystems(projectId).map(({ id, name, description, swatches, source, facets }) => ({
       id,
       name,
       description,
       swatches,
       source,
+      ...(facets ? { facets } : {}),
     }));
+  }
+
+  /** One system a project's design threads can use, with its files, for the style picker's preview; null when it isn't listed. */
+  previewSystem(projectId: string | null, id: string): DesignSystemInfo | null {
+    return this.allSystems(projectId).find((s) => s.id === id) ?? null;
   }
 
   /**
@@ -1544,9 +1550,9 @@ export class Service {
    * Record the direction an Auto design thread's agent chose and put its style in `<design folder>/system/` right
    * away, so the agent can read it in the same turn. Returns the tool's reply. A thread on a fixed system keeps it:
    * only surface, mode and tier are recorded then. `alternates` (up to 2, best first) let Auto pick a style from a
-   * shortlist instead of always taking the top one.
+   * shortlist instead of always taking the top one; `theme` narrows that shortlist to light or dark styles.
    */
-  setDesignDirection(threadId: string, direction: DesignDirection, alternates: string[] = []): string {
+  setDesignDirection(threadId: string, direction: DesignDirection, alternates: string[] = [], theme?: "light" | "dark"): string {
     const thread = this.store.getThread(threadId);
     if (thread.kind !== "design") throw new Error("Only a design thread has a direction.");
     const list = this.allSystems(thread.projectId);
@@ -1580,6 +1586,11 @@ export class Service {
         }
         const withMode = picks.filter((id) => styles.find((s) => s.id === id)?.modes.includes(direction.mode));
         if (withMode.length) picks = withMode;
+        // A light or dark look the user asked for narrows the shortlist the same way, when any pick has it.
+        if (theme) {
+          const withTheme = picks.filter((id) => styles.find((s) => s.id === id)?.facets?.theme === theme);
+          if (withTheme.length) picks = withTheme;
+        }
         const recent = this.recentStyles(thread);
         const fresh = picks.filter((id) => !recent.includes(id.slice(STYLE_PREFIX.length)));
         if (fresh.length) picks = fresh;

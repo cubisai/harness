@@ -24,6 +24,9 @@ extraResources:
     to: design-styles
   - from: resources/design-fonts
     to: design-fonts
+  # The style picker's preview page, drawn from any style's tokens.
+  - from: resources/design-preview
+    to: design-preview
   - from: resources/design-patterns
     to: design-patterns
   - from: resources/design-actions

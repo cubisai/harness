@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { STYLE_PREFIX } from "../../shared/direction";
+import type { StyleFacets } from "../../shared/types";
 
 /** One design system a design thread can be started from. */
 export interface DesignSystemInfo {
@@ -16,6 +17,8 @@ export interface DesignSystemInfo {
   designMd: string;
   /** Absolute path of its tokens.css, when it has one. */
   tokensCss?: string;
+  /** What its tokens.css looks like (for the picker's filters and the shortlist); absent without one. */
+  facets?: StyleFacets;
   /** Font files (absolute) copied into `system/fonts/` with it: a style's faces from the bundled font pack. */
   fontFiles?: string[];
 }
@@ -98,6 +101,48 @@ function readText(file: string): string | null {
   }
 }
 
+/** The sRGB channels of `#rgb`, `#rrggbb`, `rgb(r g b)` or `rgb(r, g, b)` (alpha ignored), or null when it isn't one. */
+function parseColor(value: string): [number, number, number] | null {
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value);
+  if (hex) {
+    const digits = hex[1]!.length === 3 ? [...hex[1]!].map((d) => d + d).join("") : hex[1]!;
+    return [parseInt(digits.slice(0, 2), 16), parseInt(digits.slice(2, 4), 16), parseInt(digits.slice(4, 6), 16)];
+  }
+  const rgb = /^rgb\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)\s*(?:\/\s*[\d.]+%?\s*)?\)$/i.exec(value);
+  if (!rgb) return null;
+  return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])];
+}
+
+/** WCAG relative luminance of sRGB channels (0-255). */
+function luminance([r, g, b]: [number, number, number]): number {
+  const channel = (c: number): number => {
+    const s = c / 255;
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
+/**
+ * What a tokens.css looks like: light or dark base, display family and corner shape. Dark overrides after the first
+ * `@media` are ignored. Null when its `--color-bg` is missing or unreadable.
+ */
+export function tokenFacets(css: string): StyleFacets | null {
+  const base = css.split("@media")[0]!;
+  const bg = /--color-bg:\s*([^;]+);/.exec(base)?.[1]?.trim();
+  if (!bg) return null;
+  const color = parseColor(bg);
+  if (!color) return null;
+  const stack = ((/--font-display:\s*([^;]+);/.exec(base) ?? /--font-sans:\s*([^;]+);/.exec(base))?.[1] ?? "").toLowerCase();
+  const families = stack.split(",").map((entry) => unquote(entry.trim()));
+  const radius = /--radius-md:\s*([\d.]+)px/.exec(base)?.[1];
+  return {
+    theme: luminance(color) < 0.2 ? "dark" : "light",
+    darkPair: /@media\s*\(\s*prefers-color-scheme\s*:\s*dark\s*\)/i.test(css),
+    display: families.includes("monospace") ? "mono" : families.includes("serif") ? "serif" : "sans",
+    shape: radius === undefined ? "soft" : Number(radius) <= 2 ? "sharp" : Number(radius) <= 9 ? "soft" : "round",
+  };
+}
+
 /**
  * Design-system folders under `root` (a project's `.agents/design-systems`), sorted by name. A folder counts when its
  * `index.md` says `type: design-system` and it has a `DESIGN.md`; anything else
@@ -123,6 +168,8 @@ function collectSystems(root: string, out: DesignSystemInfo[], seen: Set<string>
     if (!isFile(designMd)) continue;
     seen.add(id);
     const tokensCss = join(dir, "tokens.css");
+    const text = readText(tokensCss);
+    const facets = text ? tokenFacets(text) : null;
     const fontFiles = fontsIn(dir);
     out.push({
       id,
@@ -132,6 +179,7 @@ function collectSystems(root: string, out: DesignSystemInfo[], seen: Set<string>
       source: "projectFolder",
       designMd,
       ...(isFile(tokensCss) ? { tokensCss } : {}),
+      ...(facets ? { facets } : {}),
       ...(fontFiles.length ? { fontFiles } : {}),
     });
   }
@@ -182,6 +230,8 @@ export function listDesignStyles(stylesDir: string, fontsDir: string): DesignSty
       .filter((f) => /^[\w.-]+\.woff2$/.test(f))
       .map((f) => join(fontsDir, f))
       .filter(isFile);
+    const text = readText(tokensCss);
+    const facets = text ? tokenFacets(text) : null;
     out.push({
       id: `${STYLE_PREFIX}${folder}`,
       name: fields.get("name") || folder,
@@ -190,6 +240,7 @@ export function listDesignStyles(stylesDir: string, fontsDir: string): DesignSty
       source: "style",
       designMd,
       tokensCss,
+      ...(facets ? { facets } : {}),
       ...(fontFiles.length ? { fontFiles } : {}),
       tags: list(fields.get("tags")),
       modes: list(fields.get("modes")),
@@ -201,13 +252,15 @@ export function listDesignStyles(stylesDir: string, fontsDir: string): DesignSty
 
 /**
  * The style index the agent picks from, one short line per style (it rides in a tool description on every design
- * turn): the description's first clause, three tags, modes and platform. The full note arrives once a style is picked.
+ * turn): the description's first clause, three tags, modes, platform, and dark when its base is dark. The full note
+ * arrives once a style is picked.
  */
 export function styleIndex(styles: DesignStyleInfo[]): string {
   return styles
     .map((s) => {
       const gist = s.description.split(/[:.;]/)[0]!.trim();
-      return `${s.id.slice(STYLE_PREFIX.length)}: ${gist} [${s.tags.slice(0, 3).join(", ")}; ${s.modes.join("/")}; ${s.platform}]`;
+      const theme = s.facets?.theme === "dark" ? "; dark" : "";
+      return `${s.id.slice(STYLE_PREFIX.length)}: ${gist} [${s.tags.slice(0, 3).join(", ")}; ${s.modes.join("/")}; ${s.platform}${theme}]`;
     })
     .join("\n");
 }

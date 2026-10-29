@@ -886,6 +886,20 @@ export interface DesignSystemOption {
   /** Up to 4 CSS colors to preview it. */
   swatches: string[];
   source: "project" | "projectFolder" | "style";
+  /** What its tokens.css looks like; absent without one (then it has no preview). */
+  facets?: StyleFacets;
+}
+
+/** A design system's look, read from its tokens.css: what the picker filters and the shortlist matches by. */
+export interface StyleFacets {
+  /** From the base `--color-bg`. */
+  theme: "light" | "dark";
+  /** It has a `prefers-color-scheme: dark` pair. */
+  darkPair: boolean;
+  /** From the generic family that ends `--font-display`. */
+  display: "serif" | "sans" | "mono";
+  /** From `--radius-md`: 2px or less sharp, 9px or less soft, else round. */
+  shape: "sharp" | "soft" | "round";
 }
 
 /** One custom property in a design system's tokens.css: its light (`:root`) value and its dark override, if any. */

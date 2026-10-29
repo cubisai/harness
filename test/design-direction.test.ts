@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentDriver, TurnInput } from "../src/main/agents/types";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
 import { Store } from "../src/main/db";
-import { listDesignStyles, materializeSystem, pickFromShortlist, styleIndex } from "../src/main/design/systems";
+import { listDesignStyles, materializeSystem, pickFromShortlist, styleIndex, tokenFacets } from "../src/main/design/systems";
 import { Service } from "../src/main/service";
 import { readDirection, SURFACES } from "../src/shared/direction";
 import { tierOf } from "../src/shared/tiers";
@@ -57,6 +57,39 @@ function setup() {
   const project = store.addProject(tempDir());
   return { store, service, driver, project, lib };
 }
+
+describe("tokenFacets", () => {
+  const facetsOf = (bg: string, extra = "") => tokenFacets(`:root { --color-bg: ${bg}; ${extra} }\n`);
+
+  it("reads the theme from the base background", () => {
+    expect(facetsOf("#0A0A0A")?.theme).toBe("dark");
+    expect(facetsOf("#FFFFFF")?.theme).toBe("light");
+    expect(facetsOf("#fff")?.theme).toBe("light");
+    expect(facetsOf("rgb(14 59 46)")?.theme).toBe("dark");
+  });
+
+  it("ignores a dark override after the first @media and flags it as a dark pair", () => {
+    const css = ":root { --color-bg: #FFFFFF; }\n@media (prefers-color-scheme: dark) { :root { --color-bg: #000; } }";
+    expect(tokenFacets(css)).toMatchObject({ theme: "light", darkPair: true });
+  });
+
+  it("reads the display family from --font-display", () => {
+    expect(facetsOf("#fff", `--font-display: "Bodoni Moda", Georgia, "Times New Roman", serif;`)?.display).toBe("serif");
+    expect(facetsOf("#fff", `--font-display: "Geist Mono", ui-monospace, monospace;`)?.display).toBe("mono");
+    expect(facetsOf("#fff", `--font-display: "Onest", system-ui, sans-serif;`)?.display).toBe("sans");
+  });
+
+  it("reads the corner shape from --radius-md, soft when it's missing", () => {
+    expect(facetsOf("#fff", "--radius-md: 0px;")?.shape).toBe("sharp");
+    expect(facetsOf("#fff", "--radius-md: 6px;")?.shape).toBe("soft");
+    expect(facetsOf("#fff", "--radius-md: 14px;")?.shape).toBe("round");
+    expect(facetsOf("#fff")?.shape).toBe("soft");
+  });
+
+  it("returns null without a --color-bg", () => {
+    expect(tokenFacets(":root { --color-text: #000; }")).toBeNull();
+  });
+});
 
 describe("style library", () => {
   it("lists well-formed styles with tags, modes, platform and the fonts that exist", () => {
@@ -281,6 +314,33 @@ describe("the bundled style library", () => {
   // 940: 32 styles since the two product-UI styles (2026-10-28); ~29 tokens a line.
   it("keeps the index the direction tool carries under ~940 tokens", () => {
     expect(Math.ceil(Buffer.byteLength(styleIndex(styles)) / 3)).toBeLessThanOrEqual(940);
+  });
+
+  it("reads facets from every style's tokens.css, dark bases included", () => {
+    for (const s of styles) expect(s.facets, s.id).toBeDefined();
+    for (const id of ["arcade-cabinet", "zinc-console", "night-studio", "control-room"]) {
+      expect(styles.find((s) => s.id === `style:${id}`)?.facets?.theme, id).toBe("dark");
+    }
+    expect(styles.find((s) => s.id === "style:swiss-grid")?.facets).toMatchObject({ theme: "light", darkPair: true, display: "sans", shape: "sharp" });
+    expect(styles.find((s) => s.id === "style:atelier")?.facets?.display).toBe("serif");
+    expect(styles.find((s) => s.id === "style:terminal")?.facets?.display).toBe("mono");
+  });
+
+  it("marks a dark style at the end of its index bracket", () => {
+    const dark = {
+      id: "style:night-studio",
+      name: "Night Studio",
+      description: "A dark studio look",
+      swatches: [],
+      source: "style" as const,
+      designMd: "/tmp/DESIGN.md",
+      tokensCss: "/tmp/tokens.css",
+      tags: ["dark", "editorial"],
+      modes: ["persuade"],
+      platform: "web",
+      facets: { theme: "dark" as const, darkPair: false, display: "sans" as const, shape: "soft" as const },
+    };
+    expect(styleIndex([dark])).toMatch(/; dark\]$/);
   });
 
   it("ships a license for every font in the pack", () => {
