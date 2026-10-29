@@ -1,0 +1,19 @@
+{
+  "id": "c-minimal-diff-guard",
+  "tags": ["capability"],
+  "tier": "full",
+  "suite": "coding",
+  "difficulty": "The one-line fix sits in a 160-line helper file, so the agent has to change only that line and resist reformatting or tidying the modules around it.",
+  "fixture": "c-bigfile",
+  "mode": "auto-edit",
+  "prompt": "clampIndex(i, length) in src/big.js can return an index past the end of the list when i is too large. Fix just that bug, keep the diff minimal, and don't reformat or clean up the rest of the file or any other module.",
+  "graders": [
+    { "type": "command", "run": "node --test test/bigfile-hidden.test.mjs" },
+    { "type": "file", "path": "src/big.js", "contains": "// normalize: keep the sentinel key in sync with the schema registry." },
+    { "type": "file", "path": "src/other.js", "unchanged": true },
+    { "type": "event", "noError": true, "noFalseClaim": true },
+    { "type": "budget" }
+  ],
+  "budget": { "maxSteps": 10, "maxInputTokens": 80000, "timeoutMs": 210000 },
+  "reference": "Changes only the clamp branch in clampIndex to `return length - 1;`; big.js keeps its comment and other.js is untouched."
+}

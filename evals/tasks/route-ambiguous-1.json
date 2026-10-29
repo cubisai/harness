@@ -1,0 +1,49 @@
+{
+  "id": "route-ambiguous-1",
+  "tags": [
+    "capability"
+  ],
+  "tier": "full",
+  "fixture": "empty",
+  "prompt": "We need to rotate mongodb for the database domain this sprint. Which skill fits?",
+  "mode": "plan",
+  "skills": {
+    "kit": {
+      "skills": 50,
+      "seed": 7
+    }
+  },
+  "graders": [
+    {
+      "type": "skill",
+      "expect": [
+        "rotate-mongodb-database"
+      ],
+      "required": false
+    },
+    {
+      "type": "answer",
+      "contains": [
+        "rotate-mongodb-database"
+      ]
+    },
+    {
+      "type": "tool",
+      "name": "Edit",
+      "max": 0
+    },
+    {
+      "type": "event",
+      "noError": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 8,
+    "maxInputTokens": 60000,
+    "timeoutMs": 120000
+  },
+  "reference": "Names rotate-mongodb-database (loading it is a bonus)."
+}

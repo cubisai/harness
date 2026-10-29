@@ -41,7 +41,7 @@ export class TerminalManager {
       cols: Math.max(2, cols),
       rows: Math.max(2, rows),
       cwd: cwd && existsSync(cwd) ? cwd : homedir(),
-      env: { ...process.env, TERM_PROGRAM: "UnSkilled" } as Record<string, string>,
+      env: { ...process.env, TERM_PROGRAM: "CubiQ" } as Record<string, string>,
     });
     this.terms.set(id, term);
     term.onData((d) => this.events.data(id, d));

@@ -1,0 +1,19 @@
+{
+  "id": "x-memory-stale-fact",
+  "tags": ["capability"],
+  "tier": "full",
+  "fixture": "x-cli",
+  "mode": "ask",
+  "suite": "memory",
+  "memory": "- The CLI entry is bin/run.js.",
+  "prompt": "What file is the CLI entry point?",
+  "graders": [
+    { "type": "answer", "contains": ["bin/cli.js"] },
+    { "type": "tool", "name": "Edit", "max": 0 },
+    { "type": "event", "noError": true },
+    { "type": "budget" }
+  ],
+  "budget": { "maxSteps": 8, "maxInputTokens": 60000, "timeoutMs": 180000 },
+  "reference": "Checks package.json, sees its bin field points at bin/cli.js, and answers bin/cli.js instead of trusting the stale memory note.",
+  "difficulty": "Memory claims the CLI entry is bin/run.js while the project's package.json bin field points to bin/cli.js, so the repo must win over the stale note."
+}

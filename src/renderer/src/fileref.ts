@@ -35,3 +35,24 @@ export function parseFileRef(text: string): FileRef | null {
   const column = line ? Number(m[3]) || undefined : undefined;
   return { path, ...(line && { line }), ...(column && { column }) };
 }
+
+/**
+ * A `file://` URL as a FileRef: `file:///D:/a/b.ts#L2` → { path: "D:/a/b.ts", line: 2 }
+ * (Antigravity links files this way). Null for anything that isn't a file URL.
+ */
+export function fileUrlRef(url: string): FileRef | null {
+  const m = /^file:\/\/(?:localhost)?(\/[^#?]*)(?:#L(\d+)(?:C(\d+))?)?$/i.exec(url.trim());
+  if (!m) return null;
+  let path: string;
+  try {
+    path = decodeURIComponent(m[1]!);
+  } catch {
+    return null;
+  }
+  // "/D:/x" is a Windows drive path; keep "/home/x" as it is.
+  if (/^\/[A-Za-z]:\//.test(path)) path = path.slice(1);
+  if (!path || path === "/") return null;
+  const line = Number(m[2]) || undefined;
+  const column = line ? Number(m[3]) || undefined : undefined;
+  return { path, ...(line && { line }), ...(column && { column }) };
+}

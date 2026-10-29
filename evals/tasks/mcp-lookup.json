@@ -1,0 +1,42 @@
+{
+  "id": "mcp-lookup",
+  "tags": [
+    "capability"
+  ],
+  "tier": "full",
+  "fixture": "empty",
+  "mode": "full",
+  "mcp": {
+    "servers": 2,
+    "tools": 10,
+    "seed": 11
+  },
+  "prompt": "Use the MCP tools available here to seed react on the mock-frontend server, with target \"main\". Report the status it returns.",
+  "graders": [
+    {
+      "type": "mcp",
+      "expect": [
+        "mock-frontend/seed_react"
+      ],
+      "required": true
+    },
+    {
+      "type": "tool",
+      "name": "call_mcp_tool",
+      "min": 1
+    },
+    {
+      "type": "event",
+      "noError": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 8,
+    "maxInputTokens": 80000,
+    "timeoutMs": 180000
+  },
+  "reference": "Calls the seed_react tool on the mock-frontend MCP server through call_mcp_tool and reports the status."
+}

@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PermissionMode, Theme } from "../../../shared/types";
 import { api } from "../api";
-import { rankCommands, type Command } from "../palette";
+import { newThreadCommands, rankCommands, type Command } from "../palette";
 import { fileManagerName } from "./OpenIn";
 import { useSelectedThread, useStore } from "../store";
 
 const MODES: { id: PermissionMode; label: string }[] = [
   { id: "ask", label: "Ask" },
   { id: "auto-edit", label: "Auto-edit" },
+  { id: "plan", label: "Plan" },
   { id: "full", label: "Full" },
 ];
 const THEMES: { id: Theme; label: string }[] = [
@@ -34,7 +35,8 @@ function Palette() {
   const inspectorOpen = useStore((s) => s.inspectorOpen);
   const thread = useSelectedThread();
   const running = useStore((s) => (thread ? Boolean(s.running[thread.id]) : false));
-  const [query, setQuery] = useState("");
+  const runningThreads = useStore((s) => s.running);
+  const [query, setQuery] = useState(() => useStore.getState().paletteQuery);
   const [index, setIndex] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -48,15 +50,19 @@ function Palette() {
     const action = (id: string, title: string, run: () => void, extra: Partial<Command> = {}) =>
       out.push({ id: `action:${id}`, section: "Actions", title, run, ...extra });
 
-    if (selectedProjectId) action("new-thread", "New Thread", () => void s.newThread(), { shortcut: key("N") });
+    out.push(...newThreadCommands({ enabled: Boolean(selectedProjectId), shortcut: key("N"), newThread: (skills, o) => void s.newThread(skills, o) }));
     action("add-project", "Add Project…", () => void s.addProject(), { keywords: "open folder" });
     action("library-skills", "Library: Skills", () => useStore.setState({ libraryTab: "skills" }), { shortcut: mac ? "⌘⇧L" : "Ctrl+Shift+L", keywords: "plugins browse skills" });
     action("library-mcp", "Library: MCP Servers", () => useStore.setState({ libraryTab: "mcp" }), { keywords: "mcp tools add server" });
     action("library-agents", "Library: Agents", () => useStore.setState({ libraryTab: "agents" }), { keywords: "install antigravity agy opencode codex" });
     action("settings", "Settings…", () => s.setSettingsOpen(true), { shortcut: key(","), keywords: "preferences api keys" });
+    if (thread) action("export-thread", "Export Thread…", () => void s.exportThread(), { keywords: "save json backup" });
+    if (selectedProjectId) action("import-thread", "Import Thread…", () => void s.importThread(), { keywords: "open json restore" });
     if (selectedProjectId) action("changes", "Show Changes", () => s.showInspector("changes"), { shortcut: mac ? "⌘⇧D" : "Ctrl+Shift+D", keywords: "diff git" });
+    if (selectedProjectId) action("files", "Show Files", () => s.showInspector("files"), { keywords: "tree explorer open file" });
     action("browser", "Show Browser", () => s.showInspector("browser"), { shortcut: mac ? "⌘⇧B" : "Ctrl+Shift+B", keywords: "web page preview" });
-    action("terminal", "Show Terminal", () => s.showInspector("terminal"), { shortcut: "⌃`", keywords: "shell console" });
+    action("terminal", "Toggle Terminal", () => s.toggleTerminal(), { shortcut: "⌃`", keywords: "shell console" });
+    action("doctor", "Run Doctor", () => s.openDoctor(), { keywords: "check install version conflict agents codex claude opencode fix" });
     if (selectedProjectId) {
       const preferred = settings?.editor ?? null;
       const ordered = [...editors].sort((a, b) => Number(b.id === preferred) - Number(a.id === preferred));
@@ -66,12 +72,13 @@ function Palette() {
     }
     if (inspectorOpen) action("hide-inspector", "Hide Side Panel", () => s.toggleInspector(), { keywords: "inspector close" });
     if (thread && running) action("stop", "Stop the Running Turn", () => void s.interrupt(), { shortcut: "Esc", keywords: "interrupt cancel" });
+    if (Object.values(runningThreads).filter(Boolean).length > 1) action("stop-all", "Stop All Running Threads", () => void s.stopAllRunning(), { keywords: "interrupt cancel background" });
     if (thread && !running) {
       for (const m of MODES) {
         if (m.id !== thread.permissionMode) action(`mode:${m.id}`, `Permissions: ${m.label}`, () => void s.updateThread({ permissionMode: m.id }), { keywords: "mode" });
       }
       for (const a of agents) {
-        if (a.id !== thread.agent) action(`agent:${a.id}`, `Switch Agent to ${a.label}`, () => void s.updateThread({ agent: a.id }), { detail: "Starts a fresh conversation" });
+        if (a.id !== thread.agent) action(`agent:${a.id}`, `Switch Agent to ${a.label}`, () => s.openSwitch(a.id), { detail: "Hand off or start fresh" });
       }
       for (const m of agents.find((a) => a.id === thread.agent)?.models ?? []) {
         if (m.id !== thread.model) action(`model:${m.id}`, `Model: ${m.label}`, () => void s.updateThread({ model: m.id }));
@@ -88,10 +95,12 @@ function Palette() {
         out.push({
           id: `skill:${sk.name}`,
           section: "Skills",
-          title: `/${sk.name}`,
+          title: `$${sk.name}`,
           detail: sk.description,
+          // The old "/name" trigger still finds the skill; the menu now uses "$".
+          keywords: `/${sk.name}`,
           // Into this thread's message box, or a new thread when none is open.
-          run: () => (thread ? useStore.setState({ pendingSkill: sk.name }) : void s.newThread(sk.name)),
+          run: () => (thread ? s.addPendingSkills([sk.name]) : void s.newThread([sk.name])),
         });
       }
     }
@@ -117,7 +126,7 @@ function Palette() {
       out.push({ id: `project:${p.id}`, section: "Projects", title: p.name, detail: p.path, run: () => void s.selectProject(p.id) });
     }
     return out;
-  }, [projects, threads, skills, agents, settings, editors, selectedProjectId, inspectorOpen, thread, running]);
+  }, [projects, threads, skills, agents, settings, editors, selectedProjectId, inspectorOpen, thread, running, runningThreads]);
 
   const results = useMemo(() => rankCommands(commands, query), [commands, query]);
   useEffect(() => setIndex(0), [query]);
@@ -138,7 +147,7 @@ function Palette() {
         <input
           ref={input}
           className="palette-input"
-          placeholder="Search actions, skills, and threads"
+          placeholder="Search actions, skills, and threads (> for actions only)"
           spellCheck={false}
           value={query}
           role="combobox"

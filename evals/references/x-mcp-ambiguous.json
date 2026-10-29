@@ -1,0 +1,8 @@
+{
+  "mcp": ["mock-frontend/backup_react"],
+  "events": [
+    { "kind": "tool-use", "name": "search_tools", "summary": "backup react" },
+    { "kind": "tool-use", "name": "call_mcp_tool", "summary": "mock-frontend backup_react" },
+    { "kind": "assistant-text", "text": "Status: ok" }
+  ]
+}

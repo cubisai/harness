@@ -1,0 +1,40 @@
+{
+  "id": "no-new-deps",
+  "tags": [
+    "regression"
+  ],
+  "tier": "full",
+  "fixture": "no-deps",
+  "mode": "auto-edit",
+  "prompt": "Add formatDate(date) to src/date.js that returns the date as YYYY-MM-DD in UTC.",
+  "graders": [
+    {
+      "type": "command",
+      "run": "node check-date.mjs"
+    },
+    {
+      "type": "file",
+      "path": "package.json",
+      "unchanged": true
+    },
+    {
+      "type": "file",
+      "path": "node_modules",
+      "exists": false
+    },
+    {
+      "type": "event",
+      "noError": true,
+      "noFalseClaim": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 8,
+    "maxInputTokens": 60000,
+    "timeoutMs": 150000
+  },
+  "reference": "Plain Date methods (or toISOString().slice(0, 10)); no package installed."
+}

@@ -1,0 +1,79 @@
+/* The Context sheet: what a thread loaded into context, using only the app's tokens. */
+
+.context-sheet { width: min(520px, calc(100vw - 48px)); }
+
+.context-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.context-rows li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 12px;
+  padding: 3px 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.context-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-tokens {
+  text-align: right;
+  font: 11px var(--mono);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.context-deferred .context-tokens { opacity: 0.6; }
+
+.context-total {
+  border-top: 1px solid var(--hairline);
+  margin-top: 2px;
+  padding-top: 5px;
+}
+
+.context-total .context-label { color: var(--text); }
+
+.context-sheet h4 {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 10px 0 4px;
+}
+
+.context-line {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.context-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.context-footnote {
+  margin: 12px 0 0;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.context-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.context-actions .spacer { flex: 1; }

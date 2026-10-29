@@ -1,0 +1,37 @@
+/* The Library's Automations tab: the automation list and its editor. */
+
+.automations-tab .automations-item { gap: 2px; }
+.automations-tab .automations-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.automations-tab .automations-head .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.automations-tab .automations-state { flex-shrink: 0; font: 10.5px var(--mono); color: var(--text-tertiary); }
+.automations-tab .automations-meta { font: 11px var(--mono); color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The editor: a 140px label column, value column minmax(0, 1fr) (DESIGN.md §7.7). */
+.automations-tab .automations-form { display: flex; flex-direction: column; gap: 12px; }
+.automations-tab .automations-row { display: grid; grid-template-columns: 140px minmax(0, 1fr); align-items: start; gap: 10px; }
+.automations-tab .automations-row > .label { color: var(--text-secondary); font-size: 13px; padding-top: 6px; }
+.automations-tab .automations-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.automations-tab .automations-fields .select-button { flex: 0 1 220px; min-width: 0; }
+.automations-tab .automations-fields .text-input { flex: 0 1 120px; min-width: 0; }
+.automations-tab .automations-fields .note { flex-basis: 100%; margin: 0; }
+.automations-tab .automations-unit { font-size: 12px; color: var(--text-tertiary); }
+.automations-tab .automations-tz { font: 11px var(--mono); color: var(--text-tertiary); }
+
+.automations-tab .automations-body { height: auto; min-height: 180px; padding: 8px 10px; font-family: var(--mono); font-size: 12px; line-height: 1.5; resize: vertical; }
+
+.automations-tab .automations-days { display: flex; flex-wrap: wrap; gap: 4px; }
+.automations-tab .automations-day { height: 26px; padding: 0 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-s); background: transparent; color: var(--text-secondary); font: 11.5px var(--font); }
+.automations-tab .automations-day:hover { background: var(--bg-hover); }
+.automations-tab .automations-day.on { background: var(--bg-selected); color: var(--text); border-color: var(--text-tertiary); }
+
+.automations-tab .automations-check { display: flex; flex-direction: column; gap: 2px; }
+.automations-tab .automations-check label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); }
+.automations-tab .automations-check input { margin: 0; flex: none; }
+.automations-tab .automations-check .note { margin: 0; }
+
+.automations-tab .automations-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.automations-tab .automations-actions .grow { flex: 1; }
+.automations-tab .automations-error { margin: 0; }
+
+.automations-tab .automations-empty { display: flex; flex-direction: column; gap: 8px; max-width: 420px; }
+.automations-tab .automations-empty .select-button { width: 100%; }

@@ -1,0 +1,1 @@
+Action: Delight. Add a moment of personality that fits the brand. Each variant uses a different flavour: a micro-interaction (a playful hover or press), a typographic surprise (one word set differently, a witty line), and an illustrated or graphic accent drawn in CSS or inline SVG. Keep it small and on-brand: it should make someone smile, not slow them down.

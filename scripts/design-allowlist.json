@@ -1,0 +1,260 @@
+[
+  {
+    "code": "design/literal-color",
+    "file": "src/main/browser/controller.ts",
+    "value": "#0a84ff",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/main/browser/controller.ts",
+    "value": "rgba(10,132,255,.25)",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/main/browser/picker.ts",
+    "value": "#0a84ff",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/main/browser/picker.ts",
+    "value": "#1d1d1f",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/main/browser/picker.ts",
+    "value": "#fff",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/main/browser/picker.ts",
+    "value": "rgba(10,132,255,.12)",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/components/Library.tsx",
+    "value": "#4f46e5",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/components/Library.tsx",
+    "value": "#64748b",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/components/TerminalPanel.tsx",
+    "value": "rgba(11,13,16,0.12)",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/components/TerminalPanel.tsx",
+    "value": "rgba(247,248,250,0.2)",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/mock.ts",
+    "value": "#0a0a0a",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/mock.ts",
+    "value": "#0e7490",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/mock.ts",
+    "value": "#18181b",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/mock.ts",
+    "value": "#2563eb",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/mock.ts",
+    "value": "#2a1b3d",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/mock.ts",
+    "value": "#404040",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/mock.ts",
+    "value": "#7c3aed",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/mock.ts",
+    "value": "#c2410c",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/mock.ts",
+    "value": "#fffaf5",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/mock.ts",
+    "value": "#ffffff",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/styles/app.css",
+    "value": "#000",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/styles/app.css",
+    "value": "#fff",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/styles/app.css",
+    "value": "rgb(0 0 0 / 0.12)",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/styles/app.css",
+    "value": "rgb(0 0 0 / 0.18)",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/styles/app.css",
+    "value": "rgb(0 0 0 / 0.6)",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/styles/app.css",
+    "value": "rgb(100 70 255)",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/styles/app.css",
+    "value": "rgb(180 40 240)",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/styles/app.css",
+    "value": "rgb(240 50 180)",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/styles/app.css",
+    "value": "rgb(255 120 40)",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/styles/app.css",
+    "value": "rgb(255 255 255 / 0.1)",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/styles/app.css",
+    "value": "rgb(255 255 255 / 0.35)",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/styles/app.css",
+    "value": "rgb(255 50 100)",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/styles/app.css",
+    "value": "rgb(30 185 170)",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/styles/app.css",
+    "value": "rgb(40 140 255)",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/literal-color",
+    "file": "src/renderer/src/styles/app.css",
+    "value": "rgb(50 200 80)",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/type-offscale",
+    "file": "src/renderer/src/styles/app.css",
+    "value": "13.5px",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/type-offscale",
+    "file": "src/renderer/src/styles/app.css",
+    "value": "16px",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/type-offscale",
+    "file": "src/renderer/src/styles/app.css",
+    "value": "17px",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/type-offscale",
+    "file": "src/renderer/src/styles/app.css",
+    "value": "24px",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/type-offscale",
+    "file": "src/renderer/src/styles/app.css",
+    "value": "26px",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/type-offscale",
+    "file": "src/renderer/src/styles/app.css",
+    "value": "9px",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/type-offscale",
+    "file": "src/renderer/src/styles/artifact.css",
+    "value": "13.5px",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  },
+  {
+    "code": "design/type-offscale",
+    "file": "src/renderer/src/styles/search.css",
+    "value": "16px",
+    "reason": "baseline 2026-10-09: fix in UI/UX Phase 4"
+  }
+]

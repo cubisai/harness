@@ -1,0 +1,42 @@
+{
+  "id": "solve-claude-resumed-cost",
+  "suite": "solve",
+  "tier": "hard",
+  "core": false,
+  "about": "Replays 946590c (5 source files, 3 separate fixes). Graded by its test/claude.test.ts and test/db.test.ts.",
+  "repo": {
+    "commit": "946590c^",
+    "install": true,
+    "hidden": {
+      "commit": "946590c",
+      "paths": [
+        "test/claude.test.ts",
+        "test/db.test.ts"
+      ]
+    }
+  },
+  "git": true,
+  "check": {
+    "command": "bun run typecheck",
+    "fixRounds": 1
+  },
+  "learn": true,
+  "prompt": "Three fixes in the Claude adapter (src/main/agents/claude.ts).\n\n1. Cost on resumed sessions is wrong. The SDK result's `total_cost_usd` is the session's running total and carries over when a session is resumed, so a resumed turn's turn-end shows the earlier turns' cost too. Make each turn-end carry its own share:\n   - every Claude turn-end records `sessionCost: { sessionId, usd }` (the SDK's total); add this optional field to the turn-end event type in src/shared/types.ts;\n   - add `lastSessionCost(threadId: string, sessionId: string): number | null` to the Store (src/main/db.ts): the `usd` of the thread's latest turn-end whose sessionCost has that sessionId, or null;\n   - when the service resumes a session it passes that value to the driver as a new optional `TurnInput.priorSessionCostUsd` (src/main/agents/types.ts);\n   - `turnEndFromResult(message, contextUsed?, model?, pricing?, priorUsd?)` takes it as a fifth parameter and subtracts it from the total, but only when the result's `session_id` is the session that was resumed (a lost session's retry starts a new one) and the total is at least the prior total; otherwise the whole total stands.\n2. When the app's own hooks turn a Bash call away (the result text contains `CODE_ONLY_DENY` from src/main/code-hint.ts or `BACKGROUND_BASH_DENY` from src/main/shell-tools.ts), the tool result is guidance, not an error: `isError: false`.\n3. A grep-like command (grep, egrep, fgrep, rg, ag or ack, optionally after `cd <dir> &&`) whose result is exactly `Exit code 1` found no matches: show it as not an error, with summary \"No matches\" and payload `{ exitCode: 1, output: \"No matches\" }`. Any other command's exit 1, and grep's exit 2, stay errors.\n\nAdd tests in test/claude.test.ts and test/db.test.ts.",
+  "expect": {},
+  "graders": [
+    {
+      "type": "command",
+      "run": "bunx vitest run test/claude.test.ts test/db.test.ts",
+      "timeoutMs": 300000,
+      "weight": 3
+    },
+    {
+      "type": "command",
+      "run": "bun run typecheck",
+      "timeoutMs": 300000,
+      "required": false,
+      "weight": 1
+    }
+  ],
+  "timeoutMs": 1200000
+}

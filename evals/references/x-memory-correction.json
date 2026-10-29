@@ -1,0 +1,5 @@
+{
+  "events": [
+    { "kind": "assistant-text", "text": "Use staging-2: the newer memory note says staging-1 was retired." }
+  ]
+}

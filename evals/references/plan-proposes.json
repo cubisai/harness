@@ -1,0 +1,13 @@
+{
+  "events": [
+    {
+      "kind": "tool-use",
+      "name": "Read",
+      "summary": "src/form.js"
+    },
+    {
+      "kind": "plan-proposal",
+      "text": "1. In submit(), reject an email without @. 2. Reject an age that isn't a positive integer. 3. Return the errors."
+    }
+  ]
+}

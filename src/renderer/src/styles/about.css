@@ -1,0 +1,83 @@
+/* About CubiQ: scoped to the sheet, using only the app's tokens. */
+
+.about-sheet { width: min(440px, calc(100vw - 48px)); }
+
+.about-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+  padding-top: 14px;
+}
+
+.about-icon {
+  border-radius: var(--radius-m);
+  margin-bottom: 6px;
+}
+
+.about-version {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.about-commit {
+  margin: 0;
+  font: 12px var(--mono);
+  color: var(--text-secondary);
+}
+
+.about-runtime {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+
+.about-changelog {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.about-changelog li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.about-hash {
+  flex-shrink: 0;
+  font: 11px var(--mono);
+  color: var(--text-tertiary);
+}
+
+.about-date {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.about-subject {
+  min-width: 0;
+}
+
+.about-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.about-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.about-actions .spacer { flex: 1; }

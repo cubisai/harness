@@ -1,0 +1,229 @@
+import { skillsOf } from "../../shared/skill-list";
+import type { StoredEvent } from "../../shared/types";
+import { canonicalTool } from "../../shared/tools";
+
+/** One thing the thread draws: an event as is, a folded run of work, or a turn's footer. */
+export type Segment =
+  | { kind: "event"; stored: StoredEvent }
+  /** Consecutive tool calls (and the thinking between them). `done` = something came after, so it folds. */
+  | { kind: "work"; key: number; items: StoredEvent[]; startedAt: number; endedAt: number; done: boolean }
+  /** A turn's end: its final answer (for Copy), the message that started it (for Retry, and its seq for the turn's score), what it changed, and the web pages it fetched. */
+  | { kind: "turn-end"; stored: StoredEvent; answer: string; prompt: { text: string; skills?: string[] } | null; userSeq: number | null; changes: TurnChanges | null; sources: string[] };
+
+export interface TurnChanges {
+  files: string[];
+  /** Line counts, or null when no edit in the turn reported a "+a −d" stat. */
+  additions: number | null;
+  deletions: number | null;
+}
+
+/** The https page a Fetch call read or the browser pane opened (`browser_open`, MCP-prefixed or not, or through `browser_call`), or null. */
+export function fetchedUrl(ev: { name: string; payload?: unknown }): string | null {
+  const call = /(^|_)browser_call$/.test(ev.name) ? (ev.payload as { tool?: unknown; arguments?: unknown } | undefined) : undefined;
+  if (call) return call.tool === "browser_open" ? fetchedUrl({ name: "browser_open", payload: call.arguments }) : null;
+  if (canonicalTool(ev.name) !== "Fetch" && !/(^|__)browser_open$/.test(ev.name)) return null;
+  const url = (ev.payload as { url?: unknown } | undefined)?.url;
+  return typeof url === "string" && /^https:\/\/[^\s]+$/.test(url) ? url : null;
+}
+
+/** A tool call or the thinking between calls: what a "Worked for" fold holds. */
+function isWork(e: StoredEvent): boolean {
+  const k = e.event.kind;
+  return k === "tool-use" || k === "tool-result" || k === "thinking";
+}
+
+/** The thread-wide tool-result map, last result per call: an Edit's stat can be reported after its call. */
+function toolResults(events: StoredEvent[]): Map<string, { summary?: string; isError: boolean }> {
+  const results = new Map<string, { summary?: string; isError: boolean }>();
+  for (const e of events) if (e.event.kind === "tool-result") results.set(e.event.toolUseId, { summary: e.event.summary, isError: e.event.isError });
+  return results;
+}
+
+/** What a closed turn carries into the next: the last prompt and its user seq. Answer, edits and the fold all reset at a turn-end. */
+interface Carry {
+  prompt: { text: string; skills?: string[] } | null;
+  userSeq: number | null;
+}
+
+const NO_CARRY: Carry = { prompt: null, userSeq: null };
+
+/** Segment one run of events from the state entering it. A run for a single turn is self-contained given `carry` and the thread-wide `results`. */
+function segmentRun(events: StoredEvent[], running: boolean, results: Map<string, { summary?: string; isError: boolean }>, carry: Carry): { segments: Segment[]; carry: Carry } {
+  const out: Segment[] = [];
+  let run: StoredEvent[] = [];
+  let answer: string[] = [];
+  let prompt: { text: string; skills?: string[] } | null = carry.prompt;
+  let userSeq: number | null = carry.userSeq;
+  let edits = new Map<string, { additions: number; deletions: number }>();
+  let statKnown = false;
+  let sources: string[] = [];
+
+  const flush = (done: boolean, endedAt: number) => {
+    if (!run.length) return;
+    if (run.some((e) => e.event.kind === "tool-use")) {
+      out.push({ kind: "work", key: run[0]!.seq, items: run, startedAt: run[0]!.createdAt, endedAt, done });
+    } else {
+      for (const e of run) if (e.event.kind !== "tool-result") out.push({ kind: "event", stored: e });
+    }
+    run = [];
+  };
+
+  // For each index: is there a tool call later in the same turn? Narration and
+  // thinking between calls fold with them; only text after the last call is the answer.
+  const moreWork: boolean[] = new Array(events.length).fill(false);
+  for (let i = events.length - 1, seen = false; i >= 0; i--) {
+    const k = events[i]!.event.kind;
+    moreWork[i] = seen;
+    if (k === "user" || k === "turn-end") seen = false;
+    else if (k === "tool-use") seen = true;
+  }
+
+  for (let i = 0; i < events.length; i++) {
+    const e = events[i]!;
+    const ev = e.event;
+    if (ev.kind === "tool-use" && canonicalTool(ev.name) === "Edit") {
+      const r = results.get(ev.toolUseId);
+      if (r && !r.isError) {
+        const stat = /\+(\d+)\s+[−-](\d+)/.exec(r.summary ?? "");
+        if (stat) statKnown = true;
+        for (const file of ev.summary.split(", ").filter(Boolean)) {
+          const prev = edits.get(file) ?? { additions: 0, deletions: 0 };
+          // A multi-file edit reports one stat: count it once, on its first file.
+          const first = file === ev.summary.split(", ")[0];
+          edits.set(file, { additions: prev.additions + (stat && first ? Number(stat[1]) : 0), deletions: prev.deletions + (stat && first ? Number(stat[2]) : 0) });
+        }
+      }
+    }
+    if (ev.kind === "tool-use") {
+      const url = fetchedUrl(ev);
+      if (url && !sources.includes(url)) sources.push(url);
+    }
+    if (isWork(e) || (run.length > 0 && ev.kind === "assistant-text" && moreWork[i])) {
+      run.push(e);
+      continue;
+    }
+    flush(true, e.createdAt);
+    if (ev.kind === "user") {
+      const skills = skillsOf(ev);
+      prompt = { text: ev.text, ...(skills.length ? { skills } : {}) };
+      userSeq = e.seq;
+      answer = [];
+      edits = new Map();
+      statKnown = false;
+      sources = [];
+    }
+    if (ev.kind === "assistant-text") answer.push(ev.text);
+    if (ev.kind === "turn-end") {
+      const files = [...edits.keys()];
+      const changes = files.length
+        ? {
+            files,
+            additions: statKnown ? [...edits.values()].reduce((n, s) => n + s.additions, 0) : null,
+            deletions: statKnown ? [...edits.values()].reduce((n, s) => n + s.deletions, 0) : null,
+          }
+        : null;
+      out.push({ kind: "turn-end", stored: e, answer: answer.join("\n\n"), prompt, userSeq, changes, sources });
+      answer = [];
+      edits = new Map();
+      statKnown = false;
+      sources = [];
+      continue;
+    }
+    out.push({ kind: "event", stored: e });
+  }
+  const last = run[run.length - 1];
+  flush(!running, last?.createdAt ?? 0);
+  return { segments: out, carry: { prompt, userSeq } };
+}
+
+/**
+ * Group a thread's top-level events for display (DESIGN.md §7.4): runs of
+ * tool calls become one "Worked for" fold once the turn has moved past them;
+ * a run still in progress stays as plain rows. A run of thinking alone stays
+ * as its reasoning block. Each turn-end carries its answer, prompt and changes.
+ */
+export function segmentEvents(events: StoredEvent[], running: boolean): Segment[] {
+  return segmentRun(events, running, toolResults(events), NO_CARRY).segments;
+}
+
+const carryKey = (c: Carry): string => JSON.stringify([c.userSeq, c.prompt?.text ?? null, c.prompt?.skills ?? null]);
+
+/**
+ * A stateful `segmentEvents` for the thread view (P2.2). It splits the input at
+ * turn-end boundaries, caches each closed turn's segments by its seq span and
+ * event count, and rebuilds only the open tail (and any turn whose key changed),
+ * so a live event doesn't re-segment the whole loaded history. Equal to
+ * `segmentEvents` on the same input. `onRecompute`, when given, fires once per
+ * closed turn actually re-segmented; tests use it to show the closed turns hold.
+ */
+export function createSegmenter(onRecompute?: (key: string) => void): (events: StoredEvent[], running: boolean) => Segment[] {
+  const cache = new Map<string, { segments: Segment[]; carry: Carry }>();
+  return (events, running) => {
+    const results = toolResults(events);
+    const out: Segment[] = [];
+    const used = new Set<string>();
+    let carry = NO_CARRY;
+    let start = 0;
+    for (let i = 0; i < events.length; i++) {
+      if (events[i]!.event.kind !== "turn-end") continue;
+      // The carry only matters when the turn has no user of its own; keying on it then
+      // keeps a cache hit valid even if the lead-in changes.
+      const key = `${events[start]!.seq}:${events[i]!.seq}:${i + 1 - start}:${carryKey(carry)}`;
+      used.add(key);
+      let entry = cache.get(key);
+      if (!entry) {
+        onRecompute?.(key);
+        const done = segmentRun(events.slice(start, i + 1), false, results, carry);
+        entry = { segments: done.segments, carry: done.carry };
+        cache.set(key, entry);
+      }
+      out.push(...entry.segments);
+      carry = entry.carry;
+      start = i + 1;
+    }
+    if (start < events.length) out.push(...segmentRun(events.slice(start), running, results, carry).segments);
+    // Forget turns no longer present (a rebuilt or truncated thread).
+    for (const key of cache.keys()) if (!used.has(key)) cache.delete(key);
+    return out;
+  };
+}
+
+function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/** The fold's one line after "Worked for …": what kinds of steps it holds. */
+export function workSummary(items: StoredEvent[]): string {
+  let read = 0;
+  let searched = 0;
+  let ran = 0;
+  let other = 0;
+  const edited = new Set<string>();
+  for (const e of items) {
+    if (e.event.kind !== "tool-use") continue;
+    const name = canonicalTool(e.event.name);
+    if (name === "Read") read++;
+    else if (name === "Search") searched++;
+    else if (name === "Run") ran++;
+    else if (name === "Edit") for (const f of e.event.summary.split(", ").filter(Boolean)) edited.add(f);
+    else other++;
+  }
+  return [
+    read ? `read ${plural(read, "file", "files")}` : "",
+    searched ? `searched ${plural(searched, "time", "times")}` : "",
+    edited.size ? `edited ${plural(edited.size, "file", "files")}` : "",
+    ran ? `ran ${plural(ran, "command", "commands")}` : "",
+    other ? plural(other, "other step", "other steps") : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** "41s", "2m 05s", "1h 3m": how long a fold's work took. */
+export function workDuration(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}

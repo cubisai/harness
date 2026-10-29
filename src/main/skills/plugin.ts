@@ -1,6 +1,6 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Catalog } from "./catalog";
+import type { SkillEntry } from "../../shared/types";
 
 export const PLUGIN_NAME = "harness-skills";
 
@@ -38,15 +38,15 @@ function rewriteMarkdown(dir: string, known: Set<string>): void {
 
 /**
  * Build the local Claude Code plugin that carries model-invoked skills.
- * If there are no model-invoked skills, returns null.
+ * If there are no skills, returns null.
  */
-export function ensurePlugin(catalog: Catalog, targetDir: string): string | null {
-  if (!catalog.modelSkills || catalog.modelSkills.length === 0) {
+export function ensurePlugin(skills: SkillEntry[], targetDir: string): string | null {
+  if (!skills || skills.length === 0) {
     if (existsSync(targetDir)) rmSync(targetDir, { recursive: true, force: true });
     return null;
   }
 
-  const stamp = catalog.modelSkills.map((s) => `${s.name}:${s.sha256}`).join("\n");
+  const stamp = skills.map((s) => `${s.origin}:${s.name}:${s.sha256}`).join("\n");
   const stampFile = join(targetDir, ".stamp");
   if (existsSync(stampFile) && readFileSync(stampFile, "utf-8") === stamp) return targetDir;
 
@@ -57,7 +57,7 @@ export function ensurePlugin(catalog: Catalog, targetDir: string): string | null
     JSON.stringify(
       {
         name: PLUGIN_NAME,
-        description: "Model-invoked skills loaded by AI Harness.",
+        description: "Model-invoked skills loaded by CubiQ.",
         version: "1.0.0",
       },
       null,
@@ -65,13 +65,12 @@ export function ensurePlugin(catalog: Catalog, targetDir: string): string | null
     ) + "\n",
   );
 
-  const known = new Set(catalog.modelSkills.map((s) => s.name));
-  for (const skill of catalog.modelSkills) {
+  const known = new Set(skills.map((s) => s.name));
+  for (const skill of skills) {
+    if (!skill.dir || !existsSync(skill.dir)) continue;
     const dest = join(targetDir, "skills", skill.name);
-    if (catalog.root.skillsDir && existsSync(join(catalog.root.skillsDir, skill.name))) {
-      cpSync(join(catalog.root.skillsDir, skill.name), dest, { recursive: true });
-      rewriteMarkdown(dest, known);
-    }
+    cpSync(skill.dir, dest, { recursive: true });
+    rewriteMarkdown(dest, known);
   }
   writeFileSync(stampFile, stamp);
   return targetDir;
@@ -79,23 +78,22 @@ export function ensurePlugin(catalog: Catalog, targetDir: string): string | null
 
 /**
  * A plain copy of the model-invoked skills, names unqualified, for agents
- * that load skills from a directory. If there are no model-invoked skills, returns null.
+ * that load skills from a directory. If there are no skills, returns null.
  */
-export function ensureModelSkillsDir(catalog: Catalog, targetDir: string): string | null {
-  if (!catalog.modelSkills || catalog.modelSkills.length === 0) {
+export function ensureModelSkillsDir(skills: SkillEntry[], targetDir: string): string | null {
+  if (!skills || skills.length === 0) {
     if (existsSync(targetDir)) rmSync(targetDir, { recursive: true, force: true });
     return null;
   }
 
-  const stamp = catalog.modelSkills.map((s) => `${s.name}:${s.sha256}`).join("\n");
+  const stamp = skills.map((s) => `${s.origin}:${s.name}:${s.sha256}`).join("\n");
   const stampFile = join(targetDir, ".stamp");
   if (existsSync(stampFile) && readFileSync(stampFile, "utf-8") === stamp) return targetDir;
   rmSync(targetDir, { recursive: true, force: true });
   mkdirSync(targetDir, { recursive: true });
-  for (const skill of catalog.modelSkills) {
-    if (catalog.root.skillsDir && existsSync(join(catalog.root.skillsDir, skill.name))) {
-      cpSync(join(catalog.root.skillsDir, skill.name), join(targetDir, skill.name), { recursive: true });
-    }
+  for (const skill of skills) {
+    if (!skill.dir || !existsSync(skill.dir)) continue;
+    cpSync(skill.dir, join(targetDir, skill.name), { recursive: true });
   }
   writeFileSync(stampFile, stamp);
   return targetDir;

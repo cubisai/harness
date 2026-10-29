@@ -1,0 +1,125 @@
+/* Arena: a CubiQ style. Link this file and use the custom properties, not raw values. Dark by design: no light pair.
+ * Roles: --color-accent-text for accent-coloured text (the accent itself may be too light for text);
+ * --color-on-accent on accent fills; --color-*-soft behind status text and selected chips, with the matching
+ * colour (or --color-accent-text) on top; --color-surface-3 for hover/pressed wells; --color-border-strong for
+ * inputs and dividers that must show. --tracking-display/-heading/-label on those roles, --text-display-sm
+ * under 640px, font-variant-numeric: var(--numeric-data) on figures. */
+/* One cut, declared across every weight so a bold heading never gets a synthesized (smeared) bold. */
+@font-face {
+  font-family: "Chakra Petch";
+  src: url("fonts/chakra-petch.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Sora";
+  src: url("fonts/sora.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+}
+:root {
+  color-scheme: dark;
+
+  /* Color */
+  --color-bg: #0A0C12;
+  --color-surface: #12151F;
+  --color-surface-2: #1A1E2B;
+  --color-text: #F2F4F8;
+  --color-text-muted: #A0A8B8;
+  --color-border: #262B3A;
+  --color-primary: #A78BFA;
+  --color-on-primary: #120A2A;
+  --color-accent: #22D3EE;
+  --color-success: #4ADE80;
+  --color-warning: #FBBF24;
+  --color-danger: #FF6B6B;
+  --color-focus: #22D3EE;
+  --color-surface-3: #242939;
+  --color-border-strong: #5D6478;
+  --color-accent-text: #22D3EE;
+  --color-on-accent: #04161A;
+  --color-accent-soft: #164351;
+  --color-success-soft: #1D3D32;
+  --color-warning-soft: #413720;
+  --color-danger-soft: #41262E;
+
+  /* Type */
+  --font-sans: "Sora", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Chakra Petch", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --text-xs: 12px;
+  --leading-xs: 16px;
+  --text-sm: 14px;
+  --leading-sm: 20px;
+  --text-md: 16px;
+  --leading-md: 24px;
+  --text-lg: 20px;
+  --leading-lg: 28px;
+  --text-xl: 24px;
+  --leading-xl: 32px;
+  --text-2xl: 32px;
+  --leading-2xl: 40px;
+  --text-3xl: 48px;
+  --leading-3xl: 56px;
+  --text-4xl: 64px;
+  --leading-4xl: 72px;
+  --text-display: 96px;
+  --leading-display: 92px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 700;
+  --tracking-display: -0.01em;
+  --tracking-heading: 0em;
+  --tracking-label: 0.08em;
+  --text-display-sm: 48px;
+  --leading-display-sm: 48px;
+  --numeric-data: tabular-nums;
+
+  /* Space: the 8pt scale (4 is for type and icon nudges only) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* Size */
+  --target-min: 44px;
+  --content-max: 1600px;
+  --measure: 68ch;
+
+  /* Radius */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-full: 9999px;
+
+  /* Elevation */
+  --shadow-1: none;
+  --shadow-2: 0 8px 24px rgb(0 0 0 / 0.45);
+  --shadow-3: 0 24px 64px rgb(0 0 0 / 0.6);
+
+  /* Motion */
+  --duration-fast: 120ms;
+  --duration: 220ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration: 0ms;
+  }
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}

@@ -1,0 +1,49 @@
+{
+  "id": "route-ambiguous-2",
+  "tags": [
+    "capability"
+  ],
+  "tier": "full",
+  "fixture": "empty",
+  "prompt": "We need to rotate spark for the data-pipeline domain this sprint. Which skill fits?",
+  "mode": "plan",
+  "skills": {
+    "kit": {
+      "skills": 50,
+      "seed": 7
+    }
+  },
+  "graders": [
+    {
+      "type": "skill",
+      "expect": [
+        "rotate-spark-data-pipeline"
+      ],
+      "required": false
+    },
+    {
+      "type": "answer",
+      "contains": [
+        "rotate-spark-data-pipeline"
+      ]
+    },
+    {
+      "type": "tool",
+      "name": "Edit",
+      "max": 0
+    },
+    {
+      "type": "event",
+      "noError": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 8,
+    "maxInputTokens": 60000,
+    "timeoutMs": 120000
+  },
+  "reference": "Names rotate-spark-data-pipeline (loading it is a bonus)."
+}

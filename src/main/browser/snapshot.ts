@@ -3,10 +3,15 @@
  * Text snapshots of the page in the browser pane: what an agent needs to act
  * on a page, at a fraction of a screenshot's tokens. Every interactive
  * element gets a ref (e1, e2, …) that browser_click and browser_type take.
+ * An element keeps its ref across snapshots, and a new one is numbered on from
+ * `startAt`, which the caller never resets: a ref is never reused for another
+ * element, so an old one is either still the same element or gone (stale).
  *
  * `collectPage` runs inside the page (serialized with toString), so it must
  * not reference anything outside itself.
  */
+
+import { scopeLines, type SnapshotOptions } from "./backend";
 
 export interface SnapshotNode {
   kind: "heading" | "link" | "button" | "input" | "select" | "checkbox" | "text" | "image";
@@ -24,11 +29,17 @@ export interface PageSnapshot {
   title: string;
   nodes: SnapshotNode[];
   truncated: boolean;
+  /** The next unused ref number, for the following snapshot. */
+  next?: number;
+  /** The scope selector matched nothing. */
+  noScope?: boolean;
 }
 
-export function collectPage(maxNodes: number): PageSnapshot {
+export function collectPage(maxNodes: number, startAt = 1, scope: string | null = null, interactive = false): PageSnapshot {
   const REF = "data-unskilled-ref";
-  for (const el of Array.from(document.querySelectorAll(`[${REF}]`))) el.removeAttribute(REF);
+  let next = startAt;
+  const root = scope ? document.querySelector(scope) : (document.body ?? document.documentElement);
+  if (!root) return { url: location.href, title: document.title, nodes: [], truncated: false, next, noScope: true };
 
   const clip = (s: string, n = 100) => {
     const one = s.replace(/\s+/g, " ").trim();
@@ -65,15 +76,22 @@ export function collectPage(maxNodes: number): PageSnapshot {
   };
 
   const nodes: SnapshotNode[] = [];
-  let n = 0;
   let truncated = false;
+  // A cloned element carries its original's ref; the second one seen gets a new one.
+  const taken = new Set<string>();
   const ref = (el: Element) => {
-    const r = `e${++n}`;
+    const had = el.getAttribute(REF);
+    if (had && !taken.has(had)) {
+      taken.add(had);
+      return had;
+    }
+    const r = `e${next++}`;
     el.setAttribute(REF, r);
+    taken.add(r);
     return r;
   };
 
-  const walker = document.createTreeWalker(document.body ?? document.documentElement, NodeFilter.SHOW_ELEMENT);
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
   const seenText = new Set<Element>();
   for (let el = walker.currentNode as Element | null; el; el = walker.nextNode() as Element | null) {
     if (nodes.length >= maxNodes) {
@@ -86,7 +104,7 @@ export function collectPage(maxNodes: number): PageSnapshot {
     const disabled = (el as HTMLButtonElement).disabled || el.getAttribute("aria-disabled") === "true" || undefined;
 
     if (/^h[1-6]$/.test(tag) || role === "heading") {
-      if (!visible(el)) continue;
+      if (interactive || !visible(el)) continue;
       nodes.push({ kind: "heading", level: Number(tag[1]) || 2, name: clip(el.textContent ?? "") });
       seenText.add(el);
     } else if ((tag === "a" && el.hasAttribute("href")) || role === "link") {
@@ -114,22 +132,22 @@ export function collectPage(maxNodes: number): PageSnapshot {
       nodes.push({ kind: "select", ref: ref(el), name: clip(labelFor(el), 60), value: clip(sel.selectedOptions[0]?.textContent ?? "", 60), disabled });
       seenText.add(el);
     } else if (tag === "img" && el.getAttribute("alt")) {
-      if (!visible(el)) continue;
+      if (interactive || !visible(el)) continue;
       nodes.push({ kind: "image", name: clip(el.getAttribute("alt") ?? "") });
     } else if (["p", "li", "td", "th", "dt", "dd", "label", "figcaption", "blockquote", "pre", "caption"].includes(tag) || role === "alert" || role === "status") {
-      if (!visible(el) || [...seenText].some((s) => s.contains(el))) continue;
+      if (interactive || !visible(el) || [...seenText].some((s) => s.contains(el))) continue;
       // Text of this block that isn't inside an interactive child.
       const text = clip((el as HTMLElement).innerText ?? "", 160);
       if (text) nodes.push({ kind: "text", name: text });
       seenText.add(el);
     }
   }
-  return { url: location.href, title: document.title, nodes, truncated };
+  return { url: location.href, title: document.title, nodes, truncated, next };
 }
 
 /** The snapshot as compact text lines, one node per line. */
-export function formatSnapshot(s: PageSnapshot): string {
-  const lines = [`Page: ${s.title || "(untitled)"}`, `URL: ${s.url}`, ""];
+export function formatSnapshot(s: PageSnapshot, opts?: SnapshotOptions): string {
+  const lines = [`Page: ${s.title || "(untitled)"}`, `URL: ${s.url}`, ...scopeLines(opts), ""];
   for (const node of s.nodes) {
     const ref = node.ref ? `[${node.ref}] ` : "";
     const flags = [node.disabled ? "disabled" : "", node.checked === true ? "checked" : node.checked === false && node.kind === "checkbox" ? "unchecked" : ""]
@@ -158,6 +176,7 @@ export function formatSnapshot(s: PageSnapshot): string {
     }
   }
   if (s.truncated) lines.push("", "(snapshot truncated; scroll or narrow the page to see more)");
-  if (s.nodes.length === 0) lines.push("(no visible content)");
+  if (s.noScope) lines.push(`(nothing on the page matches "${opts?.selector ?? ""}")`);
+  else if (s.nodes.length === 0) lines.push("(no visible content)");
   return lines.join("\n");
 }

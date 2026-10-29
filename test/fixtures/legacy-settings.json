@@ -1,0 +1,9 @@
+{
+  "settings": {
+    "theme": "dark"
+  },
+  "secrets": {
+    "anthropic": "eWNhZ2VsLXRuYS1rcw==",
+    "openai": "eWNhZ2VsLWlhbmVwby1rcw=="
+  }
+}

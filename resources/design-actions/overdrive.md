@@ -1,0 +1,1 @@
+Action: Overdrive. Push past the safe version while keeping the brand recognisable. Each variant breaks a different convention: scale (something enormous), structure (an unexpected layout or overlap), and interaction or motion (the element responds or reveals in a surprising way). Don't ask first: show all three. Keep the content usable and accessible.

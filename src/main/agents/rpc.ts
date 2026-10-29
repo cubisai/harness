@@ -1,4 +1,6 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
+import { killTree, spawnCommand } from "../winspawn";
+import { parseLogfmt } from "./acp/opencode-log";
 
 /**
  * JSON-RPC 2.0 over an agent's stdio, one JSON message per line: the
@@ -22,7 +24,34 @@ export class RpcError extends Error {
 export interface RpcHandlers {
   onRequest(method: string, params: unknown): Promise<unknown>;
   onNotification(method: string, params: unknown): void;
+  /** Each complete line the agent writes to stderr, as it arrives. */
+  onStderrLine?(line: string): void;
   onExit?(code: number | null, stderrTail: string): void;
+}
+
+/**
+ * Stderr lines worth showing a user: an agent that logs in logfmt (OpenCode with
+ * --print-logs) fills stderr with routine INFO lines, so those are dropped and an
+ * ERROR line is cut to its error text. Plain lines pass through unchanged.
+ */
+export function meaningfulStderr(tail: string): string[] {
+  const out: string[] = [];
+  for (const raw of tail.trim().split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (!line.startsWith("timestamp=")) {
+      // The tail's first line can be the cut-off end of a log line: two or more key=value pairs.
+      if ((line.match(/(?:^|\s)[\w.]+=\S/g) ?? []).length >= 2) continue;
+      out.push(line);
+      continue;
+    }
+    const fields = parseLogfmt(line);
+    if (!fields) continue; // a log line cut off by the tail's 4000-char window
+    if (fields.level !== "ERROR") continue;
+    const text = fields["error.error"] ?? fields.error ?? fields.message;
+    if (text && out[out.length - 1] !== text) out.push(text);
+  }
+  return out;
 }
 
 export class StdioRpc {
@@ -30,17 +59,34 @@ export class StdioRpc {
   private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   private buffer = "";
   private stderrTail = "";
+  private stderrBuffer = "";
   private exited = false;
+  private closedResolve!: () => void;
+  private readonly closedPromise = new Promise<void>((r) => (this.closedResolve = r));
 
   private constructor(
     private child: ChildProcess,
     private handlers: RpcHandlers,
   ) {
+    // A write racing the agent's exit (or close()) fails with EPIPE; with no
+    // listener that error would crash the whole process. The exit handler
+    // already reports the agent's end, so the write error itself is dropped.
+    child.stdin?.on("error", () => {});
     child.stdout!.setEncoding("utf-8");
     child.stdout!.on("data", (chunk: string) => this.onData(chunk));
     child.stderr!.setEncoding("utf-8");
     child.stderr!.on("data", (chunk: string) => {
       this.stderrTail = (this.stderrTail + chunk).slice(-4000);
+      // Keep the 4 KB tail above exactly as before; additionally surface whole
+      // lines so a caller can watch for something the agent only logs.
+      if (!this.handlers.onStderrLine) return;
+      this.stderrBuffer += chunk;
+      let nl: number;
+      while ((nl = this.stderrBuffer.indexOf("\n")) >= 0) {
+        const line = this.stderrBuffer.slice(0, nl).trim();
+        this.stderrBuffer = this.stderrBuffer.slice(nl + 1);
+        if (line) this.handlers.onStderrLine(line);
+      }
     });
     child.on("exit", (code) => this.onExit(code));
     child.on("error", (err) => {
@@ -50,16 +96,8 @@ export class StdioRpc {
   }
 
   static spawn(command: string, args: string[], opts: { cwd: string; env: NodeJS.ProcessEnv }, handlers: RpcHandlers): StdioRpc {
-    const child = spawn(command, args, {
-      cwd: opts.cwd,
-      env: opts.env,
-      stdio: ["pipe", "pipe", "pipe"],
-      // On Windows a bare name like "dsh" or "npx" is usually a .cmd shim,
-      // which only the shell resolves; a full path runs directly (and may
-      // contain spaces the shell would split).
-      shell: process.platform === "win32" && !/[\\/]/.test(command),
-      windowsHide: true,
-    });
+    // On Windows a bare name like "opencode" or "npx" is usually a .cmd shim; spawnCommand runs it with its arguments intact.
+    const child = spawnCommand(command, args, { cwd: opts.cwd, env: opts.env, stdio: ["pipe", "pipe", "pipe"] });
     return new StdioRpc(child, handlers);
   }
 
@@ -67,8 +105,13 @@ export class StdioRpc {
     return !this.exited;
   }
 
+  /** Resolves once the process has exited. */
+  closed(): Promise<void> {
+    return this.exited ? Promise.resolve() : this.closedPromise;
+  }
+
   request<T = unknown>(method: string, params?: unknown): Promise<T> {
-    if (this.exited) return Promise.reject(new Error(`The agent exited.${this.stderrHint()}`));
+    if (this.exited) return Promise.reject(new Error(`The agent exited.${this.exitHint()}`));
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
@@ -83,15 +126,22 @@ export class StdioRpc {
   close(): void {
     if (this.exited) return;
     this.child.stdin?.end();
-    this.child.kill();
+    killTree(this.child);
   }
 
   private send(message: Record<string, Json | undefined>): void {
     this.child.stdin!.write(`${JSON.stringify(message)}\n`);
   }
 
-  private stderrHint(): string {
-    const tail = this.stderrTail.trim().split("\n").slice(-6).join("\n");
+  /** The last stderr lines the agent wrote, as a hint a caller appends to its own error. */
+  stderrHint(): string {
+    const tail = meaningfulStderr(this.stderrTail).slice(-6).join("\n").slice(-300);
+    return tail ? ` Agent said: ${tail}` : "";
+  }
+
+  /** The stderr tail for this transport's own exit errors, on its own line. */
+  private exitHint(): string {
+    const tail = meaningfulStderr(this.stderrTail).slice(-6).join("\n");
     return tail ? `\n${tail}` : "";
   }
 
@@ -135,9 +185,10 @@ export class StdioRpc {
   private onExit(code: number | null): void {
     if (this.exited) return;
     this.exited = true;
-    const err = new Error(`The agent exited (code ${code ?? "?"}).${this.stderrHint()}`);
+    const err = new Error(`The agent exited (code ${code ?? "?"}).${this.exitHint()}`);
     for (const p of this.pending.values()) p.reject(err);
     this.pending.clear();
     this.handlers.onExit?.(code, this.stderrTail);
+    this.closedResolve();
   }
 }

@@ -1,0 +1,13 @@
+{
+  "events": [
+    {
+      "kind": "tool-use",
+      "name": "Read",
+      "summary": "src/sum.js"
+    },
+    {
+      "kind": "assistant-text",
+      "text": "sum(values) adds up the numbers in a list and returns the total. Anything that isn't a finite number (NaN, Infinity, strings) is skipped."
+    }
+  ]
+}

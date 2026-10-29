@@ -1,0 +1,19 @@
+{
+  "id": "x-skill-large-catalog",
+  "tags": ["capability"],
+  "tier": "full",
+  "fixture": "empty",
+  "mode": "plan",
+  "suite": "skills",
+  "skills": { "kit": { "skills": 200, "seed": 23 } },
+  "prompt": "We're about to make a risky change to how our Vitest tests run, and I want a safety copy of the current test setup first. Which skill should I follow, and what should I check first?",
+  "graders": [
+    { "type": "skill", "expect": ["backup-vitest-testing"] },
+    { "type": "tool", "name": "Edit", "max": 0 },
+    { "type": "event", "noError": true },
+    { "type": "budget" }
+  ],
+  "budget": { "maxSteps": 10, "maxInputTokens": 80000, "timeoutMs": 180000 },
+  "reference": "Finds and loads backup-vitest-testing from the 200-skill catalog and answers from it.",
+  "difficulty": "With 200 near-duplicate skills, the agent must search the catalog for the Vitest backup skill instead of guessing a similarly named one."
+}

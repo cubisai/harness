@@ -1,0 +1,16 @@
+{
+  "id": "fix-off-by-one",
+  "tags": ["regression"],
+  "tier": "smoke",
+  "fixture": "off-by-one",
+  "prompt": "range(a, b) in src/range.js should return every integer from a to b inclusive, but it drops the last one. Fix it.",
+  "mode": "auto-edit",
+  "graders": [
+    { "type": "command", "run": "node --test test/range.test.mjs" },
+    { "type": "file", "path": "src/range.js", "matches": "i\\s*<=\\s*b", "required": false },
+    { "type": "event", "noError": true, "noFalseClaim": true },
+    { "type": "budget" }
+  ],
+  "budget": { "maxSteps": 12, "maxInputTokens": 80000, "timeoutMs": 180000 },
+  "reference": "Change `i < b` to `i <= b`; the hidden node:test file passes."
+}

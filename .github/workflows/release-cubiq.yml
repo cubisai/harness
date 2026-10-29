@@ -1,0 +1,138 @@
+name: release-cubiq
+
+# Builds CubiQ for macOS (Apple Silicon), Windows and Linux, then publishes a
+# GitHub release with the installers and the latest*.yml files the updater
+# reads. Runs on a tag `cubiq-v<version>` (the version in package.json), or by
+# hand: Actions → release-cubiq → Run workflow, with **publish** ticked to tag
+# the picked commit and publish, or unticked to only build. A version that's
+# already released is refused. Signing turns on per OS when its secrets exist
+# (README → Signing); without them macOS is ad-hoc signed and Windows unsigned.
+on:
+  push:
+    tags: ["cubiq-v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Tag cubiq-v<package.json version> on this commit and publish the release
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-cubiq-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  UNSKILLED_NO_UPDATE: "1"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH: ${{ github.event_name == 'push' || inputs.publish }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          tag="cubiq-v$version"
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "$tag" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match package.json's version: expected $tag"
+            exit 1
+          fi
+          if [ "$PUBLISH" = true ] && gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "::error::$tag is already released: bump the version in package.json"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: --mac --arm64
+          - os: windows-latest
+            target: --win --x64
+          - os: ubuntu-latest
+            target: --linux --x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - name: Package
+        shell: bash
+        env:
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          extra=()
+          if [ "$RUNNER_OS" = macOS ] && [ -n "$MAC_CSC_LINK" ]; then
+            # Signed, and notarized when the APPLE_* secrets exist too.
+            export CSC_LINK="$MAC_CSC_LINK" CSC_KEY_PASSWORD="$MAC_CSC_KEY_PASSWORD"
+          elif [ "$RUNNER_OS" = macOS ]; then
+            # No certificate: ad-hoc, or Apple Silicon calls the app "damaged". Nothing to notarize.
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
+            extra+=(-c.mac.identity=-)
+          elif [ "$RUNNER_OS" = Windows ] && [ -n "$WIN_CSC_LINK" ]; then
+            export CSC_LINK="$WIN_CSC_LINK" CSC_KEY_PASSWORD="$WIN_CSC_KEY_PASSWORD"
+          else
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
+          bunx electron-builder ${{ matrix.target }} --publish never "${extra[@]}"
+      - if: runner.os == 'macOS'
+        run: |
+          codesign --verify --deep --strict dist/mac-arm64/CubiQ.app
+          codesign -dv dist/mac-arm64/CubiQ.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cubiq-${{ runner.os }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.blockmap
+            dist/latest*.yml
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [check, build]
+    if: github.event_name == 'push' || inputs.publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: files
+          merge-multiple: true
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.check.outputs.tag }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: gh release create "$TAG" files/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "CubiQ $VERSION" --generate-notes --latest

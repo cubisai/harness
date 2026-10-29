@@ -1,0 +1,23 @@
+{
+  "id": "x-context-early-constraint",
+  "tags": ["capability"],
+  "tier": "full",
+  "fixture": "x-ctx",
+  "mode": "auto-edit",
+  "suite": "context",
+  "prompt": "In this project, never use the word 'utils' in a file name; helpers go in src/lib/.",
+  "turns": [
+    { "prompt": "What does Object.freeze do to a nested object?" },
+    { "prompt": "What's the difference between let and const?" },
+    { "prompt": "Add a slugify helper: lowercase the text, replace runs of non-alphanumeric characters with a single hyphen, and trim leading and trailing hyphens." }
+  ],
+  "graders": [
+    { "type": "command", "run": "node --test test/slugify.test.mjs" },
+    { "type": "command", "run": "node -e \"const fs=require('fs');process.exit(fs.readdirSync('src',{recursive:true}).some(f=>/utils/.test(f))?1:0)\"" },
+    { "type": "event", "noError": true },
+    { "type": "budget" }
+  ],
+  "budget": { "maxSteps": 16, "maxInputTokens": 120000, "timeoutMs": 300000 },
+  "reference": "Keeps the src/lib/ constraint from turn 1 through three follow-ups, writing slugify to src/lib/slugify.js so the hidden test passes and no src path matches /utils/.",
+  "difficulty": "Holds a turn-1 constraint across three unrelated follow-ups and a later coding request, so the helper must land in src/lib/ and never in a utils-named file."
+}

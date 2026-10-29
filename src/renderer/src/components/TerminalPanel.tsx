@@ -12,9 +12,9 @@ function theme(): Terminal["options"]["theme"] {
   return {
     background: v("--bg"),
     foreground: v("--text"),
-    cursor: v("--accent"),
+    cursor: v("--primary"),
     cursorAccent: v("--bg"),
-    selectionBackground: dark ? "rgba(10,132,255,0.35)" : "rgba(10,132,255,0.2)",
+    selectionBackground: dark ? "rgba(247,248,250,0.2)" : "rgba(11,13,16,0.12)",
   };
 }
 

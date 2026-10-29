@@ -1,0 +1,5 @@
+{
+  "events": [
+    { "kind": "assistant-text", "text": "src/sum.js exports sum(values), which adds up the list while skipping anything that is not a finite number. Non-numeric and NaN entries are ignored, so it returns the total of just the real numbers." }
+  ]
+}

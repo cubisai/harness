@@ -1,0 +1,17 @@
+{
+  "id": "c-dont-break-callers",
+  "tags": ["capability"],
+  "tier": "full",
+  "suite": "coding",
+  "difficulty": "Changing greet's signature breaks three indirect callers that each need the new options object, so the agent has to find every call site rather than only the definition.",
+  "fixture": "c-callers",
+  "mode": "auto-edit",
+  "prompt": "I'm changing greet(name) in src/greet.js to greet(name, options), where options is required and options.punctuation is the trailing character (greet should throw when options is missing). Update greet and every place that calls it so the callers still return the same greeting. Keep the callers' exported names.",
+  "graders": [
+    { "type": "command", "run": "node --test test/callers-hidden.test.mjs" },
+    { "type": "event", "noError": true, "noFalseClaim": true },
+    { "type": "budget" }
+  ],
+  "budget": { "maxSteps": 12, "maxInputTokens": 80000, "timeoutMs": 210000 },
+  "reference": "greet takes a required options object and throws without it; a.js, b.js and c.js each pass `{ punctuation: \"!\" }` to keep their output."
+}

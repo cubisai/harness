@@ -1,6 +1,6 @@
 appId: dev.aiharness.app
-productName: AI Harness
-copyright: Copyright © 2026 AI Harness contributors
+productName: CubiQ
+copyright: Copyright © 2026 CubiQ contributors
 directories:
   output: dist
   buildResources: build
@@ -11,6 +11,25 @@ extraResources:
   # The window icon on Linux (build/ holds the icon electron-builder bundles for each OS).
   - from: build/icon.png
     to: icon.png
+  # Built-in skills (browser, docx, pdf, xlsx, pptx, skill-creator, design-*) and the agent guide.
+  - from: resources/skills
+    to: skills
+  - from: resources/CUBIQ.md
+    to: CUBIQ.md
+  # Design mode: its guide.
+  - from: resources/DESIGN-MODE.md
+    to: DESIGN-MODE.md
+  # The style library Auto design threads pick from, and the font pack its styles use.
+  - from: resources/design-styles
+    to: design-styles
+  - from: resources/design-fonts
+    to: design-fonts
+  - from: resources/design-patterns
+    to: design-patterns
+  - from: resources/design-actions
+    to: design-actions
+  - from: resources/design-icons
+    to: design-icons
 # The Agent SDK spawns its bundled Claude Code binary; binaries can't run
 # from inside an asar archive.
 asarUnpack:

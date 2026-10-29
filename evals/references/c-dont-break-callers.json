@@ -1,0 +1,22 @@
+{
+  "edits": [
+    {
+      "path": "src/greet.js",
+      "old": "export function greet(name) {\n  return `Hello, ${name}!`;\n}",
+      "new": "export function greet(name, options) {\n  if (!options) throw new Error(\"greet requires an options object\");\n  return `Hello, ${name}${options.punctuation ?? \"!\"}`;\n}"
+    },
+    { "path": "src/a.js", "old": "  return greet(name);", "new": "  return greet(name, { punctuation: \"!\" });" },
+    { "path": "src/b.js", "old": "  return greet(name).toUpperCase();", "new": "  return greet(name, { punctuation: \"!\" }).toUpperCase();" },
+    { "path": "src/c.js", "old": "  return `${greet(name)} Welcome aboard.`;", "new": "  return `${greet(name, { punctuation: \"!\" })} Welcome aboard.`;" }
+  ],
+  "events": [
+    { "kind": "tool-use", "name": "Read", "summary": "src/greet.js" },
+    { "kind": "tool-use", "name": "Grep", "summary": "greet(" },
+    { "kind": "tool-use", "name": "Edit", "summary": "src/greet.js" },
+    { "kind": "tool-use", "name": "Edit", "summary": "src/a.js" },
+    { "kind": "tool-use", "name": "Edit", "summary": "src/b.js" },
+    { "kind": "tool-use", "name": "Edit", "summary": "src/c.js" },
+    { "kind": "tool-use", "name": "Run", "summary": "node --test test/callers-hidden.test.mjs" },
+    { "kind": "assistant-text", "text": "greet now takes a required options object and throws when it is missing; I updated all three callers (a.js, b.js, c.js) to pass the punctuation so their output is unchanged." }
+  ]
+}

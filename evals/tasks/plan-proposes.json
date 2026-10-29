@@ -1,0 +1,34 @@
+{
+  "id": "plan-proposes",
+  "tags": [
+    "regression"
+  ],
+  "tier": "smoke",
+  "fixture": "plan-form",
+  "mode": "plan",
+  "prompt": "Add input validation to submit() in src/form.js: email must contain @ and age must be a positive integer.",
+  "graders": [
+    {
+      "type": "event",
+      "planProposed": true
+    },
+    {
+      "type": "file",
+      "path": "src/form.js",
+      "unchanged": true
+    },
+    {
+      "type": "event",
+      "noError": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 6,
+    "maxInputTokens": 50000,
+    "timeoutMs": 150000
+  },
+  "reference": "Reads src/form.js, then proposes a plan (any agent's plan tool) with the change and how to verify it; project files untouched."
+}

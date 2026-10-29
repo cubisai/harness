@@ -1,0 +1,43 @@
+{
+  "id": "browser-smoke",
+  "tags": [
+    "capability"
+  ],
+  "tier": "full",
+  "suite": "browser",
+  "fixture": "empty",
+  "mode": "full",
+  "requires": [
+    "browser"
+  ],
+  "prompt": "Use the browser tools to open this page and tell me its title and the text of its button: data:text/html,<title>KESTREL-42</title><h1>Release check</h1><button>Ship it</button>",
+  "graders": [
+    {
+      "type": "answer",
+      "contains": [
+        "KESTREL-42",
+        "Ship it"
+      ],
+      "required": true
+    },
+    {
+      "type": "tool",
+      "name": "browser_open",
+      "min": 1
+    },
+    {
+      "type": "event",
+      "noError": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 6,
+    "maxInputTokens": 60000,
+    "timeoutMs": 180000
+  },
+  "reference": "Opens the data: page with browser_open (headless agent-browser in the eval runner, the visible pane in the app) and reports the title KESTREL-42 and the button text Ship it.",
+  "difficulty": "The answer is only on the page, so it needs a working browser backend; a model that guesses can't pass."
+}

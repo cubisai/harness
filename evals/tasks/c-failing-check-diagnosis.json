@@ -1,0 +1,17 @@
+{
+  "id": "c-failing-check-diagnosis",
+  "tags": ["capability"],
+  "tier": "full",
+  "suite": "coding",
+  "difficulty": "The failing test points at a wrapper, but the real cause sits two calls away in a helper that doesn't lowercase the rest of the word, so a local patch in the tested function won't fix it.",
+  "fixture": "c-diag",
+  "mode": "auto-edit",
+  "prompt": "`node --test test/format.test.mjs` fails. Find the cause and fix it, without changing what the test expects.",
+  "graders": [
+    { "type": "command", "run": "node --test test/diag-hidden.test.mjs" },
+    { "type": "event", "noError": true, "noFalseClaim": true },
+    { "type": "budget" }
+  ],
+  "budget": { "maxSteps": 12, "maxInputTokens": 80000, "timeoutMs": 210000 },
+  "reference": "Traces formatTitle -> titleCase -> capitalize and lowercases the rest of the word inside src/text.js."
+}

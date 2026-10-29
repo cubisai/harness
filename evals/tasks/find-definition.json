@@ -1,0 +1,36 @@
+{
+  "id": "find-definition",
+  "tags": [
+    "regression"
+  ],
+  "tier": "full",
+  "fixture": "find-def",
+  "mode": "plan",
+  "prompt": "Which file defines the function parseConfig? Reply with just the path.",
+  "graders": [
+    {
+      "type": "answer",
+      "contains": [
+        "src/config/load.js"
+      ]
+    },
+    {
+      "type": "tool",
+      "name": "Edit",
+      "max": 0
+    },
+    {
+      "type": "event",
+      "noError": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 5,
+    "maxInputTokens": 40000,
+    "timeoutMs": 120000
+  },
+  "reference": "Greps for parseConfig and answers src/config/load.js."
+}

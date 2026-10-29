@@ -1,0 +1,1 @@
+{ "name": "tally", "version": "2.3.0", "type": "module", "bin": { "tally": "src/cli.js" } }

@@ -1,0 +1,396 @@
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
+import type { MemoryType } from "../../shared/types";
+
+/** The kinds of fact Claude Code's auto-memory writes. */
+export type { MemoryType };
+
+export interface MemoryFact {
+  /** The file's basename, e.g. "commit-style.md". */
+  file: string;
+  name: string;
+  description: string;
+  type: MemoryType;
+  /** When the fact was last written, "YYYY-MM-DD"; absent for older files. */
+  updated?: string;
+  body: string;
+}
+
+/** A note's sidecar marker: when it was marked a correction, and what it supersedes. */
+export interface NoteMeta {
+  /** Epoch ms when the note was marked as a correction. */
+  correction?: number;
+  /** The file this note replaces, when it was written with one. */
+  supersedes?: string;
+}
+
+/**
+ * The reserved scope id for notes about the user that hold in every project;
+ * stored as `store.dir(GLOBAL_SCOPE)` under the same root.
+ */
+export const GLOBAL_SCOPE = "_global";
+
+/** The index file's budget: whole lines only, plus one line for the truncation notice. */
+export const INDEX_CAP = { lines: 200, chars: 4800 };
+
+/** Project-relative file paths a note's text names: at least one folder and an extension (`src/a.ts`, `config/x.json`). */
+export function namedPaths(text: string): string[] {
+  const found = text.match(/(?<![\w/.:-])(?:\.\/)?[\w.-]+(?:\/[\w.-]+)+\.[A-Za-z0-9]{1,6}(?![\w/])/g) ?? [];
+  return [...new Set(found.map((p) => p.replace(/^\.\//, "")).filter((p) => !p.startsWith("../")))];
+}
+
+/** " (may be stale: … is gone)" when every file a note names is missing, else "". */
+export function staleMark(text: string, exists: (rel: string) => boolean): string {
+  const paths = namedPaths(text);
+  if (!paths.length || paths.some(exists)) return "";
+  return ` (may be stale: ${paths.slice(0, 2).join(", ")} ${paths.length === 1 ? "is" : "are"} gone)`;
+}
+
+/** The memory block's per-scope budget in characters: global notes first, then the project's. */
+export const BLOCK_CAP = { global: 1200, project: 3600 };
+
+const TYPES: MemoryType[] = ["user", "feedback", "project", "reference"];
+const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/;
+
+function asType(value: string | undefined): MemoryType {
+  const v = (value ?? "").trim();
+  return (TYPES as string[]).includes(v) ? (v as MemoryType) : "project";
+}
+
+/** Strip one pair of quotes from a frontmatter value (JSON-quoted or plain). */
+function unquote(raw: string): string {
+  if (raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"')) {
+    try {
+      return JSON.parse(raw) as string;
+    } catch {
+      return raw.slice(1, -1);
+    }
+  }
+  if (raw.length >= 2 && raw.startsWith("'") && raw.endsWith("'")) return raw.slice(1, -1);
+  return raw;
+}
+
+/** The value of `key:` anywhere in the frontmatter, its own indentation ignored. */
+function field(front: string[], key: string): string | undefined {
+  for (const line of front) {
+    const m = /^\s*([A-Za-z0-9_-]+)\s*:\s*(.*)$/.exec(line);
+    if (m && m[1] === key) return unquote(m[2]!.trim());
+  }
+  return undefined;
+}
+
+/**
+ * Parse one memory file. Accepts the current frontmatter (`metadata.type`),
+ * the older top-level `type:`, quoted or bare values, CRLF, and a leading BOM.
+ * Anything unreadable degrades to a project fact rather than throwing.
+ */
+export function parseFact(file: string, text: string): MemoryFact {
+  const clean = text.replace(/^\uFEFF/, "");
+  const lines = clean.split(/\r?\n/);
+  let front: string[] = [];
+  let bodyStart = 0;
+  if (lines[0]?.trim() === "---") {
+    const close = lines.findIndex((l, i) => i > 0 && l.trim() === "---");
+    if (close > 0) {
+      front = lines.slice(1, close);
+      bodyStart = close + 1;
+    }
+  }
+  const bodyLines = lines.slice(bodyStart);
+  if (bodyLines[0] === "") bodyLines.shift();
+  const name = field(front, "name") || basename(file, ".md");
+  const updated = field(front, "updated");
+  return {
+    file,
+    name,
+    description: field(front, "description") ?? "",
+    type: asType(field(front, "type")),
+    ...(updated !== undefined ? { updated } : {}),
+    body: bodyLines.join("\n"),
+  };
+}
+
+/**
+ * Serialize a fact in Claude Code's auto-memory format: LF endings, a JSON-quoted
+ * description, and an `updated:` line only when the fact carries one.
+ */
+export function serializeFact(f: Omit<MemoryFact, "file">): string {
+  const updated = f.updated ? `updated: ${f.updated}\n` : "";
+  return `---\nname: ${f.name}\ndescription: ${JSON.stringify(f.description)}\n${updated}metadata:\n  type: ${f.type}\n---\n\n${f.body}`;
+}
+
+/** A filesystem-safe slug for a fact name, avoiding `taken` (compared lowercased). */
+export function slugFor(name: string, taken: Set<string>): string {
+  let slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+  if (!slug) slug = "memory";
+  if (RESERVED.test(slug)) slug = `m-${slug}`;
+  let candidate = slug;
+  for (let n = 2; taken.has(`${candidate}.md`.toLowerCase()); n++) candidate = `${slug}-${n}`;
+  return `${candidate}.md`;
+}
+
+/** A valid fact filename: a plain basename, ".md", never the index itself. */
+function validFile(file: string): boolean {
+  return (
+    typeof file === "string" &&
+    file.length > 0 &&
+    file.endsWith(".md") &&
+    file !== "MEMORY.md" &&
+    !file.includes("/") &&
+    !file.includes("\\") &&
+    !file.includes("..") &&
+    basename(file) === file
+  );
+}
+
+/** Sleep without a busy loop or a timer handle that could outlive the write. */
+function waitSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/** Write-then-rename, retrying once on the transient Windows rename locks. */
+export function atomicWrite(target: string, text: string): void {
+  const tmp = `${target}.tmp-${process.pid}`;
+  writeFileSync(tmp, text);
+  try {
+    renameSync(tmp, target);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code !== "EPERM" && code !== "EBUSY") throw err;
+    waitSync(50);
+    renameSync(tmp, target);
+  }
+}
+
+/** The markdown link target in an index line, if it points at a `.md` file. */
+function linkedFile(line: string): string | null {
+  const m = /\]\(([^)]+)\)/.exec(line);
+  if (!m) return null;
+  const target = m[1]!.trim();
+  return target.endsWith(".md") ? target : null;
+}
+
+/**
+ * Per-project memory as plain markdown in `<root>/<projectId>/`: one file per
+ * fact plus a MEMORY.md index. The format is Claude Code's auto-memory, so
+ * Claude reads and writes it natively; this class only mirrors it.
+ */
+export class MemoryStore {
+  constructor(private root: string, private now: () => Date = () => new Date()) {}
+
+  /** The project's folder, created if needed. */
+  dir(projectId: string): string {
+    const d = join(this.root, projectId);
+    mkdirSync(d, { recursive: true });
+    return d;
+  }
+
+  /** Every fact except the index, sorted by filename. */
+  list(projectId: string): Omit<MemoryFact, "body">[] {
+    const d = this.dir(projectId);
+    return readdirSync(d)
+      .filter((f) => f.endsWith(".md") && f !== "MEMORY.md")
+      .sort()
+      .map((f) => {
+        const { body: _body, ...rest } = parseFact(f, readFileSync(join(d, f), "utf8"));
+        return rest;
+      });
+  }
+
+  read(projectId: string, file: string): MemoryFact | null {
+    if (!validFile(file)) return null;
+    const path = join(this.dir(projectId), file);
+    if (!existsSync(path)) return null;
+    return parseFact(file, readFileSync(path, "utf8"));
+  }
+
+  /** Write a fact (picking a slug when no file is given) and refresh the index. Returns its file. */
+  write(projectId: string, fact: { name: string; description: string; type: MemoryType; body: string; file?: string }): string {
+    if (fact.file !== undefined && !validFile(fact.file)) throw new Error(`invalid memory file ${fact.file}`);
+    const file = fact.file ?? slugFor(fact.name, new Set(this.list(projectId).map((f) => f.file.toLowerCase())));
+    const updated = this.now().toISOString().slice(0, 10);
+    atomicWrite(join(this.dir(projectId), file), serializeFact({ name: fact.name, description: fact.description, type: fact.type, body: fact.body, updated }));
+    this.rebuildIndex(projectId, file);
+    return file;
+  }
+
+  /** Delete a fact, its usage entry, and its index line. */
+  remove(projectId: string, file: string): boolean {
+    if (!validFile(file)) return false;
+    const path = join(this.dir(projectId), file);
+    if (!existsSync(path)) return false;
+    rmSync(path, { force: true });
+    const usage = this.usage(projectId);
+    if (usage[file] !== undefined) {
+      delete usage[file];
+      atomicWrite(join(this.dir(projectId), ".usage.json"), JSON.stringify(usage));
+    }
+    const meta = this.meta(projectId);
+    if (meta[file] !== undefined) {
+      delete meta[file];
+      atomicWrite(join(this.dir(projectId), ".meta.json"), JSON.stringify(meta));
+    }
+    this.rebuildIndex(projectId);
+    return true;
+  }
+
+  /**
+   * Record that a fact's file was used now, for recency ordering. A no-op for
+   * a filename that isn't a valid fact file.
+   */
+  touch(scope: string, file: string): void {
+    if (!validFile(file)) return;
+    const usage = this.usage(scope);
+    usage[file] = this.now().getTime();
+    atomicWrite(join(this.dir(scope), ".usage.json"), JSON.stringify(usage));
+  }
+
+  /** The scope's usage sidecar (file -> epoch ms), or {} when missing or corrupt. */
+  usage(scope: string): Record<string, number> {
+    const path = join(this.dir(scope), ".usage.json");
+    if (!existsSync(path)) return {};
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+      return parsed as Record<string, number>;
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Mark a note as a correction (optionally naming the note it supersedes), for
+   * correction-first ordering. A no-op for a filename that isn't a valid fact file.
+   */
+  markCorrection(scope: string, file: string, supersedes?: string): void {
+    if (!validFile(file)) return;
+    const meta = this.meta(scope);
+    meta[file] = { correction: this.now().getTime(), ...(supersedes ? { supersedes } : {}) };
+    atomicWrite(join(this.dir(scope), ".meta.json"), JSON.stringify(meta));
+  }
+
+  /** The scope's metadata sidecar (file -> correction marker), or {} when missing or corrupt. */
+  meta(scope: string): Record<string, NoteMeta> {
+    const path = join(this.dir(scope), ".meta.json");
+    if (!existsSync(path)) return {};
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+      return parsed as Record<string, NoteMeta>;
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Rebuild MEMORY.md from the facts on disk. Every existing line survives
+   * verbatim (headings, blanks, Claude's own titles/hooks); dead links are
+   * dropped, only the `touched` fact's own line is rewritten to its current
+   * name/description, and any unlinked fact is appended.
+   */
+  rebuildIndex(projectId: string, touched?: string): void {
+    const d = this.dir(projectId);
+    const indexPath = join(d, "MEMORY.md");
+    const existing = existsSync(indexPath) ? readFileSync(indexPath, "utf8").replace(/^\uFEFF/, "").split(/\r?\n/) : [];
+    while (existing.length && existing[existing.length - 1] === "") existing.pop();
+    const linked = new Set<string>();
+    const kept: string[] = [];
+    for (const line of existing) {
+      const target = linkedFile(line);
+      if (target === null) {
+        kept.push(line);
+        continue;
+      }
+      const file = basename(target);
+      const fact = validFile(file) ? this.read(projectId, file) : null;
+      if (!fact) continue; // the link points at a fact that's gone
+      linked.add(file.toLowerCase());
+      // Only the fact just written gets a fresh hook; the rest keep Claude's own wording.
+      kept.push(touched && file.toLowerCase() === touched.toLowerCase() ? `- [${fact.name}](${file}) — ${fact.description}` : line);
+    }
+    const unlinked = this.list(projectId).filter((f) => !linked.has(f.file.toLowerCase()));
+    for (const f of unlinked) kept.push(`- [${f.name}](${f.file}) — ${f.description}`);
+    atomicWrite(indexPath, kept.length ? `${kept.join("\n")}\n` : "");
+  }
+
+  /** The index, capped for context: whole lines, with a notice when truncated. */
+  index(projectId: string): { text: string; lines: number; tokens: number } {
+    const path = join(this.dir(projectId), "MEMORY.md");
+    if (!existsSync(path)) return { text: "", lines: 0, tokens: 0 };
+    const all = readFileSync(path, "utf8").replace(/^\uFEFF/, "").split(/\r?\n/);
+    while (all.length && all[all.length - 1] === "") all.pop();
+    const kept: string[] = [];
+    let chars = 0;
+    for (const line of all) {
+      if (kept.length + 1 > INDEX_CAP.lines - 1) break;
+      const extra = (kept.length ? 1 : 0) + line.length;
+      if (chars + extra > INDEX_CAP.chars) break;
+      kept.push(line);
+      chars += extra;
+    }
+    let text = kept.join("\n");
+    const notice = (n: number) => `- … ${n} more (memory_read to list)`;
+    if (all.length - kept.length > 0) {
+      while (kept.length && `${kept.join("\n")}\n${notice(all.length - kept.length)}`.length > INDEX_CAP.chars) kept.pop();
+      text = `${kept.join("\n")}\n${notice(all.length - kept.length)}`;
+    }
+    const lines = text === "" ? 0 : text.split("\n").length;
+    return { text, lines, tokens: Math.ceil(text.length / 4) };
+  }
+
+  /**
+   * The memory block agents see: global notes first, then this project's. Within
+   * a section corrections come first (newest marked first), then the rest
+   * newest-first (by `updated` or last use); each section is capped.
+   */
+  blockIndex(projectId: string, exists?: (rel: string) => boolean): { text: string; lines: number; tokens: number; shown: number; total: number } {
+    const scopes = projectId === GLOBAL_SCOPE ? [GLOBAL_SCOPE] : [GLOBAL_SCOPE, projectId];
+    const sections: string[] = [];
+    let shown = 0;
+    let total = 0;
+    for (const scope of scopes) {
+      const facts = this.list(scope);
+      total += facts.length;
+      if (!facts.length) continue;
+      const usage = this.usage(scope);
+      const meta = this.meta(scope);
+      const recency = (f: Omit<MemoryFact, "body">): number => Math.max(Date.parse(f.updated ?? "") || 0, usage[f.file] ?? 0);
+      const byFile = (a: Omit<MemoryFact, "body">, b: Omit<MemoryFact, "body">): number => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0);
+      // Corrections first (newest marked first), then the rest by recency; an
+      // unmarked scope keeps exactly the order it had before corrections existed.
+      const marked = (f: Omit<MemoryFact, "body">): number | undefined => meta[f.file]?.correction;
+      const corrections = facts.filter((f) => marked(f) !== undefined).sort((a, b) => marked(b)! - marked(a)! || byFile(a, b));
+      const rest = facts.filter((f) => marked(f) === undefined).sort((a, b) => recency(b) - recency(a) || byFile(a, b));
+      const sorted = [...corrections, ...rest];
+      const header = scope === GLOBAL_SCOPE ? `Global (about the user, every project; read with scope "global"):` : "This project:";
+      // The newline joining the two sections comes out of the project's share, so the total stays ≤ 4800.
+      const cap = scope === GLOBAL_SCOPE ? BLOCK_CAP.global : BLOCK_CAP.project - (sections.length ? 1 : 0);
+      const kept: string[] = [];
+      let chars = header.length;
+      for (const f of sorted) {
+        // A project note naming only files that are gone is flagged, so the agent checks and fixes it; it is never dropped.
+        const mark = exists && scope !== GLOBAL_SCOPE ? staleMark(`${f.name} ${f.description}`, exists) : "";
+        const line = `- [${f.name}](${f.file}) — ${f.description}${mark}`;
+        const extra = 1 + line.length;
+        if (chars + extra > cap) break;
+        kept.push(line);
+        chars += extra;
+      }
+      const notice = (n: number) => `- … ${n} more (memory_read to list or search)`;
+      let section = [header, ...kept].join("\n");
+      if (sorted.length - kept.length > 0) {
+        while (kept.length && `${[header, ...kept].join("\n")}\n${notice(sorted.length - kept.length)}`.length > cap) kept.pop();
+        section = `${[header, ...kept].join("\n")}\n${notice(sorted.length - kept.length)}`;
+      }
+      shown += kept.length;
+      sections.push(section);
+    }
+    const text = sections.join("\n");
+    const lines = text === "" ? 0 : text.split("\n").length;
+    return { text, lines, tokens: Math.ceil(text.length / 4), shown, total };
+  }
+}

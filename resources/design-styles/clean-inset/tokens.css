@@ -1,0 +1,164 @@
+/* Clean Inset: a CubiQ style. Link this file and use the custom properties, not raw values. A dark pair follows the system setting.
+ * Roles: --color-accent-text for accent-coloured text (the accent itself may be too light for text);
+ * --color-on-accent on accent fills; --color-*-soft behind status text and selected chips, with the matching
+ * colour (or --color-accent-text) on top; --color-surface-3 for hover/pressed wells; --color-border-strong for
+ * inputs and dividers that must show. --tracking-display/-heading/-label on those roles, --text-display-sm
+ * under 640px, font-variant-numeric: var(--numeric-data) on figures. */
+@font-face {
+  font-family: "Public Sans";
+  src: url("fonts/public-sans.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Literata";
+  src: url("fonts/literata.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist Mono";
+  src: url("fonts/geist-mono.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+:root {
+  color-scheme: light;
+
+  /* Color */
+  --color-bg: #F4F4F5;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F7F7F8;
+  --color-text: #18181B;
+  --color-text-muted: #5F5F67;
+  --color-border: #E6E6E9;
+  --color-primary: #18181B;
+  --color-on-primary: #FFFFFF;
+  --color-accent: #2563EB;
+  --color-success: #166534;
+  --color-warning: #92400E;
+  --color-danger: #B91C1C;
+  --color-focus: #2563EB;
+  --color-surface-3: #EDEDEF;
+  --color-border-strong: #8E8E96;
+  --color-accent-text: #1D4ED8;
+  --color-on-accent: #FFFFFF;
+  --color-accent-soft: #EFF4FF;
+  --color-success-soft: #EDF7F0;
+  --color-warning-soft: #FBF3E6;
+  --color-danger-soft: #FDF0F0;
+
+  /* Type */
+  --font-sans: "Public Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Public Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-serif: "Literata", Georgia, "Times New Roman", serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --text-xs: 12px;
+  --leading-xs: 16px;
+  --text-sm: 14px;
+  --leading-sm: 20px;
+  --text-md: 16px;
+  --leading-md: 24px;
+  --text-lg: 20px;
+  --leading-lg: 28px;
+  --text-xl: 24px;
+  --leading-xl: 32px;
+  --text-2xl: 32px;
+  --leading-2xl: 40px;
+  --text-3xl: 40px;
+  --leading-3xl: 48px;
+  --text-4xl: 56px;
+  --leading-4xl: 64px;
+  --text-display: 56px;
+  --leading-display: 64px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 700;
+  --tracking-display: -0.025em;
+  --tracking-heading: -0.01em;
+  --tracking-label: 0.02em;
+  --text-display-sm: 32px;
+  --leading-display-sm: 40px;
+  --numeric-data: tabular-nums;
+
+  /* Space: the 8pt scale (4 is for type and icon nudges only) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* Size */
+  --target-min: 44px;
+  --content-max: 1040px;
+  --measure: 68ch;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* Elevation: hairlines first; shadows only for menus and dialogs */
+  --shadow-1: 0 1px 2px rgb(24 24 27 / 0.04);
+  --shadow-2: 0 8px 24px rgb(24 24 27 / 0.08);
+  --shadow-3: 0 24px 56px rgb(24 24 27 / 0.14);
+
+  /* Motion */
+  --duration-fast: 140ms;
+  --duration: 200ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration: 0ms;
+  }
+}
+
+/* Dark: the same roles, re-tuned; picked up from the system setting. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --color-bg: #0B0B0C;
+    --color-surface: #151517;
+    --color-surface-2: #1C1C1F;
+    --color-text: #F4F4F5;
+    --color-text-muted: #A1A1AA;
+    --color-border: #27272A;
+    --color-primary: #F4F4F5;
+    --color-on-primary: #18181B;
+    --color-accent: #60A5FA;
+    --color-success: #4ADE80;
+    --color-warning: #FBBF24;
+    --color-danger: #F87171;
+    --color-focus: #93C5FD;
+    --color-surface-3: #26262A;
+    --color-border-strong: #6B6B73;
+    --color-accent-text: #93C5FD;
+    --color-on-accent: #0B0B0C;
+    --color-accent-soft: #16233F;
+    --color-success-soft: #10291A;
+    --color-warning-soft: #2B2109;
+    --color-danger-soft: #2D1415;
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-2: 0 8px 24px rgb(0 0 0 / 0.45);
+    --shadow-3: 0 24px 56px rgb(0 0 0 / 0.6);
+  }
+}
+
+::selection {
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}

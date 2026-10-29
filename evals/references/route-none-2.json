@@ -1,0 +1,8 @@
+{
+  "events": [
+    {
+      "kind": "assistant-text",
+      "text": "Walk the list with three pointers: `let prev = null; let cur = head; while (cur) { const next = cur.next; cur.next = prev; prev = cur; cur = next; } return prev;`"
+    }
+  ]
+}

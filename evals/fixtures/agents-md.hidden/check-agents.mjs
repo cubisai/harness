@@ -1,0 +1,13 @@
+import { existsSync, readFileSync } from "node:fs";
+import assert from "node:assert/strict";
+const src = readFileSync("src/math.js", "utf8");
+assert.match(src, /\/\*\*[^\n]*\*\/\s*\nexport (function|const) clamp\b/, "clamp has no one-line JSDoc right above it");
+assert.ok(!/export default/.test(src), "default export");
+const { clamp } = await import("./src/math.js");
+assert.equal(clamp(5, 0, 3), 3);
+assert.equal(clamp(-2, 0, 3), 0);
+assert.equal(clamp(2, 0, 3), 2);
+assert.ok(existsSync("test/math.test.mjs"), "no test/math.test.mjs");
+const t = readFileSync("test/math.test.mjs", "utf8");
+assert.ok(t.includes("node:test") && t.includes("clamp"), "test doesn't use node:test or cover clamp");
+console.log("ok");

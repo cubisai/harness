@@ -1,20 +1,43 @@
-import { useEffect } from "react";
-import type { AgentInfo, PermissionMode } from "../../shared/types";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState, type CSSProperties, type Ref } from "react";
+import { ChevronUp, PanelBottom } from "lucide-react";
 import { CommandPalette } from "./components/CommandPalette";
+import { SearchDialog } from "./components/SearchDialog";
 import { Library } from "./components/Library";
 import { Composer } from "./components/Composer";
+import { RequestDock } from "./components/RequestDock";
+import { TodoDock } from "./components/TodoDock";
+import { ShellDock } from "./components/ShellDock";
+import { ThreadMeters } from "./components/Meters";
+import { DraftMode, DraftModel, ThreadMode, ThreadModel } from "./components/ThreadControls";
+import { DesignFenceChip } from "./components/DesignSettingsMenu";
+import { DraftDesignStyle, ThreadDesignStyle } from "./components/DesignSystemMenu";
 import { Inspector } from "./components/Inspector";
 import { SettingsSheet } from "./components/SettingsSheet";
+import { Splash } from "./components/Splash";
+import { MessageCenter } from "./components/MessageCenter";
 import { Sidebar } from "./components/Sidebar";
+import { CollapsedHeaderControls, PaneRail, toggleSidebar } from "./components/PaneRail";
+import { TerminalDrawer } from "./components/TerminalDrawer";
+import { Splitter } from "./components/Splitter";
+import { SwitchDialogHost } from "./components/SwitchDialog";
+import { ExpertChip } from "./components/experts/ExpertChip";
+import { TeamStrip } from "./components/experts/TeamStrip";
+import { AboutSheet } from "./components/AboutSheet";
+import { ContextSheet } from "./components/ContextSheet";
+import { McpSheet } from "./components/McpSheet";
+import { DoctorSheet } from "./components/DoctorSheet";
 import { ThreadView } from "./components/ThreadView";
-import { IconDiff, IconFolder, IconGlobe, IconSparkle, IconTerminal } from "./icons";
+import { IconArrowLeft, IconChat, IconDiff, IconFolder, IconGlobe, IconSparkle, IconTerminal } from "./icons";
+import { usePaneLayout } from "./hooks/usePaneLayout";
+import { BOUNDS, DEFAULT_LAYOUT, DESIGN_FLOOR, designChatWidth, isWideInspector } from "./layout";
+import { ESCAPE_OWNERS, ESCAPE_OWNERS_OVER_DRAWER, escapeStopsTurn, type EscapeTarget } from "./escape";
+import { lastAgentLine } from "./prompt-bar";
+import { inboxModel, nthVisibleThread, threadKind, waitingThreads } from "./sections";
 import { useSelectedThread, useStore } from "./store";
 
-const MODES: { id: PermissionMode; label: string; title: string }[] = [
-  { id: "ask", label: "Ask", title: "Ask before edits and commands" },
-  { id: "auto-edit", label: "Auto-edit", title: "Edit files freely, ask before commands" },
-  { id: "full", label: "Full", title: "Run everything without asking" },
-];
+// Its own chunk: Chat never loads the design canvas.
+const DesignCanvas = lazy(() => import("./design/DesignCanvas"));
+
 
 export function App() {
   const projects = useStore((s) => s.projects);
@@ -24,25 +47,40 @@ export function App() {
   const agents = useStore((s) => s.agents);
   const thread = useSelectedThread();
   const running = useStore((s) => (thread ? Boolean(s.running[thread.id]) : false));
-  const { init, newThread, showInspector, updateThread, interrupt, addProject } = useStore.getState();
+  const { init, newThread, showInspector, updateThread, interrupt, addProject, newChat } = useStore.getState();
   const project = projects.find((p) => p.id === selectedProjectId) ?? null;
+  const initError = useStore((s) => s.initError);
 
   useEffect(() => {
     void init();
   }, [init]);
 
-  // ⌘K: command palette. ⌘N / Ctrl+N: new thread. ⌘⇧D: changes. Esc: stop the running turn.
+  // ⌘K: search (> in it, or ⌘⇧P, for the command palette). ⌘\: sidebar. ⌘N / Ctrl+N: new thread. ⌘⇧D: changes. Esc: stop the running turn.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       if (mod && !e.shiftKey && e.key.toLowerCase() === "k") {
         e.preventDefault();
         const s = useStore.getState();
-        s.setPaletteOpen(!s.paletteOpen);
+        if (s.searchOpen || s.paletteOpen) {
+          s.setSearchOpen(false);
+          s.setPaletteOpen(false);
+        } else s.setSearchOpen(true);
+      } else if (mod && e.shiftKey && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        const s = useStore.getState();
+        s.setPaletteOpen(!s.paletteOpen, ">");
       } else if (mod && e.shiftKey && e.key.toLowerCase() === "l") {
         e.preventDefault();
         const s = useStore.getState();
         useStore.setState({ libraryTab: s.libraryTab ? null : "skills" });
+      } else if (mod && e.altKey && e.key === ",") {
+        // Ctrl/Cmd+Alt+, steps reasoning effort down, wrapping to Default.
+        e.preventDefault();
+        useStore.getState().cycleEffort(-1);
+      } else if (mod && e.altKey && e.key === ".") {
+        e.preventDefault();
+        useStore.getState().cycleEffort(1);
       } else if (mod && e.key === ",") {
         e.preventDefault();
         useStore.getState().setSettingsOpen(true);
@@ -52,13 +90,32 @@ export function App() {
       } else if (mod && e.shiftKey && e.key.toLowerCase() === "d") {
         e.preventDefault();
         showInspector("changes");
+      } else if (mod && e.key === "\\") {
+        e.preventDefault();
+        toggleSidebar();
       } else if (e.ctrlKey && e.key === "`") {
         e.preventDefault();
-        showInspector("terminal");
+        useStore.getState().toggleTerminal();
       } else if (mod && e.shiftKey && e.key.toLowerCase() === "b") {
         e.preventDefault();
         showInspector("browser");
-      } else if (e.key === "Escape" && running && !document.querySelector(".skill-menu, .palette, .sheet, .library")) {
+      } else if (mod && !e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key)) {
+        // ⌘1–9: the nth thread in the sidebar's order. Not over a modal, and not
+        // while the browser pane has focus (its page keeps its own shortcuts).
+        if (document.querySelector(".palette, .search-dialog, .sheet, .library") || document.activeElement?.tagName === "WEBVIEW") return;
+        const s = useStore.getState();
+        const model = inboxModel(
+          s.projects.map((p) => p.id),
+          s.threads,
+          { running: s.running, waiting: waitingThreads(s.permissions, s.plans, s.questions), kind: s.threadKind },
+        );
+        const target = nthVisibleThread(model, Number(e.key), { groupByProject: s.settings?.sidebarGroupByProject ?? true, collapsed: s.collapsedProjects });
+        if (target) {
+          e.preventDefault();
+          void s.selectProject(target.projectId);
+          void s.selectThread(target.id);
+        }
+      } else if (escapeStopsTurn({ key: e.key, defaultPrevented: e.defaultPrevented, target: e.target as EscapeTarget | null }, running, document.querySelector(ESCAPE_OWNERS) !== null)) {
         void interrupt();
       }
     };
@@ -66,211 +123,368 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [newThread, showInspector, interrupt, running]);
 
-  // The browser works without a project; Changes needs one.
-  const inspectorVisible = inspectorOpen && (project || inspectorTab !== "changes");
+  // The browser works without a project; Changes and Files need one.
+  const inspectorVisible = inspectorOpen && (project || inspectorTab === "browser");
+  const layout = useStore((s) => s.paneLayout);
+  const designThread = Boolean(thread && threadKind(thread) === "design");
+  const pane = usePaneLayout(Boolean(inspectorVisible), designThread ? DESIGN_FLOOR : undefined);
+  const setPaneLayout = useStore((s) => s.setPaneLayout);
+  // A width that leaves the chat under its normal minimum was dragged there on purpose: keep it wide.
+  const inspectorPatch = (v: number, c: boolean) => {
+    const inspector = v || layout.inspector;
+    return { inspector, inspectorCollapsed: c, inspectorWide: isWideInspector(pane.width, pane.sidebar, inspector) };
+  };
+  const wide = layout.browserWide && inspectorVisible && inspectorTab === "browser" && pane.inspector !== null;
+  // A design thread puts its canvas between the chat and the side panel; browser-wide still wins.
+  const design = designThread && !wide;
+  // A design thread's chat column: automatic (the CSS default) until the user drags its splitter.
+  const designChat = designChatWidth(pane.width - pane.sidebar - (inspectorVisible && pane.inspector !== null ? pane.inspector : 0), layout.designChat);
+  const designMode = useStore((s) => s.threadKind) === "design";
+  // Canvas-first: the canvas fills the main area and the chat is a prompt bar over its foot, the transcript a drawer.
+  const canvasFirst = design && Boolean(thread) && Boolean(project) && layout.designLayout === "canvas";
+  // The main header's slot the canvas puts its own header into (canvas-first only): one top bar, not two.
+  const [headSlot, setHeadSlot] = useState<HTMLDivElement | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const hasMessages = useStore((s) => (thread ? (s.events[thread.id]?.length ?? 0) > 0 : false));
+  const drawerHandle = useRef<HTMLButtonElement>(null);
+  // Esc closes the open transcript drawer first (ESCAPE_OWNERS keeps it from stopping the turn), unless a menu or
+  // sheet over it owns the key. preventDefault tells the turn-stopping handler too, whichever listener runs first.
+  useEffect(() => {
+    if (!canvasFirst || !drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || document.querySelector(ESCAPE_OWNERS_OVER_DRAWER)) return;
+      e.preventDefault();
+      if (document.activeElement?.closest(".design-drawer")) drawerHandle.current?.focus();
+      setDrawerOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [canvasFirst, drawerOpen]);
+  // The prompt bar's height, so the single-page stage keeps its frame clear of it (the board stays overlaid).
+  const barObserver = useRef<ResizeObserver | null>(null);
+  const barRef = useCallback((el: HTMLDivElement | null) => {
+    barObserver.current?.disconnect();
+    barObserver.current = null;
+    const app = el?.closest<HTMLElement>(".app");
+    if (!el || !app || typeof ResizeObserver === "undefined") return;
+    barObserver.current = new ResizeObserver(() => app.style.setProperty("--design-prompt-h", `${el.offsetHeight}px`));
+    barObserver.current.observe(el);
+  }, []);
 
   return (
-    <div className={`app${inspectorVisible ? " with-inspector" : ""}`}>
-      <Sidebar />
-      <main className="main">
-        <header className="main-header drag">
-          <div className="main-title">
-            {thread ? thread.title : project ? project.name : "UnSkilled"}
-            {thread && project && <span className="sub">{project.name}</span>}
-          </div>
-          {thread && <LimitMeter agent={thread.agent} />}
-          {thread && <UsageMeter threadId={thread.id} />}
-          {thread && (
-            <>
-              {agents.length > 1 && (
-                <select
-                  className="select"
-                  value={thread.agent}
-                  title="Agent"
-                  disabled={running}
-                  onChange={(e) => void updateThread({ agent: e.target.value })}
-                >
-                  {agents.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.label}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <select
-                className="select"
-                value={thread.model}
-                title="Model"
-                disabled={running}
-                onChange={(e) => void updateThread({ model: e.target.value })}
-              >
-                {modelOptions(agents, thread.agent, thread.model).map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-              <div className="segmented" role="radiogroup" aria-label="Permissions">
-                {MODES.map((m) => (
-                  <button
-                    key={m.id}
-                    role="radio"
-                    aria-checked={thread.permissionMode === m.id}
-                    className={thread.permissionMode === m.id ? "on" : ""}
-                    title={m.title}
-                    disabled={running}
-                    onClick={() => void updateThread({ permissionMode: m.id })}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-          {project && (
-            <>
-              <button
-                className={`icon-button${inspectorOpen && inspectorTab === "changes" ? " active" : ""}`}
-                title="Changes (⌘⇧D)"
-                onClick={() => showInspector("changes")}
-              >
-                <IconDiff />
-              </button>
-              <button
-                className={`icon-button${inspectorOpen && inspectorTab === "browser" ? " active" : ""}`}
-                title="Browser (⌘⇧B)"
-                onClick={() => showInspector("browser")}
-              >
-                <IconGlobe />
-              </button>
-              <button
-                className={`icon-button${inspectorOpen && inspectorTab === "terminal" ? " active" : ""}`}
-                title="Terminal (⌃`)"
-                onClick={() => showInspector("terminal")}
-              >
-                <IconTerminal />
-              </button>
-            </>
-          )}
-        </header>
-
-        {!project ? (
-          <div className="empty">
-            <div>
-              <h1>Welcome to UnSkilled</h1>
-              <p>Open a project folder to start. Claude works inside it, with the skilled workflow built in.</p>
-              <button className="button primary" onClick={() => void addProject()}>
-                <IconFolder /> Open Project…
-              </button>
-            </div>
-          </div>
-        ) : !thread ? (
-          <div className="empty">
-            <div>
-              <h1>{project.name}</h1>
-              <p>Start a thread to work in this project.</p>
-              <button className="button primary" onClick={() => void newThread()}>
-                <IconSparkle /> New Thread
-              </button>
-              <div className="hints">
-                <Hint skill="skilled-setup" d="Set up the project docs and tracker, once per repo." />
-                <Hint skill="domain-interview" d="Get interviewed on an idea before any code." />
-                <Hint skill="implement" d="Build a ticket or a small change, test-first." />
-              </div>
-            </div>
-          </div>
+    <div className={`app${inspectorVisible && pane.inspector !== null ? " with-inspector" : ""}${wide ? " browser-wide" : ""}${layout.sidebarCollapsed ? " sidebar-collapsed" : ""}${design ? " design-thread" : ""}${canvasFirst ? " canvas-first" : ""}`}
+      style={
+        canvasFirst
+          ? ({ "--design-rail-w": layout.designRail ? "232px" : "0px" } as CSSProperties)
+          : design && layout.designChat !== null
+            ? ({ "--design-chat-w": `${designChat.width}px` } as CSSProperties)
+            : undefined
+      }
+    >
+      {layout.sidebarCollapsed ? <PaneRail /> : <Sidebar />}
+      <main className="main" id="main">
+        {wide ? (
+          // The browser holds the main area; the conversation is just a rail.
+          // The Inspector stays mounted either way, so the page survives.
+          <ConversationRail />
         ) : (
           <>
-            <ThreadView threadId={thread.id} />
-            <Composer threadId={thread.id} />
+            <header className="main-header drag">
+              {layout.sidebarCollapsed && <CollapsedHeaderControls />}
+              <div className="main-title">
+                {thread ? thread.title : project ? project.name : "CubiQ"}
+                {thread && project && <span className="sub">{project.name}</span>}
+              </div>
+              {canvasFirst && <div className="main-header-design" ref={setHeadSlot} />}
+              {thread?.expertId && <ExpertChip expertId={thread.expertId} />}
+              {design && thread && (
+                <button
+                  className={`icon-button${canvasFirst ? " active" : ""}`}
+                  aria-pressed={canvasFirst}
+                  aria-label="Canvas first"
+                  title={canvasFirst ? "Canvas first is on: turn it off to put the chat beside the canvas" : "Canvas first: the canvas fills the window, the chat sits under it"}
+                  onClick={() => setPaneLayout({ designLayout: canvasFirst ? "split" : "canvas" }, true)}
+                >
+                  <PanelBottom size={16} strokeWidth={1.75} aria-hidden />
+                </button>
+              )}
+              {project && (
+                <>
+                  <button
+                    className={`icon-button${inspectorOpen && inspectorTab === "changes" ? " active" : ""}`}
+                    title="Changes (⌘⇧D)"
+                    aria-expanded={inspectorOpen && inspectorTab === "changes"}
+                    aria-controls="inspector"
+                    onClick={() => showInspector("changes")}
+                  >
+                    <IconDiff />
+                  </button>
+                  <button
+                    className={`icon-button${inspectorOpen && inspectorTab === "browser" ? " active" : ""}`}
+                    title="Browser (⌘⇧B)"
+                    aria-expanded={inspectorOpen && inspectorTab === "browser"}
+                    aria-controls="inspector"
+                    onClick={() => showInspector("browser")}
+                  >
+                    <IconGlobe />
+                  </button>
+                  <button
+                    className={`icon-button${layout.terminalOpen ? " active" : ""}`}
+                    title="Terminal (⌃`)"
+                    aria-expanded={layout.terminalOpen}
+                    aria-controls="terminal-drawer"
+                    onClick={() => useStore.getState().toggleTerminal()}
+                  >
+                    <IconTerminal />
+                  </button>
+                </>
+              )}
+            </header>
+
+            {!project ? (
+              initError ? (
+                <div className="empty" role="alert">
+                  <div>
+                    <h1>CubiQ couldn't start</h1>
+                    <p>{initError}</p>
+                    <button className="button primary" onClick={() => void init()}>
+                      Try again
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="empty">
+                  <div>
+                    <h1>Welcome to CubiQ</h1>
+                    <p>Open a project folder to work on its code, or start a chat with no folder needed.</p>
+                    <div className="empty-actions">
+                      <button className="button primary" onClick={() => void addProject()}>
+                        <IconFolder /> Open Project…
+                      </button>
+                      <button className="button ghost" onClick={() => void newChat()}>
+                        <IconChat /> Start a chat
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            ) : !thread ? (
+              <>
+                <div className="start-thread">
+                  {designMode ? (
+                    <>
+                      <h1>What should we design in {project.name}?</h1>
+                      <p>Describe a page, screen or component. The design opens on a canvas beside this chat.</p>
+                    </>
+                  ) : project.builtin ? (
+                    <>
+                      <h1>What's on your mind?</h1>
+                      <p>Ask anything. Each chat has its own scratch folder for any files it makes. Type $ for a skill or / for a command.</p>
+                    </>
+                  ) : (
+                    <>
+                      <h1>What should we build in {project.name}?</h1>
+                      <p>Describe a change, ask about the code, or type $ for a skill or / for a command.</p>
+                    </>
+                  )}
+                </div>
+                <Composer
+                  threadId={null}
+                  mode={
+                    designMode ? (
+                      <>
+                        <DesignFenceChip />
+                        <DraftDesignStyle />
+                      </>
+                    ) : (
+                      <DraftMode />
+                    )
+                  }
+                  model={<DraftModel />}
+                />
+              </>
+            ) : (
+              // Always these wrappers (display: contents outside canvas-first), so switching layouts never remounts the
+              // transcript or the composer, and a chat thread lays out exactly as before.
+              <div className="thread-pane">
+                <div
+                  id="design-drawer"
+                  className={`thread-drawer${canvasFirst ? " design-drawer" : ""}`}
+                  hidden={canvasFirst && !drawerOpen}
+                  role={canvasFirst ? "region" : undefined}
+                  aria-label={canvasFirst ? "Chat" : undefined}
+                >
+                  <ThreadView threadId={thread.id} expertId={thread.expertId} />
+                  {canvasFirst && !hasMessages && <p className="design-drawer-empty">No messages yet. Describe what to design below.</p>}
+                </div>
+                <div className="thread-bar" ref={barRef}>
+                <TodoDock threadId={thread.id} />
+                <ShellDock threadId={thread.id} />
+                <RequestDock threadId={thread.id} />
+                {thread.expertId && <TeamStrip threadId={thread.id} expertId={thread.expertId} agent={thread.agent} leadModel={thread.model} />}
+                {canvasFirst && <DrawerHandle buttonRef={drawerHandle} threadId={thread.id} open={drawerOpen} onToggle={() => setDrawerOpen(!drawerOpen)} />}
+                <Composer
+                  threadId={thread.id}
+                  mode={
+                    designThread ? (
+                      <>
+                        <DesignFenceChip />
+                        <ThreadDesignStyle thread={thread} running={running} />
+                        {thread.expertId && <ExpertChip expertId={thread.expertId} threadId={thread.id} />}
+                      </>
+                    ) : (
+                      <>
+                        <ThreadMode thread={thread} running={running} />
+                        {thread.expertId && <ExpertChip expertId={thread.expertId} threadId={thread.id} />}
+                      </>
+                    )
+                  }
+                  model={<ThreadModel thread={thread} running={running} />}
+                  meters={<ThreadMeters agent={thread.agent} threadId={thread.id} />}
+                />
+                </div>
+              </div>
+            )}
           </>
         )}
+        {/* Outside the wide branch: the shells stay mounted (hidden) while the browser has the main area. */}
+        <TerminalDrawer />
       </main>
-      {inspectorVisible && <Inspector projectId={project?.id ?? null} />}
+      {design && thread && project && (
+        <Suspense fallback={<section className="design-canvas" aria-label="Design canvas" />}>
+          <DesignCanvas threadId={thread.id} canvasFirst={canvasFirst} headSlot={canvasFirst ? headSlot : null} />
+        </Suspense>
+      )}
+      {design && thread && project && !canvasFirst && (
+        <Splitter
+          orientation="vertical"
+          controls="main"
+          label="Resize chat and canvas"
+          value={designChat.width}
+          min={BOUNDS.designChat.min}
+          max={designChat.max}
+          defaultValue={designChatWidth(designChat.max + BOUNDS.designCanvas, null).width}
+          collapsed={false}
+          className="splitter-design"
+          // The chat never collapses here (Enter would toggle it): only the width moves.
+          onChange={(v, c) => !c && setPaneLayout({ designChat: v }, false)}
+          onCommit={(v, c) => !c && setPaneLayout({ designChat: v }, true)}
+        />
+      )}
+      <Splitter
+        orientation="vertical"
+        controls="sidebar"
+        label="Resize sidebar"
+        value={layout.sidebar}
+        min={BOUNDS.sidebar.min}
+        max={BOUNDS.sidebar.max}
+        defaultValue={DEFAULT_LAYOUT.sidebar}
+        collapsed={layout.sidebarCollapsed}
+        className="splitter-sidebar"
+        onChange={(v, c) => setPaneLayout({ sidebar: v || layout.sidebar, sidebarCollapsed: c }, false)}
+        onCommit={(v, c) => setPaneLayout({ sidebar: v || layout.sidebar, sidebarCollapsed: c }, true)}
+      />
+      {!wide && inspectorVisible && (
+        <Splitter
+          orientation="vertical"
+          controls="inspector"
+          label="Resize side panel"
+          // The drawn width (a narrowed panel drags from where it is), capped relative to the window.
+          value={pane.inspector ?? layout.inspector}
+          min={BOUNDS.inspector.min}
+          max={pane.inspectorMax}
+          defaultValue={DEFAULT_LAYOUT.inspector}
+          collapsed={layout.inspectorCollapsed}
+          invert
+          className="splitter-inspector"
+          onChange={(v, c) => setPaneLayout(inspectorPatch(v, c), false)}
+          onCommit={(v, c) => setPaneLayout(inspectorPatch(v, c), true)}
+        />
+      )}
+      {inspectorVisible && pane.inspector !== null && <Inspector projectId={project?.id ?? null} />}
       <SettingsSheet />
+      <MessageCenter />
       <Notice />
       <Library />
       <CommandPalette />
+      <SearchHost />
+      <SwitchDialogHost />
+      <AboutSheet />
+      <ContextSheet />
+      <McpSheet />
+      <DoctorSheet />
+      <Splash />
     </div>
   );
 }
 
-/** The thread's agent's models, keeping the current one listed even if the agent no longer reports it. */
-function modelOptions(agents: AgentInfo[], agent: string, current: string): { id: string; label: string }[] {
-  const list = agents.find((a) => a.id === agent)?.models ?? [];
-  return list.some((m) => m.id === current) ? list : [{ id: current, label: current }, ...list];
-}
-
-/** What this thread has cost so far, summed over its turns. Quiet until there's something to show. */
-function UsageMeter({ threadId }: { threadId: string }) {
-  const events = useStore((s) => s.events[threadId]);
-  let input = 0;
-  let output = 0;
-  let cost = 0;
-  let turns = 0;
-  for (const e of events ?? []) {
-    if (e.event.kind !== "turn-end") continue;
-    turns++;
-    input += e.event.inputTokens;
-    output += e.event.outputTokens;
-    cost += e.event.costUsd ?? 0;
-  }
-  if (!turns) return null;
-  const k = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 100_000 ? 0 : 1)}k` : String(n));
+/** ⌘K: search threads, messages and the project's files; ">" hands off to the command palette. */
+function SearchHost() {
+  const open = useStore((s) => s.searchOpen);
+  const projectId = useStore((s) => s.selectedProjectId);
+  const projects = useStore((s) => s.projects);
+  const agents = useStore((s) => s.agents);
+  const running = useStore((s) => s.running);
+  if (!open) return null;
+  const s = useStore.getState();
   return (
-    <span className="usage" title={`${turns} turn${turns === 1 ? "" : "s"} · ${input.toLocaleString()} input and ${output.toLocaleString()} output tokens`}>
-      {k(input + output)} tokens{cost > 0 ? ` · $${cost.toFixed(2)}` : ""}
-    </span>
+    <SearchDialog
+      projectId={projectId}
+      projects={projects}
+      agents={agents.map((a) => ({ id: a.id, label: a.label }))}
+      runningThreadIds={Object.keys(running).filter((id) => running[id])}
+      onOpenThread={(threadId) => {
+        const thread = Object.values(useStore.getState().threads).flat().find((t) => t.id === threadId);
+        if (thread) void s.selectProject(thread.projectId).then(() => s.selectThread(threadId));
+      }}
+      onOpenFile={(path) => (useStore.getState().selectedThreadId ? s.openArtifact(path) : void s.openInEditor({ path }))}
+      onActions={(query) => s.setPaletteOpen(true, query)}
+      onClose={() => s.setSearchOpen(false)}
+    />
   );
 }
 
 /**
- * How close the thread's agent is to its plan's rate limits: the fullest
- * window, as the agent last reported it. Hidden until the agent reports
- * any (API-key logins never do), and quiet below half.
+ * A canvas-first design thread's handle above the composer: it opens the transcript drawer, with a heartbeat while the
+ * agent runs and its latest line, so the chat can stay closed while you watch the canvas.
  */
-function LimitMeter({ agent }: { agent: string }) {
-  const limits = useStore((s) => s.limits[agent]);
-  if (!limits) return null;
-  const known = limits.windows.filter((w) => w.usedPercent !== null);
-  const top = known.reduce<(typeof known)[number] | null>((a, w) => (!a || w.usedPercent! > a.usedPercent! ? w : a), null);
-  if (!top && limits.state === "ok") return null;
-  const pct = top?.usedPercent ?? 0;
-  if (limits.state === "ok" && pct < 50) return null;
-  const when = (ms: number | null) =>
-    ms ? new Date(ms).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" }) : "unknown";
-  const title = [
-    ...limits.windows.map((w) => `${w.label} limit: ${w.usedPercent === null ? "in use" : `${w.usedPercent}% used`}, resets ${when(w.resetsAt)}`),
-    `As of ${new Date(limits.updatedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`,
-  ].join("\n");
-  const text =
-    limits.state === "limited"
-      ? `Limit reached${top?.resetsAt ? ` · resets ${when(top.resetsAt)}` : ""}`
-      : `${top!.label} limit ${pct}%`;
+function DrawerHandle({ buttonRef, threadId, open, onToggle }: { buttonRef: Ref<HTMLButtonElement>; threadId: string; open: boolean; onToggle: () => void }) {
+  const running = useStore((s) => Boolean(s.running[threadId]));
+  const line = useStore((s) => lastAgentLine(s.events[threadId], s.live[threadId]));
   return (
-    <span className={`limit-meter ${limits.state}`} title={title}>
-      <span className="bar">
-        <i style={{ width: `${limits.state === "limited" ? 100 : pct}%` }} />
-      </span>
-      {text}
-    </span>
+    <button ref={buttonRef} className="design-drawer-handle" aria-expanded={open} aria-controls="design-drawer" title={open ? "Hide the chat (Esc)" : "Show the chat"} onClick={onToggle}>
+      <IconChat />
+      <span className="design-drawer-label">Chat</span>
+      {running && <span className="thread-dot running" aria-label="Running" />}
+      <span className="design-drawer-preview">{line || (running ? "Working…" : "")}</span>
+      <ChevronUp size={14} strokeWidth={2} className="design-drawer-chev" aria-hidden />
+    </button>
   );
 }
+
+/** The conversation while the browser holds the main area: the way back, and a heartbeat. */
+function ConversationRail() {
+  const thread = useSelectedThread();
+  const running = useStore((s) => (thread ? Boolean(s.running[thread.id]) : false));
+  return (
+    <div className="conversation-rail">
+      <button className="icon-button" title="Back to the conversation" aria-controls="inspector" onClick={() => useStore.getState().toggleBrowserWide()}>
+        <IconArrowLeft />
+      </button>
+      {running && <span className="spinner" />}
+    </div>
+  );
+}
+
+
+
 
 function Notice() {
   const text = useStore((s) => s.notice);
   return text ? (
-    <div className="notice" role="status">
+    <div className="toast" role="status">
       {text}
     </div>
   ) : null;
 }
 
-function Hint({ skill, d }: { skill: string; d: string }) {
-  return (
-    <button className="hint-card" onClick={() => void useStore.getState().newThread(skill)}>
-      <div className="t">/{skill}</div>
-      <div className="d">{d}</div>
-    </button>
-  );
-}

@@ -1,0 +1,154 @@
+/* Sports Poster: a CubiQ style. Link this file and use the custom properties, not raw values. A dark pair follows the system setting.
+ * Roles: --color-accent-text for accent-coloured text (the accent itself may be too light for text);
+ * --color-on-accent on accent fills; --color-*-soft behind status text and selected chips, with the matching
+ * colour (or --color-accent-text) on top; --color-surface-3 for hover/pressed wells; --color-border-strong for
+ * inputs and dividers that must show. --tracking-display/-heading/-label on those roles, --text-display-sm
+ * under 640px, font-variant-numeric: var(--numeric-data) on figures. */
+@font-face {
+  font-family: "Hanken Grotesk";
+  src: url("fonts/hanken-grotesk.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Big Shoulders Display";
+  src: url("fonts/big-shoulders-display.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+:root {
+  color-scheme: light;
+
+  /* Color */
+  --color-bg: #FFFFFF;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #E8ECF1;
+  --color-text: #0D1B2A;
+  --color-text-muted: #4A5568;
+  --color-border: #C9D1DB;
+  --color-primary: #C8102E;
+  --color-on-primary: #FFFFFF;
+  --color-accent: #0D1B2A;
+  --color-success: #1E7A3C;
+  --color-warning: #9A5B00;
+  --color-danger: #C8102E;
+  --color-focus: #0D1B2A;
+  --color-surface-3: #DBDFE5;
+  --color-border-strong: #858F9B;
+  --color-accent-text: #0D1B2A;
+  --color-on-accent: #FFFFFF;
+  --color-accent-soft: #DDDFE1;
+  --color-success-soft: #E6F0EA;
+  --color-warning-soft: #F4EDE3;
+  --color-danger-soft: #F7DEE2;
+
+  /* Type */
+  --font-sans: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Big Shoulders Display", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --text-xs: 12px;
+  --leading-xs: 16px;
+  --text-sm: 14px;
+  --leading-sm: 20px;
+  --text-md: 16px;
+  --leading-md: 24px;
+  --text-lg: 20px;
+  --leading-lg: 28px;
+  --text-xl: 24px;
+  --leading-xl: 32px;
+  --text-2xl: 32px;
+  --leading-2xl: 40px;
+  --text-3xl: 48px;
+  --leading-3xl: 56px;
+  --text-4xl: 64px;
+  --leading-4xl: 72px;
+  --text-display: 144px;
+  --leading-display: 128px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 700;
+  --tracking-display: 0.01em;
+  --tracking-heading: 0.01em;
+  --tracking-label: 0.08em;
+  --text-display-sm: 64px;
+  --leading-display-sm: 64px;
+  --numeric-data: tabular-nums;
+
+  /* Space: the 8pt scale (4 is for type and icon nudges only) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* Size */
+  --target-min: 44px;
+  --content-max: 1320px;
+  --measure: 68ch;
+
+  /* Radius */
+  --radius-sm: 0px;
+  --radius-md: 2px;
+  --radius-lg: 4px;
+  --radius-full: 9999px;
+
+  /* Elevation */
+  --shadow-1: none;
+  --shadow-2: 0 8px 24px rgb(13 27 42 / 0.12);
+  --shadow-3: 0 24px 56px rgb(13 27 42 / 0.2);
+
+  /* Motion */
+  --duration-fast: 120ms;
+  --duration: 220ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration: 0ms;
+  }
+}
+
+/* Dark: the same roles, re-tuned; picked up from the system setting. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --color-bg: #0B1520;
+    --color-surface: #111E2C;
+    --color-surface-2: #192838;
+    --color-text: #F5F3EF;
+    --color-text-muted: #A9B4C2;
+    --color-border: #2A3A4D;
+    --color-primary: #DB203B;
+    --color-on-primary: #FFFFFF;
+    --color-accent: #F5F3EF;
+    --color-success: #4CC38A;
+    --color-warning: #E7B04F;
+    --color-danger: #FF6B7A;
+    --color-focus: #F5F3EF;
+    --color-surface-3: #2B3847;
+    --color-border-strong: #636E7A;
+    --color-accent-text: #F5F3EF;
+    --color-on-accent: #0B1520;
+    --color-accent-soft: #434D57;
+    --color-success-soft: #1E4241;
+    --color-warning-soft: #403E34;
+    --color-danger-soft: #3C2C3A;
+    --shadow-2: 0 8px 24px rgb(0 0 0 / 0.36);
+    --shadow-3: 0 24px 56px rgb(0 0 0 / 0.6);
+  }
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}

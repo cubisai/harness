@@ -1,0 +1,39 @@
+{
+  "id": "runtime-check",
+  "tags": [
+    "regression"
+  ],
+  "tier": "full",
+  "fixture": "runtime-check",
+  "mode": "full",
+  "prompt": "Add an exported greet(name) to src/app.js that returns `Hello, <name>!`. `node src/app.js` must run without errors when you're done.",
+  "graders": [
+    {
+      "type": "command",
+      "run": "node src/app.js"
+    },
+    {
+      "type": "command",
+      "run": "node check-runtime.mjs"
+    },
+    {
+      "type": "tool",
+      "name": "Run",
+      "min": 1
+    },
+    {
+      "type": "event",
+      "noError": true,
+      "noFalseClaim": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 12,
+    "maxInputTokens": 100000,
+    "timeoutMs": 200000
+  },
+  "reference": "Runs node src/app.js, sees the ReferenceError (placeholderSVG), fixes it, adds greet, runs it again."
+}

@@ -1,0 +1,14 @@
+{
+  "edits": [
+    {
+      "path": "src/math.js",
+      "old": "export function add(a, b) {\n  return a + b;\n}",
+      "new": "export function add(a, b) {\n  return a + b;\n}\n\n/** Clamps x into the inclusive range [lo, hi]. */\nexport function clamp(x, lo, hi) {\n  return Math.min(hi, Math.max(lo, x));\n}"
+    }
+  ],
+  "events": [
+    { "kind": "tool-use", "name": "Read", "summary": "src/math.js" },
+    { "kind": "tool-use", "name": "Edit", "summary": "src/math.js" },
+    { "kind": "assistant-text", "text": "Added clamp(x, lo, hi) to src/math.js with the one-line JSDoc the owner asked for." }
+  ]
+}

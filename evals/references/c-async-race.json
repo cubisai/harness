@@ -1,0 +1,15 @@
+{
+  "edits": [
+    {
+      "path": "src/cache.js",
+      "old": "  async function get(key) {\n    if (store.has(key)) return store.get(key);\n    fetches++;\n    const value = await fetchValue(key);\n    store.set(key, value);\n    return value;\n  }",
+      "new": "  function get(key) {\n    if (store.has(key)) return store.get(key);\n    fetches++;\n    const pending = fetchValue(key);\n    store.set(key, pending);\n    return pending;\n  }"
+    }
+  ],
+  "events": [
+    { "kind": "tool-use", "name": "Read", "summary": "src/cache.js" },
+    { "kind": "tool-use", "name": "Edit", "summary": "src/cache.js" },
+    { "kind": "tool-use", "name": "Run", "summary": "node --test test/async-cache-hidden.test.mjs" },
+    { "kind": "assistant-text", "text": "The cache now stores the in-flight promise, so concurrent get() calls for the same key await the same fetch and the count stays at one per key." }
+  ]
+}

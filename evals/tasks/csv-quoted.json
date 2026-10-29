@@ -1,0 +1,30 @@
+{
+  "id": "csv-quoted",
+  "tags": [
+    "capability"
+  ],
+  "tier": "full",
+  "fixture": "csv",
+  "mode": "auto-edit",
+  "prompt": "parseCsv in src/csv.js breaks on quoted fields. Make it follow RFC 4180: commas and newlines inside double quotes are part of the field, \"\" inside quotes is a literal quote, and both \\n and \\r\\n end a row. Keep the export and return shape.",
+  "graders": [
+    {
+      "type": "command",
+      "run": "node --test test/csv-hidden.test.mjs"
+    },
+    {
+      "type": "event",
+      "noError": true,
+      "noFalseClaim": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 12,
+    "maxInputTokens": 100000,
+    "timeoutMs": 240000
+  },
+  "reference": "A character-level state machine (quoted flag, \"\" escape, CR/LF row ends); no split(\",\")."
+}

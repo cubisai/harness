@@ -1,0 +1,3 @@
+[install]
+# electron-builder packages node_modules as-is; keep the layout flat.
+linker = "hoisted"

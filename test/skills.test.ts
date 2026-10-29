@@ -46,7 +46,7 @@ describe("qualifySkillCalls", () => {
 describe("ensurePlugin", () => {
   it("returns null when catalog has no model skills (clean default)", () => {
     const dir = join(tempDir(), "empty-plugin");
-    const result = ensurePlugin(emptyCatalog(), dir);
+    const result = ensurePlugin([], dir);
     expect(result).toBeNull();
     expect(existsSync(dir)).toBe(false);
   });
@@ -54,7 +54,7 @@ describe("ensurePlugin", () => {
   it("builds a plugin with only the model-invoked skills, calls qualified", () => {
     const c = catalog();
     const dir = join(tempDir(), "plugin");
-    ensurePlugin(c, dir);
+    ensurePlugin(c.modelSkills, dir);
     const manifest = JSON.parse(readFileSync(join(dir, ".claude-plugin", "plugin.json"), "utf-8"));
     expect(manifest.name).toBe(PLUGIN_NAME);
     const names = readdirSync(join(dir, "skills")).sort();
@@ -66,10 +66,10 @@ describe("ensurePlugin", () => {
   it("does nothing when the catalog hasn't changed", () => {
     const c = catalog();
     const dir = join(tempDir(), "plugin");
-    ensurePlugin(c, dir);
+    ensurePlugin(c.modelSkills, dir);
     const stamp = join(dir, "skills", "tdd", "SKILL.md");
     const before = readFileSync(stamp, "utf-8");
-    ensurePlugin(c, dir);
+    ensurePlugin(c.modelSkills, dir);
     expect(readFileSync(stamp, "utf-8")).toBe(before);
   });
 });
@@ -87,8 +87,45 @@ describe("composePrompt", () => {
     expect(prompt.endsWith("Arguments: ticket 3")).toBe(true);
   });
 
-  it("refuses model-invoked and unknown skills", () => {
-    expect(() => composePrompt(catalog(), "", "tdd")).toThrow(/model-invoked/);
+  it("composes model-invoked and unknown skills", () => {
+    expect(composePrompt(catalog(), "", "tdd")).toContain('<skill name="tdd"');
     expect(() => composePrompt(catalog(), "", "nope")).toThrow(/unknown/);
+  });
+
+  it("composes several skills as one block each, in order, with one Arguments line", () => {
+    const prompt = composePrompt(catalog(), "fix it", ["implement", "tdd"]);
+    const names = [...prompt.matchAll(/<skill name="([^"]+)"/g)].map((m) => m[1]);
+    expect(names).toEqual(["implement", "tdd"]);
+    expect(prompt.match(/^Arguments:/gm)).toHaveLength(1);
+    expect(prompt.endsWith("Arguments: fix it")).toBe(true);
+  });
+
+  it("throws on an unknown skill in a list before composing", () => {
+    expect(() => composePrompt(catalog(), "x", ["tdd", "nope"])).toThrow(/unknown/);
+  });
+
+  it("treats a one-item list exactly like the old single name", () => {
+    const c = catalog();
+    expect(composePrompt(c, "x", ["tdd"])).toBe(composePrompt(c, "x", "tdd"));
+  });
+
+  it("passes text through for an empty list", () => {
+    expect(composePrompt(catalog(), "x", [])).toBe("x");
+  });
+
+  it("qualifies calls with the delivery prefix", () => {
+    const prompt = composePrompt(catalog(), "ticket 3", "implement", { mode: "plugin", prefix: "harness-skills:" });
+    expect(prompt).toContain('"harness-skills:tdd"');
+  });
+
+  it("leaves calls unqualified with no delivery", () => {
+    const prompt = composePrompt(catalog(), "ticket 3", "implement", { mode: "none" });
+    expect(prompt).toContain('"tdd"');
+    expect(prompt).not.toContain("harness-skills:");
+  });
+
+  it("still accepts a plain string prefix", () => {
+    const prompt = composePrompt(catalog(), "ticket 3", "implement", "skilled:");
+    expect(prompt).toContain('"skilled:tdd"');
   });
 });

@@ -1,0 +1,39 @@
+{
+  "id": "explain-no-edit",
+  "tags": [
+    "regression"
+  ],
+  "tier": "smoke",
+  "fixture": "tiny-js",
+  "prompt": "Explain what src/sum.js does in two sentences. Don't change any files.",
+  "mode": "plan",
+  "graders": [
+    {
+      "type": "answer",
+      "matches": "(?=[\\s\\S]*(sum|add|total))(?=[\\s\\S]*(finite|skip|ignor|non-?numer|not (a )?numbers?))"
+    },
+    {
+      "type": "tool",
+      "name": "Edit",
+      "max": 0
+    },
+    {
+      "type": "file",
+      "path": "src/sum.js",
+      "unchanged": true
+    },
+    {
+      "type": "event",
+      "noError": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 6,
+    "maxInputTokens": 40000,
+    "timeoutMs": 120000
+  },
+  "reference": "Reads src/sum.js once and answers; no edits."
+}

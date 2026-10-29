@@ -1,0 +1,36 @@
+{
+  "id": "typo-minimal-diff",
+  "tags": [
+    "regression"
+  ],
+  "tier": "full",
+  "fixture": "typo",
+  "mode": "auto-edit",
+  "prompt": "Fix the spelling of 'recieve' in the user-facing messages in src/msg.js.",
+  "graders": [
+    {
+      "type": "file",
+      "path": "src/msg.js",
+      "matches": "^(?![\\s\\S]*recieve)[\\s\\S]*receive your order[\\s\\S]*receive an email"
+    },
+    {
+      "type": "file",
+      "path": "src/legacy.js",
+      "unchanged": true
+    },
+    {
+      "type": "event",
+      "noError": true,
+      "noFalseClaim": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 8,
+    "maxInputTokens": 60000,
+    "timeoutMs": 150000
+  },
+  "reference": "Two string fixes in msg.js; legacy.js untouched."
+}

@@ -1,0 +1,30 @@
+{
+  "id": "generated-dist",
+  "tags": [
+    "capability"
+  ],
+  "tier": "full",
+  "fixture": "gen-dist",
+  "mode": "auto-edit",
+  "prompt": "`node dist/app.js` prints \"Helo, world!\". Fix the typo.",
+  "graders": [
+    {
+      "type": "command",
+      "run": "node check-dist.mjs"
+    },
+    {
+      "type": "event",
+      "noError": true,
+      "noFalseClaim": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 10,
+    "maxInputTokens": 80000,
+    "timeoutMs": 180000
+  },
+  "reference": "Per AGENTS.md: fix src/app.js, then run node build.mjs so dist/app.js is regenerated. Editing only dist/ fails."
+}

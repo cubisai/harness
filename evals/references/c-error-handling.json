@@ -1,0 +1,15 @@
+{
+  "edits": [
+    {
+      "path": "src/config.js",
+      "old": "// Loads the JSON config at `path`.\nexport function loadConfig(path) {\n  return JSON.parse(readFileSync(path, \"utf8\"));\n}",
+      "new": "const DEFAULTS = { retries: 3, verbose: false };\n\n// Loads the JSON config at `path`, falling back to the defaults when it is absent.\nexport function loadConfig(path) {\n  try {\n    return JSON.parse(readFileSync(path, \"utf8\"));\n  } catch (err) {\n    if (err.code === \"ENOENT\") return { ...DEFAULTS };\n    throw err;\n  }\n}"
+    }
+  ],
+  "events": [
+    { "kind": "tool-use", "name": "Read", "summary": "src/config.js" },
+    { "kind": "tool-use", "name": "Edit", "summary": "src/config.js" },
+    { "kind": "tool-use", "name": "Run", "summary": "node --test test/config-hidden.test.mjs" },
+    { "kind": "assistant-text", "text": "loadConfig now returns the default config when the file is missing (ENOENT) and rethrows anything else, so invalid JSON still fails." }
+  ]
+}

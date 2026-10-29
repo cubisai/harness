@@ -1,34 +1,50 @@
 import { join } from "node:path";
-import type { AgentCatalogEntry, SkillDetail } from "../shared/types";
+import type { AgentCapabilities, AgentCatalogEntry, SkillDetail, SkillsDelivery } from "../shared/types";
 import type { AcpAgentConfig } from "./agents/acp/driver";
-import { ACP_PRESETS } from "./agents/registry";
-import { type Catalog, readSkillBody } from "./skills/catalog";
-import { PLUGIN_NAME } from "./skills/plugin";
+import { acpCapabilities, CLAUDE_CAPABILITIES, CODEX_CAPABILITIES, skillDeliveryGap } from "./agents/capabilities";
+import { ACP_PRESETS, BUILT_IN_AGENT_IDS } from "./agents/registry";
+import { bodyOf, readSkillBodyAt, type Catalog } from "./skills/catalog";
 
-const INSTALL_PY = "install into the project (.agents/skills)";
-
-/** How model-invoked skills reach an agent. */
-export function skillRoute(agent: { id: string; kind: AgentCatalogEntry["kind"]; skillsDirEnv?: string }): string {
-  if (agent.kind === "agent-sdk") return `As a plugin, loaded when the task calls for it`;
-  if (agent.kind === "app-server") return "As an extra skills folder, loaded when the task calls for it";
-  if (agent.skillsDirEnv) return `Through ${agent.skillsDirEnv}, loaded when the task calls for it`;
-  return `Not automatic: ${INSTALL_PY}`;
+/** How model-invoked skills reach an agent, worded from its delivery mode. */
+export function skillRoute(agent: { skillsDelivery: SkillsDelivery; skillsDirEnv?: string }): string {
+  const d = agent.skillsDelivery;
+  if (d.mode === "plugin") return "As a plugin, loaded when the task calls for it";
+  if (d.mode === "extraRoots") return "As an extra skills folder, loaded when the task calls for it";
+  if (d.mode === "envDir") return `Through ${agent.skillsDirEnv}, loaded when the task calls for it`;
+  if (d.mode === "tool") return "Through the app's skill tool, loaded when the task calls for it";
+  return `Not automatic: ${skillDeliveryGap(d)}`;
 }
 
 /** Everything the Library shows for one skill, and how it reaches each available agent. */
-export function skillDetail(catalog: Catalog, name: string, agents: AgentCatalogEntry[]): SkillDetail {
-  const skill = catalog.byName.get(name);
+export function skillDetail(
+  catalog: Catalog,
+  name: string,
+  agents: AgentCatalogEntry[],
+  /** Skill names an agent already has from its own folders (Claude's ~/.claude/skills), so the app skips them. */
+  nativeNames: (agent: AgentCatalogEntry) => Set<string> = () => new Set(),
+): SkillDetail {
+  // Disabled and shadowed entries live in `all` only, but the Library still lists them.
+  const skill = catalog.byName.get(name) ?? catalog.all.find((s) => s.name === name);
   if (!skill) throw new Error(`No skill named ${name}`);
   const available = agents.filter((a) => a.installed);
   return {
     skill,
-    body: readSkillBody(catalog.root, name),
-    dir: catalog.root.skillsDir ? join(catalog.root.skillsDir, name) : "",
+    body: skill.dir ? readSkillBodyAt(skill.dir) : bodyOf(catalog, name),
+    dir: skill.dir ?? (catalog.root.skillsDir ? join(catalog.root.skillsDir, name) : ""),
     calledBy: catalog.skills.filter((s) => s.calls.includes(name)).map((s) => s.name),
-    routes: available.map((a) => ({
-      agent: a.label,
-      how: skill.invocation === "user" ? "From the / menu: the app puts the skill's text into your message" : a.skills,
-    })),
+    routes: available.map((a) => {
+      // Same rules forAgent() delivers by: an origin the agent reads, or a name it already has, isn't sent again.
+      const reads = a.capabilities?.skillsDelivery.reads ?? [];
+      const how =
+        skill.invocation === "user"
+          ? "From the $ menu: the app puts the skill's text into your message"
+          : skill.origin && reads.includes(skill.origin)
+            ? "Loads it itself from this folder, when the task calls for it"
+            : nativeNames(a).has(skill.name)
+              ? "Has its own copy of a skill with this name, so the app doesn't add this one"
+              : a.skills;
+      return { agent: a.label, how };
+    }),
   };
 }
 
@@ -39,6 +55,8 @@ export function skillDetail(catalog: Catalog, name: string, agents: AgentCatalog
 export function agentCatalog(opts: {
   installed: (command: string) => boolean;
   custom: AcpAgentConfig[];
+  /** A running driver's capabilities, authoritative over the preset's static set. */
+  liveCapabilities?: (id: string) => AgentCapabilities | undefined;
 }): AgentCatalogEntry[] {
   const acpMcp = "Stdio servers, and HTTP ones (with the browser tools) when the agent supports them";
   const out: AgentCatalogEntry[] = [
@@ -69,17 +87,31 @@ export function agentCatalog(opts: {
   const customIds = new Set(opts.custom.map((a) => a.id));
   for (const p of ACP_PRESETS) {
     if (customIds.has(p.id)) continue;
-    out.push({ ...acpEntry(p, "built-in"), installed: opts.installed(p.command), mcp: acpMcp });
+    out.push({ ...acpEntry(p, "built-in"), installed: opts.installed(p.command), mcp: p.mcp ?? acpMcp });
   }
   for (const c of opts.custom) {
-    if (c.id === "claude") continue;
+    if (BUILT_IN_AGENT_IDS.has(c.id)) continue;
     out.push({ ...acpEntry(c, "agents.json"), installed: opts.installed(c.command), mcp: acpMcp });
   }
-  return out.map((a) => ({ ...a, skills: skillRoute({ id: a.id, kind: a.kind, skillsDirEnv: findEnv(a.id, opts.custom) }) }));
-}
-
-function findEnv(id: string, custom: AcpAgentConfig[]): string | undefined {
-  return (custom.find((c) => c.id === id) ?? ACP_PRESETS.find((p) => p.id === id))?.skillsDirEnv;
+  // A user entry with a preset's id replaces the preset, capabilities included.
+  const configById = new Map<string, AcpAgentConfig>();
+  for (const p of ACP_PRESETS) configById.set(p.id, p);
+  for (const c of opts.custom) configById.set(c.id, c);
+  return out.map((a) => {
+    if (a.kind === "agent-sdk") {
+      return { ...a, skills: skillRoute({ skillsDelivery: CLAUDE_CAPABILITIES.skillsDelivery }), capabilities: opts.liveCapabilities?.(a.id) ?? CLAUDE_CAPABILITIES };
+    }
+    if (a.kind === "app-server") {
+      return { ...a, skills: skillRoute({ skillsDelivery: CODEX_CAPABILITIES.skillsDelivery }), capabilities: opts.liveCapabilities?.(a.id) ?? CODEX_CAPABILITIES };
+    }
+    const c = configById.get(a.id);
+    const caps = acpCapabilities(c ?? {});
+    return {
+      ...a,
+      skills: skillRoute({ skillsDelivery: caps.skillsDelivery, ...(c?.skillsDirEnv ? { skillsDirEnv: c.skillsDirEnv } : {}) }),
+      capabilities: opts.liveCapabilities?.(a.id) ?? caps,
+    };
+  });
 }
 
 function acpEntry(c: AcpAgentConfig, source: AgentCatalogEntry["source"]): Omit<AgentCatalogEntry, "installed" | "mcp"> {
@@ -91,6 +123,8 @@ function acpEntry(c: AcpAgentConfig, source: AgentCatalogEntry["source"]): Omit<
     source,
     ...(c.install && { install: c.install }),
     ...(c.homepage && { homepage: c.homepage }),
+    ...(c.unsupported && { unsupported: c.unsupported }),
+    ...(c.optIn && { optIn: true }),
     skills: "",
   };
 }

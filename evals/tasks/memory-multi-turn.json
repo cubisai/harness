@@ -1,0 +1,43 @@
+{
+  "id": "memory-multi-turn",
+  "tags": [
+    "capability"
+  ],
+  "tier": "full",
+  "fixture": "empty",
+  "mode": "ask",
+  "memory": "- The release codename for this project is HERONFALL.\n- The owner prefers answers under three sentences.",
+  "prompt": "What's the release codename for this project?",
+  "turns": [
+    {
+      "prompt": "Spell it backwards, in capitals."
+    }
+  ],
+  "graders": [
+    {
+      "type": "answer",
+      "contains": [
+        "LLAFNOREH"
+      ],
+      "required": true
+    },
+    {
+      "type": "tool",
+      "name": "Edit",
+      "max": 0
+    },
+    {
+      "type": "event",
+      "noError": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 6,
+    "maxInputTokens": 60000,
+    "timeoutMs": 180000
+  },
+  "reference": "Reads the codename from memory (HERONFALL) and on the second turn answers LLAFNOREH."
+}

@@ -1,0 +1,42 @@
+{
+  "id": "route-skill-1",
+  "tags": [
+    "regression"
+  ],
+  "tier": "smoke",
+  "fixture": "empty",
+  "prompt": "I have to backup ansible in our infra setup. Which skill should I follow, and what should I check first?",
+  "mode": "plan",
+  "skills": {
+    "kit": {
+      "skills": 50,
+      "seed": 7
+    }
+  },
+  "graders": [
+    {
+      "type": "skill",
+      "expect": [
+        "backup-ansible-infra"
+      ]
+    },
+    {
+      "type": "tool",
+      "name": "Edit",
+      "max": 0
+    },
+    {
+      "type": "event",
+      "noError": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 8,
+    "maxInputTokens": 60000,
+    "timeoutMs": 120000
+  },
+  "reference": "Loads the backup-ansible-infra skill and answers from it."
+}

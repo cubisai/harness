@@ -1,0 +1,30 @@
+{
+  "id": "month-root-cause",
+  "tags": [
+    "capability"
+  ],
+  "tier": "full",
+  "fixture": "month",
+  "mode": "auto-edit",
+  "prompt": "`node src/report.js` lists March 2026 sales under 2026-02 (and February under 2026-01). Find the root cause and fix it.",
+  "graders": [
+    {
+      "type": "command",
+      "run": "node check-month.mjs"
+    },
+    {
+      "type": "event",
+      "noError": true,
+      "noFalseClaim": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 14,
+    "maxInputTokens": 120000,
+    "timeoutMs": 240000
+  },
+  "reference": "parseDate in src/dates.js returns month m - 1 against its own 1-12 contract; fix it there. Patching report.js alone leaves daysInMonth wrong."
+}

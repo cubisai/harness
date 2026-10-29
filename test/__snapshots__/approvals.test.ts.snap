@@ -1,0 +1,61 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`permissionTable > maps every mode to every driver, plan included 1`] = `
+{
+  "ask": {
+    "acp": [],
+    "claude": "default",
+    "codex": {
+      "approvalPolicy": "untrusted",
+      "sandbox": "workspace-write",
+    },
+  },
+  "auto-edit": {
+    "acp": [
+      "edit",
+      "fetch",
+      "move",
+      "read",
+      "search",
+      "think",
+    ],
+    "claude": "acceptEdits",
+    "codex": {
+      "approvalPolicy": "untrusted",
+      "sandbox": "workspace-write",
+    },
+  },
+  "full": {
+    "acp": [
+      "delete",
+      "edit",
+      "execute",
+      "fetch",
+      "move",
+      "other",
+      "read",
+      "search",
+      "switch_mode",
+      "think",
+    ],
+    "claude": "bypassPermissions",
+    "codex": {
+      "approvalPolicy": "never",
+      "sandbox": "danger-full-access",
+    },
+  },
+  "plan": {
+    "acp": [
+      "fetch",
+      "read",
+      "search",
+      "think",
+    ],
+    "claude": "Read-only; edits wait for your plan approval",
+    "codex": {
+      "approvalPolicy": "never",
+      "sandbox": "read-only",
+    },
+  },
+}
+`;

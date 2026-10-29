@@ -1,0 +1,41 @@
+{
+  "id": "solve-run-code-bare-arg",
+  "suite": "solve",
+  "tier": "easy",
+  "core": true,
+  "about": "Replays eb2bdd0 (2 files). Graded by its version of test/code-script-data.test.ts.",
+  "repo": {
+    "commit": "eb2bdd0^",
+    "install": true,
+    "hidden": {
+      "commit": "eb2bdd0",
+      "paths": [
+        "test/code-script-data.test.ts"
+      ]
+    }
+  },
+  "git": true,
+  "check": {
+    "command": "bun run typecheck",
+    "fixRounds": 1
+  },
+  "learn": true,
+  "prompt": "In code mode, models often call tools inside a run_code script with a bare string, like `await tools.read(\"src/a.ts\")` or `await tools.glob(\"src/*.ts\")`. Right now the tool receives `{}` and fails its own validation. Make a bare string argument fill the tool's one required string parameter (only when the tool has exactly one required parameter and it is a string; otherwise keep today's behaviour). Also, models often write `output_mode: \"files\"` for grep: treat it as `files_with_matches`. The run_code sandbox is in src/main/harness/tools/code.ts and grep is src/main/harness/tools/grep.ts. Add a test for both.",
+  "expect": {},
+  "graders": [
+    {
+      "type": "command",
+      "run": "bunx vitest run test/code-script-data.test.ts",
+      "timeoutMs": 300000,
+      "weight": 3
+    },
+    {
+      "type": "command",
+      "run": "bun run typecheck",
+      "timeoutMs": 300000,
+      "required": false,
+      "weight": 1
+    }
+  ],
+  "timeoutMs": 1200000
+}

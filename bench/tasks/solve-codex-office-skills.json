@@ -1,0 +1,41 @@
+{
+  "id": "solve-codex-office-skills",
+  "suite": "solve",
+  "tier": "medium",
+  "core": true,
+  "about": "Replays 00206ef (a new module plus wiring). Graded by its test/codex-plugins.test.ts.",
+  "repo": {
+    "commit": "00206ef^",
+    "install": true,
+    "hidden": {
+      "commit": "00206ef",
+      "paths": [
+        "test/codex-plugins.test.ts"
+      ]
+    }
+  },
+  "git": true,
+  "check": {
+    "command": "bun run typecheck",
+    "fixRounds": 1
+  },
+  "learn": true,
+  "prompt": "Codex's own document plugins (installed by the Codex app) do the same jobs as CubiQ's bundled Office skills: plugin `documents` covers our `docx` skill, `pdf` covers `pdf`, `presentations` covers `pptx` and `spreadsheets` covers `xlsx`. When Codex has one of those plugins enabled in its config.toml, leave the covered bundled skill out of the skills CubiQ gives Codex, so Codex doesn't list the same job twice. A project skill with the same name always stays.\n\nCodex's config is `$CODEX_HOME/config.toml` (default `~/.codex/config.toml`). A plugin is enabled by a table like `[plugins.\"documents@openai-primary-runtime\"]` (the part after @ is the marketplace; the table name can also be bare, `[plugins.presentations]`) that contains `enabled = true`. Commented-out lines don't count.\n\nPut the logic in a new module src/main/skills/codex-plugins.ts that exports:\n- `enabledCodexPlugins(toml: string): Set<string>`: the names (without the @marketplace) of the enabled plugins;\n- `codexCoveredSkills(env?: NodeJS.ProcessEnv, read?: (file: string) => string): Set<string>`: the bundled skill names covered, reading `join(env.CODEX_HOME || join(homedir(), \".codex\"), \"config.toml\")` through `read`; an empty set when it can't be read;\n- `withoutCodexCovered(skills: SkillEntry[], covered: Set<string>): SkillEntry[]`: drops the bundled skills (`origin === \"bundled\"`) whose name is covered, and returns the same array when nothing is covered.\n\nThen use it where the app builds Codex's skills (src/main/index.ts). Add tests.",
+  "expect": {},
+  "graders": [
+    {
+      "type": "command",
+      "run": "bunx vitest run test/codex-plugins.test.ts",
+      "timeoutMs": 300000,
+      "weight": 3
+    },
+    {
+      "type": "command",
+      "run": "bun run typecheck",
+      "timeoutMs": 300000,
+      "required": false,
+      "weight": 1
+    }
+  ],
+  "timeoutMs": 1200000
+}

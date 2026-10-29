@@ -1,0 +1,160 @@
+/* Riso Print: a CubiQ style. Link this file and use the custom properties, not raw values. A dark pair follows the system setting.
+ * Roles: --color-accent-text for accent-coloured text (the accent itself may be too light for text);
+ * --color-on-accent on accent fills; --color-*-soft behind status text and selected chips, with the matching
+ * colour (or --color-accent-text) on top; --color-surface-3 for hover/pressed wells; --color-border-strong for
+ * inputs and dividers that must show. --tracking-display/-heading/-label on those roles, --text-display-sm
+ * under 640px, font-variant-numeric: var(--numeric-data) on figures. */
+@font-face {
+  font-family: "Hanken Grotesk";
+  src: url("fonts/hanken-grotesk.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Bricolage Grotesque";
+  src: url("fonts/bricolage-grotesque.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("fonts/jetbrains-mono.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+}
+:root {
+  color-scheme: light;
+
+  /* Color */
+  --color-bg: #F4EFE6;
+  --color-surface: #FBF8F2;
+  --color-surface-2: #EAE3D6;
+  --color-text: #1E1B2E;
+  --color-text-muted: #55506A;
+  --color-border: #D8CFBF;
+  --color-primary: #0050A0;
+  --color-on-primary: #FFFFFF;
+  --color-accent: #E8338C;
+  --color-success: #2F7D4F;
+  --color-warning: #9A5B00;
+  --color-danger: #C42840;
+  --color-focus: #0050A0;
+  --color-surface-3: #DED7CC;
+  --color-border-strong: #8E8785;
+  --color-accent-text: #AF2C72;
+  --color-on-accent: #000000;
+  --color-accent-soft: #F8DCE4;
+  --color-success-soft: #F3F3EB;
+  --color-warning-soft: #F3EBDF;
+  --color-danger-soft: #F7E7E4;
+
+  /* Type */
+  --font-sans: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --text-xs: 12px;
+  --leading-xs: 16px;
+  --text-sm: 14px;
+  --leading-sm: 20px;
+  --text-md: 16px;
+  --leading-md: 24px;
+  --text-lg: 20px;
+  --leading-lg: 28px;
+  --text-xl: 24px;
+  --leading-xl: 32px;
+  --text-2xl: 32px;
+  --leading-2xl: 40px;
+  --text-3xl: 48px;
+  --leading-3xl: 56px;
+  --text-4xl: 64px;
+  --leading-4xl: 72px;
+  --text-display: 96px;
+  --leading-display: 96px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 700;
+  --tracking-display: -0.03em;
+  --tracking-heading: -0.02em;
+  --tracking-label: 0.04em;
+  --text-display-sm: 48px;
+  --leading-display-sm: 48px;
+  --numeric-data: tabular-nums;
+
+  /* Space: the 8pt scale (4 is for type and icon nudges only) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* Size */
+  --target-min: 44px;
+  --content-max: 1240px;
+  --measure: 68ch;
+
+  /* Radius */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-full: 9999px;
+
+  /* Elevation */
+  --shadow-1: none;
+  --shadow-2: none;
+  --shadow-3: 0 12px 32px rgb(30 27 46 / 0.18);
+
+  /* Motion */
+  --duration-fast: 120ms;
+  --duration: 220ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration: 0ms;
+  }
+}
+
+/* Dark: the same roles, re-tuned; picked up from the system setting. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --color-bg: #16131F;
+    --color-surface: #1E1A2A;
+    --color-surface-2: #282337;
+    --color-text: #F4EFE6;
+    --color-text-muted: #B8B1C8;
+    --color-border: #3A3350;
+    --color-primary: #5AA2FF;
+    --color-on-primary: #081428;
+    --color-accent: #FF5CA8;
+    --color-success: #5CC98A;
+    --color-warning: #E7B04F;
+    --color-danger: #FF6B7F;
+    --color-focus: #FF5CA8;
+    --color-surface-3: #383345;
+    --color-border-strong: #6E687A;
+    --color-accent-text: #FF5CA8;
+    --color-on-accent: #16131F;
+    --color-accent-soft: #462641;
+    --color-success-soft: #2C403F;
+    --color-warning-soft: #4A3B32;
+    --color-danger-soft: #462939;
+    --shadow-3: 0 12px 32px rgb(0 0 0 / 0.54);
+  }
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}

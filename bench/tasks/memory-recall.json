@@ -1,0 +1,27 @@
+{
+  "id": "memory-recall",
+  "suite": "memory",
+  "core": true,
+  "about": "A project memory note says where release notes go and their format; the repo has no release notes, so only memory can tell.",
+  "repo": {
+    "commit": "17b3eba"
+  },
+  "git": true,
+  "hiddenDir": "memory-recall.hidden",
+  "memory": [
+    {
+      "name": "Release notes",
+      "description": "Where release notes go and their format",
+      "type": "project",
+      "body": "Release notes live in docs/releases/<version>.md (for example docs/releases/2.3.0.md). Each file starts with a `# v<version>` heading, then one `- ` line per user-visible change."
+    }
+  ],
+  "prompt": "Write the release notes for version 2.4.0. There's one change: the new /codemode command, which turns code mode on or off for new threads. Put them where this project keeps its release notes.",
+  "expect": {},
+  "graders": [
+    {
+      "type": "command",
+      "run": "node bench-check-memory-recall.mjs"
+    }
+  ]
+}

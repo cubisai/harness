@@ -12,15 +12,42 @@ export interface Command {
   run(): void;
 }
 
+/**
+ * The New Thread actions: a plain thread, and one that gets its own git
+ * worktree on a new branch. Kept here so the palette and its tests share them.
+ */
+export function newThreadCommands(opts: {
+  enabled: boolean;
+  shortcut: string;
+  newThread(skills?: string[], opts?: { worktree?: boolean }): void;
+}): Command[] {
+  if (!opts.enabled) return [];
+  return [
+    { id: "action:new-thread", section: "Actions", title: "New Thread", shortcut: opts.shortcut, run: () => opts.newThread() },
+    {
+      id: "action:new-worktree-thread",
+      section: "Actions",
+      title: "New Thread in Worktree",
+      keywords: "worktree branch isolate git",
+      run: () => opts.newThread(undefined, { worktree: true }),
+    },
+  ];
+}
+
 const SECTION_ORDER: Command["section"][] = ["Actions", "Skills", "Threads", "Projects"];
 
 /**
  * Commands matching the query, best first. Every word of the query has to
  * appear in the title, detail, or keywords; a title that starts with the
  * query, or has a word that does, ranks above one that only contains it.
- * With no query: actions, then the most recent threads.
+ * With no query: actions, then the most recent threads. A query starting with
+ * ">" ranks only Actions against whatever follows the ">".
  */
 export function rankCommands(commands: Command[], query: string, limit = 60): Command[] {
+  if (query.trimStart().startsWith(">")) {
+    const actions = commands.filter((c) => c.section === "Actions");
+    return rankCommands(actions, query.trimStart().slice(1), limit);
+  }
   const q = query.trim().toLowerCase().replace(/^\//, "");
   if (!q) {
     const actions = commands.filter((c) => c.section === "Actions");

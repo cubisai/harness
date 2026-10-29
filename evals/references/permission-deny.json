@@ -1,0 +1,18 @@
+{
+  "events": [
+    {
+      "kind": "tool-use",
+      "name": "Run",
+      "summary": "node scripts/build.mjs"
+    },
+    {
+      "kind": "tool-result",
+      "isError": true,
+      "summary": "Permission denied by the user"
+    },
+    {
+      "kind": "assistant-text",
+      "text": "I couldn't run `node scripts/build.mjs`: the permission was denied, so dist/out.txt was not generated."
+    }
+  ]
+}

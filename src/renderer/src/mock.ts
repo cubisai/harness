@@ -1,7 +1,9 @@
-import type { AgentCatalogEntry, LiveUpdate, McpOverview, Project, SettingsView, SkillEntry, StoredEvent, Thread, ThreadEvent, UnskilledApi } from "../../shared/types";
+import type { AgentCatalogEntry, DesignSystemDoc, LiveUpdate, McpOverview, MemoryNote, MemoryOverview, MemoryScope, Project, SettingsView, SkillEntry, SkillOrigin, StoredEvent, Thread, ThreadEvent, UnskilledApi } from "../../shared/types";
+import type { AutomationTemplate, AutomationView, Schedule } from "../../shared/automations";
+import type { ExpertDef } from "../../shared/experts";
 
 /**
- * A fake backend for `npm run preview:ui`: the real renderer in a plain
+ * A fake backend for `bun run preview:ui`: the real renderer in a plain
  * browser, with canned data, so the UI can be looked at and screenshotted
  * without Electron or an agent. `?state=` picks a scene.
  */
@@ -23,7 +25,19 @@ export function installMock(): void {
     defaultPermissionMode: "ask",
     autoUpdate: true,
     editor: null,
-    secretsSet: { anthropic: false, deepseek: true, openai: false },
+    providers: [
+      {
+        id: "deepseek",
+        label: "DeepSeek",
+        wireProtocol: "openai-chat",
+        baseURL: "https://api.deepseek.com",
+        models: [],
+        secretKind: "safeStorage",
+        hasSecret: true,
+      },
+    ],
+    providerCredential: {},
+    migratedProviders: [],
     secretsEncrypted: true,
   };
 
@@ -31,16 +45,18 @@ export function installMock(): void {
     scene === "welcome"
       ? []
       : [
-          { id: "p1", path: "/Users/you/code/acme-web", name: "acme-web", createdAt: now },
+          { id: "p1", path: "/Users/you/code/acme-web", name: "acme-web", createdAt: now, checkCommand: "bun run typecheck" },
           { id: "p2", path: "/Users/you/code/billing-service", name: "billing-service", createdAt: now },
         ];
-  const t = (id: string, projectId: string, title: string, ago: number): Thread => ({
+  const t = (id: string, projectId: string, title: string, ago: number, agent = "claude"): Thread => ({
     id,
     projectId,
-    agent: "claude",
+    agent,
     title,
     sessionId: "s-" + id,
+    bindings: {},
     model: "opus",
+    effort: null,
     permissionMode: "ask",
     createdAt: now - ago,
     updatedAt: now - ago,
@@ -51,8 +67,9 @@ export function installMock(): void {
         ? []
         : [
             t("t1", "p1", "Add rate limiting to the login endpoint", 60_000),
-            t("t2", "p1", "/domain-interview checkout redesign", 3_600_000),
-            t("t3", "p1", "Why is the settings page slow?", 86_400_000),
+            t("t2", "p1", "/domain-interview checkout redesign", 3_600_000, "opencode"),
+            // Four days idle: Settled.
+            t("t3", "p1", "Why is the settings page slow?", 4 * 86_400_000),
           ],
     p2: [t("t4", "p2", "/implement ticket 03: invoice PDFs", 7_200_000)],
   };
@@ -96,48 +113,41 @@ export function installMock(): void {
         ].join("\n"),
       }),
       ev(18, { kind: "turn-end", costUsd: 0.184, inputTokens: 48_200, outputTokens: 2_150, durationMs: 41_300 }),
+      ev(19, { kind: "thinking", text: "The limiter needs the real client IP, so check how the route resolves req.ip before choosing the middleware seam." }),
+      ev(20, { kind: "thinking", text: "", signature: "sig", opaque: true }),
+      ev(21, {
+        kind: "plan",
+        entries: [
+          { content: "Read the auth routes", status: "completed" },
+          { content: "Add the limiter", status: "in_progress" },
+          { content: "Document trust proxy", status: "pending" },
+        ],
+      }),
+      ev(22, { kind: "compaction", trigger: "auto", preTokens: 12400, postTokens: 4100 }),
     ],
   };
 
-  const skills: SkillEntry[] = [
-    ["skilled", "Which skill fits your situation. A router over everything in the skilled set."],
-    ["skilled-setup", "Configure a repo: issue tracker, triage labels, domain docs. Once per repo."],
-    ["domain-interview", "A relentless interview to sharpen a plan or design, which also creates docs."],
-    ["clarify-requirements", "A relentless interview to sharpen a plan or design before any code is written."],
-    ["design-doc", "Research and write a pre-spec architecture doc, for work big enough to need one."],
-    ["write-spec", "Turn the current conversation into a spec and publish it to the issue tracker."],
-    ["write-tickets", "Break a plan, spec, or the conversation into tracer-bullet tickets."],
-    ["implement", "Build the work described by a spec or tickets, test-first at agreed seams."],
-    ["implement-spec", "Implement a whole spec on one branch, one PR."],
-    ["triage", "Move issues through the triage state machine."],
-    ["handoff", "Compact this conversation into a handoff document."],
-    ["retro", "Review a finished session and propose fixes to the agent environment."],
-  ].map(([name, description]) => ({
-    name: name!,
-    description: description!,
-    invocation: "user" as const,
-    calls: [],
-    files: ["SKILL.md"],
-    sha256: "",
-  }));
-
-  const modelSkills: SkillEntry[] = [
-    ["tdd", "Test-driven development at agreed seams: one failing test, the smallest change that passes, then refactor."],
-    ["review-diff", "Review a diff for bugs, missing tests, and risky changes before it ships."],
-    ["verify-in-browser", "Check a UI change in a real browser, with a snapshot and a screenshot per criterion."],
-    ["git-guardrails", "Blocks destructive git commands before they run."],
-  ].map(([name, description]) => ({ name: name!, description: description!, invocation: "model" as const, calls: [], files: ["SKILL.md"], sha256: "" }));
-  const allSkills = [...skills.map((s) => (s.name === "implement" ? { ...s, calls: ["tdd", "review-diff"], argumentHint: "[ticket or spec]", files: ["SKILL.md", "references/seams.md"] } : s)), ...modelSkills];
+  // Sample skills across every origin, so the Library tab and the / menu show
+  // project, harness, shared, bundled and legacy rows (and a shadowed one).
+  let allSkills: SkillEntry[] = [
+    { name: "browser", description: "Open pages, click, type, and read a snapshot in the browser pane.", invocation: "model", calls: [], files: ["SKILL.md"], sha256: "", origin: "bundled" },
+    { name: "docx", description: "Create and edit .docx documents, with tracked changes and comments.", invocation: "model", calls: [], files: ["SKILL.md"], sha256: "", origin: "bundled" },
+    { name: "release-notes", description: "Turn the merged PRs since the last tag into a changelog. Use when cutting a release.", invocation: "user", argumentHint: "<version>", calls: [], files: ["SKILL.md"], sha256: "", origin: "harness" },
+    { name: "deploy-check", description: "Verify staging is green before a production deploy. Use when shipping.", invocation: "model", calls: [], files: ["SKILL.md"], sha256: "", origin: "project" },
+    // Same name as the bundled docx, shadowed by it.
+    { name: "docx", description: "Create and edit .docx documents, with tracked changes and comments.", invocation: "model", calls: [], files: ["SKILL.md"], sha256: "", origin: "shared", shadowedBy: "bundled" },
+    { name: "pdf", description: "Read, split, merge, and fill PDF forms.", invocation: "model", calls: [], files: ["SKILL.md"], sha256: "", origin: "bundled", enabled: false },
+    { name: "implement", description: "Build the work described by a spec or tickets, test-first at agreed seams.", invocation: "user", argumentHint: "[ticket or spec]", calls: ["browser"], files: ["SKILL.md"], sha256: "", origin: "legacy" },
+  ];
   const agentCatalog: AgentCatalogEntry[] = [
     { id: "claude", label: "Claude", kind: "agent-sdk", command: null, installed: true, source: "built-in", skills: "As a plugin, named skilled:<name>, loaded when the task calls for it", mcp: "Stdio and HTTP servers, the browser tools in-process, plus Claude Code's own config" },
-    { id: "deepseek", label: "DeepSeek", kind: "acp", command: "dsh --profile acp", installed: true, source: "built-in", skills: "Through DSH_BUNDLED_SKILL_DIR, loaded when the task calls for it", mcp: "Stdio servers, and HTTP ones (with the browser tools) when the agent supports them" },
     { id: "codex", label: "Codex", kind: "app-server", command: "codex app-server", installed: false, source: "built-in", install: "npm install -g @openai/codex", skills: "As an extra skills folder, loaded when the task calls for it", mcp: "Stdio and HTTP servers, the browser tools, plus ~/.codex/config.toml" },
-    { id: "antigravity", label: "Antigravity", kind: "acp", command: "agy-acp", installed: false, source: "built-in", install: "npm install -g agy-acp", homepage: "https://github.com/shindgew/agy-acp", skills: "Not automatic: run `python3 install.py --model-only` from skilled in the project (it reads .agents/skills)", mcp: "Stdio servers, and HTTP ones (with the browser tools) when the agent supports them" },
+    { id: "antigravity", label: "Antigravity", kind: "acp", command: "agy_acp_server.par", installed: false, source: "built-in", install: "Google's ACP server (ACP registry: antigravity-acp): unzip it and put agy_acp_server.par on your PATH", homepage: "https://antigravity.google", optIn: true, skills: "", mcp: "HTTP servers only (the browser tools); it has no stdio MCP" },
     { id: "opencode", label: "OpenCode", kind: "acp", command: "opencode acp", installed: false, source: "built-in", install: "npm install -g opencode-ai", skills: "Not automatic: run `python3 install.py --model-only` from skilled in the project (it reads .agents/skills)", mcp: "Stdio servers, and HTTP ones (with the browser tools) when the agent supports them" },
   ];
   let mcp: McpOverview = {
     builtIn: {
-      name: "unskilled",
+      name: "cubiq",
       active: false,
       tools: [
         { name: "browser_open", description: "Open a URL in the browser pane", autoAllow: true },
@@ -150,23 +160,173 @@ export function installMock(): void {
       { name: "github", enabled: true, type: "stdio", target: "npx -y @modelcontextprotocol/server-github", envKeys: ["GITHUB_TOKEN"], headerKeys: [] },
       { name: "linear", enabled: false, type: "http", target: "https://mcp.linear.app/mcp", envKeys: [], headerKeys: ["Authorization"] },
     ],
+    project: {
+      servers: [
+        { name: "postgres-local", enabled: true, type: "stdio", target: "npx -y @modelcontextprotocol/server-postgres", envKeys: ["DATABASE_URL"], headerKeys: [] },
+        { name: "linear", enabled: true, type: "http", target: "https://mcp.linear.app/mcp", envKeys: [], headerKeys: ["Authorization"] },
+      ],
+      offGlobal: ["github"],
+      file: "~/Library/Application Support/CubiQ/projects/p1/mcp.json",
+    },
     external: [
       { name: "sentry", type: "http", target: "https://mcp.sentry.dev/mcp", agent: "Claude", source: "~/.claude.json" },
       { name: "postgres", type: "stdio", target: "uvx postgres-mcp --readonly", agent: "Claude", source: ".mcp.json" },
       { name: "fs", type: "stdio", target: "npx -y @modelcontextprotocol/server-filesystem ~/code", agent: "Codex", source: "~/.codex/config.toml" },
     ],
-    file: "~/Library/Application Support/UnSkilled/mcp.json",
+    file: "~/Library/Application Support/CubiQ/mcp.json",
   };
+
+  // Mock agents get the declared-safe shape; the real capability matrix is main-side.
+  const mockCapabilities = {
+    mcpStdio: false,
+    mcpHttp: false,
+    preToolGuard: false,
+    resume: false,
+    fork: false,
+    revert: false,
+    compaction: false,
+    perMessageModel: false,
+    vision: false,
+    webSearch: false,
+    planMode: "emulated",
+    interrupt: false,
+    skillsDelivery: { mode: "none" },
+    permissionGranularity: "modeOnly",
+    guardEnforcement: { ask: "warnOnly", "auto-edit": "warnOnly", plan: "warnOnly", full: "warnOnly" },
+    sandbox: "none",
+  } as const;
+
+  // Two sample notes, so the Memory tab has something to show in the preview.
+  let memoryNotes: MemoryNote[] = [
+    { file: "commit-style.md", name: "Commit Style", description: "Keep commit messages under 150 characters", type: "feedback" },
+    { file: "deploy.md", name: "Deploy", description: "Run make deploy against staging before production", type: "project", updated: "2026-10-12" },
+  ];
+  // One global note about the user, shared by every project.
+  let globalNotes: MemoryNote[] = [{ file: "terse-answers.md", name: "Terse answers", description: "Prefers short answers without preamble", type: "user", updated: "2026-10-13" }];
+  const notesFor = (scope?: MemoryScope) => (scope === "global" ? globalNotes : memoryNotes);
+  const setNotesFor = (scope: MemoryScope | undefined, next: MemoryNote[]) => {
+    if (scope === "global") globalNotes = next;
+    else memoryNotes = next;
+  };
+  const memoryView = (): MemoryOverview => ({
+    enabled: true,
+    projectOn: true,
+    dir: "/Users/you/Library/Application Support/CubiQ/memory/projects/p1",
+    index: { lines: memoryNotes.length + 1, tokens: 48 },
+    notes: memoryNotes,
+    global: globalNotes,
+    block: { shown: memoryNotes.length + globalNotes.length, total: memoryNotes.length + globalNotes.length, tokens: 62 },
+  });
+
+  // The Automations tab: the five starter templates, one seeded automation, and a run counter.
+  const daily = (): Schedule => ({ kind: "daily", at: "09:00", timeZone: "UTC" });
+  const automationTemplates: AutomationTemplate[] = [
+    { id: "repo-health", name: "Repo health", description: "Run the project's checks and report what passed and what each failure was.", prompt: "Run the project's check command and report what passed, each failure with its first error, and the smallest next step. Don't edit any files.", schedule: daily(), budgetUsd: 0.5 },
+    { id: "browser-smoke", name: "Browser smoke test", description: "Drive the dev server in the browser and report PASS or FAIL with evidence.", prompt: "Start the dev server, open it in the browser, exercise the main page, and finish with PASS or FAIL with evidence. Don't edit any files.", schedule: daily(), budgetUsd: 0.5 },
+    { id: "project-brief", name: "Project brief", description: "Summarise what changed since the last run from the commit list.", prompt: "Summarise what changed since the last run from the commit list: the themes, the risky changes, and the follow-ups worth doing next. Don't edit any files.", schedule: daily(), budgetUsd: 0.25 },
+    { id: "eval-regression", name: "Eval regression", description: "Run the validation eval split and flag anything that regressed.", prompt: "Run `bun run eval --split validation --max-usd 1` and report the pass rate against the previous run and any task that regressed. Don't edit any files.", schedule: daily(), budgetUsd: 1 },
+    { id: "custom", name: "Custom", description: "Start from scratch with your own prompt, schedule and budget.", prompt: "", schedule: daily(), budgetUsd: null },
+  ];
+  const describeSchedule = (s: Schedule): string => {
+    if (s.kind === "interval") return s.everyMinutes % 60 === 0 && s.everyMinutes >= 60 ? `every ${s.everyMinutes / 60} h` : `every ${s.everyMinutes} min`;
+    const days = s.days?.slice().sort((a, b) => a - b).map((d) => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d] ?? "");
+    return `${days?.length ? `${days.join(", ")} at ${s.at}` : `daily at ${s.at}`} (${s.timeZone})`;
+  };
+  const automations: AutomationView[] = [
+    {
+      id: "a1",
+      projectId: "p1",
+      name: "Project brief",
+      template: "project-brief",
+      prompt: automationTemplates[2]!.prompt,
+      schedule: daily(),
+      missed: "coalesce",
+      enabled: true,
+      agent: null,
+      model: null,
+      budgetUsd: 0.25,
+      permissions: "unattended",
+      scheduleText: "daily at 09:00 (UTC)",
+      nextAt: now + 3_600_000,
+      lastRun: { automationId: "a1", name: "Project brief", runId: 1, threadId: "t1", status: "succeeded", costUsd: 0.04, endedAt: now - 7_200_000, error: null },
+    },
+  ];
+  let automationSeq = automations.length;
+  let automationRunSeq = 1;
 
   const api: UnskilledApi = {
     platform: params.get("platform") ?? "darwin",
+    opaqueSidebar: params.has("opaque"),
     listProjects: async () => projects,
-    addProject: async () => null,
+    addProject: async () => {
+      const n = projects.length + 1;
+      const project: Project = { id: `p${n}`, path: `/Users/you/code/new-project-${n}`, name: `new-project-${n}`, createdAt: Date.now() };
+      projects.push(project);
+      threads[project.id] = [];
+      return project;
+    },
+    openChats: async () => {
+      let chats = projects.find((p) => p.builtin);
+      if (!chats) {
+        chats = { id: "chats", path: "/Users/you/Library/Application Support/CubiQ/chats", name: "Chats", createdAt: Date.now(), builtin: true };
+        projects.push(chats);
+        threads[chats.id] = [];
+      }
+      return chats;
+    },
+    deleteProject: async (pid) => {
+      const idx = projects.findIndex((p) => p.id === pid);
+      if (idx >= 0) projects.splice(idx, 1);
+      delete threads[pid];
+    },
+    relocateProject: async (pid) => {
+      const project = projects.find((p) => p.id === pid);
+      if (!project) throw new Error("no project");
+      project.missing = false;
+      return project;
+    },
+    setCheckCommand: async (pid, command, fixRounds) => {
+      const project = projects.find((p) => p.id === pid);
+      if (!project) throw new Error("no project");
+      project.checkCommand = command;
+      if (fixRounds !== undefined) project.checkFixRounds = fixRounds;
+      return project;
+    },
     listThreads: async (pid) => threads[pid] ?? [],
-    createThread: async (pid) => {
-      const th = t(`t${Math.random()}`, pid, "New thread", 0);
+    listAllThreads: async () => Object.fromEntries(Object.entries(threads).filter(([, list]) => list.length)),
+    createThread: async (pid, agent, opts) => {
+      const th = t(`t${Math.random()}`, pid, "New thread", 0, agent ?? "claude");
+      if (opts?.worktree) {
+        th.branch = `harness/${pid}-${th.id.slice(0, 6)}`;
+        th.worktreePath = `/Users/you/Library/Application Support/CubiQ/worktrees/${th.id}`;
+      }
+      if (opts?.kind === "design") {
+        th.kind = "design";
+        if (opts.designSystem) th.designSystem = opts.designSystem;
+      }
+      if (opts?.expertId) th.expertId = opts.expertId;
       threads[pid] = [th, ...(threads[pid] ?? [])];
       return th;
+    },
+    setPrototypeTier: async (id, tier) => {
+      for (const list of Object.values(threads)) {
+        const i = list.findIndex((x) => x.id === id);
+        if (i >= 0) {
+          const { prototypeTier: _old, ...rest } = list[i]!;
+          return (list[i] = tier ? { ...rest, prototypeTier: tier } : rest);
+        }
+      }
+      throw new Error("no thread");
+    },
+    setDesignSystem: async (id, system) => {
+      for (const list of Object.values(threads)) {
+        const i = list.findIndex((x) => x.id === id);
+        if (i >= 0) {
+          const { designSystem: _old, ...rest } = list[i]!;
+          return (list[i] = system ? { ...rest, designSystem: system } : rest);
+        }
+      }
+      throw new Error("no thread");
     },
     updateThread: async (id, patch) => {
       for (const list of Object.values(threads)) {
@@ -176,33 +336,81 @@ export function installMock(): void {
       throw new Error("no thread");
     },
     deleteThread: async () => {},
+    switchAgent: async (id, agent, mode) => {
+      for (const list of Object.values(threads)) {
+        const i = list.findIndex((x) => x.id === id);
+        if (i >= 0) return { ok: true, mode, thread: (list[i] = { ...list[i]!, agent, updatedAt: Date.now() }) };
+      }
+      return { ok: false, reason: "no thread" };
+    },
+    browserDevice: async () => {},
+    browserState: async () => ({ device: "desktop", logs: [], screenshots: [] }),
+    browserTakeOver: async () => {},
+    exportThread: async () => null,
+    importThread: async () => null,
+    exportSettings: async () => null,
+    importSettings: async () => null,
     listEvents: async (id) => events[id] ?? [],
-    listSkills: async () => skills,
+    listEventsPage: async (id, opts) => {
+      const all = events[id] ?? [];
+      const before = opts.beforeSeq ?? Infinity;
+      const window = all.filter((e) => e.seq < before).slice(-(opts.minEvents ?? 1500));
+      if (window.length === 0) return { events: [], firstSeq: 0, hasMore: false };
+      const first = window[0]!.seq;
+      const isRootTurnBoundary = (e: StoredEvent) => (e.event.kind === "user" || e.event.kind === "turn-start") && !e.event.parentId;
+      // The page opens on the turn's root; a thread with no boundary opens at its first event.
+      let start = all[0]!.seq;
+      for (let i = all.length - 1; i >= 0; i--) {
+        if (all[i]!.seq > first) continue;
+        if (isRootTurnBoundary(all[i]!)) {
+          start = all[i]!.seq;
+          break;
+        }
+      }
+      const page = all.filter((e) => e.seq >= start && e.seq <= window[window.length - 1]!.seq);
+      return { events: page, firstSeq: page[0]!.seq, hasMore: all.some((e) => e.seq < page[0]!.seq) };
+    },
+    threadTotals: async (id) => {
+      const all = events[id] ?? [];
+      let inputTokens = 0;
+      let cacheReadTokens = 0;
+      let outputTokens = 0;
+      let costUsd = 0;
+      let turns = 0;
+      let sawCost = false;
+      for (const e of all) {
+        if (e.event.kind !== "turn-end") continue;
+        turns++;
+        inputTokens += e.event.inputTokens;
+        cacheReadTokens += e.event.usage?.cacheReadTokens ?? 0;
+        outputTokens += e.event.outputTokens;
+        if (typeof e.event.costUsd === "number") {
+          sawCost = true;
+          costUsd += e.event.costUsd;
+        }
+      }
+      return { events: all.length, turns, inputTokens, cacheReadTokens, outputTokens, costUsd: sawCost ? costUsd : null, lastSeq: all.length ? all[all.length - 1]!.seq : 0 };
+    },
+    listSkills: async () => allSkills.filter((s) => s.enabled !== false && !s.shadowedBy),
     listAgents: async () => [
       {
         id: "claude",
         label: "Claude",
         defaultModel: "opus",
+        capabilities: mockCapabilities,
         models: [
-          { id: "opus", label: "Opus 5.5" },
-          { id: "sonnet", label: "Sonnet 5" },
+          { id: "opus", label: "Opus 5.5", efforts: ["low", "medium", "high", "xhigh", "max"], defaultEffort: "high" },
+          { id: "sonnet", label: "Sonnet 5", efforts: ["low", "medium", "high", "xhigh", "max"], defaultEffort: "high" },
           { id: "haiku", label: "Haiku 4.5" },
-        ],
-      },
-      {
-        id: "deepseek",
-        label: "DeepSeek",
-        defaultModel: "default",
-        models: [
-          { id: "default", label: "Agent default" },
-          { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
-          { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash" },
         ],
       },
     ],
     send: async () => {},
     interrupt: async () => {},
     respondPermission: async () => {},
+    respondPlan: async () => {},
+    respondQuestion: async () => {},
+    pendingState: async () => ({ running: [], permissions: [], plans: [], questions: [] }),
     browserAttached: async () => {},
     browserPick: async () => {},
     terminalOpen: async (id) => {
@@ -214,7 +422,54 @@ export function installMock(): void {
     terminalWrite: () => {},
     getSettings: async () => settings,
     updateSettings: async (patch) => (settings = { ...settings, ...patch }),
-    setSecret: async (name, value) => (settings = { ...settings, secretsSet: { ...settings.secretsSet, [name]: Boolean(value) } }),
+    listProviders: async () => settings.providers,
+    saveProvider: async (input, secret) => {
+      const { secret: descriptor, ...fields } = input;
+      const prev = settings.providers.find((p) => p.id === input.id);
+      const view: SettingsView["providers"][number] = {
+        ...fields,
+        secretKind: typeof secret === "string" ? "safeStorage" : descriptor?.kind ?? prev?.secretKind ?? "safeStorage",
+        hasSecret: secret === undefined ? prev?.hasSecret ?? false : secret !== null && secret.trim().length > 0,
+      };
+      settings = { ...settings, providers: [...settings.providers.filter((p) => p.id !== input.id), view] };
+      return view;
+    },
+    removeProvider: async (id) => {
+      settings = { ...settings, providers: settings.providers.filter((p) => p.id !== id) };
+      return settings;
+    },
+    setProviderSecret: async (id, value) => {
+      settings = {
+        ...settings,
+        providers: settings.providers.map((p) => (p.id === id ? { ...p, secretKind: value ? "safeStorage" : p.secretKind, hasSecret: value !== null && value.trim().length > 0 } : p)),
+      };
+      return settings;
+    },
+    testProvider: async () => {
+      await new Promise((r) => setTimeout(r, 400));
+      return { reachable: true, listsModels: true, supportsTools: true };
+    },
+    discoverProviderModels: async () => {
+      await new Promise((r) => setTimeout(r, 400));
+      const caps = { tools: true, vision: false, reasoning: true };
+      return {
+        ok: true,
+        smallModel: "deepseek-v4-flash",
+        models: [
+          { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash", capabilities: caps, contextWindow: 1_000_000, maxOutput: 65_536, cost: { input: 0.1, output: 0.4 }, enriched: true },
+          { id: "glm-5.3", name: "GLM 5.3", capabilities: caps, contextWindow: 200_000, maxOutput: 32_768, cost: { input: 0.6, output: 2.2 }, enriched: true },
+        ],
+      };
+    },
+    searchProviderCatalog: async (query) => {
+      const caps = { tools: true, vision: false, reasoning: true };
+      const all = [
+        { id: "minimax", name: "MiniMax (minimax.io)", wireProtocol: "anthropic-messages" as const, baseURL: "https://api.minimax.io/anthropic/v1", keyVar: "MINIMAX_API_KEY", docs: "https://platform.minimax.io/docs/guides/quickstart", models: [{ id: "MiniMax-M3", name: "MiniMax-M3", capabilities: caps, contextWindow: 1_000_000, maxOutput: 512_000, cost: { input: 0.3, output: 1.2, cacheRead: 0.06 }, enriched: true }] },
+        { id: "openrouter", name: "OpenRouter", wireProtocol: "openai-chat" as const, baseURL: "https://openrouter.ai/api/v1", keyVar: "OPENROUTER_API_KEY", docs: "https://openrouter.ai/models", models: [] },
+      ];
+      const q = query.trim().toLowerCase();
+      return all.filter((p) => !q || p.id.includes(q) || p.name.toLowerCase().includes(q));
+    },
     openDataFolder: async () => {},
     listLimits: async () =>
       scene === "limits"
@@ -236,36 +491,91 @@ export function installMock(): void {
       const skill = allSkills.find((x) => x.name === name)!;
       return {
         skill,
-        dir: `/Applications/UnSkilled.app/Contents/Resources/skilled/skills/${name}`,
+        dir: `/Applications/CubiQ.app/Contents/Resources/skilled/skills/${name}`,
         calledBy: allSkills.filter((x) => x.calls.includes(name)).map((x) => x.name),
         routes: agentCatalog
           .filter((a) => a.installed)
-          .map((a) => ({ agent: a.label, how: skill.invocation === "user" ? "From the / menu: the app puts the skill's text into your message" : a.skills })),
+          .map((a) => ({ agent: a.label, how: skill.invocation === "user" ? "From the $ menu: the app puts the skill's text into your message" : a.skills })),
         body: `# ${name}\n\n${skill.description}\n\n## Steps\n\n1. Read the ticket and the code it touches.\n2. Agree the seam to test at, then write **one** failing test.\n3. Make it pass with the smallest change, then refactor.\n\n\`\`\`bash\nnpm test -- --watch\n\`\`\`\n\n- Stop and ask when the spec and the code disagree.\n- Never weaken a test to make it pass.`,
       };
     },
+    setSkillEnabled: async (origin, name, enabled) => {
+      allSkills = allSkills.map((s) => (s.origin === origin && s.name === name ? { ...s, enabled } : s));
+      return allSkills;
+    },
+    getSkillFolders: async () => ({
+      project: projects.length ? "/Users/you/code/acme-web/.agents/skills" : "",
+      projectClaude: projects.length ? "/Users/you/code/acme-web/.claude/skills" : "",
+      projectCubiq: projects.length ? "/Users/you/code/acme-web/.cubiq/skills" : "",
+      harness: "/Users/you/Library/Application Support/CubiQ/skills",
+      bundled: "/Applications/CubiQ.app/Contents/Resources/skilled/skills",
+    }),
+    createSkill: async (input) => {
+      const origin: SkillOrigin = input.scope === "project" ? "projectCubiq" : "harness";
+      allSkills.push({ name: input.name, description: input.description, invocation: "user", calls: [], files: ["SKILL.md"], sha256: "", origin });
+      const dir = origin === "projectCubiq" ? "/Users/you/code/acme-web/.cubiq/skills" : "/Users/you/Library/Application Support/CubiQ/skills";
+      return `${dir}/${input.name}/SKILL.md`;
+    },
     listAgentCatalog: async () => agentCatalog,
-    getMcp: async () => mcp,
-    saveMcpServer: async (entry, previous) => {
+    getMcp: async (projectId) => (projectId ? mcp : { ...mcp, project: null }),
+    saveMcpServer: async (entry, previous, projectId) => {
       const view = {
         name: entry.name,
         enabled: entry.enabled,
         type: entry.spec.type,
-        target: entry.spec.type === "http" ? entry.spec.url : [entry.spec.command, ...(entry.spec.args ?? [])].join(" "),
+        target: entry.spec.type !== "stdio" ? entry.spec.url : [entry.spec.command, ...(entry.spec.args ?? [])].join(" "),
         envKeys: entry.spec.type === "stdio" ? Object.keys(entry.spec.env ?? {}) : [],
-        headerKeys: entry.spec.type === "http" ? Object.keys(entry.spec.headers ?? {}) : [],
+        headerKeys: entry.spec.type !== "stdio" ? Object.keys(entry.spec.headers ?? {}) : [],
       };
-      mcp = { ...mcp, servers: [...mcp.servers.filter((x) => x.name !== (previous ?? entry.name)), view] };
+      const kept = (projectId ? mcp.project?.servers ?? [] : mcp.servers).filter((x) => x.name !== (previous ?? entry.name));
+      mcp = projectId
+        ? { ...mcp, project: { ...mcp.project!, servers: [...kept, view] } }
+        : { ...mcp, servers: [...kept, view] };
       return mcp;
     },
-    removeMcpServer: async (name) => (mcp = { ...mcp, servers: mcp.servers.filter((x) => x.name !== name) }),
-    setMcpServerEnabled: async (name, enabled) => (mcp = { ...mcp, servers: mcp.servers.map((x) => (x.name === name ? { ...x, enabled } : x)) }),
+    removeMcpServer: async (name, projectId) => {
+      mcp = projectId
+        ? { ...mcp, project: { ...mcp.project!, servers: (mcp.project?.servers ?? []).filter((x) => x.name !== name) } }
+        : { ...mcp, servers: mcp.servers.filter((x) => x.name !== name) };
+      return mcp;
+    },
+    setMcpServerEnabled: async (name, enabled, projectId) => {
+      const set = (x: McpOverview["servers"][number]) => (x.name === name ? { ...x, enabled } : x);
+      mcp = projectId
+        ? { ...mcp, project: { ...mcp.project!, servers: (mcp.project?.servers ?? []).map(set) } }
+        : { ...mcp, servers: mcp.servers.map(set) };
+      return mcp;
+    },
     testMcpServer: async (name) => {
       await new Promise((r) => setTimeout(r, 400));
       return name === "github"
         ? { ok: true, tools: ["search_issues", "create_issue", "get_pull_request"].map((n) => ({ name: n, description: "" })) }
         : { ok: false, tools: [], error: "401 Unauthorized" };
     },
+    setGlobalMcpOff: async (projectId, name, off) => {
+      const offGlobal = off ? [...new Set([...(mcp.project?.offGlobal ?? []), name])] : (mcp.project?.offGlobal ?? []).filter((n) => n !== name);
+      mcp = { ...mcp, project: { ...mcp.project!, offGlobal } };
+      return mcp;
+    },
+    probeMcp: async (url) => {
+      await new Promise((r) => setTimeout(r, 300));
+      return url.includes("linear") ? { ok: true, transport: "http", auth: "oauth" } : { ok: true, transport: "http", auth: "none", serverName: "Mock" };
+    },
+    mcpStatus: async (projectId) =>
+      (projectId ? (mcp.project?.servers ?? []) : mcp.servers).map((s) =>
+        !s.enabled
+          ? { name: s.name, state: "disabled" as const, tools: [] }
+          : s.name === "github"
+            ? { name: s.name, state: "connected" as const, tools: ["search_issues", "create_issue", "get_pull_request"].map((n) => ({ name: n, description: "" })) }
+            : { name: s.name, state: "needs-auth" as const, tools: [], auth: { signedIn: false } },
+      ),
+    connectMcp: async () => {
+      await new Promise((r) => setTimeout(r, 600));
+      return { ok: true };
+    },
+    disconnectMcp: async () => mcp,
+    setMcpClientSecret: async () => mcp,
+    importMcp: async () => mcp,
     revealPath: async () => {},
     listEditors: async () => [
       { id: "cursor", label: "Cursor" },
@@ -278,10 +588,114 @@ export function installMock(): void {
       return target.path.includes("missing") ? { ok: false, error: `${target.path} doesn't exist.` } : { ok: true, editor: editor ?? "cursor" };
     },
     updateStatus: async () => ({ current: "0.1.0", ready: scene === "update" ? "0.2.0" : null, supported: true }),
+    aboutInfo: async () => ({
+      name: "CubiQ",
+      version: "0.1.2",
+      commit: "abc1234",
+      commitDate: "2026-09-27",
+      electron: "44.4.5",
+      chrome: "140.0.0.0",
+      node: "22.19.0",
+      os: "macOS 15.0",
+      changelog: [
+        { hash: "abc1234", date: "2026-09-27", subject: "Add the About sheet with a git build stamp" },
+        { hash: "def5678", date: "2026-09-26", subject: "Keep the composer focused after a permission prompt" },
+        { hash: "9a0b1c2", date: "2026-09-25", subject: "Show rate limits in the Message Center" },
+      ],
+    }),
+    uiImage: async () => null,
+    uiLinkMeta: async () => null,
+    contextPreview: async () => ({
+      guide: [{ source: "bundled", path: "CUBIQ.md", tokens: 1240 }],
+      tools: [
+        { name: "browser_open", tokens: 280 },
+        { name: "browser_click", tokens: 190 },
+      ],
+      skills: { mode: "tool", count: 12, tokens: 640 },
+      mcp: [{ name: "github", tools: 26, tokens: 5120, deferred: false }],
+      memoryIndex: null,
+    }),
+    learnScores: async () => [],
+    automationsOverview: async (projectId) => ({
+      templates: automationTemplates,
+      automations: automations.filter((a) => a.projectId === projectId),
+    }),
+    automationSave: async (projectId, input, id) => {
+      const view: AutomationView = {
+        ...input,
+        id: id ?? `a${++automationSeq}`,
+        projectId,
+        scheduleText: describeSchedule(input.schedule),
+        nextAt: input.enabled ? now + 3_600_000 : null,
+        lastRun: automations.find((a) => a.id === id)?.lastRun ?? null,
+      };
+      const at = automations.findIndex((a) => a.id === view.id);
+      if (at >= 0) automations[at] = view;
+      else automations.push(view);
+      return view;
+    },
+    automationDelete: async (id) => {
+      const at = automations.findIndex((a) => a.id === id);
+      if (at >= 0) automations.splice(at, 1);
+    },
+    automationRunNow: async (id) => {
+      const a = automations.find((x) => x.id === id);
+      if (!a) return null;
+      const notice = { automationId: id, name: a.name, runId: ++automationRunSeq, threadId: null, status: "queued" as const, costUsd: null, endedAt: null, error: null };
+      a.lastRun = notice;
+      return notice;
+    },
+    automationRuns: async (id) => {
+      const a = automations.find((x) => x.id === id);
+      return a?.lastRun ? [a.lastRun] : [];
+    },
+    learnOverview: async () => ({ enabled: false, background: null, dailyTokens: 50_000, usedToday: 0, trend: [], lessons: [], cases: [], drafting: 0 }),
+    learnSetLesson: async () => null,
+    learnVerify: async () => null,
+    memoryOverview: async () => memoryView(),
+    memoryRead: async (_projectId, file, scope) => {
+      const note = notesFor(scope).find((n) => n.file === file);
+      return note ? { ...note, body: `# ${note.name}\n\n${note.description}.` } : null;
+    },
+    memoryWrite: async (_projectId, note, scope) => {
+      const slug = note.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "note";
+      const file = note.file ?? `${slug}.md`;
+      setNotesFor(scope, [...notesFor(scope).filter((n) => n.file !== file), { file, name: note.name, description: note.description, type: note.type, updated: "2026-10-14" }]);
+      return file;
+    },
+    memoryDelete: async (_projectId, file, scope) => {
+      const before = notesFor(scope).length;
+      setNotesFor(scope, notesFor(scope).filter((n) => n.file !== file));
+      return notesFor(scope).length < before;
+    },
+    memorySetEnabled: async (projectId, _on) => (projectId === null ? null : memoryView()),
+    memoryImport: async () => 0,
     installUpdate: async () => {},
     terminalResize: () => {},
     terminalClose: async () => {},
-    getDiff: async () => [
+    projectBranch: async () => (scene === "thread" ? "feat/rate-limit" : null),
+    listFiles: async (_projectId, _threadId) => ({ files: ["README.md", "package.json", "src/app.ts", "src/middleware/rateLimit.ts", "src/middleware/rateLimit.test.ts", "src/routes/login.ts"], truncated: false }),
+    runDoctor: async () => ({
+      at: Date.now(),
+      findings: [
+        { id: "claude:installed", group: "agents" as const, agent: "claude", level: "ok" as const, title: "Claude Code 2.4.1 at ~/.local/bin/claude", detail: "Installed via native.", fixes: [] },
+        { id: "opencode:duplicates", group: "agents" as const, agent: "opencode", level: "warn" as const, title: "OpenCode is installed 3 times", detail: "~/.local/bin/opencode (1.19.0, npm)\n/usr/local/bin/opencode (1.0.126, npm)\n/opt/homebrew/bin/opencode (0.0.55, homebrew)\nCubiQ uses ~/.local/bin/opencode.", fixes: [{ kind: "pin" as const, label: "Use 1.0.126 at /usr/local/bin/opencode", agent: "opencode", path: "/usr/local/bin/opencode" }, { kind: "copy" as const, label: "Copy uninstall command", text: "npm uninstall -g opencode-ai" }] },
+        { id: "codex:auth", group: "agents" as const, agent: "codex", level: "warn" as const, title: "Codex isn't signed in", detail: "Run `codex login`, then run /doctor again.", fixes: [{ kind: "copy" as const, label: "Copy login command", text: "codex login" }] },
+        { id: "environment:python", group: "environment" as const, level: "warn" as const, title: "Python not found: the git guard is off", detail: "Install Python 3 to turn the git guard back on.", fixes: [] },
+      ],
+    }),
+    doctorFix: async () => ({ ok: true, message: "Done." }),
+    gitFolder: async () => ({ branch: "main", worktree: false, uncommitted: 2, remote: "origin", unpushed: 1, hasCommits: true }),
+    worktreeReview: async () => ({ branch: "harness/demo-a1b2c3", base: "main", baseSha: "0000000", ahead: 2, behind: 0, uncommitted: 1, projectBranch: "main", projectDirty: false, files: [], targets: ["dev", "main"], remote: "origin", unpushed: null, merged: null }),
+    worktreeMessage: async () => ({ message: "Add the review bar to worktree threads", model: "Claude · Haiku" }),
+    worktreeCommit: async () => "1111111",
+    worktreeMerge: async () => ({ ok: true as const, sha: "2222222" }),
+    worktreePush: async () => ({ remote: "origin", branch: "harness/demo-a1b2c3" }),
+    listShells: async () => [],
+    shellOutput: async () => null,
+    stopShell: async () => {},
+    worktreeRemove: async () => true,
+    getDiff: async (_projectId, _threadId) => [
       {
         path: "src/middleware/rateLimit.ts",
         status: "untracked",
@@ -327,6 +741,94 @@ export function installMock(): void {
       listeners.add(l);
       return () => listeners.delete(l);
     },
+    search: async ({ text, projectId }) => {
+      const words = text.toLowerCase().split(/\s+/).filter(Boolean);
+      const all = Object.values(threads).flat().filter((t) => !projectId || t.projectId === projectId);
+      const mark = (body: string): string | null => {
+        const lower = body.toLowerCase();
+        if (!words.length || !words.every((w) => lower.includes(w))) return null;
+        const at = lower.indexOf(words[0]!);
+        const start = Math.max(0, at - 40);
+        const hit = body.slice(at, at + words[0]!.length);
+        return (start > 0 ? "…" : "") + body.slice(start, at) + "\u0001" + hit + "\u0002" + body.slice(at + hit.length, at + 80);
+      };
+      const hit = (t: Thread, seq: number | null, kind: "title" | "user" | "assistant-text", snippet: string) =>
+        ({ threadId: t.id, projectId: t.projectId, title: t.title, agent: t.agent, seq, kind, snippet, updatedAt: t.updatedAt });
+      const found = all.flatMap((t) => {
+        const title = mark(t.title);
+        const messages = (events[t.id] ?? []).flatMap((e) => {
+          if (e.event.kind !== "user" && e.event.kind !== "assistant-text") return [];
+          const snippet = mark(e.event.text);
+          return snippet ? [hit(t, e.seq, e.event.kind, snippet)] : [];
+        });
+        return [...(title ? [hit(t, null, "title", title)] : []), ...messages];
+      });
+      return { threads: found.filter((h) => h.kind === "title"), messages: found.filter((h) => h.kind !== "title") };
+    },
+    designEntry: async () => null,
+    designFiles: async () => [],
+    designPromote: async () => {},
+    designMoreStyles: async () => ["Swiss Grid", "Night Studio", "Field Guide"],
+    designKeepTweaks: async () => false,
+    designVariantResolve: async () => {},
+    designActionNote: async () => "",
+    designDetect: async () => ({ pins: [], page: [], total: 0 }),
+    designSaveRef: async () => "designs/mock/refs/ref-1.png",
+    designEditText: async () => {},
+    designEditStyle: async () => {},
+    designCapture: async () => ({ path: "designs/mock/refs/ref-2.png", thumb: "" }),
+    designThumb: async () => "",
+    designRestoreVersion: async () => {},
+    designComments: async () => [],
+    designCommentAdd: async () => [],
+    designCommentUpdate: async () => [],
+    designCommentDelete: async () => [],
+    designWatch: async () => {},
+    designUnwatch: async () => {},
+    designReveal: async () => {},
+    designExport: async () => null,
+    listExperts: async () => mockExperts,
+    getExpert: async (id) => mockExperts.find((e) => e.id === id) ?? null,
+    importExperts: async () => ({ installed: [], candidates: [], skipped: [] }),
+    onExpertImportProgress: () => () => {},
+    removeExpert: async () => {},
+    pickExpertSource: async () => null,
+    setThreadExpert: async (id, expertId) => {
+      for (const list of Object.values(threads)) {
+        const i = list.findIndex((x) => x.id === id);
+        if (i >= 0) {
+          const { expertId: _old, ...rest } = list[i]!;
+          return (list[i] = expertId ? { ...rest, expertId } : rest);
+        }
+      }
+      throw new Error("no thread");
+    },
+    designSystems: async () => [
+      { id: "style:swiss-grid", name: "Swiss Grid", description: "White field, black type set big and flush left, one red.", swatches: ["#ffffff", "#0a0a0a", "#c2410c", "#404040"], source: "style" },
+      { id: "style:night-studio", name: "Night Studio", description: "Dark by design.", swatches: ["#2a1b3d", "#fffaf5", "#c2410c", "#7c3aed"], source: "style" },
+    ],
+    designSystemDoc: async () => mockSystemDoc,
+    designSystemEdit: async (threadId) => {
+      for (const list of Object.values(threads)) {
+        const thread = list.find((x) => x.id === threadId);
+        if (thread) return { doc: mockSystemDoc, thread };
+      }
+      throw new Error("no thread");
+    },
+    listArtifacts: async (threadId) =>
+      threadId === "t1"
+        ? [
+            { path: "src/middleware/rateLimit.ts", kind: "code", versions: [{ version: 1, sha256: "a1", bytes: 412, createdAt: now - 90_000, turnSeq: 18 }, { version: 2, sha256: "a2", bytes: 498, createdAt: now - 30_000, turnSeq: 18 }] },
+            { path: "docs/rate-limit.md", kind: "md", versions: [{ version: 1, sha256: "b1", bytes: 300, createdAt: now - 30_000, turnSeq: 18 }] },
+          ]
+        : [],
+    readArtifact: async (_threadId, path, version) =>
+      path.endsWith(".md")
+        ? { ok: true, path, kind: "md", bytes: 300, version: version ?? null, text: "# Login rate limit\n\nThe 6th attempt inside a minute gets **429**.\n\n| Setting | Value |\n|---|---|\n| window | 60 s |\n| max | 5 |\n" }
+        : { ok: true, path, kind: "code", bytes: 498, version: version ?? null, text: 'import rateLimit from "express-rate-limit";\n\nexport const loginLimiter = rateLimit({ windowMs: 60_000, max: 5 });\n' },
+    artifactDiff: async (_threadId, path) =>
+      `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1,3 +1,3 @@\n import rateLimit from "express-rate-limit";\n \n-export const loginLimiter = rateLimit({ windowMs: 60_000, max: 10 });\n+export const loginLimiter = rateLimit({ windowMs: 60_000, max: 5 });\n`,
+    teamMemberFile: async () => null,
   };
   window.unskilled = api;
 
@@ -337,17 +839,92 @@ export function installMock(): void {
       const tab = scene === "library-mcp" ? "mcp" : scene === "library-agents" ? "agents" : "skills";
       void import("./store").then(({ useStore }) => useStore.setState({ libraryTab: tab, librarySkill: scene === "library" ? "implement" : null }));
     }
+    if (scene === "artifact") emit({ type: "artifact-ready", threadId: "t1", path: "docs/rate-limit.md", files: ["src/middleware/rateLimit.ts", "docs/rate-limit.md"] });
     if (scene === "palette") void import("./store").then(({ useStore }) => useStore.getState().setPaletteOpen(true));
-    if (scene === "running" || scene === "permission") {
+    if (scene === "running" || scene === "permission" || scene === "question") {
       emit({ type: "running", threadId: "t1", running: true });
-      emit({ type: "text-delta", threadId: "t1", text: "Setting `trust proxy` so the limiter sees the real client IP. I'll check how the app is" });
+      emit({ type: "delta", threadId: "t1", delta: { kind: "text-delta", itemId: "", text: "Setting `trust proxy` so the limiter sees the real client IP. I'll check how the app is" } });
     }
     if (scene === "permission") {
-      emit({ type: "text-delta", threadId: "t1", text: "" });
+      emit({ type: "delta", threadId: "t1", delta: { kind: "text-delta", itemId: "", text: "" } });
       emit({
         type: "permission",
         request: { requestId: "r1", threadId: "t1", toolName: "Bash", summary: "npm install express-rate-limit@7", canAlwaysAllow: true },
       });
     }
+    if (scene === "question") {
+      emit({
+        type: "question",
+        request: {
+          requestId: "q1",
+          threadId: "t1",
+          questions: [
+            {
+              id: "q0",
+              header: "Store",
+              question: "Where should the rate-limit counters live?",
+              options: [
+                { label: "Redis (Recommended)", description: "Shared across instances; needs REDIS_URL in every environment.", preview: "```ts\nnew RedisStore({ client })\n```" },
+                { label: "In memory", description: "Zero setup, but each instance counts on its own." },
+                { label: "Postgres", description: "Reuses the existing database; slower under load." },
+              ],
+              multiSelect: false,
+              allowOther: true,
+            },
+            {
+              id: "q1",
+              header: "Routes",
+              question: "Which routes get the limiter?",
+              options: [
+                { label: "Auth", description: "/login, /signup, /reset" },
+                { label: "Public API", description: "/api/v1/*" },
+                { label: "Everything", description: "Global middleware" },
+              ],
+              multiSelect: true,
+              allowOther: true,
+            },
+          ],
+        },
+      });
+    }
   }, 300);
 }
+
+/** A few experts for the UI preview (the app reads resources/experts). */
+const mockSystemDoc: DesignSystemDoc = {
+  id: "style:swiss-grid",
+  name: "Swiss Grid",
+  source: "style",
+  editable: true,
+  copyOnWrite: true,
+  designMd: "# Swiss Grid\n\n## 1. Visual theme and atmosphere\n\nWhite field, black type set big and flush left, one red.\n",
+  groups: [
+    {
+      title: "Color",
+      tokens: [
+        { name: "--color-bg", light: "#ffffff", dark: "#18181b" },
+        { name: "--color-text", light: "#18181b", dark: "#ffffff" },
+        { name: "--color-primary", light: "#2563eb", dark: "#0e7490" },
+        { name: "--color-on-primary", light: "#ffffff", dark: "#ffffff" },
+        { name: "--color-accent", light: "#0e7490", dark: null },
+      ],
+    },
+    { title: "Type", tokens: [{ name: "--font-sans", light: "system-ui, sans-serif", dark: null }, { name: "--text-md", light: "16px", dark: null }] },
+    { title: "Space", tokens: [{ name: "--space-2", light: "8px", dark: null }, { name: "--space-6", light: "24px", dark: null }] },
+    { title: "Radius", tokens: [{ name: "--radius-md", light: "8px", dark: null }] },
+    { title: "Elevation", tokens: [{ name: "--shadow-2", light: "0 4px 16px #18181b", dark: null }] },
+  ],
+};
+
+const mockExperts: ExpertDef[] = [
+  { id: "data-analyst", kind: "agent", name: "Data Analyst", profession: "Senior Data Analyst", persona: "Daniel", category: "Data & AI", avatarText: "DA", description: "Turns raw data into clear analyses, SQL and dashboards that answer a specific business question.", tags: ["analytics", "sql"], quickPrompts: ["Write SQL to compute week-over-week active users by segment", "Analyze this CSV and summarize the trends that matter"], prompt: "You are Daniel.", skills: [], source: "builtin", version: "1.0.0" },
+  { id: "frontend-developer", kind: "agent", name: "Frontend Developer", profession: "Senior Frontend Engineer", persona: "Fran", category: "Engineering", avatarText: "FD", description: "Builds accessible, fast interfaces in React and plain web platform code.", tags: ["react", "a11y"], quickPrompts: ["Build a responsive pricing table component with keyboard support"], prompt: "You are Fran.", skills: [], source: "builtin", version: "1.0.0" },
+  { id: "copywriter", kind: "agent", name: "Copywriter", profession: "Senior Copywriter", persona: "Cleo", category: "Content & Creative", avatarText: "CW", description: "Writes clear, persuasive copy for pages, emails and ads in your brand voice.", tags: ["copy", "brand"], quickPrompts: ["Rewrite this landing page hero in three tones"], prompt: "You are Cleo.", skills: [], source: "builtin", version: "1.0.0" },
+  {
+    id: "software-delivery-team", kind: "team", name: "Software Delivery Team", profession: "Engineering Lead", persona: "Dana", category: "Engineering", avatarText: "SD", description: "Takes a feature from design through implementation, review and testing to a shippable change.", tags: ["engineering", "delivery"], quickPrompts: ["Design and build a rate limiter for our public API"], prompt: "You lead the team.", skills: [], source: "builtin", version: "1.0.0",
+    members: [
+      { id: "architect", name: "Architect", profession: "Software Architect", description: "Designs the change.", prompt: "", skills: [] },
+      { id: "reviewer", name: "Reviewer", profession: "Code Reviewer", description: "Reviews it.", prompt: "", skills: [] },
+    ],
+  },
+];

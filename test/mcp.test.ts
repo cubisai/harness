@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { codexServers, readExternalMcp } from "../src/main/mcp/external";
-import { forAcp, forClaude, McpServerStore, testServer, viewOf } from "../src/main/mcp/servers";
+import { forAcp, forAcpWithReport, forClaude, mcpChangeNotice, McpScopes, McpServerStore, testServer, viewOf } from "../src/main/mcp/servers";
 import { startToolServer } from "../src/main/mcp-http";
 import { closeAfter, tempDir } from "./helpers";
 
@@ -16,7 +16,7 @@ describe("McpServerStore", () => {
     store.save({ name: "docs", enabled: true, spec: { type: "stdio", command: " npx ", args: ["-y", "docs-mcp", ""], env: { TOKEN: "secret", " ": "x" } } });
     expect(JSON.parse(readFileSync(file, "utf-8"))).toEqual({ mcpServers: { docs: { type: "stdio", command: "npx", args: ["-y", "docs-mcp"], env: { TOKEN: "secret" } } } });
     if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
-    expect(viewOf(store.list()[0]!)).toEqual({ name: "docs", enabled: true, type: "stdio", target: "npx -y docs-mcp", envKeys: ["TOKEN"], headerKeys: [] });
+    expect(viewOf(store.list()[0]!)).toEqual({ name: "docs", enabled: true, type: "stdio", target: "npx -y docs-mcp", envKeys: ["TOKEN"], headerKeys: [], args: ["-y", "docs-mcp"] });
   });
 
   it("keeps a stored value when an edit leaves it blank, and renames", () => {
@@ -34,7 +34,7 @@ describe("McpServerStore", () => {
     expect(store.enabled().map((s) => s.name)).toEqual(["b"]);
     store.remove("b");
     expect(store.list().map((s) => [s.name, s.enabled])).toEqual([["a", false]]);
-    expect(() => store.save({ name: "unskilled", enabled: true, spec: { type: "stdio", command: "x" } })).toThrow(/app's own/);
+    expect(() => store.save({ name: "cubiq", enabled: true, spec: { type: "stdio", command: "x" } })).toThrow(/app's own/);
     expect(() => store.save({ name: "a b", enabled: true, spec: { type: "stdio", command: "x" } })).toThrow(/letters/);
     expect(() => store.save({ name: "a", enabled: true, spec: { type: "stdio", command: "x" } })).toThrow(/already/);
     expect(() => store.save({ name: "c", enabled: true, spec: { type: "http", url: "ftp://x" } })).toThrow(/http/);
@@ -48,6 +48,58 @@ describe("McpServerStore", () => {
       ["web", "http", true],
       ["off", "stdio", false],
     ]);
+  });
+});
+
+describe("McpScopes", () => {
+  const setup = () => {
+    const root = tempDir();
+    const global = new McpServerStore(join(root, "mcp.json"));
+    const scopes = new McpScopes(global, (id) => join(root, "projects", id));
+    return { global, scopes };
+  };
+  const stdio = (command: string) => ({ type: "stdio" as const, command });
+
+  it("effective(null) is the global store's enabled servers", () => {
+    const { global, scopes } = setup();
+    global.save({ name: "a", enabled: true, spec: stdio("a") });
+    global.save({ name: "b", enabled: false, spec: stdio("b") });
+    expect(scopes.effective(null).map((s) => s.name)).toEqual(["a"]);
+  });
+
+  it("lets a project server replace a global one by name, whole", () => {
+    const { global, scopes } = setup();
+    global.save({ name: "docs", enabled: true, spec: stdio("global-docs") });
+    global.save({ name: "web", enabled: true, spec: stdio("global-web") });
+    scopes.project("p1").save({ name: "docs", enabled: true, spec: stdio("project-docs") });
+    expect(scopes.effective("p1").map((s) => [s.name, s.spec.type === "stdio" ? s.spec.command : ""])).toEqual([
+      ["docs", "project-docs"],
+      ["web", "global-web"],
+    ]);
+  });
+
+  it("switches individual global servers off per project, and keeps that choice across edits", () => {
+    const { global, scopes } = setup();
+    global.save({ name: "a", enabled: true, spec: stdio("a") });
+    global.save({ name: "b", enabled: true, spec: stdio("b") });
+    const project = scopes.project("p1");
+    project.setGlobalOff("a", true);
+    expect(scopes.effective("p1").map((s) => s.name)).toEqual(["b"]);
+    project.save({ name: "c", enabled: true, spec: stdio("c") });
+    project.remove("c");
+    expect(project.offGlobal()).toEqual(["a"]);
+    expect(scopes.effective("p1").map((s) => s.name)).toEqual(["b"]);
+    project.setGlobalOff("a", false);
+    expect(scopes.effective("p1").map((s) => s.name)).toEqual(["a", "b"]);
+  });
+
+  it("keeps one store per project id, independent of the others", () => {
+    const { global, scopes } = setup();
+    global.save({ name: "a", enabled: true, spec: stdio("a") });
+    expect(scopes.project("p1")).toBe(scopes.project("p1"));
+    scopes.project("p2").setGlobalOff("a", true);
+    expect(scopes.effective("p1").map((s) => s.name)).toEqual(["a"]);
+    expect(scopes.effective("p2")).toEqual([]);
   });
 });
 
@@ -119,5 +171,27 @@ describe("readExternalMcp", () => {
   it("copes with no config at all", () => {
     expect(readExternalMcp({ home: tempDir(), projectPath: null, env: {} })).toEqual([]);
     expect(codexServers("[mcp_servers.x]\nenabled = true")).toEqual([{ name: "x", type: "unknown", target: "" }]);
+  });
+});
+
+describe("MCP loss and change reporting", () => {
+  const docs = { name: "docs", enabled: true, spec: { type: "stdio" as const, command: "d", args: [] } };
+  const web = { name: "web", enabled: true, spec: { type: "http" as const, url: "https://x/mcp" } };
+
+  it("reports the HTTP servers an agent without MCP-over-HTTP drops", () => {
+    const off = forAcpWithReport([docs, web], false);
+    expect(off.servers.map((s) => s.name)).toEqual(["docs"]);
+    expect(off.dropped).toEqual(["web"]);
+    expect(forAcpWithReport([docs, web], true).dropped).toEqual([]);
+  });
+
+  it("describes what changed, and whether the session was reopened", () => {
+    expect(mcpChangeNotice({ a: 1 }, { a: 1 }, true, "X")).toBeNull();
+    const text = mcpChangeNotice({ a: 1, b: 2 }, { a: 9, c: 3 }, true, "X")!;
+    expect(text).toMatch(/added c/);
+    expect(text).toMatch(/removed b/);
+    expect(text).toMatch(/changed a/);
+    expect(text).toMatch(/reopened/);
+    expect(mcpChangeNotice({}, { c: 3 }, false, "X")).toMatch(/can't reopen/);
   });
 });

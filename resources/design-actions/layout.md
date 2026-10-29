@@ -1,0 +1,1 @@
+Action: Layout. Rearrange the structure, not the spacing. Each variant uses a different arrangement: stacked, side by side, grid, asymmetric split, or overlay (text on media). Keep the content and the styling, and keep the reading order sensible. Every variant must still fit the element's space on the page and work at the page's width.

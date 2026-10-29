@@ -1,11 +1,12 @@
 {
   "name": "aiharness",
-  "productName": "AI Harness",
+  "productName": "CubiQ",
   "version": "0.1.2",
   "private": true,
+  "packageManager": "bun@1.4.2",
   "description": "A minimal desktop coding-agent harness.",
   "license": "MIT",
-  "author": "AI Harness contributors",
+  "author": "CubiQ contributors",
   "repository": {
     "type": "git",
     "url": "https://github.com/cubisai/harness.git"
@@ -16,22 +17,42 @@
   "scripts": {
     "dev": "electron-vite dev",
     "fix:node-pty": "node scripts/fix-node-pty.mjs",
-    "postinstall": "pnpm run fix:node-pty",
-    "predev": "pnpm run fix:node-pty",
-    "prebuild": "pnpm run fix:node-pty",
+    "postinstall": "bun run fix:node-pty && bun run brand:electron",
+    "ensure:electron": "node node_modules/electron/install.js",
+    "brand:electron": "node scripts/brand-dev-electron.mjs",
+    "predev": "bun run fix:node-pty && bun run ensure:electron && bun run brand:electron",
+    "prebuild": "bun run fix:node-pty",
     "build": "electron-vite build",
-    "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "design:docs": "node scripts/design-docs.mjs",
+    "design:check": "node scripts/design-check.mjs",
     "test": "vitest run",
     "smoke": "electron . --smoke",
-    "dist": "pnpm run build && electron-builder --publish never",
-    "preview:ui": "vite --config vite.preview.config.ts"
+    "dist": "bun run build && electron-builder --publish never",
+    "preview:ui": "vite --config vite.preview.config.ts",
+    "eval": "bun --env-file=.env evals/run.ts",
+    "eval:optimize": "bun --env-file=.env evals/optimize.ts",
+    "cache:report": "bun scripts/cache-report.ts",
+    "bench": "bun --env-file=.env bench/run.ts",
+    "bench:report": "bun bench/report.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.281",
     "@anthropic-ai/sdk": "0.128.0",
+    "@dicebear/core": "9.4.2",
+    "@dicebear/notionists": "9.4.2",
     "@modelcontextprotocol/sdk": "1.30.1",
+    "docx": "9.11.0",
     "electron-updater": "^6.8.9",
+    "exceljs": "4.4.0",
+    "jszip": "^3.10.2",
+    "lucide-react": "^1.48.0",
+    "mammoth": "^1.13.0",
     "node-pty": "1.1.0",
+    "pptxgenjs": "4.0.1",
+    "quickjs-emscripten": "0.32.0",
+    "thinking-orbs": "0.3.2",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "4.6.5"
   },
   "devDependencies": {
@@ -50,5 +71,11 @@
     "vite": "7.3.6",
     "vitest": "4.1.11",
     "zustand": "5.0.15"
-  }
+  },
+  "trustedDependencies": [
+    "electron",
+    "electron-winstaller",
+    "esbuild",
+    "node-pty"
+  ]
 }

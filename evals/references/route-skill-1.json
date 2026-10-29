@@ -1,0 +1,16 @@
+{
+  "skills": [
+    "backup-ansible-infra"
+  ],
+  "events": [
+    {
+      "kind": "tool-use",
+      "name": "Skill",
+      "summary": "backup-ansible-infra"
+    },
+    {
+      "kind": "assistant-text",
+      "text": "Follow the backup-ansible-infra skill; first check its prerequisites section."
+    }
+  ]
+}

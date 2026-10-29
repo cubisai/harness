@@ -1,0 +1,39 @@
+{
+  "id": "route-none-2",
+  "tags": [
+    "regression"
+  ],
+  "tier": "full",
+  "fixture": "empty",
+  "prompt": "How do I reverse a singly linked list in place in TypeScript?",
+  "mode": "plan",
+  "skills": {
+    "kit": {
+      "skills": 50,
+      "seed": 7
+    }
+  },
+  "graders": [
+    {
+      "type": "skill",
+      "none": true
+    },
+    {
+      "type": "answer",
+      "matches": "(?=[\\s\\S]*prev)(?=[\\s\\S]*next)"
+    },
+    {
+      "type": "event",
+      "noError": true
+    },
+    {
+      "type": "budget"
+    }
+  ],
+  "budget": {
+    "maxSteps": 3,
+    "maxInputTokens": 40000,
+    "timeoutMs": 120000
+  },
+  "reference": "Answers directly; loads no skill."
+}

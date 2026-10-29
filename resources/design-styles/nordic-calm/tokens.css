@@ -1,0 +1,155 @@
+/* Nordic Calm: a CubiQ style. Link this file and use the custom properties, not raw values. A dark pair follows the system setting.
+ * Roles: --color-accent-text for accent-coloured text (the accent itself may be too light for text);
+ * --color-on-accent on accent fills; --color-*-soft behind status text and selected chips, with the matching
+ * colour (or --color-accent-text) on top; --color-surface-3 for hover/pressed wells; --color-border-strong for
+ * inputs and dividers that must show. --tracking-display/-heading/-label on those roles, --text-display-sm
+ * under 640px, font-variant-numeric: var(--numeric-data) on figures. */
+@font-face {
+  font-family: "Onest";
+  src: url("fonts/onest.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("fonts/jetbrains-mono.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+}
+:root {
+  color-scheme: light;
+
+  /* Color */
+  --color-bg: #F6F7F6;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #ECEFED;
+  --color-text: #1B2421;
+  --color-text-muted: #56625D;
+  --color-border: #DCE2DF;
+  --color-primary: #1F5C4A;
+  --color-on-primary: #FFFFFF;
+  --color-accent: #B5651D;
+  --color-success: #2E7D4F;
+  --color-warning: #94600A;
+  --color-danger: #B3261E;
+  --color-focus: #1F5C4A;
+  --color-surface-3: #DFE3E1;
+  --color-border-strong: #878E8B;
+  --color-accent-text: #9C5B1E;
+  --color-on-accent: #000000;
+  --color-accent-soft: #F7EEE6;
+  --color-success-soft: #EEF5F1;
+  --color-warning-soft: #F3EEE4;
+  --color-danger-soft: #F4E1DF;
+
+  /* Type */
+  --font-sans: "Onest", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Onest", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --text-xs: 12px;
+  --leading-xs: 16px;
+  --text-sm: 14px;
+  --leading-sm: 20px;
+  --text-md: 16px;
+  --leading-md: 24px;
+  --text-lg: 20px;
+  --leading-lg: 28px;
+  --text-xl: 24px;
+  --leading-xl: 32px;
+  --text-2xl: 32px;
+  --leading-2xl: 40px;
+  --text-3xl: 48px;
+  --leading-3xl: 56px;
+  --text-4xl: 64px;
+  --leading-4xl: 72px;
+  --text-display: 64px;
+  --leading-display: 72px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 700;
+  --tracking-display: -0.02em;
+  --tracking-heading: -0.01em;
+  --tracking-label: 0.04em;
+  --text-display-sm: 32px;
+  --leading-display-sm: 36px;
+  --numeric-data: tabular-nums;
+
+  /* Space: the 8pt scale (4 is for type and icon nudges only) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* Size */
+  --target-min: 44px;
+  --content-max: 1200px;
+  --measure: 68ch;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+
+  /* Elevation */
+  --shadow-1: 0 1px 2px rgb(27 36 33 / 0.06);
+  --shadow-2: 0 6px 20px rgb(27 36 33 / 0.08);
+  --shadow-3: 0 20px 48px rgb(27 36 33 / 0.14);
+
+  /* Motion */
+  --duration-fast: 120ms;
+  --duration: 220ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration: 0ms;
+  }
+}
+
+/* Dark: the same roles, re-tuned; picked up from the system setting. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --color-bg: #111614;
+    --color-surface: #171E1B;
+    --color-surface-2: #1F2824;
+    --color-text: #E7ECE9;
+    --color-text-muted: #A1ADA7;
+    --color-border: #2B3631;
+    --color-primary: #6CC3A4;
+    --color-on-primary: #0B1F18;
+    --color-accent: #E39A5A;
+    --color-success: #6CC3A4;
+    --color-warning: #E2B04F;
+    --color-danger: #F08A7E;
+    --color-focus: #E39A5A;
+    --color-surface-3: #2F3834;
+    --color-border-strong: #67706C;
+    --color-accent-text: #E39A5A;
+    --color-on-accent: #111614;
+    --color-accent-soft: #443929;
+    --color-success-soft: #2A4239;
+    --color-warning-soft: #443E26;
+    --color-danger-soft: #473631;
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.18);
+    --shadow-2: 0 6px 20px rgb(0 0 0 / 0.24);
+    --shadow-3: 0 20px 48px rgb(0 0 0 / 0.42);
+  }
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}

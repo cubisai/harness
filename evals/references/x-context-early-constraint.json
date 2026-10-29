@@ -1,0 +1,13 @@
+{
+  "write": {
+    "src/lib/slugify.js": "// Turns text into a URL slug.\nexport function slugify(text) {\n  return text\n    .trim()\n    .toLowerCase()\n    .replace(/[^a-z0-9]+/g, \"-\")\n    .replace(/^-+|-+$/g, \"\");\n}\n"
+  },
+  "events": [
+    { "kind": "assistant-text", "text": "Understood: no 'utils' in file names, and helpers live in src/lib/." },
+    { "kind": "assistant-text", "text": "Object.freeze is shallow; a frozen object's nested objects can still change." },
+    { "kind": "assistant-text", "text": "let can be reassigned, const cannot (though the object a const points to can still mutate)." },
+    { "kind": "tool-use", "name": "Write", "summary": "src/lib/slugify.js" },
+    { "kind": "tool-use", "name": "Run", "summary": "node --test test/slugify.test.mjs" },
+    { "kind": "assistant-text", "text": "Added src/lib/slugify.js per the src/lib/ rule; `node --test test/slugify.test.mjs` passes." }
+  ]
+}

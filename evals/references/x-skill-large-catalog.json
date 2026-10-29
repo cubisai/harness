@@ -1,0 +1,7 @@
+{
+  "skills": ["backup-vitest-testing"],
+  "events": [
+    { "kind": "tool-use", "name": "Skill", "summary": "backup-vitest-testing" },
+    { "kind": "assistant-text", "text": "Follow backup-vitest-testing; first check its prerequisites and confirm the Vitest target before taking a snapshot." }
+  ]
+}
