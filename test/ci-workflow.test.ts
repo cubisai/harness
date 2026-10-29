@@ -10,7 +10,8 @@ const code = workflow
   .split(/\r?\n/)
   .filter((l) => !l.trim().startsWith("#"))
   .join("\n");
-const ALLOWED = ["UNSKILLED_NO_UPDATE", "UNSKILLED_CODEX_BIN"];
+// The last two only switch electron-builder's signing (ad-hoc on macOS), with no certificate.
+const ALLOWED = ["UNSKILLED_NO_UPDATE", "UNSKILLED_CODEX_BIN", "CSC_IDENTITY_AUTO_DISCOVERY", "CSC_FOR_PULL_REQUEST"];
 
 describe("CI workflow", () => {
   it("uses no secrets, and nothing Gemini or Antigravity", () => {
@@ -25,8 +26,29 @@ describe("CI workflow", () => {
     expect(exported).toEqual(["UNSKILLED_CODEX_BIN"]);
   });
 
+  it("builds the PR installers without publishing them", () => {
+    expect(workflow).toMatch(/\n {2}package:\n[\s\S]*electron-builder \$\{\{ matrix\.target \}\} --publish never/);
+  });
+
   it("runs the packaged smoke after the test matrix", () => {
     expect(workflow).toMatch(/\n {2}smoke:\n[\s\S]*needs: test[\s\S]*node scripts\/smoke\.mjs/);
+  });
+});
+
+describe("release workflow", () => {
+  const release = readFileSync(join(root, ".github", "workflows", "release-cubiq.yml"), "utf-8").replace(/\r\n/g, "\n");
+
+  it("reads only the signing secrets the README lists", () => {
+    const secrets = new Set([...release.matchAll(/secrets\.([A-Z0-9_]+)/g)].map((m) => m[1]));
+    expect([...secrets].sort()).toEqual(["APPLE_APP_SPECIFIC_PASSWORD", "APPLE_ID", "APPLE_TEAM_ID", "MAC_CSC_KEY_PASSWORD", "MAC_CSC_LINK", "WIN_CSC_KEY_PASSWORD", "WIN_CSC_LINK"]);
+    const readme = readFileSync(join(root, "README.md"), "utf-8");
+    for (const name of secrets) expect(readme, name).toContain(`\`${name}\``);
+  });
+
+  it("builds without publishing, and only the publish job writes the release", () => {
+    expect(release).toContain("--publish never");
+    expect(release.match(/contents: write/g)).toHaveLength(1);
+    expect(release).toMatch(/\n {2}publish:\n[\s\S]*contents: write[\s\S]*gh release create/);
   });
 });
 

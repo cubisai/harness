@@ -1,6 +1,6 @@
-// OpenCode v2 reads a different config shape from v1 (checked on 2.1.0): it
-// ignores v1's `agent`, `permission`, `provider` and `plugin` keys. Every
-// injector here writes the v1 shape; for a v2 CLI the finished config is
+// OpenCode v2 reads a different config shape from v1 (checked on 2.1.0 and
+// 2.2.0): it ignores v1's `agent`, `permission`, `provider` and `plugin` keys.
+// Every injector here writes the v1 shape; for a v2 CLI the finished config is
 // translated once, just before the spawn, so the v1 path never changes.
 
 import type { InjectionPlan } from ".";
@@ -13,16 +13,22 @@ const isObject = (value: unknown): value is Json => typeof value === "object" &&
 const ACTIONS: Record<string, string> = { bash: "shell", task: "subagent", write: "edit", patch: "edit" };
 
 /**
+ * v1's own default that v2 lacks: v2's base rule allows every action, so a
+ * read outside the project would never ask (2.2.0 still checks
+ * `external_directory`, sub-agents included, and asks over ACP). Placed first,
+ * so any rule after it wins (v2 takes the last match).
+ */
+const V1_DEFAULTS = [{ action: "external_directory", resource: "*", effect: "ask" }];
+
+/**
  * A v1 `permission` object as v2's ordered `permissions` rules. A bare string
  * is that action's `*` rule; an object's `*` entry goes first so the specific
- * patterns after it win (v1 merged them the same way). `external_directory`
- * is dropped: v2 allows reads outside the project by default.
+ * patterns after it win (v1 merged them the same way).
  */
 export function toV2Permissions(permission: unknown): { action: string; resource: string; effect: string }[] {
   if (!isObject(permission)) return [];
   const rules: { action: string; resource: string; effect: string }[] = [];
   for (const [key, value] of Object.entries(permission)) {
-    if (key === "external_directory") continue;
     const action = ACTIONS[key] ?? key;
     if (typeof value === "string") {
       rules.push({ action, resource: "*", effect: value });
@@ -77,10 +83,7 @@ export function toOpenCodeV2Config(config: Json): Json {
     for (const [id, entry] of Object.entries(agent)) agents[id] = toV2Agent(entry);
     out.agents = agents;
   }
-  if (permission !== undefined) {
-    const rules = toV2Permissions(permission);
-    if (rules.length) out.permissions = [...(Array.isArray(rest.permissions) ? rest.permissions : []), ...rules];
-  }
+  out.permissions = [...V1_DEFAULTS, ...(Array.isArray(rest.permissions) ? rest.permissions : []), ...toV2Permissions(permission)];
   if (isObject(provider)) {
     const providers: Json = isObject(rest.providers) ? { ...rest.providers } : {};
     for (const [id, entry] of Object.entries(provider)) providers[id] = toV2Provider(entry);

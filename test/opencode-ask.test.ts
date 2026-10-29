@@ -15,7 +15,7 @@ import { ACP_PRESETS, onPath } from "../src/main/agents/registry";
 import type { InjectionPlan } from "../src/main/inject";
 import { ensureOpenCodeGuard, withOpenCodeGuard } from "../src/main/inject/opencode-guard";
 import { BUILT_IN_GUARD } from "../src/main/guard";
-import { closeAfter, tempDir } from "./helpers";
+import { closeAfter, openCodeGuardedPlan, tempDir } from "./helpers";
 
 const ask = (over: Partial<PluginAsk> = {}): PluginAsk => ({ tool: "bash", kind: "execute", summary: "echo hi", callID: "call_1", ...over });
 
@@ -235,6 +235,23 @@ describe("the generated plugin's ask", () => {
   });
 });
 
+/** The names a request offers its model; OpenCode v2 renamed bash → shell and task → subagent. */
+const offered = (tools: unknown): string[] => (Array.isArray(tools) ? (tools as { function?: { name?: string } }[]).map((t) => t.function?.name ?? "") : []);
+
+/** A v1-shaped tool call in the shape of the CLI that offered `names`: v2 also renamed read's filePath and task's subagent_type. */
+function forCli(call: { name: string; args: Record<string, unknown> }, names: string[]): { name: string; args: Record<string, unknown> } {
+  if (call.name === "bash" && names.includes("shell")) return { name: "shell", args: call.args };
+  if (call.name === "task" && names.includes("subagent")) {
+    const { subagent_type, ...rest } = call.args;
+    return { name: "subagent", args: { ...rest, agent: subagent_type } };
+  }
+  if (call.name === "read" && names.includes("shell")) {
+    const { filePath, ...rest } = call.args;
+    return { name: "read", args: { ...rest, path: filePath } };
+  }
+  return call;
+}
+
 /** A fake chat endpoint: the first request with tools (and `after` in its body, when given) answers one bash call (`command`), the rest say done. */
 function fakeToolChat(command: string, after?: string): Promise<{ server: Server; url: string; bodies: unknown[] }> {
   const bodies: unknown[] = [];
@@ -251,7 +268,8 @@ function fakeToolChat(command: string, after?: string): Promise<{ server: Server
       res.writeHead(200, { "content-type": "text/event-stream" });
       if (Array.isArray(parsed.tools) && parsed.tools.length > 0 && !sent && (!after || body.includes(after))) {
         sent = true;
-        res.end(chunk({ role: "assistant", content: null, tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "bash", arguments: JSON.stringify({ command, description: "run it" }) } }] }, null) + chunk({}, "tool_calls") + "data: [DONE]\n\n");
+        const call = forCli({ name: "bash", args: { command, description: "run it" } }, offered(parsed.tools));
+        res.end(chunk({ role: "assistant", content: null, tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: call.name, arguments: JSON.stringify(call.args) } }] }, null) + chunk({}, "tool_calls") + "data: [DONE]\n\n");
       } else {
         res.end(chunk({ role: "assistant", content: "done" }, null) + chunk({}, "stop", { usage: { prompt_tokens: 5, completion_tokens: 1, total_tokens: 6 } }) + "data: [DONE]\n\n");
       }
@@ -274,7 +292,7 @@ function fakeChatScript(calls: { name: string; args: Record<string, unknown> }[]
       const model = parsed.model ?? "unknown";
       const chunk = (delta: unknown, finish: string | null, extra: Record<string, unknown> = {}) => `data: ${JSON.stringify({ id: "c", object: "chat.completion.chunk", created: 1, model, choices: [{ index: 0, delta, finish_reason: finish }], ...extra })}\n\n`;
       res.writeHead(200, { "content-type": "text/event-stream" });
-      const call = Array.isArray(parsed.tools) && parsed.tools.length > 0 ? calls[next] : undefined;
+      const call = Array.isArray(parsed.tools) && parsed.tools.length > 0 && calls[next] ? forCli(calls[next]!, offered(parsed.tools)) : undefined;
       if (call) {
         next++;
         res.end(chunk({ role: "assistant", content: null, tool_calls: [{ index: 0, id: `call_${next}`, type: "function", function: { name: call.name, arguments: JSON.stringify(call.args) } }] }, null) + chunk({}, "tool_calls") + "data: [DONE]\n\n");
@@ -308,12 +326,11 @@ describe.skipIf(!onPath("opencode"))("OpenCode asks CubiQ before a command (real
     const marker = join(cwd, "ran.txt");
     const fake = await fakeToolChat(`${opts.prefix ?? ""}echo ran > ${JSON.stringify(marker)}`, plan ? "Implement the plan." : undefined);
     closeAfter(() => void fake.server.close());
-    const pluginUrl = ensureOpenCodeGuard(tempDir());
     const preset = ACP_PRESETS.find((p) => p.id === "opencode")!;
     const driver = createAcpDriver(preset, {
       clientVersion: "test",
       ...(opts.guardScript ? { guardScript: opts.guardScript } : {}),
-      injection: () => {
+      injection: (ctx) => {
         // By default OpenCode's own config allows bash outright: only the plugin can stop it.
         const config = {
           $schema: "https://opencode.ai/config.json",
@@ -321,7 +338,7 @@ describe.skipIf(!onPath("opencode"))("OpenCode asks CubiQ before a command (real
           model: "gw/vendor/wire-1",
           permission: { bash: ownBash, edit: "allow" },
         };
-        return withOpenCodeGuard({ env: { ...process.env, OPENCODE_CONFIG_CONTENT: JSON.stringify(config) }, byok: false }, { pluginUrl });
+        return openCodeGuardedPlan(ctx?.major, config);
       },
     });
     closeAfter(() => driver.dispose?.());
@@ -406,18 +423,20 @@ describe.skipIf(!onPath("opencode"))("OpenCode asks CubiQ before a command (real
       { name: "read", args: { filePath: outside } },
     ]);
     closeAfter(() => void fake.server.close());
-    const pluginUrl = ensureOpenCodeGuard(tempDir());
     const preset = ACP_PRESETS.find((p) => p.id === "opencode")!;
+    let major: number | null | undefined;
     const driver = createAcpDriver(preset, {
       clientVersion: "test",
-      injection: () => {
+      injection: (ctx) => {
+        major = ctx?.major;
+        // No external_directory rule, like the app's own config: OpenCode's v1 default asks, and the v2 translation adds it.
         const config = {
           $schema: "https://opencode.ai/config.json",
           provider: { gw: { npm: "@ai-sdk/openai-compatible", name: "GW", options: { baseURL: fake.url, apiKey: "k" }, models: { "vendor/wire-1": { name: "Picked" } } } },
           model: "gw/vendor/wire-1",
-          permission: { bash: "allow", edit: "allow", external_directory: "ask" },
+          permission: { bash: "allow", edit: "allow" },
         };
-        return withOpenCodeGuard({ env: { ...process.env, OPENCODE_CONFIG_CONTENT: JSON.stringify(config) }, byok: false }, { pluginUrl });
+        return openCodeGuardedPlan(major, config);
       },
     });
     closeAfter(() => driver.dispose?.());
@@ -439,7 +458,7 @@ describe.skipIf(!onPath("opencode"))("OpenCode asks CubiQ before a command (real
       requestPermission: async (r) => (asked.push(r), answer),
       requestPlanDecision: async () => ({ keep: "" }),
     });
-    return { asked, events, seen: fake.bodies.map((b) => JSON.stringify(b)).join("\n") };
+    return { asked, events, major, seen: fake.bodies.map((b) => JSON.stringify(b)).join("\n") };
   }
 
   it("Full: a sub-agent reading outside the project goes on without a card or a stall", async () => {
@@ -451,7 +470,8 @@ describe.skipIf(!onPath("opencode"))("OpenCode asks CubiQ before a command (real
 
   it("Ask: a sub-agent's read outside the project shows a card, and a denial keeps the file out", async () => {
     const r = await subagentReadsOutside("ask", "deny");
-    expect(r.asked.map((a) => a.toolName)).toEqual(["external_directory"]);
+    // v1: the plugin puts the sub-agent's own ask to the app. v2: the ask comes over ACP like the main session's.
+    expect(r.asked.map((a) => a.toolName)).toEqual([(r.major ?? 1) >= 2 ? "Read" : "external_directory"]);
     expect(r.seen).not.toContain("OUTSIDE_SECRET_42");
   }, 120_000);
 });

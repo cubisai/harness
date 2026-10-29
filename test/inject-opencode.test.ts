@@ -152,6 +152,9 @@ describe("withOpenCodeHiddenSkills", () => {
 
   it("reaches OpenCode 2 as skill deny rules", () => {
     const config = JSON.parse(withOpenCodeHiddenSkills({ env: {}, byok: false }, ["morning"]).env.OPENCODE_CONFIG_CONTENT!);
-    expect(toOpenCodeV2Config(config).permissions).toEqual([{ action: "skill", resource: "morning", effect: "deny" }]);
+    expect(toOpenCodeV2Config(config).permissions).toEqual([
+      { action: "external_directory", resource: "*", effect: "ask" },
+      { action: "skill", resource: "morning", effect: "deny" },
+    ]);
   });
 });

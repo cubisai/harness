@@ -56,5 +56,5 @@ describe("seedStore", () => {
     expect(events.map((e) => e.seq)).toEqual(Array.from({ length: 1000 }, (_, i) => i + 1));
     expect(store.listProjects()).toHaveLength(3);
     expect(segmentEvents(events, false).length).toBeGreaterThan(0);
-  });
+  }, 45_000); // I/O-bound seeding: it once passed 15 s on a slow Windows runner.
 });

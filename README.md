@@ -132,10 +132,12 @@ To look at the UI without Electron or an agent: `bun run preview:ui`, then open 
 
 To release, bump `version` in `package.json` on main, then either:
 
-- push a tag `unskilled-v<version>`, or
-- on GitHub, open Actions → release-unskilled → Run workflow, pick `main`, and tick **publish**. That tags the commit for you, and works from a phone.
+- push a tag `cubiq-v<version>`, or
+- on GitHub, open Actions → release-cubiq → Run workflow, pick `main`, and tick **publish**. That tags the commit for you, and works from a phone.
 
-The `release-unskilled` workflow builds all three, then publishes a GitHub release with the installers and the `latest*.yml` files the updater reads. It refuses a version that's already released. A manual run without **publish** only builds.
+The `release-cubiq` workflow (`.github/workflows/release-cubiq.yml`) builds all three, then publishes a GitHub release with the installers and the `latest*.yml` files the updater reads. The macOS build is Apple Silicon only. It refuses a tag that doesn't match `package.json`'s version, and a version that's already released. A manual run without **publish** only builds; its installers stay on the run's page for 7 days.
+
+Every PR to main also builds the macOS `.dmg` and the Windows `.exe` (the `package` job in `ci.yml`), downloadable from the run's page for 7 days.
 
 ### Updates
 
@@ -144,6 +146,8 @@ Installed copies check this repo's latest GitHub release at start and every four
 ### Signing
 
 Builds are unsigned until these repository secrets exist. Each OS signs only when its own are set.
+
+Unsigned, the macOS app is ad-hoc signed (Apple Silicon calls a fully unsigned app "damaged"). To open it the first time: System Settings → Privacy & Security → **Open Anyway**, or `xattr -dr com.apple.quarantine /Applications/CubiQ.app`. Unsigned Windows installers show a SmartScreen warning (More info → Run anyway).
 
 | Secret | What it is |
 | :--- | :--- |

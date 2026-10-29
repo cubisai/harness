@@ -10,7 +10,7 @@ import { ACP_PRESETS, onPath } from "../src/main/agents/registry";
 import { findPython } from "../src/main/guard";
 import { type InjectionPlan } from "../src/main/inject";
 import { ensureOpenCodeGuard, withOpenCodeGuard } from "../src/main/inject/opencode-guard";
-import { closeAfter, fixturesDir, tempDir } from "./helpers";
+import { closeAfter, fixturesDir, openCodeGuardedPlan, tempDir } from "./helpers";
 
 const GUARD = join(fixturesDir, "fake-guard.py");
 
@@ -160,35 +160,28 @@ describe.skipIf(!onPath("opencode") || !findPython())("OpenCode guard plugin end
     closeAfter(() => void fake.server.close());
 
     const preset = ACP_PRESETS.find((p) => p.id === "opencode")!;
-    const pluginUrl = ensureOpenCodeGuard(tempDir());
     const driver = createAcpDriver(preset, {
       clientVersion: "test",
       guardScript: GUARD,
-      injection: () => {
-        // The provider is its own native agent now, so the injection plan is
-        // built by hand: point OpenCode at the fake server via OPENCODE_CONFIG_CONTENT.
-        const config = {
-          $schema: "https://opencode.ai/config.json",
-          provider: {
-            gw: {
-              npm: "@ai-sdk/openai-compatible",
-              name: "GW",
-              options: { baseURL: fake.url, apiKey: KEY },
-              models: { "vendor/wire-1": { name: "Picked" } },
+      // The provider is its own native agent now, so the plan is built by hand:
+      // point OpenCode at the fake server, in the shape the installed CLI reads.
+      injection: (ctx) =>
+        openCodeGuardedPlan(
+          ctx?.major,
+          {
+            $schema: "https://opencode.ai/config.json",
+            provider: {
+              gw: {
+                npm: "@ai-sdk/openai-compatible",
+                name: "GW",
+                options: { baseURL: fake.url, apiKey: KEY },
+                models: { "vendor/wire-1": { name: "Picked" } },
+              },
             },
+            model: "gw/vendor/wire-1",
           },
-          model: "gw/vendor/wire-1",
-        };
-        const plan: InjectionPlan = {
-          env: { ...process.env, OPENCODE_CONFIG_CONTENT: JSON.stringify(config) },
-          byok: false,
-        };
-        return withOpenCodeGuard(plan, {
-          pluginUrl,
-          script: GUARD,
-          python: findPython()!,
-        });
-      },
+          { dir: tempDir(), script: GUARD, python: findPython()! },
+        ),
     });
     closeAfter(() => driver.dispose?.());
 
