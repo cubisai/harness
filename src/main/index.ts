@@ -10,6 +10,8 @@ import { CHATS_NAME, chatsRoot, isChatsRoot } from "./chats";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
 import type { AutomationInput } from "../shared/automations";
 import { DESIGN_SCHEME, designDirName, designUrl, entryFile, serveDesign } from "./design/serve";
+import { STYLE_PREVIEW_SCHEME } from "../shared/style-preview";
+import { serveStylePreview } from "./design/style-preview";
 import { DesignWatcher } from "./design/watch";
 import { listDesignFiles, listDesignPages, pageDevice } from "./design/pages";
 import { readTier } from "../shared/tiers";
@@ -239,6 +241,8 @@ async function main(): Promise<void> {
     { scheme: "cubiq-file", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
     // cubiq-design:// serves a design thread's folder to the canvas's sandboxed frame (scripts on, no network).
     { scheme: DESIGN_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+    // cubiq-style:// serves the style picker's previews: a style's tokens, fonts and the shared specimen (no scripts, no network).
+    { scheme: STYLE_PREVIEW_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
     // cubiq-doc:// serves a thread's folder to the hidden window that prints its HTML documents (no scripts, no network).
     { scheme: DOC_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
   ]);
@@ -563,7 +567,7 @@ async function main(): Promise<void> {
           evaluate: (url, width, height, script) => shooter.evaluate(url, width, height, script),
           lintScript: designLintJs,
           saveCritique: (id, markdown) => service.saveCritique(id, markdown),
-          setDirection: (id, direction, alternates) => service.setDesignDirection(id, direction, alternates),
+          setDirection: (id, direction, alternates, theme) => service.setDesignDirection(id, direction, alternates, theme),
           styleIndex: () => styleIndex(service.designStyles()),
         },
         threadId,
@@ -1022,6 +1026,13 @@ async function main(): Promise<void> {
       designRoot: (threadId) => service.designRoot(threadId),
       readVersion: (threadId, rel, version) => service.readDesignVersion(threadId, rel, version),
       bridge: designBridgeJs,
+    }),
+  );
+  // Style previews: the shared specimen, a style's tokens and fonts, all read-only and script-free.
+  protocol.handle(STYLE_PREVIEW_SCHEME, (req) =>
+    serveStylePreview(req.url, {
+      system: (projectId, id) => service.previewSystem(projectId, id),
+      specimen: app.isPackaged ? join(process.resourcesPath, "design-preview", "specimen.html") : join(app.getAppPath(), "resources", "design-preview", "specimen.html"),
     }),
   );
   // Scheduled automations: reconcile a crash's leftovers, then run what's due every minute and on wake.

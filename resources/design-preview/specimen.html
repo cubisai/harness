@@ -1,0 +1,110 @@
+<!doctype html>
+<!-- The style picker's preview: one page drawn only from a style's tokens.css roles (any style in the library fits).
+     The server fills {{name}}, {{description}}, {{platform}} and {{theme}}, HTML-escaped. No scripts, no network. -->
+<html lang="en" data-platform="{{platform}}">
+<head>
+<meta charset="utf-8" />
+<title>{{name}}</title>
+<link rel="stylesheet" href="tokens.css?theme={{theme}}" />
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 960px; height: 600px; overflow: hidden; }
+  body {
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: var(--text-md);
+    line-height: var(--leading-md);
+    -webkit-font-smoothing: antialiased;
+  }
+  .display { font-family: var(--font-display); letter-spacing: var(--tracking-display); }
+  .heading { font-family: var(--font-display); letter-spacing: var(--tracking-heading); font-weight: var(--weight-bold); }
+  .muted { color: var(--color-text-muted); }
+  .num { font-variant-numeric: var(--numeric-data); }
+
+  .btn {
+    display: inline-flex; align-items: center; height: var(--target-min); padding: 0 var(--space-6);
+    border-radius: var(--radius-md); font-weight: var(--weight-medium); font-size: var(--text-sm);
+  }
+  .btn.primary { background: var(--color-primary); color: var(--color-on-primary); box-shadow: var(--shadow-1); }
+  .btn.ghost { border: 1px solid var(--color-border-strong); color: var(--color-text); }
+  .chip {
+    display: inline-flex; align-items: center; height: 24px; padding: 0 var(--space-2);
+    border-radius: var(--radius-full); font-size: var(--text-xs); font-weight: var(--weight-medium);
+    letter-spacing: var(--tracking-label);
+  }
+  .chip.ok { background: var(--color-success-soft); color: var(--color-success); }
+  .chip.wait { background: var(--color-warning-soft); color: var(--color-warning); }
+  .card {
+    background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-2);
+  }
+
+  /* Page: nav, hero, a figure card, a list. */
+  .page { display: flex; flex-direction: column; height: 100%; padding: 0 var(--space-12); }
+  nav { display: flex; align-items: center; gap: var(--space-8); height: 72px; border-bottom: 1px solid var(--color-border); }
+  nav .mark { font-size: var(--text-lg); margin-right: auto; }
+  nav a { color: var(--color-text-muted); font-size: var(--text-sm); text-decoration: none; }
+  .hero { display: grid; grid-template-columns: 1.4fr 1fr; gap: var(--space-12); padding-top: var(--space-10); }
+  .hero h1 { font-size: var(--text-4xl); line-height: var(--leading-4xl); font-weight: var(--weight-bold); }
+  .hero p { margin-top: var(--space-4); max-width: 44ch; font-size: var(--text-lg); line-height: var(--leading-lg); }
+  .actions { display: flex; gap: var(--space-3); margin-top: var(--space-8); }
+  .figure { padding: var(--space-6); align-self: start; }
+  .figure .label { font-size: var(--text-sm); }
+  .figure .big { font-size: var(--text-3xl); line-height: var(--leading-3xl); margin-top: var(--space-2); font-weight: var(--weight-bold); }
+  .figure .row { display: flex; align-items: center; justify-content: space-between; }
+  .bars { display: flex; align-items: flex-end; gap: var(--space-2); height: 72px; margin-top: var(--space-6); }
+  .bars i { flex: 1; background: var(--color-surface-3); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
+  .bars i.on { background: var(--color-primary); }
+  .list { margin: auto 0 var(--space-8); border-top: 1px solid var(--color-border); }
+  .list div { display: flex; align-items: center; gap: var(--space-4); height: 48px; border-bottom: 1px solid var(--color-border); font-size: var(--text-sm); }
+  .list div span:first-child { flex: 1; font-weight: var(--weight-medium); }
+
+  /* Deck: one title slide. */
+  .deck { display: none; height: 100%; padding: var(--space-16); flex-direction: column; }
+  html[data-platform="deck"] .page { display: none; }
+  html[data-platform="deck"] .deck { display: flex; }
+  .deck h1 { font-size: var(--text-display-sm); line-height: var(--leading-display-sm); font-weight: var(--weight-bold); margin-top: auto; }
+  .deck p { margin-top: var(--space-6); max-width: 40ch; font-size: var(--text-xl); line-height: var(--leading-xl); }
+  .deck .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-8); margin-top: auto; padding-top: var(--space-8); border-top: 1px solid var(--color-border); }
+  .deck .stats b { display: block; font-size: var(--text-2xl); line-height: var(--leading-2xl); color: var(--color-accent-text); }
+  .deck footer { display: flex; justify-content: space-between; margin-top: var(--space-6); font-size: var(--text-xs); letter-spacing: var(--tracking-label); }
+</style>
+</head>
+<body>
+  <main class="page">
+    <nav>
+      <span class="mark heading">{{name}}</span>
+      <a>Work</a><a>Pricing</a><a>Journal</a>
+      <span class="btn primary">Start a project</span>
+    </nav>
+    <section class="hero">
+      <div>
+        <h1 class="display">Launch with intent.</h1>
+        <p class="muted">{{description}}</p>
+        <div class="actions"><span class="btn primary">Start a project</span><span class="btn ghost">See the work</span></div>
+      </div>
+      <div class="card figure">
+        <div class="row"><span class="label muted">Weekly visitors</span><span class="chip ok num">+12.4%</span></div>
+        <div class="big display num">48,210</div>
+        <div class="bars"><i style="height:38%"></i><i style="height:52%"></i><i style="height:45%"></i><i style="height:64%"></i><i style="height:58%"></i><i class="on" style="height:86%"></i><i style="height:70%"></i></div>
+      </div>
+    </section>
+    <div class="list">
+      <div><span>Homepage refresh</span><span class="muted num">Oct 24</span><span class="chip ok">Live</span></div>
+      <div><span>Pricing test</span><span class="muted num">Oct 27</span><span class="chip wait">In review</span></div>
+    </div>
+  </main>
+  <main class="deck">
+    <span class="heading muted">{{name}}</span>
+    <h1 class="display">Launch with intent.</h1>
+    <p class="muted">{{description}}</p>
+    <div class="stats">
+      <div><b class="display num">48k</b><span class="muted">weekly visitors</span></div>
+      <div><b class="display num">+12%</b><span class="muted">since the redesign</span></div>
+      <div><b class="display num">3.2×</b><span class="muted">more sign-ups</span></div>
+    </div>
+    <footer class="muted"><span>Quarterly review</span><span class="num">01</span></footer>
+  </main>
+</body>
+</html>

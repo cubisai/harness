@@ -31,7 +31,7 @@ export interface DesignToolDeps {
   /** Save the next critique version; null when the text is unchanged. */
   saveCritique(threadId: string, markdown: string): { version: number } | null;
   /** Record the direction and put its style in place; returns what to tell the agent, throws on a bad style. */
-  setDirection(threadId: string, direction: DesignDirection, alternates?: string[]): string;
+  setDirection(threadId: string, direction: DesignDirection, alternates?: string[], theme?: "light" | "dark"): string;
   /** The style library as one line per style, for the direction tool's description. */
   styleIndex(): string;
 }
@@ -158,12 +158,20 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
         tier: z.enum(["quick", "working", "real-app"]).describe("How much discipline the prototype gets"),
         style: z.string().describe("A style id from the list (e.g. one of the ids before the colon)"),
         alternates: z.array(z.string()).optional().describe("Up to 2 runner-up style ids, best first"),
+        theme: z.enum(["light", "dark"]).optional().describe("Only when the user asks for a light or dark look; styles marked dark have a dark base"),
       },
       autoAllow: true,
       effect: "mutate",
       run: async (args) => {
         try {
-          return { text: deps.setDirection(threadId, { surface: args.surface, mode: args.mode, tier: args.tier, style: args.style }, args.alternates ?? []) };
+          return {
+            text: deps.setDirection(
+              threadId,
+              { surface: args.surface, mode: args.mode, tier: args.tier, style: args.style },
+              args.alternates ?? [],
+              args.theme,
+            ),
+          };
         } catch (err) {
           return { text: err instanceof Error ? err.message : String(err), isError: true };
         }
