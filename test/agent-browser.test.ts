@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { AgentBrowserBackend, formatHeadlessSnapshot, parseVersion, resolveAgentBrowser, supported, type RunCli } from "../src/main/browser/agent-browser";
 import { NO_NEW_LOGS } from "../src/main/browser/backend";
 import { browserTools } from "../src/main/browser/tools";
-import { tempDir } from "./helpers";
+import { runs, tempDir } from "./helpers";
 
 const ok = (data: unknown) => ({ code: 0, stdout: `${JSON.stringify({ success: true, data, error: null })}\n`, stderr: "" });
 const fail = (error: string) => ({ code: 1, stdout: `${JSON.stringify({ success: false, data: null, error })}\n`, stderr: "" });
@@ -158,7 +158,7 @@ describe("agent-browser backend", () => {
 
 const installed = resolveAgentBrowser();
 
-describe.skipIf(!installed || (process.platform === "win32" && !existsSync(installed)))("agent-browser backend, real session", () => {
+describe.skipIf(!runs(installed) || (process.platform === "win32" && !existsSync(installed!)))("agent-browser backend, real session", () => {
   it("opens a page, clicks, fills and reads it back, then closes", { timeout: 90_000 }, async () => {
     const b = new AgentBrowserBackend({ session: `cubiq-test-${process.pid}`, screenshotDir: tempDir() });
     try {

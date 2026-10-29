@@ -7,7 +7,7 @@ import { AgentBrowserBackend, resolveAgentBrowser } from "../src/main/browser/ag
 import { NO_LOGS, type BrowserBackend } from "../src/main/browser/backend";
 import { assertionScript, describeAssertion, formatReport, runReport, type ReportResult } from "../src/main/browser/report";
 import { browserTools } from "../src/main/browser/tools";
-import { tempDir } from "./helpers";
+import { runs, tempDir } from "./helpers";
 
 /** A backend whose query answers the URL expression and the assertion script from a table. */
 function fakeBackend(answers: { url?: unknown; checks?: unknown; logs?: string; shot?: string }, kind: "visible" | "headless" = "headless"): BrowserBackend {
@@ -157,7 +157,7 @@ describe("browser_report tool", () => {
 
 const cli = resolveAgentBrowser();
 
-describe.skipIf(!cli || process.platform === "win32")("browser_report in a real page (agent-browser)", () => {
+describe.skipIf(!runs(cli) || process.platform === "win32")("browser_report in a real page (agent-browser)", () => {
   it("passes value and count checks and fails text that isn't there", { timeout: 90_000 }, async () => {
     const b = new AgentBrowserBackend({ session: `cubiq-p55b-${process.pid}`, screenshotDir: tempDir() });
     try {

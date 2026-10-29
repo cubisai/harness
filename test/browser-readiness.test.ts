@@ -8,7 +8,7 @@ import { describeWait, NO_LOGS, NO_NEW_LOGS, staleRefMessage, waitBudget, waitNo
 import { BrowserController, type LogEntry } from "../src/main/browser/controller";
 import { collectPage, formatSnapshot, type PageSnapshot } from "../src/main/browser/snapshot";
 import { browserTools } from "../src/main/browser/tools";
-import { tempDir } from "./helpers";
+import { runs, tempDir } from "./helpers";
 
 // The controller imports electron at module load; there is no real one under vitest.
 vi.mock("electron", () => ({ webContents: { fromId: () => null } }));
@@ -156,7 +156,7 @@ describe("BrowserController readiness and refs", () => {
 
 const cli = resolveAgentBrowser();
 
-describe.skipIf(!cli || process.platform === "win32")("collectPage in a real page (agent-browser)", () => {
+describe.skipIf(!runs(cli) || process.platform === "win32")("collectPage in a real page (agent-browser)", () => {
   it("keeps refs across snapshots, never reuses one, scopes, and waits for delayed text", { timeout: 90_000 }, async () => {
     const b = new AgentBrowserBackend({ session: `cubiq-p54-${process.pid}`, screenshotDir: tempDir() });
     const collect = async (startAt: number, scope: string | null = null, interactive = false) =>
