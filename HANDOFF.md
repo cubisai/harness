@@ -2,21 +2,18 @@
 
 This replaces the old `HANDOFF.md`, `DESIGN-LIVE-HANDOFF.md`, `DESIGN-ENHANCE-HANDOFF.md` and `road-map-handoff.md`. Their full history is in git: `git show 2e2dd54:<file>`.
 
-## Active: issue tracker + PR flow in CubiQ (started 2026-10-29; continue here)
+## Active: issue tracker + PR flow in CubiQ (P1+P2 merged into m4 2026-10-30; P3 next)
 
-- **Plan:** `.ai/plans/issue-tracker.md`, approved for P1–P3. It holds the user's decisions and a file:line code map for P2/P3, so read it first.
-- **Where:**
-  - worktree `../aiharness-wt/issues`, branch `track/issues` off `m4`, not pushed;
-  - the Read/Write tools are refused there, so edit through Bash, or write in the scratchpad and `cp`;
-  - merge into `m4` after asking.
-- **P1 done (`0f97580`, full suite green):** bundled skills `resources/skills/{issue,issue-setup,triage,pr}`. They're user-invoked (`$issue`, …), cover GitHub, GitLab, Gitea and Local, and include templates and the label set.
-- **Next, P2:** `Thread.issue`, the `issues:list` / `issues:get` IPC over `gh` / `glab api` / `tea api` / local, the composer `/issue` flyout and the `#n title` chip, and a per-turn note: the full issue once, then `Working on #n: title`.
-- **Then P3:** the `/pr` command and the `set_thread_issue` agent tool.
-- **Live checks for P2:**
-  - the chip and the flyout, in dark and light themes at 900px;
-  - one OpenCode turn;
-  - ask before any Claude or Codex run.
-- **opencode:** Zen free DeepSeek hit "Free usage limit reached" at 10:21 UTC (retry after about 14 h). Until it resets, research goes to Haiku Explore and Claude does the edits.
+- **Plan:** `.ai/plans/issue-tracker.md` (code map still valid). Worktree `track/issues` merged (`dc2d986`) and removed.
+- **P2 as built (beyond the plan, user's calls 2026-10-30):**
+  - The four bundled issue skills are `/` commands, hidden from `$` and + → Skills (`isCommandSkill`, `commands.ts`): `/issue` opens the + menu's Issues flyout, `/issue <text>` files a new issue (sent as `New issue: …`), plus `/issue-setup`, `/triage` and `/pr`. `/pr` already sends the thread's issue number.
+  - `/issue-setup` asks Tracker / Labels / Templates in the app's own question card (`askInApp` in `store.ts`, `issueSetup.ts`). The `origin` URL comes from `issues:remote`; the skill acts on the answers without asking again. Codex has no question tool outside Plan (`default_mode_request_user_input` is off), which is why the app asks.
+  - `Thread.issue` (db migration 35, JSON column). The first turn of a session gets the full issue (`<issue>`, 4k cap), later turns get `(CubiQ: Working on #n: title)`, and automatic rounds get nothing (`issuePromptNote`, `service.ts`). Reads go through `gh|tea api repos/{owner}/{repo}/issues…` and `glab api projects/…` (`src/main/issues.ts`).
+  - Codex in Ask/Auto-edit has `networkAccess: false`, so `gh` fails with "token invalid". The setup skill tells it to retry escalated, and that worked live.
+- **Live-checked:** setup on Codex (wrote `.cubiq/`, created the 4 state labels on cubisai/harness); the picker, chip and full issue note on Codex, Claude Haiku and OpenCode (PGS Grove `PGA/deepseek-v4-flash-0731`); `/issue <idea>` filed #8. Test issues #8 and #9 are still open (we can't delete them; the repo owner will).
+- **Next, P3:** the `set_thread_issue` agent tool (the `issue` skill already calls it when it's there). Open question from the user: should `/issue-setup` add a short Issues block to `.cubiq/CUBIQ.md`, so agents offer to file an issue or open `/pr` once checks pass? The recommendation is to offer and let the user confirm, never act on its own. Ask before building it.
+- **Known nits:** the user bubble shows `$issue-setup` for command runs; the sidebar lists a thread waiting on the app's card under Running.
+- **opencode:** Zen free models are all capped ("Free usage limit reached"). Research goes to Haiku Explore; live OpenCode runs use PGS Grove or TokenHarbor `deepseek-v4.1-flash:free`.
 
 ## Where things stand
 - **Branch `m4`**, pushed: this session's work (R1–R4 of `.ai/plans/release-builds.md`, approved 2026-10-29: every PR push builds installers, Apple Silicon only, plus a shells-test fix) was merged in from `track/release`, along with the other session's `CLAUDE.md`, `DESIGN-MODE.md` and `docs/testing/`. No worktrees are open.
