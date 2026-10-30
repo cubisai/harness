@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { COMPOSER_COMMANDS, isCommandSkill, issueCommand, matchCommands } from "../src/renderer/src/commands";
+import { COMPOSER_COMMANDS, exactCommand, isCommandSkill, issueCommand, matchCommands } from "../src/renderer/src/commands";
 
 describe("COMPOSER_COMMANDS", () => {
   it("lists plan mode, the model picker, the issue picker, context, mcp, compact, a new thread, doctor and code mode (the other modes live on the mode chip)", () => {
@@ -27,6 +27,16 @@ describe("matchCommands", () => {
 
   it("returns nothing when no command matches", () => {
     expect(names("zzz")).toEqual([]);
+  });
+});
+
+describe("exactCommand", () => {
+  it("names the command a bare /name runs, so a Tab-completed \"/issue \" still runs on Enter", () => {
+    expect(exactCommand("/issue ")?.name).toBe("issue");
+    expect(exactCommand(" /new")?.name).toBe("new");
+    expect(exactCommand("/issue Login fails")).toBeNull();
+    expect(exactCommand("/iss")).toBeNull();
+    expect(exactCommand("issue")).toBeNull();
   });
 });
 

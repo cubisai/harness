@@ -8,7 +8,7 @@ import { chipLabel, commandQuery, composeMessage, skillQueryAt, toggleSkill } fr
 import { MAX_REFS, imageFiles, refLabel, refThumb, withRefs } from "../design/refs";
 import { elementLabel, withScope } from "../../../shared/selection";
 import { designDirName } from "../../../shared/design";
-import { isCommandSkill, issueCommand, matchCommands, type ComposerCommand } from "../commands";
+import { exactCommand, isCommandSkill, issueCommand, matchCommands, type ComposerCommand } from "../commands";
 import { folderPaths, mentionQueryAt, mentionsIn, rankMentions } from "../mentions";
 import { nextMode } from "../modes";
 import { findThread, useStore } from "../store";
@@ -325,6 +325,12 @@ export function Composer({
       setCaret(0);
       return;
     }
+    // A bare "/name" (what Tab leaves behind) runs that command, as Enter in the menu does.
+    const bare = !picked.length && exactCommand(text);
+    if (bare) {
+      runCommand(bare);
+      return;
+    }
     const refPaths = refs.map((r) => r.path);
     const message = withRefs(composeMessage(text, chips), refPaths);
     if (!message && !picked.length) return;
@@ -427,7 +433,18 @@ export function Composer({
         setMenuIndex((i) => (i - 1 + commandMatches.length) % commandMatches.length);
         return;
       }
-      if (e.key === "Enter" || e.key === "Tab") {
+      // Tab completes the name ("/name "), so an argument can follow; Enter runs it.
+      if (e.key === "Tab") {
+        e.preventDefault();
+        const c = commandMatches[menuIndex];
+        if (c) {
+          const next = `/${c.name} `;
+          pendingCaret.current = next.length;
+          setText(next);
+        }
+        return;
+      }
+      if (e.key === "Enter") {
         e.preventDefault();
         const c = commandMatches[menuIndex];
         if (c) runCommand(c);

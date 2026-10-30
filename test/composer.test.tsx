@@ -216,6 +216,24 @@ describe("queued message bubbles", () => {
     }
   };
 
+  it("shows the skills a / command runs as /name, other skills as $name", () => {
+    const state = useStore.getInitialState();
+    const saved = state.skills;
+    try {
+      state.skills = [
+        { name: "issue-setup", origin: "bundled", description: "" },
+        { name: "review", origin: "bundled", description: "" },
+      ] as typeof state.skills;
+      withOutbox({ t: [{ text: "go", skills: ["issue-setup", "review"] }] }, () => {
+        const html = renderToStaticMarkup(<ThreadView threadId="t" />);
+        expect(html).toContain('<span class="skill-chip">/issue-setup</span>');
+        expect(html).toContain('<span class="skill-chip">$review</span>');
+      });
+    } finally {
+      state.skills = saved;
+    }
+  });
+
   it("gives each queued message a remove button", () => {
     withOutbox({ t: [{ text: "first" }, { text: "second" }] }, () => {
       const html = renderToStaticMarkup(<ThreadView threadId="t" />);

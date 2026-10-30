@@ -10,6 +10,7 @@ import { anchorDelta, anchorFor, collapseTarget, stillPinned, trimmedReserve, ty
 import { displayOrder } from "../event-order";
 import { type FileRef, parseFileRef } from "../fileref";
 import { emptyLive, liveReasoningMode, visibleItems } from "../live";
+import { isCommandSkill } from "../commands";
 import { linkUrls, Markdown } from "../markdown";
 import { LinkCards, LinkChip } from "./LinkChip";
 import { relativeToThread, useStore } from "../store";
@@ -46,15 +47,20 @@ function LiveReasoning({ text, newest }: { text: string; newest: boolean }) {
 }
 const NO_QUEUE: { text: string; skills?: string[] }[] = [];
 
-/** The skills a message ran with, as chips before its text. */
+/** The skills a message ran with, as chips before its text: "/issue" for the skills a "/" command runs, "$name" for the rest. */
 function SkillChips({ names }: { names: string[] }) {
+  const skills = useStore((s) => s.skills);
   return (
     <>
-      {names.map((n) => (
-        <span key={n} className="skill-chip">
-          ${n}
-        </span>
-      ))}
+      {names.map((n) => {
+        const entry = skills.find((s) => s.name === n);
+        return (
+          <span key={n} className="skill-chip">
+            {entry && isCommandSkill(entry) ? "/" : "$"}
+            {n}
+          </span>
+        );
+      })}
     </>
   );
 }

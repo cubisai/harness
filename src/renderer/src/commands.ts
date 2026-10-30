@@ -38,6 +38,12 @@ export function issueCommand(text: string): { skill: string; args: string } | nu
   return m[1] === "issue" && !args ? null : { skill: m[1]!, args };
 }
 
+/** The command a bare "/name" (spaces around it allowed) names exactly, so a Tab-completed command still runs on Enter; null for anything else. */
+export function exactCommand(text: string): ComposerCommand | null {
+  const t = text.trim();
+  return t.startsWith("/") ? (COMPOSER_COMMANDS.find((c) => c.name === t.slice(1)) ?? null) : null;
+}
+
 /** Commands matching the query: name-prefix matches first, then any name substring. */
 export function matchCommands(query: string): ComposerCommand[] {
   const q = query.toLowerCase();
