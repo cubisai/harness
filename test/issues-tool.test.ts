@@ -1,9 +1,9 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { IssueSummary } from "../src/shared/types";
 import type { CreatedIssue, NewIssue } from "../src/main/issues";
-import { ISSUE_CREATE_TOOL, issueTools } from "../src/main/issues-tool";
+import type { IssueDetail, IssueResult, IssueSummary } from "../src/shared/types";
+import { ISSUE_CREATE_TOOL, issueTools, SET_THREAD_ISSUE_TOOL } from "../src/main/issues-tool";
 import { tempDir } from "./helpers";
 
 function setup(result: CreatedIssue) {
@@ -64,3 +64,35 @@ describe("issue_create", () => {
     expect(notice).not.toHaveBeenCalled();
   });
 });
+
+describe("set_thread_issue", () => {
+  const ISSUE: IssueResult<IssueDetail> = {
+    ok: true,
+    tracker: "github",
+    value: { number: 7, title: "Add controls", url: "https://github.com/o/r/issues/7", labels: ["enhancement"], commentCount: 2, body: "b", comments: [{ author: "a", createdAt: "", body: "x" }, { author: "b", createdAt: "", body: "y" }] },
+  };
+
+  function tools(result: IssueResult<IssueDetail>) {
+    const project = tempDir();
+    const get = vi.fn(async (_dir: string, _n: number) => result);
+    const link = vi.fn((_id: string, _issue: IssueSummary) => {});
+    const list = issueTools({ folders: () => ({ project, thread: project }), screenshotsDir: tempDir(), link, notice: () => {}, get }, "t1");
+    return { tool: list.find((t) => t.name === SET_THREAD_ISSUE_TOOL)!, get, link, project, names: list.map((t) => t.name) };
+  }
+
+  it("comes with issue_create, reads the issue and makes it the thread's", async () => {
+    const { tool, get, link, project, names } = tools(ISSUE);
+    expect(names).toEqual([ISSUE_CREATE_TOOL, SET_THREAD_ISSUE_TOOL]);
+    const out = await tool.run({ number: 7 });
+    expect(get).toHaveBeenCalledWith(project, 7);
+    expect(link).toHaveBeenCalledWith("t1", { number: 7, title: "Add controls", url: "https://github.com/o/r/issues/7", labels: ["enhancement"], commentCount: 2 });
+    expect(out).toEqual({ text: "This thread now works on #7: Add controls" });
+  });
+
+  it("passes the tracker's error back and links nothing", async () => {
+    const { tool, link } = tools({ ok: false, error: "failed", message: "Couldn't read issue #99." });
+    expect(await tool.run({ number: 99 })).toEqual({ text: "Couldn't read issue #99.", isError: true });
+    expect(link).not.toHaveBeenCalled();
+  });
+});
+

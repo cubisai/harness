@@ -50,6 +50,14 @@ describe("Settings IA", () => {
     expect(html.skills).toContain("Open MCP Servers");
   });
 
+  it("has an Issues section in Threads whose File issue? cards switch reads On when unset", () => {
+    expect(SETTINGS_GROUPS.find((g) => g.id === "threads")?.sections).toContain("Issues");
+    expect(html.threads).toContain("File issue? cards");
+    const off = renderToStaticMarkup(<SettingsGroupContent group="threads" settings={{ ...settings, issueOffers: false }} />);
+    expect(html.threads).toMatch(/<button class="on">On<\/button><button class="">Off<\/button>/);
+    expect(off).toMatch(/<button class="">On<\/button><button class="on">Off<\/button>/);
+  });
+
   it("keeps Code mode in Experiments, with Read-only + MCP marked Recommended", () => {
     expect(SETTINGS_GROUPS.find((g) => g.id === "experiments")?.sections).toEqual(["Code mode"]);
     expect(html.experiments).not.toContain("Browser tools");

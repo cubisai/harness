@@ -44,7 +44,7 @@ const isCheap = (m: { id: string; label: string }) => CHEAP_MODEL_HINTS.some((h)
 /** The left-nav groups, in order, and the sections each shows. */
 export const SETTINGS_GROUPS = [
   { id: "appearance", label: "Appearance", sections: ["Appearance"] },
-  { id: "threads", label: "Threads", sections: ["New threads", "Commit messages", "Background", "Editor"] },
+  { id: "threads", label: "Threads", sections: ["New threads", "Commit messages", "Background", "Issues", "Editor"] },
   { id: "agents", label: "Agents & Providers", sections: ["Providers", "Agents", "Antigravity"] },
   { id: "skills", label: "Skills & MCP", sections: ["Skills", "MCP servers"] },
   { id: "data", label: "Data & Security", sections: ["Data"] },
@@ -349,6 +349,20 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
               </div>
             </div>
             <p className="note">Alt+Enter sends a message to a new thread in the background. With a limit, extra background threads wait in the Running list and start when one finishes. With Own worktree on, each starts on its own git branch so its edits stay off your checkout.</p>
+          </section>
+          <section>
+            <h3>Issues</h3>
+            <div className="row">
+              <span className="label">File issue? cards</span>
+              <div className="segmented">
+                {([true, false] as const).map((on) => (
+                  <button key={String(on)} className={(settings.issueOffers ?? true) === on ? "on" : ""} onClick={() => update({ issueOffers: on })}>
+                    {on ? "On" : "Off"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="note">In projects with an issue tracker (set up with /issue-setup), the background model reads each reply that mentions a problem. When the reply reports one it didn't fix, a File issue? card offers to file it. Each check costs a few hundred background-model tokens.</p>
           </section>
           <section>
             <h3>Editor</h3>

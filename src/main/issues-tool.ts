@@ -1,12 +1,15 @@
 import { isAbsolute, join } from "node:path";
 import { z } from "zod";
-import type { IssueSummary } from "../shared/types";
+import type { IssueDetail, IssueResult, IssueSummary } from "../shared/types";
 import type { HarnessTool, ToolOutput } from "./agents/types";
 import { resolveInside } from "./artifacts";
-import { createIssue, MAX_ATTACHMENTS, type CliRunner, type CreatedIssue, type NewIssue } from "./issues";
+import { createIssue, getIssue, MAX_ATTACHMENTS, type CliRunner, type CreatedIssue, type NewIssue } from "./issues";
 
 /** The harness tool an agent files a new issue with, in projects that have a tracker (`.cubiq/issues.json`). */
 export const ISSUE_CREATE_TOOL = "issue_create";
+
+/** The harness tool that points the thread at an existing issue, so the composer shows its chip. */
+export const SET_THREAD_ISSUE_TOOL = "set_thread_issue";
 
 export interface IssueToolDeps {
   /** The project folder (tracker config, CLI cwd) and the thread's folder (where attachments may come from); null when the thread is gone. */
@@ -18,6 +21,7 @@ export interface IssueToolDeps {
   /** Tell the user in the thread, with the issue's link. */
   notice(threadId: string, text: string): void;
   create?: (projectDir: string, issue: NewIssue, run?: CliRunner) => Promise<CreatedIssue>;
+  get?: (projectDir: string, n: number, run?: CliRunner) => Promise<IssueResult<IssueDetail>>;
 }
 
 const error = (text: string): ToolOutput => ({ text, isError: true });
@@ -37,6 +41,7 @@ function allowedPath(p: string, roots: string[]): string | null {
 
 export function issueTools(deps: IssueToolDeps, threadId: string): HarnessTool[] {
   const create = deps.create ?? createIssue;
+  const get = deps.get ?? getIssue;
   return [define({
     name: ISSUE_CREATE_TOOL,
     description:
@@ -73,6 +78,23 @@ export function issueTools(deps: IssueToolDeps, threadId: string): HarnessTool[]
       const lines = [`Filed #${issue.number}: ${issue.title}`, ...(issue.url ? [issue.url] : []), `Labels: ${issue.labels.join(", ")}`];
       if (leftOut.length) lines.push(`Not attached: ${leftOut.join("; ")}`);
       return { text: lines.join("\n") };
+    },
+  }), define({
+    name: SET_THREAD_ISSUE_TOOL,
+    description: "Make an existing issue this thread's issue (its chip shows in the composer), e.g. after the user picks one to work on. Takes the issue number.",
+    input: {
+      number: z.number().int().positive(),
+    },
+    autoAllow: true,
+    effect: "mutate",
+    async run(args) {
+      const folders = deps.folders(threadId);
+      if (!folders) return error("This thread has no project folder.");
+      const res = await get(folders.project, args.number);
+      if (!res.ok) return error(res.message);
+      const { number, title, url, labels } = res.value;
+      deps.link(threadId, { number, title, ...(url ? { url } : {}), labels, commentCount: res.value.comments.length });
+      return { text: `This thread now works on #${number}: ${title}` };
     },
   })];
 }

@@ -299,6 +299,15 @@ describe("SettingsStore codeMode", () => {
 
   const fresh = () => join(tempDir(), "settings.json");
 
+  it("keeps the File issue? cards switch, and ignores anything but a boolean", () => {
+    const s = new SettingsStore(fresh(), box);
+    expect(s.get().issueOffers).toBeUndefined();
+    s.update({ issueOffers: false });
+    expect(s.get().issueOffers).toBe(false);
+    s.update({ issueOffers: "no" as never });
+    expect(s.get().issueOffers).toBe(false);
+  });
+
   it("accepts off/on and ignores an unknown value, including the removed only", () => {
     const s = new SettingsStore(fresh(), box);
     s.update({ codeMode: "on" });

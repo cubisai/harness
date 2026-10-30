@@ -1347,7 +1347,7 @@ async function main(): Promise<void> {
   service.setLearner(learner);
   // The "File issue?" card: in a project with a tracker, the background model reads a finished reply that names a problem.
   service.setIssueOffer(async ({ thread, cwd, request, answer }) => {
-    if (!readIssueConfig(cwd)) return null;
+    if (settings.get().issueOffers === false || !readIssueConfig(cwd)) return null;
     const bg = pickBackground({ learn: { ...LEARN_DEFAULTS, ...settings.get().learn }, projectId: thread.projectId, drivers: service.allDrivers(), thread: { agent: thread.agent, model: thread.model } });
     if (!bg) return null;
     const { text, tokens } = await backgroundShot(bg, offerPrompt(request, answer), AbortSignal.timeout(60_000));

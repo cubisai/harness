@@ -227,6 +227,8 @@ export interface Settings {
   uiBlocks?: boolean;
   /** Fetch pictures for `ui:cards` rows (a page's preview image, a remote image) from public https sites. Off unless set: it reaches the network. */
   linkPreviews?: boolean;
+  /** "File issue?" cards: in a project with an issue tracker, a cheap background model reads replies that mention a problem. On unless set to false. */
+  issueOffers?: boolean;
   /** The launch splash clip; unset means "agent". */
   splash?: Splash;
   /** Self-improve (scorecard, lessons, verified promotion): off unless a project is listed. SettingsStore.get() always fills it in. */
