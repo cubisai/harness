@@ -721,6 +721,8 @@ export type ThreadEvent = (
   | { kind: "context-breakdown"; rows: { label: string; tokens: number }[]; total: number | null; estimated: boolean }
   | { kind: "error"; message: string }
   | { kind: "notice"; text: string; /** The evidence gate's flags, when this notice is one. */ evidence?: string[] }
+  /** After a turn whose reply reports a problem it didn't fix (project with an issue tracker): the "File issue?" card. */
+  | { kind: "issue-offer"; type: IssueType; title: string; summary: string }
   | { kind: "turn-start"; turnId: string; agent: string; model: string }
   | { kind: "plan"; entries: PlanEntry[] }
   /** The agent presented a plan and waits for the user's decision. */

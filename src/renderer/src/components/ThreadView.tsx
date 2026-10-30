@@ -644,6 +644,59 @@ function ChangesCard({ changes }: { changes: TurnChanges }) {
   );
 }
 
+/** Offers the user already dismissed, as "thread:seq", kept across restarts (newest 200). */
+const DISMISSED_OFFERS = "cubiq.dismissedIssueOffers";
+
+function dismissedOffers(): string[] {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(DISMISSED_OFFERS) ?? "[]");
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * "File issue? <title>" under a reply that named a problem it didn't fix (the app's
+ * reply check). File sends the user's yes, so the agent files it; Dismiss hides it.
+ * Gone once a later message is sent: the offer was about that reply.
+ */
+function IssueOfferCard({ stored, offer, threadId }: { stored: StoredEvent; offer: Extract<ThreadEvent, { kind: "issue-offer" }>; threadId: string }) {
+  const key = `${threadId}:${stored.seq}`;
+  const [dismissed, setDismissed] = useState(() => dismissedOffers().includes(key));
+  const answered = useStore((s) => (s.events[threadId] ?? []).some((x) => x.event.kind === "user" && x.seq > stored.seq));
+  const running = useStore((s) => Boolean(s.running[threadId]));
+  if (dismissed || answered) return null;
+  const dismiss = () => {
+    try {
+      localStorage.setItem(DISMISSED_OFFERS, JSON.stringify([...dismissedOffers(), key].slice(-200)));
+    } catch {
+      // Hidden for this session anyway.
+    }
+    setDismissed(true);
+  };
+  const file = () => {
+    const text = [`Yes, file an issue (${offer.type}): ${offer.title}`, offer.summary].filter(Boolean).join("\n\n");
+    const s = useStore.getState();
+    if (running) s.enqueue(threadId, text, []);
+    else void s.send(text, [], threadId);
+  };
+  return (
+    <div className="changes-card issue-offer" title={offer.summary || offer.title}>
+      <span className="changes-count">File issue?</span>
+      <span className="issue-offer-title">{offer.title}</span>
+      <span className="issue-offer-type">{offer.type}</span>
+      <span className="grow" />
+      <button className="button ghost" onClick={dismiss}>
+        Dismiss
+      </button>
+      <button className="button primary" onClick={file}>
+        File
+      </button>
+    </div>
+  );
+}
+
 /** Most chips in a turn's Sources row. */
 const SOURCES_MAX = 6;
 
@@ -783,6 +836,8 @@ export function EventRow({ stored, results, children, running, threadId }: { sto
       return <div className="error-card">{e.message}</div>;
     case "notice":
       return <div className="notice">{e.text}</div>;
+    case "issue-offer":
+      return threadId ? <IssueOfferCard stored={stored} offer={e} threadId={threadId} /> : null;
     case "plan": {
       // The live list is in the todo dock; history keeps one quiet line that opens to the list.
       const { done, total } = todoProgress(e.entries);

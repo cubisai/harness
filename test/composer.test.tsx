@@ -234,6 +234,25 @@ describe("queued message bubbles", () => {
     }
   });
 
+  it("shows an issue offer as a File issue? card with File and Dismiss, gone once a later message exists", () => {
+    const state = useStore.getInitialState();
+    const saved = state.events;
+    const offer = { kind: "issue-offer" as const, type: "bug" as const, title: "isEven returns false for even numbers", summary: "util.js:2" };
+    const ev = (seq: number, event: unknown) => ({ seq, createdAt: seq, event }) as (typeof state.events)[string][number];
+    try {
+      state.events = { t: [ev(1, { kind: "user", text: "go" }), ev(2, { kind: "assistant-text", text: "It fails." }), ev(3, offer)] };
+      const html = renderToStaticMarkup(<ThreadView threadId="t" />);
+      expect(html).toContain("File issue?");
+      expect(html).toContain("isEven returns false for even numbers");
+      expect(html).toContain(">Dismiss</button>");
+      expect(html).toContain(">File</button>");
+      state.events = { t: [...state.events.t!, ev(4, { kind: "user", text: "next" })] };
+      expect(renderToStaticMarkup(<ThreadView threadId="t" />)).not.toContain("File issue?");
+    } finally {
+      state.events = saved;
+    }
+  });
+
   it("gives each queued message a remove button", () => {
     withOutbox({ t: [{ text: "first" }, { text: "second" }] }, () => {
       const html = renderToStaticMarkup(<ThreadView threadId="t" />);

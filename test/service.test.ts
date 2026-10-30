@@ -1445,3 +1445,66 @@ describe("Chats (no project)", () => {
     expect(service.createThread(other.id).worktreePath ?? null).toBeNull();
   });
 });
+
+describe("issue offer after a turn", () => {
+  const BUG = { type: "bug" as const, title: "isEven returns false for even numbers", summary: "util.js:2" };
+  const settle = () => new Promise((r) => setTimeout(r, 20));
+
+  it("puts the offer after a finished turn whose reply names a problem, and passes request and reply", async () => {
+    const { store, service, thread } = setup(async (input) => {
+      input.onEvent({ kind: "assistant-text", text: "sum works, but node test.js fails on a pre-existing bug in util.js." });
+      input.onEvent({ kind: "turn-end", costUsd: null, inputTokens: 1, outputTokens: 1, durationMs: 1 });
+    });
+    const calls: { request: string; answer: string }[] = [];
+    service.setIssueOffer(async (o) => (calls.push({ request: o.request, answer: o.answer }), BUG));
+    await service.send({ threadId: thread.id, text: "Add sum" });
+    await settle();
+    expect(calls).toEqual([{ request: "Add sum", answer: "sum works, but node test.js fails on a pre-existing bug in util.js." }]);
+    expect(store.listEvents(thread.id).at(-1)?.event).toEqual({ kind: "issue-offer", ...BUG });
+  });
+
+  it("skips replies with no problem words, turns that filed, and offers the user has moved past", async () => {
+    let reply = "All done, tests pass.";
+    let tools: string[] = [];
+    const { store, service, thread } = setup(async (input) => {
+      for (const name of tools) input.onEvent({ kind: "tool-use", toolUseId: name, name, summary: "" });
+      input.onEvent({ kind: "assistant-text", text: reply });
+      input.onEvent({ kind: "turn-end", costUsd: null, inputTokens: 1, outputTokens: 1, durationMs: 1 });
+    });
+    let release: (v: typeof BUG) => void = () => {};
+    const check = vi.fn(() => new Promise<typeof BUG>((r) => (release = r)));
+    service.setIssueOffer(check);
+    await service.send({ threadId: thread.id, text: "one" });
+    expect(check).not.toHaveBeenCalled();
+    reply = "Filed #3 for the failing test.";
+    tools = ["mcp__cubiq__issue_create"];
+    await service.send({ threadId: thread.id, text: "two" });
+    expect(check).not.toHaveBeenCalled();
+    tools = [];
+    reply = "It fails on an unrelated bug.";
+    await service.send({ threadId: thread.id, text: "three" });
+    expect(check).toHaveBeenCalledTimes(1);
+    // The user sends again before the check answers: the late offer is dropped.
+    reply = "Fine now.";
+    await service.send({ threadId: thread.id, text: "four" });
+    release(BUG);
+    await settle();
+    expect(store.listEvents(thread.id).some((e) => e.event.kind === "issue-offer")).toBe(false);
+  });
+
+  it("checks nothing after a stopped turn", async () => {
+    const { service, thread } = setup(async (input) => {
+      await new Promise((r) => setTimeout(r, 30));
+      input.onEvent({ kind: "assistant-text", text: "It fails." });
+      input.onEvent({ kind: "turn-end", costUsd: null, inputTokens: 1, outputTokens: 1, durationMs: 1 });
+    });
+    const check = vi.fn(async () => BUG);
+    service.setIssueOffer(check);
+    const sending = service.send({ threadId: thread.id, text: "go" });
+    await new Promise((r) => setTimeout(r, 10));
+    service.interrupt(thread.id);
+    await sending;
+    expect(check).not.toHaveBeenCalled();
+  });
+});
+

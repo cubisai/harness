@@ -15,6 +15,8 @@ import { serveStylePreview } from "./design/style-preview";
 import { DesignWatcher } from "./design/watch";
 import { readIssueConfig, readIssueSummary } from "./issues";
 import { issueTools } from "./issues-tool";
+import { offerPrompt, parseOffer } from "./issue-offer";
+import { backgroundShot, pickBackground } from "./learn/background";
 import { listDesignFiles, listDesignPages, pageDevice } from "./design/pages";
 import { readTier } from "../shared/tiers";
 import { readTarget } from "../shared/comments";
@@ -82,7 +84,7 @@ import { createExtractor } from "./memory/extractor";
 import { createLearner, type Learner, today } from "./learn";
 import { LearnDb } from "./learn/db";
 import { createVerifier } from "./learn/verify-app";
-import type { LessonAction } from "../shared/learn";
+import { LEARN_DEFAULTS, type LessonAction } from "../shared/learn";
 import { MemorySnapshots, PENDING_SESSION } from "./memory/snapshot";
 import { MEMORY_READ_TOOL, MEMORY_WRITE_TOOL, memoryReadTool, memoryWriteTool } from "./memory/tool";
 import { askUserTool, questionAnswerOf } from "./questions";
@@ -1343,6 +1345,15 @@ async function main(): Promise<void> {
   });
   learnerRef = learner;
   service.setLearner(learner);
+  // The "File issue?" card: in a project with a tracker, the background model reads a finished reply that names a problem.
+  service.setIssueOffer(async ({ thread, cwd, request, answer }) => {
+    if (!readIssueConfig(cwd)) return null;
+    const bg = pickBackground({ learn: { ...LEARN_DEFAULTS, ...settings.get().learn }, projectId: thread.projectId, drivers: service.allDrivers(), thread: { agent: thread.agent, model: thread.model } });
+    if (!bg) return null;
+    const { text, tokens } = await backgroundShot(bg, offerPrompt(request, answer), AbortSignal.timeout(60_000));
+    learnDb.recordRun({ purpose: "issue", projectId: thread.projectId, day: today(Date.now()), agent: bg.driver.id, model: bg.model, tokens, estimated: true, ok: true, escalated: false, at: Date.now() });
+    return parseOffer(text);
+  });
   service.setMemoryUpdates((projectId, threadId) => memoryUpdateFor(projectId, threadId));
   ipcMain.handle("learn:scores", (_e, threadId: string) => learner.scores(threadId));
   ipcMain.handle("learn:overview", (_e, projectId: string) => learner.overview(projectId));

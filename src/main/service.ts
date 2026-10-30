@@ -95,6 +95,7 @@ import type { TurnDelta } from "./memory/extractor";
 import type { Learner } from "./learn";
 import { answersMessage } from "./questions";
 import { getIssue, issueLine, issueNote, listIssues, originRemote, readIssueConfig } from "./issues";
+import { filedThisTurn, type IssueOffer, mightReportProblem } from "./issue-offer";
 import { samePlan } from "../shared/plan";
 import { canonicalTool } from "../shared/tools";
 
@@ -142,6 +143,8 @@ export class Service {
   private turnListener: ((d: TurnDelta) => void) | null = null;
   /** Self-improve: scores turns of opted-in projects (null = off everywhere). */
   private learner: Learner | null = null;
+  /** The reply check behind the "File issue?" card; null turns it off. */
+  private issueOffer: ((o: { thread: Thread; cwd: string; request: string; answer: string }) => Promise<IssueOffer | null>) | null = null;
   /** A live session's memory changes since its frozen block, as a per-turn prefix (null = off). */
   private memoryUpdates: ((projectId: string, threadId: string) => string | null) | null = null;
   /** Each thread's last user message seq, so an automatic fix round scores as part of the turn it fixes. */
@@ -683,6 +686,11 @@ export class Service {
     this.learner = learner;
   }
 
+  /** The reply check run after a finished turn (it answers null where the project has no tracker); null turns it off. */
+  setIssueOffer(fn: ((o: { thread: Thread; cwd: string; request: string; answer: string }) => Promise<IssueOffer | null>) | null): void {
+    this.issueOffer = fn;
+  }
+
   /** Where a resumed session asks what memory changed since its frozen block; null turns it off. */
   setMemoryUpdates(fn: ((projectId: string, threadId: string) => string | null) | null): void {
     this.memoryUpdates = fn;
@@ -947,9 +955,10 @@ export class Service {
           if (event.kind === "tool-use") {
             const command = (event.payload as { command?: unknown } | undefined)?.command;
             if (typeof command === "string") commands.push(command);
+            // Every turn's tool names: the issue check skips a turn that filed one, with or without self-improve.
+            toolNames.push(event.name);
             if (learner) {
               toolCalls++;
-              toolNames.push(event.name);
               if (typeof command === "string") commandOf.set(event.toolUseId, command);
             }
           }
@@ -1154,6 +1163,21 @@ export class Service {
           );
         } catch {
           // Scoring is best-effort and never touches the turn.
+        }
+      }
+      // A reply that reports a problem it didn't fix gets a "File issue?" card, after the turn, off its critical path.
+      const check = this.issueOffer;
+      if (check && turnEnded && !controller.signal.aborted && !compact && !req.designFixRound && !followUp?.checkRound && thread.kind !== "design" && !filedThisTurn(toolNames)) {
+        const last = [...this.store.listEvents(thread.id)].reverse().find((e) => e.event.kind === "assistant-text" && e.seq > userEvent.seq);
+        const answer = last && last.event.kind === "assistant-text" ? last.event.text : "";
+        if (mightReportProblem(answer)) {
+          void check({ thread: this.store.getThread(thread.id), cwd, request: scrub(req.text), answer: scrub(answer) })
+            .then((offer) => {
+              // Stale once the user has moved on: a newer message makes the card noise.
+              const newer = this.store.listEvents(thread.id).some((e) => e.event.kind === "user" && e.seq > userEvent.seq);
+              if (offer && !newer) this.emit(thread.id, { kind: "issue-offer", ...offer });
+            })
+            .catch(() => {});
         }
       }
     } finally {

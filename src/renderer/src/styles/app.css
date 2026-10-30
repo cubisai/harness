@@ -3582,6 +3582,9 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 .changes-card .del { color: var(--danger); font-family: var(--mono); font-size: 12px; }
 .changes-card .grow { flex: 1; }
 .changes-card .button { height: 24px; }
+.issue-offer-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+.issue-offer-type { flex-shrink: 0; padding: 0 6px; border-radius: var(--radius-s); background: var(--bg-chip); color: var(--text-tertiary); font-size: 11.5px; }
+.issue-offer .changes-count { flex-shrink: 0; }
 
 .code-block { border: 1px solid var(--hairline); border-radius: var(--radius-m); overflow: hidden; margin: 0 0 12px; }
 .code-head { display: flex; align-items: center; justify-content: space-between; padding: 3px 6px 3px 12px; background: var(--bg-subtle); border-bottom: 1px solid var(--hairline); font: 11px var(--mono); color: var(--text-tertiary); }
