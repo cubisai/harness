@@ -852,6 +852,8 @@ export const useStore = create<State>((set, get) => ({
       await get().send([message, text].filter(Boolean).join("\n\n"), [skill], threadId);
       return;
     }
+    // A description is a new issue, said outright: the thread's own issue note mustn't turn it into "open #n".
+    if (skill === "issue" && text && !/^(#?\d+|https?:\/\/\S+)$/.test(text)) text = `New issue: ${text}`;
     if (skill === "pr" && !text) {
       const issue = id ? findThread(s.threads, id)?.issue : s.draft.issue?.projectId === s.selectedProjectId ? s.draft.issue.issue : undefined;
       if (issue) text = String(issue.number);

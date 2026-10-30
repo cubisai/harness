@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 Read `.cubiq/issue-tracker.md` first: it says where issues live and which commands to use. Label names are in `.cubiq/issues.json`. If either file is missing, stop and tell the user to run `/issue-setup`; don't fall back to local files on your own. Follow `STYLE.md` (next to this file) for every title, body, label and comment.
 
-If the message says `Working on #<n>`, the thread already has an issue: use it unless the user names another.
+If the message says `Working on #<n>`, the thread already has an issue: **List** and **Open** start from it unless the user names another. It never changes the mode: a description, or a message that starts `New issue:` (the `/issue <description>` command), is always **New**.
 
 Pick the mode from the argument:
 
