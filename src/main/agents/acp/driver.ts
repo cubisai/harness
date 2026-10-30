@@ -984,7 +984,7 @@ export function createAcpDriver(
         // In tool mode the skill tool rides on /mcp-skills, alongside the browser tools.
         const skillsTarget = capabilities.skillsDelivery.mode === "tool" ? (skillsUrl ?? url) : url;
         const target = routed ? (routedUrl ?? skillsUrl ?? url) : skillsTarget;
-        const code = (deps.codeMode?.(input.threadId) ?? "off") !== "off" && !hasOwnCodeMode(l.init);
+        const code = (deps.codeMode?.(input.threadId) ?? "off") !== "off";
         const shells = input.tools.some((t) => (SHELL_TOOL_NAMES as readonly string[]).includes(t.name)) ? input.threadId : undefined;
         const toolUrl = withBrowserOnDemandFlag(withShells(withCode(withThread(withProject(target, input.projectId), input.threadId), code ? input.threadId : undefined), shells), input.tools.some((t) => t.name === BROWSER_CALL));
         servers.push({ type: "http", name: TOOL_SERVER_NAME, url: toolUrl, headers: [{ name: "Authorization", value: `Bearer ${token}` }] } as { name: string });

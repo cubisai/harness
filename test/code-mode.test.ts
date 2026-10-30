@@ -286,6 +286,7 @@ describe("ACP helpers", () => {
     expect(acpCodeHint({ agentInfo: { name: "OpenCode", version: "1.19.0" } }, true)).toBe(CODE_HINT);
     expect(acpCodeHint({ agentInfo: { name: "OpenCode", version: "2.2.0" } }, false)).toBe("");
     expect(OWN_CODE_MODE_HINT).toContain("execute");
+    expect(OWN_CODE_MODE_HINT).toContain("tools.cubiq.run_code");
     expect(CODE_HINT_DEFERRED.startsWith(CODE_HINT)).toBe(true);
     expect(CODE_HINT_DEFERRED).toContain('search for "run_code"');
   });
