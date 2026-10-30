@@ -503,6 +503,51 @@ export interface Thread {
   designDirection?: DesignDirection;
   /** The expert this thread was summoned with (ExpertDef id); absent = none. */
   expertId?: string;
+  /** The issue this thread works on, picked with /issue; absent = none. */
+  issue?: ThreadIssue;
+}
+
+export type IssueTracker = "github" | "gitlab" | "gitea" | "local";
+export type IssueType = "bug" | "enhancement" | "documentation";
+/** The state labels the /issue picker groups by, in its order. */
+export type IssueState = "ready-for-agent" | "ready-for-human" | "needs-triage" | "needs-info";
+
+/** An open issue as the /issue picker lists it. `type` and `state` are label roles, read through `.cubiq/issues.json`. */
+export interface IssueSummary {
+  number: number;
+  title: string;
+  url?: string;
+  labels: string[];
+  commentCount: number;
+  type?: IssueType;
+  state?: IssueState;
+}
+
+export interface IssueComment {
+  author: string;
+  createdAt: string;
+  body: string;
+}
+
+/** One issue with its body and comments, newest first. */
+export interface IssueDetail extends IssueSummary {
+  body: string;
+  comments: IssueComment[];
+}
+
+/** An issues read: the value, or why it failed ("no-config": the project has no `.cubiq/issues.json`). */
+export type IssueResult<T> =
+  | { ok: true; tracker: IssueTracker; value: T }
+  | { ok: false; error: "no-config" | "cli-missing" | "signed-out" | "failed"; message: string };
+
+/** A thread's issue. `briefed`: the agent got the full issue once; later turns get one line. */
+export interface ThreadIssue {
+  number: number;
+  title: string;
+  url?: string;
+  labels: string[];
+  source: IssueTracker;
+  briefed?: boolean;
 }
 
 /**
@@ -1189,6 +1234,12 @@ export interface UnskilledApi {
   setDesignSystem(threadId: string, id: string | null): Promise<Thread>;
   /** Pick a design thread's prototype tier (null = Working); the next turn tells the agent. */
   setPrototypeTier(threadId: string, tier: PrototypeTier | null): Promise<Thread>;
+  /** The open issues of a project's tracker (`.cubiq/issues.json`), for the /issue picker. */
+  listIssues(projectId: string): Promise<IssueResult<IssueSummary[]>>;
+  /** Set the issue a thread works on (null clears it); the next turn gives the agent the full issue once. */
+  setThreadIssue(threadId: string, issue: IssueSummary | null): Promise<Thread>;
+  /** The project's `origin` remote URL, for /issue-setup; null when there's none. */
+  issueRemote(projectId: string): Promise<string | null>;
   updateThread(threadId: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "contextWindow" | "permissionMode" | "agent" | "pinned" | "archived">>): Promise<Thread>;
   deleteThread(threadId: string): Promise<void>;
   /** Move a thread to another agent; a refused switch changes nothing. */

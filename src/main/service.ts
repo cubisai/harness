@@ -26,6 +26,8 @@ import type {
   SkillEntry,
   StoredEvent,
   HandoffCheckpoint,
+  IssueResult,
+  IssueSummary,
   SwitchMode,
   SwitchResult,
   Thread,
@@ -92,6 +94,7 @@ import { redactDeep, redactSecrets } from "./inject/redact";
 import type { TurnDelta } from "./memory/extractor";
 import type { Learner } from "./learn";
 import { answersMessage } from "./questions";
+import { getIssue, issueLine, issueNote, listIssues, originRemote, readIssueConfig } from "./issues";
 import { samePlan } from "../shared/plan";
 import { canonicalTool } from "../shared/tools";
 
@@ -891,7 +894,9 @@ export class Service {
       const catchUp = compact ? null : await this.catchUp(thread.id, driver, userEvent.seq);
       // What the automatic lint found in the last turn's pages; the stored user event stays as sent.
       const lintNote = compact ? "" : await this.takeAutoLint(thread.id);
-      const basePrompt = (catchUp ? `${catchUp}\n---\n${prompt}` : prompt) + lintNote;
+      // The thread's issue: in full the first time a session sees it, one line after; automatic rounds go without.
+      const issueText = compact || round > 0 || req.designFixRound ? "" : await this.issuePromptNote(current);
+      const basePrompt = (catchUp ? `${catchUp}\n---\n${prompt}` : prompt) + issueText + lintNote;
       // A resumed session keeps the block its cache was built on; tell it once what changed since. The stored user event stays as sent.
       const update = current.sessionId !== null ? (this.memoryUpdates?.(thread.projectId, thread.id) ?? null) : null;
       const turnPrompt = update ? `${update}\n\n${basePrompt}` : basePrompt;
@@ -1729,6 +1734,49 @@ export class Service {
   setThreadExpert(threadId: string, expertId: string | null): Thread {
     if (this.store.listEvents(threadId).length > 0) throw new Error("This thread already has messages; start a new thread with the expert.");
     return this.store.setExpert(threadId, expertId);
+  }
+
+  /** The open issues of the project's tracker (`.cubiq/issues.json`), for the /issue picker. */
+  listIssues(projectId: string): Promise<IssueResult<IssueSummary[]>> {
+    return listIssues(this.store.getProject(projectId).path);
+  }
+
+  /** The project's `origin` remote, which /issue-setup hands the skill so the agent needn't run git to find the host. */
+  issueRemote(projectId: string): Promise<string | null> {
+    return originRemote(this.store.getProject(projectId).path);
+  }
+
+  /** Set (null clears) the issue a thread works on. Picking the same issue again keeps what the agent was told. */
+  setThreadIssue(threadId: string, issue: IssueSummary | null): Thread {
+    const thread = this.store.getThread(threadId);
+    if (!issue) return this.store.setIssue(threadId, null);
+    const config = readIssueConfig(this.store.getProject(thread.projectId).path);
+    if (!config) throw new Error("No issue tracker set up for this project. Run /issue-setup.");
+    const same = thread.issue?.number === issue.number && thread.issue.source === config.tracker;
+    return this.store.setIssue(threadId, {
+      number: issue.number,
+      title: issue.title,
+      ...(issue.url ? { url: issue.url } : {}),
+      labels: issue.labels,
+      source: config.tracker,
+      ...(same && thread.issue?.briefed ? { briefed: true } : {}),
+    });
+  }
+
+  /**
+   * The thread's issue for this turn's prompt: the whole issue (capped) when the
+   * session hasn't seen it (first turn after a pick, or a new session), one line
+   * after. A tracker that can't be read gets the line too.
+   */
+  private async issuePromptNote(thread: Thread): Promise<string> {
+    const issue = thread.issue;
+    if (!issue) return "";
+    const line = `\n\n(CubiQ: ${issueLine(issue)})`;
+    if (issue.briefed && thread.sessionId !== null) return line;
+    const detail = await getIssue(this.store.getProject(thread.projectId).path, issue.number);
+    if (!detail.ok) return line;
+    if (!issue.briefed) this.broadcast({ type: "thread", thread: this.store.setIssue(thread.id, { ...issue, briefed: true }) });
+    return `\n\n(CubiQ: the user picked this issue for the thread.)\n<issue>\n${issueNote(detail.value)}\n</issue>`;
   }
 
   /** Pick a design thread's prototype tier (null = Working); the next turn tells the agent, once. */

@@ -1,6 +1,6 @@
 ---
 name: pr
-description: Write a clean PR (or GitLab MR) title and body — summary sketch, evidence, risk — link it to its issue with Closes #n, and open or update it through the host's CLI. "$pr", "$pr 12" (link #12), "$pr update".
+description: Write a clean PR (or GitLab MR) title and body — summary sketch, evidence, risk — link it to its issue with Closes #n, and open or update it through the host's CLI. "/pr", "/pr 12" (link #12), "/pr update".
 argument-hint: "[issue number | update]"
 disable-model-invocation: true
 ---
@@ -23,9 +23,9 @@ Follow `../issue/STYLE.md` for the title and labels.
 - **Base branch.** Use what the user says. Otherwise use the branch this one was cut from, or the default branch. If it's unclear, ask.
 - **Existing PR.** Check with the tracker file's **Find this branch's PR**. If there is one, or the argument is `update`, you're editing it, not creating a new one.
 - **Linked issue(s).** The first match wins:
-  1. the argument (`$pr 12`);
+  1. the argument (`/pr 12`);
   2. a `Working on #<n>` line in the message, which CubiQ adds for the thread's issue;
-  3. an issue picked earlier in this conversation with `$issue`;
+  3. an issue picked earlier in this conversation with `/issue`;
   4. a number in the branch name (`12-…`, `issue-12`, `…/12-…`) or in commit messages (`#12`);
   5. otherwise, ask: "Which issue does this close? (none is fine)".
 

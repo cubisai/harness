@@ -19,6 +19,7 @@ import type {
   StoredEvent,
   Thread,
   ThreadEvent,
+  ThreadIssue,
   ThreadKind,
   ThreadTotals,
   Usage,
@@ -364,6 +365,8 @@ export class Store {
         applied: () => false,
         sql: "UPDATE threads SET design_system = 'auto', design_direction = NULL WHERE kind = 'design' AND (design_system IS NULL OR design_system IN ('clean', 'dashboard', 'editorial', 'mono', 'playful'))",
       },
+      // 35: the issue a thread works on (picked with /issue) as JSON; null = none.
+      { applied: () => this.hasColumn("threads", "issue"), sql: "ALTER TABLE threads ADD COLUMN issue TEXT" },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;
@@ -537,6 +540,12 @@ export class Store {
   /** A thread's expert (null = none). Not activity: the thread keeps its place. */
   setExpert(id: string, expertId: string | null): Thread {
     this.db.prepare("UPDATE threads SET expert_id = ? WHERE id = ?").run(expertId, id);
+    return this.getThread(id);
+  }
+
+  /** A thread's issue (null = none). Not activity: the thread keeps its place. */
+  setIssue(id: string, issue: ThreadIssue | null): Thread {
+    this.db.prepare("UPDATE threads SET issue = ? WHERE id = ?").run(issue ? JSON.stringify(issue) : null, id);
     return this.getThread(id);
   }
 
@@ -1002,7 +1011,7 @@ export class Store {
 }
 
 const THREAD_COLS =
-  "id, project_id, agent, title, session_id, bindings, model, effort, context_window, permission_mode, created_at, updated_at, pinned, archived, branch, worktree_path, base_branch, base_sha, merged_sha, merged_into, kind, design_system, prototype_tier, design_direction, expert_id, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
+  "id, project_id, agent, title, session_id, bindings, model, effort, context_window, permission_mode, created_at, updated_at, pinned, archived, branch, worktree_path, base_branch, base_sha, merged_sha, merged_into, kind, design_system, prototype_tier, design_direction, expert_id, issue, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
 
 export interface LedgerTarget {
   threadId: string;
@@ -1083,6 +1092,7 @@ interface ThreadRow {
   prototype_tier: string | null;
   design_direction: string | null;
   expert_id: string | null;
+  issue: string | null;
   project_path: string | null;
 }
 
@@ -1105,6 +1115,27 @@ function toStoredEvent(row: EventRow): StoredEvent {
 
 function toProject(r: ProjectRow): Project {
   return { id: r.id, path: r.path, name: r.name, createdAt: r.created_at, checkCommand: r.check_command ?? null, checkFixRounds: r.check_fix_rounds ?? null };
+}
+
+const ISSUE_SOURCES = ["github", "gitlab", "gitea", "local"];
+
+/** A stored thread issue, or null when the column is empty or unreadable. */
+function readIssue(raw: string | null): ThreadIssue | null {
+  if (!raw) return null;
+  try {
+    const i = JSON.parse(raw) as Partial<ThreadIssue>;
+    if (!Number.isInteger(i.number) || typeof i.title !== "string" || !ISSUE_SOURCES.includes(i.source as string)) return null;
+    return {
+      number: i.number!,
+      title: i.title,
+      ...(typeof i.url === "string" ? { url: i.url } : {}),
+      labels: Array.isArray(i.labels) ? i.labels.filter((l): l is string => typeof l === "string") : [],
+      source: i.source!,
+      ...(i.briefed ? { briefed: true } : {}),
+    };
+  } catch {
+    return null;
+  }
 }
 
 function toThread(r: ThreadRow): Thread {
@@ -1150,5 +1181,6 @@ function toThread(r: ThreadRow): Thread {
     ...(r.kind === "design" && readTier(r.prototype_tier) ? { prototypeTier: readTier(r.prototype_tier)! } : {}),
     ...(r.kind === "design" && readDirection(r.design_direction) ? { designDirection: readDirection(r.design_direction)! } : {}),
     ...(r.expert_id ? { expertId: r.expert_id } : {}),
+    ...(readIssue(r.issue) ? { issue: readIssue(r.issue)! } : {}),
   };
 }

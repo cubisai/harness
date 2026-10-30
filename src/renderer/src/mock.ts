@@ -318,6 +318,26 @@ export function installMock(): void {
       }
       throw new Error("no thread");
     },
+    listIssues: async () => ({
+      ok: true,
+      tracker: "github",
+      value: [
+        { number: 3, title: "Add controls for running agents in parallel worktrees", labels: ["enhancement", "ready-for-agent"], commentCount: 2, type: "enhancement", state: "ready-for-agent" },
+        { number: 5, title: "Thread list doesn't refresh after a merge", labels: ["bug", "needs-triage"], commentCount: 0, type: "bug", state: "needs-triage" },
+        { number: 8, title: "Document the release workflow", labels: ["documentation", "ready-for-human"], commentCount: 1, type: "documentation", state: "ready-for-human" },
+      ],
+    }),
+    issueRemote: async () => "https://github.com/cubisai/harness.git",
+    setThreadIssue: async (id, issue) => {
+      for (const list of Object.values(threads)) {
+        const i = list.findIndex((x) => x.id === id);
+        if (i >= 0) {
+          const { issue: _old, ...rest } = list[i]!;
+          return (list[i] = issue ? { ...rest, issue: { number: issue.number, title: issue.title, labels: issue.labels, source: "github" } } : rest);
+        }
+      }
+      throw new Error("no thread");
+    },
     setDesignSystem: async (id, system) => {
       for (const list of Object.values(threads)) {
         const i = list.findIndex((x) => x.id === id);

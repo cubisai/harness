@@ -4,7 +4,7 @@ import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeImage, nativeTheme, net, powerMonitor, protocol, safeStorage, shell, utilityProcess } from "electron";
-import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, DesignDevice, DesignExportFormat, DesignSystemEdit, DesignSystemOption, DevicePreset, LinkMeta, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryScope, MemoryType, OpenResult, PermissionDecision, Project, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
+import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, DesignDevice, DesignExportFormat, DesignSystemEdit, DesignSystemOption, DevicePreset, IssueSummary, LinkMeta, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryScope, MemoryType, OpenResult, PermissionDecision, Project, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { CHATS_NAME, chatsRoot, isChatsRoot } from "./chats";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
@@ -13,6 +13,7 @@ import { DESIGN_SCHEME, designDirName, designUrl, entryFile, serveDesign } from 
 import { STYLE_PREVIEW_SCHEME } from "../shared/style-preview";
 import { serveStylePreview } from "./design/style-preview";
 import { DesignWatcher } from "./design/watch";
+import { readIssueSummary } from "./issues";
 import { listDesignFiles, listDesignPages, pageDevice } from "./design/pages";
 import { readTier } from "../shared/tiers";
 import { readTarget } from "../shared/comments";
@@ -1764,6 +1765,14 @@ async function main(): Promise<void> {
       : service.createThread(projectId, agent, kind, designSystem, expertId);
   });
   ipcMain.handle("threads:set-prototype-tier", (_e, threadId: string, tier: unknown) => service.setPrototypeTier(threadId, readTier(tier)));
+  ipcMain.handle("issues:list", (_e, projectId: string) => service.listIssues(projectId));
+  ipcMain.handle("issues:remote", (_e, projectId: string) => service.issueRemote(projectId));
+  ipcMain.handle("threads:set-issue", (_e, threadId: string, issue: unknown) => {
+    if (issue === null) return service.setThreadIssue(threadId, null);
+    const picked = readIssueSummary(issue);
+    if (!picked) throw new Error("Invalid issue.");
+    return service.setThreadIssue(threadId, picked);
+  });
   ipcMain.handle("threads:set-design-system", (_e, threadId: string, id: unknown) =>
     service.setDesignSystem(threadId, typeof id === "string" && /^[\w:.-]{1,80}$/.test(id) ? id : null),
   );

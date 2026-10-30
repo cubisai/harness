@@ -1,13 +1,13 @@
 ---
 name: triage
-description: Move this project's issues through needs-triage → needs-info / ready-for-agent / ready-for-human / wontfix. Shows what needs attention, checks claims against the code, and writes agent-ready briefs. "$triage", "$triage 12", "$triage move 12 to ready-for-agent".
+description: Move this project's issues through needs-triage → needs-info / ready-for-agent / ready-for-human / wontfix. Shows what needs attention, checks claims against the code, and writes agent-ready briefs. "/triage", "/triage 12", "/triage move 12 to ready-for-agent".
 argument-hint: "[number | instruction]"
 disable-model-invocation: true
 ---
 
 # Triage
 
-Read `.cubiq/issue-tracker.md` first, for the tracker and its commands; label names are in `.cubiq/issues.json`. If either file is missing, tell the user to run `$issue-setup` and stop. Follow `../issue/STYLE.md` for every title, label and comment.
+Read `.cubiq/issue-tracker.md` first, for the tracker and its commands; label names are in `.cubiq/issues.json`. If either file is missing, tell the user to run `/issue-setup` and stop. Follow `../issue/STYLE.md` for every title, label and comment.
 
 ## States
 
@@ -22,9 +22,9 @@ A triaged issue has exactly one type label and one state label. If an issue has 
 
 ## What the user can ask
 
-- `$triage` shows what needs attention.
-- `$triage 12` triages #12.
-- `$triage move 12 to ready-for-agent` is a quick override.
+- `/triage` shows what needs attention.
+- `/triage 12` triages #12.
+- `/triage move 12 to ready-for-agent` is a quick override.
 - For free text ("what's ready for agents?", "close 9 as a duplicate of 4"), work out what's meant and do it.
 
 ## Show what needs attention

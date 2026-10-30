@@ -7,6 +7,7 @@ import type {
   BrowserState,
   DevicePreset,
   EditorInfo,
+  IssueSummary,
   AgentLimits,
   AppUpdateStatus,
   LiveDelta,
@@ -18,6 +19,7 @@ import type {
   PermissionRequest,
   PlanDecision,
   PlanRequest,
+  Question,
   QuestionAnswer,
   QuestionRequest,
   Project,
@@ -36,6 +38,7 @@ import { IDLE, takeOverReducer, type TakeOverState } from "./takeover";
 import { threadSeen, turnEnded, type FinishedTurn } from "./inbox";
 import { threadKind, waitingThreads } from "./sections";
 import { readSession, restoreDraft, restoreTarget, writeSession } from "./session";
+import { setupMessage, setupQuestions } from "./issueSetup";
 import { buildInCodePrompt, buildThreadPatch, designDirName, handoffPath } from "../../shared/design";
 import type { SelectedElement } from "../../shared/selection";
 import type { PrototypeTier } from "../../shared/tiers";
@@ -61,6 +64,8 @@ interface Draft {
   permissionMode?: PermissionMode;
   /** A design thread's design system (absent = the project's default). */
   designSystem?: string;
+  /** The issue picked before the thread exists; it applies only in the project it was picked in. */
+  issue?: { projectId: string; issue: IssueSummary };
 }
 
 interface State {
@@ -226,6 +231,16 @@ interface State {
   /** Bumped by the composer's "/model" command so the model picker opens. */
   openPickerRequest: number;
   requestModelPicker(): void;
+  /** Bumped by the composer's "/issue" command so the + menu opens on its Issues flyout. */
+  issuePickerRequest: number;
+  requestIssuePicker(): void;
+  /** Set (null clears) the issue the open thread works on, or the draft's when there's no thread yet. */
+  setIssue(issue: IssueSummary | null): Promise<void>;
+  /**
+   * Run an issue command's bundled skill (issue, issue-setup, triage, pr) in the open thread, or a new one.
+   * /issue-setup hands it the origin remote; a bare /pr, the thread's issue.
+   */
+  runIssueCommand(skill: string, args: string): Promise<void>;
   diffVersion: number; // bumps when a turn ends, so the diff refreshes
   /** Bumped by "learn-changed", so an open Learned tab refetches its lessons. */
   learnVersion: number;
@@ -313,7 +328,20 @@ function upsertThread(list: Thread[] | undefined, thread: Thread): Thread[] {
   return [thread, ...rest].sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-function findThread(threads: Record<string, Thread[]>, id: string): Thread | undefined {
+/** Resolvers for question cards the app raised itself, by request id. */
+const appAnswers = new Map<string, (answer: QuestionAnswer) => void>();
+let appAsked = 0;
+
+/** Put an app-owned question card in the thread's request dock and wait for the answer ("dismiss" when skipped). */
+function askInApp(threadId: string, questions: Question[]): Promise<QuestionAnswer> {
+  const requestId = `app:${++appAsked}`;
+  return new Promise((resolve) => {
+    appAnswers.set(requestId, resolve);
+    useStore.setState((s) => ({ questions: [...s.questions, { requestId, threadId, questions }] }));
+  });
+}
+
+export function findThread(threads: Record<string, Thread[]>, id: string): Thread | undefined {
   return Object.values(threads)
     .flat()
     .find((t) => t.id === id);
@@ -798,6 +826,56 @@ export const useStore = create<State>((set, get) => ({
     set((s) => ({ openPickerRequest: s.openPickerRequest + 1 }));
   },
 
+  issuePickerRequest: 0,
+  requestIssuePicker() {
+    set((s) => ({ issuePickerRequest: s.issuePickerRequest + 1 }));
+  },
+
+  async runIssueCommand(skill, args) {
+    const s = get();
+    const id = s.selectedThreadId;
+    if (id && s.running[id]) {
+      s.showNotice(`Wait for this turn to finish, then run /${skill}.`);
+      return;
+    }
+    let text = args.trim();
+    if (skill === "issue-setup") {
+      // The app asks the setup questions in its own card, so every agent gets the same choices; the skill acts on the answers.
+      const projectId = s.selectedProjectId;
+      if (!projectId) return;
+      const remote = await api().issueRemote(projectId).catch(() => null);
+      const threadId = id ?? (await get().newThread());
+      if (!threadId) return;
+      const answer = await askInApp(threadId, setupQuestions(remote));
+      const message = setupMessage(answer, remote);
+      if (message === null) return;
+      await get().send([message, text].filter(Boolean).join("\n\n"), [skill], threadId);
+      return;
+    }
+    if (skill === "pr" && !text) {
+      const issue = id ? findThread(s.threads, id)?.issue : s.draft.issue?.projectId === s.selectedProjectId ? s.draft.issue.issue : undefined;
+      if (issue) text = String(issue.number);
+    }
+    if (id) await get().send(text, [skill]);
+    else await get().startThread(text, [skill]);
+  },
+
+  async setIssue(issue) {
+    const { selectedThreadId: id, selectedProjectId: projectId } = get();
+    if (!id) {
+      if (!issue) {
+        const { issue: _old, ...rest } = get().draft;
+        set({ draft: rest });
+      } else if (projectId) set((s) => ({ draft: { ...s.draft, issue: { projectId, issue } } }));
+      return;
+    }
+    try {
+      get().apply({ type: "thread", thread: await api().setThreadIssue(id, issue) });
+    } catch (err) {
+      get().showNotice(ipcErrorText(err));
+    }
+  },
+
   async init() {
     // React StrictMode runs effects twice in development; subscribe once.
     if (initialized) return;
@@ -1064,6 +1142,11 @@ export const useStore = create<State>((set, get) => ({
       thread = await api().createThread(projectId, draft.agent ?? get().lastAgent ?? undefined, createOpts(get().threadKind, draft, opts));
       const patch = draftPatch(draft, thread);
       if (Object.keys(patch).length) thread = await api().updateThread(thread.id, patch);
+      // The issue is a nicety: a tracker that went away since the pick doesn't stop the thread.
+      if (draft.issue?.projectId === projectId) {
+        const created = thread;
+        thread = await api().setThreadIssue(created.id, draft.issue.issue).catch(() => created);
+      }
     } catch (err) {
       get().showNotice(ipcErrorText(err));
       return null;
@@ -1111,6 +1194,11 @@ export const useStore = create<State>((set, get) => ({
       thread = await api().createThread(projectId, draft.agent ?? get().lastAgent ?? undefined, createOpts(get().threadKind, draft, opts ?? (get().settings?.background?.worktree ? { worktree: true } : undefined)));
       const patch = draftPatch(draft, thread);
       if (Object.keys(patch).length) thread = await api().updateThread(thread.id, patch);
+      // The issue is a nicety: a tracker that went away since the pick doesn't stop the thread.
+      if (draft.issue?.projectId === projectId) {
+        const created = thread;
+        thread = await api().setThreadIssue(created.id, draft.issue.issue).catch(() => created);
+      }
     } catch (err) {
       get().showNotice(ipcErrorText(err));
       return;
@@ -1297,6 +1385,14 @@ export const useStore = create<State>((set, get) => ({
     }
   },
   async respondQuestion(requestId, answer) {
+    // A card the app raised itself (askInApp) is answered here; it never went to an agent.
+    const local = appAnswers.get(requestId);
+    if (local) {
+      appAnswers.delete(requestId);
+      set((s) => ({ questions: s.questions.filter((q) => q.requestId !== requestId) }));
+      local(answer);
+      return;
+    }
     const removed = get().questions.find((q) => q.requestId === requestId);
     set((s) => ({ questions: s.questions.filter((q) => q.requestId !== requestId) }));
     try {

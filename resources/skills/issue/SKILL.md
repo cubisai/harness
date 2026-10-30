@@ -1,13 +1,13 @@
 ---
 name: issue
-description: List this project's open issues (with their comments) and pick one to work on, or file a new bug, enhancement or docs issue. "$issue" lists, "$issue 12" opens #12, "$issue <description>" drafts a new one.
+description: List this project's open issues (with their comments) and pick one to work on, or file a new bug, enhancement or docs issue. "/issue" lists, "/issue 12" opens #12, "/issue <description>" drafts a new one.
 argument-hint: "[number | description of a new issue]"
 disable-model-invocation: true
 ---
 
 # Issue
 
-Read `.cubiq/issue-tracker.md` first: it says where issues live and which commands to use. Label names are in `.cubiq/issues.json`. If either file is missing, stop and tell the user to run `$issue-setup`; don't fall back to local files on your own. Follow `STYLE.md` (next to this file) for every title, body, label and comment.
+Read `.cubiq/issue-tracker.md` first: it says where issues live and which commands to use. Label names are in `.cubiq/issues.json`. If either file is missing, stop and tell the user to run `/issue-setup`; don't fall back to local files on your own. Follow `STYLE.md` (next to this file) for every title, body, label and comment.
 
 If the message says `Working on #<n>`, the thread already has an issue: use it unless the user names another.
 

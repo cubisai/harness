@@ -1,6 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { AtSign, BriefcaseBusiness, Check, File, Folder, Puzzle, Slash, Sparkles } from "lucide-react";
+import { AtSign, BriefcaseBusiness, Check, CircleDot, File, Folder, Puzzle, Slash, Sparkles } from "lucide-react";
 import type { PermissionMode, SkillEntry } from "../../../shared/types";
 import { IconArrowUp, IconStop } from "../icons";
 import { api } from "../api";
@@ -8,14 +8,15 @@ import { chipLabel, commandQuery, composeMessage, skillQueryAt, toggleSkill } fr
 import { MAX_REFS, imageFiles, refLabel, refThumb, withRefs } from "../design/refs";
 import { elementLabel, withScope } from "../../../shared/selection";
 import { designDirName } from "../../../shared/design";
-import { matchCommands, type ComposerCommand } from "../commands";
+import { isCommandSkill, issueCommand, matchCommands, type ComposerCommand } from "../commands";
 import { folderPaths, mentionQueryAt, mentionsIn, rankMentions } from "../mentions";
 import { nextMode } from "../modes";
-import { useStore } from "../store";
+import { findThread, useStore } from "../store";
 import { originLabel } from "./Library";
 import { Beam } from "./Beam";
 import { ExpertsSubmenu } from "./ExpertsSubmenu";
 import { GooeyPlus } from "./GooeyPlus";
+import { IssuesSubmenu } from "./IssuesSubmenu";
 import { SkillsSubmenu } from "./SkillsSubmenu";
 
 /**
@@ -54,11 +55,17 @@ export function Composer({
   const allSkills = useStore((s) => s.skills);
   // Design-only skills are offered in design threads (and a design draft) only; threadKind follows the open thread.
   const designKind = useStore((s) => s.threadKind) === "design";
-  const skills = useMemo(() => (designKind ? allSkills : allSkills.filter((s) => s.mode !== "design")), [allSkills, designKind]);
+  // The issue skills run as "/" commands, so "$" leaves them out.
+  const skills = useMemo(() => allSkills.filter((s) => !isCommandSkill(s) && (designKind || s.mode !== "design")), [allSkills, designKind]);
   const running = useStore((s) => (threadId ? Boolean(s.running[threadId]) : false));
   const insert = useStore((s) => s.composerInsert);
   const { send, interrupt, enqueue, startThread, sendInBackground } = useStore.getState();
   const projectId = useStore((s) => s.selectedProjectId);
+  // The thread's issue, or the one picked for the thread this draft starts.
+  const issue = useStore((s) =>
+    threadId ? (findThread(s.threads, threadId)?.issue ?? null) : s.draft.issue?.projectId === s.selectedProjectId ? s.draft.issue.issue : null,
+  );
+  const issueRequest = useStore((s) => s.issuePickerRequest);
   const [text, setText] = useState("");
   const [chips, setChips] = useState<string[]>([]);
   const [picked, setPicked] = useState<SkillEntry[]>([]);
@@ -267,6 +274,8 @@ export function Composer({
     const s = useStore.getState();
     if (c.name === "new") void s.newThread();
     else if (c.name === "model") s.requestModelPicker();
+    else if (c.name === "issue") s.requestIssuePicker();
+    else if (c.name === "issue-setup" || c.name === "triage" || c.name === "pr") void s.runIssueCommand(c.name, "");
     else if (c.name === "context") s.openContextSheet(threadId);
     else if (c.name === "mcp") s.openMcpSheet();
     else if (c.name === "doctor") s.openDoctor();
@@ -283,6 +292,14 @@ export function Composer({
   };
 
   const submit = () => {
+    // "/issue <description>", "/triage 12", "/pr 12" run their bundled skill with the argument.
+    const issueRun = !picked.length && issueCommand(text);
+    if (issueRun) {
+      void useStore.getState().runIssueCommand(issueRun.skill, issueRun.args);
+      setText("");
+      setCaret(0);
+      return;
+    }
     // "/compact <focus>" is a command with an argument, not a message.
     const compactMatch = !picked.length && /^\/compact(?:\s+([\s\S]*))?$/.exec(text.trim());
     if (compactMatch) {
@@ -610,7 +627,7 @@ export function Composer({
         )}
         {/* Skill and context chips sit inline before the text, each with its own ×. */}
         <div
-          className={`composer-input${picked.length || chips.length || refs.length || selection ? " has-chips" : ""}`}
+          className={`composer-input${issue || picked.length || chips.length || refs.length || selection ? " has-chips" : ""}`}
           onDragOver={(e) => {
             if (designKind && Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
           }}
@@ -618,6 +635,15 @@ export function Composer({
             if (takeImages(e.dataTransfer.files)) e.preventDefault();
           }}
         >
+          {issue && (
+            <span className="skill-chip context-chip issue-chip" title={[`#${issue.number} ${issue.title}`, issue.labels.join(", ")].filter(Boolean).join("\n")}>
+              <span className="issues-num">#{issue.number}</span>
+              <span className="chip-label">{issue.title}</span>
+              <button className="chip-x" aria-label={`Clear issue #${issue.number}`} onClick={() => void useStore.getState().setIssue(null)}>
+                ×
+              </button>
+            </span>
+          )}
           {selection?.elements.map((el, i) => (
             <span key={el.id ?? el.selector} className="skill-chip context-chip select-chip" title={el.selector}>
               <span className="chip-label">{elementLabel(el)}</span>
@@ -675,9 +701,11 @@ export function Composer({
         <div className={`composer-bar${fold >= 1 ? " icons" : ""}${fold >= 3 ? " stacked" : ""}`} ref={barRef}>
           <div className="composer-left">
             <GooeyPlus
+              openSub={{ id: "issues", n: issueRequest }}
               items={[
                 { id: "experts", label: "Experts", icon: <BriefcaseBusiness size={14} />, onSelect: () => {}, submenu: (close) => <ExpertsSubmenu close={close} /> },
                 { id: "skills", label: "Skills", icon: <Puzzle size={14} />, onSelect: () => {}, submenu: (close) => <SkillsSubmenu close={close} /> },
+                { id: "issues", label: "Issues", icon: <CircleDot size={14} />, onSelect: () => {}, submenu: (close) => <IssuesSubmenu close={close} /> },
                 { id: "mention", label: "Mention a file or folder (@)", icon: <AtSign size={14} />, onSelect: () => startTrigger("@") },
                 { id: "skill", label: "Use a skill ($)", icon: <Sparkles size={14} />, onSelect: () => startTrigger("$") },
                 { id: "command", label: "Run a command (/)", icon: <Slash size={14} />, onSelect: () => startTrigger("/") },

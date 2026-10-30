@@ -1,6 +1,6 @@
 ---
 name: issue-setup
-description: Set up where this project's issues live (GitHub, GitLab or Gitea through their CLI, or local markdown files), create the type and state labels, and optionally add issue and PR templates. Run once before $issue, $triage and $pr; run again to switch.
+description: Set up where this project's issues live (GitHub, GitLab or Gitea through their CLI, or local markdown files), create the type and state labels, and optionally add issue and PR templates. Run once before /issue, /triage and /pr; run again to switch.
 disable-model-invocation: true
 ---
 
@@ -8,9 +8,22 @@ disable-model-invocation: true
 
 Writes `.cubiq/issues.json` (read by CubiQ's `/issue` picker) and `.cubiq/issue-tracker.md` (read by the `issue`, `triage` and `pr` skills). Explore, show what you found, ask, then write. Never create local issue files unless the user picks **Local**.
 
+**Answers from the `/issue-setup` command.** CubiQ asks the choices in its own card before you run, so the message may already hold them:
+
+```
+Tracker: GitHub | GitLab | Gitea | Local
+Labels: Defaults | My own names
+Templates: Add them | No templates
+The origin remote is <url>.
+```
+
+Those lines are the user's answers and their go-ahead. Explore (step 1) for the tracker they picked, skip the questions in steps 2–4 (except the label names, when they picked **My own names**), then write (step 5) without asking again, and finish with the report in step 6, listing what you wrote and created. Stop only for what they can't have answered: a CLI that's missing or signed out, or a repo with issues turned off.
+
+Without those lines, ask steps 2–4 yourself. Use your multiple-choice question tool if you have one (the user picks in a card), otherwise ask in one short message.
+
 ## 1. Explore
 
-- `git remote -v`: which host does `origin` point at?
+- Which host does `origin` point at? The `/issue-setup` command puts the URL in the message ("The origin remote is …"); otherwise run `git remote -v`.
   - `github.com` → **GitHub**
   - `gitlab.com`, or a host whose URL or name says gitlab → **GitLab**
   - a host whose URL or name says gitea, or that answers `/api/v1/version` → **Gitea**
@@ -28,6 +41,8 @@ Writes `.cubiq/issues.json` (read by CubiQ's `/issue` picker) and `.cubiq/issue-
   - GitLab: `glab label list`
   - Gitea: `tea labels list`
 - Does `.cubiq/issues.json` exist already? If it does, show the current choice and ask: keep it, switch, or just refresh the labels.
+
+These CLIs need the network. If one says the token is invalid or it can't connect while you run in a sandbox, run it again with escalated permissions (outside the sandbox) before you tell the user to sign in.
 
 ## 2. Ask: where do issues live?
 
@@ -120,4 +135,4 @@ Report in two or three lines:
 - which labels and templates were added;
 - that the files under `.cubiq/` can be edited by hand.
 
-Then mention `/issue` in the composer and `$issue` in chat to pick an issue.
+Then mention `/issue` in the composer: it picks the issue a thread works on, and `/issue <description>` files a new one.
