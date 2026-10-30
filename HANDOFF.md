@@ -1,19 +1,21 @@
-# Handoff (2026-10-29, Mac, updated after the release-builds session): one file for every open track
+# Handoff (2026-10-30, Mac, updated after the issues P3 session): one file for every open track
 
 This replaces the old `HANDOFF.md`, `DESIGN-LIVE-HANDOFF.md`, `DESIGN-ENHANCE-HANDOFF.md` and `road-map-handoff.md`. Their full history is in git: `git show 2e2dd54:<file>`.
 
-## Active: issue tracker + PR flow in CubiQ (P1+P2 merged into m4 2026-10-30; P3 next)
+## Active: issue tracker + PR flow in CubiQ (P1–P3 done in m4 2026-10-30); run_code uptake still open
 
-- **Plan:** `.ai/plans/issue-tracker.md` (code map still valid). Worktree `track/issues` merged (`dc2d986`) and removed.
-- **P2 as built (beyond the plan, user's calls 2026-10-30):**
-  - The four bundled issue skills are `/` commands, hidden from `$` and + → Skills (`isCommandSkill`, `commands.ts`): `/issue` opens the + menu's Issues flyout, `/issue <text>` files a new issue (sent as `New issue: …`), plus `/issue-setup`, `/triage` and `/pr`. `/pr` already sends the thread's issue number.
-  - `/issue-setup` asks Tracker / Labels / Templates in the app's own question card (`askInApp` in `store.ts`, `issueSetup.ts`). The `origin` URL comes from `issues:remote`; the skill acts on the answers without asking again. Codex has no question tool outside Plan (`default_mode_request_user_input` is off), which is why the app asks.
-  - `Thread.issue` (db migration 35, JSON column). The first turn of a session gets the full issue (`<issue>`, 4k cap), later turns get `(CubiQ: Working on #n: title)`, and automatic rounds get nothing (`issuePromptNote`, `service.ts`). Reads go through `gh|tea api repos/{owner}/{repo}/issues…` and `glab api projects/…` (`src/main/issues.ts`).
-  - Codex in Ask/Auto-edit has `networkAccess: false`, so `gh` fails with "token invalid". The setup skill tells it to retry escalated, and that worked live.
-- **Live-checked:** setup on Codex (wrote `.cubiq/`, created the 4 state labels on cubisai/harness); the picker, chip and full issue note on Codex, Claude Haiku and OpenCode (PGS Grove `PGA/deepseek-v4-flash-0731`); `/issue <idea>` filed #8. Test issues #8 and #9 are still open (we can't delete them; the repo owner will).
-- **Next, P3:** the `set_thread_issue` agent tool (the `issue` skill already calls it when it's there). Open question from the user: should `/issue-setup` add a short Issues block to `.cubiq/CUBIQ.md`, so agents offer to file an issue or open `/pr` once checks pass? The recommendation is to offer and let the user confirm, never act on its own. Ask before building it.
-- **Known nits:** the user bubble shows `$issue-setup` for command runs; the sidebar lists a thread waiting on the app's card under Running.
-- **opencode:** Zen free models are all capped ("Free usage limit reached"). Research goes to Haiku Explore; live OpenCode runs use PGS Grove or TokenHarbor `deepseek-v4.1-flash:free`.
+- **Plans:** `.ai/plans/issue-tracker.md` (P1/P2 code map), `.ai/plans/issue-agent-aware.md` (P3), `.ai/plans/run-code-uptake.md`.
+- **P1/P2** (see git `8633f86` for the old detail): `/issue`, `/issue-setup`, `/triage`, `/pr` as `/` commands; the app's own setup card; `Thread.issue` with the full issue once, then one line.
+- **P3 as built (user's calls 2026-10-30):**
+  - `issue_create` harness tool (`src/main/issues-tool.ts`, `createIssue` in `issues.ts`): GitHub/Gitea via `gh|tea api` with a JSON body file, GitLab via `glab api` (attachments upload with `--form`), local files (attachments copied to `<folder>/attachments/NNNN/`). Labels = type + `needs-triage`. GitHub and Gitea attachments are left out on purpose (their CLIs can't upload) and named in the result.
+  - `set_thread_issue` tool: an existing issue becomes the thread's chip. Both tools only in threads whose folder has `.cubiq/issues.json`, fixed per thread for the app run (a thread opened before `/issue-setup` gets them after a restart).
+  - Guide note `ISSUES_NOTE` (`guide.ts`), only with a tracker. Alone it got 1 unprompted offer in 7 live runs, so:
+  - **Reply check** (`issue-offer.ts`, `service.setIssueOffer`): after a finished turn whose reply names a problem, the background model (`pickBackground`, ~300 tokens, accounted as purpose `issue`) decides; an offer is an `issue-offer` event, the **File issue?** card (`IssueOfferCard`, ThreadView). File sends the user's yes; Dismiss is kept in localStorage. Settings → Threads → Issues turns it off (`issueOffers`).
+  - Composer: Tab completes a `/` command (Enter runs it); chat chips show `/issue-setup`, not `$issue-setup`.
+- **Live-checked:** the card and filing on Claude Haiku, Codex gpt-6-luna, OpenCode (TokenHarbor `deepseek-v4.1-flash:free`) and native PGS DeepSeek; GitHub #10 filed for real (the sidebar "Running while waiting on a card" bug, left open).
+- **run_code uptake (open):** Claude uses it. Shipped hints (`2d5834c`): Codex's says load run_code through its tool search (Codex 0.159 always defers MCP tools), OpenCode v2's points at run_code in its own Code Mode catalog, a late hint for old ACP sessions, the native tip twice a turn. Live re-probe after the merge: no change on Codex (shell `rg`/`sed`), OpenCode (Search/Read) or native DeepSeek (Grep/Read). Prompt text isn't enough for these models; next step is the user's call.
+- **Known bug:** the native provider's Read hands an image to a text-only model; the turn dies ("does not accept image input").
+- **opencode:** Zen free is capped; `oc` dispatch uses PGS Grove `PGA/deepseek-v4-flash-0731`.
 
 ## Where things stand
 - **Branch `m4`**, pushed: this session's work (R1–R4 of `.ai/plans/release-builds.md`, approved 2026-10-29: every PR push builds installers, Apple Silicon only, plus a shells-test fix) was merged in from `track/release`, along with the other session's `CLAUDE.md`, `DESIGN-MODE.md` and `docs/testing/`. No worktrees are open.
