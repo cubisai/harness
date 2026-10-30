@@ -1,0 +1,37 @@
+name: Bug
+description: Something is broken or behaves wrongly
+labels: [bug, needs-triage]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens
+      description: One or two sentences describing the symptom.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+      description: What should have happened.
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: OS, app version or commit
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Logs, screenshots, suspected area.

@@ -221,6 +221,40 @@ describe("Service.send", () => {
     expect(user?.text).toBe("Say hi");
   });
 
+  it("gives the agent the thread's issue in full once, then one line, leaving the stored user event alone", async () => {
+    const { store, service, driver, thread } = setup(async (input) => input.onSession("session-1"));
+    const dir = store.getProject(thread.projectId).path;
+    const pick = { number: 3, title: "Add controls", labels: ["enhancement"], commentCount: 1 };
+    expect(() => service.setThreadIssue(thread.id, pick)).toThrow(/\/issue-setup/);
+    mkdirSync(join(dir, ".cubiq"));
+    writeFileSync(join(dir, ".cubiq", "issues.json"), JSON.stringify({ tracker: "local" }));
+    mkdirSync(join(dir, "docs", "issues"), { recursive: true });
+    writeFileSync(join(dir, "docs", "issues", "0003-add-controls.md"), "---\nid: 3\ntitle: Add controls\ntype: enhancement\n---\nRun agents side by side.\n");
+    expect(service.setThreadIssue(thread.id, pick).issue).toEqual({ number: 3, title: "Add controls", labels: ["enhancement"], source: "local" });
+    await service.send({ threadId: thread.id, text: "Go" });
+    expect(driver.prompts[0]).toContain("<issue>\nWorking on issue #3: Add controls");
+    expect(driver.prompts[0]).toContain("Run agents side by side.");
+    expect(store.getThread(thread.id).issue?.briefed).toBe(true);
+    await service.send({ threadId: thread.id, text: "And tests" });
+    expect(driver.prompts[1]).toContain("(CubiQ: Working on #3: Add controls)");
+    expect(driver.prompts[1]).not.toContain("<issue>");
+    const texts = store.listEvents(thread.id).flatMap((e) => (e.event.kind === "user" ? [e.event.text] : []));
+    expect(texts).toEqual(["Go", "And tests"]);
+    // Picking it again keeps what the agent was told; clearing it ends the notes.
+    expect(service.setThreadIssue(thread.id, pick).issue?.briefed).toBe(true);
+    service.setThreadIssue(thread.id, null);
+    await service.send({ threadId: thread.id, text: "Done?" });
+    expect(driver.prompts[2]).not.toContain("Working on");
+  });
+
+  it("falls back to the issue's line when the tracker can't be read", async () => {
+    const { store, service, driver, thread } = setup(async () => {});
+    store.setIssue(thread.id, { number: 9, title: "Gone", labels: [], source: "local" });
+    await service.send({ threadId: thread.id, text: "Go" });
+    expect(driver.prompts[0]).toContain("(CubiQ: Working on #9: Gone)");
+    expect(store.getThread(thread.id).issue?.briefed).toBeUndefined();
+  });
+
   it("leaves a new session's prompt unchanged, since it gets a fresh memory block anyway", async () => {
     const { service, driver, thread } = setup(async () => {});
     service.setMemoryUpdates(() => "<memory-update>X</memory-update>");

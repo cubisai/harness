@@ -1666,6 +1666,9 @@ button.qc-option.other { cursor: pointer; }
 /* A design's reference image: a tiny thumbnail of it before its label. */
 .composer-input .ref-chip { padding-left: 2px; font-family: var(--font); }
 .ref-thumb { width: 16px; height: 16px; flex-shrink: 0; object-fit: cover; border-radius: 50%; }
+/* The thread's issue (/issue): its number in mono, then the title in the UI face, cut to one line. */
+.composer-input .issue-chip { max-width: 280px; gap: 5px; font-family: var(--font); font-size: 12px; }
+.issue-chip .issues-num { flex-shrink: 0; font-family: var(--mono); font-size: 11px; }
 .chip-x { flex-shrink: 0; border: 0; background: transparent; color: inherit; opacity: 0.6; padding: 0 2px; margin-right: -4px; font-size: 13px; line-height: 1; cursor: pointer; border-radius: 999px; }
 .chip-x:hover { opacity: 1; }
 .skill-menu .skill-picked { color: var(--primary); flex-shrink: 0; }
@@ -3312,6 +3315,13 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 /* The + menu's Skills flyout: a row's name, then its description on one truncated line. */
 .xs-row:has(.xs-skill-desc) .xs-name { flex: 0 1 auto; min-width: 0; font-weight: 500; }
 .xs-skill-desc { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-tertiary); font-size: 11.5px; }
+/* The Issues flyout: rows grouped by state, `#n title` then the type and comment count. */
+.issues-menu { width: 340px; max-width: 100%; }
+.issues-group { padding: 8px 6px 3px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-tertiary); }
+.issues-menu .issues-num { flex: none; min-width: 28px; color: var(--text-tertiary); font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; }
+.issues-meta { flex: none; color: var(--text-tertiary); font-size: 11.5px; }
+.issues-menu .skill-picked { color: var(--primary); flex-shrink: 0; }
+.issues-error { line-height: 1.5; overflow-wrap: anywhere; }
 .chip-button .chev { opacity: 0.6; flex: none; }
 .mode-chip.danger, .mode-chip.danger:hover { color: var(--danger); }
 .design-fence-chip { color: var(--text-secondary); }
