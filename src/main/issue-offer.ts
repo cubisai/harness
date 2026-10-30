@@ -34,6 +34,7 @@ export function offerPrompt(request: string, answer: string): string {
   return [
     "You check an AI coding agent's final reply for a problem worth tracking as an issue. Answer with one line of JSON and nothing else.",
     'If the reply reports a real problem (a bug, a missing feature or a documentation gap) that this turn did NOT fix, that is not simply the user\'s own request still in progress, and that the reply does not already offer to file as an issue, answer {"file":true,"type":"bug"|"enhancement"|"documentation","title":"…","summary":"…"}.',
+    "A failing test, command or check the reply reports counts too, even when the cause isn't known yet.",
     "title: sentence case, under 70 characters, no prefix; a bug names the symptom the user sees, an enhancement starts with a verb. summary: one or two sentences on the problem itself (what happens and where), not on the reply or this check.",
     'Otherwise answer {"file":false}.',
     "",
