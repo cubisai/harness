@@ -404,7 +404,9 @@ async function runTurn(
         })
       : null;
   const scriptable: LoopTool[] = [...nativeLoop, ...appTools, ...(skillLoop ? [skillLoop] : []), ...(planLoop ? [planLoop] : []), ...(askLoop ? [askLoop] : []), taskLoop, ...(codeLoop ? [codeLoop] : [])].filter((t, i, all) => all.findIndex((o) => o.definition.name === t.definition.name) === i);
-  const tools: LoopTool[] = scriptable;
+  // With code mode on the model sees run_code instead of read, glob and grep (prompt text alone never moved small
+  // models off them, live test); scripts still reach all three through `scriptable`.
+  const tools: LoopTool[] = codeLoop ? scriptable.filter((t) => !LOOK_TOOLS.has(t.definition.name)) : scriptable;
 
   // A brand-new session's first turn gets a one-line token breakdown of what it starts with.
   if (createdNew) {
@@ -548,6 +550,9 @@ export const LOOK_AROUND = /^\s*(?:cd\s+\S+\s*(?:&&|;)\s*)?(?:ls|cat|head|tail|f
  * ls/cat/grep…): the system line alone doesn't move small models off one-file-at-a-time reading (live test).
  */
 export const RUN_CODE_TIP = "Tip: one run_code script lists, reads and searches in a single step; use it instead of separate read, grep or shell calls to look around.";
+
+/** The native tools code mode hides from the model: run_code chains them. */
+const LOOK_TOOLS = new Set(["read", "glob", "grep"]);
 
 /** The native tools that only write files (run_code and the shell can do anything, so they never qualify). */
 const FILE_EDITS = new Set(["write", "edit", "apply_patch"]);
