@@ -8,6 +8,7 @@ import { type InjectionSource, injectionFor } from "../src/main/inject";
 import { withOpenCodeTeam, withOpenCodeVariant } from "../src/main/inject/opencode";
 import { antigravityAcpCommand, loadAcpAgents, onPath } from "../src/main/agents/registry";
 import type { TurnInput } from "../src/main/agents/types";
+import { CODE_HINT } from "../src/main/code-hint";
 import { closeAfter, tempDir } from "./helpers";
 
 const MOCK = join(__dirname, "fixtures", "mock-acp-agent.mjs");
@@ -278,6 +279,39 @@ describe("ACP driver", () => {
     const first = turn("hello");
     await d.runTurn(first.input);
     expect(first.deltas.join("")).toContain("<harness-guide>\nGUIDE\n</harness-guide>");
+  });
+
+  it("in code mode, puts the run_code line in the guide once, and gives a continued session that missed it the line alone, once", async () => {
+    let mode: "on" | "off" = "on";
+    const make = () =>
+      createAcpDriver(
+        { id: "mock", label: "Mock", command: process.execPath, args: [MOCK] },
+        { clientVersion: "test", guide: () => "GUIDE", codeMode: () => mode, toolServer: async () => ({ url: "http://127.0.0.1:9/mcp", token: "t" }) },
+      );
+    const tool = { name: "browser_snapshot", description: "", input: {}, autoAllow: true, run: async () => ({ text: "" }) };
+    const d = make();
+    closeAfter(() => d.dispose?.());
+    const first = turn("hello", { tools: [tool] });
+    await d.runTurn(first.input);
+    expect(first.deltas.join("")).toContain(`<harness-guide>\nGUIDE\n\n${CODE_HINT}\n</harness-guide>`);
+    const second = turn("hello", { sessionId: first.sessions[0]!, tools: [tool] });
+    await d.runTurn(second.input);
+    expect(second.deltas.join("")).not.toContain("<harness-guide>");
+
+    // A session that began with code mode off gets the line on its own the first time it's on, then never again.
+    mode = "off";
+    const late = make();
+    closeAfter(() => late.dispose?.());
+    const a = turn("hello", { tools: [tool] });
+    await late.runTurn(a.input);
+    expect(a.deltas.join("")).not.toContain(CODE_HINT);
+    mode = "on";
+    const b = turn("hello", { sessionId: a.sessions[0]!, tools: [tool] });
+    await late.runTurn(b.input);
+    expect(b.deltas.join("")).toContain(`<harness-guide>\n${CODE_HINT}\n</harness-guide>`);
+    const c = turn("hello", { sessionId: a.sessions[0]!, tools: [tool] });
+    await late.runTurn(c.input);
+    expect(c.deltas.join("")).not.toContain(CODE_HINT);
   });
 
   it("sends the expert block once, right after the guide, on a new session's first prompt", async () => {

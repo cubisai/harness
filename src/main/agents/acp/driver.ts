@@ -1,5 +1,5 @@
 import type { AgentCapabilities, CodeMode, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, PlanEntry } from "../../../shared/types";
-import { CODE_HINT } from "../../code-hint";
+import { CODE_HINT, OWN_CODE_MODE_HINT } from "../../code-hint";
 import type { TeamAgent } from "../../../shared/experts";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
@@ -146,6 +146,11 @@ export function hasOwnCodeMode(init: Pick<InitializeResult, "agentInfo">): boole
   return /opencode/i.test(info?.name ?? "") && Number.isFinite(major) && major >= 2;
 }
 
+/** Code mode's line for an ACP agent: OpenCode v2 hides run_code in its own Code Mode catalog, so its line says where to find it. */
+export function acpCodeHint(init: Pick<InitializeResult, "agentInfo">, on: boolean): string {
+  return on ? (hasOwnCodeMode(init) ? OWN_CODE_MODE_HINT : CODE_HINT) : "";
+}
+
 export const DEFAULT_MODEL = "default";
 
 /** Tool kinds that only read, or edit files: allowed without asking in Auto-edit. */
@@ -268,6 +273,8 @@ interface Live {
   droppedNotified: Set<string>;
   /** A freshly created session still owes its first prompt the harness guide. */
   guidePending: boolean;
+  /** The code-mode hint already went out in this session (with the guide, or on its own for a session that started without it). */
+  codeHintSent: boolean;
   /** A freshly created session still owes its first prompt the seed's history prefix. */
   historyPending: string | null;
   /** The turn currently receiving this connection's updates. */
@@ -949,7 +956,7 @@ export function createAcpDriver(
       clientInfo: { name: "cubiq", version: deps.clientVersion },
     });
     applyInitialize(init, input);
-    l = { conn, init, threadKey, command, env, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, variantKey: wantedKey, droppedNotified: new Set(), guidePending: false, historyPending: null, turn: null, modes: null, planModeId: null, defaultModeId: null, authUrl: null, approvedCalls: new Set() };
+    l = { conn, init, threadKey, command, env, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, variantKey: wantedKey, droppedNotified: new Set(), guidePending: false, codeHintSent: false, historyPending: null, turn: null, modes: null, planModeId: null, defaultModeId: null, authUrl: null, approvedCalls: new Set() };
     // No proactive authenticate: the server infers the method from its own
     // settings and refreshes the token itself, so calling it here only ever
     // launched a browser (including during the startup model probe). A signed-out
@@ -1127,6 +1134,7 @@ export function createAcpDriver(
     rememberConfig(l.configOptions, l.threadKey);
     rememberModes(l, res.modes);
     l.guidePending = true;
+    l.codeHintSent = false;
     l.historyPending = seed && "promptPrefix" in seed ? seed.promptPrefix : null;
   };
 
@@ -1333,8 +1341,13 @@ export function createAcpDriver(
       const e = l.guidePending ? input.expert ?? "" : "";
       const m = l.guidePending && input.projectId ? deps.memory?.(input.projectId, input.threadId, null) ?? "" : "";
       const fresh = l.guidePending;
-      // Code mode (when run_code is attached, and the agent has no Code Mode of its own): one fixed line inside the guide.
-      const hint = g && (deps.codeMode?.(input.threadId) ?? "off") !== "off" && !hasOwnCodeMode(l.init) && Boolean(l.init.agentCapabilities?.mcpCapabilities?.http) && input.tools.length > 0 && !!deps.toolServer ? CODE_HINT : "";
+      // Code mode (run_code attached): one fixed line inside the guide; OpenCode v2's points at run_code in its own Code Mode catalog.
+      const codeOn = (deps.codeMode?.(input.threadId) ?? "off") !== "off" && Boolean(l.init.agentCapabilities?.mcpCapabilities?.http) && input.tools.length > 0 && !!deps.toolServer;
+      const codeHint = acpCodeHint(l.init, codeOn);
+      const hint = g ? codeHint : "";
+      // A continued session that never got the hint (it began with code mode off, or before the hint existed) gets it once on its own.
+      const lateHint = !g && codeHint && !l.codeHintSent ? codeHint : "";
+      if (hint || lateHint) l.codeHintSent = true;
       // Warm the extensions estimate (MCP tool listings) so the breakdown at the end of this turn has it.
       if (fresh) deps.extensions?.(input.cwd, input.projectId ?? null);
       if (g || e || m) l.guidePending = false;
@@ -1342,6 +1355,7 @@ export function createAcpDriver(
       l.historyPending = null;
       const lead = [
         ...(g ? [{ type: "text", text: `<harness-guide>\n${g}${hint ? `\n\n${hint}` : ""}\n</harness-guide>` }] : []),
+        ...(lateHint ? [{ type: "text", text: `<harness-guide>\n${lateHint}\n</harness-guide>` }] : []),
         ...(e ? [{ type: "text", text: e }] : []),
         ...(m ? [{ type: "text", text: m }] : []),
         ...(h ? [{ type: "text", text: `${h}\n---` }] : []),

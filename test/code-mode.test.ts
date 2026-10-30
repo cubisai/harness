@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { HarnessTool } from "../src/main/agents/types";
-import { hasOwnCodeMode, harnessTool } from "../src/main/agents/acp/driver";
+import { acpCodeHint, hasOwnCodeMode, harnessTool } from "../src/main/agents/acp/driver";
+import { CODE_HINT, CODE_HINT_DEFERRED, OWN_CODE_MODE_HINT } from "../src/main/code-hint";
 import { summarizeToolInput } from "../src/main/agents/summarize";
 import { codeModes, createCodeServer, CODE_TOOL, type CodeServerDeps } from "../src/main/code-mode";
 import { createCodeBroker, MAX_IN_FLIGHT } from "../src/main/harness/tools/code-broker";
@@ -280,6 +281,13 @@ describe("ACP helpers", () => {
     expect(hasOwnCodeMode({ agentInfo: { name: "OpenCode", version: "1.19.0" } })).toBe(false);
     expect(hasOwnCodeMode({ agentInfo: { name: "Gemini", version: "3.0.0" } })).toBe(false);
     expect(hasOwnCodeMode({})).toBe(false);
+    // OpenCode v2 gets the line that points at run_code inside its own Code Mode catalog; others the plain one.
+    expect(acpCodeHint({ agentInfo: { name: "OpenCode", version: "2.2.0" } }, true)).toBe(OWN_CODE_MODE_HINT);
+    expect(acpCodeHint({ agentInfo: { name: "OpenCode", version: "1.19.0" } }, true)).toBe(CODE_HINT);
+    expect(acpCodeHint({ agentInfo: { name: "OpenCode", version: "2.2.0" } }, false)).toBe("");
+    expect(OWN_CODE_MODE_HINT).toContain("execute");
+    expect(CODE_HINT_DEFERRED.startsWith(CODE_HINT)).toBe(true);
+    expect(CODE_HINT_DEFERRED).toContain('search for "run_code"');
   });
 
   it("names and summarises the harness's own tool calls", () => {

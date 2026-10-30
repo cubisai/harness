@@ -322,6 +322,15 @@ describe("provider driver", () => {
     expect((off.requests[2]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!.text).not.toContain(RUN_CODE_TIP);
   });
 
+  it("in code mode, repeats the run_code tip on the fourth look-around call, and stops there", async () => {
+    const look = (i: number) => [{ type: "tool-call", id: `c${i}`, name: "grep", input: { pattern: `word${i}` } }];
+    const calls = [look(1), look(2), look(3), look(4), look(5), look(6), [{ type: "text", text: "ok" }]];
+    const on = setup(calls.map((c) => [...c]) as never, { codeMode: () => "on" });
+    await on.driver.runTurn(on.input("look"));
+    const text = (n: number) => (on.requests[n]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!.text;
+    expect([1, 2, 3, 4, 5, 6].map((n) => text(n).includes(RUN_CODE_TIP))).toEqual([false, true, false, true, false, false]);
+  });
+
   it("counts only listing, reading and searching commands as looking around", () => {
     for (const c of ["ls -la", "cd /x && cat a.ts", "grep -rn foo src", "find . -name '*.ts'"]) expect(LOOK_AROUND.test(c)).toBe(true);
     for (const c of ["npm test", "git status", "node --test", "cd /x && npm run build"]) expect(LOOK_AROUND.test(c)).toBe(false);

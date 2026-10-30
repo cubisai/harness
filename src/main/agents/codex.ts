@@ -1,5 +1,5 @@
 import type { CodeMode, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, ThreadEvent } from "../../shared/types";
-import { CODE_HINT } from "../code-hint";
+import { CODE_HINT_DEFERRED } from "../code-hint";
 import type { RunPayload, RunResult, ToolDiff } from "../../shared/tools";
 import { clipAgentSummary, clipSummary } from "../../shared/tools";
 import { diffSummary } from "../../shared/diff";
@@ -1078,7 +1078,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     // Codex pins a design skill onto the wrong skills root (another plugin's) on its first read: say where CubiQ's are.
     const skillRoot = input.design ? config.skillsDir?.(input.cwd, true, input.threadId) : null;
     const skillLine = skillRoot ? designSkillsLine(skillRoot) : "";
-    const guideText = [config.guide?.(input.cwd, input.design) ?? "", skillLine, codeMode !== "off" && server ? CODE_HINT : "", PLAN_HINT].filter(Boolean).join("\n\n");
+    // Codex defers every MCP tool behind tool_search, so its hint says to load run_code first.
+    const guideText = [config.guide?.(input.cwd, input.design) ?? "", skillLine, codeMode !== "off" && server ? CODE_HINT_DEFERRED : "", PLAN_HINT].filter(Boolean).join("\n\n");
     const signature = JSON.stringify(threadConfig ?? null);
     let threadId = "";
     let threadModel: string | null = null;

@@ -1,3 +1,4 @@
+import { CODE_HINT_DEFERRED } from "../src/main/code-hint";
 import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -1359,6 +1360,16 @@ describe("Codex shared memory", () => {
       const design = turn("hi", { projectId: "p7", tools: [safeTool], design: "designs/abcd1234" });
       await d.runTurn(design.input);
       expect(sent().params.config?.mcp_servers?.cubiq?.url).toBe(`http://127.0.0.1:1234/mcp?p=p7&d=${design.input.threadId}`);
+    } finally {
+      delete process.env.GUIDE_PROBE;
+    }
+  });
+
+  it("in code mode, tells Codex to load run_code through its tool search", async () => {
+    const { d, sent } = probeDriver(() => null, { toolServer: async () => ({ url: "http://127.0.0.1:1234/mcp", token: "tok" }), codeMode: () => "on" });
+    try {
+      await d.runTurn(turn("hi", { tools: [safeTool] }).input);
+      expect(sent().params.developerInstructions).toContain(CODE_HINT_DEFERRED);
     } finally {
       delete process.env.GUIDE_PROBE;
     }
