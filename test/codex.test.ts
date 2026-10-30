@@ -1,4 +1,4 @@
-import { CODE_HINT_DEFERRED } from "../src/main/code-hint";
+import { CODE_HINT_CODEX_EXEC, CODE_HINT_DEFERRED } from "../src/main/code-hint";
 import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -1242,7 +1242,7 @@ describe("Codex shared memory", () => {
     run: async () => ({ text: "" }),
   };
 
-  type ThreadProbe = { method: string; params: { developerInstructions?: string; config?: { memories?: unknown; mcp_servers?: Record<string, { url?: string }> } } };
+  type ThreadProbe = { method: string; params: { developerInstructions?: string; config?: { memories?: unknown; features?: unknown; mcp_servers?: Record<string, { url?: string }> } } };
   /** The (projectId, threadId, sessionKey) each memory call carried. */
   type MemCall = [string, string | undefined, string | null | undefined];
 
@@ -1371,6 +1371,33 @@ describe("Codex shared memory", () => {
       await d.runTurn(turn("hi", { tools: [safeTool] }).input);
       expect(sent().params.developerInstructions).toContain(CODE_HINT_DEFERRED);
     } finally {
+      delete process.env.GUIDE_PROBE;
+    }
+  });
+
+  it("leaves Codex's own code_mode off unless opted in, whatever CubiQ's code mode says", async () => {
+    const { d, sent } = probeDriver(() => null, { toolServer: async () => ({ url: "http://127.0.0.1:1234/mcp", token: "tok" }), codeMode: () => "on" });
+    try {
+      await d.runTurn(turn("hi", { tools: [safeTool] }).input);
+      expect(sent().params.config?.features).toBeUndefined();
+      expect(sent().params.developerInstructions).not.toContain(CODE_HINT_CODEX_EXEC);
+    } finally {
+      delete process.env.GUIDE_PROBE;
+    }
+  });
+
+  it("opted in, turns Codex's code_mode on only with CubiQ's code mode, and names run_code inside exec", async () => {
+    process.env.CUBIQ_CODEX_EXEC_MODE = "1";
+    try {
+      const on = probeDriver(() => null, { toolServer: async () => ({ url: "http://127.0.0.1:1234/mcp", token: "tok" }), codeMode: () => "on" });
+      await on.d.runTurn(turn("hi", { tools: [safeTool] }).input);
+      expect(on.sent().params.config?.features).toEqual({ code_mode: true });
+      expect(on.sent().params.developerInstructions).toContain(CODE_HINT_CODEX_EXEC);
+      const off = probeDriver(() => null, { toolServer: async () => ({ url: "http://127.0.0.1:1234/mcp", token: "tok" }), codeMode: () => "off" });
+      await off.d.runTurn(turn("hi", { tools: [safeTool] }).input);
+      expect(off.sent().params.config?.features).toBeUndefined();
+    } finally {
+      delete process.env.CUBIQ_CODEX_EXEC_MODE;
       delete process.env.GUIDE_PROBE;
     }
   });

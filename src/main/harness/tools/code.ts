@@ -109,7 +109,7 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
 
         const evaluated = context.evalCode(`(async () => {\n${code}\n})()`);
         if (isFail(evaluated)) {
-          const message = errorText(context, evaluated.error);
+          const message = explain(errorText(context, evaluated.error), o);
           evaluated.error.dispose();
           return { text: failure(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs), isError: true };
         }
@@ -131,7 +131,7 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
           return { text: failure(stopReason === "abort" ? STOPPED : timingOut(timeoutMs), logs), isError: true };
         }
         if (isFail(settled)) {
-          const message = errorText(context, settled.error);
+          const message = explain(errorText(context, settled.error), o);
           settled.error.dispose();
           return { text: failure(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs), isError: true };
         }
@@ -344,6 +344,13 @@ function json(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+/** QuickJS says only "not a function" for tools.shell(); name the tools a script has, since models try tools.bash, tools.ls and tools.cat. */
+function explain(message: string, o: CodeToolOptions): string {
+  if (!/not a function/.test(message)) return message;
+  const names = o.tools().map((t) => t.definition.name).filter((n) => !EXCLUDED.has(n));
+  return `${message}. A script's tools are: ${names.join(", ")}. Read files with tools.read (a folder lists), search with tools.grep and tools.glob; edits and shell commands are not available in a script.`;
 }
 
 /** Console output before an error still reaches the model, with the error after it. */

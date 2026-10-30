@@ -3,7 +3,8 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { HarnessTool, ToolContext } from "../src/main/agents/types";
-import { startToolServer, withDesign, withProject, withThread } from "../src/main/mcp-http";
+import { CODE_HINT } from "../src/main/code-hint";
+import { startToolServer, withCode, withDesign, withProject, withThread } from "../src/main/mcp-http";
 import { closeAfter } from "./helpers";
 
 const echo: HarnessTool = {
@@ -40,6 +41,17 @@ describe("tool server", () => {
     const res = await client.callTool({ name: "echo", arguments: { text: "hi" } });
     expect(res.content).toEqual([{ type: "text", text: "echo: hi" }]);
     await client.close();
+  });
+
+  it("sends code mode's hint as MCP instructions only when ?c= names a thread", async () => {
+    const server = await startToolServer(() => [echo], undefined, undefined, undefined, undefined, undefined, undefined, () => [skill]);
+    closeAfter(() => void server.close());
+    const on = await connect(withCode(server.url, "t1"), server.token);
+    expect(on.getInstructions()).toBe(CODE_HINT);
+    await on.close();
+    const off = await connect(server.url, server.token);
+    expect(off.getInstructions()).toBeUndefined();
+    await off.close();
   });
 
   it("gives every tool schema a required array, even when all its parameters are optional", async () => {

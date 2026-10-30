@@ -8,6 +8,7 @@ import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sd
 import type { HarnessTool, ToolOutput } from "./agents/types";
 import { parseGatewayPath } from "./mcp/gateway";
 import { withBrowserOnDemand } from "./browser/on-demand";
+import { CODE_HINT } from "./code-hint";
 
 export const TOOL_SERVER_NAME = "cubiq";
 
@@ -213,7 +214,8 @@ export async function startToolServer(
       res.writeHead(400).end();
       return;
     }
-    const server = new McpServer({ name: TOOL_SERVER_NAME, version: "1.0.0" });
+    // Code mode's one fixed line also rides the MCP `instructions`, which agents that surface them (OpenCode v2) add to every turn's prompt.
+    const server = new McpServer({ name: TOOL_SERVER_NAME, version: "1.0.0" }, codeId ? { instructions: CODE_HINT } : undefined);
     // Empty for anything but a design thread, so a chat thread's list is unchanged.
     const base = [...tools(), ...(designId ? (design?.(designId) ?? []) : [])];
     const list =

@@ -1,5 +1,5 @@
 import type { CodeMode, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, ThreadEvent } from "../../shared/types";
-import { CODE_HINT_DEFERRED } from "../code-hint";
+import { CODE_HINT_CODEX_EXEC, CODE_HINT_DEFERRED } from "../code-hint";
 import type { RunPayload, RunResult, ToolDiff } from "../../shared/tools";
 import { clipAgentSummary, clipSummary } from "../../shared/tools";
 import { diffSummary } from "../../shared/diff";
@@ -1078,8 +1078,11 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     // Codex pins a design skill onto the wrong skills root (another plugin's) on its first read: say where CubiQ's are.
     const skillRoot = input.design ? config.skillsDir?.(input.cwd, true, input.threadId) : null;
     const skillLine = skillRoot ? designSkillsLine(skillRoot) : "";
-    // Codex defers every MCP tool behind tool_search, so its hint says to load run_code first.
-    const guideText = [config.guide?.(input.cwd, input.design) ?? "", skillLine, codeMode !== "off" && server ? CODE_HINT_DEFERRED : "", PLAN_HINT].filter(Boolean).join("\n\n");
+    // Opt-in (CUBIQ_CODEX_EXEC_MODE=1) until its approvals and rows are live-checked: Codex's own code_mode puts every tool, run_code included, inside `exec`.
+    const execMode = codeMode !== "off" && Boolean(server) && process.env.CUBIQ_CODEX_EXEC_MODE === "1";
+    if (execMode) threadConfig = { ...(threadConfig ?? {}), features: { code_mode: true } };
+    // Without it Codex defers every MCP tool behind tool_search, so its hint says to load run_code first.
+    const guideText = [config.guide?.(input.cwd, input.design) ?? "", skillLine, codeMode !== "off" && server ? (execMode ? CODE_HINT_CODEX_EXEC : CODE_HINT_DEFERRED) : "", PLAN_HINT].filter(Boolean).join("\n\n");
     const signature = JSON.stringify(threadConfig ?? null);
     let threadId = "";
     let threadModel: string | null = null;

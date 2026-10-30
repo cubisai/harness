@@ -6,3 +6,6 @@ export const CODE_HINT_DEFERRED = `${CODE_HINT} run_code is one of CubiQ's MCP t
 
 /** OpenCode v2 reaches MCP tools only through its own Code Mode `execute`, so the line gives the exact call. */
 export const OWN_CODE_MODE_HINT = "To look around the project (list a folder, read several files, search), call execute once with `return await tools.cubiq.run_code({ code: \"<script>\" })` (search the catalog for run_code if that path is missing): one script chains read, glob and grep, and read on a folder lists it. Do not read or search one file at a time. Keep the shell for git, builds, tests and edits.";
+
+/** Codex with its own `code_mode` on: its MCP tools are inside `exec`, not deferred, so the line gives the exact call. */
+export const CODE_HINT_CODEX_EXEC = `${CODE_HINT} In exec, call it as \`return await tools.mcp__cubiq__run_code({ code: "<script>" })\`. Do not read or search one file at a time.`;
