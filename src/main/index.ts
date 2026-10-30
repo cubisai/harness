@@ -13,7 +13,8 @@ import { DESIGN_SCHEME, designDirName, designUrl, entryFile, serveDesign } from 
 import { STYLE_PREVIEW_SCHEME } from "../shared/style-preview";
 import { serveStylePreview } from "./design/style-preview";
 import { DesignWatcher } from "./design/watch";
-import { readIssueSummary } from "./issues";
+import { readIssueConfig, readIssueSummary } from "./issues";
+import { issueTools } from "./issues-tool";
 import { listDesignFiles, listDesignPages, pageDevice } from "./design/pages";
 import { readTier } from "../shared/tiers";
 import { readTarget } from "../shared/comments";
@@ -419,6 +420,7 @@ async function main(): Promise<void> {
     global: userGuidePath(userData),
     designMode: app.isPackaged ? join(process.resourcesPath, "DESIGN-MODE.md") : join(app.getAppPath(), "resources", "DESIGN-MODE.md"),
     uiBlocks: () => settings.get().uiBlocks === true,
+    issues: (cwd) => readIssueConfig(cwd) !== null,
   });
   // The expert catalogue: bundled personas shipped with the app, plus the user's imported ones.
   const experts = createExpertCatalog({
@@ -661,9 +663,25 @@ async function main(): Promise<void> {
   };
   // A thread's own tools, served over MCP on `?s=`: its background shells and its document tools.
   const threadToolLists = new Map<string, HarnessTool[]>();
+  // issue_create, only where the thread's folder has a tracker; fixed with the rest of the thread's list.
+  const issueToolsOf = (threadId: string): HarnessTool[] => {
+    const thread = threadOf(threadId);
+    if (!thread) return [];
+    const cwd = service.cwdOf(thread);
+    if (!readIssueConfig(cwd)) return [];
+    return issueTools(
+      {
+        folders: () => ({ project: cwd, thread: cwd }),
+        screenshotsDir: shotsDir,
+        link: (id, issue) => broadcast({ type: "thread", thread: service.setThreadIssue(id, issue) }),
+        notice: (id, text) => service.emitFromTool(id, { kind: "notice", text }),
+      },
+      threadId,
+    );
+  };
   const threadOwnTools = (threadId: string): HarnessTool[] => {
     let list = threadToolLists.get(threadId);
-    if (!list) threadToolLists.set(threadId, (list = [...shellToolsOf(threadId), ...documentToolsOf(threadId)]));
+    if (!list) threadToolLists.set(threadId, (list = [...shellToolsOf(threadId), ...documentToolsOf(threadId), ...issueToolsOf(threadId)]));
     return list;
   };
   // A turn's tools: the app's, plus the thread's shell and document tools (not in a design thread, whose tools are its own).

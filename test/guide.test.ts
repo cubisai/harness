@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createGuide, designNote, projectGuidePath, UI_BLOCKS_NOTE, userGuidePath } from "../src/main/guide";
+import { createGuide, designNote, ISSUES_NOTE, projectGuidePath, UI_BLOCKS_NOTE, userGuidePath } from "../src/main/guide";
 import { estimateTokens } from "../src/main/handoff";
 import { UI_NAMES } from "../src/renderer/src/genui/types";
 import { tempDir } from "./helpers";
@@ -88,6 +88,21 @@ describe("createGuide", () => {
     expect(estimateTokens(UI_BLOCKS_NOTE)).toBeLessThanOrEqual(150);
     // Every widget's line form is named, so an agent can find it.
     for (const name of UI_NAMES) expect(UI_BLOCKS_NOTE).toMatch(new RegExp(`\\b${name}\\b`));
+  });
+
+  it("tells the agent about the issue tracker only in a project that has one, after the app's guide", () => {
+    const root = tempDir();
+    const bundled = join(root, "CUBIQ.md");
+    const global = join(root, "user.md");
+    write(bundled, "# App");
+    write(global, "# Mine");
+    const guide = createGuide({ bundled, global, issues: (cwd) => cwd.endsWith("tracked") });
+    expect(guide.forCwd(join(root, "plain"))).toBe("# App\n\n# Mine");
+    expect(guide.forCwd(join(root, "tracked"))).toBe(`# App\n\n${ISSUES_NOTE}\n\n# Mine`);
+    expect(guide.partsForCwd(join(root, "tracked")).map((p) => p.path)).toEqual([bundled, "issues", global]);
+    expect(ISSUES_NOTE).not.toContain("\n");
+    expect(ISSUES_NOTE).toContain("issue_create");
+    expect(estimateTokens(ISSUES_NOTE)).toBeLessThanOrEqual(120);
   });
 
   it("keeps the bundled guide within its 600-token budget", () => {

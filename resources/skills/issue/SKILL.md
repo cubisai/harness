@@ -76,4 +76,4 @@ When the user picks one, continue with **Open**.
    ```
 
    The state is `needs-triage` by default. Suggest `ready-for-agent` only if the draft has clear acceptance criteria and no open questions, and ask before using it.
-5. When the user says yes, create the issue (tracker file, **Create**). Print its number and URL, then ask whether to start on it now; if so, go to **Open**.
+5. When the user says yes, create the issue: with CubiQ's `issue_create` tool when it's available (sometimes with a prefix, such as `cubiq_issue_create`), passing any screenshots or files the user gave as `attachments` and `link: true`; otherwise with the tracker file's **Create**. Print its number and URL, then ask whether to start on it now; if so, go to **Open**.

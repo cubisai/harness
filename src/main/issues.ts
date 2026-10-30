@@ -1,14 +1,16 @@
 import type { ChildProcess } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import type { IssueComment, IssueDetail, IssueResult, IssueState, IssueSummary, IssueTracker, IssueType } from "../shared/types";
 import { killTree, spawnCommand } from "./winspawn";
 
 /**
  * A project's issues, read through its git host's CLI (`gh`, `glab`, `tea`) or
  * from local markdown files, as `.cubiq/issues.json` says (written by the
- * bundled `issue-setup` skill). Read-only: the agent's skills do the writing.
+ * bundled `issue-setup` skill). The agent's skills do most writing; `createIssue`
+ * files a new one for the `issue_create` tool.
  */
 
 export interface IssueConfig {
@@ -328,4 +330,136 @@ export function issueNote(issue: IssueDetail, maxChars = 4000): string {
   }
   const text = lines.join("\n");
   return text.length > maxChars ? `${text.slice(0, maxChars - 1)}…` : text;
+}
+
+/** What `issue_create` files: a type, a title, a STYLE.md body and evidence files (absolute paths, already checked). */
+export interface NewIssue {
+  type: IssueType;
+  title: string;
+  body: string;
+  attachments: string[];
+}
+
+/** The filed issue, and the attachments that couldn't go with it (with why). */
+export type CreatedIssue = IssueResult<IssueSummary & { leftOut: string[] }>;
+
+/** The most attachments one issue takes, and the largest file. */
+export const MAX_ATTACHMENTS = 5;
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+const IMAGE = /\.(png|jpe?g|gif|webp|svg)$/i;
+
+/** A markdown reference to a file: inline for an image, a link for anything else. */
+function fileLink(name: string, url: string): string {
+  return `${IMAGE.test(name) ? "!" : ""}[${name}](${url})`;
+}
+
+/** The title as a short kebab-case slug for a local file name. */
+export function issueSlug(title: string): string {
+  return (
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .trim()
+      .split(/[\s-]+/)
+      .filter(Boolean)
+      .slice(0, 6)
+      .join("-") || "issue"
+  );
+}
+
+/** The body with an "## Attachments" section of these links; unchanged when there are none. */
+function withAttachments(body: string, links: string[]): string {
+  return links.length ? `${body.trim()}\n\n## Attachments\n${links.map((l) => `- ${l}`).join("\n")}` : body.trim();
+}
+
+/**
+ * File a new issue, labelled with its type and `needs-triage`. GitHub, GitLab and
+ * Gitea go through their CLI's `api` command with a JSON body file; local issues
+ * are written as the tracker file describes. Attachments upload on GitLab and are
+ * copied beside local issues; GitHub and Gitea's CLIs can't upload, so theirs are
+ * left out and named in the result.
+ */
+export async function createIssue(projectDir: string, issue: NewIssue, run: CliRunner = runCli, today = new Date()): Promise<CreatedIssue> {
+  const config = readIssueConfig(projectDir);
+  if (!config) return NO_CONFIG;
+  const { tracker } = config;
+  const labels = [config.labels[issue.type] ?? issue.type, config.labels["needs-triage"] ?? "needs-triage"];
+  const leftOut: string[] = [];
+  const sized: string[] = [];
+  for (const path of issue.attachments.slice(0, MAX_ATTACHMENTS)) {
+    const size = await stat(path).then((s) => (s.isFile() ? s.size : -1)).catch(() => -1);
+    if (size < 0) leftOut.push(`${basename(path)} (not a file)`);
+    else if (size > MAX_ATTACHMENT_BYTES) leftOut.push(`${basename(path)} (over 10 MB)`);
+    else sized.push(path);
+  }
+  for (const path of issue.attachments.slice(MAX_ATTACHMENTS)) leftOut.push(`${basename(path)} (over ${MAX_ATTACHMENTS} files)`);
+  try {
+    if (tracker === "local") {
+      const dir = join(projectDir, config.folder);
+      await mkdir(dir, { recursive: true });
+      const number = (await localIssues(projectDir, config)).reduce((n, i) => Math.max(n, i.number), 0) + 1;
+      const id = String(number).padStart(4, "0");
+      const links: string[] = [];
+      if (sized.length) {
+        await mkdir(join(dir, "attachments", id), { recursive: true });
+        for (const path of sized) {
+          await copyFile(path, join(dir, "attachments", id, basename(path)));
+          links.push(fileLink(basename(path), `attachments/${id}/${encodeURIComponent(basename(path))}`));
+        }
+      }
+      const date = today.toISOString().slice(0, 10);
+      const front = [`id: ${number}`, `title: ${issue.title}`, `type: ${labels[0]}`, `state: ${labels[1]}`, `created: ${date}`];
+      await writeFile(join(dir, `${id}-${issueSlug(issue.title)}.md`), `---\n${front.join("\n")}\n---\n\n${withAttachments(issue.body, links)}\n`, { flag: "wx" });
+      return { ok: true, tracker, value: { number, title: issue.title, labels, commentCount: 0, type: issue.type, state: "needs-triage", leftOut } };
+    }
+    if (tracker !== "gitlab") leftOut.push(...sized.map((p) => `${basename(p)} (${CLI[tracker].command} can't upload files)`));
+    const tmp = await mkdtemp(join(tmpdir(), "cubiq-issue-"));
+    try {
+      const { command } = CLI[tracker];
+      const base = repoPath(config);
+      const input = join(tmp, "issue.json");
+      let data: Json;
+      if (tracker === "github") {
+        await writeFile(input, JSON.stringify({ title: issue.title, body: issue.body.trim(), labels }));
+        data = JSON.parse(await run(command, ["api", `${base}/issues`, "--method", "POST", "--input", input], projectDir)) as Json;
+        return created(tracker, data.number, data.html_url, issue, labels, leftOut);
+      }
+      if (tracker === "gitlab") {
+        const links: string[] = [];
+        for (const path of sized) {
+          try {
+            const up = JSON.parse(await run(command, ["api", `${base}/uploads`, "--method", "POST", "--form", `file=@${path}`], projectDir)) as Json;
+            if (typeof up.markdown !== "string" || !up.markdown) throw new Error("no link");
+            links.push(up.markdown);
+          } catch {
+            leftOut.push(`${basename(path)} (upload failed)`);
+          }
+        }
+        await writeFile(input, JSON.stringify({ title: issue.title, description: withAttachments(issue.body, links), labels: labels.join(",") }));
+        const args = ["api", `${base}/issues`, "--method", "POST", "--input", input, "--header", "Content-Type: application/json"];
+        data = JSON.parse(await run(command, args, projectDir)) as Json;
+        return created(tracker, data.iid, data.web_url, issue, labels, leftOut);
+      }
+      // Gitea takes label ids, so the names are looked up first; a missing one is left off.
+      const all = rows(JSON.parse(await run(command, ["api", `${base}/labels?limit=100`], projectDir)));
+      const ids = labels.map((n) => all.find((l) => l.name === n)?.id).filter((v): v is number => typeof v === "number");
+      await writeFile(input, JSON.stringify({ title: issue.title, body: issue.body.trim(), labels: ids }));
+      data = JSON.parse(await run(command, ["api", "--method", "POST", `${base}/issues`, "--data", `@${input}`], projectDir)) as Json;
+      return created(tracker, data.number, data.html_url, issue, labels, leftOut);
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  } catch (err) {
+    return fail(tracker, err);
+  }
+}
+
+function created(tracker: IssueTracker, number: unknown, url: unknown, issue: NewIssue, labels: string[], leftOut: string[]): CreatedIssue {
+  if (typeof number !== "number" || !Number.isInteger(number)) return { ok: false, error: "failed", message: "The tracker didn't return the new issue's number." };
+  return {
+    ok: true,
+    tracker,
+    value: { number, title: issue.title, ...(typeof url === "string" && url ? { url } : {}), labels, commentCount: 0, type: issue.type, state: "needs-triage", leftOut },
+  };
 }
