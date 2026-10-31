@@ -20,6 +20,8 @@ export interface ToolContext {
   projectId?: string;
   /** The thread whose turn called the tool, when the tool server knows it (`?t=`). */
   threadId?: string;
+  /** The agent row this tool call itself renders as, when the driver executes it directly (Codex dynamic tools). */
+  parentId?: string;
   /** Aborts when the caller gives up on the call (the HTTP request closed). */
   signal?: AbortSignal;
 }

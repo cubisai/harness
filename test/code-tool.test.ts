@@ -156,4 +156,44 @@ describe("run_code", () => {
     const r = await exec("return searchTools('shell command').map((t) => t.name);", tools, ok);
     expect(r.text).toBe('=> ["beta"]');
   });
+
+  it("supports console.warn/error/info/debug, pure path helpers, line-numbered errors, and empty-return hints", async () => {
+    const logged = await exec(
+      [
+        "console.info('i'); console.warn('w'); console.error('e'); console.debug('d');",
+        "return [path.join('src', './a', '..', 'b.ts'), path.dirname('src/b.ts'), path.basename('src/b.ts', '.ts'), path.extname('src/b.ts'), path.normalize('/a//b/../c/')];",
+      ].join("\n"),
+      [fake("alpha")],
+      ok,
+    );
+    expect(logged.isError).toBeFalsy();
+    expect(logged.text).toBe('i\nw\ne\nd\n=> ["src/b.ts","src","b",".ts","/a/c"]');
+
+    const err = await exec("const x = 1;\nconst y = 2;\nthrow new Error('bad');", [fake("alpha")], ok);
+    expect(err.isError).toBe(true);
+    expect(err.text).toContain("Line 3: bad");
+
+    const silent = await exec("const x = 42;", [fake("alpha")], ok);
+    expect(silent.isError).toBeFalsy();
+    expect(silent.text).toContain("=> undefined");
+    expect(silent.text).toContain("returned undefined and printed nothing");
+  });
+
+  it("merges a trailing options object when a single-arg tool is called as tools.grep(pattern, opts)", async () => {
+    const grepTool: LoopTool = {
+      definition: { name: "grep", description: "grep", parameters: { type: "object", properties: { pattern: { type: "string" } }, required: ["pattern"] } },
+      displayName: "Grep",
+      access: "read",
+      summarize: () => "grep",
+      run: async () => ({ text: "ok" }),
+    };
+    let seen: Record<string, unknown> = {};
+    const broker: CodeToolOptions["broker"] = async (_name, args) => {
+      seen = args;
+      return { text: "ok", isError: false, data: [{ path: "a.ts", line: 1, text: "hit" }] };
+    };
+    const r = await exec('return await tools.grep("foo", { path: "test", output_mode: "content", context: 2 });', [grepTool], broker);
+    expect(r.isError).toBeFalsy();
+    expect(seen).toEqual({ pattern: "foo", path: "test", output_mode: "content", context: 2 });
+  });
 });

@@ -5,11 +5,11 @@
 
 import type { ThreadEvent } from "../../../shared/types";
 import type { Authorization, LoopTool } from "../loop";
-import { bound } from "./bound";
+import { bound, boundPreview } from "./bound";
 import type { CodeToolOptions } from "./code";
 
 /** At most this many of one script's tool calls run at once; the rest wait their turn. */
-export const MAX_IN_FLIGHT = 8;
+export const MAX_IN_FLIGHT = 16;
 /** One script's calls shown as rows; past this, one note row stands in for the rest (a loop can make thousands). */
 export const MAX_LISTED_CALLS = 40;
 
@@ -21,8 +21,8 @@ export interface CodeBrokerOptions {
   /** Gates one call (ask mode asks); absent = every call runs. */
   authorize?: (tool: LoopTool, args: Record<string, unknown>, summary: string) => Promise<Authorization>;
   outputDir: string;
-  /** The row a script's calls nest under, from the id the script runs as; absent = that id. Undefined = top-level rows. */
-  parentOf?: (parentId: string) => string | undefined;
+  /** The row a script's calls nest under, from the id the script runs as; absent = that id. Undefined = top-level rows. May be async (the driver's row is awaited lazily, on the first emission). */
+  parentOf?: (parentId: string) => string | undefined | Promise<string | undefined>;
   maxInFlight?: number;
 }
 
@@ -55,7 +55,7 @@ export function createCodeBroker(o: CodeBrokerOptions): CodeToolOptions["broker"
     } catch {
       summary = tool.displayName;
     }
-    const parentId = o.parentOf ? o.parentOf(scriptId) : scriptId;
+    const parentId = o.parentOf ? await o.parentOf(scriptId) : scriptId;
     const nest = parentId ? { parentId } : {};
     // The row goes up before the permission ask, so a refused call shows in the thread too.
     const toolUseId = `${parentId ?? scriptId}:${++childCalls}`;
@@ -80,7 +80,8 @@ export function createCodeBroker(o: CodeBrokerOptions): CodeToolOptions["broker"
     try {
       // `script` asks read, glob and grep for plain values; the row shows a bounded copy of the text.
       const result = await tool.run(args, { id: toolUseId, signal, onOutput: () => {}, script: true });
-      const text = bound(result.text, { outputDir: o.outputDir, callId: toolUseId });
+      // A data call's text is only a UI preview: cut it in memory, never a spill file. An unlisted call (41+) skips that work too.
+      const text = !shown ? result.text : result.data !== undefined ? boundPreview(result.text) : bound(result.text, { outputDir: o.outputDir, callId: toolUseId });
       emit({ kind: "tool-result", toolUseId, isError: result.isError === true, summary: oneLine(text), payload: result.display?.result ?? text, ...nest });
       return result.data !== undefined ? { text: result.text, isError: result.isError === true, data: result.data } : { text, isError: result.isError === true };
     } catch (err) {

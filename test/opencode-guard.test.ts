@@ -1,15 +1,19 @@
-import { appendFileSync, statSync } from "node:fs";
+import { statSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import type { ThreadEvent } from "../src/shared/types";
 import { createAcpDriver, DEFAULT_MODEL } from "../src/main/agents/acp/driver";
 import { ACP_PRESETS, onPath } from "../src/main/agents/registry";
+import type { HarnessTool } from "../src/main/agents/types";
+import { createCodeServer } from "../src/main/code-mode";
 import { findPython } from "../src/main/guard";
 import { type InjectionPlan } from "../src/main/inject";
-import { ensureOpenCodeGuard, withOpenCodeGuard } from "../src/main/inject/opencode-guard";
+import { ensureOpenCodeGuard, ensureOpenCodeGuardV2, withOpenCodeGuard } from "../src/main/inject/opencode-guard";
+import { startToolServer } from "../src/main/mcp-http";
 import { closeAfter, fixturesDir, openCodeGuardedPlan, tempDir } from "./helpers";
 
 const GUARD = join(fixturesDir, "fake-guard.py");
@@ -85,7 +89,9 @@ describe.skipIf(!findPython())("the generated OpenCode guard plugin", () => {
 const KEY = "test-opencode-guard-key";
 
 /** A fake chat endpoint: the first request with tools answers a bash tool call, the rest say done. */
-function startFakeToolChat(): Promise<{ server: Server; url: string; bodies: unknown[] }> {
+function startFakeToolChat(
+  pickToolCall?: (toolNames: string[]) => { name: string; arguments: Record<string, unknown> },
+): Promise<{ server: Server; url: string; bodies: unknown[] }> {
   const bodies: unknown[] = [];
   let sentToolCall = false;
   const server = createServer((req, res) => {
@@ -100,17 +106,18 @@ function startFakeToolChat(): Promise<{ server: Server; url: string; bodies: unk
         return void res.writeHead(400).end();
       }
       bodies.push(parsed);
-      if (process.env.DEBUG_OC_TOOLS && Array.isArray(parsed.tools)) {
-        appendFileSync("/tmp/oc-tools.log", `${(parsed.tools as { function?: { name?: string } }[]).map((t) => t.function?.name).join(",")}\n`);
-      }
       const model = parsed.model ?? "unknown";
-      const hasTools = Array.isArray(parsed.tools) && parsed.tools.length > 0;
+      const toolNames = Array.isArray(parsed.tools)
+        ? (parsed.tools as { function?: { name?: string }; name?: string }[]).map((t) => t.function?.name ?? t.name ?? "").filter(Boolean)
+        : [];
+      const hasTools = toolNames.length > 0;
       res.writeHead(200, { "content-type": "text/event-stream" });
       if (hasTools && !sentToolCall) {
         sentToolCall = true;
+        const call = pickToolCall?.(toolNames) ?? { name: "bash", arguments: { command: "git push --force origin main", description: "push" } };
         res.end(
           [
-            `data: ${JSON.stringify({ id: "c1", object: "chat.completion.chunk", created: 1, model, choices: [{ index: 0, delta: { role: "assistant", content: null, tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "bash", arguments: JSON.stringify({ command: "git push --force origin main", description: "push" }) } }] }, finish_reason: null }] })}\n\n`,
+            `data: ${JSON.stringify({ id: "c1", object: "chat.completion.chunk", created: 1, model, choices: [{ index: 0, delta: { role: "assistant", content: null, tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: call.name, arguments: JSON.stringify(call.arguments) } }] }, finish_reason: null }] })}\n\n`,
             `data: ${JSON.stringify({ id: "c1", object: "chat.completion.chunk", created: 1, model, choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] })}\n\n`,
             "data: [DONE]\n\n",
           ].join(""),
@@ -206,5 +213,141 @@ describe.skipIf(!onPath("opencode") || !findPython())("OpenCode guard plugin end
 
     const seen = fake.bodies.map((b) => JSON.stringify(b)).join("\n");
     expect(seen).toContain("Blocked by git guardrails");
+    // With codeMode off, built-in read/glob/grep remain untouched and run_code is not added.
+    const toolBody = (fake.bodies as { tools?: { function?: { name?: string }; name?: string }[] }[]).find((b) => Array.isArray(b.tools) && b.tools.length > 0);
+    const offTools = (toolBody?.tools ?? []).map((t) => t.function?.name ?? t.name ?? "");
+    expect(offTools).toContain("read");
+    expect(offTools).toContain("glob");
+    expect(offTools).toContain("grep");
+    expect(offTools).not.toContain("run_code");
+  }, 120_000);
+
+  it("in code mode on v2, removes built-in read/glob/grep and exposes run_code directly", async () => {
+    const xdgConfig = tempDir();
+    const previous = {
+      XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
+      XDG_DATA_HOME: process.env.XDG_DATA_HOME,
+      XDG_CACHE_HOME: process.env.XDG_CACHE_HOME,
+      XDG_STATE_HOME: process.env.XDG_STATE_HOME,
+      OPENCODE_DISABLE_AUTOUPDATE: process.env.OPENCODE_DISABLE_AUTOUPDATE,
+      OPENCODE_DISABLE_MODELS_FETCH: process.env.OPENCODE_DISABLE_MODELS_FETCH,
+    };
+    process.env.XDG_CONFIG_HOME = xdgConfig;
+    process.env.XDG_DATA_HOME = tempDir();
+    process.env.XDG_CACHE_HOME = tempDir();
+    process.env.XDG_STATE_HOME = tempDir();
+    process.env.OPENCODE_DISABLE_AUTOUPDATE = "1";
+    process.env.OPENCODE_DISABLE_MODELS_FETCH = "1";
+    closeAfter(() => {
+      for (const [name, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    });
+
+    const cwd = tempDir();
+    writeFileSync(join(cwd, "hello.txt"), "HELLO_FROM_SANDBOX\n");
+    const safeTool: HarnessTool = {
+      name: "browser_snapshot",
+      description: "Snapshot",
+      input: { selector: z.string().optional() },
+      autoAllow: true,
+      run: async () => ({ text: "snap" }),
+    };
+    const events: ThreadEvent[] = [];
+    let openRunCodeId: string | undefined;
+    const trackAndPush = (e: ThreadEvent) => {
+      events.push(e);
+      if (!e.parentId && e.kind === "tool-use" && e.name === "run_code") openRunCodeId = e.toolUseId;
+      if (!e.parentId && e.kind === "tool-result" && e.toolUseId === openRunCodeId) openRunCodeId = undefined;
+    };
+    const codeServer = createCodeServer({
+      cwdOf: () => cwd,
+      projectOf: () => undefined,
+      appTools: () => [safeTool],
+      parentOf: () => openRunCodeId,
+      emit: (_tid, e) => trackAndPush(e),
+      outputDir: tempDir(),
+      guardScript: GUARD,
+      parentWaitMs: 250,
+    });
+    const toolServer = await startToolServer(
+      () => [safeTool],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      (tid) => (tid ? [codeServer.tool(tid)] : []),
+    );
+    closeAfter(() => void toolServer.close());
+
+    let observedTools: string[] = [];
+    const fake = await startFakeToolChat((names) => {
+      observedTools = names;
+      const runCodeName = names.find((n) => /(?:^|[._:])run_code$/.test(n)) ?? "run_code";
+      return { name: runCodeName, arguments: { code: 'return await tools.read({ path: "hello.txt" });' } };
+    });
+    closeAfter(() => void fake.server.close());
+
+    let sawMajor = 1;
+    const preset = ACP_PRESETS.find((p) => p.id === "opencode")!;
+    const driver = createAcpDriver(preset, {
+      clientVersion: "test",
+      guardScript: GUARD,
+      toolServer: async () => toolServer,
+      codeMode: () => "on",
+      injection: (ctx) => {
+        sawMajor = ctx?.major ?? 1;
+        return openCodeGuardedPlan(
+          ctx?.major,
+          {
+            $schema: "https://opencode.ai/config.json",
+            provider: {
+              gw: {
+                npm: "@ai-sdk/openai-compatible",
+                name: "GW",
+                options: { baseURL: fake.url, apiKey: KEY },
+                models: { "vendor/wire-1": { name: "Picked" } },
+              },
+            },
+            model: "gw/vendor/wire-1",
+          },
+          { dir: tempDir(), script: GUARD, python: findPython()! },
+        );
+      },
+    });
+    closeAfter(() => driver.dispose?.());
+
+    await driver.runTurn({
+      threadId: "t-code",
+      cwd,
+      prompt: "Read hello.txt.",
+      sessionId: null,
+      model: DEFAULT_MODEL,
+      permissionMode: "full",
+      signal: new AbortController().signal,
+      tools: [safeTool],
+      mcpServers: [],
+      onEvent: (e) => trackAndPush(e),
+      onTextDelta: () => {},
+      onSession: () => {},
+      requestPermission: async () => "allow-once",
+      requestPlanDecision: async () => ({ keep: "" }),
+    });
+
+    if (sawMajor >= 2) {
+      expect(observedTools).not.toContain("read");
+      expect(observedTools).not.toContain("glob");
+      expect(observedTools).not.toContain("grep");
+    }
+    expect(observedTools).toContain("run_code");
+    const seen = fake.bodies.map((b) => JSON.stringify(b)).join("\n");
+    expect(seen).toContain("HELLO_FROM_SANDBOX");
+    const runCodeUse = events.find((e): e is Extract<ThreadEvent, { kind: "tool-use" }> => e.kind === "tool-use" && e.name === "run_code");
+    expect(runCodeUse).toBeDefined();
+    const childRead = events.find((e): e is Extract<ThreadEvent, { kind: "tool-use" }> => e.kind === "tool-use" && e.name === "Read");
+    expect(childRead).toMatchObject({ parentId: runCodeUse!.toolUseId });
   }, 120_000);
 });

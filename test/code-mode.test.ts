@@ -98,13 +98,14 @@ describe("createCodeBroker", () => {
       return { text: "out" };
     });
     const broker = createCodeBroker({ tools: () => [slow], emit: () => {}, outputDir: tempDir() });
-    const calls = Array.from({ length: 12 }, (_, i) => broker("slow", {}, `p${i}`, signal()));
+    const total = MAX_IN_FLIGHT + 4;
+    const calls = Array.from({ length: total }, (_, i) => broker("slow", {}, `p${i}`, signal()));
     await new Promise((r) => setTimeout(r, 20));
     expect(running).toBe(MAX_IN_FLIGHT);
     release();
     const results = await Promise.all(calls);
     expect(peak).toBe(MAX_IN_FLIGHT);
-    expect(results).toHaveLength(12);
+    expect(results).toHaveLength(total);
     expect(results.every((r) => !r.isError)).toBe(true);
   });
 });
@@ -220,6 +221,42 @@ describe("createCodeServer", () => {
     const other = await run(codes, "u", "return load('k') === undefined");
     expect(other.text.endsWith("=> true")).toBe(true);
   });
+
+  it("boots the sandbox immediately without waiting on parentOf when no child calls emit, and skips child spill files", async () => {
+    const outputDir = tempDir();
+    let parentChecks = 0;
+    const { codes } = setup({
+      outputDir,
+      parentWaitMs: 2000,
+      parentOf: () => {
+        parentChecks += 1;
+        return undefined;
+      },
+    });
+    const t0 = Date.now();
+    const pure = await run(codes, "t", "return 2 + 2;");
+    expect(Date.now() - t0).toBeLessThan(500);
+    expect(pure.text).toBe("=> 4");
+    expect(parentChecks).toBe(0);
+
+    const dir = tempDir();
+    writeFileSync(join(dir, "large.txt"), Array.from({ length: 2400 }, (_, i) => `row-${i}`).join("\n"));
+    const withBigChild = createCodeServer({
+      cwdOf: () => dir,
+      projectOf: () => undefined,
+      appTools: () => [],
+      parentOf: () => "parent-1",
+      emit: () => {},
+      outputDir,
+      guardScript: "builtin",
+      parentWaitMs: 0,
+    });
+    const res = await run(withBigChild, "t2", 'const s = await tools.read("large.txt"); return s.split("\\n").length;');
+    expect(res.isError).toBeFalsy();
+    expect(res.text).toBe("=> 2400");
+    const { readdirSync } = await import("node:fs");
+    expect(readdirSync(outputDir)).toEqual([]);
+  });
 });
 
 describe("tool server ?c=", () => {
@@ -281,10 +318,11 @@ describe("ACP helpers", () => {
     expect(hasOwnCodeMode({ agentInfo: { name: "OpenCode", version: "1.19.0" } })).toBe(false);
     expect(hasOwnCodeMode({ agentInfo: { name: "Gemini", version: "3.0.0" } })).toBe(false);
     expect(hasOwnCodeMode({})).toBe(false);
-    // OpenCode v2 gets the line that points at run_code inside its own Code Mode catalog; others the plain one.
+    // OpenCode v2 gets the line that points at run_code inside its own Code Mode catalog unless exposed top-level; others the plain one.
     expect(acpCodeHint({ agentInfo: { name: "OpenCode", version: "2.2.0" } }, true)).toBe(OWN_CODE_MODE_HINT);
+    expect(acpCodeHint({ agentInfo: { name: "OpenCode", version: "2.2.0" } }, true, true)).toBe(CODE_HINT);
     expect(acpCodeHint({ agentInfo: { name: "OpenCode", version: "1.19.0" } }, true)).toBe(CODE_HINT);
-    expect(acpCodeHint({ agentInfo: { name: "OpenCode", version: "2.2.0" } }, false)).toBe("");
+    expect(acpCodeHint({ agentInfo: { name: "OpenCode", version: "2.2.0" } }, false, true)).toBe("");
     expect(OWN_CODE_MODE_HINT).toContain("execute");
     expect(OWN_CODE_MODE_HINT).toContain("tools.cubiq.run_code");
     expect(CODE_HINT_DEFERRED.startsWith(CODE_HINT)).toBe(true);
@@ -295,6 +333,14 @@ describe("ACP helpers", () => {
     expect(harnessTool({ title: "cubiq_run_code", kind: "other", rawInput: { code: "return 1" } })).toEqual({
       name: "run_code",
       summary: "return 1",
+    });
+    expect(harnessTool({ title: "run_code", kind: "other", rawInput: { code: "return 2" } })).toEqual({
+      name: "run_code",
+      summary: "return 2",
+    });
+    expect(harnessTool({ title: "cubiq.guard_run_code", kind: "other", rawInput: { code: "return 3" } })).toEqual({
+      name: "run_code",
+      summary: "return 3",
     });
   });
 });

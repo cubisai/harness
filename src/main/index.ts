@@ -770,6 +770,8 @@ async function main(): Promise<void> {
                 : ensureModelSkillsDir(withoutCodexCovered(forAgent(skills.global(), CODEX_CAPABILITIES.skillsDelivery), codexCoveredSkills()), modelSkillsDir),
             toolServer: getToolServer,
             codeMode: codeModeOf,
+            // run_code as a dynamic tool (top-level, not deferred behind Codex's tool search); the MCP copy stays as fallback.
+            codeTool: (tid) => codeServer.tool(tid),
             onLimits: limits.for("codex"),
             injection: () => injectionFor(settings, "codex", process.env),
           }),

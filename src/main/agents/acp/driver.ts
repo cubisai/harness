@@ -146,9 +146,12 @@ export function hasOwnCodeMode(init: Pick<InitializeResult, "agentInfo">): boole
   return /opencode/i.test(info?.name ?? "") && Number.isFinite(major) && major >= 2;
 }
 
-/** Code mode's line for an ACP agent: OpenCode v2 hides run_code in its own Code Mode catalog, so its line says where to find it. */
-export function acpCodeHint(init: Pick<InitializeResult, "agentInfo">, on: boolean): string {
-  return on ? (hasOwnCodeMode(init) ? OWN_CODE_MODE_HINT : CODE_HINT) : "";
+/**
+ * Code mode's line for an ACP agent: OpenCode v2 hides run_code in its own Code Mode catalog, so its line says where
+ * to find it — unless the guard plugin already exposed run_code top-level (CUBIQ_CODE_MODE=1), which matches CODE_HINT.
+ */
+export function acpCodeHint(init: Pick<InitializeResult, "agentInfo">, on: boolean, runCodeTopLevel = false): string {
+  return on ? (hasOwnCodeMode(init) && !runCodeTopLevel ? OWN_CODE_MODE_HINT : CODE_HINT) : "";
 }
 
 export const DEFAULT_MODEL = "default";
@@ -839,6 +842,10 @@ export function createAcpDriver(
       input.onEvent({ kind: "notice", text: plan.warning });
     }
     const env: NodeJS.ProcessEnv = { ...(plan?.env ?? process.env), ...config.env };
+    // Tells the guard plugin (OpenCode v2) to hide read/glob/grep and expose run_code directly, only when run_code will actually attach.
+    if (pluginAsks && (cliMajor ?? 1) >= 2 && (deps.codeMode?.(input.threadId) ?? "off") !== "off" && input.tools.length > 0 && Boolean(deps.toolServer)) {
+      env.CUBIQ_CODE_MODE = "1";
+    }
     if (config.skillsDirEnv && deps.skillsDir) {
       const dir = deps.skillsDir();
       if (dir) env[config.skillsDirEnv] = dir;
@@ -1343,7 +1350,7 @@ export function createAcpDriver(
       const fresh = l.guidePending;
       // Code mode (run_code attached): one fixed line inside the guide; OpenCode v2's points at run_code in its own Code Mode catalog.
       const codeOn = (deps.codeMode?.(input.threadId) ?? "off") !== "off" && Boolean(l.init.agentCapabilities?.mcpCapabilities?.http) && input.tools.length > 0 && !!deps.toolServer;
-      const codeHint = acpCodeHint(l.init, codeOn);
+      const codeHint = acpCodeHint(l.init, codeOn, l.env.CUBIQ_CODE_MODE === "1");
       const hint = g ? codeHint : "";
       // A continued session that never got the hint (it began with code mode off, or before the hint existed) gets it once on its own.
       const lateHint = !g && codeHint && !l.codeHintSent ? codeHint : "";
@@ -1603,11 +1610,12 @@ export function scriptStepSummary(input: unknown): string {
 }
 
 export function harnessTool(u: Pick<ToolCallFields, "title" | "kind" | "rawInput">): { name: string; summary: string } | null {
-  const m = /^(?:mcp__)?(?:cubiq|unskilled)(?:__|[_:.])([a-z][a-z0-9_]*)$/i.exec(u.title ?? "");
-  if (!m || (u.kind && u.kind !== "other")) return null;
+  const m = /^(?:(?:mcp__)?(?:cubiq(?:\.guard)?|unskilled)(?:__|[_:.])([a-z][a-z0-9_]*)|(run_code))$/i.exec(u.title ?? "");
+  const name = m?.[1] ?? m?.[2];
+  if (!name || (u.kind && u.kind !== "other")) return null;
   const raw = (u.rawInput ?? {}) as Record<string, unknown>;
   const arg = ["url", "ref", "text", "expression", "name", "code"].map((k) => raw[k]).find((v): v is string => typeof v === "string");
-  return { name: m[1]!, summary: arg ? clipSummary(arg) : "" };
+  return { name, summary: arg ? clipSummary(arg) : "" };
 }
 
 export function kindLabel(kind: ToolKind | null | undefined): string {

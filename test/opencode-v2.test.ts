@@ -142,4 +142,91 @@ describe("OpenCode v2 guard plugin", () => {
       { tool: "edit", kind: "edit", summary: "a.txt", callID: "c2", sessionID: "s1" },
     ]);
   });
+
+  it("in CUBIQ_CODE_MODE=1, removes built-in read/glob/grep and adds top-level run_code forwarding to cubiq MCP", async () => {
+    const dir = tempDir();
+    const mod = (await import(`${ensureOpenCodeGuardV2(dir)}/index.mjs`)) as { default: { setup(ctx: unknown): Promise<void> } };
+    const prevMode = process.env.CUBIQ_CODE_MODE;
+    const realFetch = globalThis.fetch;
+
+    const makeEditor = () => {
+      const strSchema = { annotate: (meta: unknown) => ({ _tag: "String", meta }) };
+      const structSchema = {
+        fields: { query: strSchema },
+        mapFields: (fn: (f: { query: typeof strSchema }) => Record<string, unknown>) => ({ _tag: "Struct", fields: fn({ query: strSchema }) }),
+      };
+      const map = new Map<string, Record<string, unknown>>([
+        ["read", { id: "read", name: "read", options: { codemode: false } }],
+        ["glob", { id: "glob", name: "glob", options: { codemode: false } }],
+        ["grep", { id: "grep", name: "grep", options: { codemode: false } }],
+        ["shell", { id: "shell", name: "shell", options: { codemode: false } }],
+        ["websearch", { id: "websearch", name: "websearch", input: structSchema, options: { codemode: false } }],
+      ]);
+      return {
+        map,
+        editor: {
+          list: () => [...map.values()],
+          get: (id: string) => map.get(id),
+          remove: (id: string) => { map.delete(id); },
+          add: (tool: { id: string } & Record<string, unknown>) => { map.set(tool.id, tool); },
+        },
+      };
+    };
+
+    try {
+      // Off: transform is never registered, built-ins stay untouched.
+      delete process.env.CUBIQ_CODE_MODE;
+      let transformedOff = false;
+      await mod.default.setup({
+        tool: {
+          hook: async () => {},
+          transform: async () => { transformedOff = true; },
+        },
+      });
+      expect(transformedOff).toBe(false);
+
+      // On: removes read/glob/grep, adds top-level run_code, and forwards execute to cubiq MCP.
+      process.env.CUBIQ_CODE_MODE = "1";
+      const { map, editor } = makeEditor();
+      await mod.default.setup({
+        mcp: {
+          transform: async (fn: (m: { get(id: string): unknown }) => void) => {
+            fn({ get: (id) => (id === "cubiq" ? { url: "http://cubiq.test/mcp?c=t1", headers: { Authorization: "Bearer secret" } } : null) });
+          },
+        },
+        tool: {
+          hook: async () => {},
+          transform: async (fn: (ed: typeof editor) => void) => fn(editor),
+        },
+      });
+
+      expect(map.has("read")).toBe(false);
+      expect(map.has("glob")).toBe(false);
+      expect(map.has("grep")).toBe(false);
+      expect(map.has("shell")).toBe(true);
+      const runCode = map.get("run_code") as { options?: { codemode?: boolean }; execute: (args: { code: string }, ctx: { signal?: AbortSignal }) => Promise<{ output: string }> };
+      expect(runCode).toBeDefined();
+      expect(runCode.options).toEqual({ codemode: false });
+
+      let calledUrl = "";
+      let calledAuth = "";
+      let calledBody: unknown = null;
+      globalThis.fetch = (async (u: string, init: { headers: Record<string, string>; body: string }) => {
+        calledUrl = u;
+        calledAuth = init.headers.Authorization ?? "";
+        calledBody = JSON.parse(init.body);
+        return { ok: true, json: async () => ({ jsonrpc: "2.0", id: 1, result: { content: [{ type: "text", text: "SANDBOX_OK" }] } }) };
+      }) as never;
+
+      const out = await runCode.execute({ code: "return 42;" }, {});
+      expect(out).toEqual({ output: "SANDBOX_OK" });
+      expect(calledUrl).toBe("http://cubiq.test/mcp?c=t1");
+      expect(calledAuth).toBe("Bearer secret");
+      expect(calledBody).toMatchObject({ method: "tools/call", params: { name: "run_code", arguments: { code: "return 42;" } } });
+    } finally {
+      globalThis.fetch = realFetch;
+      if (prevMode === undefined) delete process.env.CUBIQ_CODE_MODE;
+      else process.env.CUBIQ_CODE_MODE = prevMode;
+    }
+  });
 });

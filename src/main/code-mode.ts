@@ -24,7 +24,10 @@ export const CODE_TOOL = "run_code";
 const NEVER = new Set([CODE_TOOL, "ask_user"]);
 
 /** The native tools' exact argument names, which models otherwise guess from their own tools (`filePath`). */
-const SCRIPT_EXAMPLES = "Arguments: `await tools.read({ path: \"src/a.ts\", offset: 1, limit: 200 })`, `await tools.grep({ pattern: \"TODO\", path: \"src\", glob: \"*.ts\" })`, `await tools.glob({ pattern: \"**/*.md\" })`; read returns the file's text (or, for a folder, its entries, with folders ending in \"/\"), glob and grep return arrays (an empty one when nothing matches).";
+const SCRIPT_EXAMPLES = "Arguments: `await tools.read({ path: \"src/a.ts\", offset: 1, limit: 200 })`, `await tools.readMany([\"src/a.ts\", \"src/b.ts\"])`, `await tools.grep({ pattern: \"TODO\", path: \"src\", glob: \"*.ts\", limit: 200, context: 2 })`, `await tools.glob({ pattern: \"**/*.md\", limit: 200 })`; read returns the file's text (or, for a folder, its entries, with folders ending in \"/\"), glob and grep return arrays (an empty one when nothing matches), and `path` has POSIX string helpers (`join`, `dirname`, `basename`, `extname`, `normalize`).";
+
+/** The full tool description `run_code` carries on MCP, Codex dynamicTools, and OpenCode v2's top-level plugin tool. */
+export const CODE_MODE_DESCRIPTION = `${CODE_DESCRIPTION} Scripts here only read: \`tools\` holds read, glob, grep and CubiQ's read-only tools, scoped to this thread's folder; make edits, run commands and ask questions yourself. ${SCRIPT_EXAMPLES}`;
 
 /** How long a script waits for the agent's driver to show its row before its calls go up as top-level rows. */
 const PARENT_WAIT_MS = 2000;
@@ -94,13 +97,17 @@ export function createCodeServer(deps: CodeServerDeps): { tool(threadId: string)
     ];
   };
 
-  const run = async (threadId: string, code: string, signal: AbortSignal | undefined): Promise<{ text: string; isError?: boolean }> => {
+  const run = async (threadId: string, code: string, signal: AbortSignal | undefined, parentId?: string): Promise<{ text: string; isError?: boolean }> => {
     const cwd = deps.cwdOf(threadId);
     if (!cwd) return { text: "This thread's folder is gone, so run_code can't run here.", isError: true };
     const turn = deps.turnSignal?.(threadId);
     const stop = [signal, turn].filter((s): s is AbortSignal => Boolean(s));
     const combined = stop.length ? AbortSignal.any(stop) : new AbortController().signal;
-    const parent = await waitFor(() => deps.parentOf(threadId, code), deps.parentWaitMs ?? PARENT_WAIT_MS, combined);
+    // The sandbox boots at once; the driver's row is awaited only when the
+    // script's first call is about to emit (or resolved immediately when known).
+    let parentPromise: Promise<string | undefined> | null = null;
+    const parent = (): Promise<string | undefined> =>
+      parentId !== undefined ? Promise.resolve(parentId) : (parentPromise ??= waitFor(() => deps.parentOf(threadId, code), deps.parentWaitMs ?? PARENT_WAIT_MS, combined));
     let state = states.get(threadId);
     if (!state) states.set(threadId, (state = new Map()));
     const available = scriptTools(threadId, cwd);
@@ -108,9 +115,9 @@ export function createCodeServer(deps: CodeServerDeps): { tool(threadId: string)
       tools: () => available,
       outputDir: deps.outputDir,
       state,
-      broker: createCodeBroker({ tools: () => available, emit: (e) => deps.emit(threadId, e), outputDir: deps.outputDir, parentOf: () => parent }),
+      broker: createCodeBroker({ tools: () => available, emit: (e) => deps.emit(threadId, e), outputDir: deps.outputDir, parentOf: () => parent() }),
     });
-    const result = await sandbox.run({ code }, { id: parent ?? `code-${randomUUID().slice(0, 8)}`, signal: combined, onOutput: () => {} });
+    const result = await sandbox.run({ code }, { id: `code-${randomUUID().slice(0, 8)}`, signal: combined, onOutput: () => {} });
     return { text: result.text, ...(result.isError ? { isError: true } : {}) };
   };
 
@@ -120,11 +127,11 @@ export function createCodeServer(deps: CodeServerDeps): { tool(threadId: string)
       if (!tool) {
         tool = {
           name: CODE_TOOL,
-          description: `${CODE_DESCRIPTION} Scripts here only read: \`tools\` holds read, glob, grep and CubiQ's read-only tools, scoped to this thread's folder; make edits, run commands and ask questions yourself. ${SCRIPT_EXAMPLES}`,
+          description: CODE_MODE_DESCRIPTION,
           input: { code: z.string().describe("The JavaScript to run, as the body of an async function.") },
           autoAllow: true,
           effect: "read",
-          run: ({ code }, ctx) => run(threadId, code, ctx?.signal),
+          run: ({ code }, ctx) => run(threadId, code, ctx?.signal, ctx?.parentId),
         } satisfies HarnessTool<{ code: z.ZodString }> as unknown as HarnessTool;
         tools.set(threadId, tool);
       }
