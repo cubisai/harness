@@ -1,10 +1,32 @@
-# Handoff (2026-10-30, Mac, updated after the issues P3 session): one file for every open track
+# Handoff (2026-10-31, Mac, updated after Code Mode v3 live checks + artifact snapshot fix): one file for every open track
 
 This replaces the old `HANDOFF.md`, `DESIGN-LIVE-HANDOFF.md`, `DESIGN-ENHANCE-HANDOFF.md` and `road-map-handoff.md`. Their full history is in git: `git show 2e2dd54:<file>`.
 
-## Active: issue tracker + PR flow in CubiQ (P1–P3 done in m4 2026-10-30); run_code uptake still open
+## Completed: Code Mode v3 + structural `run_code` uptake + pre-turn deliverable snapshot (2026-10-31)
 
-- **Plans:** `.ai/plans/issue-tracker.md` (P1/P2 code map), `.ai/plans/issue-agent-aware.md` (P3), `.ai/plans/run-code-uptake.md`.
+- **Plans:** `.ai/plans/code-mode-enhance.md` (full 3-phase spec), `.ai/plans/run-code-uptake-v2.md`, `.ai/plans/run-code-uptake.md`.
+- **What's built:**
+  - **Phase 1 — Speed:**
+    - Zero-stall lazy `parentOf` resolution + immediate `ctx.parentId` fast path (`src/main/code-mode.ts`, `src/main/agents/types.ts`).
+    - Single-crossing QuickJS `JSON.parse` marshaling in `toHandle()` and `load()` (`src/main/harness/tools/code.ts`).
+    - Async `node:fs/promises` I/O across `read`/`glob`/`grep`, `MAX_IN_FLIGHT = 16` (`code-broker.ts`), concurrent directory walks + expanded `SKIP_DIRS` (`glob.ts`), cached `rgPath` lookup + batched JS `scanFiles` with whole-file multiline pre-check (`grep.ts`).
+    - In-memory `boundPreview()` (`bound.ts`) so structured child calls inside `run_code` skip `.txt` spill-file disk writes (`code-broker.ts`).
+  - **Phase 2 — Accuracy & Script Quality:**
+    - `read` (`read.ts`): >2 MB paged window reads (`offset` + `limit` up to 64 MB file size, capping the returned slice at 2 MB instead of rejecting up front) and `\r\n` → `\n` normalization in scripts.
+    - `glob` & `grep` (`glob.ts`, `grep.ts`): script `grep` content line cap raised `300` → `4000` chars; `limit` added to `glob` and `grep`; `context` (`0..20`, `before`/`after` arrays) added to `grep` content mode.
+    - Parameter aliases (`types.ts`, `read.ts`, `glob.ts`, `grep.ts`): camelCase and model-native aliases (`file_path`/`filePath`, `start_line`/`end_line`, `dir`/`directory`, `query`/`regex`, `include`/`filePattern`, `ignoreCase`/`case_insensitive`, `outputMode`/`mode` `"files"`/`"lines"`/`"counts"`).
+    - Sandbox ergonomics (`code.ts`): `console.info/debug/warn/error`, pure POSIX `path` helpers (`join`, `dirname`, `basename`, `extname`, `normalize`), tolerant batch `tools.readMany` (`read_many`), trailing options merge for two-arg calls like `tools.grep("pat", { output_mode: "content" })`, adjusted `Line N:` stack trace reporting, expanded `explain()`, and empty `=> undefined` hints.
+  - **Phase 3 — Structural Agent Uptake (`codeMode === "off"` 100% unchanged):**
+    - **OpenCode v2 (`2.2.0`):** `acp/driver.ts` sets `CUBIQ_CODE_MODE=1` per process when `codeMode !== "off"` and `run_code` is attached; `OPENCODE_GUARD_V2_SOURCE` (`src/main/inject/opencode-guard.ts`) captures `cubiq`'s HTTP MCP `{ url, headers }` via `ctx.mcp.transform`, removes built-in `read`/`glob`/`grep` via `ctx.tool.transform`, and registers top-level `run_code` (`options: { codemode: false }`, Effect `Schema` cloned from built-in string field, zero external imports). `acpCodeHint` sends `CODE_HINT` and `harnessTool` matches top-level `run_code` so child rows nest under it.
+    - **Codex (`0.159.2`):** `codeTool` wired into `createCodexDriver` (`src/main/index.ts`, `src/main/agents/codex.ts`); `thread/start` registers `run_code` via `dynamicTools` (`deferLoading: false`; omitted on `thread/resume`), sends `CODE_HINT` in `developerInstructions`, handles `item/tool/call` + `dynamicToolCall` items with deduped `tool-use` emission (`startedTools`) and direct `parentId` nesting, and keeps MCP `run_code` fallback.
+  - **Pre-turn deliverable snapshot (`src/main/artifacts.ts`, `src/main/service.ts`, `bench/lib/project.ts`):** `snapshotDeliverables` captures `path -> { mtimeMs, size }` before `runTurn` so pre-existing deliverables checked out or copied inside the `Date.now() - 2000` coarse-clock window (e.g. `src/renderer/src/assets/experts/*.svg`) no longer trigger false turn-end cards or auto-open the Preview panel; `layTree` also passes `preserveTimestamps: true`.
+- **Live-checked (`read-heavy` on pinned `17b3eba`, `codeMode: "on"` vs `"off"`):**
+  - **Uptake (`codeMode: "on"`):** 100% `run_code` uptake (`0` `look`, `0` `shell`, `0` orphan child rows) across OpenCode 2.2.0 (`opencode-tokenharbor`: 13 `run_code`, 212 children), Codex 0.159.2 (`codex-luna`: 8 dynamic `run_code`, 38 children, no `tool_search`), and Native (`tokenharbor-deepseek`: 24 `run_code`, 278 children). OpenCode Zen free hit account cap; Codex Ask-mode approval with `codeMode: "off"` verified live.
+  - **Token & speed comparison (`on` vs `off`):** Codex `gpt-6-luna` ran **56% faster** (`53.5 s` vs `122.8 s`) with **21.9% fewer total tokens** (`290.7k` vs `372.1k`, `-10.4%` billed-equiv input, `89.8%` cache hit). DeepSeek `v4.1-flash:free` used more tokens with `on` (`511k` OpenCode / `669k` Native, `89–91%` cache hit) than `off` (`331k` / `219k`) because in Full-access `off` mode it wrote a temporary TS compiler AST script via shell instead of iterating regex scripts in QuickJS.
+
+## Completed earlier: issue tracker + PR flow in CubiQ (P1–P3 done in m4 2026-10-30)
+
+- **Plans:** `.ai/plans/issue-tracker.md` (P1/P2 code map), `.ai/plans/issue-agent-aware.md` (P3).
 - **P1/P2** (see git `8633f86` for the old detail): `/issue`, `/issue-setup`, `/triage`, `/pr` as `/` commands; the app's own setup card; `Thread.issue` with the full issue once, then one line.
 - **P3 as built (user's calls 2026-10-30):**
   - `issue_create` harness tool (`src/main/issues-tool.ts`, `createIssue` in `issues.ts`): GitHub/Gitea via `gh|tea api` with a JSON body file, GitLab via `glab api` (attachments upload with `--form`), local files (attachments copied to `<folder>/attachments/NNNN/`). Labels = type + `needs-triage`. GitHub and Gitea attachments are left out on purpose (their CLIs can't upload) and named in the result.
@@ -13,14 +35,13 @@ This replaces the old `HANDOFF.md`, `DESIGN-LIVE-HANDOFF.md`, `DESIGN-ENHANCE-HA
   - **Reply check** (`issue-offer.ts`, `service.setIssueOffer`): after a finished turn whose reply names a problem, the background model (`pickBackground`, ~300 tokens, accounted as purpose `issue`) decides; an offer is an `issue-offer` event, the **File issue?** card (`IssueOfferCard`, ThreadView). File sends the user's yes; Dismiss is kept in localStorage. Settings → Threads → Issues turns it off (`issueOffers`).
   - Composer: Tab completes a `/` command (Enter runs it); chat chips show `/issue-setup`, not `$issue-setup`.
 - **Live-checked:** the card and filing on Claude Haiku, Codex gpt-6-luna, OpenCode (TokenHarbor `deepseek-v4.1-flash:free`) and native PGS DeepSeek; GitHub #10 filed for real (the sidebar "Running while waiting on a card" bug, left open).
-- **run_code uptake (open):** Claude uses it. Shipped hints (`2d5834c`): Codex's says load run_code through its tool search (Codex 0.159 always defers MCP tools), OpenCode v2's points at run_code in its own Code Mode catalog, a late hint for old ACP sessions, the native tip twice a turn. Live re-probe after the merge: no change on Codex (shell `rg`/`sed`), OpenCode (Search/Read) or native DeepSeek (Grep/Read). Prompt text isn't enough for these models, so on the native provider code mode now hides read/glob/grep from the model (`LOOK_TOOLS`, `driver.ts`; scripts still call them). Not live-checked yet; Codex and OpenCode remain on hints.
 - **Known bug:** the native provider's Read hands an image to a text-only model; the turn dies ("does not accept image input").
 - **opencode:** Zen free is capped; `oc` dispatch uses PGS Grove `PGA/deepseek-v4-flash-0731`.
 
 ## Where things stand
 - **Branch `m4`**, pushed: this session's work (R1–R4 of `.ai/plans/release-builds.md`, approved 2026-10-29: every PR push builds installers, Apple Silicon only, plus a shells-test fix) was merged in from `track/release`, along with the other session's `CLAUDE.md`, `DESIGN-MODE.md` and `docs/testing/`. No worktrees are open.
 - **CI (run on `track/release` before the merge):** run `40820793700` (Windows+Ubuntu+extras): both `package` jobs green (the `.dmg` passed `codesign --verify` and the packaged smoke on the macOS runner), Ubuntu and codex-e2e green; Windows failed only on a shells temp-dir race, fixed in `c39b94e` and green in run `40827470388`.
-- **Local suite:** fully green (3906 passed), the OpenCode v2 tests included.
+- **Local suite:** fully green (4,008 passed across 312 test files), OpenCode v2 E2E and Codex dynamic-tool tests included.
 - **`release-cubiq.yml` never ran for real**: `workflow_dispatch` needs the file on `main`. After the PR merges: Actions → release-cubiq → Run workflow without **publish** first (build only), then a tag or **publish**.
 
 ## Done this session

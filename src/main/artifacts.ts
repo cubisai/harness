@@ -64,16 +64,11 @@ const SCAN_MAX_DEPTH = 6;
 const SCAN_MAX_ENTRIES = 20_000;
 const SCAN_MAX_FILES = 20;
 
-/**
- * Deliverables (the kinds that open by themselves: docx, pdf, images…) under
- * `root` modified at or after `sinceMs`, oldest first. These are the files an
- * agent wrote with a command, a script or a skill, which no Edit tool-use
- * names. The walk is bounded and skips dot-folders, build output and the
- * `skipDirs` (relative, "/"-separated: other threads' design folders); never throws.
- */
-export function filesWrittenSince(root: string, sinceMs: number, skipDirs: readonly string[] = []): string[] {
+export type DeliverableSnapshot = ReadonlyMap<string, { mtimeMs: number; size: number }>;
+
+/** Walk deliverables (`opensByItself`) under `root`, bounded like `filesWrittenSince`; never throws. */
+function walkDeliverables(root: string, skipDirs: readonly string[], visit: (rel: string, mtimeMs: number, size: number) => void): void {
   const skip = new Set(skipDirs);
-  const found: { rel: string; mtime: number }[] = [];
   let entries = 0;
   const walk = (dir: string, rel: string, depth: number): void => {
     let list;
@@ -89,8 +84,8 @@ export function filesWrittenSince(root: string, sinceMs: number, skipDirs: reado
         if (depth < SCAN_MAX_DEPTH && !entry.name.startsWith(".") && !SCAN_SKIP.has(entry.name) && !skip.has(childRel)) walk(join(dir, entry.name), childRel, depth + 1);
       } else if (entry.isFile() && opensByItself(entry.name)) {
         try {
-          const mtime = statSync(join(dir, entry.name)).mtimeMs;
-          if (mtime >= sinceMs) found.push({ rel: childRel, mtime });
+          const st = statSync(join(dir, entry.name));
+          visit(childRel, st.mtimeMs, st.size);
         } catch {
           // Gone between readdir and stat.
         }
@@ -98,6 +93,36 @@ export function filesWrittenSince(root: string, sinceMs: number, skipDirs: reado
     }
   };
   walk(root, "", 0);
+}
+
+/**
+ * Snapshot existing deliverables (`path -> { mtimeMs, size }`) right before a turn starts, so a recent checkout,
+ * worktree creation or folder copy inside the 2 s coarse-clock window isn't mistaken for this turn's output.
+ */
+export function snapshotDeliverables(root: string, skipDirs: readonly string[] = []): DeliverableSnapshot {
+  const snap = new Map<string, { mtimeMs: number; size: number }>();
+  walkDeliverables(root, skipDirs, (rel, mtimeMs, size) => {
+    snap.set(rel, { mtimeMs, size });
+  });
+  return snap;
+}
+
+/**
+ * Deliverables (the kinds that open by themselves: docx, pdf, images…) under
+ * `root` modified at or after `sinceMs`, oldest first. These are the files an
+ * agent wrote with a command, a script or a skill, which no Edit tool-use
+ * names. When `before` is given, files already on disk before the turn must
+ * have a newer mtime or changed byte size; brand-new files still get `sinceMs`'s
+ * coarse-clock slack. Bounded walk; never throws.
+ */
+export function filesWrittenSince(root: string, sinceMs: number, skipDirs: readonly string[] = [], before?: DeliverableSnapshot): string[] {
+  const found: { rel: string; mtime: number }[] = [];
+  walkDeliverables(root, skipDirs, (rel, mtime, size) => {
+    const prev = before?.get(rel);
+    if (prev ? mtime > prev.mtimeMs || size !== prev.size : mtime >= sinceMs) {
+      found.push({ rel, mtime });
+    }
+  });
   return found
     .sort((a, b) => a.mtime - b.mtime)
     .slice(-SCAN_MAX_FILES)
@@ -154,13 +179,13 @@ export interface ArtifactDeps {
  */
 export function recordTurnArtifacts(
   deps: ArtifactDeps,
-  input: { threadId: string; root: string; events: StoredEvent[]; turnSeq: number; turnStartedAt?: number; skipDirs?: readonly string[] },
+  input: { threadId: string; root: string; events: StoredEvent[]; turnSeq: number; turnStartedAt?: number; skipDirs?: readonly string[]; beforeDeliverables?: DeliverableSnapshot },
 ): { files: string[]; changed: string[] } {
   const files: string[] = [];
   const changed: string[] = [];
   const edits = editedFilesInTurn(input.events);
   const named = new Set(edits.map((p) => resolveInside(input.root, p)));
-  const written = input.turnStartedAt === undefined ? [] : filesWrittenSince(input.root, input.turnStartedAt, input.skipDirs).filter((rel) => !named.has(rel));
+  const written = input.turnStartedAt === undefined ? [] : filesWrittenSince(input.root, input.turnStartedAt, input.skipDirs, input.beforeDeliverables).filter((rel) => !named.has(rel));
   for (const edited of [...edits, ...written]) {
     try {
       const rel = resolveInside(input.root, edited);

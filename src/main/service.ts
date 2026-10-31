@@ -68,7 +68,7 @@ import {
   toolSetOf,
 } from "./cache-policy";
 import { Approvals } from "./approvals";
-import { artifactDiff, listArtifacts, opensByItself, readArtifact, recordPlan, recordPseudo, recordTurnArtifacts, type ArtifactDeps } from "./artifacts";
+import { artifactDiff, listArtifacts, opensByItself, readArtifact, recordPlan, recordPseudo, recordTurnArtifacts, snapshotDeliverables, type ArtifactDeps, type DeliverableSnapshot } from "./artifacts";
 import { runCheck, tailOf } from "./check";
 import { evidenceFlags, isTestPath, markerCounts, newMarkers, addedLines as diffAddedLines } from "./evidence";
 import type { Store } from "./db";
@@ -912,8 +912,10 @@ export class Service {
         this.emit(thread.id, { kind: "notice", text: `Now talking to ${driver.label}. It starts without the earlier messages above.` });
       }
       this.noteTeamFallback(thread, driver);
-      // Files the turn writes by command are found by mtime; 2 s of slack covers coarse filesystem clocks.
+      // Files the turn writes by command are found by mtime; 2 s of slack covers coarse filesystem clocks,
+      // while `beforeDeliverables` keeps out deliverables already on disk right before the turn started.
       const turnStartedAt = Date.now() - 2000;
+      const beforeDeliverables = this.artifacts ? snapshotDeliverables(cwd, this.otherDesignDirs(thread.projectId, thread.id)) : undefined;
       if (!compact) lintSince = turnStartedAt;
       await driver.runTurn({
         threadId: thread.id,
@@ -986,7 +988,7 @@ export class Service {
           const stored = this.emit(thread.id, event, provenance);
           if (event.kind === "turn-end") {
             this.emitSignal(thread.id, event.usage);
-            this.recordArtifacts(thread.id, cwd, stored.seq, turnStartedAt);
+            this.recordArtifacts(thread.id, cwd, stored.seq, turnStartedAt, beforeDeliverables);
           }
         },
         // Live text is scrubbed like stored events. A key split across two deltas can
@@ -1413,16 +1415,20 @@ export class Service {
    * one to open: the last file of a kind that opens by itself (not markdown or
    * code), never mid-stream. Never throws.
    */
-  private recordArtifacts(threadId: string, root: string, turnSeq: number, turnStartedAt: number): void {
+  private otherDesignDirs(projectId: string, threadId: string): string[] {
+    return this.store
+      .listThreads(projectId)
+      .filter((t) => t.id !== threadId)
+      .flatMap((t) => designOf(t) ?? []);
+  }
+
+  private recordArtifacts(threadId: string, root: string, turnSeq: number, turnStartedAt: number, beforeDeliverables?: DeliverableSnapshot): void {
     if (!this.artifacts) return;
     try {
       // Another design thread in this project may be writing its own folder at the same time: not this turn's work.
       const thread = this.store.getThread(threadId);
-      const skipDirs = this.store
-        .listThreads(thread.projectId)
-        .filter((t) => t.id !== threadId)
-        .flatMap((t) => designOf(t) ?? []);
-      const { files } = recordTurnArtifacts(this.artifacts, { threadId, root, events: this.store.listEvents(threadId), turnSeq, turnStartedAt, skipDirs });
+      const skipDirs = this.otherDesignDirs(thread.projectId, threadId);
+      const { files } = recordTurnArtifacts(this.artifacts, { threadId, root, events: this.store.listEvents(threadId), turnSeq, turnStartedAt, skipDirs, beforeDeliverables });
       const path = withoutExportSources(files.filter(opensByItself)).at(-1);
       if (path) this.broadcast({ type: "artifact-ready", threadId, path, files });
     } catch (err) {

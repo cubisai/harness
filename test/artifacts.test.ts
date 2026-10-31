@@ -17,6 +17,7 @@ import {
   recordPseudo,
   recordTurnArtifacts,
   resolveInside,
+  snapshotDeliverables,
   type ArtifactDeps,
 } from "../src/main/artifacts";
 import type { PreviewResult } from "../src/main/preview/host";
@@ -290,6 +291,23 @@ describe("filesWrittenSince", () => {
 
   it("returns nothing for a folder that doesn't exist", () => {
     expect(filesWrittenSince(join(tempDir(), "gone"), 0)).toEqual([]);
+  });
+
+  it("ignores deliverables already present in the pre-turn snapshot within the 2 s window unless modified or resized", () => {
+    const root = tempDir();
+    mkdirSync(join(root, "assets"), { recursive: true });
+    writeFileSync(join(root, "assets", "avatar.svg"), "<svg/>");
+    writeFileSync(join(root, "assets", "updated.svg"), "<svg/>");
+    const before = snapshotDeliverables(root);
+    const since = Date.now() - 2000;
+
+    // Unchanged pre-existing SVG inside the 2 s window must NOT be treated as written by the turn.
+    expect(filesWrittenSince(root, since, [], before)).toEqual([]);
+
+    // Overwriting an existing SVG (new size/mtime) or creating a brand-new deliverable IS recorded.
+    writeFileSync(join(root, "assets", "updated.svg"), "<svg><circle/></svg>");
+    writeFileSync(join(root, "report.pdf"), "%PDF");
+    expect(filesWrittenSince(root, since, [], before)).toEqual(["assets/updated.svg", "report.pdf"]);
   });
 });
 
