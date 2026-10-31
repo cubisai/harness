@@ -1,0 +1,2723 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CubiQ — Design Mode 2.0 Interactive Mock</title>
+  <style>
+    /* ═══════════════════════════════════════════════════════════════════════════
+       1. LOCAL FONTS (App Chrome: Geist · Design Packs: ./resources/design-fonts)
+       ═══════════════════════════════════════════════════════════════════════════ */
+    @font-face { font-family: "Geist"; src: url("./src/renderer/src/assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+    @font-face { font-family: "Geist Mono"; src: url("./src/renderer/src/assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+    @font-face { font-family: "Schibsted Grotesk"; src: url("./resources/design-fonts/schibsted-grotesk.woff2") format("woff2"); font-weight: 400 800; font-display: swap; }
+    @font-face { font-family: "Onest"; src: url("./resources/design-fonts/onest.woff2") format("woff2"); font-weight: 300 700; font-display: swap; }
+    @font-face { font-family: "Bodoni Moda"; src: url("./resources/design-fonts/bodoni-moda.woff2") format("woff2"); font-weight: 400 700; font-display: swap; }
+    @font-face { font-family: "Source Serif 4"; src: url("./resources/design-fonts/source-serif-4.woff2") format("woff2"); font-weight: 300 700; font-display: swap; }
+    @font-face { font-family: "Chakra Petch"; src: url("./resources/design-fonts/chakra-petch.woff2") format("woff2"); font-weight: 400 700; font-display: swap; }
+    @font-face { font-family: "JetBrains Mono"; src: url("./resources/design-fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 400 700; font-display: swap; }
+    @font-face { font-family: "Archivo"; src: url("./resources/design-fonts/archivo.woff2") format("woff2"); font-weight: 400 800; font-display: swap; }
+    @font-face { font-family: "Martian Mono"; src: url("./resources/design-fonts/martian-mono.woff2") format("woff2"); font-weight: 400 700; font-display: swap; }
+    @font-face { font-family: "Young Serif"; src: url("./resources/design-fonts/young-serif.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+       2. CUBIQ "INK FLAT" TOKENS (Exact tokens from DESIGN.md & styles/app.css)
+       ═══════════════════════════════════════════════════════════════════════════ */
+    :root {
+      --font: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+      --primary: #0b0d10;
+      --primary-soft: rgb(11 13 16 / 0.07);
+      --on-primary: #ffffff;
+      --focus: #0b0d10;
+      --signal-fill: #a8ff55;
+      --signal-ink: #357a08;
+      --signal-line: #4a9a12;
+      --danger: #e5484d;
+      --success: #2f9e44;
+      --warning: #c98500;
+
+      --bg: #ffffff;
+      --bg-sidebar: #f7f8fa;
+      --bg-elevated: #ffffff;
+      --bg-subtle: #f5f6f8;
+      --bg-chip: #f1f3f5;
+      --bg-hover: #eff1f4;
+      --bg-selected: #e8ebef;
+      --text: #0b0d10;
+      --text-secondary: #5b606b;
+      --text-tertiary: #9aa0aa;
+      --hairline: #e7e9ed;
+      --hairline-strong: #d5d9df;
+      --shadow-float: 0 12px 40px rgb(0 0 0 / 0.12);
+
+      --radius-s: 6px;
+      --radius-m: 8px;
+      --radius-l: 10px;
+      --titlebar: 46px;
+      --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    :root[data-theme="dark"] {
+      --primary: #f7f8fa;
+      --primary-soft: rgb(247 248 250 / 0.1);
+      --on-primary: #0b0d10;
+      --focus: #f7f8fa;
+      --signal-fill: #a8ff55;
+      --signal-ink: #a8ff55;
+      --signal-line: #a8ff55;
+      --danger: #ff6369;
+      --success: #3fb950;
+      --warning: #f5a524;
+
+      --bg: #0e1013;
+      --bg-sidebar: #0b0d10;
+      --bg-elevated: #14171b;
+      --bg-subtle: #14171b;
+      --bg-chip: #1a1d22;
+      --bg-hover: #181b20;
+      --bg-selected: #1e2127;
+      --text: #f7f8fa;
+      --text-secondary: #9aa0aa;
+      --text-tertiary: #5f6570;
+      --hairline: #22252b;
+      --hairline-strong: #30343c;
+      --shadow-float: 0 12px 40px rgb(0 0 0 / 0.5);
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; height: 100%; overflow: hidden;
+      font-family: var(--font); font-size: 13px; line-height: 1.5;
+      color: var(--text); background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+    }
+    button, input, textarea { font-family: inherit; font-size: 12.5px; color: inherit; }
+    button { cursor: pointer; background: none; border: 0; padding: 0; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible {
+      outline: 2px solid var(--focus); outline-offset: 2px;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+       3. APP SHELL & LEFT SIDEBAR (Ink Flat §7.1)
+       ═══════════════════════════════════════════════════════════════════════════ */
+    .app { display: flex; width: 100vw; height: 100vh; overflow: hidden; }
+
+    .sidebar {
+      width: 236px; flex-shrink: 0; background: var(--bg-sidebar);
+      border-right: 1px solid var(--hairline); display: flex; flex-direction: column;
+      transition: width 160ms var(--ease);
+    }
+    .sidebar.collapsed { width: 0; border-right: 0; overflow: hidden; }
+    .sb-head {
+      height: var(--titlebar); display: flex; align-items: center; gap: 8px;
+      padding: 0 12px; border-bottom: 1px solid var(--hairline);
+    }
+    .traffic { display: flex; gap: 6px; margin-right: 4px; }
+    .traffic i { width: 10px; height: 10px; border-radius: 50%; display: block; background: var(--hairline-strong); }
+    .iq-mark {
+      width: 22px; height: 22px; border-radius: var(--radius-s); background: var(--primary);
+      color: var(--on-primary); font-weight: 600; font-size: 11px; display: grid; place-items: center;
+      position: relative;
+    }
+    .iq-mark::after {
+      content: ""; width: 4px; height: 4px; border-radius: 50%; background: var(--signal-fill);
+      position: absolute; top: 3px; right: 3px;
+    }
+    .sb-brand { font-weight: 600; font-size: 13px; flex: 1; }
+    .sb-nav { padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+    .sb-row {
+      height: 28px; padding: 0 8px; border-radius: var(--radius-m); display: flex; align-items: center;
+      gap: 8px; color: var(--text-secondary); font-size: 12.5px; width: 100%; text-align: left;
+    }
+    .sb-row:hover { background: var(--bg-hover); color: var(--text); }
+    .sb-row.active { background: var(--bg-selected); color: var(--text); font-weight: 500; }
+    .sb-row .kbd { margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: var(--text-tertiary); }
+    .sb-sec { padding: 12px 16px 4px; font-size: 11px; font-weight: 600; color: var(--text-tertiary); }
+    .sb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--signal-line); flex-shrink: 0; }
+    .sb-foot {
+      margin-top: auto; padding: 10px; border-top: 1px solid var(--hairline);
+      display: flex; flex-direction: column; gap: 6px; background: var(--bg-subtle);
+    }
+    .mock-label { font-size: 10.5px; font-family: var(--mono); color: var(--text-tertiary); }
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+       4. STUDIO HEADER — ONLY 5 CLEAN GROUPS (Replaces 21-item header!)
+       ═══════════════════════════════════════════════════════════════════════════ */
+    .main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
+    .studio-header {
+      height: var(--titlebar); padding: 0 12px; border-bottom: 1px solid var(--hairline);
+      display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      align-items: center; gap: 12px; background: var(--bg); z-index: 30;
+    }
+    .sh-left { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .sh-center { display: flex; align-items: center; gap: 8px; }
+    .sh-right { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+
+    .icon-btn {
+      width: 28px; height: 28px; border-radius: var(--radius-m); display: inline-grid;
+      place-items: center; color: var(--text-secondary); flex-shrink: 0;
+      transition: background 120ms var(--ease), color 120ms var(--ease);
+    }
+    .icon-btn:hover { background: var(--bg-hover); color: var(--text); }
+    .icon-btn.active { background: var(--bg-selected); color: var(--text); }
+
+    .btn {
+      height: 28px; padding: 0 10px; border-radius: var(--radius-m); display: inline-flex;
+      align-items: center; gap: 6px; font-size: 12.5px; font-weight: 500;
+      border: 1px solid var(--hairline); background: var(--bg); color: var(--text);
+      white-space: nowrap; transition: background 120ms var(--ease), border-color 120ms var(--ease);
+    }
+    .btn:hover { background: var(--bg-hover); border-color: var(--hairline-strong); }
+    .btn.primary { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+    .btn.primary:hover { opacity: 0.92; }
+    .btn.ghost { border-color: transparent; color: var(--text-secondary); }
+    .btn.ghost:hover { background: var(--bg-hover); color: var(--text); border-color: transparent; }
+    .btn.ghost.active { background: var(--bg-selected); color: var(--text); border-color: var(--hairline-strong); }
+
+    .crumb-bar { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; }
+    .crumb-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .crumb-sep { color: var(--text-tertiary); }
+    .page-chip {
+      height: 26px; padding: 0 8px; border-radius: var(--radius-s); display: inline-flex;
+      align-items: center; gap: 5px; font-family: var(--mono); font-size: 11.5px;
+      color: var(--text-secondary); background: var(--bg-subtle); border: 1px solid var(--hairline);
+    }
+    .page-chip:hover { background: var(--bg-hover); color: var(--text); }
+
+    /* Ink Flat Segmented Control (DESIGN.md §5: --bg-chip track, active = --bg + 1px --hairline) */
+    .seg {
+      height: 28px; padding: 2px; border-radius: var(--radius-m); background: var(--bg-chip);
+      display: inline-flex; align-items: center; gap: 2px;
+    }
+    .seg button {
+      height: 24px; padding: 0 9px; border-radius: var(--radius-s); display: inline-flex;
+      align-items: center; gap: 5px; font-size: 12px; font-weight: 500; color: var(--text-secondary);
+      border: 1px solid transparent;
+    }
+    .seg button:hover { color: var(--text); }
+    .seg button.active {
+      background: var(--bg); color: var(--text); border-color: var(--hairline);
+    }
+    .zoom-readout {
+      font-family: var(--mono); font-size: 10.5px; color: var(--text-tertiary);
+      font-variant-numeric: tabular-nums; padding: 0 4px;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+       5. WORKSPACE: SEMANTIC LAYERS RAIL + STAGE + DUAL-STATE CUSTOMIZE PANEL
+       ═══════════════════════════════════════════════════════════════════════════ */
+    .workspace { flex: 1; min-height: 0; display: flex; position: relative; overflow: hidden; }
+
+    /* Left Semantic Layers Rail */
+    .layers-rail {
+      width: 224px; flex-shrink: 0; background: var(--bg); border-right: 1px solid var(--hairline);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .layers-rail.hidden { display: none; }
+    .rail-sec-head {
+      height: 32px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between;
+      font-size: 11px; font-weight: 600; color: var(--text-tertiary); border-bottom: 1px solid var(--hairline);
+    }
+    .rail-list { padding: 6px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+    .layer-item {
+      height: 26px; padding: 0 8px; border-radius: var(--radius-s); display: flex; align-items: center;
+      gap: 6px; font-size: 12px; color: var(--text-secondary); width: 100%; text-align: left;
+    }
+    .layer-item:hover { background: var(--bg-hover); color: var(--text); }
+    .layer-item.selected { background: var(--bg-selected); color: var(--text); font-weight: 500; }
+    .layer-item.selected svg { color: var(--primary); opacity: 1 !important; }
+    .layer-badge {
+      margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--text-tertiary);
+      padding: 1px 4px; border-radius: 4px; background: var(--bg-subtle);
+    }
+
+    /* Center Stage Column */
+    .stage-col {
+      flex: 1; min-width: 0; background: var(--bg-subtle); position: relative;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .stage-scroll {
+      flex: 1; overflow-y: auto; overflow-x: hidden; padding: 24px 24px 128px;
+      display: flex; flex-direction: column; align-items: center; position: relative;
+    }
+    .stage-scroll.grid-on {
+      background-image: radial-gradient(var(--hairline-strong) 1px, transparent 1px);
+      background-size: 16px 16px;
+    }
+
+    /* Scale-Locked Artboard Shell */
+    .artboard-scaler {
+      position: relative; transition: width 160ms var(--ease), height 160ms var(--ease);
+      flex-shrink: 0;
+    }
+    .artboard {
+      transform-origin: top left; border: 1px solid var(--hairline); border-radius: var(--radius-l);
+      overflow: hidden; background: #fff; position: relative;
+      transition: transform 140ms var(--ease), width 180ms var(--ease);
+    }
+    .artboard.mobile-bezel {
+      border: 8px solid #1b1d21; border-radius: 32px;
+    }
+
+    /* Floating Contextual Selection Pill (THE ONLY ON-CANVAS BAR, 28px compact) */
+    .context-pill {
+      position: absolute; z-index: 25; min-height: 32px; padding: 0 4px;
+      background: var(--bg-elevated); border: 1px solid var(--hairline-strong);
+      border-radius: var(--radius-m); box-shadow: var(--shadow-float);
+      display: none; align-items: center; gap: 2px; white-space: nowrap;
+    }
+    .context-pill.visible { display: inline-flex; }
+    .cp-tag {
+      height: 24px; min-width: 24px; padding: 0 8px; border-radius: var(--radius-s); font-size: 11.5px;
+      font-weight: 600; background: var(--primary); color: var(--on-primary);
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .cp-act {
+      height: 24px; min-width: 24px; justify-content: center; padding: 0 8px; border-radius: var(--radius-s); font-size: 11.5px;
+      font-weight: 500; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 4px;
+    }
+    .cp-act:hover { background: var(--bg-hover); color: var(--text); }
+    .cp-sep { width: 1px; height: 14px; background: var(--hairline); margin: 0 2px; }
+
+    /* Variant Cycler Pill (1/3 · Keep) */
+    .variant-bar {
+      position: absolute; z-index: 26; height: 30px; padding: 0 6px;
+      background: var(--bg-elevated); border: 1px solid var(--primary);
+      border-radius: var(--radius-m); box-shadow: var(--shadow-float);
+      display: none; align-items: center; gap: 6px; font-size: 12px;
+    }
+    .variant-bar.visible { display: inline-flex; }
+
+    /* Right Dual-Mode Customize Panel (Closed by default! Zero raw CSS clutter) */
+    .customize-panel {
+      width: 284px; flex-shrink: 0; background: var(--bg); border-left: 1px solid var(--hairline);
+      display: flex; flex-direction: column; overflow-y: auto;
+    }
+    .prop-input {
+      width: 100%; height: 32px; padding: 0 10px; border-radius: var(--radius-s);
+      border: 1px solid var(--hairline); background: var(--bg-chip); font-size: 12.5px;
+      color: var(--text); outline: none; box-sizing: border-box;
+      transition: border-color 120ms ease, background 120ms ease;
+    }
+    .prop-input:focus { border-color: var(--focus); background: var(--bg); }
+    .prop-input::placeholder { color: var(--text-tertiary); }
+    .prop-row-sub {
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 11.5px; color: var(--text-secondary); margin-bottom: 5px;
+    }
+    .prop-row-sub .icon-label { display: flex; align-items: center; gap: 5px; font-weight: 500; }
+    .prop-row-sub .action-dots { color: var(--text-tertiary); cursor: pointer; }
+    .prop-blue-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--primary); display: inline-block; }
+    .prop-slider-wrap {
+      width: 100%; height: 34px; border-radius: var(--radius-s);
+      background: var(--bg-chip); border: 1px solid var(--hairline);
+      position: relative; display: flex; align-items: center; padding: 0 14px;
+      box-sizing: border-box; cursor: pointer; gap: 14px;
+    }
+    .prop-slider-wrap:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+    .prop-notch-track {
+      position: relative; flex: 1; height: 100%; display: flex;
+      align-items: center; justify-content: space-between;
+    }
+    .prop-step {
+      flex: 1; height: 100%; display: flex; align-items: center; cursor: pointer; z-index: 2;
+    }
+    .prop-step:first-child { justify-content: flex-start; }
+    .prop-step:nth-child(2) { justify-content: center; }
+    .prop-step:nth-child(3) { justify-content: flex-end; }
+    .prop-notch {
+      width: 1.5px; height: 9px; background: var(--text-tertiary); border-radius: 1px;
+      pointer-events: none; opacity: 0.55; transition: opacity 120ms ease;
+    }
+    .prop-thumb {
+      position: absolute; top: 50%; transform: translate(-50%, -50%);
+      width: 4px; height: 16px; border-radius: 2px; background: var(--text);
+      pointer-events: none; transition: left 160ms cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 1;
+    }
+    .prop-range-readout {
+      font-family: var(--mono); font-size: 11.5px; font-weight: 600;
+      color: var(--text); width: 22px; text-align: right; flex-shrink: 0;
+      user-select: none;
+    }
+    .toggle-switch {
+      position: relative; width: 34px; height: 20px; display: inline-block; cursor: pointer;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; inset: 0; background: var(--bg-chip); border: 1px solid var(--hairline-strong);
+      border-radius: 20px; transition: 160ms ease;
+    }
+    .toggle-slider::before {
+      position: absolute; content: ""; height: 14px; width: 14px; left: 2px; bottom: 2px;
+      background: var(--text-tertiary); border-radius: 50%; transition: 160ms ease;
+    }
+    .toggle-switch input:checked + .toggle-slider { background: var(--primary); border-color: var(--primary); }
+    .toggle-switch input:checked + .toggle-slider::before { transform: translateX(14px); background: #ffffff; }
+    .customize-panel.hidden { display: none; }
+    .cp-header {
+      height: 38px; padding: 0 12px; border-bottom: 1px solid var(--hairline);
+      display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-shrink: 0;
+    }
+    .cp-header-title { font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .cp-live-badge {
+      font-family: var(--mono); font-size: 10px; color: var(--signal-ink);
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .cp-live-badge::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--signal-line); }
+    .cp-section { padding: 12px; border-bottom: 1px solid var(--hairline); display: flex; flex-direction: column; gap: 10px; }
+    .cp-sec-label { font-size: 11px; font-weight: 600; color: var(--text-tertiary); display: flex; justify-content: space-between; }
+    .cp-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .cp-lbl { font-size: 12px; color: var(--text-secondary); flex-shrink: 0; }
+    .swatch-row { display: flex; gap: 6px; flex-wrap: wrap; }
+    .swatch-btn {
+      height: 26px; padding: 0 8px; border-radius: var(--radius-s); border: 1px solid var(--hairline);
+      background: var(--bg-subtle); display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px;
+    }
+    .swatch-btn:hover { border-color: var(--hairline-strong); background: var(--bg-hover); }
+    .swatch-btn.active { border-color: var(--primary); background: var(--bg-selected); font-weight: 500; }
+    .swatch-dot { width: 11px; height: 11px; border-radius: 50%; border: 1px solid rgb(0 0 0 / 0.14); flex-shrink: 0; }
+
+    .sys-summary-card {
+      padding: 10px; border-radius: var(--radius-m); border: 1px solid var(--hairline);
+      background: var(--bg-subtle); display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    }
+    .mini-dots { display: inline-flex; gap: 3px; }
+    .mini-dots i { width: 9px; height: 9px; border-radius: 50%; border: 1px solid rgb(0 0 0 / 0.12); display: block; }
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+       6. SINGLE UNIFIED BOTTOM COMPOSER DOCK (Replaces 4 stacked bottom bars!)
+       ═══════════════════════════════════════════════════════════════════════════ */
+    .composer-dock-wrap {
+      position: absolute; left: 0; right: 0; bottom: 14px; z-index: 28;
+      display: flex; flex-direction: column; align-items: center; pointer-events: none; padding: 0 16px;
+    }
+    .composer-dock {
+      width: 100%; max-width: 660px; pointer-events: auto;
+      background: var(--bg); border: 1px solid var(--hairline-strong);
+      border-radius: var(--radius-l); position: relative;
+      transition: border-color 140ms var(--ease);
+    }
+    .composer-dock:focus-within { border-color: var(--focus); }
+
+    /* Expandable Chat Drawer Sheet (On-demand only!) */
+    .chat-sheet {
+      display: none; max-height: 210px; overflow-y: auto; padding: 12px 14px;
+      border-bottom: 1px solid var(--hairline); background: var(--bg-subtle);
+      border-radius: var(--radius-l) var(--radius-l) 0 0; flex-direction: column; gap: 10px;
+    }
+    .chat-sheet.open { display: flex; }
+    .msg-user {
+      align-self: flex-end; background: var(--bg-chip); padding: 6px 10px;
+      border-radius: var(--radius-l); font-size: 12.5px; max-width: 82%;
+    }
+    .msg-agent { font-size: 12.5px; color: var(--text-secondary); line-height: 1.55; }
+    .msg-meta { font-family: var(--mono); font-size: 11px; color: var(--text-tertiary); margin-bottom: 2px; }
+
+    .run-lip {
+      display: none; padding: 5px 12px; border-bottom: 1px solid var(--hairline);
+      font-size: 11.5px; color: var(--signal-ink); font-family: var(--mono);
+      align-items: center; gap: 8px;
+    }
+    .run-lip.running { display: flex; }
+    .run-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--signal-fill); outline: 1.5px solid var(--signal-line); }
+
+    .composer-top { padding: 9px 12px 4px; display: flex; align-items: flex-start; gap: 6px; flex-wrap: wrap; }
+    .target-chip {
+      height: 22px; padding: 0 7px; border-radius: var(--radius-s);
+      background: var(--bg-selected); border: 1px solid var(--hairline-strong);
+      font-size: 11.5px; font-weight: 500; display: none; align-items: center; gap: 5px;
+    }
+    .target-chip.visible { display: inline-flex; }
+    .composer-input {
+      flex: 1; min-width: 180px; border: 0; background: transparent; resize: none;
+      height: 24px; line-height: 22px; font-size: 13px; color: var(--text); outline: none;
+    }
+    .composer-input::placeholder { color: var(--text-tertiary); }
+
+    .composer-bar {
+      padding: 4px 8px 7px; display: flex; align-items: center; gap: 6px;
+    }
+    .chip-btn {
+      height: 26px; padding: 0 8px; border-radius: var(--radius-s);
+      background: var(--bg-subtle); border: 1px solid var(--hairline);
+      display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500;
+      color: var(--text-secondary);
+    }
+    .chip-btn:hover { background: var(--bg-hover); color: var(--text); border-color: var(--hairline-strong); }
+    .chip-btn.active { background: var(--bg-selected); color: var(--text); }
+    .spacer { flex: 1; }
+    .send-btn {
+      width: 28px; height: 28px; border-radius: 50%; background: var(--primary);
+      color: var(--on-primary); display: grid; place-items: center; flex-shrink: 0;
+    }
+    .send-btn:hover { opacity: 0.9; }
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+       7. VISUAL STYLE & DESIGN-SYSTEM PICKER POPOVER (2-Pane, 1-Click, 0 Clutter)
+       ═══════════════════════════════════════════════════════════════════════════ */
+    .popover-backdrop {
+      position: fixed; inset: 0; z-index: 60; display: none;
+    }
+    .popover-backdrop.open { display: block; }
+    .style-picker {
+      position: fixed; z-index: 65;
+      max-height: min(520px, calc(100vh - 100px));
+      background: var(--bg-elevated); border: 1px solid var(--hairline-strong);
+      border-radius: 12px; box-shadow: var(--shadow-float);
+      display: none; flex-direction: column; overflow: hidden;
+    }
+    .style-picker.open { display: flex; }
+    .sp-top {
+      padding: 10px 12px; border-bottom: 1px solid var(--hairline);
+      display: flex; flex-direction: column; gap: 8px; position: relative;
+    }
+    .sp-search-row { display: flex; align-items: center; gap: 8px; }
+    .sp-search {
+      flex: 1; height: 28px; padding: 0 10px; border-radius: var(--radius-m);
+      border: 1px solid var(--hairline); background: var(--bg-subtle); font-size: 12.5px; outline: none;
+    }
+    .sp-search:focus { border-color: var(--hairline-strong); }
+    .filter-pills { display: flex; gap: 6px; align-items: center; min-width: 0; }
+    .pill {
+      height: 24px; padding: 0 9px; border-radius: 999px; font-size: 11.5px;
+      color: var(--text-secondary); background: var(--bg-subtle); border: 1px solid transparent;
+      display: inline-flex; align-items: center; flex-shrink: 0;
+    }
+    .pill:hover { color: var(--text); background: var(--bg-hover); }
+    .pill.active { background: var(--primary); color: var(--on-primary); font-weight: 500; }
+
+    #kitNote {
+      font-size: 11.5px; color: var(--text-tertiary); overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; margin: 0 8px;
+    }
+
+    .sp-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); }
+    .sp-grid {
+      padding: 10px; overflow-y: auto; border-right: 1px solid var(--hairline);
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-content: start; min-height: 0; min-width: 0;
+    }
+    .style-card {
+      min-width: 0; width: 100%; box-sizing: border-box; overflow: hidden;
+      padding: 8px; border-radius: var(--radius-m); border: 1px solid var(--hairline);
+      background: var(--bg); text-align: left; display: flex; flex-direction: column; gap: 6px;
+      transition: border-color 120ms var(--ease), background 120ms var(--ease);
+    }
+    .style-card:hover, .style-card.previewing { border-color: var(--hairline-strong); background: var(--bg-hover); }
+    .style-card.selected { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+    .sc-mini-stage {
+      height: 52px; border-radius: var(--radius-s); padding: 5px 7px;
+      border: 1px solid rgb(0 0 0 / 0.08); display: flex; flex-direction: column;
+      justify-content: space-between; overflow: hidden; position: relative; min-width: 0; box-sizing: border-box;
+    }
+    .sc-mini-top { display: flex; align-items: baseline; justify-content: space-between; min-width: 0; }
+    .sc-aa { font-size: 16px; font-weight: 700; line-height: 1; }
+    .sc-mini-ui { display: flex; align-items: center; gap: 5px; min-width: 0; }
+    .sc-mini-btn { padding: 2px 7px; font-size: 9.5px; font-weight: 600; white-space: nowrap; }
+    .sc-mini-card { flex: 1; height: 16px; border: 1px solid currentColor; opacity: 0.35; min-width: 0; }
+    .sc-meta { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-width: 0; overflow: hidden; }
+    .sc-name { font-size: 12px; font-weight: 600; color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sc-meta span:last-child { flex-shrink: 0; }
+    .sc-sub { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; width: 100%; }
+
+    .sp-preview {
+      padding: 12px; display: flex; flex-direction: column; gap: 8px;
+      background: var(--bg-subtle); min-height: 0; min-width: 0; overflow: hidden;
+    }
+    .sp-specimen-wrap {
+      flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column;
+    }
+    .sp-specimen {
+      flex: 1; border-radius: var(--radius-m); border: 1px solid var(--hairline);
+      padding: 12px; display: flex; flex-direction: column; gap: 8px; box-sizing: border-box;
+    }
+    .sp-foot {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      flex-shrink: 0; padding-top: 8px; border-top: 1px solid var(--hairline);
+    }
+    .sp-foot > div { min-width: 0; }
+
+    /* Menus (Export, More, Viewport, Variants) */
+    .float-menu {
+      position: fixed; z-index: 70; min-width: 210px; padding: 4px;
+      background: var(--bg-elevated); border: 1px solid var(--hairline-strong);
+      border-radius: var(--radius-l); box-shadow: var(--shadow-float); display: none;
+      flex-direction: column; gap: 1px;
+    }
+    .float-menu.open { display: flex; }
+    .menu-item {
+      min-height: 28px; padding: 4px 8px; border-radius: var(--radius-s);
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      font-size: 12.5px; color: var(--text); text-align: left;
+    }
+    .menu-item:hover { background: var(--bg-hover); }
+    .menu-item .sub { font-size: 11px; color: var(--text-tertiary); display: block; }
+    .menu-sep { height: 1px; background: var(--hairline); margin: 3px 4px; }
+
+    /* Code View & Board View & Empty Starter State */
+    .code-view, .board-view, .starter-view {
+      display: none; width: 100%; max-width: 980px; margin: 0 auto;
+    }
+    .code-view.active, .board-view.active, .starter-view.active { display: block; }
+    .code-card {
+      background: var(--bg); border: 1px solid var(--hairline); border-radius: var(--radius-l); overflow: hidden;
+    }
+    .code-head {
+      height: 36px; padding: 0 10px; border-bottom: 1px solid var(--hairline);
+      display: flex; align-items: center; justify-content: space-between; background: var(--bg-subtle);
+    }
+    .code-pre {
+      margin: 0; padding: 14px; font-family: var(--mono); font-size: 12px; line-height: 1.6;
+      overflow-x: auto; color: var(--text); max-height: calc(100vh - 230px); overflow-y: auto;
+    }
+    .board-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .board-cell {
+      background: var(--bg); border: 1px solid var(--hairline); border-radius: var(--radius-l);
+      padding: 10px; display: flex; flex-direction: column; gap: 8px; cursor: pointer;
+    }
+    .board-cell:hover { border-color: var(--primary); }
+    .starter-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px;
+    }
+
+    /* Toast notification (shows silent <200ms pack streaming) */
+    .toast {
+      position: fixed; top: 56px; right: 16px; z-index: 80;
+      padding: 7px 12px; border-radius: var(--radius-m);
+      background: var(--bg-elevated); border: 1px solid var(--hairline-strong);
+      box-shadow: var(--shadow-float); font-size: 12px; display: none; align-items: center; gap: 8px;
+    }
+    .toast.show { display: inline-flex; }
+    .sp-top { position: relative; }
+    .kit-menu { position: absolute; z-index: 50; top: calc(100% + 4px); left: 0; width: 280px; display: none; flex-direction: column; padding: 4px; background: var(--bg-elevated); border: 1px solid var(--hairline-strong); border-radius: var(--radius-m); box-shadow: var(--shadow-float); }
+    .kit-menu.open { display: flex; }
+    .kit-menu button { min-height: 28px; padding: 4px 8px; border-radius: var(--radius-s); display: flex; justify-content: space-between; align-items: center; gap: 8px; text-align: left; font-size: 12px; }
+    .kit-menu button:hover, .kit-menu button.sel { background: var(--bg-hover); }
+    .kit-menu .sub { font-family: var(--mono); font-size: 10.5px; color: var(--text-tertiary); }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    #fnPage:focus { outline: none; }
+    #artboard:has(#fnPage:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+    #fnPage:focus-visible .is-selected { outline-width: 3px; outline-style: double; }
+    .context-pill:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+    .target-fail { outline: 2px dashed var(--text) !important; background: var(--bg-selected) !important; outline-offset: 1px; }
+    .rail-insert { margin: 6px; height: 28px; border: 1px dashed var(--hairline-strong); border-radius: var(--radius-s); display: flex; align-items: center; justify-content: space-between; padding: 0 8px; font-size: 12px; color: var(--text-secondary); width: calc(100% - 12px); }
+    .rail-insert:hover { background: var(--bg-hover); color: var(--text); }
+    .rail-insert[disabled] { opacity: 0.5; cursor: not-allowed; }
+    .toast button { font: inherit; font-weight: 600; color: var(--primary); background: none; border: 0; cursor: pointer; padding: 4px 6px; min-height: 24px; }
+
+    /* Save / revision status + conflict + migration + install states */
+    .save-status { font-family: var(--mono); font-size: 11px; color: var(--text-tertiary); display: inline-flex; align-items: center; gap: 6px; padding: 0 6px; min-height: 24px; }
+    .save-status.saving { color: var(--text-secondary); }
+    .save-status.conflict { color: var(--text); font-weight: 600; }
+    .save-status i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-tertiary); display: inline-block; }
+    .save-status.saving i { background: var(--text-secondary); }
+    .save-status.conflict i { background: var(--text); }
+    .conflict-banner { position: fixed; top: 54px; left: 50%; transform: translateX(-50%); z-index: 85; display: none; align-items: center; gap: 10px; padding: 8px 12px; border-radius: var(--radius-m); background: var(--bg-elevated); border: 1px solid var(--hairline-strong); box-shadow: var(--shadow-float); font-size: 12px; max-width: 640px; }
+    .conflict-banner.show { display: flex; }
+    .conflict-banner .btn { min-height: 28px; }
+    .sp-status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); padding: 6px 0; }
+    .sp-status.warn { color: var(--text); }
+    .sp-progress { width: 72px; height: 2px; background: var(--bg-chip); position: relative; overflow: hidden; border-radius: 2px; }
+    .sp-progress i { position: absolute; inset: 0 auto 0 0; width: 40%; background: var(--primary); animation: spSlide 1s ease-in-out infinite; }
+    @keyframes spSlide { 0% { left: -40%; } 100% { left: 100%; } }
+    @media (prefers-reduced-motion: reduce) { .sp-progress i { animation: none; width: 100%; } }
+    .sp-trust { font-size: 11px; color: var(--text-tertiary); font-family: var(--mono); }
+    .migrate-dialog { position: fixed; z-index: 95; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(560px, 92vw); display: none; flex-direction: column; gap: 10px; padding: 16px; border-radius: var(--radius-l); background: var(--bg-elevated); border: 1px solid var(--hairline-strong); box-shadow: var(--shadow-float); }
+    .migrate-dialog.open { display: flex; }
+    .migrate-dialog h3 { margin: 0; font-size: 13.5px; font-weight: 600; }
+    .migrate-dialog p { margin: 0; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+    .mig-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .mig-box { border: 1px solid var(--hairline); border-radius: var(--radius-m); padding: 8px 10px; font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
+    .mig-box h4 { margin: 0 0 2px; font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: none; }
+    .mig-box code { font-family: var(--mono); font-size: 11px; color: var(--text-secondary); }
+    .mig-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    .kbd-hint { font-family: var(--mono); font-size: 10.5px; color: var(--text-tertiary); }
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+       8. DESIGNED PAGE ("FIELDNOTE") — POWERED BY 3-LAYER VARELYO UI TOKENS
+       ═══════════════════════════════════════════════════════════════════════════ */
+    .fn-page {
+      /* Layer 2 Semantic & Layer 3 Component defaults (overridden dynamically per Design System!) */
+      --fn-bg: #f8fafc;
+      --fn-surface: #ffffff;
+      --fn-subtle: #f1f5f9;
+      --fn-fg: #0f172a;
+      --fn-muted: #526075;
+      --fn-border: #e2e8f0;
+      --fn-accent: #0f172a;
+      --fn-on-accent: #ffffff;
+      --fn-accent-soft: #e2e8f0;
+      --fn-font-display: "Geist", sans-serif;
+      --fn-font-body: "Geist", sans-serif;
+      --fn-font-mono: "Geist Mono", monospace;
+      --fn-btn-radius: 8px;
+      --fn-card-radius: 12px;
+      --fn-border-w: 1px;
+      --fn-card-shadow: none;
+      --fn-sec-pad: 64px;
+
+      background: var(--fn-bg); color: var(--fn-fg); font-family: var(--fn-font-body);
+      min-height: 820px; transition: background 180ms ease, color 180ms ease;
+    }
+    /* Selection & Hover Outlines inside Design Mode only */
+    .fn-page.design-editable [data-ui] { position: relative; transition: outline 80ms ease; }
+    .fn-page.design-editable [data-ui]:hover {
+      outline: 1px dashed rgba(37, 99, 235, 0.65); outline-offset: 2px; cursor: default;
+    }
+    .fn-page.design-editable [data-ui].is-selected {
+      outline: 2px solid #2563eb !important; outline-offset: 2px;
+    }
+    .fn-page [contenteditable="true"] {
+      outline: 2px solid #16a34a !important; border-radius: 4px; cursor: text !important;
+    }
+
+    /* Hover Seam "+ Add section" between blocks (Zero Insert-Mode button needed!) */
+    .seam-insert {
+      height: 18px; margin: -9px 0; position: relative; z-index: 8;
+      display: flex; align-items: center; justify-content: center; opacity: 0;
+      transition: opacity 120ms ease;
+    }
+    .fn-page.design-editable .seam-insert:hover { opacity: 1; }
+    .seam-insert::before {
+      content: ""; position: absolute; left: 32px; right: 32px; height: 1px; background: #2563eb;
+    }
+    .seam-btn {
+      position: relative; z-index: 1; height: 22px; padding: 0 10px; border-radius: 999px;
+      background: #2563eb; color: #fff; font-family: var(--font); font-size: 11px; font-weight: 500;
+    }
+
+    /* Varelyo-Inspired Reusable Component Classes ([data-ui="..."]) */
+    .ui-nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 48px; border-bottom: var(--fn-border-w) solid var(--fn-border);
+      background: var(--fn-surface);
+    }
+    .ui-sec { padding: var(--fn-sec-pad) 48px; max-width: 1200px; margin: 0 auto; }
+    .ui-badge {
+      display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px;
+      border-radius: var(--fn-btn-radius); font-size: 12px; font-weight: 600;
+      background: var(--fn-accent-soft); color: var(--fn-fg);
+      border: var(--fn-border-w) solid var(--fn-border);
+    }
+    .ui-textfield {
+      width: 100%; position: relative; display: flex; align-items: center;
+    }
+    .ui-input-field {
+      width: 100%; height: 34px; padding: 0 10px;
+      border-radius: var(--fn-btn-radius, 6px);
+      border: var(--fn-border-w, 1px) solid var(--fn-border);
+      background: var(--fn-subtle); color: var(--fn-fg);
+      font-family: var(--fn-font-body); font-size: 13px; outline: none;
+      box-sizing: border-box; transition: border-color 140ms ease;
+    }
+    .ui-input-field:focus { border-color: var(--fn-accent); }
+    .ui-input-field::placeholder { color: var(--fn-muted); opacity: 0.7; }
+    .ui-btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      font-family: var(--fn-font-body); font-weight: 600;
+      border-radius: var(--fn-btn-radius); border: var(--fn-border-w) solid transparent;
+      box-shadow: var(--fn-card-shadow); transition: transform 100ms ease, opacity 120ms ease;
+    }
+    .ui-btn[data-size="sm"] { height: 32px; padding: 0 12px; font-size: 12.5px; }
+    .ui-btn[data-size="md"], .ui-btn:not([data-size]) { height: 40px; padding: 0 18px; font-size: 14px; }
+    .ui-btn[data-size="lg"] { height: 48px; padding: 0 24px; font-size: 15px; }
+
+    .ui-btn[data-variant="primary"], .ui-btn:not([data-variant]) {
+      background: var(--fn-accent); color: var(--fn-on-accent); border-color: var(--fn-accent);
+    }
+    .ui-btn[data-variant="soft"] {
+      background: var(--fn-accent-soft); color: var(--fn-fg); border-color: transparent; box-shadow: none;
+    }
+    .ui-btn[data-variant="outline"] {
+      background: transparent; color: var(--fn-fg); border-color: var(--fn-border);
+    }
+    .ui-btn[data-variant="ghost"] {
+      background: transparent; color: var(--fn-muted); border-color: transparent; box-shadow: none;
+    }
+
+    .ui-card {
+      background: var(--fn-surface); border: var(--fn-border-w) solid var(--fn-border);
+      border-radius: var(--fn-card-radius); padding: 24px; box-shadow: var(--fn-card-shadow);
+    }
+    .ui-card[data-variant="subtle"] { background: var(--fn-subtle); }
+    .ui-card[data-variant="accent"] { border-color: var(--fn-accent); }
+
+    .fn-hero-grid { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 40px; align-items: center; }
+    .fn-h1 {
+      font-family: var(--fn-font-display); font-size: 50px; line-height: 1.08;
+      letter-spacing: -0.025em; margin: 16px 0; font-weight: 700;
+    }
+    .fn-lead { font-size: 17px; line-height: 1.6; color: var(--fn-muted); margin: 0 0 26px; max-width: 520px; }
+    .fn-bento { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .fn-tabs-bar { display: inline-flex; gap: 4px; padding: 4px; background: var(--fn-subtle); border-radius: var(--fn-btn-radius); border: var(--fn-border-w) solid var(--fn-border); margin-bottom: 16px; }
+    .fn-tab { padding: 6px 14px; border-radius: calc(var(--fn-btn-radius) - 2px); font-size: 13px; font-weight: 600; color: var(--fn-muted); }
+    .fn-tab.active { background: var(--fn-surface); color: var(--fn-fg); }
+
+    /* Mobile responsive rules ONLY when Mobile (390px) viewport is explicitly picked! */
+    .fn-page.is-mobile .ui-nav { padding: 14px 18px; }
+    .fn-page.is-mobile .fn-nav-links { display: none !important; }
+    .fn-page.is-mobile .ui-sec { padding: 36px 18px; }
+    .fn-page.is-mobile .fn-hero-grid, .fn-page.is-mobile .fn-bento { grid-template-columns: 1fr; gap: 20px; }
+    .fn-page.is-mobile .fn-h1 { font-size: 32px; }
+  </style>
+</head>
+<body>
+<div class="app">
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       LEFT APP SIDEBAR (Ink Flat §7.1)
+       ═══════════════════════════════════════════════════════════════════════ -->
+  <aside class="sidebar collapsed" id="appSidebar">
+    <div class="sb-head">
+      <div class="traffic"><i></i><i></i><i></i></div>
+      <div class="iq-mark">iQ</div>
+      <span class="sb-brand">CubiQ</span>
+    </div>
+    <div class="sb-nav">
+      <button class="sb-row" onclick="toggleStarterState(true)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 5v14M5 12h14"/></svg>
+        New design thread <span class="kbd">⌘N</span>
+      </button>
+      <button class="sb-row" onclick="showToast('⌘K Search overlay')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        Search <span class="kbd">⌘K</span>
+      </button>
+      <button class="sb-row" onclick="openStylePicker()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        Style Library <span class="kbd">50+</span>
+      </button>
+    </div>
+    <div class="sb-sec">Recent</div>
+    <div class="sb-nav">
+      <button class="sb-row active" id="threadFieldnote" onclick="toggleStarterState(false)">
+        <span class="sb-dot"></span>
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Fieldnote Landing</span>
+        <span class="kbd">now</span>
+      </button>
+      <button class="sb-row" onclick="toggleStarterState(true)">
+        <span style="width:6px"></span>
+        <span>Blank Starter Demo</span>
+        <span class="kbd">new</span>
+      </button>
+    </div>
+
+    <div class="sb-foot">
+      <div class="mock-label">INTERACTIVE MOCK CONTROLS</div>
+      <button class="btn" style="width:100%;justify-content:space-between" onclick="toggleAppTheme()">
+        <span>CubiQ App Theme</span>
+        <span id="appThemeLabel" style="font-family:var(--mono);font-size:11px;color:var(--text-secondary)">Light</span>
+      </button>
+      <button class="btn" style="width:100%;justify-content:space-between" onclick="simulateAgentTurn()">
+        <span>Simulate Agent Run</span>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--signal-ink)">Live</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       MAIN DESIGN STUDIO PANE
+       ═══════════════════════════════════════════════════════════════════════ -->
+  <main class="main">
+    <!-- TOP BAR: ONLY 5 CLEAN GROUPS (Replaces 21-item header!) -->
+    <header class="studio-header">
+      <!-- 1. Left: Sidebar + Layers + Page Context -->
+      <div class="sh-left">
+        <button class="icon-btn" title="Toggle sidebar" onclick="document.getElementById('appSidebar').classList.toggle('collapsed'); setTimeout(updateStageScale, 180)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
+        </button>
+        <button class="icon-btn active" id="btnLayers" title="Layers & pages (⌘\)" onclick="toggleLayers()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 12 12 17 22 12"/><polyline points="2 17 12 22 22 17"/></svg>
+        </button>
+        <div class="crumb-bar">
+          <span class="crumb-title">Fieldnote</span>
+          <span class="crumb-sep">/</span>
+          <button class="page-chip" id="btnPageMenu" onclick="openMenu('pageMenu', this)">
+            <span id="currentPageName">index.html</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 2 & 3. Center: Mode Switch (Design | Preview | Code) + Device Switch -->
+      <div class="sh-center">
+        <div class="seg" role="tablist" aria-label="View mode">
+          <button class="active" data-mode="design" onclick="setMode('design')">Design</button>
+          <button data-mode="preview" onclick="setMode('preview')">Preview</button>
+          <button data-mode="code" onclick="setMode('code')">Code</button>
+        </div>
+
+        <div class="seg" id="viewportGroup" aria-label="Viewport">
+          <button class="active" data-vp="desktop" title="Desktop 1440px (scales smoothly)" onclick="setViewport('desktop')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+            Desktop
+          </button>
+          <button data-vp="mobile" title="Mobile 390px" onclick="setViewport('mobile')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M12 18h.01"/></svg>
+            Mobile
+          </button>
+          <button title="More viewports, Board & Zoom" onclick="openMenu('vpMenu', this)" style="padding:0 6px">
+            <span class="zoom-readout" id="zoomReadout">100%</span>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 4 & 5. Right: Customize + Export + Clean Overflow Menu -->
+      <div class="sh-right">
+        <span class="save-status" id="saveStatus" role="status" aria-live="polite"><i></i><span id="saveStatusText">Saved · r12</span></span>
+        <button class="btn ghost active" id="btnCustomize" title="Customize theme & selected element (⌘I)" onclick="toggleCustomize()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c3.31 0 6-2.69 6-6 0-4.96-4.49-9-10-9z"/></svg>
+          Customize
+        </button>
+        <button class="btn primary" onclick="openMenu('exportMenu', this)">
+          Export
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <button class="icon-btn" title="More studio tools" onclick="openMenu('moreMenu', this)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="19" cy="12" r="1.2" fill="currentColor"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- WORKSPACE BODY -->
+    <div class="workspace">
+      <!-- LEFT: Semantic Component Layers (Collapsed wrapper divs!) -->
+      <aside class="layers-rail" id="layersRail">
+        <div class="rail-sec-head">
+          <span>Pages</span>
+          <span style="font-family:var(--mono)">3</span>
+        </div>
+        <div class="rail-list" style="flex-shrink:0;border-bottom:1px solid var(--hairline)">
+          <button class="layer-item selected" onclick="switchMockPage('index.html')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex-shrink:0;opacity:0.75"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span style="margin-left:6px;flex:1;overflow:hidden;text-overflow:ellipsis">index.html</span><span class="layer-badge">Home</span></button>
+          <button class="layer-item" onclick="setViewport('board')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex-shrink:0;opacity:0.75"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span style="margin-left:6px;flex:1;overflow:hidden;text-overflow:ellipsis">pricing.html</span><span class="layer-badge">Board</span></button>
+          <button class="layer-item" onclick="setViewport('board')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex-shrink:0;opacity:0.75"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span style="margin-left:6px;flex:1;overflow:hidden;text-overflow:ellipsis">app-notes.html</span><span class="layer-badge">Board</span></button>
+        </div>
+        <div class="rail-sec-head">
+          <span>Components on Page</span>
+          <span style="font-weight:400">Semantic</span>
+        </div>
+        <button class="rail-insert" id="railInsert" onclick="insertFromRail(event)" disabled><span>Insert section after selection…</span><span class="kbd-hint">⇧↵</span></button>
+        <div class="rail-list" id="layersTree" role="listbox" aria-label="Components on page"></div>
+      </aside>
+
+      <!-- CENTER: Scale-Locked Canvas + Single Unified Bottom Dock -->
+      <section class="stage-col" id="stageCol">
+        <div class="stage-scroll" id="stageScroll" onclick="handleStageBackgroundClick(event)">
+
+          <!-- A. LIVE CANVAS ARTBOARD -->
+          <div class="artboard-scaler" id="artboardScaler">
+            <div class="artboard" id="artboard">
+              <div class="fn-page design-editable" id="fnPage" tabindex="0" role="application" aria-label="Page canvas. Arrow keys move between components. Enter edits text. Alt+Up or Alt+Down changes level. Shift+Enter inserts a section.">
+                <!-- Navbar Component (Notice: invisible skip-link exists in DOM to prove we NEVER pick it!) -->
+                <a href="#main" class="skip-link" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden">Skip to content</a>
+
+                <header class="ui-nav" data-ui="navbar" data-label="Navbar" id="el-nav">
+                  <div style="display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px;font-family:var(--fn-font-display)">
+                    <span style="width:22px;height:22px;border-radius:6px;background:var(--fn-accent);color:var(--fn-on-accent);display:inline-grid;place-items:center;font-size:12px">F</span>
+                    <span data-editable="true">Fieldnote</span>
+                  </div>
+                  <nav class="fn-nav-links" style="display:flex;gap:26px;font-size:14px;color:var(--fn-muted)">
+                    <span data-editable="true">Product</span>
+                    <span data-editable="true">Research Sync</span>
+                    <span data-editable="true">Pricing</span>
+                    <span data-editable="true">Manifesto</span>
+                  </nav>
+                  <div style="display:flex;gap:8px">
+                    <button class="ui-btn" data-ui="button" data-label="Sign In Button" data-variant="ghost" data-size="sm" id="el-nav-signin"><span data-editable="true">Sign in</span></button>
+                    <button class="ui-btn" data-ui="button" data-label="Nav CTA Button" data-variant="primary" data-size="sm" id="el-nav-cta"><span data-editable="true">Get Fieldnote</span></button>
+                  </div>
+                </header>
+
+                <!-- Hero Section Component -->
+                <section class="ui-sec" data-ui="section" data-label="Hero Section" id="el-hero">
+                  <div class="fn-hero-grid">
+                    <div>
+                      <span class="ui-badge" data-ui="badge" data-label="Release Badge" data-variant="soft" id="el-badge">
+                        <span data-editable="true">Fieldnote 2.4 · Local-first research studio</span>
+                      </span>
+                      <h1 class="fn-h1" data-ui="heading" data-label="Hero Heading" id="el-h1" data-editable="true">
+                        Capture quiet ideas before noisy tabs scatter them.
+                      </h1>
+                      <p class="fn-lead" data-ui="text" data-label="Hero Subtitle" id="el-lead" data-editable="true">
+                        A fast, offline-first notebook where source clips, voice transcripts, and structured synthesis live on one calm canvas.
+                      </p>
+                      <div style="display:flex;gap:12px;flex-wrap:wrap" data-ui="group" data-label="Hero Actions" id="el-hero-actions">
+                        <button class="ui-btn" data-ui="button" data-label="Primary CTA Button" data-variant="primary" data-size="lg" id="el-cta-main">
+                          <span data-editable="true">Start writing free</span>
+                        </button>
+                        <button class="ui-btn" data-ui="button" data-label="Secondary CTA Button" data-variant="outline" data-size="lg" id="el-cta-sec">
+                          <span data-editable="true">Explore live notebook</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- Interactive Preview Card Component -->
+                    <div class="ui-card" data-ui="card" data-label="Interactive Note Card" data-variant="surface" id="el-hero-card">
+                      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                        <span style="font-family:var(--fn-font-mono);font-size:11.5px;color:var(--fn-muted)" data-editable="true">INTERVIEW_SYNTHESIS.MD</span>
+                        <span class="ui-badge" data-ui="badge" data-label="Sync Badge" id="el-sync-badge"><span data-editable="true">Synced · 4ms</span></span>
+                      </div>
+                      <div class="ui-textfield" data-ui="textfield" data-label="Search Filter Input" id="el-search-input" style="margin-bottom:12px">
+                        <input type="text" class="ui-input-field" placeholder="Add placeholder…" value="Ends in 4 days" oninput="if(state.selectedEl===this.parentElement){document.getElementById('propTextInput').value=this.value;}" />
+                      </div>
+                      <div class="fn-tabs-bar" role="tablist">
+                        <button class="fn-tab active" onclick="switchDemoTab(event, 0)">Highlights</button>
+                        <button class="fn-tab" onclick="switchDemoTab(event, 1)">Backlinks (6)</button>
+                        <button class="fn-tab" onclick="switchDemoTab(event, 2)">Audio</button>
+                      </div>
+                      <div id="demoTabBody" style="font-size:14px;line-height:1.6;color:var(--fn-fg)">
+                        <p style="margin:0 0 10px;font-weight:600" data-editable="true">“When the toolbar disappeared, participants finished layout edits 2.4x faster.”</p>
+                        <p style="margin:0;font-size:13px;color:var(--fn-muted)" data-editable="true">Tagged #ux-simplicity · Linked to Q4 Field Study &amp; Varelyo Token Spec</p>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <!-- Hover Seam Insertion (No '+' mode toggle needed!) -->
+                <div class="seam-insert" onclick="insertSectionAtSeam(event, 'Hero Section')">
+                  <button class="seam-btn">+ Add section here</button>
+                </div>
+
+                <div id="insertedSectionSlot"></div>
+
+                <!-- Feature Bento Section -->
+                <section class="ui-sec" data-ui="section" data-label="Features Bento" id="el-features" style="padding-top:24px">
+                  <div class="fn-bento">
+                    <article class="ui-card" data-ui="card" data-label="Feature Card 1" data-variant="surface" id="el-card-1">
+                      <div style="font-family:var(--fn-font-mono);font-size:11px;color:var(--fn-muted);margin-bottom:8px">01 / INSTANT CAPTURE</div>
+                      <h3 style="margin:0 0 8px;font-family:var(--fn-font-display);font-size:19px" data-editable="true">Zero-latency local storage</h3>
+                      <p style="margin:0;font-size:14px;color:var(--fn-muted);line-height:1.55" data-editable="true">Every keystroke writes straight to SQLite on disk. Works on flights, trains, and air-gapped labs.</p>
+                    </article>
+                    <article class="ui-card" data-ui="card" data-label="Feature Card 2" data-variant="subtle" id="el-card-2">
+                      <div style="font-family:var(--fn-font-mono);font-size:11px;color:var(--fn-muted);margin-bottom:8px">02 / CITATION GRAPH</div>
+                      <h3 style="margin:0 0 8px;font-family:var(--fn-font-display);font-size:19px" data-editable="true">Every claim traces to source</h3>
+                      <p style="margin:0;font-size:14px;color:var(--fn-muted);line-height:1.55" data-editable="true">Highlight any sentence in a PDF or transcript to embed a live verifiable quote block.</p>
+                    </article>
+                    <article class="ui-card" data-ui="card" data-label="Feature Card 3" data-variant="surface" id="el-card-3">
+                      <div style="font-family:var(--fn-font-mono);font-size:11px;color:var(--fn-muted);margin-bottom:8px">03 / CALM PUBLISH</div>
+                      <h3 style="margin:0 0 8px;font-family:var(--fn-font-display);font-size:19px" data-editable="true">One click to clean briefing</h3>
+                      <p style="margin:0;font-size:14px;color:var(--fn-muted);line-height:1.55" data-editable="true">Turn messy research threads into typeset shareable memos with your team's design tokens.</p>
+                    </article>
+                  </div>
+                </section>
+              </div>
+            </div>
+
+            <!-- SINGLE COMPACT CONTEXTUAL PILL (Appears 8px outside selected element) -->
+            <div class="context-pill" id="contextPill" role="toolbar" aria-label="Selection actions">
+              <button class="cp-tag" id="cpParentBtn" title="Click to select parent container (or press Esc)" onclick="stepUpParent(event)">
+                <span id="cpLabel">Button</span>
+                <span style="opacity:0.7">↑</span>
+              </button>
+              <span class="cp-sep"></span>
+              <button class="cp-act" onclick="openVariantsMenu(event)">3 Variants ▾</button>
+              <button class="cp-act" onclick="focusComposerForSelection(event)">Ask AI</button>
+              <button class="cp-act" onclick="openCustomizeForSelection(event)">Style</button>
+            </div>
+
+            <!-- INLINE 1/3 VARIANT CYCLER -->
+            <div class="variant-bar" id="variantBar">
+              <span style="font-weight:600" id="varTitle">Bolder</span>
+              <div class="seg">
+                <button class="active" onclick="applyMockVariant(0, this)">1</button>
+                <button onclick="applyMockVariant(1, this)">2</button>
+                <button onclick="applyMockVariant(2, this)">3</button>
+              </div>
+              <button class="btn primary" style="height:24px;padding:0 8px;font-size:11.5px" onclick="keepVariant()">Keep</button>
+              <button class="cp-act" aria-label="Cancel variants" onclick="cancelVariant()">✕</button>
+            </div>
+          </div>
+
+          <!-- B. CODE VIEW (Varelyo 3-Layer Tokens + Source-Owned React Component) -->
+          <div class="code-view" id="codeView">
+            <div class="code-card">
+              <div class="code-head">
+                <div class="seg" id="codeFileTabs">
+                  <button class="active" onclick="showCodeFile('tokens', this)">system/tokens.css (3-Layer)</button>
+                  <button onclick="showCodeFile('react', this)">components/ui/Button.tsx</button>
+                  <button onclick="showCodeFile('html', this)">index.html</button>
+                </div>
+                <button class="btn" onclick="copyCurrentCode()">Copy source</button>
+              </div>
+              <pre class="code-pre" id="codePre"></pre>
+            </div>
+          </div>
+
+          <!-- C. MULTI-PAGE BOARD VIEW -->
+          <div class="board-view" id="boardView">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+              <div>
+                <div style="font-weight:600;font-size:14px">Flow Board · 3 Screens</div>
+                <div style="font-size:12px;color:var(--text-secondary)">Click any screen to edit it on the canvas</div>
+              </div>
+              <button class="btn" onclick="setViewport('desktop')">Back to single page</button>
+            </div>
+            <div class="board-grid">
+              <div class="board-cell" onclick="setViewport('desktop')">
+                <div style="height:150px;border-radius:6px;background:var(--bg-subtle);padding:14px;border:1px solid var(--hairline)">
+                  <div style="font-weight:700;font-size:13px;margin-bottom:6px">Landing — Fieldnote</div>
+                  <div style="font-size:11px;color:var(--text-secondary)">Hero · Interactive Note Card · 3-Card Bento</div>
+                </div>
+                <div style="font-family:var(--mono);font-size:11.5px">index.html · 1440px</div>
+              </div>
+              <div class="board-cell" onclick="setViewport('desktop'); showToast('Opened pricing.html')">
+                <div style="height:150px;border-radius:6px;background:var(--bg-subtle);padding:14px;border:1px solid var(--hairline)">
+                  <div style="font-weight:700;font-size:13px;margin-bottom:6px">Pricing &amp; Teams</div>
+                  <div style="font-size:11px;color:var(--text-secondary)">Personal Free · Researcher Pro · Lab Enterprise</div>
+                </div>
+                <div style="font-family:var(--mono);font-size:11.5px">pricing.html · 1440px</div>
+              </div>
+              <div class="board-cell" onclick="setViewport('desktop'); showToast('Opened app-notes.html')">
+                <div style="height:150px;border-radius:6px;background:var(--bg-subtle);padding:14px;border:1px solid var(--hairline)">
+                  <div style="font-weight:700;font-size:13px;margin-bottom:6px">Notebook Workspace</div>
+                  <div style="font-size:11px;color:var(--text-secondary)">Sidebar Shell · Markdown Canvas · Citation Graph</div>
+                </div>
+                <div style="font-family:var(--mono);font-size:11.5px">app-notes.html · 1440px</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- D. BLANK STARTER VIEW (Effortless Visual Vibe Start!) -->
+          <div class="starter-view" id="starterView">
+            <div style="max-width:660px;margin:36px auto 0;text-align:center">
+              <h2 style="font-size:18px;font-weight:600;margin:0 0 6px">What are we designing today?</h2>
+              <p style="font-size:13px;color:var(--text-secondary);margin:0">Pick a visual system below (or leave Auto on) and describe your page in the prompt bar.</p>
+              <div class="starter-grid" id="starterCards"></div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- SINGLE UNIFIED BOTTOM COMPOSER DOCK (Zero duplicate Steer / LiveBar!) -->
+        <div class="composer-dock-wrap">
+          <div class="composer-dock">
+            <div class="chat-sheet" id="chatSheet">
+              <div class="msg-user">Design a clean landing page for Fieldnote, a local-first research notebook.</div>
+              <div class="msg-agent">
+                <div class="msg-meta">Worked for 14s · Varelyo Clean UI kit · 0 lint issues</div>
+                Built <code>index.html</code> using semantic 3-layer tokens and reusable <code>Navbar</code>, <code>Button</code>, <code>Badge</code>, <code>Tabs</code>, and <code>Card</code> components. Click any element on the canvas to tweak variants or double-click text to edit in place.
+              </div>
+            </div>
+
+            <div class="run-lip" id="runLip">
+              <span class="run-dot"></span>
+              <span id="runLipText">Refining selected component · 1/2 · Esc to stop</span>
+            </div>
+
+            <div class="composer-top">
+              <span class="target-chip" id="composerTargetChip">
+                <span id="composerTargetText">Button</span>
+                <button onclick="clearSelection()" title="Clear selection" style="font-size:12px;color:var(--text-secondary)">✕</button>
+              </span>
+              <input class="composer-input" id="composerInput" placeholder="Describe a change, or click any element on the canvas…" onkeydown="if(event.key==='Enter')submitPrompt()" />
+            </div>
+
+            <div class="composer-bar">
+              <button class="icon-btn" title="Attach image or reference (@file, $skill)" onclick="showToast('Attach screenshot, @file, or $skill')">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+
+              <!-- 1-CLICK VISUAL STYLE CHIP -->
+              <button class="chip-btn" id="styleChipBtn" onclick="openStylePicker()">
+                <span class="mini-dots" id="chipDots"></span>
+                <span>Style: <strong id="chipStyleName" style="color:var(--text)">Varelyo Clean</strong></span>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+
+              <div class="spacer"></div>
+
+              <button class="chip-btn" id="chatToggleBtn" onclick="toggleChatSheet()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                Chat (2)
+              </button>
+
+              <button class="chip-btn" onclick="showToast('Model picker: GPT-6-Luna · Claude Opus · Codex')">
+                GPT-6-Luna ▾
+              </button>
+
+              <button class="send-btn" title="Send (Enter)" onclick="submitPrompt()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT: DUAL-MODE HUMAN-FRIENDLY CUSTOMIZE PANEL (Closed by default! Live auto-save!) -->
+      <aside class="customize-panel" id="customizePanel">
+        <!-- STATE 1: PAGE THEME (Shown when nothing is selected — never a dead empty screen!) -->
+        <div id="panelPageTheme">
+          <div class="cp-header">
+            <span class="cp-header-title">Page Theme</span>
+            <span class="cp-live-badge">Auto-saved</span>
+          </div>
+
+          <div class="cp-section">
+            <div class="cp-sec-label"><span>Design System</span><span>UI Kit v2</span></div>
+            <div class="sys-summary-card">
+              <div>
+                <div style="font-weight:600;font-size:12.5px" id="panelSysName">Varelyo Clean</div>
+                <div style="font-size:11px;color:var(--text-secondary)" id="panelSysDesc">Theme tokens · same-kit switching</div>
+              </div>
+              <button class="btn" onclick="openStylePicker()">Switch…</button>
+            </div>
+          </div>
+
+          <div class="cp-section">
+            <div class="cp-sec-label"><span>Appearance</span></div>
+            <div class="cp-row">
+              <span class="cp-lbl">Surface mode</span>
+              <div class="seg">
+                <button class="active" id="pgLightBtn" onclick="setPageDark(false)">Light</button>
+                <button id="pgDarkBtn" onclick="setPageDark(true)">Dark</button>
+              </div>
+            </div>
+            <div>
+              <div class="cp-lbl" style="margin-bottom:6px">Brand accent token</div>
+              <div class="swatch-row">
+                <button class="swatch-btn" onclick="overrideAccent('#0f172a','#ffffff')"><span class="swatch-dot" style="background:#0f172a"></span>Ink</button>
+                <button class="swatch-btn" onclick="overrideAccent('#1d63ed','#ffffff')"><span class="swatch-dot" style="background:#1d63ed"></span>Cobalt</button>
+                <button class="swatch-btn" onclick="overrideAccent('#0d9488','#ffffff')"><span class="swatch-dot" style="background:#0d9488"></span>Teal</button>
+                <button class="swatch-btn" onclick="overrideAccent('#c85a32','#ffffff')"><span class="swatch-dot" style="background:#c85a32"></span>Terracotta</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="cp-section">
+            <div class="cp-sec-label"><span>Component Geometry (Layer 3)</span></div>
+            <div>
+              <div class="cp-lbl" style="margin-bottom:6px">Corner style</div>
+              <div class="seg" style="width:100%;justify-content:space-between">
+                <button onclick="overrideRadius('0px','0px', this)">Sharp</button>
+                <button class="active" onclick="overrideRadius('8px','12px', this)">Soft</button>
+                <button onclick="overrideRadius('12px','20px', this)">Round</button>
+                <button onclick="overrideRadius('999px','20px', this)">Pill</button>
+              </div>
+            </div>
+            <div>
+              <div class="cp-lbl" style="margin-bottom:6px">Section rhythm</div>
+              <div class="seg" style="width:100%;justify-content:space-between">
+                <button onclick="overrideDensity('40px', this)">Compact</button>
+                <button class="active" onclick="overrideDensity('64px', this)">Normal</button>
+                <button onclick="overrideDensity('92px', this)">Spacious</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- STATE 2: ELEMENT CONTROLS (Shown when a component is clicked — Props & Swatches first!) -->
+        <div id="panelElement" style="display:none">
+          <div class="cp-header">
+            <button class="btn ghost" style="padding:0 6px;height:24px" onclick="clearSelection()">← Page Theme</button>
+            <span class="cp-live-badge">Live</span>
+          </div>
+
+          <!-- 1. Content Card (Text Value & Placeholder overrides live on canvas) -->
+          <div class="cp-section" id="propContentBlock">
+            <div class="cp-sec-label"><span>Content</span></div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div>
+                <div class="prop-row-sub">
+                  <span class="icon-label">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+                    <span>Value</span>
+                  </span>
+                  <span style="display:flex;align-items:center;gap:6px">
+                    <span class="prop-blue-dot" title="Modified value"></span>
+                    <span class="action-dots">•••</span>
+                  </span>
+                </div>
+                <input class="prop-input" id="propTextInput" placeholder="Text label…" oninput="setElTextLive(this.value)" />
+              </div>
+              <div id="propPlaceholderSubBlock" style="display:none">
+                <div class="prop-row-sub">
+                  <span class="icon-label">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+                    <span>Placeholder</span>
+                  </span>
+                  <span class="action-dots">•••</span>
+                </div>
+                <input class="prop-input" id="propPlaceholderInput" placeholder="Add placeholder…" oninput="setElPlaceholderLive(this.value)" />
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. Component Style & Tactile Step Slider -->
+          <div class="cp-section">
+            <div class="cp-sec-label">
+              <span id="elPanelTitle" style="color:var(--text);font-size:12.5px">Button</span>
+              <span id="elPanelTag" style="font-family:var(--mono)">data-ui="button"</span>
+            </div>
+
+            <!-- Variant segmented selector -->
+            <div id="propVariantBlock">
+              <div class="cp-lbl" style="margin-bottom:6px">Variant</div>
+              <div class="seg" style="width:100%;justify-content:space-between" id="elVariantSeg">
+                <button data-v="primary" onclick="setElVariant('primary')">Filled</button>
+                <button data-v="soft" onclick="setElVariant('soft')">Soft</button>
+                <button data-v="outline" onclick="setElVariant('outline')">Outline</button>
+                <button data-v="ghost" onclick="setElVariant('ghost')">Ghost</button>
+              </div>
+            </div>
+
+            <!-- Tactile Size Step Slider (Notches + Readout matching studio tool) -->
+            <div id="propSizeBlock">
+              <div class="prop-row-sub" style="margin-bottom:6px">
+                <span class="icon-label">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="12" y1="20" x2="12" y2="10"/></svg>
+                  <span>Size</span>
+                </span>
+                <span style="display:flex;align-items:center;gap:6px">
+                  <span class="prop-blue-dot"></span>
+                  <span class="action-dots">•••</span>
+                </span>
+              </div>
+              <div class="prop-slider-wrap" id="propSliderWrap" tabindex="0" role="slider" aria-label="Component size" aria-valuemin="0" aria-valuemax="2" aria-valuenow="1" onkeydown="handleSliderKey(event)">
+                <div class="prop-notch-track">
+                  <div class="prop-step" onclick="handleSizeSlider(0)" title="Small (sm)">
+                    <span class="prop-notch" id="notch-0"></span>
+                  </div>
+                  <div class="prop-step" onclick="handleSizeSlider(1)" title="Medium (md)">
+                    <span class="prop-notch" id="notch-1"></span>
+                  </div>
+                  <div class="prop-step" onclick="handleSizeSlider(2)" title="Large (lg)">
+                    <span class="prop-notch" id="notch-2"></span>
+                  </div>
+                  <div class="prop-thumb" id="propSizeThumb" style="left:0%"></div>
+                </div>
+                <span class="prop-range-readout" id="propSizeReadout">sm</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. Component State Card (Disabled toggle switch) -->
+          <div class="cp-section" id="propStateBlock">
+            <div class="cp-sec-label"><span>State</span></div>
+            <div class="cp-row">
+              <span class="icon-label" style="font-size:12px;color:var(--text);display:flex;align-items:center;gap:6px">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <span>Disabled</span>
+              </span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="propDisabledToggle" onchange="toggleElDisabled(this.checked)" />
+                  <span class="toggle-slider"></span>
+                </label>
+                <span class="action-dots" style="font-size:11px;color:var(--text-tertiary)">•••</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="cp-section">
+            <div class="cp-sec-label"><span>Theme Swatches</span></div>
+            <div class="cp-lbl">Surface / Fill</div>
+            <div class="swatch-row">
+              <button class="swatch-btn" onclick="setElTokenBg('var(--fn-accent)','var(--fn-on-accent)')"><span class="swatch-dot" style="background:#1d63ed"></span>Accent</button>
+              <button class="swatch-btn" onclick="setElTokenBg('var(--fn-surface)','var(--fn-fg)')"><span class="swatch-dot" style="background:#ffffff"></span>Surface</button>
+              <button class="swatch-btn" onclick="setElTokenBg('var(--fn-subtle)','var(--fn-fg)')"><span class="swatch-dot" style="background:#e2e8f0"></span>Subtle</button>
+              <button class="swatch-btn" onclick="setElTokenBg('transparent','var(--fn-fg)')">None</button>
+            </div>
+          </div>
+
+          <div class="cp-section">
+            <div class="cp-sec-label"><span>Text &amp; Spacing</span></div>
+            <div class="cp-row">
+              <span class="cp-lbl">Text scale</span>
+              <div class="seg">
+                <button onclick="setElFontSize('14px')">S</button>
+                <button onclick="setElFontSize('18px')">M</button>
+                <button onclick="setElFontSize('26px')">L</button>
+                <button onclick="setElFontSize('44px')">XL</button>
+              </div>
+            </div>
+            <div class="cp-row">
+              <span class="cp-lbl">Padding</span>
+              <div class="seg">
+                <button onclick="setElPadding('8px 14px')">Tight</button>
+                <button onclick="setElPadding('16px 24px')">Normal</button>
+                <button onclick="setElPadding('28px 36px')">Roomy</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="cp-section" style="border-bottom:0">
+            <button class="btn" style="width:100%;justify-content:center" onclick="resetSelectedElement()">Reset overrides (⌘Z)</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </main>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     2-PANE VISUAL VIBE & DESIGN-SYSTEM PICKER (Zero Cloud/KB Clutter!)
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<div class="popover-backdrop" id="backdrop" onclick="closeAllOverlays()"></div>
+
+<div class="style-picker" id="stylePicker" role="dialog" aria-label="Choose Design System">
+  <div class="sp-top">
+    <div class="sp-search-row">
+      <input class="sp-search" id="spSearch" placeholder="Search styles, moods, or aesthetics (e.g. clean, serif, dark, brutal)…" oninput="renderStylePickerGrid()" />
+      <div class="seg">
+        <button class="active" id="spLightBtn" onclick="setPreviewDark(false)">Light</button>
+        <button id="spDarkBtn" onclick="setPreviewDark(true)">Dark</button>
+      </div>
+    </div>
+    <div class="filter-pills" id="spFilterPills" style="align-items:center">
+      <div style="position:relative;display:inline-flex">
+        <button class="btn" id="kitBtn" aria-haspopup="listbox" aria-expanded="false" onclick="toggleKitMenu(event)">Kit: <strong id="kitBtnName"></strong> ▾</button>
+        <div class="kit-menu" id="kitMenu" role="listbox" aria-label="Component kit"></div>
+      </div>
+      <span id="kitNote"></span>
+      <button class="pill" style="margin-left:auto;border:1px solid var(--hairline-strong);flex-shrink:0" onclick="toggleAddRepoRow()">+ Add Repo…</button>
+    </div>
+    <div id="addRepoRow" style="display:none;gap:6px;align-items:center;padding-top:2px">
+      <input class="sp-search" id="repoUrlInput" value="https://github.com/acme-corp/pulse-fintech-ui" placeholder="https://github.com/owner/design-system-repo" />
+      <button class="btn primary" onclick="importExternalRepo()">Add source</button>
+    </div>
+    <div class="sp-trust" id="repoTrustHint" style="display:none">Adding a source only lets CubiQ list its styles. Each install asks first, and pack scripts run only in the preview sandbox.</div>
+  </div>
+  <div class="sp-body">
+    <div class="sp-grid" id="spGrid"></div>
+    <div class="sp-preview" id="spPreview"></div>
+  </div>
+</div>
+
+<!-- FLOATING MENUS -->
+<div class="float-menu" id="pageMenu">
+  <button class="menu-item" onclick="switchMockPage('index.html')"><span>index.html</span><span class="sub">Landing</span></button>
+  <button class="menu-item" onclick="setViewport('board'); closeAllOverlays()"><span>pricing.html</span><span class="sub">Pricing</span></button>
+  <button class="menu-item" onclick="setViewport('board'); closeAllOverlays()"><span>app-notes.html</span><span class="sub">Workspace</span></button>
+  <div class="menu-sep"></div>
+  <button class="menu-item" onclick="toggleStarterState(true); closeAllOverlays()"><span>+ Blank page (Starter demo)</span></button>
+</div>
+
+<div class="float-menu" id="vpMenu">
+  <button class="menu-item" onclick="setViewport('desktop'); closeAllOverlays()"><span>Desktop</span><span class="sub">1440px · Fit scaled</span></button>
+  <button class="menu-item" onclick="setViewport('tablet'); closeAllOverlays()"><span>Tablet</span><span class="sub">768px</span></button>
+  <button class="menu-item" onclick="setViewport('mobile'); closeAllOverlays()"><span>Mobile</span><span class="sub">390px + bezel</span></button>
+  <div class="menu-sep"></div>
+  <button class="menu-item" onclick="setViewport('board'); closeAllOverlays()"><span>Board View (All 3 pages)</span><span class="sub">Flow</span></button>
+  <button class="menu-item" onclick="toggleGrid(); closeAllOverlays()"><span>Toggle 8px Alignment Grid</span><span class="sub">⌘'</span></button>
+</div>
+
+<div class="float-menu" id="exportMenu">
+  <button class="menu-item" onclick="closeAllOverlays(); setMode('code'); showToast('Ready to copy React UI kit + tokens.css into src/components/ui/')">
+    <div><strong>Build in Codebase</strong><span class="sub">Copies React .tsx kit + 3-layer tokens.css</span></div>
+  </button>
+  <div class="menu-sep"></div>
+  <button class="menu-item" onclick="closeAllOverlays(); showToast('Exported standalone index.html')"><span>Export HTML</span><span class="sub">Single offline file</span></button>
+  <button class="menu-item" onclick="closeAllOverlays(); showToast('Saved Fieldnote-1440w.png')"><span>Export PNG</span><span class="sub">1440px full height</span></button>
+  <button class="menu-item" onclick="closeAllOverlays(); showToast('Saved Fieldnote.pdf')"><span>Export PDF</span><span class="sub">Print ready</span></button>
+</div>
+
+<div class="float-menu" id="moreMenu">
+  <button class="menu-item" onclick="closeAllOverlays(); openStylePicker()"><span>Compare 3 Other Styles</span><span class="sub">Side-by-side</span></button>
+  <button class="menu-item" onclick="closeAllOverlays(); showToast('Design Lint: 0 contrast or tap-target issues ✓')"><span>Check Design Quality (Lint)</span><span class="sub">0 issues</span></button>
+  <button class="menu-item" onclick="closeAllOverlays(); showToast('Version History: v3 (Latest) · v2 · v1')"><span>Version History</span><span class="sub">v3 · Latest</span></button>
+  <button class="menu-item" onclick="closeAllOverlays(); toggleGrid()"><span>Show 8px Grid</span><span class="sub">⌘'</span></button>
+  <div class="menu-sep"></div>
+  <button class="menu-item" onclick="closeAllOverlays(); toggleAppTheme()"><span>Switch CubiQ Light / Dark</span></button>
+  <div class="menu-sep"></div>
+  <button class="menu-item" onclick="closeAllOverlays(); simulateExternalChange()"><span>Demo: external file change</span><span class="sub">conflict</span></button>
+  <button class="menu-item" onclick="closeAllOverlays(); auditTargets()"><span>Demo: check target sizes</span><span class="sub">WCAG 2.5.8</span></button>
+  <button class="menu-item" onclick="toggleOffline()"><span id="offlineLabel">Demo: go offline</span><span class="sub">packs</span></button>
+</div>
+
+<div class="float-menu" id="variantsMenu">
+  <button class="menu-item" onclick="startVariants('Polish')"><div><strong>Polish</strong><span class="sub">Tighter spacing &amp; optical balance</span></div></button>
+  <button class="menu-item" onclick="startVariants('Bolder')"><div><strong>Bolder</strong><span class="sub">Stronger hierarchy &amp; contrast</span></div></button>
+  <button class="menu-item" onclick="startVariants('Calmer')"><div><strong>Calmer</strong><span class="sub">Quieter surface &amp; breathing room</span></div></button>
+  <button class="menu-item" onclick="startVariants('Restyle')"><div><strong>Restyle card/button</strong><span class="sub">3 fresh structural treatments</span></div></button>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="sr-only" id="a11yLive" role="status" aria-live="polite"></div>
+
+<div class="conflict-banner" id="conflictBanner" role="alert">
+  <span>This file changed outside the editor. Your last edit was not applied, so nothing was written to the wrong place.</span>
+  <button class="btn" onclick="resolveConflict(true)">Reapply on latest</button>
+  <button class="btn ghost" onclick="resolveConflict(false)">Discard my edit</button>
+</div>
+
+<div class="migrate-dialog" id="migrateDialog" role="dialog" aria-modal="true" aria-label="Adapt page to this style">
+  <h3 id="migTitle">Adapt page to this style</h3>
+  <p id="migLead"></p>
+  <div class="mig-cols">
+    <div class="mig-box"><h4 id="migOkTitle">Will be adapted</h4><div id="migOk"></div></div>
+    <div class="mig-box"><h4 id="migNoTitle">Needs attention</h4><div id="migNo"></div></div>
+  </div>
+  <p>Your text and content are kept. You can undo this in one step.</p>
+  <div class="mig-actions">
+    <button class="btn ghost" onclick="closeMigrate()">Cancel</button>
+    <button class="btn primary" id="migConfirm" onclick="confirmMigrate()">Adapt page</button>
+  </div>
+</div>
+
+<script>
+  /* ═══════════════════════════════════════════════════════════════════════════
+     6 MULTI-SYSTEM V2 PACKS (Core -> Semantic -> Component Tokens + Varelyo Kit)
+     ═══════════════════════════════════════════════════════════════════════════ */
+  const SYSTEMS = [
+    {
+      id: "varelyo-clean", name: "Varelyo Clean", cat: "saas", cached: true,
+      kit: "Varelyo UI Kit", repo: "cubisai/varelyo-ui",
+      tagline: "Crisp neutral studio surfaces & hairline precision",
+      swatches: ["#F8FAFC", "#FFFFFF", "#0F172A", "#2563EB"],
+      fontDisplay: '"Geist", sans-serif', fontBody: '"Geist", sans-serif', fontMono: '"Geist Mono", monospace',
+      btnRadius: "8px", cardRadius: "12px", borderW: "1px", shadow: "none",
+      light: { bg: "#F8FAFC", surface: "#FFFFFF", subtle: "#F1F5F9", fg: "#0F172A", muted: "#526075", border: "#E2E8F0", accent: "#0F172A", onAccent: "#FFFFFF", accentSoft: "#E2E8F0" },
+      dark:  { bg: "#0B0D11", surface: "#12161D", subtle: "#191E28", fg: "#F8FAFC", muted: "#94A3B8", border: "#232A36", accent: "#F8FAFC", onAccent: "#0B0D11", accentSoft: "#1E293B" }
+    },
+    {
+      id: "glacier", name: "Glacier", cat: "saas", cached: true,
+      kit: "Varelyo UI Kit", repo: "cubisai/varelyo-ui",
+      tagline: "Nordic SaaS clarity with cool slate & cobalt",
+      swatches: ["#F4F8FD", "#FFFFFF", "#0C1829", "#1D63ED"],
+      fontDisplay: '"Schibsted Grotesk", sans-serif', fontBody: '"Onest", sans-serif', fontMono: '"JetBrains Mono", monospace',
+      btnRadius: "10px", cardRadius: "14px", borderW: "1px", shadow: "0 2px 10px rgba(12,24,41,0.04)",
+      light: { bg: "#F4F8FD", surface: "#FFFFFF", subtle: "#E8F0FA", fg: "#0C1829", muted: "#4B5E78", border: "#D6E2F0", accent: "#1D63ED", onAccent: "#FFFFFF", accentSoft: "#DCE8FD" },
+      dark:  { bg: "#09111E", surface: "#101B2D", subtle: "#16243B", fg: "#EFF5FF", muted: "#8DA2C0", border: "#1F314D", accent: "#3B82F6", onAccent: "#FFFFFF", accentSoft: "#1B3258" }
+    },
+    {
+      id: "atelier-serif", name: "Atelier Serif", cat: "editorial", cached: false,
+      kit: "Editorial Press Kit", repo: "cubisai/editorial-kit",
+      tagline: "Editorial luxury, masthead nav, pull-quotes & pill actions",
+      swatches: ["#FAF7F2", "#FFFFFF", "#1C1917", "#7C2D12"],
+      fontDisplay: '"Bodoni Moda", Georgia, serif', fontBody: '"Source Serif 4", Georgia, serif', fontMono: '"Geist Mono", monospace',
+      btnRadius: "999px", cardRadius: "3px", borderW: "1px", shadow: "none",
+      light: { bg: "#FAF7F2", surface: "#FFFDF9", subtle: "#F2ECE1", fg: "#1C1917", muted: "#6B6257", border: "#E2D9C8", accent: "#1C1917", onAccent: "#FAF7F2", accentSoft: "#EDE4D3" },
+      dark:  { bg: "#141210", surface: "#1C1916", subtle: "#26221E", fg: "#F5EFE6", muted: "#A89E91", border: "#332E28", accent: "#E7DAC6", onAccent: "#141210", accentSoft: "#2D2721" }
+    },
+    {
+      id: "carbon-ops", name: "Carbon Ops", cat: "dark", cached: false,
+      kit: "Enterprise Ops Kit", repo: "cubisai/enterprise-ops",
+      tagline: "High-density data grids, filter bars & telemetry cards",
+      swatches: ["#090B0E", "#11151C", "#38BDF8", "#A8FF55"],
+      fontDisplay: '"Chakra Petch", sans-serif', fontBody: '"Geist", sans-serif', fontMono: '"JetBrains Mono", monospace',
+      btnRadius: "5px", cardRadius: "8px", borderW: "1px", shadow: "none",
+      light: { bg: "#0A0D12", surface: "#11161F", subtle: "#171E2A", fg: "#E6EDF7", muted: "#8392A7", border: "#222C3C", accent: "#38BDF8", onAccent: "#061018", accentSoft: "#13293D" },
+      dark:  { bg: "#07090C", surface: "#0E1218", subtle: "#151B24", fg: "#F0F6FC", muted: "#7D8B9E", border: "#1E2633", accent: "#A8FF55", onAccent: "#090D04", accentSoft: "#1E2D12" }
+    },
+    {
+      id: "brutalist-press", name: "Brutalist Press", cat: "bold", cached: false,
+      kit: "Brutal Print Kit", repo: "cubisai/brutal-kit",
+      tagline: "0px corners, 2px ink borders, sticker badges & offset shadows",
+      swatches: ["#FFFDF5", "#FFDE59", "#111111", "#FF4D2D"],
+      fontDisplay: '"Archivo", sans-serif', fontBody: '"Archivo", sans-serif', fontMono: '"Martian Mono", monospace',
+      btnRadius: "0px", cardRadius: "0px", borderW: "2px", shadow: "4px 4px 0px currentColor",
+      light: { bg: "#FFFDF5", surface: "#FFFFFF", subtle: "#FFF3B0", fg: "#111111", muted: "#3F3F3A", border: "#111111", accent: "#FF4D2D", onAccent: "#111111", accentSoft: "#FFDE59" },
+      dark:  { bg: "#121210", surface: "#1B1B18", subtle: "#2A2819", fg: "#FFFDF5", muted: "#C7C3B5", border: "#FFFDF5", accent: "#FFDE59", onAccent: "#111111", accentSoft: "#3B3412" }
+    },
+    {
+      id: "warm-craft", name: "Warm Craft", cat: "warm", cached: false,
+      kit: "Organic Craft Kit", repo: "cubisai/organic-craft",
+      tagline: "Tactile paper warmth, pill navbars & soft rounded cards",
+      swatches: ["#F6F1EA", "#FFFDF9", "#2A211B", "#C85A32"],
+      fontDisplay: '"Young Serif", serif', fontBody: '"Onest", sans-serif', fontMono: '"Geist Mono", monospace',
+      btnRadius: "12px", cardRadius: "20px", borderW: "1px", shadow: "0 4px 18px rgba(42,33,27,0.05)",
+      light: { bg: "#F6F1EA", surface: "#FFFDF9", subtle: "#EDE4D8", fg: "#2A211B", muted: "#6E5E53", border: "#DFD3C3", accent: "#C85A32", onAccent: "#FFFFFF", accentSoft: "#F5DDD3" },
+      dark:  { bg: "#181310", surface: "#221B17", subtle: "#2C231E", fg: "#F7EFE6", muted: "#B09E90", border: "#382D26", accent: "#E07A54", onAccent: "#181310", accentSoft: "#3B241B" }
+    }
+  ];
+
+  let state = {
+    systemId: "varelyo-clean",
+    pageDark: false,
+    previewId: "varelyo-clean",
+    previewDark: false,
+    mode: "design",        // 'design' | 'preview' | 'code'
+    viewport: "desktop",   // 'desktop' | 'tablet' | 'mobile' | 'board'
+    starter: false,
+    selectedEl: null,
+    activeCodeTab: "tokens",
+    undoStack: [],
+    revision: 12,
+    offline: false,
+    pickerKit: null,
+    pickerStatus: null,   // {id, kind: 'preparing' | 'offline'}
+    pendingMigrate: null,
+    editing: null,        // {el, original}
+    running: false
+  };
+  let saveTimer = null, lastPush = { el: null, t: 0 };
+
+  /* Mutation service stand-in: optimistic preview, ack after 250ms idle, one revision per burst */
+  function markMutation() {
+    const s = document.getElementById("saveStatus");
+    s.className = "save-status saving";
+    document.getElementById("saveStatusText").textContent = "Saving…";
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      state.revision++;
+      s.className = "save-status";
+      document.getElementById("saveStatusText").textContent = "Saved · r" + state.revision;
+    }, 250);
+  }
+  function auditTargets() {
+    document.querySelectorAll(".target-fail").forEach((n) => n.classList.remove("target-fail"));
+    document.getElementById("contextPill").classList.contains("visible") || (state.selectedEl || selectElement(fnPage.querySelector("[data-ui='button']")));
+    let bad = 0, total = 0;
+    document.querySelectorAll(".app button, .app [role='button'], .app input, #contextPill button").forEach((n) => {
+      if (n.closest(".fn-page")) return;           // authored page: governed by its own contract
+      const r = n.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      total++;
+      if (r.width < 24 || r.height < 24) { bad++; n.classList.add("target-fail"); }
+    });
+    showToast(bad ? bad + " of " + total + " editor controls are under 24×24px (outlined)" : "All " + total + " editor controls are at least 24×24px");
+    if (bad) setTimeout(() => document.querySelectorAll(".target-fail").forEach((n) => n.classList.remove("target-fail")), 6000);
+  }
+  function simulateExternalChange() {
+    clearTimeout(saveTimer);
+    const s = document.getElementById("saveStatus");
+    s.className = "save-status conflict";
+    document.getElementById("saveStatusText").textContent = "Conflict · r" + (state.revision + 1);
+    document.getElementById("conflictBanner").classList.add("show");
+  }
+  function resolveConflict(reapply) {
+    document.getElementById("conflictBanner").classList.remove("show");
+    if (reapply) { state.revision += 2; markMutation(); showToast("Reapplied on latest revision"); }
+    else {
+      state.revision += 1;
+      if (state.undoStack.length) state.undoStack.pop()();
+      document.getElementById("saveStatus").className = "save-status";
+      document.getElementById("saveStatusText").textContent = "Saved · r" + state.revision;
+      showToast("Discarded your last edit");
+    }
+  }
+  function toggleOffline() {
+    state.offline = !state.offline;
+    document.getElementById("offlineLabel").textContent = state.offline ? "Demo: go online" : "Demo: go offline";
+    closeAllOverlays();
+    showToast(state.offline ? "Offline · bundled styles still work" : "Back online");
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     APPLY 3-LAYER DESIGN SYSTEM TOKENS TO CANVAS (0ms Instant Restyle!)
+     ═══════════════════════════════════════════════════════════════════════════ */
+  function applySystem(id, silent = false) {
+    const sys = SYSTEMS.find((s) => s.id === id) || SYSTEMS[0];
+    const wasUncached = !sys.cached;
+    sys.cached = true;
+    state.systemId = sys.id;
+
+    const pal = state.pageDark ? sys.dark : sys.light;
+    const page = document.getElementById("fnPage");
+    page.style.setProperty("--fn-bg", pal.bg);
+    page.style.setProperty("--fn-surface", pal.surface);
+    page.style.setProperty("--fn-subtle", pal.subtle);
+    page.style.setProperty("--fn-fg", pal.fg);
+    page.style.setProperty("--fn-muted", pal.muted);
+    page.style.setProperty("--fn-border", pal.border);
+    page.style.setProperty("--fn-accent", pal.accent);
+    page.style.setProperty("--fn-on-accent", pal.onAccent);
+    page.style.setProperty("--fn-accent-soft", pal.accentSoft);
+    page.style.setProperty("--fn-font-display", sys.fontDisplay);
+    page.style.setProperty("--fn-font-body", sys.fontBody);
+    page.style.setProperty("--fn-font-mono", sys.fontMono);
+    page.style.setProperty("--fn-btn-radius", sys.btnRadius);
+    page.style.setProperty("--fn-card-radius", sys.cardRadius);
+    page.style.setProperty("--fn-border-w", sys.borderW);
+    page.style.setProperty("--fn-card-shadow", sys.shadow);
+
+    document.getElementById("chipStyleName").textContent = sys.name;
+    document.getElementById("panelSysName").textContent = sys.name;
+    document.getElementById("panelSysDesc").textContent = sys.tagline;
+    document.getElementById("chipDots").innerHTML = sys.swatches.map((c) => `<i style="background:${c}"></i>`).join("");
+
+    if (!silent) {
+      showToast(wasUncached ? `${sys.name} is ready · Applied` : `Applied ${sys.name}`);
+    }
+    if (state.mode === "code") renderCodeView();
+    setTimeout(positionContextPill, 60);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     SCALE-LOCKED STAGE MATH (Desktop 1440px scales smoothly — NEVER crushes!)
+     ═══════════════════════════════════════════════════════════════════════════ */
+  function updateStageScale() {
+    const scroll = document.getElementById("stageScroll");
+    const scaler = document.getElementById("artboardScaler");
+    const board = document.getElementById("artboard");
+    const page = document.getElementById("fnPage");
+    if (state.mode !== "design" && state.mode !== "preview") return;
+    if (state.viewport === "board" || state.starter) return;
+
+    const targetW = state.viewport === "mobile" ? 390 : state.viewport === "tablet" ? 768 : 1440;
+    page.classList.toggle("is-mobile", state.viewport === "mobile");
+    board.classList.toggle("mobile-bezel", state.viewport === "mobile");
+
+    const availW = Math.max(320, scroll.clientWidth - 48);
+    const scale = Math.min(1, availW / targetW);
+    board.style.width = targetW + "px";
+    board.style.transform = `scale(${scale})`;
+
+    const naturalH = board.offsetHeight;
+    scaler.style.width = Math.round(targetW * scale) + "px";
+    scaler.style.height = Math.round(naturalH * scale) + "px";
+
+    document.getElementById("zoomReadout").textContent = Math.round(scale * 100) + "%";
+    positionContextPill();
+    positionStylePicker();
+  }
+  window.addEventListener("resize", () => { updateStageScale(); positionStylePicker(); });
+  new ResizeObserver(updateStageScale).observe(document.getElementById("stageCol"));
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     DIRECT SELECTION & DOUBLE-CLICK INLINE TEXT EDITING (No Pick Mode Toggle!)
+     ═══════════════════════════════════════════════════════════════════════════ */
+  const fnPage = document.getElementById("fnPage");
+
+  fnPage.addEventListener("click", (e) => {
+    if (state.mode !== "design") return;
+    if (e.target.closest(".seam-insert")) return;
+    const comp = e.target.closest("[data-ui]");
+    if (!comp) return;
+    e.stopPropagation();
+    selectElement(comp);
+  });
+
+  function startInlineEdit(editable) {
+    if (state.editing) return;
+    state.editing = { el: editable, original: editable.innerHTML };
+    editable.setAttribute("contenteditable", "true");
+    editable.focus();
+    showToast("Editing text · Enter saves · Esc cancels");
+    const finish = () => {
+      if (!state.editing) return;
+      const changed = state.editing.el.innerHTML !== state.editing.original;
+      const orig = state.editing.original, el = state.editing.el;
+      editable.removeAttribute("contenteditable");
+      state.editing = null;
+      if (changed) { markMutation(); state.undoStack.push(() => { el.innerHTML = orig; updateStageScale(); }); lastPush = { el: null, t: 0 }; }
+      updateStageScale();
+    };
+    editable.addEventListener("blur", finish, { once: true });
+    editable.addEventListener("keydown", (ke) => {
+      if (ke.key === "Enter" && !ke.shiftKey) { ke.preventDefault(); editable.blur(); }
+    });
+  }
+  function cancelInlineEdit() {
+    if (!state.editing) return;
+    const { el, original } = state.editing;
+    el.innerHTML = original;
+    state.editing = { el, original };  // unchanged so blur commits nothing
+    el.blur();
+    showToast("Edit cancelled");
+  }
+  function cancelRun() {
+    state.running = false;
+    document.getElementById("runLip").classList.remove("running");
+    showToast("Stopped");
+  }
+  fnPage.addEventListener("dblclick", (e) => {
+    if (state.mode !== "design") return;
+    const editable = e.target.closest("[data-editable='true']");
+    if (!editable) return;
+    e.stopPropagation();
+    startInlineEdit(editable);
+  });
+
+  function getElementEditableTextNode(el) {
+    if (!el) return null;
+    if (el.getAttribute("data-editable") === "true") return el;
+    const editable = el.querySelector("[data-editable='true']");
+    if (editable) return editable;
+    const span = el.querySelector("span");
+    if (span) return span;
+    return el;
+  }
+
+  function setElTextLive(val) {
+    if (!state.selectedEl) return;
+    pushUndo(state.selectedEl);
+    const inputEl = state.selectedEl.matches("input, textarea") ? state.selectedEl : state.selectedEl.querySelector("input, textarea");
+    if (inputEl) {
+      inputEl.value = val;
+      inputEl.setAttribute("value", val);
+    } else {
+      const textNode = getElementEditableTextNode(state.selectedEl);
+      if (textNode) {
+        textNode.textContent = val;
+      }
+    }
+    updateStageScale();
+    positionContextPill();
+  }
+
+  function setElPlaceholderLive(val) {
+    if (!state.selectedEl) return;
+    pushUndo(state.selectedEl);
+    const inputEl = state.selectedEl.matches("input, textarea") ? state.selectedEl : state.selectedEl.querySelector("input, textarea");
+    if (inputEl) {
+      inputEl.placeholder = val;
+      inputEl.setAttribute("placeholder", val);
+    } else {
+      state.selectedEl.setAttribute("placeholder", val);
+    }
+  }
+
+  const SIZES = ["sm", "md", "lg"];
+  const THUMB_POS = ["2px", "50%", "calc(100% - 2px)"];
+
+  function handleSizeSlider(idx) {
+    const s = SIZES[Number(idx)] || "md";
+    setElSize(s);
+  }
+
+  function handleSliderKey(e) {
+    if (!state.selectedEl) return;
+    const cur = state.selectedEl.getAttribute("data-size") || "md";
+    const idx = Math.max(0, SIZES.indexOf(cur));
+    if (e.key === "ArrowRight" || e.key === "ArrowUp") {
+      e.preventDefault();
+      handleSizeSlider(Math.min(2, idx + 1));
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
+      e.preventDefault();
+      handleSizeSlider(Math.max(0, idx - 1));
+    }
+  }
+
+  function syncSizeSlider(s) {
+    const idx = Math.max(0, SIZES.indexOf(s || "md"));
+    const thumb = document.getElementById("propSizeThumb");
+    if (thumb) thumb.style.left = THUMB_POS[idx];
+    const readout = document.getElementById("propSizeReadout");
+    if (readout) readout.textContent = s || "md";
+    const sliderWrap = document.getElementById("propSliderWrap");
+    if (sliderWrap) {
+      sliderWrap.setAttribute("aria-valuenow", idx);
+      sliderWrap.setAttribute("aria-valuetext", s || "md");
+    }
+    [0, 1, 2].forEach((i) => {
+      const n = document.getElementById("notch-" + i);
+      if (n) n.style.opacity = (i === idx) ? "0" : "0.55";
+    });
+  }
+
+  function toggleElDisabled(checked) {
+    if (!state.selectedEl) return;
+    pushUndo(state.selectedEl);
+    if (checked) {
+      state.selectedEl.setAttribute("data-disabled", "true");
+      state.selectedEl.style.opacity = "0.45";
+      state.selectedEl.style.pointerEvents = "none";
+    } else {
+      state.selectedEl.removeAttribute("data-disabled");
+      state.selectedEl.style.opacity = "";
+      state.selectedEl.style.pointerEvents = "";
+    }
+  }
+
+  function selectElement(el) {
+    document.querySelectorAll(".is-selected").forEach((n) => n.classList.remove("is-selected"));
+    state.selectedEl = el;
+    el.classList.add("is-selected");
+
+    const label = el.getAttribute("data-label") || el.getAttribute("data-ui");
+    const uiKind = el.getAttribute("data-ui");
+    document.getElementById("cpLabel").textContent = label;
+    document.getElementById("a11yLive").textContent = label + " selected. " + (el.querySelector("[data-editable='true']") || el.matches("[data-editable='true']") ? "Press Enter to edit text. " : "") + "Press Tab for actions.";
+    document.getElementById("composerTargetText").textContent = label;
+    document.getElementById("composerTargetChip").classList.add("visible");
+    document.getElementById("composerInput").placeholder = `Ask AI to change ${label}…`;
+
+    // Sync Right Customize panel immediately to Element Controls
+    document.getElementById("panelPageTheme").style.display = "none";
+    document.getElementById("panelElement").style.display = "block";
+    document.getElementById("elPanelTitle").textContent = label;
+    document.getElementById("elPanelTag").textContent = `<${uiKind}>`;
+
+    const hasVariants = ["button", "card", "badge"].includes(uiKind);
+    document.getElementById("propVariantBlock").style.display = hasVariants ? "block" : "none";
+    document.getElementById("propSizeBlock").style.display = uiKind === "button" ? "block" : "none";
+
+    // Sync Content (Value & Placeholder)
+    const isTextField = uiKind === "textfield" || uiKind === "input" || el.matches("input, textarea") || el.querySelector("input, textarea") !== null;
+    const inputEl = el.matches("input, textarea") ? el : el.querySelector("input, textarea");
+    const contentBlock = document.getElementById("propContentBlock");
+    const textInput = document.getElementById("propTextInput");
+    const phBlock = document.getElementById("propPlaceholderSubBlock");
+    const phInput = document.getElementById("propPlaceholderInput");
+
+    if (isTextField) {
+      contentBlock.style.display = "block";
+      phBlock.style.display = "block";
+      textInput.value = inputEl ? inputEl.value : (el.getAttribute("value") || el.textContent.trim());
+      phInput.value = inputEl ? inputEl.placeholder : (el.getAttribute("placeholder") || "Add placeholder…");
+    } else {
+      phBlock.style.display = "none";
+      const textNode = getElementEditableTextNode(el);
+      if (textNode && textNode.textContent.trim()) {
+        contentBlock.style.display = "block";
+        textInput.value = textNode.textContent.trim();
+      } else {
+        contentBlock.style.display = "none";
+      }
+    }
+
+    const s = el.getAttribute("data-size") || "md";
+    syncSizeSlider(s);
+
+    const isDisabled = el.getAttribute("data-disabled") === "true";
+    const disToggle = document.getElementById("propDisabledToggle");
+    if (disToggle) disToggle.checked = isDisabled;
+
+    syncElementSegButtons(el);
+    renderLayersTree();
+    positionContextPill();
+  }
+
+  function clearSelection() {
+    document.querySelectorAll(".is-selected").forEach((n) => n.classList.remove("is-selected"));
+    state.selectedEl = null;
+    document.getElementById("contextPill").classList.remove("visible");
+    document.getElementById("variantBar").classList.remove("visible");
+    document.getElementById("composerTargetChip").classList.remove("visible");
+    document.getElementById("composerInput").placeholder = "Describe a change, or click any element on the canvas…";
+    document.getElementById("panelPageTheme").style.display = "block";
+    document.getElementById("panelElement").style.display = "none";
+    renderLayersTree();
+  }
+
+  function handleStageBackgroundClick(e) {
+    if (e.target.id === "stageScroll") clearSelection();
+  }
+
+  function stepUpParent(e) {
+    e.stopPropagation();
+    if (!state.selectedEl) return;
+    const parent = state.selectedEl.parentElement?.closest("[data-ui]");
+    if (parent) selectElement(parent);
+    else clearSelection();
+  }
+
+  document.addEventListener("keydown", (e) => {
+    const pill = document.getElementById("contextPill");
+    if (e.key === "Escape" && pill.contains(document.activeElement)) { fnPage.focus({ preventScroll: true }); }
+    if (state.mode === "design" && document.activeElement === fnPage && !state.editing) {
+      if (!state.selectedEl && ["ArrowRight", "ArrowLeft", "ArrowDown", "Enter"].includes(e.key)) {
+        e.preventDefault();
+        const first = fnPage.querySelector("[data-ui]");
+        if (first) selectElement(first);
+        return;
+      }
+      if (e.key === "Tab" && !e.shiftKey && state.selectedEl && pill.classList.contains("visible")) {
+        e.preventDefault();
+        document.getElementById("cpParentBtn").focus();
+        return;
+      }
+    }
+    const typing = /^(INPUT|TEXTAREA)$/.test((e.target.tagName || "")) || e.target.isContentEditable;
+    if (e.key === "Escape") {
+      // One action per press: menu → cancel edit → cancel AI op → select parent → clear
+      if (document.getElementById("kitMenu").classList.contains("open")) { closeKitMenu(); document.getElementById("kitBtn").focus(); return; }
+      const menuOpen = document.querySelector(".float-menu.open, .style-picker.open, .migrate-dialog.open");
+      if (menuOpen) { closeAllOverlays(); closeMigrate(); return; }
+      if (state.editing) { cancelInlineEdit(); return; }
+      if (state.running) { cancelRun(); return; }
+      if (state.selectedEl) stepUpParent(e);
+      return;
+    }
+    if (!typing && state.mode === "design" && state.selectedEl) {
+      if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); insertSectionAtSeam(e); return; }
+      if (e.key === "Enter") {
+        const ed = state.selectedEl.matches("[data-editable='true']") ? state.selectedEl : state.selectedEl.querySelector("[data-editable='true']");
+        if (ed) { e.preventDefault(); startInlineEdit(ed); }
+        return;
+      }
+      if (e.altKey && e.key === "ArrowUp") { e.preventDefault(); stepUpParent(e); return; }
+      if (e.altKey && e.key === "ArrowDown") {
+        e.preventDefault();
+        const kid = state.selectedEl.querySelector("[data-ui]");
+        if (kid) selectElement(kid);
+        return;
+      }
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        const all = [...fnPage.querySelectorAll("[data-ui]")].filter((n) => n.parentElement.closest("[data-ui]") === state.selectedEl.parentElement.closest("[data-ui]"));
+        const i = all.indexOf(state.selectedEl);
+        const next = all[i + (e.key === "ArrowRight" ? 1 : -1)];
+        if (next) { e.preventDefault(); selectElement(next); }
+        return;
+      }
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z" && state.undoStack.length) {
+      const undo = state.undoStack.pop();
+      undo();
+      lastPush = { el: null, t: 0 };
+      markMutation();
+      showToast("Undid change (⌘Z)");
+    }
+  });
+
+  function positionContextPill() {
+    const pill = document.getElementById("contextPill");
+    if (!state.selectedEl || state.mode !== "design" || state.viewport === "board" || state.starter) {
+      pill.classList.remove("visible");
+      return;
+    }
+    const scalerRect = document.getElementById("artboardScaler").getBoundingClientRect();
+    const elRect = state.selectedEl.getBoundingClientRect();
+    pill.classList.add("visible");
+    const top = Math.max(4, elRect.top - scalerRect.top - 36);
+    const left = Math.max(4, Math.min(scalerRect.width - 250, elRect.left - scalerRect.left));
+    pill.style.top = top + "px";
+    pill.style.left = left + "px";
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     LIVE ELEMENT PROPS & PAGE THEME CONTROLS (0ms Preview, No Apply Button!)
+     ═══════════════════════════════════════════════════════════════════════════ */
+  function pushUndo(el) {
+    markMutation();
+    const now = Date.now();
+    if (lastPush.el === el && now - lastPush.t < 500) { lastPush.t = now; return; }  // same transaction, one undo step
+    lastPush = { el, t: now };
+    const prevVariant = el.getAttribute("data-variant");
+    const prevSize = el.getAttribute("data-size");
+    const prevStyle = el.getAttribute("style") || "";
+    const prevDisabled = el.getAttribute("data-disabled");
+    const inputEl = el.matches("input, textarea") ? el : el.querySelector("input, textarea");
+    const prevValue = inputEl ? inputEl.value : "";
+    const prevPlaceholder = inputEl ? inputEl.placeholder : (el.getAttribute("placeholder") || "");
+    const textNode = getElementEditableTextNode(el);
+    const prevText = textNode ? textNode.textContent : "";
+    state.undoStack.push(() => {
+      if (prevVariant) el.setAttribute("data-variant", prevVariant); else el.removeAttribute("data-variant");
+      if (prevSize) el.setAttribute("data-size", prevSize); else el.removeAttribute("data-size");
+      if (prevDisabled) el.setAttribute("data-disabled", prevDisabled); else el.removeAttribute("data-disabled");
+      el.setAttribute("style", prevStyle);
+      if (inputEl) {
+        inputEl.value = prevValue;
+        inputEl.setAttribute("value", prevValue);
+        inputEl.placeholder = prevPlaceholder;
+        inputEl.setAttribute("placeholder", prevPlaceholder);
+        const ti = document.getElementById("propTextInput");
+        if (ti && state.selectedEl === el) ti.value = prevValue;
+        const pi = document.getElementById("propPlaceholderInput");
+        if (pi && state.selectedEl === el) pi.value = prevPlaceholder;
+      } else if (textNode && prevText) {
+        textNode.textContent = prevText;
+        const ti = document.getElementById("propTextInput");
+        if (ti && state.selectedEl === el) ti.value = prevText;
+      }
+      syncElementSegButtons(el);
+      syncSizeSlider(el.getAttribute("data-size") || "md");
+      const dt = document.getElementById("propDisabledToggle");
+      if (dt && state.selectedEl === el) dt.checked = prevDisabled === "true";
+      updateStageScale();
+    });
+  }
+
+  function syncElementSegButtons(el) {
+    const v = el.getAttribute("data-variant") || "primary";
+    const s = el.getAttribute("data-size") || "md";
+    document.querySelectorAll("#elVariantSeg button").forEach((b) => b.classList.toggle("active", b.dataset.v === v));
+    document.querySelectorAll("#elSizeSeg button").forEach((b) => b.classList.toggle("active", b.dataset.s === s));
+  }
+
+  function setElVariant(v) {
+    if (!state.selectedEl) return;
+    pushUndo(state.selectedEl);
+    state.selectedEl.style.background = "";
+    state.selectedEl.style.color = "";
+    state.selectedEl.setAttribute("data-variant", v);
+    syncElementSegButtons(state.selectedEl);
+    updateStageScale();
+  }
+  function setElSize(s) {
+    if (!state.selectedEl) return;
+    pushUndo(state.selectedEl);
+    state.selectedEl.setAttribute("data-size", s);
+    syncElementSegButtons(state.selectedEl);
+    syncSizeSlider(s);
+    updateStageScale();
+  }
+  function setElTokenBg(bg, fg) {
+    if (!state.selectedEl) return;
+    pushUndo(state.selectedEl);
+    state.selectedEl.style.background = bg;
+    state.selectedEl.style.color = fg;
+  }
+  function setElFontSize(sz) {
+    if (!state.selectedEl) return;
+    pushUndo(state.selectedEl);
+    state.selectedEl.style.fontSize = sz;
+    updateStageScale();
+  }
+  function setElPadding(pad) {
+    if (!state.selectedEl) return;
+    pushUndo(state.selectedEl);
+    state.selectedEl.style.padding = pad;
+    updateStageScale();
+  }
+  function resetSelectedElement() {
+    if (!state.selectedEl) return;
+    state.selectedEl.removeAttribute("style");
+    state.selectedEl.setAttribute("data-variant", "primary");
+    syncElementSegButtons(state.selectedEl);
+    updateStageScale();
+    showToast("Reset element overrides");
+  }
+
+  function setPageDark(dark) {
+    state.pageDark = dark;
+    document.getElementById("pgLightBtn").classList.toggle("active", !dark);
+    document.getElementById("pgDarkBtn").classList.toggle("active", dark);
+    applySystem(state.systemId, true);
+  }
+  function overrideAccent(accent, onAccent) {
+    fnPage.style.setProperty("--fn-accent", accent);
+    fnPage.style.setProperty("--fn-on-accent", onAccent);
+  }
+  function overrideRadius(btnR, cardR, btn) {
+    btn.parentElement.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    fnPage.style.setProperty("--fn-btn-radius", btnR);
+    fnPage.style.setProperty("--fn-card-radius", cardR);
+  }
+  function overrideDensity(pad, btn) {
+    btn.parentElement.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    fnPage.style.setProperty("--fn-sec-pad", pad);
+    updateStageScale();
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     3-VARIANTS IN-PLACE CYCLER & SEAM INSERTION
+     ═══════════════════════════════════════════════════════════════════════════ */
+  function openVariantsMenu(e) {
+    e.stopPropagation();
+    openMenu("variantsMenu", e.currentTarget);
+  }
+  function startVariants(kind) {
+    closeAllOverlays();
+    if (!state.selectedEl) return;
+    pushUndo(state.selectedEl);
+    document.getElementById("varTitle").textContent = kind;
+    const pill = document.getElementById("contextPill");
+    const vbar = document.getElementById("variantBar");
+    vbar.style.top = pill.style.top;
+    vbar.style.left = pill.style.left;
+    pill.classList.remove("visible");
+    vbar.classList.add("visible");
+    applyMockVariant(0, vbar.querySelector(".seg button"));
+  }
+  function applyMockVariant(idx, btn) {
+    if (!state.selectedEl) return;
+    btn.parentElement.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    const presets = [
+      { bg: "var(--fn-accent)", fg: "var(--fn-on-accent)", transform: "scale(1.03)", letterSpacing: "-0.01em" },
+      { bg: "var(--fn-subtle)", fg: "var(--fn-fg)", transform: "none", letterSpacing: "0.02em" },
+      { bg: "transparent", fg: "var(--fn-fg)", transform: "none", letterSpacing: "0" }
+    ];
+    const p = presets[idx];
+    state.selectedEl.style.background = p.bg;
+    state.selectedEl.style.color = p.fg;
+    state.selectedEl.style.border = "2px solid var(--fn-accent)";
+    state.selectedEl.style.letterSpacing = p.letterSpacing;
+  }
+  function keepVariant() {
+    document.getElementById("variantBar").classList.remove("visible");
+    positionContextPill();
+    showToast("Kept selected variant");
+  }
+  function cancelVariant() {
+    if (state.undoStack.length) state.undoStack.pop()();
+    document.getElementById("variantBar").classList.remove("visible");
+    positionContextPill();
+  }
+
+  function insertSectionAtSeam(e) {
+    e.stopPropagation();
+    const slot = document.getElementById("insertedSectionSlot");
+    slot.innerHTML = `
+      <section class="ui-sec" data-ui="section" data-label="Metrics Strip (Inserted)" style="padding-top:12px;padding-bottom:24px">
+        <div class="ui-card" data-ui="card" data-label="Metrics Banner" data-variant="subtle" style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;text-align:center">
+          <div><div style="font-family:var(--fn-font-display);font-size:28px;font-weight:700" data-editable="true">4.2ms</div><div style="font-size:12.5px;color:var(--fn-muted)" data-editable="true">Local search latency</div></div>
+          <div><div style="font-family:var(--fn-font-display);font-size:28px;font-weight:700" data-editable="true">100%</div><div style="font-size:12.5px;color:var(--fn-muted)" data-editable="true">Plain Markdown &amp; SQLite</div></div>
+          <div><div style="font-family:var(--fn-font-display);font-size:28px;font-weight:700" data-editable="true">18,400+</div><div style="font-size:12.5px;color:var(--fn-muted)" data-editable="true">Researchers writing daily</div></div>
+        </div>
+      </section>`;
+    renderLayersTree();
+    updateStageScale();
+    selectElement(slot.querySelector("[data-ui='section']"));
+    showToast("Inserted Metrics Strip component block");
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     2-PANE VISUAL VIBE & DESIGN-SYSTEM GALLERY
+     ═══════════════════════════════════════════════════════════════════════════ */
+  function positionStylePicker() {
+    const sp = document.getElementById("stylePicker");
+    if (!sp || !sp.classList.contains("open")) return;
+    const dock = document.querySelector(".composer-dock");
+    if (!dock) return;
+    const r = dock.getBoundingClientRect();
+    sp.style.left = Math.round(r.left) + "px";
+    sp.style.width = Math.round(r.width) + "px";
+    sp.style.transform = "none";
+    sp.style.bottom = Math.max(16, Math.round(window.innerHeight - r.top + 8)) + "px";
+  }
+
+  function openStylePicker() {
+    closeAllOverlays();
+    state.previewId = state.systemId;
+    state.pickerKit = activeKit();
+    closeKitMenu();
+    updateKitUI();
+    document.getElementById("backdrop").classList.add("open");
+    const sp = document.getElementById("stylePicker");
+    sp.classList.add("open");
+    positionStylePicker();
+    renderStylePickerGrid();
+    renderStylePreview();
+    document.getElementById("spSearch").focus();
+  }
+  function setPreviewDark(dark) {
+    state.previewDark = dark;
+    document.getElementById("spLightBtn").classList.toggle("active", !dark);
+    document.getElementById("spDarkBtn").classList.toggle("active", dark);
+    renderStylePickerGrid();
+    renderStylePreview();
+  }
+  function kitList() { return [...new Set(SYSTEMS.map((s) => s.kit))]; }
+  function updateKitUI() {
+    const isSame = state.pickerKit === activeKit();
+    const noteText = isSame
+      ? "Themes for your current kit · safe token switch"
+      : "Different kit · preview migration before applying";
+    document.getElementById("kitBtnName").textContent = state.pickerKit.replace(" Kit", "");
+    const noteEl = document.getElementById("kitNote");
+    noteEl.textContent = noteText;
+    noteEl.title = isSame
+      ? "Themes for your current kit. Applying one keeps your page structure and content as it is."
+      : "Different component kit. Choosing a style adapts your page, and you preview the changes first.";
+  }
+  function toggleKitMenu(e) {
+    e.stopPropagation();
+    const m = document.getElementById("kitMenu");
+    if (m.classList.contains("open")) { closeKitMenu(); return; }
+    m.innerHTML = kitList().map((k) => {
+      const n = SYSTEMS.filter((s) => s.kit === k).length;
+      const cur = k === activeKit() ? "Current" : n + (n === 1 ? " theme" : " themes");
+      return `<button role="option" class="${k === state.pickerKit ? "sel" : ""}" aria-selected="${k === state.pickerKit}" onclick="chooseKit('${k}')"><span>${k.replace(" Kit", "")}</span><span class="sub">${cur}</span></button>`;
+    }).join("");
+    m.classList.add("open");
+    document.getElementById("kitBtn").setAttribute("aria-expanded", "true");
+    m.querySelector("button").focus();
+  }
+  function closeKitMenu() {
+    const m = document.getElementById("kitMenu");
+    if (!m) return;
+    m.classList.remove("open");
+    document.getElementById("kitBtn").setAttribute("aria-expanded", "false");
+  }
+  function chooseKit(k) {
+    state.pickerKit = k;
+    const first = SYSTEMS.find((s) => s.kit === k);
+    state.previewId = k === activeKit() ? state.systemId : first.id;
+    closeKitMenu();
+    updateKitUI();
+    renderStylePickerGrid();
+    renderStylePreview();
+    document.getElementById("kitBtn").focus();
+  }
+  function activeKit() { return (SYSTEMS.find((x) => x.id === state.systemId) || SYSTEMS[0]).kit; }
+  function renderStylePickerGrid() {
+    const q = document.getElementById("spSearch").value.trim().toLowerCase();
+    const list = SYSTEMS.filter((s) => s.kit === state.pickerKit && (!q || s.name.toLowerCase().includes(q) || s.tagline.toLowerCase().includes(q)));
+    const grid = document.getElementById("spGrid");
+    grid.innerHTML = list.map((s) => {
+      const pal = state.previewDark ? s.dark : s.light;
+      const sel = s.id === state.systemId ? " selected" : "";
+      const prev = s.id === state.previewId ? " previewing" : "";
+      return `
+        <button class="style-card${sel}${prev}" onmouseenter="state.previewId='${s.id}';renderStylePreview()" onclick="pickStyleFromGallery('${s.id}')">
+          <div class="sc-mini-stage" style="background:${pal.bg};color:${pal.fg};border-radius:6px">
+            <div class="sc-mini-top">
+              <span class="sc-aa" style="font-family:${s.fontDisplay.replace(/"/g, "'")}">Aa</span>
+              <span class="mini-dots">${s.swatches.map((c) => `<i style="background:${c}"></i>`).join("")}</span>
+            </div>
+            <div class="sc-mini-ui">
+              <span class="sc-mini-btn" style="background:${pal.accent};color:${pal.onAccent};border-radius:${s.btnRadius}">Action</span>
+              <span class="sc-mini-card" style="background:${pal.surface};border-radius:${s.cardRadius}"></span>
+            </div>
+          </div>
+          <div class="sc-meta">
+            <span class="sc-name">${s.name}</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--text-tertiary)">${s.id === state.systemId ? "Active ✓" : (s.kit === activeKit() ? "Theme" : "Adapts page")}</span>
+          </div>
+          <div class="sc-sub">${s.tagline}</div>
+        </button>`;
+    }).join("");
+  }
+  function renderStylePreview() {
+    const s = SYSTEMS.find((x) => x.id === state.previewId) || SYSTEMS[0];
+    const pal = state.previewDark ? s.dark : s.light;
+    const active = SYSTEMS.find((x) => x.id === state.systemId) || SYSTEMS[0];
+    const same = s.kit === active.kit;
+    const st = state.pickerStatus && state.pickerStatus.id === s.id ? state.pickerStatus.kind : null;
+    const label = s.id === state.systemId ? "Active" : same ? "Apply theme" : "Adapt page to this style";
+    const statusHtml = st === "preparing"
+      ? `<div class="sp-status"><span class="sp-progress"><i></i></span>Preparing style…<button class="btn ghost" onclick="cancelPrepare()">Cancel</button></div>`
+      : st === "offline"
+      ? `<div class="sp-status warn">Unavailable offline<button class="btn" onclick="pickStyleFromGallery('${s.id}')">Retry</button></div>`
+      : !same && s.id !== state.systemId
+      ? `<div class="sp-status">Different component kit. You will see what changes before anything is applied.</div>`
+      : "";
+    document.getElementById("spPreview").innerHTML = `
+      <div class="sp-specimen-wrap">
+        <div class="sp-specimen" style="background:${pal.bg};color:${pal.fg};font-family:${s.fontBody.replace(/"/g, "'")}">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="padding:2px 7px;font-size:10px;font-weight:600;background:${pal.accentSoft};border-radius:${s.btnRadius}">${s.kit}</span>
+            <span style="font-family:var(--mono);font-size:10px;color:${pal.muted}">${s.repo}</span>
+          </div>
+          <div style="font-family:${s.fontDisplay.replace(/"/g, "'")};font-size:18px;font-weight:700;line-height:1.2;margin-top:2px">
+            Calm interfaces built from semantic tokens.
+          </div>
+          <div style="font-size:11.5px;color:${pal.muted};line-height:1.45">
+            Buttons, cards, inputs, tabs, and dialogs inherit ${s.name}'s ${s.kit} anatomy automatically.
+          </div>
+          <div style="display:flex;gap:8px;margin-top:2px">
+            <span style="padding:5px 12px;font-size:11.5px;font-weight:600;background:${pal.accent};color:${pal.onAccent};border-radius:${s.btnRadius}">Primary CTA</span>
+            <span style="padding:5px 12px;font-size:11.5px;font-weight:600;border:${s.borderW} solid ${pal.border};border-radius:${s.btnRadius}">Secondary</span>
+          </div>
+          <div style="margin-top:auto;padding:8px 10px;background:${pal.surface};border:${s.borderW} solid ${pal.border};border-radius:${s.cardRadius}">
+            <div style="font-size:11px;font-weight:600">${s.kit} · Source-Owned Primitives</div>
+            <div style="font-size:10px;color:${pal.muted}">Repo: ${s.repo} · HTML + React .tsx</div>
+          </div>
+        </div>
+      </div>
+      ${statusHtml}
+      <div class="sp-foot">
+        <div style="min-width:0">
+          <div style="font-weight:600;font-size:12.5px">${s.name}</div>
+          <div style="font-size:11px;color:var(--text-secondary)">${s.kit} · ${s.repo}</div>
+          <div class="sp-trust" style="font-size:10px">${s.verified === false ? "Publisher unverified · sandbox only" : "Verified publisher"}</div>
+        </div>
+        <button class="btn primary" ${(s.id === state.systemId || st === "preparing") ? "disabled" : ""} onclick="pickStyleFromGallery('${s.id}')">${label}</button>
+      </div>`;
+  }
+  function toggleAddRepoRow() {
+    const r = document.getElementById("addRepoRow");
+    r.style.display = r.style.display === "none" ? "flex" : "none";
+    document.getElementById("repoTrustHint").style.display = r.style.display;
+  }
+  function importExternalRepo() {
+    const raw = document.getElementById("repoUrlInput").value.trim() || "https://github.com/acme-corp/pulse-fintech-ui";
+    const repo = raw.replace(/^https?:\/\/github\.com\//i, "").replace(/\/+$/, "") || "acme-corp/pulse-fintech-ui";
+    const slug = "ext-" + repo.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+    if (!SYSTEMS.some((x) => x.id === slug)) {
+      const label = repo.split("/").pop().replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      SYSTEMS.unshift({
+        id: slug, name: label, cat: "saas", cached: false, verified: false,
+        kit: `${label} Custom Kit`, repo,
+        tagline: `Imported component design system from ${repo}`,
+        swatches: ["#F3F7F5", "#FFFFFF", "#0A2A22", "#0F766E"],
+        fontDisplay: '"Schibsted Grotesk", sans-serif', fontBody: '"Geist", sans-serif', fontMono: '"JetBrains Mono", monospace',
+        btnRadius: "6px", cardRadius: "10px", borderW: "1px", shadow: "none",
+        light: { bg: "#F3F7F5", surface: "#FFFFFF", subtle: "#E3EEEA", fg: "#0A2A22", muted: "#44635B", border: "#CBE0D8", accent: "#0F766E", onAccent: "#FFFFFF", accentSoft: "#CCFBF1" },
+        dark:  { bg: "#071512", surface: "#0D211C", subtle: "#132E27", fg: "#ECFDF5", muted: "#86EFAC", border: "#1B3F36", accent: "#2DD4BF", onAccent: "#042F2E", accentSoft: "#115E59" }
+      });
+    }
+    state.previewId = slug;
+    state.pickerKit = SYSTEMS.find((x) => x.id === slug).kit;
+    updateKitUI();
+    document.getElementById("addRepoRow").style.display = "none";
+    renderStylePickerGrid();
+    renderStylePreview();
+    showToast(`Added ${repo} · publisher unverified`);
+  }
+  let prepareTimer = null;
+  function cancelPrepare() {
+    clearTimeout(prepareTimer);
+    state.pickerStatus = null;
+    renderStylePreview();
+  }
+  function pickStyleFromGallery(id) {
+    const sys = SYSTEMS.find((s) => s.id === id);
+    if (!sys || id === state.systemId) return;
+    if (!sys.cached) {
+      if (state.offline) { state.pickerStatus = { id, kind: "offline" }; state.previewId = id; renderStylePreview(); return; }
+      state.pickerStatus = { id, kind: "preparing" };
+      state.previewId = id;
+      renderStylePreview();
+      prepareTimer = setTimeout(() => {
+        sys.cached = true;
+        state.pickerStatus = null;
+        renderStylePickerGrid();
+        pickStyleFromGallery(id);
+      }, 900);
+      return;
+    }
+    if (sys.kit !== activeKit()) { openMigrate(id); return; }
+    commitStyle(id, "theme");
+  }
+  const MIGRATION_MAP = {
+    "Editorial Press Kit": [["button", "pill-button"], ["card", "article-card"], ["navbar", "masthead-nav"], ["badge", "kicker"]],
+    "Enterprise Ops Kit": [["button", "ops-button"], ["card", "telemetry-card"], ["navbar", "toolbar-nav"], ["badge", "status-tag"]],
+    "Brutal Print Kit": [["button", "press-button"], ["card", "sticker-card"], ["navbar", "banner-nav"], ["badge", "sticker-badge"]],
+    "Organic Craft Kit": [["button", "soft-button"], ["card", "story-card"], ["navbar", "pill-navbar"], ["badge", "soft-badge"]]
+  };
+  function openMigrate(id) {
+    const sys = SYSTEMS.find((s) => s.id === id);
+    const map = MIGRATION_MAP[sys.kit] || [["button", "button"], ["card", "card"], ["navbar", "navbar"], ["badge", "badge"]];
+    state.pendingMigrate = id;
+    document.getElementById("migTitle").textContent = "Adapt page to " + sys.name;
+    document.getElementById("migLead").textContent = "This style uses a different component kit (" + sys.kit + "), so the page's components need to be mapped, not just recolored.";
+    document.getElementById("migOkTitle").textContent = map.length + " components adapted";
+    document.getElementById("migOk").innerHTML = map.map(([a, b]) => `<code>${a} → ${b}</code>`).join("");
+    document.getElementById("migNoTitle").textContent = "1 needs attention";
+    document.getElementById("migNo").innerHTML = `<code>tabs (Interactive Note Card)</code><span style="color:var(--text-secondary)">No equivalent. Kept as-is and flagged in Layers.</span>`;
+    document.getElementById("migConfirm").textContent = "Adapt page";
+    document.getElementById("backdrop").classList.add("open");
+    document.getElementById("migrateDialog").classList.add("open");
+  }
+  function closeMigrate() {
+    document.getElementById("migrateDialog").classList.remove("open");
+    state.pendingMigrate = null;
+  }
+  function confirmMigrate() {
+    const id = state.pendingMigrate;
+    document.getElementById("migrateDialog").classList.remove("open");
+    if (id) commitStyle(id, "adapt");
+  }
+  function commitStyle(id, kind) {
+    const prevId = state.systemId, prevDark = state.pageDark;
+    state.undoStack.push(() => { state.pageDark = prevDark; applySystem(prevId, true); renderStylePickerGrid(); });
+    lastPush = { el: null, t: 0 };
+    markMutation();
+    state.pageDark = state.previewDark;
+    document.getElementById("pgLightBtn").classList.toggle("active", !state.pageDark);
+    document.getElementById("pgDarkBtn").classList.toggle("active", state.pageDark);
+    applySystem(id, true);
+    const name = SYSTEMS.find((s) => s.id === id).name;
+    showToast(kind === "adapt" ? `Adapted page to ${name} · ⌘Z to undo` : `Applied theme ${name} · ⌘Z to undo`);
+    if (state.starter) toggleStarterState(false);
+    closeAllOverlays();
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     VIEW MODES, VIEWPORTS, SEMANTIC LAYERS, CODE VIEWER & HELPERS
+     ═══════════════════════════════════════════════════════════════════════════ */
+  function setMode(mode) {
+    state.mode = mode;
+    document.querySelectorAll('[data-mode]').forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
+    fnPage.classList.toggle("design-editable", mode === "design");
+    const appSidebar = document.getElementById("appSidebar");
+    const layers = document.getElementById("layersRail");
+    const custom = document.getElementById("customizePanel");
+    const btnLayers = document.getElementById("btnLayers");
+    const btnCustom = document.getElementById("btnCustomize");
+
+    if (mode === "design") {
+      // 3-Column Studio Layout: global app sidebar collapsed, layers and customize fully open
+      appSidebar.classList.add("collapsed");
+      layers.classList.remove("hidden");
+      custom.classList.remove("hidden");
+      btnLayers.classList.add("active");
+      btnCustom.classList.add("active");
+      if (!state.selectedEl) {
+        const def = document.getElementById("el-cta-sec") || fnPage.querySelector("[data-ui='button']");
+        if (def) selectElement(def);
+      }
+    } else {
+      document.getElementById("contextPill").classList.remove("visible");
+      document.getElementById("variantBar").classList.remove("visible");
+      if (mode === "preview") {
+        // Preview mode: collapse side panels for full-width live page interaction
+        layers.classList.add("hidden");
+        custom.classList.add("hidden");
+        btnLayers.classList.remove("active");
+        btnCustom.classList.remove("active");
+        showToast("Preview mode: click tabs & links like a live site");
+      }
+    }
+    syncMainStageViews();
+    if (mode === "code") renderCodeView();
+    setTimeout(() => { updateStageScale(); positionStylePicker(); }, 60);
+  }
+
+  function setViewport(vp) {
+    state.viewport = vp;
+    state.starter = false;
+    if (state.mode === "code") setMode("design");
+    document.querySelectorAll('[data-vp]').forEach((b) => b.classList.toggle("active", b.dataset.vp === vp));
+    syncMainStageViews();
+    updateStageScale();
+  }
+
+  function toggleStarterState(on) {
+    state.starter = on;
+    document.getElementById("threadFieldnote").classList.toggle("active", !on);
+    if (on) {
+      clearSelection();
+      renderStarterCards();
+    }
+    syncMainStageViews();
+    updateStageScale();
+  }
+
+  function syncMainStageViews() {
+    const showCode = state.mode === "code";
+    const showBoard = !showCode && state.viewport === "board";
+    const showStarter = !showCode && !showBoard && state.starter;
+    const showArtboard = !showCode && !showBoard && !showStarter;
+
+    document.getElementById("artboardScaler").style.display = showArtboard ? "block" : "none";
+    document.getElementById("codeView").classList.toggle("active", showCode);
+    document.getElementById("boardView").classList.toggle("active", showBoard);
+    document.getElementById("starterView").classList.toggle("active", showStarter);
+  }
+
+  function starterPick(id) {
+    const sys = SYSTEMS.find((s) => s.id === id);
+    if (!sys.cached && state.offline) { showToast("Unavailable offline · pick a bundled style or retry online"); return; }
+    if (!sys.cached) {
+      showToast("Preparing style…");
+      setTimeout(() => { applySystem(id, true); toggleStarterState(false); showToast(sys.name + " is ready"); }, 700);
+      return;
+    }
+    applySystem(id, true); toggleStarterState(false);
+  }
+  function renderStarterCards() {
+    document.getElementById("starterCards").innerHTML = SYSTEMS.map((s) => `
+      <button class="style-card" onclick="starterPick('${s.id}')">
+        <div class="sc-mini-stage" style="background:${s.light.bg};color:${s.light.fg};border-radius:6px">
+          <div class="sc-mini-top">
+            <span class="sc-aa" style="font-family:${s.fontDisplay.replace(/"/g, "'")}">Aa</span>
+            <span class="mini-dots">${s.swatches.map((c) => `<i style="background:${c}"></i>`).join("")}</span>
+          </div>
+          <div class="sc-mini-ui">
+            <span class="sc-mini-btn" style="background:${s.light.accent};color:${s.light.onAccent};border-radius:${s.btnRadius}">Start</span>
+            <span class="sc-mini-card" style="background:${s.light.surface};border-radius:${s.cardRadius}"></span>
+          </div>
+        </div>
+        <div class="sc-name">${s.name}</div>
+        <div class="sc-sub">${s.tagline}</div>
+      </button>`).join("");
+  }
+
+  function getLayerIcon(uiKind) {
+    if (["section", "header", "footer", "navbar"].includes(uiKind)) {
+      // Frame / Section corners icon (Figma / studio frame symbol)
+      return `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex-shrink:0;opacity:0.75"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/></svg>`;
+    }
+    if (["textfield", "input"].includes(uiKind)) {
+      // Textfield / input glyph
+      return `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex-shrink:0;opacity:0.75"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="8" y1="9" x2="8" y2="15"/></svg>`;
+    }
+    if (["heading", "text"].includes(uiKind)) {
+      // Type / typography glyph
+      return `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex-shrink:0;opacity:0.75"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>`;
+    }
+    if (uiKind === "group") {
+      // Layout group / container
+      return `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex-shrink:0;opacity:0.75"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>`;
+    }
+    // Component instance symbol (circle with 3 spokes: isometric component icon)
+    return `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex-shrink:0;opacity:0.75"><circle cx="12" cy="12" r="9"/><line x1="12" y1="12" x2="12" y2="21"/><line x1="12" y1="12" x2="4.2" y2="7.5"/><line x1="12" y1="12" x2="19.8" y2="7.5"/></svg>`;
+  }
+
+  function renderLayersTree() {
+    const items = Array.from(fnPage.querySelectorAll("[data-ui]"));
+    document.getElementById("layersTree").innerHTML = items.map((el) => {
+      const depth = el.parentElement?.closest("[data-ui]") ? (el.parentElement.parentElement?.closest("[data-ui]") ? 2 : 1) : 0;
+      const sel = state.selectedEl === el ? " selected" : "";
+      const label = el.getAttribute("data-label") || el.getAttribute("data-ui");
+      const uiKind = el.getAttribute("data-ui");
+      return `<button class="layer-item${sel}" role="option" aria-selected="${!!sel}" style="padding-left:${8 + depth * 14}px" onclick="selectByDomIndex(${items.indexOf(el)})">
+        ${getLayerIcon(uiKind)}
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-left:6px;flex:1">${label}</span>
+        <span class="layer-badge">${uiKind}</span>
+      </button>`;
+    }).join("");
+    const ri = document.getElementById("railInsert");
+    if (ri) ri.disabled = !state.selectedEl;
+  }
+  function insertFromRail(e) {
+    if (!state.selectedEl) { showToast("Select a component first"); return; }
+    insertSectionAtSeam(e);
+  }
+  function selectByDomIndex(i) {
+    const el = fnPage.querySelectorAll("[data-ui]")[i];
+    if (el) { selectElement(el); el.scrollIntoView({ behavior: "smooth", block: "nearest" }); }
+  }
+
+  function renderCodeView() {
+    const sys = SYSTEMS.find((s) => s.id === state.systemId) || SYSTEMS[0];
+    const pal = state.pageDark ? sys.dark : sys.light;
+    const snippets = {
+      tokens: `/* ${sys.name} — 3-Layer Token Contract (cubisai/design-ui v2) */
+/* Layer 1: Core Primitives */
+:root {
+  --font-display: ${sys.fontDisplay};
+  --font-sans: ${sys.fontBody};
+  --radius-control: ${sys.btnRadius};
+  --radius-surface: ${sys.cardRadius};
+}
+
+/* Layer 2: Semantic Roles (${state.pageDark ? "Dark" : "Light"} active) */
+:root {
+  --bg-canvas: ${pal.bg};
+  --bg-surface: ${pal.surface};
+  --bg-subtle: ${pal.subtle};
+  --fg-default: ${pal.fg};
+  --fg-muted: ${pal.muted};
+  --border-subtle: ${pal.border};
+  --accent-default: ${pal.accent};
+  --fg-on-accent: ${pal.onAccent};
+}
+
+/* Layer 3: Component Tokens */
+:root {
+  --btn-radius: var(--radius-control);
+  --card-radius: var(--radius-surface);
+  --card-border-width: ${sys.borderW};
+}`,
+      react: `// Source-owned Varelyo-style React primitive (copied on "Build in Codebase")
+import type { ButtonHTMLAttributes } from "react";
+
+export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: "primary" | "soft" | "outline" | "ghost";
+  size?: "sm" | "md" | "lg";
+}
+
+export function Button({ variant = "primary", size = "md", className = "", ...props }: ButtonProps) {
+  return (
+    <button
+      data-ui="button"
+      data-variant={variant}
+      data-size={size}
+      className={\`ui-btn \${className}\`.trim()}
+      {...props}
+    />
+  );
+}`,
+      html: fnPage.innerHTML.trim().slice(0, 1800) + "\n<!-- ... -->"
+    };
+    document.getElementById("codePre").textContent = snippets[state.activeCodeTab];
+  }
+  function showCodeFile(tab, btn) {
+    state.activeCodeTab = tab;
+    document.querySelectorAll("#codeFileTabs button").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    renderCodeView();
+  }
+  function copyCurrentCode() {
+    navigator.clipboard?.writeText(document.getElementById("codePre").textContent || "");
+    showToast("Copied source to clipboard");
+  }
+
+  function toggleLayers() {
+    const rail = document.getElementById("layersRail");
+    rail.classList.toggle("hidden");
+    document.getElementById("btnLayers").classList.toggle("active", !rail.classList.contains("hidden"));
+    setTimeout(() => { updateStageScale(); positionStylePicker(); }, 20);
+  }
+  function toggleCustomize() {
+    const p = document.getElementById("customizePanel");
+    p.classList.toggle("hidden");
+    document.getElementById("btnCustomize").classList.toggle("active", !p.classList.contains("hidden"));
+    setTimeout(() => { updateStageScale(); positionStylePicker(); }, 20);
+  }
+  function openCustomizeForSelection(e) {
+    e.stopPropagation();
+    const p = document.getElementById("customizePanel");
+    if (p.classList.contains("hidden")) toggleCustomize();
+  }
+  function focusComposerForSelection(e) {
+    e.stopPropagation();
+    document.getElementById("composerInput").focus();
+  }
+  function toggleChatSheet() {
+    const s = document.getElementById("chatSheet");
+    s.classList.toggle("open");
+    document.getElementById("chatToggleBtn").classList.toggle("active", s.classList.contains("open"));
+  }
+  function toggleGrid() {
+    document.getElementById("stageScroll").classList.toggle("grid-on");
+  }
+  function toggleAppTheme() {
+    const root = document.documentElement;
+    const next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    document.getElementById("appThemeLabel").textContent = next === "dark" ? "Dark" : "Light";
+  }
+  function switchMockPage(name) {
+    document.getElementById("currentPageName").textContent = name;
+    setViewport("desktop");
+    closeAllOverlays();
+  }
+  function switchDemoTab(e, idx) {
+    e.stopPropagation();
+    e.currentTarget.parentElement.querySelectorAll(".fn-tab").forEach((t, i) => t.classList.toggle("active", i === idx));
+    const copy = [
+      `<p style="margin:0 0 10px;font-weight:600">“When the toolbar disappeared, participants finished layout edits 2.4x faster.”</p><p style="margin:0;font-size:13px;color:var(--fn-muted)">Tagged #ux-simplicity · Linked to Q4 Field Study</p>`,
+      `<p style="margin:0 0 8px;font-weight:600">6 Verified Backlinks</p><p style="margin:0;font-size:13px;color:var(--fn-muted)">• Varelyo Token Architecture · • CubiQ Ink Flat Spec · • User Interview #14</p>`,
+      `<p style="margin:0 0 8px;font-weight:600">04:18 Studio Recording</p><p style="margin:0;font-size:13px;color:var(--fn-muted)">Offline Whisper transcript synced · 99.4% confidence</p>`
+    ];
+    document.getElementById("demoTabBody").innerHTML = copy[idx];
+  }
+
+  function submitPrompt() {
+    const input = document.getElementById("composerInput");
+    const text = input.value.trim();
+    if (!text) return;
+    const target = state.selectedEl ? state.selectedEl.getAttribute("data-label") : "index.html";
+    const sheet = document.getElementById("chatSheet");
+    sheet.insertAdjacentHTML("beforeend", `<div class="msg-user">${state.selectedEl ? `<strong>[${target}]</strong> ` : ""}${text.replace(/</g, "&lt;")}</div>`);
+    input.value = "";
+    simulateAgentTurn(`Updating ${target}…`);
+  }
+  function simulateAgentTurn(label = "Designing section with Varelyo UI components · Esc to stop") {
+    const lip = document.getElementById("runLip");
+    document.getElementById("runLipText").textContent = label;
+    lip.classList.add("running");
+    state.running = true;
+    setTimeout(() => {
+      if (!state.running) return;
+      state.running = false;
+      lip.classList.remove("running");
+      showToast("Turn finished · 0 lint issues");
+    }, 1500);
+  }
+
+  function openMenu(id, anchor) {
+    closeAllOverlays();
+    const m = document.getElementById(id);
+    const r = anchor.getBoundingClientRect();
+    document.getElementById("backdrop").classList.add("open");
+    m.classList.add("open");
+    m.style.top = (r.bottom + 6) + "px";
+    m.style.left = Math.min(window.innerWidth - 230, Math.max(8, r.left)) + "px";
+  }
+  function closeAllOverlays() {
+    document.getElementById("backdrop").classList.remove("open");
+    document.getElementById("stylePicker").classList.remove("open");
+    document.getElementById("migrateDialog").classList.remove("open");
+    document.querySelectorAll(".float-menu").forEach((m) => m.classList.remove("open"));
+  }
+
+  let toastTimer = null;
+  function showToast(msg) {
+    const t = document.getElementById("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), 2200);
+  }
+
+  // Boot mock in 3-column Studio workspace
+  applySystem("varelyo-clean", true);
+  renderLayersTree();
+  const initEl = document.getElementById("el-cta-sec");
+  if (initEl) selectElement(initEl);
+  setTimeout(() => { updateStageScale(); positionStylePicker(); }, 60);
+</script>
+</body>
+</html>
