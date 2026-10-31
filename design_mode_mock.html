@@ -761,6 +761,127 @@
     .fn-page.is-mobile .ui-sec { padding: 36px 18px; }
     .fn-page.is-mobile .fn-hero-grid, .fn-page.is-mobile .fn-bento { grid-template-columns: 1fr; gap: 20px; }
     .fn-page.is-mobile .fn-h1 { font-size: 32px; }
+
+    /* Canvas selection header badge (attached directly to selected element) */
+    .selection-badge {
+      position: absolute; z-index: 27; height: 22px; padding: 0 7px;
+      background: #2563eb; color: #ffffff;
+      border-radius: var(--radius-s); font-size: 11.5px; font-weight: 600;
+      display: none; align-items: center; gap: 5px; cursor: pointer;
+      box-shadow: var(--shadow-float); user-select: none;
+      transition: transform 120ms ease;
+    }
+    .selection-badge.visible { display: inline-flex; }
+    .selection-badge:hover { transform: translateY(-1px); }
+    .sel-badge-icon { opacity: 0.9; }
+
+    /* Swap component popover (Screenshot 11.53.07) */
+    .swap-popover {
+      position: absolute; z-index: 35; width: 280px; max-height: 380px;
+      background: var(--bg-elevated); border: 1px solid var(--hairline-strong);
+      border-radius: var(--radius-l); box-shadow: var(--shadow-float);
+      display: none; flex-direction: column; overflow: hidden; padding: 10px;
+    }
+    .swap-popover.open { display: flex; }
+    .swap-search-wrap {
+      display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+      border: 1px solid var(--hairline); border-radius: var(--radius-m);
+      background: var(--bg-subtle); margin-bottom: 8px;
+    }
+    .swap-search {
+      flex: 1; border: 0; background: transparent; font-size: 12.5px;
+      color: var(--text); outline: none;
+    }
+    .swap-notice {
+      background: var(--bg-chip); border-radius: var(--radius-s); padding: 7px 9px;
+      font-size: 11px; line-height: 1.4; color: var(--text-secondary); margin-bottom: 8px;
+    }
+    .swap-list { overflow-y: auto; display: flex; flex-direction: column; gap: 2px; max-height: 230px; }
+    .swap-group-title { font-size: 10px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; padding: 6px 6px 2px; }
+    .swap-item {
+      display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+      border-radius: var(--radius-s); font-size: 12px; color: var(--text);
+      cursor: pointer; text-align: left; border: 0; background: transparent; width: 100%;
+    }
+    .swap-item:hover { background: var(--bg-hover); }
+    .swap-item.active { background: var(--bg-selected); font-weight: 600; }
+
+    /* Seam insertion palette popover (Screen Recording 11.53.54 at 00:58) */
+    .seam-palette {
+      position: absolute; z-index: 35; width: 290px;
+      background: var(--bg-elevated); border: 1px solid var(--hairline-strong);
+      border-radius: var(--radius-l); box-shadow: var(--shadow-float);
+      display: none; flex-direction: column; overflow: hidden; padding: 10px;
+    }
+    .seam-palette.open { display: flex; }
+    .seam-palette-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 8px; }
+    .seam-target-tag { font-family: var(--mono); font-size: 10px; color: var(--text-tertiary); }
+    .seam-search-wrap {
+      display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+      border: 1px solid var(--hairline); border-radius: var(--radius-m);
+      background: var(--bg-subtle); margin-bottom: 8px;
+    }
+    .seam-search {
+      flex: 1; border: 0; background: transparent; font-size: 12.5px;
+      color: var(--text); outline: none;
+    }
+    .seam-list { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+
+    /* Inspector Header Tabs and Filter Input (Screenshot 12.09.20) */
+    .insp-tabs-row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--hairline);
+    }
+    .insp-kbd-btn {
+      width: 28px; height: 28px; border-radius: var(--radius-s); border: 1px solid var(--hairline);
+      background: var(--bg-subtle); display: inline-grid; place-items: center;
+      color: var(--text-secondary); cursor: pointer; flex-shrink: 0;
+    }
+    .insp-kbd-btn:hover { background: var(--bg-hover); color: var(--text); }
+    .insp-filter-row {
+      padding: 8px 12px; border-bottom: 1px solid var(--hairline);
+    }
+    .insp-filter-wrap {
+      display: flex; align-items: center; gap: 8px; padding: 5px 10px;
+      border: 1px solid var(--hairline); border-radius: var(--radius-m);
+      background: var(--bg-subtle); position: relative;
+    }
+    .insp-filter-input {
+      flex: 1; border: 0; background: transparent; font-size: 12px; color: var(--text); outline: none;
+    }
+    .insp-filter-kbd {
+      font-family: var(--mono); font-size: 10px; color: var(--text-tertiary);
+      border: 1px solid var(--hairline); border-radius: 4px; padding: 1px 4px;
+    }
+    .insp-device-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
+      background: var(--bg-chip); padding: 3px; border-radius: var(--radius-m);
+    }
+    .insp-device-btn {
+      height: 26px; border: 0; background: transparent; border-radius: var(--radius-s);
+      display: inline-grid; place-items: center; color: var(--text-secondary); cursor: pointer;
+    }
+    .insp-device-btn:hover { color: var(--text); background: var(--bg-hover); }
+    .insp-device-btn.active { background: var(--bg); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+
+    /* Grid Layout Inspector Controls */
+    .grid-col-seg {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
+      background: var(--bg-chip); padding: 3px; border-radius: var(--radius-m);
+    }
+    .grid-col-btn {
+      height: 26px; border: 0; background: transparent; border-radius: var(--radius-s);
+      font-size: 12px; font-weight: 500; color: var(--text-secondary); cursor: pointer;
+    }
+    .grid-col-btn:hover { color: var(--text); }
+    .grid-col-btn.active { background: var(--bg); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+
+    /* Multi-select styling */
+    .multi-sel-list { display: flex; flex-direction: column; gap: 6px; }
+    .multi-sel-item {
+      display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 6px 8px;
+      border-radius: var(--radius-s); background: var(--bg-subtle); border: 1px solid var(--hairline);
+    }
   </style>
 </head>
 <body>
@@ -909,6 +1030,8 @@
           <div class="artboard-scaler" id="artboardScaler">
             <div class="artboard" id="artboard">
               <div class="fn-page design-editable" id="fnPage" tabindex="0" role="application" aria-label="Page canvas. Arrow keys move between components. Enter edits text. Alt+Up or Alt+Down changes level. Shift+Enter inserts a section.">
+                <!-- Page 1: Fieldnote Landing -->
+                <div id="pageFieldnote">
                 <!-- Navbar Component (Notice: invisible skip-link exists in DOM to prove we NEVER pick it!) -->
                 <a href="#main" class="skip-link" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden">Skip to content</a>
 
@@ -1001,6 +1124,118 @@
                     </article>
                   </div>
                 </section>
+                </div> <!-- End Page 1: Fieldnote -->
+
+                <!-- Page 2: Cycles 24 Studio App (Screen Recording 11.53.54 & 11.56.03) -->
+                <div id="pageCycles" style="display:none;padding:28px 36px">
+                  <div data-ui="stack" data-label="Stack · page" style="display:flex;flex-direction:column;gap:20px">
+                    <!-- PageHeader -->
+                    <header data-ui="pageheader" data-label="PageHeader" style="display:flex;justify-content:space-between;align-items:flex-start">
+                      <div>
+                        <h1 style="margin:0;font-size:26px;font-weight:700;font-family:var(--fn-font-display)" data-editable="true">Cycle 24</h1>
+                        <div style="font-size:13px;color:var(--fn-muted);margin-top:4px" data-editable="true">Web team · Sep 22 – Oct 5</div>
+                      </div>
+                      <div style="display:flex;gap:10px;align-items:center">
+                        <button class="ui-btn cycles-swap-target" data-ui="button" data-label="Button &quot;Ends in 4 days&quot;" data-variant="outline" data-size="sm" id="btnCyclesSwap">
+                          <span data-editable="true">Ends in 4 days</span>
+                        </button>
+                        <button class="ui-btn" data-ui="button" data-label="Button &quot;New issue&quot;" data-variant="primary" data-size="sm" id="btnCyclesNew">
+                          <span style="font-size:14px;margin-right:2px">+</span>
+                          <span data-editable="true">New issue</span>
+                        </button>
+                      </div>
+                    </header>
+
+                    <!-- Metrics Grid / Stack -->
+                    <div class="board-grid" data-ui="grid" data-label="Grid" id="cyclesMetricsGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;transition:grid-template-columns 200ms ease">
+                      <div class="ui-card" data-ui="card" data-label="StatCard · Scope" data-variant="surface" style="padding:16px;border-radius:8px">
+                        <div style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--fn-muted);margin-bottom:8px" data-editable="true">SCOPE</div>
+                        <div style="font-size:32px;font-weight:700;font-family:var(--fn-font-display);line-height:1" data-editable="true">29</div>
+                        <div style="font-size:12px;color:var(--fn-muted);margin-top:6px" data-editable="true">issues</div>
+                      </div>
+
+                      <div class="ui-card" data-ui="card" data-label="ProgressCard · Completed" data-variant="surface" style="padding:16px;border-radius:8px">
+                        <div style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--fn-muted);margin-bottom:8px" data-editable="true">COMPLETED</div>
+                        <div style="font-size:32px;font-weight:700;font-family:var(--fn-font-display);line-height:1" data-editable="true">18 <span style="font-size:18px;font-weight:400;color:var(--fn-muted)">/ 29</span></div>
+                        <div style="height:4px;background:var(--fn-subtle);border-radius:2px;margin-top:14px;overflow:hidden">
+                          <div style="height:100%;width:62%;background:var(--fn-accent);border-radius:2px"></div>
+                        </div>
+                      </div>
+
+                      <div class="ui-card" data-ui="card" data-label="StatCard · In progress" data-variant="surface" style="padding:16px;border-radius:8px">
+                        <div style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--fn-muted);margin-bottom:8px" data-editable="true">IN PROGRESS</div>
+                        <div style="font-size:32px;font-weight:700;font-family:var(--fn-font-display);line-height:1" data-editable="true">7</div>
+                        <div style="font-size:12px;color:var(--fn-muted);margin-top:6px" data-editable="true">issues</div>
+                      </div>
+
+                      <div class="ui-card" data-ui="card" data-label="StatCard · Blocked" data-variant="surface" style="padding:16px;border-radius:8px">
+                        <div style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--fn-muted);margin-bottom:8px" data-editable="true">BLOCKED</div>
+                        <div style="font-size:32px;font-weight:700;font-family:var(--fn-font-display);line-height:1" data-editable="true">2</div>
+                        <div style="font-size:12px;color:var(--fn-muted);margin-top:6px" data-editable="true">issues</div>
+                      </div>
+                    </div>
+
+                    <!-- Seam insertion slot -->
+                    <div class="seam-insert" onclick="openSeamPalette(event, 'Grid')">
+                      <button class="seam-btn" title="Add below">+ Add below</button>
+                    </div>
+
+                    <!-- Burndown section / banner -->
+                    <div class="ui-card" data-ui="card" data-label="Typography &quot;Burndown chart&quot;" data-variant="subtle" style="padding:14px 18px;border-radius:8px;font-size:13px;color:var(--fn-muted)">
+                      <span data-editable="true">Burndown chart — coming soon</span>
+                    </div>
+
+                    <!-- IssueList Component -->
+                    <div class="ui-card" data-ui="issuelist" data-label="IssueList" data-variant="surface" style="padding:18px;border-radius:8px">
+                      <div style="font-size:13px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:6px">
+                        <span data-editable="true">Issues in this cycle</span>
+                        <span class="ui-badge" data-ui="badge" data-size="sm" style="font-size:11px">29</span>
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:8px">
+                        <div class="issue-row" style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-radius:6px;background:var(--fn-subtle);font-size:13px">
+                          <div style="display:flex;gap:10px;align-items:center">
+                            <span style="font-family:var(--fn-font-mono);font-size:11.5px;color:var(--fn-muted)">WEB-214</span>
+                            <span style="font-weight:500" data-editable="true">Faster search across projects</span>
+                          </div>
+                          <div style="display:flex;gap:8px;align-items:center">
+                            <span class="ui-badge" data-ui="badge" data-variant="soft" style="font-size:11px">In Progress</span>
+                            <span style="font-size:11px;font-weight:600;width:22px;height:22px;border-radius:50%;background:var(--fn-subtle);border:1px solid var(--fn-border);display:grid;place-items:center">ER</span>
+                          </div>
+                        </div>
+                        <div class="issue-row" style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-radius:6px;background:var(--fn-subtle);font-size:13px">
+                          <div style="display:flex;gap:10px;align-items:center">
+                            <span style="font-family:var(--fn-font-mono);font-size:11.5px;color:var(--fn-muted)">WEB-209</span>
+                            <span style="font-weight:500" data-editable="true">Crash when reordering sub-issues</span>
+                          </div>
+                          <div style="display:flex;gap:8px;align-items:center">
+                            <span class="ui-badge" data-ui="badge" data-variant="soft" style="font-size:11px">In Progress</span>
+                            <span style="font-size:11px;font-weight:600;width:22px;height:22px;border-radius:50%;background:var(--fn-subtle);border:1px solid var(--fn-border);display:grid;place-items:center">MD</span>
+                          </div>
+                        </div>
+                        <div class="issue-row" style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-radius:6px;background:var(--fn-subtle);font-size:13px">
+                          <div style="display:flex;gap:10px;align-items:center">
+                            <span style="font-family:var(--fn-font-mono);font-size:11.5px;color:var(--fn-muted)">WEB-203</span>
+                            <span style="font-weight:500" data-editable="true">Keyboard shortcuts for triage</span>
+                          </div>
+                          <div style="display:flex;gap:8px;align-items:center">
+                            <span class="ui-badge" data-ui="badge" data-variant="soft" style="font-size:11px">In Progress</span>
+                            <span style="font-size:11px;font-weight:600;width:22px;height:22px;border-radius:50%;background:var(--fn-subtle);border:1px solid var(--fn-border);display:grid;place-items:center">PS</span>
+                          </div>
+                        </div>
+                        <div class="issue-row" style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-radius:6px;background:var(--fn-subtle);font-size:13px">
+                          <div style="display:flex;gap:10px;align-items:center">
+                            <span style="font-family:var(--fn-font-mono);font-size:11.5px;color:var(--fn-muted)">WEB-201</span>
+                            <span style="font-weight:500" data-editable="true">Empty state for filtered views</span>
+                          </div>
+                          <div style="display:flex;gap:8px;align-items:center">
+                            <span class="ui-badge" data-ui="badge" data-variant="outline" style="font-size:11px">Todo</span>
+                            <span style="font-size:11px;font-weight:600;width:22px;height:22px;border-radius:50%;background:var(--fn-subtle);border:1px solid var(--fn-border);display:grid;place-items:center">TB</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1011,9 +1246,45 @@
                 <span style="opacity:0.7">↑</span>
               </button>
               <span class="cp-sep"></span>
+              <button class="cp-act" onclick="openSwapPopover(event)">Swap ⟐</button>
               <button class="cp-act" onclick="openVariantsMenu(event)">3 Variants ▾</button>
               <button class="cp-act" onclick="focusComposerForSelection(event)">Ask AI</button>
               <button class="cp-act" onclick="openCustomizeForSelection(event)">Style</button>
+            </div>
+
+            <!-- CANVAS SELECTION HEADER BADGE (Attached directly to top edge, Screenshot 11.53.07) -->
+            <div class="selection-badge" id="selectionBadge" onclick="openSwapPopover(event)" title="Swap component">
+              <span id="selBadgeLabel">Button</span>
+              <svg class="sel-badge-icon" width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 22 12 12 22 2 12"/></svg>
+            </div>
+
+            <!-- FLOATING SWAP COMPONENT POPOVER (Matching Screenshot 11.53.07 & Video 11.53.54) -->
+            <div class="swap-popover" id="swapPopover" role="dialog" aria-label="Swap component">
+              <div class="swap-search-wrap">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input class="swap-search" id="swapSearchInput" placeholder="Swap Button for..." oninput="filterSwapOptions(this.value)" />
+              </div>
+              <div class="swap-notice" id="swapNotice">
+                Becomes Dropdown — drops variant, which Dropdown does not take
+              </div>
+              <div class="swap-list" id="swapList"></div>
+            </div>
+
+            <!-- SEAM INSERTION PALETTE POPOVER (Matching Video 11.53.54 at 00:58) -->
+            <div class="seam-palette" id="seamPalette" role="dialog" aria-label="Insert component">
+              <div class="seam-palette-head">
+                <div class="seg" id="seamPosSeg">
+                  <button onclick="setSeamPos('before', this)">Before</button>
+                  <button class="active" onclick="setSeamPos('after', this)">After</button>
+                  <button onclick="setSeamPos('inside', this)">Inside</button>
+                </div>
+                <span class="seam-target-tag" id="seamTargetTag">After StatCard</span>
+              </div>
+              <div class="seam-search-wrap">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input class="seam-search" id="seamSearchInput" placeholder="Search components..." oninput="filterSeamOptions(this.value)" />
+              </div>
+              <div class="seam-list" id="seamList"></div>
             </div>
 
             <!-- INLINE 1/3 VARIANT CYCLER -->
@@ -1206,15 +1477,66 @@
           </div>
         </div>
 
-        <!-- STATE 2: ELEMENT CONTROLS (Shown when a component is clicked — Props & Swatches first!) -->
+        <!-- STATE 2: ELEMENT CONTROLS (Pixel-perfect match to Screenshot 12.09.20 & 11.53.07) -->
         <div id="panelElement" style="display:none">
           <div class="cp-header">
-            <button class="btn ghost" style="padding:0 6px;height:24px" onclick="clearSelection()">← Page Theme</button>
-            <span class="cp-live-badge">Live</span>
+            <span class="cp-header-title" id="elPanelTitle">Dropdown</span>
+            <div style="display:flex;align-items:center;gap:4px">
+              <button class="btn icon ghost" style="width:24px;height:24px;padding:0" title="Options" onclick="openSwapPopover(event)">•••</button>
+              <button class="btn icon ghost" style="width:24px;height:24px;padding:0" onclick="clearSelection()" title="Close inspector">✕</button>
+            </div>
+          </div>
+
+          <!-- Inspector Mode Tabs (Design vs Code) -->
+          <div class="insp-tabs-row">
+            <div class="seg" style="flex:1">
+              <button class="active" id="inspTabDesign" onclick="setInspectorTab('design')">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="margin-right:4px"><polygon points="12 2 22 12 12 22 2 12"/></svg>
+                Design
+              </button>
+              <button id="inspTabCode" onclick="setInspectorTab('code')">&lt;&gt; Code</button>
+            </div>
+            <button class="insp-kbd-btn" title="Keyboard shortcuts (Enter edits, Tab actions, Esc cancels)" onclick="showToast('Keyboard: Enter edits · Shift+Enter inserts · Esc cancels')">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="6" y2="8"/><line x1="10" y1="8" x2="10" y2="8"/><line x1="14" y1="8" x2="14" y2="8"/><line x1="18" y1="8" x2="18" y2="8"/><line x1="6" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="18" y2="12"/><line x1="7" y1="16" x2="17" y2="16"/></svg>
+            </button>
+          </div>
+
+          <!-- Props Search Filter (⌘F) -->
+          <div class="insp-filter-row">
+            <div class="insp-filter-wrap">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input class="insp-filter-input" id="propFilterInput" placeholder="Filter props and values" oninput="filterPropCards(this.value)" />
+              <span class="insp-filter-kbd">⌘F</span>
+            </div>
+          </div>
+
+          <!-- Breakpoint Scope Container (Screenshot 12.09.20) -->
+          <div class="cp-section cp-prop-card" id="cardBreakpoint">
+            <div class="cp-row" style="margin-bottom:6px">
+              <span class="icon-label" style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                <span>Breakpoint</span>
+              </span>
+              <span style="font-size:11px;color:var(--text-tertiary)">Writes the base value</span>
+            </div>
+            <div class="insp-device-grid">
+              <button class="insp-device-btn" onclick="setInspectorBreakpoint('mobile', this)" title="Mobile">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+              </button>
+              <button class="insp-device-btn" onclick="setInspectorBreakpoint('tablet', this)" title="Tablet">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/></svg>
+              </button>
+              <button class="insp-device-btn active" onclick="setInspectorBreakpoint('desktop', this)" title="Desktop (base)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+              </button>
+              <button class="insp-device-btn" onclick="setInspectorBreakpoint('wide', this)" title="Wide screen">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="12" rx="2"/><line x1="6" y1="20" x2="18" y2="20"/></svg>
+              </button>
+            </div>
           </div>
 
           <!-- 1. Content Card (Text Value & Placeholder overrides live on canvas) -->
-          <div class="cp-section" id="propContentBlock">
+          <div class="cp-section cp-prop-card" id="propContentBlock">
             <div class="cp-sec-label"><span>Content</span></div>
             <div style="display:flex;flex-direction:column;gap:8px">
               <div>
@@ -1244,10 +1566,9 @@
           </div>
 
           <!-- 2. Component Style & Tactile Step Slider -->
-          <div class="cp-section">
+          <div class="cp-section cp-prop-card" id="propStyleBlock">
             <div class="cp-sec-label">
-              <span id="elPanelTitle" style="color:var(--text);font-size:12.5px">Button</span>
-              <span id="elPanelTag" style="font-family:var(--mono)">data-ui="button"</span>
+              <span id="elPanelTag" style="font-family:var(--mono);font-size:11px">data-ui="button"</span>
             </div>
 
             <!-- Variant segmented selector -->
@@ -1292,7 +1613,7 @@
           </div>
 
           <!-- 3. Component State Card (Disabled toggle switch) -->
-          <div class="cp-section" id="propStateBlock">
+          <div class="cp-section cp-prop-card" id="propStateBlock">
             <div class="cp-sec-label"><span>State</span></div>
             <div class="cp-row">
               <span class="icon-label" style="font-size:12px;color:var(--text);display:flex;align-items:center;gap:6px">
@@ -1309,7 +1630,29 @@
             </div>
           </div>
 
-          <div class="cp-section">
+          <!-- 4. Layout & Grid Inspector Card (Screen Recording 11.53.54 at 00:09) -->
+          <div class="cp-section cp-prop-card" id="cardLayoutBlock" style="display:none">
+            <div class="cp-sec-label"><span>Layout &amp; Grid</span></div>
+            <div>
+              <div class="cp-lbl" style="margin-bottom:6px">Columns</div>
+              <div class="grid-col-seg" id="gridColSeg">
+                <button class="grid-col-btn" onclick="setGridColumns(1, this)">1</button>
+                <button class="grid-col-btn" onclick="setGridColumns(2, this)">2</button>
+                <button class="grid-col-btn" onclick="setGridColumns(3, this)">3</button>
+                <button class="grid-col-btn active" onclick="setGridColumns(4, this)">4</button>
+              </div>
+            </div>
+            <div class="cp-row" style="margin-top:6px">
+              <span class="cp-lbl">Gap</span>
+              <div class="seg">
+                <button onclick="setGridGap('8px', this)">8px</button>
+                <button class="active" onclick="setGridGap('16px', this)">16px</button>
+                <button onclick="setGridGap('24px', this)">24px</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="cp-section cp-prop-card" id="cardThemeSwatches">
             <div class="cp-sec-label"><span>Theme Swatches</span></div>
             <div class="cp-lbl">Surface / Fill</div>
             <div class="swatch-row">
@@ -1320,7 +1663,7 @@
             </div>
           </div>
 
-          <div class="cp-section">
+          <div class="cp-section cp-prop-card" id="cardTextSpacing">
             <div class="cp-sec-label"><span>Text &amp; Spacing</span></div>
             <div class="cp-row">
               <span class="cp-lbl">Text scale</span>
@@ -1343,6 +1686,34 @@
 
           <div class="cp-section" style="border-bottom:0">
             <button class="btn" style="width:100%;justify-content:center" onclick="resetSelectedElement()">Reset overrides (⌘Z)</button>
+          </div>
+        </div>
+
+        <!-- STATE 3: MULTI-SELECTION (Shown when multiple components are selected via Shift+Click) -->
+        <div id="panelMultiSelect" style="display:none">
+          <div class="cp-header">
+            <span class="cp-header-title" id="multiSelCount">4 selected</span>
+            <button class="btn icon ghost" style="width:24px;height:24px;padding:0" onclick="clearSelection()" title="Clear selection">✕</button>
+          </div>
+          <div class="insp-filter-row">
+            <div class="insp-filter-wrap">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input class="insp-filter-input" placeholder="Filter props and values" />
+              <span class="insp-filter-kbd">⌘F</span>
+            </div>
+          </div>
+          <div class="cp-section">
+            <div class="cp-sec-label"><span>Selected Components</span></div>
+            <div class="multi-sel-list" id="multiSelList"></div>
+            <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Shift-click on the canvas or in Layers to add or remove an item.</div>
+          </div>
+          <div class="cp-section">
+            <div class="cp-sec-label"><span>Structure</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <button class="btn primary" style="width:100%;justify-content:center" onclick="wrapSelected('grid')">Wrap in 4 in Grid</button>
+              <button class="btn" style="width:100%;justify-content:center" onclick="wrapSelected('stack')">Wrap in Stack</button>
+              <button class="btn" style="width:100%;justify-content:center" onclick="wrapSelected('card')">Wrap in Card</button>
+            </div>
           </div>
         </div>
       </aside>
@@ -1386,7 +1757,8 @@
 
 <!-- FLOATING MENUS -->
 <div class="float-menu" id="pageMenu">
-  <button class="menu-item" onclick="switchMockPage('index.html')"><span>index.html</span><span class="sub">Landing</span></button>
+  <button class="menu-item" onclick="switchMockPage('index.html')"><span>index.html</span><span class="sub">Fieldnote Landing</span></button>
+  <button class="menu-item" onclick="switchMockPage('cycles.html')"><span>cycles.html</span><span class="sub">Cycles 24 Studio App ★</span></button>
   <button class="menu-item" onclick="setViewport('board'); closeAllOverlays()"><span>pricing.html</span><span class="sub">Pricing</span></button>
   <button class="menu-item" onclick="setViewport('board'); closeAllOverlays()"><span>app-notes.html</span><span class="sub">Workspace</span></button>
   <div class="menu-sep"></div>

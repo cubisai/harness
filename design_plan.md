@@ -145,6 +145,11 @@ States: `Idle` → `Selected` → (`EditingText` | `ContextMenu` | `AiOperation`
 - **Conflict**: `⋯` → `Demo: external file change` shows the conflict banner and `Reapply` / `Discard`.
 - **Style picker**: opens on the current kit's themes (`Theme`, `Apply theme`). The `Kit: … ▾` control switches to another kit's themes, whose cards say `Adapts page` and whose button says `Adapt page to this style`, opening the migration dialog (adapted vs. needs attention, `Cancel`, one-step undo).
 - **Install states**: uncached styles show `Preparing style…` with `Cancel`; `⋯` → `Demo: go offline` then picking an uncached style shows `Unavailable offline` + `Retry`. Added repositories show `Publisher unverified`, and the Add Repo row states what adding a source does and does not authorize.
+- **Canvas Selection & Swap Component Popover**: selecting an element renders a blue bounding box and anchored blue badge with swap diamond (`Button ⟐`). Clicking opens the anchored popover with prop loss warnings (`Becomes Dropdown — drops variant, which Dropdown does not take`), taxonomy search, and atomic swap execution.
+- **Seam Insertion Palette**: hovering canvas gaps renders a hairline seam with `+` button (`Add below`); clicking opens an inline palette with `[ Before | After | Inside ]` tabs and categorized search that inserts real component instances.
+- **Multi-Selection & Structural Wrapping**: `Shift+Click` selects multiple siblings, shifts inspector to `N selected` checklist, and provides 1-click `Wrap in Stack` / `Wrap in 4 in Grid` / `Wrap in Card` actions.
+- **Tactile Grid Columns Stepper**: inspector for Grid provides tactile segmented `[ 1 | 2 | 3 | 4 ]` columns stepper that live re-renders the layout on canvas.
+- **Foundations & Brand Color Live Overhaul**: picking Teal (`#0f968a`) updates all brand tokens across the app and triggers toast: `Changes applied · Brand colour -> Teal 500 · Undo [Z]`.
 - **Keyboard**: `Enter` edits the selected text, `Shift+Enter` inserts a section, `Alt+↑/↓` parent/child, `←/→` siblings. `Esc` takes one action per press (menu/dialog → cancel edit → stop AI turn → select parent). Cancelling an edit restores the text.
 - **Keyboard access to canvas:** the canvas is focusable with a visible focus ring. `←/→/↓/Enter` selects the first component, `Tab` moves into the selection pill (a labelled toolbar), and `Esc` from the pill returns focus to the canvas. Selection changes are announced through a live region. The Layers rail has `Insert section after selection…` (`⇧↵`) as the non-pointer alternative to seam insertion.
 - **Target sizes:** pill and variant-bar controls are at least 24×24px. `⋯` → `Demo: check target sizes` scans the editor controls and outlines any under 24×24px. Authored page content is excluded, per §1A.6.
@@ -323,6 +328,61 @@ All chrome strictly uses [`DESIGN.md`](./DESIGN.md) Ink Flat tokens (`--bg`, `--
   ⛶ Features Bento                section
   ```
 
+### 5.4 Canvas Selection Badge & Swap Component Popover (`Swap Button for…`)
+
+Directly matching [`Screenshot 2026-10-31 at 11.53.07 in the morning.png`](./Screenshot%202026-10-31%20at%2011.53.07%20in%20the%20morning.png) and [`Screen Recording 2026-10-31 at 11.53.54 in the morning.mov`](./Screen%20Recording%202026-10-31%20at%2011.53.54%20in%20the%20morning.mov) (01:01–01:05):
+1. **Canvas Selection Header Chip:**
+   - When a component is selected, render a blue border (`#2563eb`, 1.5px) and anchor an attached solid blue badge (`background: #2563eb; color: #ffffff`) to its top edge:
+     - Component name label: e.g. `Button`, `Dropdown`, `StatCard · Scope`.
+     - Swap symbol: diamond / spark icon (`⟐`).
+     - Clicking the badge or pressing `⌘S` (or right-click context menu → `Swap component…`) opens the Swap popover immediately adjacent to the element.
+2. **Contextual Intelligence & Prop Drop Warning:**
+   - Search input: `🔍 Swap [Component] for...` with keyboard auto-focus.
+   - **Smart Compatibility Notice:** Evaluates prop schemas before swap. Example: when swapping `Button` → `Dropdown`:
+     > *“Becomes Dropdown — drops variant, which Dropdown does not take”*
+     - If swapping `Card` → `Box`: *“Becomes Box — preserves child layout, drops elevation and surface styles”*.
+     - Preserves common properties: `value`, `label`, `text`, `placeholder`, `size`, `disabled`, and auto-migrates child content.
+3. **Grouped Component Taxonomy:**
+   - **Inputs:** `Dropdown`, `Input`, `TextField`.
+   - **Layout:** `Card`, `Stack`, `Grid`, `Box`, `Container`.
+   - **Data display:** `StatCard`, `ProgressCard`, `Avatar`, `Badge`.
+   - **Feedback:** `LinearProgress`, `CircularProgress`.
+4. **Execution & Rollback:**
+   - Clicking an option performs atomic swap via `DocumentMutationService` (§1A.2), updates the Inspector and Layers tree, logs to undo stack (`⌘Z` instantly rolls back the swap), and triggers a toast: `Swapped Button for Dropdown · Undo [⌘Z]`.
+
+### 5.5 Multi-Selection & Structural Wrapping (`Wrap in Stack / Grid`)
+
+Demonstrated in [`Screen Recording 2026-10-31 at 11.53.54 in the morning.mov`](./Screen%20Recording%202026-10-31%20at%2011.53.54%20in%20the%20morning.mov) (00:03–00:12, 01:06–01:17):
+1. **Multi-Selection Mechanics:**
+   - `Shift + Click` on canvas or Layers tree adds/removes elements from selection set.
+   - Canvas renders distinct bounding boxes for all selected siblings with a unified selection extent.
+   - Inspector header switches to **`N selected`** (e.g. `4 selected`):
+     - Displays prop search: `Filter props and values [⌘F]`.
+     - Displays interactive checklist of selected component items (`☑ StatCard · Scope`, `☑ ProgressCard · Completed`, `☑ StatCard · In progress`, `☑ StatCard · Blocked`).
+     - Helper note: *“Shift-click on the canvas or in Layers to add or remove an item.”*
+2. **Structural Wrap Actions (Inspector & Context Menu):**
+   - Direct 1-click wrap actions:
+     - **`Wrap in Stack`**: Creates a Flex container wrapping all selected elements, setting `direction="row"`, `gap="16"`, `align="center"`.
+     - **`Wrap in 4 in Grid`** (dynamic count matching selection count `N`): Wraps in CSS Grid container with `grid-template-columns: repeat(N, 1fr); gap: 16px`.
+     - **`Wrap in Grid`**: Wraps in customizable multi-column grid layout.
+     - **`Wrap in Box`** / **`Wrap in Card`** / **`Wrap in Container`**.
+   - Maintains DOM tree ordering, preserves all child IDs, stamps new wrapper container with unique `data-agent-id`, and records an atomic undo transaction.
+
+### 5.6 Canvas Seam Insertion Palette (`[ Before | After | Inside ]`)
+
+Demonstrated in [`Screen Recording 2026-10-31 at 11.53.54 in the morning.mov`](./Screen%20Recording%202026-10-31%20at%2011.53.54%20in%20the%20morning.mov) (00:56–01:00):
+1. **Hairline Seam Trigger:**
+   - Hovering between siblings displays a horizontal hairline guideline with a centered dark circular button (`+`) and tooltip `Add below` (or `Add above` / `Add inside`).
+2. **Inline Component Insertion Palette:**
+   - Segmented position tabs: `[ Before ]` `[ After (active) ]` `[ Inside ]` with target badge: `After StatCard`.
+   - Real-time search: `🔍 Search components...` (e.g. typing `"prog"` immediately filters down to `ProgressCard`, `LinearProgress`, `CircularProgress`).
+   - Grouped recommendations:
+     - `Data display`: `ProgressCard`, `StatCard`, `Badge`, `Avatar`, `IssueList`.
+     - `Feedback`: `LinearProgress`, `CircularProgress`, `Alert`.
+     - `Inputs`: `Button`, `Dropdown`, `Input`, `TextField`.
+     - `Layout`: `Stack`, `Grid`, `Card`, `Container`.
+   - Selecting a component renders the live instance directly into the DOM slot, selects it, and focuses its props in the Inspector.
+
 ---
 
 ## 6. Pillar 3 — Human-Friendly Live Inspector (Page Theme + Component Props)
@@ -334,13 +394,46 @@ Overhaul [`src/renderer/src/design/InspectorPanel.tsx`](./src/renderer/src/desig
 | Canvas State | What the Right `Customize` Panel Shows |
 | :--- | :--- |
 | **Nothing Selected (`Page Theme`)** | **1. Active Design System Card:** `Glacier` + 4 swatches + `[Switch Style…]` button<br>**2. Appearance:** `[Light \| Dark]` live toggle<br>**3. Global Theme Tokens:** Quick color swatches for `Accent`, `Canvas`, and `Surface`; `Font Pairing` selector; global `Corner Style` (`Sharp · Soft · Round · Pill`)<br>**4. Page Tweaks:** Interactive knobs declared by the page (`Density`, `Hero Layout`, etc.) |
-| **Element Selected (`Element Style`)** | Header: `← Page Theme` · **`Button "Get started"`** (`div` / tag noise hidden)<br>**1. Live Content Overrides** ([`Screenshot 2026-10-31 at 12.09.20 in the afternoon.png`](./Screenshot%202026-10-31%20at%2012.09.20%20in%20the%20afternoon.png)):<br>• Text elements & buttons: `Value` text input overrides canvas label live.<br>• Textfields, inputs & search bars: Exposes both `Value` (live input text) and `Placeholder` (placeholder attribute override) inputs with live bi-directional canvas synchronization and debounced undo.<br>**2. Component Style**: `Variant` segmented pill (`Filled · Soft · Outline · Ghost`) + **Tactile Size Stepper Slider** (notched track with `sm · md · lg` step readout badge)<br>**3. Component State**: `Disabled` toggle switch<br>**4. Colors:** `Fill`, `Text`, `Border` — 1-click **System Token Swatches** (`Primary`, `Surface`, `Subtle`, `Muted`) + `+ Custom` hex picker<br>**5. Text & Spacing:** Text scale (`S · M · L · XL`), `Padding` (`Tight · Normal · Roomy`), `Corners`<br>**6. Quiet Footer Link:** `View HTML / Reset overrides (⌘Z)` |
+| **Element Selected (`Element Style`)** | Header: `← Page Theme` · **`Button "Get started"`** (`div` / tag noise hidden)<br>**1. Live Content Overrides** ([`Screenshot 2026-10-31 at 12.09.20 in the afternoon.png`](./Screenshot%202026-10-31%20at%2012.09.20%20in%20the%20afternoon.png)):<br>• Text elements & buttons: `Value` text input overrides canvas label live.<br>• Textfields, inputs & search bars: Exposes both `Value` (live input text) and `Placeholder` (placeholder attribute override) inputs with live bi-directional canvas synchronization and debounced undo.<br>**2. Component Style**: `Variant` segmented pill (`Filled · Soft · Outline · Ghost`) + **Tactile Size Stepper Slider** (light grey pill track, notches `\|`, `!`, `'`, and right-aligned badge `sm`)<br>**3. Component State**: `Disabled` toggle switch<br>**4. Colors:** `Fill`, `Text`, `Border` — 1-click **System Token Swatches** (`Primary`, `Surface`, `Subtle`, `Muted`) + `+ Custom` hex picker<br>**5. Text & Spacing:** Text scale (`S · M · L · XL`), `Padding` (`Tight · Normal · Roomy`), `Corners`<br>**6. Quiet Footer Link:** `View HTML / Reset overrides (⌘Z)` |
 
 ### 6.2 Zero-Friction Direct Writes & Undo
 - **Auto-Stamped `data-agent-id` (`src/main/design/edit.ts`):** if the target lacks an ID, the mutation service stamps one **only when the target resolves unambiguously**; otherwise it returns a recoverable conflict (§1A.2).
 - **Preview, Commit, Undo:** the preview updates on the next animation frame; the change is committed through `DocumentMutationService` (§1A.2), saved after 250ms idle, and grouped by `transactionId` into one undo step.
 
----
+### 6.3 Inspector Chrome, Dual Tabs (`[ Design | Code ]`), Search Filter (`⌘F`), and Breakpoint Bar
+
+Pixel-perfect implementation of [`Screenshot 2026-10-31 at 12.09.20 in the afternoon.png`](./Screenshot%202026-10-31%20at%2012.09.20%20in%20the%20afternoon.png):
+1. **Header Bar:**
+   - Component name title (`Dropdown`, `Button`, `Stack`, `Grid`).
+   - Overflow menu `···` (reset props, copy JSX, wrap component).
+   - Dismiss button `✕` (clears canvas selection, returns to Page Theme).
+2. **Mode Segmented Control:**
+   - Segmented buttons: `[ ⟐ Design ]` and `[ <> Code ]`.
+   - Keyboard icon shortcut button `⌨`.
+   - Switching to `[ <> Code ]` toggles the active inspector view to the live TSX component source (e.g. `<Dropdown value="Ends in 4 days" />`), allowing bidirectional visual and code comprehension without context switching.
+3. **Props Filter Bar:**
+   - Full-width pill input: `🔍 Filter props and values      ⌘F`.
+   - Typing instantly filters the prop cards below (e.g. typing `"size"` hides Content and State cards, isolating the Size slider).
+4. **Breakpoint Scope Container:**
+   - Label: `📱 Breakpoint` with trailing status: `Writes the base value`.
+   - Segmented device icon array: `[ 📱 Mobile ]` `[ 📱 Tablet ]` `[ 🖥 Desktop (active) ]` `[ 💻 Wide ]`.
+   - Overriding a prop while a non-base breakpoint is selected writes a responsive override token rather than the base default.
+
+### 6.4 Layout Inspector for Stack & Grid (Tactile Segmented Columns Stepper)
+
+Demonstrated in [`Screen Recording 2026-10-31 at 11.53.54 in the morning.mov`](./Screen%20Recording%202026-10-31%20at%2011.53.54%20in%20the%20morning.mov) (00:09–00:12) and [`Screen Recording 2026-10-31 at 11.56.43 in the morning.mov`](./Screen%20Recording%202026-10-31%20at%2011.56.43%20in%20the%20morning.mov):
+1. **Semantic HTML Render Tag:**
+   - Dropdown selector: `Render as` (`div`, `main`, `section`, `article`, `header`).
+2. **Layout Mode Toggle:**
+   - Icon buttons: `Flow` (flex row/wrap) vs `Grid` (CSS grid).
+3. **Tactile Columns Stepper:**
+   - Segmented buttons: `[ 1 ]` `[ 2 ]` `[ 3 ]` `[ 4 ]` (or numeric step input).
+   - Visual column preview: segmented track dynamically illustrates multi-column distribution.
+   - Clicking `4` immediately animates children into a 4-column layout (`grid-template-columns: repeat(4, 1fr)`) and syncs to JSX `<Grid columns={4} gap="16">`.
+4. **Gap & Alignment Controls:**
+   - `Align`: start, center, end, stretch.
+   - `Gap`: numeric stepper + `px` selector + slider (8px, 12px, 16px, 24px).
+   - Helper label: *“A different gap between rows or columns”*.
 
 ## 7. Pillar 4 — 1-Click Visual Vibe & Style Picker (Invisible Streaming)
 
@@ -413,6 +506,24 @@ CubiQ **never hardcodes** component names or variants in the app binary. Instead
 - Update [`resources/DESIGN-MODE.md`](./resources/DESIGN-MODE.md) and [`resources/skills/design-prototype/SKILL.md`](./resources/skills/design-prototype/SKILL.md) so agents inspect `system/DESIGN.md` and `system/components.json` for whichever Component Design System is active and compose with its `data-ui` primitives + section blocks instead of inventing 600 lines of raw CSS from scratch.
 - Add a lightweight read tool `design_kit_inspect` in [`src/main/design/tools.ts`](./src/main/design/tools.ts) so the agent can query components, variants, and block blueprints from *any* installed Component Design System on demand.
 - Upgrade `design_lint` in [`src/main/design/lint.ts`](./src/main/design/lint.ts) to validate token adherence and `data-ui` prop contracts dynamically against the active pack's `components.json`.
+
+### 8.4 Foundations & Brand Token Palette Live Regeneration
+
+Demonstrated in [`Screen Recording 2026-10-31 at 11.53.54 in the morning.mov`](./Screen%20Recording%202026-10-31%20at%2011.53.54%20in%20the%20morning.mov) (00:23–00:37) and [`Screen Recording 2026-10-31 at 11.56.03 in the morning.mov`](./Screen%20Recording%202026-10-31%20at%2011.56.03%20in%20the%20morning.mov):
+1. **Foundations Rail & Token Explorer:**
+   - Left rail `Foundations` section enumerates token counts: `Colors (46)`, `Typography (18)`, `Spacing (12)`, `Shape (8)`, `Breakpoints (4)`.
+   - Clicking `Colors` opens the full token foundations sheet on canvas:
+     - Primary, Secondary, Error, Success palettes across 100..900 steps (`indigo-500`, `teal-500`, `slate-500`, `red-500`, `green-500`).
+2. **Brand Token Overhaul & Propagation Notice:**
+   - Inspector displays `Brand colour` with core hex value (e.g. `#5e5ad2` → `#0f968a` Teal 500).
+   - Dynamic impact calculation banner:
+     > *“Brand colour → Teal 500. This rewrites 14 colour tokens, 102 component instances. Every page already showing it updates live.”*
+   - Actions: `Cancel` and `Apply`.
+3. **Execution & Toast Notification:**
+   - Clicking `Apply` regenerates the primary palette across both light and dark modes.
+   - Instantly triggers toast notification:
+     `Changes applied · Brand colour -> Teal 500 · Undo [Z]`
+   - Every primary button (`+ New issue`), status indicator, and progress card (`ProgressCard Completed`) on every active page immediately shifts to the new brand color without requiring a page reload or code recompilation.
 
 ---
 

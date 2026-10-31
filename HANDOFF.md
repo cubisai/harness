@@ -1,6 +1,97 @@
-# Handoff (2026-10-31, Mac, updated after Code Mode v3 live checks + artifact snapshot fix): one file for every open track
+# Handoff (2026-10-31, Mac): CubiQ Design Mode 2.0 Studio Overhaul + Open Tracks
 
-This replaces the old `HANDOFF.md`, `DESIGN-LIVE-HANDOFF.md`, `DESIGN-ENHANCE-HANDOFF.md` and `road-map-handoff.md`. Their full history is in git: `git show 2e2dd54:<file>`.
+---
+
+## 🚀 Active Track: CubiQ Design Mode 2.0 & Studio UX Overhaul (2026-10-31)
+
+### 1. Context & User Review Findings
+The user provided 4 screen recordings and 2 screenshots defining the gold standard for CubiQ Design Mode (inspired by the Varelyo / Studio / Cycles app interaction paradigm):
+- **[`Screen Recording 2026-10-31 at 11.53.54 in the morning.mov`](./Screen%20Recording%202026-10-31%20at%2011.53.54%20in%20the%20morning.mov):** Complete studio workflow demonstrated on a real app screen (`Cycles 24`):
+  - Canvas element selection: Blue bounding box + solid blue header badge with swap diamond (`Button ⟐`).
+  - Multi-selection: Shift-clicking 4 StatCards displays `4 selected` with checklist in inspector; context menu & inspector offer `Wrap in 4 in Grid` / `Wrap in Stack`.
+  - Grid Layout inspector: Tactile segmented `Columns [ 1 | 2 | 3 | 4 ]` control; clicking columns live re-layouts cards with smooth CSS grid transition.
+  - Seam insertion: Hovering between sections displays hairline seam + black `+` button (`Add below`); clicking opens palette with position tabs `[ Before | After | Inside ]` + component search (`prog` -> `ProgressCard`).
+  - Component swap: Clicking `Swap component…` on `Button ("Ends in 4 days")` opens popover with search `Q Swap Button for...`, intelligence notice (*"Becomes Dropdown — drops variant, which Dropdown does not take"*), and taxonomy (`Inputs`: Dropdown, Input, TextField; `Layout`; `Data display`). Swapping immediately updates canvas to Dropdown and inspector to Dropdown props.
+  - Dual Mode inspector: Segmented `[ Design | Code ]` switch; clicking `Code` opens real TSX source (`CyclesPage.tsx`) importing from `@/uikit`.
+  - Foundations & Brand Token Overhaul: Changing `Brand colour` (`#5e5ad2` -> Teal `#0f968a`) calculates impact (*"rewrites 14 colour tokens, 102 component instances"*); clicking Apply updates all buttons and progress bars live across the app and triggers toast: `Changes applied · Brand colour -> Teal 500 · Undo [Z]`.
+- **[`Screen Recording 2026-10-31 at 11.56.03 in the morning.mov`](./Screen%20Recording%202026-10-31%20at%2011.56.03%20in%20the%20morning.mov):** Live Linear-style `Cycles 24` app running at `localhost:5173/cycles/24` in dark mode; prompt-driven branding (*"Brand it like this screen: dark and calm, use indigo accent #5E5AD2, status colors: red/amber/green"*).
+- **[`Screen Recording 2026-10-31 at 11.56.43 in the morning.mov`](./Screen%20Recording%202026-10-31%20at%2011.56.43%20in%20the%20morning.mov):** Core architecture principles:
+  - *"Layers are components"*: Every layer is a kit component, props 1 click away.
+  - *"Props, not pixels"*: Changing columns or gap in inspector live updates the component and syncs to JSX (`<Grid columns={4} gap="16">`).
+  - *"Variables"*: 3-layer tokens (`Core` -> `Semantic` -> `Component`).
+- **[`Screen Recording 2026-10-31 at 11.57.22 in the morning.mov`](./Screen%20Recording%202026-10-31%20at%2011.57.22%20in%20the%20morning.mov):** *"Start from scratch"* vs *"Bring your components"* (`@company/uikit` or `starter-uikit`).
+- **[`Screenshot 2026-10-31 at 11.53.07 in the morning.png`](./Screenshot%202026-10-31%20at%2011.53.07%20in%20the%20morning.png):** Visual reference for anchored `Swap Button for...` popover, compatibility notice, and Layers rail with component pill tags.
+- **[`Screenshot 2026-10-31 at 12.09.20 in the afternoon.png`](./Screenshot%202026-10-31%20at%2012.09.20%20in%20the%20afternoon.png):** Visual reference for Inspector:
+  - Header: `Dropdown` title + `···` + `✕`.
+  - Tabs: `[ ⟐ Design ] [ <> Code ]` + `⌨`.
+  - Filter: `🔍 Filter props and values      ⌘F`.
+  - Breakpoint bar: `📱 Breakpoint    Writes the base value` with `[ 📱 ] [ 📱 ] [ 🖥 ] [ 💻 ]`.
+  - Content card: `Value` (with blue dot + `···`), `Placeholder` (with `···`).
+  - Size card: Tactile notched track (`|`, `!`, `'`) with right-aligned `sm` badge.
+  - State card: `Disabled` toggle switch + `···`.
+
+---
+
+### 2. Completed Architecture Specification (`design_plan.md`)
+The normative architecture plan has been fully updated and synchronized:
+1. **§1A Architecture Contracts (Normative):**
+   - §1A.1: Same-kit Theme Switching vs Cross-kit Migration.
+   - §1A.2: Authoritative Editing Model & DocumentMutationService (debounced 250ms, auto-stamping `data-agent-id` only when unambiguous).
+   - §1A.3: Interaction State Machine & WCAG 2.2 SC 2.5.8 (≥24×24 CSS px targets).
+   - §1A.5: One transient contextual selection pill, zero persistent floating toolbars.
+   - §1A.8: Updated specification of mock capabilities.
+   - §1A.9: Studio Workspace Layout & View Transitions (3-column studio entrance, global sidebar collapsed, layers and customize open by default, scale-locked desktop artboard, popover dock alignment).
+2. **§5 Canvas & Direct Selection:**
+   - §5.3: Semantic layer iconography (`⛶` sections, `⎈` component instances, `T` text, page sheets).
+   - **§5.4: Canvas Selection Badge & Swap Component Popover (`Swap Button for…`):** Blue border + anchored blue badge `Button ⟐`, compatibility intelligence warnings, grouped taxonomy (`Inputs`, `Layout`, `Data display`, `Feedback`), atomic mutation and undo.
+   - **§5.5: Multi-Selection & Structural Wrapping (`Wrap in Stack / Grid`):** Shift-click canvas/layers selection, `N selected` checklist, 1-click `Wrap in Stack`, `Wrap in 4 in Grid`, `Wrap in Card`.
+   - **§5.6: Canvas Seam Insertion Palette (`[ Before | After | Inside ]`):** Hairline seam `+` trigger, categorized component insertion palette.
+3. **§6 Live Inspector Panel:**
+   - §6.1: Dual-state panel (Page Theme when idle, Element Style when selected) + Content `Value` & `Placeholder` overrides + tactile notched Size slider.
+   - **§6.3: Inspector Chrome, Dual Tabs (`[ Design | Code ]`), Search Filter (`⌘F`), and Breakpoint Bar:** Pixel-perfect alignment with Screenshot 12.09.20.
+   - **§6.4: Layout Inspector for Stack & Grid (Tactile Segmented Columns Stepper):** `Columns [ 1 | 2 | 3 | 4 ]`, `Gap`, `Render as`.
+4. **§8 Foundations & Tokens:**
+   - **§8.4: Foundations & Brand Token Palette Live Regeneration:** `Brand colour` (`#5e5ad2` -> Teal `#0f968a`), impact calculation notice, toast `Changes applied · Brand colour -> Teal 500 · Undo [Z]`, live propagation across all buttons, progress bars, and badges.
+
+---
+
+### 3. Current State of Interactive Prototype (`design_mode_mock.html`)
+- **CSS Styles Added:**
+  - `.selection-badge` (anchored blue chip with diamond `⟐`).
+  - `.swap-popover` (popover with search, intelligence notice, categorized items).
+  - `.seam-palette` (seam insertion with `Before`/`After`/`Inside` tabs).
+  - `.insp-tabs-row`, `.insp-filter-row`, `.insp-device-grid` (matching Screenshot 12.09.20).
+  - `.grid-col-seg` (tactile column stepper `[ 1 | 2 | 3 | 4 ]`).
+  - `.multi-sel-list` (checklist for multi-selected elements).
+- **DOM Elements Added:**
+  - Anchored `#selectionBadge`, `#swapPopover`, and `#seamPalette` inside `.artboard-scaler`.
+  - Updated `#panelElement` header, tabs, filter input, breakpoint bar, layout card, and added `#panelMultiSelect`.
+  - Added `#pageCycles` (the full `Cycles 24` interactive canvas DOM with `PageHeader`, `Ends in 4 days`, `+ New issue`, `Grid` with 4 metric cards, `Burndown chart`, and `IssueList`) inside `#fnPage`.
+  - Added `cycles.html` to `#pageMenu` dropdown.
+
+---
+
+### 4. What Left Needs to Be Done (Action Items for Next Turn)
+1. **In `design_mode_mock.html`:**
+   - Wire the remaining JavaScript functions into `<script>`:
+     - `openSwapPopover()`, `filterSwapOptions()`, `performSwap()`: swapping `Button "Ends in 4 days"` into `Dropdown` with `Ends in 4 days`, updating inspector and layers live.
+     - `openSeamPalette()`, `filterSeamOptions()`, `setSeamPos()`, `insertComponentFromPalette()`: inserting components at hairline seams.
+     - `toggleMultiSelect()` on canvas (Shift+Click) and `wrapSelected('grid')` / `wrapSelected('stack')`: wrapping selected metric cards.
+     - `setGridColumns(n)`: updating `grid-template-columns: repeat(N, 1fr)` live when clicking `1`, `2`, `3`, `4`.
+     - `filterPropCards()`: filtering prop cards via `⌘F` input.
+     - `setInspectorTab()`: toggling between Design and Code tabs.
+     - `switchMockPage('cycles.html')`: showing `#pageCycles` and re-running `renderLayersTree()`.
+   - Run `node --check` to verify syntax and open in browser to verify zero console errors.
+2. **In Production Codebase (`src/renderer/**` & `src/main/**`):**
+   - Follow `design_plan.md` roadmap (Phase 1 & Phase 2) to promote these verified mock components into:
+     - `src/renderer/src/design/DesignCanvas.tsx` (Canvas selection badge `Button ⟐`, seam hover `+ Add below`).
+     - `src/renderer/src/design/InspectorPanel.tsx` (Inspector header, tabs, filter `⌘F`, Breakpoint bar, Content `Value`/`Placeholder`, tactile slider track, Layout columns stepper).
+     - `src/renderer/src/design/SwapPopover.tsx` (floating swap popover component).
+     - `src/renderer/src/design/SeamInsertPalette.tsx` (seam insertion palette).
+     - `src/main/design/bridge.ts` (smart hit testing & selection extent calculation).
+   - Ensure all editor chrome uses Ink Flat tokens from `src/renderer/src/styles/app.css` and strictly adheres to `DESIGN.md` (no literal colors, no emojis, controls ≥24px/28px).
+
+---
 
 ## Completed: Code Mode v3 + structural `run_code` uptake + pre-turn deliverable snapshot (2026-10-31)
 
