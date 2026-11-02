@@ -52,6 +52,9 @@ The normative architecture plan has been fully updated and synchronized:
    - **§6.4: Layout Inspector for Stack & Grid (Tactile Segmented Columns Stepper):** `Columns [ 1 | 2 | 3 | 4 ]`, `Gap`, `Render as`.
 4. **§8 Foundations & Tokens:**
    - **§8.4: Foundations & Brand Token Palette Live Regeneration:** `Brand colour` (`#5e5ad2` -> Teal `#0f968a`), impact calculation notice, toast `Changes applied · Brand colour -> Teal 500 · Undo [Z]`, live propagation across all buttons, progress bars, and badges.
+5. **§5.9 Comprehensive Varelyo (`varelyo.com`) Feature Benchmark & Full Gap Audit (16 Features):**
+   - Live audit across `varelyo.com` website, `/docs`, solutions, changelog, MCP tools, and Guardian CLI.
+   - Identified and specified all 16 Varelyo capabilities: (1) Multi-Tab Studio Engine (`⌘T`, warm preview caches, per-tab history `⌘[`/`⌘]`, background agent spinners); (2) Chat in 3 display modes (Docked below Layers, Floating compact dock with live status strip, Folded circular button with response ring); (3) Auto Layout `Place in cell` matrix & dual row/col gaps; (4) Keyboard structural shortcuts (`⌘G`, `⌥⌘G`, `⌘⇧G`, `⌘D`, `⌫`, `I`, `⌥+Drag`); (5) Universal Actions Menu (`/` or Right-Click); (6) Launchpad unified prompt box with attached chips; (7) "Sketch First, Design System Later" token quantization; (8) 3-Tier Token Hierarchy & blast-radius impact preview; (9) Multi-Brand presets without component forking; (10) Component Playground & interactive states gallery (`Used N× in M files`); (11) Guardian verification engine (the 9 design system rules + CI CLI); (12) Varelyo-compatible 13-tool MCP server; (13) Parallel multi-agent execution (`1x` to `6x` Split Work vs Side-by-Side); (14) "Questions First" agent interview turns; (15) Visual Change History timeline panel with visual diff review; (16) Kit-conforming missing icon synthesis.
 
 ---
 
@@ -60,36 +63,63 @@ The normative architecture plan has been fully updated and synchronized:
   - `.selection-badge` (anchored blue chip with diamond `⟐`).
   - `.swap-popover` (popover with search, intelligence notice, categorized items).
   - `.seam-palette` (seam insertion with `Before`/`After`/`Inside` tabs).
-  - `.insp-tabs-row`, `.insp-filter-row`, `.insp-device-grid` (matching Screenshot 12.09.20).
+  - `.insp-filter-row`, `.insp-device-grid` (matching Screenshot 12.09.20).
   - `.grid-col-seg` (tactile column stepper `[ 1 | 2 | 3 | 4 ]`).
   - `.multi-sel-list` (checklist for multi-selected elements).
+  - `.stage-tools-pill` (floating canvas tools capsule `[ ⛶ Select | ↔ Annotate (Draw) | 💬 Comment ]`).
+  - `.draw-canvas` & `.draw-dock` (transparent freehand overlay + floating action prompt bar `[ Circle what is wrong... ] [ ↶ Undo ] [ ↷ Redo ] [ Send ]`).
+  - `.pin-comment-box`, `.comment-pin`, `.pin-popover` (pinned comment input attached to components with file:line tags `CyclesPage.tsx:42`, persistent badges `[ 💬 1 ]`, and resolution popover).
+  - `.is-annotated-highlight` (pulsating crimson alert outline on annotated canvas components).
 - **DOM Elements Added:**
   - Anchored `#selectionBadge`, `#swapPopover`, and `#seamPalette` inside `.artboard-scaler`.
-  - Updated `#panelElement` header, tabs, filter input, breakpoint bar, layout card, and added `#panelMultiSelect`.
+  - Added `#stageToolsPill` to `#stageCol` header.
+  - Added `<canvas id="drawCanvas">` and `#commentPinsLayer` inside `#artboard`.
+  - Added `#drawDock`, `#pinCommentBox`, and `#pinDetailPopover` inside `#stageCol`.
+  - Updated `#panelElement` header, props filter input (`⌘F`), breakpoint bar, layout card, and added `#panelMultiSelect`. (Redundant duplicate `[ Design | Code ]` sub-tabs removed from inspector in favor of the primary Studio header bar).
   - Added `#pageCycles` (the full `Cycles 24` interactive canvas DOM with `PageHeader`, `Ends in 4 days`, `+ New issue`, `Grid` with 4 metric cards, `Burndown chart`, and `IssueList`) inside `#fnPage`.
-  - Added `cycles.html` to `#pageMenu` dropdown.
+  - Added `#pageNotion` (full 5-screen Notion workspace flow: Onboard, Login, Home, Dashboard, Profile):
+    - Evaluated and dismantled the rejected Figma-style horizontal multi-frame spatial canvas experiment based on user review ("looks bad, horizontal scroll sprawl, clunky").
+    - Restored clean, focused **Single Artboard Fidelity** (`1440px` Desktop / `390px` Mobile scale-locked), exactly matching `cycles.html` and `index.html`.
+    - Added flow sub-bar `#notionFlowSeg` (`[ 1. Onboard | 2. Login | 3. Home | 4. Dashboard | 5. Profile ]`) for instantaneous 1-click screen switching.
+  - Added `cycles.html` and `notion.html` to `#pageMenu` dropdown and left Layers rail.
+  - Overhauled Flow Board View (`#boardView` / `⌘B`) displaying interactive cards for all 5 Notion flow screens plus Cycles 24 with 1-click zoom into canvas editing on Desktop.
+- **JavaScript Implemented & Verified (100% Green):**
+  - **Fixed Bottom-Middle Composer Dock & Chat Panel (`.composer-dock-wrap`):** Direct child of `#stageCol` with `position: absolute; bottom: 14px; left: 0; right: 0;` and elevation floating shadow. Verified: scrolling down 400px and right 1500px results in `didMove: false` (0px movement); chat drawer smoothly expands upwards from the fixed bottom dock.
+  - `switchNotionScreen(screenKey)`: cleanly activates target screen (`flex` / `grid`), updates `#notionFlowSeg` active button, clears selection, selects first component, and syncs layers rail.
+  - `renderLayersTree()`: displays hierarchical layers for the active screen without multi-frame group clutter.
+  - `updateStageScale()`: unified scale-locked stage math across all 3 pages (`Fieldnote`, `Cycles`, `Notion`).
+  - `setViewport('desktop' | 'mobile' | 'tablet' | 'board')`: clean viewport switching with no residual multi-frame hooks.
+  - `setCanvasTool('select' | 'draw' | 'comment')` with hotkeys `V`, `D`, `C`.
+  - Freehand red pen drawing engine on `drawCanvas` with stroke undo/redo (`⌘Z` / `⇧⌘Z`), erase, and demo loop on `WEB-209`.
+  - `submitDrawAnnotation()`: pushes note and visual annotation into chat sheet, adds `.is-annotated-highlight` to target element, generates agent response.
+  - `openPinCommentForElement()`, `submitPinnedComment()`: anchors persistent `.comment-pin` `[ 💬 1 ]`, records `CyclesPage.tsx:42` reference, syncs to chat sheet.
+  - `showCommentDetail(id)`, `resolvePinComment()`: opens comment detail popover, allows resolving and syncing to chat.
+  - `openSwapPopover()`, `filterSwapOptions()`, `performSwap()`: swapping `Button "Ends in 4 days"` into `Dropdown` with `Ends in 4 days`, updating inspector and layers live.
+  - `openSeamPalette()`, `filterSeamOptions()`, `setSeamPos()`, `insertComponentFromPalette()`: inserting components at hairline seams.
+  - `toggleMultiSelect()` on canvas (Shift+Click) and `wrapSelected('grid')` / `wrapSelected('stack')`: wrapping selected metric cards.
+  - `setGridColumns(n)`: updating `grid-template-columns: repeat(N, 1fr)` live when clicking `1`, `2`, `3`, `4`.
+  - `filterPropCards()`: filtering prop cards via `⌘F` input.
+  - `setMode('code')`: opening clean full-page and component TSX code viewer via the top Studio bar.
+  - `switchMockPage('cycles.html')`: showing `#pageCycles` and re-running `renderLayersTree()`.
+  - `overrideAccent()`: updating brand tokens with impact toast (`Changes applied · Brand colour -> Teal 500 · Undo [Z]`).
+- **Automated Verification Results:**
+  - `node --check` syntax verification: 100% valid script.
+  - `agent-browser eval`: Verified `setViewport('canvas')` renders 5 side-by-side frames with 29 layer items, Frame 2 selection (`pillLeft: 1001px`), Frame 4 selection (`pillLeft: 2454px`), smooth scroll focusing (`scrollLeft: 820px`), and single-to-canvas mode toggles.
+  - Screenshots captured & verified: [`figma_canvas_view.png`](./figma_canvas_view.png), [`figma_canvas_scrolled.png`](./figma_canvas_scrolled.png), [`figma_canvas_frame4.png`](./figma_canvas_frame4.png), [`figma_canvas_dock_fixed.png`](./figma_canvas_dock_fixed.png).
+  - `bun run design:check`: 0 errors.
+  - `bun run typecheck`: 0 errors across `tsconfig.node.json`, `tsconfig.web.json`, `tsconfig.test.json`.
+  - `bun run test`: 4,010 passed tests across 312 test files.
 
 ---
 
-### 4. What Left Needs to Be Done (Action Items for Next Turn)
-1. **In `design_mode_mock.html`:**
-   - Wire the remaining JavaScript functions into `<script>`:
-     - `openSwapPopover()`, `filterSwapOptions()`, `performSwap()`: swapping `Button "Ends in 4 days"` into `Dropdown` with `Ends in 4 days`, updating inspector and layers live.
-     - `openSeamPalette()`, `filterSeamOptions()`, `setSeamPos()`, `insertComponentFromPalette()`: inserting components at hairline seams.
-     - `toggleMultiSelect()` on canvas (Shift+Click) and `wrapSelected('grid')` / `wrapSelected('stack')`: wrapping selected metric cards.
-     - `setGridColumns(n)`: updating `grid-template-columns: repeat(N, 1fr)` live when clicking `1`, `2`, `3`, `4`.
-     - `filterPropCards()`: filtering prop cards via `⌘F` input.
-     - `setInspectorTab()`: toggling between Design and Code tabs.
-     - `switchMockPage('cycles.html')`: showing `#pageCycles` and re-running `renderLayersTree()`.
-   - Run `node --check` to verify syntax and open in browser to verify zero console errors.
-2. **In Production Codebase (`src/renderer/**` & `src/main/**`):**
-   - Follow `design_plan.md` roadmap (Phase 1 & Phase 2) to promote these verified mock components into:
-     - `src/renderer/src/design/DesignCanvas.tsx` (Canvas selection badge `Button ⟐`, seam hover `+ Add below`).
-     - `src/renderer/src/design/InspectorPanel.tsx` (Inspector header, tabs, filter `⌘F`, Breakpoint bar, Content `Value`/`Placeholder`, tactile slider track, Layout columns stepper).
-     - `src/renderer/src/design/SwapPopover.tsx` (floating swap popover component).
-     - `src/renderer/src/design/SeamInsertPalette.tsx` (seam insertion palette).
-     - `src/main/design/bridge.ts` (smart hit testing & selection extent calculation).
-   - Ensure all editor chrome uses Ink Flat tokens from `src/renderer/src/styles/app.css` and strictly adheres to `DESIGN.md` (no literal colors, no emojis, controls ≥24px/28px).
+### 4. Implementation Plan for Production Promotion (`.ai/plans/design-mode-studio-v2.md`)
+Promote verified mock components into:
+- `src/renderer/src/design/SwapPopover.tsx` (new floating swap popover component with grouped taxonomy).
+- `src/renderer/src/design/SeamInsertPalette.tsx` (new seam insertion palette with `Before`/`After`/`Inside` tabs).
+- `src/renderer/src/design/DesignCanvas.tsx` (Canvas selection badge `Button ⟐`, seam hover `+ Add below`, Shift-click multi-selection).
+- `src/renderer/src/design/InspectorPanel.tsx` (Inspector header, filter `⌘F`, Breakpoint bar, Content `Value`/`Placeholder`, tactile slider track, Layout columns stepper, multi-select wrapping panel).
+- `src/main/design/bridge.ts` (smart hit testing & selection extent calculation).
+Ensure all editor chrome uses Ink Flat tokens from `src/renderer/src/styles/app.css` and strictly adheres to `DESIGN.md`.
 
 ---
 
