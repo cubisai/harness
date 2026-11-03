@@ -1,6 +1,9 @@
 /* shadcn/ui, unofficial HTML+CSS kit: every rule is scoped to a [data-ui] part and lives in a layer, so a page's own
  * CSS always wins. Props are data attributes: <button data-ui="button" data-variant="outline">. Written from scratch to
  * the library's measurements: 32px controls, 10px radii, 14px text, hairline rings on cards and menus. */
+/* Geist and Geist Mono, by Vercel with basement.studio, under the SIL Open Font License: see fonts/OFL.md. */
+@font-face { font-family: Geist; src: url("fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
 @layer cubiq-ui {
   [data-ui], [data-ui] *, [data-ui] *::before, [data-ui] *::after { box-sizing: border-box; }
   :where([data-ui] [data-part]):is(h1, h2, h3, h4, h5, h6, p) { margin: 0; }

@@ -31,6 +31,7 @@ Put page-specific CSS in the page. Tokens only, no literal colours or sizes. Kee
 - `system/tokens.css`: the tokens, light and dark.
 - `system/ui.css`: every part, in the `cubiq-ui` layer so page CSS wins.
 - `system/ui.js`: the behaviour listed above.
+- `system/fonts/`: Geist and Geist Mono, already loaded by `ui.css`. Don't add a font link.
 - `blocks/`: a hero, a feature grid, pricing, login and a dashboard.
 - `components.json`: the parts, their props and snippets.
 
