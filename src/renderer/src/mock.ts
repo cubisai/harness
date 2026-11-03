@@ -802,6 +802,8 @@ export function installMock(): void {
       html: "",
       conflicts: [],
     }),
+    designKitCatalog: async () => [{ id: "foundation", name: "Foundation", version: "1.0.0", bundled: true, installed: true }],
+    designKitEnsure: async () => ({ ok: true }),
     designCapture: async () => ({ path: "designs/mock/refs/ref-2.png", thumb: "" }),
     designThumb: async () => "",
     designRestoreVersion: async () => {},

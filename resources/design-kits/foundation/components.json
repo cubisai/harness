@@ -1,0 +1,568 @@
+{
+  "kitId": "foundation",
+  "name": "Foundation",
+  "version": "1.0.0",
+  "contractVersion": "1.0",
+  "compat": {
+    "themes": [
+      "*"
+    ],
+    "migratesFrom": []
+  },
+  "components": [
+    {
+      "name": "Stack",
+      "ui": "stack",
+      "category": "Layout",
+      "description": "A flexbox that lays parts in one column or row with a consistent gap.",
+      "props": [
+        {
+          "name": "direction",
+          "label": "Direction",
+          "type": "choice",
+          "options": [
+            "row",
+            "column"
+          ],
+          "default": "column"
+        },
+        {
+          "name": "gap",
+          "label": "Gap",
+          "type": "choice",
+          "options": [
+            "none",
+            "xs",
+            "sm",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "align",
+          "label": "Align",
+          "type": "choice",
+          "options": [
+            "start",
+            "center",
+            "end",
+            "stretch"
+          ],
+          "default": "stretch"
+        },
+        {
+          "name": "justify",
+          "label": "Justify",
+          "type": "choice",
+          "options": [
+            "start",
+            "center",
+            "end",
+            "between"
+          ],
+          "default": "start"
+        },
+        {
+          "name": "wrap",
+          "label": "Wrap",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"md\">\n  <h3 data-ui=\"heading\" data-level=\"4\">Today at the clinic</h3>\n  <p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Four shifts open, two awaiting a swap.</p>\n  <button data-ui=\"button\" data-variant=\"secondary\">Review absences</button>\n</div>"
+    },
+    {
+      "name": "Grid",
+      "ui": "grid",
+      "category": "Layout",
+      "description": "A CSS grid for columns of equal parts, collapsing to two under 720px.",
+      "props": [
+        {
+          "name": "columns",
+          "label": "Columns",
+          "type": "choice",
+          "options": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "6",
+            "12",
+            "auto"
+          ],
+          "default": "2"
+        },
+        {
+          "name": "gap",
+          "label": "Gap",
+          "type": "choice",
+          "options": [
+            "none",
+            "xs",
+            "sm",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "align",
+          "label": "Align",
+          "type": "choice",
+          "options": [
+            "start",
+            "center",
+            "end",
+            "stretch"
+          ],
+          "default": "stretch"
+        }
+      ],
+      "snippet": "<div data-ui=\"grid\" data-columns=\"3\" data-gap=\"lg\">\n  <div data-ui=\"card\" data-padding=\"md\"><h3 data-ui=\"heading\" data-level=\"4\">Shifts</h3><p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Build next week in minutes.</p></div>\n  <div data-ui=\"card\" data-padding=\"md\"><h3 data-ui=\"heading\" data-level=\"4\">Swaps</h3><p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Cover changes without a group chat.</p></div>\n  <div data-ui=\"card\" data-padding=\"md\"><h3 data-ui=\"heading\" data-level=\"4\">Hours</h3><p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Payroll-ready totals every week.</p></div>\n</div>"
+    },
+    {
+      "name": "Section",
+      "ui": "section",
+      "category": "Layout",
+      "description": "A page band with block padding and content held to the reading width.",
+      "props": [
+        {
+          "name": "padding",
+          "label": "Padding",
+          "type": "choice",
+          "options": [
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "sm"
+        }
+      ],
+      "snippet": "<section data-ui=\"section\" data-padding=\"md\">\n  <h2 data-ui=\"heading\" data-level=\"2\">Built for shift work</h2>\n  <p data-ui=\"text\" data-tone=\"muted\">Plan a week of coverage in one place, then publish it to the whole team at once.</p>\n</section>"
+    },
+    {
+      "name": "Navbar",
+      "ui": "navbar",
+      "category": "Navigation",
+      "description": "A horizontal bar for brand, links and actions, optionally pinned to the top.",
+      "props": [
+        {
+          "name": "sticky",
+          "label": "Sticky",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<nav data-ui=\"navbar\" data-sticky=\"true\">\n  <a href=\"#\">Shiftline</a>\n  <div data-ui=\"stack\" data-direction=\"row\" data-gap=\"lg\" data-align=\"center\">\n    <a href=\"#\">Schedule</a>\n    <a href=\"#\">Team</a>\n    <a href=\"#\">Reports</a>\n  </div>\n  <button data-ui=\"button\" data-size=\"sm\">Publish week</button>\n</nav>"
+    },
+    {
+      "name": "Heading",
+      "ui": "heading",
+      "category": "Content",
+      "description": "A display or section heading at one of five sizes, set in the display face.",
+      "props": [
+        {
+          "name": "level",
+          "label": "Level",
+          "type": "choice",
+          "options": [
+            "display",
+            "1",
+            "2",
+            "3",
+            "4"
+          ],
+          "default": "2"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\">\n  <h1 data-ui=\"heading\" data-level=\"1\">Every shift, covered</h1>\n  <h2 data-ui=\"heading\" data-level=\"2\">Next week</h2>\n  <h3 data-ui=\"heading\" data-level=\"3\">Unassigned shifts</h3>\n  <h4 data-ui=\"heading\" data-level=\"4\">Monday opening</h4>\n</div>"
+    },
+    {
+      "name": "Text",
+      "ui": "text",
+      "category": "Content",
+      "description": "Body copy at three sizes, in a default or muted tone.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "tone",
+          "label": "Tone",
+          "type": "choice",
+          "options": [
+            "default",
+            "muted"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<p data-ui=\"text\" data-size=\"md\">Publish the rota once and every member of staff sees the same version.</p>\n<p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Last updated by Priya on Friday at 16:40.</p>"
+    },
+    {
+      "name": "Button",
+      "ui": "button",
+      "category": "Actions",
+      "description": "A button with four emphases and three sizes, at the minimum target height.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "primary",
+            "secondary",
+            "ghost",
+            "danger"
+          ],
+          "default": "primary"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-align=\"center\" data-wrap=\"true\">\n  <button data-ui=\"button\">Publish week</button>\n  <button data-ui=\"button\" data-variant=\"secondary\">Save draft</button>\n  <button data-ui=\"button\" data-variant=\"ghost\">Cancel</button>\n  <button data-ui=\"button\" data-variant=\"danger\">Delete shift</button>\n</div>"
+    },
+    {
+      "name": "Link",
+      "ui": "link",
+      "category": "Actions",
+      "description": "An inline link that underlines on hover, in a default or muted tone.",
+      "props": [
+        {
+          "name": "tone",
+          "label": "Tone",
+          "type": "choice",
+          "options": [
+            "default",
+            "muted"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<p data-ui=\"text\">Need to cover a shift? <a data-ui=\"link\" href=\"#\">Open the swap board</a> or <a data-ui=\"link\" data-tone=\"muted\" href=\"#\">read the policy</a>.</p>"
+    },
+    {
+      "name": "Input",
+      "ui": "input",
+      "category": "Forms",
+      "description": "A single-line text field with an invalid state and three sizes.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "invalid",
+          "label": "Invalid",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"field\">\n  <label for=\"shift-name\">Shift name</label>\n  <input data-ui=\"input\" id=\"shift-name\" type=\"text\" value=\"Monday opening\">\n  <span data-part=\"hint\">Shown to staff on the schedule.</span>\n</div>"
+    },
+    {
+      "name": "Textarea",
+      "ui": "textarea",
+      "category": "Forms",
+      "description": "A multi-line text field that resizes by row, with an invalid state.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "invalid",
+          "label": "Invalid",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"field\">\n  <label for=\"note\">Note for the team</label>\n  <textarea data-ui=\"textarea\" id=\"note\" rows=\"4\">Opening shift needs a second person on the floor until 11:00.</textarea>\n</div>"
+    },
+    {
+      "name": "Select",
+      "ui": "select",
+      "category": "Forms",
+      "description": "A native select styled to match the other fields, with three sizes.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "invalid",
+          "label": "Invalid",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"field\">\n  <label for=\"role\">Role</label>\n  <select data-ui=\"select\" id=\"role\">\n    <option>Barista</option>\n    <option selected>Shift lead</option>\n    <option>Kitchen</option>\n  </select>\n</div>"
+    },
+    {
+      "name": "Field",
+      "ui": "field",
+      "category": "Forms",
+      "description": "A label, control, hint and error stacked in one column.",
+      "props": [],
+      "snippet": "<div data-ui=\"field\">\n  <label data-part=\"label\" for=\"email\">Work email</label>\n  <input data-ui=\"input\" id=\"email\" type=\"email\" data-invalid=\"true\" value=\"sam@shiftline\">\n  <span data-part=\"hint\">Invites go to this address.</span>\n  <span data-part=\"error\">Enter a full email address.</span>\n</div>"
+    },
+    {
+      "name": "Checkbox",
+      "ui": "checkbox",
+      "category": "Forms",
+      "description": "A labelled checkbox on a full-height hit area.",
+      "props": [],
+      "snippet": "<label data-ui=\"checkbox\">\n  <input type=\"checkbox\" checked>\n  <span>Notify staff when the rota changes</span>\n</label>"
+    },
+    {
+      "name": "Radio",
+      "ui": "radio",
+      "category": "Forms",
+      "description": "A labelled radio option for a small set of mutually exclusive choices.",
+      "props": [],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"none\">\n  <label data-ui=\"radio\"><input type=\"radio\" name=\"repeat\" value=\"weekly\" checked><span>Repeat weekly</span></label>\n  <label data-ui=\"radio\"><input type=\"radio\" name=\"repeat\" value=\"biweekly\"><span>Repeat every two weeks</span></label>\n</div>"
+    },
+    {
+      "name": "Switch",
+      "ui": "switch",
+      "category": "Forms",
+      "description": "A toggle for an immediate setting, with a sliding track.",
+      "props": [],
+      "snippet": "<label data-ui=\"switch\">\n  <input type=\"checkbox\" role=\"switch\" checked>\n  <span>Open shifts to the whole team</span>\n</label>"
+    },
+    {
+      "name": "Card",
+      "ui": "card",
+      "category": "Data",
+      "description": "A bordered or filled panel with header, body and footer parts.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outline",
+            "filled",
+            "elevated"
+          ],
+          "default": "outline"
+        },
+        {
+          "name": "padding",
+          "label": "Padding",
+          "type": "choice",
+          "options": [
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"card\">\n  <div data-part=\"header\"><h3 data-ui=\"heading\" data-level=\"4\">This week</h3></div>\n  <div data-part=\"body\"><p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">42 shifts, 3 still open. Two swaps are waiting for approval.</p></div>\n  <div data-part=\"footer\"><button data-ui=\"button\" data-size=\"sm\" data-variant=\"secondary\">Open schedule</button></div>\n</div>"
+    },
+    {
+      "name": "Badge",
+      "ui": "badge",
+      "category": "Data",
+      "description": "A short status label in five tones and two sizes.",
+      "props": [
+        {
+          "name": "tone",
+          "label": "Tone",
+          "type": "choice",
+          "options": [
+            "neutral",
+            "accent",
+            "success",
+            "warning",
+            "danger"
+          ],
+          "default": "neutral"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "md"
+          ],
+          "default": "sm"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-wrap=\"true\" data-gap=\"sm\" data-align=\"center\">\n  <span data-ui=\"badge\">Draft</span>\n  <span data-ui=\"badge\" data-tone=\"accent\">Published</span>\n  <span data-ui=\"badge\" data-tone=\"success\">Covered</span>\n  <span data-ui=\"badge\" data-tone=\"warning\">Unfilled</span>\n  <span data-ui=\"badge\" data-tone=\"danger\">Clash</span>\n</div>"
+    },
+    {
+      "name": "Avatar",
+      "ui": "avatar",
+      "category": "Data",
+      "description": "A circular portrait from initials or an image, in three sizes.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-align=\"center\">\n  <span data-ui=\"avatar\" data-size=\"sm\">AK</span>\n  <span data-ui=\"avatar\">PR</span>\n  <span data-ui=\"avatar\" data-size=\"lg\">JS</span>\n</div>"
+    },
+    {
+      "name": "Alert",
+      "ui": "alert",
+      "category": "Feedback",
+      "description": "An inline message in four tones, with a title and body.",
+      "props": [
+        {
+          "name": "tone",
+          "label": "Tone",
+          "type": "choice",
+          "options": [
+            "info",
+            "success",
+            "warning",
+            "danger"
+          ],
+          "default": "info"
+        }
+      ],
+      "snippet": "<div data-ui=\"alert\" data-tone=\"warning\">\n  <div data-part=\"title\">Three shifts are still open</div>\n  <div data-part=\"body\">Saturday and Sunday service need cover before the rota is published on Thursday.</div>\n</div>"
+    },
+    {
+      "name": "Tabs",
+      "ui": "tabs",
+      "category": "Navigation",
+      "description": "A row of tabs over their panels, with keyboard support from ui.js.",
+      "props": [],
+      "snippet": "<div data-ui=\"tabs\">\n  <div data-part=\"list\" role=\"tablist\">\n    <button role=\"tab\" id=\"tab-week\" aria-controls=\"panel-week\" aria-selected=\"true\" tabindex=\"0\">Week</button>\n    <button role=\"tab\" id=\"tab-month\" aria-controls=\"panel-month\" aria-selected=\"false\" tabindex=\"-1\">Month</button>\n  </div>\n  <div role=\"tabpanel\" id=\"panel-week\" aria-labelledby=\"tab-week\"><p data-ui=\"text\" data-size=\"sm\">Six shifts open this week.</p></div>\n  <div role=\"tabpanel\" id=\"panel-month\" aria-labelledby=\"tab-month\" hidden><p data-ui=\"text\" data-size=\"sm\">Nineteen shifts open this month.</p></div>\n</div>"
+    },
+    {
+      "name": "Accordion",
+      "ui": "accordion",
+      "category": "Navigation",
+      "description": "Stacked sections built on native details and summary, with no script.",
+      "props": [],
+      "snippet": "<div data-ui=\"accordion\">\n  <details open>\n    <summary>How do swaps work?</summary>\n    <p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Staff offer a shift, a manager approves it, and the rota updates for both people at once.</p>\n  </details>\n  <details>\n    <summary>Can I copy last week's rota?</summary>\n    <p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Yes. Open any published week and choose copy forward to start from the same pattern.</p>\n  </details>\n</div>"
+    },
+    {
+      "name": "Dialog",
+      "ui": "dialog",
+      "category": "Feedback",
+      "description": "A modal on the native dialog element, with header, body and footer parts.",
+      "props": [],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\">\n  <button data-ui=\"button\" data-dialog-open=\"publish-dialog\">Publish week</button>\n</div>\n<dialog data-ui=\"dialog\" id=\"publish-dialog\">\n  <div data-part=\"header\">Publish this week</div>\n  <div data-part=\"body\">Everyone on the rota will be notified. Three shifts are still open and will show as unassigned.</div>\n  <div data-part=\"footer\">\n    <button data-ui=\"button\" data-variant=\"ghost\" data-dialog-close>Cancel</button>\n    <button data-ui=\"button\">Publish</button>\n  </div>\n</dialog>"
+    },
+    {
+      "name": "Table",
+      "ui": "table",
+      "category": "Data",
+      "description": "A data table with hairline rows, a sticky header and right-aligned figures.",
+      "props": [
+        {
+          "name": "density",
+          "label": "Density",
+          "type": "choice",
+          "options": [
+            "comfortable",
+            "compact"
+          ],
+          "default": "comfortable"
+        }
+      ],
+      "snippet": "<table data-ui=\"table\">\n  <caption>Hours this week</caption>\n  <thead>\n    <tr><th scope=\"col\">Team member</th><th scope=\"col\">Role</th><th scope=\"col\" data-numeric=\"true\">Hours</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>Priya Raman</td><td>Shift lead</td><td data-numeric=\"true\">38.5</td></tr>\n    <tr><td>Jonas Silva</td><td>Barista</td><td data-numeric=\"true\">32.0</td></tr>\n    <tr><td>Ama Okafor</td><td>Kitchen</td><td data-numeric=\"true\">40.0</td></tr>\n  </tbody>\n</table>"
+    },
+    {
+      "name": "Divider",
+      "ui": "divider",
+      "category": "Layout",
+      "description": "A single hairline rule, horizontal or vertical.",
+      "props": [
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"md\">\n  <p data-ui=\"text\" data-size=\"sm\">Published by Priya on Friday.</p>\n  <hr data-ui=\"divider\">\n  <p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Next publish is due Thursday.</p>\n</div>"
+    },
+    {
+      "name": "Hero",
+      "ui": "hero",
+      "kind": "composition",
+      "category": "Blocks",
+      "description": "A page opener with a display headline, a lede and two actions.",
+      "props": [],
+      "snippet": "<section data-ui=\"hero\" data-block=\"blocks/hero.html\"></section>"
+    },
+    {
+      "name": "Feature grid",
+      "ui": "feature-grid",
+      "kind": "composition",
+      "category": "Blocks",
+      "description": "A section of three feature cards under a short heading.",
+      "props": [],
+      "snippet": "<section data-ui=\"feature-grid\" data-block=\"blocks/feature-grid.html\"></section>"
+    },
+    {
+      "name": "Pricing",
+      "ui": "pricing",
+      "kind": "composition",
+      "category": "Blocks",
+      "description": "Three plan cards with prices, features and one action each.",
+      "props": [],
+      "snippet": "<section data-ui=\"pricing\" data-block=\"blocks/pricing.html\"></section>"
+    }
+  ]
+}

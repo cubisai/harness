@@ -49,7 +49,7 @@ import { addComment, deleteComment, loadComments, saveComments, updateComment } 
 import { applyStyleEdit, applyTextEdit } from "./design/textedit";
 import { keepTweaks } from "./design/tweaks";
 import { resolveVariantSet } from "./design/variants";
-import { forkSystem, listDesignStyles, listDesignSystems, materializeSystem, pickFromShortlist, resolveDesignSystem, type DesignStyleInfo, type DesignSystemInfo } from "./design/systems";
+import { forkSystem, KIT_PREFIX, listDesignStyles, listDesignSystems, listKitSystems, materializeSystem, pickFromShortlist, resolveDesignSystem, type DesignStyleInfo, type DesignSystemInfo } from "./design/systems";
 import { AUTO_SYSTEM, isAuto, modeLabel, STYLE_PREFIX, type DesignDirection } from "../shared/direction";
 import { DESIGN_DIRECTION_TOOL } from "./design/tools";
 import { AUTO_LINT_WAIT_MS, autoFixPrompt, autoLintNote, changedPages, type PageLint } from "./design/autolint";
@@ -112,6 +112,8 @@ export class Service {
   private designPatternsDir: string | null = null;
   private designIconsDir: string | null = null;
   private designFontsDir: string | null = null;
+  /** Finds a kit's folder by id: the bundled Foundation first, then what's installed. */
+  private kitDirOf: ((kitId: string) => string | null) | null = null;
   /** Lints a design thread's pages off screen; without it no automatic lint runs. */
   private designAutoLint: ((threadId: string, root: string, rels: string[]) => Promise<PageLint[]>) | null = null;
   /** Per design thread, the automatic lint of its last turn's pages, for the next turn's prompt. */
@@ -1455,6 +1457,11 @@ export class Service {
     this.designFontsDir = fontsDir;
   }
 
+  /** How to find a kit's folder by id. */
+  setDesignKitLookup(lookup: (kitId: string) => string | null): void {
+    this.kitDirOf = lookup;
+  }
+
   /** Where the per-surface pattern notes live (resources/design-patterns): one <surface>.md each. */
   setDesignPatternsDir(dir: string): void {
     this.designPatternsDir = dir;
@@ -1534,8 +1541,21 @@ export class Service {
     return [...listDesignSystems(this.projectPath(projectId)), ...this.designStyles()];
   }
 
+  /**
+   * The kit system named by a `kit:` id. These stay out of `allSystems`, and so out of today's picker and Auto's
+   * shortlist, until the v2 picker offers them.
+   */
+  private kitSystem(id: string | null | undefined): DesignSystemInfo | null {
+    if (!id?.startsWith(KIT_PREFIX)) return null;
+    const kitId = id.slice(KIT_PREFIX.length).split("/")[0] ?? "";
+    const dir = this.kitDirOf?.(kitId) ?? null;
+    if (!dir) return null;
+    return listKitSystems(dir, this.designStyles()).find((s) => s.id === id) ?? null;
+  }
+
   /** `id` when the project's design threads can resolve it, else Auto (null, or a gone one such as a retired built-in). */
   private knownSystem(projectId: string | null, id: string | null): string {
+    if (this.kitSystem(id)) return id as string;
     return id && id !== AUTO_SYSTEM && this.allSystems(projectId).some((s) => s.id === id) ? id : AUTO_SYSTEM;
   }
 
@@ -1553,7 +1573,7 @@ export class Service {
 
   /** One system a project's design threads can use, with its files, for the style picker's preview; null when it isn't listed. */
   previewSystem(projectId: string | null, id: string): DesignSystemInfo | null {
-    return this.allSystems(projectId).find((s) => s.id === id) ?? null;
+    return this.kitSystem(id) ?? this.allSystems(projectId).find((s) => s.id === id) ?? null;
   }
 
   /**
@@ -1567,7 +1587,7 @@ export class Service {
       const style = list.find((s) => s.id === "project") ? "project" : thread.designDirection?.style;
       return style ? (list.find((s) => s.id === style) ?? null) : null;
     }
-    return resolveDesignSystem(list, thread.designSystem);
+    return this.kitSystem(thread.designSystem) ?? resolveDesignSystem(list, thread.designSystem);
   }
 
   /** The styles other design threads in the project used most recently (newest first, at most 3), to avoid repeats. */
@@ -1727,6 +1747,8 @@ export class Service {
     let thread = this.store.getThread(threadId);
     let system = this.threadSystem(thread);
     if (!system) throw new Error("Only a design thread has a design system.");
+    // Bundled and installed kits are never written in place.
+    if (system.source === "kit") throw new Error("This kit can't be edited yet.");
     if (system.source === "style") {
       const project = this.projectPath(thread.projectId);
       if (!project) throw new Error("Open a project folder to customize a library style.");

@@ -11,6 +11,15 @@ import type {
 } from "../../shared/design-mutation";
 import { DocumentMutationService, documentIdOf } from "./mutation";
 
+/**
+ * True when a call came from the app's own top-level page. A design page runs in a sandboxed frame inside that window,
+ * so nothing a page does may ever reach these handlers, even if a frame got hold of the bridge.
+ */
+export function isFromAppWindow(event: { senderFrame?: { parent?: unknown } | null }): boolean {
+  const frame = event.senderFrame;
+  return frame !== null && frame !== undefined && (frame.parent === null || frame.parent === undefined);
+}
+
 const MAX_ID = 200;
 const MAX_TEXT = 1_000_000;
 const MAX_PATH = 64;

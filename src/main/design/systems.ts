@@ -3,6 +3,10 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync,
 import { basename, join } from "node:path";
 import { STYLE_PREFIX } from "../../shared/direction";
 import type { StyleFacets } from "../../shared/types";
+import { parseKitManifest } from "./kit-schema";
+
+/** A kit system's id: `kit:<kitId>`, or `kit:<kitId>/<theme>` for one of its themes. */
+export const KIT_PREFIX = "kit:";
 
 /** One design system a design thread can be started from. */
 export interface DesignSystemInfo {
@@ -12,7 +16,9 @@ export interface DesignSystemInfo {
   description: string;
   /** Up to 4 CSS colors from index.md `swatches:` (comma-separated), for the picker. */
   swatches: string[];
-  source: "project" | "projectFolder" | "style";
+  source: "project" | "projectFolder" | "style" | "kit";
+  /** Set when it comes with components: the folder whose parts are copied into `system/` beside its tokens. */
+  kit?: KitRef;
   /** Absolute path of its DESIGN.md. */
   designMd: string;
   /** Absolute path of its tokens.css, when it has one. */
@@ -21,6 +27,14 @@ export interface DesignSystemInfo {
   facets?: StyleFacets;
   /** Font files (absolute) copied into `system/fonts/` with it: a style's faces from the bundled font pack. */
   fontFiles?: string[];
+}
+
+/** The component kit behind a design system. */
+export interface KitRef {
+  id: string;
+  dir: string;
+  version: string;
+  contractVersion: string;
 }
 
 /** A style from the style library: a design system plus what the agent matches it by. */
@@ -163,10 +177,11 @@ function collectSystems(root: string, out: DesignSystemInfo[], seen: Set<string>
     if (seen.has(id)) continue;
     const dir = join(root, folder);
     const index = parseSystemIndex(readText(join(dir, "index.md")) ?? "");
-    if (index.type !== "design-system") continue;
+    if (index.type !== "design-system" && index.type !== "design-kit") continue;
     const designMd = join(dir, "DESIGN.md");
     if (!isFile(designMd)) continue;
     seen.add(id);
+    const kit = kitRef(dir);
     const tokensCss = join(dir, "tokens.css");
     const text = readText(tokensCss);
     const facets = text ? tokenFacets(text) : null;
@@ -181,8 +196,102 @@ function collectSystems(root: string, out: DesignSystemInfo[], seen: Set<string>
       ...(isFile(tokensCss) ? { tokensCss } : {}),
       ...(facets ? { facets } : {}),
       ...(fontFiles.length ? { fontFiles } : {}),
+      ...(kit ? { kit } : {}),
     });
   }
+}
+
+/** The kit in `dir`, when it holds a valid manifest and the parts that manifest describes; else null. */
+function kitRef(dir: string): KitRef | null {
+  if (!isFile(join(dir, "ui.css"))) return null;
+  const text = readText(join(dir, "components.json"));
+  if (text === null) return null;
+  const parsed = parseKitManifest(text);
+  if (!parsed.ok) return null;
+  const { kitId, version, contractVersion } = parsed.manifest;
+  return { id: kitId, dir, version, contractVersion };
+}
+
+/**
+ * The systems one kit offers: the kit on its own tokens, then each theme in its `themes/` folder. A kit whose
+ * `compat.themes` has `*` is written against the style library's token names, so every style is a theme of it too.
+ */
+export function listKitSystems(dir: string, styles: readonly DesignStyleInfo[] = []): DesignSystemInfo[] {
+  const kit = kitRef(dir);
+  const designMd = join(dir, "DESIGN.md");
+  const tokensCss = join(dir, "tokens.css");
+  if (!kit || !isFile(designMd) || !isFile(tokensCss)) return [];
+  const parsed = parseKitManifest(readText(join(dir, "components.json")) ?? "");
+  if (!parsed.ok) return [];
+
+  const index = parseSystemIndex(readText(join(dir, "index.md")) ?? "");
+  const base = `${KIT_PREFIX}${kit.id}`;
+  const fontFiles = fontsIn(dir);
+  const fonts = fontFiles.length ? { fontFiles } : {};
+  const facets = tokenFacets(readText(tokensCss) ?? "");
+  const out: DesignSystemInfo[] = [
+    {
+      id: base,
+      name: parsed.manifest.name,
+      description: index.description || "",
+      swatches: index.swatches,
+      source: "kit",
+      designMd,
+      tokensCss,
+      kit,
+      ...(facets ? { facets } : {}),
+      ...fonts,
+    },
+  ];
+
+  let themes: string[] = [];
+  try {
+    themes = readdirSync(join(dir, "themes"), { withFileTypes: true })
+      .filter((e) => e.isDirectory() && /^[a-z0-9][a-z0-9-]*$/.test(e.name))
+      .map((e) => e.name)
+      .sort();
+  } catch {
+    // A kit may have only its own tokens.
+  }
+  for (const theme of themes) {
+    const themeDir = join(dir, "themes", theme);
+    const themeTokens = join(themeDir, "tokens.css");
+    if (!isFile(themeTokens)) continue;
+    const themeIndex = parseSystemIndex(readText(join(themeDir, "index.md")) ?? "");
+    const themeDesign = join(themeDir, "DESIGN.md");
+    const themeFacets = tokenFacets(readText(themeTokens) ?? "");
+    out.push({
+      id: `${base}/${theme}`,
+      name: themeIndex.name || theme,
+      description: themeIndex.description || "",
+      swatches: themeIndex.swatches,
+      source: "kit",
+      designMd: isFile(themeDesign) ? themeDesign : designMd,
+      tokensCss: themeTokens,
+      kit,
+      ...(themeFacets ? { facets: themeFacets } : {}),
+      ...fonts,
+    });
+  }
+
+  if (parsed.manifest.compat.themes.includes("*")) {
+    for (const style of styles) {
+      if (!style.tokensCss) continue;
+      out.push({
+        id: `${base}/${style.id.slice(STYLE_PREFIX.length)}`,
+        name: style.name,
+        description: style.description,
+        swatches: style.swatches,
+        source: "kit",
+        designMd: style.designMd,
+        tokensCss: style.tokensCss,
+        kit,
+        ...(style.facets ? { facets: style.facets } : {}),
+        ...(style.fontFiles ? { fontFiles: style.fontFiles } : {}),
+      });
+    }
+  }
+  return out;
 }
 
 /**
@@ -375,7 +484,77 @@ export function materializeSystem(system: DesignSystemInfo, destDir: string): bo
     }
   }
   changed = syncFonts(system.fontFiles ?? [], join(destDir, "fonts")) || changed;
+  changed = syncKit(system, destDir) || changed;
   changed = writeIfChanged(join(destDir, ".system"), system.id) || changed;
+  return changed;
+}
+
+/** The files a kit adds to `system/`, beside `blocks/` and, when a theme's DESIGN.md took that name, `KIT.md`. */
+const KIT_FILES: readonly string[] = ["ui.css", "ui.js", "components.json", "migrations.json"];
+
+/** Delete a file or folder if it's there; true when something went. */
+function removeIfPresent(path: string): boolean {
+  if (!existsSync(path)) return false;
+  try {
+    rmSync(path, { recursive: true, force: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Keep `system/` holding exactly the system's kit parts. The `.kit` marker is what makes a removal safe: without it
+ * nothing here ever touches `system/`, so a flat style writes exactly what it always did.
+ */
+function syncKit(system: DesignSystemInfo, destDir: string): boolean {
+  const marker = join(destDir, ".kit");
+  const blocks = join(destDir, "blocks");
+  const kitMd = join(destDir, "KIT.md");
+  if (!system.kit) {
+    if (!existsSync(marker)) return false;
+    let changed = false;
+    for (const name of KIT_FILES) changed = removeIfPresent(join(destDir, name)) || changed;
+    changed = removeIfPresent(blocks) || changed;
+    changed = removeIfPresent(kitMd) || changed;
+    return removeIfPresent(marker) || changed;
+  }
+
+  const { dir, id } = system.kit;
+  let changed = false;
+  for (const name of KIT_FILES) {
+    const src = join(dir, name);
+    changed = (isFile(src) ? copyIfChanged(src, join(destDir, name)) : removeIfPresent(join(destDir, name))) || changed;
+  }
+  const kitDesign = join(dir, "DESIGN.md");
+  changed = (system.designMd !== kitDesign && isFile(kitDesign) ? copyIfChanged(kitDesign, kitMd) : removeIfPresent(kitMd)) || changed;
+  changed = syncBlocks(join(dir, "blocks"), blocks) || changed;
+  return writeIfChanged(marker, id) || changed;
+}
+
+/** Make `dest` hold exactly the `.html` files in `src`. A link or anything else in `src` is left behind. */
+function syncBlocks(src: string, dest: string): boolean {
+  let names: string[] = [];
+  try {
+    names = readdirSync(src, { withFileTypes: true })
+      .filter((e) => e.isFile() && e.name.endsWith(".html"))
+      .map((e) => e.name);
+  } catch {
+    // A kit may have no blocks.
+  }
+  if (!names.length) return removeIfPresent(dest);
+
+  let changed = false;
+  let present: string[] = [];
+  try {
+    present = readdirSync(dest);
+  } catch {
+    mkdirSync(dest, { recursive: true });
+  }
+  for (const name of present) {
+    if (!names.includes(name)) changed = removeIfPresent(join(dest, name)) || changed;
+  }
+  for (const name of names) changed = copyIfChanged(join(src, name), join(dest, name)) || changed;
   return changed;
 }
 
@@ -410,6 +589,8 @@ function syncFonts(files: string[], fontsDir: string): boolean {
  * unchanged; an existing copy is left as-is and its own index read back.
  */
 export function forkSystem(system: DesignSystemInfo, projectPath: string): DesignSystemInfo {
+  // A bundled or installed kit is never edited in place, and copying one comes with System mode.
+  if (system.source === "kit") throw new Error("This kit can't be edited yet.");
   if (system.source !== "style") return system;
   const base = system.id.slice(STYLE_PREFIX.length);
   if (!/^[\w.-]+$/.test(base)) throw new Error("Can't copy this design system.");

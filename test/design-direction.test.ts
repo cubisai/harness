@@ -483,3 +483,36 @@ describe("style shortlist", () => {
   });
 });
 
+describe("a kit system on a design thread", () => {
+  const FOUNDATION = join(process.cwd(), "resources", "design-kits", "foundation");
+
+  function kitSetup() {
+    const parts = setup();
+    parts.service.setDesignKitLookup((id) => (id === "foundation" ? FOUNDATION : null));
+    const thread = parts.service.createThread(parts.project.id, undefined, "design");
+    return { ...parts, thread };
+  }
+
+  it("keeps a kit id, and falls back to Auto for one nothing can find", () => {
+    const { service, thread } = kitSetup();
+    expect(service.setDesignSystem(thread.id, "kit:foundation").designSystem).toBe("kit:foundation");
+    expect(service.setDesignSystem(thread.id, "kit:foundation/riso").designSystem).toBe("kit:foundation/riso");
+    expect(service.setDesignSystem(thread.id, "kit:foundation/no-such-theme").designSystem).toBe("auto");
+    expect(service.setDesignSystem(thread.id, "kit:other").designSystem).toBe("auto");
+  });
+
+  it("stays out of today's picker and Auto's style library", () => {
+    const { service, project } = kitSetup();
+    expect(service.designSystems(project.id).some((s) => s.id.startsWith("kit:"))).toBe(false);
+    expect(service.designStyles().every((s) => s.kit === undefined)).toBe(true);
+    expect(service.previewSystem(project.id, "kit:foundation")?.source).toBe("kit");
+  });
+
+  it("never writes into a bundled kit", () => {
+    const { service, thread } = kitSetup();
+    service.setDesignSystem(thread.id, "kit:foundation");
+    const before = readFileSync(join(FOUNDATION, "DESIGN.md"), "utf8");
+    expect(() => service.editDesignSystem(thread.id, { designMd: "overwritten" })).toThrow("can't be edited");
+    expect(readFileSync(join(FOUNDATION, "DESIGN.md"), "utf8")).toBe(before);
+  });
+});

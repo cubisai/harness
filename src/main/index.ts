@@ -13,7 +13,11 @@ import { DESIGN_SCHEME, designDirName, designUrl, entryFile, serveDesign } from 
 import { STYLE_PREVIEW_SCHEME } from "../shared/style-preview";
 import { serveStylePreview } from "./design/style-preview";
 import { DesignWatcher } from "./design/watch";
-import { DesignDocuments, parseDesignMutation, parseHistoryRequest } from "./design/documents";
+import { DesignDocuments, isFromAppWindow, parseDesignMutation, parseHistoryRequest } from "./design/documents";
+import { KIT_CATALOG } from "./design/kit-catalog";
+import { KitInstallError, KitStore } from "./design/kit-install";
+import { parseKitManifest } from "./design/kit-schema";
+import type { DesignKitEnsureResult, DesignKitOption } from "../shared/design-mutation";
 import { readIssueConfig, readIssueSummary } from "./issues";
 import { issueTools } from "./issues-tool";
 import { offerPrompt, parseOffer } from "./issue-offer";
@@ -1000,6 +1004,11 @@ async function main(): Promise<void> {
     app.isPackaged ? join(process.resourcesPath, "design-styles") : join(app.getAppPath(), "resources", "design-styles"),
     app.isPackaged ? join(process.resourcesPath, "design-fonts") : join(app.getAppPath(), "resources", "design-fonts"),
   );
+  // Foundation ships with the app, so a kit is always there offline; the others are installed under userData.
+  const foundationKit = app.isPackaged ? join(process.resourcesPath, "design-kits", "foundation") : join(app.getAppPath(), "resources", "design-kits", "foundation");
+  const kitStore = new KitStore(join(userData, "design-packs"));
+  kitStore.cleanStaging();
+  service.setDesignKitLookup((kitId) => (kitId === "foundation" ? foundationKit : kitStore.activeDir(kitId)));
   service.setDesignPatternsDir(app.isPackaged ? join(process.resourcesPath, "design-patterns") : join(app.getAppPath(), "resources", "design-patterns"));
   service.setDesignIconsDir(app.isPackaged ? join(process.resourcesPath, "design-icons") : join(app.getAppPath(), "resources", "design-icons"));
   // After a design turn writes pages, they're linted off screen (one at a time); a page that fails to render is skipped.
@@ -1182,17 +1191,54 @@ async function main(): Promise<void> {
     if (!file) throw new Error("No such page.");
     return file;
   };
-  ipcMain.handle("design:mutate", (_e, threadId: string, rel: string, raw: unknown) => {
+  ipcMain.handle("design:mutate", (e, threadId: string, rel: string, raw: unknown) => {
+    if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
     const file = designDocumentFile(threadId, rel);
     const mutation = parseDesignMutation(raw);
     if (!mutation) throw new Error("Bad design edit.");
     return documents.mutate(threadId, rel, file, mutation);
   });
-  ipcMain.handle("design:history", (_e, threadId: string, rel: string, raw: unknown) => {
+  ipcMain.handle("design:history", (e, threadId: string, rel: string, raw: unknown) => {
+    if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
     const file = designDocumentFile(threadId, rel);
     const request = parseHistoryRequest(raw);
     if (!request) throw new Error("Bad design history request.");
     return documents.history(threadId, rel, file, request);
+  });
+  // One install per kit at a time, so a double click can't race its own rename.
+  const kitInstalls = new Map<string, Promise<DesignKitEnsureResult>>();
+  const KIT_DOWNLOAD_MS = 120_000;
+  ipcMain.handle("design:systems:catalog", (e): DesignKitOption[] => {
+    if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
+    if (settings.get().designV2 !== true) throw new Error("Kits aren't on.");
+    const options: DesignKitOption[] = [];
+    try {
+      const parsed = parseKitManifest(readFileSync(join(foundationKit, "components.json"), "utf8"));
+      if (parsed.ok) options.push({ id: "foundation", name: parsed.manifest.name, version: parsed.manifest.version, bundled: true, installed: true });
+    } catch {
+      // A broken install still lists the kits it can download.
+    }
+    for (const entry of KIT_CATALOG) options.push({ id: entry.id, name: entry.name, version: entry.version, bundled: false, installed: kitStore.active()[entry.id]?.version === entry.version && kitStore.activeDir(entry.id) !== null });
+    return options;
+  });
+  ipcMain.handle("design:systems:ensure", (e, id: unknown): Promise<DesignKitEnsureResult> => {
+    if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
+    if (settings.get().designV2 !== true) throw new Error("Kits aren't on.");
+    if (id === "foundation") return Promise.resolve({ ok: true });
+    const entry = typeof id === "string" ? KIT_CATALOG.find((k) => k.id === id) : undefined;
+    if (!entry) return Promise.resolve({ ok: false, code: "unknown", message: "That kit isn't in this version of the app." });
+    const running = kitInstalls.get(entry.id);
+    if (running) return running;
+    const started: Promise<DesignKitEnsureResult> = kitStore
+      .install(entry, { signal: AbortSignal.timeout(KIT_DOWNLOAD_MS) })
+      .then((): DesignKitEnsureResult => ({ ok: true }))
+      .catch((error: unknown): DesignKitEnsureResult => {
+        if (error instanceof KitInstallError) return { ok: false, code: error.code, message: error.message };
+        return { ok: false, code: "offline", message: "The download took too long." };
+      })
+      .finally(() => kitInstalls.delete(entry.id));
+    kitInstalls.set(entry.id, started);
+    return started;
   });
   ipcMain.handle("design:save-ref", (_e, threadId: string, bytes: Uint8Array) => {
     if (!(bytes instanceof Uint8Array)) throw new Error("Not an image (png, jpg, webp or gif).");
@@ -1835,7 +1881,7 @@ async function main(): Promise<void> {
     return service.setThreadIssue(threadId, picked);
   });
   ipcMain.handle("threads:set-design-system", (_e, threadId: string, id: unknown) =>
-    service.setDesignSystem(threadId, typeof id === "string" && /^[\w:.-]{1,80}$/.test(id) ? id : null),
+    service.setDesignSystem(threadId, typeof id === "string" && /^[\w:./-]{1,80}$/.test(id) ? id : null),
   );
   ipcMain.handle("design:systems", (_e, projectId: string | null): DesignSystemOption[] => service.designSystems(projectId)),
   ipcMain.handle("design:system-doc", (_e, threadId: string) => service.designSystemDoc(threadId));

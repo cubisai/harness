@@ -8,7 +8,7 @@ import type { CommentTarget, DesignComment } from "./comments";
 import type { LearnCase, LearnOverview, LearnSettings, Lesson, LessonAction, TurnScore } from "./learn";
 import type { AutomationInput, AutomationNotice, AutomationsOverview, AutomationView } from "./automations";
 import type { DoctorFixResult, DoctorReport } from "./doctor";
-import type { DesignHistoryRequest, DesignHistoryResult, DesignMutation, MutationResult } from "./design-mutation";
+import type { DesignHistoryRequest, DesignHistoryResult, DesignKitEnsureResult, DesignKitOption, DesignMutation, MutationResult } from "./design-mutation";
 
 export type Invocation = "model" | "user";
 
@@ -937,7 +937,7 @@ export interface DesignSystemOption {
   description: string;
   /** Up to 4 CSS colors to preview it. */
   swatches: string[];
-  source: "project" | "projectFolder" | "style";
+  source: "project" | "projectFolder" | "style" | "kit";
   /** What its tokens.css looks like; absent without one (then it has no preview). */
   facets?: StyleFacets;
 }
@@ -1454,6 +1454,10 @@ export interface UnskilledApi {
   designMutate(threadId: string, rel: string, mutation: DesignMutation): Promise<MutationResult>;
   /** Read a design page's status, or undo, redo or close a transaction (Design v2 only). */
   designHistory(threadId: string, rel: string, request: DesignHistoryRequest): Promise<DesignHistoryResult>;
+  /** The kits the app can offer (Design v2 only). */
+  designKitCatalog(): Promise<DesignKitOption[]>;
+  /** Download and verify a kit if it isn't on this machine yet (Design v2 only). */
+  designKitEnsure(id: string): Promise<DesignKitEnsureResult>;
   /** A design thread's comments (all pages), from its design folder. */
   designComments(threadId: string): Promise<DesignComment[]>;
   /** Add a comment on one element of a design page; the full list after. */

@@ -64,6 +64,19 @@ export interface MutationConflict {
   message: string;
 }
 
+/** One kit the app can offer, and whether it is on this machine. */
+export type DesignKitOption = {
+  id: string;
+  name: string;
+  version: string;
+  /** Foundation ships with the app; the rest are downloaded on first use. */
+  bundled: boolean;
+  installed: boolean;
+};
+
+/** Why a kit couldn't be made ready, in terms the picker can word: its `Unavailable offline` and `Retry` states. */
+export type DesignKitEnsureResult = { ok: true } | { ok: false; code: "unknown" | "offline" | "blocked" | "hash" | "archive" | "invalid" | "cancelled"; message: string };
+
 /** What the canvas can ask about a document's history. */
 export type DesignHistoryRequest =
   | { action: "status" }
