@@ -1,10 +1,10 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { BUILT_IN_GUARD } from "../src/main/guard";
 import { backgroundsItself, shellTools } from "../src/main/shell-tools";
 import { ShellLimitError, ShellManager, type ShellInfo, type ShellManagerOptions } from "../src/main/shells";
-import { tempDir } from "./helpers";
 
 const posix = process.platform !== "win32";
 /** A node script as a command line, so the tests don't depend on shell tools. */
@@ -34,9 +34,22 @@ const make = (o: ShellManagerOptions = {}): ShellManager => {
   managers.push(m);
   return m;
 };
+const dirs: string[] = [];
+const tempDir = (): string => {
+  const d = mkdtempSync(join(tmpdir(), "unskilled-shells-"));
+  dirs.push(d);
+  return d;
+};
 afterEach(() => {
   for (const m of managers) m.dispose();
   managers = [];
+  for (const d of dirs.splice(0)) {
+    try {
+      rmSync(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    } catch {
+      // Windows can hold a just-killed shell's folder for a while; a leftover temp folder isn't a failure.
+    }
+  }
 });
 
 describe("ShellManager", () => {
