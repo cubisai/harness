@@ -158,7 +158,8 @@ Parsing runs in an Electron `utilityProcess`, with a 25 MB cap and a 10 s timeou
 ## 8. Do and don't
 
 - **Do**: tint and hairlines for structure, ink for primary, acid only for "alive", one row of controls, hover to reveal actions, mono for numbers.
-- **Don't**: shadows on static surfaces, blue accents (the old `#0a84ff`), acid text or lines on white, emoji as icons, uppercase section headers in the sidebar, more than one primary button per view, a fixed width on any input inside a flex row.
+- **Don't**: shadows on static surfaces, blue accents (the old `#0a84ff`; the only exception is `--canvas-select`, below), acid text or lines on white, emoji as icons, uppercase section headers in the sidebar, more than one primary button per view, a fixed width on any input inside a flex row.
+- **Exception, design canvas selection**: overlays sit on top of any authored page, so ink can't stay visible on both light and dark pages. `--canvas-select` is a blue used only for the canvas selection outline, its badge and multi-select outlines. Never use it for anything else in the app.
 
 ## 9. Check before you ship a UI change
 

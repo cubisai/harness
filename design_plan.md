@@ -5,7 +5,7 @@
 > **Core UX Goal:** Make Design Mode feel **calm, obvious, and effortless** on the very first try—zero toolbar overload, zero mode-juggling, zero CSS jargon, and instant visual feedback.  
 > **Primary External Benchmarks:** [Varelyo (`varelyo.com`)](https://varelyo.com/) · [Varelyo UI (`github.com/varelyo/ui`)](https://github.com/varelyo/ui)  
 > **Internal UI Governance:** **CubiQ editor chrome** follows [`DESIGN.md`](./DESIGN.md) ("Ink Flat" tokens in [`src/renderer/src/styles/app.css`](./src/renderer/src/styles/app.css): 28px controls, 13px Geist UI, `1px solid var(--hairline)`, zero static shadows, no literal colors, no emoji icons). **Authored pages and component packs do not** — they follow their own validated pack contracts (§1A.6). Ink Flat rules never apply inside the page iframe.
-> **Normative sections:** §1A (Architecture Contracts), §10 (Security), §11 (Roadmap) and §13 (Harness Integration) are binding. Where UX prose elsewhere conflicts with them, §1A/§10 win.
+> **Normative sections:** §1A (Architecture Contracts; §1A.11 overrides everything else), §10 (Security), §11 (Roadmap) and §13 (Harness Integration) are binding. Where UX prose elsewhere conflicts with them, §1A/§10 win.
 
 ---
 
@@ -40,8 +40,8 @@ Comparing CubiQ's live screenshots against [Varelyo](https://varelyo.com/), Figm
 
 Every screen and interaction in Design Mode 2.0 obeys six strict UX rules:
 
-1. **Progressive Disclosure Over Icon Soup:** Show only the **5 core studio controls** needed 95% of the time (`Layers`, `Design | Preview | Code`, `Desktop | Mobile`, `Customize`, `Export / ⋯`). Everything secondary hides until relevant or inside one clean menu.
-2. **No "Pick Mode" Toggle — Direct Click Always Selects:** Within `Design` view, clicking any element selects it and double-clicking text edits it inline; there is no separate pick/insert/edit toggle. `Design | Preview | Code` is a *view* switch (what you are looking at), not a tool mode. This **eliminates the floating `LiveBar` toolbar**. The single contextual selection pill is the only element anchored to the canvas (see §1A.5).
+1. **Progressive Disclosure Over Icon Soup:** Show only the **5 core studio controls** needed 95% of the time (`Layers`, `Design | Preview | Code | System`, `Desktop | Mobile`, `Customize`, `Export / ⋯`). Everything secondary hides until relevant or inside one clean menu.
+2. **No "Pick Mode" Toggle — Direct Click Always Selects:** Within `Design` view, clicking any element selects it and double-clicking text edits it inline; there is no separate pick/insert/edit toggle. `Design | Preview | Code | System` is a *view* switch (what you are looking at), not a tool mode. This **eliminates the floating `LiveBar` toolbar**. The single contextual selection pill is the only element anchored to the canvas (see §1A.5).
 3. **One Prompt Box, Never Two:** Retire `LiveBar`'s separate `Steer` input. There is **one** calm, centered Composer dock at the bottom. Typing with nothing selected steers the whole page; clicking an element attaches its chip (`[Hero Button ×]`) so typing steers that element.
 4. **Live Edits + `⌘Z` Undo — Never an "Apply" Button:** Changing a variant, color swatch, font size, or padding in the right panel gives feedback on the next animation frame (optimistic preview), is committed through the mutation service (§1A.2), is saved after 250ms of inactivity, and is undoable with `⌘Z` / `⌘⇧Z`. IDs are assigned automatically when the target resolves unambiguously; ambiguous or stale targets produce a recoverable conflict, never a write to the wrong element.
 5. **Speak Design, Not Browser Internals:** Lead with **Component Variants** (`Filled`, `Outline`, `Ghost`), **Size Presets** (`S`, `M`, `L`), and **Theme Swatches** (`Surface`, `Primary`, `Muted`)—never `rgb(255, 255, 255)`, `141.797px`, or `justify-content: normal`.
@@ -120,7 +120,7 @@ States: `Idle` → `Selected` → (`EditingText` | `ContextMenu` | `AiOperation`
 | Offline | Bundled packs always work; others show `Unavailable offline` |
 
 ### 1A.5 Selection UI Model
-"Zero floating toolbars" means **no persistent toolbars** (LiveBar retired). One transient contextual selection pill is allowed, dismissed on deselection, positioned to avoid covering the selection, and keyboard accessible.
+"Zero floating toolbars" means **no persistent toolbars** (LiveBar retired). The selection UI is two attached parts: the §5.4 badge (name and swap) and the §5.1 pill with its 3 controls. Both are transient, dismissed on deselection, positioned to avoid covering the selection, and keyboard accessible. The mock's extra pill controls don't ship.
 
 ### 1A.6 Token & Style Scopes (No Leakage)
 
@@ -131,7 +131,7 @@ States: `Idle` → `Selected` → (`EditingText` | `ContextMenu` | `AiOperation`
 | **Compatibility aliases** | `--color-*` | Versioned mapping in the pack (`aliases@v1`) | Read-only mapping for existing pages and `design_lint` |
 
 - Pages render only inside the sandboxed iframe; editor CSS is never injected into it, and page CSS is never loaded in the renderer document. Editor overlays are drawn in the host layer using geometry from the bridge.
-- **Canvas selection colour:** overlays sit on top of any authored page, so Ink cannot stay visible on both light and dark pages. They use one fixed editor token, `--canvas-select`. This needs an explicit exception in `DESIGN.md` (§8 bans blue accents) before Phase 1 ships, and it is used only for canvas selection, its badge and multi-select outlines.
+- **Canvas selection colour:** overlays sit on top of any authored page, so Ink cannot stay visible on both light and dark pages. They use one editor token, `--canvas-select`, with one value per app theme. This needs an explicit exception in `DESIGN.md` (§8 bans blue accents) before Phase 1 ships, and it is used only for canvas selection, its badge and multi-select outlines.
 
 ### 1A.7 Failure Behavior Matrix (User-Visible)
 
@@ -178,10 +178,11 @@ States: `Idle` → `Selected` → (`EditingText` | `ContextMenu` | `AiOperation`
 - **Save as theme**: tweaking the Page Theme shows `Save as new theme…`, and the theme then appears in the picker. `Customize a copy` starts the same path from the picker.
 - **System mode**: `Design | Preview | Code | System`, with Foundations pages, component pages (`Variants | Playground | Usage`), the blast-radius notice and its own chat context.
 - **Planned, not in the mock yet** (added to this plan on 2026-11-02):
-  - The layout card in §6.4.
+  - The rest of the layout card in §6.4: `Flow`, `Render as`, `Align` and the code card. The mock already has `Columns`, `Gap`, `Row gap` and `Place in cell`.
   - `+ New component` and hand editing in System mode (§8.7).
   - A working `Save as composition…`; today it only shows a toast.
   - Bug: selecting a Grid shows `Value: SCOPE` and `Disabled`, which belong to a card inside it. A container must show only its own props.
+- **Don't copy from the mock:** the `Guardian` top-bar button (it arrives with Guardian), the two hard-coded seams (generate them on hover, §5.1), and the 22px pill controls (§1A.3 needs at least 24px).
 - **Not mocked** (spec only): journal/WAL recovery, real rebasing, signature verification, sandbox enforcement, real file scanning, real image reading.
 
 ### 1A.9 Studio Workspace Layout & View Transitions (Normative)
@@ -216,6 +217,20 @@ Verified against the code on 2026-11-02. These rules exist because of how the ha
 8. **Branding is tokens only, by construction.** `design_tokens_apply` can only change token values, so "no component touched" cannot be violated. One call is one undo step.
 9. **A kit is a document for §1A.2.** Hand edits are mutations with revisions, journaling and undo, like page edits. New change types: `addComponent`, `removeComponent`, `addVariant`, `removeVariant`, `addProp`, `removeProp` (`setToken` already exists). Agent writes to `{dir}/kit/` are external changes, with an `external` undo boundary.
 10. **Bundled and library kits are never edited in place.** The first edit copies the kit into the project and switches the thread to the copy, as `editDesignSystem` already does for styles (`src/main/service.ts:1730-1735`).
+
+### 1A.11 Build Decisions (2026-11-03)
+
+These override anything else in this document.
+
+- **Full replacement.** v2 replaces today's design mode. `designV2` (§13.5) is a build switch only, and is removed with the old UI once v2 covers everything. Existing threads keep opening and rendering.
+- **First build:** the editing engine, kits and installer, canvas, chrome, picker, System mode and Create flows. Later: Guardian and Pre-PR checks, the external MCP server, multi-tab, parallel agents, Sketch, Connect, multi-brand presets, user-added repos, signed catalog, Change History, chat docked and folded modes.
+- **Kits replace §8.2's list.** Six kits, modelled on shadcn/ui, MUI, Ant Design, Chakra UI, Mantine and varelyo/ui. Each is our own HTML and CSS following that library's component set and props, because the canvas has no network or build. `components.json` records the real package import for `Code` view and handoff. No library source is copied verbatim, and each kit says it is unofficial.
+- **Kit source:** repo-root `design-kits/`, self-contained so it can be pushed as its own public repo. Foundation stays bundled.
+- **Install trust:** for now the catalog and its SHA-256 hashes ship inside the app, which authenticates them (§10.2). A signed catalog that updates without an app release comes later.
+- **Tiers:** direct edits and comments work on every tier. A tier only changes how much the agent builds.
+- **Naming:** no `Varelyo` names in shipped UI, tools or settings. It is a benchmark here, and otherwise appears only as the name of that one kit's real library.
+- **Old features need a home before removal:** Compare options, the variant cycler's accept and discard, Dictate, Repick confirm, Insert with Accept, and lint pins on the page.
+- **`DESIGN-MODE.md`:** its real limit is 1,300 tokens (`test/design-brain.test.ts:26`) and it is at 1,298, so kit rules need trimming first or a stated increase. §13.1's 60-line budget isn't the limiting one.
 
 ---
 
@@ -340,7 +355,7 @@ All chrome strictly uses [`DESIGN.md`](./DESIGN.md) Ink Flat tokens (`--bg`, `--
    - `[◧]` toggles the left **Pages & Layers** rail (`⌘\`, open by default in Design Mode; auto-shows badge when `pages.length > 1`).
    - `Thread Title` (or `Page Switcher ▾` when multi-page). Version pill (`v2 ▾`) appears **only** when inspecting history or via `⋯` → `Version history`.
    - **Removed:** Non-interactive top `Glacier` style text; chat-only `Changes`, `Browser`, `Terminal`, and `Canvas-first` buttons in [`App.tsx:200-241`](./src/renderer/src/App.tsx#L200-L241) when `design && canvasFirst`.
-2. **Center Pill 1 — View Mode (`[Design | Preview | Code]`):**
+2. **Center Pill 1 — View Mode (`[Design | Preview | Code | System]`):**
    - Segmented track (`--bg-chip`, active segment `--bg` + `1px solid var(--hairline)` per `DESIGN.md` §5):
      - **`Design`** *(default)*: Direct click selects components, double-click edits text, seam hover inserts sections.
      - **`Preview`**: Pure interactive page experience (links navigate, tabs/dialogs open, hover effects play; `Present` fullscreen button appears quietly in corner).
@@ -366,7 +381,7 @@ All chrome strictly uses [`DESIGN.md`](./DESIGN.md) Ink Flat tokens (`--bg`, `--
 
 ### 4.2 Single Unified Bottom Prompt Dock (Replacing 4 Stacked Bars)
 
-**Retire [`LiveBar.tsx`](./src/renderer/src/design/LiveBar.tsx) as a separate floating toolbar** and collapse `TodoDock` + `DrawerHandle` + `Composer` into **one** calm, centered Ink Flat Composer dock (`max-width: 680px`, `1px solid var(--hairline)`, `--radius-l`):
+**Retire [`LiveBar.tsx`](./src/renderer/src/design/LiveBar.tsx) as a separate floating toolbar** and collapse `TodoDock` + `DrawerHandle` + `Composer` into **one** calm, centered Ink Flat Composer dock (`max-width: 660px`, `1px solid var(--hairline)`, `--radius-l`):
 
 ```text
           ┌──────────────────────────────────────────────────────────────────────────┐
@@ -436,7 +451,7 @@ All chrome strictly uses [`DESIGN.md`](./DESIGN.md) Ink Flat tokens (`--bg`, `--
 
 Directly matching [`Screenshot 2026-10-31 at 11.53.07 in the morning.png`](./Screenshot%202026-10-31%20at%2011.53.07%20in%20the%20morning.png) and [`Screen Recording 2026-10-31 at 11.53.54 in the morning.mov`](./Screen%20Recording%202026-10-31%20at%2011.53.54%20in%20the%20morning.mov) (01:01–01:05):
 1. **Canvas Selection Header Chip:**
-   - When a component is selected, render a blue border (`#2563eb`, 1.5px) and anchor an attached solid blue badge (`background: #2563eb; color: #ffffff`) to its top edge:
+   - When a component is selected, render a `var(--canvas-select)` border (1.5px) and anchor an attached solid badge (`background: var(--canvas-select)`) to its top edge:
      - Component name label: e.g. `Button`, `Dropdown`, `StatCard · Scope`.
      - Swap symbol: diamond / spark icon (`⟐`).
      - Clicking the badge or pressing `⌘S` (or right-click context menu → `Swap component…`) opens the Swap popover immediately adjacent to the element.
@@ -584,7 +599,7 @@ Following live architectural examination of [Varelyo (`varelyo.com`)](https://va
   - The left sidebar is split vertically between the Layers tree (top) and the Chat thread (bottom).
   - A draggable splitter bar allows the user to allocate vertical height. Dragging all the way down minimizes the message log, leaving only the single-line input composer.
 - **Mode B: Floating Compact Composer (Default):**
-  - Frosted capsule bar fixed at `bottom: 14px; left: 0; right: 0; margin: 0 auto; max-width: 680px; z-index: 50`.
+  - Frosted capsule bar fixed at `bottom: 14px; left: 0; right: 0; margin: 0 auto; max-width: 660px; z-index: 50`.
   - Displays a live single-line **Status Strip** during agent execution (e.g. *"Looking at the render…"* or *"Updating StatCard props…"*).
   - `Show messages` button expands the conversation drawer upward without dislocating the composer dock.
 - **Mode C: Folded Action Button:**
@@ -752,7 +767,7 @@ The studio exposes an MCP (Model Context Protocol) server over stdio or local po
 
 ## 6. Pillar 3 — Human-Friendly Live Inspector (Page Theme + Component Props)
 
-Overhaul [`src/renderer/src/design/InspectorPanel.tsx`](./src/renderer/src/design/InspectorPanel.tsx) and [`src/main/design/edit.ts`](./src/main/design/edit.ts) so visual customization feels effortless for non-CSS experts while staying 100% token-accurate under the hood:
+Overhaul [`src/renderer/src/design/InspectorPanel.tsx`](./src/renderer/src/design/InspectorPanel.tsx) and the edit path (today [`src/main/design/textedit.ts`](./src/main/design/textedit.ts), replaced by the §1A.2 service) so visual customization feels effortless for non-CSS experts while staying 100% token-accurate under the hood:
 
 ### 6.1 Dual-State Panel (Never a Useless Empty Screen)
 
@@ -762,20 +777,17 @@ Overhaul [`src/renderer/src/design/InspectorPanel.tsx`](./src/renderer/src/desig
 | **Element Selected (`Element Style`)** | Header: `← Page Theme` · **`Button "Get started"`** (`div` / tag noise hidden)<br>**1. Live Content Overrides** ([`Screenshot 2026-10-31 at 12.09.20 in the afternoon.png`](./Screenshot%202026-10-31%20at%2012.09.20%20in%20the%20afternoon.png)):<br>• Text elements & buttons: `Value` text input overrides canvas label live.<br>• Textfields, inputs & search bars: Exposes both `Value` (live input text) and `Placeholder` (placeholder attribute override) inputs with live bi-directional canvas synchronization and debounced undo.<br>**2. Component Style**: `Variant` segmented pill (`Filled · Soft · Outline · Ghost`) + **Tactile Size Stepper Slider** (light grey pill track, notches `\|`, `!`, `'`, and right-aligned badge `sm`)<br>**3. Component State**: `Disabled` toggle switch<br>**4. Colors:** `Fill`, `Text`, `Border` — 1-click **System Token Swatches** (`Primary`, `Surface`, `Subtle`, `Muted`) + `+ Custom` hex picker<br>**5. Text & Spacing:** Text scale (`S · M · L · XL`), `Padding` (`Tight · Normal · Roomy`), `Corners`<br>**6. Quiet Footer Link:** `View HTML / Reset overrides (⌘Z)` |
 
 ### 6.2 Zero-Friction Direct Writes & Undo
-- **Auto-Stamped `data-agent-id` (`src/main/design/edit.ts`):** if the target lacks an ID, the mutation service stamps one **only when the target resolves unambiguously**; otherwise it returns a recoverable conflict (§1A.2).
+- **Auto-Stamped `data-agent-id` (`src/main/design/mutation.ts`):** if the target lacks an ID, the mutation service stamps one **only when the target resolves unambiguously**; otherwise it returns a recoverable conflict (§1A.2).
 - **Preview, Commit, Undo:** the preview updates on the next animation frame; the change is committed through `DocumentMutationService` (§1A.2), saved after 250ms idle, and grouped by `transactionId` into one undo step.
 
-### 6.3 Inspector Chrome, Dual Tabs (`[ Design | Code ]`), Search Filter (`⌘F`), and Breakpoint Bar
+### 6.3 Inspector Chrome, Search Filter (`⌘F`), and Breakpoint Bar
 
 Pixel-perfect implementation of [`Screenshot 2026-10-31 at 12.09.20 in the afternoon.png`](./Screenshot%202026-10-31%20at%2012.09.20%20in%20the%20afternoon.png):
 1. **Header Bar:**
    - Component name title (`Dropdown`, `Button`, `Stack`, `Grid`).
    - Overflow menu `···` (reset props, copy JSX, wrap component).
    - Dismiss button `✕` (clears canvas selection, returns to Page Theme).
-2. **Mode Segmented Control:**
-   - Segmented buttons: `[ ⟐ Design ]` and `[ <> Code ]`.
-   - Keyboard icon shortcut button `⌨`.
-   - Switching to `[ <> Code ]` toggles the active inspector view to the live TSX component source (e.g. `<Dropdown value="Ends in 4 days" />`), allowing bidirectional visual and code comprehension without context switching.
+2. **No inspector tabs:** source is shown by the top bar's `Code` view and the §6.4 code card, as in the mock.
 3. **Props Filter Bar:**
    - Full-width pill input: `🔍 Filter props and values      ⌘F`.
    - Typing instantly filters the prop cards below (e.g. typing `"size"` hides Content and State cards, isolating the Size slider).
@@ -1068,7 +1080,7 @@ flowchart LR
 | Phase | Focus & Exit Criteria | Key Files Touched |
 | :--- | :--- | :--- |
 | **Phase 0: Contracts & Fixtures** | Specify and test fixtures for: document identity, `DesignMutation`/revisions, undo grouping, journal/recovery, pack schema (`components.json`, `contractVersion`, compat), theme-vs-kit rules, trust boundaries, perf benchmark harness. **Exit:** contract tests pass against fixture documents; no UI work yet. | `src/main/design/mutation.ts` (new), `src/main/design/schema/*`, fixtures under `test/design/` |
-| **Phase 1: One Complete Editing Loop** | One bundled kit (Foundation, `resources/design-kits/foundation/`), fixed 1440px stage, direct selection (with visibility filtering), inline text editing, minimal Inspector (variant/size/color/text), persistence, undo/redo, crash recovery. **Exit:** end-to-end edit → save → reload → undo works, incl. external-change conflict. | [`bridge.ts`](./src/main/design/bridge.ts), [`edit.ts`](./src/main/design/edit.ts), [`frame.ts`](./src/renderer/src/design/frame.ts), [`InspectorPanel.tsx`](./src/renderer/src/design/InspectorPanel.tsx), [`layers.ts`](./src/renderer/src/design/layers.ts) |
+| **Phase 1: One Complete Editing Loop** | One bundled kit (Foundation, `resources/design-kits/foundation/`), fixed 1440px stage, direct selection (with visibility filtering), inline text editing, minimal Inspector (variant/size/color/text), persistence, undo/redo, crash recovery. **Exit:** end-to-end edit → save → reload → undo works, incl. external-change conflict. | [`bridge.ts`](./src/main/design/bridge.ts), [`textedit.ts`](./src/main/design/textedit.ts), [`frame.ts`](./src/renderer/src/design/frame.ts), [`InspectorPanel.tsx`](./src/renderer/src/design/InspectorPanel.tsx), [`layers.ts`](./src/renderer/src/design/layers.ts) |
 | **Phase 2: Calm Chrome, Keyboard Workflows & Visual Layout** | 5-group top bar; remove `LiveBar`/`.design-crumbs`; unified Composer with 3 modes (Docked, Floating, Folded); keyboard structural shortcuts (`⌘G`, `⌥⌘G`, `⌘⇧G`, `⌘D`, `I`, `⌥+Drag`); universal Actions menu (`/` or Right-Click); Layout card (§6.4): `Flow` switch, named gap sizes, controls that swap with the layout, live code card, and a badge that follows the change; panel shows only the selection's own props; Auto Layout `Place in cell` matrix + dual gap controls; 900px responsive layout. | [`App.tsx`](./src/renderer/src/App.tsx), [`DesignCanvas.tsx`](./src/renderer/src/design/DesignCanvas.tsx), [`LiveBar.tsx`](./src/renderer/src/design/LiveBar.tsx), [`ElementBar.tsx`](./src/renderer/src/design/ElementBar.tsx), [`InspectorPanel.tsx`](./src/renderer/src/design/InspectorPanel.tsx), [`app.css`](./src/renderer/src/styles/app.css) |
 | **Phase 3: 3-Tier Tokens, Blast Radius & Multi-Brand Systems** | Visual style picker with `Apply theme` and `Customize a copy`; the 32 existing styles become Foundation themes (§1A.1); 3-tier token architecture (`Core` → `Semantic` → `Component`); `Save as new theme…`; blast-radius impact calculation before applying changes; multi-brand presets (`Default`, `Studio`, `Forma`) without component forking; contrast-checked light/dark modes. **Exit:** existing flat-style threads render unchanged. | [`DesignSystemMenu.tsx`](./src/renderer/src/components/DesignSystemMenu.tsx), [`style-preview.ts`](./src/main/design/style-preview.ts), [`systems.ts`](./src/main/design/systems.ts), `src/main/design/tokens.ts` |
 | **Phase 3A: System Mode** | `System` view (§8.6) built on `SystemPanel.tsx`; Foundations pages; component pages with `Variants`, `Playground` and `Usage` (moved up from Phase 5, because kits need them to be reviewed); system chat context; hand editing of tokens, variants and props with reach shown first (§8.7); kits become documents in the mutation service (§1A.10.9). **Exit:** a token edit in System mode reaches every page, with one undo step, and removing a variant in use shows every use first. | [`DesignCanvas.tsx`](./src/renderer/src/design/DesignCanvas.tsx), [`SystemPanel.tsx`](./src/renderer/src/design/SystemPanel.tsx), `src/renderer/src/design/SystemMode.tsx` (new), `src/renderer/src/design/ComponentPlayground.tsx` (new) |
@@ -1139,7 +1151,7 @@ Design Mode 2.0 plugs into parts of CubiQ that already work. This section says w
 
 ### 13.3 Existing Bug This Plan Fixes
 
-`design-system-extract` tells the agent to write to `.agents/design-systems/<name>/`, and `tiers.ts:51` sends real-app threads to it. But `fenceWrite` denies anything outside `designs/<id8>/` in all four drivers (`src/main/agents/claude.ts:540`, `codex.ts:886`, `acp/driver.ts:898`, `harness/driver.ts:432`). From reading the code, the skill can't save its output in a design thread. Confirm this with one live run before the fix, and pin it with a test. It is fixed by `design_kit_save` (§1A.10.4), not by widening the fence.
+`design-system-extract` tells the agent to write to `.agents/design-systems/<name>/`, and `tiers.ts:51` sends real-app threads to it. But `fenceWrite` denies anything outside `designs/<id8>/` in all four drivers (`src/main/agents/claude.ts:540`, `src/main/agents/codex.ts:886`, `src/main/agents/acp/driver.ts:898`, `src/main/harness/driver.ts:432`). From reading the code, the skill can't save its output in a design thread. Confirm this with one live run before the fix, and pin it with a test. It is fixed by `design_kit_save` (§1A.10.4), not by widening the fence.
 
 ### 13.4 What the renderer reuses
 

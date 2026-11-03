@@ -506,6 +506,18 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
           <p className="note">
             Agents get run_code: one sandboxed script that chains read, grep, glob and other read-only tools, so a multi-step search costs one call. The agent keeps its own read, search and edit tools. OpenCode 2 uses its own Code Mode. Applies to new threads.
           </p>
+          <h3>Design Mode 2.0</h3>
+          <div className="row">
+            <span className="label">Design Mode 2.0</span>
+            <div className="segmented">
+              {([false, true] as const).map((value) => (
+                <button key={String(value)} className={(settings.designV2 ?? false) === value ? "on" : ""} onClick={() => update({ designV2: value })}>
+                  {value ? "On" : "Off"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="note">Unfinished. Turns on the new design canvas as it is built.</p>
         </section>
       );
     case "updates":

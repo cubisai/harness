@@ -221,6 +221,8 @@ export interface Settings {
   mcpRouter?: "auto" | "off";
   /** run_code, a sandboxed script that chains read-only tools: Off (default), "on" = Read-only + MCP. */
   codeMode?: CodeMode;
+  /** Design Mode 2.0 while it is being built. Off when unset; removed once v2 replaces the old design mode. */
+  designV2?: boolean;
   /** Sidebar Recent section grouped by project (true, the default when unset) or one flat list (false). */
   sidebarGroupByProject?: boolean;
   /** Tell agents they may answer with inline UI blocks (checklist, calculator, …). Off unless set: it costs guide tokens. */

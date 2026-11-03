@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { forkSystem, listDesignStyles, listDesignSystems, materializeSystem, parseSystemIndex, resolveDesignSystem, type DesignStyleInfo, type DesignSystemInfo } from "../src/main/design/systems";
@@ -120,6 +120,29 @@ describe("materializeSystem", () => {
     expect(readFileSync(join(dest, "DESIGN.md"), "utf-8")).toBe("warm design");
     expect(readFileSync(join(dest, "tokens.css"), "utf-8")).toBe("warm tokens");
     expect(readFileSync(join(dest, ".system"), "utf-8")).toBe("project:warm");
+    expect(materializeSystem(warm!, dest)).toBe(false);
+  });
+
+  it("a flat system materializes exactly DESIGN.md, tokens.css and .system", () => {
+    const project = tempDir();
+    makeSystem(ownSystems(project), "warm", "---\ntype: design-system\n---\n", "warm design", "warm tokens");
+    const [warm] = listDesignSystems(project);
+    const dest = join(tempDir(), "dest");
+
+    expect(materializeSystem(warm!, dest)).toBe(true);
+    expect(readdirSync(dest).sort()).toEqual([".system", "DESIGN.md", "tokens.css"]);
+  });
+
+  it("restores tokens.css when the copy in the design folder was changed", () => {
+    const project = tempDir();
+    makeSystem(ownSystems(project), "warm", "---\ntype: design-system\n---\n", "warm design", "warm tokens");
+    const [warm] = listDesignSystems(project);
+    const dest = join(tempDir(), "dest");
+
+    expect(materializeSystem(warm!, dest)).toBe(true);
+    writeFileSync(join(dest, "tokens.css"), "tampered");
+    expect(materializeSystem(warm!, dest)).toBe(true);
+    expect(readFileSync(join(dest, "tokens.css"), "utf-8")).toBe("warm tokens");
     expect(materializeSystem(warm!, dest)).toBe(false);
   });
 
