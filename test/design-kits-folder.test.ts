@@ -59,7 +59,7 @@ describe("the design-kits folder", () => {
     }
   });
 
-  it("passes with its empty kits folder", () => {
+  it("passes on the folder as it stands", () => {
     expect(runValidate(join(ROOT, "design-kits")).status).toBe(0);
   });
 
@@ -183,5 +183,69 @@ describe("installing from a local fixture repo", () => {
     expect(store.active().foundation?.version).toBe("1.0.0");
     expect(filesIn(first.dir).sort()).toEqual(before);
     expect(readdirSync(join(packs, "staging"))).toEqual([]);
+  });
+});
+
+describe("the kits in the folder", () => {
+  const KITS = join(ROOT, "design-kits", "kits");
+  const ids = readdirSync(KITS, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+  const registry = JSON.parse(readFileSync(join(ROOT, "design-kits", "registry.json"), "utf8")) as { kits: { id: string; themes: string[] }[] };
+
+  it("are all listed, and the whole folder validates", () => {
+    expect(registry.kits.map((k) => k.id).sort()).toEqual([...ids].sort());
+    expect(runValidate(join(ROOT, "design-kits")).status).toBe(0);
+  });
+
+  describe.each(ids)("%s", (id) => {
+    const dir = join(KITS, id);
+    const read = (name: string) => readFileSync(join(dir, name), "utf8");
+    const manifest = () => JSON.parse(read("components.json")) as { compat: { themes: string[] }; components: { ui: string; kind?: string; snippet: string }[] };
+
+    it("passes the app's validator", () => {
+      const result = validateKitDir(dir, id);
+      expect(result.ok ? [] : result.errors).toEqual([]);
+    });
+
+    it("says it is unofficial", () => {
+      expect(read("README.md")).toMatch(/unofficial/i);
+      expect(read("README.md")).toMatch(/not affiliated/i);
+    });
+
+    it("uses only tokens its tokens.css defines, or that it sets itself", () => {
+      const css = read("ui.css");
+      const defined = new Set([...`${read("tokens.css")}\n${css}`.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]));
+      const used = [...css.matchAll(/var\(\s*(--[a-z0-9-]+)/g)].map((m) => m[1] ?? "");
+      expect(used.filter((name) => !defined.has(name) && name !== "--value")).toEqual([]);
+    });
+
+    it("has no literal colours in ui.css", () => {
+      expect(read("ui.css").match(/#[0-9a-f]{3,8}\b|\b(?:rgb|hsl)a?\(/gi) ?? []).toEqual([]);
+    });
+
+    it("every theme defines the same tokens as the kit", () => {
+      const names = (css: string) => [...new Set([...css.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]))].sort();
+      for (const theme of manifest().compat.themes) expect(names(read(`themes/${theme}/tokens.css`)), theme).toEqual(names(read("tokens.css")));
+    });
+
+    it("has a block for every composition, rooted at its own part", () => {
+      for (const c of manifest().components.filter((part) => part.kind === "composition")) {
+        expect(read(`blocks/${c.ui}.html`).trimStart().startsWith(`<section data-ui="${c.ui}"`), c.ui).toBe(true);
+      }
+    });
+
+    it("only uses parts its own manifest declares", () => {
+      const known = new Set(manifest().components.map((c) => c.ui));
+      const blocks = readdirSync(join(dir, "blocks")).map((name) => read(`blocks/${name}`));
+      const html = [...manifest().components.map((c) => c.snippet), ...blocks].join("\n");
+      expect([...new Set([...html.matchAll(/data-ui="([^"]+)"/g)].map((m) => m[1] ?? ""))].filter((ui) => !known.has(ui))).toEqual([]);
+    });
+
+    it("offers itself and its themes, and materializes the kit's files", () => {
+      const systems = listKitSystems(dir);
+      expect(systems.map((s) => s.id).sort()).toEqual([`kit:${id}`, ...manifest().compat.themes.map((t) => `kit:${id}/${t}`)].sort());
+      const dest = join(tempDir(), "system");
+      expect(materializeSystem(systems[0]!, dest)).toBe(true);
+      for (const name of ["DESIGN.md", "tokens.css", "ui.css", "components.json", ".kit"]) expect(existsSync(join(dest, name)), name).toBe(true);
+    });
   });
 });

@@ -1,4 +1,21 @@
 {
   "version": 1,
-  "kits": []
+  "kits": [
+    {
+      "id": "shadcn-ui",
+      "name": "shadcn/ui",
+      "version": "1.0.0",
+      "themes": [
+        "slate",
+        "rose",
+        "blue"
+      ],
+      "card": {
+        "bg": "#FFFFFF",
+        "text": "#09090B",
+        "accent": "#18181B",
+        "radius": "8px"
+      }
+    }
+  ]
 }

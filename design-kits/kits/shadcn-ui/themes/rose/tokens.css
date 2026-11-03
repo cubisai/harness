@@ -1,0 +1,153 @@
+/* shadcn/ui, unofficial HTML+CSS kit: zinc neutrals, tight 14px controls, hairline borders and medium-weight labels.
+ * Link this file before ui.css and use the custom properties, not raw values. A dark pair follows the system setting.
+ * Roles: --color-accent-text for accent-coloured text (the accent itself may be too light for text);
+ * --color-on-accent on accent fills; --color-*-soft behind status text and selected chips, with the matching
+ * colour (or --color-accent-text) on top; --color-surface-3 for hover/pressed wells; --color-border-strong for
+ * inputs and dividers that must show. --tracking-display/-heading/-label on those roles, --text-display-sm
+ * under 640px, font-variant-numeric: var(--numeric-data) on figures. */
+:root {
+  color-scheme: light;
+
+  /* Color */
+  --color-bg: #FFFFFF;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F4F4F5;
+  --color-surface-3: #E4E4E7;
+  --color-text: #09090B;
+  --color-text-muted: #71717A;
+  --color-border: #E4E4E7;
+  --color-border-strong: #D4D4D8;
+  --color-primary: #E11D48;
+  --color-on-primary: #FFFFFF;
+  --color-accent: #E11D48;
+  --color-on-accent: #FFFFFF;
+  --color-accent-text: #BE123C;
+  --color-accent-soft: #FFF1F2;
+  --color-success: #15803D;
+  --color-success-soft: #F0FDF4;
+  --color-warning: #A16207;
+  --color-warning-soft: #FEFCE8;
+  --color-danger: #DC2626;
+  --color-danger-soft: #FEF2F2;
+  --color-on-danger: #FFFFFF;
+  --color-focus: #FB7185;
+
+  /* Type */
+  --font-sans: Inter, "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: Inter, "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --text-xs: 12px;
+  --leading-xs: 16px;
+  --text-sm: 14px;
+  --leading-sm: 20px;
+  --text-md: 16px;
+  --leading-md: 24px;
+  --text-lg: 18px;
+  --leading-lg: 28px;
+  --text-xl: 20px;
+  --leading-xl: 28px;
+  --text-2xl: 24px;
+  --leading-2xl: 32px;
+  --text-3xl: 30px;
+  --leading-3xl: 36px;
+  --text-4xl: 36px;
+  --leading-4xl: 40px;
+  --text-display: 48px;
+  --leading-display: 48px;
+  --text-display-sm: 36px;
+  --leading-display-sm: 40px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 600;
+  --tracking-display: -0.025em;
+  --tracking-heading: -0.025em;
+  --tracking-label: 0;
+  --numeric-data: tabular-nums;
+
+  /* Space: the 8pt scale (4 is for type and icon nudges only) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* Size */
+  --target-min: 44px;
+  --content-max: 1120px;
+  --measure: 68ch;
+  --control-sm: 32px;
+  --control-md: 36px;
+  --control-lg: 40px;
+  --ring-width: 3px;
+  --size-icon: 16px;
+
+  /* Radius */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+
+  /* Elevation: hairlines first; shadows only for raised cards, menus and dialogs */
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.05);
+  --shadow-2: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-3: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  /* Overlay */
+  --overlay: rgb(0 0 0 / 0.5);
+
+  /* Motion */
+  --duration-fast: 100ms;
+  --duration: 150ms;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration: 0ms;
+  }
+}
+
+/* Dark: the same roles, re-tuned; picked up from the system setting. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --color-bg: #09090B;
+    --color-surface: #18181B;
+    --color-surface-2: #27272A;
+    --color-surface-3: #3F3F46;
+    --color-text: #FAFAFA;
+    --color-text-muted: #A1A1AA;
+    --color-border: #27272A;
+    --color-border-strong: #3F3F46;
+    --color-primary: #E11D48;
+    --color-on-primary: #FFFFFF;
+    --color-accent: #E11D48;
+    --color-on-accent: #FFFFFF;
+    --color-accent-text: #FDA4AF;
+    --color-accent-soft: #2A0A14;
+    --color-success: #4ADE80;
+    --color-success-soft: #052E16;
+    --color-warning: #FACC15;
+    --color-warning-soft: #2E2506;
+    --color-danger: #F87171;
+    --color-danger-soft: #2C0F0F;
+    --color-on-danger: #2C0F0F;
+    --color-focus: #9F1239;
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-2: 0 4px 6px -1px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.5);
+    --shadow-3: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.5);
+  }
+}
+
+::selection {
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}

@@ -1,0 +1,107 @@
+<section data-ui="dashboard">
+  <aside data-part="sidebar">
+    <div data-part="brand">
+      <span data-ui="avatar" data-size="sm"><span data-part="fallback">TB</span></span>
+      <span>Tallybook</span>
+    </div>
+    <nav data-part="nav">
+      <a href="#" aria-current="page">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+        Dashboard
+      </a>
+      <a href="#">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+        Invoices
+      </a>
+      <a href="#">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/></svg>
+        Clients
+      </a>
+      <a href="#">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg>
+        Reports
+      </a>
+      <a href="#">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.6a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21 11a2 2 0 1 1 0 4z"/></svg>
+        Settings
+      </a>
+    </nav>
+  </aside>
+  <div data-part="main">
+    <div data-part="topbar">
+      <nav data-ui="breadcrumb" aria-label="Breadcrumb">
+        <ol>
+          <li><a href="#">Dashboard</a></li>
+          <li><a href="#">Invoices</a></li>
+          <li><span aria-current="page">March</span></li>
+        </ol>
+      </nav>
+      <span data-ui="avatar" data-size="sm"><span data-part="fallback">PR</span></span>
+    </div>
+    <div data-part="body">
+      <div data-part="stats">
+        <div data-ui="card">
+          <div data-part="header">
+            <p data-part="description">Outstanding</p>
+            <h3 data-part="title">$12,840.00</h3>
+          </div>
+          <div data-part="content">
+            <p data-ui="text" data-size="xs" data-tone="muted">Down 8 percent on February</p>
+          </div>
+        </div>
+        <div data-ui="card">
+          <div data-part="header">
+            <p data-part="description">Paid this month</p>
+            <h3 data-part="title">$9,240.00</h3>
+          </div>
+          <div data-part="content">
+            <p data-ui="text" data-size="xs" data-tone="muted">Eight invoices cleared</p>
+          </div>
+        </div>
+        <div data-ui="card">
+          <div data-part="header">
+            <p data-part="description">Overdue</p>
+            <h3 data-part="title">$2,480.00</h3>
+          </div>
+          <div data-part="content">
+            <p data-ui="text" data-size="xs" data-tone="muted">One invoice, nine days late</p>
+          </div>
+        </div>
+        <div data-ui="card">
+          <div data-part="header">
+            <p data-part="description">Drafts</p>
+            <h3 data-part="title">3</h3>
+          </div>
+          <div data-part="content">
+            <p data-ui="text" data-size="xs" data-tone="muted">Ready to review and send</p>
+          </div>
+        </div>
+      </div>
+      <div data-ui="card">
+        <div data-part="header">
+          <div data-ui="stack" data-gap="xs">
+            <h3 data-part="title">Recent invoices</h3>
+            <p data-part="description">The last six sent from this studio.</p>
+          </div>
+          <div data-part="action"><button data-ui="button" data-variant="outline" data-size="sm">New invoice</button></div>
+        </div>
+        <div data-part="content">
+          <table data-ui="table">
+            <thead>
+              <tr><th scope="col">Invoice</th><th scope="col">Client</th><th scope="col">Status</th><th scope="col">Due</th><th scope="col" data-numeric="true">Amount</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>TB-1042</td><td>Northline Studio</td><td><span data-ui="badge" data-variant="outline">Paid</span></td><td>14 Mar</td><td data-numeric="true">$2,480.00</td></tr>
+              <tr><td>TB-1043</td><td>Field and Fern</td><td><span data-ui="badge" data-variant="secondary">Pending</span></td><td>20 Mar</td><td data-numeric="true">$940.00</td></tr>
+              <tr><td>TB-1044</td><td>Copper and Grain</td><td><span data-ui="badge" data-variant="destructive">Overdue</span></td><td>26 Feb</td><td data-numeric="true">$1,150.00</td></tr>
+              <tr><td>TB-1045</td><td>Harbour Press</td><td><span data-ui="badge" data-variant="outline">Paid</span></td><td>19 Mar</td><td data-numeric="true">$3,600.00</td></tr>
+              <tr><td>TB-1046</td><td>Leaf and Loom</td><td><span data-ui="badge" data-variant="secondary">Pending</span></td><td>31 Mar</td><td data-numeric="true">$720.00</td></tr>
+              <tr><td>TB-1047</td><td>Quiet Hours</td><td><span data-ui="badge" data-variant="outline">Paid</span></td><td>21 Mar</td><td data-numeric="true">$1,980.00</td></tr>
+              <tr><td>TB-1048</td><td>Copper and Grain</td><td><span data-ui="badge" data-variant="secondary">Pending</span></td><td>4 Apr</td><td data-numeric="true">$450.00</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

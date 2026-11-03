@@ -1,0 +1,701 @@
+{
+  "kitId": "shadcn-ui",
+  "name": "shadcn/ui",
+  "version": "1.0.0",
+  "contractVersion": "1.0",
+  "package": "shadcn/ui",
+  "compat": {
+    "themes": [
+      "slate",
+      "rose",
+      "blue"
+    ],
+    "migratesFrom": []
+  },
+  "components": [
+    {
+      "name": "Stack",
+      "ui": "stack",
+      "category": "Layout",
+      "description": "A flexbox that lays parts in one column or row with a consistent gap.",
+      "props": [
+        {
+          "name": "direction",
+          "label": "Direction",
+          "type": "choice",
+          "options": [
+            "column",
+            "row"
+          ],
+          "default": "column"
+        },
+        {
+          "name": "gap",
+          "label": "Gap",
+          "type": "choice",
+          "options": [
+            "md",
+            "none",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "align",
+          "label": "Align",
+          "type": "choice",
+          "options": [
+            "stretch",
+            "start",
+            "center",
+            "end"
+          ],
+          "default": "stretch"
+        },
+        {
+          "name": "justify",
+          "label": "Justify",
+          "type": "choice",
+          "options": [
+            "start",
+            "center",
+            "end",
+            "between"
+          ],
+          "default": "start"
+        },
+        {
+          "name": "wrap",
+          "label": "Wrap",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"md\">\n  <h3 data-ui=\"heading\" data-level=\"4\">Invoice TB-1042</h3>\n  <p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Northline Studio, due Thursday 12 March.</p>\n  <div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-align=\"center\">\n    <button data-ui=\"button\" data-size=\"sm\">Send reminder</button>\n    <button data-ui=\"button\" data-variant=\"outline\" data-size=\"sm\">Edit</button>\n  </div>\n</div>"
+    },
+    {
+      "name": "Grid",
+      "ui": "grid",
+      "category": "Layout",
+      "description": "A CSS grid for columns of equal parts, with gentle collapse on narrow screens.",
+      "props": [
+        {
+          "name": "columns",
+          "label": "Columns",
+          "type": "choice",
+          "options": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "6",
+            "12",
+            "auto"
+          ],
+          "default": "1"
+        },
+        {
+          "name": "gap",
+          "label": "Gap",
+          "type": "choice",
+          "options": [
+            "md",
+            "none",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "align",
+          "label": "Align",
+          "type": "choice",
+          "options": [
+            "stretch",
+            "start",
+            "center",
+            "end"
+          ],
+          "default": "stretch"
+        }
+      ],
+      "snippet": "<div data-ui=\"grid\" data-columns=\"3\" data-gap=\"md\">\n  <div data-ui=\"card\">\n    <div data-part=\"header\"><h3 data-ui=\"heading\" data-level=\"4\">Paid</h3></div>\n    <div data-part=\"content\"><p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Eight invoices cleared this month.</p></div>\n  </div>\n  <div data-ui=\"card\">\n    <div data-part=\"header\"><h3 data-ui=\"heading\" data-level=\"4\">Pending</h3></div>\n    <div data-part=\"content\"><p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Three sent, none viewed yet.</p></div>\n  </div>\n  <div data-ui=\"card\">\n    <div data-part=\"header\"><h3 data-ui=\"heading\" data-level=\"4\">Overdue</h3></div>\n    <div data-part=\"content\"><p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">One invoice is nine days late.</p></div>\n  </div>\n</div>"
+    },
+    {
+      "name": "Section",
+      "ui": "section",
+      "category": "Layout",
+      "description": "A full-width band with block padding and content held to a reading width.",
+      "props": [
+        {
+          "name": "padding",
+          "label": "Padding",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<section data-ui=\"section\" data-padding=\"md\">\n  <h2 data-ui=\"heading\" data-level=\"2\">Invoices that send themselves</h2>\n  <p data-ui=\"text\" data-tone=\"muted\">Schedule a reminder once and Tallybook chases the client on the due date, then again a week later if the balance is open.</p>\n</section>"
+    },
+    {
+      "name": "Heading",
+      "ui": "heading",
+      "category": "Layout",
+      "description": "A display or section heading at one of five sizes, with tight tracking.",
+      "props": [
+        {
+          "name": "level",
+          "label": "Level",
+          "type": "choice",
+          "options": [
+            "2",
+            "1",
+            "display",
+            "3",
+            "4"
+          ],
+          "default": "2"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\">\n  <h1 data-ui=\"heading\" data-level=\"display\">Get paid without the chase</h1>\n  <h1 data-ui=\"heading\" data-level=\"1\">Small studio invoicing</h1>\n  <h2 data-ui=\"heading\" data-level=\"2\">March invoices</h2>\n  <h3 data-ui=\"heading\" data-level=\"3\">Awaiting payment</h3>\n  <h4 data-ui=\"heading\" data-level=\"4\">Northline Studio</h4>\n</div>"
+    },
+    {
+      "name": "Text",
+      "ui": "text",
+      "category": "Layout",
+      "description": "Body copy at four sizes in a default or muted tone.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg",
+            "xs"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "tone",
+          "label": "Tone",
+          "type": "choice",
+          "options": [
+            "default",
+            "muted"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"xs\">\n  <p data-ui=\"text\" data-size=\"lg\">Send a branded invoice in under a minute.</p>\n  <p data-ui=\"text\" data-size=\"md\">Every studio gets a numbered invoice, a due date and a PDF the client can open on a phone.</p>\n  <p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Late fees apply after fourteen days unless you turn them off.</p>\n  <p data-ui=\"text\" data-size=\"xs\" data-tone=\"muted\">Figures in this view are estimates until the invoice is issued.</p>\n</div>"
+    },
+    {
+      "name": "Navbar",
+      "ui": "navbar",
+      "category": "Layout",
+      "description": "A bar for brand, links and actions, optionally pinned to the top of the page.",
+      "props": [
+        {
+          "name": "sticky",
+          "label": "Sticky",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<nav data-ui=\"navbar\" data-sticky=\"true\">\n  <div data-part=\"brand\"><a href=\"#\">Tallybook</a></div>\n  <div data-part=\"links\">\n    <a href=\"#\">Invoices</a>\n    <a href=\"#\">Clients</a>\n    <a href=\"#\">Reports</a>\n  </div>\n  <div data-part=\"actions\">\n    <button data-ui=\"button\" data-size=\"sm\">New invoice</button>\n  </div>\n</nav>"
+    },
+    {
+      "name": "Icon",
+      "ui": "icon",
+      "category": "Layout",
+      "description": "A wrapper for a hand-written inline SVG, sized to 16px in the current text colour.",
+      "props": [],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"md\" data-align=\"center\">\n  <span data-ui=\"icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z\"/><path d=\"M14 2v6h6\"/></svg></span>\n  <span data-ui=\"icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"/></svg></span>\n  <button data-ui=\"button\" data-variant=\"outline\" data-size=\"sm\">\n    <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 5v14\"/><path d=\"M5 12h14\"/></svg>\n    Add line item\n  </button>\n</div>"
+    },
+    {
+      "name": "Button",
+      "ui": "button",
+      "category": "Forms",
+      "description": "A button in six variants and four sizes, on a 14px label.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "default",
+            "destructive",
+            "outline",
+            "secondary",
+            "ghost",
+            "link"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "sm",
+            "lg",
+            "icon"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"md\">\n  <div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-align=\"center\" data-wrap=\"true\">\n    <button data-ui=\"button\">Send invoice</button>\n    <button data-ui=\"button\" data-variant=\"destructive\">Void invoice</button>\n    <button data-ui=\"button\" data-variant=\"outline\">Preview</button>\n    <button data-ui=\"button\" data-variant=\"secondary\">Save draft</button>\n    <button data-ui=\"button\" data-variant=\"ghost\">Cancel</button>\n    <button data-ui=\"button\" data-variant=\"link\">View history</button>\n  </div>\n  <div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-align=\"center\" data-wrap=\"true\">\n    <button data-ui=\"button\" data-size=\"sm\">Small</button>\n    <button data-ui=\"button\">Default</button>\n    <button data-ui=\"button\" data-size=\"lg\">Large</button>\n    <button data-ui=\"button\" data-size=\"icon\" aria-label=\"Add invoice\">\n      <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 5v14\"/><path d=\"M5 12h14\"/></svg>\n    </button>\n    <button data-ui=\"button\" disabled>Disabled</button>\n  </div>\n</div>"
+    },
+    {
+      "name": "Badge",
+      "ui": "badge",
+      "category": "Data display",
+      "description": "A short status label in four variants, in a medium weight at 12px.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "default",
+            "secondary",
+            "destructive",
+            "outline"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-align=\"center\" data-wrap=\"true\">\n  <span data-ui=\"badge\">Sent</span>\n  <span data-ui=\"badge\" data-variant=\"secondary\">Draft</span>\n  <span data-ui=\"badge\" data-variant=\"destructive\">Overdue</span>\n  <span data-ui=\"badge\" data-variant=\"outline\">Paid</span>\n</div>"
+    },
+    {
+      "name": "Card",
+      "ui": "card",
+      "category": "Layout",
+      "description": "A bordered panel with header, title, description, action, content and footer parts.",
+      "props": [],
+      "snippet": "<div data-ui=\"card\">\n  <div data-part=\"header\">\n    <div data-ui=\"stack\" data-gap=\"xs\">\n      <h3 data-part=\"title\">Invoice TB-1042</h3>\n      <p data-part=\"description\">Northline Studio, issued 12 February.</p>\n    </div>\n    <div data-part=\"action\"><span data-ui=\"badge\" data-variant=\"secondary\">Pending</span></div>\n  </div>\n  <div data-part=\"content\">\n    <p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Six line items for the spring catalogue, plus a fixed project fee.</p>\n  </div>\n  <div data-part=\"footer\">\n    <button data-ui=\"button\" data-size=\"sm\">View invoice</button>\n    <button data-ui=\"button\" data-size=\"sm\" data-variant=\"outline\">Send reminder</button>\n  </div>\n</div>"
+    },
+    {
+      "name": "Input",
+      "ui": "input",
+      "category": "Forms",
+      "description": "A single-line text field with three sizes and an invalid state.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "sm",
+            "lg"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "invalid",
+          "label": "Invalid",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"md\">\n  <div data-ui=\"field\">\n    <label data-part=\"label\" for=\"tb-invoice-number\">Invoice number</label>\n    <input data-ui=\"input\" id=\"tb-invoice-number\" type=\"text\" value=\"TB-1042\">\n    <p data-part=\"description\">Numbers increase automatically for each client.</p>\n  </div>\n  <div data-ui=\"field\">\n    <label data-part=\"label\" for=\"tb-client-email\">Client email</label>\n    <input data-ui=\"input\" id=\"tb-client-email\" type=\"email\" value=\"accounts@northline\" data-invalid=\"true\" aria-invalid=\"true\">\n    <p data-part=\"message\">Enter a full email address.</p>\n  </div>\n  <div data-ui=\"field\">\n    <label data-part=\"label\" for=\"tb-invoice-sm\">Search invoices</label>\n    <input data-ui=\"input\" data-size=\"sm\" id=\"tb-invoice-sm\" type=\"search\" placeholder=\"Client or number\">\n  </div>\n</div>"
+    },
+    {
+      "name": "Textarea",
+      "ui": "textarea",
+      "category": "Forms",
+      "description": "A multi-line text field that grows by row, with an invalid state.",
+      "props": [
+        {
+          "name": "invalid",
+          "label": "Invalid",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"md\">\n  <div data-ui=\"field\">\n    <label data-part=\"label\" for=\"tb-invoice-note\">Note on the invoice</label>\n    <textarea data-ui=\"textarea\" id=\"tb-invoice-note\" rows=\"3\">Thanks for the quick turnaround on the spring shoot. Payment is due within fourteen days.</textarea>\n    <p data-part=\"description\">Shown under the totals on the PDF.</p>\n  </div>\n  <div data-ui=\"field\">\n    <label data-part=\"label\" for=\"tb-invoice-terms\">Payment terms</label>\n    <textarea data-ui=\"textarea\" id=\"tb-invoice-terms\" rows=\"2\" data-invalid=\"true\" aria-invalid=\"true\">Fourteen</textarea>\n    <p data-part=\"message\">Terms must be a whole number of days.</p>\n  </div>\n</div>"
+    },
+    {
+      "name": "Label",
+      "ui": "label",
+      "category": "Forms",
+      "description": "A form label at 14px medium, in a tight line height.",
+      "props": [],
+      "snippet": "<div data-ui=\"field\">\n  <label data-ui=\"label\" for=\"tb-label-client\">Client name</label>\n  <input data-ui=\"input\" id=\"tb-label-client\" type=\"text\" value=\"Northline Studio\">\n  <p data-part=\"description\">This name appears at the top of the PDF.</p>\n</div>"
+    },
+    {
+      "name": "Field",
+      "ui": "field",
+      "category": "Forms",
+      "description": "A stack of label, control, description and error message for one input.",
+      "props": [],
+      "snippet": "<div data-ui=\"field\">\n  <label data-part=\"label\" for=\"tb-field-email\">Billing email</label>\n  <input data-ui=\"input\" id=\"tb-field-email\" type=\"email\" value=\"sam@tallybook\" data-invalid=\"true\" aria-invalid=\"true\">\n  <p data-part=\"description\">Reminders and receipts go to this address.</p>\n  <p data-part=\"message\">Enter a full email address.</p>\n</div>"
+    },
+    {
+      "name": "Select",
+      "ui": "select",
+      "category": "Forms",
+      "description": "A native select styled to match the other fields, with two sizes.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "sm"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"field\">\n  <label data-part=\"label\" for=\"tb-select-currency\">Currency</label>\n  <select data-ui=\"select\" id=\"tb-select-currency\">\n    <option selected>US dollar</option>\n    <option>Pound sterling</option>\n    <option>Euro</option>\n    <option>Canadian dollar</option>\n  </select>\n  <p data-part=\"description\">New invoices use this currency.</p>\n</div>"
+    },
+    {
+      "name": "Checkbox",
+      "ui": "checkbox",
+      "category": "Forms",
+      "description": "A square checkbox with a drawn tick, sized to 16px.",
+      "props": [],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\">\n  <label data-ui=\"checkbox\" for=\"tb-check-reminder\">\n    <input type=\"checkbox\" id=\"tb-check-reminder\" checked>\n    <span>Send a reminder on the due date</span>\n  </label>\n  <label data-ui=\"checkbox\" for=\"tb-check-late\">\n    <input type=\"checkbox\" id=\"tb-check-late\">\n    <span>Add a 2 percent late fee after fourteen days</span>\n  </label>\n</div>"
+    },
+    {
+      "name": "Radio group",
+      "ui": "radio-group",
+      "category": "Forms",
+      "description": "A group of labelled radio buttons for choosing one option.",
+      "props": [],
+      "snippet": "<div data-ui=\"radio-group\" role=\"radiogroup\" aria-label=\"Invoice schedule\">\n  <span data-ui=\"label\">Invoice schedule</span>\n  <label for=\"tb-radio-weekly\">\n    <input type=\"radio\" name=\"tb-schedule\" id=\"tb-radio-weekly\" value=\"weekly\" checked>\n    <span>Weekly on Monday</span>\n  </label>\n  <label for=\"tb-radio-monthly\">\n    <input type=\"radio\" name=\"tb-schedule\" id=\"tb-radio-monthly\" value=\"monthly\">\n    <span>Monthly on the first</span>\n  </label>\n  <label for=\"tb-radio-manual\">\n    <input type=\"radio\" name=\"tb-schedule\" id=\"tb-radio-manual\" value=\"manual\">\n    <span>Only when I send it</span>\n  </label>\n</div>"
+    },
+    {
+      "name": "Switch",
+      "ui": "switch",
+      "category": "Forms",
+      "description": "A sliding toggle for a setting that applies at once.",
+      "props": [],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\">\n  <label data-ui=\"switch\" for=\"tb-switch-auto\">\n    <input type=\"checkbox\" role=\"switch\" id=\"tb-switch-auto\" checked>\n    <span>Send invoices automatically</span>\n  </label>\n  <label data-ui=\"switch\" for=\"tb-switch-vat\">\n    <input type=\"checkbox\" role=\"switch\" id=\"tb-switch-vat\">\n    <span>Show tax as a separate line</span>\n  </label>\n</div>"
+    },
+    {
+      "name": "Slider",
+      "ui": "slider",
+      "category": "Forms",
+      "description": "A range control with a filled track and a single round thumb.",
+      "props": [],
+      "snippet": "<div data-ui=\"field\">\n  <label data-ui=\"label\" for=\"tb-slider-days\">Reminder on day</label>\n  <input data-ui=\"slider\" id=\"tb-slider-days\" type=\"range\" min=\"1\" max=\"30\" value=\"14\" style=\"--value:45%\">\n  <p data-part=\"description\">Two weeks after the invoice is sent.</p>\n</div>"
+    },
+    {
+      "name": "Toggle",
+      "ui": "toggle",
+      "category": "Forms",
+      "description": "A two-state button that stays pressed until clicked again.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "default",
+            "outline"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "sm",
+            "lg"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-align=\"center\" data-wrap=\"true\">\n  <button data-ui=\"toggle\" aria-pressed=\"true\">\n    <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6 3v18\"/><path d=\"M6 8h11l-2 4 2 4H6\"/></svg>\n    Flagged\n  </button>\n  <button data-ui=\"toggle\" data-variant=\"outline\" aria-pressed=\"false\">\n    <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 2v10\"/><path d=\"M18.4 6a9 9 0 1 1-12.8 0\"/></svg>\n    Reminders on\n  </button>\n  <button data-ui=\"toggle\" data-size=\"sm\" aria-pressed=\"false\">Small</button>\n  <button data-ui=\"toggle\" data-size=\"lg\" aria-pressed=\"false\">Large</button>\n</div>"
+    },
+    {
+      "name": "Toggle group",
+      "ui": "toggle-group",
+      "category": "Forms",
+      "description": "A row of joined toggles that share one border and radius.",
+      "props": [],
+      "snippet": "<div data-ui=\"toggle-group\" data-variant=\"outline\" role=\"group\" aria-label=\"Invoice list density\">\n  <button data-ui=\"toggle\" data-variant=\"outline\" aria-pressed=\"true\">\n    <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 6h13\"/><path d=\"M8 12h13\"/><path d=\"M8 18h13\"/><path d=\"M3 6h.01\"/><path d=\"M3 12h.01\"/><path d=\"M3 18h.01\"/></svg>\n    List\n  </button>\n  <button data-ui=\"toggle\" data-variant=\"outline\" aria-pressed=\"false\">\n    <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\"/></svg>\n    Grid\n  </button>\n</div>"
+    },
+    {
+      "name": "Tabs",
+      "ui": "tabs",
+      "category": "Navigation",
+      "description": "A row of tabs over their panels, switched by keyboard or click.",
+      "props": [],
+      "snippet": "<div data-ui=\"tabs\">\n  <div data-part=\"list\" role=\"tablist\" aria-label=\"Invoice views\">\n    <button role=\"tab\" id=\"tb-tab-all\" aria-controls=\"tb-panel-all\" aria-selected=\"true\" tabindex=\"0\">All</button>\n    <button role=\"tab\" id=\"tb-tab-open\" aria-controls=\"tb-panel-open\" aria-selected=\"false\" tabindex=\"-1\">Open</button>\n    <button role=\"tab\" id=\"tb-tab-paid\" aria-controls=\"tb-panel-paid\" aria-selected=\"false\" tabindex=\"-1\">Paid</button>\n  </div>\n  <div role=\"tabpanel\" id=\"tb-panel-all\" aria-labelledby=\"tb-tab-all\">\n    <p data-ui=\"text\" data-size=\"sm\">Twelve invoices this quarter, worth $18,420.00.</p>\n  </div>\n  <div role=\"tabpanel\" id=\"tb-panel-open\" aria-labelledby=\"tb-tab-open\" hidden>\n    <p data-ui=\"text\" data-size=\"sm\">Four are open: two pending and two overdue.</p>\n  </div>\n  <div role=\"tabpanel\" id=\"tb-panel-paid\" aria-labelledby=\"tb-tab-paid\" hidden>\n    <p data-ui=\"text\" data-size=\"sm\">Eight were paid, the latest on 28 February.</p>\n  </div>\n</div>"
+    },
+    {
+      "name": "Accordion",
+      "ui": "accordion",
+      "category": "Disclosure",
+      "description": "Stacked sections on native details and summary, separated by hairlines.",
+      "props": [],
+      "snippet": "<div data-ui=\"accordion\">\n  <details data-part=\"item\" name=\"tb-accordion\" open>\n    <summary>When is an invoice marked overdue?</summary>\n    <div data-part=\"content\">On the first day after the due date. Tallybook then sends one reminder and adds the invoice to your open balance.</div>\n  </details>\n  <details data-part=\"item\" name=\"tb-accordion\">\n    <summary>Can a client pay by card?</summary>\n    <div data-part=\"content\">Yes. Turn on card payments for a client and the PDF shows a link that takes them to a hosted checkout.</div>\n  </details>\n  <details data-part=\"item\" name=\"tb-accordion\">\n    <summary>How do I correct a sent invoice?</summary>\n    <div data-part=\"content\">Void it and issue a replacement. Voided invoices stay in the list with a strikethrough total.</div>\n  </details>\n</div>"
+    },
+    {
+      "name": "Alert",
+      "ui": "alert",
+      "category": "Feedback",
+      "description": "An inline message with a title and description, in two variants.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "default",
+            "destructive"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"md\">\n  <div data-ui=\"alert\" role=\"status\">\n    <div data-ui=\"stack\" data-gap=\"xs\">\n      <p data-part=\"title\">Three reminders are queued</p>\n      <p data-part=\"description\">They go out tomorrow at 09:00 for the Northline, Field and Copper invoices.</p>\n    </div>\n  </div>\n  <div data-ui=\"alert\" data-variant=\"destructive\" role=\"alert\">\n    <div data-ui=\"stack\" data-gap=\"xs\">\n      <p data-part=\"title\">Card payment failed</p>\n      <p data-part=\"description\">The card on file for Copper and Grain was declined. Update it before the next run.</p>\n    </div>\n  </div>\n</div>"
+    },
+    {
+      "name": "Alert dialog",
+      "ui": "alert-dialog",
+      "category": "Overlay",
+      "description": "A modal that asks for a decision, with a cancel and a confirm action.",
+      "props": [],
+      "snippet": "<button data-ui=\"button\" data-variant=\"destructive\" data-dialog-open=\"tb-void-dialog\">Void invoice</button>\n<dialog data-ui=\"alert-dialog\" id=\"tb-void-dialog\">\n  <div data-part=\"header\">\n    <h2 data-part=\"title\">Void invoice TB-1042?</h2>\n    <p data-part=\"description\">The client will see it marked as void, and the $2,480.00 leaves your open balance.</p>\n  </div>\n  <div data-part=\"footer\">\n    <button data-ui=\"button\" data-variant=\"outline\" data-dialog-close>Cancel</button>\n    <button data-ui=\"button\" data-variant=\"destructive\">Void invoice</button>\n  </div>\n</dialog>"
+    },
+    {
+      "name": "Dialog",
+      "ui": "dialog",
+      "category": "Overlay",
+      "description": "A centred modal on the native dialog element, with header, content and footer.",
+      "props": [],
+      "snippet": "<button data-ui=\"button\" data-dialog-open=\"tb-dialog\">New invoice</button>\n<dialog data-ui=\"dialog\" id=\"tb-dialog\">\n  <div data-part=\"header\">\n    <h2 data-part=\"title\">New invoice</h2>\n    <p data-part=\"description\">Start from a blank invoice or copy the last one for this client.</p>\n  </div>\n  <div data-part=\"content\">\n    <div data-ui=\"field\">\n      <label data-part=\"label\" for=\"tb-dialog-client\">Client</label>\n      <input data-ui=\"input\" id=\"tb-dialog-client\" type=\"text\" value=\"Northline Studio\">\n    </div>\n  </div>\n  <div data-part=\"footer\">\n    <button data-ui=\"button\" data-variant=\"outline\" data-dialog-close>Cancel</button>\n    <button data-ui=\"button\">Create invoice</button>\n  </div>\n</dialog>"
+    },
+    {
+      "name": "Sheet",
+      "ui": "sheet",
+      "category": "Overlay",
+      "description": "A panel that slides in from a page edge, for side detail or filters.",
+      "props": [
+        {
+          "name": "side",
+          "label": "Side",
+          "type": "choice",
+          "options": [
+            "right",
+            "left",
+            "top",
+            "bottom"
+          ],
+          "default": "right"
+        }
+      ],
+      "snippet": "<button data-ui=\"button\" data-variant=\"outline\" data-dialog-open=\"tb-sheet\">Invoice details</button>\n<dialog data-ui=\"sheet\" id=\"tb-sheet\">\n  <div data-part=\"header\">\n    <h2 data-part=\"title\">TB-1042</h2>\n    <p data-part=\"description\">Northline Studio, sent 12 February.</p>\n  </div>\n  <div data-part=\"content\">\n    <div data-ui=\"stack\" data-gap=\"sm\">\n      <p data-ui=\"text\" data-size=\"sm\">Spring catalogue shoot</p>\n      <p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Three days on location, forty edited frames.</p>\n    </div>\n  </div>\n  <div data-part=\"footer\">\n    <button data-ui=\"button\" data-variant=\"outline\" data-dialog-close>Close</button>\n    <button data-ui=\"button\">Send reminder</button>\n  </div>\n</dialog>"
+    },
+    {
+      "name": "Dropdown menu",
+      "ui": "dropdown-menu",
+      "category": "Overlay",
+      "description": "A small menu of actions opened by a trigger, using the native popover.",
+      "props": [],
+      "snippet": "<button data-ui=\"button\" data-variant=\"outline\" popovertarget=\"tb-menu\" style=\"anchor-name:--tb-menu-anchor\">\n  <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"5\" r=\"1\"/><circle cx=\"12\" cy=\"12\" r=\"1\"/><circle cx=\"12\" cy=\"19\" r=\"1\"/></svg>\n  Actions\n</button>\n<div data-ui=\"dropdown-menu\" popover id=\"tb-menu\" style=\"position-anchor:--tb-menu-anchor\">\n  <div data-part=\"label\">Invoice TB-1042</div>\n  <button data-part=\"item\">View invoice</button>\n  <button data-part=\"item\">Send reminder <span data-part=\"shortcut\">R</span></button>\n  <button data-part=\"item\">Download PDF <span data-part=\"shortcut\">D</span></button>\n  <div data-part=\"separator\" role=\"separator\"></div>\n  <button data-part=\"item\" data-tone=\"danger\">Void invoice</button>\n</div>"
+    },
+    {
+      "name": "Popover",
+      "ui": "popover",
+      "category": "Overlay",
+      "description": "A small panel anchored to its trigger, using the native popover.",
+      "props": [],
+      "snippet": "<button data-ui=\"button\" data-variant=\"outline\" popovertarget=\"tb-popover\" style=\"anchor-name:--tb-popover-anchor\">Filter invoices</button>\n<div data-ui=\"popover\" popover id=\"tb-popover\" style=\"position-anchor:--tb-popover-anchor\">\n  <div data-ui=\"stack\" data-gap=\"md\">\n    <h3 data-ui=\"heading\" data-level=\"4\">Due date</h3>\n    <label data-ui=\"checkbox\" for=\"tb-pop-pending\">\n      <input type=\"checkbox\" id=\"tb-pop-pending\" checked>\n      <span>Shows as pending</span>\n    </label>\n    <label data-ui=\"checkbox\" for=\"tb-pop-overdue\">\n      <input type=\"checkbox\" id=\"tb-pop-overdue\" checked>\n      <span>Shows as overdue</span>\n    </label>\n    <button data-ui=\"button\" data-size=\"sm\">Apply filter</button>\n  </div>\n</div>"
+    },
+    {
+      "name": "Tooltip",
+      "ui": "tooltip",
+      "category": "Overlay",
+      "description": "A short hint shown above a trigger on hover or keyboard focus.",
+      "props": [],
+      "snippet": "<span data-ui=\"tooltip\">\n  <button data-ui=\"button\" data-variant=\"ghost\" data-size=\"icon\" aria-label=\"Copy invoice number\">\n    <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"9\" y=\"9\" width=\"13\" height=\"13\" rx=\"2\"/><path d=\"M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1\"/></svg>\n  </button>\n  <span data-part=\"content\" role=\"tooltip\">Copy invoice number</span>\n</span>"
+    },
+    {
+      "name": "Avatar",
+      "ui": "avatar",
+      "category": "Data display",
+      "description": "A round portrait from an image or initials, in three sizes.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "sm",
+            "lg"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"md\" data-align=\"center\">\n  <span data-ui=\"avatar\" data-size=\"sm\"><span data-part=\"fallback\">PR</span></span>\n  <span data-ui=\"avatar\"><span data-part=\"fallback\">JL</span></span>\n  <span data-ui=\"avatar\" data-size=\"lg\"><span data-part=\"fallback\">MS</span></span>\n</div>"
+    },
+    {
+      "name": "Table",
+      "ui": "table",
+      "category": "Data display",
+      "description": "A table with hairline rows, a medium header and right aligned figures.",
+      "props": [],
+      "snippet": "<table data-ui=\"table\">\n  <caption>Invoices issued in February</caption>\n  <thead>\n    <tr><th scope=\"col\">Invoice</th><th scope=\"col\">Client</th><th scope=\"col\">Status</th><th scope=\"col\" data-numeric=\"true\">Amount</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>TB-1042</td><td>Northline Studio</td><td><span data-ui=\"badge\" data-variant=\"outline\">Paid</span></td><td data-numeric=\"true\">$2,480.00</td></tr>\n    <tr><td>TB-1043</td><td>Field and Fern</td><td><span data-ui=\"badge\" data-variant=\"secondary\">Pending</span></td><td data-numeric=\"true\">$940.00</td></tr>\n    <tr><td>TB-1044</td><td>Copper and Grain</td><td><span data-ui=\"badge\" data-variant=\"destructive\">Overdue</span></td><td data-numeric=\"true\">$1,150.00</td></tr>\n  </tbody>\n</table>"
+    },
+    {
+      "name": "Separator",
+      "ui": "separator",
+      "category": "Layout",
+      "description": "A single hairline rule, horizontal or vertical.",
+      "props": [
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"md\">\n  <p data-ui=\"text\" data-size=\"sm\">Sent by Priya on 12 February.</p>\n  <hr data-ui=\"separator\">\n  <div data-ui=\"stack\" data-direction=\"row\" data-gap=\"md\" data-align=\"center\">\n    <span data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">$2,480.00</span>\n    <hr data-ui=\"separator\" data-orientation=\"vertical\">\n    <span data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Due 26 February</span>\n  </div>\n</div>"
+    },
+    {
+      "name": "Skeleton",
+      "ui": "skeleton",
+      "category": "Feedback",
+      "description": "A grey placeholder block with a slow pulse while data loads.",
+      "props": [],
+      "snippet": "<div data-ui=\"card\">\n  <div data-part=\"header\">\n    <div data-ui=\"stack\" data-gap=\"sm\">\n      <div data-ui=\"skeleton\" style=\"width: 40%; height: 16px\"></div>\n      <div data-ui=\"skeleton\" style=\"width: 64%; height: 12px\"></div>\n    </div>\n  </div>\n  <div data-part=\"content\">\n    <div data-ui=\"stack\" data-gap=\"sm\">\n      <div data-ui=\"skeleton\" style=\"width: 100%; height: 12px\"></div>\n      <div data-ui=\"skeleton\" style=\"width: 80%; height: 12px\"></div>\n    </div>\n  </div>\n</div>"
+    },
+    {
+      "name": "Progress",
+      "ui": "progress",
+      "category": "Feedback",
+      "description": "A bar that shows how far a job has got, filled to its value.",
+      "props": [],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\">\n  <div data-ui=\"stack\" data-direction=\"row\" data-justify=\"between\" data-align=\"center\">\n    <span data-ui=\"text\" data-size=\"sm\">February invoiced</span>\n    <span data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">$9,240 of $15,000</span>\n  </div>\n  <div data-ui=\"progress\" role=\"progressbar\" aria-label=\"February invoiced\" aria-valuenow=\"62\" aria-valuemin=\"0\" aria-valuemax=\"100\" style=\"--value:62%\"></div>\n</div>"
+    },
+    {
+      "name": "Breadcrumb",
+      "ui": "breadcrumb",
+      "category": "Navigation",
+      "description": "A trail of links back to the current page, joined by small chevrons.",
+      "props": [],
+      "snippet": "<nav data-ui=\"breadcrumb\" aria-label=\"Breadcrumb\">\n  <ol>\n    <li><a href=\"#\">Invoices</a></li>\n    <li><a href=\"#\">February</a></li>\n    <li><span aria-current=\"page\">TB-1042</span></li>\n  </ol>\n</nav>"
+    },
+    {
+      "name": "Pagination",
+      "ui": "pagination",
+      "category": "Navigation",
+      "description": "Page numbers with previous and next controls, the current page marked.",
+      "props": [],
+      "snippet": "<nav data-ui=\"pagination\" aria-label=\"Invoice pages\">\n  <button data-ui=\"button\" data-variant=\"ghost\" aria-label=\"Previous page\">\n    <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m15 18-6-6 6-6\"/></svg>\n    Previous\n  </button>\n  <button data-ui=\"button\" data-variant=\"ghost\" aria-current=\"page\">1</button>\n  <button data-ui=\"button\" data-variant=\"ghost\">2</button>\n  <button data-ui=\"button\" data-variant=\"ghost\">3</button>\n  <button data-ui=\"button\" data-variant=\"ghost\">\n    Next\n    <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m9 18 6-6-6-6\"/></svg>\n  </button>\n</nav>"
+    },
+    {
+      "name": "Kbd",
+      "ui": "kbd",
+      "category": "Data display",
+      "description": "A small key cap for showing a keyboard shortcut.",
+      "props": [],
+      "snippet": "<p data-ui=\"text\" data-size=\"sm\">Press <kbd data-ui=\"kbd\">N</kbd> for a new invoice, <kbd data-ui=\"kbd\">K</kbd> to search, or <kbd data-ui=\"kbd\">⌘</kbd><kbd data-ui=\"kbd\">S</kbd> to send it.</p>"
+    },
+    {
+      "name": "Scroll area",
+      "ui": "scroll-area",
+      "category": "Layout",
+      "description": "A box that scrolls its content with a thin, quiet scrollbar.",
+      "props": [],
+      "snippet": "<div data-ui=\"scroll-area\" style=\"height: 160px\" tabindex=\"0\">\n  <div data-ui=\"stack\" data-gap=\"sm\">\n    <p data-ui=\"text\" data-size=\"sm\">TB-1042 Northline Studio, $2,480.00, paid 14 February.</p>\n    <p data-ui=\"text\" data-size=\"sm\">TB-1043 Field and Fern, $940.00, pending.</p>\n    <p data-ui=\"text\" data-size=\"sm\">TB-1044 Copper and Grain, $1,150.00, overdue by nine days.</p>\n    <p data-ui=\"text\" data-size=\"sm\">TB-1045 Harbour Press, $3,600.00, paid 19 February.</p>\n    <p data-ui=\"text\" data-size=\"sm\">TB-1046 Leaf and Loom, $720.00, pending.</p>\n    <p data-ui=\"text\" data-size=\"sm\">TB-1047 Quiet Hours, $1,980.00, paid 21 February.</p>\n    <p data-ui=\"text\" data-size=\"sm\">TB-1048 Northline Studio, $640.00, pending.</p>\n  </div>\n</div>"
+    },
+    {
+      "name": "Aspect ratio",
+      "ui": "aspect-ratio",
+      "category": "Layout",
+      "description": "A box that keeps a fixed shape, with its content cropped inside.",
+      "props": [
+        {
+          "name": "ratio",
+          "label": "Ratio",
+          "type": "choice",
+          "options": [
+            "16-9",
+            "1-1",
+            "4-3",
+            "21-9"
+          ],
+          "default": "16-9"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\">\n  <div data-ui=\"aspect-ratio\" data-ratio=\"16-9\" style=\"background: var(--color-surface-2); border: 1px solid var(--color-border)\"></div>\n  <p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Brand image on the invoice, 16 by 9.</p>\n  <div data-ui=\"aspect-ratio\" data-ratio=\"1-1\" style=\"background: var(--color-surface-2); border: 1px solid var(--color-border); max-width: 120px\"></div>\n  <p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Square thumbnail for the client list.</p>\n</div>"
+    },
+    {
+      "name": "Empty",
+      "ui": "empty",
+      "category": "Feedback",
+      "description": "A centred placeholder for a list or panel with nothing in it yet.",
+      "props": [],
+      "snippet": "<div data-ui=\"empty\">\n  <div data-part=\"icon\" aria-hidden=\"true\">\n    <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z\"/><path d=\"M14 2v6h6\"/></svg>\n  </div>\n  <p data-part=\"title\">No invoices yet</p>\n  <p data-part=\"description\">Send your first invoice and it will show up here with its status and due date.</p>\n  <div data-part=\"actions\"><button data-ui=\"button\">New invoice</button></div>\n</div>"
+    },
+    {
+      "name": "Hero",
+      "ui": "hero",
+      "kind": "composition",
+      "category": "Blocks",
+      "description": "A page opener with a badge, a display headline, a lead and two actions.",
+      "props": [],
+      "snippet": "<section data-ui=\"hero\" data-block=\"blocks/hero.html\"></section>"
+    },
+    {
+      "name": "Feature grid",
+      "ui": "feature-grid",
+      "kind": "composition",
+      "category": "Blocks",
+      "description": "Six feature cards with icons under a short heading and lead.",
+      "props": [],
+      "snippet": "<section data-ui=\"feature-grid\" data-block=\"blocks/feature-grid.html\"></section>"
+    },
+    {
+      "name": "Pricing",
+      "ui": "pricing",
+      "kind": "composition",
+      "category": "Blocks",
+      "description": "Three plan cards with prices, feature lists and one action each.",
+      "props": [],
+      "snippet": "<section data-ui=\"pricing\" data-block=\"blocks/pricing.html\"></section>"
+    },
+    {
+      "name": "Login",
+      "ui": "login",
+      "kind": "composition",
+      "category": "Blocks",
+      "description": "A centred sign-in card with email, password and a second provider.",
+      "props": [],
+      "snippet": "<section data-ui=\"login\" data-block=\"blocks/login.html\"></section>"
+    },
+    {
+      "name": "Dashboard",
+      "ui": "dashboard",
+      "kind": "composition",
+      "category": "Blocks",
+      "description": "A sidebar and main shell with a top bar, a stat row and a recent table.",
+      "props": [],
+      "snippet": "<section data-ui=\"dashboard\" data-block=\"blocks/dashboard.html\"></section>"
+    }
+  ]
+}
