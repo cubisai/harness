@@ -6,9 +6,17 @@
   "package": "shadcn/ui",
   "compat": {
     "themes": [
-      "slate",
+      "zinc",
+      "stone",
+      "mauve",
+      "olive",
+      "mist",
+      "taupe",
+      "blue",
       "rose",
-      "blue"
+      "green",
+      "violet",
+      "orange"
     ],
     "migratesFrom": []
   },
@@ -74,13 +82,13 @@
           "default": false
         }
       ],
-      "snippet": "<div data-ui=\"stack\" data-gap=\"md\">\n  <h3 data-ui=\"heading\" data-level=\"4\">Invoice TB-1042</h3>\n  <p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Northline Studio, due Thursday 12 March.</p>\n  <div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-align=\"center\">\n    <button data-ui=\"button\" data-size=\"sm\">Send reminder</button>\n    <button data-ui=\"button\" data-variant=\"outline\" data-size=\"sm\">Edit</button>\n  </div>\n</div>"
+      "snippet": "<div data-ui=\"stack\" data-gap=\"md\">\n<h3 data-ui=\"heading\" data-level=\"4\">Invoice TB-1042</h3>\n<p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Northline Studio, due Thursday 12 March.</p>\n<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-align=\"center\">\n<button data-ui=\"button\" data-size=\"sm\">Send reminder</button>\n<button data-ui=\"button\" data-variant=\"outline\" data-size=\"sm\">Edit</button>\n</div>\n</div>"
     },
     {
       "name": "Grid",
       "ui": "grid",
       "category": "Layout",
-      "description": "A CSS grid for columns of equal parts, with gentle collapse on narrow screens.",
+      "description": "A CSS grid for columns of equal parts, collapsing gently on narrow screens.",
       "props": [
         {
           "name": "columns",
@@ -124,13 +132,13 @@
           "default": "stretch"
         }
       ],
-      "snippet": "<div data-ui=\"grid\" data-columns=\"3\" data-gap=\"md\">\n  <div data-ui=\"card\">\n    <div data-part=\"header\"><h3 data-ui=\"heading\" data-level=\"4\">Paid</h3></div>\n    <div data-part=\"content\"><p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Eight invoices cleared this month.</p></div>\n  </div>\n  <div data-ui=\"card\">\n    <div data-part=\"header\"><h3 data-ui=\"heading\" data-level=\"4\">Pending</h3></div>\n    <div data-part=\"content\"><p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Three sent, none viewed yet.</p></div>\n  </div>\n  <div data-ui=\"card\">\n    <div data-part=\"header\"><h3 data-ui=\"heading\" data-level=\"4\">Overdue</h3></div>\n    <div data-part=\"content\"><p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">One invoice is nine days late.</p></div>\n  </div>\n</div>"
+      "snippet": "<div data-ui=\"grid\" data-columns=\"3\" data-gap=\"md\">\n<div data-ui=\"card\" data-size=\"sm\"><div data-part=\"content\">Drafts</div></div>\n<div data-ui=\"card\" data-size=\"sm\"><div data-part=\"content\">Sent</div></div>\n<div data-ui=\"card\" data-size=\"sm\"><div data-part=\"content\">Paid</div></div>\n</div>"
     },
     {
       "name": "Section",
       "ui": "section",
       "category": "Layout",
-      "description": "A full-width band with block padding and content held to a reading width.",
+      "description": "A page band with vertical padding and a centred content width.",
       "props": [
         {
           "name": "padding",
@@ -144,13 +152,13 @@
           "default": "md"
         }
       ],
-      "snippet": "<section data-ui=\"section\" data-padding=\"md\">\n  <h2 data-ui=\"heading\" data-level=\"2\">Invoices that send themselves</h2>\n  <p data-ui=\"text\" data-tone=\"muted\">Schedule a reminder once and Tallybook chases the client on the due date, then again a week later if the balance is open.</p>\n</section>"
+      "snippet": "<section data-ui=\"section\" data-padding=\"sm\"><div data-part=\"inner\"><h2 data-ui=\"heading\" data-level=\"3\">Recent invoices</h2></div></section>"
     },
     {
       "name": "Heading",
       "ui": "heading",
-      "category": "Layout",
-      "description": "A display or section heading at one of five sizes, with tight tracking.",
+      "category": "Type",
+      "description": "Page and section titles, on the library's typography scale.",
       "props": [
         {
           "name": "level",
@@ -166,13 +174,13 @@
           "default": "2"
         }
       ],
-      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\">\n  <h1 data-ui=\"heading\" data-level=\"display\">Get paid without the chase</h1>\n  <h1 data-ui=\"heading\" data-level=\"1\">Small studio invoicing</h1>\n  <h2 data-ui=\"heading\" data-level=\"2\">March invoices</h2>\n  <h3 data-ui=\"heading\" data-level=\"3\">Awaiting payment</h3>\n  <h4 data-ui=\"heading\" data-level=\"4\">Northline Studio</h4>\n</div>"
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\">\n<h1 data-ui=\"heading\" data-level=\"1\">Taxing Laughter</h1>\n<h2 data-ui=\"heading\">The People of the Kingdom</h2>\n<h3 data-ui=\"heading\" data-level=\"3\">The Joke Tax</h3>\n<h4 data-ui=\"heading\" data-level=\"4\">People stopped telling jokes</h4>\n</div>"
     },
     {
       "name": "Text",
       "ui": "text",
-      "category": "Layout",
-      "description": "Body copy at four sizes in a default or muted tone.",
+      "category": "Type",
+      "description": "Body copy, with a muted tone for secondary lines.",
       "props": [
         {
           "name": "size",
@@ -197,13 +205,36 @@
           "default": "default"
         }
       ],
-      "snippet": "<div data-ui=\"stack\" data-gap=\"xs\">\n  <p data-ui=\"text\" data-size=\"lg\">Send a branded invoice in under a minute.</p>\n  <p data-ui=\"text\" data-size=\"md\">Every studio gets a numbered invoice, a due date and a PDF the client can open on a phone.</p>\n  <p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Late fees apply after fourteen days unless you turn them off.</p>\n  <p data-ui=\"text\" data-size=\"xs\" data-tone=\"muted\">Figures in this view are estimates until the invoice is issued.</p>\n</div>"
+      "snippet": "<div data-ui=\"stack\" data-gap=\"xs\">\n<p data-ui=\"text\">The king thought long and hard, and finally came up with a brilliant plan.</p>\n<p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Enter your email address.</p>\n</div>"
+    },
+    {
+      "name": "Typography",
+      "ui": "typography",
+      "category": "Type",
+      "description": "Long-form text: lead, blockquote, list, inline code, large and small.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "lead",
+            "blockquote",
+            "list",
+            "code",
+            "large",
+            "small"
+          ],
+          "default": "lead"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\">\n<p data-ui=\"typography\">A modal dialog that interrupts the user with important content.</p>\n<blockquote data-ui=\"typography\" data-variant=\"blockquote\">After all, everyone enjoys a good joke, so it's only fair that they should pay for it.</blockquote>\n<ul data-ui=\"typography\" data-variant=\"list\"><li>1st level of puns: 5 gold coins</li><li>2nd level of jokes: 10 gold coins</li></ul>\n<p data-ui=\"text\" data-size=\"sm\">Run <code data-ui=\"typography\" data-variant=\"code\">bun add tallybook</code> first.</p>\n<div data-ui=\"typography\" data-variant=\"large\">Are you absolutely sure?</div>\n<small data-ui=\"typography\" data-variant=\"small\">Email address</small>\n</div>"
     },
     {
       "name": "Navbar",
       "ui": "navbar",
       "category": "Layout",
-      "description": "A bar for brand, links and actions, optionally pinned to the top of the page.",
+      "description": "A site header: brand, links and actions in one 56px row.",
       "props": [
         {
           "name": "sticky",
@@ -212,247 +243,51 @@
           "default": false
         }
       ],
-      "snippet": "<nav data-ui=\"navbar\" data-sticky=\"true\">\n  <div data-part=\"brand\"><a href=\"#\">Tallybook</a></div>\n  <div data-part=\"links\">\n    <a href=\"#\">Invoices</a>\n    <a href=\"#\">Clients</a>\n    <a href=\"#\">Reports</a>\n  </div>\n  <div data-part=\"actions\">\n    <button data-ui=\"button\" data-size=\"sm\">New invoice</button>\n  </div>\n</nav>"
+      "snippet": "<header data-ui=\"navbar\">\n<a data-part=\"brand\" href=\"#\"><i data-ui=\"icon\" data-name=\"sparkles\"></i>Tallybook</a>\n<nav data-part=\"links\"><a data-part=\"link\" href=\"#\" aria-current=\"page\">Invoices</a><a data-part=\"link\" href=\"#\">Clients</a><a data-part=\"link\" href=\"#\">Reports</a></nav>\n<div data-part=\"actions\"><button data-ui=\"button\" data-variant=\"outline\" data-size=\"sm\">Sign in</button><button data-ui=\"button\" data-size=\"sm\">New invoice</button></div>\n</header>"
     },
     {
       "name": "Icon",
       "ui": "icon",
-      "category": "Layout",
-      "description": "A wrapper for a hand-written inline SVG, sized to 16px in the current text colour.",
-      "props": [],
-      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"md\" data-align=\"center\">\n  <span data-ui=\"icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z\"/><path d=\"M14 2v6h6\"/></svg></span>\n  <span data-ui=\"icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"/></svg></span>\n  <button data-ui=\"button\" data-variant=\"outline\" data-size=\"sm\">\n    <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 5v14\"/><path d=\"M5 12h14\"/></svg>\n    Add line item\n  </button>\n</div>"
-    },
-    {
-      "name": "Button",
-      "ui": "button",
-      "category": "Forms",
-      "description": "A button in six variants and four sizes, on a 14px label.",
+      "category": "Type",
+      "description": "A line icon drawn in currentColor. Set data-name: search, plus, check, x, calendar, user, settings, mail, file, trash and more (see DESIGN.md).",
       "props": [
         {
-          "name": "variant",
-          "label": "Variant",
-          "type": "choice",
-          "options": [
-            "default",
-            "destructive",
-            "outline",
-            "secondary",
-            "ghost",
-            "link"
-          ],
-          "default": "default"
+          "name": "name",
+          "label": "Name",
+          "type": "text"
         },
         {
           "name": "size",
           "label": "Size",
           "type": "choice",
           "options": [
-            "default",
+            "md",
             "sm",
-            "lg",
-            "icon"
-          ],
-          "default": "default"
-        }
-      ],
-      "snippet": "<div data-ui=\"stack\" data-gap=\"md\">\n  <div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-align=\"center\" data-wrap=\"true\">\n    <button data-ui=\"button\">Send invoice</button>\n    <button data-ui=\"button\" data-variant=\"destructive\">Void invoice</button>\n    <button data-ui=\"button\" data-variant=\"outline\">Preview</button>\n    <button data-ui=\"button\" data-variant=\"secondary\">Save draft</button>\n    <button data-ui=\"button\" data-variant=\"ghost\">Cancel</button>\n    <button data-ui=\"button\" data-variant=\"link\">View history</button>\n  </div>\n  <div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-align=\"center\" data-wrap=\"true\">\n    <button data-ui=\"button\" data-size=\"sm\">Small</button>\n    <button data-ui=\"button\">Default</button>\n    <button data-ui=\"button\" data-size=\"lg\">Large</button>\n    <button data-ui=\"button\" data-size=\"icon\" aria-label=\"Add invoice\">\n      <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 5v14\"/><path d=\"M5 12h14\"/></svg>\n    </button>\n    <button data-ui=\"button\" disabled>Disabled</button>\n  </div>\n</div>"
-    },
-    {
-      "name": "Badge",
-      "ui": "badge",
-      "category": "Data display",
-      "description": "A short status label in four variants, in a medium weight at 12px.",
-      "props": [
-        {
-          "name": "variant",
-          "label": "Variant",
-          "type": "choice",
-          "options": [
-            "default",
-            "secondary",
-            "destructive",
-            "outline"
-          ],
-          "default": "default"
-        }
-      ],
-      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-align=\"center\" data-wrap=\"true\">\n  <span data-ui=\"badge\">Sent</span>\n  <span data-ui=\"badge\" data-variant=\"secondary\">Draft</span>\n  <span data-ui=\"badge\" data-variant=\"destructive\">Overdue</span>\n  <span data-ui=\"badge\" data-variant=\"outline\">Paid</span>\n</div>"
-    },
-    {
-      "name": "Card",
-      "ui": "card",
-      "category": "Layout",
-      "description": "A bordered panel with header, title, description, action, content and footer parts.",
-      "props": [],
-      "snippet": "<div data-ui=\"card\">\n  <div data-part=\"header\">\n    <div data-ui=\"stack\" data-gap=\"xs\">\n      <h3 data-part=\"title\">Invoice TB-1042</h3>\n      <p data-part=\"description\">Northline Studio, issued 12 February.</p>\n    </div>\n    <div data-part=\"action\"><span data-ui=\"badge\" data-variant=\"secondary\">Pending</span></div>\n  </div>\n  <div data-part=\"content\">\n    <p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Six line items for the spring catalogue, plus a fixed project fee.</p>\n  </div>\n  <div data-part=\"footer\">\n    <button data-ui=\"button\" data-size=\"sm\">View invoice</button>\n    <button data-ui=\"button\" data-size=\"sm\" data-variant=\"outline\">Send reminder</button>\n  </div>\n</div>"
-    },
-    {
-      "name": "Input",
-      "ui": "input",
-      "category": "Forms",
-      "description": "A single-line text field with three sizes and an invalid state.",
-      "props": [
-        {
-          "name": "size",
-          "label": "Size",
-          "type": "choice",
-          "options": [
-            "default",
-            "sm",
+            "xs",
             "lg"
           ],
-          "default": "default"
-        },
-        {
-          "name": "invalid",
-          "label": "Invalid",
-          "type": "boolean",
-          "default": false
+          "default": "md"
         }
       ],
-      "snippet": "<div data-ui=\"stack\" data-gap=\"md\">\n  <div data-ui=\"field\">\n    <label data-part=\"label\" for=\"tb-invoice-number\">Invoice number</label>\n    <input data-ui=\"input\" id=\"tb-invoice-number\" type=\"text\" value=\"TB-1042\">\n    <p data-part=\"description\">Numbers increase automatically for each client.</p>\n  </div>\n  <div data-ui=\"field\">\n    <label data-part=\"label\" for=\"tb-client-email\">Client email</label>\n    <input data-ui=\"input\" id=\"tb-client-email\" type=\"email\" value=\"accounts@northline\" data-invalid=\"true\" aria-invalid=\"true\">\n    <p data-part=\"message\">Enter a full email address.</p>\n  </div>\n  <div data-ui=\"field\">\n    <label data-part=\"label\" for=\"tb-invoice-sm\">Search invoices</label>\n    <input data-ui=\"input\" data-size=\"sm\" id=\"tb-invoice-sm\" type=\"search\" placeholder=\"Client or number\">\n  </div>\n</div>"
-    },
-    {
-      "name": "Textarea",
-      "ui": "textarea",
-      "category": "Forms",
-      "description": "A multi-line text field that grows by row, with an invalid state.",
-      "props": [
-        {
-          "name": "invalid",
-          "label": "Invalid",
-          "type": "boolean",
-          "default": false
-        }
-      ],
-      "snippet": "<div data-ui=\"stack\" data-gap=\"md\">\n  <div data-ui=\"field\">\n    <label data-part=\"label\" for=\"tb-invoice-note\">Note on the invoice</label>\n    <textarea data-ui=\"textarea\" id=\"tb-invoice-note\" rows=\"3\">Thanks for the quick turnaround on the spring shoot. Payment is due within fourteen days.</textarea>\n    <p data-part=\"description\">Shown under the totals on the PDF.</p>\n  </div>\n  <div data-ui=\"field\">\n    <label data-part=\"label\" for=\"tb-invoice-terms\">Payment terms</label>\n    <textarea data-ui=\"textarea\" id=\"tb-invoice-terms\" rows=\"2\" data-invalid=\"true\" aria-invalid=\"true\">Fourteen</textarea>\n    <p data-part=\"message\">Terms must be a whole number of days.</p>\n  </div>\n</div>"
-    },
-    {
-      "name": "Label",
-      "ui": "label",
-      "category": "Forms",
-      "description": "A form label at 14px medium, in a tight line height.",
-      "props": [],
-      "snippet": "<div data-ui=\"field\">\n  <label data-ui=\"label\" for=\"tb-label-client\">Client name</label>\n  <input data-ui=\"input\" id=\"tb-label-client\" type=\"text\" value=\"Northline Studio\">\n  <p data-part=\"description\">This name appears at the top of the PDF.</p>\n</div>"
-    },
-    {
-      "name": "Field",
-      "ui": "field",
-      "category": "Forms",
-      "description": "A stack of label, control, description and error message for one input.",
-      "props": [],
-      "snippet": "<div data-ui=\"field\">\n  <label data-part=\"label\" for=\"tb-field-email\">Billing email</label>\n  <input data-ui=\"input\" id=\"tb-field-email\" type=\"email\" value=\"sam@tallybook\" data-invalid=\"true\" aria-invalid=\"true\">\n  <p data-part=\"description\">Reminders and receipts go to this address.</p>\n  <p data-part=\"message\">Enter a full email address.</p>\n</div>"
-    },
-    {
-      "name": "Select",
-      "ui": "select",
-      "category": "Forms",
-      "description": "A native select styled to match the other fields, with two sizes.",
-      "props": [
-        {
-          "name": "size",
-          "label": "Size",
-          "type": "choice",
-          "options": [
-            "default",
-            "sm"
-          ],
-          "default": "default"
-        }
-      ],
-      "snippet": "<div data-ui=\"field\">\n  <label data-part=\"label\" for=\"tb-select-currency\">Currency</label>\n  <select data-ui=\"select\" id=\"tb-select-currency\">\n    <option selected>US dollar</option>\n    <option>Pound sterling</option>\n    <option>Euro</option>\n    <option>Canadian dollar</option>\n  </select>\n  <p data-part=\"description\">New invoices use this currency.</p>\n</div>"
-    },
-    {
-      "name": "Checkbox",
-      "ui": "checkbox",
-      "category": "Forms",
-      "description": "A square checkbox with a drawn tick, sized to 16px.",
-      "props": [],
-      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\">\n  <label data-ui=\"checkbox\" for=\"tb-check-reminder\">\n    <input type=\"checkbox\" id=\"tb-check-reminder\" checked>\n    <span>Send a reminder on the due date</span>\n  </label>\n  <label data-ui=\"checkbox\" for=\"tb-check-late\">\n    <input type=\"checkbox\" id=\"tb-check-late\">\n    <span>Add a 2 percent late fee after fourteen days</span>\n  </label>\n</div>"
-    },
-    {
-      "name": "Radio group",
-      "ui": "radio-group",
-      "category": "Forms",
-      "description": "A group of labelled radio buttons for choosing one option.",
-      "props": [],
-      "snippet": "<div data-ui=\"radio-group\" role=\"radiogroup\" aria-label=\"Invoice schedule\">\n  <span data-ui=\"label\">Invoice schedule</span>\n  <label for=\"tb-radio-weekly\">\n    <input type=\"radio\" name=\"tb-schedule\" id=\"tb-radio-weekly\" value=\"weekly\" checked>\n    <span>Weekly on Monday</span>\n  </label>\n  <label for=\"tb-radio-monthly\">\n    <input type=\"radio\" name=\"tb-schedule\" id=\"tb-radio-monthly\" value=\"monthly\">\n    <span>Monthly on the first</span>\n  </label>\n  <label for=\"tb-radio-manual\">\n    <input type=\"radio\" name=\"tb-schedule\" id=\"tb-radio-manual\" value=\"manual\">\n    <span>Only when I send it</span>\n  </label>\n</div>"
-    },
-    {
-      "name": "Switch",
-      "ui": "switch",
-      "category": "Forms",
-      "description": "A sliding toggle for a setting that applies at once.",
-      "props": [],
-      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\">\n  <label data-ui=\"switch\" for=\"tb-switch-auto\">\n    <input type=\"checkbox\" role=\"switch\" id=\"tb-switch-auto\" checked>\n    <span>Send invoices automatically</span>\n  </label>\n  <label data-ui=\"switch\" for=\"tb-switch-vat\">\n    <input type=\"checkbox\" role=\"switch\" id=\"tb-switch-vat\">\n    <span>Show tax as a separate line</span>\n  </label>\n</div>"
-    },
-    {
-      "name": "Slider",
-      "ui": "slider",
-      "category": "Forms",
-      "description": "A range control with a filled track and a single round thumb.",
-      "props": [],
-      "snippet": "<div data-ui=\"field\">\n  <label data-ui=\"label\" for=\"tb-slider-days\">Reminder on day</label>\n  <input data-ui=\"slider\" id=\"tb-slider-days\" type=\"range\" min=\"1\" max=\"30\" value=\"14\" style=\"--value:45%\">\n  <p data-part=\"description\">Two weeks after the invoice is sent.</p>\n</div>"
-    },
-    {
-      "name": "Toggle",
-      "ui": "toggle",
-      "category": "Forms",
-      "description": "A two-state button that stays pressed until clicked again.",
-      "props": [
-        {
-          "name": "variant",
-          "label": "Variant",
-          "type": "choice",
-          "options": [
-            "default",
-            "outline"
-          ],
-          "default": "default"
-        },
-        {
-          "name": "size",
-          "label": "Size",
-          "type": "choice",
-          "options": [
-            "default",
-            "sm",
-            "lg"
-          ],
-          "default": "default"
-        }
-      ],
-      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-align=\"center\" data-wrap=\"true\">\n  <button data-ui=\"toggle\" aria-pressed=\"true\">\n    <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6 3v18\"/><path d=\"M6 8h11l-2 4 2 4H6\"/></svg>\n    Flagged\n  </button>\n  <button data-ui=\"toggle\" data-variant=\"outline\" aria-pressed=\"false\">\n    <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 2v10\"/><path d=\"M18.4 6a9 9 0 1 1-12.8 0\"/></svg>\n    Reminders on\n  </button>\n  <button data-ui=\"toggle\" data-size=\"sm\" aria-pressed=\"false\">Small</button>\n  <button data-ui=\"toggle\" data-size=\"lg\" aria-pressed=\"false\">Large</button>\n</div>"
-    },
-    {
-      "name": "Toggle group",
-      "ui": "toggle-group",
-      "category": "Forms",
-      "description": "A row of joined toggles that share one border and radius.",
-      "props": [],
-      "snippet": "<div data-ui=\"toggle-group\" data-variant=\"outline\" role=\"group\" aria-label=\"Invoice list density\">\n  <button data-ui=\"toggle\" data-variant=\"outline\" aria-pressed=\"true\">\n    <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 6h13\"/><path d=\"M8 12h13\"/><path d=\"M8 18h13\"/><path d=\"M3 6h.01\"/><path d=\"M3 12h.01\"/><path d=\"M3 18h.01\"/></svg>\n    List\n  </button>\n  <button data-ui=\"toggle\" data-variant=\"outline\" aria-pressed=\"false\">\n    <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\"/></svg>\n    Grid\n  </button>\n</div>"
-    },
-    {
-      "name": "Tabs",
-      "ui": "tabs",
-      "category": "Navigation",
-      "description": "A row of tabs over their panels, switched by keyboard or click.",
-      "props": [],
-      "snippet": "<div data-ui=\"tabs\">\n  <div data-part=\"list\" role=\"tablist\" aria-label=\"Invoice views\">\n    <button role=\"tab\" id=\"tb-tab-all\" aria-controls=\"tb-panel-all\" aria-selected=\"true\" tabindex=\"0\">All</button>\n    <button role=\"tab\" id=\"tb-tab-open\" aria-controls=\"tb-panel-open\" aria-selected=\"false\" tabindex=\"-1\">Open</button>\n    <button role=\"tab\" id=\"tb-tab-paid\" aria-controls=\"tb-panel-paid\" aria-selected=\"false\" tabindex=\"-1\">Paid</button>\n  </div>\n  <div role=\"tabpanel\" id=\"tb-panel-all\" aria-labelledby=\"tb-tab-all\">\n    <p data-ui=\"text\" data-size=\"sm\">Twelve invoices this quarter, worth $18,420.00.</p>\n  </div>\n  <div role=\"tabpanel\" id=\"tb-panel-open\" aria-labelledby=\"tb-tab-open\" hidden>\n    <p data-ui=\"text\" data-size=\"sm\">Four are open: two pending and two overdue.</p>\n  </div>\n  <div role=\"tabpanel\" id=\"tb-panel-paid\" aria-labelledby=\"tb-tab-paid\" hidden>\n    <p data-ui=\"text\" data-size=\"sm\">Eight were paid, the latest on 28 February.</p>\n  </div>\n</div>"
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-align=\"center\">\n<i data-ui=\"icon\" data-name=\"search\"></i><i data-ui=\"icon\" data-name=\"plus\"></i><i data-ui=\"icon\" data-name=\"calendar\"></i><i data-ui=\"icon\" data-name=\"settings\"></i><i data-ui=\"icon\" data-name=\"mail\"></i><i data-ui=\"icon\" data-name=\"trash\" data-size=\"lg\"></i>\n</div>"
     },
     {
       "name": "Accordion",
       "ui": "accordion",
       "category": "Disclosure",
-      "description": "Stacked sections on native details and summary, separated by hairlines.",
+      "description": "A vertically stacked set of headings that each reveal a section of content.",
       "props": [],
-      "snippet": "<div data-ui=\"accordion\">\n  <details data-part=\"item\" name=\"tb-accordion\" open>\n    <summary>When is an invoice marked overdue?</summary>\n    <div data-part=\"content\">On the first day after the due date. Tallybook then sends one reminder and adds the invoice to your open balance.</div>\n  </details>\n  <details data-part=\"item\" name=\"tb-accordion\">\n    <summary>Can a client pay by card?</summary>\n    <div data-part=\"content\">Yes. Turn on card payments for a client and the PDF shows a link that takes them to a hosted checkout.</div>\n  </details>\n  <details data-part=\"item\" name=\"tb-accordion\">\n    <summary>How do I correct a sent invoice?</summary>\n    <div data-part=\"content\">Void it and issue a replacement. Voided invoices stay in the list with a strikethrough total.</div>\n  </details>\n</div>"
+      "snippet": "<div data-ui=\"accordion\" style=\"max-inline-size:32rem\">\n<details data-part=\"item\" name=\"accordion-demo\" open><summary data-part=\"trigger\">How do I reset my password?<i data-ui=\"icon\" data-name=\"chevron-down\"></i></summary><div data-part=\"content\">Click on \"Forgot Password\" on the login page, enter your email address, and we'll send you a link to reset your password.</div></details>\n<details data-part=\"item\" name=\"accordion-demo\"><summary data-part=\"trigger\">Can I change my subscription plan?<i data-ui=\"icon\" data-name=\"chevron-down\"></i></summary><div data-part=\"content\">Yes, you can upgrade or downgrade your plan at any time from your account settings.</div></details>\n<details data-part=\"item\" name=\"accordion-demo\"><summary data-part=\"trigger\">What payment methods do you accept?<i data-ui=\"icon\" data-name=\"chevron-down\"></i></summary><div data-part=\"content\">We accept all major credit cards, PayPal, and bank transfers.</div></details>\n</div>",
+      "import": {
+        "package": "@/components/ui/accordion",
+        "name": "Accordion, AccordionContent, AccordionItem, AccordionTrigger"
+      }
     },
     {
       "name": "Alert",
       "ui": "alert",
       "category": "Feedback",
-      "description": "An inline message with a title and description, in two variants.",
+      "description": "A callout for important information. Icon, title, description and an optional action.",
       "props": [
         {
           "name": "variant",
@@ -465,74 +300,17 @@
           "default": "default"
         }
       ],
-      "snippet": "<div data-ui=\"stack\" data-gap=\"md\">\n  <div data-ui=\"alert\" role=\"status\">\n    <div data-ui=\"stack\" data-gap=\"xs\">\n      <p data-part=\"title\">Three reminders are queued</p>\n      <p data-part=\"description\">They go out tomorrow at 09:00 for the Northline, Field and Copper invoices.</p>\n    </div>\n  </div>\n  <div data-ui=\"alert\" data-variant=\"destructive\" role=\"alert\">\n    <div data-ui=\"stack\" data-gap=\"xs\">\n      <p data-part=\"title\">Card payment failed</p>\n      <p data-part=\"description\">The card on file for Copper and Grain was declined. Update it before the next run.</p>\n    </div>\n  </div>\n</div>"
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\" style=\"max-inline-size:32rem\">\n<div data-ui=\"alert\" role=\"alert\"><i data-ui=\"icon\" data-name=\"check-circle\"></i><div data-part=\"title\">Account updated successfully</div><div data-part=\"description\">Your profile information has been saved. Changes will be reflected immediately.</div></div>\n<div data-ui=\"alert\" role=\"alert\" data-variant=\"destructive\"><i data-ui=\"icon\" data-name=\"alert-circle\"></i><div data-part=\"title\">Payment failed</div><div data-part=\"description\">Your payment could not be processed. Please check your payment method and try again.</div></div>\n<div data-ui=\"alert\" role=\"alert\"><i data-ui=\"icon\" data-name=\"info\"></i><div data-part=\"title\">Dark mode is now available</div><div data-part=\"description\">Enable it under your profile settings to get started.</div><div data-part=\"action\"><button data-ui=\"button\" data-size=\"xs\">Enable</button></div></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/alert",
+        "name": "Alert, AlertAction, AlertDescription, AlertTitle"
+      }
     },
     {
-      "name": "Alert dialog",
+      "name": "Alert Dialog",
       "ui": "alert-dialog",
       "category": "Overlay",
-      "description": "A modal that asks for a decision, with a cancel and a confirm action.",
-      "props": [],
-      "snippet": "<button data-ui=\"button\" data-variant=\"destructive\" data-dialog-open=\"tb-void-dialog\">Void invoice</button>\n<dialog data-ui=\"alert-dialog\" id=\"tb-void-dialog\">\n  <div data-part=\"header\">\n    <h2 data-part=\"title\">Void invoice TB-1042?</h2>\n    <p data-part=\"description\">The client will see it marked as void, and the $2,480.00 leaves your open balance.</p>\n  </div>\n  <div data-part=\"footer\">\n    <button data-ui=\"button\" data-variant=\"outline\" data-dialog-close>Cancel</button>\n    <button data-ui=\"button\" data-variant=\"destructive\">Void invoice</button>\n  </div>\n</dialog>"
-    },
-    {
-      "name": "Dialog",
-      "ui": "dialog",
-      "category": "Overlay",
-      "description": "A centred modal on the native dialog element, with header, content and footer.",
-      "props": [],
-      "snippet": "<button data-ui=\"button\" data-dialog-open=\"tb-dialog\">New invoice</button>\n<dialog data-ui=\"dialog\" id=\"tb-dialog\">\n  <div data-part=\"header\">\n    <h2 data-part=\"title\">New invoice</h2>\n    <p data-part=\"description\">Start from a blank invoice or copy the last one for this client.</p>\n  </div>\n  <div data-part=\"content\">\n    <div data-ui=\"field\">\n      <label data-part=\"label\" for=\"tb-dialog-client\">Client</label>\n      <input data-ui=\"input\" id=\"tb-dialog-client\" type=\"text\" value=\"Northline Studio\">\n    </div>\n  </div>\n  <div data-part=\"footer\">\n    <button data-ui=\"button\" data-variant=\"outline\" data-dialog-close>Cancel</button>\n    <button data-ui=\"button\">Create invoice</button>\n  </div>\n</dialog>"
-    },
-    {
-      "name": "Sheet",
-      "ui": "sheet",
-      "category": "Overlay",
-      "description": "A panel that slides in from a page edge, for side detail or filters.",
-      "props": [
-        {
-          "name": "side",
-          "label": "Side",
-          "type": "choice",
-          "options": [
-            "right",
-            "left",
-            "top",
-            "bottom"
-          ],
-          "default": "right"
-        }
-      ],
-      "snippet": "<button data-ui=\"button\" data-variant=\"outline\" data-dialog-open=\"tb-sheet\">Invoice details</button>\n<dialog data-ui=\"sheet\" id=\"tb-sheet\">\n  <div data-part=\"header\">\n    <h2 data-part=\"title\">TB-1042</h2>\n    <p data-part=\"description\">Northline Studio, sent 12 February.</p>\n  </div>\n  <div data-part=\"content\">\n    <div data-ui=\"stack\" data-gap=\"sm\">\n      <p data-ui=\"text\" data-size=\"sm\">Spring catalogue shoot</p>\n      <p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Three days on location, forty edited frames.</p>\n    </div>\n  </div>\n  <div data-part=\"footer\">\n    <button data-ui=\"button\" data-variant=\"outline\" data-dialog-close>Close</button>\n    <button data-ui=\"button\">Send reminder</button>\n  </div>\n</dialog>"
-    },
-    {
-      "name": "Dropdown menu",
-      "ui": "dropdown-menu",
-      "category": "Overlay",
-      "description": "A small menu of actions opened by a trigger, using the native popover.",
-      "props": [],
-      "snippet": "<button data-ui=\"button\" data-variant=\"outline\" popovertarget=\"tb-menu\" style=\"anchor-name:--tb-menu-anchor\">\n  <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"5\" r=\"1\"/><circle cx=\"12\" cy=\"12\" r=\"1\"/><circle cx=\"12\" cy=\"19\" r=\"1\"/></svg>\n  Actions\n</button>\n<div data-ui=\"dropdown-menu\" popover id=\"tb-menu\" style=\"position-anchor:--tb-menu-anchor\">\n  <div data-part=\"label\">Invoice TB-1042</div>\n  <button data-part=\"item\">View invoice</button>\n  <button data-part=\"item\">Send reminder <span data-part=\"shortcut\">R</span></button>\n  <button data-part=\"item\">Download PDF <span data-part=\"shortcut\">D</span></button>\n  <div data-part=\"separator\" role=\"separator\"></div>\n  <button data-part=\"item\" data-tone=\"danger\">Void invoice</button>\n</div>"
-    },
-    {
-      "name": "Popover",
-      "ui": "popover",
-      "category": "Overlay",
-      "description": "A small panel anchored to its trigger, using the native popover.",
-      "props": [],
-      "snippet": "<button data-ui=\"button\" data-variant=\"outline\" popovertarget=\"tb-popover\" style=\"anchor-name:--tb-popover-anchor\">Filter invoices</button>\n<div data-ui=\"popover\" popover id=\"tb-popover\" style=\"position-anchor:--tb-popover-anchor\">\n  <div data-ui=\"stack\" data-gap=\"md\">\n    <h3 data-ui=\"heading\" data-level=\"4\">Due date</h3>\n    <label data-ui=\"checkbox\" for=\"tb-pop-pending\">\n      <input type=\"checkbox\" id=\"tb-pop-pending\" checked>\n      <span>Shows as pending</span>\n    </label>\n    <label data-ui=\"checkbox\" for=\"tb-pop-overdue\">\n      <input type=\"checkbox\" id=\"tb-pop-overdue\" checked>\n      <span>Shows as overdue</span>\n    </label>\n    <button data-ui=\"button\" data-size=\"sm\">Apply filter</button>\n  </div>\n</div>"
-    },
-    {
-      "name": "Tooltip",
-      "ui": "tooltip",
-      "category": "Overlay",
-      "description": "A short hint shown above a trigger on hover or keyboard focus.",
-      "props": [],
-      "snippet": "<span data-ui=\"tooltip\">\n  <button data-ui=\"button\" data-variant=\"ghost\" data-size=\"icon\" aria-label=\"Copy invoice number\">\n    <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"9\" y=\"9\" width=\"13\" height=\"13\" rx=\"2\"/><path d=\"M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1\"/></svg>\n  </button>\n  <span data-part=\"content\" role=\"tooltip\">Copy invoice number</span>\n</span>"
-    },
-    {
-      "name": "Avatar",
-      "ui": "avatar",
-      "category": "Data display",
-      "description": "A round portrait from an image or initials, in three sizes.",
+      "description": "A modal that interrupts for a decision. It has to be answered; a click outside doesn't close it.",
       "props": [
         {
           "name": "size",
@@ -540,94 +318,22 @@
           "type": "choice",
           "options": [
             "default",
-            "sm",
-            "lg"
+            "sm"
           ],
           "default": "default"
         }
       ],
-      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"md\" data-align=\"center\">\n  <span data-ui=\"avatar\" data-size=\"sm\"><span data-part=\"fallback\">PR</span></span>\n  <span data-ui=\"avatar\"><span data-part=\"fallback\">JL</span></span>\n  <span data-ui=\"avatar\" data-size=\"lg\"><span data-part=\"fallback\">MS</span></span>\n</div>"
+      "snippet": "<button data-ui=\"button\" data-variant=\"outline\" data-dialog-open=\"alert-dialog-demo\">Show Dialog</button>\n<dialog data-ui=\"alert-dialog\" id=\"alert-dialog-demo\">\n<div data-part=\"header\"><h2 data-part=\"title\">Are you absolutely sure?</h2><p data-part=\"description\">This action cannot be undone. This will permanently delete your account and remove your data from our servers.</p></div>\n<div data-part=\"footer\"><button data-ui=\"button\" data-variant=\"outline\" data-dialog-close>Cancel</button><button data-ui=\"button\" data-dialog-close>Continue</button></div>\n</dialog>",
+      "import": {
+        "package": "@/components/ui/alert-dialog",
+        "name": "AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle"
+      }
     },
     {
-      "name": "Table",
-      "ui": "table",
-      "category": "Data display",
-      "description": "A table with hairline rows, a medium header and right aligned figures.",
-      "props": [],
-      "snippet": "<table data-ui=\"table\">\n  <caption>Invoices issued in February</caption>\n  <thead>\n    <tr><th scope=\"col\">Invoice</th><th scope=\"col\">Client</th><th scope=\"col\">Status</th><th scope=\"col\" data-numeric=\"true\">Amount</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>TB-1042</td><td>Northline Studio</td><td><span data-ui=\"badge\" data-variant=\"outline\">Paid</span></td><td data-numeric=\"true\">$2,480.00</td></tr>\n    <tr><td>TB-1043</td><td>Field and Fern</td><td><span data-ui=\"badge\" data-variant=\"secondary\">Pending</span></td><td data-numeric=\"true\">$940.00</td></tr>\n    <tr><td>TB-1044</td><td>Copper and Grain</td><td><span data-ui=\"badge\" data-variant=\"destructive\">Overdue</span></td><td data-numeric=\"true\">$1,150.00</td></tr>\n  </tbody>\n</table>"
-    },
-    {
-      "name": "Separator",
-      "ui": "separator",
-      "category": "Layout",
-      "description": "A single hairline rule, horizontal or vertical.",
-      "props": [
-        {
-          "name": "orientation",
-          "label": "Orientation",
-          "type": "choice",
-          "options": [
-            "horizontal",
-            "vertical"
-          ],
-          "default": "horizontal"
-        }
-      ],
-      "snippet": "<div data-ui=\"stack\" data-gap=\"md\">\n  <p data-ui=\"text\" data-size=\"sm\">Sent by Priya on 12 February.</p>\n  <hr data-ui=\"separator\">\n  <div data-ui=\"stack\" data-direction=\"row\" data-gap=\"md\" data-align=\"center\">\n    <span data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">$2,480.00</span>\n    <hr data-ui=\"separator\" data-orientation=\"vertical\">\n    <span data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Due 26 February</span>\n  </div>\n</div>"
-    },
-    {
-      "name": "Skeleton",
-      "ui": "skeleton",
-      "category": "Feedback",
-      "description": "A grey placeholder block with a slow pulse while data loads.",
-      "props": [],
-      "snippet": "<div data-ui=\"card\">\n  <div data-part=\"header\">\n    <div data-ui=\"stack\" data-gap=\"sm\">\n      <div data-ui=\"skeleton\" style=\"width: 40%; height: 16px\"></div>\n      <div data-ui=\"skeleton\" style=\"width: 64%; height: 12px\"></div>\n    </div>\n  </div>\n  <div data-part=\"content\">\n    <div data-ui=\"stack\" data-gap=\"sm\">\n      <div data-ui=\"skeleton\" style=\"width: 100%; height: 12px\"></div>\n      <div data-ui=\"skeleton\" style=\"width: 80%; height: 12px\"></div>\n    </div>\n  </div>\n</div>"
-    },
-    {
-      "name": "Progress",
-      "ui": "progress",
-      "category": "Feedback",
-      "description": "A bar that shows how far a job has got, filled to its value.",
-      "props": [],
-      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\">\n  <div data-ui=\"stack\" data-direction=\"row\" data-justify=\"between\" data-align=\"center\">\n    <span data-ui=\"text\" data-size=\"sm\">February invoiced</span>\n    <span data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">$9,240 of $15,000</span>\n  </div>\n  <div data-ui=\"progress\" role=\"progressbar\" aria-label=\"February invoiced\" aria-valuenow=\"62\" aria-valuemin=\"0\" aria-valuemax=\"100\" style=\"--value:62%\"></div>\n</div>"
-    },
-    {
-      "name": "Breadcrumb",
-      "ui": "breadcrumb",
-      "category": "Navigation",
-      "description": "A trail of links back to the current page, joined by small chevrons.",
-      "props": [],
-      "snippet": "<nav data-ui=\"breadcrumb\" aria-label=\"Breadcrumb\">\n  <ol>\n    <li><a href=\"#\">Invoices</a></li>\n    <li><a href=\"#\">February</a></li>\n    <li><span aria-current=\"page\">TB-1042</span></li>\n  </ol>\n</nav>"
-    },
-    {
-      "name": "Pagination",
-      "ui": "pagination",
-      "category": "Navigation",
-      "description": "Page numbers with previous and next controls, the current page marked.",
-      "props": [],
-      "snippet": "<nav data-ui=\"pagination\" aria-label=\"Invoice pages\">\n  <button data-ui=\"button\" data-variant=\"ghost\" aria-label=\"Previous page\">\n    <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m15 18-6-6 6-6\"/></svg>\n    Previous\n  </button>\n  <button data-ui=\"button\" data-variant=\"ghost\" aria-current=\"page\">1</button>\n  <button data-ui=\"button\" data-variant=\"ghost\">2</button>\n  <button data-ui=\"button\" data-variant=\"ghost\">3</button>\n  <button data-ui=\"button\" data-variant=\"ghost\">\n    Next\n    <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m9 18 6-6-6-6\"/></svg>\n  </button>\n</nav>"
-    },
-    {
-      "name": "Kbd",
-      "ui": "kbd",
-      "category": "Data display",
-      "description": "A small key cap for showing a keyboard shortcut.",
-      "props": [],
-      "snippet": "<p data-ui=\"text\" data-size=\"sm\">Press <kbd data-ui=\"kbd\">N</kbd> for a new invoice, <kbd data-ui=\"kbd\">K</kbd> to search, or <kbd data-ui=\"kbd\">⌘</kbd><kbd data-ui=\"kbd\">S</kbd> to send it.</p>"
-    },
-    {
-      "name": "Scroll area",
-      "ui": "scroll-area",
-      "category": "Layout",
-      "description": "A box that scrolls its content with a thin, quiet scrollbar.",
-      "props": [],
-      "snippet": "<div data-ui=\"scroll-area\" style=\"height: 160px\" tabindex=\"0\">\n  <div data-ui=\"stack\" data-gap=\"sm\">\n    <p data-ui=\"text\" data-size=\"sm\">TB-1042 Northline Studio, $2,480.00, paid 14 February.</p>\n    <p data-ui=\"text\" data-size=\"sm\">TB-1043 Field and Fern, $940.00, pending.</p>\n    <p data-ui=\"text\" data-size=\"sm\">TB-1044 Copper and Grain, $1,150.00, overdue by nine days.</p>\n    <p data-ui=\"text\" data-size=\"sm\">TB-1045 Harbour Press, $3,600.00, paid 19 February.</p>\n    <p data-ui=\"text\" data-size=\"sm\">TB-1046 Leaf and Loom, $720.00, pending.</p>\n    <p data-ui=\"text\" data-size=\"sm\">TB-1047 Quiet Hours, $1,980.00, paid 21 February.</p>\n    <p data-ui=\"text\" data-size=\"sm\">TB-1048 Northline Studio, $640.00, pending.</p>\n  </div>\n</div>"
-    },
-    {
-      "name": "Aspect ratio",
+      "name": "Aspect Ratio",
       "ui": "aspect-ratio",
       "category": "Layout",
-      "description": "A box that keeps a fixed shape, with its content cropped inside.",
+      "description": "Holds content at a fixed width to height ratio.",
       "props": [
         {
           "name": "ratio",
@@ -642,60 +348,1358 @@
           "default": "16-9"
         }
       ],
-      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\">\n  <div data-ui=\"aspect-ratio\" data-ratio=\"16-9\" style=\"background: var(--color-surface-2); border: 1px solid var(--color-border)\"></div>\n  <p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Brand image on the invoice, 16 by 9.</p>\n  <div data-ui=\"aspect-ratio\" data-ratio=\"1-1\" style=\"background: var(--color-surface-2); border: 1px solid var(--color-border); max-width: 120px\"></div>\n  <p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Square thumbnail for the client list.</p>\n</div>"
+      "snippet": "<div data-ui=\"aspect-ratio\" data-ratio=\"16-9\" style=\"max-inline-size:24rem\"><div data-part=\"media\"><i data-ui=\"icon\" data-name=\"image\"></i></div></div>",
+      "import": {
+        "package": "@/components/ui/aspect-ratio",
+        "name": "AspectRatio"
+      }
+    },
+    {
+      "name": "Attachment",
+      "ui": "attachment",
+      "category": "Data display",
+      "description": "A file in a chat or form, with upload state and a remove action.",
+      "props": [
+        {
+          "name": "state",
+          "label": "State",
+          "type": "choice",
+          "options": [
+            "done",
+            "uploading",
+            "processing",
+            "error",
+            "idle"
+          ],
+          "default": "done"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "sm",
+            "xs"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-wrap=\"true\" data-align=\"start\">\n<div data-ui=\"attachment\"><div data-part=\"media\"><i data-ui=\"icon\" data-name=\"file-text\"></i></div><div data-part=\"content\"><span data-part=\"title\">march-invoices.pdf</span><span data-part=\"description\">PDF, 2.4 MB</span></div><div data-part=\"actions\"><button data-ui=\"button\" data-variant=\"ghost\" data-size=\"icon-xs\" aria-label=\"Remove\"><i data-ui=\"icon\" data-name=\"x\"></i></button></div></div>\n<div data-ui=\"attachment\" data-state=\"uploading\"><div data-part=\"media\"><span data-ui=\"spinner\"></span></div><div data-part=\"content\"><span data-part=\"title\">receipts.zip</span><span data-part=\"description\">Uploading, 62%</span></div></div>\n<div data-ui=\"attachment\" data-state=\"error\"><div data-part=\"media\"><i data-ui=\"icon\" data-name=\"alert-circle\"></i></div><div data-part=\"content\"><span data-part=\"title\">scan-0412.tiff</span><span data-part=\"description\">File type not supported</span></div></div>\n<div data-ui=\"attachment\" data-orientation=\"vertical\"><div data-part=\"media\"><i data-ui=\"icon\" data-name=\"image\"></i></div><div data-part=\"content\"><span data-part=\"title\">logo.png</span><span data-part=\"description\">48 KB</span></div></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/attachment",
+        "name": "Attachment, AttachmentActions, AttachmentContent, AttachmentDescription, AttachmentMedia, AttachmentTitle"
+      }
+    },
+    {
+      "name": "Avatar",
+      "ui": "avatar",
+      "category": "Data display",
+      "description": "A round picture or initials, with an optional status badge.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "sm",
+            "lg"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"md\" data-align=\"center\">\n<span data-ui=\"avatar\" data-size=\"sm\"><span data-part=\"fallback\">CN</span></span>\n<span data-ui=\"avatar\"><span data-part=\"fallback\">ER</span><span data-part=\"badge\"></span></span>\n<span data-ui=\"avatar\" data-size=\"lg\"><span data-part=\"fallback\">MK</span></span>\n</div>",
+      "import": {
+        "package": "@/components/ui/avatar",
+        "name": "Avatar, AvatarBadge, AvatarFallback, AvatarImage"
+      }
+    },
+    {
+      "name": "Avatar Group",
+      "ui": "avatar-group",
+      "category": "Data display",
+      "description": "Overlapping avatars with a count for the rest.",
+      "props": [],
+      "snippet": "<div data-ui=\"avatar-group\">\n<span data-ui=\"avatar\"><span data-part=\"fallback\">CN</span></span>\n<span data-ui=\"avatar\"><span data-part=\"fallback\">ER</span></span>\n<span data-ui=\"avatar\"><span data-part=\"fallback\">MK</span></span>\n<span data-part=\"count\">+3</span>\n</div>",
+      "import": {
+        "package": "@/components/ui/avatar",
+        "name": "AvatarGroup, AvatarGroupCount"
+      }
+    },
+    {
+      "name": "Badge",
+      "ui": "badge",
+      "category": "Data display",
+      "description": "A small pill for a status or a count.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "default",
+            "secondary",
+            "destructive",
+            "outline",
+            "ghost",
+            "link"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-wrap=\"true\" data-align=\"center\">\n<span data-ui=\"badge\">Badge</span>\n<span data-ui=\"badge\" data-variant=\"secondary\">Secondary</span>\n<span data-ui=\"badge\" data-variant=\"destructive\">Destructive</span>\n<span data-ui=\"badge\" data-variant=\"outline\">Outline</span>\n<span data-ui=\"badge\" data-variant=\"ghost\">Ghost</span>\n<span data-ui=\"badge\" data-variant=\"link\">Link</span>\n<span data-ui=\"badge\" data-variant=\"secondary\"><i data-ui=\"icon\" data-name=\"check-circle\"></i>Verified</span>\n</div>",
+      "import": {
+        "package": "@/components/ui/badge",
+        "name": "Badge"
+      }
+    },
+    {
+      "name": "Breadcrumb",
+      "ui": "breadcrumb",
+      "category": "Navigation",
+      "description": "The path to the current page, with chevrons between links.",
+      "props": [],
+      "snippet": "<nav data-ui=\"breadcrumb\" aria-label=\"breadcrumb\"><ol data-part=\"list\">\n<li data-part=\"item\"><a data-part=\"link\" href=\"#\">Home</a></li>\n<li data-part=\"separator\" aria-hidden=\"true\"><i data-ui=\"icon\" data-name=\"chevron-right\"></i></li>\n<li data-part=\"item\"><span data-part=\"ellipsis\"><i data-ui=\"icon\" data-name=\"more-horizontal\"></i></span></li>\n<li data-part=\"separator\" aria-hidden=\"true\"><i data-ui=\"icon\" data-name=\"chevron-right\"></i></li>\n<li data-part=\"item\"><a data-part=\"link\" href=\"#\">Components</a></li>\n<li data-part=\"separator\" aria-hidden=\"true\"><i data-ui=\"icon\" data-name=\"chevron-right\"></i></li>\n<li data-part=\"item\"><span data-part=\"page\" aria-current=\"page\">Breadcrumb</span></li>\n</ol></nav>",
+      "import": {
+        "package": "@/components/ui/breadcrumb",
+        "name": "Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator"
+      }
+    },
+    {
+      "name": "Bubble",
+      "ui": "bubble",
+      "category": "Chat",
+      "description": "A chat bubble in seven treatments, with optional reactions.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "default",
+            "secondary",
+            "muted",
+            "tinted",
+            "outline",
+            "ghost",
+            "destructive"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "align",
+          "label": "Align",
+          "type": "choice",
+          "options": [
+            "start",
+            "end"
+          ],
+          "default": "start"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\" style=\"max-inline-size:28rem\">\n<div data-ui=\"bubble\" data-variant=\"secondary\"><div data-part=\"content\">Did the Northline invoice go out?</div></div>\n<div data-ui=\"bubble\" data-align=\"end\"><div data-part=\"content\">Yes, this morning. It's due on the 12th.</div></div>\n<div data-ui=\"bubble\" data-variant=\"muted\"><div data-part=\"content\">Thanks. Add the late fee if it slips.</div></div>\n<div data-ui=\"bubble\" data-variant=\"outline\" data-align=\"end\"><div data-part=\"content\">Will do.</div></div>\n<div data-ui=\"bubble\" data-variant=\"destructive\"><div data-part=\"content\">The reminder couldn't be sent.</div></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/bubble",
+        "name": "Bubble, BubbleContent, BubbleReactions"
+      }
+    },
+    {
+      "name": "Button",
+      "ui": "button",
+      "category": "Forms",
+      "description": "A button or a link that looks like one.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "default",
+            "outline",
+            "secondary",
+            "ghost",
+            "destructive",
+            "link"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "xs",
+            "sm",
+            "lg",
+            "icon",
+            "icon-xs",
+            "icon-sm",
+            "icon-lg"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"md\">\n<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-wrap=\"true\" data-align=\"center\">\n<button data-ui=\"button\">Button</button>\n<button data-ui=\"button\" data-variant=\"outline\">Outline</button>\n<button data-ui=\"button\" data-variant=\"secondary\">Secondary</button>\n<button data-ui=\"button\" data-variant=\"ghost\">Ghost</button>\n<button data-ui=\"button\" data-variant=\"destructive\">Destructive</button>\n<button data-ui=\"button\" data-variant=\"link\">Link</button>\n</div>\n<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-wrap=\"true\" data-align=\"center\">\n<button data-ui=\"button\" data-variant=\"outline\" data-size=\"xs\">Extra Small</button>\n<button data-ui=\"button\" data-variant=\"outline\" data-size=\"sm\">Small</button>\n<button data-ui=\"button\" data-variant=\"outline\">Default</button>\n<button data-ui=\"button\" data-variant=\"outline\" data-size=\"lg\">Large</button>\n<button data-ui=\"button\" data-variant=\"outline\" data-size=\"icon\" aria-label=\"Add\"><i data-ui=\"icon\" data-name=\"plus\"></i></button>\n<button data-ui=\"button\" data-variant=\"outline\"><i data-ui=\"icon\" data-name=\"mail\"></i>Login with Email</button>\n<button data-ui=\"button\" data-variant=\"outline\" disabled><span data-ui=\"spinner\"></span>Please wait</button>\n</div>\n</div>",
+      "import": {
+        "package": "@/components/ui/button",
+        "name": "Button"
+      }
+    },
+    {
+      "name": "Button Group",
+      "ui": "button-group",
+      "category": "Forms",
+      "description": "Joins related buttons, inputs and selects into one control.",
+      "props": [
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"md\" data-wrap=\"true\" data-align=\"center\">\n<div data-ui=\"button-group\" role=\"group\"><button data-ui=\"button\" data-variant=\"outline\" data-size=\"icon\" aria-label=\"Back\"><i data-ui=\"icon\" data-name=\"arrow-left\"></i></button><button data-ui=\"button\" data-variant=\"outline\">Archive</button><button data-ui=\"button\" data-variant=\"outline\">Report</button></div>\n<div data-ui=\"button-group\" role=\"group\"><button data-ui=\"button\" data-variant=\"secondary\">Copy</button><span data-part=\"separator\"></span><button data-ui=\"button\" data-variant=\"secondary\">Paste</button></div>\n<div data-ui=\"button-group\" role=\"group\"><span data-part=\"text\">tallybook.app/</span><input data-ui=\"input\" placeholder=\"your-studio\" style=\"inline-size:10rem\"></div>\n<div data-ui=\"button-group\" role=\"group\" data-orientation=\"vertical\"><button data-ui=\"button\" data-variant=\"outline\" data-size=\"icon\" aria-label=\"Increase\"><i data-ui=\"icon\" data-name=\"plus\"></i></button><button data-ui=\"button\" data-variant=\"outline\" data-size=\"icon\" aria-label=\"Decrease\"><i data-ui=\"icon\" data-name=\"minus\"></i></button></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/button-group",
+        "name": "ButtonGroup, ButtonGroupSeparator, ButtonGroupText"
+      }
+    },
+    {
+      "name": "Calendar",
+      "ui": "calendar",
+      "category": "Forms",
+      "description": "A month grid for picking a date or a range. ui.js draws the days from data-month and data-selected (or data-from and data-to in range mode), so write no days.",
+      "props": [
+        {
+          "name": "mode",
+          "label": "Mode",
+          "type": "choice",
+          "options": [
+            "single",
+            "range"
+          ],
+          "default": "single"
+        },
+        {
+          "name": "caption",
+          "label": "Caption",
+          "type": "choice",
+          "options": [
+            "dropdown",
+            "label"
+          ],
+          "default": "dropdown"
+        },
+        {
+          "name": "bordered",
+          "label": "Bordered",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "month",
+          "label": "Month",
+          "type": "text"
+        },
+        {
+          "name": "selected",
+          "label": "Selected",
+          "type": "text"
+        },
+        {
+          "name": "from",
+          "label": "From",
+          "type": "text"
+        },
+        {
+          "name": "to",
+          "label": "To",
+          "type": "text"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"md\" data-wrap=\"true\" data-align=\"start\">\n<div data-ui=\"calendar\" data-bordered=\"true\" data-month=\"2026-11\" data-selected=\"2026-11-02\"></div>\n<div data-ui=\"calendar\" data-bordered=\"true\" data-mode=\"range\" data-caption=\"label\" data-month=\"2026-11\" data-from=\"2026-11-09\" data-to=\"2026-11-20\"></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/calendar",
+        "name": "Calendar"
+      }
+    },
+    {
+      "name": "Card",
+      "ui": "card",
+      "category": "Layout",
+      "description": "A surface with a hairline ring: header, title, description, action, content and footer.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "sm"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"card\" style=\"max-inline-size:24rem\">\n<div data-part=\"header\"><div data-part=\"title\">Login to your account</div><div data-part=\"description\">Enter your email below to login to your account</div><div data-part=\"action\"><button data-ui=\"button\" data-variant=\"link\">Sign Up</button></div></div>\n<div data-part=\"content\"><div data-ui=\"stack\" data-gap=\"md\">\n<div data-ui=\"field\"><label data-ui=\"label\" for=\"card-email\">Email</label><input data-ui=\"input\" id=\"card-email\" type=\"email\" placeholder=\"m@example.com\"></div>\n<div data-ui=\"field\"><label data-ui=\"label\" for=\"card-password\">Password</label><input data-ui=\"input\" id=\"card-password\" type=\"password\"></div>\n</div></div>\n<div data-part=\"footer\"><button data-ui=\"button\" style=\"inline-size:100%\">Login</button></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/card",
+        "name": "Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle"
+      }
+    },
+    {
+      "name": "Carousel",
+      "ui": "carousel",
+      "category": "Data display",
+      "description": "A row of slides that snap, with previous and next buttons outside the edges.",
+      "props": [],
+      "snippet": "<div data-ui=\"carousel\" role=\"region\" aria-roledescription=\"carousel\" style=\"max-inline-size:16rem\">\n<div data-part=\"content\">\n<div data-part=\"item\" role=\"group\"><div data-ui=\"card\"><div data-part=\"content\"><div data-part=\"slide\">1</div></div></div></div>\n<div data-part=\"item\" role=\"group\"><div data-ui=\"card\"><div data-part=\"content\"><div data-part=\"slide\">2</div></div></div></div>\n<div data-part=\"item\" role=\"group\"><div data-ui=\"card\"><div data-part=\"content\"><div data-part=\"slide\">3</div></div></div></div>\n<div data-part=\"item\" role=\"group\"><div data-ui=\"card\"><div data-part=\"content\"><div data-part=\"slide\">4</div></div></div></div>\n</div>\n<button data-ui=\"button\" data-part=\"previous\" data-variant=\"outline\" data-size=\"icon-sm\" aria-label=\"Previous slide\"><i data-ui=\"icon\" data-name=\"arrow-left\"></i></button>\n<button data-ui=\"button\" data-part=\"next\" data-variant=\"outline\" data-size=\"icon-sm\" aria-label=\"Next slide\"><i data-ui=\"icon\" data-name=\"arrow-right\"></i></button>\n</div>",
+      "import": {
+        "package": "@/components/ui/carousel",
+        "name": "Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious"
+      }
+    },
+    {
+      "name": "Chart",
+      "ui": "chart",
+      "category": "Data display",
+      "description": "Bars from --value heights, or an SVG line or area, on a dashed grid with labels and a legend.",
+      "props": [
+        {
+          "name": "type",
+          "label": "Type",
+          "type": "choice",
+          "options": [
+            "bar",
+            "area",
+            "line"
+          ],
+          "default": "bar"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"md\" data-wrap=\"true\" data-align=\"start\">\n<div data-ui=\"card\" style=\"flex:1 1 20rem\"><div data-part=\"header\"><div data-part=\"title\">Bar Chart</div><div data-part=\"description\">January to June 2026</div></div><div data-part=\"content\">\n<div data-ui=\"chart\">\n<div data-part=\"plot\"><div data-part=\"column\"><span data-part=\"bar\" style=\"--value:62%\"></span><span data-part=\"bar\" data-series=\"2\" style=\"--value:30%\"></span></div><div data-part=\"column\"><span data-part=\"bar\" style=\"--value:92%\"></span><span data-part=\"bar\" data-series=\"2\" style=\"--value:62%\"></span></div><div data-part=\"column\"><span data-part=\"bar\" style=\"--value:72%\"></span><span data-part=\"bar\" data-series=\"2\" style=\"--value:36%\"></span></div><div data-part=\"column\"><span data-part=\"bar\" style=\"--value:22%\"></span><span data-part=\"bar\" data-series=\"2\" style=\"--value:58%\"></span></div><div data-part=\"column\"><span data-part=\"bar\" style=\"--value:64%\"></span><span data-part=\"bar\" data-series=\"2\" style=\"--value:40%\"></span></div><div data-part=\"column\"><span data-part=\"bar\" style=\"--value:66%\"></span><span data-part=\"bar\" data-series=\"2\" style=\"--value:42%\"></span></div></div>\n<div data-part=\"axis\"><span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span></div>\n<div data-part=\"legend\"><span data-part=\"legend-item\">Desktop</span><span data-part=\"legend-item\" data-series=\"2\">Mobile</span></div>\n</div></div></div>\n<div data-ui=\"card\" style=\"flex:1 1 20rem\"><div data-part=\"header\"><div data-part=\"title\">Area Chart</div><div data-part=\"description\">Showing total visitors</div></div><div data-part=\"content\">\n<div data-ui=\"chart\" data-type=\"area\">\n<div data-part=\"plot\"><svg xmlns=\"http://www.w3.org/2000/svg\" data-part=\"svg\" viewBox=\"0 0 500 200\" preserveAspectRatio=\"none\"><path data-part=\"fill\" d=\"M0 120C50 90 50 40 100 40S150 110 200 120 250 170 300 150 350 80 400 90 450 60 500 50V200H0Z\"></path><path data-part=\"stroke\" d=\"M0 120C50 90 50 40 100 40S150 110 200 120 250 170 300 150 350 80 400 90 450 60 500 50\"></path></svg></div>\n<div data-part=\"axis\"><span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span></div>\n</div></div></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/chart",
+        "name": "ChartContainer, ChartTooltip, ChartTooltipContent"
+      }
+    },
+    {
+      "name": "Checkbox",
+      "ui": "checkbox",
+      "category": "Forms",
+      "description": "A control for a yes or no choice. Pair it with a label in a horizontal field.",
+      "props": [],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"md\">\n<div data-ui=\"field\" data-orientation=\"horizontal\"><input data-ui=\"checkbox\" type=\"checkbox\" id=\"checkbox-terms\"><label data-ui=\"label\" for=\"checkbox-terms\">Accept terms and conditions</label></div>\n<div data-ui=\"field\" data-orientation=\"horizontal\"><input data-ui=\"checkbox\" type=\"checkbox\" id=\"checkbox-notify\" checked><div data-part=\"content\"><label data-ui=\"label\" for=\"checkbox-notify\">Enable notifications</label><p data-part=\"description\">You can enable or disable notifications at any time.</p></div></div>\n<div data-ui=\"field\" data-orientation=\"horizontal\"><input data-ui=\"checkbox\" type=\"checkbox\" id=\"checkbox-off\" disabled><label data-ui=\"label\" for=\"checkbox-off\">Enable reminders</label></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/checkbox",
+        "name": "Checkbox"
+      }
+    },
+    {
+      "name": "Code Block",
+      "ui": "code-block",
+      "category": "Data display",
+      "description": "Code with an optional title, line numbers, added and removed lines, and a copy button.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "default",
+            "destructive"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "sm"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "numbered",
+          "label": "Numbered",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"code-block\" data-numbered=\"true\" style=\"max-inline-size:32rem\">\n<div data-part=\"header\"><span data-part=\"title\"><i data-ui=\"icon\" data-name=\"terminal\"></i>send-reminder.ts</span><div data-part=\"actions\"><button data-ui=\"button\" data-variant=\"ghost\" data-size=\"icon-xs\" data-part=\"copy\" aria-label=\"Copy\"><i data-ui=\"icon\" data-name=\"copy\"></i></button></div></div>\n<pre data-part=\"content\"><code data-part=\"code\"><span data-part=\"line\">const invoice = await getInvoice(id)</span>\n<span data-part=\"line\" data-variant=\"removed\">await sendEmail(invoice.contact)</span>\n<span data-part=\"line\" data-variant=\"added\">await sendReminder(invoice, { late: true })</span>\n<span data-part=\"line\" data-variant=\"highlighted\">return invoice.status</span></code></pre>\n</div>",
+      "import": {
+        "package": "@/components/ui/code-block",
+        "name": "CodeBlock, CodeBlockContent, CodeBlockCopyButton, CodeBlockHeader, CodeBlockLine, CodeBlockTitle"
+      }
+    },
+    {
+      "name": "Collapsible",
+      "ui": "collapsible",
+      "category": "Disclosure",
+      "description": "One panel that opens and closes.",
+      "props": [],
+      "snippet": "<details data-ui=\"collapsible\" style=\"max-inline-size:22rem\" open>\n<summary data-part=\"trigger\"><span data-part=\"title\">Order #4189</span><span data-ui=\"button\" data-variant=\"ghost\" data-size=\"icon\" aria-hidden=\"true\"><i data-ui=\"icon\" data-name=\"chevrons-up-down\"></i></span></summary>\n<div data-part=\"row\"><span data-part=\"key\">Status</span><span>Shipped</span></div>\n<div data-part=\"content\"><div data-part=\"row\"><span data-part=\"key\">Shipping address</span><span>100 Market St, San Francisco</span></div><div data-part=\"row\"><span data-part=\"key\">Items</span><span>2x Studio Headphones</span></div></div>\n</details>",
+      "import": {
+        "package": "@/components/ui/collapsible",
+        "name": "Collapsible, CollapsibleContent, CollapsibleTrigger"
+      }
+    },
+    {
+      "name": "Combobox",
+      "ui": "combobox",
+      "category": "Forms",
+      "description": "An input that filters a list of options as you type. Use chips for several values.",
+      "props": [
+        {
+          "name": "multiple",
+          "label": "Multiple",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"md\" data-wrap=\"true\" data-align=\"start\">\n<div data-ui=\"combobox\" style=\"inline-size:16rem\">\n<div data-ui=\"input-group\" style=\"anchor-name:--combobox-demo\"><input data-part=\"control\" placeholder=\"Select a framework\" aria-label=\"Framework\" popovertarget=\"combobox-demo\"><button data-ui=\"button\" data-variant=\"ghost\" data-size=\"icon-xs\" popovertarget=\"combobox-demo\" aria-label=\"Show options\" data-part=\"addon-button\"><i data-ui=\"icon\" data-name=\"chevron-down\"></i></button></div>\n<div popover id=\"combobox-demo\" data-part=\"content\" style=\"position-anchor:--combobox-demo\"><div data-part=\"list\">\n<button data-part=\"item\" role=\"option\">Next.js</button><button data-part=\"item\" role=\"option\" aria-selected=\"true\">SvelteKit</button><button data-part=\"item\" role=\"option\">Nuxt.js</button><button data-part=\"item\" role=\"option\">Remix</button><button data-part=\"item\" role=\"option\">Astro</button>\n</div><div data-part=\"empty\">No items found.</div></div>\n</div>\n<div data-ui=\"combobox\" data-multiple=\"true\" style=\"inline-size:18rem\"><div data-part=\"chips\"><span data-part=\"chip\">Next.js<button data-part=\"chip-remove\" aria-label=\"Remove Next.js\"><i data-ui=\"icon\" data-name=\"x\"></i></button></span><span data-part=\"chip\">Astro<button data-part=\"chip-remove\" aria-label=\"Remove Astro\"><i data-ui=\"icon\" data-name=\"x\"></i></button></span><input data-part=\"chips-input\" placeholder=\"Add framework\" aria-label=\"Add framework\"></div></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/combobox",
+        "name": "Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList"
+      }
+    },
+    {
+      "name": "Command",
+      "ui": "command",
+      "category": "Navigation",
+      "description": "A command palette: search, grouped items and shortcuts. Typing filters the list. Put it in a dialog with data-size=dialog.",
+      "props": [],
+      "snippet": "<div data-ui=\"command\" style=\"max-inline-size:24rem\">\n<div data-part=\"input-wrap\"><div data-part=\"input-group\"><i data-ui=\"icon\" data-name=\"search\"></i><input data-part=\"input\" placeholder=\"Type a command or search...\" aria-label=\"Search\"></div></div>\n<div data-part=\"list\">\n<div data-part=\"group\"><div data-part=\"heading\">Suggestions</div>\n<button data-part=\"item\" aria-selected=\"true\"><i data-ui=\"icon\" data-name=\"calendar\"></i>Calendar</button>\n<button data-part=\"item\"><i data-ui=\"icon\" data-name=\"file-text\"></i>Search Invoices</button>\n<button data-part=\"item\"><i data-ui=\"icon\" data-name=\"sparkles\"></i>Ask Tallybook</button></div>\n<div data-part=\"separator\"></div>\n<div data-part=\"group\"><div data-part=\"heading\">Settings</div>\n<button data-part=\"item\"><i data-ui=\"icon\" data-name=\"user\"></i>Profile<span data-part=\"shortcut\">⌘P</span></button>\n<button data-part=\"item\"><i data-ui=\"icon\" data-name=\"credit-card\"></i>Billing<span data-part=\"shortcut\">⌘B</span></button>\n<button data-part=\"item\"><i data-ui=\"icon\" data-name=\"settings\"></i>Settings<span data-part=\"shortcut\">⌘S</span></button></div>\n</div>\n<div data-part=\"empty\" hidden>No results found.</div>\n</div>",
+      "import": {
+        "package": "@/components/ui/command",
+        "name": "Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator, CommandShortcut"
+      }
+    },
+    {
+      "name": "Context Menu",
+      "ui": "context-menu",
+      "category": "Overlay",
+      "description": "A menu opened with a right-click on its trigger area.",
+      "props": [],
+      "snippet": "<div data-ui=\"context-menu\" data-menu=\"context-menu-demo\">\n<div data-part=\"trigger\">Right click here</div>\n<div popover id=\"context-menu-demo\" data-part=\"content\">\n<button data-part=\"item\" role=\"menuitem\">Back<span data-part=\"shortcut\">⌘[</span></button>\n<button data-part=\"item\" role=\"menuitem\" disabled>Forward<span data-part=\"shortcut\">⌘]</span></button>\n<button data-part=\"item\" role=\"menuitem\">Reload<span data-part=\"shortcut\">⌘R</span></button>\n<div data-part=\"separator\"></div>\n<label data-part=\"item\" role=\"menuitemcheckbox\"><input data-part=\"check\" type=\"checkbox\" checked>Show Bookmarks</label>\n<label data-part=\"item\" role=\"menuitemcheckbox\"><input data-part=\"check\" type=\"checkbox\">Show Full URLs</label>\n<div data-part=\"separator\"></div>\n<div data-part=\"label\">People</div>\n<label data-part=\"item\" role=\"menuitemradio\"><input data-part=\"check\" type=\"radio\" name=\"context-menu-people\" checked>Pedro Duarte</label>\n<label data-part=\"item\" role=\"menuitemradio\"><input data-part=\"check\" type=\"radio\" name=\"context-menu-people\">Colm Tuite</label>\n<div data-part=\"separator\"></div>\n<button data-part=\"item\" role=\"menuitem\" data-variant=\"destructive\"><i data-ui=\"icon\" data-name=\"trash\"></i>Delete</button>\n</div>\n</div>",
+      "import": {
+        "package": "@/components/ui/context-menu",
+        "name": "ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger"
+      }
+    },
+    {
+      "name": "Data Table",
+      "ui": "data-table",
+      "category": "Data display",
+      "description": "A table with a filter, column menu, row selection and paging. Ticks update the count in ui.js.",
+      "props": [],
+      "snippet": "<div data-ui=\"data-table\">\n<div data-part=\"toolbar\"><input data-ui=\"input\" placeholder=\"Filter emails...\" aria-label=\"Filter emails\" style=\"max-inline-size:20rem\"><button data-ui=\"button\" data-variant=\"outline\" data-part=\"columns\">Columns<i data-ui=\"icon\" data-name=\"chevron-down\"></i></button></div>\n<div data-part=\"frame\"><table data-ui=\"table\"><thead><tr><th><input data-ui=\"checkbox\" type=\"checkbox\" aria-label=\"Select all\" data-part=\"select-all\"></th><th>Status</th><th><button data-ui=\"button\" data-variant=\"ghost\" data-part=\"sort\">Email<i data-ui=\"icon\" data-name=\"arrows-up-down\"></i></button></th><th data-align=\"end\">Amount</th><th></th></tr></thead><tbody>\n<tr><td><input data-ui=\"checkbox\" type=\"checkbox\" aria-label=\"Select row\"></td><td>Success</td><td>ken99@example.com</td><td data-align=\"end\">$316.00</td><td data-align=\"end\"><button data-ui=\"button\" data-variant=\"ghost\" data-size=\"icon-sm\" aria-label=\"Open menu\"><i data-ui=\"icon\" data-name=\"more-horizontal\"></i></button></td></tr>\n<tr><td><input data-ui=\"checkbox\" type=\"checkbox\" aria-label=\"Select row\"></td><td>Success</td><td>abe45@example.com</td><td data-align=\"end\">$242.00</td><td data-align=\"end\"><button data-ui=\"button\" data-variant=\"ghost\" data-size=\"icon-sm\" aria-label=\"Open menu\"><i data-ui=\"icon\" data-name=\"more-horizontal\"></i></button></td></tr>\n<tr><td><input data-ui=\"checkbox\" type=\"checkbox\" aria-label=\"Select row\"></td><td>Processing</td><td>monserrat44@example.com</td><td data-align=\"end\">$837.00</td><td data-align=\"end\"><button data-ui=\"button\" data-variant=\"ghost\" data-size=\"icon-sm\" aria-label=\"Open menu\"><i data-ui=\"icon\" data-name=\"more-horizontal\"></i></button></td></tr>\n<tr><td><input data-ui=\"checkbox\" type=\"checkbox\" aria-label=\"Select row\"></td><td>Failed</td><td>carmella@example.com</td><td data-align=\"end\">$721.00</td><td data-align=\"end\"><button data-ui=\"button\" data-variant=\"ghost\" data-size=\"icon-sm\" aria-label=\"Open menu\"><i data-ui=\"icon\" data-name=\"more-horizontal\"></i></button></td></tr>\n</tbody></table></div>\n<div data-part=\"footer\"><span data-part=\"count\">0 of 4 row(s) selected.</span><button data-ui=\"button\" data-variant=\"outline\" data-size=\"sm\" disabled>Previous</button><button data-ui=\"button\" data-variant=\"outline\" data-size=\"sm\">Next</button></div>\n</div>",
+      "import": {
+        "package": "@tanstack/react-table",
+        "name": "useReactTable"
+      }
+    },
+    {
+      "name": "Date Picker",
+      "ui": "date-picker",
+      "category": "Forms",
+      "description": "A button that opens a calendar in a popover. The chosen date replaces the button's text.",
+      "props": [],
+      "snippet": "<div data-ui=\"date-picker\">\n<button data-ui=\"button\" data-variant=\"outline\" data-part=\"trigger\" popovertarget=\"date-picker-demo\" style=\"anchor-name:--date-picker-demo\"><i data-ui=\"icon\" data-name=\"calendar\"></i><span data-part=\"value\">Pick a date</span></button>\n<div popover id=\"date-picker-demo\" data-part=\"content\" style=\"position-anchor:--date-picker-demo\"><div data-ui=\"calendar\" data-month=\"2026-11\"></div></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/calendar",
+        "name": "Calendar"
+      }
+    },
+    {
+      "name": "Dialog",
+      "ui": "dialog",
+      "category": "Overlay",
+      "description": "A modal window over the page, closed by its X, a button, Escape or a click outside.",
+      "props": [],
+      "snippet": "<button data-ui=\"button\" data-variant=\"outline\" data-dialog-open=\"dialog-demo\">Open Dialog</button>\n<dialog data-ui=\"dialog\" id=\"dialog-demo\">\n<div data-part=\"header\"><h2 data-part=\"title\">Edit profile</h2><p data-part=\"description\">Make changes to your profile here. Click save when you're done.</p></div>\n<div data-ui=\"stack\" data-gap=\"md\">\n<div data-ui=\"field\"><label data-ui=\"label\" for=\"dialog-name\">Name</label><input data-ui=\"input\" id=\"dialog-name\" value=\"Pedro Duarte\"></div>\n<div data-ui=\"field\"><label data-ui=\"label\" for=\"dialog-username\">Username</label><input data-ui=\"input\" id=\"dialog-username\" value=\"@peduarte\"></div>\n</div>\n<div data-part=\"footer\"><button data-ui=\"button\" data-variant=\"outline\" data-dialog-close>Cancel</button><button data-ui=\"button\" data-dialog-close>Save changes</button></div>\n<button data-ui=\"button\" data-part=\"close\" data-variant=\"ghost\" data-size=\"icon-sm\" data-dialog-close aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"x\"></i></button>\n</dialog>",
+      "import": {
+        "package": "@/components/ui/dialog",
+        "name": "Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger"
+      }
+    },
+    {
+      "name": "Drawer",
+      "ui": "drawer",
+      "category": "Overlay",
+      "description": "A panel that slides up from an edge, with a grab handle on the bottom edge.",
+      "props": [
+        {
+          "name": "direction",
+          "label": "Direction",
+          "type": "choice",
+          "options": [
+            "bottom",
+            "top",
+            "left",
+            "right"
+          ],
+          "default": "bottom"
+        }
+      ],
+      "snippet": "<button data-ui=\"button\" data-variant=\"outline\" data-dialog-open=\"drawer-demo\">Open Drawer</button>\n<dialog data-ui=\"drawer\" id=\"drawer-demo\">\n<div data-part=\"handle\"></div>\n<div data-part=\"inner\">\n<div data-part=\"header\"><h2 data-part=\"title\">Move Goal</h2><p data-part=\"description\">Set your daily activity goal.</p></div>\n<div data-part=\"body\"><div data-part=\"stat\">350</div><div data-part=\"stat-label\">Calories/day</div></div>\n<div data-part=\"footer\"><button data-ui=\"button\" data-dialog-close>Submit</button><button data-ui=\"button\" data-variant=\"outline\" data-dialog-close>Cancel</button></div>\n</div>\n</dialog>",
+      "import": {
+        "package": "@/components/ui/drawer",
+        "name": "Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger"
+      }
+    },
+    {
+      "name": "Dropdown Menu",
+      "ui": "dropdown-menu",
+      "category": "Overlay",
+      "description": "A menu opened by a button: labels, items with shortcuts, checks, radios and a submenu.",
+      "props": [],
+      "snippet": "<div data-ui=\"dropdown-menu\">\n<button data-ui=\"button\" data-variant=\"outline\" popovertarget=\"dropdown-demo\" style=\"anchor-name:--dropdown-demo\">Open</button>\n<div popover id=\"dropdown-demo\" data-part=\"content\" style=\"position-anchor:--dropdown-demo;min-inline-size:14rem\">\n<div data-part=\"label\">My account</div>\n<button data-part=\"item\" role=\"menuitem\"><i data-ui=\"icon\" data-name=\"user\"></i>Profile<span data-part=\"shortcut\">⇧⌘P</span></button>\n<button data-part=\"item\" role=\"menuitem\"><i data-ui=\"icon\" data-name=\"credit-card\"></i>Billing<span data-part=\"shortcut\">⌘B</span></button>\n<button data-part=\"item\" role=\"menuitem\"><i data-ui=\"icon\" data-name=\"settings\"></i>Settings<span data-part=\"shortcut\">⌘S</span></button>\n<div data-part=\"separator\"></div>\n<button data-part=\"item\" role=\"menuitem\"><i data-ui=\"icon\" data-name=\"users\"></i>Team</button>\n<button data-part=\"item\" role=\"menuitem\" popovertarget=\"dropdown-demo-sub\" style=\"anchor-name:--dropdown-demo-sub\">Invite users<i data-ui=\"icon\" data-name=\"chevron-right\"></i></button>\n<div popover id=\"dropdown-demo-sub\" data-part=\"content\" data-sub=\"true\" style=\"position-anchor:--dropdown-demo-sub\">\n<button data-part=\"item\" role=\"menuitem\"><i data-ui=\"icon\" data-name=\"mail\"></i>Email</button><button data-part=\"item\" role=\"menuitem\"><i data-ui=\"icon\" data-name=\"send\"></i>Message</button></div>\n<div data-part=\"separator\"></div>\n<button data-part=\"item\" role=\"menuitem\" data-variant=\"destructive\"><i data-ui=\"icon\" data-name=\"log-out\"></i>Log out<span data-part=\"shortcut\">⇧⌘Q</span></button>\n</div>\n</div>",
+      "import": {
+        "package": "@/components/ui/dropdown-menu",
+        "name": "DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger"
+      }
     },
     {
       "name": "Empty",
       "ui": "empty",
       "category": "Feedback",
-      "description": "A centred placeholder for a list or panel with nothing in it yet.",
+      "description": "An empty state: icon, title, description and actions.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "default",
+            "outline"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"empty\" data-variant=\"outline\">\n<div data-part=\"header\"><div data-part=\"media\"><i data-ui=\"icon\" data-name=\"folder\"></i></div><div data-part=\"title\">No Projects Yet</div><div data-part=\"description\">You haven't created any projects yet. Get started by creating your first project.</div></div>\n<div data-part=\"content\"><div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-justify=\"center\"><button data-ui=\"button\">Create Project</button><button data-ui=\"button\" data-variant=\"outline\">Import Project</button></div></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/empty",
+        "name": "Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle"
+      }
+    },
+    {
+      "name": "Field",
+      "ui": "field",
+      "category": "Forms",
+      "description": "A label, a control, then description and error. Horizontal for checkboxes and switches.",
+      "props": [
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "vertical",
+            "horizontal",
+            "responsive"
+          ],
+          "default": "vertical"
+        },
+        {
+          "name": "invalid",
+          "label": "Invalid",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"lg\" style=\"max-inline-size:24rem\">\n<div data-ui=\"field\"><label data-ui=\"label\" for=\"field-name\">Full name</label><input data-ui=\"input\" id=\"field-name\" placeholder=\"Evil Rabbit\"><p data-part=\"description\">This appears on invoices and emails.</p></div>\n<div data-ui=\"field\" data-invalid=\"true\"><label data-ui=\"label\" for=\"field-email\">Email</label><input data-ui=\"input\" id=\"field-email\" aria-invalid=\"true\" value=\"evil@\"><p data-part=\"error\">Enter a valid email address.</p></div>\n<div data-part=\"separator\" data-ui=\"separator\"></div>\n<label data-ui=\"field\" data-part=\"choice\" data-orientation=\"horizontal\"><input data-ui=\"checkbox\" type=\"checkbox\" checked><div data-part=\"content\"><div data-part=\"title\">Late reminders</div><p data-part=\"description\">Email a client when an invoice is overdue.</p></div></label>\n</div>",
+      "import": {
+        "package": "@/components/ui/field",
+        "name": "Field, FieldDescription, FieldError, FieldLabel"
+      }
+    },
+    {
+      "name": "Field Set",
+      "ui": "field-set",
+      "category": "Forms",
+      "description": "A group of fields with a legend and description.",
       "props": [],
-      "snippet": "<div data-ui=\"empty\">\n  <div data-part=\"icon\" aria-hidden=\"true\">\n    <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z\"/><path d=\"M14 2v6h6\"/></svg>\n  </div>\n  <p data-part=\"title\">No invoices yet</p>\n  <p data-part=\"description\">Send your first invoice and it will show up here with its status and due date.</p>\n  <div data-part=\"actions\"><button data-ui=\"button\">New invoice</button></div>\n</div>"
+      "snippet": "<fieldset data-ui=\"field-set\" style=\"max-inline-size:24rem\">\n<legend data-part=\"legend\">Payment Method</legend>\n<p data-part=\"description\">All transactions are secure and encrypted</p>\n<div data-part=\"group\">\n<div data-ui=\"field\"><label data-ui=\"label\" for=\"field-set-name\">Name on Card</label><input data-ui=\"input\" id=\"field-set-name\" placeholder=\"Evil Rabbit\"></div>\n<div data-ui=\"grid\" data-columns=\"2\"><div data-ui=\"field\"><label data-ui=\"label\" for=\"field-set-month\">Month</label><select data-ui=\"native-select\" id=\"field-set-month\"><option>MM</option><option>01</option></select></div><div data-ui=\"field\"><label data-ui=\"label\" for=\"field-set-cvv\">CVV</label><input data-ui=\"input\" id=\"field-set-cvv\" placeholder=\"123\"></div></div>\n</div>\n</fieldset>",
+      "import": {
+        "package": "@/components/ui/field",
+        "name": "FieldGroup, FieldLegend, FieldSet"
+      }
+    },
+    {
+      "name": "Hover Card",
+      "ui": "hover-card",
+      "category": "Overlay",
+      "description": "A preview card shown when a pointer rests on a link.",
+      "props": [],
+      "snippet": "<div data-ui=\"hover-card\">\n<a data-ui=\"button\" data-variant=\"link\" href=\"#\">Hover Here</a>\n<div data-part=\"content\"><div data-part=\"title\">@nextjs</div><p data-part=\"body\">The React Framework, created and maintained by @vercel.</p><p data-part=\"meta\">Joined December 2021</p></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/hover-card",
+        "name": "HoverCard, HoverCardContent, HoverCardTrigger"
+      }
+    },
+    {
+      "name": "Input",
+      "ui": "input",
+      "category": "Forms",
+      "description": "A single line of text.",
+      "props": [
+        {
+          "name": "invalid",
+          "label": "Invalid",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"md\" style=\"max-inline-size:20rem\">\n<input data-ui=\"input\" placeholder=\"Enter your API key\">\n<input data-ui=\"input\" type=\"email\" value=\"m@example.com\">\n<input data-ui=\"input\" data-invalid=\"true\" aria-invalid=\"true\" value=\"invalid\">\n<input data-ui=\"input\" placeholder=\"Disabled\" disabled>\n<input data-ui=\"input\" type=\"file\">\n</div>",
+      "import": {
+        "package": "@/components/ui/input",
+        "name": "Input"
+      }
+    },
+    {
+      "name": "Input Group",
+      "ui": "input-group",
+      "category": "Forms",
+      "description": "An input with icons, text and buttons inside its border, on any side.",
+      "props": [],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"md\" style=\"max-inline-size:24rem\">\n<div data-ui=\"input-group\"><input data-part=\"control\" placeholder=\"Search...\" aria-label=\"Search\"><div data-part=\"addon\"><i data-ui=\"icon\" data-name=\"search\"></i></div><div data-part=\"addon\" data-align=\"inline-end\">12 results</div></div>\n<div data-ui=\"input-group\"><div data-part=\"addon\">tallybook.app/</div><input data-part=\"control\" placeholder=\"your-studio\" aria-label=\"Site\"><div data-part=\"addon\" data-align=\"inline-end\"><button data-ui=\"button\" data-variant=\"ghost\" data-size=\"icon-xs\" aria-label=\"Copy\"><i data-ui=\"icon\" data-name=\"copy\"></i></button></div></div>\n<div data-ui=\"input-group\"><textarea data-part=\"control\" placeholder=\"Ask, Search or Chat...\" aria-label=\"Ask\"></textarea><div data-part=\"addon\" data-align=\"block-end\"><button data-ui=\"button\" data-variant=\"outline\" data-size=\"icon-xs\" aria-label=\"Add\" style=\"border-radius:var(--radius-full)\"><i data-ui=\"icon\" data-name=\"plus\"></i></button><span data-part=\"addon-text\">Auto</span><button data-ui=\"button\" data-size=\"icon-xs\" aria-label=\"Send\" style=\"border-radius:var(--radius-full);margin-inline-start:auto\"><i data-ui=\"icon\" data-name=\"arrow-up\"></i></button></div></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/input-group",
+        "name": "InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, InputGroupText, InputGroupTextarea"
+      }
+    },
+    {
+      "name": "Input OTP",
+      "ui": "input-otp",
+      "category": "Forms",
+      "description": "One-time code entry, one box per digit, moving on as you type.",
+      "props": [],
+      "snippet": "<div data-ui=\"input-otp\" role=\"group\" aria-label=\"One-time code\">\n<div data-part=\"group\"><input data-part=\"slot\" maxlength=\"1\" inputmode=\"numeric\" aria-label=\"Digit 1\" value=\"4\"><input data-part=\"slot\" maxlength=\"1\" inputmode=\"numeric\" aria-label=\"Digit 2\" value=\"2\"><input data-part=\"slot\" maxlength=\"1\" inputmode=\"numeric\" aria-label=\"Digit 3\"></div>\n<div data-part=\"separator\" role=\"separator\"><i data-ui=\"icon\" data-name=\"minus\"></i></div>\n<div data-part=\"group\"><input data-part=\"slot\" maxlength=\"1\" inputmode=\"numeric\" aria-label=\"Digit 4\"><input data-part=\"slot\" maxlength=\"1\" inputmode=\"numeric\" aria-label=\"Digit 5\"><input data-part=\"slot\" maxlength=\"1\" inputmode=\"numeric\" aria-label=\"Digit 6\"></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/input-otp",
+        "name": "InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot"
+      }
+    },
+    {
+      "name": "Item",
+      "ui": "item",
+      "category": "Data display",
+      "description": "A flexible row: media, title, description and actions.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "default",
+            "outline",
+            "muted"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "sm",
+            "xs"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\" style=\"max-inline-size:28rem\">\n<div data-ui=\"item\" data-variant=\"outline\"><div data-part=\"content\"><div data-part=\"title\">Basic Item</div><p data-part=\"description\">A simple item with title and description.</p></div><div data-part=\"actions\"><button data-ui=\"button\" data-variant=\"outline\" data-size=\"sm\">Action</button></div></div>\n<a data-ui=\"item\" data-variant=\"outline\" data-size=\"sm\" href=\"#\"><div data-part=\"media\"><i data-ui=\"icon\" data-name=\"check-circle\"></i></div><div data-part=\"content\"><div data-part=\"title\">Your profile has been verified.</div></div><div data-part=\"actions\"><i data-ui=\"icon\" data-name=\"chevron-right\"></i></div></a>\n<div data-ui=\"item\" data-variant=\"muted\"><div data-part=\"media\" data-variant=\"icon\"><i data-ui=\"icon\" data-name=\"bell\"></i></div><div data-part=\"content\"><div data-part=\"title\">Payment received</div><p data-part=\"description\">Northline Studio paid invoice TB-1042.</p></div></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/item",
+        "name": "Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle"
+      }
+    },
+    {
+      "name": "Kbd",
+      "ui": "kbd",
+      "category": "Data display",
+      "description": "A keyboard key or a chord of them.",
+      "props": [],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"md\" data-align=\"center\">\n<span data-part=\"kbd-group\" style=\"display:inline-flex;gap:4px\"><kbd data-ui=\"kbd\">⌘</kbd><kbd data-ui=\"kbd\">⇧</kbd><kbd data-ui=\"kbd\">⌥</kbd><kbd data-ui=\"kbd\">⌃</kbd></span>\n<span style=\"display:inline-flex;gap:4px;align-items:center\"><kbd data-ui=\"kbd\">Ctrl</kbd><span>+</span><kbd data-ui=\"kbd\">B</kbd></span>\n</div>",
+      "import": {
+        "package": "@/components/ui/kbd",
+        "name": "Kbd, KbdGroup"
+      }
+    },
+    {
+      "name": "Label",
+      "ui": "label",
+      "category": "Forms",
+      "description": "The text for a control.",
+      "props": [],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-align=\"center\"><input data-ui=\"checkbox\" type=\"checkbox\" id=\"label-terms\"><label data-ui=\"label\" for=\"label-terms\">Accept terms and conditions</label></div>",
+      "import": {
+        "package": "@/components/ui/label",
+        "name": "Label"
+      }
+    },
+    {
+      "name": "Marker",
+      "ui": "marker",
+      "category": "Chat",
+      "description": "A quiet line in a thread: plain, a separator with rules either side, or with a border.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "default",
+            "separator",
+            "border"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"md\" style=\"max-inline-size:28rem\">\n<div data-ui=\"marker\"><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"clock\"></i></span><span data-part=\"content\">Reminder sent at 9:41</span></div>\n<div data-ui=\"marker\" data-variant=\"separator\"><span data-part=\"content\">Today</span></div>\n<div data-ui=\"marker\" data-variant=\"border\"><span data-part=\"content\">Invoice <a href=\"#\">TB-1042</a> was marked as paid</span></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/marker",
+        "name": "Marker, MarkerContent, MarkerIcon"
+      }
+    },
+    {
+      "name": "Menubar",
+      "ui": "menubar",
+      "category": "Navigation",
+      "description": "A desktop-style row of menus. Hovering moves between open menus.",
+      "props": [],
+      "snippet": "<div data-ui=\"menubar\" role=\"menubar\">\n<button data-part=\"trigger\" popovertarget=\"menubar-file\" style=\"anchor-name:--menubar-file\">File</button>\n<div popover id=\"menubar-file\" data-part=\"content\" style=\"position-anchor:--menubar-file\"><button data-part=\"item\" role=\"menuitem\">New Tab<span data-part=\"shortcut\">⌘T</span></button><button data-part=\"item\" role=\"menuitem\">New Window<span data-part=\"shortcut\">⌘N</span></button><button data-part=\"item\" role=\"menuitem\" disabled>New Incognito Window</button><div data-part=\"separator\"></div><button data-part=\"item\" role=\"menuitem\">Print...<span data-part=\"shortcut\">⌘P</span></button></div>\n<button data-part=\"trigger\" popovertarget=\"menubar-edit\" style=\"anchor-name:--menubar-edit\">Edit</button>\n<div popover id=\"menubar-edit\" data-part=\"content\" style=\"position-anchor:--menubar-edit\"><button data-part=\"item\" role=\"menuitem\">Undo<span data-part=\"shortcut\">⌘Z</span></button><button data-part=\"item\" role=\"menuitem\">Redo<span data-part=\"shortcut\">⇧⌘Z</span></button><div data-part=\"separator\"></div><button data-part=\"item\" role=\"menuitem\">Cut</button><button data-part=\"item\" role=\"menuitem\">Copy</button><button data-part=\"item\" role=\"menuitem\">Paste</button></div>\n<button data-part=\"trigger\" popovertarget=\"menubar-view\" style=\"anchor-name:--menubar-view\">View</button>\n<div popover id=\"menubar-view\" data-part=\"content\" style=\"position-anchor:--menubar-view\"><label data-part=\"item\" role=\"menuitemcheckbox\"><input data-part=\"check\" type=\"checkbox\">Bookmarks Bar</label><label data-part=\"item\" role=\"menuitemcheckbox\"><input data-part=\"check\" type=\"checkbox\" checked>Full URLs</label><div data-part=\"separator\"></div><button data-part=\"item\" role=\"menuitem\" data-inset=\"true\">Reload<span data-part=\"shortcut\">⌘R</span></button></div>\n<button data-part=\"trigger\" popovertarget=\"menubar-profiles\" style=\"anchor-name:--menubar-profiles\">Profiles</button>\n<div popover id=\"menubar-profiles\" data-part=\"content\" style=\"position-anchor:--menubar-profiles\"><label data-part=\"item\" role=\"menuitemradio\"><input data-part=\"check\" type=\"radio\" name=\"menubar-profile\">Andy</label><label data-part=\"item\" role=\"menuitemradio\"><input data-part=\"check\" type=\"radio\" name=\"menubar-profile\" checked>Benoit</label><label data-part=\"item\" role=\"menuitemradio\"><input data-part=\"check\" type=\"radio\" name=\"menubar-profile\">Luis</label></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/menubar",
+        "name": "Menubar, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator, MenubarShortcut, MenubarTrigger"
+      }
+    },
+    {
+      "name": "Message",
+      "ui": "message",
+      "category": "Chat",
+      "description": "A chat row: avatar, then a stack of bubbles with a header and footer. data-align=end for the sender.",
+      "props": [
+        {
+          "name": "align",
+          "label": "Align",
+          "type": "choice",
+          "options": [
+            "start",
+            "end"
+          ],
+          "default": "start"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"md\" style=\"max-inline-size:32rem\">\n<div data-ui=\"message\"><div data-part=\"avatar\"><span data-ui=\"avatar\"><span data-part=\"fallback\">NS</span></span></div><div data-part=\"content\"><div data-part=\"header\">Northline Studio</div><div data-ui=\"bubble\" data-variant=\"secondary\"><div data-part=\"content\">Could you resend the March invoice?</div></div></div></div>\n<div data-ui=\"message\" data-align=\"end\"><div data-part=\"content\"><div data-ui=\"bubble\" data-align=\"end\"><div data-part=\"content\">Sent. You should have it now.</div></div><div data-part=\"footer\">Delivered 9:41</div></div></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/message",
+        "name": "Message, MessageAvatar, MessageContent, MessageFooter, MessageHeader"
+      }
+    },
+    {
+      "name": "Message Scroller",
+      "ui": "message-scroller",
+      "category": "Chat",
+      "description": "A scrolling thread with a button that jumps to the latest message.",
+      "props": [],
+      "snippet": "<div data-ui=\"message-scroller\" style=\"block-size:14rem;max-inline-size:28rem\">\n<div data-part=\"viewport\"><div data-part=\"content\">\n<div data-ui=\"bubble\" data-variant=\"secondary\"><div data-part=\"content\">When is TB-1042 due?</div></div>\n<div data-ui=\"bubble\" data-align=\"end\"><div data-part=\"content\">Thursday the 12th.</div></div>\n<div data-ui=\"bubble\" data-variant=\"secondary\"><div data-part=\"content\">Is the late fee on by default?</div></div>\n<div data-ui=\"bubble\" data-align=\"end\"><div data-part=\"content\">It is, at 1.5% a month. You can turn it off per client.</div></div>\n<div data-ui=\"bubble\" data-variant=\"secondary\"><div data-part=\"content\">Turn it off for Northline, please.</div></div>\n<div data-ui=\"bubble\" data-align=\"end\"><div data-part=\"content\">Done.</div></div>\n</div></div>\n<button data-ui=\"button\" data-part=\"jump\" data-variant=\"outline\" data-size=\"icon-sm\" aria-label=\"Scroll to latest\"><i data-ui=\"icon\" data-name=\"arrow-down\"></i></button>\n</div>",
+      "import": {
+        "package": "@/components/ui/message-scroller",
+        "name": "MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerViewport"
+      }
+    },
+    {
+      "name": "Native Select",
+      "ui": "native-select",
+      "category": "Forms",
+      "description": "The browser's own select, styled like an input.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "sm"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<select data-ui=\"native-select\" aria-label=\"Status\" style=\"inline-size:14rem\"><option>Select status</option><option>Todo</option><option>In Progress</option><option>Done</option></select>",
+      "import": {
+        "package": "@/components/ui/native-select",
+        "name": "NativeSelect, NativeSelectOption"
+      }
+    },
+    {
+      "name": "Navigation Menu",
+      "ui": "navigation-menu",
+      "category": "Navigation",
+      "description": "Site navigation with panels of links that open on hover or focus.",
+      "props": [],
+      "snippet": "<nav data-ui=\"navigation-menu\" aria-label=\"Main\"><ul data-part=\"list\">\n<li data-part=\"item\"><button data-part=\"trigger\">Getting started<i data-ui=\"icon\" data-name=\"chevron-down\"></i></button><div data-part=\"content\" style=\"inline-size:24rem\"><div data-part=\"links\">\n<a data-part=\"link\" href=\"#\"><span data-part=\"link-title\">Introduction</span><span data-part=\"link-text\">Re-usable components built with Tailwind CSS.</span></a>\n<a data-part=\"link\" href=\"#\"><span data-part=\"link-title\">Installation</span><span data-part=\"link-text\">How to install dependencies and structure your app.</span></a>\n<a data-part=\"link\" href=\"#\"><span data-part=\"link-title\">Typography</span><span data-part=\"link-text\">Styles for headings, paragraphs, lists and more.</span></a>\n</div></div></li>\n<li data-part=\"item\"><button data-part=\"trigger\">Components<i data-ui=\"icon\" data-name=\"chevron-down\"></i></button><div data-part=\"content\" style=\"inline-size:32rem\"><div data-part=\"links\" data-columns=\"2\">\n<a data-part=\"link\" href=\"#\"><span data-part=\"link-title\">Alert Dialog</span><span data-part=\"link-text\">A modal dialog that interrupts the user.</span></a>\n<a data-part=\"link\" href=\"#\"><span data-part=\"link-title\">Hover Card</span><span data-part=\"link-text\">For sighted users to preview content behind a link.</span></a>\n<a data-part=\"link\" href=\"#\"><span data-part=\"link-title\">Progress</span><span data-part=\"link-text\">Displays the completion progress of a task.</span></a>\n<a data-part=\"link\" href=\"#\"><span data-part=\"link-title\">Tabs</span><span data-part=\"link-text\">Layered sections of content, one at a time.</span></a>\n</div></div></li>\n<li data-part=\"item\"><button data-part=\"trigger\">With Icon<i data-ui=\"icon\" data-name=\"chevron-down\"></i></button><div data-part=\"content\" style=\"inline-size:12rem\"><div data-part=\"links\">\n<a data-part=\"link\" href=\"#\" data-row=\"true\"><i data-ui=\"icon\" data-name=\"alert-circle\"></i>Backlog</a><a data-part=\"link\" href=\"#\" data-row=\"true\"><i data-ui=\"icon\" data-name=\"clock\"></i>To Do</a><a data-part=\"link\" href=\"#\" data-row=\"true\"><i data-ui=\"icon\" data-name=\"check-circle\"></i>Done</a>\n</div></div></li>\n<li data-part=\"item\"><a data-part=\"trigger\" href=\"#\">Docs</a></li>\n</ul></nav>",
+      "import": {
+        "package": "@/components/ui/navigation-menu",
+        "name": "NavigationMenu, NavigationMenuContent, NavigationMenuItem, NavigationMenuLink, NavigationMenuList, NavigationMenuTrigger"
+      }
+    },
+    {
+      "name": "Pagination",
+      "ui": "pagination",
+      "category": "Navigation",
+      "description": "Page links with previous, next and an ellipsis.",
+      "props": [],
+      "snippet": "<nav data-ui=\"pagination\" role=\"navigation\" aria-label=\"pagination\"><ul data-part=\"content\">\n<li><a data-ui=\"button\" data-variant=\"ghost\" data-part=\"previous\" href=\"#\" aria-label=\"Go to previous page\"><i data-ui=\"icon\" data-name=\"chevron-left\"></i>Previous</a></li>\n<li><a data-ui=\"button\" data-variant=\"ghost\" data-size=\"icon\" href=\"#\">1</a></li>\n<li><a data-ui=\"button\" data-variant=\"outline\" data-size=\"icon\" href=\"#\" aria-current=\"page\">2</a></li>\n<li><a data-ui=\"button\" data-variant=\"ghost\" data-size=\"icon\" href=\"#\">3</a></li>\n<li><span data-part=\"ellipsis\" aria-hidden=\"true\"><i data-ui=\"icon\" data-name=\"more-horizontal\"></i></span></li>\n<li><a data-ui=\"button\" data-variant=\"ghost\" data-part=\"next\" href=\"#\" aria-label=\"Go to next page\">Next<i data-ui=\"icon\" data-name=\"chevron-right\"></i></a></li>\n</ul></nav>",
+      "import": {
+        "package": "@/components/ui/pagination",
+        "name": "Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious"
+      }
+    },
+    {
+      "name": "Popover",
+      "ui": "popover",
+      "category": "Overlay",
+      "description": "A small panel opened by a button, closed by clicking elsewhere.",
+      "props": [],
+      "snippet": "<div data-ui=\"popover\">\n<button data-ui=\"button\" data-variant=\"outline\" popovertarget=\"popover-demo\" style=\"anchor-name:--popover-demo\">Open popover</button>\n<div popover id=\"popover-demo\" data-part=\"content\" style=\"position-anchor:--popover-demo\">\n<div data-part=\"header\"><div data-part=\"title\">Dimensions</div><p data-part=\"description\">Set the dimensions for the layer.</p></div>\n<div data-ui=\"stack\" data-gap=\"sm\">\n<div data-part=\"row\"><label data-ui=\"label\" for=\"popover-width\">Width</label><input data-ui=\"input\" id=\"popover-width\" value=\"100%\"></div>\n<div data-part=\"row\"><label data-ui=\"label\" for=\"popover-height\">Height</label><input data-ui=\"input\" id=\"popover-height\" value=\"25px\"></div>\n</div>\n</div>\n</div>",
+      "import": {
+        "package": "@/components/ui/popover",
+        "name": "Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger"
+      }
+    },
+    {
+      "name": "Progress",
+      "ui": "progress",
+      "category": "Feedback",
+      "description": "A bar for how far along a task is. Set the amount with --value.",
+      "props": [],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"md\" style=\"max-inline-size:24rem\">\n<div data-ui=\"progress\" role=\"progressbar\" aria-valuenow=\"33\" style=\"--value:33%\"><div data-part=\"track\"><div data-part=\"indicator\"></div></div></div>\n<div data-ui=\"progress\" role=\"progressbar\" aria-valuenow=\"66\" style=\"--value:66%\"><span data-part=\"label\">Upload progress</span><span data-part=\"value\">66%</span><div data-part=\"track\"><div data-part=\"indicator\"></div></div></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/progress",
+        "name": "Progress"
+      }
+    },
+    {
+      "name": "Questionnaire",
+      "ui": "questionnaire",
+      "category": "Forms",
+      "description": "A step-by-step set of questions with single choice, multiple choice and freeform answers.",
+      "props": [],
+      "snippet": "<form data-ui=\"questionnaire\" style=\"max-inline-size:28rem\">\n<div data-part=\"progress\">Question 1 of 3</div>\n<fieldset data-part=\"item\">\n<legend data-part=\"title\">What should the agent build next?</legend>\n<p data-part=\"description\">Choose a direction or describe another task.</p>\n<div data-part=\"choices\">\n<label data-part=\"choice\"><input data-part=\"choice-input\" type=\"radio\" name=\"questionnaire-next\"><span data-part=\"choice-content\"><span data-part=\"choice-label\">Tool call timeline</span><span data-part=\"choice-description\">Show what the agent ran and what came back.</span></span><span data-part=\"shortcut\">A</span></label>\n<label data-part=\"choice\"><input data-part=\"choice-input\" type=\"radio\" name=\"questionnaire-next\"><span data-part=\"choice-content\"><span data-part=\"choice-label\">Approval checkpoints</span><span data-part=\"choice-description\">Ask before sensitive or destructive actions.</span></span><span data-part=\"shortcut\">B</span></label>\n<label data-part=\"choice\"><input data-part=\"choice-input\" type=\"radio\" name=\"questionnaire-next\"><span data-part=\"choice-content\"><span data-part=\"choice-label\">Sub-agent handoffs</span><span data-part=\"choice-description\">Make delegated work and results easier to follow.</span></span><span data-part=\"shortcut\">C</span></label>\n</div>\n<input data-ui=\"input\" placeholder=\"Describe another feature...\" aria-label=\"Another feature\">\n</fieldset>\n<div data-part=\"actions\"><button data-ui=\"button\" type=\"button\">Next</button></div>\n</form>",
+      "import": {
+        "package": "@/components/ui/questionnaire",
+        "name": "Questionnaire, QuestionnaireChoice, QuestionnaireChoices, QuestionnaireItem, QuestionnaireNext, QuestionnaireProgress, QuestionnaireTitle"
+      }
+    },
+    {
+      "name": "Radio Group",
+      "ui": "radio-group",
+      "category": "Forms",
+      "description": "A set of choices where only one can be on.",
+      "props": [],
+      "snippet": "<div data-ui=\"radio-group\" role=\"radiogroup\" aria-label=\"Spacing\">\n<div data-ui=\"field\" data-orientation=\"horizontal\"><input data-part=\"item\" type=\"radio\" name=\"radio-demo\" id=\"radio-default\"><label data-ui=\"label\" for=\"radio-default\">Default</label></div>\n<div data-ui=\"field\" data-orientation=\"horizontal\"><input data-part=\"item\" type=\"radio\" name=\"radio-demo\" id=\"radio-comfortable\" checked><label data-ui=\"label\" for=\"radio-comfortable\">Comfortable</label></div>\n<div data-ui=\"field\" data-orientation=\"horizontal\"><input data-part=\"item\" type=\"radio\" name=\"radio-demo\" id=\"radio-compact\"><label data-ui=\"label\" for=\"radio-compact\">Compact</label></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/radio-group",
+        "name": "RadioGroup, RadioGroupItem"
+      }
+    },
+    {
+      "name": "Resizable",
+      "ui": "resizable",
+      "category": "Layout",
+      "description": "Panels with handles you can drag.",
+      "props": [
+        {
+          "name": "direction",
+          "label": "Direction",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        }
+      ],
+      "snippet": "<div data-ui=\"resizable\" style=\"block-size:12.5rem;max-inline-size:24rem\">\n<div data-part=\"panel\" style=\"flex-grow:1\"><span>One</span></div>\n<div data-part=\"handle\" role=\"separator\" tabindex=\"0\" aria-label=\"Resize\"><span data-part=\"grip\"></span></div>\n<div data-part=\"panel\" style=\"flex-grow:1\">\n<div data-ui=\"resizable\" data-direction=\"vertical\">\n<div data-part=\"panel\" style=\"flex-grow:1\"><span>Two</span></div>\n<div data-part=\"handle\" role=\"separator\" tabindex=\"0\" aria-label=\"Resize\"><span data-part=\"grip\"></span></div>\n<div data-part=\"panel\" style=\"flex-grow:3\"><span>Three</span></div>\n</div>\n</div>\n</div>",
+      "import": {
+        "package": "@/components/ui/resizable",
+        "name": "ResizableHandle, ResizablePanel, ResizablePanelGroup"
+      }
+    },
+    {
+      "name": "Scroll Area",
+      "ui": "scroll-area",
+      "category": "Layout",
+      "description": "A scrolling region with a thin, quiet scrollbar.",
+      "props": [
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "vertical",
+            "horizontal"
+          ],
+          "default": "vertical"
+        }
+      ],
+      "snippet": "<div data-ui=\"scroll-area\" tabindex=\"0\" style=\"block-size:13rem;inline-size:12rem\">\n<div data-part=\"content\"><h4 data-part=\"heading\">Tags</h4>\n<div data-part=\"row\">v1.2.0-beta.50</div><div data-part=\"row\">v1.2.0-beta.49</div><div data-part=\"row\">v1.2.0-beta.48</div><div data-part=\"row\">v1.2.0-beta.47</div><div data-part=\"row\">v1.2.0-beta.46</div><div data-part=\"row\">v1.2.0-beta.45</div><div data-part=\"row\">v1.2.0-beta.44</div><div data-part=\"row\">v1.2.0-beta.43</div><div data-part=\"row\">v1.2.0-beta.42</div><div data-part=\"row\">v1.2.0-beta.41</div></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/scroll-area",
+        "name": "ScrollArea, ScrollBar"
+      }
+    },
+    {
+      "name": "Select",
+      "ui": "select",
+      "category": "Forms",
+      "description": "A button that opens a list of options. Choosing one fills the button.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "sm"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "invalid",
+          "label": "Invalid",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"select\" style=\"inline-size:11.25rem\">\n<button data-part=\"trigger\" popovertarget=\"select-demo\" style=\"anchor-name:--select-demo\"><span data-part=\"value\" data-placeholder=\"true\">Select a fruit</span><i data-ui=\"icon\" data-name=\"chevron-down\"></i></button>\n<div popover id=\"select-demo\" data-part=\"content\" style=\"position-anchor:--select-demo\">\n<div data-part=\"group\"><div data-part=\"label\">Fruits</div>\n<button data-part=\"item\" role=\"option\">Apple</button><button data-part=\"item\" role=\"option\">Banana</button><button data-part=\"item\" role=\"option\" aria-selected=\"true\">Blueberry</button><button data-part=\"item\" role=\"option\">Grapes</button><button data-part=\"item\" role=\"option\">Pineapple</button></div>\n</div>\n</div>",
+      "import": {
+        "package": "@/components/ui/select",
+        "name": "Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue"
+      }
+    },
+    {
+      "name": "Separator",
+      "ui": "separator",
+      "category": "Layout",
+      "description": "A hairline between things.",
+      "props": [
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        }
+      ],
+      "snippet": "<div style=\"max-inline-size:24rem\">\n<div data-ui=\"stack\" data-gap=\"xs\"><div data-ui=\"text\" data-size=\"sm\" style=\"font-weight:500\">Radix Primitives</div><div data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">An open-source UI component library.</div></div>\n<div data-ui=\"separator\" role=\"separator\" style=\"margin-block:1rem\"></div>\n<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"md\" data-align=\"center\" style=\"block-size:1.25rem\"><span data-ui=\"text\" data-size=\"sm\">Blog</span><span data-ui=\"separator\" data-orientation=\"vertical\"></span><span data-ui=\"text\" data-size=\"sm\">Docs</span><span data-ui=\"separator\" data-orientation=\"vertical\"></span><span data-ui=\"text\" data-size=\"sm\">Source</span></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/separator",
+        "name": "Separator"
+      }
+    },
+    {
+      "name": "Sheet",
+      "ui": "sheet",
+      "category": "Overlay",
+      "description": "A panel that slides in from an edge of the window.",
+      "props": [
+        {
+          "name": "side",
+          "label": "Side",
+          "type": "choice",
+          "options": [
+            "right",
+            "left",
+            "top",
+            "bottom"
+          ],
+          "default": "right"
+        }
+      ],
+      "snippet": "<button data-ui=\"button\" data-variant=\"outline\" data-dialog-open=\"sheet-demo\">Open</button>\n<dialog data-ui=\"sheet\" id=\"sheet-demo\">\n<div data-part=\"header\"><h2 data-part=\"title\">Edit profile</h2><p data-part=\"description\">Make changes to your profile here. Click save when you're done.</p></div>\n<div data-part=\"body\">\n<div data-ui=\"field\"><label data-ui=\"label\" for=\"sheet-name\">Name</label><input data-ui=\"input\" id=\"sheet-name\" value=\"Pedro Duarte\"></div>\n<div data-ui=\"field\"><label data-ui=\"label\" for=\"sheet-username\">Username</label><input data-ui=\"input\" id=\"sheet-username\" value=\"@peduarte\"></div>\n</div>\n<div data-part=\"footer\"><button data-ui=\"button\" data-dialog-close>Save changes</button><button data-ui=\"button\" data-variant=\"outline\" data-dialog-close>Close</button></div>\n<button data-ui=\"button\" data-part=\"close\" data-variant=\"ghost\" data-size=\"icon-sm\" data-dialog-close aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"x\"></i></button>\n</dialog>",
+      "import": {
+        "package": "@/components/ui/sheet",
+        "name": "Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger"
+      }
+    },
+    {
+      "name": "Sidebar",
+      "ui": "sidebar",
+      "category": "Navigation",
+      "description": "An app sidebar: header, labelled groups, menu buttons, badges, a submenu and a footer. A trigger collapses it to icons.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "sidebar",
+            "floating",
+            "inset"
+          ],
+          "default": "sidebar"
+        },
+        {
+          "name": "side",
+          "label": "Side",
+          "type": "choice",
+          "options": [
+            "left",
+            "right"
+          ],
+          "default": "left"
+        },
+        {
+          "name": "state",
+          "label": "State",
+          "type": "choice",
+          "options": [
+            "expanded",
+            "collapsed"
+          ],
+          "default": "expanded"
+        }
+      ],
+      "snippet": "<div data-part=\"wrapper\" style=\"block-size:26rem;display:flex;overflow:hidden;border:1px solid var(--color-border);border-radius:var(--radius-xl)\">\n<aside data-ui=\"sidebar\" aria-label=\"Sidebar\">\n<div data-part=\"header\"><a data-part=\"button\" data-size=\"lg\" href=\"#\"><span data-part=\"logo\"><i data-ui=\"icon\" data-name=\"sparkles\"></i></span><span data-part=\"label-stack\"><span data-part=\"name\">Tallybook</span><span data-part=\"sub\">Enterprise</span></span></a></div>\n<div data-part=\"content\">\n<div data-part=\"group\"><div data-part=\"group-label\">Platform</div><ul data-part=\"menu\">\n<li data-part=\"menu-item\"><a data-part=\"button\" href=\"#\" data-active=\"true\"><i data-ui=\"icon\" data-name=\"home\"></i><span data-part=\"label\">Dashboard</span></a></li>\n<li data-part=\"menu-item\"><a data-part=\"button\" href=\"#\"><i data-ui=\"icon\" data-name=\"inbox\"></i><span data-part=\"label\">Inbox</span></a><span data-part=\"badge\">24</span></li>\n<li data-part=\"menu-item\"><details open><summary data-part=\"button\"><i data-ui=\"icon\" data-name=\"file-text\"></i><span data-part=\"label\">Invoices</span><i data-ui=\"icon\" data-name=\"chevron-right\"></i></summary><ul data-part=\"sub-menu\"><li><a data-part=\"sub-button\" href=\"#\" data-active=\"true\">Drafts</a></li><li><a data-part=\"sub-button\" href=\"#\">Sent</a></li><li><a data-part=\"sub-button\" href=\"#\">Paid</a></li></ul></details></li>\n<li data-part=\"menu-item\"><a data-part=\"button\" href=\"#\"><i data-ui=\"icon\" data-name=\"settings\"></i><span data-part=\"label\">Settings</span></a></li>\n</ul></div>\n</div>\n<div data-part=\"footer\"><a data-part=\"button\" data-size=\"lg\" href=\"#\"><span data-ui=\"avatar\"><span data-part=\"fallback\">SC</span></span><span data-part=\"label-stack\"><span data-part=\"name\">shadcn</span><span data-part=\"sub\">m@example.com</span></span></a></div>\n</aside>\n<main data-part=\"inset\"><header data-part=\"inset-header\"><button data-ui=\"button\" data-part=\"trigger\" data-variant=\"ghost\" data-size=\"icon-sm\" aria-label=\"Toggle sidebar\"><i data-ui=\"icon\" data-name=\"panel-left\"></i></button><span data-ui=\"separator\" data-orientation=\"vertical\" style=\"block-size:1rem\"></span><span data-ui=\"text\" data-size=\"sm\">Dashboard</span></header></main>\n</div>",
+      "import": {
+        "package": "@/components/ui/sidebar",
+        "name": "Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider"
+      }
+    },
+    {
+      "name": "Skeleton",
+      "ui": "skeleton",
+      "category": "Feedback",
+      "description": "A pulsing placeholder while content loads.",
+      "props": [],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"md\" data-align=\"center\">\n<div data-ui=\"skeleton\" style=\"inline-size:3rem;block-size:3rem;border-radius:var(--radius-full)\"></div>\n<div data-ui=\"stack\" data-gap=\"sm\"><div data-ui=\"skeleton\" style=\"block-size:1rem;inline-size:15.625rem\"></div><div data-ui=\"skeleton\" style=\"block-size:1rem;inline-size:12.5rem\"></div></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/skeleton",
+        "name": "Skeleton"
+      }
+    },
+    {
+      "name": "Slider",
+      "ui": "slider",
+      "category": "Forms",
+      "description": "Pick a value along a track.",
+      "props": [],
+      "snippet": "<input data-ui=\"slider\" type=\"range\" aria-label=\"Volume\" min=\"0\" max=\"100\" value=\"75\" style=\"--value:75%;max-inline-size:24rem\">",
+      "import": {
+        "package": "@/components/ui/slider",
+        "name": "Slider"
+      }
+    },
+    {
+      "name": "Spinner",
+      "ui": "spinner",
+      "category": "Feedback",
+      "description": "An indeterminate loading indicator.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"md\" data-align=\"center\">\n<span data-ui=\"spinner\" role=\"status\" aria-label=\"Loading\"></span>\n<span data-ui=\"spinner\" data-size=\"lg\" role=\"status\" aria-label=\"Loading\"></span>\n<button data-ui=\"button\" disabled><span data-ui=\"spinner\"></span>Loading...</button>\n<span data-ui=\"badge\" data-variant=\"secondary\"><span data-ui=\"spinner\" data-size=\"sm\"></span>Syncing</span>\n</div>",
+      "import": {
+        "package": "@/components/ui/spinner",
+        "name": "Spinner"
+      }
+    },
+    {
+      "name": "Switch",
+      "ui": "switch",
+      "category": "Forms",
+      "description": "An on and off control.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "sm"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"md\">\n<div data-ui=\"field\" data-orientation=\"horizontal\"><input data-ui=\"switch\" type=\"checkbox\" role=\"switch\" id=\"switch-airplane\"><label data-ui=\"label\" for=\"switch-airplane\">Airplane Mode</label></div>\n<div data-ui=\"field\" data-orientation=\"horizontal\"><input data-ui=\"switch\" type=\"checkbox\" role=\"switch\" id=\"switch-on\" checked><label data-ui=\"label\" for=\"switch-on\">Send reminders</label></div>\n<div data-ui=\"field\" data-orientation=\"horizontal\"><input data-ui=\"switch\" data-size=\"sm\" type=\"checkbox\" role=\"switch\" id=\"switch-sm\" checked><label data-ui=\"label\" for=\"switch-sm\">Small</label></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/switch",
+        "name": "Switch"
+      }
+    },
+    {
+      "name": "Table",
+      "ui": "table",
+      "category": "Data display",
+      "description": "Rows and columns: header, hover, caption and footer. Right-align figures with data-align=end.",
+      "props": [],
+      "snippet": "<table data-ui=\"table\"><caption>A list of your recent invoices.</caption>\n<thead><tr><th style=\"inline-size:6.25rem\">Invoice</th><th>Status</th><th>Method</th><th data-align=\"end\">Amount</th></tr></thead>\n<tbody>\n<tr><td style=\"font-weight:500\">INV001</td><td>Paid</td><td>Credit Card</td><td data-align=\"end\">$250.00</td></tr>\n<tr><td style=\"font-weight:500\">INV002</td><td>Pending</td><td>PayPal</td><td data-align=\"end\">$150.00</td></tr>\n<tr data-state=\"selected\"><td style=\"font-weight:500\">INV003</td><td>Unpaid</td><td>Bank Transfer</td><td data-align=\"end\">$350.00</td></tr>\n<tr><td style=\"font-weight:500\">INV004</td><td>Paid</td><td>Credit Card</td><td data-align=\"end\">$450.00</td></tr>\n</tbody>\n<tfoot><tr><td colspan=\"3\">Total</td><td data-align=\"end\">$1,200.00</td></tr></tfoot>\n</table>",
+      "import": {
+        "package": "@/components/ui/table",
+        "name": "Table, TableBody, TableCaption, TableCell, TableFooter, TableHead, TableHeader, TableRow"
+      }
+    },
+    {
+      "name": "Tabs",
+      "ui": "tabs",
+      "category": "Navigation",
+      "description": "Layered sections of content, one at a time. A pill list by default, or a line under the active tab.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "default",
+            "line"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"lg\" style=\"max-inline-size:24rem\">\n<div data-ui=\"tabs\"><div data-part=\"list\" role=\"tablist\" aria-label=\"Report\">\n<button data-part=\"trigger\" role=\"tab\" id=\"tabs-overview\" aria-controls=\"tabs-overview-panel\" aria-selected=\"true\">Overview</button>\n<button data-part=\"trigger\" role=\"tab\" id=\"tabs-analytics\" aria-controls=\"tabs-analytics-panel\" aria-selected=\"false\" tabindex=\"-1\">Analytics</button>\n<button data-part=\"trigger\" role=\"tab\" id=\"tabs-reports\" aria-controls=\"tabs-reports-panel\" aria-selected=\"false\" tabindex=\"-1\">Reports</button>\n</div>\n<div data-part=\"content\" role=\"tabpanel\" id=\"tabs-overview-panel\" aria-labelledby=\"tabs-overview\"><div data-ui=\"card\"><div data-part=\"header\"><div data-part=\"title\">Overview</div><div data-part=\"description\">View your key metrics and recent project activity.</div></div></div></div>\n<div data-part=\"content\" role=\"tabpanel\" id=\"tabs-analytics-panel\" aria-labelledby=\"tabs-analytics\" hidden><div data-ui=\"card\"><div data-part=\"header\"><div data-part=\"title\">Analytics</div><div data-part=\"description\">Track performance and user engagement metrics.</div></div></div></div>\n<div data-part=\"content\" role=\"tabpanel\" id=\"tabs-reports-panel\" aria-labelledby=\"tabs-reports\" hidden><div data-ui=\"card\"><div data-part=\"header\"><div data-part=\"title\">Reports</div><div data-part=\"description\">Generate and download your detailed reports.</div></div></div></div>\n</div>\n<div data-ui=\"tabs\" data-variant=\"line\"><div data-part=\"list\" role=\"tablist\" aria-label=\"Line\">\n<button data-part=\"trigger\" role=\"tab\" aria-selected=\"true\">Base UI</button><button data-part=\"trigger\" role=\"tab\" aria-selected=\"false\" tabindex=\"-1\">React Aria</button><button data-part=\"trigger\" role=\"tab\" aria-selected=\"false\" tabindex=\"-1\">Radix UI</button>\n</div></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/tabs",
+        "name": "Tabs, TabsContent, TabsList, TabsTrigger"
+      }
+    },
+    {
+      "name": "Textarea",
+      "ui": "textarea",
+      "category": "Forms",
+      "description": "Several lines of text, growing with what's typed.",
+      "props": [
+        {
+          "name": "invalid",
+          "label": "Invalid",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<textarea data-ui=\"textarea\" placeholder=\"Type your message here.\" aria-label=\"Message\" style=\"max-inline-size:24rem\"></textarea>",
+      "import": {
+        "package": "@/components/ui/textarea",
+        "name": "Textarea"
+      }
+    },
+    {
+      "name": "Toast",
+      "ui": "toast",
+      "category": "Feedback",
+      "description": "A short message in the corner. data-toast-open on a button shows it; it leaves after 4 seconds.",
+      "props": [],
+      "snippet": "<button data-ui=\"button\" data-variant=\"outline\" data-toast-open=\"toast-demo\">Show Toast</button>\n<div data-ui=\"toast\" popover=\"manual\" id=\"toast-demo\" role=\"status\">\n<span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"check-circle\"></i></span>\n<div data-part=\"body\"><div data-part=\"title\">Event has been created</div><div data-part=\"description\">Sunday, December 03, 2023 at 9:00 AM</div></div>\n<button data-ui=\"button\" data-variant=\"outline\" data-size=\"sm\" data-part=\"action\">Undo</button>\n<button data-ui=\"button\" data-variant=\"ghost\" data-size=\"icon-sm\" data-part=\"close\" aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"x\"></i></button>\n</div>",
+      "import": {
+        "package": "@/components/ui/toast",
+        "name": "toast, Toaster"
+      }
+    },
+    {
+      "name": "Toggle",
+      "ui": "toggle",
+      "category": "Forms",
+      "description": "A two-state button.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "default",
+            "outline"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "sm",
+            "lg"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-align=\"center\">\n<button data-ui=\"toggle\" aria-pressed=\"false\" aria-label=\"Italic\"><i data-ui=\"icon\" data-name=\"italic\"></i></button>\n<button data-ui=\"toggle\" aria-pressed=\"true\" aria-label=\"Bold\"><i data-ui=\"icon\" data-name=\"bold\"></i></button>\n<button data-ui=\"toggle\" data-variant=\"outline\" aria-pressed=\"false\"><i data-ui=\"icon\" data-name=\"bookmark\"></i>Bookmark</button>\n<button data-ui=\"toggle\" data-variant=\"outline\" data-size=\"sm\" aria-pressed=\"false\" aria-label=\"Underline\"><i data-ui=\"icon\" data-name=\"underline\"></i></button>\n</div>",
+      "import": {
+        "package": "@/components/ui/toggle",
+        "name": "Toggle"
+      }
+    },
+    {
+      "name": "Toggle Group",
+      "ui": "toggle-group",
+      "category": "Forms",
+      "description": "A row of toggles, one or several on.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "default",
+            "outline"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "type",
+          "label": "Type",
+          "type": "choice",
+          "options": [
+            "single",
+            "multiple"
+          ],
+          "default": "single"
+        },
+        {
+          "name": "spacing",
+          "label": "Spacing",
+          "type": "choice",
+          "options": [
+            "0",
+            "1"
+          ],
+          "default": "0"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"md\" data-align=\"center\">\n<div data-ui=\"toggle-group\" role=\"group\" data-type=\"multiple\" data-variant=\"outline\"><button data-ui=\"toggle\" aria-pressed=\"true\" aria-label=\"Bold\"><i data-ui=\"icon\" data-name=\"bold\"></i></button><button data-ui=\"toggle\" aria-pressed=\"false\" aria-label=\"Italic\"><i data-ui=\"icon\" data-name=\"italic\"></i></button><button data-ui=\"toggle\" aria-pressed=\"false\" aria-label=\"Underline\"><i data-ui=\"icon\" data-name=\"underline\"></i></button></div>\n<div data-ui=\"toggle-group\" role=\"group\"><button data-ui=\"toggle\" aria-pressed=\"true\">All</button><button data-ui=\"toggle\" aria-pressed=\"false\">Missed</button></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/toggle-group",
+        "name": "ToggleGroup, ToggleGroupItem"
+      }
+    },
+    {
+      "name": "Tooltip",
+      "ui": "tooltip",
+      "category": "Overlay",
+      "description": "A short label on hover or focus.",
+      "props": [
+        {
+          "name": "side",
+          "label": "Side",
+          "type": "choice",
+          "options": [
+            "top",
+            "bottom",
+            "left",
+            "right"
+          ],
+          "default": "top"
+        }
+      ],
+      "snippet": "<span data-ui=\"tooltip\"><button data-ui=\"button\" data-variant=\"outline\">Hover</button><span data-part=\"content\" role=\"tooltip\">Add to library</span></span>",
+      "import": {
+        "package": "@/components/ui/tooltip",
+        "name": "Tooltip, TooltipContent, TooltipTrigger"
+      }
+    },
+    {
+      "name": "Trace",
+      "ui": "trace",
+      "category": "Chat",
+      "description": "An agent's steps: reasoning, tool calls and sources, as lines that can expand.",
+      "props": [],
+      "snippet": "<div data-ui=\"trace\" style=\"max-inline-size:28rem\">\n<details data-part=\"collapsible\"><summary data-part=\"trigger\"><span data-part=\"line\"><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"check-circle\"></i></span><span data-part=\"title\">Thought for 5s</span></span><span data-part=\"chevron\"><i data-ui=\"icon\" data-name=\"chevron-right\"></i></span></summary><div data-part=\"body\">The lockfile changed but the package file did not.</div></details>\n<details data-part=\"collapsible\" open><summary data-part=\"trigger\"><span data-part=\"line\"><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"check-circle\"></i></span><span data-part=\"title\">Ran git diff --stat HEAD~1</span></span><span data-part=\"chevron\"><i data-ui=\"icon\" data-name=\"chevron-right\"></i></span></summary><div data-part=\"body\"><div data-ui=\"code-block\" data-size=\"sm\"><pre data-part=\"content\"><code data-part=\"code\"><span data-part=\"line\">package.json | 2 +-</span></code></pre></div></div></details>\n<div data-part=\"line\" data-status=\"error\"><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"alert-circle\"></i></span><span data-part=\"title\">Failed to run pnpm install --frozen-lockfile</span></div>\n<div data-part=\"line\" data-status=\"running\"><span data-part=\"icon\"><span data-ui=\"spinner\"></span></span><span data-part=\"title\">Reading package.json</span><span data-part=\"description\">2s</span></div>\n<div data-part=\"line\" data-status=\"pending\"><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"circle\"></i></span><span data-part=\"title\">Run the tests</span></div>\n</div>",
+      "import": {
+        "package": "@/components/ui/trace",
+        "name": "Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger, TraceIcon, TraceLine, TraceTitle"
+      }
     },
     {
       "name": "Hero",
       "ui": "hero",
-      "kind": "composition",
       "category": "Blocks",
-      "description": "A page opener with a badge, a display headline, a lead and two actions.",
+      "description": "A landing page opening: announcement badge, big title, lead and two buttons.",
       "props": [],
-      "snippet": "<section data-ui=\"hero\" data-block=\"blocks/hero.html\"></section>"
+      "snippet": "<section data-ui=\"hero\" data-block=\"blocks/hero.html\"></section>",
+      "kind": "composition"
     },
     {
-      "name": "Feature grid",
+      "name": "Feature Grid",
       "ui": "feature-grid",
-      "kind": "composition",
       "category": "Blocks",
-      "description": "Six feature cards with icons under a short heading and lead.",
+      "description": "Three columns of features, as cards with an icon.",
       "props": [],
-      "snippet": "<section data-ui=\"feature-grid\" data-block=\"blocks/feature-grid.html\"></section>"
+      "snippet": "<section data-ui=\"feature-grid\" data-block=\"blocks/feature-grid.html\"></section>",
+      "kind": "composition"
     },
     {
       "name": "Pricing",
       "ui": "pricing",
-      "kind": "composition",
       "category": "Blocks",
-      "description": "Three plan cards with prices, feature lists and one action each.",
+      "description": "Three plans in cards, the middle one marked, with a feature list and a button.",
       "props": [],
-      "snippet": "<section data-ui=\"pricing\" data-block=\"blocks/pricing.html\"></section>"
+      "snippet": "<section data-ui=\"pricing\" data-block=\"blocks/pricing.html\"></section>",
+      "kind": "composition"
     },
     {
       "name": "Login",
       "ui": "login",
-      "kind": "composition",
       "category": "Blocks",
-      "description": "A centred sign-in card with email, password and a second provider.",
+      "description": "A centred sign-in card with email, password and a social button.",
       "props": [],
-      "snippet": "<section data-ui=\"login\" data-block=\"blocks/login.html\"></section>"
+      "snippet": "<section data-ui=\"login\" data-block=\"blocks/login.html\"></section>",
+      "kind": "composition"
     },
     {
       "name": "Dashboard",
       "ui": "dashboard",
-      "kind": "composition",
       "category": "Blocks",
-      "description": "A sidebar and main shell with a top bar, a stat row and a recent table.",
+      "description": "An app page: sidebar, header, four stat cards, an area chart and a data table.",
       "props": [],
-      "snippet": "<section data-ui=\"dashboard\" data-block=\"blocks/dashboard.html\"></section>"
+      "snippet": "<section data-ui=\"dashboard\" data-block=\"blocks/dashboard.html\"></section>",
+      "kind": "composition"
     }
   ]
 }

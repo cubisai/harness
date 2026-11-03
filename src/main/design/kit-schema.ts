@@ -24,7 +24,7 @@ export const KIT_LIMITS = {
   maxDepth: 8,
   manifestBytes: 1024 * 1024,
   /** The kit's own script; it only drives previews. */
-  uiJsBytes: 8 * 1024,
+  uiJsBytes: 16 * 1024,
   snippetChars: 4096,
   components: 200,
   props: 32,

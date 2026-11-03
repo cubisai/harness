@@ -1,40 +1,75 @@
-/* shadcn/ui, unofficial HTML+CSS kit: zinc neutrals, tight 14px controls, hairline borders and medium-weight labels.
+/* shadcn/ui, unofficial HTML+CSS kit: follows the current default look of the library (compact 32px controls, 10px
+ * radii, hairline rings on cards and menus, tinted destructive).
  * Link this file before ui.css and use the custom properties, not raw values. A dark pair follows the system setting.
- * Roles: --color-accent-text for accent-coloured text (the accent itself may be too light for text);
- * --color-on-accent on accent fills; --color-*-soft behind status text and selected chips, with the matching
- * colour (or --color-accent-text) on top; --color-surface-3 for hover/pressed wells; --color-border-strong for
- * inputs and dividers that must show. --tracking-display/-heading/-label on those roles, --text-display-sm
- * under 640px, font-variant-numeric: var(--numeric-data) on figures. */
+ * Roles: --color-accent-text for accent-coloured text; --color-on-accent on accent fills; --color-*-soft behind status
+ * text and selected chips; --color-hover behind a hovered menu item; --color-border-strong for inputs. --tracking-*
+ * on those roles, --text-display-sm under 640px, font-variant-numeric: var(--numeric-data) on figures. */
 :root {
   color-scheme: light;
 
   /* Color */
-  --color-bg: #FFFFFF;
-  --color-surface: #FFFFFF;
-  --color-surface-2: #F4F4F5;
-  --color-surface-3: #E4E4E7;
-  --color-text: #09090B;
-  --color-text-muted: #71717A;
-  --color-border: #E4E4E7;
-  --color-border-strong: #D4D4D8;
-  --color-primary: #18181B;
-  --color-on-primary: #FAFAFA;
-  --color-accent: #18181B;
-  --color-on-accent: #FAFAFA;
-  --color-accent-text: #18181B;
-  --color-accent-soft: #F4F4F5;
-  --color-success: #15803D;
-  --color-success-soft: #F0FDF4;
-  --color-warning: #A16207;
-  --color-warning-soft: #FEFCE8;
-  --color-danger: #DC2626;
-  --color-danger-soft: #FEF2F2;
-  --color-on-danger: #FFFFFF;
-  --color-focus: #A1A1AA;
+  --color-bg: oklch(1 0 0);
+  --color-surface: oklch(1 0 0);
+  --color-surface-2: oklch(0.97 0 0);
+  --color-surface-3: oklch(0.922 0 0);
+  --color-text: oklch(0.145 0 0);
+  --color-text-muted: oklch(0.556 0 0);
+  --color-border: oklch(0.922 0 0);
+  --color-border-strong: oklch(0.922 0 0);
+  --color-primary: oklch(0.205 0 0);
+  --color-on-primary: oklch(0.985 0 0);
+  --color-accent: oklch(0.205 0 0);
+  --color-on-accent: oklch(0.985 0 0);
+  --color-accent-text: oklch(0.205 0 0);
+  --color-accent-soft: oklch(0.97 0 0);
+  --color-success: oklch(0.527 0.154 150.069);
+  --color-success-soft: oklch(0.982 0.018 155.826);
+  --color-warning: oklch(0.554 0.135 66.442);
+  --color-warning-soft: oklch(0.987 0.026 102.212);
+  --color-danger: oklch(0.577 0.245 27.325);
+  --color-danger-soft: oklch(0.971 0.013 17.38);
+  --color-on-danger: oklch(1 0 0);
+  --color-focus: oklch(0.708 0 0);
+  --color-popover: oklch(1 0 0);
+  --color-secondary: oklch(0.97 0 0);
+  --color-on-secondary: oklch(0.205 0 0);
+  --color-hover: oklch(0.97 0 0);
+  --color-on-hover: oklch(0.205 0 0);
+  --color-sidebar: oklch(0.985 0 0);
+  --color-sidebar-text: oklch(0.145 0 0);
+  --color-sidebar-primary: oklch(0.205 0 0);
+  --color-sidebar-on-primary: oklch(0.985 0 0);
+  --color-sidebar-hover: oklch(0.97 0 0);
+  --color-sidebar-on-hover: oklch(0.205 0 0);
+  --color-sidebar-border: oklch(0.922 0 0);
+  --color-white: oklch(1 0 0);
+  --chart-1: oklch(0.809 0.105 251.813);
+  --chart-2: oklch(0.623 0.214 259.815);
+  --chart-3: oklch(0.546 0.245 262.881);
+  --chart-4: oklch(0.488 0.243 264.376);
+  --chart-5: oklch(0.424 0.199 265.638);
+
+  /* Mixed from the roles above, so every theme gets them */
+  --ring: color-mix(in oklab, var(--color-focus) 50%, transparent);
+  --ring-danger: color-mix(in oklab, var(--color-danger) 20%, transparent);
+  --hairline: color-mix(in oklab, var(--color-text) 10%, transparent);
+  --danger-fill: color-mix(in oklab, var(--color-danger) 10%, transparent);
+  --danger-fill-hover: color-mix(in oklab, var(--color-danger) 20%, transparent);
+  --input-fill: transparent;
+  --input-fill-hover: transparent;
+  --input-disabled: color-mix(in oklab, var(--color-border-strong) 50%, transparent);
+  --outline-fill: var(--color-bg);
+  --outline-hover: var(--color-surface-2);
+  --outline-border: var(--color-border);
+  --ghost-hover: var(--color-surface-2);
+  --muted-half: color-mix(in oklab, var(--color-surface-2) 50%, transparent);
+  --switch-off: var(--color-border-strong);
+  --switch-thumb-off: var(--color-bg);
+  --switch-thumb-on: var(--color-bg);
 
   /* Type */
-  --font-sans: Inter, "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-display: Inter, "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-sans: Geist, "Geist Variable", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: Geist, "Geist Variable", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --text-xs: 12px;
   --leading-xs: 16px;
@@ -59,12 +94,13 @@
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-bold: 600;
+  --weight-black: 800;
   --tracking-display: -0.025em;
   --tracking-heading: -0.025em;
   --tracking-label: 0;
   --numeric-data: tabular-nums;
 
-  /* Space: the 8pt scale (4 is for type and icon nudges only) */
+  /* Space: the 8pt scale (the kit's own parts also use 2, 6, 10 and 14 where the library does) */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -81,9 +117,10 @@
   --target-min: 44px;
   --content-max: 1120px;
   --measure: 68ch;
-  --control-sm: 32px;
-  --control-md: 36px;
-  --control-lg: 40px;
+  --control-xs: 24px;
+  --control-sm: 28px;
+  --control-md: 32px;
+  --control-lg: 36px;
   --ring-width: 3px;
   --size-icon: 16px;
 
@@ -91,16 +128,21 @@
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-2xl: 18px;
+  --radius-4xl: 26px;
   --radius-full: 9999px;
 
-  /* Elevation: hairlines first; shadows only for raised cards, menus and dialogs */
-  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.05);
+  /* Elevation: hairlines first; shadows only for menus, dialogs and sheets */
+  --shadow-1: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
   --shadow-2: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   --shadow-3: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
 
   /* Overlay */
-  --overlay: rgb(0 0 0 / 0.5);
+  --overlay: rgb(0 0 0 / 0.1);
 
   /* Motion */
   --duration-fast: 100ms;
@@ -119,35 +161,57 @@
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
-    --color-bg: #09090B;
-    --color-surface: #18181B;
-    --color-surface-2: #27272A;
-    --color-surface-3: #3F3F46;
-    --color-text: #FAFAFA;
-    --color-text-muted: #A1A1AA;
-    --color-border: #27272A;
-    --color-border-strong: #3F3F46;
-    --color-primary: #E4E4E7;
-    --color-on-primary: #18181B;
-    --color-accent: #E4E4E7;
-    --color-on-accent: #18181B;
-    --color-accent-text: #FAFAFA;
-    --color-accent-soft: #27272A;
-    --color-success: #4ADE80;
-    --color-success-soft: #052E16;
-    --color-warning: #FACC15;
-    --color-warning-soft: #2E2506;
-    --color-danger: #F87171;
-    --color-danger-soft: #2C0F0F;
-    --color-on-danger: #2C0F0F;
-    --color-focus: #71717A;
-    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
-    --shadow-2: 0 4px 6px -1px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.5);
-    --shadow-3: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.5);
+    --color-bg: oklch(0.145 0 0);
+    --color-surface: oklch(0.205 0 0);
+    --color-surface-2: oklch(0.269 0 0);
+    --color-surface-3: oklch(0.371 0 0);
+    --color-text: oklch(0.985 0 0);
+    --color-text-muted: oklch(0.708 0 0);
+    --color-border: oklch(1 0 0 / 10%);
+    --color-border-strong: oklch(1 0 0 / 15%);
+    --color-primary: oklch(0.922 0 0);
+    --color-on-primary: oklch(0.205 0 0);
+    --color-accent: oklch(0.922 0 0);
+    --color-on-accent: oklch(0.205 0 0);
+    --color-accent-text: oklch(0.985 0 0);
+    --color-accent-soft: oklch(0.269 0 0);
+    --color-success: oklch(0.792 0.209 151.711);
+    --color-success-soft: oklch(0.266 0.065 152.934);
+    --color-warning: oklch(0.852 0.199 91.936);
+    --color-warning-soft: oklch(0.286 0.066 53.813);
+    --color-danger: oklch(0.704 0.191 22.216);
+    --color-danger-soft: oklch(0.258 0.092 26.042);
+    --color-on-danger: oklch(1 0 0);
+    --color-focus: oklch(0.556 0 0);
+    --color-popover: oklch(0.205 0 0);
+    --color-secondary: oklch(0.269 0 0);
+    --color-on-secondary: oklch(0.985 0 0);
+    --color-hover: oklch(0.269 0 0);
+    --color-on-hover: oklch(0.985 0 0);
+    --color-sidebar: oklch(0.205 0 0);
+    --color-sidebar-text: oklch(0.985 0 0);
+    --color-sidebar-primary: oklch(0.488 0.243 264.376);
+    --color-sidebar-on-primary: oklch(0.985 0 0);
+    --color-sidebar-hover: oklch(0.269 0 0);
+    --color-sidebar-on-hover: oklch(0.985 0 0);
+    --color-sidebar-border: oklch(1 0 0 / 10%);
+    --ring-danger: color-mix(in oklab, var(--color-danger) 40%, transparent);
+    --danger-fill: color-mix(in oklab, var(--color-danger) 20%, transparent);
+    --danger-fill-hover: color-mix(in oklab, var(--color-danger) 30%, transparent);
+    --input-fill: color-mix(in oklab, var(--color-border-strong) 30%, transparent);
+    --input-fill-hover: color-mix(in oklab, var(--color-border-strong) 50%, transparent);
+    --input-disabled: color-mix(in oklab, var(--color-border-strong) 80%, transparent);
+    --outline-fill: color-mix(in oklab, var(--color-border-strong) 30%, transparent);
+    --outline-hover: color-mix(in oklab, var(--color-border-strong) 50%, transparent);
+    --outline-border: var(--color-border-strong);
+    --ghost-hover: color-mix(in oklab, var(--color-surface-2) 50%, transparent);
+    --switch-off: color-mix(in oklab, var(--color-border-strong) 80%, transparent);
+    --switch-thumb-off: var(--color-text);
+    --switch-thumb-on: var(--color-on-primary);
   }
 }
 
 ::selection {
-  background: var(--color-accent-soft);
-  color: var(--color-text);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
 }

@@ -6,15 +6,23 @@
       "name": "shadcn/ui",
       "version": "1.0.0",
       "themes": [
-        "slate",
+        "zinc",
+        "stone",
+        "mauve",
+        "olive",
+        "mist",
+        "taupe",
+        "blue",
         "rose",
-        "blue"
+        "green",
+        "violet",
+        "orange"
       ],
       "card": {
         "bg": "#FFFFFF",
-        "text": "#09090B",
-        "accent": "#18181B",
-        "radius": "8px"
+        "text": "#0A0A0A",
+        "accent": "#171717",
+        "radius": "10px"
       }
     }
   ]

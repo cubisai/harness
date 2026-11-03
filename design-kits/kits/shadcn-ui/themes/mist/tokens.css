@@ -1,0 +1,217 @@
+/* shadcn/ui, unofficial HTML+CSS kit: follows the current default look of the library (compact 32px controls, 10px
+ * radii, hairline rings on cards and menus, tinted destructive).
+ * Link this file before ui.css and use the custom properties, not raw values. A dark pair follows the system setting.
+ * Roles: --color-accent-text for accent-coloured text; --color-on-accent on accent fills; --color-*-soft behind status
+ * text and selected chips; --color-hover behind a hovered menu item; --color-border-strong for inputs. --tracking-*
+ * on those roles, --text-display-sm under 640px, font-variant-numeric: var(--numeric-data) on figures. */
+:root {
+  color-scheme: light;
+
+  /* Color */
+  --color-bg: oklch(1 0 0);
+  --color-surface: oklch(1 0 0);
+  --color-surface-2: oklch(0.963 0.002 197.1);
+  --color-surface-3: oklch(0.922 0 0);
+  --color-text: oklch(0.148 0.004 228.8);
+  --color-text-muted: oklch(0.56 0.021 213.5);
+  --color-border: oklch(0.925 0.005 214.3);
+  --color-border-strong: oklch(0.925 0.005 214.3);
+  --color-primary: oklch(0.218 0.008 223.9);
+  --color-on-primary: oklch(0.987 0.002 197.1);
+  --color-accent: oklch(0.218 0.008 223.9);
+  --color-on-accent: oklch(0.987 0.002 197.1);
+  --color-accent-text: oklch(0.148 0.004 228.8);
+  --color-accent-soft: oklch(0.963 0.002 197.1);
+  --color-success: oklch(0.527 0.154 150.069);
+  --color-success-soft: oklch(0.982 0.018 155.826);
+  --color-warning: oklch(0.554 0.135 66.442);
+  --color-warning-soft: oklch(0.987 0.026 102.212);
+  --color-danger: oklch(0.577 0.245 27.325);
+  --color-danger-soft: oklch(0.971 0.013 17.38);
+  --color-on-danger: oklch(1 0 0);
+  --color-focus: oklch(0.723 0.014 214.4);
+  --color-popover: oklch(1 0 0);
+  --color-secondary: oklch(0.963 0.002 197.1);
+  --color-on-secondary: oklch(0.218 0.008 223.9);
+  --color-hover: oklch(0.963 0.002 197.1);
+  --color-on-hover: oklch(0.218 0.008 223.9);
+  --color-sidebar: oklch(0.987 0.002 197.1);
+  --color-sidebar-text: oklch(0.148 0.004 228.8);
+  --color-sidebar-primary: oklch(0.218 0.008 223.9);
+  --color-sidebar-on-primary: oklch(0.987 0.002 197.1);
+  --color-sidebar-hover: oklch(0.963 0.002 197.1);
+  --color-sidebar-on-hover: oklch(0.218 0.008 223.9);
+  --color-sidebar-border: oklch(0.925 0.005 214.3);
+  --color-white: oklch(1 0 0);
+  --chart-1: oklch(0.809 0.105 251.813);
+  --chart-2: oklch(0.623 0.214 259.815);
+  --chart-3: oklch(0.546 0.245 262.881);
+  --chart-4: oklch(0.488 0.243 264.376);
+  --chart-5: oklch(0.424 0.199 265.638);
+
+  /* Mixed from the roles above, so every theme gets them */
+  --ring: color-mix(in oklab, var(--color-focus) 50%, transparent);
+  --ring-danger: color-mix(in oklab, var(--color-danger) 20%, transparent);
+  --hairline: color-mix(in oklab, var(--color-text) 10%, transparent);
+  --danger-fill: color-mix(in oklab, var(--color-danger) 10%, transparent);
+  --danger-fill-hover: color-mix(in oklab, var(--color-danger) 20%, transparent);
+  --input-fill: transparent;
+  --input-fill-hover: transparent;
+  --input-disabled: color-mix(in oklab, var(--color-border-strong) 50%, transparent);
+  --outline-fill: var(--color-bg);
+  --outline-hover: var(--color-surface-2);
+  --outline-border: var(--color-border);
+  --ghost-hover: var(--color-surface-2);
+  --muted-half: color-mix(in oklab, var(--color-surface-2) 50%, transparent);
+  --switch-off: var(--color-border-strong);
+  --switch-thumb-off: var(--color-bg);
+  --switch-thumb-on: var(--color-bg);
+
+  /* Type */
+  --font-sans: Geist, "Geist Variable", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: Geist, "Geist Variable", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --text-xs: 12px;
+  --leading-xs: 16px;
+  --text-sm: 14px;
+  --leading-sm: 20px;
+  --text-md: 16px;
+  --leading-md: 24px;
+  --text-lg: 18px;
+  --leading-lg: 28px;
+  --text-xl: 20px;
+  --leading-xl: 28px;
+  --text-2xl: 24px;
+  --leading-2xl: 32px;
+  --text-3xl: 30px;
+  --leading-3xl: 36px;
+  --text-4xl: 36px;
+  --leading-4xl: 40px;
+  --text-display: 48px;
+  --leading-display: 48px;
+  --text-display-sm: 36px;
+  --leading-display-sm: 40px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 600;
+  --weight-black: 800;
+  --tracking-display: -0.025em;
+  --tracking-heading: -0.025em;
+  --tracking-label: 0;
+  --numeric-data: tabular-nums;
+
+  /* Space: the 8pt scale (the kit's own parts also use 2, 6, 10 and 14 where the library does) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* Size */
+  --target-min: 44px;
+  --content-max: 1120px;
+  --measure: 68ch;
+  --control-xs: 24px;
+  --control-sm: 28px;
+  --control-md: 32px;
+  --control-lg: 36px;
+  --ring-width: 3px;
+  --size-icon: 16px;
+
+  /* Radius */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-2xl: 18px;
+  --radius-4xl: 26px;
+  --radius-full: 9999px;
+
+  /* Elevation: hairlines first; shadows only for menus, dialogs and sheets */
+  --shadow-1: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-2: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-3: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+
+  /* Overlay */
+  --overlay: rgb(0 0 0 / 0.1);
+
+  /* Motion */
+  --duration-fast: 100ms;
+  --duration: 150ms;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration: 0ms;
+  }
+}
+
+/* Dark: the same roles, re-tuned; picked up from the system setting. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --color-bg: oklch(0.148 0.004 228.8);
+    --color-surface: oklch(0.218 0.008 223.9);
+    --color-surface-2: oklch(0.275 0.011 216.9);
+    --color-surface-3: oklch(0.371 0 0);
+    --color-text: oklch(0.987 0.002 197.1);
+    --color-text-muted: oklch(0.723 0.014 214.4);
+    --color-border: oklch(1 0 0 / 10%);
+    --color-border-strong: oklch(1 0 0 / 15%);
+    --color-primary: oklch(0.925 0.005 214.3);
+    --color-on-primary: oklch(0.218 0.008 223.9);
+    --color-accent: oklch(0.925 0.005 214.3);
+    --color-on-accent: oklch(0.218 0.008 223.9);
+    --color-accent-text: oklch(0.987 0.002 197.1);
+    --color-accent-soft: oklch(0.275 0.011 216.9);
+    --color-success: oklch(0.792 0.209 151.711);
+    --color-success-soft: oklch(0.266 0.065 152.934);
+    --color-warning: oklch(0.852 0.199 91.936);
+    --color-warning-soft: oklch(0.286 0.066 53.813);
+    --color-danger: oklch(0.704 0.191 22.216);
+    --color-danger-soft: oklch(0.258 0.092 26.042);
+    --color-on-danger: oklch(1 0 0);
+    --color-focus: oklch(0.56 0.021 213.5);
+    --color-popover: oklch(0.218 0.008 223.9);
+    --color-secondary: oklch(0.275 0.011 216.9);
+    --color-on-secondary: oklch(0.987 0.002 197.1);
+    --color-hover: oklch(0.275 0.011 216.9);
+    --color-on-hover: oklch(0.987 0.002 197.1);
+    --color-sidebar: oklch(0.218 0.008 223.9);
+    --color-sidebar-text: oklch(0.987 0.002 197.1);
+    --color-sidebar-primary: oklch(0.488 0.243 264.376);
+    --color-sidebar-on-primary: oklch(0.987 0.002 197.1);
+    --color-sidebar-hover: oklch(0.275 0.011 216.9);
+    --color-sidebar-on-hover: oklch(0.987 0.002 197.1);
+    --color-sidebar-border: oklch(1 0 0 / 10%);
+    --ring-danger: color-mix(in oklab, var(--color-danger) 40%, transparent);
+    --danger-fill: color-mix(in oklab, var(--color-danger) 20%, transparent);
+    --danger-fill-hover: color-mix(in oklab, var(--color-danger) 30%, transparent);
+    --input-fill: color-mix(in oklab, var(--color-border-strong) 30%, transparent);
+    --input-fill-hover: color-mix(in oklab, var(--color-border-strong) 50%, transparent);
+    --input-disabled: color-mix(in oklab, var(--color-border-strong) 80%, transparent);
+    --outline-fill: color-mix(in oklab, var(--color-border-strong) 30%, transparent);
+    --outline-hover: color-mix(in oklab, var(--color-border-strong) 50%, transparent);
+    --outline-border: var(--color-border-strong);
+    --ghost-hover: color-mix(in oklab, var(--color-surface-2) 50%, transparent);
+    --switch-off: color-mix(in oklab, var(--color-border-strong) 80%, transparent);
+    --switch-thumb-off: var(--color-text);
+    --switch-thumb-on: var(--color-on-primary);
+  }
+}
+
+::selection {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}

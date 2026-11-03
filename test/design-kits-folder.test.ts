@@ -75,7 +75,7 @@ describe("the standalone validator agrees with the app's", () => {
     ["a file type a kit never holds", (kit) => writeFileSync(join(kit, "tool.exe"), "x")],
     ["a bad index.md type", (kit) => writeFileSync(join(kit, "index.md"), "---\ntype: other\n---\n")],
     ["tokens with no --color-bg", (kit) => writeFileSync(join(kit, "tokens.css"), ":root { --color-text: #000; }")],
-    ["an oversize ui.js", (kit) => writeFileSync(join(kit, "ui.js"), "x".repeat(9000))],
+    ["an oversize ui.js", (kit) => writeFileSync(join(kit, "ui.js"), "x".repeat(17000))],
     ["a remote url in ui.css", (kit) => writeFileSync(join(kit, "ui.css"), `${readFileSync(join(kit, "ui.css"), "utf8")}\nbody { background: url(https://x.io/a.png); }`)],
     ["a script in a block", (kit) => writeFileSync(join(kit, "blocks", "bad.html"), "<script>x()</script>")],
     ["a handler in a block", (kit) => writeFileSync(join(kit, "blocks", "bad.html"), '<a onclick="x()">x</a>')],

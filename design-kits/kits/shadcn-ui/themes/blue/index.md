@@ -1,4 +1,4 @@
 ---
 name: Blue
-description: Zinc neutrals with a blue primary.
+description: Neutral base with a blue primary.
 ---
