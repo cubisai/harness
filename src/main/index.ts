@@ -13,6 +13,7 @@ import { DESIGN_SCHEME, designDirName, designUrl, entryFile, serveDesign } from 
 import { STYLE_PREVIEW_SCHEME } from "../shared/style-preview";
 import { serveStylePreview } from "./design/style-preview";
 import { DesignWatcher } from "./design/watch";
+import { DesignDocuments, parseDesignMutation, parseHistoryRequest } from "./design/documents";
 import { readIssueConfig, readIssueSummary } from "./issues";
 import { issueTools } from "./issues-tool";
 import { offerPrompt, parseOffer } from "./issue-offer";
@@ -333,7 +334,10 @@ async function main(): Promise<void> {
     };
   };
   const windows = new Set<BrowserWindow>();
+  // Built after the service; a turn on a thread makes that thread's open pages read-only.
+  let designDocuments: DesignDocuments | null = null;
   const broadcast = (update: LiveUpdate) => {
+    if (update.type === "running") designDocuments?.setBusy(update.threadId, update.running);
     for (const w of windows) if (!w.isDestroyed()) w.webContents.send("unskilled:update", update);
   };
   // The app owns zoom (Settings › Text size): Chromium's own zoom would drift from the setting and from the
@@ -1061,7 +1065,14 @@ async function main(): Promise<void> {
   // Scheduled automations: reconcile a crash's leftovers, then run what's due every minute and on wake.
   const automations = startAutomations({ store, service, broadcast });
   powerMonitor.on("resume", automations.tick);
-  const designWatcher = new DesignWatcher({ onChange: (threadId, paths) => broadcast({ type: "design-changed", threadId, ...(paths ? { paths } : {}) }) });
+  const documents = new DesignDocuments({
+    journalDir: join(userData, "design-journal"),
+    isBusy: (threadId) => service.isRunning(threadId),
+    beforeFirstOpen: (threadId, rel) => service.recordDesignPageVersion(threadId, rel),
+    onSaved: (threadId, rel) => service.designPageSaved(threadId, rel),
+  });
+  designDocuments = documents;
+  const designWatcher = new DesignWatcher({ onChange: (threadId, paths) => { documents.diskChanged(threadId, paths); broadcast({ type: "design-changed", threadId, ...(paths ? { paths } : {}) }); } });
   // Each window's watches, so a window that closes (or reloads) without unmounting its canvas releases them.
   const designWatches = new Map<number, Map<string, number>>();
   const designHooked = new Set<number>();
@@ -1163,6 +1174,25 @@ async function main(): Promise<void> {
       return { prop: o.prop, value: o.value };
     });
     service.editDesignStyle(threadId, rel, { id: edit.id, changes: list });
+  });
+  const designDocumentFile = (threadId: unknown, rel: unknown): string => {
+    if (settings.get().designV2 !== true) throw new Error("Direct editing isn't on.");
+    if (typeof threadId !== "string" || typeof rel !== "string") throw new Error("No such page.");
+    const file = service.designPageFile(threadId, rel);
+    if (!file) throw new Error("No such page.");
+    return file;
+  };
+  ipcMain.handle("design:mutate", (_e, threadId: string, rel: string, raw: unknown) => {
+    const file = designDocumentFile(threadId, rel);
+    const mutation = parseDesignMutation(raw);
+    if (!mutation) throw new Error("Bad design edit.");
+    return documents.mutate(threadId, rel, file, mutation);
+  });
+  ipcMain.handle("design:history", (_e, threadId: string, rel: string, raw: unknown) => {
+    const file = designDocumentFile(threadId, rel);
+    const request = parseHistoryRequest(raw);
+    if (!request) throw new Error("Bad design history request.");
+    return documents.history(threadId, rel, file, request);
   });
   ipcMain.handle("design:save-ref", (_e, threadId: string, bytes: Uint8Array) => {
     if (!(bytes instanceof Uint8Array)) throw new Error("Not an image (png, jpg, webp or gif).");
@@ -2166,6 +2196,7 @@ async function main(): Promise<void> {
     updater.stop();
     extractor.dispose();
     learner.dispose();
+    documents.dispose();
     service.dispose();
     previews.dispose();
     designWatcher.closeAll();

@@ -8,6 +8,7 @@ import type { CommentTarget, DesignComment } from "./comments";
 import type { LearnCase, LearnOverview, LearnSettings, Lesson, LessonAction, TurnScore } from "./learn";
 import type { AutomationInput, AutomationNotice, AutomationsOverview, AutomationView } from "./automations";
 import type { DoctorFixResult, DoctorReport } from "./doctor";
+import type { DesignHistoryRequest, DesignHistoryResult, DesignMutation, MutationResult } from "./design-mutation";
 
 export type Invocation = "model" | "user";
 
@@ -1449,6 +1450,10 @@ export interface UnskilledApi {
   designEditText(threadId: string, rel: string, edit: { id: string; before: string; after: string }): Promise<void>;
   /** Write inspector style changes into the `style` of the page element with that data-agent-id (Working and Real app tiers). */
   designEditStyle(threadId: string, rel: string, edit: { id: string; changes: { prop: string; value: string }[] }): Promise<void>;
+  /** Apply one direct edit to a design page through the main-process mutation service (Design v2 only). */
+  designMutate(threadId: string, rel: string, mutation: DesignMutation): Promise<MutationResult>;
+  /** Read a design page's status, or undo, redo or close a transaction (Design v2 only). */
+  designHistory(threadId: string, rel: string, request: DesignHistoryRequest): Promise<DesignHistoryResult>;
   /** A design thread's comments (all pages), from its design folder. */
   designComments(threadId: string): Promise<DesignComment[]>;
   /** Add a comment on one element of a design page; the full list after. */

@@ -796,6 +796,12 @@ export function installMock(): void {
     designSaveRef: async () => "designs/mock/refs/ref-1.png",
     designEditText: async () => {},
     designEditStyle: async () => {},
+    designMutate: async (_threadId, _rel, mutation) => ({ ok: false, operationId: mutation.operationId, reason: "read-only", currentRevision: 1 }),
+    designHistory: async (_threadId, _rel) => ({
+      status: { documentId: "mock", revision: 1, save: "saved", canUndo: false, canRedo: false, atExternalBoundary: false, readOnly: true },
+      html: "",
+      conflicts: [],
+    }),
     designCapture: async () => ({ path: "designs/mock/refs/ref-2.png", thumb: "" }),
     designThumb: async () => "",
     designRestoreVersion: async () => {},

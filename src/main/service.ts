@@ -2085,6 +2085,30 @@ export class Service {
     if (this.artifacts) this.broadcast({ type: "artifact-ready", threadId, path: `${dir}/${rel}`, files: [`${dir}/${rel}`] });
   }
 
+  /** The absolute path of a design thread's page, or null when the thread or the page doesn't exist. */
+  designPageFile(threadId: string, rel: string): string | null {
+    const root = this.designRoot(threadId);
+    if (!root || !listDesignPages(root).includes(rel)) return null;
+    return join(root, rel);
+  }
+
+  /** Keep a design page as it stands now as a version, so an edit that follows can be rolled back. */
+  recordDesignPageVersion(threadId: string, rel: string): void {
+    const root = this.designRoot(threadId);
+    const dir = designOf(this.store.getThread(threadId));
+    if (!root || !dir) return;
+    this.recordDesignPage(threadId, root, dir, rel);
+  }
+
+  /** The mutation service wrote a page: keep the version and tell the canvas, as a direct edit does. */
+  designPageSaved(threadId: string, rel: string): void {
+    const root = this.designRoot(threadId);
+    const dir = designOf(this.store.getThread(threadId));
+    if (!root || !dir) return;
+    this.recordDesignPage(threadId, root, dir, rel);
+    if (this.artifacts) this.broadcast({ type: "artifact-ready", threadId, path: `${dir}/${rel}`, files: [`${dir}/${rel}`] });
+  }
+
   /**
    * Restore a stored version of a design page as its newest: the page as it is
    * now is saved as a version first, then version N is written back and saved
