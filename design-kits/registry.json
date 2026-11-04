@@ -64,6 +64,66 @@
         "accent": "#1677FF",
         "radius": "6px"
       }
+    },
+    {
+      "id": "chakra-ui",
+      "name": "Chakra UI",
+      "version": "1.0.0",
+      "themes": [
+        "blue",
+        "red",
+        "purple",
+        "pink",
+        "teal",
+        "green",
+        "orange"
+      ],
+      "card": {
+        "bg": "#FFFFFF",
+        "text": "#09090B",
+        "accent": "#18181B",
+        "radius": "4px"
+      }
+    },
+    {
+      "id": "mantine",
+      "name": "Mantine",
+      "version": "1.0.0",
+      "themes": [
+        "violet",
+        "teal",
+        "grape",
+        "orange",
+        "red",
+        "cyan",
+        "pink"
+      ],
+      "card": {
+        "bg": "#FFFFFF",
+        "text": "#000000",
+        "accent": "#228BE6",
+        "radius": "8px"
+      }
+    },
+    {
+      "id": "varelyo-ui",
+      "name": "varelyo/ui",
+      "version": "1.0.0",
+      "themes": [
+        "neutral",
+        "slate",
+        "blue",
+        "green",
+        "violet",
+        "rose",
+        "orange"
+      ],
+      "card": {
+        "bg": "#FFFFFF",
+        "text": "#171717",
+        "accent": "#171717",
+        "radius": "8px"
+      }
     }
   ]
 }
