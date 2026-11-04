@@ -24,6 +24,26 @@
         "accent": "#171717",
         "radius": "10px"
       }
+    },
+    {
+      "id": "mui",
+      "name": "MUI",
+      "version": "1.0.0",
+      "themes": [
+        "indigo",
+        "deep-purple",
+        "teal",
+        "pink",
+        "green",
+        "deep-orange",
+        "blue-grey"
+      ],
+      "card": {
+        "bg": "#FFFFFF",
+        "text": "#212121",
+        "accent": "#1976D2",
+        "radius": "4px"
+      }
     }
   ]
 }

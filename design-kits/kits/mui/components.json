@@ -1,0 +1,2406 @@
+{
+  "kitId": "mui",
+  "name": "MUI",
+  "version": "1.0.0",
+  "contractVersion": "1.0",
+  "package": "@mui/material",
+  "compat": {
+    "themes": [
+      "indigo",
+      "deep-purple",
+      "teal",
+      "pink",
+      "green",
+      "deep-orange",
+      "blue-grey"
+    ],
+    "migratesFrom": []
+  },
+  "components": [
+    {
+      "name": "Stack",
+      "ui": "stack",
+      "category": "Layout",
+      "description": "A flexbox that lays parts in one column or row with a consistent gap.",
+      "props": [
+        {
+          "name": "direction",
+          "label": "Direction",
+          "type": "choice",
+          "options": [
+            "column",
+            "row"
+          ],
+          "default": "column"
+        },
+        {
+          "name": "gap",
+          "label": "Gap",
+          "type": "choice",
+          "options": [
+            "md",
+            "none",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "align",
+          "label": "Align",
+          "type": "choice",
+          "options": [
+            "stretch",
+            "start",
+            "center",
+            "end"
+          ],
+          "default": "stretch"
+        },
+        {
+          "name": "justify",
+          "label": "Justify",
+          "type": "choice",
+          "options": [
+            "start",
+            "center",
+            "end",
+            "between"
+          ],
+          "default": "start"
+        },
+        {
+          "name": "wrap",
+          "label": "Wrap",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\">\n<h6 data-ui=\"typography\" data-variant=\"h6\">Van 12, Northern route</h6>\n<p data-ui=\"typography\" data-variant=\"body2\" data-color=\"text-secondary\">Due at the Leeds depot by 14:30.</p>\n<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-align=\"center\"><button data-ui=\"button\" data-variant=\"contained\" data-size=\"small\">Assign</button><button data-ui=\"button\" data-size=\"small\">Details</button></div>\n</div>",
+      "import": {
+        "package": "@mui/material/Stack",
+        "name": "Stack"
+      }
+    },
+    {
+      "name": "Grid",
+      "ui": "grid",
+      "category": "Layout",
+      "description": "A CSS grid of equal columns, collapsing on narrow screens.",
+      "props": [
+        {
+          "name": "columns",
+          "label": "Columns",
+          "type": "choice",
+          "options": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "6",
+            "12",
+            "auto"
+          ],
+          "default": "1"
+        },
+        {
+          "name": "gap",
+          "label": "Gap",
+          "type": "choice",
+          "options": [
+            "md",
+            "none",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "align",
+          "label": "Align",
+          "type": "choice",
+          "options": [
+            "stretch",
+            "start",
+            "center",
+            "end"
+          ],
+          "default": "stretch"
+        }
+      ],
+      "snippet": "<div data-ui=\"grid\" data-columns=\"3\" data-gap=\"md\">\n<div data-ui=\"paper\" data-part=\"demo-tile\">On route</div>\n<div data-ui=\"paper\" data-part=\"demo-tile\">At depot</div>\n<div data-ui=\"paper\" data-part=\"demo-tile\">In service</div>\n</div>",
+      "import": {
+        "package": "@mui/material/Grid",
+        "name": "Grid"
+      }
+    },
+    {
+      "name": "Container",
+      "ui": "container",
+      "category": "Layout",
+      "description": "Centres content up to a breakpoint width, with 16 to 24px gutters.",
+      "props": [
+        {
+          "name": "max-width",
+          "label": "Max Width",
+          "type": "choice",
+          "options": [
+            "lg",
+            "xs",
+            "sm",
+            "md",
+            "xl",
+            "false"
+          ],
+          "default": "lg"
+        },
+        {
+          "name": "fixed",
+          "label": "Fixed",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"container\" data-max-width=\"sm\"><div data-ui=\"paper\" data-variant=\"outlined\" data-part=\"demo-tile\">Content, up to 600px wide</div></div>",
+      "import": {
+        "package": "@mui/material/Container",
+        "name": "Container"
+      }
+    },
+    {
+      "name": "Image List",
+      "ui": "image-list",
+      "category": "Layout",
+      "description": "Photos in a grid or masonry, with an optional title bar on each.",
+      "props": [
+        {
+          "name": "cols",
+          "label": "Cols",
+          "type": "choice",
+          "options": [
+            "3",
+            "2",
+            "4"
+          ],
+          "default": "3"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "standard",
+            "masonry"
+          ],
+          "default": "standard"
+        }
+      ],
+      "snippet": "<ul data-ui=\"image-list\" data-cols=\"3\">\n<li data-part=\"item\"><div data-part=\"media\"><i data-ui=\"icon\" data-name=\"image\"></i></div><div data-part=\"bar\"><div data-part=\"title\">Depot A</div><div data-part=\"subtitle\">Leeds</div></div></li>\n<li data-part=\"item\"><div data-part=\"media\"><i data-ui=\"icon\" data-name=\"local-shipping\"></i></div></li>\n<li data-part=\"item\"><div data-part=\"media\"><i data-ui=\"icon\" data-name=\"directions-car\"></i></div></li>\n</ul>",
+      "import": {
+        "package": "@mui/material/ImageList",
+        "name": "ImageList"
+      }
+    },
+    {
+      "name": "Masonry",
+      "ui": "masonry",
+      "category": "Layout",
+      "description": "Columns of uneven tiles, packed from the top. From MUI Lab.",
+      "props": [
+        {
+          "name": "columns",
+          "label": "Columns",
+          "type": "choice",
+          "options": [
+            "3",
+            "2",
+            "4"
+          ],
+          "default": "3"
+        },
+        {
+          "name": "gap",
+          "label": "Gap",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md"
+          ],
+          "default": "sm"
+        }
+      ],
+      "snippet": "<div data-ui=\"masonry\" data-columns=\"3\" style=\"max-inline-size:32rem\">\n<div data-ui=\"paper\" data-part=\"demo-tile\" style=\"block-size:80px\">1</div><div data-ui=\"paper\" data-part=\"demo-tile\" style=\"block-size:120px\">2</div><div data-ui=\"paper\" data-part=\"demo-tile\" style=\"block-size:60px\">3</div><div data-ui=\"paper\" data-part=\"demo-tile\" style=\"block-size:100px\">4</div><div data-ui=\"paper\" data-part=\"demo-tile\" style=\"block-size:70px\">5</div>\n</div>",
+      "import": {
+        "package": "@mui/lab/Masonry",
+        "name": "Masonry"
+      }
+    },
+    {
+      "name": "Autocomplete",
+      "ui": "autocomplete",
+      "category": "Inputs",
+      "description": "A text field whose list of options filters as you type.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outlined",
+            "filled",
+            "standard"
+          ],
+          "default": "outlined"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "medium",
+            "small"
+          ],
+          "default": "medium"
+        }
+      ],
+      "snippet": "<div data-ui=\"autocomplete\" style=\"anchor-name:--autocomplete-demo;inline-size:300px;max-inline-size:100%\">\n<label data-part=\"label\" for=\"autocomplete-demo-input\">Depot</label>\n<div data-part=\"control\"><input data-part=\"input\" id=\"autocomplete-demo-input\" placeholder=\" \" role=\"combobox\" autocomplete=\"off\"><button data-ui=\"icon-button\" data-size=\"small\" data-part=\"clear\" aria-label=\"Clear\"><i data-ui=\"icon\" data-name=\"close\"></i></button><button data-ui=\"icon-button\" data-size=\"small\" data-part=\"popup-button\" aria-label=\"Open\" popovertarget=\"autocomplete-demo\" tabindex=\"-1\"><i data-ui=\"icon\" data-name=\"arrow-drop-down\"></i></button><fieldset data-part=\"outline\" aria-hidden=\"true\"><legend><span>Depot</span></legend></fieldset></div>\n<div data-part=\"popup\" popover id=\"autocomplete-demo\" style=\"position-anchor:--autocomplete-demo\" role=\"listbox\">\n<button data-part=\"option\" role=\"option\">Bradford</button><button data-part=\"option\" role=\"option\">Leeds</button><button data-part=\"option\" role=\"option\">Manchester</button><button data-part=\"option\" role=\"option\">Sheffield</button><button data-part=\"option\" role=\"option\">York</button>\n<div data-part=\"no-options\" hidden>No options</div>\n</div>\n</div>",
+      "import": {
+        "package": "@mui/material/Autocomplete",
+        "name": "Autocomplete"
+      }
+    },
+    {
+      "name": "Button",
+      "ui": "button",
+      "category": "Inputs",
+      "description": "Text, contained or outlined. Uppercase Roboto, 36.5px at medium size.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "text",
+            "contained",
+            "outlined"
+          ],
+          "default": "text"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "primary",
+            "secondary",
+            "success",
+            "error",
+            "info",
+            "warning",
+            "inherit"
+          ],
+          "default": "primary"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "medium",
+            "small",
+            "large"
+          ],
+          "default": "medium"
+        },
+        {
+          "name": "full-width",
+          "label": "Full Width",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "disable-elevation",
+          "label": "Disable Elevation",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "loading",
+          "label": "Loading",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"md\">\n<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-wrap=\"true\" data-align=\"center\"><button data-ui=\"button\">Text</button><button data-ui=\"button\" data-variant=\"contained\">Contained</button><button data-ui=\"button\" data-variant=\"outlined\">Outlined</button></div>\n<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-wrap=\"true\" data-align=\"center\"><button data-ui=\"button\" data-variant=\"contained\" data-color=\"success\">Success</button><button data-ui=\"button\" data-variant=\"outlined\" data-color=\"error\">Error</button><button data-ui=\"button\" data-variant=\"contained\" data-color=\"secondary\">Secondary</button><button data-ui=\"button\" data-variant=\"contained\" disabled>Disabled</button></div>\n<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-wrap=\"true\" data-align=\"center\"><button data-ui=\"button\" data-variant=\"contained\" data-size=\"small\">Small</button><button data-ui=\"button\" data-variant=\"contained\">Medium</button><button data-ui=\"button\" data-variant=\"contained\" data-size=\"large\">Large</button></div>\n<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-wrap=\"true\" data-align=\"center\"><button data-ui=\"button\" data-variant=\"outlined\"><i data-ui=\"icon\" data-name=\"delete\" data-part=\"start-icon\"></i>Delete</button><button data-ui=\"button\" data-variant=\"contained\">Send<i data-ui=\"icon\" data-name=\"send\" data-part=\"end-icon\"></i></button><button data-ui=\"button\" data-variant=\"outlined\" data-loading=\"true\" disabled><span data-ui=\"circular-progress\" data-size=\"16\" role=\"progressbar\" data-part=\"start-icon\"><svg viewBox=\"22 22 44 44\"><circle cx=\"44\" cy=\"44\" r=\"20.2\"></circle></svg></span>Saving</button></div>\n</div>",
+      "import": {
+        "package": "@mui/material/Button",
+        "name": "Button"
+      }
+    },
+    {
+      "name": "Icon Button",
+      "ui": "icon-button",
+      "category": "Inputs",
+      "description": "A round button holding one icon, with a hover halo.",
+      "props": [
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "default",
+            "primary",
+            "secondary",
+            "success",
+            "error",
+            "info",
+            "warning",
+            "inherit"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "medium",
+            "small",
+            "large"
+          ],
+          "default": "medium"
+        },
+        {
+          "name": "edge",
+          "label": "Edge",
+          "type": "choice",
+          "options": [
+            "false",
+            "start",
+            "end"
+          ],
+          "default": "false"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"xs\" data-align=\"center\">\n<button data-ui=\"icon-button\" aria-label=\"Delete\"><i data-ui=\"icon\" data-name=\"delete\"></i></button><button data-ui=\"icon-button\" data-color=\"primary\" aria-label=\"Share\"><i data-ui=\"icon\" data-name=\"share\"></i></button><button data-ui=\"icon-button\" data-color=\"secondary\" aria-label=\"Favourite\"><i data-ui=\"icon\" data-name=\"favorite\"></i></button><button data-ui=\"icon-button\" data-size=\"small\" aria-label=\"More\"><i data-ui=\"icon\" data-name=\"more-vert\"></i></button><button data-ui=\"icon-button\" data-size=\"large\" aria-label=\"Settings\"><i data-ui=\"icon\" data-name=\"settings\"></i></button><button data-ui=\"icon-button\" disabled aria-label=\"Edit\"><i data-ui=\"icon\" data-name=\"edit\"></i></button>\n</div>",
+      "import": {
+        "package": "@mui/material/IconButton",
+        "name": "IconButton"
+      }
+    },
+    {
+      "name": "Button Group",
+      "ui": "button-group",
+      "category": "Inputs",
+      "description": "Buttons joined into one control.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outlined",
+            "contained",
+            "text"
+          ],
+          "default": "outlined"
+        },
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "primary",
+            "secondary",
+            "success",
+            "error",
+            "info",
+            "warning"
+          ],
+          "default": "primary"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "medium",
+            "small",
+            "large"
+          ],
+          "default": "medium"
+        },
+        {
+          "name": "full-width",
+          "label": "Full Width",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"md\" data-align=\"start\">\n<div data-ui=\"button-group\" role=\"group\"><button data-ui=\"button\" data-variant=\"outlined\">One</button><button data-ui=\"button\" data-variant=\"outlined\">Two</button><button data-ui=\"button\" data-variant=\"outlined\">Three</button></div>\n<div data-ui=\"button-group\" data-variant=\"contained\" role=\"group\"><button data-ui=\"button\" data-variant=\"contained\">One</button><button data-ui=\"button\" data-variant=\"contained\">Two</button><button data-ui=\"button\" data-variant=\"contained\">Three</button></div>\n<div data-ui=\"button-group\" data-variant=\"text\" role=\"group\"><button data-ui=\"button\">One</button><button data-ui=\"button\">Two</button><button data-ui=\"button\">Three</button></div>\n</div>",
+      "import": {
+        "package": "@mui/material/ButtonGroup",
+        "name": "ButtonGroup"
+      }
+    },
+    {
+      "name": "Checkbox",
+      "ui": "checkbox",
+      "category": "Inputs",
+      "description": "A square check inside a 42px round touch area. Pair it with form-control-label.",
+      "props": [
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "primary",
+            "secondary",
+            "success",
+            "error",
+            "info",
+            "warning"
+          ],
+          "default": "primary"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "medium",
+            "small"
+          ],
+          "default": "medium"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"none\" data-wrap=\"true\" data-align=\"center\">\n<input data-ui=\"checkbox\" type=\"checkbox\" checked aria-label=\"Checked\"><input data-ui=\"checkbox\" type=\"checkbox\" aria-label=\"Unchecked\"><input data-ui=\"checkbox\" type=\"checkbox\" disabled aria-label=\"Disabled\"><input data-ui=\"checkbox\" type=\"checkbox\" checked disabled aria-label=\"Disabled checked\"><input data-ui=\"checkbox\" type=\"checkbox\" data-size=\"small\" checked aria-label=\"Small\"><input data-ui=\"checkbox\" type=\"checkbox\" data-color=\"secondary\" checked aria-label=\"Secondary\"><input data-ui=\"checkbox\" type=\"checkbox\" data-color=\"success\" checked aria-label=\"Success\">\n<label data-ui=\"form-control-label\"><input data-ui=\"checkbox\" type=\"checkbox\" checked>Include trailers</label>\n</div>",
+      "import": {
+        "package": "@mui/material/Checkbox",
+        "name": "Checkbox"
+      }
+    },
+    {
+      "name": "Floating Action Button",
+      "ui": "fab",
+      "category": "Inputs",
+      "description": "A round, raised button for a screen's main action.",
+      "props": [
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "default",
+            "primary",
+            "secondary",
+            "success",
+            "error",
+            "info",
+            "warning",
+            "inherit"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "large",
+            "medium",
+            "small"
+          ],
+          "default": "large"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "circular",
+            "extended"
+          ],
+          "default": "circular"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"md\" data-wrap=\"true\" data-align=\"center\">\n<button data-ui=\"fab\" data-color=\"primary\" aria-label=\"Add\"><i data-ui=\"icon\" data-name=\"add\"></i></button><button data-ui=\"fab\" data-color=\"secondary\" aria-label=\"Edit\"><i data-ui=\"icon\" data-name=\"edit\"></i></button><button data-ui=\"fab\" data-variant=\"extended\"><i data-ui=\"icon\" data-name=\"place\" data-part=\"start-icon\"></i>Navigate</button><button data-ui=\"fab\" disabled aria-label=\"Like\"><i data-ui=\"icon\" data-name=\"favorite\"></i></button><button data-ui=\"fab\" data-color=\"primary\" data-size=\"medium\" aria-label=\"Add\"><i data-ui=\"icon\" data-name=\"add\"></i></button><button data-ui=\"fab\" data-color=\"primary\" data-size=\"small\" aria-label=\"Add\"><i data-ui=\"icon\" data-name=\"add\"></i></button>\n</div>",
+      "import": {
+        "package": "@mui/material/Fab",
+        "name": "Fab"
+      }
+    },
+    {
+      "name": "Number Field",
+      "ui": "number-field",
+      "category": "Inputs",
+      "description": "A text field for numbers, with increase and decrease buttons at its end.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "medium",
+            "small"
+          ],
+          "default": "medium"
+        }
+      ],
+      "snippet": "<div data-ui=\"number-field\" style=\"max-inline-size:240px\">\n<label data-part=\"label\" for=\"number-field-demo\">Payload (t)</label>\n<div data-part=\"control\"><input data-part=\"input\" id=\"number-field-demo\" type=\"text\" inputmode=\"numeric\" value=\"18\" placeholder=\" \" min=\"10\" max=\"40\"><span data-part=\"steppers\"><button data-part=\"step\" data-step=\"up\" tabindex=\"-1\" aria-label=\"Increase\"><i data-ui=\"icon\" data-name=\"expand-less\"></i></button><button data-part=\"step\" data-step=\"down\" tabindex=\"-1\" aria-label=\"Decrease\"><i data-ui=\"icon\" data-name=\"expand-more\"></i></button></span><fieldset data-part=\"outline\" aria-hidden=\"true\"><legend><span>Payload (t)</span></legend></fieldset></div>\n<p data-part=\"helper\">Enter a value between 10 and 40</p>\n</div>",
+      "import": {
+        "package": "@mui/material/NumberField",
+        "name": "NumberField"
+      }
+    },
+    {
+      "name": "Radio Group",
+      "ui": "radio-group",
+      "category": "Inputs",
+      "description": "One choice from a set, in a form control with its legend.",
+      "props": [
+        {
+          "name": "row",
+          "label": "Row",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "primary",
+            "secondary",
+            "success",
+            "error",
+            "info",
+            "warning"
+          ],
+          "default": "primary"
+        }
+      ],
+      "snippet": "<fieldset data-ui=\"form-control\"><legend data-part=\"label\">Shift</legend>\n<div data-ui=\"radio-group\" role=\"radiogroup\">\n<label data-ui=\"form-control-label\"><input data-part=\"radio\" type=\"radio\" name=\"radio-demo\" checked>Morning</label>\n<label data-ui=\"form-control-label\"><input data-part=\"radio\" type=\"radio\" name=\"radio-demo\">Afternoon</label>\n<label data-ui=\"form-control-label\"><input data-part=\"radio\" type=\"radio\" name=\"radio-demo\">Night</label>\n<label data-ui=\"form-control-label\"><input data-part=\"radio\" type=\"radio\" name=\"radio-demo\" disabled>Weekend</label>\n</div></fieldset>",
+      "import": {
+        "package": "@mui/material/RadioGroup",
+        "name": "RadioGroup"
+      }
+    },
+    {
+      "name": "Rating",
+      "ui": "rating",
+      "category": "Inputs",
+      "description": "Stars for a score. Set --value for a read-only score; add the input to let people change it.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "medium",
+            "small",
+            "large"
+          ],
+          "default": "medium"
+        },
+        {
+          "name": "read-only",
+          "label": "Read Only",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\" data-align=\"start\">\n<div data-ui=\"rating\" style=\"--value:2\"><input data-part=\"input\" type=\"range\" min=\"0\" max=\"5\" step=\"1\" value=\"2\" aria-label=\"Driver rating\"></div>\n<div data-ui=\"rating\" data-read-only=\"true\" style=\"--value:3.5\" role=\"img\" aria-label=\"3.5 stars\"></div>\n<div data-ui=\"rating\" data-size=\"small\" data-read-only=\"true\" style=\"--value:4\" role=\"img\" aria-label=\"4 stars\"></div>\n<div data-ui=\"rating\" data-size=\"large\" data-read-only=\"true\" style=\"--value:1\" role=\"img\" aria-label=\"1 star\"></div>\n</div>",
+      "import": {
+        "package": "@mui/material/Rating",
+        "name": "Rating"
+      }
+    },
+    {
+      "name": "Select",
+      "ui": "select",
+      "category": "Inputs",
+      "description": "Pick one option from a menu that opens over the field.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outlined",
+            "filled",
+            "standard"
+          ],
+          "default": "outlined"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "medium",
+            "small"
+          ],
+          "default": "medium"
+        },
+        {
+          "name": "full-width",
+          "label": "Full Width",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "error",
+          "label": "Error",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"select\" style=\"anchor-name:--select-demo;inline-size:240px;max-inline-size:100%\">\n<label data-part=\"label\" id=\"select-demo-label\">Vehicle</label>\n<div data-part=\"control\"><button data-part=\"input\" type=\"button\" popovertarget=\"select-demo\" aria-haspopup=\"listbox\" aria-labelledby=\"select-demo-label\"><span data-part=\"value\">Van 12</span></button><i data-ui=\"icon\" data-name=\"arrow-drop-down\" data-part=\"arrow\"></i><fieldset data-part=\"outline\" aria-hidden=\"true\"><legend><span>Vehicle</span></legend></fieldset></div>\n<div data-part=\"menu\" popover id=\"select-demo\" role=\"listbox\" style=\"position-anchor:--select-demo\"><button data-part=\"item\" role=\"option\" aria-selected=\"true\">Van 12</button><button data-part=\"item\" role=\"option\">Van 18</button><button data-part=\"item\" role=\"option\">Truck 4</button></div>\n</div>",
+      "import": {
+        "package": "@mui/material/Select",
+        "name": "Select"
+      }
+    },
+    {
+      "name": "Native Select",
+      "ui": "native-select",
+      "category": "Inputs",
+      "description": "The browser's own select in the standard underlined style.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "medium",
+            "small"
+          ],
+          "default": "medium"
+        }
+      ],
+      "snippet": "<div data-ui=\"native-select\" style=\"max-inline-size:240px\"><label data-part=\"label\" for=\"native-select-demo\">Age</label><select data-part=\"input\" id=\"native-select-demo\"><option>Ten</option><option>Twenty</option><option>Thirty</option></select><i data-ui=\"icon\" data-name=\"arrow-drop-down\" data-part=\"arrow\"></i></div>",
+      "import": {
+        "package": "@mui/material/NativeSelect",
+        "name": "NativeSelect"
+      }
+    },
+    {
+      "name": "Slider",
+      "ui": "slider",
+      "category": "Inputs",
+      "description": "One thumb or two on a rail, with optional marks. Set --from and --to; ui.js keeps them current.",
+      "props": [
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "primary",
+            "secondary",
+            "success",
+            "error",
+            "info",
+            "warning"
+          ],
+          "default": "primary"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "medium",
+            "small"
+          ],
+          "default": "medium"
+        },
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\" style=\"max-inline-size:300px\">\n<div data-ui=\"slider\" style=\"--to:30\"><input data-part=\"thumb\" type=\"range\" value=\"30\" aria-label=\"Volume\"></div>\n<div data-ui=\"slider\" style=\"--from:20;--to:37\"><input data-part=\"thumb\" type=\"range\" value=\"20\" aria-label=\"From\"><input data-part=\"thumb\" type=\"range\" value=\"37\" aria-label=\"To\"></div>\n<div data-ui=\"slider\" data-size=\"small\" style=\"--to:50\"><input data-part=\"thumb\" type=\"range\" value=\"50\" aria-label=\"Small\"></div>\n<div data-ui=\"slider\" style=\"--to:40\"><input data-part=\"thumb\" type=\"range\" step=\"20\" value=\"40\" aria-label=\"Stepped\"><div data-part=\"marks\"><span data-part=\"mark\" style=\"--at:0\">0</span><span data-part=\"mark\" style=\"--at:20\">20</span><span data-part=\"mark\" style=\"--at:40\">40</span><span data-part=\"mark\" style=\"--at:60\">60</span><span data-part=\"mark\" style=\"--at:80\">80</span><span data-part=\"mark\" style=\"--at:100\">100</span></div></div>\n</div>",
+      "import": {
+        "package": "@mui/material/Slider",
+        "name": "Slider"
+      }
+    },
+    {
+      "name": "Switch",
+      "ui": "switch",
+      "category": "Inputs",
+      "description": "An on or off control: a 20px thumb on a 34px track.",
+      "props": [
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "primary",
+            "secondary",
+            "success",
+            "error",
+            "info",
+            "warning"
+          ],
+          "default": "primary"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "medium",
+            "small"
+          ],
+          "default": "medium"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"xs\" data-wrap=\"true\" data-align=\"center\">\n<label data-ui=\"switch\"><input data-part=\"input\" type=\"checkbox\" role=\"switch\" checked aria-label=\"On\"><span data-part=\"track\"></span><span data-part=\"thumb\"></span></label>\n<label data-ui=\"switch\"><input data-part=\"input\" type=\"checkbox\" role=\"switch\" aria-label=\"Off\"><span data-part=\"track\"></span><span data-part=\"thumb\"></span></label>\n<label data-ui=\"switch\"><input data-part=\"input\" type=\"checkbox\" role=\"switch\" disabled aria-label=\"Disabled\"><span data-part=\"track\"></span><span data-part=\"thumb\"></span></label>\n<label data-ui=\"switch\" data-size=\"small\"><input data-part=\"input\" type=\"checkbox\" role=\"switch\" checked aria-label=\"Small\"><span data-part=\"track\"></span><span data-part=\"thumb\"></span></label>\n<label data-ui=\"switch\" data-color=\"secondary\"><input data-part=\"input\" type=\"checkbox\" role=\"switch\" checked aria-label=\"Secondary\"><span data-part=\"track\"></span><span data-part=\"thumb\"></span></label>\n<label data-ui=\"form-control-label\"><span data-ui=\"switch\"><input data-part=\"input\" type=\"checkbox\" role=\"switch\" checked><span data-part=\"track\"></span><span data-part=\"thumb\"></span></span>Live tracking</label>\n</div>",
+      "import": {
+        "package": "@mui/material/Switch",
+        "name": "Switch"
+      }
+    },
+    {
+      "name": "Text Field",
+      "ui": "text-field",
+      "category": "Inputs",
+      "description": "Outlined, filled or standard, with a floating label. Keep placeholder=\" \" on the input; the outlined frame needs its fieldset.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outlined",
+            "filled",
+            "standard"
+          ],
+          "default": "outlined"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "primary",
+            "secondary",
+            "success",
+            "error",
+            "info",
+            "warning"
+          ],
+          "default": "primary"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "medium",
+            "small"
+          ],
+          "default": "medium"
+        },
+        {
+          "name": "error",
+          "label": "Error",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "full-width",
+          "label": "Full Width",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"grid\" data-columns=\"3\" data-gap=\"md\">\n<div data-ui=\"text-field\">\n<label data-part=\"label\" for=\"tf-outlined\">Outlined</label>\n<div data-part=\"control\"><input data-part=\"input\" id=\"tf-outlined\" type=\"text\" placeholder=\" \"><fieldset data-part=\"outline\" aria-hidden=\"true\"><legend><span>Outlined</span></legend></fieldset></div>\n</div>\n<div data-ui=\"text-field\" data-variant=\"filled\">\n<label data-part=\"label\" for=\"tf-filled\">Filled</label>\n<div data-part=\"control\"><input data-part=\"input\" id=\"tf-filled\" type=\"text\" placeholder=\" \"></div>\n</div>\n<div data-ui=\"text-field\" data-variant=\"standard\">\n<label data-part=\"label\" for=\"tf-standard\">Standard</label>\n<div data-part=\"control\"><input data-part=\"input\" id=\"tf-standard\" type=\"text\" placeholder=\" \"></div>\n</div>\n<div data-ui=\"text-field\">\n<label data-part=\"label\" for=\"tf-value\">Registration</label>\n<div data-part=\"control\"><input data-part=\"input\" id=\"tf-value\" type=\"text\" placeholder=\" \" value=\"BD51 SMR\"><fieldset data-part=\"outline\" aria-hidden=\"true\"><legend><span>Registration</span></legend></fieldset></div>\n<p data-part=\"helper\">As on the V5C</p></div>\n<div data-ui=\"text-field\">\n<label data-part=\"label\" for=\"tf-required\">Required *</label>\n<div data-part=\"control\"><input data-part=\"input\" id=\"tf-required\" type=\"text\" placeholder=\" \" value=\"Priya Shah\" required><fieldset data-part=\"outline\" aria-hidden=\"true\"><legend><span>Required *</span></legend></fieldset></div>\n</div>\n<div data-ui=\"text-field\" data-error=\"true\">\n<label data-part=\"label\" for=\"tf-error\">Error</label>\n<div data-part=\"control\"><input data-part=\"input\" id=\"tf-error\" type=\"text\" placeholder=\" \" value=\"Hello World\" aria-invalid=\"true\"><fieldset data-part=\"outline\" aria-hidden=\"true\"><legend><span>Error</span></legend></fieldset></div>\n<p data-part=\"helper\">Incorrect entry.</p></div>\n<div data-ui=\"text-field\" data-size=\"small\">\n<label data-part=\"label\" for=\"tf-small\">Small</label>\n<div data-part=\"control\"><input data-part=\"input\" id=\"tf-small\" type=\"text\" placeholder=\" \" value=\"Small\"><fieldset data-part=\"outline\" aria-hidden=\"true\"><legend><span>Small</span></legend></fieldset></div>\n</div>\n<div data-ui=\"text-field\">\n<label data-part=\"label\" for=\"tf-adorn\">Weight</label>\n<div data-part=\"control\"><span data-part=\"adornment\">kg</span><input data-part=\"input\" id=\"tf-adorn\" type=\"text\" placeholder=\" \"><fieldset data-part=\"outline\" aria-hidden=\"true\"><legend><span>Weight</span></legend></fieldset></div>\n</div>\n<div data-ui=\"text-field\" data-disabled=\"true\">\n<label data-part=\"label\" for=\"tf-disabled\">Disabled</label>\n<div data-part=\"control\"><input data-part=\"input\" id=\"tf-disabled\" type=\"text\" placeholder=\" \" value=\"Hello World\" disabled><fieldset data-part=\"outline\" aria-hidden=\"true\"><legend><span>Disabled</span></legend></fieldset></div>\n</div>\n</div>",
+      "import": {
+        "package": "@mui/material/TextField",
+        "name": "TextField"
+      }
+    },
+    {
+      "name": "Textarea Autosize",
+      "ui": "textarea-autosize",
+      "category": "Inputs",
+      "description": "A multi-line text field that grows with its content.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outlined",
+            "filled",
+            "standard"
+          ],
+          "default": "outlined"
+        }
+      ],
+      "snippet": "<div data-ui=\"textarea-autosize\" style=\"max-inline-size:320px\"><label data-part=\"label\" for=\"textarea-demo\">Delivery notes</label><div data-part=\"control\"><textarea data-part=\"input\" id=\"textarea-demo\" rows=\"2\" placeholder=\" \">Ring at the side gate.</textarea><fieldset data-part=\"outline\" aria-hidden=\"true\"><legend><span>Delivery notes</span></legend></fieldset></div></div>",
+      "import": {
+        "package": "@mui/material/TextareaAutosize",
+        "name": "TextareaAutosize"
+      }
+    },
+    {
+      "name": "Transfer List",
+      "ui": "transfer-list",
+      "category": "Inputs",
+      "description": "Move items between two lists with buttons in the middle.",
+      "props": [],
+      "snippet": "<div data-ui=\"transfer-list\">\n<div data-part=\"pane\" data-ui=\"paper\"><ul data-ui=\"list\" data-dense=\"true\"><li data-part=\"item\"><label data-part=\"button\"><input data-ui=\"checkbox\" data-size=\"small\" type=\"checkbox\" tabindex=\"-1\">Van 12</label></li><li data-part=\"item\"><label data-part=\"button\"><input data-ui=\"checkbox\" data-size=\"small\" type=\"checkbox\" tabindex=\"-1\" checked>Van 18</label></li><li data-part=\"item\"><label data-part=\"button\"><input data-ui=\"checkbox\" data-size=\"small\" type=\"checkbox\" tabindex=\"-1\">Truck 4</label></li></ul></div>\n<div data-part=\"actions\"><button data-ui=\"button\" data-variant=\"outlined\" data-size=\"small\" data-transfer=\"all-right\" aria-label=\"Move all right\">≫</button><button data-ui=\"button\" data-variant=\"outlined\" data-size=\"small\" data-transfer=\"right\" aria-label=\"Move selected right\">&gt;</button><button data-ui=\"button\" data-variant=\"outlined\" data-size=\"small\" data-transfer=\"left\" aria-label=\"Move selected left\">&lt;</button><button data-ui=\"button\" data-variant=\"outlined\" data-size=\"small\" data-transfer=\"all-left\" aria-label=\"Move all left\">≪</button></div>\n<div data-part=\"pane\" data-ui=\"paper\"><ul data-ui=\"list\" data-dense=\"true\"><li data-part=\"item\"><label data-part=\"button\"><input data-ui=\"checkbox\" data-size=\"small\" type=\"checkbox\" tabindex=\"-1\">Truck 7</label></li><li data-part=\"item\"><label data-part=\"button\"><input data-ui=\"checkbox\" data-size=\"small\" type=\"checkbox\" tabindex=\"-1\">Van 2</label></li></ul></div>\n</div>",
+      "import": {
+        "package": "@mui/material/List",
+        "name": "List"
+      }
+    },
+    {
+      "name": "Toggle Button",
+      "ui": "toggle-button",
+      "category": "Inputs",
+      "description": "A button that stays pressed. ui.js keeps one or several on within a group.",
+      "props": [
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "primary",
+            "secondary",
+            "success",
+            "error",
+            "info",
+            "warning"
+          ],
+          "default": "primary"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "medium",
+            "small",
+            "large"
+          ],
+          "default": "medium"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\" data-align=\"start\">\n<div data-ui=\"toggle-button-group\" role=\"group\" aria-label=\"Alignment\"><button data-ui=\"toggle-button\" aria-pressed=\"true\" aria-label=\"Left\"><i data-ui=\"icon\" data-name=\"format-align-left\"></i></button><button data-ui=\"toggle-button\" aria-pressed=\"false\" aria-label=\"Centre\"><i data-ui=\"icon\" data-name=\"format-align-center\"></i></button><button data-ui=\"toggle-button\" aria-pressed=\"false\" aria-label=\"Right\"><i data-ui=\"icon\" data-name=\"format-align-right\"></i></button><button data-ui=\"toggle-button\" disabled aria-label=\"Justify\"><i data-ui=\"icon\" data-name=\"format-align-justify\"></i></button></div>\n<button data-ui=\"toggle-button\" aria-pressed=\"true\" aria-label=\"Done\"><i data-ui=\"icon\" data-name=\"check\"></i></button>\n</div>",
+      "import": {
+        "package": "@mui/material/ToggleButton",
+        "name": "ToggleButton"
+      }
+    },
+    {
+      "name": "Toggle Button Group",
+      "ui": "toggle-button-group",
+      "category": "Inputs",
+      "description": "Joined toggle buttons. Pick one, or several with data-multiple.",
+      "props": [
+        {
+          "name": "exclusive",
+          "label": "Exclusive",
+          "type": "choice",
+          "options": [
+            "true",
+            "false"
+          ],
+          "default": "true"
+        },
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "primary",
+            "secondary",
+            "success",
+            "error",
+            "info",
+            "warning"
+          ],
+          "default": "primary"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "medium",
+            "small",
+            "large"
+          ],
+          "default": "medium"
+        }
+      ],
+      "snippet": "<div data-ui=\"toggle-button-group\" data-color=\"primary\" role=\"group\" aria-label=\"Period\"><button data-ui=\"toggle-button\" aria-pressed=\"false\">Web</button><button data-ui=\"toggle-button\" aria-pressed=\"true\">Android</button><button data-ui=\"toggle-button\" aria-pressed=\"false\">iOS</button></div>",
+      "import": {
+        "package": "@mui/material/ToggleButtonGroup",
+        "name": "ToggleButtonGroup"
+      }
+    },
+    {
+      "name": "Form Control",
+      "ui": "form-control",
+      "category": "Inputs",
+      "description": "Holds a group of checkboxes or radios with its legend and helper text.",
+      "props": [
+        {
+          "name": "error",
+          "label": "Error",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<fieldset data-ui=\"form-control\"><legend data-part=\"label\">Assign drivers</legend>\n<div data-part=\"group\"><label data-ui=\"form-control-label\"><input data-ui=\"checkbox\" type=\"checkbox\" checked>Priya Shah</label><label data-ui=\"form-control-label\"><input data-ui=\"checkbox\" type=\"checkbox\">Tom Reed</label><label data-ui=\"form-control-label\"><input data-ui=\"checkbox\" type=\"checkbox\">Ana Lopes</label></div>\n<p data-part=\"helper\">Be careful</p></fieldset>",
+      "import": {
+        "package": "@mui/material/FormControl",
+        "name": "FormControl"
+      }
+    },
+    {
+      "name": "Form Control Label",
+      "ui": "form-control-label",
+      "category": "Inputs",
+      "description": "A checkbox, radio or switch with its text beside it.",
+      "props": [
+        {
+          "name": "label-placement",
+          "label": "Label Placement",
+          "type": "choice",
+          "options": [
+            "end",
+            "start",
+            "top",
+            "bottom"
+          ],
+          "default": "end"
+        }
+      ],
+      "snippet": "<label data-ui=\"form-control-label\"><input data-ui=\"checkbox\" type=\"checkbox\" checked>Include trailers</label>",
+      "import": {
+        "package": "@mui/material/FormControlLabel",
+        "name": "FormControlLabel"
+      }
+    },
+    {
+      "name": "Avatar",
+      "ui": "avatar",
+      "category": "Data display",
+      "description": "A 40px picture, initials or icon.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "circular",
+            "rounded",
+            "square"
+          ],
+          "default": "circular"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "small",
+            "large"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "tone",
+          "label": "Tone",
+          "type": "choice",
+          "options": [
+            "default",
+            "deep-orange",
+            "deep-purple",
+            "green",
+            "pink",
+            "blue",
+            "teal"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-align=\"center\">\n<span data-ui=\"avatar\">H</span><span data-ui=\"avatar\" data-tone=\"deep-orange\">N</span><span data-ui=\"avatar\" data-tone=\"deep-purple\">OP</span><span data-ui=\"avatar\"><i data-ui=\"icon\" data-name=\"person\"></i></span><span data-ui=\"avatar\" data-variant=\"rounded\" data-tone=\"green\"><i data-ui=\"icon\" data-name=\"description\"></i></span><span data-ui=\"avatar\" data-variant=\"square\" data-tone=\"deep-orange\">N</span><span data-ui=\"avatar\" data-size=\"small\">S</span><span data-ui=\"avatar\" data-size=\"large\">L</span>\n</div>",
+      "import": {
+        "package": "@mui/material/Avatar",
+        "name": "Avatar"
+      }
+    },
+    {
+      "name": "Avatar Group",
+      "ui": "avatar-group",
+      "category": "Data display",
+      "description": "Overlapping avatars, with a count for the rest.",
+      "props": [
+        {
+          "name": "spacing",
+          "label": "Spacing",
+          "type": "choice",
+          "options": [
+            "medium",
+            "small"
+          ],
+          "default": "medium"
+        }
+      ],
+      "snippet": "<div data-ui=\"avatar-group\"><span data-ui=\"avatar\" data-part=\"surplus\">+2</span><span data-ui=\"avatar\" data-tone=\"deep-purple\">A</span><span data-ui=\"avatar\" data-tone=\"green\">T</span><span data-ui=\"avatar\" data-tone=\"deep-orange\">P</span></div>",
+      "import": {
+        "package": "@mui/material/AvatarGroup",
+        "name": "AvatarGroup"
+      }
+    },
+    {
+      "name": "Badge",
+      "ui": "badge",
+      "category": "Data display",
+      "description": "A small count or dot at the corner of an icon or avatar.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "standard",
+            "dot"
+          ],
+          "default": "standard"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "primary",
+            "secondary",
+            "success",
+            "error",
+            "info",
+            "warning"
+          ],
+          "default": "primary"
+        },
+        {
+          "name": "overlap",
+          "label": "Overlap",
+          "type": "choice",
+          "options": [
+            "rectangular",
+            "circular"
+          ],
+          "default": "rectangular"
+        },
+        {
+          "name": "invisible",
+          "label": "Invisible",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"lg\" data-align=\"center\">\n<span data-ui=\"badge\" data-color=\"primary\"><i data-ui=\"icon\" data-name=\"mail\"></i><span data-part=\"badge\">4</span></span>\n<span data-ui=\"badge\" data-color=\"secondary\"><i data-ui=\"icon\" data-name=\"mail\"></i><span data-part=\"badge\">99+</span></span>\n<span data-ui=\"badge\" data-color=\"error\" data-variant=\"dot\"><i data-ui=\"icon\" data-name=\"notifications\"></i><span data-part=\"badge\"></span></span>\n<button data-ui=\"icon-button\" aria-label=\"Alerts\"><span data-ui=\"badge\" data-color=\"error\"><i data-ui=\"icon\" data-name=\"notifications\"></i><span data-part=\"badge\">17</span></span></button>\n</div>",
+      "import": {
+        "package": "@mui/material/Badge",
+        "name": "Badge"
+      }
+    },
+    {
+      "name": "Chip",
+      "ui": "chip",
+      "category": "Data display",
+      "description": "A compact tag for an attribute, filter or action. 32px, fully rounded.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "filled",
+            "outlined"
+          ],
+          "default": "filled"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "default",
+            "primary",
+            "secondary",
+            "success",
+            "error",
+            "info",
+            "warning"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "medium",
+            "small"
+          ],
+          "default": "medium"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\">\n<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-wrap=\"true\" data-align=\"center\"><span data-ui=\"chip\"><span data-part=\"label\">Chip Filled</span></span><span data-ui=\"chip\" data-variant=\"outlined\"><span data-part=\"label\">Chip Outlined</span></span><span data-ui=\"chip\" data-color=\"primary\"><span data-part=\"label\">Primary</span></span><span data-ui=\"chip\" data-color=\"success\"><span data-part=\"label\">Success</span></span><span data-ui=\"chip\" data-color=\"error\" data-variant=\"outlined\"><span data-part=\"label\">Error</span></span></div>\n<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-wrap=\"true\" data-align=\"center\"><span data-ui=\"chip\"><span data-ui=\"avatar\" data-part=\"avatar\">P</span><span data-part=\"label\">Priya Shah</span></span><span data-ui=\"chip\" data-variant=\"outlined\"><i data-ui=\"icon\" data-name=\"local-shipping\" data-part=\"icon\"></i><span data-part=\"label\">On route</span></span><button data-ui=\"chip\" type=\"button\"><span data-part=\"label\">Clickable</span></button><span data-ui=\"chip\"><span data-part=\"label\">Deletable</span><button data-part=\"delete\" aria-label=\"Delete\"><i data-ui=\"icon\" data-name=\"close\"></i></button></span><span data-ui=\"chip\" data-size=\"small\"><span data-part=\"label\">Small</span></span><span data-ui=\"chip\" data-size=\"small\" data-variant=\"outlined\"><span data-part=\"label\">Small</span></span></div>\n</div>",
+      "import": {
+        "package": "@mui/material/Chip",
+        "name": "Chip"
+      }
+    },
+    {
+      "name": "Divider",
+      "ui": "divider",
+      "category": "Data display",
+      "description": "A thin line between content, with optional text.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "full-width",
+            "inset",
+            "middle"
+          ],
+          "default": "full-width"
+        },
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        },
+        {
+          "name": "text-align",
+          "label": "Text Align",
+          "type": "choice",
+          "options": [
+            "center",
+            "left",
+            "right"
+          ],
+          "default": "center"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"md\" style=\"max-inline-size:360px\">\n<hr data-ui=\"divider\">\n<div data-ui=\"divider\" role=\"separator\"><span data-part=\"wrapper\">Centre</span></div>\n<div data-ui=\"divider\" data-text-align=\"left\" role=\"separator\"><span data-part=\"wrapper\">Left</span></div>\n<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-align=\"center\" style=\"block-size:24px\"><i data-ui=\"icon\" data-name=\"format-align-left\"></i><hr data-ui=\"divider\" data-orientation=\"vertical\"><i data-ui=\"icon\" data-name=\"format-align-center\"></i></div>\n</div>",
+      "import": {
+        "package": "@mui/material/Divider",
+        "name": "Divider"
+      }
+    },
+    {
+      "name": "Icon",
+      "ui": "icon",
+      "category": "Data display",
+      "description": "A 24px solid icon in the current colour. Set data-name: menu, search, close, add, edit, delete and more (see DESIGN.md).",
+      "props": [
+        {
+          "name": "name",
+          "label": "Name",
+          "type": "text"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "medium",
+            "small",
+            "large",
+            "inherit"
+          ],
+          "default": "medium"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "inherit",
+            "primary",
+            "secondary",
+            "action",
+            "disabled",
+            "error",
+            "success",
+            "info",
+            "warning"
+          ],
+          "default": "inherit"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\" data-align=\"center\" data-wrap=\"true\">\n<i data-ui=\"icon\" data-name=\"home\"></i><i data-ui=\"icon\" data-name=\"search\"></i><i data-ui=\"icon\" data-name=\"mail\"></i><i data-ui=\"icon\" data-name=\"settings\"></i><i data-ui=\"icon\" data-name=\"local-shipping\"></i><i data-ui=\"icon\" data-name=\"star\" data-color=\"primary\"></i><i data-ui=\"icon\" data-name=\"favorite\" data-color=\"error\"></i><i data-ui=\"icon\" data-name=\"delete\" data-color=\"action\"></i><i data-ui=\"icon\" data-name=\"place\" data-size=\"small\"></i><i data-ui=\"icon\" data-name=\"place\" data-size=\"large\"></i>\n</div>",
+      "import": {
+        "package": "@mui/icons-material",
+        "name": "SvgIcon"
+      }
+    },
+    {
+      "name": "List",
+      "ui": "list",
+      "category": "Data display",
+      "description": "Rows of text with an optional icon, avatar, secondary line or action.",
+      "props": [
+        {
+          "name": "dense",
+          "label": "Dense",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "disable-padding",
+          "label": "Disable Padding",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"paper\" style=\"max-inline-size:360px\">\n<ul data-ui=\"list\" aria-label=\"Mailboxes\">\n<li data-part=\"subheader\">Depot</li>\n<li data-part=\"item\"><button data-part=\"button\" aria-selected=\"true\"><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"inbox\"></i></span><span data-part=\"text\"><span data-part=\"primary\">Inbox</span></span></button></li>\n<li data-part=\"item\"><button data-part=\"button\"><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"drafts\"></i></span><span data-part=\"text\"><span data-part=\"primary\">Drafts</span></span></button></li>\n<li><hr data-ui=\"divider\"></li>\n<li data-part=\"item\" data-padded=\"true\"><span data-part=\"avatar\"><span data-ui=\"avatar\"><i data-ui=\"icon\" data-name=\"image\"></i></span></span><span data-part=\"text\"><span data-part=\"primary\">Photos</span><span data-part=\"secondary\">Jan 9, 2014</span></span><button data-ui=\"icon-button\" data-edge=\"end\" data-part=\"action\" aria-label=\"Delete\"><i data-ui=\"icon\" data-name=\"delete\"></i></button></li>\n</ul></div>",
+      "import": {
+        "package": "@mui/material/List",
+        "name": "List"
+      }
+    },
+    {
+      "name": "Table",
+      "ui": "table",
+      "category": "Data display",
+      "description": "Data rows with a medium header and 16px cell padding. Set data-align on number cells.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "medium",
+            "small"
+          ],
+          "default": "medium"
+        },
+        {
+          "name": "sticky-header",
+          "label": "Sticky Header",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"paper\" style=\"overflow-x:auto\"><table data-ui=\"table\">\n<thead><tr><th>Vehicle</th><th data-align=\"right\">Miles</th><th data-align=\"right\">Fuel&nbsp;(L)</th><th data-align=\"right\">Stops</th></tr></thead>\n<tbody><tr><th scope=\"row\">Van 12</th><td data-align=\"right\">159</td><td data-align=\"right\">6.0</td><td data-align=\"right\">24</td></tr><tr><th scope=\"row\">Van 18</th><td data-align=\"right\">237</td><td data-align=\"right\">9.0</td><td data-align=\"right\">37</td></tr><tr><th scope=\"row\">Truck 4</th><td data-align=\"right\">262</td><td data-align=\"right\">16.0</td><td data-align=\"right\">24</td></tr></tbody>\n</table></div>",
+      "import": {
+        "package": "@mui/material/Table",
+        "name": "Table"
+      }
+    },
+    {
+      "name": "Table Pagination",
+      "ui": "table-pagination",
+      "category": "Data display",
+      "description": "The footer of a table: rows per page, the range and page arrows.",
+      "props": [],
+      "snippet": "<div data-ui=\"table-pagination\"><span data-part=\"label\">Rows per page:</span><select data-part=\"select\" aria-label=\"Rows per page\"><option>10</option><option>25</option></select><span data-part=\"range\">1–10 of 137</span><button data-ui=\"icon-button\" disabled aria-label=\"Previous page\"><i data-ui=\"icon\" data-name=\"chevron-left\"></i></button><button data-ui=\"icon-button\" aria-label=\"Next page\"><i data-ui=\"icon\" data-name=\"chevron-right\"></i></button></div>",
+      "import": {
+        "package": "@mui/material/TablePagination",
+        "name": "TablePagination"
+      }
+    },
+    {
+      "name": "Tooltip",
+      "ui": "tooltip",
+      "category": "Data display",
+      "description": "A short label that fades in on hover or focus.",
+      "props": [
+        {
+          "name": "placement",
+          "label": "Placement",
+          "type": "choice",
+          "options": [
+            "bottom",
+            "top",
+            "left",
+            "right"
+          ],
+          "default": "bottom"
+        },
+        {
+          "name": "arrow",
+          "label": "Arrow",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"md\" data-align=\"center\">\n<span data-ui=\"tooltip\"><button data-ui=\"icon-button\" aria-label=\"Delete\"><i data-ui=\"icon\" data-name=\"delete\"></i></button><span data-part=\"popup\" role=\"tooltip\">Delete</span></span>\n<span data-ui=\"tooltip\" data-placement=\"top\" data-arrow=\"true\"><button data-ui=\"button\">Arrow</button><span data-part=\"popup\" role=\"tooltip\">Add</span></span>\n</div>",
+      "import": {
+        "package": "@mui/material/Tooltip",
+        "name": "Tooltip"
+      }
+    },
+    {
+      "name": "Typography",
+      "ui": "typography",
+      "category": "Data display",
+      "description": "The Material type scale, h1 to overline.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "body1",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+            "subtitle1",
+            "subtitle2",
+            "body2",
+            "caption",
+            "overline",
+            "button"
+          ],
+          "default": "body1"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "text-primary",
+            "text-secondary",
+            "primary",
+            "secondary",
+            "error",
+            "success",
+            "warning",
+            "info"
+          ],
+          "default": "text-primary"
+        },
+        {
+          "name": "align",
+          "label": "Align",
+          "type": "choice",
+          "options": [
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "left"
+        },
+        {
+          "name": "gutter-bottom",
+          "label": "Gutter Bottom",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "no-wrap",
+          "label": "No Wrap",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"xs\" style=\"overflow:hidden\">\n<div data-ui=\"typography\" data-variant=\"h3\">h3. Heading</div><div data-ui=\"typography\" data-variant=\"h4\">h4. Heading</div><div data-ui=\"typography\" data-variant=\"h5\">h5. Heading</div><div data-ui=\"typography\" data-variant=\"h6\">h6. Heading</div>\n<div data-ui=\"typography\" data-variant=\"subtitle1\">subtitle1. Lorem ipsum dolor sit amet</div><div data-ui=\"typography\" data-variant=\"subtitle2\">subtitle2. Lorem ipsum dolor sit amet</div>\n<p data-ui=\"typography\">body1. Fleet status updates every five minutes from each vehicle's tracker.</p><p data-ui=\"typography\" data-variant=\"body2\">body2. Fleet status updates every five minutes.</p>\n<span data-ui=\"typography\" data-variant=\"button\">button text</span><span data-ui=\"typography\" data-variant=\"caption\">caption text</span><span data-ui=\"typography\" data-variant=\"overline\">overline text</span>\n</div>",
+      "import": {
+        "package": "@mui/material/Typography",
+        "name": "Typography"
+      }
+    },
+    {
+      "name": "Alert",
+      "ui": "alert",
+      "category": "Feedback",
+      "description": "A short message by severity, in standard, filled or outlined style.",
+      "props": [
+        {
+          "name": "severity",
+          "label": "Severity",
+          "type": "choice",
+          "options": [
+            "success",
+            "info",
+            "warning",
+            "error"
+          ],
+          "default": "success"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "standard",
+            "filled",
+            "outlined"
+          ],
+          "default": "standard"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\" style=\"max-inline-size:36rem\">\n<div data-ui=\"alert\" role=\"alert\"><i data-ui=\"icon\" data-name=\"success-outlined\" data-part=\"icon\"></i><div data-part=\"message\">Route saved. Drivers will see it at their next stop.</div></div>\n<div data-ui=\"alert\" data-severity=\"info\" role=\"alert\"><i data-ui=\"icon\" data-name=\"info-outlined\" data-part=\"icon\"></i><div data-part=\"message\">Traffic is heavy on the M62.</div></div>\n<div data-ui=\"alert\" data-severity=\"warning\" role=\"alert\"><i data-ui=\"icon\" data-name=\"warning-outlined\" data-part=\"icon\"></i><div data-part=\"message\"><div data-part=\"title\">Service due</div>Van 18 is due a service within 200 miles.</div><div data-part=\"action\"><button data-ui=\"button\" data-color=\"inherit\" data-size=\"small\">Book</button></div></div>\n<div data-ui=\"alert\" data-severity=\"error\" role=\"alert\"><i data-ui=\"icon\" data-name=\"error-outlined\" data-part=\"icon\"></i><div data-part=\"message\">The tracker in Truck 4 has stopped reporting.</div><div data-part=\"action\"><button data-ui=\"icon-button\" data-color=\"inherit\" data-size=\"small\" aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"close\"></i></button></div></div>\n<div data-ui=\"alert\" data-variant=\"filled\" role=\"alert\"><i data-ui=\"icon\" data-name=\"success-outlined\" data-part=\"icon\"></i><div data-part=\"message\">This is a filled success alert.</div></div>\n<div data-ui=\"alert\" data-variant=\"filled\" data-severity=\"error\" role=\"alert\"><i data-ui=\"icon\" data-name=\"error-outlined\" data-part=\"icon\"></i><div data-part=\"message\">This is a filled error alert.</div></div>\n<div data-ui=\"alert\" data-variant=\"outlined\" data-severity=\"info\" role=\"alert\"><i data-ui=\"icon\" data-name=\"info-outlined\" data-part=\"icon\"></i><div data-part=\"message\">This is an outlined info alert.</div></div>\n</div>",
+      "import": {
+        "package": "@mui/material/Alert",
+        "name": "Alert"
+      }
+    },
+    {
+      "name": "Backdrop",
+      "ui": "backdrop",
+      "category": "Feedback",
+      "description": "A dimmed layer over the screen, for a spinner or to hold focus.",
+      "props": [],
+      "snippet": "<button data-ui=\"button\" popovertarget=\"backdrop-demo\">Show backdrop</button>\n<div data-ui=\"backdrop\" popover id=\"backdrop-demo\"><span data-ui=\"circular-progress\" role=\"progressbar\"><svg viewBox=\"22 22 44 44\"><circle cx=\"44\" cy=\"44\" r=\"20.2\"></circle></svg></span></div>",
+      "import": {
+        "package": "@mui/material/Backdrop",
+        "name": "Backdrop"
+      }
+    },
+    {
+      "name": "Dialog",
+      "ui": "dialog",
+      "category": "Feedback",
+      "description": "A modal on elevation 24, with title, content and right-aligned actions.",
+      "props": [
+        {
+          "name": "max-width",
+          "label": "Max Width",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "sm"
+        },
+        {
+          "name": "full-width",
+          "label": "Full Width",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "full-screen",
+          "label": "Full Screen",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "scroll",
+          "label": "Scroll",
+          "type": "choice",
+          "options": [
+            "paper",
+            "body"
+          ],
+          "default": "paper"
+        }
+      ],
+      "snippet": "<button data-ui=\"button\" data-variant=\"outlined\" data-dialog-open=\"dialog-demo\">Open dialog</button>\n<dialog data-ui=\"dialog\" id=\"dialog-demo\" aria-labelledby=\"dialog-demo-title\">\n<h2 data-part=\"title\" id=\"dialog-demo-title\">Reassign this route?</h2>\n<div data-part=\"content\"><p data-part=\"text\">Priya Shah will lose access to the Northern route and Tom Reed will be told at their next stop.</p></div>\n<div data-part=\"actions\"><button data-ui=\"button\" data-dialog-close>Disagree</button><button data-ui=\"button\" data-dialog-close autofocus>Agree</button></div>\n</dialog>",
+      "import": {
+        "package": "@mui/material/Dialog",
+        "name": "Dialog"
+      }
+    },
+    {
+      "name": "Circular Progress",
+      "ui": "circular-progress",
+      "category": "Feedback",
+      "description": "A spinning ring, or a fixed one with --value from 0 to 100.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "indeterminate",
+            "determinate"
+          ],
+          "default": "indeterminate"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "primary",
+            "secondary",
+            "success",
+            "error",
+            "info",
+            "warning",
+            "inherit"
+          ],
+          "default": "primary"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "40",
+            "16",
+            "24",
+            "56"
+          ],
+          "default": "40"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"md\" data-align=\"center\">\n<span data-ui=\"circular-progress\" role=\"progressbar\"><svg viewBox=\"22 22 44 44\"><circle cx=\"44\" cy=\"44\" r=\"20.2\"></circle></svg></span>\n<span data-ui=\"circular-progress\" data-color=\"success\" role=\"progressbar\"><svg viewBox=\"22 22 44 44\"><circle cx=\"44\" cy=\"44\" r=\"20.2\"></circle></svg></span>\n<span data-ui=\"circular-progress\" data-variant=\"determinate\" role=\"progressbar\" aria-valuenow=\"75\" style=\"--value:75\"><svg viewBox=\"22 22 44 44\"><circle cx=\"44\" cy=\"44\" r=\"20.2\"></circle></svg></span>\n<span data-ui=\"circular-progress\" data-size=\"24\" role=\"progressbar\"><svg viewBox=\"22 22 44 44\"><circle cx=\"44\" cy=\"44\" r=\"20.2\"></circle></svg></span>\n</div>",
+      "import": {
+        "package": "@mui/material/CircularProgress",
+        "name": "CircularProgress"
+      }
+    },
+    {
+      "name": "Linear Progress",
+      "ui": "linear-progress",
+      "category": "Feedback",
+      "description": "A 4px bar that loops, or a fixed one with --value from 0 to 100.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "indeterminate",
+            "determinate",
+            "buffer",
+            "query"
+          ],
+          "default": "indeterminate"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "primary",
+            "secondary",
+            "success",
+            "error",
+            "info",
+            "warning",
+            "inherit"
+          ],
+          "default": "primary"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"md\" style=\"max-inline-size:360px\">\n<div data-ui=\"linear-progress\" role=\"progressbar\"></div>\n<div data-ui=\"linear-progress\" data-variant=\"determinate\" role=\"progressbar\" aria-valuenow=\"60\" style=\"--value:60\"></div>\n<div data-ui=\"linear-progress\" data-variant=\"buffer\" role=\"progressbar\" aria-valuenow=\"40\" style=\"--value:40;--buffer:60\"></div>\n<div data-ui=\"linear-progress\" data-color=\"secondary\" role=\"progressbar\"></div>\n</div>",
+      "import": {
+        "package": "@mui/material/LinearProgress",
+        "name": "LinearProgress"
+      }
+    },
+    {
+      "name": "Skeleton",
+      "ui": "skeleton",
+      "category": "Feedback",
+      "description": "A pulsing placeholder for content that's still loading.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "text",
+            "circular",
+            "rectangular",
+            "rounded"
+          ],
+          "default": "text"
+        },
+        {
+          "name": "animation",
+          "label": "Animation",
+          "type": "choice",
+          "options": [
+            "pulse",
+            "wave",
+            "false"
+          ],
+          "default": "pulse"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"xs\" style=\"max-inline-size:210px\">\n<span data-ui=\"skeleton\" style=\"font-size:1rem\"></span>\n<span data-ui=\"skeleton\" data-variant=\"circular\" style=\"inline-size:40px;block-size:40px\"></span>\n<span data-ui=\"skeleton\" data-variant=\"rectangular\" data-animation=\"wave\" style=\"block-size:60px\"></span>\n<span data-ui=\"skeleton\" data-variant=\"rounded\" style=\"block-size:60px\"></span>\n</div>",
+      "import": {
+        "package": "@mui/material/Skeleton",
+        "name": "Skeleton"
+      }
+    },
+    {
+      "name": "Snackbar",
+      "ui": "snackbar",
+      "category": "Feedback",
+      "description": "A brief message at a screen corner. Without popover it sits in place.",
+      "props": [
+        {
+          "name": "vertical",
+          "label": "Vertical",
+          "type": "choice",
+          "options": [
+            "bottom",
+            "top"
+          ],
+          "default": "bottom"
+        },
+        {
+          "name": "horizontal",
+          "label": "Horizontal",
+          "type": "choice",
+          "options": [
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "left"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\" data-align=\"start\">\n<button data-ui=\"button\" data-variant=\"outlined\" popovertarget=\"snackbar-demo\">Open snackbar</button>\n<div data-ui=\"snackbar\" role=\"status\"><div data-part=\"message\">Route archived</div><div data-part=\"action\"><button data-ui=\"button\" data-color=\"inherit\" data-size=\"small\">Undo</button><button data-ui=\"icon-button\" data-color=\"inherit\" data-size=\"small\" aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"close\"></i></button></div></div>\n</div>\n<div data-ui=\"snackbar\" popover id=\"snackbar-demo\" role=\"status\"><div data-part=\"message\">Route archived</div><div data-part=\"action\"><button data-ui=\"button\" data-color=\"inherit\" data-size=\"small\" popovertarget=\"snackbar-demo\" popovertargetaction=\"hide\">Undo</button></div></div>",
+      "import": {
+        "package": "@mui/material/Snackbar",
+        "name": "Snackbar"
+      }
+    },
+    {
+      "name": "Accordion",
+      "ui": "accordion",
+      "category": "Surfaces",
+      "description": "Paper rows that expand one at a time, pushed apart when open.",
+      "props": [
+        {
+          "name": "disable-gutters",
+          "label": "Disable Gutters",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"accordion\" style=\"max-inline-size:36rem\">\n<details data-part=\"item\" name=\"accordion-demo\"><summary data-part=\"summary\"><span data-part=\"heading\">Service history</span><i data-ui=\"icon\" data-name=\"expand-more\" data-part=\"expand\"></i></summary><div data-part=\"details\">Last serviced in March at the Leeds depot. Tyres and brake pads were replaced.</div></details>\n<details data-part=\"item\" name=\"accordion-demo\" open><summary data-part=\"summary\"><span data-part=\"heading\">Insurance</span><i data-ui=\"icon\" data-name=\"expand-more\" data-part=\"expand\"></i></summary><div data-part=\"details\">Fully comprehensive, renewing on 12 June. The policy document is in the vehicle file.</div></details>\n<details data-part=\"item\" name=\"accordion-demo\"><summary data-part=\"summary\"><span data-part=\"heading\">Drivers</span><i data-ui=\"icon\" data-name=\"expand-more\" data-part=\"expand\"></i></summary><div data-part=\"details\">Priya Shah and Tom Reed are cleared to drive this vehicle.</div></details>\n</div>",
+      "import": {
+        "package": "@mui/material/Accordion",
+        "name": "Accordion"
+      }
+    },
+    {
+      "name": "App Bar",
+      "ui": "app-bar",
+      "category": "Surfaces",
+      "description": "The top bar: a 64px toolbar on elevation 4, in the primary colour.",
+      "props": [
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "primary",
+            "default",
+            "secondary",
+            "inherit",
+            "transparent"
+          ],
+          "default": "primary"
+        },
+        {
+          "name": "position",
+          "label": "Position",
+          "type": "choice",
+          "options": [
+            "static",
+            "fixed",
+            "sticky",
+            "absolute"
+          ],
+          "default": "static"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "regular",
+            "dense"
+          ],
+          "default": "regular"
+        }
+      ],
+      "snippet": "<header data-ui=\"app-bar\"><div data-part=\"toolbar\"><button data-ui=\"icon-button\" data-color=\"inherit\" data-edge=\"start\" aria-label=\"Menu\"><i data-ui=\"icon\" data-name=\"menu\"></i></button><div data-part=\"title\">Fleetwise</div><button data-ui=\"button\" data-color=\"inherit\">Login</button></div></header>",
+      "import": {
+        "package": "@mui/material/AppBar",
+        "name": "AppBar"
+      }
+    },
+    {
+      "name": "Card",
+      "ui": "card",
+      "category": "Surfaces",
+      "description": "A paper surface with header, media, content and actions.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "elevation",
+            "outlined"
+          ],
+          "default": "elevation"
+        }
+      ],
+      "snippet": "<div data-ui=\"grid\" data-columns=\"2\" data-gap=\"md\" data-align=\"start\">\n<div data-ui=\"card\">\n<div data-part=\"content\"><div data-ui=\"typography\" data-variant=\"body2\" data-color=\"text-secondary\" data-gutter-bottom=\"true\">Vehicle of the day</div><div data-ui=\"typography\" data-variant=\"h5\">Van 12</div><div data-ui=\"typography\" data-variant=\"body2\" data-color=\"text-secondary\" style=\"margin-block-end:12px\">Northern route</div><p data-ui=\"typography\" data-variant=\"body2\">On time at every stop this week, with the best fuel use in the fleet.</p></div>\n<div data-part=\"actions\"><button data-ui=\"button\" data-size=\"small\">Learn more</button></div>\n</div>\n<div data-ui=\"card\" data-variant=\"outlined\">\n<div data-part=\"header\"><span data-ui=\"avatar\" data-tone=\"deep-orange\" data-part=\"avatar\">P</span><div data-part=\"header-content\"><div data-part=\"title\">Priya Shah</div><div data-part=\"subheader\">September 14, 2016</div></div><button data-ui=\"icon-button\" data-part=\"action\" aria-label=\"Settings\"><i data-ui=\"icon\" data-name=\"more-vert\"></i></button></div>\n<div data-part=\"media\" style=\"block-size:120px\"><i data-ui=\"icon\" data-name=\"local-shipping\"></i></div>\n<div data-part=\"actions\" data-disable-spacing=\"true\"><button data-ui=\"icon-button\" aria-label=\"Favourite\"><i data-ui=\"icon\" data-name=\"favorite\"></i></button><button data-ui=\"icon-button\" aria-label=\"Share\"><i data-ui=\"icon\" data-name=\"share\"></i></button></div>\n</div>\n</div>",
+      "import": {
+        "package": "@mui/material/Card",
+        "name": "Card"
+      }
+    },
+    {
+      "name": "Paper",
+      "ui": "paper",
+      "category": "Surfaces",
+      "description": "The base surface. Elevation sets its shadow, or an overlay in dark mode.",
+      "props": [
+        {
+          "name": "elevation",
+          "label": "Elevation",
+          "type": "choice",
+          "options": [
+            "1",
+            "0",
+            "2",
+            "3",
+            "4",
+            "6",
+            "8",
+            "12",
+            "16",
+            "24"
+          ],
+          "default": "1"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "elevation",
+            "outlined"
+          ],
+          "default": "elevation"
+        },
+        {
+          "name": "square",
+          "label": "Square",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"md\" data-wrap=\"true\">\n<div data-ui=\"paper\" data-elevation=\"0\" data-part=\"demo-tile\">0</div><div data-ui=\"paper\" data-part=\"demo-tile\">1</div><div data-ui=\"paper\" data-elevation=\"3\" data-part=\"demo-tile\">3</div><div data-ui=\"paper\" data-elevation=\"8\" data-part=\"demo-tile\">8</div><div data-ui=\"paper\" data-variant=\"outlined\" data-part=\"demo-tile\">Outlined</div><div data-ui=\"paper\" data-square=\"true\" data-part=\"demo-tile\">Square</div>\n</div>",
+      "import": {
+        "package": "@mui/material/Paper",
+        "name": "Paper"
+      }
+    },
+    {
+      "name": "Bottom Navigation",
+      "ui": "bottom-navigation",
+      "category": "Navigation",
+      "description": "Three to five destinations along the bottom of a phone screen.",
+      "props": [
+        {
+          "name": "show-labels",
+          "label": "Show Labels",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<nav data-ui=\"bottom-navigation\" data-show-labels=\"true\" style=\"max-inline-size:500px\"><button data-part=\"action\" aria-current=\"page\"><i data-ui=\"icon\" data-name=\"schedule\"></i><span data-part=\"label\">Recents</span></button><button data-part=\"action\"><i data-ui=\"icon\" data-name=\"favorite\"></i><span data-part=\"label\">Favorites</span></button><button data-part=\"action\"><i data-ui=\"icon\" data-name=\"place\"></i><span data-part=\"label\">Nearby</span></button></nav>",
+      "import": {
+        "package": "@mui/material/BottomNavigation",
+        "name": "BottomNavigation"
+      }
+    },
+    {
+      "name": "Breadcrumbs",
+      "ui": "breadcrumbs",
+      "category": "Navigation",
+      "description": "The path to the current page, separated by slashes.",
+      "props": [],
+      "snippet": "<nav data-ui=\"breadcrumbs\" aria-label=\"breadcrumb\"><ol data-part=\"list\"><li><a data-ui=\"link\" data-underline=\"hover\" data-color=\"inherit\" href=\"#\">Fleet</a></li><li data-part=\"separator\" aria-hidden=\"true\">/</li><li><a data-ui=\"link\" data-underline=\"hover\" data-color=\"inherit\" href=\"#\">Vans</a></li><li data-part=\"separator\" aria-hidden=\"true\">/</li><li data-part=\"current\" aria-current=\"page\">Van 12</li></ol></nav>",
+      "import": {
+        "package": "@mui/material/Breadcrumbs",
+        "name": "Breadcrumbs"
+      }
+    },
+    {
+      "name": "Drawer",
+      "ui": "drawer",
+      "category": "Navigation",
+      "description": "A panel from a screen edge, on elevation 16. Permanent drawers stay in the layout.",
+      "props": [
+        {
+          "name": "anchor",
+          "label": "Anchor",
+          "type": "choice",
+          "options": [
+            "left",
+            "right",
+            "top",
+            "bottom"
+          ],
+          "default": "left"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "temporary",
+            "permanent"
+          ],
+          "default": "temporary"
+        }
+      ],
+      "snippet": "<button data-ui=\"button\" data-variant=\"outlined\" data-dialog-open=\"drawer-demo\">Open drawer</button>\n<dialog data-ui=\"drawer\" id=\"drawer-demo\" aria-label=\"Navigation\"><ul data-ui=\"list\" style=\"inline-size:250px\"><li data-part=\"item\"><button data-part=\"button\" data-dialog-close><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"inbox\"></i></span><span data-part=\"text\"><span data-part=\"primary\">Inbox</span></span></button></li><li data-part=\"item\"><button data-part=\"button\" data-dialog-close><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"mail\"></i></span><span data-part=\"text\"><span data-part=\"primary\">Starred</span></span></button></li><li><hr data-ui=\"divider\"></li><li data-part=\"item\"><button data-part=\"button\" data-dialog-close><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"delete\"></i></span><span data-part=\"text\"><span data-part=\"primary\">Trash</span></span></button></li></ul></dialog>",
+      "import": {
+        "package": "@mui/material/Drawer",
+        "name": "Drawer"
+      }
+    },
+    {
+      "name": "Link",
+      "ui": "link",
+      "category": "Navigation",
+      "description": "A text link in the primary colour with a soft underline.",
+      "props": [
+        {
+          "name": "underline",
+          "label": "Underline",
+          "type": "choice",
+          "options": [
+            "always",
+            "hover",
+            "none"
+          ],
+          "default": "always"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "primary",
+            "inherit",
+            "secondary",
+            "text-primary",
+            "text-secondary"
+          ],
+          "default": "primary"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-gap=\"md\" data-wrap=\"true\"><a data-ui=\"link\" href=\"#\">Link</a><a data-ui=\"link\" data-color=\"inherit\" href=\"#\">color=\"inherit\"</a><a data-ui=\"link\" data-underline=\"hover\" href=\"#\">underline=\"hover\"</a><a data-ui=\"link\" data-underline=\"none\" href=\"#\">underline=\"none\"</a></div>",
+      "import": {
+        "package": "@mui/material/Link",
+        "name": "Link"
+      }
+    },
+    {
+      "name": "Menu",
+      "ui": "menu",
+      "category": "Navigation",
+      "description": "A list of actions on elevation 8, opened from a button.",
+      "props": [
+        {
+          "name": "dense",
+          "label": "Dense",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<button data-ui=\"button\" popovertarget=\"menu-demo\" style=\"anchor-name:--menu-demo\">Dashboard</button>\n<div data-ui=\"menu\" popover id=\"menu-demo\" role=\"menu\" style=\"position-anchor:--menu-demo\"><button data-part=\"item\" role=\"menuitem\"><i data-ui=\"icon\" data-name=\"person\" data-part=\"icon\"></i>Profile</button><button data-part=\"item\" role=\"menuitem\"><i data-ui=\"icon\" data-name=\"settings\" data-part=\"icon\"></i>My account<span data-part=\"shortcut\">⌘A</span></button><hr data-ui=\"divider\"><button data-part=\"item\" role=\"menuitem\" aria-selected=\"true\"><i data-ui=\"icon\" data-name=\"logout\" data-part=\"icon\"></i>Logout</button><button data-part=\"item\" role=\"menuitem\" disabled><i data-ui=\"icon\" data-name=\"build\" data-part=\"icon\"></i>Service mode</button></div>",
+      "import": {
+        "package": "@mui/material/Menu",
+        "name": "Menu"
+      }
+    },
+    {
+      "name": "Menubar",
+      "ui": "menubar",
+      "category": "Navigation",
+      "description": "A row of text buttons, each opening a menu, as in a desktop app.",
+      "props": [],
+      "snippet": "<div data-ui=\"menubar\" role=\"menubar\"><button data-ui=\"button\" data-color=\"inherit\" role=\"menuitem\" popovertarget=\"menubar-file\" style=\"anchor-name:--menubar-file\">File</button><button data-ui=\"button\" data-color=\"inherit\" role=\"menuitem\" popovertarget=\"menubar-help\" style=\"anchor-name:--menubar-help\">Help</button>\n<div data-ui=\"menu\" data-dense=\"true\" popover id=\"menubar-file\" role=\"menu\" style=\"position-anchor:--menubar-file\"><button data-part=\"item\" role=\"menuitem\">New route<span data-part=\"shortcut\">⌘N</span></button><button data-part=\"item\" role=\"menuitem\">Open<span data-part=\"shortcut\">⌘O</span></button><hr data-ui=\"divider\"><button data-part=\"item\" role=\"menuitem\">Print<span data-part=\"shortcut\">⌘P</span></button></div>\n<div data-ui=\"menu\" data-dense=\"true\" popover id=\"menubar-help\" role=\"menu\" style=\"position-anchor:--menubar-help\"><button data-part=\"item\" role=\"menuitem\">Guides</button><button data-part=\"item\" role=\"menuitem\">Contact support</button></div></div>",
+      "import": {
+        "package": "@mui/material/Menubar",
+        "name": "Menubar"
+      }
+    },
+    {
+      "name": "Pagination",
+      "ui": "pagination",
+      "category": "Navigation",
+      "description": "Numbered pages with previous and next arrows.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "text",
+            "outlined"
+          ],
+          "default": "text"
+        },
+        {
+          "name": "shape",
+          "label": "Shape",
+          "type": "choice",
+          "options": [
+            "circular",
+            "rounded"
+          ],
+          "default": "circular"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "standard",
+            "primary",
+            "secondary"
+          ],
+          "default": "standard"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "medium",
+            "small",
+            "large"
+          ],
+          "default": "medium"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\">\n<nav data-ui=\"pagination\" aria-label=\"Pages\"><ul data-part=\"list\"><li><button data-part=\"item\" disabled aria-label=\"Previous\"><i data-ui=\"icon\" data-name=\"chevron-left\"></i></button></li><li><button data-part=\"item\" aria-current=\"page\">1</button></li><li><button data-part=\"item\">2</button></li><li><button data-part=\"item\">3</button></li><li><span data-part=\"ellipsis\">…</span></li><li><button data-part=\"item\">10</button></li><li><button data-part=\"item\" aria-label=\"Next\"><i data-ui=\"icon\" data-name=\"chevron-right\"></i></button></li></ul></nav>\n<nav data-ui=\"pagination\" data-color=\"primary\" aria-label=\"Pages\"><ul data-part=\"list\"><li><button data-part=\"item\" disabled aria-label=\"Previous\"><i data-ui=\"icon\" data-name=\"chevron-left\"></i></button></li><li><button data-part=\"item\" aria-current=\"page\">1</button></li><li><button data-part=\"item\">2</button></li><li><button data-part=\"item\">3</button></li><li><button data-part=\"item\" aria-label=\"Next\"><i data-ui=\"icon\" data-name=\"chevron-right\"></i></button></li></ul></nav>\n<nav data-ui=\"pagination\" data-variant=\"outlined\" data-shape=\"rounded\" data-color=\"primary\" aria-label=\"Pages\"><ul data-part=\"list\"><li><button data-part=\"item\" disabled aria-label=\"Previous\"><i data-ui=\"icon\" data-name=\"chevron-left\"></i></button></li><li><button data-part=\"item\" aria-current=\"page\">1</button></li><li><button data-part=\"item\">2</button></li><li><button data-part=\"item\">3</button></li><li><button data-part=\"item\" aria-label=\"Next\"><i data-ui=\"icon\" data-name=\"chevron-right\"></i></button></li></ul></nav>\n</div>",
+      "import": {
+        "package": "@mui/material/Pagination",
+        "name": "Pagination"
+      }
+    },
+    {
+      "name": "Speed Dial",
+      "ui": "speed-dial",
+      "category": "Navigation",
+      "description": "A floating button that fans out related actions when hovered or focused.",
+      "props": [
+        {
+          "name": "direction",
+          "label": "Direction",
+          "type": "choice",
+          "options": [
+            "up",
+            "down",
+            "left",
+            "right"
+          ],
+          "default": "up"
+        }
+      ],
+      "snippet": "<div style=\"position:relative;block-size:280px\">\n<div data-ui=\"speed-dial\" style=\"position:absolute;inset-block-end:16px;inset-inline-end:16px\"><div data-part=\"actions\"><span data-ui=\"tooltip\" data-placement=\"left\"><button data-ui=\"fab\" data-size=\"small\" data-part=\"action\" aria-label=\"Copy\"><i data-ui=\"icon\" data-name=\"content-copy\"></i></button><span data-part=\"popup\" role=\"tooltip\">Copy</span></span><span data-ui=\"tooltip\" data-placement=\"left\"><button data-ui=\"fab\" data-size=\"small\" data-part=\"action\" aria-label=\"Save\"><i data-ui=\"icon\" data-name=\"save\"></i></button><span data-part=\"popup\" role=\"tooltip\">Save</span></span><span data-ui=\"tooltip\" data-placement=\"left\"><button data-ui=\"fab\" data-size=\"small\" data-part=\"action\" aria-label=\"Print\"><i data-ui=\"icon\" data-name=\"print\"></i></button><span data-part=\"popup\" role=\"tooltip\">Print</span></span><span data-ui=\"tooltip\" data-placement=\"left\"><button data-ui=\"fab\" data-size=\"small\" data-part=\"action\" aria-label=\"Share\"><i data-ui=\"icon\" data-name=\"share\"></i></button><span data-part=\"popup\" role=\"tooltip\">Share</span></span></div><button data-ui=\"fab\" data-color=\"primary\" data-part=\"trigger\" aria-label=\"Actions\" aria-expanded=\"false\"><i data-ui=\"icon\" data-name=\"add\"></i></button></div>\n</div>",
+      "import": {
+        "package": "@mui/material/SpeedDial",
+        "name": "SpeedDial"
+      }
+    },
+    {
+      "name": "Stepper",
+      "ui": "stepper",
+      "category": "Navigation",
+      "description": "Progress through numbered steps, across or down.",
+      "props": [
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        },
+        {
+          "name": "alternative-label",
+          "label": "Alternative Label",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"lg\">\n<div data-ui=\"stepper\"><div data-part=\"step\" data-state=\"completed\"><span data-part=\"step-label\"><span data-part=\"step-icon\"><i data-ui=\"icon\" data-name=\"check-circle\"></i></span><span data-part=\"label-text\">Choose vehicle</span></span></div><span data-part=\"connector\"></span><div data-part=\"step\" data-state=\"active\"><span data-part=\"step-label\"><span data-part=\"step-icon\">2</span><span data-part=\"label-text\">Plan route</span></span></div><span data-part=\"connector\"></span><div data-part=\"step\"><span data-part=\"step-label\"><span data-part=\"step-icon\">3</span><span data-part=\"label-text\">Confirm</span></span></div></div>\n<div data-ui=\"stepper\" data-orientation=\"vertical\" style=\"max-inline-size:360px\"><div data-part=\"step\" data-state=\"completed\"><span data-part=\"step-label\"><span data-part=\"step-icon\"><i data-ui=\"icon\" data-name=\"check-circle\"></i></span><span data-part=\"label-text\">Choose vehicle</span></span><div data-part=\"step-content\"></div></div><div data-part=\"step\" data-state=\"active\"><span data-part=\"step-label\"><span data-part=\"step-icon\">2</span><span data-part=\"label-text\">Plan route</span></span><div data-part=\"step-content\"><p data-ui=\"typography\" data-variant=\"body2\" data-gutter-bottom=\"true\">Add the stops in the order the driver should reach them.</p><button data-ui=\"button\" data-variant=\"contained\" data-size=\"small\">Continue</button> <button data-ui=\"button\" data-size=\"small\">Back</button></div></div><div data-part=\"step\"><span data-part=\"step-label\"><span data-part=\"step-icon\">3</span><span data-part=\"label-text\">Confirm</span></span></div></div>\n</div>",
+      "import": {
+        "package": "@mui/material/Stepper",
+        "name": "Stepper"
+      }
+    },
+    {
+      "name": "Mobile Stepper",
+      "ui": "mobile-stepper",
+      "category": "Navigation",
+      "description": "Back and next with dots or a bar between, for phones.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "dots",
+            "progress",
+            "text"
+          ],
+          "default": "dots"
+        },
+        {
+          "name": "position",
+          "label": "Position",
+          "type": "choice",
+          "options": [
+            "static",
+            "bottom",
+            "top"
+          ],
+          "default": "static"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\" style=\"max-inline-size:400px\">\n<div data-ui=\"mobile-stepper\"><button data-ui=\"button\" data-size=\"small\" disabled><i data-ui=\"icon\" data-name=\"chevron-left\" data-part=\"start-icon\"></i>Back</button><div data-part=\"dots\"><span data-part=\"dot\" aria-current=\"step\"></span><span data-part=\"dot\"></span><span data-part=\"dot\"></span><span data-part=\"dot\"></span></div><button data-ui=\"button\" data-size=\"small\">Next<i data-ui=\"icon\" data-name=\"chevron-right\" data-part=\"end-icon\"></i></button></div>\n<div data-ui=\"mobile-stepper\" data-variant=\"progress\"><button data-ui=\"button\" data-size=\"small\"><i data-ui=\"icon\" data-name=\"chevron-left\" data-part=\"start-icon\"></i>Back</button><div data-ui=\"linear-progress\" data-variant=\"determinate\" data-part=\"progress\" role=\"progressbar\" style=\"--value:40\"></div><button data-ui=\"button\" data-size=\"small\">Next<i data-ui=\"icon\" data-name=\"chevron-right\" data-part=\"end-icon\"></i></button></div>\n</div>",
+      "import": {
+        "package": "@mui/material/MobileStepper",
+        "name": "MobileStepper"
+      }
+    },
+    {
+      "name": "Tabs",
+      "ui": "tabs",
+      "category": "Navigation",
+      "description": "Uppercase 48px tabs on a line, with a 2px indicator that slides.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "standard",
+            "scrollable",
+            "full-width"
+          ],
+          "default": "standard"
+        },
+        {
+          "name": "text-color",
+          "label": "Text Color",
+          "type": "choice",
+          "options": [
+            "primary",
+            "secondary",
+            "inherit"
+          ],
+          "default": "primary"
+        },
+        {
+          "name": "centered",
+          "label": "Centered",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "divider",
+          "label": "Divider",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        }
+      ],
+      "snippet": "<div data-ui=\"tabs\" data-divider=\"true\" style=\"max-inline-size:36rem\">\n<div data-part=\"list\" role=\"tablist\" aria-label=\"Vehicle\"><button role=\"tab\" id=\"tabs-demo-a\" aria-selected=\"true\" aria-controls=\"tabs-demo-1\">Overview</button><button role=\"tab\" id=\"tabs-demo-b\" aria-selected=\"false\" aria-controls=\"tabs-demo-2\">Trips</button><button role=\"tab\" id=\"tabs-demo-c\" aria-selected=\"false\" aria-controls=\"tabs-demo-3\">Service</button><button role=\"tab\" aria-selected=\"false\" disabled>Fines</button></div>\n<div data-part=\"panel\" role=\"tabpanel\" id=\"tabs-demo-1\" aria-labelledby=\"tabs-demo-a\">Van 12 is on the Northern route, 18 minutes ahead of plan.</div>\n<div data-part=\"panel\" role=\"tabpanel\" id=\"tabs-demo-2\" aria-labelledby=\"tabs-demo-b\" hidden>142 trips this quarter.</div>\n<div data-part=\"panel\" role=\"tabpanel\" id=\"tabs-demo-3\" aria-labelledby=\"tabs-demo-c\" hidden>Next service in 1,200 miles.</div>\n</div>",
+      "import": {
+        "package": "@mui/material/Tabs",
+        "name": "Tabs"
+      }
+    },
+    {
+      "name": "Modal",
+      "ui": "modal",
+      "category": "Utils",
+      "description": "The bare layer under a dialog: a backdrop and whatever box you put on it.",
+      "props": [],
+      "snippet": "<button data-ui=\"button\" data-dialog-open=\"modal-demo\">Open modal</button>\n<dialog data-ui=\"modal\" id=\"modal-demo\" aria-labelledby=\"modal-demo-title\"><div data-part=\"box\"><h2 data-ui=\"typography\" data-variant=\"h6\" id=\"modal-demo-title\">Depot closed</h2><p data-ui=\"typography\" data-variant=\"body2\" style=\"margin-block-start:16px\">The Leeds depot is closed for resurfacing until Monday.</p></div></dialog>",
+      "import": {
+        "package": "@mui/material/Modal",
+        "name": "Modal"
+      }
+    },
+    {
+      "name": "Popover",
+      "ui": "popover",
+      "category": "Utils",
+      "description": "A paper panel on elevation 8, opened from a button.",
+      "props": [],
+      "snippet": "<button data-ui=\"button\" data-variant=\"contained\" popovertarget=\"popover-demo\" style=\"anchor-name:--popover-demo\">Open popover</button>\n<div data-ui=\"popover\" popover id=\"popover-demo\" style=\"position-anchor:--popover-demo\"><p data-ui=\"typography\" style=\"padding:16px\">The content of the popover.</p></div>",
+      "import": {
+        "package": "@mui/material/Popover",
+        "name": "Popover"
+      }
+    },
+    {
+      "name": "Popper",
+      "ui": "popper",
+      "category": "Utils",
+      "description": "A floating panel placed against its anchor, without blocking the page.",
+      "props": [
+        {
+          "name": "placement",
+          "label": "Placement",
+          "type": "choice",
+          "options": [
+            "bottom",
+            "top",
+            "left",
+            "right"
+          ],
+          "default": "bottom"
+        }
+      ],
+      "snippet": "<button data-ui=\"button\" popovertarget=\"popper-demo\" style=\"anchor-name:--popper-demo\">Toggle popper</button>\n<div data-ui=\"popper\" popover=\"manual\" id=\"popper-demo\" style=\"position-anchor:--popper-demo\"><div data-ui=\"paper\" style=\"padding:8px\">The content of the popper.</div></div>",
+      "import": {
+        "package": "@mui/material/Popper",
+        "name": "Popper"
+      }
+    },
+    {
+      "name": "Timeline",
+      "ui": "timeline",
+      "category": "Lab",
+      "description": "Events in order: dots on a line, with text beside them.",
+      "props": [
+        {
+          "name": "position",
+          "label": "Position",
+          "type": "choice",
+          "options": [
+            "right",
+            "left",
+            "alternate"
+          ],
+          "default": "right"
+        }
+      ],
+      "snippet": "<ul data-ui=\"timeline\" style=\"max-inline-size:36rem\">\n<li data-part=\"item\"><div data-part=\"opposite\">09:30</div><div data-part=\"separator\"><span data-part=\"dot\"></span><span data-part=\"connector\"></span></div><div data-part=\"content\">Left the depot</div></li>\n<li data-part=\"item\"><div data-part=\"opposite\">10:00</div><div data-part=\"separator\"><span data-part=\"dot\" data-color=\"primary\"></span><span data-part=\"connector\"></span></div><div data-part=\"content\">First delivery</div></li>\n<li data-part=\"item\"><div data-part=\"opposite\">12:00</div><div data-part=\"separator\"><span data-part=\"dot\" data-variant=\"outlined\" data-color=\"secondary\"></span><span data-part=\"connector\"></span></div><div data-part=\"content\">Driver's break</div></li>\n<li data-part=\"item\"><div data-part=\"opposite\">13:00</div><div data-part=\"separator\"><span data-part=\"dot\" data-color=\"success\"></span></div><div data-part=\"content\">Back at depot</div></li>\n</ul>",
+      "import": {
+        "package": "@mui/lab/Timeline",
+        "name": "Timeline"
+      }
+    },
+    {
+      "name": "Data Grid",
+      "ui": "data-grid",
+      "category": "MUI X",
+      "description": "A bordered grid: 56px header, 52px rows, checkboxes, sorting and a footer.",
+      "props": [
+        {
+          "name": "density",
+          "label": "Density",
+          "type": "choice",
+          "options": [
+            "standard",
+            "compact",
+            "comfortable"
+          ],
+          "default": "standard"
+        }
+      ],
+      "snippet": "<div data-ui=\"data-grid\"><div data-part=\"scroll\"><table data-part=\"table\" role=\"grid\">\n<thead><tr><th data-part=\"checkbox-cell\"><input data-ui=\"checkbox\" data-size=\"small\" type=\"checkbox\" aria-label=\"Select all\"></th><th aria-sort=\"ascending\"><button data-part=\"sort\">ID<i data-ui=\"icon\" data-name=\"arrow-upward\"></i></button></th><th><button data-part=\"sort\">Driver<i data-ui=\"icon\" data-name=\"arrow-upward\"></i></button></th><th><button data-part=\"sort\">Vehicle<i data-ui=\"icon\" data-name=\"arrow-upward\"></i></button></th><th data-align=\"right\"><button data-part=\"sort\">Miles<i data-ui=\"icon\" data-name=\"arrow-upward\"></i></button></th></tr></thead>\n<tbody><tr><td data-part=\"checkbox-cell\"><input data-ui=\"checkbox\" data-size=\"small\" type=\"checkbox\" aria-label=\"Select row\"></td><td>1</td><td>Priya Shah</td><td>Van 12</td><td data-align=\"right\">1,204</td></tr><tr aria-selected=\"true\"><td data-part=\"checkbox-cell\"><input data-ui=\"checkbox\" data-size=\"small\" type=\"checkbox\" checked aria-label=\"Select row\"></td><td>2</td><td>Tom Reed</td><td>Van 18</td><td data-align=\"right\">986</td></tr><tr><td data-part=\"checkbox-cell\"><input data-ui=\"checkbox\" data-size=\"small\" type=\"checkbox\" aria-label=\"Select row\"></td><td>3</td><td>Ana Lopes</td><td>Truck 4</td><td data-align=\"right\">2,417</td></tr></tbody>\n</table></div>\n<div data-part=\"footer\"><span data-part=\"selected\">1 row selected</span><div data-ui=\"table-pagination\"><span data-part=\"label\">Rows per page:</span><select data-part=\"select\" aria-label=\"Rows per page\"><option>25</option><option>50</option></select><span data-part=\"range\">1–3 of 3</span><button data-ui=\"icon-button\" disabled aria-label=\"Previous page\"><i data-ui=\"icon\" data-name=\"chevron-left\"></i></button><button data-ui=\"icon-button\" disabled aria-label=\"Next page\"><i data-ui=\"icon\" data-name=\"chevron-right\"></i></button></div></div></div>",
+      "import": {
+        "package": "@mui/x-data-grid",
+        "name": "DataGrid"
+      }
+    },
+    {
+      "name": "Date Calendar",
+      "ui": "date-calendar",
+      "category": "MUI X",
+      "description": "A month of days. Write data-month and data-selected; ui.js draws the rest.",
+      "props": [],
+      "snippet": "<div data-ui=\"date-calendar\" data-month=\"2026-11\" data-selected=\"2026-11-18\"></div>",
+      "import": {
+        "package": "@mui/x-date-pickers/DateCalendar",
+        "name": "DateCalendar"
+      }
+    },
+    {
+      "name": "Date Picker",
+      "ui": "date-picker",
+      "category": "MUI X",
+      "description": "A text field that opens a calendar on elevation 8.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "medium",
+            "small"
+          ],
+          "default": "medium"
+        }
+      ],
+      "snippet": "<div data-ui=\"date-picker\" style=\"anchor-name:--date-picker-demo;max-inline-size:260px\">\n<label data-part=\"label\" for=\"date-picker-demo-input\">Start date</label>\n<div data-part=\"control\"><input data-part=\"input\" id=\"date-picker-demo-input\" placeholder=\" \" value=\"11/18/2026\"><span data-part=\"adornment\"><button data-ui=\"icon-button\" data-edge=\"end\" aria-label=\"Choose date\" popovertarget=\"date-picker-demo\"><i data-ui=\"icon\" data-name=\"calendar\"></i></button></span><fieldset data-part=\"outline\" aria-hidden=\"true\"><legend><span>Start date</span></legend></fieldset></div>\n<div data-part=\"popup\" popover id=\"date-picker-demo\" style=\"position-anchor:--date-picker-demo\"><div data-ui=\"date-calendar\" data-month=\"2026-11\" data-selected=\"2026-11-18\"></div></div>\n</div>",
+      "import": {
+        "package": "@mui/x-date-pickers/DatePicker",
+        "name": "DatePicker"
+      }
+    },
+    {
+      "name": "Time Picker",
+      "ui": "time-picker",
+      "category": "MUI X",
+      "description": "A text field that opens columns of hours and minutes.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "medium",
+            "small"
+          ],
+          "default": "medium"
+        }
+      ],
+      "snippet": "<div data-ui=\"time-picker\" style=\"anchor-name:--time-picker-demo;max-inline-size:260px\">\n<label data-part=\"label\" for=\"time-picker-demo-input\">Departure</label>\n<div data-part=\"control\"><input data-part=\"input\" id=\"time-picker-demo-input\" placeholder=\" \" value=\"09:30 AM\"><span data-part=\"adornment\"><button data-ui=\"icon-button\" data-edge=\"end\" aria-label=\"Choose time\" popovertarget=\"time-picker-demo\"><i data-ui=\"icon\" data-name=\"schedule\"></i></button></span><fieldset data-part=\"outline\" aria-hidden=\"true\"><legend><span>Departure</span></legend></fieldset></div>\n<div data-part=\"popup\" popover id=\"time-picker-demo\" style=\"position-anchor:--time-picker-demo\"><div data-part=\"columns\"><div data-part=\"column\"><button data-part=\"cell\">08</button><button data-part=\"cell\" aria-selected=\"true\">09</button><button data-part=\"cell\">10</button><button data-part=\"cell\">11</button><button data-part=\"cell\">12</button></div><div data-part=\"column\"><button data-part=\"cell\">00</button><button data-part=\"cell\">15</button><button data-part=\"cell\" aria-selected=\"true\">30</button><button data-part=\"cell\">45</button></div><div data-part=\"column\"><button data-part=\"cell\" aria-selected=\"true\">AM</button><button data-part=\"cell\">PM</button></div></div><div data-part=\"actions\"><button data-ui=\"button\" data-size=\"small\" popovertarget=\"time-picker-demo\" popovertargetaction=\"hide\">OK</button></div></div>\n</div>",
+      "import": {
+        "package": "@mui/x-date-pickers/TimePicker",
+        "name": "TimePicker"
+      }
+    },
+    {
+      "name": "Tree View",
+      "ui": "tree-view",
+      "category": "MUI X",
+      "description": "Nested items that expand and collapse.",
+      "props": [],
+      "snippet": "<ul data-ui=\"tree-view\" role=\"tree\" style=\"max-inline-size:280px\">\n<li data-part=\"item\" role=\"treeitem\" aria-expanded=\"true\"><div data-part=\"content\"><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"chevron-right\"></i></span><span data-part=\"label\">Depots</span></div>\n<ul data-part=\"group\" role=\"group\"><li data-part=\"item\" role=\"treeitem\" aria-selected=\"true\"><div data-part=\"content\"><span data-part=\"icon\"></span><span data-part=\"label\">Leeds</span></div></li><li data-part=\"item\" role=\"treeitem\" aria-expanded=\"false\"><div data-part=\"content\"><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"chevron-right\"></i></span><span data-part=\"label\">Manchester</span></div><ul data-part=\"group\" role=\"group\"><li data-part=\"item\" role=\"treeitem\"><div data-part=\"content\"><span data-part=\"icon\"></span><span data-part=\"label\">Trafford</span></div></li></ul></li></ul></li>\n<li data-part=\"item\" role=\"treeitem\"><div data-part=\"content\"><span data-part=\"icon\"></span><span data-part=\"label\">Vehicles</span></div></li>\n</ul>",
+      "import": {
+        "package": "@mui/x-tree-view/SimpleTreeView",
+        "name": "SimpleTreeView"
+      }
+    },
+    {
+      "name": "Hero",
+      "ui": "hero",
+      "category": "Blocks",
+      "description": "A headline, a line of copy, two buttons and a product preview.",
+      "props": [],
+      "snippet": "<section data-ui=\"hero\" data-block=\"blocks/hero.html\"></section>",
+      "kind": "composition"
+    },
+    {
+      "name": "Feature grid",
+      "ui": "feature-grid",
+      "category": "Blocks",
+      "description": "Six features on outlined cards.",
+      "props": [],
+      "snippet": "<section data-ui=\"feature-grid\" data-block=\"blocks/feature-grid.html\"></section>",
+      "kind": "composition"
+    },
+    {
+      "name": "Pricing",
+      "ui": "pricing",
+      "category": "Blocks",
+      "description": "Three plans with a highlighted middle tier.",
+      "props": [],
+      "snippet": "<section data-ui=\"pricing\" data-block=\"blocks/pricing.html\"></section>",
+      "kind": "composition"
+    },
+    {
+      "name": "Sign in",
+      "ui": "sign-in",
+      "category": "Blocks",
+      "description": "A centred card with outlined fields and social buttons.",
+      "props": [],
+      "snippet": "<section data-ui=\"sign-in\" data-block=\"blocks/sign-in.html\"></section>",
+      "kind": "composition"
+    },
+    {
+      "name": "Dashboard",
+      "ui": "dashboard",
+      "category": "Blocks",
+      "description": "A permanent drawer, app bar, stat cards, a chart and a data table.",
+      "props": [],
+      "snippet": "<section data-ui=\"dashboard\" data-block=\"blocks/dashboard.html\"></section>",
+      "kind": "composition"
+    }
+  ]
+}
