@@ -1,0 +1,21 @@
+<section data-ui="dashboard">
+<aside data-part="sider"><div data-part="logo">Ledgerline</div><nav data-ui="menu" data-mode="inline" data-theme="dark"><a data-part="item" href="#" aria-current="page"><i data-ui="icon" data-name="dashboard" data-part="icon"></i>Overview</a><a data-part="item" href="#"><i data-ui="icon" data-name="inbox" data-part="icon"></i>Invoices</a><a data-part="item" href="#"><i data-ui="icon" data-name="team" data-part="icon"></i>Vendors</a><a data-part="item" href="#"><i data-ui="icon" data-name="bank" data-part="icon"></i>Payments</a><a data-part="item" href="#"><i data-ui="icon" data-name="setting" data-part="icon"></i>Settings</a></nav></aside>
+<div data-part="main">
+<header data-part="topbar"><nav data-ui="breadcrumb" aria-label="Breadcrumb"><ol data-part="list"><li><a data-part="link" href="#">Home</a></li><li data-part="separator" aria-hidden="true">/</li><li data-part="current" aria-current="page">Overview</li></ol></nav><div data-part="topbar-end"><span data-ui="badge"><span style="font-size:16px"><i data-ui="icon" data-name="bell"></i></span><sup data-part="count">3</sup></span><span data-ui="avatar" data-tone="primary">ML</span></div></header>
+<div data-part="content">
+<div data-part="stats">
+<div data-ui="card"><div data-part="body"><div data-ui="statistic"><div data-part="title">Open invoices</div><div data-part="content"><span data-part="value">112</span></div></div></div></div>
+<div data-ui="card"><div data-part="body"><div data-ui="statistic"><div data-part="title">To approve</div><div data-part="content"><span data-part="value">6</span></div></div></div></div>
+<div data-ui="card"><div data-part="body"><div data-ui="statistic"><div data-part="title">Due this week</div><div data-part="content"><span data-part="value">$18,240</span></div></div></div></div>
+<div data-ui="card"><div data-part="body"><div data-ui="statistic" data-tone="success"><div data-part="title">Matched first time</div><div data-part="content"><span data-part="value">98</span><span data-part="suffix">%</span></div></div></div></div>
+</div>
+<div data-part="split">
+<div data-ui="card"><div data-part="header"><div data-part="title">Awaiting approval</div><a data-part="extra" data-ui="typography" data-variant="link" href="#">View all</a></div><div data-ui="table" data-size="middle"><div data-part="scroll"><table><thead><tr><th>Invoice</th><th>Vendor</th><th>Status</th><th data-align="right">Amount</th><th>Action</th></tr></thead><tbody>
+<tr><td>4021</td><td>Harbor Supply</td><td><span data-ui="tag" data-color="processing">Approving</span></td><td data-align="right">4,180.00</td><td><a data-ui="typography" data-variant="link" href="#">Open</a></td></tr>
+<tr><td>4022</td><td>Kestrel Print</td><td><span data-ui="tag" data-color="warning">On hold</span></td><td data-align="right">620.00</td><td><a data-ui="typography" data-variant="link" href="#">Open</a></td></tr>
+<tr><td>4023</td><td>Tideline Freight</td><td><span data-ui="tag" data-color="processing">Approving</span></td><td data-align="right">8,900.00</td><td><a data-ui="typography" data-variant="link" href="#">Open</a></td></tr>
+<tr><td>4024</td><td>Oak and Iron</td><td><span data-ui="tag" data-color="error">Late</span></td><td data-align="right">1,212.50</td><td><a data-ui="typography" data-variant="link" href="#">Open</a></td></tr>
+</tbody></table></div></div></div>
+<div data-ui="card"><div data-part="header"><div data-part="title">This run</div></div><div data-part="body"><ol data-ui="timeline"><li data-part="item" data-color="success"><span data-part="dot"></span><div data-part="content">Opened on Monday</div></li><li data-part="item" data-color="success"><span data-part="dot"></span><div data-part="content">Matching finished</div></li><li data-part="item"><span data-part="dot"></span><div data-part="content">With approvers until Thursday</div></li><li data-part="item" data-color="gray"><span data-part="dot"></span><div data-part="content">Sent to the bank on Friday</div></li></ol></div></div>
+</div></div></div>
+</section>

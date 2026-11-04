@@ -44,6 +44,26 @@
         "accent": "#1976D2",
         "radius": "4px"
       }
+    },
+    {
+      "id": "ant-design",
+      "name": "Ant Design",
+      "version": "1.0.0",
+      "themes": [
+        "geek-blue",
+        "purple",
+        "magenta",
+        "red",
+        "volcano",
+        "cyan",
+        "green"
+      ],
+      "card": {
+        "bg": "#FFFFFF",
+        "text": "#1F1F1F",
+        "accent": "#1677FF",
+        "radius": "6px"
+      }
     }
   ]
 }

@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 // Same ceilings as the app.
 const LIMITS = {
   expandedBytes: 25 * 1024 * 1024, entries: 2000, fileBytes: 8 * 1024 * 1024,
-  maxDepth: 8, manifestBytes: 1024 * 1024, uiJsBytes: 16 * 1024,
+  maxDepth: 8, manifestBytes: 1024 * 1024, uiJsBytes: 32 * 1024,
   snippetChars: 4096, components: 200, props: 32,
 };
 const EXTENSIONS = [".md", ".css", ".js", ".json", ".html", ".svg", ".woff2", ".png", ".jpg", ".webp"];
