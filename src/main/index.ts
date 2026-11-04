@@ -249,7 +249,8 @@ async function main(): Promise<void> {
     { scheme: "unskilled-shot", privileges: { standard: true, secure: true, supportFetchAPI: true } },
     { scheme: "cubiq-file", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
     // cubiq-design:// serves a design thread's folder to the canvas's sandboxed frame (scripts on, no network).
-    { scheme: DESIGN_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+    // corsEnabled: fonts always load in CORS mode, and the frame's origin is opaque, so a kit's fonts fail without it.
+    { scheme: DESIGN_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
     // cubiq-style:// serves the style picker's previews: a style's tokens, fonts and the shared specimen (no scripts, no network).
     { scheme: STYLE_PREVIEW_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
     // cubiq-doc:// serves a thread's folder to the hidden window that prints its HTML documents (no scripts, no network).

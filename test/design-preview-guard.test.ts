@@ -43,6 +43,10 @@ describe("what a design page can't do", () => {
     expect(csp).not.toMatch(/https?:|\*/);
   });
 
+  it("registers the design scheme with CORS, or a kit's fonts fail in the frame's opaque origin", () => {
+    expect(read("src/main/index.ts")).toMatch(/scheme: DESIGN_SCHEME, privileges: \{[^}]*corsEnabled: true[^}]*\}/);
+  });
+
   it("gives a frame no preload, so the bridge to the app isn't there to find", () => {
     expect(read("src/main/index.ts")).not.toMatch(/nodeIntegrationInSubFrames:\s*true/);
   });
