@@ -1,6 +1,7 @@
 // This file binds the mutation service to threads and pages, and validates what arrives over IPC,
 // so it can be tested without Electron.
 
+import { randomUUID } from "node:crypto";
 import type {
   DesignHistoryRequest,
   DesignHistoryResult,
@@ -322,6 +323,40 @@ export class DesignDocuments {
     if (recovered > 0) this.service.flush(id);
 
     return { status, html, conflicts, ...(result !== undefined ? { result } : {}), ...(recovered > 0 ? { recovered } : {}) };
+  }
+
+  /**
+   * Edits the main process makes for a page: an agent's token call, a kit move. They're one undo step, they apply even
+   * during the turn that asked for them, and they're on disk when this returns. Refusals come back as the message.
+   */
+  apply(threadId: string, rel: string, file: string, target: DesignMutation["target"], changes: DesignMutation["change"][]): { ok: true } | { ok: false; message: string } {
+    const id = this.ensure(threadId, rel, file);
+    this.checkDisk(id);
+    const busy = this.options.isBusy(threadId);
+    if (busy) this.service.setReadOnly(id, false);
+    const transactionId = randomUUID();
+    try {
+      for (const change of changes) {
+        const status = this.service.status(id);
+        if (!status) return { ok: false, message: "That page isn't open." };
+        const result = this.service.mutate({ operationId: randomUUID(), documentId: id, baseRevision: status.revision, target, transactionId, change });
+        if (!result.ok) return { ok: false, message: result.message ?? "That edit can't be made here." };
+      }
+      this.service.closeTransaction(id, transactionId);
+      this.service.flush(id);
+      return { ok: true };
+    } finally {
+      if (busy) this.service.setReadOnly(id, true);
+    }
+  }
+
+  /** The page's text as the service holds it: newer than the file while a save is waiting. */
+  text(threadId: string, rel: string, file: string): string {
+    const id = this.ensure(threadId, rel, file);
+    this.checkDisk(id);
+    const html = this.service.html(id);
+    if (html === null) throw new Error("That page isn't open.");
+    return html;
   }
 
   /**

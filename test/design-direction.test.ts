@@ -512,7 +512,8 @@ describe("a kit system on a design thread", () => {
     const { service, thread } = kitSetup();
     service.setDesignSystem(thread.id, "kit:foundation");
     const before = readFileSync(join(FOUNDATION, "DESIGN.md"), "utf8");
-    expect(() => service.editDesignSystem(thread.id, { designMd: "overwritten" })).toThrow("can't be edited");
+    const { thread: moved } = service.editDesignSystem(thread.id, { designMd: "over" });
     expect(readFileSync(join(FOUNDATION, "DESIGN.md"), "utf8")).toBe(before);
+    expect(moved.designSystem).toBe("project:foundation-custom");
   });
 });

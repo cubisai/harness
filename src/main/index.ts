@@ -4,7 +4,7 @@ import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeImage, nativeTheme, net, powerMonitor, protocol, safeStorage, shell, utilityProcess } from "electron";
-import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, DesignDevice, DesignExportFormat, DesignSystemEdit, DesignSystemOption, DevicePreset, IssueSummary, LinkMeta, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryScope, MemoryType, OpenResult, PermissionDecision, Project, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
+import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, DesignDevice, DesignExportFormat, DesignIntent, DesignKitEdit, DesignSystemEdit, DesignSystemOption, DevicePreset, IssueSummary, LinkMeta, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryScope, MemoryType, OpenResult, PermissionDecision, Project, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { CHATS_NAME, chatsRoot, isChatsRoot } from "./chats";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
@@ -583,6 +583,15 @@ async function main(): Promise<void> {
           saveCritique: (id, markdown) => service.saveCritique(id, markdown),
           setDirection: (id, direction, alternates, theme) => service.setDesignDirection(id, direction, alternates, theme),
           styleIndex: () => styleIndex(service.designStyles()),
+          ...(settings.get().designV2 === true
+            ? {
+                kits: {
+                  inspect: (id, query) => service.kits.inspect(id, query),
+                  save: (id) => service.kits.saveForAgent(id),
+                  applyTokens: (id, rel, tokens) => service.kits.applyTokens(id, rel, tokens),
+                },
+              }
+            : {}),
         },
         threadId,
       );
@@ -1075,6 +1084,29 @@ async function main(): Promise<void> {
   // Scheduled automations: reconcile a crash's leftovers, then run what's due every minute and on wake.
   const automations = startAutomations({ store, service, broadcast });
   powerMonitor.on("resume", automations.tick);
+  /** Foundation, what the catalog offers, and anything else installed on this machine. */
+  const kitOptions = (): DesignKitOption[] => {
+    const options: DesignKitOption[] = [];
+    const named = (dir: string): { name: string; version: string } | null => {
+      try {
+        const parsed = parseKitManifest(readFileSync(join(dir, "components.json"), "utf8"));
+        return parsed.ok ? { name: parsed.manifest.name, version: parsed.manifest.version } : null;
+      } catch {
+        return null;
+      }
+    };
+    // A broken install still lists the kits it can download.
+    const foundation = named(foundationKit);
+    if (foundation) options.push({ id: "foundation", ...foundation, bundled: true, installed: true });
+    for (const entry of KIT_CATALOG) options.push({ id: entry.id, name: entry.name, version: entry.version, bundled: false, installed: kitStore.active()[entry.id]?.version === entry.version && kitStore.activeDir(entry.id) !== null });
+    for (const id of Object.keys(kitStore.active())) {
+      if (options.some((o) => o.id === id)) continue;
+      const dir = kitStore.activeDir(id);
+      const info = dir ? named(dir) : null;
+      if (info) options.push({ id, ...info, bundled: false, installed: true });
+    }
+    return options;
+  };
   const documents = new DesignDocuments({
     journalDir: join(userData, "design-journal"),
     isBusy: (threadId) => service.isRunning(threadId),
@@ -1211,23 +1243,70 @@ async function main(): Promise<void> {
     const file = designDocumentFile(threadId, rel);
     const request = parseHistoryRequest(raw);
     if (!request) throw new Error("Bad design history request.");
-    return documents.history(threadId, rel, file, request);
+    const result = documents.history(threadId, rel, file, request);
+    // Undoing a kit move takes the system and the design's other pages with it.
+    if ((request.action === "undo" || request.action === "redo") && result.result?.ok) {
+      for (const page of service.kits.afterHistory(threadId, rel, result.html, request.action)) {
+        const other = service.designPageFile(threadId, page);
+        if (other) documents.history(threadId, page, other, request);
+      }
+    }
+    return result;
   });
+  service.kits.connect({
+    documents,
+    pageFile: (threadId, rel) => service.designPageFile(threadId, rel),
+    catalog: () => kitOptions(),
+  });
+  /** A design v2 call from the app's own window: never from a page, never with the switch off. */
+  const designV2Handle = <A extends unknown[], R>(channel: string, run: (...args: A) => R): void => {
+    ipcMain.handle(channel, (e, ...args: unknown[]) => {
+      if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
+      if (settings.get().designV2 !== true) throw new Error("Kits aren't on.");
+      return run(...(args as A));
+    });
+  };
+  const idText = (id: unknown): string => {
+    if (typeof id !== "string" || !/^[\w:./-]{1,120}$/.test(id)) throw new Error("Bad design system id.");
+    return id;
+  };
+  const shortText = (text: unknown, max = 120): string => {
+    if (typeof text !== "string" || !text.trim() || text.length > max) throw new Error("That text can't be used.");
+    return text;
+  };
+  const tokenMap = (raw: unknown): Record<string, string> => {
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) throw new Error("Bad tokens.");
+    const out: Record<string, string> = {};
+    for (const [name, value] of Object.entries(raw)) {
+      if (/^--[\w-]+$/.test(name) && typeof value === "string" && value.length <= 200) out[name] = value;
+    }
+    return out;
+  };
+  designV2Handle("design:kit-groups", (projectId: string | null) => service.kits.groups(typeof projectId === "string" ? projectId : null));
+  designV2Handle("design:apply-theme", (threadId: string, id: unknown) => service.kits.applyTheme(threadId, idText(id)));
+  designV2Handle("design:migrate-preview", (threadId: string, rel: string, id: unknown) => service.kits.migrationPreview(threadId, rel, idText(id)));
+  designV2Handle("design:migrate-commit", (threadId: string, rel: string, id: unknown) => service.kits.commitMigration(threadId, rel, idText(id)));
+  designV2Handle("design:migrate-cancel", (threadId: string) => service.kits.cancelMigration(threadId));
+  designV2Handle("design:save-theme", (threadId: string, name: unknown, tokens: unknown, sourceId: unknown) => service.kits.saveTheme(threadId, shortText(name), tokenMap(tokens), typeof sourceId === "string" ? idText(sourceId) : undefined));
+  designV2Handle("design:kit-doc", (threadId: string) => service.kits.doc(threadId));
+  designV2Handle("design:kit-sample", (threadId: string, request: unknown) => service.kits.sample(threadId, readKitSample(request)));
+  designV2Handle("design:kit-edit", (threadId: string, edit: unknown) => service.kits.edit(threadId, readKitEdit(edit)));
+  designV2Handle("design:kit-draft-save", (threadId: string) => service.kits.saveForUser(threadId));
+  designV2Handle("design:kit-draft-discard", (threadId: string) => service.kits.discardDraft(threadId));
+  designV2Handle("design:reach", (threadId: string, tokens: unknown) => service.kits.reach(threadId, Array.isArray(tokens) ? tokens.filter((t): t is string => typeof t === "string" && /^--[\w-]+$/.test(t)) : []));
+  designV2Handle("design:system-history", (threadId: string, action: unknown) => {
+    const step = service.kits.history(threadId, action === "redo" ? "redo" : "undo");
+    return step ? { ...step, doc: service.designSystemDoc(threadId) } : null;
+  });
+  designV2Handle("design:save-composition", (threadId: string, name: unknown, html: unknown, force: unknown) => service.kits.saveComposition(threadId, shortText(name), shortText(html, 8192), force === true));
+  designV2Handle("design:set-intent", (threadId: string, intent: unknown) => service.kits.setIntent(threadId, readIntent(intent)));
   // One install per kit at a time, so a double click can't race its own rename.
   const kitInstalls = new Map<string, Promise<DesignKitEnsureResult>>();
   const KIT_DOWNLOAD_MS = 120_000;
   ipcMain.handle("design:systems:catalog", (e): DesignKitOption[] => {
     if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
     if (settings.get().designV2 !== true) throw new Error("Kits aren't on.");
-    const options: DesignKitOption[] = [];
-    try {
-      const parsed = parseKitManifest(readFileSync(join(foundationKit, "components.json"), "utf8"));
-      if (parsed.ok) options.push({ id: "foundation", name: parsed.manifest.name, version: parsed.manifest.version, bundled: true, installed: true });
-    } catch {
-      // A broken install still lists the kits it can download.
-    }
-    for (const entry of KIT_CATALOG) options.push({ id: entry.id, name: entry.name, version: entry.version, bundled: false, installed: kitStore.active()[entry.id]?.version === entry.version && kitStore.activeDir(entry.id) !== null });
-    return options;
+    return kitOptions();
   });
   ipcMain.handle("design:systems:ensure", (e, id: unknown): Promise<DesignKitEnsureResult> => {
     if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
@@ -2354,12 +2433,64 @@ async function smokeBrowserWith(tools: ReturnType<typeof browserTools>, browser:
 
 /** A System-tab edit from the renderer, checked for shape (setToken checks the name and value themselves). */
 function readSystemEdit(edit: unknown): DesignSystemEdit {
-  const e = (edit ?? {}) as { token?: { name?: unknown; scheme?: unknown; value?: unknown }; designMd?: unknown };
+  const e = (edit ?? {}) as { token?: { name?: unknown; scheme?: unknown; value?: unknown }; designMd?: unknown; brand?: unknown };
   if (e.token && typeof e.token.name === "string" && typeof e.token.value === "string" && (e.token.scheme === "light" || e.token.scheme === "dark")) {
     return { token: { name: e.token.name, scheme: e.token.scheme, value: e.token.value } };
   }
   if (typeof e.designMd === "string" && e.designMd.length <= 200_000) return { designMd: e.designMd };
+  if (typeof e.brand === "string" && /^#[0-9a-fA-F]{6}$/.test(e.brand)) return { brand: e.brand };
   throw new Error("Invalid design-system edit.");
+}
+
+/** A kit edit off the wire, rebuilt so an unexpected key never travels on. */
+function readKitEdit(raw: unknown): DesignKitEdit {
+  const e = (raw ?? {}) as Record<string, unknown>;
+  const text = (v: unknown, max = 80): string => {
+    if (typeof v !== "string" || !v.trim() || v.length > max) throw new Error("Invalid kit edit.");
+    return v;
+  };
+  const ui = text(e.ui);
+  switch (e.kind) {
+    case "addVariant":
+      return { kind: "addVariant", ui, name: text(e.name), from: text(e.from) };
+    case "removeVariant":
+      return { kind: "removeVariant", ui, name: text(e.name) };
+    case "removeProp":
+      return { kind: "removeProp", ui, name: text(e.name) };
+    case "removeComponent":
+      return { kind: "removeComponent", ui };
+    case "markReviewed":
+      return { kind: "markReviewed", ui };
+    case "addProp": {
+      const p = (e.prop ?? {}) as Record<string, unknown>;
+      if (p.type !== "text" && p.type !== "boolean" && p.type !== "choice") throw new Error("Invalid kit edit.");
+      const options = p.type === "choice" && Array.isArray(p.options) ? p.options.filter((o): o is string => typeof o === "string" && o.length > 0).slice(0, 32) : undefined;
+      if (p.type === "choice" && !options?.length) throw new Error("A choice prop needs options.");
+      const hasDefault = typeof p.default === "string" || typeof p.default === "boolean";
+      return { kind: "addProp", ui, prop: { name: text(p.name), label: text(p.label ?? p.name), type: p.type, ...(options ? { options } : {}), ...(hasDefault ? { default: p.default as string | boolean } : {}) } };
+    }
+    default:
+      throw new Error("Invalid kit edit.");
+  }
+}
+
+function readKitSample(raw: unknown): { ui: string; matrix?: boolean; props?: Record<string, string> } {
+  const r = (raw ?? {}) as { ui?: unknown; matrix?: unknown; props?: unknown };
+  if (typeof r.ui !== "string" || !/^[a-z0-9-]{1,64}$/.test(r.ui)) throw new Error("Bad component.");
+  const props: Record<string, string> = {};
+  if (typeof r.props === "object" && r.props !== null) {
+    for (const [name, value] of Object.entries(r.props)) if (/^[a-z0-9-]{1,64}$/.test(name) && typeof value === "string" && value.length <= 200) props[name] = value;
+  }
+  return { ui: r.ui, ...(r.matrix === true ? { matrix: true } : {}), ...(Object.keys(props).length ? { props } : {}) };
+}
+
+function readIntent(raw: unknown): DesignIntent | null {
+  const r = (raw ?? {}) as { kind?: unknown; name?: unknown; selection?: unknown; where?: unknown };
+  if (r.kind === "match-screenshot") return { kind: "match-screenshot" };
+  if (r.kind === "new-kit") return { kind: "new-kit", ...(typeof r.name === "string" && r.name.length <= 80 ? { name: r.name } : {}) };
+  if (r.kind === "new-component") return { kind: "new-component", ...(typeof r.selection === "string" && r.selection.length <= 8192 ? { selection: r.selection } : {}) };
+  if (r.kind === "system" && typeof r.where === "string" && r.where.length <= 200) return { kind: "system", where: r.where };
+  return null;
 }
 
 function pick<T extends object, K extends keyof T>(obj: T, keys: K[]): Pick<T, K> {

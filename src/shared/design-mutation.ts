@@ -23,7 +23,9 @@ export type DesignChange =
   /** Remove the target's start and end tags, keeping its content. */
   | { kind: "unwrap" }
   /** Copy the target's source to right after it, with fresh ids. */
-  | { kind: "duplicate" };
+  | { kind: "duplicate" }
+  /** Replace the whole page's text, as one step. Main-process only: never accepted over IPC (`parseChange` refuses it). */
+  | { kind: "replaceDocument"; html: string };
 
 /** Names an element without an id: the tag it should be, and its element-child path from `<html>`. */
 export type TargetLocator = { tag: string; path: number[]; text?: string };

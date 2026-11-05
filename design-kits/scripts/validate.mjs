@@ -138,6 +138,7 @@ function parseManifest(text, problems) {
     if (!isString(c.name, 1, 80)) fail(`${at}.name`, "must be a string of 1 to 80 characters");
     if (!isString(c.ui) || !SLUG.test(c.ui)) fail(`${at}.ui`, "must be a lowercase slug (a-z, 0-9, dashes)");
     if (c.kind !== undefined && c.kind !== "component" && c.kind !== "composition") fail(`${at}.kind`, 'must be "component" or "composition"');
+    if (c.status !== undefined && c.status !== "new") fail(`${at}.status`, 'must be "new"');
     opt(c, "category", (v) => isString(v, 0, 40), `${at}.category`, "must be at most 40 characters");
     opt(c, "description", (v) => isString(v, 0, 300), `${at}.description`, "must be at most 300 characters");
     opt(c, "source", (v) => isString(v, 0, 300), `${at}.source`, "must be at most 300 characters");

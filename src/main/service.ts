@@ -49,6 +49,8 @@ import { addComment, deleteComment, loadComments, saveComments, updateComment } 
 import { applyStyleEdit, applyTextEdit } from "./design/textedit";
 import { keepTweaks } from "./design/tweaks";
 import { resolveVariantSet } from "./design/variants";
+import { brandEdits, forkKitSystem } from "./design/kit-library";
+import { DesignKitService } from "./design/kit-service";
 import { forkSystem, KIT_PREFIX, listDesignStyles, listDesignSystems, listKitSystems, materializeSystem, pickFromShortlist, resolveDesignSystem, type DesignStyleInfo, type DesignSystemInfo } from "./design/systems";
 import { AUTO_SYSTEM, isAuto, modeLabel, STYLE_PREFIX, type DesignDirection } from "../shared/direction";
 import { DESIGN_DIRECTION_TOOL } from "./design/tools";
@@ -114,6 +116,19 @@ export class Service {
   private designFontsDir: string | null = null;
   /** Finds a kit's folder by id: the bundled Foundation first, then what's installed. */
   private kitDirOf: ((kitId: string) => string | null) | null = null;
+  /** Kits and themes: the picker's lists, theme switches, kit moves, the project's own copies. */
+  readonly kits: DesignKitService = new DesignKitService({
+    getThread: (id) => this.store.getThread(id),
+    threadsOf: (projectId) => (projectId ? this.store.listThreads(projectId) : []),
+    setDesignSystem: (id, system) => this.store.setDesignSystem(id, system),
+    projectPath: (projectId) => this.projectPath(projectId),
+    designRoot: (id) => this.designRoot(id),
+    threadSystem: (thread) => this.threadSystem(thread),
+    systemById: (projectId, id) => this.previewSystem(projectId, id),
+    styles: () => this.designStyles(),
+    kitDir: (kitId) => this.kitDirOf?.(kitId) ?? null,
+    broadcast: (update) => this.broadcast(update),
+  });
   /** Lints a design thread's pages off screen; without it no automatic lint runs. */
   private designAutoLint: ((threadId: string, root: string, rels: string[]) => Promise<PageLint[]>) | null = null;
   /** Per design thread, the automatic lint of its last turn's pages, for the next turn's prompt. */
@@ -1724,8 +1739,8 @@ export class Service {
       id: system.id,
       name: system.name,
       source: system.source,
-      editable: system.source !== "style" || project !== null,
-      copyOnWrite: system.source === "style",
+      editable: (system.source !== "style" && system.source !== "kit") || project !== null,
+      copyOnWrite: system.source === "style" || system.source === "kit",
       designMd: read(system.designMd),
       groups: parseTokens(read(system.tokensCss)),
     };
@@ -1747,24 +1762,34 @@ export class Service {
     let thread = this.store.getThread(threadId);
     let system = this.threadSystem(thread);
     if (!system) throw new Error("Only a design thread has a design system.");
-    // Bundled and installed kits are never written in place.
-    if (system.source === "kit") throw new Error("This kit can't be edited yet.");
-    if (system.source === "style") {
+    // Bundled and installed kits are never written in place: the first edit saves a copy in the project, as a style does.
+    if (system.source === "style" || system.source === "kit") {
       const project = this.projectPath(thread.projectId);
-      if (!project) throw new Error("Open a project folder to customize a library style.");
-      system = forkSystem(system, project);
+      if (!project) throw new Error(`Open a project folder to customize a library ${system.source === "kit" ? "kit" : "style"}.`);
+      system = system.source === "kit" ? forkKitSystem(system, project) : forkSystem(system, project);
       thread = this.store.setDesignSystem(threadId, system.id);
     }
-    if ("token" in edit) {
-      if (!system.tokensCss) throw new Error("This design system has no tokens.css.");
-      const { name, scheme, value } = edit.token;
-      writeFileSync(system.tokensCss, setToken(readFileSync(system.tokensCss, "utf8"), name, scheme, value));
-    } else {
-      writeFileSync(system.designMd, edit.designMd);
-    }
-    const root = this.designRoot(threadId);
-    if (root) materializeSystem(system, join(root, "system"));
-    return { doc: this.systemDoc(thread, system), thread };
+    const target = system;
+    const write = (): void => {
+      if ("token" in edit) {
+        if (!target.tokensCss) throw new Error("This design system has no tokens.css.");
+        const { name, scheme, value } = edit.token;
+        writeFileSync(target.tokensCss, setToken(readFileSync(target.tokensCss, "utf8"), name, scheme, value));
+      } else if ("brand" in edit) {
+        if (!target.tokensCss) throw new Error("This design system has no tokens.css.");
+        let css = readFileSync(target.tokensCss, "utf8");
+        for (const token of brandEdits(css, edit.brand)) {
+          css = setToken(css, token.name, "light", token.light);
+          if (token.dark !== null) css = setToken(css, token.name, "dark", token.dark);
+        }
+        writeFileSync(target.tokensCss, css);
+      } else {
+        writeFileSync(target.designMd, edit.designMd);
+      }
+    };
+    const label = "token" in edit ? `${edit.token.name} → ${edit.token.value}` : "brand" in edit ? `Brand colour → ${edit.brand}` : "DESIGN.md";
+    this.kits.recordSystemEdit(threadId, label, target, write);
+    return { doc: this.systemDoc(thread, target), thread };
   }
 
   /**
@@ -1888,7 +1913,7 @@ export class Service {
     try {
       const system = this.threadSystem(thread);
       const ask = isAuto(thread) && !thread.designDirection ? this.autoNote(thread, system) : "";
-      if (!system) return ask;
+      if (!system) return ask + this.kits.takeNote(thread);
       const dir = join(root, "system");
       let before = "";
       try {
@@ -1901,7 +1926,7 @@ export class Service {
         before && before !== system.id
           ? `\n\n(CubiQ: the design system is now ${system.name}; \`${designOf(thread)}/system/\` was replaced. Read its DESIGN.md and restyle with its tokens; a colour the user named still wins.)`
           : "";
-      return switched + ask;
+      return switched + ask + this.kits.takeNote(this.store.getThread(thread.id));
     } catch {
       // A failed copy leaves the last system in place; never fail the turn over it.
       return "";

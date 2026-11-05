@@ -983,8 +983,100 @@ export interface DesignSystemDoc {
   groups: DesignTokenGroup[];
 }
 
+/** One theme card in the picker, drawn from its own tokens. */
+export interface DesignThemeCard {
+  id: string;
+  name: string;
+  description: string;
+  swatches: string[];
+  facets?: StyleFacets;
+  /** Its look, for the card. `dark` is its dark pair, when it has one. */
+  card: { bg: string; surface: string; text: string; muted: string; accent: string; onAccent: string; border: string; radius: string; font: string; dark?: { bg: string; surface: string; text: string; muted: string; accent: string; onAccent: string; border: string } };
+  /** Saved in this project, rather than coming with the kit. */
+  mine: boolean;
+}
+
+/** One kit in the picker's `Kit:` menu. */
+export interface DesignKitGroup {
+  id: string;
+  name: string;
+  version: string;
+  bundled: boolean;
+  installed: boolean;
+  components: number;
+  blocks: number;
+  /** Its own copy in this project, not the library's. */
+  mine: boolean;
+  themes: DesignThemeCard[];
+}
+
+/** What moving a page to another kit would do, for the preview. */
+export interface DesignMigrationPreview {
+  targetId: string;
+  targetName: string;
+  /** The rendered result, relative to the design folder. */
+  previewRel: string;
+  same: number;
+  renamed: { from: string; to: string; count: number }[];
+  unsupported: { ui: string; name: string; count: number }[];
+  droppedProps: { ui: string; prop: string; value: string; count: number }[];
+  review: { ui: string; name: string; count: number }[];
+  pages: number;
+}
+
+/** One component in System mode. */
+export interface DesignKitPart {
+  ui: string;
+  name: string;
+  category: string;
+  kind: "component" | "composition";
+  description: string;
+  props: { name: string; label: string; type: "choice" | "boolean" | "text"; options?: string[]; default?: string | boolean }[];
+  snippet: string;
+  importName: string | null;
+  packageName: string | null;
+  /** The agent added it while building a page. */
+  isNew: boolean;
+  /** It's only in this thread's draft, waiting for `Save to kit`. */
+  draft: boolean;
+  usage: { count: number; files: number };
+}
+
+/** The kit behind a design thread, for System mode. */
+export interface DesignKitDoc {
+  /** Null on a flat style: it has tokens but no components. */
+  kit: { id: string; name: string; version: string } | null;
+  /** The first edit saves a copy in the project. */
+  copyOnWrite: boolean;
+  /** False with no project folder: edits have nowhere to go. */
+  editable: boolean;
+  parts: DesignKitPart[];
+  blocks: string[];
+  /** A draft in the thread's `kit/` folder that isn't saved yet. */
+  draft: { added: string[]; changed: string[]; removed: string[]; errors: string[] } | null;
+}
+
+/** What a token or brand change reaches: asked for before it's applied. */
+export interface DesignReach {
+  tokens: number;
+  instances: number;
+  files: number;
+}
+
+/** One edit to a kit's contract from System mode. */
+export type DesignKitEdit =
+  | { kind: "addVariant"; ui: string; name: string; from: string }
+  | { kind: "removeVariant"; ui: string; name: string }
+  | { kind: "addProp"; ui: string; prop: { name: string; label: string; type: "text" | "boolean" | "choice"; options?: string[]; default?: string | boolean } }
+  | { kind: "removeProp"; ui: string; name: string }
+  | { kind: "removeComponent"; ui: string }
+  | { kind: "markReviewed"; ui: string };
+
+/** A one-time choice from the Composer's `+` menu or System mode: said to the agent once, on the next turn. */
+export type DesignIntent = { kind: "new-kit"; name?: string } | { kind: "match-screenshot" } | { kind: "new-component"; selection?: string } | { kind: "system"; where: string };
+
 /** One edit from the System tab: a token value for one scheme, or the whole DESIGN.md. */
-export type DesignSystemEdit = { token: { name: string; scheme: "light" | "dark"; value: string } } | { designMd: string };
+export type DesignSystemEdit = { token: { name: string; scheme: "light" | "dark"; value: string } } | { designMd: string } | { brand: string };
 
 /** The frame a page declares it is drawn in (`<meta name="cubiq-device">`, or a one-screen mobile page's bars). */
 export type DesignDevice = "mobile" | "tablet" | "desktop" | "slide";
@@ -1481,6 +1573,32 @@ export interface UnskilledApi {
   designSystemDoc(threadId: string): Promise<DesignSystemDoc | null>;
   /** Edit the thread's design system (a library style is copied into the project first and the thread switched to the copy). */
   designSystemEdit(threadId: string, edit: DesignSystemEdit): Promise<{ doc: DesignSystemDoc; thread: Thread }>;
+  /** Every kit and its themes, for the picker. Design v2 only. */
+  designKitGroups(projectId: string | null): Promise<DesignKitGroup[]>;
+  /** Swap to another theme of the same kit, now: the canvas recolours and nothing else moves. */
+  designApplyTheme(threadId: string, id: string): Promise<{ thread: Thread; previous: string | null }>;
+  /** Work out and render a move to another kit, changing nothing. */
+  designMigratePreview(threadId: string, rel: string, id: string): Promise<DesignMigrationPreview>;
+  /** Make the move: one undo step per page. */
+  designMigrateCommit(threadId: string, rel: string, id: string): Promise<{ thread: Thread }>;
+  designMigrateCancel(threadId: string): Promise<void>;
+  /** Save the look as the project's own theme; `tokens` are the page's overrides to carry into it. */
+  designSaveTheme(threadId: string, name: string, tokens: Record<string, string>, sourceId?: string): Promise<{ thread: Thread; id: string; applied: string[] }>;
+  /** The kit behind a thread, for System mode. */
+  designKitDoc(threadId: string): Promise<DesignKitDoc>;
+  /** One component rendered for System mode; returns the page's path in the design folder. */
+  designKitSample(threadId: string, request: { ui: string; matrix?: boolean; props?: Record<string, string> }): Promise<string>;
+  designKitEdit(threadId: string, edit: DesignKitEdit): Promise<{ doc: DesignKitDoc; thread: Thread }>;
+  designKitDraftSave(threadId: string): Promise<{ doc: DesignKitDoc; thread: Thread }>;
+  designKitDraftDiscard(threadId: string): Promise<DesignKitDoc>;
+  /** What changing these tokens would reach, across the project's designs on this kit. */
+  designReach(threadId: string, tokens: string[]): Promise<DesignReach>;
+  /** Step back or forward through this thread's System mode edits. */
+  designSystemHistory(threadId: string, action: "undo" | "redo"): Promise<{ doc: DesignSystemDoc | null; thread: Thread; label: string } | null>;
+  /** Keep a selection as a block of the kit. With `force` off, what won't carry over comes back first and nothing is saved. */
+  designSaveComposition(threadId: string, name: string, html: string, force: boolean): Promise<{ warnings: string[]; saved: string | null; thread: Thread }>;
+  /** Say a choice to the agent once, on the next turn (null takes it back). */
+  designSetIntent(threadId: string, intent: DesignIntent | null): Promise<void>;
   /** The expert catalogue: bundled experts and teams, then the user's imported ones. */
   listExperts(): Promise<ExpertDef[]>;
   getExpert(id: string): Promise<ExpertDef | null>;

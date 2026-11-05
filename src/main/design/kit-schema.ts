@@ -49,6 +49,8 @@ const componentSchema = z.object({
   /** The `data-ui` attribute value in the kit's HTML. */
   ui: slugSchema,
   kind: z.enum(["component", "composition"]).default("component"),
+  /** `new`: the agent added it while building a page, and nobody has looked at it yet. */
+  status: z.enum(["new"]).optional(),
   category: z.string().max(40).optional(),
   description: z.string().max(300).optional(),
   props: z.array(propSchema).max(KIT_LIMITS.props).default([]),

@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "aliases": {
+    "app-bar": "navbar",
+    "app-shell": "navbar",
+    "chip": "badge",
+    "collapse": "accordion",
+    "combobox": "select",
+    "data-grid": "table",
+    "data-table": "table",
+    "flex": "stack",
+    "form-control": "field",
+    "group": "stack",
+    "layout": "navbar",
+    "modal": "dialog",
+    "native-select": "select",
+    "paper": "card",
+    "radio-group": "radio",
+    "separator": "divider",
+    "simple-grid": "grid",
+    "space": "stack",
+    "tag": "badge",
+    "text-field": "input",
+    "text-input": "input",
+    "title": "heading",
+    "typography": "heading"
+  }
+}

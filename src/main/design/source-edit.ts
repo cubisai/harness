@@ -190,6 +190,8 @@ interface Applied {
 /** Run one change; anything it cannot do refuses with `invalid`. */
 function applyOne(ctx: Context, change: DesignChange): Applied {
   switch (change.kind) {
+    case "replaceDocument":
+      return { html: change.html };
     case "setProp":
       return { html: setAttribute(ctx.html, ctx.element, change.name, change.value) };
     case "setStyle":
