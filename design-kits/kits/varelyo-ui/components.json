@@ -1064,7 +1064,7 @@
           "default": false
         }
       ],
-      "snippet": "<div data-ui=\"text-field\" data-variant=\"outlined\" data-size=\"md\">\n<label data-ui=\"input-label\" for=\"tf-street\">Street address</label>\n<div data-ui=\"input-base\" data-part=\"root\"><input id=\"tf-street\" data-part=\"input\" value=\"14 Ash Lane\"></div>\n<span data-ui=\"form-helper-text\">Used for the van route.</span>\n</div>\n<div data-ui=\"text-field\" data-variant=\"outlined\" data-error=\"true\">\n<label data-ui=\"input-label\" for=\"tf-zip\">Postcode</label>\n<div data-ui=\"input-base\" data-part=\"root\"><input id=\"tf-zip\" data-part=\"input\" value=\"XX1\"></div>\n<span data-ui=\"form-helper-text\" data-error=\"true\">Not in our delivery area.</span>\n</div>"
+      "snippet": "<div data-ui=\"stack\" data-spacing=\"md\">\n<div data-ui=\"text-field\" data-variant=\"outlined\" data-size=\"md\">\n<label data-ui=\"input-label\" for=\"tf-street\">Street address</label>\n<div data-ui=\"input-base\" data-part=\"root\"><input id=\"tf-street\" data-part=\"input\" value=\"14 Ash Lane\"></div>\n<span data-ui=\"form-helper-text\">Used for the van route.</span>\n</div>\n<div data-ui=\"text-field\" data-variant=\"outlined\" data-error=\"true\">\n<label data-ui=\"input-label\" for=\"tf-zip\">Postcode</label>\n<div data-ui=\"input-base\" data-part=\"root\"><input id=\"tf-zip\" data-part=\"input\" value=\"XX1\"></div>\n<span data-ui=\"form-helper-text\" data-error=\"true\">Not in our delivery area.</span>\n</div>\n</div>"
     },
     {
       "name": "Select",

@@ -491,9 +491,9 @@
   [data-ui="switch"][data-size="xs"] { --sw-w: 24px; }
   [data-ui="switch"][data-size="sm"] { --sw-w: 32px; }
   [data-ui="switch"][data-size="lg"] { --sw-w: 48px; }
-  [data-ui="switch"][data-variant="raised"] [data-part="control"] { block-size: 10px; background: var(--color-surface-3); box-shadow: inset 0 0 0 1px var(--color-border); }
+  [data-ui="switch"][data-variant="raised"] [data-part="control"] { block-size: calc(var(--sw-h, 20px) / 2); background: var(--color-surface-3); box-shadow: inset 0 0 0 1px var(--color-border); }
   [data-ui="switch"][data-variant="raised"]:has(input:checked) [data-part="control"] { background: color-mix(in oklab, var(--cp-solid) 60%, transparent); }
-  [data-ui="switch"][data-variant="raised"] [data-part="thumb"] { inset-block-start: -5px; scale: 1; box-shadow: var(--shadow-sm); }
+  [data-ui="switch"][data-variant="raised"] [data-part="thumb"] { inset-block: calc(var(--sw-h, 20px) * -0.25) auto; scale: 1; box-shadow: var(--shadow-sm); }
   [data-ui="switch"]:has(input:focus-visible) [data-part="control"] { outline: 2px solid var(--cp-focus-ring); outline-offset: 2px; }
 
   /* Slider: the range input is drawn over a track, filled to --fill. */
@@ -1056,7 +1056,8 @@
   [data-ui="dashboard"] [data-part="main"] { display: flex; flex-direction: column; gap: 16px; padding: 24px; min-inline-size: 0; }
   [data-ui="dashboard"] [data-part="title"] { margin: 0; font-size: var(--text-xl); line-height: var(--leading-xl); font-weight: var(--weight-bold); }
   [data-ui="dashboard"] [data-part="stats"] { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-  [data-ui="dashboard"] [data-part="stats"] [data-ui="card"] { padding: 16px; background: var(--color-bg); }
+  [data-ui="dashboard"] [data-part="stats"] [data-ui="card"] { background: var(--color-bg); }
+  [data-ui="dashboard"] [data-part="stats"] [data-ui="card"] > [data-part="content"] { padding: 16px; }
   [data-ui="dashboard"] [data-part="panels"] { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 12px; }
   [data-ui="dashboard"] [data-part="panel"] { padding: 16px; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-md); min-inline-size: 0; }
   [data-ui="dashboard"] [data-part="panel"] h3 { margin: 0 0 12px; font-size: var(--text-md); line-height: var(--leading-md); font-weight: var(--weight-medium); }
