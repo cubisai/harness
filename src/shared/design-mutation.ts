@@ -92,4 +92,6 @@ export type DesignHistoryResult = {
   html: string;
   conflicts: MutationConflict[];
   result?: MutationResult;
+  /** Edits a crash left in the journal, replayed and saved when this page opened; told once, since the frame may hold the older file. */
+  recovered?: number;
 };

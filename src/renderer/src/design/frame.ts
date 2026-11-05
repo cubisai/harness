@@ -72,6 +72,7 @@ export type BridgeMessage =
   | { type: "text-edit"; id: string; before: string; after: string }
   | { type: "text-commit"; target: { id: string } | { locator: { tag: string; path: number[]; text: string } }; before: string; after: string; live: boolean }
   | { type: "history-key"; action: "undo" | "redo" }
+  | { type: "pointer" }
   | { type: "theme"; tokens: Record<string, string> }
   | { type: "edit-refused"; reason: string }
   | { type: "pins"; missing: number[] }
@@ -204,6 +205,7 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
     if (!l || !str(l.tag, 64) || l.tag === "" || !str(l.text, 80) || !Array.isArray(l.path) || l.path.length > 64 || !l.path.every((n) => Number.isInteger(n) && (n as number) >= 0)) return null;
     return { type: "text-commit", target: { locator: { tag: l.tag, path: l.path as number[], text: l.text } }, before: d.before, after: d.after, live };
   }
+  if (d.type === "pointer") return { type: "pointer" };
   if (d.type === "history-key") return d.action === "undo" || d.action === "redo" ? { type: "history-key", action: d.action } : null;
   if (d.type === "theme") {
     if (!d.tokens || typeof d.tokens !== "object" || Array.isArray(d.tokens)) return null;

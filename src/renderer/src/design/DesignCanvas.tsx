@@ -471,6 +471,8 @@ export default function DesignCanvas({
       } else if (msg.type === "text-commit") {
         if (!designV2 || version !== 0) return;
         editsRef.current.send(msg.target, { kind: "setText", before: msg.before, after: msg.after }, msg.live ? "text" : null);
+      } else if (msg.type === "pointer") {
+        if (designV2 && document.activeElement instanceof HTMLElement && document.activeElement !== frameRef.current) document.activeElement.blur();
       } else if (msg.type === "history-key") {
         if (designV2 && version === 0) (msg.action === "undo" ? editsRef.current.undo : editsRef.current.redo)();
       } else if (msg.type === "theme") {
@@ -983,9 +985,21 @@ export default function DesignCanvas({
     setPicking(true);
     post(pickMessage(true));
   }, [designV2, onPage, picking, inserting, post, pickMessage]);
+  // Below 1000px the Layers rail starts collapsed and Customize stays closed until asked for, since it floats over the page.
   useEffect(() => {
-    if (designV2) setInspectorOpen(true);
-  }, [designV2, threadId]);
+    if (!designV2) return;
+    const narrow = window.matchMedia("(max-width: 999px)");
+    setInspectorOpen(!narrow.matches);
+    const apply = () => {
+      if (narrow.matches) {
+        setPaneLayout({ designRail: false }, false);
+        setInspectorOpen(false);
+      }
+    };
+    apply();
+    narrow.addEventListener("change", apply);
+    return () => narrow.removeEventListener("change", apply);
+  }, [designV2, threadId, setPaneLayout]);
   // The canvas's keys in v2, with the keyboard in the app rather than the frame. A text field keeps its own.
   const keyState = useRef({ onPage, cycling: false });
   keyState.current = { onPage, cycling: variantSets.length > 0 };
@@ -1768,11 +1782,7 @@ export default function DesignCanvas({
               styleName={styleName ?? null}
               theme={pageTheme}
               appearance={appearance ?? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")}
-              onAppearance={(next) => {
-                setAppearance(next);
-                // The frame's own media query follows it a frame later.
-                requestAnimationFrame(() => post({ type: "read-theme", names: THEME_TOKENS }));
-              }}
+              onAppearance={setAppearance}
               onClear={clearSelection}
               onViewHtml={() => {
                 setInspectorTab("code");

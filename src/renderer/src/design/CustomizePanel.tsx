@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ArrowLeft } from "lucide-react";
 import { elementLabel, type SelectedElement } from "../../../shared/selection";
 import { api } from "../api";
+import { Select } from "../components/Select";
 import { IconClose } from "../icons";
 import { ColorSwatch } from "./ColorSwatch";
 
@@ -245,7 +246,9 @@ export function CustomizePanel({
               const options = p.options ?? null;
               return (
                 <Row key={p.name} label={p.name.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase())} stacked={Boolean(options)}>
-                  {options ? (
+                  {options && options.length > 4 ? (
+                    <Select<string> value={current ?? options[0] ?? ""} options={options.map((o) => ({ value: o, label: o }))} onChange={(v) => handlers.onAttr(el, name, v === options[0] ? null : v)} ariaLabel={p.name} className="ghost-select" />
+                  ) : options ? (
                     <Segments label={p.name} options={options.map((o) => ({ label: o, value: o }))} value={current ?? options[0] ?? null} onPick={(v) => handlers.onAttr(el, name, v === options[0] ? null : v)} />
                   ) : (
                     <Toggle label={p.name} on={current !== null && current !== "false"} onChange={(on) => handlers.onAttr(el, name, on ? "true" : null)} />

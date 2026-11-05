@@ -670,6 +670,13 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-stage { flex: 1; min-height: 0; min-width: 0; display: flex; overflow: auto; padding: 24px; }
 .design-stage.fit { padding: 0; overflow: hidden; }
 .design-stage.locked { overflow: hidden; } /* Design v2's 1440 stage: the page scrolls inside its frame, which always fits. */
+.design-stage.locked .design-frame { background: Canvas; } /* A page with no background of its own shows the scheme it's previewed in. */
+/* Below 1000px the Customize panel floats over the stage instead of squeezing the page. */
+@media (max-width: 999px) {
+  .design-stage-row:has(> .design-customize) { position: relative; }
+  .design-stage-row > .design-customize { position: absolute; top: 0; right: 0; bottom: 0; z-index: 3; background: var(--bg); box-shadow: var(--shadow-float); }
+  .app.canvas-first:has(.design-customize) .main > .thread-pane { padding-right: 16px; }
+}
 .design-frame-box { position: relative; margin: auto; flex-shrink: 0; background: var(--bg); border: 1px solid var(--hairline); }
 .design-stage.fit .design-frame-box { flex: 1; align-self: stretch; margin: 0; border: 0; }
 .design-frame { display: block; border: 0; background: #fff; transform-origin: 0 0; }

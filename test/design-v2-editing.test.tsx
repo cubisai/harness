@@ -231,6 +231,10 @@ describe("reading the new bridge messages", () => {
     expect(readBridgeMessage({ ...base, type: "history-key", action: "delete" })).toBeNull();
   });
 
+  it("reads a press on the page", () => {
+    expect(readBridgeMessage({ ...base, type: "pointer", extra: 1 })).toEqual({ type: "pointer" });
+  });
+
   it("reads only token-shaped theme values", () => {
     expect(readBridgeMessage({ ...base, type: "theme", tokens: { "--color-bg": "#fff" } })).toEqual({ type: "theme", tokens: { "--color-bg": "#fff" } });
     expect(readBridgeMessage({ ...base, type: "theme", tokens: { color: "#fff" } })).toBeNull();
@@ -372,6 +376,22 @@ describe("saves and the watcher", () => {
     const quiet = vi.spyOn(console, "error").mockImplementation(() => undefined);
     expect(docs.mutate("t", "index.html", file, edit("Hi")).ok).toBe(true);
     quiet.mockRestore();
+  });
+
+  it("says once that a journal was replayed, with the edits already on disk", () => {
+    const dir = tempDir();
+    const file = join(dir, "index.html");
+    writeFileSync(file, PAGE);
+    const journalDir = join(dir, "journal");
+    const first = new DesignDocuments({ journalDir, isBusy: () => false, debounceMs: 60_000 });
+    first.mutate("t", "index.html", file, edit("Kept"));
+    expect(readFileSync(file, "utf8")).not.toContain("Kept");
+    // A crash: the first service is simply never disposed, so its journal stays.
+    const second = new DesignDocuments({ journalDir, isBusy: () => false, debounceMs: 5 });
+    open.push(second);
+    expect(second.history("t", "index.html", file, { action: "status" }).recovered).toBe(1);
+    expect(readFileSync(file, "utf8")).toContain("Kept");
+    expect(second.history("t", "index.html", file, { action: "status" }).recovered).toBeUndefined();
   });
 
   it("stamps an id on an element found only by its place", () => {

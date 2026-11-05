@@ -41,6 +41,8 @@ export type BridgeMessage =
   | { source: "cubiq-design"; type: "text-edit"; id: string; before: string; after: string }
   /** Design v2: an in-place edit, named by id or by its place in the page, for the mutation service. */
   | { source: "cubiq-design"; type: "text-commit"; target: { id: string } | { locator: { tag: string; path: number[]; text?: string } }; before: string; after: string; live: boolean }
+  /** Design v2: a press on the page, which swallows it: the app's own focus lets go, so the canvas's keys work next. */
+  | { source: "cubiq-design"; type: "pointer" }
   /** Design v2: ⌘Z, ⇧⌘Z or ⌘Y with the keyboard in the frame. */
   | { source: "cubiq-design"; type: "history-key"; action: "undo" | "redo" }
   /** Design v2: the page's own values for the tokens the Customize panel asked about. */
@@ -1190,6 +1192,7 @@ export function designBridge(
     const onDown = (e: MouseEvent): void => {
       if (insideEdit(e) || inLayer(e)) return;
       swallow(e);
+      if (e.type === "mousedown") post("pointer");
     };
     const onClick = (e: MouseEvent): void => {
       if (insideEdit(e) || inLayer(e)) return;
@@ -1306,6 +1309,8 @@ export function designBridge(
       if (selected.length > 0) report(0);
     }, 120);
   };
+  let themeWatch: MediaQueryList | null = null;
+  let themeRead: (() => void) | null = null;
   const targetOf = (raw: unknown): Element | null => {
     if (!raw || typeof raw !== "object") return null;
     const target = raw as Record<string, unknown>;
@@ -1603,12 +1608,20 @@ export function designBridge(
       reportSoon();
     } else if (data.type === "read-theme") {
       if (!Array.isArray(data.names)) return;
-      const style = getComputedStyle(document.documentElement);
-      const tokens: Record<string, string> = {};
-      for (const name of (data.names as unknown[]).slice(0, 32)) {
-        if (typeof name === "string" && /^--[a-z0-9-]{1,48}$/.test(name)) tokens[name] = style.getPropertyValue(name).trim().slice(0, 120);
+      const names = (data.names as unknown[]).filter((name): name is string => typeof name === "string" && /^--[a-z0-9-]{1,48}$/.test(name)).slice(0, 32);
+      const send = (): void => {
+        const style = getComputedStyle(document.documentElement);
+        const tokens: Record<string, string> = {};
+        for (const name of names) tokens[name] = style.getPropertyValue(name).trim().slice(0, 120);
+        post("theme", { tokens });
+      };
+      send();
+      // The scheme can change under the page (the app's theme, or the panel's Appearance): the panel hears the new values.
+      if (!themeWatch) {
+        themeWatch = matchMedia("(prefers-color-scheme: dark)");
+        themeWatch.addEventListener("change", () => themeRead?.());
       }
-      post("theme", { tokens });
+      themeRead = send;
     } else if (data.type === "set-selection") {
       const targets = data.targets;
       if (!Array.isArray(targets)) return;

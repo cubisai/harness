@@ -190,6 +190,8 @@ interface Tracked {
   conflicts: MutationConflict[];
   /** A check outside the watcher already found a foreign write, so the watcher's report of it isn't our own save. */
   foreignSeen: boolean;
+  /** Edits replayed from the journal on open, until the canvas has been told. */
+  recovered: number;
 }
 
 /**
@@ -257,7 +259,7 @@ export class DesignDocuments {
     }
     // An open that throws leaves nothing tracked, so the next call simply tries again.
     const opened = this.service.open(id, file);
-    this.tracked.set(id, { threadId, rel, conflicts: [...opened.conflicts], foreignSeen: false });
+    this.tracked.set(id, { threadId, rel, conflicts: [...opened.conflicts], foreignSeen: false, recovered: opened.recovered });
     if (this.options.isBusy(threadId)) this.service.setReadOnly(id, true);
     return id;
   }
@@ -312,8 +314,12 @@ export class DesignDocuments {
     const entry = this.tracked.get(id);
     const conflicts = entry ? entry.conflicts : [];
     if (entry) entry.conflicts = [];
+    const recovered = entry?.recovered ?? 0;
+    if (entry) entry.recovered = 0;
+    // On disk before the canvas reloads its frame to show them.
+    if (recovered > 0) this.service.flush(id);
 
-    return { status, html, conflicts, ...(result !== undefined ? { result } : {}) };
+    return { status, html, conflicts, ...(result !== undefined ? { result } : {}), ...(recovered > 0 ? { recovered } : {}) };
   }
 
   /**

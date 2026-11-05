@@ -57,10 +57,9 @@ export function useDesignEditing({
   const showConflicts = useCallback((res: DesignHistoryResult) => {
     setDocumentId(res.status.documentId);
     setLocal(res.status);
-    if (res.conflicts.length) {
-      setBanner({ kind: "conflict", text: conflictsText(res.conflicts), retry: null });
-      callbacks.current.reloadFrame();
-    }
+    if (res.recovered) callbacks.current.notify(`Recovered ${res.recovered === 1 ? "1 unsaved edit" : `${res.recovered} unsaved edits`} from when the app last closed.`);
+    if (res.conflicts.length) setBanner({ kind: "conflict", text: conflictsText(res.conflicts), retry: null });
+    if (res.conflicts.length || res.recovered) callbacks.current.reloadFrame();
   }, []);
 
   // Opening the page replays its journal, so a crash's edits are back before the first edit, and conflicts surface here.
