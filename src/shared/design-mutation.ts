@@ -82,7 +82,9 @@ export type DesignHistoryRequest =
   | { action: "status" }
   | { action: "undo"; crossBoundary?: boolean }
   | { action: "redo" }
-  | { action: "close-transaction"; transactionId: string };
+  | { action: "close-transaction"; transactionId: string }
+  /** Save now, not after the debounce: before the frame reloads, or as a retry after a failed save. */
+  | { action: "flush" };
 
 /** The document after a history request, plus the edits that could not be carried over since the last ask. */
 export type DesignHistoryResult = {

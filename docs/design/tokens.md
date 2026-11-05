@@ -8,49 +8,49 @@
 
 | Token | Light | Dark | Line |
 | --- | --- | --- | --- |
-| `--primary` | `#0b0d10` | `#f7f8fa` | 30 |
-| `--primary-soft` | `rgb(11 13 16 / 0.07)` | `rgb(247 248 250 / 0.1)` | 31 |
-| `--on-primary` | `#ffffff` | `#0b0d10` | 32 |
-| `--focus` | `#0b0d10` | `#f7f8fa` | 33 |
-| `--signal-fill` | `#a8ff55` | `#a8ff55` | 34 |
-| `--signal-ink` | `#357a08` | `#a8ff55` | 35 |
-| `--signal-line` | `#4a9a12` | `#a8ff55` | 36 |
-| `--danger` | `#e5484d` | `#ff6369` | 53 |
-| `--success` | `#2f9e44` | `#3fb950` | 54 |
-| `--warning` | `#c98500` | `#f5a524` | 55 |
-| `--bg` | `#ffffff` | `#0e1013` | 57 |
-| `--bg-sidebar` | `#f7f8fa` | `#0b0d10` | 58 |
-| `--bg-elevated` | `#ffffff` | `#14171b` | 59 |
-| `--bg-subtle` | `#f5f6f8` | `#14171b` | 60 |
-| `--bg-chip` | `#f1f3f5` | `#1a1d22` | 61 |
-| `--bg-hover` | `#eff1f4` | `#181b20` | 62 |
-| `--bg-selected` | `#e8ebef` | `#1e2127` | 63 |
-| `--text` | `#0b0d10` | `#f7f8fa` | 64 |
-| `--text-secondary` | `#5b606b` | `#9aa0aa` | 65 |
-| `--text-tertiary` | `#9aa0aa` | `#5f6570` | 66 |
-| `--hairline` | `#e7e9ed` | `#22252b` | 67 |
-| `--hairline-strong` | `#d5d9df` | `#30343c` | 68 |
-| `--add-bg` | `rgb(47 158 68 / 0.1)` | `rgb(63 185 80 / 0.12)` | 73 |
-| `--del-bg` | `rgb(229 72 77 / 0.08)` | `rgb(255 99 105 / 0.12)` | 74 |
+| `--primary` | `#0b0d10` | `#f7f8fa` | 31 |
+| `--primary-soft` | `rgb(11 13 16 / 0.07)` | `rgb(247 248 250 / 0.1)` | 32 |
+| `--on-primary` | `#ffffff` | `#0b0d10` | 33 |
+| `--focus` | `#0b0d10` | `#f7f8fa` | 34 |
+| `--signal-fill` | `#a8ff55` | `#a8ff55` | 35 |
+| `--signal-ink` | `#357a08` | `#a8ff55` | 36 |
+| `--signal-line` | `#4a9a12` | `#a8ff55` | 37 |
+| `--danger` | `#e5484d` | `#ff6369` | 54 |
+| `--success` | `#2f9e44` | `#3fb950` | 55 |
+| `--warning` | `#c98500` | `#f5a524` | 56 |
+| `--bg` | `#ffffff` | `#0e1013` | 58 |
+| `--bg-sidebar` | `#f7f8fa` | `#0b0d10` | 59 |
+| `--bg-elevated` | `#ffffff` | `#14171b` | 60 |
+| `--bg-subtle` | `#f5f6f8` | `#14171b` | 61 |
+| `--bg-chip` | `#f1f3f5` | `#1a1d22` | 62 |
+| `--bg-hover` | `#eff1f4` | `#181b20` | 63 |
+| `--bg-selected` | `#e8ebef` | `#1e2127` | 64 |
+| `--text` | `#0b0d10` | `#f7f8fa` | 65 |
+| `--text-secondary` | `#5b606b` | `#9aa0aa` | 66 |
+| `--text-tertiary` | `#9aa0aa` | `#5f6570` | 67 |
+| `--hairline` | `#e7e9ed` | `#22252b` | 68 |
+| `--hairline-strong` | `#d5d9df` | `#30343c` | 69 |
+| `--add-bg` | `rgb(47 158 68 / 0.1)` | `rgb(63 185 80 / 0.12)` | 74 |
+| `--del-bg` | `rgb(229 72 77 / 0.08)` | `rgb(255 99 105 / 0.12)` | 75 |
 
 ## Effect
 
 | Token | Light | Dark | Line |
 | --- | --- | --- | --- |
-| `--beam-inner` | `0.3` | `0.19` | 39 |
-| `--send-bg` | `#ffffff` | `#23262c` | 41 |
-| `--send-fg` | `var(--text)` | `#f7f8fa` | 42 |
-| `--send-ring` | `var(--hairline-strong)` | `#30343c` | 43 |
-| `--goo-fill` | `#e8ebef` | `#262a30` | 44 |
-| `--beam-stroke` | `0.55` | `0.26` | 45 |
-| `--beam-bloom` | `0` | `0.24` | 46 |
-| `--beam-sheen` | `transparent` | `rgb(255 255 255 / 0.27)` | 47 |
-| `--beam-hi-10` | `transparent` | `rgb(255 255 255 / 0.1)` | 48 |
-| `--beam-hi-30` | `transparent` | `rgb(255 255 255 / 0.3)` | 49 |
-| `--beam-hi-60` | `transparent` | `rgb(255 255 255 / 0.6)` | 50 |
-| `--beam-hi-75` | `transparent` | `rgb(255 255 255 / 0.75)` | 51 |
-| `--beam-hi-85` | `transparent` | `rgb(255 255 255 / 0.85)` | 52 |
-| `--shadow-float` | `0 12px 40px rgb(0 0 0 / 0.12)` | `0 12px 40px rgb(0 0 0 / 0.5)` | 69 |
+| `--beam-inner` | `0.3` | `0.19` | 40 |
+| `--send-bg` | `#ffffff` | `#23262c` | 42 |
+| `--send-fg` | `var(--text)` | `#f7f8fa` | 43 |
+| `--send-ring` | `var(--hairline-strong)` | `#30343c` | 44 |
+| `--goo-fill` | `#e8ebef` | `#262a30` | 45 |
+| `--beam-stroke` | `0.55` | `0.26` | 46 |
+| `--beam-bloom` | `0` | `0.24` | 47 |
+| `--beam-sheen` | `transparent` | `rgb(255 255 255 / 0.27)` | 48 |
+| `--beam-hi-10` | `transparent` | `rgb(255 255 255 / 0.1)` | 49 |
+| `--beam-hi-30` | `transparent` | `rgb(255 255 255 / 0.3)` | 50 |
+| `--beam-hi-60` | `transparent` | `rgb(255 255 255 / 0.6)` | 51 |
+| `--beam-hi-75` | `transparent` | `rgb(255 255 255 / 0.75)` | 52 |
+| `--beam-hi-85` | `transparent` | `rgb(255 255 255 / 0.85)` | 53 |
+| `--shadow-float` | `0 12px 40px rgb(0 0 0 / 0.12)` | `0 12px 40px rgb(0 0 0 / 0.5)` | 70 |
 
 ## Type
 
@@ -64,42 +64,43 @@
 
 | Token | Light | Dark | Line |
 | --- | --- | --- | --- |
-| `--radius-s` | `6px` | — | 89 |
-| `--radius-m` | `8px` | — | 90 |
-| `--radius-l` | `10px` | — | 91 |
+| `--radius-s` | `6px` | — | 90 |
+| `--radius-m` | `8px` | — | 91 |
+| `--radius-l` | `10px` | — | 92 |
 
 ## Layout
 
 | Token | Light | Dark | Line |
 | --- | --- | --- | --- |
-| `--titlebar` | `46px` | — | 92 |
-| `--sidebar-w` | `248px` | — | 93 |
-| `--inspector-w` | `430px` | — | 94 |
+| `--titlebar` | `46px` | — | 93 |
+| `--sidebar-w` | `248px` | — | 94 |
+| `--inspector-w` | `430px` | — | 95 |
 
 ## Motion
 
 | Token | Light | Dark | Line |
 | --- | --- | --- | --- |
-| `--ease` | `cubic-bezier(0.2, 0.8, 0.2, 1)` | — | 95 |
+| `--ease` | `cubic-bezier(0.2, 0.8, 0.2, 1)` | — | 96 |
 
 ## Other
 
 | Token | Light | Dark | Line |
 | --- | --- | --- | --- |
-| `--device-bezel` | `#1b1d21` | `#34373e` | 70 |
-| `--device-edge` | `#3b3f46` | `#5a5f69` | 71 |
-| `--device-island` | `#000000` | `#000000` | 72 |
-| `--syn-keyword` | `#8b3dbf` | `#c792ea` | 76 |
-| `--syn-string` | `#2b7a3b` | `#8fd19e` | 77 |
-| `--syn-number` | `#a35c00` | `#f0b060` | 78 |
-| `--syn-comment` | `#6b717c` | `#7d838e` | 79 |
-| `--portrait-1` | `#ffe1cf` | `#d9a98f` | 81 |
-| `--portrait-2` | `#d6e9ff` | `#95b8de` | 82 |
-| `--portrait-3` | `#d9f3d3` | `#9fcb95` | 83 |
-| `--portrait-4` | `#e7dcff` | `#b5a3e3` | 84 |
-| `--portrait-5` | `#fff0c2` | `#d8bf78` | 85 |
-| `--portrait-6` | `#d2f1ed` | `#8fc7bf` | 86 |
-| `--portrait-lead` | `#e4e4e0` | `#b8b8b2` | 87 |
+| `--canvas-select` | `#2563eb` | `#60a5fa` | 30 |
+| `--device-bezel` | `#1b1d21` | `#34373e` | 71 |
+| `--device-edge` | `#3b3f46` | `#5a5f69` | 72 |
+| `--device-island` | `#000000` | `#000000` | 73 |
+| `--syn-keyword` | `#8b3dbf` | `#c792ea` | 77 |
+| `--syn-string` | `#2b7a3b` | `#8fd19e` | 78 |
+| `--syn-number` | `#a35c00` | `#f0b060` | 79 |
+| `--syn-comment` | `#6b717c` | `#7d838e` | 80 |
+| `--portrait-1` | `#ffe1cf` | `#d9a98f` | 82 |
+| `--portrait-2` | `#d6e9ff` | `#95b8de` | 83 |
+| `--portrait-3` | `#d9f3d3` | `#9fcb95` | 84 |
+| `--portrait-4` | `#e7dcff` | `#b5a3e3` | 85 |
+| `--portrait-5` | `#fff0c2` | `#d8bf78` | 86 |
+| `--portrait-6` | `#d2f1ed` | `#8fc7bf` | 87 |
+| `--portrait-lead` | `#e4e4e0` | `#b8b8b2` | 88 |
 
 ## Aliases
 

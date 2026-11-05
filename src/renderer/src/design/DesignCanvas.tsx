@@ -10,7 +10,7 @@ import "../styles/artifact.css";
 import { affectedPages, useStore } from "../store";
 import { designStyleName, useDesignSystemOptions } from "../components/DesignSystemMenu";
 import { STYLE_PREFIX, readDirection } from "../../../shared/direction";
-import { NO_MARKS, VIEWPORTS, ZOOMS, deviceFor, frameLayout, pageFromPath, readBridgeMessage, viewportForDevice, type FrameAnchor, type FrameRect, type InsertGap, type OutlineNode, type PageMarks, type VariantSetInfo, type Viewport, type Zoom } from "./frame";
+import { NO_MARKS, STAGE_PAD, VIEWPORTS, ZOOMS, createBridgeGate, deviceFor, frameLayout, pageFromPath, readBridgeMessage, viewportForDevice, type FrameAnchor, type FrameRect, type InsertGap, type OutlineNode, type PageMarks, type VariantSetInfo, type Viewport, type Zoom } from "./frame";
 import { announceSelection, elementLabel, selectionKey, withScope, type SelectedElement } from "../../../shared/selection";
 import { withRefs } from "./refs";
 import { ElementBar, VariantCycler, cycleStep, goMessage, insertMessage, placeElementBar, type ActionId } from "./ElementBar";
@@ -26,6 +26,8 @@ import { Board } from "./Board";
 import { Present } from "./Present";
 import { InspectorPanel, type InspectorTab } from "./InspectorPanel";
 import { LiveBar, escClears, escapeStep, isPickKey, steerMessage } from "./LiveBar";
+import { CustomizePanel, THEME_TOKENS } from "./CustomizePanel";
+import { useDesignEditing } from "./useDesignEditing";
 
 const ipcError = (err: unknown): string => (err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err));
 
@@ -70,7 +72,9 @@ export default function DesignCanvas({
   const [loaded, setLoaded] = useState(false);
   // The viewport the user picked (null = none yet: the page's declared device decides, see viewportForDevice).
   const [viewportPick, setViewport] = useState<Viewport | null>(null);
-  const viewport = viewportPick ?? viewportForDevice(entry?.pages.find((p) => p.rel === entry.rel)?.device);
+  // Design v2's direct editing (a build switch until it replaces the old flow).
+  const designV2 = useStore((s) => s.settings?.designV2 === true);
+  const viewport = viewportPick ?? viewportForDevice(entry?.pages.find((p) => p.rel === entry.rel)?.device, designV2);
   const [zoom, setZoom] = useState<Zoom>("fit");
   const [grid, setGrid] = useState(false);
   const [picking, setPicking] = useState(false);
@@ -165,7 +169,9 @@ export default function DesignCanvas({
     }
     return DEFAULT_TIER;
   });
-  const features = tierFeatures(tier);
+  // In v2 tiers only change how much the agent builds: direct edits work on all of them.
+  const tierHas = tierFeatures(tier);
+  const features = designV2 ? { ...tierHas, textEdit: true, tweaks: true } : tierHas;
   // The style the design is drawn in names the board's artboards (`Page · Style`, `Option · <its style>`).
   const thread = useStore((s) => {
     for (const list of Object.values(s.threads)) {
@@ -264,6 +270,9 @@ export default function DesignCanvas({
     setBoard(false);
     setFlow(false);
     setInspectorOpen(false);
+    setPanelMode("customize");
+    setAppearance(null);
+    setPageTheme({});
     setPresent(null);
     setNotice(null);
     setTweaks(null);
@@ -361,13 +370,51 @@ export default function DesignCanvas({
     frameRef.current?.contentWindow?.postMessage({ source: "cubiq-canvas", ...msg }, "*");
   }, []);
 
+  // Direct editing. A frame reload is ours when it follows an undo or a discard, so what it loses isn't news.
+  const ownReload = useRef(false);
+  const reloadFrame = useCallback(() => {
+    ownReload.current = true;
+    setManual((n) => n + 1);
+  }, []);
+  const edits = useDesignEditing({
+    threadId,
+    rel: entry?.rel ?? null,
+    on: designV2 && version === 0,
+    onStamp: (at, id) => post({ type: "stamp", path: at, id }),
+    reloadFrame,
+    notify: (text, error) => setNotice(error ? { text, error } : { text }),
+  });
+  const editsRef = useRef(edits);
+  editsRef.current = edits;
+  const gate = useRef(createBridgeGate(() => crypto.randomUUID()));
+  // Selecting in the page. In v2 the edit flag follows the turn: a page being written can't be typed into.
+  const pickMessage = useCallback(
+    (on: boolean): Record<string, unknown> => {
+      if (!on) return { type: "pick", on };
+      if (!designV2) return { type: "pick", on, edit: features.textEdit };
+      return { type: "pick", on, v2: true, edit: !agentRunning, color: getComputedStyle(document.documentElement).getPropertyValue("--canvas-select").trim() };
+    },
+    [designV2, features.textEdit, agentRunning],
+  );
+  const pickMessageRef = useRef(pickMessage);
+  pickMessageRef.current = pickMessage;
+  // The page's values for the panel's tokens, and how it's previewed: light or dark, whatever the app's theme.
+  const [pageTheme, setPageTheme] = useState<Record<string, string>>({});
+  const [appearance, setAppearance] = useState<"light" | "dark" | null>(null);
+  const [panelMode, setPanelMode] = useState<"customize" | "code">("customize");
+
   // Only the frame's own window is listened to, and every message is checked (the page is the agent's code).
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       if (!frameRef.current || e.source !== frameRef.current.contentWindow) return;
+      if (designV2 && !gate.current.admit(e.data)) return;
       const msg = readBridgeMessage(e.data);
       if (!msg) return;
       if (msg.type === "ready") {
+        if (designV2) {
+          post({ type: "session", nonce: gate.current.renew() });
+          post({ type: "read-theme", names: THEME_TOKENS });
+        }
         // A fresh load: its tweaks (if any) arrive right after; the marks went with the old document.
         setTweaks(null);
         setAnchor(null);
@@ -386,13 +433,14 @@ export default function DesignCanvas({
           scroll.current = { x: 0, y: 0 };
           setPage(to.rel);
         } else if (scroll.current.x || scroll.current.y) post({ type: "restore-scroll", ...scroll.current });
-        if (picking) post({ type: "pick", on: true, edit: features.textEdit });
+        if (picking) post(pickMessageRef.current(true));
         if (inserting) post({ type: "insert", on: true });
         if (pinsRef.current.length) post({ type: "set-pins", pins: pinsRef.current });
         if (!to && entry && detectRef.current.rel === entry.rel) runDetectRef.current(entry.rel, true);
         if (deviceRef.current) post({ type: "device-chrome", on: true });
         // A reload (the agent rewrote the page): find the selection again; anything gone is dropped and reported.
         const sel = useStore.getState().designSelection[threadId];
+        if (!sel) ownReload.current = false;
         if (sel && entry && sel.page === (to?.rel ?? entry.rel) && version === 0) {
           fromFrame.current = "";
           post({ type: "set-selection", targets: sel.elements.map(({ id, selector, tag, text }) => ({ id, selector, tag, text })) });
@@ -420,6 +468,13 @@ export default function DesignCanvas({
             setNotice({ text: ipcError(err), error: true });
             setManual((n) => n + 1);
           });
+      } else if (msg.type === "text-commit") {
+        if (!designV2 || version !== 0) return;
+        editsRef.current.send(msg.target, { kind: "setText", before: msg.before, after: msg.after }, msg.live ? "text" : null);
+      } else if (msg.type === "history-key") {
+        if (designV2 && version === 0) (msg.action === "undo" ? editsRef.current.undo : editsRef.current.redo)();
+      } else if (msg.type === "theme") {
+        setPageTheme(msg.tokens);
       } else if (msg.type === "pins") {
         setPinMissing(msg.missing);
       } else if (msg.type === "outline") {
@@ -460,7 +515,9 @@ export default function DesignCanvas({
         setSelection(threadId, { page: entry.rel, elements: msg.elements });
         setAnnouncement(announceSelection(msg.elements));
         // A variant set on the page means the agent replaced the picked element on purpose: no notice for that.
-        if (msg.lost > 0 && !variantsRef.current)
+        const ours = ownReload.current;
+        ownReload.current = false;
+        if (msg.lost > 0 && !variantsRef.current && !ours)
           setNotice({ text: `${msg.lost === 1 ? "A selected element is" : `${msg.lost} selected elements are`} no longer on the page, so the selection dropped ${msg.lost === 1 ? "it" : "them"}.` });
       } else {
         setPicking(false);
@@ -468,7 +525,7 @@ export default function DesignCanvas({
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [entry, picking, inserting, post, threadId, version, setSelection, features.textEdit]);
+  }, [entry, picking, inserting, post, threadId, version, setSelection, features.textEdit, designV2]);
 
   // Opening the inspector or the Layers rail asks for a fresh outline: a page that renders with script has more layers
   // than at load. The rail asks again for each page it shows (the bridge also reports one when a page loads).
@@ -477,10 +534,10 @@ export default function DesignCanvas({
     if (inspectorOpen || layersOn) post({ type: "outline" });
   }, [inspectorOpen, layersOn, post, frameEl, entry?.rel]);
 
-  // A tier switch while selecting turns in-place editing on or off right away.
+  // A tier switch (or in v2, a turn starting or ending) while selecting turns in-place editing on or off right away.
   useEffect(() => {
-    if (picking) post({ type: "pick", on: true, edit: features.textEdit });
-  }, [features.textEdit]);
+    if (picking) post(pickMessage(true));
+  }, [pickMessage]);
 
   // A change made outside the frame (a chip removed in the composer, the selection cleared after sending) is drawn there.
   useEffect(() => {
@@ -531,7 +588,7 @@ export default function DesignCanvas({
     const on = !picking;
     if (on) stopInserting();
     setPicking(on);
-    post(on ? { type: "pick", on, edit: features.textEdit } : { type: "pick", on });
+    post(pickMessage(on));
   };
 
   const stopDetect = () => {
@@ -606,7 +663,7 @@ export default function DesignCanvas({
   // text field, dialog or menu has the key.
   const hasSelection = selected.length > 0;
   useEffect(() => {
-    if (picking || inserting || !hasSelection) return;
+    if (designV2 || picking || inserting || !hasSelection) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented || !escClears(e.target)) return;
       clearSelection();
@@ -614,11 +671,11 @@ export default function DesignCanvas({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [picking, inserting, hasSelection, threadId]);
+  }, [designV2, picking, inserting, hasSelection, threadId]);
 
   // Esc in the app (focus outside the frame) works like Esc in it: first it clears the selection, then it stops selecting.
   useEffect(() => {
-    if (!picking) return;
+    if (designV2 || !picking) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       const step = escapeStep(Boolean(useStore.getState().designSelection[threadId]), true);
@@ -632,7 +689,7 @@ export default function DesignCanvas({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [picking, post, threadId]);
+  }, [designV2, picking, post, threadId]);
 
   const path = entry ? `${entry.dir}/${entry.rel}` : null;
   const outline = pageOutline && pageOutline.path === path ? pageOutline.nodes : NO_NODES;
@@ -654,8 +711,12 @@ export default function DesignCanvas({
   // The device chrome (bezel, browser bar) takes room the frame can't use when it fits to the stage.
   const chrome = device ? DEVICE_CHROME[deviceFor(viewport) ?? "none"] : DEVICE_CHROME.none;
   // A page that declares its device (one phone screen, a slide) fits whole until the user picks a viewport.
-  const whole = (device && deviceFor(viewport) !== null) || (viewportPick === null && viewport !== "fit");
-  const layout = frameLayout(viewport, zoom, { width: stage.width - chrome.width, height: stage.height - chrome.height }, whole);
+  // In v2 a desktop page keeps its 1440 layout at any stage width and scrolls inside its frame, which reaches the stage's foot.
+  const lockedDesktop = designV2 && viewport === "desktop" && zoom === "fit" && !device;
+  const whole = (device && deviceFor(viewport) !== null) || (viewportPick === null && viewport !== "fit" && !lockedDesktop);
+  // Its frame stops above the tools at the stage's foot, so the end of the page can be scrolled clear of them.
+  const footRoom = lockedDesktop && stageNode.current ? Math.max(0, (parseFloat(getComputedStyle(stageNode.current).paddingBottom) || 0) - STAGE_PAD) : 0;
+  const layout = frameLayout(viewport, zoom, { width: stage.width - chrome.width - (lockedDesktop ? 2 : 0), height: stage.height - chrome.height - footRoom - (lockedDesktop ? 2 : 0) }, whole, lockedDesktop);
   const fit = viewport === "fit";
   // The device chrome to draw: only when toggled on and the viewport has a device (not Fit or Slide).
   const kind = device ? deviceFor(viewport) : null;
@@ -848,14 +909,14 @@ export default function DesignCanvas({
         className="design-frame"
         title={`Design: ${entry.rel}`}
         sandbox="allow-scripts"
-        style={fit ? undefined : { width: layout.width, height: layout.height, transform: `scale(${layout.scale})` }}
+        style={{ ...(fit ? {} : { width: layout.width, height: layout.height, transform: `scale(${layout.scale})` }), ...(designV2 && appearance ? { colorScheme: appearance } : {}) }}
       />
       {grid && <div className="design-grid" style={{ backgroundSize: `${8 * layout.scale}px ${8 * layout.scale}px` }} aria-hidden />}
     </div>
   ) : null;
 
   const stageEl = entry && src ? (
-    <div className={`design-stage${fit ? " fit" : ""}${kind ? ` device-${kind}` : ""}`} ref={stageRef}>
+    <div className={`design-stage${fit ? " fit" : ""}${lockedDesktop ? " locked" : ""}${kind ? ` device-${kind}` : ""}`} ref={stageRef}>
       {/* The shell is always mounted (display: contents without a device), so toggling it never reloads the frame. */}
       <div className={kind ? `device-shell device-${kind}` : "device-off"} style={kind ? ({ "--s": layout.scale } as CSSProperties) : undefined}>
         {kind === "browser" && (
@@ -916,6 +977,41 @@ export default function DesignCanvas({
     const rel = detectRef.current.rel;
     if (rel !== null && (!onPage || rel !== entry?.rel)) stopDetect();
   }, [onPage, entry?.rel]);
+  // In v2 the page is always selectable: there's no Pick to turn on, except while Insert has the pointer.
+  useEffect(() => {
+    if (!designV2 || !onPage || picking || inserting) return;
+    setPicking(true);
+    post(pickMessage(true));
+  }, [designV2, onPage, picking, inserting, post, pickMessage]);
+  useEffect(() => {
+    if (designV2) setInspectorOpen(true);
+  }, [designV2, threadId]);
+  // The canvas's keys in v2, with the keyboard in the app rather than the frame. A text field keeps its own.
+  const keyState = useRef({ onPage, cycling: false });
+  keyState.current = { onPage, cycling: variantSets.length > 0 };
+  useEffect(() => {
+    if (!designV2) return;
+    const onKey = (e: KeyboardEvent) => {
+      const now = keyState.current;
+      if (e.defaultPrevented || !now.onPage) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(input|textarea|select)$/i.test(t.tagName))) return;
+      const k = e.key.toLowerCase();
+      if ((e.metaKey || e.ctrlKey) && (k === "z" || k === "y")) {
+        e.preventDefault();
+        (k === "y" || e.shiftKey ? editsRef.current.redo : editsRef.current.undo)();
+        return;
+      }
+      // Read when the key lands, not at the last render: the selection may have just changed.
+      if (!useStore.getState().designSelection[threadId]?.elements.length || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      const free = !t || t === document.body;
+      if (e.key === "Escape" ? !escClears(e.target) : !free || !/^(Enter|Arrow(Up|Down|Left|Right))$/.test(e.key) || now.cycling) return;
+      e.preventDefault();
+      post({ type: "key", key: e.key, alt: e.altKey });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [designV2, post, threadId]);
   const why = (verb: string) => (board ? `Open a page to ${verb}` : comparing ? `Open one option to ${verb}` : version !== 0 ? `Back to the latest version to ${verb}` : null);
   const presentFrom = entry ? (board ? flowOrder(entry.pages)[0] : entry.rel) : undefined;
 
@@ -1278,6 +1374,11 @@ export default function DesignCanvas({
             {comparing ? `Comparing ${cells.length}` : entry ? entry.rel : "Canvas"}
           </span>
         )}
+        {designV2 && onPage && edits.status && (
+          <span className={`design-save-status${edits.status.save === "not-saved" ? " error" : ""}`} role="status">
+            {edits.status.save === "not-saved" ? "Not saved" : edits.status.save === "saving" ? "Saving…" : "Saved"}
+          </span>
+        )}
         {styleName && <span className="design-canvas-style" title="The style this design is drawn in. Pick another from the style chip by the prompt, or ask in the chat.">{styleName}</span>}
         <div className="design-tools" ref={toolsEl}>
           {entry && version === 0 && (
@@ -1382,7 +1483,7 @@ export default function DesignCanvas({
             </button>
           )}
           {!compactHead && (
-            <button className="icon-button" title="Reload" onClick={() => setManual((n) => n + 1)} disabled={!entry}>
+            <button className="icon-button" title="Reload" onClick={() => void edits.flush().then(() => setManual((n) => n + 1))} disabled={!entry}>
               <IconRefresh />
             </button>
           )}
@@ -1427,7 +1528,7 @@ export default function DesignCanvas({
                       disabled={!entry}
                       onClick={() => {
                         setExportOpen(false);
-                        setManual((n) => n + 1);
+                        void edits.flush().then(() => setManual((n) => n + 1));
                       }}
                     >
                       <span className="artifact-menu-label">Reload</span>
@@ -1499,7 +1600,7 @@ export default function DesignCanvas({
       <div className="design-live" aria-live="polite">
         {announcement}
       </div>
-      {selected.length > 0 && !comparing && version === 0 && (
+      {!designV2 && selected.length > 0 && !comparing && version === 0 && (
         <nav className="design-crumbs" aria-label="Selection">
           {selected.length === 1 ? (
             <>
@@ -1556,6 +1657,38 @@ export default function DesignCanvas({
             Cancel
           </button>
         </form>
+      )}
+      {designV2 && edits.status?.save === "not-saved" && (
+        <div className="design-version-bar error" role="alert">
+          <span>Not saved. Your edits are kept and will be written when saving works again.</span>
+          <button className="button ghost" onClick={() => void edits.flush()}>
+            Retry
+          </button>
+        </div>
+      )}
+      {designV2 && edits.banner?.kind === "conflict" && (
+        <div className="design-version-bar error" role="alert">
+          <span title={edits.banner.text}>{edits.banner.text}</span>
+          {edits.banner.retry && (
+            <button className="button ghost" onClick={edits.reapply}>
+              Reapply on latest
+            </button>
+          )}
+          <button className="button ghost" onClick={edits.discard}>
+            Discard my edit
+          </button>
+        </div>
+      )}
+      {designV2 && edits.banner?.kind === "boundary" && (
+        <div className="design-version-bar" role="alert">
+          <span>The next undo goes back past a change made outside the editor.</span>
+          <button className="button ghost" onClick={edits.undoPastBoundary}>
+            Undo anyway
+          </button>
+          <button className="button ghost" onClick={edits.dismiss}>
+            Keep it
+          </button>
+        </div>
       )}
       {notice && (
         <div className={`design-version-bar${notice.error ? " error" : ""}`} role="status">
@@ -1625,9 +1758,56 @@ export default function DesignCanvas({
             {cycler}
             {liveBar}
           </div>
-          {inspectorOpen && (
+          {inspectorOpen && designV2 && panelMode === "customize" && (
+            <CustomizePanel
+              threadId={threadId}
+              designDir={entry.dir}
+              reloadKey={`${reload}-${manual}`}
+              element={selected.length === 1 ? (selected[0] ?? null) : null}
+              readOnly={agentRunning || edits.status?.readOnly === true}
+              styleName={styleName ?? null}
+              theme={pageTheme}
+              appearance={appearance ?? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")}
+              onAppearance={(next) => {
+                setAppearance(next);
+                // The frame's own media query follows it a frame later.
+                requestAnimationFrame(() => post({ type: "read-theme", names: THEME_TOKENS }));
+              }}
+              onClear={clearSelection}
+              onViewHtml={() => {
+                setInspectorTab("code");
+                setPanelMode("code");
+              }}
+              tweaks={
+                showTweaks ? (
+                  <div className="design-tweaks">
+                    <TweaksBody tweaks={tweaks.list} values={tweakValues} dirty={tweaksDirty} keeping={keeping} onChange={changeTweak} onReset={resetTweaks} onKeep={() => void keepTweaks()} />
+                  </div>
+                ) : null
+              }
+              handlers={{
+                onStyle: (el, changes, key) => {
+                  const target = el ? { ...(el.id ? { id: el.id } : {}), selector: el.selector, tag: el.tag, text: "" } : { selector: "html", tag: "html", text: "" };
+                  post({ type: "apply-style", target, changes });
+                  // Page tokens change what the panel shows beside them.
+                  if (!el) setPageTheme((t) => ({ ...t, ...Object.fromEntries(changes.map((c) => [c.prop, c.value])) }));
+                  const to = el ? (el.id ? { id: el.id } : el.at ? { locator: { tag: el.tag, path: el.at } } : null) : { locator: { tag: "html", path: [] } };
+                  if (to) edits.sendSoon(key, to, { kind: "setStyle", changes });
+                },
+                onAttr: (el, name, value) => {
+                  post({ type: "apply-attr", target: { ...(el.id ? { id: el.id } : {}), selector: el.selector, tag: el.tag, text: "" }, name, value });
+                  const to = el.id ? { id: el.id } : el.at ? { locator: { tag: el.tag, path: el.at } } : null;
+                  if (to) edits.sendSoon(`${el.selector}:${name}`, to, { kind: "setProp", name, value });
+                },
+                // The page reads its own text and reports the edit back, so the service gets it exactly as it stands.
+                onText: (el, value) => post({ type: "apply-text", target: { ...(el.id ? { id: el.id } : {}), selector: el.selector, tag: el.tag, text: "" }, value }),
+              }}
+            />
+          )}
+          {inspectorOpen && (!designV2 || panelMode === "code") && (
             <InspectorPanel
               threadId={threadId}
+              onBack={designV2 ? () => setPanelMode("customize") : undefined}
               tab={inspectorTab}
               onTab={setInspectorTab}
               element={selected[0] ?? null}

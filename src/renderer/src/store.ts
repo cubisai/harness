@@ -31,6 +31,7 @@ import type {
   ThreadKind,
   ThreadTotals,
 } from "../../shared/types";
+import type { DocumentStatus } from "../../shared/design-mutation";
 import { api } from "./api";
 import { appendDelta, applyLiveEvent, emptyLive, flushPending, type LiveThread } from "./live";
 import { DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
@@ -212,6 +213,8 @@ interface State {
   designReload: Record<string, number>;
   /** Each open design thread's latest change: a counter and the raw changed paths (null = unknown), so the board regenerates only the artboards it affects. */
   designChange: Record<string, { n: number; paths: string[] | null }>;
+  /** Open design pages' save and undo state, by document id, with a counter that moves when conflicts wait to be fetched. */
+  designDocuments: Record<string, { status: DocumentStatus; conflicts: number }>;
   /** Each design thread's selected elements on its canvas (one page): chips in the composer, scope for the next message. */
   designSelection: Record<string, DesignSelection>;
   /** Set (or clear, with null or no elements) a design thread's selection. */
@@ -712,6 +715,7 @@ export const useStore = create<State>((set, get) => ({
   composerInsert: null,
   designReload: {},
   designChange: {},
+  designDocuments: {},
   designSelection: {},
   setDesignSelection(threadId, selection) {
     set((s) => {
@@ -1491,9 +1495,16 @@ export const useStore = create<State>((set, get) => ({
         return;
       case "design-changed":
         set((s) => ({
-          designReload: { ...s.designReload, [update.threadId]: (s.designReload[update.threadId] ?? 0) + 1 },
+          // The editor's own save: the frame already shows it, so nothing reloads.
+          designReload: update.own ? s.designReload : { ...s.designReload, [update.threadId]: (s.designReload[update.threadId] ?? 0) + 1 },
           designChange: { ...s.designChange, [update.threadId]: { n: (s.designChange[update.threadId]?.n ?? 0) + 1, paths: update.paths ?? null } },
         }));
+        return;
+      case "design-document":
+        set((s) => {
+          const prior = s.designDocuments[update.status.documentId];
+          return { designDocuments: { ...s.designDocuments, [update.status.documentId]: { status: update.status, conflicts: (prior?.conflicts ?? 0) + (update.conflicts ? 1 : 0) } } };
+        });
         return;
       case "event":
         // A plan proposal is also a new version of the thread's plan artifact: refresh its file list.

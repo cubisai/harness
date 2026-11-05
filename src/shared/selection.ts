@@ -47,6 +47,8 @@ export interface SelectedElement {
   path: { label: string; selector: string }[];
   /** The element's computed style, limited to STYLE_KEYS, when the page reported one. */
   style?: Record<string, string>;
+  /** Its element-child path from `<html>`, which finds it in the file before it has an id. */
+  at?: number[];
 }
 
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
@@ -99,6 +101,7 @@ export function readSelected(raw: unknown): SelectedElement | null {
     rect: { x: box.x, y: box.y, width: box.width, height: box.height },
     path,
   };
+  if (Array.isArray(r.at) && r.at.length <= 64 && r.at.every((n) => Number.isInteger(n) && (n as number) >= 0)) el.at = r.at as number[];
   if (r.id !== undefined) el.id = r.id;
   if (r.style !== undefined) {
     const style = readStyle(r.style);

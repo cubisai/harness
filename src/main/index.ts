@@ -1080,9 +1080,16 @@ async function main(): Promise<void> {
     isBusy: (threadId) => service.isRunning(threadId),
     beforeFirstOpen: (threadId, rel) => service.recordDesignPageVersion(threadId, rel),
     onSaved: (threadId, rel) => service.designPageSaved(threadId, rel),
+    onStatus: (threadId, rel, status, conflicts) => broadcast({ type: "design-document", threadId, rel, status, conflicts }),
   });
   designDocuments = documents;
-  const designWatcher = new DesignWatcher({ onChange: (threadId, paths) => { documents.diskChanged(threadId, paths); broadcast({ type: "design-changed", threadId, ...(paths ? { paths } : {}) }); } });
+  const designWatcher = new DesignWatcher({
+    onChange: (threadId, paths) => {
+      const foreign = documents.diskChanged(threadId, paths);
+      if (paths && foreign && foreign.length === 0) broadcast({ type: "design-changed", threadId, paths, own: true });
+      else broadcast({ type: "design-changed", threadId, ...(foreign ? { paths: foreign } : {}) });
+    },
+  });
   // Each window's watches, so a window that closes (or reloads) without unmounting its canvas releases them.
   const designWatches = new Map<number, Map<string, number>>();
   const designHooked = new Set<number>();

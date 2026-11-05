@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { pickedColor, toHexColor } from "./contrast";
+import { paintedHexColor, pickedColor, toHexColor } from "./contrast";
 
 /**
  * A colour value's swatch that opens the system colour picker; the text input beside it stays for typing a value.
@@ -20,7 +20,7 @@ export function ColorSwatch({
   onCommit?: (value: string) => void;
 }) {
   const ref = useRef<HTMLInputElement | null>(null);
-  const hex = toHexColor(value);
+  const hex = toHexColor(value) ?? paintedHexColor(value);
   const pickable = hex !== null && !disabled;
   // React's onChange fires on every drag tick; the native change event fires once, when the picker closes.
   const latest = useRef({ value, onCommit });

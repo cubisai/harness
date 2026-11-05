@@ -174,8 +174,9 @@ describe("design canvas wiring", () => {
     expect(src).not.toContain("IconTarget");
     expect(src).not.toContain("DrawOverlay");
     expect(src).toContain("onClick={() => setInspectorOpen(!inspectorOpen)}");
-    // Besides togglePick, only a reload (re-arm) and a tier switch (edit on or off) send pick-on to the frame.
-    expect(src.match(/type: "pick", on: true/g)).toHaveLength(2);
+    // Every pick message is built in one place. Besides togglePick, only a reload (re-arm), a tier or turn switch (edit
+    // on or off) and v2's always-on selection send pick-on to the frame.
+    expect(src.match(/post\(pickMessage(Ref\.current)?\(true\)\)/g)).toHaveLength(3);
     expect(src.match(/<LiveBar\b/g)).toHaveLength(1);
   });
 });

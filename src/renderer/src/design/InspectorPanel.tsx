@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Copy } from "lucide-react";
+import { ArrowLeft, Copy } from "lucide-react";
 import { elementLabel, type SelectedElement } from "../../../shared/selection";
 import { api } from "../api";
 import { Select } from "../components/Select";
@@ -53,6 +53,7 @@ export function InspectorPanel({
   writes,
   elements,
   tweaks,
+  onBack,
 }: {
   threadId: string;
   /** The open tab, when the canvas holds it (its DESIGN.md button opens System); otherwise the panel keeps its own. */
@@ -71,6 +72,8 @@ export function InspectorPanel({
   elements: ReactNode | null;
   /** The Tweaks tab's controls, or null when the page has none (or the tier has no tweaks). */
   tweaks: ReactNode | null;
+  /** Design v2 opens this panel for its code: the way back to Customize. */
+  onBack?: () => void;
 }) {
   const [ownTab, setOwnTab] = useState<InspectorTab>("properties");
   const tab = tabProp ?? ownTab;
@@ -168,6 +171,11 @@ export function InspectorPanel({
   return (
     <aside className="design-inspector" aria-label="Inspector">
       <div className="design-inspector-tabs">
+        {onBack && (
+          <button className="icon-button" aria-label="Back to Customize" title="Back to Customize" onClick={onBack}>
+            <ArrowLeft size={16} strokeWidth={1.75} aria-hidden />
+          </button>
+        )}
         <div className="segmented" role="tablist">
           {tabButton("properties", "Properties")}
           {elements && tabButton("elements", "Elements")}

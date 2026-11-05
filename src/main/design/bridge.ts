@@ -11,6 +11,8 @@ export interface DescribedElement {
   path: { label: string; selector: string }[];
   /** The element's computed style, limited to the inspector's keys (see STYLE_KEYS in shared/selection.ts). */
   style?: Record<string, string>;
+  /** Its element-child path from `<html>`: how the mutation service finds it before it has an id. */
+  at?: number[];
 }
 
 /** A reference the canvas sends down for the design page to resolve back to an element. */
@@ -37,6 +39,12 @@ export type BridgeMessage =
   | { source: "cubiq-design"; type: "scroll"; x: number; y: number }
   | { source: "cubiq-design"; type: "selection"; elements: unknown[]; lost: number }
   | { source: "cubiq-design"; type: "text-edit"; id: string; before: string; after: string }
+  /** Design v2: an in-place edit, named by id or by its place in the page, for the mutation service. */
+  | { source: "cubiq-design"; type: "text-commit"; target: { id: string } | { locator: { tag: string; path: number[]; text?: string } }; before: string; after: string; live: boolean }
+  /** Design v2: ⌘Z, ⇧⌘Z or ⌘Y with the keyboard in the frame. */
+  | { source: "cubiq-design"; type: "history-key"; action: "undo" | "redo" }
+  /** Design v2: the page's own values for the tokens the Customize panel asked about. */
+  | { source: "cubiq-design"; type: "theme"; tokens: Record<string, string> }
   | { source: "cubiq-design"; type: "edit-refused"; reason: string }
   | { source: "cubiq-design"; type: "pick-cancel" }
   | { source: "cubiq-design"; type: "tweaks"; manifest: string; attrs: Record<string, string>; vars: Record<string, string> }
@@ -56,7 +64,18 @@ type Rect = { x: number; y: number; width: number; height: number };
 /** Messages the canvas sends down into the design page. */
 export type CanvasMessage =
   | { source: "cubiq-canvas"; type: "restore-scroll"; x: number; y: number }
-  | { source: "cubiq-canvas"; type: "pick"; on: boolean; edit?: boolean }
+  | { source: "cubiq-canvas"; type: "pick"; on: boolean; edit?: boolean; v2?: boolean; color?: string }
+  /** Design v2: this frame load's token, which the page sends back with every later message. */
+  | { source: "cubiq-canvas"; type: "session"; nonce: string }
+  /** Design v2: Esc, Enter or an arrow with the keyboard in the app: the same step as the key pressed in the frame. */
+  | { source: "cubiq-canvas"; type: "key"; key: string; alt: boolean }
+  /** Design v2: the mutation service stamped an id on this element: the frame's copy takes it too. */
+  | { source: "cubiq-canvas"; type: "stamp"; path: number[]; id: string }
+  /** Design v2: preview an edit the mutation service is saving. */
+  | { source: "cubiq-canvas"; type: "apply-style"; target: { id?: string; selector: string; tag: string; text: string }; changes: { prop: string; value: string }[] }
+  | { source: "cubiq-canvas"; type: "apply-attr"; target: { id?: string; selector: string; tag: string; text: string }; name: string; value: string | null }
+  | { source: "cubiq-canvas"; type: "apply-text"; target: { id?: string; selector: string; tag: string; text: string }; value: string }
+  | { source: "cubiq-canvas"; type: "read-theme"; names: string[] }
   | { source: "cubiq-canvas"; type: "set-selection"; targets: { id?: string; selector: string; tag: string; text: string }[] }
   | { source: "cubiq-canvas"; type: "clear-selection" }
   | { source: "cubiq-canvas"; type: "set-tweak"; attr?: string; var?: string; value: string }
@@ -157,6 +176,14 @@ export function describeElement(el: Element, selectorFor: (el: Element) => strin
     path,
   };
   if (id) described.id = id;
+  const at: number[] = [];
+  for (let cur: Element = el; cur.parentElement; cur = cur.parentElement) {
+    const kin = cur.parentElement.children;
+    let index = -1;
+    for (let i = 0; i < (kin?.length ?? 0); i++) if (kin[i] === cur) index = i;
+    at.unshift(index);
+  }
+  if (at.length > 0 && at.length <= 64 && at.every((n) => n >= 0)) described.at = at;
   // The element's computed style, for the inspector. Keep these keys in step with STYLE_KEYS in shared/selection.ts
   // (this function is serialized into the page, so it cannot import them).
   try {
@@ -227,6 +254,62 @@ export function editableText(el: Element): { ok: true; id: string; text: string 
 }
 
 /**
+ * False for what a person can't see or mean to click: screen-reader text, skip links, anything transparent, hidden,
+ * clipped away, tiny or off the page. Runs inside the page (passed in with toString).
+ */
+export function isSelectableElement(el: Element, styleOf: (el: Element) => CSSStyleDeclaration): boolean {
+  if (el.matches(".sr-only, .visually-hidden, .skip-link")) return false;
+  const r = el.getBoundingClientRect();
+  if (r.width < 4 || r.height < 4 || r.bottom <= 0 || r.right <= 0) return false;
+  const own = styleOf(el);
+  if (own.visibility === "hidden" || own.pointerEvents === "none") return false;
+  for (let cur: Element | null = el; cur; cur = cur.parentElement) {
+    const s = styleOf(cur);
+    if (s.opacity === "0") return false;
+    if (s.clipPath !== "" && s.clipPath !== undefined && s.clipPath !== "none") return false;
+    if (s.position === "absolute" && s.clip !== "" && s.clip !== undefined && s.clip !== "auto") return false;
+  }
+  return true;
+}
+
+/**
+ * What a click lands on first in Design v2: the nearest library part, element the agent named, page region or control
+ * around an element, or the element itself when the page has none.
+ */
+export function componentOf(el: Element): Element {
+  const found = el.closest("[data-ui], [data-agent-id], header, footer, nav, main, section, aside, article, a, button, [role=button], input, select, textarea, label, summary, img, svg");
+  return found && found.tagName !== "BODY" && found.tagName !== "HTML" ? found : el;
+}
+
+/** One level inside `current` on the way to the element under the pointer; null when the pointer is on `current` itself. */
+export function drillTarget(current: Element, hit: Element, selectable: (el: Element) => boolean): Element | null {
+  let step: Element | null = null;
+  for (let cur: Element | null = hit; cur && cur !== current; cur = cur.parentElement) {
+    if (selectable(cur)) step = cur;
+    if (cur.parentElement === current && step) return step;
+  }
+  return null;
+}
+
+/** The component that holds this one, or null at the top of the page. */
+export function parentComponent(el: Element, component: (el: Element) => Element): Element | null {
+  const up = el.parentElement;
+  if (!up || up.tagName === "BODY" || up.tagName === "HTML") return null;
+  const found = component(up);
+  return found.tagName === "BODY" || found.tagName === "HTML" ? null : found;
+}
+
+/** The element whose text a double-click edits: this one when it holds text directly, else its only text-bearing descendant. */
+export function textHolder(el: Element): Element | null {
+  const own = (node: Element): boolean => Array.from(node.childNodes).some((c) => c.nodeType === 3 && (c.nodeValue ?? "").trim() !== "");
+  const noText = /^(SCRIPT|STYLE|TEXTAREA|SELECT|OPTION|SVG|IMG|INPUT)$/i;
+  if (noText.test(el.tagName)) return null;
+  if (own(el)) return el;
+  const holders = Array.from(el.querySelectorAll("*")).filter((node) => !noText.test(node.tagName) && !node.closest("svg") && own(node));
+  return holders.length === 1 ? (holders[0] ?? null) : null;
+}
+
+/**
  * Flatten a page's elements into an outline (layer tree), depth-first in document order. `root` itself is not a
  * node; its children start at depth 0. At most 400 nodes and 8 levels of depth are reported; an `<svg>` is a leaf. A node
  * with no text of its own is labelled by its aria-label, alt, title or placeholder. Runs inside the page
@@ -284,9 +367,17 @@ export function designBridge(
   outlineOf: (root: Element, selectorFor: (el: Element) => string) => OutlineNode[],
   gapChoice: (chain: GapLevel[], x: number, y: number) => { level: number; position: "before" | "after" } | null,
   childGap: (kids: GapLevel[], x: number, y: number) => { index: number; position: "before" | "after" } | null,
+  isSelectableElement: (el: Element, styleOf: (el: Element) => CSSStyleDeclaration) => boolean,
+  componentOf: (el: Element) => Element,
+  drillTarget: (current: Element, hit: Element, selectable: (el: Element) => boolean) => Element | null,
+  parentComponent: (el: Element, component: (el: Element) => Element) => Element | null,
+  textHolder: (el: Element) => Element | null,
 ): void {
+  // Design v2's per-load token and selection colour, both from the canvas. Without them the page behaves as before.
+  let nonce = "";
+  let selectColor = "";
   const post = (type: string, data?: Record<string, unknown>): void => {
-    parent.postMessage({ source: "cubiq-design", type, ...(data ?? {}) }, "*");
+    parent.postMessage({ source: "cubiq-design", type, ...(data ?? {}), ...(nonce ? { nonce } : {}) }, "*");
   };
 
   const reportTweaks = (): void => {
@@ -423,7 +514,7 @@ export function designBridge(
     outlines.clear();
     for (const el of selected) {
       const outline = document.createElement("div");
-      outline.style.cssText = "position:fixed;pointer-events:none;z-index:2147483646;border:2px solid #0B0D10;outline:1px solid #F7F8FA;border-radius:3px";
+      outline.style.cssText = `position:fixed;pointer-events:none;z-index:2147483646;border:2px solid ${selectColor || "#0B0D10"};outline:1px solid #F7F8FA;border-radius:3px`;
       document.documentElement.append(outline);
       outlines.set(el, outline);
     }
@@ -431,7 +522,7 @@ export function designBridge(
     const one = selected.length === 1 ? (selected[0] ?? null) : null;
     if (one !== markedFor) clearMarks();
     markedFor = one;
-    editableSel = one !== null && editableText(one).ok;
+    editableSel = one !== null && (selectColor ? textHolder(one) !== null : editableText(one).ok);
     if (frame === 0 && (selected.length > 0 || pins.length > 0)) frame = requestAnimationFrame(step);
     if (selected.length === 0) postAnchor();
   };
@@ -986,6 +1077,244 @@ export function designBridge(
     stopSelect = stop;
   };
 
+  // An edit to an element's text, for the canvas to hand the mutation service. `whole` is how the file's copy still reads.
+  const postText = (holder: Element, before: string, after: string, whole: string, live: boolean): void => {
+    const id = holder.getAttribute("data-agent-id");
+    const path = describeElement(holder, selectorFor).at;
+    if (!id && !path) return post("edit-refused", { reason: "That text is nested too deep to edit here; ask the agent to change it." });
+    post("text-commit", { target: id ? { id } : { locator: { tag: holder.tagName.toLowerCase(), path, text: whole } }, before, after, live });
+  };
+
+  // Design v2's selection. Click takes the component, double-click edits text or drills one level, ⌘-click takes the
+  // exact element, and Esc walks back up. Hidden elements are never hit, and nothing needs an id before it's edited.
+  let stepKey: ((key: string, alt: boolean) => boolean) | null = null;
+  const startSelectV2 = (): void => {
+    if (stopSelect) return;
+    stopInsert?.();
+    const box = document.createElement("div");
+    box.style.cssText = `position:fixed;pointer-events:none;z-index:2147483645;border:1px solid ${selectColor};border-radius:3px;display:none`;
+    const tip = document.createElement("div");
+    tip.style.cssText = `position:fixed;pointer-events:none;z-index:2147483647;font:11px/1.4 ui-monospace,Menlo,monospace;background:${selectColor};color:#fff;padding:2px 6px;border-radius:4px;display:none;max-width:60vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis`;
+    document.documentElement.append(box, tip);
+
+    const selectable = (el: Element): boolean => isSelectableElement(el, (node) => getComputedStyle(node));
+    const isRoot = (el: Element): boolean => el === document.body || el === document.documentElement;
+    const hitAt = (x: number, y: number): Element | null => {
+      for (const el of document.elementsFromPoint(x, y)) {
+        if (el === box || el === tip || markLayer?.contains(el) || el.closest("[data-cubiq-finding]")) continue;
+        if (isRoot(el) || selectable(el)) return el;
+      }
+      return null;
+    };
+    const nameOf = (el: Element): string => el.getAttribute("data-ui") || el.getAttribute("data-agent-id") || el.tagName.toLowerCase();
+    const choose = (next: Element[]): void => {
+      selected = next;
+      redraw();
+      report(0);
+    };
+    const swallow = (e: Event): void => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    };
+    const hide = (): void => {
+      box.style.display = "none";
+      tip.style.display = "none";
+    };
+
+    const onMove = (e: MouseEvent): void => {
+      const hit = hitAt(e.clientX, e.clientY);
+      const one = selected.length === 1 ? (selected[0] ?? null) : null;
+      if (!hit || isRoot(hit) || editing || (one?.contains(hit) && !(e.metaKey || e.ctrlKey))) return hide();
+      const target = e.metaKey || e.ctrlKey ? hit : componentOf(hit);
+      const r = target.getBoundingClientRect();
+      Object.assign(box.style, { display: "block", left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+      tip.textContent = nameOf(target);
+      Object.assign(tip.style, { display: "block", left: `${Math.max(4, r.left)}px`, top: `${r.top > 24 ? r.top - 22 : r.bottom + 4}px` });
+    };
+
+    // In-place text. A label beside its icons is edited in a temporary span, so the icons can't be typed over.
+    let editing: { el: HTMLElement; wrapped: boolean; holder: Element; before: string; whole: string } | null = null;
+    const insideEdit = (e: Event): boolean => editing !== null && e.target instanceof Node && editing.el.contains(e.target);
+    const onEditKey = (e: KeyboardEvent): void => {
+      if (!editing) return;
+      e.stopPropagation();
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        endEdit(true);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        endEdit(false);
+      }
+    };
+    const onEditBlur = (): void => endEdit(true);
+    const endEdit = (keep: boolean): void => {
+      const edit = editing;
+      if (!edit) return;
+      editing = null;
+      edit.el.removeEventListener("keydown", onEditKey, true);
+      edit.el.removeEventListener("blur", onEditBlur);
+      const typed = edit.el.textContent ?? "";
+      const changed = keep && typed.replace(/\s+/g, " ").trim() !== edit.before.replace(/\s+/g, " ").trim();
+      const after = changed ? typed : edit.before;
+      if (edit.wrapped) edit.el.replaceWith(document.createTextNode(after));
+      else {
+        edit.el.removeAttribute("contenteditable");
+        edit.el.textContent = after;
+      }
+      if (changed) postText(edit.holder, edit.before, after, edit.whole, false);
+    };
+    const beginEdit = (holder: Element): void => {
+      if (!allowEdit) {
+        post("edit-refused", { reason: "The agent is working on this page. Edit it when the turn ends." });
+        return;
+      }
+      // How the file's copy of this element reads, for the service to check it found the right one.
+      const whole = (holder.textContent ?? "").trim().slice(0, 40);
+      const run = holder.children.length > 0 ? Array.from(holder.childNodes).find((c) => c.nodeType === 3 && (c.nodeValue ?? "").trim() !== "") : null;
+      let el = holder as HTMLElement;
+      if (run) {
+        el = document.createElement("span");
+        el.textContent = run.nodeValue;
+        run.replaceWith(el);
+      }
+      editing = { el, wrapped: Boolean(run), holder, before: el.textContent ?? "", whole };
+      hide();
+      el.setAttribute("contenteditable", "plaintext-only");
+      el.focus();
+      document.getSelection()?.selectAllChildren(el);
+      el.addEventListener("keydown", onEditKey, true);
+      el.addEventListener("blur", onEditBlur);
+    };
+
+    const onDown = (e: MouseEvent): void => {
+      if (insideEdit(e) || inLayer(e)) return;
+      swallow(e);
+    };
+    const onClick = (e: MouseEvent): void => {
+      if (insideEdit(e) || inLayer(e)) return;
+      endEdit(true);
+      swallow(e);
+      if (e.detail >= 2) return;
+      const hit = hitAt(e.clientX, e.clientY);
+      if (!hit || isRoot(hit)) return choose([]);
+      if (e.metaKey || e.ctrlKey) return choose([hit]);
+      const target = componentOf(hit);
+      if (e.shiftKey) {
+        if (selected.indexOf(target) >= 0) return choose(selected.filter((el) => el !== target));
+        return selected.length < MAX_SELECTION ? choose([...selected, target]) : undefined;
+      }
+      // Inside the selection a click stays at that depth, so a drilled-in pick isn't lost to its parent.
+      if (selected.length === 1 && selected[0]?.contains(hit)) return;
+      choose([target]);
+    };
+    const onDblClick = (e: MouseEvent): void => {
+      if (insideEdit(e) || inLayer(e)) return;
+      swallow(e);
+      const hit = hitAt(e.clientX, e.clientY);
+      if (!hit || isRoot(hit)) return;
+      const holder = textHolder(hit);
+      if (holder) return beginEdit(holder);
+      const current = selected.length === 1 && selected[0]?.contains(hit) ? (selected[0] as Element) : componentOf(hit);
+      const next = drillTarget(current, hit, selectable);
+      if (next) choose([next]);
+    };
+    const firstChild = (el: Element): Element | null => {
+      for (let i = 0; i < el.children.length; i++) {
+        const kid = el.children[i];
+        if (kid && selectable(kid)) return kid;
+      }
+      return null;
+    };
+    const sibling = (el: Element, dir: "previousElementSibling" | "nextElementSibling"): Element | null => {
+      let cur = el[dir];
+      while (cur && !selectable(cur)) cur = cur[dir];
+      return cur;
+    };
+    // One key's step. True when it did something, so the key doesn't also go to the page.
+    const step = (key: string, alt: boolean): boolean => {
+      const one = selected.length === 1 ? (selected[0] ?? null) : null;
+      if (selected.length === 0) return false;
+      if (key === "Escape") {
+        const up = one ? parentComponent(one, componentOf) : null;
+        choose(up ? [up] : []);
+        return true;
+      }
+      if (!one) return false;
+      const next =
+        key === "Enter" ? firstChild(one)
+        : alt && key === "ArrowUp" ? parentComponent(one, componentOf)
+        : alt && key === "ArrowDown" ? firstChild(one)
+        : alt ? null
+        : key === "ArrowUp" || key === "ArrowLeft" ? sibling(one, "previousElementSibling")
+        : key === "ArrowDown" || key === "ArrowRight" ? sibling(one, "nextElementSibling")
+        : null;
+      if (key === "Enter") {
+        const holder = textHolder(one);
+        if (holder) {
+          beginEdit(holder);
+          return true;
+        }
+      }
+      if (next) choose([next]);
+      return key === "Enter" || key.startsWith("Arrow");
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (insideEdit(e) || inLayer(e)) return;
+      const mod = e.metaKey || e.ctrlKey;
+      const k = e.key.toLowerCase();
+      if (mod && (k === "z" || k === "y")) {
+        swallow(e);
+        post("history-key", { action: k === "y" || e.shiftKey ? "redo" : "undo" });
+        return;
+      }
+      if (mod || e.shiftKey || !/^(Escape|Enter|Arrow(Up|Down|Left|Right))$/.test(e.key)) return;
+      if (step(e.key, e.altKey)) swallow(e);
+    };
+    const stop = (): void => {
+      endEdit(true);
+      document.removeEventListener("mousemove", onMove, true);
+      document.removeEventListener("click", onClick, true);
+      document.removeEventListener("dblclick", onDblClick, true);
+      document.removeEventListener("mousedown", onDown, true);
+      document.removeEventListener("mouseup", onDown, true);
+      document.removeEventListener("keydown", onKey, true);
+      box.remove();
+      tip.remove();
+      editSelected = null;
+      stepKey = null;
+      if (stopSelect === stop) stopSelect = null;
+    };
+    document.addEventListener("mousemove", onMove, true);
+    document.addEventListener("click", onClick, true);
+    document.addEventListener("dblclick", onDblClick, true);
+    document.addEventListener("mousedown", onDown, true);
+    document.addEventListener("mouseup", onDown, true);
+    document.addEventListener("keydown", onKey, true);
+    editSelected = () => {
+      const holder = selected.length === 1 && selected[0] ? textHolder(selected[0]) : null;
+      if (holder) beginEdit(holder);
+    };
+    stepKey = step;
+    stopSelect = stop;
+  };
+  // A panel edit moved the element: the canvas hears its new box and values once the edits pause.
+  let reportTimer = 0;
+  const reportSoon = (): void => {
+    clearTimeout(reportTimer);
+    reportTimer = window.setTimeout(() => {
+      if (selected.length > 0) report(0);
+    }, 120);
+  };
+  const targetOf = (raw: unknown): Element | null => {
+    if (!raw || typeof raw !== "object") return null;
+    const target = raw as Record<string, unknown>;
+    if (typeof target.selector !== "string" || typeof target.tag !== "string") return null;
+    const ref: SelectionTarget = { selector: target.selector, tag: target.tag, text: typeof target.text === "string" ? target.text : "" };
+    if (typeof target.id === "string") ref.id = target.id;
+    return resolveTarget(document, ref);
+  };
+
   // Insert mode: the gap nearest the pointer, between two blocks, shows an insertion line; a click picks it, and the
   // selection loop keeps its line in place through scrolls. The canvas puts its insert bar at the picked gap.
   let stopInsert: (() => void) | null = null;
@@ -1206,6 +1535,16 @@ export function designBridge(
       findings?: unknown;
       target?: unknown;
       prop?: unknown;
+      v2?: unknown;
+      color?: unknown;
+      nonce?: unknown;
+      key?: unknown;
+      alt?: unknown;
+      path?: unknown;
+      id?: unknown;
+      changes?: unknown;
+      name?: unknown;
+      names?: unknown;
     } | null;
     if (!data || data.source !== "cubiq-canvas") return;
     if (data.type === "restore-scroll") {
@@ -1216,8 +1555,60 @@ export function designBridge(
       if (document.readyState === "loading") window.addEventListener("load", restore, { once: true });
     } else if (data.type === "pick") {
       allowEdit = data.edit !== false;
-      if (data.on) startSelect();
+      if (typeof data.color === "string" && /^[#(),.%\w\s-]{1,40}$/.test(data.color)) selectColor = data.color;
+      if (data.on) (data.v2 === true ? startSelectV2 : startSelect)();
       else stopSelect?.();
+    } else if (data.type === "session") {
+      if (typeof data.nonce === "string" && data.nonce.length <= 64) nonce = data.nonce;
+    } else if (data.type === "key") {
+      if (typeof data.key === "string") stepKey?.(data.key, data.alt === true);
+    } else if (data.type === "stamp") {
+      if (!Array.isArray(data.path) || typeof data.id !== "string" || !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(data.id)) return;
+      let el: Element | null = document.documentElement;
+      for (const at of data.path as unknown[]) el = typeof at === "number" ? (el?.children[at] ?? null) : null;
+      if (!el) return;
+      el.setAttribute("data-agent-id", data.id);
+      if (selected.indexOf(el) >= 0) report(0);
+    } else if (data.type === "apply-style") {
+      const el = targetOf(data.target) as HTMLElement | null;
+      if (!el || !Array.isArray(data.changes)) return;
+      for (const raw of (data.changes as unknown[]).slice(0, 32)) {
+        const c = raw as { prop?: unknown; value?: unknown } | null;
+        if (typeof c?.prop !== "string" || typeof c.value !== "string" || !/^(--[a-z0-9-]+|[a-z-]+)$/.test(c.prop)) continue;
+        if (c.value.length > 300 || /[;{}<>"'\\]/.test(c.value) || /(url|expression)\s*\(/i.test(c.value)) continue;
+        if (c.value === "") el.style.removeProperty(c.prop);
+        else el.style.setProperty(c.prop, c.value);
+      }
+      reportSoon();
+    } else if (data.type === "apply-attr") {
+      const el = targetOf(data.target) as HTMLInputElement | null;
+      if (!el || typeof data.name !== "string" || !/^(data-[a-z0-9-]{1,40}|disabled|placeholder|value)$/.test(data.name)) return;
+      if (data.value !== null && (typeof data.value !== "string" || data.value.length > 2000)) return;
+      if (data.value === null) el.removeAttribute(data.name);
+      else el.setAttribute(data.name, data.value);
+      if (data.name === "value") el.value = data.value ?? "";
+      reportSoon();
+    } else if (data.type === "apply-text") {
+      const el = targetOf(data.target);
+      if (!el || typeof data.value !== "string" || data.value.length > 2000) return;
+      const holder = textHolder(el);
+      if (!holder) return;
+      const whole = (holder.textContent ?? "").trim().slice(0, 40);
+      const run = holder.children.length > 0 ? Array.from(holder.childNodes).find((c) => c.nodeType === 3 && (c.nodeValue ?? "").trim() !== "") : null;
+      const before = (run ? run.nodeValue : holder.textContent) ?? "";
+      if (before === data.value) return;
+      if (run) run.nodeValue = data.value;
+      else holder.textContent = data.value;
+      postText(holder, before, data.value, whole, true);
+      reportSoon();
+    } else if (data.type === "read-theme") {
+      if (!Array.isArray(data.names)) return;
+      const style = getComputedStyle(document.documentElement);
+      const tokens: Record<string, string> = {};
+      for (const name of (data.names as unknown[]).slice(0, 32)) {
+        if (typeof name === "string" && /^--[a-z0-9-]{1,48}$/.test(name)) tokens[name] = style.getPropertyValue(name).trim().slice(0, 120);
+      }
+      post("theme", { tokens });
     } else if (data.type === "set-selection") {
       const targets = data.targets;
       if (!Array.isArray(targets)) return;
@@ -1328,5 +1719,5 @@ export function designBridge(
 
 /** The bridge as one script body, embedding the page-side helpers it needs. */
 export function bridgeScript(selectorFor: (el: Element) => string): string {
-  return `(${designBridge.toString()})(${selectorFor.toString()}, ${describeElement.toString()}, ${snapTarget.toString()}, ${resolveTarget.toString()}, ${editableText.toString()}, ${outlineOf.toString()}, ${gapChoice.toString()}, ${childGap.toString()});`;
+  return `(${designBridge.toString()})(${selectorFor.toString()}, ${describeElement.toString()}, ${snapTarget.toString()}, ${resolveTarget.toString()}, ${editableText.toString()}, ${outlineOf.toString()}, ${gapChoice.toString()}, ${childGap.toString()}, ${isSelectableElement.toString()}, ${componentOf.toString()}, ${drillTarget.toString()}, ${parentComponent.toString()}, ${textHolder.toString()});`;
 }

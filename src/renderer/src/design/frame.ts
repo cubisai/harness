@@ -15,8 +15,8 @@ const DEVICE_OF: Partial<Record<Viewport, DeviceKind>> = { mobile: "phone", tabl
  * The viewport a page opens in before the user picks one: the phone, tablet or slide it declares
  * (`<meta name="cubiq-device">`, or a one-screen phone page), else Fit. A desktop page stays Fit, as before.
  */
-export function viewportForDevice(device: DesignDevice | undefined): Viewport {
-  return device === "mobile" || device === "tablet" || device === "slide" ? device : "fit";
+export function viewportForDevice(device: DesignDevice | undefined, v2 = false): Viewport {
+  return device === "mobile" || device === "tablet" || device === "slide" ? device : v2 ? "desktop" : "fit";
 }
 
 /** The device a viewport is shown in, or null when it has none. */
@@ -53,6 +53,8 @@ export function frameLayout(
   stage: { width: number; height: number },
   /** Fit the whole frame (width and height), as a device frame does; otherwise Fit matches the width and the stage scrolls. */
   whole = false,
+  /** Design v2's stage: the page keeps its width at any scale, and its frame reaches the foot of the stage instead of stopping at the preset's height. */
+  fill = false,
 ): { width: number; height: number; scale: number } {
   const size = VIEWPORTS.find((v) => v.value === viewport)?.size ?? null;
   if (!size) return { width: Math.max(0, stage.width), height: Math.max(0, stage.height), scale: zoom === "fit" ? 1 : zoom };
@@ -60,7 +62,7 @@ export function frameLayout(
   const room = { width: Math.max(1, stage.width - 2 * STAGE_PAD), height: Math.max(1, stage.height - 2 * STAGE_PAD) };
   const byWidth = room.width / size.width;
   const scale = Math.min(1, viewport === "slide" || whole ? Math.min(byWidth, room.height / size.height) : byWidth);
-  return { ...size, scale };
+  return fill ? { width: size.width, height: Math.floor(room.height / scale), scale } : { ...size, scale };
 }
 
 export type BridgeMessage =
@@ -68,6 +70,9 @@ export type BridgeMessage =
   | { type: "scroll"; x: number; y: number }
   | { type: "selection"; elements: SelectedElement[]; lost: number }
   | { type: "text-edit"; id: string; before: string; after: string }
+  | { type: "text-commit"; target: { id: string } | { locator: { tag: string; path: number[]; text: string } }; before: string; after: string; live: boolean }
+  | { type: "history-key"; action: "undo" | "redo" }
+  | { type: "theme"; tokens: Record<string, string> }
   | { type: "edit-refused"; reason: string }
   | { type: "pins"; missing: number[] }
   | { type: "pick-cancel" }
@@ -125,6 +130,48 @@ const rect = (v: unknown): v is FrameRect => {
 };
 const point = (v: unknown): v is { x: number; y: number } => !!v && typeof v === "object" && num((v as Record<string, unknown>).x) && num((v as Record<string, unknown>).y);
 
+/** The most one frame may send: any message over the size, or any past the rate, is dropped. */
+export const BRIDGE_LIMITS = { bytes: 256 * 1024, perSecond: 300 };
+
+/** The messages that change the file or its history: they must carry this frame load's token. */
+const NEEDS_NONCE = new Set(["text-commit", "history-key"]);
+
+/**
+ * Design v2's door for one frame: drops oversize messages and floods, and drops a file-changing message that doesn't
+ * carry the token sent to this load. The page shares a realm with the bridge, so the token doesn't stop its own
+ * scripts; what they can reach is limited by readBridgeMessage and the mutation service, which only touch this page.
+ */
+export function createBridgeGate(newNonce: () => string, now: () => number = () => Date.now()) {
+  let nonce = newNonce();
+  let windowStart = 0;
+  let count = 0;
+  return {
+    /** A new frame load gets a new token. */
+    renew(): string {
+      nonce = newNonce();
+      return nonce;
+    },
+    admit(data: unknown): boolean {
+      if (!data || typeof data !== "object") return false;
+      const t = now();
+      if (t - windowStart >= 1000) {
+        windowStart = t;
+        count = 0;
+      }
+      if (++count > BRIDGE_LIMITS.perSecond) return false;
+      let size = Infinity;
+      try {
+        size = JSON.stringify(data).length;
+      } catch {
+        return false;
+      }
+      if (size > BRIDGE_LIMITS.bytes) return false;
+      const d = data as Record<string, unknown>;
+      return !NEEDS_NONCE.has(String(d.type)) || d.nonce === nonce;
+    },
+  };
+}
+
 /** A message from the design page's bridge, checked field by field (the page is untrusted); null otherwise. */
 export function readBridgeMessage(data: unknown): BridgeMessage | null {
   if (!data || typeof data !== "object") return null;
@@ -147,6 +194,21 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
   if (d.type === "text-edit") {
     if (!str(d.id, 64) || !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(d.id) || !str(d.before, 4000) || !str(d.after, 2000)) return null;
     return { type: "text-edit", id: d.id, before: d.before, after: d.after };
+  }
+  if (d.type === "text-commit") {
+    if (!str(d.before, 4000) || !str(d.after, 4000) || !d.target || typeof d.target !== "object") return null;
+    const live = d.live === true;
+    const t = d.target as Record<string, unknown>;
+    if (str(t.id, 64) && /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(t.id)) return { type: "text-commit", target: { id: t.id }, before: d.before, after: d.after, live };
+    const l = t.locator as Record<string, unknown> | undefined;
+    if (!l || !str(l.tag, 64) || l.tag === "" || !str(l.text, 80) || !Array.isArray(l.path) || l.path.length > 64 || !l.path.every((n) => Number.isInteger(n) && (n as number) >= 0)) return null;
+    return { type: "text-commit", target: { locator: { tag: l.tag, path: l.path as number[], text: l.text } }, before: d.before, after: d.after, live };
+  }
+  if (d.type === "history-key") return d.action === "undo" || d.action === "redo" ? { type: "history-key", action: d.action } : null;
+  if (d.type === "theme") {
+    if (!d.tokens || typeof d.tokens !== "object" || Array.isArray(d.tokens)) return null;
+    const entries = Object.entries(d.tokens as Record<string, unknown>);
+    return entries.length <= 32 && entries.every(([k, v]) => /^--[a-z0-9-]{1,48}$/.test(k) && str(v, 120)) ? { type: "theme", tokens: d.tokens as Record<string, string> } : null;
   }
   if (d.type === "pins") {
     if (!Array.isArray(d.missing) || d.missing.length > 100) return null;

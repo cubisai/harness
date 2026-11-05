@@ -8,7 +8,7 @@ import type { CommentTarget, DesignComment } from "./comments";
 import type { LearnCase, LearnOverview, LearnSettings, Lesson, LessonAction, TurnScore } from "./learn";
 import type { AutomationInput, AutomationNotice, AutomationsOverview, AutomationView } from "./automations";
 import type { DoctorFixResult, DoctorReport } from "./doctor";
-import type { DesignHistoryRequest, DesignHistoryResult, DesignKitEnsureResult, DesignKitOption, DesignMutation, MutationResult } from "./design-mutation";
+import type { DesignHistoryRequest, DesignHistoryResult, DesignKitEnsureResult, DesignKitOption, DesignMutation, DocumentStatus, MutationResult } from "./design-mutation";
 
 export type Invocation = "model" | "user";
 
@@ -1207,7 +1207,10 @@ export type LiveUpdate =
   /** A turn finished having written previewable files: open the panel on `path` (the last one). */
   | { type: "artifact-ready"; threadId: string; path: string; files: string[] }
   /** Something in an open design thread's folder changed (debounced): the canvas reloads. `paths` are the changed files relative to the folder; absent = unknown. */
-  | { type: "design-changed"; threadId: string; paths?: string[] }
+  /** A design folder changed. `own`: only the editor's own save, which the frame already shows, so it doesn't reload. */
+  | { type: "design-changed"; threadId: string; paths?: string[]; own?: boolean }
+  /** An open design page's save or undo state changed; `conflicts` says edits are waiting to be fetched. */
+  | { type: "design-document"; threadId: string; rel: string; status: DocumentStatus; conflicts: boolean }
   /** Self-improve: a turn's health changed (scored, or a later correction/revert). */
   | { type: "turn-score"; score: TurnScore }
   /** Self-improve: a project's lessons or cases changed (the Learned tab refetches). */

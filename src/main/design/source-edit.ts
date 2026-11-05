@@ -329,13 +329,22 @@ function setText(html: string, element: Element, before: string, after: string):
 
   for (const child of element.childNodes) {
     if (child.nodeName === "#comment") throw invalid("That element holds a comment; it cannot be edited as text.");
-    if (child.nodeName !== "#text") throw invalid("That element holds more than text.");
   }
 
-  const from = loc.startTag.endOffset;
-  const to = loc.endTag.startOffset;
+  // Plain text, or a label beside its icons: one run of text among elements that hold none, like an icon button's.
+  let from = loc.startTag.endOffset;
+  let to = loc.endTag.startOffset;
+  if (element.childNodes.some((child) => child.nodeName !== "#text")) {
+    const runs = element.childNodes.filter((child) => isText(child) && child.value.trim() !== "");
+    const run = runs[0];
+    const quiet = element.childNodes.every((child) => isText(child) || !isElement(child) || textContent(child).trim() === "");
+    if (runs.length !== 1 || !run?.sourceCodeLocation || !quiet) throw invalid("That element holds more than text.");
+    from = run.sourceCodeLocation.startOffset;
+    to = run.sourceCodeLocation.endOffset;
+  }
   const raw = html.slice(from, to);
-  if (decodeEntities(raw) !== before) {
+  // A browser reads CRLF as LF, so a Windows file's text still matches what the page reported.
+  if (decodeEntities(raw).replace(/\r\n/g, "\n") !== before.replace(/\r\n/g, "\n")) {
     throw new SourceEditError("stale", "The text changed since you started editing; try again.");
   }
   return splice(html, from, to - from, escapeText(after));

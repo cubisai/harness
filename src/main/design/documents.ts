@@ -5,6 +5,7 @@ import type {
   DesignHistoryRequest,
   DesignHistoryResult,
   DesignMutation,
+  DocumentStatus,
   InsertPosition,
   MutationConflict,
   MutationResult,
@@ -154,6 +155,8 @@ export function parseHistoryRequest(value: unknown): DesignHistoryRequest | null
   switch (value.action) {
     case "status":
       return { action: "status" };
+    case "flush":
+      return { action: "flush" };
     case "redo":
       return { action: "redo" };
     case "undo":
@@ -175,6 +178,8 @@ export interface DesignDocumentsOptions {
   /** Called once, before a page's first open, so the text as it stood is kept as a version. */
   beforeFirstOpen?: (threadId: string, rel: string) => void;
   onSaved?: (threadId: string, rel: string) => void;
+  /** A page's save state, revision or undo state changed; `conflicts` says edits are waiting to be fetched with a history call. */
+  onStatus?: (threadId: string, rel: string, status: DocumentStatus, conflicts: boolean) => void;
   /** Test seam, passed straight to the service. */
   debounceMs?: number;
 }
@@ -183,6 +188,8 @@ interface Tracked {
   threadId: string;
   rel: string;
   conflicts: MutationConflict[];
+  /** A check outside the watcher already found a foreign write, so the watcher's report of it isn't our own save. */
+  foreignSeen: boolean;
 }
 
 /**
@@ -209,10 +216,33 @@ export class DesignDocuments {
           console.error("design: onSaved failed", error);
         }
       },
+      onStatus: (status) => this.tell(status.documentId, status),
       onConflicts: (documentId, conflicts) => {
-        this.tracked.get(documentId)?.conflicts.push(...conflicts);
+        const entry = this.tracked.get(documentId);
+        if (!entry) return;
+        entry.conflicts.push(...conflicts);
+        // Reading the status reports it, which tells the canvas that conflicts wait.
+        this.service.status(documentId);
       },
     });
+  }
+
+  /** Pass a status on from a save timer, where a throw would be an uncaught exception. */
+  private tell(documentId: string, status: DocumentStatus): void {
+    const entry = this.tracked.get(documentId);
+    if (!entry) return;
+    try {
+      this.options.onStatus?.(entry.threadId, entry.rel, status, entry.conflicts.length > 0);
+    } catch (error) {
+      console.error("design: onStatus failed", error);
+    }
+  }
+
+  /** Look for a write nobody reported, remembering a foreign one for the watcher's later report. */
+  private checkDisk(id: string): void {
+    if (!this.service.noteDiskChange(id).changed) return;
+    const entry = this.tracked.get(id);
+    if (entry) entry.foreignSeen = true;
   }
 
   /** Open the page if it is not open yet, and return its id. */
@@ -227,7 +257,7 @@ export class DesignDocuments {
     }
     // An open that throws leaves nothing tracked, so the next call simply tries again.
     const opened = this.service.open(id, file);
-    this.tracked.set(id, { threadId, rel, conflicts: [...opened.conflicts] });
+    this.tracked.set(id, { threadId, rel, conflicts: [...opened.conflicts], foreignSeen: false });
     if (this.options.isBusy(threadId)) this.service.setReadOnly(id, true);
     return id;
   }
@@ -244,21 +274,27 @@ export class DesignDocuments {
     }
     const id = this.ensure(threadId, rel, file);
     // A write that no watcher reported still has to be seen before this edit is based on it.
-    this.service.noteDiskChange(id);
+    this.checkDisk(id);
     return this.service.mutate(mutation);
   }
 
   history(threadId: string, rel: string, file: string, request: DesignHistoryRequest): DesignHistoryResult {
     const id = this.ensure(threadId, rel, file);
-    this.service.noteDiskChange(id);
+    this.checkDisk(id);
 
     let result: MutationResult | undefined;
     switch (request.action) {
       case "undo":
         result = this.service.undo(id, request.crossBoundary === true ? { crossBoundary: true } : undefined);
+        // The canvas reloads the frame after this, and the frame reads the file.
+        this.service.flush(id);
         break;
       case "redo":
         result = this.service.redo(id);
+        this.service.flush(id);
+        break;
+      case "flush":
+        this.service.flush(id);
         break;
       case "close-transaction":
         this.service.closeTransaction(id, request.transactionId);
@@ -280,17 +316,26 @@ export class DesignDocuments {
     return { status, html, conflicts, ...(result !== undefined ? { result } : {}) };
   }
 
-  diskChanged(threadId: string, paths: string[] | null): void {
+  /**
+   * The watcher saw these paths change. Returns the ones that aren't this service's own saves (null when it wasn't
+   * told which), so an edit's save doesn't reload the frame that already shows it.
+   */
+  diskChanged(threadId: string, paths: string[] | null): string[] | null {
     const wanted = paths === null ? null : new Set(paths.map((path) => path.replace(/\\/g, "/")));
+    const own = new Set<string>();
     for (const [id, entry] of [...this.tracked]) {
       if (entry.threadId !== threadId) continue;
-      if (wanted !== null && !wanted.has(entry.rel.replace(/\\/g, "/"))) continue;
+      const rel = entry.rel.replace(/\\/g, "/");
+      if (wanted !== null && !wanted.has(rel)) continue;
       try {
-        this.service.noteDiskChange(id);
+        const changed = this.service.noteDiskChange(id).changed;
+        if (!changed && !entry.foreignSeen) own.add(rel);
+        entry.foreignSeen = false;
       } catch (error) {
         console.error("design: disk change failed", error);
       }
     }
+    return wanted === null ? null : [...wanted].filter((path) => !own.has(path));
   }
 
   setBusy(threadId: string, busy: boolean): void {

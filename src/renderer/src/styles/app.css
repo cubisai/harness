@@ -27,6 +27,7 @@
   --font-display: var(--font);
   --mono: "Geist Mono", ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
 
+  --canvas-select: #2563eb; /* the design canvas's selection outline and nothing else (DESIGN.md §8) */
   --primary: #0b0d10;
   --primary-soft: rgb(11 13 16 / 0.07);
   --on-primary: #ffffff;
@@ -98,6 +99,7 @@
 /* Dark: when the OS is dark and the user hasn't forced light, or when they forced dark. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    --canvas-select: #60a5fa;
     --primary: #f7f8fa;
     --primary-soft: rgb(247 248 250 / 0.1);
     --on-primary: #0b0d10;
@@ -154,6 +156,7 @@
 }
 
 :root[data-theme="dark"] {
+  --canvas-select: #60a5fa;
   --primary: #f7f8fa;
   --primary-soft: rgb(247 248 250 / 0.1);
   --on-primary: #0b0d10;
@@ -666,6 +669,7 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 /* Fit: the page fills the stage. A sized viewport sits centred with room around it and scrolls when larger. */
 .design-stage { flex: 1; min-height: 0; min-width: 0; display: flex; overflow: auto; padding: 24px; }
 .design-stage.fit { padding: 0; overflow: hidden; }
+.design-stage.locked { overflow: hidden; } /* Design v2's 1440 stage: the page scrolls inside its frame, which always fits. */
 .design-frame-box { position: relative; margin: auto; flex-shrink: 0; background: var(--bg); border: 1px solid var(--hairline); }
 .design-stage.fit .design-frame-box { flex: 1; align-self: stretch; margin: 0; border: 0; }
 .design-frame { display: block; border: 0; background: #fff; transform-origin: 0 0; }
@@ -919,6 +923,37 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-inspector-tabs .segmented button { flex: 1 1 auto; min-width: 0; padding: 0 4px; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Width and height: a Hug | Fill | Fixed switch above the value. */
 .design-inspector-size { padding-top: 4px; }
+/* Design v2's Customize panel: Page Theme when nothing is selected, the element's style when something is. */
+.design-customize-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 4px; min-height: 40px; padding: 4px 8px 4px 12px; background: var(--bg); border-bottom: 1px solid var(--hairline); }
+.design-customize-head:has(> .icon-button) { padding-left: 4px; }
+.design-customize-title { flex: 1; min-width: 0; margin: 0; font-size: 12.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.design-customize-note { margin: 0; padding: 8px 12px; font-size: 12.5px; color: var(--text-secondary); border-bottom: 1px solid var(--hairline); }
+.design-customize-filter { padding: 8px 12px 0; }
+.design-customize-filter .text-input { width: 100%; height: 28px; padding: 0 8px; font-size: 12.5px; }
+.design-customize-fields { min-width: 0; margin: 0; padding: 0; border: 0; }
+.design-customize-fields:disabled { opacity: .5; }
+.design-customize-row { display: flex; align-items: center; gap: 8px; min-height: 34px; min-width: 0; }
+.design-customize-row.stacked { flex-direction: column; align-items: stretch; gap: 4px; padding-bottom: 8px; }
+.design-customize-row .design-inspector-row-label { width: 72px; }
+.design-customize-row.stacked .design-inspector-row-label { width: auto; }
+.design-customize-row .text-input { flex: 1; min-width: 0; height: 28px; padding: 0 8px; font-size: 12.5px; }
+.design-customize-segments { display: flex; width: 100%; min-width: 0; }
+.design-customize-row:not(.stacked) .design-customize-segments { flex: 1; }
+.design-customize-segments button { flex: 1 1 0; min-width: 28px; min-height: 24px; padding: 0 4px; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.design-customize-style { display: flex; align-items: center; gap: 8px; min-height: 28px; min-width: 0; }
+.design-customize-style-name { flex: 1; min-width: 0; font-size: 12.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.design-customize-chips { display: flex; gap: 4px; flex-shrink: 0; }
+.design-customize-value { min-width: 0; font: 11.5px var(--mono); color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.design-customize-tokens { display: flex; gap: 4px; min-width: 0; }
+.design-customize-token { width: 24px; height: 24px; padding: 0; border: 1px solid var(--hairline); border-radius: var(--radius-s); cursor: pointer; }
+.design-customize-token:hover { border-color: var(--text-tertiary); }
+.design-customize-token:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.design-customize-foot { display: flex; justify-content: space-between; gap: 8px; padding: 4px 12px 12px; }
+.link-button { min-height: 24px; padding: 0; font-size: 11.5px; color: var(--text-secondary); background: none; border: 0; cursor: pointer; }
+.link-button:hover:not(:disabled) { color: var(--text); text-decoration: underline; }
+.link-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: var(--radius-s); }
+.design-save-status { flex-shrink: 0; font-size: 11.5px; color: var(--text-tertiary); white-space: nowrap; }
+.design-save-status.error { color: var(--danger); }
 .design-inspector-sizing { margin-left: 100px; }
 .design-inspector-sizing button { height: 22px; padding: 0 8px; font-size: 11.5px; }
 /* The Tweaks tab: the page's tweak controls, without the popover's frame. */
