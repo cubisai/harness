@@ -106,6 +106,9 @@ export function CustomizePanel({
   onDeselect,
   onWrap,
   onCode,
+  onSwitchStyle,
+  overrides = 0,
+  onSaveTheme,
 }: {
   threadId: string;
   designDir: string;
@@ -130,6 +133,11 @@ export function CustomizePanel({
   onWrap?: (shape: WrapShape) => void;
   /** Open the Code view at this element. */
   onCode?: (el: SelectedElement) => void;
+  /** Open the style picker. */
+  onSwitchStyle?: () => void;
+  /** How many tokens this page overrides, and how to keep them: offered once there's something to keep. */
+  overrides?: number;
+  onSaveTheme?: () => void;
 }) {
   const [kitProps, setKitProps] = useState<Record<string, KitProp[]>>({});
   const [filter, setFilter] = useState("");
@@ -206,6 +214,16 @@ export function CustomizePanel({
                 {PAGE_COLOURS.concat(swatches.slice(3)).map((c) => theme[c.token] && <span key={c.token} className="design-inspector-swatch" style={{ background: theme[c.token] }} />)}
               </span>
             </div>
+            {onSwitchStyle && (
+              <button type="button" className="button ghost design-customize-switch" onClick={onSwitchStyle}>
+                Switch style…
+              </button>
+            )}
+            {overrides > 0 && onSaveTheme && (
+              <button type="button" className="button ghost design-customize-switch" onClick={onSaveTheme} title={`Keep this page's ${overrides} changed value${overrides === 1 ? "" : "s"} as a theme in this project`}>
+                Save as new theme…
+              </button>
+            )}
           </Card>
           <Card title="Appearance">
             <Segments label="Appearance" options={[{ label: "Light", value: "light" }, { label: "Dark", value: "dark" }]} value={appearance} onPick={(v) => onAppearance(v as "light" | "dark")} />

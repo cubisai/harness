@@ -13,9 +13,11 @@ export function parseStylePreviewUrl(
     if (match[1]!.toLowerCase() !== STYLE_PREVIEW_SCHEME || match[2] !== "p") return null;
 
     const segments = (match[3] ?? "").replace(/^\/+/, "").split("/").map(decodeURIComponent);
-    for (const segment of segments) {
-      if (!segment || segment === "." || segment === ".." || segment.includes("/") || segment.includes("\\") || segment.includes("\0")) return null;
-    }
+    // The one id a slash may survive decoding in: a kit's theme, `kit:<kit>/<theme>`, which names no path.
+    segments.forEach((segment, at) => {
+      if (at === 1 && /^kit:[a-z0-9-]+\/[a-z0-9-]+$/.test(segment)) return;
+      if (!segment || segment === "." || segment === ".." || segment.includes("/") || segment.includes("\\") || segment.includes("\0")) throw new Error("bad segment");
+    });
     const projectId = segments[0] ?? "";
     const systemId = segments[1] ?? "";
     if (!projectId || !systemId) return null;

@@ -6,6 +6,7 @@ import type { DesignSystemOption, StyleFacets, Thread } from "../../../shared/ty
 import { api } from "../api";
 import { focusOption, focusSelectedOption } from "../option-keys";
 import { isDark, useStore } from "../store";
+import { StylePicker } from "./StylePicker";
 
 /** The system a thread uses when it names none (or one that's gone): the project's own, else none (never a stand-in palette). */
 export function shownSystem(options: DesignSystemOption[], id: string | undefined): DesignSystemOption | undefined {
@@ -440,6 +441,8 @@ export function DesignStyleMenu({
 /** The open design thread's style chip; a pick lands on the next turn. */
 export function ThreadDesignStyle({ thread, running }: { thread: Thread; running: boolean }) {
   const setDesignSystem = useStore((s) => s.setDesignSystem);
+  const designV2 = useStore((s) => s.settings?.designV2 === true);
+  if (designV2) return <StylePicker projectId={thread.projectId} thread={thread} value={thread.designSystem} direction={thread.designDirection ?? null} disabled={running} />;
   return (
     <DesignStyleMenu
       projectId={thread.projectId}
@@ -456,5 +459,7 @@ export function DraftDesignStyle() {
   const projectId = useStore((s) => s.selectedProjectId);
   const value = useStore((s) => s.draft.designSystem);
   const setDraft = useStore((s) => s.setDraft);
+  const designV2 = useStore((s) => s.settings?.designV2 === true);
+  if (designV2) return <StylePicker projectId={projectId} thread={null} value={value} onDraftPick={(id) => setDraft({ designSystem: id })} />;
   return <DesignStyleMenu projectId={projectId} value={value} onPick={(id) => setDraft({ designSystem: id })} />;
 }

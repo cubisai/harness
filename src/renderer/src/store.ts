@@ -46,6 +46,9 @@ import type { PrototypeTier } from "../../shared/tiers";
 import type { TurnScore } from "../../shared/learn";
 
 /** A design thread's canvas selection: the page it is on and its elements. */
+/** What the next message is about, chosen from the Composer rather than typed. */
+export type DesignChip = { kind: "new-kit" } | { kind: "match-screenshot"; file?: string } | { kind: "new-component"; selection?: string };
+
 export interface DesignSelection {
   page: string;
   elements: SelectedElement[];
@@ -221,6 +224,18 @@ interface State {
   designSelection: Record<string, DesignSelection>;
   /** Set (or clear, with null or no elements) a design thread's selection. */
   setDesignSelection(threadId: string, selection: DesignSelection | null): void;
+  /** A one-shot ask from across the app to a thread's studio: show a view, or open the style picker. */
+  studioRequest: { threadId: string; view?: "design" | "system"; picker?: boolean } | null;
+  requestStudio(request: { threadId: string; view?: "design" | "system"; picker?: boolean } | null): void;
+  /** The system change a thread can still step back from: its toast, and what `Undo` and ⌘Z do. `page` means the page's own undo carries it. */
+  systemStep: Record<string, { text: string; undo: (() => Promise<unknown>) | "page" }>;
+  setSystemStep(threadId: string, step: { text: string; undo: (() => Promise<unknown>) | "page" } | null): void;
+  /** The chip a design thread's next message goes out with (`+` menu, System mode). */
+  designChip: Record<string, DesignChip>;
+  setDesignChip(threadId: string, chip: DesignChip | null): void;
+  /** What a message means while System mode is open: `System · Button · Light`. Null on the page. */
+  designSystemWhere: Record<string, string>;
+  setDesignSystemWhere(threadId: string, where: string | null): void;
   /** Reference images handed to a design thread's composer from elsewhere (the canvas's Draw tool); the composer takes them. */
   pendingRefs: Record<string, { path: string; thumb: string }[]>;
   addDesignRefs(threadId: string, refs: { path: string; thumb: string }[]): void;
@@ -726,6 +741,37 @@ export const useStore = create<State>((set, get) => ({
       if (selection && selection.elements.length) next[threadId] = selection;
       else delete next[threadId];
       return { designSelection: next };
+    });
+  },
+  studioRequest: null,
+  requestStudio(request) {
+    set({ studioRequest: request });
+  },
+  systemStep: {},
+  setSystemStep(threadId, step) {
+    set((s) => {
+      const next = { ...s.systemStep };
+      if (step) next[threadId] = step;
+      else delete next[threadId];
+      return { systemStep: next };
+    });
+  },
+  designChip: {},
+  setDesignChip(threadId, chip) {
+    set((s) => {
+      const next = { ...s.designChip };
+      if (chip) next[threadId] = chip;
+      else delete next[threadId];
+      return { designChip: next };
+    });
+  },
+  designSystemWhere: {},
+  setDesignSystemWhere(threadId, where) {
+    set((s) => {
+      const next = { ...s.designSystemWhere };
+      if (where) next[threadId] = where;
+      else delete next[threadId];
+      return { designSystemWhere: next };
     });
   },
   composerDraft: null,

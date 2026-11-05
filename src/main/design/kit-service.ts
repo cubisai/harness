@@ -98,7 +98,8 @@ export function themeCard(system: DesignSystemInfo, mine: boolean): DesignThemeC
 
 /** The moves a plan makes, as the preview shows them. */
 function previewOf(plan: MigrationPlan, target: DesignSystemInfo, previewRel: string, pages: number): DesignMigrationPreview {
-  return { targetId: target.id, targetName: target.kit && manifestIn(target.kit.dir)?.name ? `${manifestIn(target.kit.dir)!.name} · ${target.name}` : target.name, previewRel, same: plan.same, renamed: plan.renamed, unsupported: plan.unsupported, droppedProps: plan.droppedProps, review: plan.review, pages };
+  const kitName = target.kit ? manifestIn(target.kit.dir)?.name : undefined;
+  return { targetId: target.id, targetName: kitName && kitName !== target.name ? `${kitName} · ${target.name}` : target.name, previewRel, same: plan.same, renamed: plan.renamed, unsupported: plan.unsupported, droppedProps: plan.droppedProps, review: plan.review, pages };
 }
 
 /**
@@ -192,7 +193,8 @@ export class DesignKitService {
     const current = this.deps.threadSystem(before);
     const from = current?.kit?.id ?? "foundation";
     if ((target.kit?.id ?? "foundation") !== from || !this.compatible(current, target)) throw new Error("That theme is in another kit, so the page has to move to it first.");
-    const previous = before.designSystem ?? null;
+    // An Auto thread's undo goes back to the look it had: switching to Auto itself would drop what it picked.
+    const previous = current?.id ?? before.designSystem ?? null;
     const thread = this.switchTo(threadId, id);
     this.addNote(threadId, `the theme is now ${target.name}: tokens only, nothing to rebuild. Read \`system/DESIGN.md\` again before you change the page.`);
     return { thread, previous };
@@ -261,6 +263,8 @@ export class DesignKitService {
     this.moves.set(threadId, moved);
     const thread = this.switchTo(threadId, id);
     this.cancelMigration(threadId);
+    // Its own saves don't reload the frame, and this one changed what the frame shows.
+    this.deps.broadcast({ type: "design-changed", threadId, paths: [rel] });
     const unsupported = moved.length ? this.plan(threadId, rel, target, thread).unsupported.length : 0;
     this.addNote(threadId, `this design moved to the ${target.name} kit: \`system/\` was replaced and each page's \`data-ui\` renamed by table. Read \`system/DESIGN.md\` and \`system/components.json\` before you change a page${unsupported ? `; ${unsupported} part${unsupported === 1 ? " has" : "s have"} no match and stayed as written` : ""}.`);
     return { thread };

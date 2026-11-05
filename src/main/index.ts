@@ -252,7 +252,7 @@ async function main(): Promise<void> {
     // corsEnabled: fonts always load in CORS mode, and the frame's origin is opaque, so a kit's fonts fail without it.
     { scheme: DESIGN_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
     // cubiq-style:// serves the style picker's previews: a style's tokens, fonts and the shared specimen (no scripts, no network).
-    { scheme: STYLE_PREVIEW_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
+    { scheme: STYLE_PREVIEW_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
     // cubiq-doc:// serves a thread's folder to the hidden window that prints its HTML documents (no scripts, no network).
     { scheme: DOC_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
   ]);

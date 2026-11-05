@@ -1,8 +1,8 @@
 // What the canvas needs from a kit's components.json, and the pure rules for Swap, Insert, Wrap and the Layout card.
-import { parseFragment, serialize, type DefaultTreeAdapterMap } from "parse5";
+import { parse, parseFragment, serialize, type DefaultTreeAdapterMap } from "parse5";
 
 export type KitPartProp = { name: string; label?: string; type: "choice" | "boolean" | "text"; options?: string[]; default?: string | boolean };
-export type KitPart = { ui: string; name: string; category: string; kind: "component" | "composition"; props: KitPartProp[]; snippet: string; importName: string | null };
+export type KitPart = { ui: string; name: string; category: string; kind: "component" | "composition"; props: KitPartProp[]; snippet: string; importName: string | null; isNew?: boolean };
 
 export type AttrChange = { name: string; value: string | null };
 
@@ -24,6 +24,7 @@ export function parseKitParts(text: string | null | undefined): KitPart[] {
           props: Array.isArray(c.props) ? (c.props as KitPartProp[]) : [],
           snippet: c.snippet,
           importName: typeof imp?.name === "string" ? imp.name : null,
+          ...(c.status === "new" ? { isNew: true } : {}),
         },
       ];
     });
@@ -48,6 +49,23 @@ const outer = (el: El5): string => {
   return serialize(holder);
 };
 
+/** The kit file holding a block's markup, when its snippet is only a pointer to it. */
+export function blockFile(part: KitPart): string | null {
+  return /\bdata-block="(blocks\/[\w.-]+\.html)"/.exec(part.snippet)?.[1] ?? null;
+}
+
+/** The custom properties set inline on the page's root: its overrides of the theme. */
+export function rootTokens(html: string): Record<string, string> {
+  const root = elKids(parse(html)).find((e) => e.tagName === "html");
+  const style = root ? attr(root, "style") : null;
+  const out: Record<string, string> = {};
+  for (const decl of (style ?? "").split(";")) {
+    const m = /^\s*(--[\w-]+)\s*:\s*(.+?)\s*$/.exec(decl);
+    if (m) out[m[1]!] = m[2]!;
+  }
+  return out;
+}
+
 /** A snippet is a demo of the part, often several in a row. This is one instance of it: the part's first element. */
 export function instanceOf(part: KitPart): string {
   const found = walk(parseFragment(part.snippet)).find((e) => attr(e, "data-ui") === part.ui);
@@ -65,7 +83,8 @@ export function groupParts(parts: KitPart[], query: string, exclude?: string): {
   const q = query.trim().toLowerCase();
   const out: { category: string; parts: KitPart[] }[] = [];
   for (const p of parts) {
-    if (p.ui === exclude || (p.kind === "composition" && !q)) continue;
+    // A saved composition is the user's own, so it's always offered; a kit's whole-page blocks wait to be searched for.
+    if (p.ui === exclude || (p.kind === "composition" && p.category !== "Compositions" && !q)) continue;
     if (q && !p.name.toLowerCase().includes(q) && !p.ui.includes(q) && !p.category.toLowerCase().includes(q)) continue;
     const group = out.find((g) => g.category === p.category);
     if (group) group.parts.push(p);

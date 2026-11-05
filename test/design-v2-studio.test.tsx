@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { cardIdOf, chipLabel, filterCards, groupOfCard } from "../src/renderer/src/components/StylePicker";
+import { blockFile, rootTokens } from "../src/renderer/src/design/kit-parts";
+import type { DesignKitGroup, DesignThemeCard } from "../src/shared/types";
+import type { DesignDirection } from "../src/shared/direction";
 import { codeFileOrder } from "../src/renderer/src/design/CodeView";
 import { drawMessage, strokeBounds, toolForKey } from "../src/renderer/src/design/CanvasTools";
 import { flowChanges, flowOf, gapSteps, groupParts, instanceOf, jsxOf, lineOf, parseKitParts, startAttrs, swapNotice, swapPlan, wrapAttrs, wrapShapes, type KitPart } from "../src/renderer/src/design/kit-parts";
@@ -219,5 +223,50 @@ describe("a failed turn with the chat closed", () => {
     expect(lastTurnError([failed, { event: { kind: "turn-start" } }])).toBeNull();
     expect(lastTurnError([{ event: { kind: "turn-start" } }, { event: { kind: "assistant-text" } }, { event: { kind: "turn-end" } }])).toBeNull();
     expect(lastTurnError(undefined)).toBeNull();
+  });
+});
+
+describe("the style picker's rules", () => {
+  const card = (id: string, name: string, extra: Partial<DesignThemeCard> = {}): DesignThemeCard => ({ id, name, description: "", swatches: [], card: { bg: "#fff", surface: "#fff", text: "#000", muted: "#555", accent: "#00f", onAccent: "#fff", border: "#ddd", radius: "8px", font: "serif" }, mine: false, ...extra });
+  const group = (id: string, name: string, themes: DesignThemeCard[]): DesignKitGroup => ({ id, name, version: "1.0.0", bundled: false, installed: true, components: 5, blocks: 0, mine: false, themes });
+  const groups = [group("foundation", "Foundation", [card("kit:foundation", "Foundation"), card("kit:foundation/atelier", "Atelier", { facets: { theme: "dark", darkPair: true, display: "serif", shape: "sharp" } })]), group("mui", "MUI", [card("kit:mui", "MUI"), card("kit:mui/teal", "Teal"), card("project:brand", "Brand", { mine: true })])];
+
+  it("treats a flat library style as Foundation's theme of that name", () => {
+    expect(cardIdOf("style:atelier")).toBe("kit:foundation/atelier");
+    expect(cardIdOf("auto", { style: "style:atelier" } as DesignDirection)).toBe("kit:foundation/atelier");
+    expect(cardIdOf("kit:mui/teal")).toBe("kit:mui/teal");
+    expect(cardIdOf("auto")).toBeNull();
+    expect(groupOfCard(groups, "kit:mui/teal")?.id).toBe("mui");
+    expect(groupOfCard(groups, null)?.id).toBe("foundation");
+  });
+
+  it("names the kit and its theme on the chip", () => {
+    expect(chipLabel(groups, "kit:mui", null).name).toBe("MUI");
+    expect(chipLabel(groups, "kit:mui/teal", null).name).toBe("MUI · Teal");
+    expect(chipLabel(groups, "project:brand", null).name).toBe("Brand");
+    expect(chipLabel(groups, "style:atelier", null).name).toBe("Atelier");
+    expect(chipLabel(groups, "auto", null).name).toBe("Auto");
+    expect(chipLabel(groups, "auto", { style: "style:atelier" } as DesignDirection).name).toBe("Auto · Atelier");
+  });
+
+  it("searches by feel as well as by name", () => {
+    const cards = groups[0]!.themes;
+    expect(filterCards(cards, "").length).toBe(2);
+    expect(filterCards(cards, "dark").map((c) => c.name)).toEqual(["Atelier"]);
+    expect(filterCards(cards, "SERIF sharp").map((c) => c.name)).toEqual(["Atelier"]);
+    expect(filterCards(cards, "serif round")).toEqual([]);
+  });
+
+  it("reads a page's overrides off its root, and points at a block's file", () => {
+    expect(rootTokens('<!doctype html><html style="color: red; --color-primary: #123; --radius-md:10px"><body></body></html>')).toEqual({ "--color-primary": "#123", "--radius-md": "10px" });
+    expect(rootTokens("<html><body></body></html>")).toEqual({});
+    const part = (snippet: string): KitPart => ({ ui: "x", name: "X", category: "Blocks", kind: "composition", props: [], snippet, importName: null });
+    expect(blockFile(part('<section data-ui="x" data-block="blocks/x.html"></section>'))).toBe("blocks/x.html");
+    expect(blockFile(part('<div data-ui="x">mine</div>'))).toBeNull();
+    // A saved composition is offered with no search; a kit's whole-page block waits to be searched for.
+    const saved = { ...part('<div data-ui="x">mine</div>'), category: "Compositions" };
+    const block = { ...part('<section data-ui="y" data-block="blocks/y.html"></section>'), ui: "y" };
+    expect(groupParts([saved, block], "").flatMap((g) => g.parts.map((p) => p.ui))).toEqual(["x"]);
+    expect(groupParts([saved, block], "block").flatMap((g) => g.parts.map((p) => p.ui))).toEqual(["y"]);
   });
 });

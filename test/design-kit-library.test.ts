@@ -335,3 +335,25 @@ describe("the watcher", () => {
     expect(ignoredChange("index.html")).toBe(false);
   });
 });
+
+describe("style preview URLs", () => {
+  it("serve a kit's theme, and still refuse anything that could leave its folder", async () => {
+    const { parseStylePreviewUrl } = await import("../src/main/design/style-preview");
+    const { stylePreviewUrl } = await import("../src/shared/style-preview");
+    expect(parseStylePreviewUrl(stylePreviewUrl("p1", "kit:mui/teal", "dark"))).toMatchObject({ systemId: "kit:mui/teal", file: "index.html", theme: "dark" });
+    expect(parseStylePreviewUrl(stylePreviewUrl("p1", "kit:mui", "light"))?.systemId).toBe("kit:mui");
+    for (const bad of ["kit:mui/../x", "kit:../etc", "style:a/b", "../x", "kit:mui/a/b"]) {
+      expect(parseStylePreviewUrl(stylePreviewUrl("p1", bad, "light"))).toBeNull();
+    }
+    expect(parseStylePreviewUrl("cubiq-style://p/p%2F1/kit%3Amui/index.html")).toBeNull();
+  });
+});
+
+describe("kit tokens in oklch", () => {
+  it("still read as light or dark", async () => {
+    const { tokenFacets } = await import("../src/main/design/systems");
+    expect(tokenFacets(":root { --color-bg: oklch(1 0 0); }")?.theme).toBe("light");
+    expect(tokenFacets(":root { --color-bg: oklch(0.145 0 0); }")?.theme).toBe("dark");
+    expect(tokenFacets(":root { --color-bg: oklch(14.5% 0 0); }")?.theme).toBe("dark");
+  });
+});

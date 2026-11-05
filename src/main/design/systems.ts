@@ -122,6 +122,14 @@ function parseColor(value: string): [number, number, number] | null {
     const digits = hex[1]!.length === 3 ? [...hex[1]!].map((d) => d + d).join("") : hex[1]!;
     return [parseInt(digits.slice(0, 2), 16), parseInt(digits.slice(2, 4), 16), parseInt(digits.slice(4, 6), 16)];
   }
+  // A kit may write oklch: its lightness alone says whether the ground is light or dark, as a grey of that lightness.
+  const oklch = /^oklch\(\s*([\d.]+)(%?)/i.exec(value);
+  if (oklch) {
+    const lightness = Number(oklch[1]) / (oklch[2] ? 100 : 1);
+    const y = Math.min(1, Math.max(0, lightness)) ** 3;
+    const grey = Math.round(255 * (y <= 0.0031308 ? 12.92 * y : 1.055 * y ** (1 / 2.4) - 0.055));
+    return [grey, grey, grey];
+  }
   const rgb = /^rgb\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)\s*(?:\/\s*[\d.]+%?\s*)?\)$/i.exec(value);
   if (!rgb) return null;
   return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])];

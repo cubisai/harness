@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { Download, FolderOpen, Grid3x3, Hammer, LayoutGrid, Palette, PanelLeft, PanelRight, Play, Smartphone, Workflow } from "lucide-react";
-import type { DesignDetect, DesignEntry, DesignExportFormat } from "../../../shared/types";
+import type { DesignDetect, DesignEntry, DesignExportFormat, DesignKitGroup } from "../../../shared/types";
 import { api } from "../api";
 import { fileManagerName } from "../components/OpenIn";
 import { Select } from "../components/Select";
@@ -9,6 +9,7 @@ import { IconClose, IconMore, IconRefresh } from "../icons";
 import "../styles/artifact.css";
 import { affectedPages, useStore } from "../store";
 import { designStyleName, useDesignSystemOptions } from "../components/DesignSystemMenu";
+import { chipLabel } from "../components/StylePicker";
 import { STYLE_PREFIX, readDirection } from "../../../shared/direction";
 import { NO_MARKS, STAGE_PAD, VIEWPORTS, ZOOMS, createBridgeGate, deviceFor, frameLayout, pageFromPath, readBridgeMessage, viewportForDevice, type FrameAnchor, type FrameRect, type InsertGap, type OutlineNode, type PageMarks, type PageSeam, type VariantSetInfo, type Viewport, type Zoom } from "./frame";
 import { announceSelection, elementLabel, selectionKey, withScope, type SelectedElement } from "../../../shared/selection";
@@ -34,7 +35,8 @@ import { CodeView } from "./CodeView";
 import { SystemPanel } from "./SystemPanel";
 import { ActionsMenu, SeamButton, SeamPalette, SelectionChrome, SwapPopover, type ActionItem, type SeamPosition } from "./SelectionChrome";
 import { CanvasToolsPill, DrawLayer, drawMessage, strokeBounds, toolForKey, type CanvasTool, type Stroke } from "./CanvasTools";
-import { instanceOf, jsxOf, lineOf, parseKitParts, startAttrs, swapNotice, swapPlan, wrapAttrs, wrapShapes, type AttrChange, type KitPart, type WrapShape } from "./kit-parts";
+import { NamePrompt } from "./NamePrompt";
+import { blockFile, instanceOf, jsxOf, lineOf, parseKitParts, rootTokens, startAttrs, swapNotice, swapPlan, wrapAttrs, wrapShapes, type AttrChange, type KitPart, type WrapShape } from "./kit-parts";
 
 const ipcError = (err: unknown): string => (err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err));
 
@@ -198,7 +200,20 @@ export default function DesignCanvas({
     return null;
   });
   const systemOptions = useDesignSystemOptions(thread?.projectId ?? null, false, thread?.designSystem);
-  const styleName = designStyleName(systemOptions, thread?.designSystem, readDirection(thread?.designDirection));
+  // On v2 the name comes from the kit lists, which know a kit's themes as today's list doesn't.
+  const [kitGroups, setKitGroups] = useState<DesignKitGroup[]>([]);
+  useEffect(() => {
+    if (!designV2) return;
+    let live = true;
+    void api()
+      .designKitGroups(thread?.projectId ?? null)
+      .then((list) => live && setKitGroups(list))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [designV2, thread?.projectId, thread?.designSystem]);
+  const styleName = designV2 && kitGroups.length ? chipLabel(kitGroups, thread?.designSystem, readDirection(thread?.designDirection) ?? null).name : designStyleName(systemOptions, thread?.designSystem, readDirection(thread?.designDirection));
   const styleOf = useCallback((slug: string) => systemOptions.find((o) => o.id === STYLE_PREFIX + slug)?.name, [systemOptions]);
   const labelOf = useCallback((p: BoardPage) => frameLabel(p, styleName, styleOf), [styleName, styleOf]);
   // Canvas-first's Pages and Layers rail, open or not (kept in the pane layout).
@@ -418,6 +433,54 @@ export default function DesignCanvas({
   });
   const editsRef = useRef(edits);
   editsRef.current = edits;
+  // ⌘Z takes back a theme switch or a kit move while it's the last thing that happened; any later page edit ends that.
+  const systemStep = useStore((s) => s.systemStep[threadId]);
+  const setSystemStep = useStore((s) => s.setSystemStep);
+  const undoStep = useCallback(() => {
+    const step = useStore.getState().systemStep[threadId];
+    if (!step) return false;
+    setSystemStep(threadId, null);
+    if (step.undo === "page") editsRef.current.undo();
+    else void step.undo().catch((err: unknown) => setNotice({ text: ipcError(err), error: true }));
+    return true;
+  }, [threadId, setSystemStep]);
+  const undoRef = useRef(() => {});
+  undoRef.current = () => {
+    if (!undoStep()) editsRef.current.undo();
+  };
+  const [stepShown, setStepShown] = useState(false);
+  const revision = edits.status?.revision ?? null;
+  const stepRevision = useRef(revision);
+  useEffect(() => {
+    if (systemStep && systemStep.undo !== "page" && stepRevision.current !== null && revision !== stepRevision.current) setSystemStep(threadId, null);
+    stepRevision.current = revision;
+    // Only a page edit made after the step ends it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revision]);
+  useEffect(() => {
+    if (!systemStep) return;
+    const t = setTimeout(() => setStepShown(false), TOAST_MS * 2);
+    setStepShown(true);
+    return () => clearTimeout(t);
+  }, [systemStep]);
+  // The page's own overrides of its theme: what `Save as new theme…` keeps.
+  const [pageInline, setPageInline] = useState<Record<string, string>>({});
+  const pageRelForTokens = entry?.rel ?? null;
+  const saveStateForTokens = edits.status?.save ?? null;
+  useEffect(() => {
+    if (!designV2 || !entry || !pageRelForTokens || saveStateForTokens === "saving") return;
+    let live = true;
+    void api()
+      .readArtifact(threadId, `${entry.dir}/${pageRelForTokens}`)
+      .then((res) => live && setPageInline(res.ok ? rootTokens(res.text ?? "") : {}))
+      .catch(() => live && setPageInline({}));
+    return () => {
+      live = false;
+    };
+    // The page's revision and save state say when it's worth reading again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [designV2, threadId, entry?.dir, pageRelForTokens, revision, saveStateForTokens, reload]);
+  const [naming, setNaming] = useState<{ kind: "theme" | "composition"; warnings: string[]; error: string | null; busy: boolean } | null>(null);
   const gate = useRef(createBridgeGate(() => crypto.randomUUID()));
   // Selecting in the page. In v2 the edit flag follows the turn: a page being written can't be typed into.
   const pickMessage = useCallback(
@@ -537,7 +600,7 @@ export default function DesignCanvas({
       } else if (msg.type === "pointer") {
         if (designV2 && document.activeElement instanceof HTMLElement && document.activeElement !== frameRef.current) document.activeElement.blur();
       } else if (msg.type === "history-key") {
-        if (designV2 && version === 0) (msg.action === "undo" ? editsRef.current.undo : editsRef.current.redo)();
+        if (designV2 && version === 0) (msg.action === "undo" ? undoRef.current : editsRef.current.redo)();
       } else if (msg.type === "theme") {
         setPageTheme(msg.tokens);
       } else if (msg.type === "pins") {
@@ -1066,6 +1129,14 @@ export default function DesignCanvas({
     }
     setViewState(next);
   };
+  // Another part of the app asked for a view: `Customize a copy` opens System on the new theme.
+  const studioRequest = useStore((s) => s.studioRequest);
+  useEffect(() => {
+    if (!designV2 || !studioRequest?.view || studioRequest.threadId !== threadId) return;
+    useStore.getState().requestStudio(null);
+    changeView(studioRequest.view);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [studioRequest]);
   // Below 1000px the Layers rail starts collapsed and Customize stays closed until asked for, since it floats over the page.
   useEffect(() => {
     if (!designV2) return;
@@ -1115,7 +1186,7 @@ export default function DesignCanvas({
       }
       if ((e.metaKey || e.ctrlKey) && (k === "z" || k === "y")) {
         e.preventDefault();
-        (k === "y" || e.shiftKey ? editsRef.current.redo : editsRef.current.undo)();
+        (k === "y" || e.shiftKey ? editsRef.current.redo : undoRef.current)();
         return;
       }
       // Read when the key lands, not at the last render: the selection may have just changed.
@@ -1502,13 +1573,21 @@ export default function DesignCanvas({
       })
       .then((done) => done && setToast(swapNotice(from, next, plan.dropped)));
   };
+  /** A part as it goes on a page: a kit's whole-page block is a pointer to its file, so this reads the file. */
+  const withBlock = async (part: KitPart): Promise<KitPart> => {
+    const file = blockFile(part);
+    if (!file || !entry) return part;
+    const res = await api().readArtifact(threadId, `${entry.dir}/system/${file}`);
+    if (!res.ok) throw new Error(`Couldn't read ${part.name} from the kit.`);
+    return { ...part, snippet: res.text ?? part.snippet };
+  };
   const insertPart = (part: KitPart, position: SeamPosition) => {
     const anchorEl = palette?.anchor;
     const to = anchorEl && targetOf(anchorEl);
     closePopovers();
     if (!to) return setNotice({ text: notAnchored, error: true });
     void edits.transaction(async (step) => {
-      const result = await step(to, { kind: "insert", html: instanceOf(part), position: position === "inside" ? "inside-end" : position });
+      const result = await step(to, { kind: "insert", html: instanceOf(await withBlock(part)), position: position === "inside" ? "inside-end" : position });
       pendingSelect.current = result.createdIds?.[0] ?? null;
     });
   };
@@ -1538,6 +1617,7 @@ export default function DesignCanvas({
         { id: "unwrap", group: "Structure", label: "Unwrap", shortcut: "⌘⇧G", disabled: !one, run: unwrapSelection },
         { id: "insert", group: "Structure", label: "Insert…", shortcut: "I", disabled: !one, run: openPaletteHere },
         { id: "duplicate", group: "Structure", label: "Duplicate", shortcut: "⌘D", run: duplicateSelection },
+        ...(kitParts.length ? [{ id: "composition", group: "Structure", label: "Save as composition…", run: () => setNaming({ kind: "composition", warnings: [], error: null, busy: false }) }] : []),
         { id: "delete", group: "Structure", label: "Delete", shortcut: "⌫", run: deleteSelection },
         ...(onePart?.props.find((p) => p.name === "variant")?.options ?? []).map((v) => ({ id: `v-${v}`, group: "Variant", label: `Variant: ${v}`, run: () => one && applyAttrs(one, [{ name: "data-variant", value: v }], `${one.selector}:data-variant`) })),
         ...(onePart ? [{ id: "reset", group: "Component", label: "Reset all props", run: () => one && applyAttrs(one, onePart.props.filter((p) => oneAttrs[`data-${p.name}`] !== undefined).map((p) => ({ name: `data-${p.name}`, value: null })), `${one.selector}:reset`) }] : []),
@@ -1545,6 +1625,35 @@ export default function DesignCanvas({
         { id: "code", group: "Component", label: "Go to code", disabled: !one, run: () => one && void openCodeAt(one) },
         { id: "copy", group: "Component", label: jsxOf(onePart, oneAttrs, one?.ownText ?? one?.text ?? "") ? "Copy JSX" : "Copy HTML", disabled: !one, run: () => one && void navigator.clipboard?.writeText(jsxOf(onePart, oneAttrs, one.text) ?? one.html) },
       ];
+  const saveTheme = async (name: string) => {
+    setNaming((n) => n && { ...n, busy: true, error: null });
+    try {
+      await edits.flush();
+      const saved = await api().designSaveTheme(threadId, name, pageInline);
+      useStore.getState().apply({ type: "thread", thread: saved.thread });
+      // The theme holds them now, and the page goes back to following it: dark included.
+      const clear = saved.applied.slice(0, 32).map((prop) => ({ prop, value: "" }));
+      if (clear.length) await edits.transaction(async (step) => step({ locator: { tag: "html", path: [] } }, { kind: "setStyle", changes: clear }));
+      setNaming(null);
+      setToast(`Saved as ${name}. It's in the Style picker.`);
+    } catch (err) {
+      setNaming((n) => n && { ...n, busy: false, error: ipcError(err) });
+    }
+  };
+  const saveComposition = async (name: string, force: boolean) => {
+    const html = selected.map((el) => el.html ?? "").join("\n");
+    setNaming((n) => n && { ...n, busy: true, error: null });
+    try {
+      const res = await api().designSaveComposition(threadId, name, html, force);
+      if (res.saved === null) return setNaming({ kind: "composition", warnings: res.warnings, error: null, busy: false });
+      useStore.getState().apply({ type: "thread", thread: res.thread });
+      setNaming(null);
+      setToast(`Saved ${name}. It's in Insert and Swap.`);
+      setManual((n) => n + 1);
+    } catch (err) {
+      setNaming((n) => n && { ...n, busy: false, error: ipcError(err) });
+    }
+  };
   const commentForm =
     commentDraft !== null && selected.length === 1 && !comparing && version === 0 ? (
         <form
@@ -1747,6 +1856,28 @@ export default function DesignCanvas({
         />
       )}
       {designV2 && commentForm}
+      {naming && (
+        <NamePrompt
+          title={naming.kind === "theme" ? "Save as new theme" : "Save as composition"}
+          hint={naming.kind === "theme" ? "Keeps this page's changed values as a theme in this project. It joins the Style picker." : "It joins Insert and Swap. Pages get a copy, so editing it later doesn't change earlier ones."}
+          warnings={naming.warnings}
+          busy={naming.busy}
+          error={naming.error}
+          onCancel={() => setNaming(null)}
+          onSave={(name, force) => void (naming.kind === "theme" ? saveTheme(name) : saveComposition(name, force))}
+        />
+      )}
+      {systemStep && stepShown && !toast && (
+        <div className="studio-toast" role="status">
+          <span title={systemStep.text}>{systemStep.text}</span>
+          <button className="button ghost studio-toast-undo" onClick={() => undoStep()}>
+            Undo
+          </button>
+          <button className="icon-button" aria-label="Dismiss" title="Dismiss" onClick={() => setStepShown(false)}>
+            <IconClose />
+          </button>
+        </div>
+      )}
       {toast && (
         <div className="studio-toast" role="status">
           <span title={toast}>{toast}</span>
@@ -2354,6 +2485,9 @@ export default function DesignCanvas({
               }}
               onWrap={wrapSelection}
               onCode={(el) => void openCodeAt(el)}
+              onSwitchStyle={() => useStore.getState().requestStudio({ threadId, picker: true })}
+              overrides={Object.keys(pageInline).length}
+              onSaveTheme={() => setNaming({ kind: "theme", warnings: [], error: null, busy: false })}
               readOnly={agentRunning || edits.status?.readOnly === true}
               styleName={styleName ?? null}
               theme={pageTheme}
