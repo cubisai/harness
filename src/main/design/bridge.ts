@@ -6,9 +6,11 @@ export interface DescribedElement {
   selector: string;
   tag: string;
   text: string;
+  /** The text a panel edit replaces, as written in the source. Absent when no one element holds the text. */
+  ownText?: string;
   html: string;
   rect: { x: number; y: number; width: number; height: number };
-  path: { label: string; selector: string }[];
+  path: { label: string; selector: string; ui?: string; part?: string }[];
   /** The element's computed style, limited to the inspector's keys (see STYLE_KEYS in shared/selection.ts). */
   style?: Record<string, string>;
   /** Its element-child path from `<html>`: how the mutation service finds it before it has an id. */
@@ -31,6 +33,8 @@ export interface OutlineNode {
   selector: string;
   label: string;
   depth: number;
+  /** Its kit part, from `data-ui`. */
+  ui?: string;
 }
 
 /** Messages the design page sends up to the canvas. */
@@ -165,7 +169,12 @@ export function describeElement(el: Element, selectorFor: (el: Element) => strin
     const ancestorId = cur.getAttribute("data-agent-id");
     const good = ancestorId && /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(ancestorId) ? ancestorId : null;
     const tag = cur.tagName.toLowerCase();
-    path.push({ label: good ? `${tag} ${good}` : tag, selector: selectorFor(cur) });
+    const step: DescribedElement["path"][number] = { label: good ? `${tag} ${good}` : tag, selector: selectorFor(cur) };
+    const ui = cur.getAttribute("data-ui");
+    const part = cur.getAttribute("data-part");
+    if (ui) step.ui = ui;
+    if (part) step.part = part;
+    path.push(step);
     cur = cur.parentElement;
   }
   path.reverse();
@@ -178,6 +187,23 @@ export function describeElement(el: Element, selectorFor: (el: Element) => strin
     path,
   };
   if (id) described.id = id;
+  // The text a panel edit writes, as the source has it: `text` is what shows, so CSS uppercase would leak into the field.
+  // The same rule as `textHolder` (this function is serialized into the page, so it cannot call it).
+  try {
+    const holdsOwn = (node: Element): boolean => Array.from(node.childNodes).some((c) => c.nodeType === 3 && (c.nodeValue ?? "").trim() !== "");
+    const noText = /^(SCRIPT|STYLE|TEXTAREA|SELECT|OPTION|SVG|IMG|INPUT)$/i;
+    if (!noText.test(el.tagName)) {
+      const holders = holdsOwn(el) ? [el] : Array.from(el.querySelectorAll("*")).filter((node) => !noText.test(node.tagName) && !node.closest("svg") && holdsOwn(node));
+      const holder = holders.length === 1 ? holders[0] : null;
+      if (holder) {
+        const run = holder.children.length > 0 ? Array.from(holder.childNodes).find((c) => c.nodeType === 3 && (c.nodeValue ?? "").trim() !== "") : null;
+        const own = ((run ? run.nodeValue : holder.textContent) ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
+        if (own) described.ownText = own;
+      }
+    }
+  } catch {
+    // A label to read, not a reason to lose the selection.
+  }
   const at: number[] = [];
   for (let cur: Element = el; cur.parentElement; cur = cur.parentElement) {
     const kin = cur.parentElement.children;
@@ -279,7 +305,8 @@ export function isSelectableElement(el: Element, styleOf: (el: Element) => CSSSt
  * around an element, or the element itself when the page has none.
  */
 export function componentOf(el: Element): Element {
-  const found = el.closest("[data-ui], [data-agent-id], header, footer, nav, main, section, aside, article, a, button, [role=button], input, select, textarea, label, summary, img, svg");
+  // An `el-…` id is one the editor stamped to save an edit: editing an element mustn't change what a click on it takes.
+  const found = el.closest('[data-ui], [data-agent-id]:not([data-agent-id^="el-"]), header, footer, nav, main, section, aside, article, a, button, [role=button], input, select, textarea, label, summary, img, svg');
   return found && found.tagName !== "BODY" && found.tagName !== "HTML" ? found : el;
 }
 
@@ -291,6 +318,25 @@ export function drillTarget(current: Element, hit: Element, selectable: (el: Ele
     if (cur.parentElement === current && step) return step;
   }
   return null;
+}
+
+/**
+ * What a click takes once something is selected, so a selected parent never blocks its children. Inside the selection:
+ * the component under the pointer, else the element itself if it has content of its own. A click on a sibling works the
+ * same inside their shared parent, so the depth holds, and on that parent's bare background it steps up to the parent.
+ * A bare wrapper in between takes the scope: a stray click on a gap shouldn't lose it. One you can see, with a fill or a
+ * border, counts as content. Outside: the component there.
+ */
+export function clickTarget(selected: Element | null, hit: Element, component: (el: Element) => Element, paints: (el: Element) => boolean): Element {
+  if (!selected) return component(hit);
+  const parent = selected.parentElement && selected.parentElement.tagName !== "BODY" && selected.parentElement.tagName !== "HTML" ? component(selected.parentElement) : null;
+  const scope = selected.contains(hit) ? selected : parent && parent.contains(hit) ? parent : null;
+  if (!scope) return component(hit);
+  const target = component(hit);
+  if (target !== scope && scope.contains(target)) return target;
+  if (hit === scope) return scope;
+  const hasContent = /^(IMG|SVG|VIDEO|CANVAS|PICTURE)$/i.test(hit.tagName) || Array.from(hit.childNodes).some((c) => c.nodeType === 3 && (c.nodeValue ?? "").trim() !== "");
+  return hasContent || paints(hit) ? hit : scope;
 }
 
 /** The component that holds this one, or null at the top of the page. */
@@ -339,6 +385,8 @@ export function outlineOf(root: Element, selectorFor: (el: Element) => string): 
       if (own.trim() === "") own = el.getAttribute("aria-label") || el.getAttribute("alt") || el.getAttribute("title") || el.getAttribute("placeholder") || "";
       const node: OutlineNode = { tag, cls, selector: selectorFor(el), label: own.replace(/\s+/g, " ").trim().slice(0, 40), depth };
       if (rawId && /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(rawId)) node.id = rawId;
+      const ui = el.getAttribute("data-ui");
+      if (ui && /^[a-z0-9][a-z0-9-]{0,47}$/.test(ui)) node.ui = ui;
       nodes.push(node);
     }
     // An SVG is one layer: its paths and groups are drawing, not structure.
@@ -373,6 +421,7 @@ export function designBridge(
   componentOf: (el: Element) => Element,
   drillTarget: (current: Element, hit: Element, selectable: (el: Element) => boolean) => Element | null,
   parentComponent: (el: Element, component: (el: Element) => Element) => Element | null,
+  clickTarget: (selected: Element | null, hit: Element, component: (el: Element) => Element, paints: (el: Element) => boolean) => Element,
   textHolder: (el: Element) => Element | null,
 ): void {
   // Design v2's per-load token and selection colour, both from the canvas. Without them the page behaves as before.
@@ -1100,6 +1149,11 @@ export function designBridge(
     document.documentElement.append(box, tip);
 
     const selectable = (el: Element): boolean => isSelectableElement(el, (node) => getComputedStyle(node));
+    const paints = (el: Element): boolean => {
+      const s = getComputedStyle(el);
+      const fill = s.backgroundColor !== "" && !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(s.backgroundColor);
+      return fill || s.backgroundImage !== "none" || s.boxShadow !== "none" || parseFloat(s.borderTopWidth) > 0 || parseFloat(s.borderBottomWidth) > 0 || parseFloat(s.borderLeftWidth) > 0;
+    };
     const isRoot = (el: Element): boolean => el === document.body || el === document.documentElement;
     const hitAt = (x: number, y: number): Element | null => {
       for (const el of document.elementsFromPoint(x, y)) {
@@ -1128,8 +1182,10 @@ export function designBridge(
       if (postSeam(e.clientX, e.clientY)) return hide();
       const hit = hitAt(e.clientX, e.clientY);
       const one = selected.length === 1 ? (selected[0] ?? null) : null;
-      if (!hit || isRoot(hit) || editing || (one?.contains(hit) && !(e.metaKey || e.ctrlKey))) return hide();
-      const target = e.metaKey || e.ctrlKey ? hit : componentOf(hit);
+      if (!hit || isRoot(hit) || editing) return hide();
+      // The outline previews what a click would take.
+      const target = e.metaKey || e.ctrlKey ? hit : clickTarget(one, hit, componentOf, paints);
+      if (target === one) return hide();
       const r = target.getBoundingClientRect();
       Object.assign(box.style, { display: "block", left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
       tip.textContent = nameOf(target);
@@ -1237,9 +1293,9 @@ export function designBridge(
         if (selected.indexOf(target) >= 0) return choose(selected.filter((el) => el !== target));
         return selected.length < MAX_SELECTION ? choose([...selected, target]) : undefined;
       }
-      // Inside the selection a click stays at that depth, so a drilled-in pick isn't lost to its parent.
-      if (selected.length === 1 && selected[0]?.contains(hit)) return;
-      choose([target]);
+      const one = selected.length === 1 ? (selected[0] ?? null) : null;
+      const next = clickTarget(one, hit, componentOf, paints);
+      if (next !== one) choose([next]);
     };
     const onDblClick = (e: MouseEvent): void => {
       if (insideEdit(e) || inLayer(e)) return;
@@ -1252,6 +1308,13 @@ export function designBridge(
       const next = drillTarget(current, hit, selectable);
       if (next) choose([next]);
     };
+    // Up one level the way a click comes down: components, and wrappers you can see. Plain wrappers don't count.
+    const stepUp = (el: Element): Element | null => parentComponent(el, (up) => {
+      for (let cur: Element | null = up; cur && !isRoot(cur); cur = cur.parentElement) {
+        if (componentOf(cur) === cur || paints(cur)) return cur;
+      }
+      return up;
+    });
     const firstChild = (el: Element): Element | null => {
       for (let i = 0; i < el.children.length; i++) {
         const kid = el.children[i];
@@ -1269,14 +1332,14 @@ export function designBridge(
       const one = selected.length === 1 ? (selected[0] ?? null) : null;
       if (selected.length === 0) return false;
       if (key === "Escape") {
-        const up = one ? parentComponent(one, componentOf) : null;
+        const up = one ? stepUp(one) : null;
         choose(up ? [up] : []);
         return true;
       }
       if (!one) return false;
       const next =
         key === "Enter" ? firstChild(one)
-        : alt && key === "ArrowUp" ? parentComponent(one, componentOf)
+        : alt && key === "ArrowUp" ? stepUp(one)
         : alt && key === "ArrowDown" ? firstChild(one)
         : alt ? null
         : key === "ArrowUp" || key === "ArrowLeft" ? sibling(one, "previousElementSibling")
@@ -1778,5 +1841,5 @@ export function designBridge(
 
 /** The bridge as one script body, embedding the page-side helpers it needs. */
 export function bridgeScript(selectorFor: (el: Element) => string): string {
-  return `(${designBridge.toString()})(${selectorFor.toString()}, ${describeElement.toString()}, ${snapTarget.toString()}, ${resolveTarget.toString()}, ${editableText.toString()}, ${outlineOf.toString()}, ${gapChoice.toString()}, ${childGap.toString()}, ${isSelectableElement.toString()}, ${componentOf.toString()}, ${drillTarget.toString()}, ${parentComponent.toString()}, ${textHolder.toString()});`;
+  return `(${designBridge.toString()})(${selectorFor.toString()}, ${describeElement.toString()}, ${snapTarget.toString()}, ${resolveTarget.toString()}, ${editableText.toString()}, ${outlineOf.toString()}, ${gapChoice.toString()}, ${childGap.toString()}, ${isSelectableElement.toString()}, ${componentOf.toString()}, ${drillTarget.toString()}, ${parentComponent.toString()}, ${clickTarget.toString()}, ${textHolder.toString()});`;
 }

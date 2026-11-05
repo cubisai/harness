@@ -444,6 +444,13 @@ describe("wrap", () => {
     );
   });
 
+  it("wraps with a whole inline style, as a page with no kit needs, and still checks each declaration", () => {
+    const style = "display:flex;flex-direction:row;align-items:center;gap:16px";
+    const outcome = applyChange(PAGE, HERO, { kind: "wrap", extraIds: [], tag: "div", attrs: { style } }, counter());
+    expect(outcome.html).toContain(`style="${style}"`);
+    expect(reasonOf(() => applyChange(PAGE, HERO, { kind: "wrap", extraIds: [], tag: "div", attrs: { style: "gap:1px;color:<b>" } }, counter()))).toBe("invalid");
+  });
+
   it("allows a style attribute under the setStyle rules", () => {
     const outcome = applyChange(PAGE, HERO, { kind: "wrap", extraIds: [], tag: "section", attrs: { style: "display: flex" } }, counter());
     expect(outcome.html).toContain('<section style="display: flex" data-agent-id="gen1"><header');

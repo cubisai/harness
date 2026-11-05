@@ -35,6 +35,7 @@ export function useDesignEditing({
   onStamp,
   reloadFrame,
   notify,
+  onHistory,
 }: {
   threadId: string;
   rel: string | null;
@@ -43,6 +44,8 @@ export function useDesignEditing({
   onStamp: (path: number[], id: string) => void;
   reloadFrame: () => void;
   notify: (text: string, error?: boolean) => void;
+  /** An undo or redo is starting. */
+  onHistory?: () => void;
 }) {
   const [documentId, setDocumentId] = useState<string | null>(null);
   const [local, setLocal] = useState<DocumentStatus | null>(null);
@@ -51,8 +54,8 @@ export function useDesignEditing({
   const status = pushed?.status ?? local;
 
   const client = useMemo(() => (on && rel ? new DesignDocumentClient(api(), threadId, rel, newId) : null), [on, threadId, rel]);
-  const callbacks = useRef({ onStamp, reloadFrame, notify });
-  callbacks.current = { onStamp, reloadFrame, notify };
+  const callbacks = useRef({ onStamp, reloadFrame, notify, onHistory });
+  callbacks.current = { onStamp, reloadFrame, notify, onHistory };
 
   const showConflicts = useCallback((res: DesignHistoryResult) => {
     setDocumentId(res.status.documentId);
@@ -99,6 +102,16 @@ export function useDesignEditing({
       setBanner({ kind: "conflict", text: conflictsText([{ operationId: result.operationId, message: result.message ?? "" }]), retry: { target, change } });
     }
   }, []);
+
+  // The frame just loaded the file as it is now, so the next edit is based on that. Without this, the first edit after an
+  // agent's turn or any outside write would be refused as stale, though the user is looking at the latest page.
+  const sync = useCallback(() => {
+    if (!client) return;
+    void client
+      .status()
+      .then(showConflicts)
+      .catch(() => undefined);
+  }, [client, showConflicts]);
 
   // One undo step per control: edits to the same key within GROUP_MS share a transaction.
   const groups = useRef(new Map<string, { id: string; at: number }>());
@@ -203,8 +216,14 @@ export function useDesignEditing({
     },
     [client, sendWaiting, showConflicts],
   );
-  const undo = useCallback(() => void history((c) => c.undo()), [history]);
-  const redo = useCallback(() => void history((c) => c.redo()), [history]);
+  const undo = useCallback(() => {
+    callbacks.current.onHistory?.();
+    void history((c) => c.undo());
+  }, [history]);
+  const redo = useCallback(() => {
+    callbacks.current.onHistory?.();
+    void history((c) => c.redo());
+  }, [history]);
 
   const dismiss = useCallback(() => setBanner(null), []);
   const undoPastBoundary = useCallback(() => {
@@ -241,5 +260,5 @@ export function useDesignEditing({
     };
   }, [client, flush]);
 
-  return { status, banner, send, sendSoon, transaction, undo, redo, flush, dismiss, undoPastBoundary, discard, reapply };
+  return { status, banner, sync, send, sendSoon, transaction, undo, redo, flush, dismiss, undoPastBoundary, discard, reapply };
 }

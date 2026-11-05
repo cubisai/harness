@@ -557,7 +557,8 @@ function renderWrapAttrs(attrs: Record<string, string>): string {
         const prop = part.slice(0, colon).trim();
         if (!STYLE_PROP_RE.test(prop)) throw invalid(`"${prop}" is not a valid style property.`);
       }
-      checkStyleValue("style", value);
+      // A whole style attribute: each declaration is checked on its own, since `;` only separates them here.
+      for (const declaration of value.split(";")) checkStyleValue("style", declaration);
     } else {
       if (BANNED_PROPS.has(lower)) throw invalid(`"${name}" cannot be set here.`);
       checkValue(lower, value);

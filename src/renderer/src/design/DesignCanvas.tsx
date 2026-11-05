@@ -18,6 +18,7 @@ import { compareCells, pageOptions, sameEntry, type CompareCell } from "./pages"
 import { changedTweaks, currentTweakValues, parseTweaks, tweakTarget, tweakValue, type Tweak, type TweakValues } from "../../../shared/tweaks";
 import { TweaksBody, TweaksPanel } from "./TweaksPanel";
 import { ElementsTree } from "./ElementsTree";
+import { parentName } from "./layers";
 import { DEFAULT_TIER, tierFeatures, tierOf } from "../../../shared/tiers";
 import { commentsMessage, type DesignComment } from "../../../shared/comments";
 import { CommentsPanel } from "./CommentsPanel";
@@ -59,6 +60,9 @@ const NO_NODES: OutlineNode[] = [];
 
 /** Extra room the device chrome needs around a frame (both sides together, in stage px, beyond the usual padding). */
 const DEVICE_CHROME = { none: { width: 0, height: 0 }, phone: { width: 40, height: 40 }, tablet: { width: 56, height: 56 }, browser: { width: 18, height: 54 } } as const;
+
+/** How long a structural edit's report stays up. */
+const TOAST_MS = 6000;
 
 export default function DesignCanvas({
   threadId,
@@ -158,6 +162,13 @@ export default function DesignCanvas({
   const [promoting, setPromoting] = useState<string | null>(null);
   // `page` ties a notice to the page it's about: switching to another page drops it.
   const [notice, setNotice] = useState<{ text: string; error?: boolean; page?: string } | null>(null);
+  // A report on a structural edit: it floats, so the page doesn't move under the pointer, and doesn't outlast its use.
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), TOAST_MS);
+    return () => clearTimeout(t);
+  }, [toast]);
   // The page's declared tweaks with the values it loaded with, and the user's unkept changes per page.
   const [tweaks, setTweaks] = useState<{ list: Tweak[]; base: TweakValues } | null>(null);
   const [overrides, setOverrides] = useState<Record<string, TweakValues>>({});
@@ -403,6 +414,7 @@ export default function DesignCanvas({
     onStamp: (at, id) => post({ type: "stamp", path: at, id }),
     reloadFrame,
     notify: (text, error) => setNotice(error ? { text, error } : { text }),
+    onHistory: () => setToast(null),
   });
   const editsRef = useRef(edits);
   editsRef.current = edits;
@@ -449,6 +461,7 @@ export default function DesignCanvas({
         if (designV2) {
           post({ type: "session", nonce: gate.current.renew() });
           post({ type: "read-theme", names: THEME_TOKENS });
+          editsRef.current.sync();
         }
         // A fresh load: its tweaks (if any) arrive right after; the marks went with the old document.
         setTweaks(null);
@@ -851,6 +864,7 @@ export default function DesignCanvas({
   const rel = entry?.rel ?? null;
   useEffect(() => {
     setNotice((n) => (n?.page && n.page !== rel ? null : n));
+    setToast(null);
   }, [rel]);
   const pageOverrides = (rel && overrides[rel]) || {};
   const tweakValues: TweakValues = tweaks ? { ...tweaks.base, ...pageOverrides } : {};
@@ -1389,12 +1403,14 @@ export default function DesignCanvas({
   // --- The studio's selection, tools and structural edits (Swap, Insert, Wrap, the Actions menu) ---
 
   const toWrapPoint = (x: number, y: number) => toWrap({ x, y, width: 0, height: 0 })?.el ?? { x: 16, y: 16 };
-  const wrapBounds: FrameRect = { x: 0, y: 0, width: wrapRef.current?.clientWidth ?? 0, height: wrapRef.current?.clientHeight ?? 0 };
+  // Popovers stop above the Composer, which floats over the stage's foot.
+  const composerRoom = stageNode.current ? parseFloat(getComputedStyle(stageNode.current).paddingBottom) || 0 : 0;
+  const wrapBounds: FrameRect = { x: 0, y: 0, width: wrapRef.current?.clientWidth ?? 0, height: Math.max(0, (wrapRef.current?.clientHeight ?? 0) - composerRoom) };
   const targetOf = (el: Pick<SelectedElement, "id" | "tag" | "at">) => (el.id ? { id: el.id } : el.at ? { locator: { tag: el.tag, path: el.at } } : null);
   const one = selected.length === 1 ? (selected[0] ?? null) : null;
   const oneAttrs = one ? startAttrs(one.html) : {};
   const onePart = (one && kitParts.find((p) => p.ui === oneAttrs["data-ui"])) || null;
-  const selectionName = one ? (onePart?.name ?? elementLabel(one)) : `${selected.length} selected`;
+  const selectionName = one ? (onePart?.name ?? (oneAttrs["data-part"] ? parentName({ label: "", part: oneAttrs["data-part"] }) : elementLabel(one))) : `${selected.length} selected`;
   const closePopovers = () => {
     setSwapAt(null);
     setActionsAt(null);
@@ -1402,7 +1418,8 @@ export default function DesignCanvas({
   };
   const setTool = (next: CanvasTool) => {
     closePopovers();
-    setCommentDraft(null);
+    // Comment on what's already selected: a click on it wouldn't change the selection, so nothing else would open the note.
+    setCommentDraft(next === "comment" && selected.length === 1 ? "" : null);
     setToolState(next);
     if (next === "draw") clearSelection();
   };
@@ -1483,7 +1500,7 @@ export default function DesignCanvas({
         }
         return true;
       })
-      .then((done) => done && setNotice({ text: swapNotice(from, next, plan.dropped), page: entry?.rel }));
+      .then((done) => done && setToast(swapNotice(from, next, plan.dropped)));
   };
   const insertPart = (part: KitPart, position: SeamPosition) => {
     const anchorEl = palette?.anchor;
@@ -1516,18 +1533,51 @@ export default function DesignCanvas({
   const actionItems: ActionItem[] = !selected.length
     ? []
     : [
-        ...(onePart ? [{ id: "swap", group: "Component", label: "Swap component…", shortcut: "⌘S", run: () => setSwapAt(selectionAt()) }] : []),
-        ...(onePart?.props.find((p) => p.name === "variant")?.options ?? []).map((v) => ({ id: `v-${v}`, group: "Variant", label: `Variant: ${v}`, run: () => one && applyAttrs(one, [{ name: "data-variant", value: v }], `${one.selector}:data-variant`) })),
-        ...(onePart ? [{ id: "reset", group: "Component", label: "Reset all props", run: () => one && applyAttrs(one, onePart.props.filter((p) => oneAttrs[`data-${p.name}`] !== undefined).map((p) => ({ name: `data-${p.name}`, value: null })), `${one.selector}:reset`) }] : []),
+        ...(onePart ? [{ id: "swap", group: "Structure", label: "Swap component…", shortcut: "⌘S", run: () => setSwapAt(selectionAt()) }] : []),
         ...wrapShapes(kitParts).map((s) => ({ id: `wrap-${s}`, group: "Structure", label: `Wrap in ${s[0]!.toUpperCase()}${s.slice(1)}`, shortcut: s === "stack" ? "⌘G" : s === "grid" ? "⌥⌘G" : undefined, run: () => wrapSelection(s) })),
         { id: "unwrap", group: "Structure", label: "Unwrap", shortcut: "⌘⇧G", disabled: !one, run: unwrapSelection },
         { id: "insert", group: "Structure", label: "Insert…", shortcut: "I", disabled: !one, run: openPaletteHere },
         { id: "duplicate", group: "Structure", label: "Duplicate", shortcut: "⌘D", run: duplicateSelection },
         { id: "delete", group: "Structure", label: "Delete", shortcut: "⌫", run: deleteSelection },
+        ...(onePart?.props.find((p) => p.name === "variant")?.options ?? []).map((v) => ({ id: `v-${v}`, group: "Variant", label: `Variant: ${v}`, run: () => one && applyAttrs(one, [{ name: "data-variant", value: v }], `${one.selector}:data-variant`) })),
+        ...(onePart ? [{ id: "reset", group: "Component", label: "Reset all props", run: () => one && applyAttrs(one, onePart.props.filter((p) => oneAttrs[`data-${p.name}`] !== undefined).map((p) => ({ name: `data-${p.name}`, value: null })), `${one.selector}:reset`) }] : []),
         { id: "comment", group: "Component", label: "Add comment", shortcut: "C", disabled: !one, run: () => setCommentDraft("") },
         { id: "code", group: "Component", label: "Go to code", disabled: !one, run: () => one && void openCodeAt(one) },
-        { id: "copy", group: "Component", label: jsxOf(onePart, oneAttrs, one?.text ?? "") ? "Copy JSX" : "Copy HTML", disabled: !one, run: () => one && void navigator.clipboard?.writeText(jsxOf(onePart, oneAttrs, one.text) ?? one.html) },
+        { id: "copy", group: "Component", label: jsxOf(onePart, oneAttrs, one?.ownText ?? one?.text ?? "") ? "Copy JSX" : "Copy HTML", disabled: !one, run: () => one && void navigator.clipboard?.writeText(jsxOf(onePart, oneAttrs, one.text) ?? one.html) },
       ];
+  const commentForm =
+    commentDraft !== null && selected.length === 1 && !comparing && version === 0 ? (
+        <form
+          className={`design-comment-new${designV2 ? " studio-comment" : ""}`}
+          onSubmit={(e) => {
+            e.preventDefault();
+            void addComment();
+          }}
+        >
+          <input
+            autoFocus
+            className="design-comment-input"
+            aria-label={`Comment on ${elementLabel(selected[0]!)}`}
+            placeholder={`Comment on ${elementLabel(selected[0]!)}`}
+            value={commentDraft}
+            maxLength={1000}
+            onChange={(e) => setCommentDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.stopPropagation();
+                setCommentDraft(null);
+                setToolState("select");
+              }
+            }}
+          />
+          <button type="submit" className="button" disabled={!commentDraft.trim()}>
+            Add
+          </button>
+          <button type="button" className="button ghost" onClick={() => setCommentDraft(null)}>
+            Cancel
+          </button>
+        </form>
+    ) : null;
   studioRef.current = {
     toolOf: () => tool,
     context: (x, y) => {
@@ -1654,11 +1704,13 @@ export default function DesignCanvas({
           view={barBoxes.view}
           label={selectionName}
           canSwap={!!onePart && kitParts.length > 1}
-          parents={one?.path ?? []}
+          parents={(one?.path ?? []).map((p) => ({ selector: p.selector, label: parentName(p, kitParts.find((k) => k.ui === p.ui)?.name) }))}
           onSwap={() => setSwapAt(selectionAt())}
           onParent={(selector) => {
             fromFrame.current = "";
-            post({ type: "set-selection", targets: [{ selector, tag: "div", text: "" }] });
+            // The bridge checks the tag when it resolves a target: a wrong one drops the selection.
+            const tag = one?.path.find((p) => p.selector === selector)?.label.split(" ")[0] ?? "div";
+            post({ type: "set-selection", targets: [{ selector, tag, text: "" }] });
           }}
           busy={agentRunning ? "Wait for the current turn to finish" : null}
           onVariant={(a, words) => void go(a, words)}
@@ -1693,6 +1745,15 @@ export default function DesignCanvas({
           onSwap={swapTo}
           onClose={() => setSwapAt(null)}
         />
+      )}
+      {designV2 && commentForm}
+      {toast && (
+        <div className="studio-toast" role="status">
+          <span title={toast}>{toast}</span>
+          <button className="icon-button" aria-label="Dismiss" title="Dismiss" onClick={() => setToast(null)}>
+            <IconClose />
+          </button>
+        </div>
       )}
       {actionsAt && actionItems.length > 0 && (
         <ActionsMenu
@@ -1752,6 +1813,7 @@ export default function DesignCanvas({
             key={path}
             nodes={outline}
             selected={selected[0] ?? null}
+            others={selected.slice(1)}
             onPick={(n, add) => {
               // Picking a layer selects it on the page, so Pick goes on first.
               if (!picking) togglePick();
@@ -2174,38 +2236,7 @@ export default function DesignCanvas({
           </button>
         </nav>
       )}
-      {commentDraft !== null && selected.length === 1 && !comparing && version === 0 && (
-        <form
-          className={`design-comment-new${designV2 ? " studio-comment" : ""}`}
-          onSubmit={(e) => {
-            e.preventDefault();
-            void addComment();
-          }}
-        >
-          <input
-            autoFocus
-            className="design-comment-input"
-            aria-label={`Comment on ${elementLabel(selected[0]!)}`}
-            placeholder={`Comment on ${elementLabel(selected[0]!)}`}
-            value={commentDraft}
-            maxLength={1000}
-            onChange={(e) => setCommentDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                e.stopPropagation();
-                setCommentDraft(null);
-                setToolState("select");
-              }
-            }}
-          />
-          <button type="submit" className="button" disabled={!commentDraft.trim()}>
-            Add
-          </button>
-          <button type="button" className="button ghost" onClick={() => setCommentDraft(null)}>
-            Cancel
-          </button>
-        </form>
-      )}
+      {!designV2 && commentForm}
       {designV2 && edits.status?.save === "not-saved" && (
         <div className="design-version-bar error" role="alert">
           <span>Not saved. Your edits are kept and will be written when saving works again.</span>
@@ -2441,7 +2472,9 @@ export default function DesignCanvas({
       {view === "code" && entry && <CodeView threadId={threadId} designDir={entry.dir} page={entry.rel} reloadKey={`${reload}-${manual}`} line={codeLine} />}
       {view === "system" && entry && (
         <section className="studio-system" aria-label="System">
-          <SystemPanel threadId={threadId} reloadKey={`${reload}-${manual}`} />
+          <div className="studio-system-scroll">
+            <SystemPanel threadId={threadId} reloadKey={`${reload}-${manual}`} />
+          </div>
         </section>
       )}
       </div>

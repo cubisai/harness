@@ -41,10 +41,12 @@ export interface SelectedElement {
   selector: string;
   tag: string;
   text: string;
+  /** The text a panel edit replaces, as written in the source (`text` is what shows, after CSS). Absent when no one element holds the text. */
+  ownText?: string;
   html: string;
   rect: { x: number; y: number; width: number; height: number };
   /** Up to four ancestors, outermost first, for a breadcrumb. */
-  path: { label: string; selector: string }[];
+  path: { label: string; selector: string; ui?: string; part?: string }[];
   /** The element's computed style, limited to STYLE_KEYS, when the page reported one. */
   style?: Record<string, string>;
   /** Its element-child path from `<html>`, which finds it in the file before it has an id. */
@@ -91,7 +93,10 @@ export function readSelected(raw: unknown): SelectedElement | null {
     if (!step || typeof step !== "object" || Array.isArray(step)) return null;
     const s = step as Record<string, unknown>;
     if (!isStr(s.label, 1, 80) || !isStr(s.selector, 1, 2000)) return null;
-    path.push({ label: s.label, selector: s.selector });
+    const entry: SelectedElement["path"][number] = { label: s.label, selector: s.selector };
+    if (isStr(s.ui, 1, 48) && /^[a-z0-9-]+$/.test(s.ui)) entry.ui = s.ui;
+    if (isStr(s.part, 1, 48) && /^[a-z0-9-]+$/.test(s.part)) entry.part = s.part;
+    path.push(entry);
   }
   const el: SelectedElement = {
     selector: r.selector,
@@ -103,6 +108,7 @@ export function readSelected(raw: unknown): SelectedElement | null {
   };
   if (Array.isArray(r.at) && r.at.length <= 64 && r.at.every((n) => Number.isInteger(n) && (n as number) >= 0)) el.at = r.at as number[];
   if (r.id !== undefined) el.id = r.id;
+  if (typeof r.ownText === "string" && r.ownText.length <= 300) el.ownText = r.ownText;
   if (r.style !== undefined) {
     const style = readStyle(r.style);
     if (style) el.style = style;
@@ -114,8 +120,8 @@ export function readSelected(raw: unknown): SelectedElement | null {
  * A short label for a selected element: its text when that is short, else its id (a section's text is a run-on of
  * everything inside it), else its text cut short, else just its tag.
  */
-export function elementLabel(el: Pick<SelectedElement, "tag" | "text" | "id">): string {
-  const text = el.text.replace(/\s+/g, " ").trim();
+export function elementLabel(el: Pick<SelectedElement, "tag" | "text" | "id" | "ownText">): string {
+  const text = (el.ownText || el.text).replace(/\s+/g, " ").trim();
   if (text && (text.length <= 32 || !el.id)) return `${el.tag} "${text.slice(0, 32)}${text.length > 32 ? "…" : ""}"`;
   if (el.id) return `${el.tag} ${el.id}`;
   return el.tag;

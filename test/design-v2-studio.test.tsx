@@ -3,6 +3,8 @@ import { codeFileOrder } from "../src/renderer/src/design/CodeView";
 import { drawMessage, strokeBounds, toolForKey } from "../src/renderer/src/design/CanvasTools";
 import { flowChanges, flowOf, gapSteps, groupParts, instanceOf, jsxOf, lineOf, parseKitParts, startAttrs, swapNotice, swapPlan, wrapAttrs, wrapShapes, type KitPart } from "../src/renderer/src/design/kit-parts";
 import { placeBadge } from "../src/renderer/src/design/SelectionChrome";
+import { layerName } from "../src/renderer/src/design/layers";
+import { elementLabel } from "../src/shared/selection";
 import { STUDIO_VIEWS, menuStep, viewportMenu } from "../src/renderer/src/design/StudioBar";
 import { replyCount, statusText } from "../src/renderer/src/components/StudioComposer";
 import { selectionPlaceholder } from "../src/renderer/src/components/Composer";
@@ -188,5 +190,24 @@ describe("the canvas tools", () => {
     expect(placeBadge({ x: 10, y: 100, width: 50, height: 20 }, view)).toEqual({ left: 10, top: 80 });
     expect(placeBadge({ x: 10, y: 5, width: 50, height: 20 }, view).top).toBe(5);
     expect(placeBadge({ x: 480, y: 100, width: 50, height: 20 }, view).left).toBe(440);
+    // Under the tools it moves beside them; lower down it doesn't.
+    const tools = { right: 108, bottom: 46 };
+    expect(placeBadge({ x: 10, y: 5, width: 50, height: 20 }, view, 20, tools).left).toBe(112);
+    expect(placeBadge({ x: 10, y: 100, width: 50, height: 20 }, view, 20, tools).left).toBe(10);
+  });
+});
+
+describe("names in the studio", () => {
+  const node = { tag: "div", cls: "", selector: "div", label: "", depth: 0 };
+  it("a layer reads as its kit part, and never as an id the editor stamped", () => {
+    expect(layerName({ ...node, ui: "app-bar", id: "el-eb5e0243" })).toBe("App bar");
+    expect(layerName({ ...node, id: "el-eb5e0243" })).toBe("Group");
+    expect(layerName({ ...node, id: "hero_1" })).toBe("Hero 1");
+    // Its own text still wins: a button reads as what it says.
+    expect(layerName({ ...node, ui: "button", label: "Start free trial" })).toBe("Start free trial");
+  });
+  it("a label prefers the source's text to what CSS shows", () => {
+    expect(elementLabel({ tag: "button", text: "START FREE TRIAL", ownText: "Start free trial" })).toBe('button "Start free trial"');
+    expect(elementLabel({ tag: "section", text: "Two words" })).toBe('section "Two words"');
   });
 });

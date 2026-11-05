@@ -665,8 +665,7 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .studio-code, .studio-system { position: absolute; inset: 0; z-index: 4; display: flex; flex-direction: column; min-height: 0; background: var(--bg); padding-bottom: calc(var(--design-prompt-h, 0px) + var(--design-pane-pad, 0px) + 8px); }
 .studio-code .design-inspector-code-head { flex-shrink: 0; }
 .studio-code .design-inspector-code-scroll { flex: 1; min-height: 0; overflow: auto; }
-.studio-system { overflow-y: auto; align-items: center; }
-.studio-system > * { width: min(100%, 720px); }
+.studio-system-scroll { flex: 1; min-height: 0; overflow-y: auto; padding-inline: max(0px, calc((100% - 720px) / 2)); }
 .studio-present { position: absolute; top: 12px; right: 12px; z-index: 4; height: 28px; display: inline-flex; align-items: center; gap: 6px; background: var(--bg-elevated); }
 /* The selection's badge and pill, the tools, seams and popovers: in the host layer, so they stay readable at any scale. */
 .studio-badge { position: absolute; z-index: 20; display: inline-flex; align-items: center; gap: 4px; height: 20px; max-width: 220px; padding: 0 6px; border: 0; border-radius: var(--radius-s) var(--radius-s) 0 0; background: var(--canvas-select); color: var(--bg); font-size: 11.5px; font-weight: 500; white-space: nowrap; }
@@ -689,6 +688,8 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .studio-tool-row { position: absolute; top: 8px; left: 8px; z-index: 22; display: flex; align-items: center; gap: 4px; }
 .studio-seam { position: absolute; z-index: 19; background: var(--canvas-select); pointer-events: none; }
 .studio-seam-add { position: absolute; left: 50%; top: 50%; width: 24px; height: 24px; transform: translate(-50%, -50%); display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: var(--canvas-select); color: var(--bg); pointer-events: auto; }
+.studio-toast { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 22; display: flex; align-items: center; gap: 8px; max-width: min(560px, calc(100% - 32px)); min-height: 32px; padding: 2px 4px 2px 12px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-m); background: var(--bg-elevated); box-shadow: var(--shadow-float); font-size: 12.5px; color: var(--text-secondary); }
+.studio-toast span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .studio-popover { position: absolute; z-index: 23; display: flex; flex-direction: column; width: 300px; max-width: calc(100% - 16px); max-height: min(420px, calc(100% - 16px)); padding: 4px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-l); background: var(--bg-elevated); box-shadow: var(--shadow-float); }
 .studio-search { flex-shrink: 0; display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; color: var(--text-tertiary); border-bottom: 1px solid var(--hairline); margin-bottom: 4px; }
 .studio-search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 12.5px; }
@@ -775,7 +776,7 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 /* Below 1000px the Customize panel floats over the stage instead of squeezing the page. */
 @media (max-width: 999px) {
   .design-stage-row:has(> .design-customize) { position: relative; }
-  .design-stage-row > .design-customize { position: absolute; top: 0; right: 0; bottom: 0; z-index: 3; background: var(--bg); box-shadow: var(--shadow-float); }
+  .design-stage-row > .design-customize { position: absolute; top: 0; right: 0; bottom: calc(var(--design-prompt-h, 0px) + var(--design-pane-pad, 0px) + 8px); z-index: 3; background: var(--bg); box-shadow: var(--shadow-float); }
   .app.canvas-first:has(.design-customize) .main > .thread-pane { padding-right: 16px; }
 }
 .design-frame-box { position: relative; margin: auto; flex-shrink: 0; background: var(--bg); border: 1px solid var(--hairline); }
@@ -1033,18 +1034,18 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-inspector-size { padding-top: 4px; }
 /* Design v2's Customize panel: Page Theme when nothing is selected, the element's style when something is. */
 .design-customize-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 4px; min-height: 40px; padding: 4px 8px 4px 12px; background: var(--bg); border-bottom: 1px solid var(--hairline); }
-.design-customize-head:has(> .icon-button) { padding-left: 4px; }
+.design-customize-head:has(> .icon-button:first-child) { padding-left: 4px; }
 .design-customize-title { flex: 1; min-width: 0; margin: 0; font-size: 12.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .design-customize-note { margin: 0; padding: 8px 12px; font-size: 12.5px; color: var(--text-secondary); border-bottom: 1px solid var(--hairline); }
 .design-customize-filter { padding: 8px 12px 0; }
-.design-customize-filter .text-input { width: 100%; height: 28px; padding: 0 8px; font-size: 12.5px; }
+.design-customize-filter .text-input { width: 100%; height: 28px; padding: 0 8px; font-family: var(--font); font-size: 12.5px; }
 .design-customize-fields { min-width: 0; margin: 0; padding: 0; border: 0; }
 .design-customize-fields:disabled { opacity: .5; }
 .design-customize-row { display: flex; align-items: center; gap: 8px; min-height: 34px; min-width: 0; }
 .design-customize-row.stacked { flex-direction: column; align-items: stretch; gap: 4px; padding-bottom: 8px; }
 .design-customize-row .design-inspector-row-label { width: 72px; }
 .design-customize-row.stacked .design-inspector-row-label { width: auto; }
-.design-customize-row .text-input { flex: 1; min-width: 0; height: 28px; padding: 0 8px; font-size: 12.5px; }
+.design-customize-row .text-input { flex: 1; min-width: 0; height: 28px; padding: 0 8px; font-family: var(--font); font-size: 12.5px; }
 .design-customize-segments { display: flex; width: 100%; min-width: 0; }
 .design-customize-row:not(.stacked) .design-customize-segments { flex: 1; }
 .design-customize-segments button { flex: 1 1 0; min-width: 28px; min-height: 24px; padding: 0 4px; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2011,6 +2012,7 @@ button.qc-option.other { cursor: pointer; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--hairline-strong); border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
 ::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-corner { background: transparent; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }

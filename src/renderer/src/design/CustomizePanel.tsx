@@ -60,7 +60,7 @@ export function attrOf(html: string, name: string): string | null {
   return m ? (m[1] ?? m[2] ?? m[3] ?? "") : null;
 }
 
-const canHoldText = (el: SelectedElement): boolean => !/^(input|select|textarea|img|svg)$/.test(el.tag) && el.text !== "";
+const canHoldText = (el: SelectedElement): boolean => !/^(input|select|textarea|img|svg)$/.test(el.tag) && Boolean(el.ownText);
 const isField = (el: SelectedElement): boolean => el.tag === "input" || el.tag === "textarea";
 const canDisable = (el: SelectedElement): boolean => /^(button|input|select|textarea)$/.test(el.tag);
 
@@ -69,7 +69,8 @@ function displayName(el: SelectedElement): string {
   const ui = attrOf(el.html, "data-ui");
   if (!ui) return elementLabel(el);
   const name = ui.replace(/(^|-)(\w)/g, (_, dash: string, c: string) => `${dash ? " " : ""}${c.toUpperCase()}`);
-  return el.text ? `${name} "${el.text.slice(0, 24)}"` : name;
+  const text = el.ownText || el.text;
+  return text ? `${name} "${text.slice(0, 24)}"` : name;
 }
 
 export interface CustomizeHandlers {
@@ -250,7 +251,9 @@ export function CustomizePanel({
     { label: "Text", prop: "color", computed: style.color ?? "" },
     { label: "Border", prop: "border-color", computed: style.borderColor ?? "" },
   ];
-  const propRows = props.filter((p) => p.name !== "disabled" && shows(p.name, ...(p.options ?? [])));
+  // The Layout card already has these on a stack or grid.
+  const inLayoutCard = flowOf(startAttrs(el.html)) ? ["direction", "gap", "align", "columns"] : [];
+  const propRows = props.filter((p) => p.name !== "disabled" && !inLayoutCard.includes(p.name) && shows(p.name, ...(p.options ?? [])));
   return (
     <aside className="design-inspector design-customize" aria-label="Customize">
       <div className="design-customize-head">
@@ -274,7 +277,7 @@ export function CustomizePanel({
           <Card title="Content">
             {canHoldText(el) && (
               <Row label="Value">
-                <input className="text-input" key={`v-${el.selector}`} aria-label="Value" defaultValue={el.text} onChange={(e) => handlers.onText(el, e.target.value)} />
+                <input className="text-input" key={`v-${el.selector}`} aria-label="Value" defaultValue={el.ownText} onChange={(e) => handlers.onText(el, e.target.value)} />
               </Row>
             )}
             {isField(el) && (

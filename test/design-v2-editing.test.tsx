@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { selectorFor } from "../src/main/browser/picker";
-import { bridgeScript, componentOf, drillTarget, isSelectableElement, parentComponent, textHolder } from "../src/main/design/bridge";
+import { bridgeScript, clickTarget, componentOf, drillTarget, isSelectableElement, parentComponent, textHolder } from "../src/main/design/bridge";
 import { DesignDocuments } from "../src/main/design/documents";
 import { documentIdOf } from "../src/main/design/mutation";
 import { applyChange } from "../src/main/design/source-edit";
@@ -44,6 +44,10 @@ function node(tag: string, init: Partial<Pick<Node, "attrs" | "cls" | "text" | "
   for (const kid of kids) kid.parentElement = n;
   const dom = n as unknown as Record<string, unknown>;
   dom.getBoundingClientRect = () => n.rect;
+  dom.contains = (other: Node) => {
+    for (let cur: Node | null = other; cur; cur = cur.parentElement) if (cur === n) return true;
+    return false;
+  };
   dom.matches = (sel: string) => n.cls.some((c) => sel.includes(`.${c}`));
   dom.closest = (sel: string) => {
     for (let cur: Node | null = n; cur; cur = cur.parentElement) {
@@ -129,6 +133,71 @@ describe("what a click can land on", () => {
     expect(textHolder(el(node("button", {}, [node("i"), label])))).toBe(label);
     expect(textHolder(el(node("div", {}, [node("p", { text: "a" }), node("p", { text: "b" })])))).toBeNull();
     expect(textHolder(el(node("input", { text: "x" })))).toBeNull();
+  });
+
+  describe("a click once something is selected", () => {
+    const none = () => false;
+    const pick = (selected: unknown, hit: unknown, paints: (el: Element) => boolean = none) => clickTarget(selected === null ? null : el(selected as never), el(hit as never), componentOf, paints);
+    const tree = () => {
+      const accent = node("span", { text: "one screen" });
+      const title = node("h1", { text: "Run it from" }, [accent]);
+      const save = node("button", { text: "Save", attrs: { "data-ui": "button" } });
+      const cancel = node("button", { text: "Cancel", attrs: { "data-ui": "button" } });
+      const actions = node("div", {}, [save, cancel]);
+      const cellA = node("td", { text: "Van 12" });
+      const cellB = node("td", { text: "Van 18" });
+      const table = node("table", { attrs: { "data-ui": "table" } }, [cellA, cellB]);
+      const paper = node("div", { attrs: { "data-ui": "paper" } }, [table]);
+      const hero = node("section", { attrs: { "data-ui": "hero" } }, [title, actions, paper]);
+      const other = node("section", { attrs: { "data-ui": "pricing" } }, [node("p", { text: "Plans" })]);
+      node("html", {}, [node("body", {}, [hero, other])]);
+      return { accent, title, save, cancel, actions, cellA, cellB, table, paper, hero, other };
+    };
+    it("with nothing selected takes the component", () => {
+      const t = tree();
+      expect(pick(null, t.title)).toBe(t.hero);
+      expect(pick(null, t.save)).toBe(t.save);
+    });
+    it("goes from parent to child to sub-child", () => {
+      const t = tree();
+      expect(pick(t.hero, t.save)).toBe(t.save);
+      expect(pick(t.hero, t.title)).toBe(t.title);
+      expect(pick(t.title, t.accent)).toBe(t.accent);
+      expect(pick(t.hero, t.cellA)).toBe(t.table);
+      expect(pick(t.table, t.cellA)).toBe(t.cellA);
+    });
+    it("holds its depth across siblings", () => {
+      const t = tree();
+      expect(pick(t.save, t.cancel)).toBe(t.cancel);
+      expect(pick(t.save, t.title)).toBe(t.title);
+      expect(pick(t.cellA, t.cellB)).toBe(t.cellB);
+      expect(pick(t.accent, t.title)).toBe(t.title);
+    });
+    it("keeps the selection on itself and on a bare gap inside it", () => {
+      const t = tree();
+      expect(pick(t.save, t.save)).toBe(t.save);
+      expect(pick(t.title, t.title)).toBe(t.title);
+      expect(pick(t.hero, t.actions)).toBe(t.hero);
+    });
+    it("steps up on the parent's background, and on a gap beside the selection", () => {
+      const t = tree();
+      expect(pick(t.save, t.hero)).toBe(t.hero);
+      expect(pick(t.save, t.actions)).toBe(t.hero);
+    });
+    it("takes a wrapper you can see", () => {
+      const t = tree();
+      expect(pick(t.hero, t.actions, (n) => n === el(t.actions))).toBe(t.actions);
+    });
+    it("leaves for another part of the page", () => {
+      const t = tree();
+      expect(pick(t.cellA, t.other)).toBe(t.other);
+      expect(pick(t.save, t.other)).toBe(t.other);
+    });
+    it("works on its own, serialized into the page", () => {
+      const t = tree();
+      const alone = new Function(`return (${String(clickTarget)});`)() as typeof clickTarget;
+      expect(alone(el(t.hero), el(t.save), componentOf, none)).toBe(t.save);
+    });
   });
 
   it("has helpers that work on their own, since each is serialized into the page apart from this module", () => {

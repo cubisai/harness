@@ -22,11 +22,16 @@ export const MORE_DIRECTIONS: { id: ActionId; label: string }[] = [
   { id: "overdrive", label: "Overdrive" },
 ];
 
+/** Where the V, D and C tools end, from the stage's corner (`.studio-tools`). */
+const TOOLS_BOX = { right: 108, bottom: 46 };
+
 /** The badge sits on the element's top edge, inside the view: above it when there's room, else just inside. */
-export function placeBadge(el: FrameRect, view: FrameRect, height = 20): { left: number; top: number } {
+export function placeBadge(el: FrameRect, view: FrameRect, height = 20, tools = { right: 0, bottom: 0 }): { left: number; top: number } {
   const above = el.y - height;
   const top = above >= view.y ? above : Math.min(Math.max(view.y, el.y), view.y + view.height - height);
-  return { left: Math.max(view.x, Math.min(el.x, view.x + view.width - 60)), top };
+  const left = Math.max(view.x, Math.min(el.x, view.x + view.width - 60));
+  // The V, D and C tools float over the stage's top-left corner, and would take the badge's clicks.
+  return { left: top < tools.bottom && left < tools.right ? tools.right + 4 : left, top };
 }
 
 /** The selection's two attached parts: the name badge (a click swaps) and the pill (parents, 3 variants, Ask AI). */
@@ -65,7 +70,7 @@ export function SelectionChrome({
   const place = size.width > 0 ? placeElementBar(el, view, size) : null;
   const up = place !== null && place.top > view.y + view.height / 2;
   const style: CSSProperties = place ? { left: place.left, top: place.top } : { left: 0, top: 0, visibility: "hidden" };
-  const badge = placeBadge(el, view);
+  const badge = placeBadge(el, view, 20, TOOLS_BOX);
   const variantItems: StudioMenuItem[] = [
     ...VARIANT_DIRECTIONS.map((d) => ({ kind: "item" as const, id: d.id, label: d.label, onSelect: () => onVariant(d.id, "") })),
     { kind: "item", id: "custom", label: "Custom…", onSelect: () => setCustom("") },
@@ -217,7 +222,9 @@ function usePopoverPlace(at: { x: number; y: number }, bounds: FrameRect) {
   useEffect(() => {
     if (placed) box.current?.querySelector<HTMLElement>("input")?.focus();
   }, [placed]);
-  const style: CSSProperties = place ?? { left: 0, top: 0, visibility: "hidden" };
+  // A short stage shrinks it, and its list scrolls.
+  const maxHeight = Math.min(420, Math.max(120, bounds.height - 16));
+  const style: CSSProperties = place ? { ...place, maxHeight } : { left: 0, top: 0, maxHeight, visibility: "hidden" };
   return { box, style };
 }
 

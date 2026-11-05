@@ -63,6 +63,8 @@ export function StudioMenu({
     return () => window.removeEventListener("mousedown", onDown);
   }, [open]);
   const onKey = (e: ReactKeyboardEvent) => {
+    // Closed, the keys belong to the canvas: Esc on this trigger still steps the selection up.
+    if (!open) return;
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();

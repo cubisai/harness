@@ -121,6 +121,8 @@ export interface OutlineNode {
   selector: string;
   label: string;
   depth: number;
+  /** Its kit part, from `data-ui`. */
+  ui?: string;
 }
 
 const num = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -306,6 +308,7 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
       if (typeof n.depth !== "number" || !Number.isInteger(n.depth) || n.depth < 0 || n.depth > 8) continue;
       const node: OutlineNode = { tag: n.tag, cls: n.cls, selector: n.selector, label: n.label, depth: n.depth };
       if (str(n.id, 64) && /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(n.id)) node.id = n.id;
+      if (str(n.ui, 48) && /^[a-z0-9][a-z0-9-]{0,47}$/.test(n.ui)) node.ui = n.ui;
       nodes.push(node);
     }
     return { type: "outline", nodes };
