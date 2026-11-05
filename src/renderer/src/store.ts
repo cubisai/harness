@@ -179,6 +179,8 @@ interface State {
   setInboxOpen(open: boolean): void;
   /** Panel widths and collapse state; the raw setting, drawn through clampLayout. */
   paneLayout: PaneLayout;
+  /** The sidebar in the design studio: folded unless opened there, without touching the saved layout. Null outside it. */
+  studioFold: boolean | null;
   setPaneLayout(patch: Partial<PaneLayout>, persist: boolean): void;
   inspectorOpen: boolean;
   inspectorTab: InspectorTab;
@@ -700,6 +702,7 @@ export const useStore = create<State>((set, get) => ({
     set({ inboxOpen: open });
   },
   paneLayout: { ...DEFAULT_LAYOUT },
+  studioFold: null,
   inspectorOpen: false,
   inspectorTab: "changes",
   artifact: null,

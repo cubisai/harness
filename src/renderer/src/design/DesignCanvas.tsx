@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal, flushSync } from "react-dom";
-import { Download, FolderOpen, Grid3x3, Hammer, LayoutGrid, Palette, PanelLeft, PanelRight, Smartphone, Workflow } from "lucide-react";
+import { Download, FolderOpen, Grid3x3, Hammer, LayoutGrid, Palette, PanelLeft, PanelRight, Play, Smartphone, Workflow } from "lucide-react";
 import type { DesignDetect, DesignEntry, DesignExportFormat } from "../../../shared/types";
 import { api } from "../api";
 import { fileManagerName } from "../components/OpenIn";
@@ -10,7 +10,7 @@ import "../styles/artifact.css";
 import { affectedPages, useStore } from "../store";
 import { designStyleName, useDesignSystemOptions } from "../components/DesignSystemMenu";
 import { STYLE_PREFIX, readDirection } from "../../../shared/direction";
-import { NO_MARKS, STAGE_PAD, VIEWPORTS, ZOOMS, createBridgeGate, deviceFor, frameLayout, pageFromPath, readBridgeMessage, viewportForDevice, type FrameAnchor, type FrameRect, type InsertGap, type OutlineNode, type PageMarks, type VariantSetInfo, type Viewport, type Zoom } from "./frame";
+import { NO_MARKS, STAGE_PAD, VIEWPORTS, ZOOMS, createBridgeGate, deviceFor, frameLayout, pageFromPath, readBridgeMessage, viewportForDevice, type FrameAnchor, type FrameRect, type InsertGap, type OutlineNode, type PageMarks, type PageSeam, type VariantSetInfo, type Viewport, type Zoom } from "./frame";
 import { announceSelection, elementLabel, selectionKey, withScope, type SelectedElement } from "../../../shared/selection";
 import { withRefs } from "./refs";
 import { ElementBar, VariantCycler, cycleStep, goMessage, insertMessage, placeElementBar, type ActionId } from "./ElementBar";
@@ -28,6 +28,12 @@ import { InspectorPanel, type InspectorTab } from "./InspectorPanel";
 import { LiveBar, escClears, escapeStep, isPickKey, steerMessage } from "./LiveBar";
 import { CustomizePanel, THEME_TOKENS } from "./CustomizePanel";
 import { useDesignEditing } from "./useDesignEditing";
+import { StudioBar, viewportMenu, type StudioMenuItem, type StudioView } from "./StudioBar";
+import { CodeView } from "./CodeView";
+import { SystemPanel } from "./SystemPanel";
+import { ActionsMenu, SeamButton, SeamPalette, SelectionChrome, SwapPopover, type ActionItem, type SeamPosition } from "./SelectionChrome";
+import { CanvasToolsPill, DrawLayer, drawMessage, strokeBounds, toolForKey, type CanvasTool, type Stroke } from "./CanvasTools";
+import { instanceOf, jsxOf, lineOf, parseKitParts, startAttrs, swapNotice, swapPlan, wrapAttrs, wrapShapes, type AttrChange, type KitPart, type WrapShape } from "./kit-parts";
 
 const ipcError = (err: unknown): string => (err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err));
 
@@ -171,7 +177,7 @@ export default function DesignCanvas({
   });
   // In v2 tiers only change how much the agent builds: direct edits work on all of them.
   const tierHas = tierFeatures(tier);
-  const features = designV2 ? { ...tierHas, textEdit: true, tweaks: true } : tierHas;
+  const features = designV2 ? { ...tierHas, textEdit: true, tweaks: true, comments: true } : tierHas;
   // The style the design is drawn in names the board's artboards (`Page · Style`, `Option · <its style>`).
   const thread = useStore((s) => {
     for (const list of Object.values(s.threads)) {
@@ -185,7 +191,14 @@ export default function DesignCanvas({
   const styleOf = useCallback((slug: string) => systemOptions.find((o) => o.id === STYLE_PREFIX + slug)?.name, [systemOptions]);
   const labelOf = useCallback((p: BoardPage) => frameLabel(p, styleName, styleOf), [styleName, styleOf]);
   // Canvas-first's Pages and Layers rail, open or not (kept in the pane layout).
-  const railOpen = useStore((s) => s.paneLayout.designRail) && canvasFirst;
+  // The top bar's view (v2). Preview, Code and System take the whole width: the side panels come back with Design.
+  const [viewState, setViewState] = useState<StudioView>("design");
+  const view: StudioView = designV2 ? viewState : "design";
+  // Below 1000px the rail folds for now, without changing what's saved: widening the window brings it back.
+  const [railFolded, setRailFolded] = useState(false);
+  const railSaved = useStore((s) => s.paneLayout.designRail);
+  const railWanted = canvasFirst && railSaved && !(designV2 && railFolded);
+  const railOpen = railWanted && view === "design";
   const setPaneLayout = useStore((s) => s.setPaneLayout);
   // Comments (Real app tier): kept in the design folder; this page's open ones are pinned in the frame.
   const [comments, setComments] = useState<DesignComment[]>([]);
@@ -270,7 +283,14 @@ export default function DesignCanvas({
     setBoard(false);
     setFlow(false);
     setInspectorOpen(false);
-    setPanelMode("customize");
+    setViewState("design");
+    setToolState("select");
+    setSeam(null);
+    setPalette(null);
+    setSwapAt(null);
+    setActionsAt(null);
+    setCodeLine(null);
+    pendingSelect.current = null;
     setAppearance(null);
     setPageTheme({});
     setPresent(null);
@@ -401,7 +421,22 @@ export default function DesignCanvas({
   // The page's values for the panel's tokens, and how it's previewed: light or dark, whatever the app's theme.
   const [pageTheme, setPageTheme] = useState<Record<string, string>>({});
   const [appearance, setAppearance] = useState<"light" | "dark" | null>(null);
-  const [panelMode, setPanelMode] = useState<"customize" | "code">("customize");
+  // The selection Preview set aside, for coming back to Design.
+  const heldSelection = useRef<typeof selection>(undefined);
+  const [versionPill, setVersionPill] = useState(false);
+  // The studio's canvas tools and what they open.
+  const [tool, setToolState] = useState<CanvasTool>("select");
+  const [seam, setSeam] = useState<PageSeam | null>(null);
+  const [palette, setPalette] = useState<{ anchor: SelectedElement; position: SeamPosition; at: { x: number; y: number } } | null>(null);
+  const [swapAt, setSwapAt] = useState<{ x: number; y: number } | null>(null);
+  const [actionsAt, setActionsAt] = useState<{ x: number; y: number } | null>(null);
+  const [drawCapturing, setDrawCapturing] = useState(false);
+  const [codeLine, setCodeLine] = useState<number | null>(null);
+  const [kitParts, setKitParts] = useState<KitPart[]>([]);
+  // The element a structural edit made or kept, selected once the reloaded frame is ready.
+  const pendingSelect = useRef<string | null>(null);
+  const hitWaiter = useRef<((el: SelectedElement | null) => void) | null>(null);
+  const studioRef = useRef<{ context: (x: number, y: number) => void; key: (key: string, mod: boolean, shift: boolean, alt: boolean) => boolean; toolOf: () => CanvasTool }>({ context: () => {}, key: () => false, toolOf: () => "select" });
 
   // Only the frame's own window is listened to, and every message is checked (the page is the agent's code).
   useEffect(() => {
@@ -441,7 +476,13 @@ export default function DesignCanvas({
         // A reload (the agent rewrote the page): find the selection again; anything gone is dropped and reported.
         const sel = useStore.getState().designSelection[threadId];
         if (!sel) ownReload.current = false;
-        if (sel && entry && sel.page === (to?.rel ?? entry.rel) && version === 0) {
+        setSeam(null);
+        const made = pendingSelect.current;
+        pendingSelect.current = null;
+        if (made) {
+          fromFrame.current = "";
+          post({ type: "set-selection", targets: [{ id: made, selector: `[data-agent-id="${made}"]`, tag: "div", text: "" }] });
+        } else if (sel && entry && sel.page === (to?.rel ?? entry.rel) && version === 0) {
           fromFrame.current = "";
           post({ type: "set-selection", targets: sel.elements.map(({ id, selector, tag, text }) => ({ id, selector, tag, text })) });
         }
@@ -458,6 +499,15 @@ export default function DesignCanvas({
         }
       } else if (msg.type === "scroll") {
         scroll.current = { x: msg.x, y: msg.y };
+        setSeam(null);
+      } else if (msg.type === "seam") {
+        setSeam(msg.seam);
+      } else if (msg.type === "context-menu") {
+        studioRef.current.context(msg.x, msg.y);
+      } else if (msg.type === "canvas-key") {
+        studioRef.current.key(msg.key, msg.mod, msg.shift, msg.alt);
+      } else if (msg.type === "hit-result") {
+        hitWaiter.current?.(msg.element);
       } else if (msg.type === "text-edit") {
         // An in-place edit: written into the file only when it's unambiguous; otherwise the page goes back to the file.
         if (!entry || version !== 0) return;
@@ -509,6 +559,7 @@ export default function DesignCanvas({
         setElementPrompt(`Fix: ${pin.details.join("; ")}`);
         lastAction.set(threadId, "polish");
         setActionState("polish");
+        if (designV2) useStore.getState().setComposerDraft(`Fix: ${pin.details.join("; ")}`);
       } else if (msg.type === "edit-refused") {
         setNotice({ text: msg.reason });
       } else if (msg.type === "selection") {
@@ -516,6 +567,8 @@ export default function DesignCanvas({
         fromFrame.current = selectionKey(msg.elements);
         setSelection(threadId, { page: entry.rel, elements: msg.elements });
         setAnnouncement(announceSelection(msg.elements));
+        // The Comment tool's click: the note opens on what it took.
+        if (studioRef.current.toolOf() === "comment" && msg.elements.length === 1) setCommentDraft("");
         // A variant set on the page means the agent replaced the picked element on purpose: no notice for that.
         const ours = ownReload.current;
         ownReload.current = false;
@@ -751,6 +804,7 @@ export default function DesignCanvas({
     try {
       setComments(await api().designCommentAdd(threadId, { page: entry.rel, target: { id: el.id, selector: el.selector, tag: el.tag, text: el.text }, label: elementLabel(el), text }));
       setCommentDraft(null);
+      setToolState("select");
     } catch (err) {
       setNotice({ text: `Couldn't add the comment: ${ipcError(err)}`, error: true });
     }
@@ -981,36 +1035,70 @@ export default function DesignCanvas({
   }, [onPage, entry?.rel]);
   // In v2 the page is always selectable: there's no Pick to turn on, except while Insert has the pointer.
   useEffect(() => {
-    if (!designV2 || !onPage || picking || inserting) return;
+    if (!designV2 || !onPage || picking || inserting || view === "preview") return;
     setPicking(true);
     post(pickMessage(true));
-  }, [designV2, onPage, picking, inserting, post, pickMessage]);
+  }, [designV2, onPage, picking, inserting, post, pickMessage, view]);
+  // Preview hands the page to the visitor: no selecting, and the selection waits until Design comes back.
+  const changeView = (next: StudioView) => {
+    if (next === view) return;
+    if (next === "preview") {
+      heldSelection.current = useStore.getState().designSelection[threadId];
+      clearSelection();
+      stopPicking();
+    } else if (view === "preview" && heldSelection.current) {
+      setSelection(threadId, heldSelection.current);
+      heldSelection.current = undefined;
+    }
+    setViewState(next);
+  };
   // Below 1000px the Layers rail starts collapsed and Customize stays closed until asked for, since it floats over the page.
   useEffect(() => {
     if (!designV2) return;
     const narrow = window.matchMedia("(max-width: 999px)");
     setInspectorOpen(!narrow.matches);
     const apply = () => {
-      if (narrow.matches) {
-        setPaneLayout({ designRail: false }, false);
-        setInspectorOpen(false);
-      }
+      setRailFolded(narrow.matches);
+      if (narrow.matches) setInspectorOpen(false);
     };
     apply();
     narrow.addEventListener("change", apply);
     return () => narrow.removeEventListener("change", apply);
-  }, [designV2, threadId, setPaneLayout]);
+  }, [designV2, threadId]);
+  const toggleRail = () => {
+    if (railSaved && (railFolded || window.matchMedia("(max-width: 999px)").matches)) setRailFolded(!railFolded);
+    else {
+      setRailFolded(false);
+      setPaneLayout({ designRail: !railSaved }, true);
+    }
+  };
+  const toggleRailRef = useRef(toggleRail);
+  toggleRailRef.current = toggleRail;
   // The canvas's keys in v2, with the keyboard in the app rather than the frame. A text field keeps its own.
   const keyState = useRef({ onPage, cycling: false });
-  keyState.current = { onPage, cycling: variantSets.length > 0 };
+  keyState.current = { onPage: onPage && view === "design", cycling: variantSets.length > 0 };
   useEffect(() => {
     if (!designV2) return;
     const onKey = (e: KeyboardEvent) => {
       const now = keyState.current;
       if (e.defaultPrevented || !now.onPage) return;
       const t = e.target as HTMLElement | null;
+      if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
+        e.preventDefault();
+        toggleRailRef.current();
+        return;
+      }
       if (t && (t.isContentEditable || /^(input|textarea|select)$/i.test(t.tagName))) return;
+      if (!e.repeat && (!t || !t.closest('[role="dialog"], [role="menu"], [role="listbox"]')) && studioRef.current.key(e.key, e.metaKey || e.ctrlKey, e.shiftKey, e.altKey)) {
+        e.preventDefault();
+        return;
+      }
       const k = e.key.toLowerCase();
+      if ((e.metaKey || e.ctrlKey) && e.key === "'") {
+        e.preventDefault();
+        setGrid((g) => !g);
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && (k === "z" || k === "y")) {
         e.preventDefault();
         (k === "y" || e.shiftKey ? editsRef.current.redo : editsRef.current.undo)();
@@ -1034,7 +1122,7 @@ export default function DesignCanvas({
   pickRef.current = { onPage, togglePick };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.repeat || !isPickKey(e) || !pickRef.current.onPage) return;
+      if (designV2 || e.defaultPrevented || e.repeat || !isPickKey(e) || !pickRef.current.onPage) return;
       e.preventDefault();
       pickRef.current.togglePick();
     };
@@ -1128,9 +1216,9 @@ export default function DesignCanvas({
 
   // Go: the action, the prompt and the notes as one message, scoped to the selection; with marks drawn, one capture of
   // the element and its marks goes with it as a reference image.
-  const go = async () => {
-    if (!entry || !selected.length || goWhy || !anchor) return;
-    const text = goMessage(action, elementPrompt, marks);
+  const go = async (chosen: ActionId = action, words: string = elementPrompt) => {
+    if (!entry || !selected.length || !anchor || agentRunning || (chosen === "freeform" && !words.trim() && markCount === 0)) return;
+    const text = goMessage(chosen, words, marks);
     const refs: string[] = [];
     if (marks.strokes.length) {
       setGoCapturing(true);
@@ -1155,7 +1243,7 @@ export default function DesignCanvas({
       }
     }
     // The variants skill, plus only the chosen action's paragraph.
-    const note = await api().designActionNote(action).catch(() => "");
+    const note = await api().designActionNote(chosen).catch(() => "");
     const body = withRefs(withScope(note ? `${text}\n\n${note}` : text, `${entry.dir}/${entry.rel}`, selected), refs);
     const ok = await useStore.getState().send(body, [VARIANTS_SKILL], threadId, refs);
     if (!ok) return;
@@ -1298,6 +1386,330 @@ export default function DesignCanvas({
     />
   ) : null;
 
+  // --- The studio's selection, tools and structural edits (Swap, Insert, Wrap, the Actions menu) ---
+
+  const toWrapPoint = (x: number, y: number) => toWrap({ x, y, width: 0, height: 0 })?.el ?? { x: 16, y: 16 };
+  const wrapBounds: FrameRect = { x: 0, y: 0, width: wrapRef.current?.clientWidth ?? 0, height: wrapRef.current?.clientHeight ?? 0 };
+  const targetOf = (el: Pick<SelectedElement, "id" | "tag" | "at">) => (el.id ? { id: el.id } : el.at ? { locator: { tag: el.tag, path: el.at } } : null);
+  const one = selected.length === 1 ? (selected[0] ?? null) : null;
+  const oneAttrs = one ? startAttrs(one.html) : {};
+  const onePart = (one && kitParts.find((p) => p.ui === oneAttrs["data-ui"])) || null;
+  const selectionName = one ? (onePart?.name ?? elementLabel(one)) : `${selected.length} selected`;
+  const closePopovers = () => {
+    setSwapAt(null);
+    setActionsAt(null);
+    setPalette(null);
+  };
+  const setTool = (next: CanvasTool) => {
+    closePopovers();
+    setCommentDraft(null);
+    setToolState(next);
+    if (next === "draw") clearSelection();
+  };
+  const notAnchored = "This element can't be edited here. Ask the agent to change it.";
+  const wrapSelection = (shape: WrapShape) => {
+    closePopovers();
+    const [first, ...rest] = selected;
+    const to = first && targetOf(first);
+    if (!first || !to) return setNotice({ text: notAnchored, error: true });
+    void edits.transaction(async (step) => {
+      const extraIds: string[] = [];
+      // Wrapping names the other elements by id, so each one that has none gets one now.
+      for (const el of rest) {
+        const target = targetOf(el);
+        if (!target) throw new Error(notAnchored);
+        extraIds.push(el.id ?? (await step(target, { kind: "setProp", name: "data-cubiq-stamp", value: null })).stampedId ?? "");
+      }
+      const result = await step(to, { kind: "wrap", extraIds, tag: "div", attrs: wrapAttrs(shape, selected.length, kitParts) });
+      pendingSelect.current = result.createdIds?.[0] ?? null;
+    });
+  };
+  const unwrapSelection = () => {
+    closePopovers();
+    const to = one && targetOf(one);
+    if (!to) return;
+    clearSelection();
+    void edits.transaction((step) => step(to, { kind: "unwrap" }));
+  };
+  const duplicateSelection = () => {
+    closePopovers();
+    const list = selected.map(targetOf);
+    if (!list.length || list.some((t) => !t)) return setNotice({ text: notAnchored, error: true });
+    void edits.transaction(async (step) => {
+      // Last first, so an element found by its place isn't moved by an earlier copy.
+      for (const to of [...list].reverse()) {
+        const result = await step(to!, { kind: "duplicate" });
+        pendingSelect.current = result.createdIds?.[0] ?? null;
+      }
+    });
+  };
+  const deleteSelection = () => {
+    closePopovers();
+    const list = selected.map(targetOf);
+    if (!list.length || list.some((t) => !t)) return setNotice({ text: notAnchored, error: true });
+    clearSelection();
+    void edits.transaction(async (step) => {
+      for (const to of [...list].reverse()) await step(to!, { kind: "remove" });
+    });
+  };
+  const applyAttrs = (el: SelectedElement, changes: AttrChange[], key: string) => {
+    const to = targetOf(el);
+    if (!to) return setNotice({ text: notAnchored, error: true });
+    for (const c of changes) {
+      post({ type: "apply-attr", target: { ...(el.id ? { id: el.id } : {}), selector: el.selector, tag: el.tag, text: "" }, name: c.name, value: c.value });
+      edits.send(to, { kind: "setProp", name: c.name, value: c.value }, key);
+    }
+  };
+  const swapTo = (next: KitPart) => {
+    closePopovers();
+    const to = one && targetOf(one);
+    if (!one || !to) return setNotice({ text: notAnchored, error: true });
+    const plan = swapPlan(one.html, one.text, onePart, next);
+    const from = selectionName;
+    void edits
+      .transaction(async (step) => {
+        if (plan.kind === "attrs") {
+          let id = one.id ?? null;
+          for (const c of plan.changes) {
+            const result = await step(id ? { id } : to, { kind: "setProp", name: c.name, value: c.value });
+            id = id ?? result.stampedId ?? null;
+          }
+          pendingSelect.current = id;
+        } else {
+          const made = await step(to, { kind: "insert", html: plan.html, position: "after" });
+          const id = one.id ?? made.stampedId;
+          await step(id ? { id } : to, { kind: "remove" });
+          pendingSelect.current = made.createdIds?.[0] ?? null;
+        }
+        return true;
+      })
+      .then((done) => done && setNotice({ text: swapNotice(from, next, plan.dropped), page: entry?.rel }));
+  };
+  const insertPart = (part: KitPart, position: SeamPosition) => {
+    const anchorEl = palette?.anchor;
+    const to = anchorEl && targetOf(anchorEl);
+    closePopovers();
+    if (!to) return setNotice({ text: notAnchored, error: true });
+    void edits.transaction(async (step) => {
+      const result = await step(to, { kind: "insert", html: instanceOf(part), position: position === "inside" ? "inside-end" : position });
+      pendingSelect.current = result.createdIds?.[0] ?? null;
+    });
+  };
+  const askAtSeam = async (text: string, position: "before" | "after") => {
+    const anchorEl = palette?.anchor;
+    if (!entry || !anchorEl) return;
+    closePopovers();
+    const ok = await useStore.getState().send(insertMessage(`${entry.dir}/${entry.rel}`, { position, anchor: anchorEl, size: { width: Math.round(anchorEl.rect.width), height: Math.round(anchorEl.rect.height) } }, text), [VARIANTS_SKILL], threadId);
+    if (ok) setGenerating(true);
+  };
+  const focusComposer = () => document.querySelector<HTMLTextAreaElement>(".thread-bar textarea")?.focus();
+  const openCodeAt = async (el: SelectedElement) => {
+    if (!entry) return;
+    const res = await api().readArtifact(threadId, `${entry.dir}/${entry.rel}`).catch(() => null);
+    setCodeLine(res?.ok && typeof res.text === "string" ? lineOf(res.text, el.id, el.html) : null);
+    changeView("code");
+  };
+  const selectionAt = () => (barBoxes ? { x: barBoxes.el.x, y: barBoxes.el.y + barBoxes.el.height + 8 } : { x: 16, y: 16 });
+  const openPaletteHere = () => {
+    if (one) setPalette({ anchor: one, position: "after", at: selectionAt() });
+  };
+  const actionItems: ActionItem[] = !selected.length
+    ? []
+    : [
+        ...(onePart ? [{ id: "swap", group: "Component", label: "Swap component…", shortcut: "⌘S", run: () => setSwapAt(selectionAt()) }] : []),
+        ...(onePart?.props.find((p) => p.name === "variant")?.options ?? []).map((v) => ({ id: `v-${v}`, group: "Variant", label: `Variant: ${v}`, run: () => one && applyAttrs(one, [{ name: "data-variant", value: v }], `${one.selector}:data-variant`) })),
+        ...(onePart ? [{ id: "reset", group: "Component", label: "Reset all props", run: () => one && applyAttrs(one, onePart.props.filter((p) => oneAttrs[`data-${p.name}`] !== undefined).map((p) => ({ name: `data-${p.name}`, value: null })), `${one.selector}:reset`) }] : []),
+        ...wrapShapes(kitParts).map((s) => ({ id: `wrap-${s}`, group: "Structure", label: `Wrap in ${s[0]!.toUpperCase()}${s.slice(1)}`, shortcut: s === "stack" ? "⌘G" : s === "grid" ? "⌥⌘G" : undefined, run: () => wrapSelection(s) })),
+        { id: "unwrap", group: "Structure", label: "Unwrap", shortcut: "⌘⇧G", disabled: !one, run: unwrapSelection },
+        { id: "insert", group: "Structure", label: "Insert…", shortcut: "I", disabled: !one, run: openPaletteHere },
+        { id: "duplicate", group: "Structure", label: "Duplicate", shortcut: "⌘D", run: duplicateSelection },
+        { id: "delete", group: "Structure", label: "Delete", shortcut: "⌫", run: deleteSelection },
+        { id: "comment", group: "Component", label: "Add comment", shortcut: "C", disabled: !one, run: () => setCommentDraft("") },
+        { id: "code", group: "Component", label: "Go to code", disabled: !one, run: () => one && void openCodeAt(one) },
+        { id: "copy", group: "Component", label: jsxOf(onePart, oneAttrs, one?.text ?? "") ? "Copy JSX" : "Copy HTML", disabled: !one, run: () => one && void navigator.clipboard?.writeText(jsxOf(onePart, oneAttrs, one.text) ?? one.html) },
+      ];
+  studioRef.current = {
+    toolOf: () => tool,
+    context: (x, y) => {
+      setTool("select");
+      setActionsAt(toWrapPoint(x, y));
+    },
+    key: (key, mod, shift, alt) => {
+      if (view !== "design" || !onPage) return false;
+      const k = key.toLowerCase();
+      const chosen = toolForKey({ key, metaKey: mod, ctrlKey: false, altKey: alt, shiftKey: shift });
+      if (chosen && !(palette || swapAt || actionsAt)) {
+        setTool(chosen);
+        return true;
+      }
+      if (!selected.length) return false;
+      if (mod && k === "g") {
+        if (shift) unwrapSelection();
+        else wrapSelection(alt ? "grid" : "stack");
+        return true;
+      }
+      if (mod && k === "d" && !shift) {
+        duplicateSelection();
+        return true;
+      }
+      if (mod && k === "s" && onePart) {
+        setSwapAt(selectionAt());
+        return true;
+      }
+      if (mod) return false;
+      if (key === "Backspace" || key === "Delete") {
+        deleteSelection();
+        return true;
+      }
+      if (k === "i" && one) {
+        openPaletteHere();
+        return true;
+      }
+      if (key === "/") {
+        setActionsAt(selectionAt());
+        return true;
+      }
+      return false;
+    },
+  };
+  // Esc stands a tool down, once its own popovers have had the key.
+  useEffect(() => {
+    if (tool === "select") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || !escClears(e.target)) return;
+      setToolState("select");
+      setCommentDraft(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [tool]);
+  // A saved page's parts, from the manifest in its folder. A flat style has none.
+  const kitDir = entry?.dir ?? null;
+  useEffect(() => {
+    if (!designV2 || !kitDir) return setKitParts([]);
+    let live = true;
+    void api()
+      .readArtifact(threadId, `${kitDir}/system/components.json`)
+      .then((res) => live && setKitParts(parseKitParts(res.ok ? res.text : null)))
+      .catch(() => live && setKitParts([]));
+    return () => {
+      live = false;
+    };
+  }, [designV2, threadId, kitDir, reload]);
+  const sendDrawing = async (strokes: Stroke[], note: string) => {
+    const wrap = wrapRef.current;
+    const frame = frameRef.current;
+    const box = strokeBounds(strokes, 24);
+    if (!wrap || !frame || !entry || !box || agentRunning) return;
+    const wr = wrap.getBoundingClientRect();
+    const x = Math.max(0, box.x);
+    const y = Math.max(0, box.y);
+    const width = Math.min(wr.width - x, box.width);
+    const height = Math.min(wr.height - y, box.height);
+    setDrawCapturing(true);
+    try {
+      // What the marks circle, asked of the page at their centre.
+      const fr = frame.getBoundingClientRect();
+      const scale = frame.offsetWidth ? fr.width / frame.offsetWidth : 1;
+      const near = await new Promise<SelectedElement | null>((done) => {
+        const timer = setTimeout(() => done(null), 400);
+        hitWaiter.current = (el) => {
+          clearTimeout(timer);
+          hitWaiter.current = null;
+          done(el);
+        };
+        post({ type: "hit-test", x: (wr.left + x + width / 2 - fr.left) / scale, y: (wr.top + y + height / 2 - fr.top) / scale });
+      });
+      await new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())));
+      const shot = await api().designCapture(threadId, { x: wr.left + x, y: wr.top + y, width, height });
+      const body = withRefs(withScope(drawMessage(note, near ? elementLabel(near) : null), `${entry.dir}/${entry.rel}`, near ? [near] : []), [shot.path]);
+      if (await useStore.getState().send(body, undefined, threadId, [shot.path])) setToolState("select");
+    } catch (err) {
+      setNotice({ text: `Couldn't send the drawing: ${ipcError(err)}`, error: true });
+    } finally {
+      setDrawCapturing(false);
+    }
+  };
+  const seamBoxes = designV2 && seam && view === "design" && tool === "select" && onPage && !agentRunning && !palette ? toWrap(seam.rect)?.el : null;
+  const studioLayer = designV2 && onPage && view === "design" ? (
+    <>
+      <div className="studio-tool-row">
+        <CanvasToolsPill tool={tool} onTool={setTool} />
+        {pageComments.length > 0 && (
+          <CommentsPanel
+            comments={pageComments}
+            missing={pinMissing}
+            open={commentsOpen}
+            busy={agentRunning || sendingComments}
+            onOpen={setCommentsOpen}
+            onResolve={(c) => void changeComment(() => api().designCommentUpdate(threadId, c.id, { resolved: true }))}
+            onDelete={(c) => void changeComment(() => api().designCommentDelete(threadId, c.id))}
+            onSend={() => void sendComments()}
+          />
+        )}
+      </div>
+      {showElementBar && barBoxes && tool !== "draw" && (
+        <SelectionChrome
+          el={barBoxes.el}
+          view={barBoxes.view}
+          label={selectionName}
+          canSwap={!!onePart && kitParts.length > 1}
+          parents={one?.path ?? []}
+          onSwap={() => setSwapAt(selectionAt())}
+          onParent={(selector) => {
+            fromFrame.current = "";
+            post({ type: "set-selection", targets: [{ selector, tag: "div", text: "" }] });
+          }}
+          busy={agentRunning ? "Wait for the current turn to finish" : null}
+          onVariant={(a, words) => void go(a, words)}
+          onAsk={focusComposer}
+        />
+      )}
+      {seamBoxes && seam && <SeamButton rect={seamBoxes} position={seam.position} onOpen={() => setPalette({ anchor: seam.anchor, position: seam.position, at: { x: seamBoxes.x + seamBoxes.width / 2 - 150, y: seamBoxes.y + 12 } })} />}
+      {palette && (
+        <SeamPalette
+          at={palette.at}
+          bounds={wrapBounds}
+          anchorName={`${palette.position === "inside" ? "In" : palette.position === "before" ? "Before" : "After"} ${elementLabel(palette.anchor)}`}
+          position={palette.position}
+          parts={kitParts}
+          busy={agentRunning ? "Wait for the current turn to finish" : null}
+          onInsert={insertPart}
+          onAsk={(text, side) => void askAtSeam(text, side)}
+          onClose={() => setPalette(null)}
+        />
+      )}
+      {swapAt && one && (
+        <SwapPopover
+          at={swapAt}
+          bounds={wrapBounds}
+          name={selectionName}
+          parts={kitParts}
+          ui={onePart?.ui}
+          warn={(to) => {
+            const dropped = swapPlan(one.html, one.text, onePart, to).dropped;
+            return dropped.length ? `Becomes ${to.name}. Drops ${dropped.join(", ")}, which ${to.name} doesn't take.` : `Becomes ${to.name}.`;
+          }}
+          onSwap={swapTo}
+          onClose={() => setSwapAt(null)}
+        />
+      )}
+      {actionsAt && actionItems.length > 0 && (
+        <ActionsMenu
+          at={actionsAt}
+          bounds={wrapBounds}
+          title={selectionName}
+          items={actionItems}
+          onAsk={(text) => {
+            if (entry) void useStore.getState().send(withScope(text, `${entry.dir}/${entry.rel}`, selected), undefined, threadId);
+          }}
+          onClose={() => setActionsAt(null)}
+        />
+      )}
+      {tool === "draw" && <DrawLayer busy={agentRunning ? "Wait for the current turn to finish" : null} capturing={drawCapturing} onSend={(s, n) => void sendDrawing(s, n)} onCancel={() => setToolState("select")} />}
+    </>
+  ) : null;
+
   // Canvas-first's left rail: the design's pages (a click opens one, All pages opens the board) and the open page's layers.
   const rail = railOpen ? (
     <aside className="design-rail" aria-label="Pages and layers">
@@ -1340,10 +1752,14 @@ export default function DesignCanvas({
             key={path}
             nodes={outline}
             selected={selected[0] ?? null}
-            onPick={(n) => {
+            onPick={(n, add) => {
               // Picking a layer selects it on the page, so Pick goes on first.
               if (!picking) togglePick();
-              post({ type: "set-selection", targets: [{ ...(n.id ? { id: n.id } : {}), selector: n.selector, tag: n.tag, text: "" }] });
+              const target = { ...(n.id ? { id: n.id } : {}), selector: n.selector, tag: n.tag, text: "" };
+              // Shift adds it to the selection, or takes it out again (v2's multi-select).
+              const others = designV2 && add ? selected.map(({ id, selector, tag, text }) => ({ id, selector, tag, text })) : [];
+              const without = others.filter((t) => t.selector !== n.selector);
+              post({ type: "set-selection", targets: without.length !== others.length ? without : [...others, target] });
             }}
             onHover={(n) => post({ type: "hover-layer", target: n ? { ...(n.id ? { id: n.id } : {}), selector: n.selector, tag: n.tag, text: "" } : null })}
           />
@@ -1354,7 +1770,124 @@ export default function DesignCanvas({
     </aside>
   ) : null;
 
-  const head = (
+  const canPage = !!entry && version === 0;
+  const startMoreStyles = () => {
+    api()
+      .designMoreStyles(threadId)
+      .then((names) => {
+        setNotice({ text: `Building ${names.join(", ")} beside this design.` });
+        stopPicking();
+        setCompare(false);
+        chooseBoard(true);
+      })
+      .catch((err: unknown) => setNotice({ text: ipcError(err), error: true }));
+  };
+  const reloadCanvas = () => void edits.flush().then(() => setManual((n) => n + 1));
+  const toggleBoard = () => {
+    if (!board) {
+      stopPicking();
+      setCompare(false);
+    }
+    chooseBoard(!board);
+  };
+  const toggleCompare = () => {
+    if (!comparing) stopPicking();
+    setVersion(0);
+    setCompare(!comparing);
+  };
+  const exportItems: StudioMenuItem[] = [
+    ...(entry ? [{ kind: "item" as const, id: "build", label: "Build in codebase", sub: hasHandoff ? "A chat thread builds it" : "Writes the handoff first", disabled: agentRunning, onSelect: () => void buildInCode() }, { kind: "sep" as const, id: "s-build" }] : []),
+    { kind: "item", id: "html", label: "HTML", sub: "One file, works offline", onSelect: () => void runExport("html") },
+    { kind: "item", id: "png", label: "PNG", sub: `Full page, ${exportWidth} wide`, onSelect: () => void runExport("png") },
+    { kind: "item", id: "pdf", label: "PDF", sub: "Slides print one per page", onSelect: () => void runExport("pdf") },
+  ];
+  const moreItems: StudioMenuItem[] = [
+    ...(canPage
+      ? [
+          { kind: "item" as const, id: "styles", label: "Compare 3 other styles", disabled: agentRunning, onSelect: startMoreStyles },
+          ...(cells.length > 0 ? [{ kind: "item" as const, id: "options", label: "Compare options", checked: comparing, onSelect: toggleCompare }] : []),
+          { kind: "item" as const, id: "lint", label: "Check design quality", sub: detect === "busy" ? "Checking…" : detect ? `${detect.pins.length} marked` : undefined, checked: detect !== null, disabled: !onPage || detect === "busy", onSelect: toggleDetect },
+          ...(versions.length > 0 ? [{ kind: "item" as const, id: "versions", label: "Version history", onSelect: () => setVersionPill(true) }] : []),
+          { kind: "sep" as const, id: "s1" },
+        ]
+      : []),
+    { kind: "item", id: "grid", label: "Show 8px grid", shortcut: "⌘'", checked: grid, disabled: !entry, onSelect: () => setGrid(!grid) },
+    { kind: "item", id: "reload", label: "Reload canvas", disabled: !entry, onSelect: reloadCanvas },
+    { kind: "item", id: "folder", label: "Open design folder", onSelect: () => void api().designReveal(threadId) },
+    { kind: "sep", id: "s2" },
+    { kind: "item", id: "layout", label: canvasFirst ? "Switch to split chat layout" : "Switch to canvas-first layout", onSelect: () => setPaneLayout({ designLayout: canvasFirst ? "split" : "canvas" }, true) },
+    ...(canvasFirst
+      ? [
+          { kind: "item" as const, id: "changes", label: "Developer: Git changes", shortcut: "⌘⇧D", onSelect: () => useStore.getState().showInspector("changes") },
+          { kind: "item" as const, id: "browser", label: "Developer: Browser", shortcut: "⌘⇧B", onSelect: () => useStore.getState().showInspector("browser") },
+          { kind: "item" as const, id: "terminal", label: "Developer: Terminal", shortcut: "⌃`", onSelect: () => useStore.getState().toggleTerminal() },
+        ]
+      : []),
+  ];
+  const showVersionPill = versionPicker && (versionPill || version !== 0);
+  const studioBar = (
+    <StudioBar
+      title={canvasFirst ? (thread?.title ?? "Design") : null}
+      page={
+        board && version === 0 ? (
+          <span className="studio-page">Board · {entry?.pages.length} pages</span>
+        ) : entry && options.length > 1 && !comparing ? (
+          <span className="studio-page">
+            <Select<string>
+              value={entry.rel}
+              options={options}
+              onChange={(next) => {
+                setVersion(0);
+                scroll.current = { x: 0, y: 0 };
+                setPage(next);
+              }}
+              ariaLabel="Page"
+              className="ghost-select"
+            />
+          </span>
+        ) : (
+          <span className="studio-page" title={path ?? undefined}>
+            {comparing ? `Comparing ${cells.length}` : (entry?.rel ?? "")}
+          </span>
+        )
+      }
+      save={
+        onPage && edits.status ? (
+          <span className={`design-save-status${edits.status.save === "not-saved" ? " error" : ""}`} role="status" title={edits.status.save === "not-saved" ? "Not saved" : edits.status.save === "saving" ? "Saving…" : "Saved"}>
+            <span className="design-save-dot" aria-hidden />
+            <span className="studio-save-label">{edits.status.save === "not-saved" ? "Not saved" : edits.status.save === "saving" ? "Saving…" : "Saved"}</span>
+          </span>
+        ) : null
+      }
+      version={showVersionPill ? versionPicker : null}
+      hasPage={!!entry}
+      rail={canvasFirst ? { open: railWanted, onToggle: toggleRail } : null}
+      view={view}
+      onView={changeView}
+      viewport={viewport}
+      onViewport={setViewport}
+      viewportItems={viewportMenu({
+        viewport,
+        zoom,
+        device,
+        deviceOk: deviceFor(viewport) !== null && !board && !comparing,
+        board: { can: !!entry && entry.pages.length > 1 && version === 0, on: board, onToggle: toggleBoard },
+        flow: board && version === 0 ? { on: flow, onToggle: () => setFlow(!flow) } : null,
+        onViewport: setViewport,
+        onZoom: setZoom,
+        onDevice: () => setDevice(!device),
+      })}
+      customize={{ open: inspectorOpen && view === "design", disabled: view !== "design" || !onPage, onToggle: () => setInspectorOpen(!inspectorOpen) }}
+      exportItems={exportItems}
+      exporting={exporting}
+      moreItems={moreItems}
+    />
+  );
+  const head = designV2 ? (
+    <div className="design-canvas-head drag studio-bar" ref={headRef}>
+      {studioBar}
+    </div>
+  ) : (
     <div className="design-canvas-head drag" ref={headRef}>
         {canvasFirst && (
           <button
@@ -1643,7 +2176,7 @@ export default function DesignCanvas({
       )}
       {commentDraft !== null && selected.length === 1 && !comparing && version === 0 && (
         <form
-          className="design-comment-new"
+          className={`design-comment-new${designV2 ? " studio-comment" : ""}`}
           onSubmit={(e) => {
             e.preventDefault();
             void addComment();
@@ -1661,6 +2194,7 @@ export default function DesignCanvas({
               if (e.key === "Escape") {
                 e.stopPropagation();
                 setCommentDraft(null);
+                setToolState("select");
               }
             }}
           />
@@ -1767,27 +2301,35 @@ export default function DesignCanvas({
           {/* One wrapper around the stage (and the floating tools), so the inspector never remounts the frame. */}
           <div className="design-stage-wrap" ref={wrapRef}>
             {stageEl}
-            {elementBar}
-            {insertBar}
+            {!designV2 && elementBar}
+            {!designV2 && insertBar}
             {cycler}
-            {liveBar}
+            {!designV2 && liveBar}
+            {studioLayer}
           </div>
-          {inspectorOpen && designV2 && panelMode === "customize" && (
+          {inspectorOpen && designV2 && view === "design" && (
             <CustomizePanel
               threadId={threadId}
               designDir={entry.dir}
+              pageRel={entry.rel}
               reloadKey={`${reload}-${manual}`}
-              element={selected.length === 1 ? (selected[0] ?? null) : null}
+              element={one}
+              selection={selected}
+              parts={kitParts}
+              onDeselect={(el) => {
+                const rest = selected.filter((s) => s.selector !== el.selector);
+                fromFrame.current = "";
+                post({ type: "set-selection", targets: rest.map(({ id, selector, tag, text }) => ({ id, selector, tag, text })) });
+              }}
+              onWrap={wrapSelection}
+              onCode={(el) => void openCodeAt(el)}
               readOnly={agentRunning || edits.status?.readOnly === true}
               styleName={styleName ?? null}
               theme={pageTheme}
               appearance={appearance ?? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")}
               onAppearance={setAppearance}
               onClear={clearSelection}
-              onViewHtml={() => {
-                setInspectorTab("code");
-                setPanelMode("code");
-              }}
+              onViewHtml={() => (one ? void openCodeAt(one) : changeView("code"))}
               tweaks={
                 showTweaks ? (
                   <div className="design-tweaks">
@@ -1811,13 +2353,13 @@ export default function DesignCanvas({
                 },
                 // The page reads its own text and reports the edit back, so the service gets it exactly as it stands.
                 onText: (el, value) => post({ type: "apply-text", target: { ...(el.id ? { id: el.id } : {}), selector: el.selector, tag: el.tag, text: "" }, value }),
+                onAttrs: applyAttrs,
               }}
             />
           )}
-          {inspectorOpen && (!designV2 || panelMode === "code") && (
+          {inspectorOpen && !designV2 && (
             <InspectorPanel
               threadId={threadId}
-              onBack={designV2 ? () => setPanelMode("customize") : undefined}
               tab={inspectorTab}
               onTab={setInspectorTab}
               element={selected[0] ?? null}
@@ -1889,7 +2431,19 @@ export default function DesignCanvas({
           )}
         </div>
       )}
-      {((board && version === 0) || comparing) && liveBar}
+      {((board && version === 0) || comparing) && !designV2 && liveBar}
+      {view === "preview" && presentFrom && entry && (
+        <button className="button ghost studio-present" title={board ? "Present from the first screen" : "Present this page"} onClick={() => setPresent(presentFrom)}>
+          <Play size={14} strokeWidth={1.75} aria-hidden />
+          Present
+        </button>
+      )}
+      {view === "code" && entry && <CodeView threadId={threadId} designDir={entry.dir} page={entry.rel} reloadKey={`${reload}-${manual}`} line={codeLine} />}
+      {view === "system" && entry && (
+        <section className="studio-system" aria-label="System">
+          <SystemPanel threadId={threadId} reloadKey={`${reload}-${manual}`} />
+        </section>
+      )}
       </div>
       </div>
       </div>

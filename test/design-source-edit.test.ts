@@ -467,6 +467,29 @@ describe("unwrap", () => {
   });
 });
 
+describe("duplicate", () => {
+  it("copies the source right after it, with fresh ids and every other byte kept", () => {
+    const { html, createdIds } = applyChange(PAGE, HERO, { kind: "duplicate" }, counter());
+    expect(createdIds).toHaveLength(1);
+    expect(html.split("<h1>Hello &amp; welcome</h1>")).toHaveLength(3);
+    expect(html.startsWith(PAGE.slice(0, PAGE.indexOf("</header>") + "</header>".length))).toBe(true);
+    expect(html.endsWith(PAGE.slice(PAGE.indexOf("</header>") + "</header>".length))).toBe(true);
+  });
+
+  it("names nothing in the copy after what it was copied from", () => {
+    const { html, createdIds } = applyChange(PAGE, { id: "sb" }, { kind: "duplicate" }, counter());
+    const times = (id: string, text: string) => text.split(`data-agent-id="${id}"`).length - 1;
+    expect(times("box", html)).toBe(1);
+    expect(times("sb", html)).toBe(1);
+    expect(times("p1", html)).toBe(times("p1", PAGE));
+    expect(times(createdIds![0]!, html)).toBe(1);
+  });
+
+  it("refuses the page's own frame", () => {
+    expect(reasonOf(() => applyChange('<html data-agent-id="r"><body></body></html>', { id: "r" }, { kind: "duplicate" }, counter()))).toBe("invalid");
+  });
+});
+
 describe("diffPatch", () => {
   it("is empty for identical strings", () => {
     expect(diffPatch("same", "same")).toEqual({ start: 0, removed: "", inserted: "" });

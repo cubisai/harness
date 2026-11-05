@@ -87,7 +87,14 @@ export type BridgeMessage =
   | { type: "gap"; gap: InsertGap | null }
   | { type: "gap-rect"; rect: FrameRect }
   | { type: "insert-cancel" }
-  | { type: "finding"; n: number };
+  | { type: "finding"; n: number }
+  | { type: "context-menu"; x: number; y: number }
+  | { type: "seam"; seam: PageSeam | null }
+  | { type: "canvas-key"; key: string; mod: boolean; shift: boolean; alt: boolean }
+  | { type: "hit-result"; element: SelectedElement | null };
+
+/** A gap between two blocks the pointer is at, in the frame's viewport. */
+export type PageSeam = { position: "before" | "after"; anchor: SelectedElement; rect: FrameRect };
 
 /** A gap picked in Insert mode: before or after the anchor element, and the anchor's size (a hint for what fits there). */
 export type InsertGap = { position: "before" | "after"; anchor: SelectedElement; size: { width: number; height: number } };
@@ -135,7 +142,7 @@ const point = (v: unknown): v is { x: number; y: number } => !!v && typeof v ===
 export const BRIDGE_LIMITS = { bytes: 256 * 1024, perSecond: 300 };
 
 /** The messages that change the file or its history: they must carry this frame load's token. */
-const NEEDS_NONCE = new Set(["text-commit", "history-key"]);
+const NEEDS_NONCE = new Set(["text-commit", "history-key", "canvas-key"]);
 
 /**
  * Design v2's door for one frame: drops oversize messages and floods, and drops a file-changing message that doesn't
@@ -188,6 +195,20 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
     if (!g || (g.position !== "before" && g.position !== "after") || !size || !num(size.width) || !num(size.height) || size.width < 0 || size.height < 0) return null;
     const anchor = readSelected(g.anchor);
     return anchor ? { type: "gap", gap: { position: g.position, anchor, size: { width: size.width, height: size.height } } } : null;
+  }
+  if (d.type === "context-menu") return num(d.x) && num(d.y) ? { type: "context-menu", x: d.x, y: d.y } : null;
+  if (d.type === "hit-result") {
+    if (d.element === null) return { type: "hit-result", element: null };
+    const element = readSelected(d.element);
+    return element ? { type: "hit-result", element } : null;
+  }
+  if (d.type === "canvas-key") return typeof d.key === "string" && d.key.length <= 16 ? { type: "canvas-key", key: d.key, mod: d.mod === true, shift: d.shift === true, alt: d.alt === true } : null;
+  if (d.type === "seam") {
+    if (d.seam === null) return { type: "seam", seam: null };
+    const s = d.seam as Record<string, unknown> | undefined;
+    if (!s || (s.position !== "before" && s.position !== "after") || !rect(s.rect)) return null;
+    const anchor = readSelected(s.anchor);
+    return anchor ? { type: "seam", seam: { position: s.position, anchor, rect: s.rect as FrameRect } } : null;
   }
   if (d.type === "gap-rect") return rect(d.rect) ? { type: "gap-rect", rect: d.rect } : null;
   if (d.type === "ready") return str(d.path, 2000) ? { type: "ready", path: d.path } : { type: "ready" };

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ArrowLeft } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ArrowLeft, ChevronDown, Columns3, LayoutGrid, Rows3 } from "lucide-react";
 import { elementLabel, type SelectedElement } from "../../../shared/selection";
 import { api } from "../api";
 import { Select } from "../components/Select";
 import { IconClose } from "../icons";
 import { ColorSwatch } from "./ColorSwatch";
+import { flowChanges, flowOf, gapSteps, lineOf, startAttrs, startTagOf, wrapShapes, type AttrChange, type Flow, type KitPart, type WrapShape } from "./kit-parts";
 
 /** The page tokens the panel reads and writes. A page without one just doesn't show its control. */
 export const THEME_TOKENS = ["--color-accent", "--color-bg", "--color-surface", "--color-surface-2", "--color-text-muted", "--color-border", "--radius-sm", "--radius-md", "--radius-lg", "--radius-xl"];
@@ -76,6 +77,8 @@ export interface CustomizeHandlers {
   onStyle: (el: SelectedElement | null, changes: { prop: string; value: string }[], key: string) => void;
   onAttr: (el: SelectedElement, name: string, value: string | null) => void;
   onText: (el: SelectedElement, value: string) => void;
+  /** Several attributes as one undo step (the Layout card). */
+  onAttrs: (el: SelectedElement, changes: AttrChange[], key: string) => void;
 }
 
 /**
@@ -85,6 +88,7 @@ export interface CustomizeHandlers {
 export function CustomizePanel({
   threadId,
   designDir,
+  pageRel = "index.html",
   reloadKey,
   element,
   readOnly,
@@ -96,9 +100,15 @@ export function CustomizePanel({
   onViewHtml,
   tweaks,
   handlers,
+  selection = [],
+  parts = [],
+  onDeselect,
+  onWrap,
+  onCode,
 }: {
   threadId: string;
   designDir: string;
+  pageRel?: string;
   reloadKey: string;
   element: SelectedElement | null;
   /** An agent turn is writing this page. */
@@ -112,6 +122,13 @@ export function CustomizePanel({
   onViewHtml: () => void;
   tweaks: ReactNode | null;
   handlers: CustomizeHandlers;
+  /** Everything selected: more than one shows the `N selected` panel. */
+  selection?: SelectedElement[];
+  parts?: KitPart[];
+  onDeselect?: (el: SelectedElement) => void;
+  onWrap?: (shape: WrapShape) => void;
+  /** Open the Code view at this element. */
+  onCode?: (el: SelectedElement) => void;
 }) {
   const [kitProps, setKitProps] = useState<Record<string, KitProp[]>>({});
   const [filter, setFilter] = useState("");
@@ -138,6 +155,39 @@ export function CustomizePanel({
   useEffect(() => setFilter(""), [selector]);
 
   const swatches = useMemo(() => SYSTEM_SWATCHES.filter((s) => theme[s.token]), [theme]);
+
+  if (selection.length > 1) {
+    return (
+      <aside className="design-inspector design-customize" aria-label="Customize">
+        <div className="design-customize-head">
+          <h2 className="design-customize-title">{selection.length} selected</h2>
+          <button className="icon-button" aria-label="Clear selection" title="Clear selection" onClick={onClear}>
+            <IconClose />
+          </button>
+        </div>
+        <fieldset className="design-customize-fields" disabled={readOnly}>
+          <Card title="Items">
+            {selection.map((s) => (
+              <label key={s.selector} className="design-customize-check" title={s.selector}>
+                <input type="checkbox" checked onChange={() => onDeselect?.(s)} />
+                <span>{displayName(s)}</span>
+              </label>
+            ))}
+            <p className="design-customize-help">Shift-click on the canvas or in Layers to add or remove an item.</p>
+          </Card>
+          <Card title="Wrap">
+            <div className="design-customize-wraps">
+              {wrapShapes(parts).map((s) => (
+                <button key={s} className="button ghost" onClick={() => onWrap?.(s)}>
+                  {s === "grid" ? `Wrap ${selection.length} in Grid` : `Wrap in ${s[0]!.toUpperCase()}${s.slice(1)}`}
+                </button>
+              ))}
+            </div>
+          </Card>
+        </fieldset>
+      </aside>
+    );
+  }
 
   if (!element) {
     const corners = PAGE_CORNERS.find((c) => Object.entries(c.values).every(([k, v]) => !theme[k] || theme[k] === v))?.label ?? null;
@@ -219,6 +269,7 @@ export function CustomizePanel({
         <input className="text-input" type="search" placeholder="Filter props and values" aria-label="Filter props and values" value={filter} onChange={(e) => setFilter(e.target.value)} />
       </div>
       <fieldset className="design-customize-fields" disabled={readOnly}>
+        {flowOf(startAttrs(el.html)) && shows("layout", "flow", "gap", "columns", "align") && <LayoutCard threadId={threadId} designDir={designDir} page={pageRel} reloadKey={reloadKey} el={el} parts={parts} handlers={handlers} onCode={onCode} />}
         {(canHoldText(el) || isField(el)) && shows("content", "value", "placeholder", "text") && (
           <Card title="Content">
             {canHoldText(el) && (
@@ -306,6 +357,91 @@ export function CustomizePanel({
         </div>
       </fieldset>
     </aside>
+  );
+}
+
+const FLOWS: { value: Flow; label: string; Icon: typeof Rows3 }[] = [
+  { value: "column", label: "Column", Icon: Rows3 },
+  { value: "row", label: "Row", Icon: Columns3 },
+  { value: "grid", label: "Grid", Icon: LayoutGrid },
+];
+const ALIGNS = ["start", "center", "end", "stretch"];
+
+/**
+ * Stack and Grid: Flow changes the component, not just its CSS, and each flow keeps its last values. Gap writes the
+ * kit's token name. The code under the controls is what's really in the file, read back after each change.
+ */
+function LayoutCard({ threadId, designDir, page, reloadKey, el, parts, handlers, onCode }: { threadId: string; designDir: string; page: string; reloadKey: string; el: SelectedElement; parts: KitPart[]; handlers: CustomizeHandlers; onCode?: (el: SelectedElement) => void }) {
+  const attrs = startAttrs(el.html);
+  const flow = flowOf(attrs);
+  const memory = useRef<Record<string, Partial<Record<string, string>>>>({});
+  const [source, setSource] = useState<string | null>(null);
+  const [open, setOpen] = useState(true);
+  useEffect(() => {
+    let live = true;
+    void api()
+      .readArtifact(threadId, `${designDir}/${page}`)
+      .then((res) => live && setSource(res.ok && typeof res.text === "string" ? res.text : null))
+      .catch(() => live && setSource(null));
+    return () => {
+      live = false;
+    };
+  }, [threadId, designDir, page, reloadKey]);
+  if (!flow) return null;
+  const part = parts.find((p) => p.ui === attrs["data-ui"]) ?? null;
+  const stackPart = parts.find((p) => p.ui === "stack") ?? part;
+  const gridPart = parts.find((p) => p.ui === "grid") ?? part;
+  const gaps = gapSteps(flow === "grid" ? gridPart : stackPart);
+  const gapName = attrs["data-gap"] ?? gaps.find((g) => g === "md") ?? gaps[0] ?? "";
+  const key = `${el.selector}:layout`;
+  const columns = (gridPart?.props.find((p) => p.name === "columns")?.options ?? ["1", "2", "3", "4", "6"]).filter((c) => /^\d+$/.test(c) && Number(c) <= 6);
+  const set = (name: string, value: string | null) => handlers.onAttrs(el, [{ name, value }], key);
+  const pick = (next: Flow) => {
+    memory.current[el.selector] = { ...memory.current[el.selector], ...attrs };
+    handlers.onAttrs(el, flowChanges(attrs, next, memory.current[el.selector]), key);
+  };
+  const line = source ? lineOf(source, el.id, el.html) : null;
+  const gapIndex = Math.max(0, gaps.indexOf(gapName));
+  return (
+    <Card title="Layout">
+      <Row label="Flow" stacked>
+        <div className="segmented design-customize-segments" role="group" aria-label="Flow">
+          {FLOWS.map((f) => (
+            <button key={f.value} aria-pressed={flow === f.value} aria-label={f.label} title={f.label} className={flow === f.value ? "on" : ""} onClick={() => pick(f.value)}>
+              <f.Icon size={14} strokeWidth={1.75} aria-hidden />
+            </button>
+          ))}
+        </div>
+      </Row>
+      {flow === "grid" && (
+        <Row label="Columns" stacked>
+          <Segments label="Columns" options={columns.map((c) => ({ label: c, value: c }))} value={attrs["data-columns"] ?? null} onPick={(c) => set("data-columns", c)} />
+        </Row>
+      )}
+      {gaps.length > 0 && (
+        <Row label="Gap" stacked>
+          <div className="design-customize-gap">
+            <input type="range" aria-label="Gap" aria-valuetext={gapName} min={0} max={gaps.length - 1} step={1} value={gapIndex} onChange={(e) => set("data-gap", gaps[Number(e.target.value)] ?? null)} />
+            <span className="design-customize-value">{gapName}</span>
+          </div>
+        </Row>
+      )}
+      <Row label={flow === "grid" ? "Place in cell" : "Align"} stacked>
+        <Segments label="Align" options={ALIGNS.map((a) => ({ label: a[0]!.toUpperCase() + a.slice(1), value: a }))} value={attrs["data-align"] ?? null} onPick={(a) => set("data-align", a)} />
+      </Row>
+      <div className="design-customize-code">
+        <div className="design-customize-code-head">
+          <button className="link-button" title="Open this line in the Code view" onClick={() => onCode?.(el)}>
+            {page}
+            {line ? `:${line}` : ""}
+          </button>
+          <button className="icon-button" aria-label={open ? "Hide the code" : "Show the code"} aria-expanded={open} onClick={() => setOpen(!open)}>
+            <ChevronDown size={14} strokeWidth={1.75} aria-hidden className={open ? "" : "design-customize-chev"} />
+          </button>
+        </div>
+        {open && <code className="design-customize-code-body">{startTagOf(el.html)}</code>}
+      </div>
+    </Card>
   );
 }
 

@@ -1125,6 +1125,7 @@ export function designBridge(
     };
 
     const onMove = (e: MouseEvent): void => {
+      if (postSeam(e.clientX, e.clientY)) return hide();
       const hit = hitAt(e.clientX, e.clientY);
       const one = selected.length === 1 ? (selected[0] ?? null) : null;
       if (!hit || isRoot(hit) || editing || (one?.contains(hit) && !(e.metaKey || e.ctrlKey))) return hide();
@@ -1193,6 +1194,35 @@ export function designBridge(
       if (insideEdit(e) || inLayer(e)) return;
       swallow(e);
       if (e.type === "mousedown") post("pointer");
+    };
+    // The Actions menu: a right-click on something outside the selection takes that thing first.
+    const onContext = (e: MouseEvent): void => {
+      if (insideEdit(e) || inLayer(e)) return;
+      swallow(e);
+      endEdit(true);
+      const hit = hitAt(e.clientX, e.clientY);
+      if (hit && !isRoot(hit) && !selected.some((el) => el.contains(hit))) choose([componentOf(hit)]);
+      post("context-menu", { x: e.clientX, y: e.clientY });
+    };
+    // The gap the pointer is at, when it's close to the line between two blocks.
+    let seamKey = "";
+    const postSeam = (cx: number, cy: number): boolean => {
+      const g = editing ? null : gapAt(cx, cy);
+      const r = g ? gapLine(g.el, g.position, g.row) : null;
+      const near = r !== null && (r.width >= r.height ? Math.abs(cy - r.y) : Math.abs(cx - r.x)) <= 8;
+      const key = near && g && r ? [g.position, r.x, r.y, r.width, r.height].map(String).join() : "";
+      if (key !== seamKey) {
+        seamKey = key;
+        post("seam", { seam: near && g && r ? { position: g.position, anchor: describeElement(g.el, selectorFor), rect: r } : null });
+      }
+      return near;
+    };
+    const onLeave = (): void => {
+      hide();
+      if (seamKey) {
+        seamKey = "";
+        post("seam", { seam: null });
+      }
     };
     const onClick = (e: MouseEvent): void => {
       if (insideEdit(e) || inLayer(e)) return;
@@ -1271,6 +1301,12 @@ export function designBridge(
         post("history-key", { action: k === "y" || e.shiftKey ? "redo" : "undo" });
         return;
       }
+      // The canvas's own shortcuts, for when the frame has the keyboard: the app decides what they do.
+      if ((mod && /^[gds\\']$/.test(k)) || (!mod && /^(Backspace|Delete|i|\/|v|d|c)$/.test(e.key))) {
+        swallow(e);
+        post("canvas-key", { key: e.key, mod, shift: e.shiftKey, alt: e.altKey });
+        return;
+      }
       if (mod || e.shiftKey || !/^(Escape|Enter|Arrow(Up|Down|Left|Right))$/.test(e.key)) return;
       if (step(e.key, e.altKey)) swallow(e);
     };
@@ -1281,7 +1317,10 @@ export function designBridge(
       document.removeEventListener("dblclick", onDblClick, true);
       document.removeEventListener("mousedown", onDown, true);
       document.removeEventListener("mouseup", onDown, true);
+      document.removeEventListener("contextmenu", onContext, true);
+      document.documentElement.removeEventListener("mouseleave", onLeave);
       document.removeEventListener("keydown", onKey, true);
+      if (seamKey) post("seam", { seam: null });
       box.remove();
       tip.remove();
       editSelected = null;
@@ -1293,6 +1332,8 @@ export function designBridge(
     document.addEventListener("dblclick", onDblClick, true);
     document.addEventListener("mousedown", onDown, true);
     document.addEventListener("mouseup", onDown, true);
+    document.addEventListener("contextmenu", onContext, true);
+    document.documentElement.addEventListener("mouseleave", onLeave);
     document.addEventListener("keydown", onKey, true);
     editSelected = () => {
       const holder = selected.length === 1 && selected[0] ? textHolder(selected[0]) : null;
@@ -1565,6 +1606,11 @@ export function designBridge(
       else stopSelect?.();
     } else if (data.type === "session") {
       if (typeof data.nonce === "string" && data.nonce.length <= 64) nonce = data.nonce;
+    } else if (data.type === "hit-test") {
+      const x = typeof data.x === "number" ? data.x : -1;
+      const y = typeof data.y === "number" ? data.y : -1;
+      const el = document.elementFromPoint(x, y);
+      post("hit-result", { element: el && el !== document.body && el !== document.documentElement ? describeElement(componentOf(el), selectorFor) : null });
     } else if (data.type === "key") {
       if (typeof data.key === "string") stepKey?.(data.key, data.alt === true);
     } else if (data.type === "stamp") {

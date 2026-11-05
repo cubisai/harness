@@ -38,12 +38,20 @@ function entriesOf(names: string[], extra: SkillEntry[] = []): SkillEntry[] {
   return names.flatMap((n) => all.find((s) => s.name === n) ?? extra.find((s) => s.name === n) ?? []);
 }
 
+/** The studio's prompt while something is selected on the canvas. */
+export function selectionPlaceholder(elements: Parameters<typeof elementLabel>[0][]): string {
+  return elements.length === 1 ? `Ask AI to refine ${elementLabel(elements[0]!)}…` : `Ask AI about these ${elements.length} elements…`;
+}
+
 export function Composer({
   threadId,
   mode,
   compactMode,
   model,
   meters,
+  lip,
+  beforeModel,
+  selectionPrompts = false,
 }: {
   threadId: string | null;
   mode?: ReactNode;
@@ -51,6 +59,12 @@ export function Composer({
   compactMode?: ReactNode;
   model?: ReactNode;
   meters?: ReactNode;
+  /** One quiet line on the box's top edge (the studio's running status). */
+  lip?: ReactNode;
+  /** Controls at the start of the right-hand group (the studio's Chat chip). */
+  beforeModel?: ReactNode;
+  /** Say in the placeholder what a canvas selection is about to be asked. */
+  selectionPrompts?: boolean;
 }) {
   const allSkills = useStore((s) => s.skills);
   // Design-only skills are offered in design threads (and a design draft) only; threadKind follows the open thread.
@@ -501,6 +515,8 @@ export function Composer({
         ? `Anything to tell ${picked.map((p) => `$${p.name}`).join(", ")}? Or just press Return.`
         : running
       ? "Queue a message for the next turn…"
+      : selectionPrompts && selection?.elements.length
+        ? selectionPlaceholder(selection.elements)
       : "Ask anything — $ for a skill, / for a command";
 
   // The + starts a trigger at the caret, as if typed: @ mention, $ skill, / command.
@@ -577,6 +593,7 @@ export function Composer({
     <div className="composer-wrap">
       <div className={`composer${running ? " running" : ""}`}>
         {running && <Beam />}
+        {lip}
         {menuOpen && (
           <div className="skill-menu" role="listbox">
             {matches.length === 0 && <div className="empty-line">No skill matches “{query}”</div>}
@@ -732,6 +749,7 @@ export function Composer({
             <span className="grow" />
           </div>
           <div className="composer-actions">
+            {beforeModel}
             {model}
             {meters}
             {running && (

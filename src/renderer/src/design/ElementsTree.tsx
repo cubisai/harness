@@ -45,7 +45,7 @@ export function ElementsTree({
   nodes: OutlineNode[];
   /** The canvas's current selection, matched by id or selector. */
   selected: { id?: string; selector: string } | null;
-  onPick: (node: OutlineNode) => void;
+  onPick: (node: OutlineNode, add?: boolean) => void;
   /** A row is hovered (or focused), or null when it's left. */
   onHover?: (node: OutlineNode | null) => void;
 }) {
@@ -132,7 +132,7 @@ export function ElementsTree({
               aria-expanded={hasChildren ? open : undefined}
               style={{ paddingLeft: 4 + node.depth * 12 }}
               title={node.selector}
-              onClick={() => onPick(node)}
+              onClick={(e) => onPick(node, e.shiftKey)}
               onMouseEnter={() => onHover?.(node)}
               onFocus={() => onHover?.(node)}
               onBlur={() => onHover?.(null)}

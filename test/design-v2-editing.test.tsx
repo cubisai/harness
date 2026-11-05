@@ -433,7 +433,7 @@ describe("the Customize panel", () => {
     onClear: () => undefined,
     onViewHtml: () => undefined,
     tweaks: null,
-    handlers: { onStyle: () => undefined, onAttr: () => undefined, onText: () => undefined },
+    handlers: { onStyle: () => undefined, onAttr: () => undefined, onText: () => undefined, onAttrs: () => undefined },
   };
   const element = (over: Partial<SelectedElement>): SelectedElement => ({ selector: "button", tag: "button", text: "Get started", html: '<button data-ui="button" disabled>Get started</button>', rect: { x: 0, y: 0, width: 10, height: 10 }, path: [], ...over });
 

@@ -125,6 +125,38 @@ export function useDesignEditing({
     [client, handle, transactionFor],
   );
 
+  /**
+   * Several edits as one undo step, each based on the one before; the frame reloads after, since the page's structure
+   * changed. `steps` gets a function that sends one edit and returns its result, or throws when it's refused.
+   */
+  const transaction = useCallback(
+    async <T,>(steps: (step: (target: DesignMutation["target"], change: DesignChange) => Promise<Extract<MutationResult, { ok: true }>>) => Promise<T>): Promise<T | null> => {
+      if (!client) return null;
+      await flushWaiting.current();
+      const id = newId();
+      let refused = false;
+      try {
+        return await steps(async (target, change) => {
+          const result = await client.mutate(target, change, id);
+          handle(result, target, change);
+          if (!result.ok) {
+            refused = true;
+            throw new Error(result.message ?? "That edit can't be made here.");
+          }
+          return result;
+        });
+      } catch (err) {
+        if (!refused) callbacks.current.notify(err instanceof Error ? err.message : String(err), true);
+        return null;
+      } finally {
+        // The frame reads the file, so the file has to have these edits first.
+        await client.flush().catch(() => undefined);
+        callbacks.current.reloadFrame();
+      }
+    },
+    [client, handle],
+  );
+
   // A drag writes at most every WRITE_MS, always ending on its last value.
   const waiting = useRef(new Map<string, { target: DesignMutation["target"]; change: DesignChange; timer: ReturnType<typeof setTimeout> }>());
   const sendWaiting = useCallback(() => {
@@ -147,6 +179,8 @@ export function useDesignEditing({
     [send],
   );
 
+  const flushWaiting = useRef<() => Promise<void>>(async () => {});
+  flushWaiting.current = async () => sendWaiting();
   const flush = useCallback(async () => {
     sendWaiting();
     await client?.flush().catch(() => undefined);
@@ -207,5 +241,5 @@ export function useDesignEditing({
     };
   }, [client, flush]);
 
-  return { status, banner, send, sendSoon, undo, redo, flush, dismiss, undoPastBoundary, discard, reapply };
+  return { status, banner, send, sendSoon, transaction, undo, redo, flush, dismiss, undoPastBoundary, discard, reapply };
 }

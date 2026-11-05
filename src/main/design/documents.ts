@@ -102,6 +102,8 @@ function parseChange(value: unknown): DesignMutation["change"] | null {
     }
     case "unwrap":
       return { kind: "unwrap" };
+    case "duplicate":
+      return { kind: "duplicate" };
     default:
       return null;
   }

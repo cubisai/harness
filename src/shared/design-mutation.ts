@@ -21,7 +21,9 @@ export type DesignChange =
   /** Wrap the target and its extra siblings in a new container. */
   | { kind: "wrap"; extraIds: string[]; tag: string; attrs: Record<string, string> }
   /** Remove the target's start and end tags, keeping its content. */
-  | { kind: "unwrap" };
+  | { kind: "unwrap" }
+  /** Copy the target's source to right after it, with fresh ids. */
+  | { kind: "duplicate" };
 
 /** Names an element without an id: the tag it should be, and its element-child path from `<html>`. */
 export type TargetLocator = { tag: string; path: number[]; text?: string };

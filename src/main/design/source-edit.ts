@@ -206,6 +206,8 @@ function applyOne(ctx: Context, change: DesignChange): Applied {
       return wrapElement(ctx, change.extraIds, change.tag, change.attrs);
     case "unwrap":
       return { html: unwrapElement(ctx.html, ctx.element) };
+    case "duplicate":
+      return duplicateElement(ctx);
   }
 }
 
@@ -592,6 +594,19 @@ function orderSiblings(parent: ParentNode, members: Element[]): Element[] | null
     .map((element) => ({ element, at: element.sourceCodeLocation?.startOffset ?? -1 }))
     .sort((a, b) => a.at - b.at);
   return byPosition.map((entry) => entry.element);
+}
+
+// --- duplicate -----------------------------------------------------------------------------------
+
+function duplicateElement(ctx: Context): Applied {
+  const tag = ctx.element.tagName.toLowerCase();
+  if (UNSTRUCTURABLE.has(tag)) throw invalid(`The <${tag}> cannot be duplicated.`);
+  const loc = ctx.element.sourceCodeLocation;
+  if (!loc) throw invalid("That element has no source to copy.");
+  // Every id goes, so the copy's elements get fresh ones and nothing in the page is named twice.
+  const source = ctx.html.slice(loc.startOffset, loc.endOffset).replace(/\s+data-agent-id\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/g, "");
+  const fragment = stampFragment(source, ctx.root, ctx.newId);
+  return { html: splice(ctx.html, loc.endOffset, 0, fragment.html), createdIds: fragment.ids };
 }
 
 // --- unwrap --------------------------------------------------------------------------------------

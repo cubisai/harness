@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import type { FrameRect, InsertGap, PageMarks } from "./frame";
 import { IconClose } from "../icons";
+import { DICTATION_HINT } from "../components/StudioComposer";
 
 export type ActionId = "freeform" | "bolder" | "quieter" | "distill" | "polish" | "typeset" | "colorize" | "layout" | "adapt" | "animate" | "delight" | "overdrive";
 
@@ -116,8 +117,6 @@ export function paletteStep(index: number, key: string): number | null {
   return null;
 }
 
-const MAC = typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent);
-const DICTATION_HINT = MAC ? "Dictate: press Fn twice (macOS dictation)" : "Dictate: press Win+H (Windows voice typing)";
 
 /**
  * The element bar under the picked element: its tag, a prompt, the action (×3), dictation and Go; Edit text and
