@@ -19,14 +19,35 @@ export function statusText(current: string | null, line: string, progress: { don
   return parts.join(" · ");
 }
 
-/** The one running line on the Composer's lip. Nothing shows when no turn runs. */
+/** Why the last turn failed, if it did. A newer turn clears it. With the chat closed this is the only place it can show. */
+export function lastTurnError(events: readonly { event: { kind: string; message?: unknown } }[] | undefined): string | null {
+  const list = events ?? [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const e = list[i]!.event;
+    if (e.kind === "turn-start") return null;
+    if (e.kind === "error" && typeof e.message === "string") return e.message;
+  }
+  return null;
+}
+
+/** The one line on the Composer's lip: the running turn, or why the last one failed. Otherwise nothing. */
 export function ComposerLip({ threadId }: { threadId: string }) {
   const running = useStore((s) => Boolean(s.running[threadId]));
   const line = useStore((s) => lastAgentLine(s.events[threadId], s.live[threadId]));
   const events = useStore((s) => s.events[threadId]) ?? EMPTY;
   const dismissed = useDismissedPlans((s) => s.seqs[threadId]);
   const plan = useMemo(() => dockedPlan(events, dismissed), [events, dismissed]);
-  if (!running) return null;
+  if (!running) {
+    const failed = lastTurnError(events);
+    if (!failed) return null;
+    return (
+      <div className="composer-lip error" role="alert">
+        <span className="composer-lip-text" title={failed}>
+          {failed}
+        </span>
+      </div>
+    );
+  }
   const progress = plan ? todoProgress(plan.entries) : null;
   return (
     <div className="composer-lip" role="status">

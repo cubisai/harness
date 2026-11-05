@@ -6,7 +6,7 @@ import { placeBadge } from "../src/renderer/src/design/SelectionChrome";
 import { layerName } from "../src/renderer/src/design/layers";
 import { elementLabel } from "../src/shared/selection";
 import { STUDIO_VIEWS, menuStep, viewportMenu } from "../src/renderer/src/design/StudioBar";
-import { replyCount, statusText } from "../src/renderer/src/components/StudioComposer";
+import { lastTurnError, replyCount, statusText } from "../src/renderer/src/components/StudioComposer";
 import { selectionPlaceholder } from "../src/renderer/src/components/Composer";
 
 const part = (over: Partial<KitPart> & { ui: string }): KitPart => ({ name: over.ui, category: "Inputs", kind: "component", props: [], snippet: `<div data-ui="${over.ui}"></div>`, importName: null, ...over });
@@ -209,5 +209,15 @@ describe("names in the studio", () => {
   it("a label prefers the source's text to what CSS shows", () => {
     expect(elementLabel({ tag: "button", text: "START FREE TRIAL", ownText: "Start free trial" })).toBe('button "Start free trial"');
     expect(elementLabel({ tag: "section", text: "Two words" })).toBe('section "Two words"');
+  });
+});
+
+describe("a failed turn with the chat closed", () => {
+  it("says why on the Composer's lip, until a new turn starts", () => {
+    const failed = { event: { kind: "error", message: "Free usage limit reached." } };
+    expect(lastTurnError([{ event: { kind: "turn-start" } }, failed, { event: { kind: "turn-end" } }])).toBe("Free usage limit reached.");
+    expect(lastTurnError([failed, { event: { kind: "turn-start" } }])).toBeNull();
+    expect(lastTurnError([{ event: { kind: "turn-start" } }, { event: { kind: "assistant-text" } }, { event: { kind: "turn-end" } }])).toBeNull();
+    expect(lastTurnError(undefined)).toBeNull();
   });
 });

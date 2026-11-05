@@ -22,15 +22,12 @@ export const MORE_DIRECTIONS: { id: ActionId; label: string }[] = [
   { id: "overdrive", label: "Overdrive" },
 ];
 
-/** Where the V, D and C tools end, from the stage's corner (`.studio-tools`). */
-const TOOLS_BOX = { right: 108, bottom: 46 };
-
 /** The badge sits on the element's top edge, inside the view: above it when there's room, else just inside. */
 export function placeBadge(el: FrameRect, view: FrameRect, height = 20, tools = { right: 0, bottom: 0 }): { left: number; top: number } {
   const above = el.y - height;
   const top = above >= view.y ? above : Math.min(Math.max(view.y, el.y), view.y + view.height - height);
   const left = Math.max(view.x, Math.min(el.x, view.x + view.width - 60));
-  // The V, D and C tools float over the stage's top-left corner, and would take the badge's clicks.
+  // The tools float over the stage's top-left corner, and would take the badge's clicks.
   return { left: top < tools.bottom && left < tools.right ? tools.right + 4 : left, top };
 }
 
@@ -70,7 +67,9 @@ export function SelectionChrome({
   const place = size.width > 0 ? placeElementBar(el, view, size) : null;
   const up = place !== null && place.top > view.y + view.height / 2;
   const style: CSSProperties = place ? { left: place.left, top: place.top } : { left: 0, top: 0, visibility: "hidden" };
-  const badge = placeBadge(el, view, 20, TOOLS_BOX);
+  // Where the V, D and C tools end, with the comments chip when it's there.
+  const row = document.querySelector<HTMLElement>(".studio-tool-row");
+  const badge = placeBadge(el, view, 20, row ? { right: row.offsetLeft + row.offsetWidth, bottom: row.offsetTop + row.offsetHeight } : undefined);
   const variantItems: StudioMenuItem[] = [
     ...VARIANT_DIRECTIONS.map((d) => ({ kind: "item" as const, id: d.id, label: d.label, onSelect: () => onVariant(d.id, "") })),
     { kind: "item", id: "custom", label: "Custom…", onSelect: () => setCustom("") },

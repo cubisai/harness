@@ -658,6 +658,7 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .app.studio:not(:has(.design-rail)) .main > .thread-pane { padding-left: 16px; }
 .app.studio .thread-pane > * { width: min(100%, 660px); }
 .composer-lip { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 6px 12px 0; font-size: 11.5px; color: var(--signal-ink); position: relative; }
+.composer-lip.error { color: var(--danger); }
 .composer-lip-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .studio-chat-chip { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .studio-chat-chip svg { flex-shrink: 0; }
