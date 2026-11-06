@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Activity, Component, Layers, MonitorSmartphone, Palette, Ruler, Search, Square, Type } from "lucide-react";
+import { Activity, Component, Layers, MonitorSmartphone, Palette, Plus, Ruler, Search, Square, Type } from "lucide-react";
 import type { DesignKitDoc, DesignKitGroup, DesignKitPart, DesignReach, DesignSystemDoc, DesignToken } from "../../../shared/types";
 import { BRAND_TOKENS } from "../../../shared/design";
 import { api } from "../api";
@@ -163,6 +163,14 @@ export function SystemMode({ threadId, pageUrl, pageRel, reloadKey, startUi }: {
   const kitName = kit?.kit?.name ?? sys?.name ?? "System";
   const where = page.kind === "foundation" ? ["Foundations", FOUNDATIONS.find((f) => f.id === page.id)!.label] : ["Components", part?.name ?? page.ui];
   const editable = sys?.editable ?? false;
+  // The Composer's System mode chips: `Library · Colors · Default · Light`. Gone when System mode closes.
+  const themeName = group?.themes.find((t) => t.id === themeId)?.name ?? kitName;
+  const wherePage = where[1]!;
+  const whereTheme = `${themeName} · ${scheme === "dark" ? "Dark" : "Light"}`;
+  useEffect(() => {
+    useStore.getState().setDesignSystemWhere(threadId, { page: wherePage, theme: whereTheme });
+  }, [threadId, wherePage, whereTheme]);
+  useEffect(() => () => useStore.getState().setDesignSystemWhere(threadId, null), [threadId]);
   const sub = !sys ? "" : sys.copyOnWrite ? "Your first edit saves a copy in the project" : !editable ? "Read-only: open a project folder to edit it" : "Project copy · edits reach every page on this kit";
 
   if (error && !sys) return <p className="design-inspector-empty">{error}</p>;
@@ -190,7 +198,20 @@ export function SystemMode({ threadId, pageUrl, pageRel, reloadKey, startUi }: {
           ))}
           <h2 className="lib-rail-head">
             <span>Components</span>
-            <span className="lib-count">{parts.length}</span>
+            <span className="lib-head-end">
+              <span className="lib-count">{parts.length}</span>
+              <button
+                className="icon-btn lib-head-btn"
+                title="New component: describe it in the chat, the agent drafts it in the kit"
+                aria-label="New component"
+                onClick={() => {
+                  useStore.getState().setDesignChip(threadId, { kind: "new-component" });
+                  document.querySelector<HTMLTextAreaElement>(".composer-input textarea")?.focus();
+                }}
+              >
+                <Plus size={13} strokeWidth={1.75} aria-hidden />
+              </button>
+            </span>
           </h2>
           {!kit?.kit && !parts.length && <p className="lib-empty">This style has tokens but no components.</p>}
           {kit?.kit && !parts.length && query && <p className="lib-empty">No component matches.</p>}

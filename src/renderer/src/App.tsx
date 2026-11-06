@@ -156,6 +156,7 @@ export function App() {
   const [headSlot, setHeadSlot] = useState<HTMLDivElement | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const hasMessages = useStore((s) => (thread ? (s.events[thread.id]?.length ?? 0) > 0 : false));
+  const systemOpen = useStore((s) => Boolean(studio && thread && s.designSystemWhere[thread.id]));
   const drawerHandle = useRef<HTMLButtonElement>(null);
   // Esc closes the open transcript drawer first (ESCAPE_OWNERS keeps it from stopping the turn), unless a menu or
   // sheet over it owns the key. preventDefault tells the turn-stopping handler too, whichever listener runs first.
@@ -328,7 +329,14 @@ export function App() {
                 >
                   {studio && <TodoDock threadId={thread.id} quietWhileRunning />}
                   <ThreadView threadId={thread.id} expertId={thread.expertId} />
-                  {canvasFirst && !hasMessages && <p className="design-drawer-empty">No messages yet. Describe what to design below.</p>}
+                  {canvasFirst && !hasMessages && (systemOpen ? (
+                    <p className="design-drawer-empty system">
+                      <strong>New design system chat</strong>
+                      Describe a change to the system below. The agent works on a draft of the kit for you to review.
+                    </p>
+                  ) : (
+                    <p className="design-drawer-empty">No messages yet. Describe what to design below.</p>
+                  ))}
                 </div>
                 <div className="thread-bar" ref={barRef}>
                 {!studio && <TodoDock threadId={thread.id} />}

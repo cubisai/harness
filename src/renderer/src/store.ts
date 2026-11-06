@@ -44,10 +44,11 @@ import { buildInCodePrompt, buildThreadPatch, designDirName, handoffPath } from 
 import type { SelectedElement } from "../../shared/selection";
 import type { PrototypeTier } from "../../shared/tiers";
 import type { TurnScore } from "../../shared/learn";
+import type { DesignChip, SystemWhere } from "./design/intent";
 
 /** A design thread's canvas selection: the page it is on and its elements. */
 /** What the next message is about, chosen from the Composer rather than typed. */
-export type DesignChip = { kind: "new-kit" } | { kind: "match-screenshot"; file?: string } | { kind: "new-component"; selection?: string };
+export type { DesignChip };
 
 export interface DesignSelection {
   page: string;
@@ -235,9 +236,9 @@ interface State {
   /** The chip a design thread's next message goes out with (`+` menu, System mode). */
   designChip: Record<string, DesignChip>;
   setDesignChip(threadId: string, chip: DesignChip | null): void;
-  /** What a message means while System mode is open: `System · Button · Light`. Null on the page. */
-  designSystemWhere: Record<string, string>;
-  setDesignSystemWhere(threadId: string, where: string | null): void;
+  /** Where System mode is while it's open (its Composer chips: `Library · Colors · Default · Light`). Absent on the page. */
+  designSystemWhere: Record<string, SystemWhere>;
+  setDesignSystemWhere(threadId: string, where: SystemWhere | null): void;
   /** Reference images handed to a design thread's composer from elsewhere (the canvas's Draw tool); the composer takes them. */
   pendingRefs: Record<string, { path: string; thumb: string }[]>;
   addDesignRefs(threadId: string, refs: { path: string; thumb: string }[]): void;

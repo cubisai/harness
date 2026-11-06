@@ -598,6 +598,8 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .app.canvas-first .design-drawer .thread-scroll { flex: 0 1 auto; }
 .app.canvas-first .design-drawer .thread-inner { padding: 16px 16px 12px; }
 .design-drawer-empty { margin: 0; padding: 12px 16px; font-size: 12.5px; color: var(--text-tertiary); }
+.design-drawer-empty.system { padding: 24px 16px; text-align: center; }
+.design-drawer-empty.system strong { display: block; margin-bottom: 4px; font-weight: 600; color: var(--text); }
 .design-drawer:has(.design-drawer-empty) .thread-scroll { display: none; }
 .design-drawer-handle {
   display: flex;
@@ -688,6 +690,9 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .lib-kbd { flex: none; font: 10.5px var(--mono); color: var(--text-tertiary); }
 .lib-rail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 6px var(--lib-clear, 12px); }
 .lib-rail-head { display: flex; align-items: center; justify-content: space-between; margin: 10px 6px 4px; font-size: 11px; font-weight: 600; color: var(--text-tertiary); }
+.lib-head-end { display: flex; align-items: center; gap: 4px; }
+.lib-head-btn { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--radius-s); background: transparent; color: var(--text-tertiary); cursor: pointer; }
+.lib-head-btn:hover { background: var(--bg-hover); color: var(--text); }
 .lib-rail-group { margin: 8px 8px 2px; font-size: 11px; color: var(--text-tertiary); }
 .lib-row { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; height: 28px; padding: 0 8px; border: 0; border-radius: var(--radius-m); background: transparent; color: var(--text-secondary); font: 12.5px var(--font); text-align: left; cursor: pointer; }
 .lib-row:hover { background: var(--bg-hover); color: var(--text); }

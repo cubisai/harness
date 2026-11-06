@@ -1,11 +1,12 @@
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { AtSign, BriefcaseBusiness, Check, CircleDot, File, Folder, Puzzle, Slash, Sparkles } from "lucide-react";
+import { AtSign, Blocks, BriefcaseBusiness, Check, CircleDot, File, Folder, ImagePlus, Puzzle, Slash, Sparkles } from "lucide-react";
 import type { PermissionMode, SkillEntry } from "../../../shared/types";
 import { IconArrowUp, IconStop } from "../icons";
 import { api } from "../api";
 import { chipLabel, commandQuery, composeMessage, skillQueryAt, toggleSkill } from "../composer";
 import { MAX_REFS, imageFiles, refLabel, refThumb, withRefs } from "../design/refs";
+import { designChipLabel, designIntent, designPlaceholder, systemChips } from "../design/intent";
 import { elementLabel, withScope } from "../../../shared/selection";
 import { designDirName } from "../../../shared/design";
 import { exactCommand, isCommandSkill, issueCommand, matchCommands, type ComposerCommand } from "../commands";
@@ -104,6 +105,13 @@ export function Composer({
   }, [threadId, pendingRefs]);
   // Elements selected on a design thread's canvas: chips here, and a "change only these" block on the next message.
   const selection = useStore((s) => (threadId ? s.designSelection[threadId] : undefined));
+  // The studio's design chip (`+` menu, System mode) and System mode's context; both ride on the next message.
+  const designChip = useStore((s) => (threadId && selectionPrompts ? s.designChip[threadId] : undefined));
+  const systemWhere = useStore((s) => (threadId && selectionPrompts ? s.designSystemWhere[threadId] : undefined));
+  const [droppedSystem, setDroppedSystem] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => setDroppedSystem(new Set()), [systemWhere?.page, systemWhere?.theme]);
+  const system = systemChips(systemWhere, droppedSystem);
+  const screenshotInput = useRef<HTMLInputElement>(null);
   const area = useRef<HTMLTextAreaElement>(null);
   const pendingCaret = useRef<number | null>(null);
   /** listFiles results by project id, with when they were fetched, so the picker doesn't refetch per keystroke. */
@@ -349,17 +357,28 @@ export function Composer({
     const refPaths = refs.map((r) => r.path);
     const message = withRefs(composeMessage(text, chips), refPaths);
     if (!message && !picked.length) return;
+    if (designChip?.kind === "match-screenshot" && !refs.length) {
+      useStore.getState().showNotice("Add the screenshot first: paste it, drop it here, or pick it from + → Match a screenshot….");
+      return;
+    }
     // The selection scopes a real request; on its own it isn't one.
     const body = withScope(message, selection && threadId ? `${designDirName(threadId)}/${selection.page}` : null, selection?.elements ?? []);
     const mentions = [...mentionsIn(text, knownSet), ...refPaths];
     const names = picked.map((p) => p.name);
     if (selection && threadId) useStore.getState().setDesignSelection(threadId, null);
-    if (!threadId) void startThread(body, names, mentions);
-    else if (running) enqueue(threadId, body, names, mentions);
-    else
-      void send(body, names, undefined, mentions).then((ok) => {
-        if (!ok) setText((cur) => cur || text);
-      });
+    const go = () => {
+      if (!threadId) void startThread(body, names, mentions);
+      else if (running) enqueue(threadId, body, names, mentions);
+      else
+        void send(body, names, undefined, mentions).then((ok) => {
+          if (!ok) setText((cur) => cur || text);
+        });
+    };
+    // The intent reaches the main process before the message, which takes it into the turn.
+    const intent = threadId ? designIntent(designChip, system) : null;
+    if (threadId && designChip) useStore.getState().setDesignChip(threadId, null);
+    if (threadId && intent) void api().designSetIntent(threadId, intent).catch(() => {}).then(go);
+    else go();
     setText("");
     setChips([]);
     setRefs([]);
@@ -516,9 +535,10 @@ export function Composer({
         ? `Anything to tell ${picked.map((p) => `$${p.name}`).join(", ")}? Or just press Return.`
         : running
       ? "Queue a message for the next turn…"
-      : selectionPrompts && selection?.elements.length
+      : designPlaceholder(designChip, system) ??
+        (selectionPrompts && selection?.elements.length
         ? "Describe a change…"
-      : "Ask anything — $ for a skill, / for a command";
+      : "Ask anything — $ for a skill, / for a command");
 
   // The + starts a trigger at the caret, as if typed: @ mention, $ skill, / command.
   const startTrigger = (ch: "@" | "$" | "/") => {
@@ -662,7 +682,7 @@ export function Composer({
         )}
         {/* Skill and context chips sit inline before the text, each with its own ×. */}
         <div
-          className={`composer-input${issue || picked.length || chips.length || refs.length || selection ? " has-chips" : ""}`}
+          className={`composer-input${issue || picked.length || chips.length || refs.length || selection || designChip || system.length ? " has-chips" : ""}`}
           onDragOver={(e) => {
             if (designKind && Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
           }}
@@ -675,6 +695,23 @@ export function Composer({
               <span className="issues-num">#{issue.number}</span>
               <span className="chip-label">{issue.title}</span>
               <button className="chip-x" aria-label={`Clear issue #${issue.number}`} onClick={() => void useStore.getState().setIssue(null)}>
+                ×
+              </button>
+            </span>
+          )}
+          {threadId &&
+            system.map((c) => (
+              <span key={c} className="skill-chip context-chip system-chip" title={c === "Library" ? "This message changes the design system, not the page" : c}>
+                <span className="chip-label">{c}</span>
+                <button className="chip-x" aria-label={`Remove ${c}`} onClick={() => setDroppedSystem((d) => new Set([...d, c]))}>
+                  ×
+                </button>
+              </span>
+            ))}
+          {threadId && designChip && (
+            <span className="skill-chip context-chip design-intent-chip">
+              <span className="chip-label">{designChipLabel(designChip)}</span>
+              <button className="chip-x" aria-label={`Remove ${designChipLabel(designChip)}`} onClick={() => useStore.getState().setDesignChip(threadId, null)}>
                 ×
               </button>
             </span>
@@ -753,8 +790,30 @@ export function Composer({
                 { id: "mention", label: "Mention a file or folder (@)", icon: <AtSign size={14} />, onSelect: () => startTrigger("@") },
                 { id: "skill", label: "Use a skill ($)", icon: <Sparkles size={14} />, onSelect: () => startTrigger("$") },
                 { id: "command", label: "Run a command (/)", icon: <Slash size={14} />, onSelect: () => startTrigger("/") },
+                ...(selectionPrompts && threadId
+                  ? [
+                      { id: "new-kit", label: "Start a new kit…", icon: <Blocks size={14} />, onSelect: () => useStore.getState().setDesignChip(threadId, { kind: "new-kit" }) },
+                      { id: "match-screenshot", label: "Match a screenshot…", icon: <ImagePlus size={14} />, onSelect: () => screenshotInput.current?.click() },
+                    ]
+                  : []),
               ]}
             />
+            {selectionPrompts && threadId && (
+              <input
+                ref={screenshotInput}
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={(e) => {
+                  if (takeImages(e.currentTarget.files)) {
+                    useStore.getState().setDesignChip(threadId, { kind: "match-screenshot" });
+                    if (!text.trim()) setText("Match this screen: ");
+                    area.current?.focus();
+                  }
+                  e.currentTarget.value = "";
+                }}
+              />
+            )}
             {fold >= 2 && compactMode ? compactMode : mode}
             <span className="grow" />
           </div>
