@@ -52,6 +52,8 @@ export type DesignChip = { kind: "new-kit" } | { kind: "match-screenshot"; file?
 export interface DesignSelection {
   page: string;
   elements: SelectedElement[];
+  /** The kit's names for the elements (`StatCard`), in order, when the canvas knows them: the Composer chip's label. */
+  names?: string[];
 }
 
 /** The right panel's tabs. Changes and Files need a project; Browser works without one; File shows an artifact. */

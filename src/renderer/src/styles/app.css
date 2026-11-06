@@ -668,24 +668,21 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .studio-code .design-inspector-code-scroll { flex: 1; min-height: 0; overflow: auto; }
 .studio-system-scroll { flex: 1; min-height: 0; overflow-y: auto; padding-inline: max(0px, calc((100% - 720px) / 2)); }
 .studio-present { position: absolute; top: 12px; right: 12px; z-index: 4; height: 28px; display: inline-flex; align-items: center; gap: 6px; background: var(--bg-elevated); }
-/* The selection's badge and pill, the tools, seams and popovers: in the host layer, so they stay readable at any scale. */
+/* The selection's name tag and handles, the tools, seams and popovers: in the host layer, so they stay readable at any scale. */
 .studio-badge { position: absolute; z-index: 20; display: inline-flex; align-items: center; gap: 4px; height: 20px; max-width: 220px; padding: 0 6px; border: 0; border-radius: var(--radius-s) var(--radius-s) 0 0; background: var(--canvas-select); color: var(--bg); font-size: 11.5px; font-weight: 500; white-space: nowrap; }
 .studio-badge-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.studio-badge:disabled { opacity: 1; }
-.studio-pill, .studio-tools, .studio-draw-dock { display: flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--hairline); border-radius: var(--radius-m); background: var(--bg-elevated); box-shadow: var(--shadow-float); }
-.studio-pill { position: absolute; z-index: 21; min-height: 28px; max-width: calc(100% - 16px); }
-.studio-pill-button { display: inline-flex; align-items: center; gap: 4px; height: 24px; max-width: 180px; padding: 0 6px; border: 0; border-radius: var(--radius-s); background: transparent; color: var(--text); font: inherit; font-size: 12px; white-space: nowrap; transition: background 120ms var(--ease); }
-.studio-pill-button:hover:not(:disabled), .studio-pill-button.active { background: var(--bg-hover); }
-.studio-pill-button:disabled { opacity: 0.4; }
-.studio-pill-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
-.studio-pill-plain { max-width: 140px; padding: 0 6px; font-size: 12px; white-space: nowrap; color: var(--text); }
-.studio-pill-custom, .studio-seam-ask { display: flex; align-items: center; gap: 2px; min-width: 0; flex: 1; }
+.studio-badge:has(.studio-badge-swap) { padding-right: 2px; }
+.studio-badge-swap { display: inline-grid; place-items: center; width: 16px; height: 16px; padding: 0; border: 0; border-radius: var(--radius-s); background: color-mix(in srgb, var(--bg) 22%, transparent); color: inherit; cursor: pointer; transition: background 120ms var(--ease); }
+.studio-badge-swap:hover { background: color-mix(in srgb, var(--bg) 38%, transparent); }
+.studio-badge-swap:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.studio-handle { position: absolute; z-index: 20; width: 8px; height: 8px; margin: -4px 0 0 -4px; border: 1.5px solid var(--canvas-select); border-radius: 50%; background: var(--bg); pointer-events: none; }
+.studio-tools, .studio-draw-dock { display: flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--hairline); border-radius: var(--radius-m); background: var(--bg-elevated); box-shadow: var(--shadow-float); }
+.studio-seam-ask { display: flex; align-items: center; gap: 2px; min-width: 0; flex: 1; }
 .studio-pill-input { flex: 1 1 220px; width: 220px; min-width: 0; height: 28px; padding: 0 6px; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 12.5px; }
 .studio-pill-input:focus { outline: none; }
 .studio-pill-input:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: var(--radius-s); }
 .studio-menu.up .artifact-menu { top: auto; bottom: calc(100% + 4px); }
 .studio-menu.left .artifact-menu { left: 0; right: auto; }
-.studio-pill .studio-menu .artifact-menu { min-width: 160px; }
 .studio-tool-row { position: absolute; top: 8px; left: 8px; z-index: 22; display: flex; align-items: center; gap: 4px; }
 .studio-seam { position: absolute; z-index: 19; background: var(--canvas-select); pointer-events: none; }
 .studio-seam-add { position: absolute; left: 50%; top: 50%; width: 24px; height: 24px; transform: translate(-50%, -50%); display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: var(--canvas-select); color: var(--bg); pointer-events: auto; }
@@ -1877,6 +1874,8 @@ button.qc-option.other { cursor: pointer; }
 .composer-input .skill-chip { margin-right: 0; max-width: 100%; min-width: 0; }
 .composer-input .context-chip { display: inline-flex; }
 .composer-input .context-chip .chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+/* The studio's one selection chip reads as words (`Selection: StatCard`), not code. */
+.composer-input .studio-select-chip { font-family: inherit; font-size: 12px; }
 /* A design's reference image: a tiny thumbnail of it before its label. */
 .composer-input .ref-chip { padding-left: 2px; font-family: var(--font); }
 .ref-thumb { width: 16px; height: 16px; flex-shrink: 0; object-fit: cover; border-radius: 50%; }

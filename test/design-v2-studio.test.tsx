@@ -6,12 +6,12 @@ import type { DesignDirection } from "../src/shared/direction";
 import { codeFileOrder } from "../src/renderer/src/design/CodeView";
 import { drawMessage, strokeBounds, toolForKey } from "../src/renderer/src/design/CanvasTools";
 import { flowChanges, flowOf, gapSteps, groupParts, instanceOf, jsxOf, lineOf, parseKitParts, startAttrs, swapNotice, swapPlan, wrapAttrs, wrapShapes, type KitPart } from "../src/renderer/src/design/kit-parts";
-import { placeBadge } from "../src/renderer/src/design/SelectionChrome";
+import { handlePoints, placeBadge } from "../src/renderer/src/design/SelectionChrome";
 import { layerName } from "../src/renderer/src/design/layers";
 import { elementLabel } from "../src/shared/selection";
 import { STUDIO_VIEWS, menuStep, viewportMenu } from "../src/renderer/src/design/StudioBar";
 import { lastTurnError, replyCount, statusText } from "../src/renderer/src/components/StudioComposer";
-import { selectionPlaceholder } from "../src/renderer/src/components/Composer";
+import { selectionChipLabel } from "../src/renderer/src/components/Composer";
 
 const part = (over: Partial<KitPart> & { ui: string }): KitPart => ({ name: over.ui, category: "Inputs", kind: "component", props: [], snippet: `<div data-ui="${over.ui}"></div>`, importName: null, ...over });
 const button = part({ ui: "button", name: "Button", props: [{ name: "variant", type: "choice", options: ["text", "outlined"] }, { name: "size", type: "choice", options: ["sm", "md"] }], snippet: `<div data-ui="stack"><button data-ui="button">One</button><button data-ui="button" data-variant="outlined">Two</button></div>`, importName: "Button" });
@@ -166,10 +166,11 @@ describe("the Composer in the studio", () => {
     expect(replyCount([{ event: { kind: "assistant-text" } }, { event: { kind: "assistant-text", parentId: "p" } }, { event: { kind: "tool" } }])).toBe(1);
     expect(replyCount(undefined)).toBe(0);
   });
-  it("says what's selected in the prompt", () => {
+  it("the Composer chip names the selection the kit's way", () => {
     const el = { tag: "button", selector: "button", text: "Start", html: "", rect: { x: 0, y: 0, width: 1, height: 1 }, path: [] };
-    expect(selectionPlaceholder([el])).toContain("Ask AI to refine");
-    expect(selectionPlaceholder([el, el])).toBe("Ask AI about these 2 elements…");
+    expect(selectionChipLabel({ elements: [el], names: ["StatCard"] })).toBe("Selection: StatCard");
+    expect(selectionChipLabel({ elements: [el] })).toBe('Selection: button "Start"');
+    expect(selectionChipLabel({ elements: [el, el, el] })).toBe("Selection: 3 elements");
   });
 });
 
@@ -188,6 +189,14 @@ describe("the canvas tools", () => {
     expect(drawMessage(" too loud ", "Card")).toContain("around Card");
     expect(drawMessage(" too loud ", null)).toContain("too loud");
     expect(drawMessage("", null)).toContain("Work out what the marks");
+  });
+  it("puts a handle at the middle of each edge", () => {
+    expect(handlePoints({ x: 10, y: 20, width: 100, height: 40 })).toEqual([
+      { id: "n", x: 60, y: 20 },
+      { id: "e", x: 110, y: 40 },
+      { id: "s", x: 60, y: 60 },
+      { id: "w", x: 10, y: 40 },
+    ]);
   });
   it("the badge stays in view when the element reaches the top", () => {
     const view = { x: 0, y: 0, width: 500, height: 400 };

@@ -38,9 +38,10 @@ function entriesOf(names: string[], extra: SkillEntry[] = []): SkillEntry[] {
   return names.flatMap((n) => all.find((s) => s.name === n) ?? extra.find((s) => s.name === n) ?? []);
 }
 
-/** The studio's prompt while something is selected on the canvas. */
-export function selectionPlaceholder(elements: Parameters<typeof elementLabel>[0][]): string {
-  return elements.length === 1 ? `Ask AI to refine ${elementLabel(elements[0]!)}…` : `Ask AI about these ${elements.length} elements…`;
+/** The studio's one chip: `Selection: StatCard`, or `Selection: 3 elements`. */
+export function selectionChipLabel(selection: { elements: Parameters<typeof elementLabel>[0][]; names?: string[] }): string {
+  const n = selection.elements.length;
+  return `Selection: ${n === 1 ? (selection.names?.[0] ?? elementLabel(selection.elements[0]!)) : `${n} elements`}`;
 }
 
 export function Composer({
@@ -516,7 +517,7 @@ export function Composer({
         : running
       ? "Queue a message for the next turn…"
       : selectionPrompts && selection?.elements.length
-        ? selectionPlaceholder(selection.elements)
+        ? "Describe a change…"
       : "Ask anything — $ for a skill, / for a command";
 
   // The + starts a trigger at the caret, as if typed: @ mention, $ skill, / command.
@@ -678,7 +679,15 @@ export function Composer({
               </button>
             </span>
           )}
-          {selection?.elements.map((el, i) => (
+          {selection && selectionPrompts ? (
+            <span className="skill-chip context-chip select-chip studio-select-chip" title={selection.elements.map((el) => el.selector).join("\n")}>
+              <span className="chip-label">{selectionChipLabel(selection)}</span>
+              <button className="chip-x" aria-label="Clear the selection" onClick={() => threadId && useStore.getState().setDesignSelection(threadId, null)}>
+                ×
+              </button>
+            </span>
+          ) : (
+            selection?.elements.map((el, i) => (
             <span key={el.id ?? el.selector} className="skill-chip context-chip select-chip" title={el.selector}>
               <span className="chip-label">{elementLabel(el)}</span>
               <button
@@ -689,7 +698,8 @@ export function Composer({
                 ×
               </button>
             </span>
-          ))}
+          ))
+          )}
           {refs.map((r) => (
             <span key={r.path} className="skill-chip context-chip ref-chip" title={r.path}>
               {r.thumb && <img className="ref-thumb" src={r.thumb} alt="" />}

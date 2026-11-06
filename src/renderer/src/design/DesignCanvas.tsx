@@ -33,7 +33,7 @@ import { useDesignEditing } from "./useDesignEditing";
 import { StudioBar, viewportMenu, type StudioMenuItem, type StudioView } from "./StudioBar";
 import { CodeView } from "./CodeView";
 import { SystemPanel } from "./SystemPanel";
-import { ActionsMenu, SeamButton, SeamPalette, SelectionChrome, SwapPopover, type ActionItem, type SeamPosition } from "./SelectionChrome";
+import { ActionsMenu, MORE_DIRECTIONS, SeamButton, SeamPalette, SelectionChrome, SwapPopover, VARIANT_DIRECTIONS, type ActionItem, type SeamPosition } from "./SelectionChrome";
 import { CanvasToolsPill, DrawLayer, drawMessage, strokeBounds, toolForKey, type CanvasTool, type Stroke } from "./CanvasTools";
 import { NamePrompt } from "./NamePrompt";
 import { textHash } from "../../../shared/text-hash";
@@ -66,6 +66,13 @@ const DEVICE_CHROME = { none: { width: 0, height: 0 }, phone: { width: 40, heigh
 
 /** How long a structural edit's report stays up. */
 const TOAST_MS = 6000;
+
+/** What the kit calls an element (`StatCard`), else its part (`Card · header`), else its tag and text. */
+export function partLabel(el: SelectedElement, parts: readonly KitPart[]): string {
+  const attrs = startAttrs(el.html);
+  const part = parts.find((p) => p.ui === attrs["data-ui"]);
+  return part?.name ?? (attrs["data-part"] ? parentName({ label: "", part: attrs["data-part"] }) : elementLabel(el));
+}
 
 export default function DesignCanvas({
   threadId,
@@ -779,6 +786,14 @@ export default function DesignCanvas({
   useEffect(() => {
     if (selection && entry && (selection.page !== entry.rel || version !== 0)) setSelection(threadId, null);
   }, [selection, entry, version, threadId, setSelection]);
+
+  // The Composer chip says what the kit calls it: `Selection: StatCard`.
+  useEffect(() => {
+    if (!designV2 || !selection) return;
+    const names = selection.elements.map((el) => partLabel(el, kitParts));
+    if (selection.names && names.join("\n") === selection.names.join("\n")) return;
+    setSelection(threadId, { ...selection, names });
+  }, [designV2, selection, kitParts, threadId, setSelection]);
 
   const clearSelection = () => {
     setSelection(threadId, null);
@@ -1579,7 +1594,7 @@ export default function DesignCanvas({
   const one = selected.length === 1 ? (selected[0] ?? null) : null;
   const oneAttrs = one ? startAttrs(one.html) : {};
   const onePart = (one && kitParts.find((p) => p.ui === oneAttrs["data-ui"])) || null;
-  const selectionName = one ? (onePart?.name ?? (oneAttrs["data-part"] ? parentName({ label: "", part: oneAttrs["data-part"] }) : elementLabel(one))) : `${selected.length} selected`;
+  const selectionName = one ? partLabel(one, kitParts) : `${selected.length} selected`;
   const closePopovers = () => {
     setSwapAt(null);
     setActionsAt(null);
@@ -1717,11 +1732,13 @@ export default function DesignCanvas({
         { id: "duplicate", group: "Structure", label: "Duplicate", shortcut: "⌘D", run: duplicateSelection },
         ...(kitParts.length ? [{ id: "composition", group: "Structure", label: "Save as composition…", run: () => setNaming({ kind: "composition", warnings: [], error: null, busy: false }) }] : []),
         { id: "delete", group: "Structure", label: "Delete", shortcut: "⌫", run: deleteSelection },
-        ...(onePart?.props.find((p) => p.name === "variant")?.options ?? []).map((v) => ({ id: `v-${v}`, group: "Variant", label: `Variant: ${v}`, run: () => one && applyAttrs(one, [{ name: "data-variant", value: v }], `${one.selector}:data-variant`) })),
+        ...(onePart?.props.find((p) => p.name === "variant")?.options ?? []).map((v) => ({ id: `v-${v}`, group: "Variant", label: `Variant › ${v[0]!.toUpperCase()}${v.slice(1)}`, run: () => one && applyAttrs(one, [{ name: "data-variant", value: v }], `${one.selector}:data-variant`) })),
         ...(onePart ? [{ id: "reset", group: "Component", label: "Reset all props", run: () => one && applyAttrs(one, onePart.props.filter((p) => oneAttrs[`data-${p.name}`] !== undefined).map((p) => ({ name: `data-${p.name}`, value: null })), `${one.selector}:reset`) }] : []),
+        { id: "chat", group: "Component", label: "Add to chat", run: focusComposer },
         { id: "comment", group: "Component", label: "Add comment", shortcut: "C", disabled: !one, run: () => setCommentDraft("") },
         { id: "code", group: "Component", label: "Go to code", disabled: !one, run: () => one && void openCodeAt(one) },
         { id: "copy", group: "Component", label: jsxOf(onePart, oneAttrs, one?.ownText ?? one?.text ?? "") ? "Copy JSX" : "Copy HTML", disabled: !one, run: () => one && void navigator.clipboard?.writeText(jsxOf(onePart, oneAttrs, one.text) ?? one.html) },
+        ...[...VARIANT_DIRECTIONS, ...MORE_DIRECTIONS].map((d) => ({ id: `ai-${d.id}`, group: "Explore", label: `3 variants: ${d.label}`, disabled: agentRunning, run: () => void go(d.id, "") })),
       ];
   const saveTheme = async (name: string) => {
     setNaming((n) => n && { ...n, busy: true, error: null });
@@ -1906,23 +1923,7 @@ export default function DesignCanvas({
         )}
       </div>
       {showElementBar && barBoxes && tool !== "draw" && (
-        <SelectionChrome
-          el={barBoxes.el}
-          view={barBoxes.view}
-          label={selectionName}
-          canSwap={!!onePart && kitParts.length > 1}
-          parents={(one?.path ?? []).map((p) => ({ selector: p.selector, label: parentName(p, kitParts.find((k) => k.ui === p.ui)?.name) }))}
-          onSwap={() => setSwapAt(selectionAt())}
-          onParent={(selector) => {
-            fromFrame.current = "";
-            // The bridge checks the tag when it resolves a target: a wrong one drops the selection.
-            const tag = one?.path.find((p) => p.selector === selector)?.label.split(" ")[0] ?? "div";
-            post({ type: "set-selection", targets: [{ selector, tag, text: "" }] });
-          }}
-          busy={agentRunning ? "Wait for the current turn to finish" : null}
-          onVariant={(a, words) => void go(a, words)}
-          onAsk={focusComposer}
-        />
+        <SelectionChrome el={barBoxes.el} view={barBoxes.view} label={selectionName} canSwap={!!onePart && kitParts.length > 1} onSwap={() => setSwapAt(selectionAt())} />
       )}
       {seamBoxes && seam && <SeamButton rect={seamBoxes} position={seam.position} onOpen={() => setPalette({ anchor: seam.anchor, position: seam.position, at: { x: seamBoxes.x + seamBoxes.width / 2 - 150, y: seamBoxes.y + 12 } })} />}
       {palette && (

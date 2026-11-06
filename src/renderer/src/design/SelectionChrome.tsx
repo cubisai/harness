@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ArrowUp, ChevronDown, Diamond, Plus, Search, Sparkles, X } from "lucide-react";
+import { ArrowUp, Diamond, Plus, Search } from "lucide-react";
 import type { FrameRect } from "./frame";
-import { placeElementBar, type ActionId } from "./ElementBar";
-import { StudioMenu, menuStep, type StudioMenuItem } from "./StudioBar";
+import type { ActionId } from "./ElementBar";
+import { menuStep } from "./StudioBar";
 import { groupParts, type KitPart } from "./kit-parts";
 
 /** The six clear directions first; the rest wait behind More. `Custom` asks for words instead. */
@@ -31,107 +31,39 @@ export function placeBadge(el: FrameRect, view: FrameRect, height = 20, tools = 
   return { left: top < tools.bottom && left < tools.right ? tools.right + 4 : left, top };
 }
 
-/** The selection's two attached parts: the name badge (a click swaps) and the pill (parents, 3 variants, Ask AI). */
-export function SelectionChrome({
-  el,
-  view,
-  label,
-  canSwap,
-  parents,
-  onSwap,
-  onParent,
-  busy,
-  onVariant,
-  onAsk,
-}: {
-  el: FrameRect;
-  view: FrameRect;
-  label: string;
-  canSwap: boolean;
-  parents: { label: string; selector: string }[];
-  onSwap: () => void;
-  onParent: (selector: string) => void;
-  /** Why variants can't start, when they can't. */
-  busy: string | null;
-  onVariant: (action: ActionId, prompt: string) => void;
-  onAsk: () => void;
-}) {
-  const pill = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  const [more, setMore] = useState(false);
-  const [custom, setCustom] = useState<string | null>(null);
-  useLayoutEffect(() => {
-    const box = pill.current;
-    if (box && (box.offsetWidth !== size.width || box.offsetHeight !== size.height)) setSize({ width: box.offsetWidth, height: box.offsetHeight });
-  });
-  const place = size.width > 0 ? placeElementBar(el, view, size) : null;
-  const up = place !== null && place.top > view.y + view.height / 2;
-  const style: CSSProperties = place ? { left: place.left, top: place.top } : { left: 0, top: 0, visibility: "hidden" };
+/** Where the 4 edge handles sit: the middle of each side, in the stage's coordinates. */
+export function handlePoints(el: FrameRect): { id: "n" | "e" | "s" | "w"; x: number; y: number }[] {
+  const cx = el.x + el.width / 2;
+  const cy = el.y + el.height / 2;
+  return [
+    { id: "n", x: cx, y: el.y },
+    { id: "e", x: el.x + el.width, y: cy },
+    { id: "s", x: cx, y: el.y + el.height },
+    { id: "w", x: el.x, y: cy },
+  ];
+}
+
+/** The selection on the canvas: a name tag (its diamond swaps) and the edge handles. Everything else is in the Actions menu and the Composer. */
+export function SelectionChrome({ el, view, label, canSwap, onSwap }: { el: FrameRect; view: FrameRect; label: string; canSwap: boolean; onSwap: () => void }) {
   // Where the V, D and C tools end, with the comments chip when it's there.
   const row = document.querySelector<HTMLElement>(".studio-tool-row");
   const badge = placeBadge(el, view, 20, row ? { right: row.offsetLeft + row.offsetWidth, bottom: row.offsetTop + row.offsetHeight } : undefined);
-  const variantItems: StudioMenuItem[] = [
-    ...VARIANT_DIRECTIONS.map((d) => ({ kind: "item" as const, id: d.id, label: d.label, onSelect: () => onVariant(d.id, "") })),
-    { kind: "item", id: "custom", label: "Custom…", onSelect: () => setCustom("") },
-    { kind: "sep", id: "s" },
-    ...(more
-      ? MORE_DIRECTIONS.map((d) => ({ kind: "item" as const, id: d.id, label: d.label, onSelect: () => onVariant(d.id, "") }))
-      : [{ kind: "item" as const, id: "more", label: "More…", keepOpen: true, onSelect: () => setMore(true) }]),
-  ];
-  const parentItems: StudioMenuItem[] = [...parents].reverse().map((p) => ({ kind: "item", id: p.selector, label: p.label, onSelect: () => onParent(p.selector) }));
+  const inView = (x: number, y: number) => x >= view.x && x <= view.x + view.width && y >= view.y && y <= view.y + view.height;
   return (
     <>
-      <button className="studio-badge" style={{ left: badge.left, top: badge.top }} title={canSwap ? "Swap this component (⌘S)" : label} disabled={!canSwap} onClick={onSwap}>
-        <span className="studio-badge-name">{label}</span>
-        {canSwap && <Diamond size={10} strokeWidth={2} aria-hidden />}
-      </button>
-      <div className="studio-pill" ref={pill} style={style} role="toolbar" aria-label={`Selected: ${label}`}>
-        {custom !== null ? (
-          <form
-            className="studio-pill-custom"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (custom.trim() && !busy) {
-                onVariant("freeform", custom);
-                setCustom(null);
-              }
-            }}
-          >
-            <input
-              autoFocus
-              className="studio-pill-input"
-              aria-label="What should the 3 variants try?"
-              placeholder="What should the 3 variants try?"
-              value={custom}
-              maxLength={2000}
-              onChange={(e) => setCustom(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  e.stopPropagation();
-                  setCustom(null);
-                }
-              }}
-            />
-            <button type="submit" className="icon-button" aria-label="Make 3 variants" title={busy ?? "Make 3 variants"} disabled={!custom.trim() || busy !== null}>
-              <ArrowUp size={16} strokeWidth={1.75} aria-hidden />
-            </button>
-            <button type="button" className="icon-button" aria-label="Close" title="Close (Esc)" onClick={() => setCustom(null)}>
-              <X size={16} strokeWidth={1.75} aria-hidden />
-            </button>
-          </form>
-        ) : (
-          <>
-            {parentItems.length > 0 ? (
-              <StudioMenu label="Select a parent" title="Select a parent" className="studio-pill-button" align="left" up={up} text={<><span className="studio-pill-name">{label}</span><ChevronDown size={14} strokeWidth={1.75} aria-hidden /></>} items={parentItems} />
-            ) : (
-              <span className="studio-pill-name studio-pill-plain">{label}</span>
-            )}
-            <StudioMenu label="3 variants" title={busy ?? "Make 3 variants"} className="studio-pill-button" align="left" up={up} disabled={busy !== null} text={<><span>3 Variants</span><ChevronDown size={14} strokeWidth={1.75} aria-hidden /></>} items={variantItems} />
-            <button className="studio-pill-button" title="Ask the agent about this" onClick={onAsk}>
-              <Sparkles size={14} strokeWidth={1.75} aria-hidden />
-              <span>Ask AI</span>
-            </button>
-          </>
+      {handlePoints(el)
+        .filter((h) => inView(h.x, h.y))
+        .map((h) => (
+          <span key={h.id} className={`studio-handle studio-handle-${h.id}`} style={{ left: h.x, top: h.y }} aria-hidden />
+        ))}
+      <div className="studio-badge" style={{ left: badge.left, top: badge.top }}>
+        <span className="studio-badge-name" title={label}>
+          {label}
+        </span>
+        {canSwap && (
+          <button className="studio-badge-swap" aria-label={`Swap ${label}`} title="Swap component (⌘S)" onClick={onSwap}>
+            <Diamond size={10} strokeWidth={2} aria-hidden />
+          </button>
         )}
       </div>
     </>
