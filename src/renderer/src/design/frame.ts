@@ -240,7 +240,7 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
   if (d.type === "theme") {
     if (!d.tokens || typeof d.tokens !== "object" || Array.isArray(d.tokens)) return null;
     const entries = Object.entries(d.tokens as Record<string, unknown>);
-    return entries.length <= 32 && entries.every(([k, v]) => /^--[a-z0-9-]{1,48}$/.test(k) && str(v, 120)) ? { type: "theme", tokens: d.tokens as Record<string, string> } : null;
+    return entries.length <= 200 && entries.every(([k, v]) => /^--[a-z0-9-]{1,48}$/.test(k) && str(v, 120)) ? { type: "theme", tokens: d.tokens as Record<string, string> } : null;
   }
   if (d.type === "pins") {
     if (!Array.isArray(d.missing) || d.missing.length > 100) return null;

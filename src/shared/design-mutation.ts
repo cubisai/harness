@@ -24,8 +24,13 @@ export type DesignChange =
   | { kind: "unwrap" }
   /** Copy the target's source to right after it, with fresh ids. */
   | { kind: "duplicate" }
+  /** Rename a text element's tag (`p` to `h2`), keeping its attributes and content. Only RETAG_TAGS on both sides. */
+  | { kind: "retag"; tag: string }
   /** Replace the whole page's text, as one step. Main-process only: never accepted over IPC (`parseChange` refuses it). */
   | { kind: "replaceDocument"; html: string };
+
+/** The tags `Render as` offers, and the only ones `retag` changes from or to. */
+export const RETAG_TAGS = ["p", "h1", "h2", "h3", "h4", "h5", "h6", "span", "label"] as const;
 
 /** Names an element without an id: the tag it should be, and its element-child path from `<html>`. */
 export type TargetLocator = { tag: string; path: number[]; text?: string };

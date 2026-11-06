@@ -2,7 +2,7 @@
 // string splice, so the bytes outside the edit (whitespace, comments, quoting, doctype) stay identical.
 
 import { parse, parseFragment, type DefaultTreeAdapterMap } from "parse5";
-import type { DesignChange, InsertPosition, TargetLocator } from "../../shared/design-mutation";
+import { RETAG_TAGS, type DesignChange, type InsertPosition, type TargetLocator } from "../../shared/design-mutation";
 import { decodeEntities, escapeText } from "./textedit";
 
 type TreeMap = DefaultTreeAdapterMap;
@@ -210,6 +210,8 @@ function applyOne(ctx: Context, change: DesignChange): Applied {
       return { html: unwrapElement(ctx.html, ctx.element) };
     case "duplicate":
       return duplicateElement(ctx);
+    case "retag":
+      return { html: retagElement(ctx.html, ctx.element, change.tag) };
   }
 }
 
@@ -624,6 +626,24 @@ function unwrapElement(html: string, element: Element): string {
 
   const inner = html.slice(loc.startTag.endOffset, loc.endTag.startOffset);
   return html.slice(0, loc.startOffset) + inner + html.slice(loc.endTag.endOffset);
+}
+
+// --- retag ---------------------------------------------------------------------------------------
+
+/** Rename the start and end tags, splicing only the two names. Both tags must be text tags from RETAG_TAGS. */
+function retagElement(html: string, element: Element, tag: string): string {
+  const from = element.tagName.toLowerCase();
+  const allowed = RETAG_TAGS as readonly string[];
+  if (!allowed.includes(tag)) throw invalid(`An element can't become a <${tag}> here.`);
+  if (!allowed.includes(from)) throw invalid(`A <${from}> can't change its tag here.`);
+  if (from === tag) return html;
+  const loc = element.sourceCodeLocation;
+  if (!loc || !loc.startTag || !loc.endTag) throw invalid("That element has no closing tag.");
+  const endName = html.slice(loc.endTag.startOffset + 2, loc.endTag.startOffset + 2 + from.length);
+  const startName = html.slice(loc.startTag.startOffset + 1, loc.startTag.startOffset + 1 + from.length);
+  if (endName.toLowerCase() !== from || startName.toLowerCase() !== from) throw invalid("That element's tags can't be renamed.");
+  const withEnd = splice(html, loc.endTag.startOffset + 2, from.length, tag);
+  return splice(withEnd, loc.startTag.startOffset + 1, from.length, tag);
 }
 
 // --- element walking -----------------------------------------------------------------------------

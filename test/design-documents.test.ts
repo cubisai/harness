@@ -78,6 +78,7 @@ describe("parseDesignMutation", () => {
       { operationId: "op-6", documentId: DOC, baseRevision: 1, target: { id: "copy" }, transactionId: "tx", change: { kind: "move", refId: "title", position: "before" } },
       { operationId: "op-7", documentId: DOC, baseRevision: 1, target: { id: "copy" }, transactionId: "tx", change: { kind: "wrap", extraIds: ["title"], tag: "section", attrs: { class: "row" } } },
       { operationId: "op-8", documentId: DOC, baseRevision: 1, target: { locator: { tag: "h1", path: [1, 0], text: "Hello" } }, transactionId: "tx", change: { kind: "unwrap" } },
+      { operationId: "op-9", documentId: DOC, baseRevision: 1, target: { id: "title" }, transactionId: "tx", change: { kind: "retag", tag: "h2" } },
     ];
     for (const each of valid) expect(parseDesignMutation(each)).toEqual(each);
   });
@@ -102,6 +103,7 @@ describe("parseDesignMutation", () => {
       mutation({ change: { kind: "insert", html: "x".repeat(1_000_001), position: "after" } }),
       mutation({ change: { kind: "wrap", extraIds: [], tag: "div", attrs: { class: 1 } } }),
       mutation({ change: { kind: "shout" } }),
+      mutation({ change: { kind: "retag", tag: "script" } }),
     ];
     for (const each of cases) expect(parseDesignMutation(each)).toBeNull();
   });

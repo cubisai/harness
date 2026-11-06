@@ -44,11 +44,13 @@ export function handlePoints(el: FrameRect): { id: "n" | "e" | "s" | "w"; x: num
 }
 
 /** The selection on the canvas: a name tag (its diamond swaps) and the edge handles. Everything else is in the Actions menu and the Composer. */
-export function SelectionChrome({ el, view, label, canSwap, onSwap }: { el: FrameRect; view: FrameRect; label: string; canSwap: boolean; onSwap: () => void }) {
+export function SelectionChrome({ el, view, bounds, label, canSwap, onSwap }: { el: FrameRect; view: FrameRect; bounds?: FrameRect; label: string; canSwap: boolean; onSwap: () => void }) {
   // Where the V, D and C tools end, with the comments chip when it's there.
   const row = document.querySelector<HTMLElement>(".studio-tool-row");
   const badge = placeBadge(el, view, 20, row ? { right: row.offsetLeft + row.offsetWidth, bottom: row.offsetTop + row.offsetHeight } : undefined);
-  const inView = (x: number, y: number) => x >= view.x && x <= view.x + view.width && y >= view.y && y <= view.y + view.height;
+  // Inside the page's view and the stage: past the stage's edge a handle would sit on the panel beside it.
+  const within = (r: FrameRect, x: number, y: number) => x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height;
+  const inView = (x: number, y: number) => within(view, x, y) && (!bounds || within(bounds, x, y));
   return (
     <>
       {handlePoints(el)

@@ -1775,7 +1775,7 @@ export function designBridge(
       reportSoon();
     } else if (data.type === "read-theme") {
       if (!Array.isArray(data.names)) return;
-      const names = (data.names as unknown[]).filter((name): name is string => typeof name === "string" && /^--[a-z0-9-]{1,48}$/.test(name)).slice(0, 32);
+      const names = (data.names as unknown[]).filter((name): name is string => typeof name === "string" && /^--[a-z0-9-]{1,48}$/.test(name)).slice(0, 200);
       const send = (): void => {
         const style = getComputedStyle(document.documentElement);
         const tokens: Record<string, string> = {};

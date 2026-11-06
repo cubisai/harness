@@ -5,6 +5,8 @@ import { api } from "../api";
 import { Select } from "../components/Select";
 import { IconClose } from "../icons";
 import { ColorSwatch } from "./ColorSwatch";
+import { RETAG_TAGS } from "../../../shared/design-mutation";
+import { colourTokenOf, colourTokens, inlineStyle, optionLabel, scaleChanges, scaleStepOf, sizeMeta, textVariantProp, typeScale, type ColourToken } from "./text-styles";
 import { flowChanges, flowOf, gapSteps, lineOf, startAttrs, startTagOf, wrapShapes, type AttrChange, type Flow, type KitPart, type WrapShape } from "./kit-parts";
 
 /** The page tokens the panel reads and writes. A page without one just doesn't show its control. */
@@ -45,7 +47,7 @@ const CORNERS = [
   { label: "Pill", value: "999px" },
 ];
 /** Every inline style the panel may write, so `Reset overrides` takes back exactly those. */
-const OWN_STYLES = ["background-color", "color", "border-color", "font-size", "padding", "border-radius"];
+const OWN_STYLES = ["background-color", "color", "border-color", "font-size", "line-height", "padding", "border-radius"];
 
 /** A kit's declared prop: its options (the first is the default), or none for an on or off one. */
 interface KitProp {
@@ -78,6 +80,8 @@ export interface CustomizeHandlers {
   onStyle: (el: SelectedElement | null, changes: { prop: string; value: string }[], key: string) => void;
   onAttr: (el: SelectedElement, name: string, value: string | null) => void;
   onText: (el: SelectedElement, value: string) => void;
+  /** Render as: change a text element's tag. */
+  onRetag?: (el: SelectedElement, tag: string) => void;
   /** Several attributes as one undo step (the Layout card). */
   onAttrs: (el: SelectedElement, changes: AttrChange[], key: string) => void;
 }
@@ -269,9 +273,19 @@ export function CustomizePanel({
     { label: "Text", prop: "color", computed: style.color ?? "" },
     { label: "Border", prop: "border-color", computed: style.borderColor ?? "" },
   ];
+  const inline = attrOf(el.html, "style") ?? undefined;
+  const tokenList = colourTokens(theme);
+  const scale = typeScale(theme);
+  const variantProp = textVariantProp(ui, props);
+  const retaggable = (RETAG_TAGS as readonly string[]).includes(el.tag);
+  // A text element: a kit text part, or plain text in a text tag. It gets the Text card instead of pixel sizes.
+  const isText = canHoldText(el) && (variantProp !== null || retaggable);
+  // A text part's own colour prop (`text-secondary`) is its Color, so the Component card doesn't repeat it.
+  const colourProp = variantProp ? (props.find((p) => (p.name === "color" || p.name === "tone") && p.options?.length) ?? null) : null;
   // The Layout card already has these on a stack or grid.
   const inLayoutCard = flowOf(startAttrs(el.html)) ? ["direction", "gap", "align", "columns"] : [];
-  const propRows = props.filter((p) => p.name !== "disabled" && !inLayoutCard.includes(p.name) && shows(p.name, ...(p.options ?? [])));
+  const propRows = props.filter((p) => p.name !== "disabled" && p.name !== variantProp?.name && p.name !== colourProp?.name && !inLayoutCard.includes(p.name) && shows(p.name, ...(p.options ?? [])));
+  const scaleNow = scaleStepOf(scale, inlineStyle(inline, "font-size"), style.fontSize);
   return (
     <aside className="design-inspector design-customize" aria-label="Customize">
       <div className="design-customize-head">
@@ -310,6 +324,57 @@ export function CustomizePanel({
             )}
           </Card>
         )}
+        {isText && shows("text", "render", "variant", "color", "tag", "type") && (
+          <Card title="Text">
+            {retaggable && handlers.onRetag && (
+              <Row label="Render as" stacked>
+                <Select<string> value={el.tag} options={RETAG_TAGS.map((t) => ({ value: t, label: t }))} onChange={(t) => handlers.onRetag?.(el, t)} ariaLabel="Render as" className="ghost-select block mono-select" />
+              </Row>
+            )}
+            {variantProp ? (
+              <Row label="Variant" stacked>
+                <Select<string>
+                  value={attrOf(el.html, `data-${variantProp.name}`) ?? variantProp.options[0] ?? ""}
+                  options={variantProp.options.map((o) => {
+                    const on = (attrOf(el.html, `data-${variantProp.name}`) ?? variantProp.options[0]) === o;
+                    return { value: o, label: optionLabel(variantProp.name, o), lead: <TypeSample />, meta: on ? sizeMeta(style) : undefined };
+                  })}
+                  onChange={(v) => handlers.onAttr(el, `data-${variantProp.name}`, v === variantProp.options[0] ? null : v)}
+                  ariaLabel="Variant"
+                  className="ghost-select block"
+                />
+              </Row>
+            ) : scale.length > 0 ? (
+              <Row label="Variant" stacked>
+                <Select<string>
+                  value={scaleNow ?? ""}
+                  options={[...(scaleNow ? [] : [{ value: "", label: "Custom", lead: <TypeSample />, meta: sizeMeta(style) }]), ...scale.map((st) => ({ value: st.id, label: st.label, lead: <TypeSample />, meta: st.meta }))]}
+                  onChange={(id) =>
+                    id &&
+                    handlers.onStyle(el, scaleChanges(id, theme), `${el.selector}:type`)
+                  }
+                  ariaLabel="Variant"
+                  className="ghost-select block"
+                />
+              </Row>
+            ) : null}
+            {colourProp?.options ? (
+              <Row label="Color" stacked>
+                <Select<string>
+                  value={attrOf(el.html, `data-${colourProp.name}`) ?? colourProp.options[0] ?? ""}
+                  options={colourProp.options.map((o) => ({ value: o, label: o, lead: theme[`--color-${o}`] ? <span className="design-token-dot" style={{ background: theme[`--color-${o}`] }} aria-hidden /> : undefined }))}
+                  onChange={(v) => handlers.onAttr(el, `data-${colourProp.name}`, v === colourProp.options![0] ? null : v)}
+                  ariaLabel="Color"
+                  className="ghost-select block mono-select"
+                />
+              </Row>
+            ) : tokenList.length > 0 && (
+              <Row label="Color" stacked>
+                <TokenSelect label="Color" tokens={tokenList} value={colourTokenOf(tokenList, "color", inlineStyle(inline, "color"), style.color)} computed={style.color ?? ""} onPick={(token) => setStyle("color", `var(${token})`)} />
+              </Row>
+            )}
+          </Card>
+        )}
         {propRows.length > 0 && (
           <Card title="Component">
             {propRows.map((p) => {
@@ -339,23 +404,29 @@ export function CustomizePanel({
         )}
         {shows("colours", "colors", "fill", "text", "border") && (
           <Card title="Colours">
-            {colours.map((c) => (
+            {colours.filter((c) => !(isText && c.prop === "color")).map((c) => (
               <Row key={c.prop} label={c.label}>
-                <ColorSwatch value={c.computed} label={c.label} disabled={readOnly} onInput={(value) => setStyle(c.prop, value)} />
-                <span className="design-customize-tokens">
-                  {swatches.map((s) => (
-                    <button key={s.token} className="design-customize-token" style={{ background: theme[s.token] }} aria-label={`${c.label}: ${s.label}`} title={s.label} onClick={() => setStyle(c.prop, `var(${s.token})`)} />
-                  ))}
-                </span>
+                {tokenList.length > 0 ? (
+                  <TokenSelect label={c.label} tokens={tokenList} value={colourTokenOf(tokenList, c.prop, inlineStyle(inline, c.prop), c.computed)} computed={c.computed} onPick={(token) => setStyle(c.prop, `var(${token})`)} />
+                ) : (
+                  <span className="design-customize-tokens">
+                    {swatches.map((s) => (
+                      <button key={s.token} className="design-customize-token" style={{ background: theme[s.token] }} aria-label={`${c.label}: ${s.label}`} title={s.label} onClick={() => setStyle(c.prop, `var(${s.token})`)} />
+                    ))}
+                  </span>
+                )}
+                <ColorSwatch value={c.computed} label={`${c.label}, custom`} disabled={readOnly} onInput={(value) => setStyle(c.prop, value)} />
               </Row>
             ))}
           </Card>
         )}
         {shows("text", "spacing", "padding", "corners", "size") && (
           <Card title="Text & Spacing">
-            <Row label="Text size" stacked>
-              <Segments label="Text size" options={TEXT_SIZES} value={TEXT_SIZES.find((t) => t.value === style.fontSize)?.value ?? null} onPick={(v) => setStyle("font-size", v)} />
-            </Row>
+            {!isText && (
+              <Row label="Text size" stacked>
+                <Segments label="Text size" options={TEXT_SIZES} value={TEXT_SIZES.find((t) => t.value === style.fontSize)?.value ?? null} onPick={(v) => setStyle("font-size", v)} />
+              </Row>
+            )}
             <Row label="Padding" stacked>
               <Segments label="Padding" options={PADDINGS} value={null} onPick={(v) => setStyle("padding", v)} />
             </Row>
@@ -464,6 +535,26 @@ function LayoutCard({ threadId, designDir, page, reloadKey, el, parts, handlers,
       </div>
     </Card>
   );
+}
+
+/** The `Aa` before a type style's name. */
+function TypeSample() {
+  return (
+    <span className="design-type-sample" aria-hidden>
+      Aa
+    </span>
+  );
+}
+
+/** A colour by its token name, with its swatch: `text-muted`. A colour that's no token reads `Custom`. */
+function TokenSelect({ label, tokens, value, computed, onPick }: { label: string; tokens: ColourToken[]; value: string | null; computed: string; onPick: (token: string) => void }) {
+  const swatch = (colour: string) => <span className="design-token-dot" style={{ background: colour }} aria-hidden />;
+  const none = /^(transparent|rgba\(0,0,0,0\))$/.test(computed.replace(/\s+/g, ""));
+  const options = [
+    ...(value ? [] : [{ value: "", label: none ? "None" : "Custom", lead: swatch(none ? "transparent" : computed) }]),
+    ...tokens.map((t) => ({ value: t.token, label: t.name, lead: swatch(t.value) })),
+  ];
+  return <Select<string> value={value ?? ""} options={options} onChange={(token) => token && onPick(token)} ariaLabel={label} className="ghost-select block mono-select design-token-select" />;
 }
 
 function Card({ title, children }: { title: string; children: ReactNode }) {

@@ -11,6 +11,7 @@ import type {
   MutationConflict,
   MutationResult,
 } from "../../shared/design-mutation";
+import { RETAG_TAGS } from "../../shared/design-mutation";
 import { DocumentMutationService, documentIdOf } from "./mutation";
 
 /**
@@ -105,6 +106,9 @@ function parseChange(value: unknown): DesignMutation["change"] | null {
       return { kind: "unwrap" };
     case "duplicate":
       return { kind: "duplicate" };
+    case "retag":
+      if (typeof value.tag !== "string" || !(RETAG_TAGS as readonly string[]).includes(value.tag)) return null;
+      return { kind: "retag", tag: value.tag };
     default:
       return null;
   }

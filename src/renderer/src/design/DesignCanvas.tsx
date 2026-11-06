@@ -29,6 +29,8 @@ import { Present } from "./Present";
 import { InspectorPanel, type InspectorTab } from "./InspectorPanel";
 import { LiveBar, escClears, escapeStep, isPickKey, steerMessage } from "./LiveBar";
 import { CustomizePanel, THEME_TOKENS } from "./CustomizePanel";
+import { RETAG_TAGS } from "../../../shared/design-mutation";
+import { optionLabel, scaleChanges, scaleStepOf, textVariantProp, tokenNames, typeScale, inlineStyle } from "./text-styles";
 import { useDesignEditing } from "./useDesignEditing";
 import { StudioBar, viewportMenu, type StudioMenuItem, type StudioView } from "./StudioBar";
 import { CodeView } from "./CodeView";
@@ -575,6 +577,27 @@ export default function DesignCanvas({
   pickMessageRef.current = pickMessage;
   // The page's values for the panel's tokens, and how it's previewed: light or dark, whatever the app's theme.
   const [pageTheme, setPageTheme] = useState<Record<string, string>>({});
+  // The kit's colour and type token names, from the page's tokens.css: the panel names colours and type styles by them.
+  const [kitTokenNames, setKitTokenNames] = useState<string[]>([]);
+  const tokenNamesRef = useRef<string[]>([]);
+  tokenNamesRef.current = kitTokenNames;
+  const tokensDir = designV2 ? entry?.dir : undefined;
+  useEffect(() => {
+    if (!tokensDir) return setKitTokenNames([]);
+    let live = true;
+    void api()
+      .readArtifact(threadId, `${tokensDir}/system/tokens.css`)
+      .then((res) => {
+        if (!live) return;
+        const names = res.ok && typeof res.text === "string" ? tokenNames(res.text) : [];
+        setKitTokenNames((prev) => (prev.join() === names.join() ? prev : names));
+        if (names.length) post({ type: "read-theme", names: [...names, ...THEME_TOKENS] });
+      })
+      .catch(() => live && setKitTokenNames([]));
+    return () => {
+      live = false;
+    };
+  }, [threadId, tokensDir, reload, post]);
   const [appearance, setAppearance] = useState<"light" | "dark" | null>(null);
   // The selection Preview set aside, for coming back to Design.
   const heldSelection = useRef<typeof selection>(undefined);
@@ -622,7 +645,7 @@ export default function DesignCanvas({
         frameText.current = null;
         if (designV2) {
           post({ type: "session", nonce: gate.current.renew() });
-          post({ type: "read-theme", names: THEME_TOKENS });
+          post({ type: "read-theme", names: [...tokenNamesRef.current, ...THEME_TOKENS] });
           // The page's text is what the frame shows only if it's the text the frame loaded.
           const loaded = msg.loaded;
           editsRef.current.sync((html) => {
@@ -1589,7 +1612,10 @@ export default function DesignCanvas({
   const toWrapPoint = (x: number, y: number) => toWrap({ x, y, width: 0, height: 0 })?.el ?? { x: 16, y: 16 };
   // Popovers stop above the Composer, which floats over the stage's foot.
   const composerRoom = stageNode.current ? parseFloat(getComputedStyle(stageNode.current).paddingBottom) || 0 : 0;
-  const wrapBounds: FrameRect = { x: 0, y: 0, width: wrapRef.current?.clientWidth ?? 0, height: Math.max(0, (wrapRef.current?.clientHeight ?? 0) - composerRoom) };
+  // A narrow window floats Customize over the stage's right side: the studio's handles and popovers stop at its edge.
+  const floatingPanel = wrapRef.current?.parentElement?.querySelector<HTMLElement>(":scope > .design-customize");
+  const panelCut = floatingPanel && wrapRef.current && getComputedStyle(floatingPanel).position === "absolute" ? Math.max(0, wrapRef.current.getBoundingClientRect().right - floatingPanel.getBoundingClientRect().left) : 0;
+  const wrapBounds: FrameRect = { x: 0, y: 0, width: Math.max(0, (wrapRef.current?.clientWidth ?? 0) - panelCut), height: Math.max(0, (wrapRef.current?.clientHeight ?? 0) - composerRoom) };
   const targetOf = (el: Pick<SelectedElement, "id" | "tag" | "at">) => (el.id ? { id: el.id } : el.at ? { locator: { tag: el.tag, path: el.at } } : null);
   const one = selected.length === 1 ? (selected[0] ?? null) : null;
   const oneAttrs = one ? startAttrs(one.html) : {};
@@ -1642,6 +1668,24 @@ export default function DesignCanvas({
         const result = await step(to!, { kind: "duplicate" });
         pendingSelect.current = result.createdIds?.[0] ?? null;
       }
+    });
+  };
+  const styleElement = (el: SelectedElement | null, changes: { prop: string; value: string }[], key: string) => {
+    const target = el ? { ...(el.id ? { id: el.id } : {}), selector: el.selector, tag: el.tag, text: "" } : { selector: "html", tag: "html", text: "" };
+    post({ type: "apply-style", target, changes });
+    // Page tokens change what the panel shows beside them.
+    if (!el) setPageTheme((t) => ({ ...t, ...Object.fromEntries(changes.map((c) => [c.prop, c.value])) }));
+    const to = el ? (el.id ? { id: el.id } : el.at ? { locator: { tag: el.tag, path: el.at } } : null) : { locator: { tag: "html", path: [] } };
+    if (to) edits.sendSoon(key, to, { kind: "setStyle", changes });
+  };
+  const retagElement = (el: SelectedElement, tag: string) => {
+    closePopovers();
+    const to = targetOf(el);
+    if (!to) return setNotice({ text: notAnchored, error: true });
+    void edits.transaction(async (step) => {
+      const result = await step(to, { kind: "retag", tag });
+      // The same element under a new tag: select it again once the page has it.
+      pendingSelect.current = el.id ?? result.stampedId ?? null;
     });
   };
   const deleteSelection = () => {
@@ -1722,6 +1766,33 @@ export default function DesignCanvas({
   const openPaletteHere = () => {
     if (one) setPalette({ anchor: one, position: "after", at: selectionAt() });
   };
+  // `Variant › Body md`: a text part's type style, a component's variant, or plain text's step on the kit's type scale.
+  const variantSwitches = (): ActionItem[] => {
+    if (!one) return [];
+    const textProp = textVariantProp(onePart?.ui, onePart?.props ?? []);
+    const prop = textProp ?? (onePart?.props.find((p) => p.name === "variant" && p.options?.length) ? { name: "variant", options: onePart!.props.find((p) => p.name === "variant")!.options! } : null);
+    if (prop) {
+      const now = oneAttrs[`data-${prop.name}`] ?? prop.options[0];
+      return prop.options.map((v) => ({
+        id: `v-${v}`,
+        group: "Variant",
+        label: `Variant › ${textProp ? optionLabel(prop.name, v) : `${v[0]!.toUpperCase()}${v.slice(1)}`}`,
+        disabled: v === now,
+        run: () => applyAttrs(one, [{ name: `data-${prop.name}`, value: v === prop.options[0] ? null : v }], `${one.selector}:data-${prop.name}`),
+      }));
+    }
+    if (onePart || !one.ownText || !(RETAG_TAGS as readonly string[]).includes(one.tag)) return [];
+    const scale = typeScale(pageTheme);
+    const now = scaleStepOf(scale, inlineStyle(oneAttrs.style, "font-size"), one.style?.fontSize);
+    return scale.map((st) => ({
+      id: `t-${st.id}`,
+      group: "Variant",
+      label: `Variant › ${st.label}`,
+      shortcut: st.meta,
+      disabled: st.id === now,
+      run: () => styleElement(one, scaleChanges(st.id, pageTheme), `${one.selector}:type`),
+    }));
+  };
   const actionItems: ActionItem[] = !selected.length
     ? []
     : [
@@ -1732,7 +1803,7 @@ export default function DesignCanvas({
         { id: "duplicate", group: "Structure", label: "Duplicate", shortcut: "⌘D", run: duplicateSelection },
         ...(kitParts.length ? [{ id: "composition", group: "Structure", label: "Save as composition…", run: () => setNaming({ kind: "composition", warnings: [], error: null, busy: false }) }] : []),
         { id: "delete", group: "Structure", label: "Delete", shortcut: "⌫", run: deleteSelection },
-        ...(onePart?.props.find((p) => p.name === "variant")?.options ?? []).map((v) => ({ id: `v-${v}`, group: "Variant", label: `Variant › ${v[0]!.toUpperCase()}${v.slice(1)}`, run: () => one && applyAttrs(one, [{ name: "data-variant", value: v }], `${one.selector}:data-variant`) })),
+        ...variantSwitches(),
         ...(onePart ? [{ id: "reset", group: "Component", label: "Reset all props", run: () => one && applyAttrs(one, onePart.props.filter((p) => oneAttrs[`data-${p.name}`] !== undefined).map((p) => ({ name: `data-${p.name}`, value: null })), `${one.selector}:reset`) }] : []),
         { id: "chat", group: "Component", label: "Add to chat", run: focusComposer },
         { id: "comment", group: "Component", label: "Add comment", shortcut: "C", disabled: !one, run: () => setCommentDraft("") },
@@ -1923,7 +1994,7 @@ export default function DesignCanvas({
         )}
       </div>
       {showElementBar && barBoxes && tool !== "draw" && (
-        <SelectionChrome el={barBoxes.el} view={barBoxes.view} label={selectionName} canSwap={!!onePart && kitParts.length > 1} onSwap={() => setSwapAt(selectionAt())} />
+        <SelectionChrome el={barBoxes.el} view={barBoxes.view} bounds={wrapBounds} label={selectionName} canSwap={!!onePart && kitParts.length > 1} onSwap={() => setSwapAt(selectionAt())} />
       )}
       {seamBoxes && seam && <SeamButton rect={seamBoxes} position={seam.position} onOpen={() => setPalette({ anchor: seam.anchor, position: seam.position, at: { x: seamBoxes.x + seamBoxes.width / 2 - 150, y: seamBoxes.y + 12 } })} />}
       {palette && (
@@ -2602,14 +2673,7 @@ export default function DesignCanvas({
                 ) : null
               }
               handlers={{
-                onStyle: (el, changes, key) => {
-                  const target = el ? { ...(el.id ? { id: el.id } : {}), selector: el.selector, tag: el.tag, text: "" } : { selector: "html", tag: "html", text: "" };
-                  post({ type: "apply-style", target, changes });
-                  // Page tokens change what the panel shows beside them.
-                  if (!el) setPageTheme((t) => ({ ...t, ...Object.fromEntries(changes.map((c) => [c.prop, c.value])) }));
-                  const to = el ? (el.id ? { id: el.id } : el.at ? { locator: { tag: el.tag, path: el.at } } : null) : { locator: { tag: "html", path: [] } };
-                  if (to) edits.sendSoon(key, to, { kind: "setStyle", changes });
-                },
+                onStyle: styleElement,
                 onAttr: (el, name, value) => {
                   post({ type: "apply-attr", target: { ...(el.id ? { id: el.id } : {}), selector: el.selector, tag: el.tag, text: "" }, name, value });
                   const to = el.id ? { id: el.id } : el.at ? { locator: { tag: el.tag, path: el.at } } : null;
@@ -2618,6 +2682,7 @@ export default function DesignCanvas({
                 // The page reads its own text and reports the edit back, so the service gets it exactly as it stands.
                 onText: (el, value) => post({ type: "apply-text", target: { ...(el.id ? { id: el.id } : {}), selector: el.selector, tag: el.tag, text: "" }, value }),
                 onAttrs: applyAttrs,
+                onRetag: retagElement,
               }}
             />
           )}

@@ -474,6 +474,20 @@ describe("unwrap", () => {
   });
 });
 
+describe("retag", () => {
+  it("turns a p into an h2 and back, byte for byte", () => {
+    const page = '<html><body><p class="lead" data-agent-id="t">Fish &amp; chips</p></body></html>';
+    const { html } = applyChange(page, { id: "t" }, { kind: "retag", tag: "h2" }, counter());
+    expect(html).toBe('<html><body><h2 class="lead" data-agent-id="t">Fish &amp; chips</h2></body></html>');
+    expect(applyChange(html, { id: "t" }, { kind: "retag", tag: "p" }, counter()).html).toBe(page);
+  });
+  it("refuses tags outside the text set, and an element with no end tag", () => {
+    expect(reasonOf(() => applyChange(PAGE, HERO, { kind: "retag", tag: "h2" }, counter()))).toBe("invalid");
+    expect(reasonOf(() => applyChange('<html><body><p data-agent-id="t">x</p></body></html>', { id: "t" }, { kind: "retag", tag: "script" }, counter()))).toBe("invalid");
+    expect(reasonOf(() => applyChange('<html><body><p data-agent-id="t">open</body></html>', { id: "t" }, { kind: "retag", tag: "h2" }, counter()))).toBe("invalid");
+  });
+});
+
 describe("duplicate", () => {
   it("copies the source right after it, with fresh ids and every other byte kept", () => {
     const { html, createdIds } = applyChange(PAGE, HERO, { kind: "duplicate" }, counter());
