@@ -1,7 +1,8 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { addComposition, applyKitEdit, applyTokenOverrides, brandEdits, cleanCompositionHtml, compositionWarnings, forkKitSystem, freeFolder, manifestIn, partCounts, partSample, partsUsingToken, saveKitDraft, saveSystemCopy, seedKitDraft, systemSlug } from "../src/main/design/kit-library";
+import { BRAND_TOKENS } from "../src/shared/design";
+import { addComposition, applyKitEdit, applyTokenOverrides, brandEdits, forcedStateCss, cleanCompositionHtml, compositionWarnings, forkKitSystem, freeFolder, manifestIn, partCounts, partSample, partsUsingToken, saveKitDraft, saveSystemCopy, seedKitDraft, systemSlug } from "../src/main/design/kit-library";
 import { migratePage, parseMigrations } from "../src/main/design/kit-migrate";
 import { parseKitManifest, validateKitDir } from "../src/main/design/kit-schema";
 import { listDesignSystems, listKitSystems, materializeSystem } from "../src/main/design/systems";
@@ -221,6 +222,13 @@ describe("hand edits to a kit", () => {
     expect(css).toContain('[data-ui="button"][data-variant="brand"] { color: red; }');
     expect(css).toContain('[data-variant="solid"]');
   });
+  it("copies a variant's rules from inside layers and nested part rules, keeping their outer blocks", () => {
+    const dir = kit('@layer kit {\n  [data-ui="button"] { color: red; &[data-variant="ghost"] { color: blue; &:hover { color: navy; } } }\n  [data-ui="card"][data-variant="ghost"] { x: 1; }\n}\n');
+    applyKitEdit(dir, { kind: "addVariant", ui: "button", name: "brand", from: "ghost" });
+    const css = readFileSync(join(dir, "ui.css"), "utf8");
+    expect(css).toContain('@layer kit { [data-ui="button"] { &[data-variant="brand"] { color: blue; &:hover { color: navy; } } } }');
+    expect(css).not.toContain('[data-ui="card"][data-variant="brand"]');
+  });
   it("sends a variant with no rules of its own to the agent", () => {
     const dir = kit('[data-ui="button"] { color: red; }\n');
     expect(() => applyKitEdit(dir, { kind: "addVariant", ui: "button", name: "x", from: "solid" })).toThrow(/agent/);
@@ -262,6 +270,30 @@ describe("part samples", () => {
     expect(html).toMatch(/data-variant="ghost"/);
     expect(html).toMatch(/data-disabled=""/);
     expect(html).not.toMatch(/data-size/);
+  });
+  it("draws the picked variants by state, at one size, with hover and focus forced from the kit's rules", () => {
+    const css = '[data-ui="button"]:hover:not(:disabled), .x { color: red; }\n@media (hover: hover) { [data-ui="button"]:focus-visible { outline: 1px solid; } }\n.y:not(:hover) { color: blue; }';
+    const html = partSample({ ...part, props: [{ name: "variant", options: ["solid", "ghost", "link"], default: "solid" }, part.props[1]!] }, "system", { states: true, variants: ["ghost", "solid"], size: "sm" }, css);
+    expect(html.match(/<tr>/g)).toHaveLength(3);
+    expect(html).not.toContain('data-variant="link"');
+    expect(html.match(/data-size="sm"/g)).toHaveLength(8);
+    expect(html).toContain("data-cq-hover");
+    expect(html).toMatch(/disabled="" data-disabled="" aria-disabled="true"/);
+    expect(html).toContain('[data-ui="button"]:is(:hover, [data-cq-hover]):not(:disabled)');
+    expect(html).not.toContain('href="system/ui.css"');
+    expect(html).toContain("default</span>");
+  });
+  it("lets hover and focus rules match the forced states too, nested or not, and rebases urls", () => {
+    expect(forcedStateCss('.a { &:hover { x: 1 } &:focus-visible, &:focus-within { y: 2 } }\n.b:focus { background: url(fonts/a.woff2) url("data:x") url(/abs) }', "system")).toBe(
+      '.a { &:is(:hover, [data-cq-hover]) { x: 1 } &:is(:focus-visible, [data-cq-focus]), &:focus-within { y: 2 } }\n.b:is(:focus, [data-cq-focus]) { background: url(system/fonts/a.woff2) url("data:x") url(/abs) }',
+    );
+  });
+});
+
+describe("brand tokens", () => {
+  it("lists every token a brand edit can write", () => {
+    const css = `:root {\n${BRAND_TOKENS.map((t) => `  ${t}: #000;`).join("\n")}\n  --color-other: #111;\n}\n`;
+    expect(brandEdits(css, "#123456").map((e) => e.name).sort()).toEqual([...BRAND_TOKENS].sort());
   });
 });
 

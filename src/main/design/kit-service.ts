@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "no
 import { join } from "node:path";
 import { designDirName } from "../../shared/design";
 import type { DesignKitOption, DesignMutation } from "../../shared/design-mutation";
-import type { DesignIntent, DesignKitDoc, DesignKitEdit, DesignKitGroup, DesignKitPart, DesignMigrationPreview, DesignReach, DesignThemeCard, LiveUpdate, Thread } from "../../shared/types";
+import type { DesignIntent, DesignKitDoc, DesignKitEdit, DesignKitGroup, DesignKitPart, DesignKitSampleRequest, DesignMigrationPreview, DesignReach, DesignThemeCard, LiveUpdate, Thread } from "../../shared/types";
 import { addComposition, applyKitEdit, compositionWarnings, diffManifests, freeFolder, manifestIn, partCounts, partSample, partsUsingToken, projectKitFolders, projectSystemsDir, saveKitDraft, saveSystemCopy, seedKitDraft, forkKitSystem } from "./kit-library";
 import { migratePage, parseMigrations, type MigrationPlan } from "./kit-migrate";
 import { validateKitDir } from "./kit-schema";
@@ -455,7 +455,7 @@ export class DesignKitService {
   }
 
   /** Render one part into a hidden page in the design folder, in a matrix of its variants or with the props given. */
-  sample(threadId: string, request: { ui: string; matrix?: boolean; props?: Record<string, string> }): string {
+  sample(threadId: string, request: DesignKitSampleRequest): string {
     const thread = this.deps.getThread(threadId);
     const root = this.deps.designRoot(threadId);
     const system = this.deps.threadSystem(thread);
@@ -467,7 +467,8 @@ export class DesignKitService {
     if (!part) throw new Error("That component isn't in the kit.");
     const folder = inKit ? "system" : "kit";
     const rel = `${PREVIEW}-part.html`;
-    writeFileSync(join(root, rel), partSample(part, folder, request));
+    const uiCss = read(join(inKit ? system!.kit!.dir : join(root, "kit"), "ui.css")) ?? "";
+    writeFileSync(join(root, rel), partSample(part, folder, request, uiCss));
     return rel;
   }
 

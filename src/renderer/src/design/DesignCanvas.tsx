@@ -34,7 +34,8 @@ import { optionLabel, scaleChanges, scaleStepOf, textVariantProp, tokenNames, ty
 import { useDesignEditing } from "./useDesignEditing";
 import { StudioBar, viewportMenu, type StudioMenuItem, type StudioView } from "./StudioBar";
 import { CodeView } from "./CodeView";
-import { SystemPanel } from "./SystemPanel";
+import { SystemMode } from "./SystemMode";
+import { MOD_KEY } from "./system-mode";
 import { ActionsMenu, MORE_DIRECTIONS, SeamButton, SeamPalette, SelectionChrome, SwapPopover, VARIANT_DIRECTIONS, type ActionItem, type SeamPosition } from "./SelectionChrome";
 import { CanvasToolsPill, DrawLayer, drawMessage, strokeBounds, toolForKey, type CanvasTool, type Stroke } from "./CanvasTools";
 import { NamePrompt } from "./NamePrompt";
@@ -534,7 +535,8 @@ export default function DesignCanvas({
   const revision = edits.status?.revision ?? null;
   const stepRevision = useRef(revision);
   useEffect(() => {
-    if (systemStep && systemStep.undo !== "page" && stepRevision.current !== null && revision !== stepRevision.current) setSystemStep(threadId, null);
+    // System mode's own edits move the page's revision too, and no page edit happens there.
+    if (view !== "system" && systemStep && systemStep.undo !== "page" && stepRevision.current !== null && revision !== stepRevision.current) setSystemStep(threadId, null);
     stepRevision.current = revision;
     // Only a page edit made after the step ends it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1976,6 +1978,19 @@ export default function DesignCanvas({
     }
   };
   const seamBoxes = designV2 && seam && view === "design" && tool === "select" && onPage && !agentRunning && !palette ? toWrap(seam.rect)?.el : null;
+  // The last theme switch, kit move or System mode edit, with its Undo: shown in Design and System views.
+  const stepToast =
+    systemStep && stepShown ? (
+      <div className="studio-toast" role="status">
+        <span title={systemStep.text}>{systemStep.text}</span>
+        <button className="button ghost studio-toast-undo" onClick={() => undoStep()}>
+          Undo <kbd className="studio-toast-kbd">{MOD_KEY}Z</kbd>
+        </button>
+        <button className="icon-button" aria-label="Dismiss" title="Dismiss" onClick={() => setStepShown(false)}>
+          <IconClose />
+        </button>
+      </div>
+    ) : null;
   const studioLayer = designV2 && onPage && view === "design" ? (
     <>
       <div className="studio-tool-row">
@@ -2037,17 +2052,7 @@ export default function DesignCanvas({
           onSave={(name, force) => void (naming.kind === "theme" ? saveTheme(name) : saveComposition(name, force))}
         />
       )}
-      {systemStep && stepShown && !toast && (
-        <div className="studio-toast" role="status">
-          <span title={systemStep.text}>{systemStep.text}</span>
-          <button className="button ghost studio-toast-undo" onClick={() => undoStep()}>
-            Undo
-          </button>
-          <button className="icon-button" aria-label="Dismiss" title="Dismiss" onClick={() => setStepShown(false)}>
-            <IconClose />
-          </button>
-        </div>
-      )}
+      {!toast && stepToast}
       {toast && (
         <div className="studio-toast" role="status">
           <span title={toast}>{toast}</span>
@@ -2770,9 +2775,8 @@ export default function DesignCanvas({
       {view === "code" && entry && <CodeView threadId={threadId} designDir={entry.dir} page={entry.rel} reloadKey={`${reload}-${manual}`} line={codeLine} />}
       {view === "system" && entry && (
         <section className="studio-system" aria-label="System">
-          <div className="studio-system-scroll">
-            <SystemPanel threadId={threadId} reloadKey={`${reload}-${manual}`} />
-          </div>
+          <SystemMode threadId={threadId} pageUrl={entry.url} pageRel={entry.rel} reloadKey={`${reload}-${manual}`} />
+          {stepToast}
         </section>
       )}
       </div>

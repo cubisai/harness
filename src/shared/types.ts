@@ -1063,6 +1063,18 @@ export interface DesignReach {
   files: number;
 }
 
+/** One part's sample for System mode: a variant matrix, a variant × state matrix, or one instance with these props. */
+export interface DesignKitSampleRequest {
+  ui: string;
+  matrix?: boolean;
+  /** Variant rows by state columns (Normal, Hover, Focus, Disabled). */
+  states?: boolean;
+  /** Which variants the state matrix shows; all of them when left out. */
+  variants?: string[];
+  size?: string;
+  props?: Record<string, string>;
+}
+
 /** One edit to a kit's contract from System mode. */
 export type DesignKitEdit =
   | { kind: "addVariant"; ui: string; name: string; from: string }
@@ -1587,7 +1599,7 @@ export interface UnskilledApi {
   /** The kit behind a thread, for System mode. */
   designKitDoc(threadId: string): Promise<DesignKitDoc>;
   /** One component rendered for System mode; returns the page's path in the design folder. */
-  designKitSample(threadId: string, request: { ui: string; matrix?: boolean; props?: Record<string, string> }): Promise<string>;
+  designKitSample(threadId: string, request: DesignKitSampleRequest): Promise<string>;
   designKitEdit(threadId: string, edit: DesignKitEdit): Promise<{ doc: DesignKitDoc; thread: Thread }>;
   designKitDraftSave(threadId: string): Promise<{ doc: DesignKitDoc; thread: Thread }>;
   designKitDraftDiscard(threadId: string): Promise<DesignKitDoc>;

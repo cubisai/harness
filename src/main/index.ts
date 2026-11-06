@@ -4,7 +4,7 @@ import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeImage, nativeTheme, net, powerMonitor, protocol, safeStorage, shell, utilityProcess } from "electron";
-import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, DesignDevice, DesignExportFormat, DesignIntent, DesignKitEdit, DesignSystemEdit, DesignSystemOption, DevicePreset, IssueSummary, LinkMeta, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryScope, MemoryType, OpenResult, PermissionDecision, Project, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
+import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, DesignDevice, DesignExportFormat, DesignIntent, DesignKitEdit, DesignKitSampleRequest, DesignSystemEdit, DesignSystemOption, DevicePreset, IssueSummary, LinkMeta, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryScope, MemoryType, OpenResult, PermissionDecision, Project, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { CHATS_NAME, chatsRoot, isChatsRoot } from "./chats";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
@@ -2474,14 +2474,23 @@ function readKitEdit(raw: unknown): DesignKitEdit {
   }
 }
 
-function readKitSample(raw: unknown): { ui: string; matrix?: boolean; props?: Record<string, string> } {
-  const r = (raw ?? {}) as { ui?: unknown; matrix?: unknown; props?: unknown };
+function readKitSample(raw: unknown): DesignKitSampleRequest {
+  const r = (raw ?? {}) as { ui?: unknown; matrix?: unknown; props?: unknown; states?: unknown; variants?: unknown; size?: unknown };
   if (typeof r.ui !== "string" || !/^[a-z0-9-]{1,64}$/.test(r.ui)) throw new Error("Bad component.");
   const props: Record<string, string> = {};
   if (typeof r.props === "object" && r.props !== null) {
     for (const [name, value] of Object.entries(r.props)) if (/^[a-z0-9-]{1,64}$/.test(name) && typeof value === "string" && value.length <= 200) props[name] = value;
   }
-  return { ui: r.ui, ...(r.matrix === true ? { matrix: true } : {}), ...(Object.keys(props).length ? { props } : {}) };
+  const name = (v: unknown): v is string => typeof v === "string" && /^[a-z0-9-]{1,64}$/.test(v);
+  const variants = Array.isArray(r.variants) ? r.variants.filter(name).slice(0, 24) : [];
+  return {
+    ui: r.ui,
+    ...(r.matrix === true ? { matrix: true } : {}),
+    ...(r.states === true ? { states: true } : {}),
+    ...(variants.length ? { variants } : {}),
+    ...(name(r.size) ? { size: r.size } : {}),
+    ...(Object.keys(props).length ? { props } : {}),
+  };
 }
 
 function readIntent(raw: unknown): DesignIntent | null {
