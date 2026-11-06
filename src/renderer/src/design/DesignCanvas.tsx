@@ -1277,6 +1277,11 @@ export default function DesignCanvas({
     if (!designV2 || !studioRequest?.view || studioRequest.threadId !== threadId) return;
     useStore.getState().requestStudio(null);
     changeView(studioRequest.view);
+    // A turn card's version: shown on the canvas with the version pill, which goes back to Latest.
+    if (studioRequest.version !== undefined && versions.some((v) => v.version === studioRequest.version)) {
+      setVersion(studioRequest.version);
+      setVersionPill(true);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studioRequest]);
   // Below 1000px the Layers rail starts collapsed and Customize stays closed until asked for, since it floats over the page.

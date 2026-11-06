@@ -227,8 +227,8 @@ interface State {
   /** Set (or clear, with null or no elements) a design thread's selection. */
   setDesignSelection(threadId: string, selection: DesignSelection | null): void;
   /** A one-shot ask from across the app to a thread's studio: show a view, or open the style picker. */
-  studioRequest: { threadId: string; view?: "design" | "system"; picker?: boolean } | null;
-  requestStudio(request: { threadId: string; view?: "design" | "system"; picker?: boolean } | null): void;
+  studioRequest: { threadId: string; view?: "design" | "system"; picker?: boolean; version?: number } | null;
+  requestStudio(request: { threadId: string; view?: "design" | "system"; picker?: boolean; version?: number } | null): void;
   /** The system change a thread can still step back from: its toast, and what `Undo` and ⌘Z do. `page` means the page's own undo carries it. */
   systemStep: Record<string, { text: string; undo: (() => Promise<unknown>) | "page" }>;
   setSystemStep(threadId: string, step: { text: string; undo: (() => Promise<unknown>) | "page" } | null): void;

@@ -326,7 +326,7 @@ export function App() {
                   role={canvasFirst ? "region" : undefined}
                   aria-label={canvasFirst ? "Chat" : undefined}
                 >
-                  {studio && <TodoDock threadId={thread.id} />}
+                  {studio && <TodoDock threadId={thread.id} quietWhileRunning />}
                   <ThreadView threadId={thread.id} expertId={thread.expertId} />
                   {canvasFirst && !hasMessages && <p className="design-drawer-empty">No messages yet. Describe what to design below.</p>}
                 </div>

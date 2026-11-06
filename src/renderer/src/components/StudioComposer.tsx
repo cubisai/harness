@@ -1,7 +1,8 @@
-import { useMemo, type Ref } from "react";
+import { useMemo, useState, type Ref } from "react";
 import { ChevronUp, Mic } from "lucide-react";
-import { IconChat } from "../icons";
+import { IconChat, IconCheck, IconTodo, IconTodoActive } from "../icons";
 import { lastAgentLine } from "../prompt-bar";
+import type { PlanEntry } from "../../../shared/types";
 import { useStore } from "../store";
 import { dockedPlan, todoProgress } from "../todo";
 import { useDismissedPlans } from "./TodoDock";
@@ -49,10 +50,56 @@ export function ComposerLip({ threadId }: { threadId: string }) {
     );
   }
   const progress = plan ? todoProgress(plan.entries) : null;
+  if (plan && progress && progress.total > 0) return <PlanLip threadId={threadId} entries={plan.entries} progress={progress} line={line} />;
   return (
     <div className="composer-lip" role="status">
       <span className="thread-dot running" aria-hidden />
       <span className="composer-lip-text">{statusText(progress?.current ?? null, line, progress)}</span>
+    </div>
+  );
+}
+
+/** Open or closed per thread, for this session. */
+const planOpen = new Map<string, boolean>();
+
+/**
+ * The running turn's plan on the Composer: the step it's on, what it last said, `2 of 5`, and the steps when opened.
+ * Esc still stops the turn.
+ */
+export function PlanLip({ threadId, entries, progress, line }: { threadId: string; entries: PlanEntry[]; progress: { done: number; total: number; current: string | null }; line: string }) {
+  const [open, setOpen] = useState(() => planOpen.get(threadId) ?? false);
+  const toggle = () => {
+    planOpen.set(threadId, !open);
+    setOpen(!open);
+  };
+  const id = `plan-lip-${threadId}`;
+  const step = progress.current?.trim() || "Working…";
+  const said = line.trim() && line.trim() !== step ? line.trim() : null;
+  return (
+    <div className="composer-plan" role="status">
+      <button className="composer-plan-head" aria-expanded={open} aria-controls={id} title="Esc to stop" onClick={toggle}>
+        <span className="thread-dot running" aria-hidden />
+        <span className="composer-plan-text">
+          <span className="composer-plan-step">{step}</span>
+          {said && <span className="composer-plan-line">{said}</span>}
+        </span>
+        <span className="composer-plan-count">
+          {progress.done} of {progress.total}
+        </span>
+        <ChevronUp size={14} strokeWidth={2} className={`composer-plan-chev${open ? " open" : ""}`} aria-hidden />
+      </button>
+      {open && (
+        <ul id={id} className="todo-list composer-plan-list">
+          {entries.map((p, i) => (
+            <li key={i} className={`todo-item ${p.status}`}>
+              <span className="todo-mark" aria-hidden>
+                {p.status === "completed" ? <IconCheck /> : p.status === "in_progress" ? <IconTodoActive /> : <IconTodo />}
+              </span>
+              <span className="todo-text">{p.content}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

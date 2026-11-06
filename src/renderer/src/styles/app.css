@@ -660,6 +660,16 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .composer-lip { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 6px 12px 0; font-size: 11.5px; color: var(--signal-ink); position: relative; }
 .composer-lip.error { color: var(--danger); }
 .composer-lip-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The running turn's plan on the studio Composer: a step and its line, `2 of 5`, the steps when opened. */
+.composer-plan { margin: 6px 6px 0; border: 1px solid var(--hairline); border-radius: var(--radius-m); background: var(--bg-subtle); min-width: 0; }
+.composer-plan-head { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 6px 8px 6px 10px; border: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.composer-plan-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.composer-plan-step { font-size: 12px; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.composer-plan-line { font-size: 11.5px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.composer-plan-count { flex-shrink: 0; font-size: 11.5px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.composer-plan-chev { flex-shrink: 0; color: var(--text-tertiary); transform: rotate(180deg); transition: transform 120ms var(--ease); }
+.composer-plan-chev.open { transform: none; }
+.composer-plan .composer-plan-list { max-height: 180px; overflow-y: auto; margin: 0; padding: 2px 8px 8px; border-top: 1px solid var(--hairline); }
 .studio-chat-chip { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .studio-chat-chip svg { flex-shrink: 0; }
 .design-drawer-chev.open { transform: rotate(180deg); }
@@ -3923,6 +3933,22 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 .file-card-action { margin-left: 6px; flex-shrink: 0; padding: 2px 8px; border: 1px solid var(--hairline); border-radius: var(--radius-s); font-size: 12px; color: var(--text-secondary); }
 .file-card:hover .file-card-action { color: var(--text); border-color: var(--hairline-strong); }
 .file-card-sub { font-size: 11.5px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A v2 design turn's result: what the page is built from, its parts, and the page versions it wrote. */
+.design-turn { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 0; max-width: 420px; }
+.design-turn-summary { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--hairline); border-radius: var(--radius-l); background: var(--bg); }
+.design-turn-title { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 550; color: var(--text); }
+.design-turn-title svg { flex-shrink: 0; color: var(--text-tertiary); }
+.design-turn-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.design-turn-chip { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border: 1px solid var(--hairline); border-radius: 999px; background: var(--bg-chip); font-size: 11.5px; color: var(--text-secondary); white-space: nowrap; }
+.design-turn-chip.more { color: var(--text-tertiary); }
+.design-turn-new { padding: 0 5px; border-radius: 999px; background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--text); font-size: 10.5px; }
+.design-turn-version { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 12px 8px 8px; border: 1px solid var(--hairline); border-radius: var(--radius-l); background: var(--bg); color: var(--text); text-align: left; transition: background 120ms var(--ease); }
+.design-turn-version:hover { background: var(--bg-hover); }
+.design-turn-version .add { color: var(--success); font-family: var(--mono); font-size: 11px; }
+.design-turn-version .del { color: var(--danger); font-family: var(--mono); font-size: 11px; }
+.design-turn-thumb { position: relative; flex-shrink: 0; width: 96px; height: 60px; overflow: hidden; border: 1px solid var(--hairline); border-radius: var(--radius-s); background: var(--bg-subtle); }
+/* The page at 1280×800, shrunk to the thumbnail: a picture, not a page to use. */
+.design-turn-thumb iframe { position: absolute; top: 0; left: 0; width: 1280px; height: 800px; border: 0; transform: scale(0.075); transform-origin: 0 0; pointer-events: none; }
 .changes-card { display: flex; align-items: center; gap: 8px; margin: 10px 0 4px; padding: 6px 6px 6px 12px; border: 1px solid var(--hairline); border-radius: var(--radius-m); font-size: 12.5px; }
 .changes-card .changes-count { font-weight: 600; }
 .changes-card .add { color: var(--success); font-family: var(--mono); font-size: 12px; }

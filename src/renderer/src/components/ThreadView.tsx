@@ -14,6 +14,8 @@ import { isCommandSkill } from "../commands";
 import { linkUrls, Markdown } from "../markdown";
 import { LinkCards, LinkChip } from "./LinkChip";
 import { relativeToThread, useStore } from "../store";
+import { DesignTurnCard } from "../design/DesignTurnCard";
+import { designDirName } from "../../../shared/design";
 import { dockedPlan, todoProgress } from "../todo";
 import { DiffView, diffsOf } from "./DiffView";
 import { ExpertIntro } from "./experts/ExpertChip";
@@ -539,6 +541,7 @@ function SegmentRow({ seg, results, children, running, threadId, last }: { seg: 
   if (seg.kind === "turn-end") {
     return (
       <>
+        <DesignTurn threadId={threadId} turnSeq={seg.stored.seq} last={last} />
         <FileCards files={seg.changes?.files ?? []} turnSeq={seg.stored.seq} />
         {seg.changes && <ChangesCard changes={seg.changes} />}
         <TurnSources urls={seg.sources} answer={seg.answer} />
@@ -584,6 +587,19 @@ const KIND_LABEL: Record<ArtifactKind, string> = {
   docx: "Word document", sheet: "Spreadsheet", pptx: "Presentation", code: "Code", text: "Text",
 };
 
+/** Whether a thread's design pages get the design turn card (v2 design threads) instead of plain file cards. */
+function useDesignTurns(threadId: string | null): boolean {
+  return useStore((s) => {
+    if (!threadId || s.settings?.designV2 !== true) return false;
+    return Object.values(s.threads).some((list) => list.some((t) => t.id === threadId && t.kind === "design"));
+  });
+}
+
+/** A v2 design turn's result: what the page is built from and the versions it wrote. */
+function DesignTurn({ threadId, turnSeq, last }: { threadId: string; turnSeq: number; last: boolean }) {
+  return useDesignTurns(threadId) ? <DesignTurnCard threadId={threadId} turnSeq={turnSeq} latest={last} /> : null;
+}
+
 /**
  * A card for each previewable file the turn wrote (the last three); Preview shows it in the panel.
  * `files` are the turn's Edit paths; files it wrote by command come from the artifacts recorded at its turn-end.
@@ -596,7 +612,10 @@ function FileCards({ files, turnSeq }: { files: string[]; turnSeq: number }) {
   const recorded = useStore((s) => (threadId ? s.artifactFiles[threadId] : undefined));
   const toRel = (path: string) => (threadId ? relativeToThread({ threads, projects }, threadId, path) : path);
   const written = (recorded ?? []).filter((f) => f.versions.some((v) => v.turnSeq === turnSeq)).map((f) => f.path);
-  const unique = [...new Map([...files, ...written].map((f) => [toRel(f), f])).values()];
+  // A v2 design thread's pages have the design turn card.
+  const designTurns = useDesignTurns(threadId);
+  const designDir = threadId ? `${designDirName(threadId)}/` : "";
+  const unique = [...new Map([...files, ...written].map((f) => [toRel(f), f])).values()].filter((f) => !(designTurns && toRel(f).startsWith(designDir) && toRel(f).endsWith(".html")));
   const shown = withoutExportSources(unique.filter(isPreviewable)).slice(-3);
   if (!shown.length) return null;
   return (
