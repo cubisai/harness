@@ -1694,15 +1694,25 @@ export function designBridge(
       }
       // A theme switch rewrote the stylesheets the page links: each loads again, and the old one goes once it has.
       if (data.restyle === true) {
-        document.querySelectorAll('link[rel~="stylesheet"][href]').forEach((link) => {
+        // A copy that fails (the file was mid-rewrite) goes instead, and the old sheet stays until a retry loads.
+        const swap = (link: Element, tries: number): void => {
           const href = link.getAttribute("href") || "";
-          if (/^[a-z][a-z0-9+.-]*:|^\/\//i.test(href)) return;
           const copy = link.cloneNode() as HTMLLinkElement;
           copy.setAttribute("href", href.replace(/([?&])r=\d+&?/, "$1").replace(/[?&]$/, "") + (href.includes("?") ? "&" : "?") + "r=" + Date.now());
-          const drop = (): void => link.remove();
-          copy.addEventListener("load", drop, { once: true });
-          copy.addEventListener("error", drop, { once: true });
+          copy.addEventListener("load", () => link.remove(), { once: true });
+          copy.addEventListener(
+            "error",
+            () => {
+              copy.remove();
+              if (tries < 4) setTimeout(() => link.isConnected && swap(link, tries + 1), 200 * (tries + 1));
+            },
+            { once: true },
+          );
           link.after(copy);
+        };
+        document.querySelectorAll('link[rel~="stylesheet"][href]').forEach((link) => {
+          if (/^[a-z][a-z0-9+.-]*:|^\/\//i.test(link.getAttribute("href") || "")) return;
+          swap(link, 0);
         });
       }
       selected = selected.filter((el) => el.isConnected);

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { STYLE_PREFIX } from "../../shared/direction";
 import type { StyleFacets } from "../../shared/types";
@@ -438,6 +438,22 @@ function sameContent(src: Buffer, dest: string): boolean {
 }
 
 /** Copy `src` over `dest` when it's missing or differs. A source read error copies nothing. */
+/**
+ * Write a file whole or not at all: a temp file beside it, then a rename, so the canvas never loads a half-written
+ * stylesheet. The temp name is one the folder watcher skips. Where the rename is refused (a file held open on
+ * Windows), it writes in place as before.
+ */
+function writeWhole(dest: string, data: string | Buffer): void {
+  const temp = `${dest}.tmp.${process.pid}.${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    writeFileSync(temp, data);
+    renameSync(temp, dest);
+  } catch {
+    rmSync(temp, { force: true });
+    writeFileSync(dest, data);
+  }
+}
+
 function copyIfChanged(src: string, dest: string): boolean {
   let data: Buffer;
   try {
@@ -447,7 +463,7 @@ function copyIfChanged(src: string, dest: string): boolean {
   }
   if (sameContent(data, dest)) return false;
   try {
-    writeFileSync(dest, data);
+    writeWhole(dest, data);
     return true;
   } catch {
     return false;
@@ -458,7 +474,7 @@ function copyIfChanged(src: string, dest: string): boolean {
 function writeIfChanged(file: string, text: string): boolean {
   if (readText(file) === text) return false;
   try {
-    writeFileSync(file, text);
+    writeWhole(file, text);
     return true;
   } catch {
     return false;
