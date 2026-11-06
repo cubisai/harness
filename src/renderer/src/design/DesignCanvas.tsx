@@ -12,7 +12,7 @@ import { designStyleName, useDesignSystemOptions } from "../components/DesignSys
 import { chipLabel } from "../components/StylePicker";
 import { STYLE_PREFIX, readDirection } from "../../../shared/direction";
 import { NO_MARKS, STAGE_PAD, VIEWPORTS, ZOOMS, createBridgeGate, deviceFor, frameLayout, pageFromPath, readBridgeMessage, viewportForDevice, type FrameAnchor, type FrameRect, type InsertGap, type OutlineNode, type PageMarks, type PageSeam, type VariantSetInfo, type Viewport, type Zoom } from "./frame";
-import { announceSelection, elementLabel, selectionKey, withScope, type SelectedElement } from "../../../shared/selection";
+import { announceSelection, contextBlock, elementLabel, selectionKey, withScope, type SelectedElement } from "../../../shared/selection";
 import { withRefs } from "./refs";
 import { ElementBar, VariantCycler, cycleStep, goMessage, insertMessage, placeElementBar, type ActionId } from "./ElementBar";
 import { compareCells, pageOptions, sameEntry, type CompareCell } from "./pages";
@@ -29,7 +29,7 @@ import { Present } from "./Present";
 import { InspectorPanel, type InspectorTab } from "./InspectorPanel";
 import { LiveBar, escClears, escapeStep, isPickKey, steerMessage } from "./LiveBar";
 import { CustomizePanel, THEME_TOKENS } from "./CustomizePanel";
-import { RETAG_TAGS } from "../../../shared/design-mutation";
+import { RETAG_TAGS, type InsertPosition } from "../../../shared/design-mutation";
 import { optionLabel, scaleChanges, scaleStepOf, textVariantProp, tokenNames, typeScale, inlineStyle } from "./text-styles";
 import { useDesignEditing } from "./useDesignEditing";
 import { StudioBar, viewportMenu, type StudioMenuItem, type StudioView } from "./StudioBar";
@@ -610,6 +610,10 @@ export default function DesignCanvas({
   const [palette, setPalette] = useState<{ anchor: SelectedElement; position: SeamPosition; at: { x: number; y: number } } | null>(null);
   const [swapAt, setSwapAt] = useState<{ x: number; y: number } | null>(null);
   const [actionsAt, setActionsAt] = useState<{ x: number; y: number } | null>(null);
+  // `Go to component`: the part System view opens on.
+  const [systemStart, setSystemStart] = useState<string | null>(null);
+  // `Move to…`: what moves, while the next click picks where it goes.
+  const [moving, setMoving] = useState<SelectedElement[] | null>(null);
   const [drawCapturing, setDrawCapturing] = useState(false);
   const [codeLine, setCodeLine] = useState<number | null>(null);
   const [kitParts, setKitParts] = useState<KitPart[]>([]);
@@ -1795,19 +1799,72 @@ export default function DesignCanvas({
       run: () => styleElement(one, scaleChanges(st.id, pageTheme), `${one.selector}:type`),
     }));
   };
-  const actionItems: ActionItem[] = !selected.length
+  // `Move to…`: the click after it picks the element it goes next to (or into), then the menu asks where.
+  const moveTarget = moving && one && !moving.some((m) => (m.id && m.id === one.id) || m.selector === one.selector) ? one : null;
+  const moveSelection = (position: InsertPosition) => {
+    const list = moving;
+    const ref = moveTarget;
+    closePopovers();
+    setMoving(null);
+    setNotice(null);
+    if (!list || !ref) return;
+    const refTo = targetOf(ref);
+    const tos = list.map(targetOf);
+    if (!refTo || tos.some((t) => !t)) return setNotice({ text: notAnchored, error: true });
+    void edits.transaction(async (step) => {
+      // A move names its reference by id, and later moves find the moving elements by id: each one without gets one first.
+      const stamp = async (el: SelectedElement, to: NonNullable<ReturnType<typeof targetOf>>) => el.id ?? (await step(to, { kind: "setProp", name: "data-cubiq-stamp", value: null })).stampedId ?? "";
+      const refId = await stamp(ref, refTo);
+      const ids: string[] = [];
+      for (const [i, el] of list.entries()) ids.push(await stamp(el, tos[i]!));
+      if (!refId || ids.some((id) => !id)) throw new Error(notAnchored);
+      // Each move lands right next to the reference, so `after` and `inside-start` go last-first to keep their order.
+      for (const id of position === "after" || position === "inside-start" ? [...ids].reverse() : ids) await step({ id }, { kind: "move", refId, position });
+      pendingSelect.current = ids[0] ?? null;
+    });
+  };
+  const startMove = () => {
+    closePopovers();
+    setMoving([...selected]);
+    setNotice({ text: `Click where ${selected.length === 1 ? "it goes" : "they go"}. Esc cancels.` });
+  };
+  const copyContext = () => {
+    if (!entry || !selected.length) return;
+    void navigator.clipboard?.writeText(contextBlock(`${entry.dir}/${entry.rel}`, selected, one ? selectionName : undefined)).then(() => setToast("Context copied"));
+  };
+  const goToComponent = () => {
+    if (!onePart) return;
+    closePopovers();
+    setSystemStart(onePart.ui);
+    changeView("system");
+  };
+  const moveItems: ActionItem[] = moveTarget
+    ? [
+        { id: "move-before", group: "Move", label: `Before ${partLabel(moveTarget, kitParts)}`, run: () => moveSelection("before") },
+        { id: "move-after", group: "Move", label: `After ${partLabel(moveTarget, kitParts)}`, run: () => moveSelection("after") },
+        { id: "move-first", group: "Move", label: "Inside, first", run: () => moveSelection("inside-start") },
+        { id: "move-last", group: "Move", label: "Inside, last", run: () => moveSelection("inside-end") },
+        { id: "move-cancel", group: "Move", label: "Cancel move", run: () => (closePopovers(), setMoving(null), setNotice(null)) },
+      ]
+    : [];
+  const actionItems: ActionItem[] = moveTarget
+    ? moveItems
+    : !selected.length
     ? []
     : [
         ...(onePart ? [{ id: "swap", group: "Structure", label: "Swap component…", shortcut: "⌘S", run: () => setSwapAt(selectionAt()) }] : []),
         ...wrapShapes(kitParts).map((s) => ({ id: `wrap-${s}`, group: "Structure", label: `Wrap in ${s[0]!.toUpperCase()}${s.slice(1)}`, shortcut: s === "stack" ? "⌘G" : s === "grid" ? "⌥⌘G" : undefined, run: () => wrapSelection(s) })),
         { id: "unwrap", group: "Structure", label: "Unwrap", shortcut: "⌘⇧G", disabled: !one, run: unwrapSelection },
         { id: "insert", group: "Structure", label: "Insert…", shortcut: "I", disabled: !one, run: openPaletteHere },
+        { id: "move", group: "Structure", label: "Move to…", run: startMove },
         { id: "duplicate", group: "Structure", label: "Duplicate", shortcut: "⌘D", run: duplicateSelection },
         ...(kitParts.length ? [{ id: "composition", group: "Structure", label: "Save as composition…", run: () => setNaming({ kind: "composition", warnings: [], error: null, busy: false }) }] : []),
         { id: "delete", group: "Structure", label: "Delete", shortcut: "⌫", run: deleteSelection },
         ...variantSwitches(),
         ...(onePart ? [{ id: "reset", group: "Component", label: "Reset all props", run: () => one && applyAttrs(one, onePart.props.filter((p) => oneAttrs[`data-${p.name}`] !== undefined).map((p) => ({ name: `data-${p.name}`, value: null })), `${one.selector}:reset`) }] : []),
         { id: "chat", group: "Component", label: "Add to chat", run: focusComposer },
+        { id: "context", group: "Component", label: "Copy context", run: copyContext },
+        ...(onePart ? [{ id: "component", group: "Component", label: "Go to component", run: goToComponent }] : []),
         { id: "comment", group: "Component", label: "Add comment", shortcut: "C", disabled: !one, run: () => setCommentDraft("") },
         { id: "code", group: "Component", label: "Go to code", disabled: !one, run: () => one && void openCodeAt(one) },
         { id: "copy", group: "Component", label: jsxOf(onePart, oneAttrs, one?.ownText ?? one?.text ?? "") ? "Copy JSX" : "Copy HTML", disabled: !one, run: () => one && void navigator.clipboard?.writeText(jsxOf(onePart, oneAttrs, one.text) ?? one.html) },
@@ -1919,6 +1976,21 @@ export default function DesignCanvas({
       return false;
     },
   };
+  // The pick for `Move to…` opens the menu on it; Esc drops the move.
+  useEffect(() => {
+    if (moveTarget && barBoxes) setActionsAt(selectionAt());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moving, selectedKey, barBoxes === null]);
+  useEffect(() => {
+    if (!moving) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setMoving(null);
+      setNotice(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [moving]);
   // Esc stands a tool down, once its own popovers have had the key.
   useEffect(() => {
     if (tool === "select") return;
@@ -2065,7 +2137,7 @@ export default function DesignCanvas({
         <ActionsMenu
           at={actionsAt}
           bounds={wrapBounds}
-          title={selectionName}
+          title={moveTarget && moving ? `Move ${moving.length === 1 ? partLabel(moving[0]!, kitParts) : `${moving.length} elements`} to…` : selectionName}
           items={actionItems}
           onAsk={(text) => {
             if (entry) void useStore.getState().send(withScope(text, `${entry.dir}/${entry.rel}`, selected), undefined, threadId);
@@ -2775,7 +2847,7 @@ export default function DesignCanvas({
       {view === "code" && entry && <CodeView threadId={threadId} designDir={entry.dir} page={entry.rel} reloadKey={`${reload}-${manual}`} line={codeLine} />}
       {view === "system" && entry && (
         <section className="studio-system" aria-label="System">
-          <SystemMode threadId={threadId} pageUrl={entry.url} pageRel={entry.rel} reloadKey={`${reload}-${manual}`} />
+          <SystemMode key={systemStart ?? ""} threadId={threadId} pageUrl={entry.url} pageRel={entry.rel} reloadKey={`${reload}-${manual}`} startUi={systemStart} />
           {stepToast}
         </section>
       )}

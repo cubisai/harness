@@ -39,7 +39,8 @@ const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n =
  * their usage); the page shows one of them; the right panel edits it. Every applied edit is one undo step (⌘Z here, or
  * the toast's Undo), and anything that reaches other pages shows its reach before it's applied.
  */
-export function SystemMode({ threadId, pageUrl, pageRel, reloadKey }: { threadId: string; pageUrl: string; pageRel: string; reloadKey: string }) {
+/** `startUi` opens on that component's page (the canvas's `Go to component`), else on Colors. */
+export function SystemMode({ threadId, pageUrl, pageRel, reloadKey, startUi }: { threadId: string; pageUrl: string; pageRel: string; reloadKey: string; startUi?: string | null }) {
   const thread = useStore((s) => {
     for (const list of Object.values(s.threads)) {
       const t = list.find((x) => x.id === threadId);
@@ -55,7 +56,7 @@ export function SystemMode({ threadId, pageUrl, pageRel, reloadKey }: { threadId
   const [groups, setGroups] = useState<DesignKitGroup[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [page, setPage] = useState<Page>({ kind: "foundation", id: "colors" });
+  const [page, setPage] = useState<Page>(() => (startUi ? { kind: "part", ui: startUi } : { kind: "foundation", id: "colors" }));
   const [query, setQuery] = useState("");
   const [scheme, setScheme] = useState<Scheme>(() => (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
   const searchRef = useRef<HTMLInputElement>(null);

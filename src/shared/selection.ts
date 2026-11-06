@@ -132,14 +132,23 @@ export function scopeBlock(page: string, els: SelectedElement[]): string {
   const n = els.length;
   if (!n) return "";
   const lines = [`Selected in ${page} (${n} element${n === 1 ? "" : "s"}): change only ${n === 1 ? "this element" : "these elements"}. If the request needs changes elsewhere, say so instead of making them.`];
-  els.forEach((el, i) => {
-    lines.push(`${i + 1}. <${el.tag}>${el.id ? ` data-agent-id="${el.id}"` : ""} · selector \`${el.selector}\`${el.text ? ` · text "${el.text.slice(0, 120)}${el.text.length > 120 ? "…" : ""}"` : ""}`);
-  });
-  if (n === 1) {
+  return [...lines, ...elementLines(els)].join("\n");
+}
+
+/** One line per element, and the source of a lone one. */
+function elementLines(els: SelectedElement[]): string[] {
+  const lines = els.map((el, i) => `${i + 1}. <${el.tag}>${el.id ? ` data-agent-id="${el.id}"` : ""} · selector \`${el.selector}\`${el.text ? ` · text "${el.text.slice(0, 120)}${el.text.length > 120 ? "…" : ""}"` : ""}`);
+  if (els.length === 1) {
     const html = els[0]!.html;
     lines.push("```html", html.slice(0, 600) + (html.length > 600 ? "…" : ""), "```");
   }
-  return lines.join("\n");
+  return lines;
+}
+
+/** `Copy context`: where the selection lives and what it is, to paste into another tool. No instructions, unlike the scope. */
+export function contextBlock(page: string, els: SelectedElement[], name?: string): string {
+  if (!els.length) return "";
+  return [`${name ? `${name} in` : "From"} ${page} (${els.length} element${els.length === 1 ? "" : "s"})`, ...elementLines(els)].join("\n");
 }
 
 /** The message body with the selection scope appended: unchanged without a page or elements. */
