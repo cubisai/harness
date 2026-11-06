@@ -10,7 +10,7 @@ Claude Code is the orchestrator. `/oc <task>` is a manual trigger, but this poli
 
 **Trust boundary**: opencode runs on a small free model (`opencode/deepseek-v4.1-flash-free`, OpenCode Zen). Treat everything it returns (findings, file:line citations, "bug confirmed", a `build` run's "done") as an unverified claim. Spot-check the load-bearing ones yourself (open the cited file, re-run the cited command) before they go into a plan, a brief, or anything you tell the user.
 
-**Failures**: if a dispatch fails 3 times for the same task (error, timeout, empty or unusable output), finish that task yourself and say so in one line. On "Rate limit exceeded", stop the run and do the research as Haiku `Explore` subagents instead.
+**Failures**: if a dispatch fails 3 times for the same task (error, timeout, empty or unusable output), finish that task yourself and say so in one line. On "Free usage limit reached" or "Rate limit exceeded" from Zen, re-dispatch the same brief on the PGS Grove fallback `PGA/deepseek-v4.1-flash-1017`, which doesn't count as one of the 3 failures. If the fallback is rate-limited too, stop the run and do the research as Haiku `Explore` subagents instead.
 
 ### Agents
 

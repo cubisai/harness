@@ -1,217 +1,108 @@
-# Handoff (2026-10-31, Mac): CubiQ Design Mode 2.0 Studio Overhaul + Open Tracks
+# Handoff: CubiQ Design Mode 2.0
 
----
+Short on purpose: current state, next steps, open questions and live traps. Replace text rather than adding to it, and move finished detail to the archive.
 
-## 🚀 Active Track: CubiQ Design Mode 2.0 & Studio UX Overhaul (2026-10-31)
+**On another machine, read `HANDOFF_2.md` first**: how to pull both branches, recreate the worktree and restore the git-ignored `.ai/` folders.
 
-### 1. Context & User Review Findings
-The user provided 4 screen recordings and 2 screenshots defining the gold standard for CubiQ Design Mode (inspired by the Varelyo / Studio / Cycles app interaction paradigm):
-- **[`Screen Recording 2026-10-31 at 11.53.54 in the morning.mov`](./Screen%20Recording%202026-10-31%20at%2011.53.54%20in%20the%20morning.mov):** Complete studio workflow demonstrated on a real app screen (`Cycles 24`):
-  - Canvas element selection: Blue bounding box + solid blue header badge with swap diamond (`Button ⟐`).
-  - Multi-selection: Shift-clicking 4 StatCards displays `4 selected` with checklist in inspector; context menu & inspector offer `Wrap in 4 in Grid` / `Wrap in Stack`.
-  - Grid Layout inspector: Tactile segmented `Columns [ 1 | 2 | 3 | 4 ]` control; clicking columns live re-layouts cards with smooth CSS grid transition.
-  - Seam insertion: Hovering between sections displays hairline seam + black `+` button (`Add below`); clicking opens palette with position tabs `[ Before | After | Inside ]` + component search (`prog` -> `ProgressCard`).
-  - Component swap: Clicking `Swap component…` on `Button ("Ends in 4 days")` opens popover with search `Q Swap Button for...`, intelligence notice (*"Becomes Dropdown — drops variant, which Dropdown does not take"*), and taxonomy (`Inputs`: Dropdown, Input, TextField; `Layout`; `Data display`). Swapping immediately updates canvas to Dropdown and inspector to Dropdown props.
-  - Dual Mode inspector: Segmented `[ Design | Code ]` switch; clicking `Code` opens real TSX source (`CyclesPage.tsx`) importing from `@/uikit`.
-  - Foundations & Brand Token Overhaul: Changing `Brand colour` (`#5e5ad2` -> Teal `#0f968a`) calculates impact (*"rewrites 14 colour tokens, 102 component instances"*); clicking Apply updates all buttons and progress bars live across the app and triggers toast: `Changes applied · Brand colour -> Teal 500 · Undo [Z]`.
-- **[`Screen Recording 2026-10-31 at 11.56.03 in the morning.mov`](./Screen%20Recording%202026-10-31%20at%2011.56.03%20in%20the%20morning.mov):** Live Linear-style `Cycles 24` app running at `localhost:5173/cycles/24` in dark mode; prompt-driven branding (*"Brand it like this screen: dark and calm, use indigo accent #5E5AD2, status colors: red/amber/green"*).
-- **[`Screen Recording 2026-10-31 at 11.56.43 in the morning.mov`](./Screen%20Recording%202026-10-31%20at%2011.56.43%20in%20the%20morning.mov):** Core architecture principles:
-  - *"Layers are components"*: Every layer is a kit component, props 1 click away.
-  - *"Props, not pixels"*: Changing columns or gap in inspector live updates the component and syncs to JSX (`<Grid columns={4} gap="16">`).
-  - *"Variables"*: 3-layer tokens (`Core` -> `Semantic` -> `Component`).
-- **[`Screen Recording 2026-10-31 at 11.57.22 in the morning.mov`](./Screen%20Recording%202026-10-31%20at%2011.57.22%20in%20the%20morning.mov):** *"Start from scratch"* vs *"Bring your components"* (`@company/uikit` or `starter-uikit`).
-- **[`Screenshot 2026-10-31 at 11.53.07 in the morning.png`](./Screenshot%202026-10-31%20at%2011.53.07%20in%20the%20morning.png):** Visual reference for anchored `Swap Button for...` popover, compatibility notice, and Layers rail with component pill tags.
-- **[`Screenshot 2026-10-31 at 12.09.20 in the afternoon.png`](./Screenshot%202026-10-31%20at%2012.09.20%20in%20the%20afternoon.png):** Visual reference for Inspector:
-  - Header: `Dropdown` title + `···` + `✕`.
-  - Tabs: `[ ⟐ Design ] [ <> Code ]` + `⌨`.
-  - Filter: `🔍 Filter props and values      ⌘F`.
-  - Breakpoint bar: `📱 Breakpoint    Writes the base value` with `[ 📱 ] [ 📱 ] [ 🖥 ] [ 💻 ]`.
-  - Content card: `Value` (with blue dot + `···`), `Placeholder` (with `···`).
-  - Size card: Tactile notched track (`|`, `!`, `'`) with right-aligned `sm` badge.
-  - State card: `Disabled` toggle switch + `···`.
+- Archive (M3 kit method, M4 and M5 checks, all old traps): `.ai/plans/handoff-archive-2026-11-06.md` (git-ignored, Mac only). Older: `git show 850f3cf:HANDOFF.md`.
+- Plan: `.ai/plans/design-mode-v2.md` (M0-M8). Spec: `design_plan.md` and `design_mode_mock.html`. Search them, don't read them whole.
+- **Reference:** the screen recording `Screen Recording 2026-11-05 at 5.30.18 in the afternoon.mov` in the main checkout. To see it: `ffmpeg -i <mov> -vf fps=1/3 f%02d.png`, then tile them 2x2.
 
----
+## Start here
 
-### 2. Completed Architecture Specification (`design_plan.md`)
-The normative architecture plan has been fully updated and synchronized:
-1. **§1A Architecture Contracts (Normative):**
-   - §1A.1: Same-kit Theme Switching vs Cross-kit Migration.
-   - §1A.2: Authoritative Editing Model & DocumentMutationService (debounced 250ms, auto-stamping `data-agent-id` only when unambiguous).
-   - §1A.3: Interaction State Machine & WCAG 2.2 SC 2.5.8 (≥24×24 CSS px targets).
-   - §1A.5: One transient contextual selection pill, zero persistent floating toolbars.
-   - §1A.8: Updated specification of mock capabilities.
-   - §1A.9: Studio Workspace Layout & View Transitions (3-column studio entrance, global sidebar collapsed, layers and customize open by default, scale-locked desktop artboard, popover dock alignment).
-2. **§5 Canvas & Direct Selection:**
-   - §5.3: Semantic layer iconography (`⛶` sections, `⎈` component instances, `T` text, page sheets).
-   - **§5.4: Canvas Selection Badge & Swap Component Popover (`Swap Button for…`):** Blue border + anchored blue badge `Button ⟐`, compatibility intelligence warnings, grouped taxonomy (`Inputs`, `Layout`, `Data display`, `Feedback`), atomic mutation and undo.
-   - **§5.5: Multi-Selection & Structural Wrapping (`Wrap in Stack / Grid`):** Shift-click canvas/layers selection, `N selected` checklist, 1-click `Wrap in Stack`, `Wrap in 4 in Grid`, `Wrap in Card`.
-   - **§5.6: Canvas Seam Insertion Palette (`[ Before | After | Inside ]`):** Hairline seam `+` trigger, categorized component insertion palette.
-3. **§6 Live Inspector Panel:**
-   - §6.1: Dual-state panel (Page Theme when idle, Element Style when selected) + Content `Value` & `Placeholder` overrides + tactile notched Size slider.
-   - **§6.3: Inspector Chrome, Dual Tabs (`[ Design | Code ]`), Search Filter (`⌘F`), and Breakpoint Bar:** Pixel-perfect alignment with Screenshot 12.09.20.
-   - **§6.4: Layout Inspector for Stack & Grid (Tactile Segmented Columns Stepper):** `Columns [ 1 | 2 | 3 | 4 ]`, `Gap`, `Render as`.
-4. **§8 Foundations & Tokens:**
-   - **§8.4: Foundations & Brand Token Palette Live Regeneration:** `Brand colour` (`#5e5ad2` -> Teal `#0f968a`), impact calculation notice, toast `Changes applied · Brand colour -> Teal 500 · Undo [Z]`, live propagation across all buttons, progress bars, and badges.
-5. **§5.9 Comprehensive Varelyo (`varelyo.com`) Feature Benchmark & Full Gap Audit (16 Features):**
-   - Live audit across `varelyo.com` website, `/docs`, solutions, changelog, MCP tools, and Guardian CLI.
-   - Identified and specified all 16 Varelyo capabilities: (1) Multi-Tab Studio Engine (`⌘T`, warm preview caches, per-tab history `⌘[`/`⌘]`, background agent spinners); (2) Chat in 3 display modes (Docked below Layers, Floating compact dock with live status strip, Folded circular button with response ring); (3) Auto Layout `Place in cell` matrix & dual row/col gaps; (4) Keyboard structural shortcuts (`⌘G`, `⌥⌘G`, `⌘⇧G`, `⌘D`, `⌫`, `I`, `⌥+Drag`); (5) Universal Actions Menu (`/` or Right-Click); (6) Launchpad unified prompt box with attached chips; (7) "Sketch First, Design System Later" token quantization; (8) 3-Tier Token Hierarchy & blast-radius impact preview; (9) Multi-Brand presets without component forking; (10) Component Playground & interactive states gallery (`Used N× in M files`); (11) Guardian verification engine (the 9 design system rules + CI CLI); (12) Varelyo-compatible 13-tool MCP server; (13) Parallel multi-agent execution (`1x` to `6x` Split Work vs Side-by-Side); (14) "Questions First" agent interview turns; (15) Visual Change History timeline panel with visual diff review; (16) Kit-conforming missing icon synthesis.
+1. Worktree `../aiharness-wt/design-v2`, branch `track/design-v2`. To recreate it: `git worktree add`, then `bun install` and `node node_modules/electron/install.js`.
+2. Before every commit: `bun run typecheck`, `bun run test`, `bun run design:check`. Commit only that change's files, 150 characters or fewer, no trailer.
+3. Update this file at each milestone (the user's request). Keep it under about 100 lines.
 
----
+## User decisions
 
-### 3. Current State of Interactive Prototype (`design_mode_mock.html`)
-- **CSS Styles Added:**
-  - `.selection-badge` (anchored blue chip with diamond `⟐`).
-  - `.swap-popover` (popover with search, intelligence notice, categorized items).
-  - `.seam-palette` (seam insertion with `Before`/`After`/`Inside` tabs).
-  - `.insp-filter-row`, `.insp-device-grid` (matching Screenshot 12.09.20).
-  - `.grid-col-seg` (tactile column stepper `[ 1 | 2 | 3 | 4 ]`).
-  - `.multi-sel-list` (checklist for multi-selected elements).
-  - `.stage-tools-pill` (floating canvas tools capsule `[ ⛶ Select | ↔ Annotate (Draw) | 💬 Comment ]`).
-  - `.draw-canvas` & `.draw-dock` (transparent freehand overlay + floating action prompt bar `[ Circle what is wrong... ] [ ↶ Undo ] [ ↷ Redo ] [ Send ]`).
-  - `.pin-comment-box`, `.comment-pin`, `.pin-popover` (pinned comment input attached to components with file:line tags `CyclesPage.tsx:42`, persistent badges `[ 💬 1 ]`, and resolution popover).
-  - `.is-annotated-highlight` (pulsating crimson alert outline on annotated canvas components).
-- **DOM Elements Added:**
-  - Anchored `#selectionBadge`, `#swapPopover`, and `#seamPalette` inside `.artboard-scaler`.
-  - Added `#stageToolsPill` to `#stageCol` header.
-  - Added `<canvas id="drawCanvas">` and `#commentPinsLayer` inside `#artboard`.
-  - Added `#drawDock`, `#pinCommentBox`, and `#pinDetailPopover` inside `#stageCol`.
-  - Updated `#panelElement` header, props filter input (`⌘F`), breakpoint bar, layout card, and added `#panelMultiSelect`. (Redundant duplicate `[ Design | Code ]` sub-tabs removed from inspector in favor of the primary Studio header bar).
-  - Added `#pageCycles` (the full `Cycles 24` interactive canvas DOM with `PageHeader`, `Ends in 4 days`, `+ New issue`, `Grid` with 4 metric cards, `Burndown chart`, and `IssueList`) inside `#fnPage`.
-  - Added `#pageNotion` (full 5-screen Notion workspace flow: Onboard, Login, Home, Dashboard, Profile):
-    - Evaluated and dismantled the rejected Figma-style horizontal multi-frame spatial canvas experiment based on user review ("looks bad, horizontal scroll sprawl, clunky").
-    - Restored clean, focused **Single Artboard Fidelity** (`1440px` Desktop / `390px` Mobile scale-locked), exactly matching `cycles.html` and `index.html`.
-    - Added flow sub-bar `#notionFlowSeg` (`[ 1. Onboard | 2. Login | 3. Home | 4. Dashboard | 5. Profile ]`) for instantaneous 1-click screen switching.
-  - Added `cycles.html` and `notion.html` to `#pageMenu` dropdown and left Layers rail.
-  - Overhauled Flow Board View (`#boardView` / `⌘B`) displaying interactive cards for all 5 Notion flow screens plus Cycles 24 with 1-click zoom into canvas editing on Desktop.
-- **JavaScript Implemented & Verified (100% Green):**
-  - **Fixed Bottom-Middle Composer Dock & Chat Panel (`.composer-dock-wrap`):** Direct child of `#stageCol` with `position: absolute; bottom: 14px; left: 0; right: 0;` and elevation floating shadow. Verified: scrolling down 400px and right 1500px results in `didMove: false` (0px movement); chat drawer smoothly expands upwards from the fixed bottom dock.
-  - `switchNotionScreen(screenKey)`: cleanly activates target screen (`flex` / `grid`), updates `#notionFlowSeg` active button, clears selection, selects first component, and syncs layers rail.
-  - `renderLayersTree()`: displays hierarchical layers for the active screen without multi-frame group clutter.
-  - `updateStageScale()`: unified scale-locked stage math across all 3 pages (`Fieldnote`, `Cycles`, `Notion`).
-  - `setViewport('desktop' | 'mobile' | 'tablet' | 'board')`: clean viewport switching with no residual multi-frame hooks.
-  - `setCanvasTool('select' | 'draw' | 'comment')` with hotkeys `V`, `D`, `C`.
-  - Freehand red pen drawing engine on `drawCanvas` with stroke undo/redo (`⌘Z` / `⇧⌘Z`), erase, and demo loop on `WEB-209`.
-  - `submitDrawAnnotation()`: pushes note and visual annotation into chat sheet, adds `.is-annotated-highlight` to target element, generates agent response.
-  - `openPinCommentForElement()`, `submitPinnedComment()`: anchors persistent `.comment-pin` `[ 💬 1 ]`, records `CyclesPage.tsx:42` reference, syncs to chat sheet.
-  - `showCommentDetail(id)`, `resolvePinComment()`: opens comment detail popover, allows resolving and syncing to chat.
-  - `openSwapPopover()`, `filterSwapOptions()`, `performSwap()`: swapping `Button "Ends in 4 days"` into `Dropdown` with `Ends in 4 days`, updating inspector and layers live.
-  - `openSeamPalette()`, `filterSeamOptions()`, `setSeamPos()`, `insertComponentFromPalette()`: inserting components at hairline seams.
-  - `toggleMultiSelect()` on canvas (Shift+Click) and `wrapSelected('grid')` / `wrapSelected('stack')`: wrapping selected metric cards.
-  - `setGridColumns(n)`: updating `grid-template-columns: repeat(N, 1fr)` live when clicking `1`, `2`, `3`, `4`.
-  - `filterPropCards()`: filtering prop cards via `⌘F` input.
-  - `setMode('code')`: opening clean full-page and component TSX code viewer via the top Studio bar.
-  - `switchMockPage('cycles.html')`: showing `#pageCycles` and re-running `renderLayersTree()`.
-  - `overrideAccent()`: updating brand tokens with impact toast (`Changes applied · Brand colour -> Teal 500 · Undo [Z]`).
-- **Automated Verification Results:**
-  - `node --check` syntax verification: 100% valid script.
-  - `agent-browser eval`: Verified `setViewport('canvas')` renders 5 side-by-side frames with 29 layer items, Frame 2 selection (`pillLeft: 1001px`), Frame 4 selection (`pillLeft: 2454px`), smooth scroll focusing (`scrollLeft: 820px`), and single-to-canvas mode toggles.
-  - Screenshots captured & verified: [`figma_canvas_view.png`](./figma_canvas_view.png), [`figma_canvas_scrolled.png`](./figma_canvas_scrolled.png), [`figma_canvas_frame4.png`](./figma_canvas_frame4.png), [`figma_canvas_dock_fixed.png`](./figma_canvas_dock_fixed.png).
-  - `bun run design:check`: 0 errors.
-  - `bun run typecheck`: 0 errors across `tsconfig.node.json`, `tsconfig.web.json`, `tsconfig.test.json`.
-  - `bun run test`: 4,010 passed tests across 312 test files.
+- Full v2 replaces today's design mode. `designV2` is a build switch until M7. Milestones M0-M7 are approved: work straight through. Stop after 2 failed fixes on one piece, or to ask before merging into `m4`.
+- **Follow the recording** for whatever the plan still lacks (2026-11-06). That includes the pill: **no floating pill.** The selection is a Composer chip (`Selection: Grid ×`), with a name tag and 8 handles on the canvas.
+- 6 kits in `design-kits/`, all approved. Foundation is bundled. Kit UI is written by Claude, not workers, from real library values, with no copied source and no NOTICE (fonts carry `OFL.md`). Only the user pushes `cubisai/design-kits`.
+- No Varelyo branding beyond that one kit's name. Delete tests that pin the old UI in M7 together with that UI.
+- Later, not approved: Guardian, external MCP, multi-tab, parallel agents, Sketch, Connect, multi-brand, user repos, signed catalog, Change History.
 
----
+## Status
 
-### 4. Implementation Plan for Production Promotion (`.ai/plans/design-mode-studio-v2.md`)
-Promote verified mock components into:
-- `src/renderer/src/design/SwapPopover.tsx` (new floating swap popover component with grouped taxonomy).
-- `src/renderer/src/design/SeamInsertPalette.tsx` (new seam insertion palette with `Before`/`After`/`Inside` tabs).
-- `src/renderer/src/design/DesignCanvas.tsx` (Canvas selection badge `Button ⟐`, seam hover `+ Add below`, Shift-click multi-selection).
-- `src/renderer/src/design/InspectorPanel.tsx` (Inspector header, filter `⌘F`, Breakpoint bar, Content `Value`/`Placeholder`, tactile slider track, Layout columns stepper, multi-select wrapping panel).
-- `src/main/design/bridge.ts` (smart hit testing & selection extent calculation).
-Ensure all editor chrome uses Ink Flat tokens from `src/renderer/src/styles/app.css` and strictly adheres to `DESIGN.md`.
+| # | State |
+|---|---|
+| M0-M4 | Closed, Windows green |
+| M5 | Pill and Typography pushed, Windows green (run 42166030432). Closes when the agent-turn items have run live |
+| M6 | Slices 1-4, the in-place patch and the recording gaps are pushed (… `5eeba59`, slice 4 `d73f57a`, `design-kit` skill `7b68985`). Windows green through `5eeba59` (run 42198562589); `d73f57a`: run 42200597226 not checked; `7b68985`: no CI run started. Left: slice 5 (live journeys), in progress |
+| M7 | Not started: turn v2 on; delete the old UI, the switch and its tests; update docs |
+| M8 | Planned 2026-11-06: agent side kit-first (skills, guide, tools, styles). See the plan |
 
----
+## Next, in this order
 
-## Completed: Code Mode v3 + structural `run_code` uptake + pre-turn deliverable snapshot (2026-10-31)
+1. CI: `gh run list --workflow ci.yml --branch track/design-v2`. Rerun a lone ACP "can't start" timeout once.
+2. **Done in M6 slice 3 (`d927301`), for reference:** `SystemMode.tsx` replaces the System view; pure helpers in `system-mode.ts`.
+    - Rail: search (`⌘K`), Foundations with counts, Components by category with usage and `new`/`draft` tags. Bar: theme menu, Light/Dark, crumbs.
+    - Colors: role cards (Fill and Container × Default, Hover, Active; a state the kit lacks is `derived`), palettes worked out from each role, then `SystemPanel` rows (`bare`, `filter`).
+    - Brand colour: picker with hex and kit palette, `Review` shows `designReach` over `BRAND_TOKENS` (shared, tested against `brandEdits`), `Apply`, toast `Changes applied · … Undo ⌘Z`.
+    - Component page: `Variants | Playground | Usage N`. The sample's `states` request inlines ui.css with `:hover`/`:focus` also matching `[data-cq-hover]`/`[data-cq-focus]`. Panel: Canvas shows, add/remove variant (Copy from), add/remove prop.
+    - ⌘Z/⇧⌘Z in System view walk `designSystemHistory`. The step toast now also shows in System view.
+    - Samples (user feedback 2026-11-06): controls (`isStatefulPart`: a control, or a ≤6-element wrapper of one field) get a borderless state table; everything else a docs-style gallery, one centered bordered box per variant, overlays open in place.
+    - Canvas lost its CSS sometimes: system files now write whole (temp + rename), and a failed stylesheet reload keeps the old sheet and retries (`355592c`). Not reproduced on demand; a stress run stayed styled.
+    - Fixed: `copyVariantRules` only read top-level rules, so Add variant failed on all 6 kits (they use `@layer` and nesting). It now walks nested blocks.
+3. **M8, the agent side rebuilt kit-first** (user, 2026-11-06; full spec in the plan's `## M8` section). The 7 skills, `DESIGN-MODE.md`, the style index in `design_set_direction` and `design_lint` all predate kits. M8 replaces them with one lean guide, 4 skills (`design-build`, `design-variants`, `design-kit`, `design-review`), grounded tools and no flat styles, with a before-and-after bench. **User decided 2026-11-06:** the 4 skills, retire the 32 flat styles (good ones become Foundation themes), order M6 → M7 → M8.
+4. **Recording gaps: all built.** Actions (`b2a1062`, `m6-actions.mjs`), Customize (`acf7c8b`, `m6-customize.mjs`), and the agent turn (`5eeba59`): the Composer lip becomes a plan card while a turn with a plan runs (`PlanLip`, render-tested only, **not seen live yet**), and a v2 design turn ends with `DesignTurnCard` (`Built from MUI · N reused · M new`, part chips, version card with thumbnail that shows that version on the canvas). The kit manifest isn't versioned, so there's no `StatCard extended` line.
+5. **M6 slice 4: done (`d73f57a`).** `+` has `Start a new kit…` and `Match a screenshot…` (file picker → ref chip + `Match a screenshot` chip) in v2 design threads. The Composer renders `designChip` (also set by the style picker and System mode's `+ New component`). System mode publishes `designSystemWhere` `{page, theme}`: chips `Library · Colors · MUI · Dark`, each removable (`Library` gone = about the page). On send, `designIntent()` (`design/intent.ts`, tested) goes through `designSetIntent` before the message. Live: 24/24 in dark and light (scratch `m6-intent.mjs`, not saved to kit-tools).
+    - Not built: a separate "New design system chat" thread (multi-thread is unapproved). System mode uses the same thread; only the empty drawer says "New design system chat" (render not seen live: the test thread had messages). `Connect my components…` stays out (later).
+6. **M6 slice 5, in progress:** journeys D, F, G, H, I live. Allowed without asking (2026-11-06): Codex, Claude Sonnet, and OpenCode on PGS Grove.
+    - H (Flow → Grid, Columns, undo) is covered by `m5-scenario.mjs`; G steps 1-3 (brand colour, reach, Apply, toast) were checked live in slice 3. D, F, G4 and I need agent turns.
+    - **User decided 2026-11-06:** write the `design-kit` skill now (pulled forward from M8; done, `7b68985`), then run D, F, G4, I. M8 later reshapes it with the other 3 skills.
+    - Journey threads (scratch profile `645c0ed4…/scratchpad/ud`, Mac only): `J-D new kit` (no kit), `J-F match` (Foundation + page), `J-G system` (shadcn/ui + page), `J-I component` (Mantine + page). Driver: `journey.mjs <D|F|G|I> <threadId> <outPrefix>` with `MODEL=…`; reference image `screen.png` (dark, indigo). Both are in the zip under `scratch/`.
+    - D on Zen free: the chip, the intent and the switch to Foundation worked, then **"Free usage limit reached"** at 2 s. Re-run on `PGA/deepseek-v4.1-flash-1017`: the agent called `design_kit_save` (the thread moved to `project:my-kit`) and wrote `index.html` (76 KB) plus `brief.md`, but it kept the name "My kit", added no parts, and built mostly with its own classes (281 `class=`, only 14 `data-ui`, all `avatar`). It was still running after 15 min. **D is not a pass:** this is the M8 grounding gap (kit parts first). Next: F, G4, I on PGS Grove, then one run each on Codex and Claude Sonnet.
+7. **The user runs `publish`:** `release-kits.sh pack` again first (`ui.js` changed), then fill `KIT_CATALOG` with release URLs and SHA-256 hashes.
 
-- **Plans:** `.ai/plans/code-mode-enhance.md` (full 3-phase spec), `.ai/plans/run-code-uptake-v2.md`, `.ai/plans/run-code-uptake.md`.
-- **What's built:**
-  - **Phase 1 — Speed:**
-    - Zero-stall lazy `parentOf` resolution + immediate `ctx.parentId` fast path (`src/main/code-mode.ts`, `src/main/agents/types.ts`).
-    - Single-crossing QuickJS `JSON.parse` marshaling in `toHandle()` and `load()` (`src/main/harness/tools/code.ts`).
-    - Async `node:fs/promises` I/O across `read`/`glob`/`grep`, `MAX_IN_FLIGHT = 16` (`code-broker.ts`), concurrent directory walks + expanded `SKIP_DIRS` (`glob.ts`), cached `rgPath` lookup + batched JS `scanFiles` with whole-file multiline pre-check (`grep.ts`).
-    - In-memory `boundPreview()` (`bound.ts`) so structured child calls inside `run_code` skip `.txt` spill-file disk writes (`code-broker.ts`).
-  - **Phase 2 — Accuracy & Script Quality:**
-    - `read` (`read.ts`): >2 MB paged window reads (`offset` + `limit` up to 64 MB file size, capping the returned slice at 2 MB instead of rejecting up front) and `\r\n` → `\n` normalization in scripts.
-    - `glob` & `grep` (`glob.ts`, `grep.ts`): script `grep` content line cap raised `300` → `4000` chars; `limit` added to `glob` and `grep`; `context` (`0..20`, `before`/`after` arrays) added to `grep` content mode.
-    - Parameter aliases (`types.ts`, `read.ts`, `glob.ts`, `grep.ts`): camelCase and model-native aliases (`file_path`/`filePath`, `start_line`/`end_line`, `dir`/`directory`, `query`/`regex`, `include`/`filePattern`, `ignoreCase`/`case_insensitive`, `outputMode`/`mode` `"files"`/`"lines"`/`"counts"`).
-    - Sandbox ergonomics (`code.ts`): `console.info/debug/warn/error`, pure POSIX `path` helpers (`join`, `dirname`, `basename`, `extname`, `normalize`), tolerant batch `tools.readMany` (`read_many`), trailing options merge for two-arg calls like `tools.grep("pat", { output_mode: "content" })`, adjusted `Line N:` stack trace reporting, expanded `explain()`, and empty `=> undefined` hints.
-  - **Phase 3 — Structural Agent Uptake (`codeMode === "off"` 100% unchanged):**
-    - **OpenCode v2 (`2.2.0`):** `acp/driver.ts` sets `CUBIQ_CODE_MODE=1` per process when `codeMode !== "off"` and `run_code` is attached; `OPENCODE_GUARD_V2_SOURCE` (`src/main/inject/opencode-guard.ts`) captures `cubiq`'s HTTP MCP `{ url, headers }` via `ctx.mcp.transform`, removes built-in `read`/`glob`/`grep` via `ctx.tool.transform`, and registers top-level `run_code` (`options: { codemode: false }`, Effect `Schema` cloned from built-in string field, zero external imports). `acpCodeHint` sends `CODE_HINT` and `harnessTool` matches top-level `run_code` so child rows nest under it.
-    - **Codex (`0.159.2`):** `codeTool` wired into `createCodexDriver` (`src/main/index.ts`, `src/main/agents/codex.ts`); `thread/start` registers `run_code` via `dynamicTools` (`deferLoading: false`; omitted on `thread/resume`), sends `CODE_HINT` in `developerInstructions`, handles `item/tool/call` + `dynamicToolCall` items with deduped `tool-use` emission (`startedTools`) and direct `parentId` nesting, and keeps MCP `run_code` fallback.
-  - **Pre-turn deliverable snapshot (`src/main/artifacts.ts`, `src/main/service.ts`, `bench/lib/project.ts`):** `snapshotDeliverables` captures `path -> { mtimeMs, size }` before `runTurn` so pre-existing deliverables checked out or copied inside the `Date.now() - 2000` coarse-clock window (e.g. `src/renderer/src/assets/experts/*.svg`) no longer trigger false turn-end cards or auto-open the Preview panel; `layTree` also passes `preserveTimestamps: true`.
-- **Live-checked (`read-heavy` on pinned `17b3eba`, `codeMode: "on"` vs `"off"`):**
-  - **Uptake (`codeMode: "on"`):** 100% `run_code` uptake (`0` `look`, `0` `shell`, `0` orphan child rows) across OpenCode 2.2.0 (`opencode-tokenharbor`: 13 `run_code`, 212 children), Codex 0.159.2 (`codex-luna`: 8 dynamic `run_code`, 38 children, no `tool_search`), and Native (`tokenharbor-deepseek`: 24 `run_code`, 278 children). OpenCode Zen free hit account cap; Codex Ask-mode approval with `codeMode: "off"` verified live.
-  - **Token & speed comparison (`on` vs `off`):** Codex `gpt-6-luna` ran **56% faster** (`53.5 s` vs `122.8 s`) with **21.9% fewer total tokens** (`290.7k` vs `372.1k`, `-10.4%` billed-equiv input, `89.8%` cache hit). DeepSeek `v4.1-flash:free` used more tokens with `on` (`511k` OpenCode / `669k` Native, `89–91%` cache hit) than `off` (`331k` / `219k`) because in Full-access `off` mode it wrote a temporary TS compiler AST script via shell instead of iterating regex scripts in QuickJS.
+## Done in M6
 
-## Completed earlier: issue tracker + PR flow in CubiQ (P1–P3 done in m4 2026-10-30)
+Slices 1 and 2 and the in-place patch are described in the archive. **Not run live yet:**
+- The patch during a real agent turn.
+- A theme switch through the picker.
+- `Save as composition…` and block insert.
+- `Preparing style…`.
+- Draft, flat-style and project-folder threads.
 
-- **Plans:** `.ai/plans/issue-tracker.md` (P1/P2 code map), `.ai/plans/issue-agent-aware.md` (P3).
-- **P1/P2** (see git `8633f86` for the old detail): `/issue`, `/issue-setup`, `/triage`, `/pr` as `/` commands; the app's own setup card; `Thread.issue` with the full issue once, then one line.
-- **P3 as built (user's calls 2026-10-30):**
-  - `issue_create` harness tool (`src/main/issues-tool.ts`, `createIssue` in `issues.ts`): GitHub/Gitea via `gh|tea api` with a JSON body file, GitLab via `glab api` (attachments upload with `--form`), local files (attachments copied to `<folder>/attachments/NNNN/`). Labels = type + `needs-triage`. GitHub and Gitea attachments are left out on purpose (their CLIs can't upload) and named in the result.
-  - `set_thread_issue` tool: an existing issue becomes the thread's chip. Both tools only in threads whose folder has `.cubiq/issues.json`, fixed per thread for the app run (a thread opened before `/issue-setup` gets them after a restart).
-  - Guide note `ISSUES_NOTE` (`guide.ts`), only with a tracker. Alone it got 1 unprompted offer in 7 live runs, so:
-  - **Reply check** (`issue-offer.ts`, `service.setIssueOffer`): after a finished turn whose reply names a problem, the background model (`pickBackground`, ~300 tokens, accounted as purpose `issue`) decides; an offer is an `issue-offer` event, the **File issue?** card (`IssueOfferCard`, ThreadView). File sends the user's yes; Dismiss is kept in localStorage. Settings → Threads → Issues turns it off (`issueOffers`).
-  - Composer: Tab completes a `/` command (Enter runs it); chat chips show `/issue-setup`, not `$issue-setup`.
-- **Live-checked:** the card and filing on Claude Haiku, Codex gpt-6-luna, OpenCode (TokenHarbor `deepseek-v4.1-flash:free`) and native PGS DeepSeek; GitHub #10 filed for real (the sidebar "Running while waiting on a card" bug, left open).
-- **Known bug:** the native provider's Read hands an image to a text-only model; the turn dies ("does not accept image input").
-- **opencode:** Zen free is capped; `oc` dispatch uses PGS Grove `PGA/deepseek-v4-flash-0731`.
+**Not yet told to the user:**
+- System mode: the Typography specimen uses system fonts (kit fonts aren't loaded in the app). Palette ramps are worked out, not kit tokens.
+- Page tokens are written inline on `<html>`.
+- Kit hand-edit undo ends on restart.
+- A kit move covers every page, and `⌘Z` restores all of them.
+- AI adaptation after a move is a chat request.
+- `Save as composition…` refuses over 4 KB.
+- System mode chat is the same thread, not the recording's separate "New design system chat".
+- The turn card counts parts on the page, not what the agent touched; "new" means not on the page before that turn.
+- `Move to…` is click-a-target then Before/After/Inside, not drag. `Go to component` opens System mode's part page, not a `.tsx`.
+- Unbuilt M5 items: the breakpoint bar, `⌥`-drag clone, `Tab` into the canvas, and `⌘F`.
 
-## Where things stand
-- **Branch `m4`**, pushed: this session's work (R1–R4 of `.ai/plans/release-builds.md`, approved 2026-10-29: every PR push builds installers, Apple Silicon only, plus a shells-test fix) was merged in from `track/release`, along with the other session's `CLAUDE.md`, `DESIGN-MODE.md` and `docs/testing/`. No worktrees are open.
-- **CI (run on `track/release` before the merge):** run `40820793700` (Windows+Ubuntu+extras): both `package` jobs green (the `.dmg` passed `codesign --verify` and the packaged smoke on the macOS runner), Ubuntu and codex-e2e green; Windows failed only on a shells temp-dir race, fixed in `c39b94e` and green in run `40827470388`.
-- **Local suite:** fully green (4,008 passed across 312 test files), OpenCode v2 E2E and Codex dynamic-tool tests included.
-- **`release-cubiq.yml` never ran for real**: `workflow_dispatch` needs the file on `main`. After the PR merges: Actions → release-cubiq → Run workflow without **publish** first (build only), then a tag or **publish**.
+**Open with the user:** their 2026-11-05 "widgets, change one and all follow" request.
+- Smoothness is done.
+- Still open: a component gallery with live previews (slice 3), more Foundation parts (27 today), and `Apply to all N` for props across pages.
+- Look at varelyo.com before building any of it.
 
-## Done this session
-- `5c79388` **R3, a real bug:** on OpenCode v2 the agent and its sub-agents read files outside the project with no card in Ask mode. v2's base rule allows every action, and `toV2Permissions` dropped `external_directory`. Now the v2 translation keeps it and adds v1's default (`external_directory` ask) first, so later rules (expert read dirs) still win. On 2.2.0 a sub-agent's ask arrives over ACP, so the v2 plugin needs no `answerAsk`. The git guard itself worked on v2: the failing tests always built the v1 plugin and config, and the fake model called `bash`/`task` (v2: `shell`/`subagent`, `read` takes `path`). The tests now follow the CLI's major (`openCodeGuardedPlan` in `test/helpers.ts`). Live check in the app: an Ask thread on Zen DeepSeek showed "Allow Read? …/outside/notes.txt", and a denial kept the file out.
-- `610f5f7` **R4:** the `history-fixtures` big-thread timeout is 45 s.
-- `0c27841` **R1 + R2:** `release-cubiq.yml` and the `package` job in `ci.yml`. Signing notes:
-  - Unsigned macOS builds pass `-c.mac.identity=-` (ad-hoc). Without it electron-builder leaves the app unsigned and Apple Silicon calls it "damaged".
-  - On a PR, electron-builder skips all signing unless `CSC_FOR_PULL_REQUEST=true`. That's safe here: no secrets.
-  - Notarization follows the `APPLE_*` env by itself (electron-builder 26), so `electron-builder.yml` is unchanged.
-  - `test/ci-workflow.test.ts` pins both workflows.
-- `c39b94e` Windows CI: the shells stop-scope test stops its last shell before cleanup.
+## Live testing
 
-## Next
-- Open the PR from `m4` to `main`. Its `package` job uploads the installers.
-- The first real release (above). Signing remains the user's step; see below.
+- Start the app: `npx electron-vite dev --remoteDebuggingPort 9477 -- --user-data-dir=<scratchpad>/ud`, with `run_in_background`. Check `ps` first and never kill the user's own app. Stop it: `pgrep -f '<scratchpad>/ud' | xargs kill -9`. Restart after main changes (`bridge.ts`, `patch.ts`).
+- Kits: copy `design-kits/kits/*` to `<ud>/design-packs/kits/<id>@1.0.0`, and write `active.json` as `{"<id>":{"version":"1.0.0","sha256":"local-check","source":"local"}}` for each kit.
+- Threads: run `m3-setup.mjs`, then `bun .ai/kit-tools/kit-page.ts design-kits/kits/<id> <ud>/chats/<thread>`. To open one: click (98, 22) to unfold the sidebar, then `button.thread-open`.
+- A fresh profile lists API-made threads only after `location.reload()`.
+- `m5-*.mjs` now use the tag, chip and Actions, not the pill. At a 1920×969 window, `m5-select`'s grid `h2` sits under the Composer (3 false failures). `m5-scenario` leaves a click listener in the frame: run it twice without a reload and Preview counts 2.
+- Scripts run through `node .ai/kit-tools/m4-drive.mjs <absolute script path>` with `M5_FILE`, `M4_FILE` or `M5_SHOTS`. Scroll the frame to the top and reset the page between scripts, with one driver at a time.
 
-### Unsigned builds (works today)
-- macOS: ad-hoc signed (`-c.mac.identity=-`); both workflows check it with `codesign --verify --deep --strict`.
-  - First open: System Settings → Privacy & Security → **Open Anyway** (macOS 15+), or `xattr -dr com.apple.quarantine /Applications/CubiQ.app`.
-  - No auto-update: macOS refuses unsigned updates; `src/main/updater.ts:40` already keeps that error quiet.
-- Windows: a SmartScreen warning (More info → Run anyway). Auto-update works unsigned.
+## Live traps
 
-### Signing macOS (the user's steps; the workflow picks the secrets up with no edit)
-1. Apple Developer Program, $99/year (an organization account needs a D-U-N-S number).
-2. A **Developer ID Application** certificate (account holder only): Xcode → Settings → Accounts → Manage Certificates → +, or a CSR from Keychain Access uploaded on developer.apple.com.
-3. Export it as a `.p12` with its private key and a password.
-4. Repo secrets: `MAC_CSC_LINK` = `base64 -i cert.p12`, and `MAC_CSC_KEY_PASSWORD`.
-5. Notarization secrets: `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` (from appleid.apple.com), and `APPLE_TEAM_ID` (from the Membership page).
-6. The hardened runtime and `build/entitlements.mac.plist` are already set up. To check a build: `spctl -a -vvv CubiQ.app` reads "Notarized Developer ID", and `xcrun stapler validate CubiQ.dmg` passes.
-- Windows signing is optional: Azure Trusted Signing (≈$10/month) or a `.pfx` in `WIN_CSC_LINK` / `WIN_CSC_KEY_PASSWORD`.
+- Any scroll closes a `Select`, including Layers scrolling to a new selection: in scripts, wait about 1 s after selecting before opening one, and scroll the popup list itself to reach far options. After a theme switch, the panel's computed colours (`el.style`) are stale until the next selection.
+- Bridge helpers are serialized one by one: a helper can't call another by name.
+- A new bridge message needs `readBridgeMessage`. A new `DesignChange` kind needs a case in `documents.ts`.
+- Each `designHistory` call hands out waiting conflicts once: pass every result through `showConflicts`.
+- Settings updates reset `paneLayout`. Tests have no DOM: use `parse5`, and check DOM code in Chrome or the app.
+- Scripts must never read the system clipboard (it holds the user's data): stub `navigator.clipboard` as `m6-actions.mjs` does. Actions items below the fold need `scrollIntoView` before a click.
+- A failed script step can type into the Composer and send it. In zsh, `kill $PIDS` with several ids fails silently.
 
-## Still open from older tracks (lower priority)
-- **Design live** (detail: `git show 2e2dd54:DESIGN-LIVE-HANDOFF.md`):
-  - A live run that uses `resources/design-patterns/ai-parts.md` (e.g. an agent-run screen in `clean-inset`), and a re-check of `zinc-console`'s 32px nav rows.
-  - Optional: soften the 44px target rule for sidebar nav rows in `design-prototype/SKILL.md`.
-  - Nits: the variant cycler sits low on inline (`span`) sets; the crushed-tracking detail joins `<br>` text.
-- **Bench** (detail: `git show 2e2dd54:HANDOFF.md`; those fixes are already in `m4`):
-  - Bench half of item 5: `bench/run.ts` waits for `learnOverview().drafting === 0` before stopping, then recounts lessons.
-  - Item 9: give the bench app's OpenCode its own config dir (`XDG_CONFIG_HOME`) and keep the provider auth.
-  - Item 4: a todo nudge in Claude's Stop hook when a multi-part request has several edits and no list. Run `--tasks build-cli --k 3 --scratch` first, which costs money: ask.
-  - Items 6, 8 and 10: code mode on read-heavy tasks; PGS Grove credits (the user's call); Claude's cost (`bun run cache:report`).
+## How to work
 
-## How to work here
-- **Checks before every commit:** `bun run typecheck`, `bun run test`, `bun run design:check`. Claude reads the diff itself; a worker's "done" doesn't count.
-- **UI changes:** follow `DESIGN.md`. Check them in the real app: dark and light themes, and 900px wide.
-- **Windows:** `gh workflow run ci.yml --ref m4 -f os=windows` (or `windows+ubuntu`). A force-push to the `windows` branch was blocked by the permission check this session.
-- **Live app:** `npx electron-vite dev --remoteDebuggingPort 9477 -- --user-data-dir=<scratchpad>/ud`, then `agent-browser --cdp 9477`.
-  - Pick the `localhost:5173` tab before each eval; the design frame is its own tab.
-  - In a fresh profile: `openChats()`, `createThread(id, "opencode", {kind:"design"})`, and put a page in `ud/chats/<thread>/designs/<first 8>/index.html`.
-  - Never kill the user's own dev app.
-- **Live model runs:** DeepSeek free (OpenCode Zen) first. Ask before any Claude or Codex run.
-- **Commits:** only that change's files, a message of 150 characters or fewer, no trailer.
+- Workers: Zen free, then PGA, then TokenHarbor, then Haiku `Explore`. Check `git status` after each run.
+- UI follows `DESIGN.md`. Check it in the real app, in dark and light, at 900px.
+- Live model runs: DeepSeek free first. Codex, Claude Sonnet and PGS Grove are allowed; ask before anything else.
+- Lower priority: the PR from `m4` to `main`, the first `release-cubiq.yml` run, the native provider's image-to-text-model bug, and GitHub #10.
