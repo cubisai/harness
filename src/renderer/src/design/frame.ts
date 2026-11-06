@@ -66,7 +66,8 @@ export function frameLayout(
 }
 
 export type BridgeMessage =
-  | { type: "ready"; path?: string }
+  /** `loaded`: the fingerprint of the page text the frame loaded (absent when unknown). */
+  | { type: "ready"; path?: string; loaded?: string }
   | { type: "scroll"; x: number; y: number }
   | { type: "selection"; elements: SelectedElement[]; lost: number }
   | { type: "text-edit"; id: string; before: string; after: string }
@@ -91,7 +92,9 @@ export type BridgeMessage =
   | { type: "context-menu"; x: number; y: number }
   | { type: "seam"; seam: PageSeam | null }
   | { type: "canvas-key"; key: string; mod: boolean; shift: boolean; alt: boolean }
-  | { type: "hit-result"; element: SelectedElement | null };
+  | { type: "hit-result"; element: SelectedElement | null }
+  /** The page took a patch in place (`ok`), or the canvas must reload it. `n` is the patch it answers. */
+  | { type: "patched"; ok: boolean; n: number };
 
 /** A gap between two blocks the pointer is at, in the frame's viewport. */
 export type PageSeam = { position: "before" | "after"; anchor: SelectedElement; rect: FrameRect };
@@ -144,7 +147,7 @@ const point = (v: unknown): v is { x: number; y: number } => !!v && typeof v ===
 export const BRIDGE_LIMITS = { bytes: 256 * 1024, perSecond: 300 };
 
 /** The messages that change the file or its history: they must carry this frame load's token. */
-const NEEDS_NONCE = new Set(["text-commit", "history-key", "canvas-key"]);
+const NEEDS_NONCE = new Set(["text-commit", "history-key", "canvas-key", "patched"]);
 
 /**
  * Design v2's door for one frame: drops oversize messages and floods, and drops a file-changing message that doesn't
@@ -213,7 +216,11 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
     return anchor ? { type: "seam", seam: { position: s.position, anchor, rect: s.rect as FrameRect } } : null;
   }
   if (d.type === "gap-rect") return rect(d.rect) ? { type: "gap-rect", rect: d.rect } : null;
-  if (d.type === "ready") return str(d.path, 2000) ? { type: "ready", path: d.path } : { type: "ready" };
+  if (d.type === "patched") return num(d.n) ? { type: "patched", ok: d.ok === true, n: d.n } : null;
+  if (d.type === "ready") {
+    const loaded = typeof d.loaded === "string" && /^[a-z0-9-]{1,40}$/.test(d.loaded) ? { loaded: d.loaded } : {};
+    return str(d.path, 2000) ? { type: "ready", path: d.path, ...loaded } : { type: "ready", ...loaded };
+  }
   if (d.type === "scroll") return num(d.x) && num(d.y) ? { type: "scroll", x: d.x, y: d.y } : null;
   if (d.type === "text-edit") {
     if (!str(d.id, 64) || !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(d.id) || !str(d.before, 4000) || !str(d.after, 2000)) return null;

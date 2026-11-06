@@ -36,6 +36,7 @@ import { SystemPanel } from "./SystemPanel";
 import { ActionsMenu, SeamButton, SeamPalette, SelectionChrome, SwapPopover, type ActionItem, type SeamPosition } from "./SelectionChrome";
 import { CanvasToolsPill, DrawLayer, drawMessage, strokeBounds, toolForKey, type CanvasTool, type Stroke } from "./CanvasTools";
 import { NamePrompt } from "./NamePrompt";
+import { textHash } from "../../../shared/text-hash";
 import { blockFile, instanceOf, jsxOf, lineOf, parseKitParts, rootTokens, startAttrs, swapNotice, swapPlan, wrapAttrs, wrapShapes, type AttrChange, type KitPart, type WrapShape } from "./kit-parts";
 
 const ipcError = (err: unknown): string => (err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err));
@@ -418,21 +419,93 @@ export default function DesignCanvas({
 
   // Direct editing. A frame reload is ours when it follows an undo or a discard, so what it loses isn't news.
   const ownReload = useRef(false);
+  // In-place updates (v2): the page text the frame shows, when it's known for sure, so a change to the page is patched
+  // into the frame rather than reloading it (a reload flashes, and loses scroll and widget state).
+  const frameText = useRef<string | null>(null);
+  const patching = useRef<{ n: number; html: string; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const patchAgain = useRef<{ restyle: boolean } | null>(null);
+  const patchSeq = useRef(0);
   const reloadFrame = useCallback(() => {
     ownReload.current = true;
+    frameText.current = null;
+    patchAgain.current = null;
+    if (patching.current) clearTimeout(patching.current.timer);
+    patching.current = null;
     setManual((n) => n + 1);
   }, []);
+  const sendPatch = useCallback(
+    (base: string, html: string, restyle: boolean) => {
+      const n = ++patchSeq.current;
+      // A frame that never answers (it was navigating away) gets reloaded.
+      const timer = setTimeout(() => {
+        if (patching.current?.n === n) reloadFrame();
+      }, 4000);
+      patching.current = { n, html, timer };
+      post({ type: "patch", n, base, html, restyle });
+    },
+    [post, reloadFrame],
+  );
+  const patchable = designV2 && version === 0;
+  const patchableRef = useRef(patchable);
+  patchableRef.current = patchable;
+  /** The frame to the page's latest text, from what it shows now; `restyle` also reloads its stylesheets. */
+  const refreshFrame = useCallback(
+    (restyle: boolean) => {
+      if (patching.current) {
+        patchAgain.current = { restyle: restyle || patchAgain.current?.restyle === true };
+        return;
+      }
+      const base = frameText.current;
+      if (!patchableRef.current || base === null) return reloadFrame();
+      editsRef.current.sync((html) => {
+        if (frameText.current !== base || patching.current) return refreshFrame(restyle);
+        sendPatch(base, html, restyle);
+      });
+    },
+    [reloadFrame, sendPatch],
+  );
+  const patchFrame = useCallback(
+    (base: string, html: string) => {
+      if (!patchableRef.current) return reloadFrame();
+      // Ours, like a reload after an undo: a selected element it takes away isn't news.
+      ownReload.current = true;
+      if (patching.current) {
+        patchAgain.current = { restyle: patchAgain.current?.restyle === true };
+        return;
+      }
+      sendPatch(base, html, false);
+    },
+    [reloadFrame, sendPatch],
+  );
   const edits = useDesignEditing({
     threadId,
     rel: entry?.rel ?? null,
     on: designV2 && version === 0,
     onStamp: (at, id) => post({ type: "stamp", path: at, id }),
     reloadFrame,
+    patchFrame,
+    onText: (html) => {
+      if (!patching.current) frameText.current = html;
+    },
     notify: (text, error) => setNotice(error ? { text, error } : { text }),
     onHistory: () => setToast(null),
   });
   const editsRef = useRef(edits);
   editsRef.current = edits;
+  // Something outside the editor changed the design (the agent, a theme switch): patched in when the frame's text is
+  // known, styles loaded again when files other than pages changed, and a reload when a script changed.
+  const seenReload = useRef(`${threadId}:${reload}`);
+  useEffect(() => {
+    const key = `${threadId}:${reload}`;
+    const prior = seenReload.current;
+    seenReload.current = key;
+    if (prior === key || !prior.startsWith(`${threadId}:`) || !designV2 || version !== 0) return;
+    const paths = change?.paths ?? null;
+    if (paths === null || paths.some((p) => /\.m?js$/i.test(p))) return reloadFrame();
+    refreshFrame(paths.some((p) => !/\.html?$/i.test(p)));
+    // `change` arrives with `reload`, in the same store update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadId, reload, designV2, version, reloadFrame, refreshFrame]);
   // ⌘Z takes back a theme switch or a kit move while it's the last thing that happened; any later page edit ends that.
   const systemStep = useStore((s) => s.systemStep[threadId]);
   const setSystemStep = useStore((s) => s.setSystemStep);
@@ -515,16 +588,39 @@ export default function DesignCanvas({
 
   // Only the frame's own window is listened to, and every message is checked (the page is the agent's code).
   useEffect(() => {
+    const reselect = (at: string | undefined): void => {
+      const sel = useStore.getState().designSelection[threadId];
+      if (!sel) ownReload.current = false;
+      setSeam(null);
+      const made = pendingSelect.current;
+      pendingSelect.current = null;
+      if (made) {
+        fromFrame.current = "";
+        post({ type: "set-selection", targets: [{ id: made, selector: `[data-agent-id="${made}"]`, tag: "div", text: "" }] });
+      } else if (sel && entry && sel.page === (at ?? entry.rel) && version === 0) {
+        fromFrame.current = "";
+        post({ type: "set-selection", targets: sel.elements.map(({ id, selector, tag, text }) => ({ id, selector, tag, text })) });
+      }
+    };
     const onMessage = (e: MessageEvent) => {
       if (!frameRef.current || e.source !== frameRef.current.contentWindow) return;
       if (designV2 && !gate.current.admit(e.data)) return;
       const msg = readBridgeMessage(e.data);
       if (!msg) return;
       if (msg.type === "ready") {
+        // A fresh load: whatever patch was on its way went with the old document.
+        if (patching.current) clearTimeout(patching.current.timer);
+        patching.current = null;
+        patchAgain.current = null;
+        frameText.current = null;
         if (designV2) {
           post({ type: "session", nonce: gate.current.renew() });
           post({ type: "read-theme", names: THEME_TOKENS });
-          editsRef.current.sync();
+          // The page's text is what the frame shows only if it's the text the frame loaded.
+          const loaded = msg.loaded;
+          editsRef.current.sync((html) => {
+            if (loaded && version === 0 && textHash(html) === loaded && !patching.current) frameText.current = html;
+          });
         }
         // A fresh load: its tweaks (if any) arrive right after; the marks went with the old document.
         setTweaks(null);
@@ -550,18 +646,19 @@ export default function DesignCanvas({
         if (!to && entry && detectRef.current.rel === entry.rel) runDetectRef.current(entry.rel, true);
         if (deviceRef.current) post({ type: "device-chrome", on: true });
         // A reload (the agent rewrote the page): find the selection again; anything gone is dropped and reported.
-        const sel = useStore.getState().designSelection[threadId];
-        if (!sel) ownReload.current = false;
-        setSeam(null);
-        const made = pendingSelect.current;
-        pendingSelect.current = null;
-        if (made) {
-          fromFrame.current = "";
-          post({ type: "set-selection", targets: [{ id: made, selector: `[data-agent-id="${made}"]`, tag: "div", text: "" }] });
-        } else if (sel && entry && sel.page === (to?.rel ?? entry.rel) && version === 0) {
-          fromFrame.current = "";
-          post({ type: "set-selection", targets: sel.elements.map(({ id, selector, tag, text }) => ({ id, selector, tag, text })) });
-        }
+        reselect(to?.rel);
+      } else if (msg.type === "patched") {
+        const p = patching.current;
+        if (!p || msg.n !== p.n) return;
+        clearTimeout(p.timer);
+        patching.current = null;
+        if (!msg.ok) return reloadFrame();
+        frameText.current = p.html;
+        // The page changed under the selection: find it again, or take what a structural edit made.
+        reselect(undefined);
+        const again = patchAgain.current;
+        patchAgain.current = null;
+        if (again) refreshFrame(again.restyle);
       } else if (msg.type === "tweaks") {
         const list = parseTweaks(msg.manifest);
         if (!list.length) return setTweaks(null);
@@ -656,7 +753,7 @@ export default function DesignCanvas({
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [entry, picking, inserting, post, threadId, version, setSelection, features.textEdit, designV2]);
+  }, [entry, picking, inserting, post, threadId, version, setSelection, features.textEdit, designV2, reloadFrame, refreshFrame]);
 
   // Opening the inspector or the Layers rail asks for a fresh outline: a page that renders with script has more layers
   // than at load. The rail asks again for each page it shows (the bridge also reports one when a page loads).
@@ -827,7 +924,8 @@ export default function DesignCanvas({
   const versions = (files?.find((f) => f.path === path)?.versions ?? []).slice().sort((a, b) => b.version - a.version);
   const src = entry ? (version ? `${entry.url}?v=${version}` : entry.url) : null;
   // The latest file remounts on every change; a saved version stays put.
-  const frameKey = version ? `v${version}` : `live-${reload}-${manual}`;
+  // In v2 a change on disk is patched in (see `refreshFrame`), so only a reload by hand or a failed patch remounts.
+  const frameKey = version ? `v${version}` : designV2 ? `live-${manual}` : `live-${reload}-${manual}`;
   // A device frame, and the phone and tablet viewports, hide the page's scrollbars (a reload asks again on ready).
   // Phones and tablets draw overlay scrollbars; classic ones take room, so a page exactly the viewport's size could
   // keep both bars up, each one making the other overflow. The page still scrolls.

@@ -31,6 +31,11 @@ describe("design frame", () => {
 
   it("accepts only well-formed bridge messages", () => {
     expect(readBridgeMessage({ source: "cubiq-design", type: "ready" })).toEqual({ type: "ready" });
+    expect(readBridgeMessage({ source: "cubiq-design", type: "ready", loaded: "a1-x9" })).toEqual({ type: "ready", loaded: "a1-x9" });
+    expect(readBridgeMessage({ source: "cubiq-design", type: "ready", loaded: "<b>" })).toEqual({ type: "ready" });
+    expect(readBridgeMessage({ source: "cubiq-design", type: "patched", ok: true, n: 3 })).toEqual({ type: "patched", ok: true, n: 3 });
+    expect(readBridgeMessage({ source: "cubiq-design", type: "patched", ok: "yes", n: 3 })).toEqual({ type: "patched", ok: false, n: 3 });
+    expect(readBridgeMessage({ source: "cubiq-design", type: "patched", ok: true })).toBeNull();
     expect(readBridgeMessage({ source: "cubiq-design", type: "scroll", x: 0, y: 120 })).toEqual({ type: "scroll", x: 0, y: 120 });
     expect(readBridgeMessage({ source: "other", type: "ready" })).toBeNull();
     expect(readBridgeMessage({ source: "cubiq-design", type: "scroll", x: "1", y: 2 })).toBeNull();

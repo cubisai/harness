@@ -239,13 +239,19 @@
     if (t.matches && t.matches('[data-ui="snackbar"]') && e.newState === "open") setTimeout(function () { hide(t); }, 6000);
   }, true);
 
-  function init() {
-    all(d, '[data-ui="date-calendar"]').forEach(drawCalendar);
-    all(d, '[data-ui="slider"]').forEach(function (s) { if (s.querySelector('input[data-part="thumb"]')) syncSlider(s); });
-    var bars = all(d, '[data-ui="tabs"] > [data-part="list"]');
+  /* Every match in r, r itself included. */
+  var within = function (r, sel) { var list = all(r, sel); if (r !== d && r.matches(sel)) list.unshift(r); return list; };
+
+  function init(r) {
+    r = r && r.nodeType === 1 ? r : d;
+    within(r, '[data-ui="date-calendar"]').forEach(drawCalendar);
+    within(r, '[data-ui="slider"]').forEach(function (s) { if (s.querySelector('input[data-part="thumb"]')) syncSlider(s); });
+    var bars = within(r, '[data-ui="tabs"] > [data-part="list"]');
     bars.forEach(placeBar);
     if (window.ResizeObserver) { var watch = new ResizeObserver(function (list) { list.forEach(function (r) { placeBar(r.target); }); }); bars.forEach(function (b) { watch.observe(b); }); }
     if (d.fonts && d.fonts.ready) d.fonts.ready.then(function () { bars.forEach(placeBar); });
   }
-  if (d.readyState === "loading") d.addEventListener("DOMContentLoaded", init); else init();
+  if (d.readyState === "loading") d.addEventListener("DOMContentLoaded", function () { init(); }); else init();
+  /* The design canvas puts new parts into the page without reloading it, then asks for them to be drawn. */
+  d.addEventListener("kit:refresh", function (e) { ((e.detail && e.detail.roots) || []).forEach(init); e.preventDefault(); });
 })();

@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+import { patchDocument, type PatchResult } from "./patch";
 
 /** The shape a design page element is described as when reported to the canvas. */
 export interface DescribedElement {
@@ -423,7 +424,10 @@ export function designBridge(
   parentComponent: (el: Element, component: (el: Element) => Element) => Element | null,
   clickTarget: (selected: Element | null, hit: Element, component: (el: Element) => Element, paints: (el: Element) => boolean) => Element,
   textHolder: (el: Element) => Element | null,
+  patchDocument: (live: Document, base: Document, next: Document, own: (node: Node) => boolean) => PatchResult,
 ): void {
+  // This script's own element, which the page's file doesn't have (a patch must leave it be).
+  const bridgeScript = document.currentScript;
   // Design v2's per-load token and selection colour, both from the canvas. Without them the page behaves as before.
   let nonce = "";
   let selectColor = "";
@@ -490,7 +494,7 @@ export function designBridge(
   };
 
   const announceReady = (): void => {
-    post("ready", { path: location.pathname });
+    post("ready", { path: location.pathname, loaded: bridgeScript?.getAttribute("data-source") ?? "" });
     reportTweaks();
     reportOutline();
     findVariants();
@@ -1654,8 +1658,62 @@ export function designBridge(
       changes?: unknown;
       name?: unknown;
       names?: unknown;
+      base?: unknown;
+      html?: unknown;
+      restyle?: unknown;
     } | null;
     if (!data || data.source !== "cubiq-canvas") return;
+    if (data.type === "patch") {
+      // The file changed under the page (an edit, undo, or the agent): bring the page to it in place, so nothing flashes.
+      // The canvas reloads instead when this says no.
+      const seq = typeof data.n === "number" ? data.n : 0;
+      const base = typeof data.base === "string" && data.base.length <= 8_000_000 ? data.base : null;
+      const html = typeof data.html === "string" && data.html.length <= 8_000_000 ? data.html : null;
+      const done = (ok: boolean, reason?: string): void => post("patched", { ok, n: seq, ...(reason ? { reason } : {}) });
+      if (base === null || html === null) return done(false, "input");
+      const parse = (text: string): Document => new DOMParser().parseFromString(text, "text/html");
+      const own = (n: Node): boolean => {
+        if (n === bridgeScript) return true;
+        if (n.nodeType !== 1) return false;
+        const el = n as Element;
+        return el.id === "cubiq-variant-style" || el.id === "cubiq-device-chrome" || el.hasAttribute("data-cubiq-marks") || el.hasAttribute("data-cubiq-note") || el.hasAttribute("data-cubiq-finding");
+      };
+      let result: PatchResult;
+      try {
+        result = base === html ? { ok: true, roots: [] } : patchDocument(document, parse(base), parse(html), own);
+      } catch {
+        return done(false, "error");
+      }
+      if (!result.ok) return done(false, result.reason);
+      // Kit widgets in what came in new are drawn by the kit's script, which listens for this; one that doesn't means reload.
+      const widgets = result.roots.filter((r) => r.matches("[data-ui]") || r.querySelector("[data-ui]") !== null);
+      if (widgets.length) {
+        const ev = new CustomEvent("kit:refresh", { detail: { roots: widgets }, cancelable: true });
+        document.dispatchEvent(ev);
+        if (!ev.defaultPrevented && document.querySelector('script[src$="ui.js"]')) return done(false, "kit");
+      }
+      // A theme switch rewrote the stylesheets the page links: each loads again, and the old one goes once it has.
+      if (data.restyle === true) {
+        document.querySelectorAll('link[rel~="stylesheet"][href]').forEach((link) => {
+          const href = link.getAttribute("href") || "";
+          if (/^[a-z][a-z0-9+.-]*:|^\/\//i.test(href)) return;
+          const copy = link.cloneNode() as HTMLLinkElement;
+          copy.setAttribute("href", href.replace(/([?&])r=\d+&?/, "$1").replace(/[?&]$/, "") + (href.includes("?") ? "&" : "?") + "r=" + Date.now());
+          const drop = (): void => link.remove();
+          copy.addEventListener("load", drop, { once: true });
+          copy.addEventListener("error", drop, { once: true });
+          link.after(copy);
+        });
+      }
+      selected = selected.filter((el) => el.isConnected);
+      redraw();
+      // What a load reports, again: Layers, the page's tweaks and its variant sets follow the new page.
+      reportTweaks();
+      reportOutline();
+      findVariants();
+      done(true);
+      return;
+    }
     if (data.type === "restore-scroll") {
       const x = typeof data.x === "number" ? data.x : 0;
       const y = typeof data.y === "number" ? data.y : 0;
@@ -1841,5 +1899,5 @@ export function designBridge(
 
 /** The bridge as one script body, embedding the page-side helpers it needs. */
 export function bridgeScript(selectorFor: (el: Element) => string): string {
-  return `(${designBridge.toString()})(${selectorFor.toString()}, ${describeElement.toString()}, ${snapTarget.toString()}, ${resolveTarget.toString()}, ${editableText.toString()}, ${outlineOf.toString()}, ${gapChoice.toString()}, ${childGap.toString()}, ${isSelectableElement.toString()}, ${componentOf.toString()}, ${drillTarget.toString()}, ${parentComponent.toString()}, ${clickTarget.toString()}, ${textHolder.toString()});`;
+  return `(${designBridge.toString()})(${selectorFor.toString()}, ${describeElement.toString()}, ${snapTarget.toString()}, ${resolveTarget.toString()}, ${editableText.toString()}, ${outlineOf.toString()}, ${gapChoice.toString()}, ${childGap.toString()}, ${isSelectableElement.toString()}, ${componentOf.toString()}, ${drillTarget.toString()}, ${parentComponent.toString()}, ${clickTarget.toString()}, ${textHolder.toString()}, ${patchDocument.toString()});`;
 }

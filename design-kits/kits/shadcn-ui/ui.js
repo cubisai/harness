@@ -249,9 +249,15 @@
     sync();
   }
 
-  function init() {
-    all(d, '[data-ui="calendar"]').forEach(drawCalendar);
-    all(d, '[data-ui="message-scroller"]').forEach(watchScroller);
+  /* Every match in r, r itself included. */
+  var within = function (r, sel) { var list = all(r, sel); if (r !== d && r.matches(sel)) list.unshift(r); return list; };
+
+  function init(r) {
+    r = r && r.nodeType === 1 ? r : d;
+    within(r, '[data-ui="calendar"]').forEach(drawCalendar);
+    within(r, '[data-ui="message-scroller"]').forEach(watchScroller);
   }
-  if (d.readyState === "loading") d.addEventListener("DOMContentLoaded", init); else init();
+  if (d.readyState === "loading") d.addEventListener("DOMContentLoaded", function () { init(); }); else init();
+  /* The design canvas puts new parts into the page without reloading it, then asks for them to be drawn. */
+  d.addEventListener("kit:refresh", function (e) { ((e.detail && e.detail.roots) || []).forEach(init); e.preventDefault(); });
 })();

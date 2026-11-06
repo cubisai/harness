@@ -6,6 +6,11 @@
 (function () {
   "use strict";
 
+  /* Load-time wiring, kept so the design canvas can run it again on parts it puts in without reloading the page. */
+  var wiring = [];
+  function within(r, sel) { var list = Array.prototype.slice.call(r.querySelectorAll(sel)); if (r !== document && r.matches(sel)) list.unshift(r); return list; }
+  function each(sel, fn) { wiring.push([sel, fn]); within(document, sel).forEach(function (el) { fn(el); }); }
+
   function on(root, type, selector, handler) {
     root.addEventListener(type, function (event) {
       var target = event.target.closest ? event.target.closest(selector) : null;
@@ -25,7 +30,7 @@
     });
     tab.focus();
   }
-  document.querySelectorAll('[data-ui="tabs"] [role="tablist"]').forEach(function (list) {
+  each('[data-ui="tabs"] [role="tablist"]', function (list) {
     on(list, "click", '[role="tab"]', function (e, tab) { selectTab(tab); });
     list.addEventListener("keydown", function (e) {
       var tabs = Array.prototype.slice.call(list.querySelectorAll('[role="tab"]'));
@@ -99,7 +104,7 @@
     el.setAttribute("data-month", d.getFullYear() + "-" + pad(d.getMonth() + 1));
     drawCalendar(el);
   }
-  document.querySelectorAll('[data-ui="calendar"]').forEach(drawCalendar);
+  each('[data-ui="calendar"]', drawCalendar);
   document.addEventListener("click", function (e) {
     var step = e.target.closest("[data-step]");
     if (step) { var cal = step.closest('[data-ui="calendar"]'); if (cal) stepCalendar(cal, parseInt(step.getAttribute("data-step"), 10)); return; }
@@ -115,7 +120,7 @@
   });
 
   /* Carousel: previous and next move the viewport one slide, the dots follow. */
-  document.querySelectorAll('[data-ui="carousel"]').forEach(function (car) {
+  each('[data-ui="carousel"]', function (car) {
     var view = car.querySelector('[data-part="viewport"]');
     var slides = car.querySelectorAll('[data-part="slide"]');
     var dots = car.querySelectorAll('[data-part="dot"]');
@@ -155,7 +160,7 @@
   });
 
   /* Pin input: typing moves to the next box, backspace to the previous one. */
-  document.querySelectorAll('[data-ui="pin-input"]').forEach(function (group) {
+  each('[data-ui="pin-input"]', function (group) {
     var boxes = group.querySelectorAll('[data-part="pin"]');
     boxes.forEach(function (box, i) {
       box.addEventListener("input", function () { if (box.value && boxes[i + 1]) boxes[i + 1].focus(); });
@@ -164,7 +169,7 @@
   });
 
   /* Tags input: Enter turns the typed text into a tag; a tag's close button removes it. */
-  document.querySelectorAll('[data-ui="tags-input"]').forEach(function (field) {
+  each('[data-ui="tags-input"]', function (field) {
     var input = field.querySelector('[data-part="input"]');
     input.addEventListener("keydown", function (e) {
       if (e.key !== "Enter" || !input.value.trim()) return;
@@ -205,11 +210,11 @@
       item.hidden = !hit;
     });
   }
-  document.querySelectorAll('[data-ui="combobox"]').forEach(function (box) {
+  each('[data-ui="combobox"]', function (box) {
     var input = box.querySelector('[data-part="input"]');
     input.addEventListener("input", function () { filter(input, box.querySelectorAll('[data-part="item"]')); });
   });
-  document.querySelectorAll('[data-ui="command"]').forEach(function (box) {
+  each('[data-ui="command"]', function (box) {
     var input = box.querySelector('[data-part="input"]');
     input.addEventListener("input", function () { filter(input, box.querySelectorAll('[data-part="item"]')); });
   });
@@ -233,12 +238,16 @@
   });
 
   /* Editable text: Enter commits, Escape reverts to the text it had when focused. */
-  document.querySelectorAll('[data-ui="editable"] [data-part="preview"]').forEach(function (el) {
+  each('[data-ui="editable"] [data-part="preview"]', function (el) {
     var original = "";
     el.addEventListener("focus", function () { original = el.textContent; });
     el.addEventListener("keydown", function (e) {
       if (e.key === "Enter") { e.preventDefault(); el.blur(); }
       if (e.key === "Escape") { el.textContent = original; el.blur(); }
     });
+  });
+  document.addEventListener("kit:refresh", function (e) {
+    ((e.detail && e.detail.roots) || []).forEach(function (r) { wiring.forEach(function (w) { within(r, w[0]).forEach(function (el) { w[1](el); }); }); });
+    e.preventDefault();
   });
 })();

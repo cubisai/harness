@@ -61,4 +61,6 @@
     e.preventDefault();
     select(tab.closest('[data-ui="tabs"]'), list[next], true);
   });
+  /* The design canvas puts new parts in without reloading; nothing here draws at load, so there is nothing to redo. */
+  document.addEventListener("kit:refresh", function (e) { e.preventDefault(); });
 })();

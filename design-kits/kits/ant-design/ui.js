@@ -320,16 +320,22 @@
     if (t.matches('[data-ui="time-picker"] [data-part="popup"]')) scrollTime(t);
   }, true);
 
-  function init() {
-    all(d, '[data-ui="calendar"], [data-part="panel"][data-month]').forEach(draw);
-    all(d, '[data-ui="time-picker"]').forEach(drawTime);
-    all(d, '[data-ui="slider"]').forEach(function (s) { if (s.querySelector('input[data-part="thumb"]')) slide(s); });
-    all(d, '[data-ui="carousel"] [data-part="track"]').forEach(function (tr) {
+  /* Every match in r, r itself included. */
+  var within = function (r, sel) { var list = all(r, sel); if (r !== d && r.matches(sel)) list.unshift(r); return list; };
+
+  function init(r) {
+    r = r && r.nodeType === 1 ? r : d;
+    within(r, '[data-ui="calendar"], [data-part="panel"][data-month]').forEach(draw);
+    within(r, '[data-ui="time-picker"]').forEach(drawTime);
+    within(r, '[data-ui="slider"]').forEach(function (s) { if (s.querySelector('input[data-part="thumb"]')) slide(s); });
+    within(r, '[data-ui="carousel"] [data-part="track"]').forEach(function (tr) {
       tr.addEventListener("scroll", function () { var at = Math.round(tr.scrollLeft / tr.clientWidth); all(tr.parentElement, '[data-part="dot"]').forEach(function (o, k) { if (k === at) o.setAttribute("aria-current", "true"); else o.removeAttribute("aria-current"); }); }, { passive: true });
     });
-    var bars = all(d, '[data-ui="tabs"] > [data-part="list"]');
+    var bars = within(r, '[data-ui="tabs"] > [data-part="list"]');
     bars.forEach(ink);
     if (window.ResizeObserver) { var ro = new ResizeObserver(function (l) { l.forEach(function (r) { ink(r.target); }); }); bars.forEach(function (b) { ro.observe(b); }); }
   }
-  if (d.readyState === "loading") d.addEventListener("DOMContentLoaded", init); else init();
+  if (d.readyState === "loading") d.addEventListener("DOMContentLoaded", function () { init(); }); else init();
+  /* The design canvas puts new parts into the page without reloading it, then asks for them to be drawn. */
+  d.addEventListener("kit:refresh", function (e) { ((e.detail && e.detail.roots) || []).forEach(init); e.preventDefault(); });
 })();

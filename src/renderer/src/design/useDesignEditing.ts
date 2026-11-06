@@ -25,8 +25,9 @@ const WRITE_MS = 80;
 
 /**
  * Direct editing of one open page (Design v2): edits go to the mutation service in order, a refusal becomes the
- * banner, and undo and redo reload the frame from the saved file. The frame already shows an edit, so nothing else
- * reloads it. Does nothing while `on` is false.
+ * banner, and undo, redo and structural edits bring the frame to the new text in place (`patchFrame`, from the text
+ * the frame showed before), so they don't flash. The frame already shows a plain edit, so nothing else touches it.
+ * `reloadFrame` is for when the frame shows something the file doesn't have. Does nothing while `on` is false.
  */
 export function useDesignEditing({
   threadId,
@@ -34,6 +35,8 @@ export function useDesignEditing({
   on,
   onStamp,
   reloadFrame,
+  patchFrame,
+  onText,
   notify,
   onHistory,
 }: {
@@ -43,6 +46,10 @@ export function useDesignEditing({
   /** The service stamped an id on an element found by its place: the frame's copy takes it too. */
   onStamp: (path: number[], id: string) => void;
   reloadFrame: () => void;
+  /** Bring the frame from `base` (the text it shows) to `html` in place; it reloads itself if it can't. */
+  patchFrame?: (base: string, html: string) => void;
+  /** The page's text after the frame's own edits landed: what the frame now shows. */
+  onText?: (html: string) => void;
   notify: (text: string, error?: boolean) => void;
   /** An undo or redo is starting. */
   onHistory?: () => void;
@@ -54,8 +61,14 @@ export function useDesignEditing({
   const status = pushed?.status ?? local;
 
   const client = useMemo(() => (on && rel ? new DesignDocumentClient(api(), threadId, rel, newId) : null), [on, threadId, rel]);
-  const callbacks = useRef({ onStamp, reloadFrame, notify, onHistory });
-  callbacks.current = { onStamp, reloadFrame, notify, onHistory };
+  const callbacks = useRef({ onStamp, reloadFrame, patchFrame, onText, notify, onHistory });
+  callbacks.current = { onStamp, reloadFrame, patchFrame, onText, notify, onHistory };
+  /** Moves the frame from `base` to `html`: in place when the canvas can, else a reload. */
+  const toText = useCallback((base: string | null, html: string | null) => {
+    const patchFrame = callbacks.current.patchFrame;
+    if (patchFrame && base !== null && html !== null) patchFrame(base, html);
+    else callbacks.current.reloadFrame();
+  }, []);
 
   const showConflicts = useCallback((res: DesignHistoryResult) => {
     setDocumentId(res.status.documentId);
@@ -87,9 +100,13 @@ export function useDesignEditing({
     if (client && conflictCount > 0) void client.status().then(showConflicts).catch(() => undefined);
   }, [client, conflictCount, showConflicts]);
 
+  // After a run of plain edits, what the frame shows is the page's text: told once the run settles.
+  const textTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const textSoon = useRef<() => void>(() => {});
   const handle = useCallback((result: MutationResult, target: DesignMutation["target"], change: DesignChange) => {
     if (result.ok) {
       if (result.stampedId && "locator" in target) callbacks.current.onStamp(target.locator.path, result.stampedId);
+      textSoon.current();
       return;
     }
     if (result.reason === "read-only") {
@@ -105,13 +122,41 @@ export function useDesignEditing({
 
   // The frame just loaded the file as it is now, so the next edit is based on that. Without this, the first edit after an
   // agent's turn or any outside write would be refused as stale, though the user is looking at the latest page.
-  const sync = useCallback(() => {
-    if (!client) return;
-    void client
-      .status()
-      .then(showConflicts)
-      .catch(() => undefined);
-  }, [client, showConflicts]);
+  // `onText` hears the page's text, which the canvas checks against what the frame loaded.
+  const sync = useCallback(
+    (onText?: (html: string) => void) => {
+      if (!client) return;
+      void client
+        .status()
+        .then((res) => {
+          showConflicts(res);
+          onText?.(res.html);
+        })
+        .catch(() => undefined);
+    },
+    [client, showConflicts],
+  );
+
+  textSoon.current = () => {
+    if (!client || !callbacks.current.onText) return;
+    if (textTimer.current) clearTimeout(textTimer.current);
+    textTimer.current = setTimeout(() => {
+      textTimer.current = null;
+      void client
+        .status()
+        .then((res) => {
+          showConflicts(res);
+          callbacks.current.onText?.(res.html);
+        })
+        .catch(() => undefined);
+    }, 150);
+  };
+  useEffect(
+    () => () => {
+      if (textTimer.current) clearTimeout(textTimer.current);
+    },
+    [client],
+  );
 
   // One undo step per control: edits to the same key within GROUP_MS share a transaction.
   const groups = useRef(new Map<string, { id: string; at: number }>());
@@ -139,13 +184,21 @@ export function useDesignEditing({
   );
 
   /**
-   * Several edits as one undo step, each based on the one before; the frame reloads after, since the page's structure
-   * changed. `steps` gets a function that sends one edit and returns its result, or throws when it's refused.
+   * Several edits as one undo step, each based on the one before; the frame is patched to the result after, since the
+   * page's structure changed. `steps` gets a function that sends one edit and returns its result, or throws when it's refused.
    */
   const transaction = useCallback(
     async <T,>(steps: (step: (target: DesignMutation["target"], change: DesignChange) => Promise<Extract<MutationResult, { ok: true }>>) => Promise<T>): Promise<T | null> => {
       if (!client) return null;
       await flushWaiting.current();
+      // The text the frame shows now, so the result can be patched in rather than reloaded.
+      const before = await client.status().then(
+        (r) => {
+          showConflicts(r);
+          return r.html;
+        },
+        () => null,
+      );
       const id = newId();
       let refused = false;
       try {
@@ -162,12 +215,12 @@ export function useDesignEditing({
         if (!refused) callbacks.current.notify(err instanceof Error ? err.message : String(err), true);
         return null;
       } finally {
-        // The frame reads the file, so the file has to have these edits first.
-        await client.flush().catch(() => undefined);
-        callbacks.current.reloadFrame();
+        // Saved first: a reload, if the patch can't be made, reads the file.
+        const after = await client.flush().then((r) => r.html, () => null);
+        toText(before, after);
       }
     },
-    [client, handle],
+    [client, handle, showConflicts, toText],
   );
 
   // A drag writes at most every WRITE_MS, always ending on its last value.
@@ -204,17 +257,25 @@ export function useDesignEditing({
       if (!client) return;
       sendWaiting();
       try {
+        // Queued behind the edits just sent, so this is the text the frame shows.
+        const before = await client.status().then(
+        (r) => {
+          showConflicts(r);
+          return r.html;
+        },
+        () => null,
+      );
         const res = await run(client);
         showConflicts(res);
         const r = res.result;
-        if (r?.ok) callbacks.current.reloadFrame();
+        if (r?.ok) toText(before, res.html);
         else if (r?.reason === "external-change") setBanner({ kind: "boundary" });
         else if (r?.reason === "read-only") callbacks.current.notify("The agent is working on this page. Undo when the turn ends.");
       } catch (err) {
         callbacks.current.notify(err instanceof Error ? err.message : String(err), true);
       }
     },
-    [client, sendWaiting, showConflicts],
+    [client, sendWaiting, showConflicts, toText],
   );
   const undo = useCallback(() => {
     callbacks.current.onHistory?.();

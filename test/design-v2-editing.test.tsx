@@ -1,3 +1,4 @@
+import { patchDocument } from "../src/main/design/patch";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -214,6 +215,15 @@ describe("what a click can land on", () => {
   it("still serializes into a script that parses", () => {
     expect(() => new Function(bridgeScript(selectorFor))).not.toThrow();
     expect(bridgeScript(selectorFor)).toContain("isSelectableElement");
+  });
+
+  it("serializes the in-place patch on its own, with nothing from outside it", () => {
+    const alone = new Function(`return (${String(patchDocument)});`)() as typeof patchDocument;
+    expect(typeof alone).toBe("function");
+    expect(bridgeScript(selectorFor)).toContain("patchDocument");
+    // A file missing its parts gives up, so the canvas reloads.
+    const empty = { documentElement: null, head: null, body: null } as unknown as Document;
+    expect(alone(empty, empty, empty, () => false)).toEqual({ ok: false, reason: "parse" });
   });
 });
 
