@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { designDirName } from "../../shared/design";
 import type { DesignKitOption, DesignMutation } from "../../shared/design-mutation";
 import type { DesignIntent, DesignKitDoc, DesignKitEdit, DesignKitGroup, DesignKitPart, DesignKitSampleRequest, DesignMigrationPreview, DesignReach, DesignThemeCard, LiveUpdate, Thread } from "../../shared/types";
-import { addComposition, applyKitEdit, compositionWarnings, diffManifests, freeFolder, manifestIn, partCounts, partSample, partsUsingToken, projectKitFolders, projectSystemsDir, saveKitDraft, saveSystemCopy, seedKitDraft, forkKitSystem } from "./kit-library";
+import { addComposition, applyKitEdit, isStatefulPart, compositionWarnings, diffManifests, freeFolder, manifestIn, partCounts, partSample, partsUsingToken, projectKitFolders, projectSystemsDir, saveKitDraft, saveSystemCopy, seedKitDraft, forkKitSystem } from "./kit-library";
 import { migratePage, parseMigrations, type MigrationPlan } from "./kit-migrate";
 import { validateKitDir } from "./kit-schema";
 import { listDesignPages } from "./pages";
@@ -696,6 +696,7 @@ function toPart(c: NonNullable<ReturnType<typeof manifestIn>>["components"][numb
     snippet: c.snippet,
     importName: c.import?.name ?? null,
     packageName: c.import?.package ?? packageName,
+    stateful: isStatefulPart(c),
     isNew: c.status === "new",
     draft,
     usage: usage.get(c.ui) ?? { count: 0, files: 0 },

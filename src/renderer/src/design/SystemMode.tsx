@@ -602,7 +602,9 @@ function PartPage({ threadId, part, pageUrl, pageRel, scheme, rev, editable, onS
   useEffect(() => {
     if (tab === "usage") return;
     let live = true;
-    const request = tab === "variants" ? { ui: part.ui, states: true, ...(shown.length ? { variants: shown } : {}), ...(size ? { size } : {}) } : { ui: part.ui, props };
+    // Controls get the variant × state matrix; layouts, cards, tables and overlays a full-width gallery.
+    const pick = { ...(shown.length ? { variants: shown } : {}), ...(size ? { size } : {}) };
+    const request = tab === "variants" ? { ui: part.ui, ...(part.stateful ? { states: true } : { matrix: true }), ...pick } : { ui: part.ui, props };
     void api()
       .designKitSample(threadId, request)
       .then((rel) => {
@@ -615,7 +617,7 @@ function PartPage({ threadId, part, pageUrl, pageRel, scheme, rev, editable, onS
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [threadId, part.ui, tab, shown.join("|"), size, JSON.stringify(props), rev, pageUrl]);
+  }, [threadId, part.ui, part.stateful, tab, shown.join("|"), size, JSON.stringify(props), rev, pageUrl]);
 
   const edit = (e: Parameters<ReturnType<typeof api>["designKitEdit"]>[1], label: string): void => {
     void api()
@@ -657,7 +659,7 @@ function PartPage({ threadId, part, pageUrl, pageRel, scheme, rev, editable, onS
         <div className="segmented compact lib-tabs" role="tablist">
           {(["variants", "playground", "usage"] as const).map((t) => (
             <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
-              {t === "variants" ? "Variants" : t === "playground" ? "Playground" : `Usage ${part.usage.count}`}
+              {t === "variants" ? (variants.length ? "Variants" : "Overview") : t === "playground" ? "Playground" : `Usage ${part.usage.count}`}
             </button>
           ))}
         </div>
@@ -678,7 +680,7 @@ function PartPage({ threadId, part, pageUrl, pageRel, scheme, rev, editable, onS
       </div>
       <aside className="lib-panel" aria-label={`${part.name} properties`}>
         <h2 className="lib-panel-title">{part.name}</h2>
-        {tab === "variants" && (variants.length > 0 || sizes.length > 0) && (
+        {tab === "variants" && (variants.length > 0 || (part.stateful && sizes.length > 0)) && (
           <div className="lib-card">
             <div className="lib-card-label">Canvas shows</div>
             {variants.length > 0 && (
@@ -690,7 +692,7 @@ function PartPage({ threadId, part, pageUrl, pageRel, scheme, rev, editable, onS
                 ))}
               </div>
             )}
-            {sizes.length > 0 && (
+            {sizes.length > 0 && (part.stateful || variants.length > 0) && (
               <div className="lib-chips" role="group" aria-label="Size shown">
                 {sizes.map((v) => (
                   <button key={v} className={"lib-chip" + (size === v ? " on" : "")} aria-pressed={size === v} onClick={() => setSize(v)}>
@@ -752,7 +754,10 @@ function PartPage({ threadId, part, pageUrl, pageRel, scheme, rev, editable, onS
                 )}
                 {adding === "variant" && (
                   <div className="lib-add-form">
-                    <input className="text-input" autoFocus placeholder="Name" aria-label="Variant name" value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => (e.key === "Enter" ? addNow() : e.key === "Escape" && setAdding(null))} />
+                    <label className="lib-prop">
+                      <span className="lib-prop-label">Name</span>
+                      <input className="text-input" autoFocus placeholder="brand" aria-label="Variant name" value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => (e.key === "Enter" ? addNow() : e.key === "Escape" && setAdding(null))} />
+                    </label>
                     <label className="lib-prop">
                       <span className="lib-prop-label">Copy from</span>
                       <Select<string> value={copyFrom || source} options={variants.map((v) => ({ value: v, label: v }))} onChange={setCopyFrom} ariaLabel="Copy from" />
@@ -791,9 +796,20 @@ function PartPage({ threadId, part, pageUrl, pageRel, scheme, rev, editable, onS
               )}
               {adding === "prop" && (
                 <div className="lib-add-form">
-                  <input className="text-input" autoFocus placeholder="Name" aria-label="Prop name" value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setAdding(null)} />
-                  <Select<"text" | "boolean" | "choice"> value={newType} options={[{ value: "text", label: "Text" }, { value: "boolean", label: "On or off" }, { value: "choice", label: "Choice" }]} onChange={setNewType} ariaLabel="Prop type" />
-                  {newType === "choice" && <input className="text-input" placeholder="Options, comma separated" aria-label="Options" value={newOptions} onChange={(e) => setNewOptions(e.target.value)} />}
+                  <label className="lib-prop">
+                    <span className="lib-prop-label">Name</span>
+                    <input className="text-input" autoFocus placeholder="icon-side" aria-label="Prop name" value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setAdding(null)} />
+                  </label>
+                  <label className="lib-prop">
+                    <span className="lib-prop-label">Type</span>
+                    <Select<"text" | "boolean" | "choice"> value={newType} options={[{ value: "text", label: "Text" }, { value: "boolean", label: "On or off" }, { value: "choice", label: "Choice" }]} onChange={setNewType} ariaLabel="Prop type" />
+                  </label>
+                  {newType === "choice" && (
+                    <label className="lib-prop">
+                      <span className="lib-prop-label">Options</span>
+                      <input className="text-input" placeholder="left, right" aria-label="Options, comma separated" value={newOptions} onChange={(e) => setNewOptions(e.target.value)} />
+                    </label>
+                  )}
                   <div className="lib-picker-actions">
                     <button className="button ghost" onClick={() => setAdding(null)}>
                       Cancel
@@ -805,7 +821,7 @@ function PartPage({ threadId, part, pageUrl, pageRel, scheme, rev, editable, onS
                 </div>
               )}
             </div>
-            {tab === "variants" && (
+            {tab === "variants" && part.stateful && (
               <div className="lib-card">
                 <div className="lib-card-label">States</div>
                 {["Normal", "Hover", "Focus", "Disabled"].map((s) => (

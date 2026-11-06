@@ -1035,6 +1035,8 @@ export interface DesignKitPart {
   snippet: string;
   importName: string | null;
   packageName: string | null;
+  /** A control whose states (hover, focus, disabled) are shown as a matrix; anything else is shown as a gallery. */
+  stateful: boolean;
   /** The agent added it while building a page. */
   isNew: boolean;
   /** It's only in this thread's draft, waiting for `Save to kit`. */

@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BRAND_TOKENS } from "../src/shared/design";
-import { addComposition, applyKitEdit, applyTokenOverrides, brandEdits, forcedStateCss, cleanCompositionHtml, compositionWarnings, forkKitSystem, freeFolder, manifestIn, partCounts, partSample, partsUsingToken, saveKitDraft, saveSystemCopy, seedKitDraft, systemSlug } from "../src/main/design/kit-library";
+import { addComposition, applyKitEdit, applyTokenOverrides, brandEdits, forcedStateCss, isStatefulPart, cleanCompositionHtml, compositionWarnings, forkKitSystem, freeFolder, manifestIn, partCounts, partSample, partsUsingToken, saveKitDraft, saveSystemCopy, seedKitDraft, systemSlug } from "../src/main/design/kit-library";
 import { migratePage, parseMigrations } from "../src/main/design/kit-migrate";
 import { parseKitManifest, validateKitDir } from "../src/main/design/kit-schema";
 import { listDesignSystems, listKitSystems, materializeSystem } from "../src/main/design/systems";
@@ -258,11 +258,29 @@ describe("hand edits to a kit", () => {
 
 describe("part samples", () => {
   const part = { ui: "button", snippet: '<button data-ui="button">A</button><button data-ui="button">B</button>', props: [{ name: "variant", options: ["solid", "ghost"] }, { name: "size", options: ["sm", "md"] }] };
-  it("draws a matrix of variants by sizes, one instance each", () => {
-    const html = partSample(part, "system", { matrix: true });
-    expect(html.match(/data-variant="solid"/g)).toHaveLength(2);
-    expect(html.match(/data-variant="ghost"/g)).toHaveLength(2);
+  it("draws a gallery of the picked variants, one full-width instance each", () => {
+    const html = partSample(part, "system", { matrix: true, variants: ["ghost"] });
+    expect(html.match(/data-variant="ghost"/g)).toHaveLength(1);
+    expect(html).not.toContain('data-variant="solid"');
     expect(html).toContain('href="system/ui.css"');
+  });
+  it("shows the kit's whole demo for a part with no variants, with overlays open in place", () => {
+    const html = partSample({ ui: "modal", snippet: '<button data-dialog-open="m">Open</button><dialog data-ui="modal" id="m"><p>Hi</p></dialog>', props: [] }, "system", { matrix: true });
+    expect(html).toContain('<dialog open data-ui="modal"');
+    expect(html).toContain("Open</button>");
+  });
+  it("tells controls, which get a state matrix, from layouts and overlays, which don't", () => {
+    expect(isStatefulPart({ ui: "button", snippet: '<button data-ui="button">Go</button>' })).toBe(true);
+    expect(isStatefulPart({ ui: "text-field", snippet: '<div data-ui="text-field"><label>A</label><div><input></div></div>' })).toBe(true);
+    expect(isStatefulPart({ ui: "card", snippet: `<div data-ui="card">${"<p>x</p>".repeat(8)}<button>More</button></div>` })).toBe(false);
+    expect(isStatefulPart({ ui: "stack", snippet: '<div data-ui="stack"><p>a</p></div>' })).toBe(false);
+    expect(isStatefulPart({ ui: "dialog", snippet: '<dialog data-ui="dialog"><button>x</button></dialog>' })).toBe(false);
+    expect(isStatefulPart({ ui: "stack", snippet: '<div data-ui="stack"><h3>Van</h3><button>Go</button></div>' })).toBe(false);
+    expect(isStatefulPart({ ui: "checkbox", snippet: '<label data-ui="checkbox"><input type="checkbox"> On</label>' })).toBe(true);
+  });
+  it("disables the controls inside a wrapper in the Disabled column", () => {
+    const html = partSample({ ui: "text-field", snippet: '<div data-ui="text-field"><input id="a"></div>', props: [] }, "system", { states: true });
+    expect(html).toMatch(/<input id="a" disabled="">/);
   });
   it("draws one instance with the props given", () => {
     const html = partSample(part, "kit", { props: { variant: "ghost", disabled: "true", size: "false" } });
@@ -285,7 +303,7 @@ describe("part samples", () => {
   });
   it("lets hover and focus rules match the forced states too, nested or not, and rebases urls", () => {
     expect(forcedStateCss('.a { &:hover { x: 1 } &:focus-visible, &:focus-within { y: 2 } }\n.b:focus { background: url(fonts/a.woff2) url("data:x") url(/abs) }', "system")).toBe(
-      '.a { &:is(:hover, [data-cq-hover]) { x: 1 } &:is(:focus-visible, [data-cq-focus]), &:focus-within { y: 2 } }\n.b:is(:focus, [data-cq-focus]) { background: url(system/fonts/a.woff2) url("data:x") url(/abs) }',
+      '.a { &:is(:hover, [data-cq-hover]) { x: 1 } &:is(:focus-visible, [data-cq-focus]), &:is(:focus-within, [data-cq-focus]) { y: 2 } }\n.b:is(:focus, [data-cq-focus]) { background: url(system/fonts/a.woff2) url("data:x") url(/abs) }',
     );
   });
 });

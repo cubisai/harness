@@ -392,8 +392,27 @@ export function brandEdits(css: string, hex: string): { name: string; light: str
 }
 
 /** A part's first element with these props set: the snippet is a demo, often several in a row. */
+const CONTROL_TAGS = new Set(["button", "a", "input", "select", "textarea"]);
+const FIELD_TAGS = new Set(["input", "select", "textarea"]);
+const CONTROL_ROLES = new Set(["button", "checkbox", "radio", "switch", "tab", "slider", "option", "menuitem", "combobox", "textbox"]);
+const isControl = (e: El5): boolean => CONTROL_TAGS.has(e.tagName) || CONTROL_ROLES.has(e.attrs.find((a) => a.name === "role")?.value ?? "");
+const firstInstance = (snippet: string, ui: string): El5 | undefined => walk(parseFragment(snippet)).find((e) => e.attrs.some((a) => a.name === "data-ui" && a.value === ui));
+
+/**
+ * Whether a part is a control whose states are worth a matrix (Normal, Hover, Focus, Disabled): it is one, or it's a
+ * small wrapper around one (a text field). Layouts, cards, tables and overlays get a gallery instead.
+ */
+export function isStatefulPart(part: { ui: string; snippet: string }): boolean {
+  const root = firstInstance(part.snippet, part.ui);
+  if (!root || root.tagName === "dialog" || root.attrs.some((a) => a.name === "popover")) return false;
+  if (isControl(root)) return true;
+  // A small wrapper around one form field (a text field, a labelled checkbox), not a card or a bar that holds buttons.
+  const inside = walk(root);
+  return inside.length <= 6 && inside.filter((e) => FIELD_TAGS.has(e.tagName)).length === 1;
+}
+
 function instanceHtml(snippet: string, ui: string, props: Record<string, string>, extra: Record<string, string> = {}): string {
-  const found = walk(parseFragment(snippet)).find((e) => e.attrs.some((a) => a.name === "data-ui" && a.value === ui));
+  const found = firstInstance(snippet, ui);
   if (!found) return snippet;
   for (const [name, value] of Object.entries(props)) {
     const key = `data-${name}`;
@@ -401,8 +420,11 @@ function instanceHtml(snippet: string, ui: string, props: Record<string, string>
     if (value !== "false" && value !== "") found.attrs.push({ name: key, value: value === "true" ? "" : value });
   }
   for (const [name, value] of Object.entries(extra)) {
-    found.attrs = found.attrs.filter((a) => a.name !== name);
-    found.attrs.push({ name, value });
+    // `disabled` reaches the controls inside a wrapper too, so a text field's input greys out with it.
+    for (const el of name === "disabled" ? [found, ...walk(found).filter(isControl)] : [found]) {
+      el.attrs = el.attrs.filter((a) => a.name !== name);
+      el.attrs.push({ name, value });
+    }
   }
   const holder = parseFragment("");
   holder.childNodes = [found];
@@ -412,8 +434,8 @@ function instanceHtml(snippet: string, ui: string, props: Record<string, string>
 const escapeText = (text: string): string => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 /**
- * A page showing one part, linked to the kit in `folder`: a state matrix of its variants and sizes, or one instance with
- * the given props. Its own scaffold is inline; only the kit's styles draw the part.
+ * A page showing one part, linked to the kit in `folder`: a variant × state matrix (controls), a gallery of its variants
+ * at full width, or one instance with the given props. Its own scaffold is inline; only the kit's styles draw the part.
  */
 export function partSample(part: { ui: string; snippet: string; props: { name: string; options?: string[] | undefined; default?: string | boolean | undefined }[] }, folder: string, request: KitSampleRequest, uiCss = ""): string {
   const variantProp = part.props.find((p) => p.name === "variant");
@@ -437,38 +459,53 @@ export function partSample(part: { ui: string; snippet: string; props: { name: s
       const label = variant ? `${escapeText(variant)}${variant === variantProp?.default ? ' <span class="cq-tag">default</span>' : ""}` : escapeText(part.ui);
       return `<tr><th class="cq-label">${label}</th>${states.map((s) => `<td>${instanceHtml(part.snippet, part.ui, props, s.extra)}</td>`).join("")}</tr>`;
     });
-    body = `<table class="cq-matrix"><thead>${head}</thead><tbody>${lines.join("")}</tbody></table>`;
+    body = `<div class="cq-stage cq-flush"><table class="cq-matrix"><thead>${head}</thead><tbody>${lines.join("")}</tbody></table></div>`;
     forced = forcedStateCss(uiCss, folder);
-  } else if (request.matrix && variants.length) {
-    body = variants
-      .map((variant) => {
-        const cells = (sizes.length ? sizes : [""]).map((size) => `<div class="cq-cell">${instanceHtml(part.snippet, part.ui, { ...(request.props ?? {}), variant, ...(size ? { size } : {}) })}</div>`).join("");
-        return `<section class="cq-row"><h3 class="cq-label">${escapeText(variant)}</h3><div class="cq-cells">${cells}</div></section>`;
-      })
-      .join("");
+  } else if (request.matrix) {
+    // A gallery: each picked variant at full width, or the kit's own demo when the part has none.
+    const rows = variants.length ? (request.variants?.length ? variants.filter((v) => request.variants!.includes(v)) : variants) : [];
+    const size: Record<string, string> = request.size && sizes.includes(request.size) ? { size: request.size } : {};
+    body = rows.length
+      ? rows
+          .map((variant) => {
+            const label = `${escapeText(variant)}${variant === variantProp?.default ? ' <span class="cq-tag">default</span>' : ""}`;
+            return `<section class="cq-section"><h3 class="cq-label">${label}</h3><div class="cq-stage">${instanceHtml(part.snippet, part.ui, { ...(request.props ?? {}), variant, ...size })}</div></section>`;
+          })
+          .join("")
+      : `<section class="cq-section"><div class="cq-stage cq-demo">${part.snippet}</div></section>`;
   } else if (request.props && Object.keys(request.props).length) {
-    body = `<div class="cq-one">${instanceHtml(part.snippet, part.ui, request.props)}</div>`;
+    body = `<section class="cq-section"><div class="cq-stage cq-demo">${instanceHtml(part.snippet, part.ui, request.props)}</div></section>`;
   } else {
-    body = `<div class="cq-one">${part.snippet}</div>`;
+    body = `<section class="cq-section"><div class="cq-stage cq-demo">${part.snippet}</div></section>`;
   }
+  // Overlays open in place, so a dialog or menu shows rather than its trigger alone.
+  body = body.replace(/<dialog\b(?![^>]*\sopen\b)/g, "<dialog open");
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="${folder}/tokens.css">${forced ? "" : `<link rel="stylesheet" href="${folder}/ui.css">`}
 <style>
 html,body{margin:0;background:var(--color-bg);color:var(--color-text);font-family:var(--font-sans,system-ui)}
-body{padding:32px;box-sizing:border-box}
-.cq-row{display:grid;gap:12px;margin:0 0 32px}
-.cq-label{margin:0;font:500 12px/16px system-ui;color:var(--color-text-muted);opacity:.85}
-.cq-cells{display:flex;flex-wrap:wrap;gap:16px;align-items:center}
-.cq-one{display:flex;flex-direction:column;gap:16px;align-items:flex-start}
-.cq-matrix{border-collapse:separate;border-spacing:0;border:1px solid var(--color-border);border-radius:8px}
-.cq-matrix th,.cq-matrix td{padding:16px 20px;border-bottom:1px solid var(--color-border);border-left:1px solid var(--color-border);text-align:center;vertical-align:middle}
-.cq-matrix tr>:first-child{border-left:0;text-align:left}
-.cq-matrix tbody tr:last-child>*{border-bottom:0}
-.cq-matrix thead th{padding:8px 20px;font:500 12px/16px system-ui;color:var(--color-text-muted)}
-.cq-matrix .cq-label{font:500 12px/16px system-ui;color:var(--color-text);white-space:nowrap}
-.cq-tag{margin-left:6px;padding:1px 6px;border:1px solid var(--color-border);border-radius:999px;font-size:11px;color:var(--color-text-muted)}
-</style>${forced ? `<style>${forced.replace(/<\/style/gi, "<\\/style")}</style>` : ""}</head><body>${body}<script src="${folder}/ui.js"></script></body></html>
+body{padding:24px 28px 8px;box-sizing:border-box}
+.cq-section{display:grid;gap:10px;margin:0 0 28px}
+.cq-label{display:flex;align-items:center;gap:8px;margin:0;font:600 13px/18px system-ui;color:var(--color-text)}
+.cq-label::first-letter{text-transform:uppercase}
+.cq-tag{padding:1px 7px;border:1px solid var(--color-border);border-radius:999px;font:400 11px/15px system-ui;color:var(--color-text-muted)}
+.cq-stage{position:relative;transform:translateZ(0);display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:16px;min-width:0;min-height:180px;padding:40px;box-sizing:border-box;border:1px solid var(--color-border);border-radius:12px}
+.cq-stage>*{max-width:100%}
+.cq-demo{min-height:320px}
+.cq-stage:has([popover]){align-items:flex-start;min-height:360px}
+.cq-flush{display:block;min-height:0;padding:8px 24px}
+.cq-stage dialog[open]{position:static;inset:auto;margin:0;transform:none;max-width:100%}
+.cq-stage dialog[open]::backdrop{display:none}
+.cq-matrix{width:100%;table-layout:fixed;border-collapse:collapse}
+.cq-matrix th,.cq-matrix td{padding:20px 12px;text-align:center;vertical-align:middle;overflow:hidden}
+.cq-matrix tbody tr{border-top:1px solid var(--color-border)}
+.cq-matrix td>*{margin-inline:auto;max-width:100%}
+.cq-matrix tr>:first-child{width:128px;padding-left:0;text-align:left}
+.cq-matrix thead th{padding:14px 12px 10px;font:500 12px/16px system-ui;color:var(--color-text-muted)}
+.cq-matrix .cq-label{display:table-cell;font-weight:500;white-space:nowrap;text-overflow:ellipsis}
+.cq-matrix .cq-tag{margin-left:6px}
+</style>${forced ? `<style>${forced.replace(/<\/style/gi, "<\\/style")}</style>` : ""}</head><body>${body}<script src="${folder}/ui.js"></script><script>for(const p of document.querySelectorAll(".cq-stage [popover]"))try{p.showPopover()}catch{}</script></body></html>
 `;
 }
 
@@ -484,6 +521,7 @@ export function forcedStateCss(css: string, folder: string): string {
     .replace(/:hover(?![\w-])/g, ":is(:hover, [data-cq-hover])")
     .replace(/:focus-visible(?![\w-])/g, ":is(:focus-visible, [data-cq-focus])")
     .replace(/:focus(?![\w-])/g, ":is(:focus, [data-cq-focus])")
+    .replace(/:focus-within(?![\w-])/g, ":is(:focus-within, [data-cq-focus])")
     .replace(/url\(\s*(["']?)(?![a-z][\w+.-]*:|\/|#)([^"')]+)\1\s*\)/gi, (_m, q: string, path: string) => `url(${q}${folder}/${path}${q})`);
 }
 
