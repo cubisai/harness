@@ -899,9 +899,16 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-customize-gap { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; }
 .design-customize-gap input { flex: 1; min-width: 0; accent-color: var(--primary); }
 .design-customize-code { margin-top: 8px; border: 1px solid var(--hairline); border-radius: var(--radius-s); background: var(--bg-subtle); min-width: 0; }
-.design-customize-code-head { display: flex; align-items: center; justify-content: space-between; min-height: 28px; padding: 0 2px 0 8px; font-size: 11.5px; }
+.design-customize-code-head { display: flex; align-items: center; gap: 2px; min-height: 28px; padding: 0 2px; font-size: 11.5px; }
 .design-customize-code-body { display: block; padding: 6px 8px 8px; font: 11.5px/1.5 var(--mono); color: var(--text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; border-top: 1px solid var(--hairline); }
 .design-customize-chev { transform: rotate(-90deg); }
+.design-customize > .design-customize-code { margin: 0 12px 12px; }
+.design-customize-code-head .design-customize-source { display: inline-flex; align-items: center; gap: 6px; flex: 1; min-width: 0; font-family: var(--mono); font-size: 11.5px; }
+.design-customize-code-kind { padding: 0 8px; font-size: 10.5px; color: var(--text-tertiary); }
+.design-customize-prop-icon { flex-shrink: 0; margin-right: 6px; vertical-align: -2px; color: var(--text-tertiary); }
+.design-customize-set { width: 6px; height: 6px; margin-left: 6px; padding: 0; border: 0; border-radius: 50%; background: var(--primary); vertical-align: 1px; cursor: pointer; }
+.design-customize-set:hover { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent); }
+.design-customize-set:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 @media (max-width: 1179px) {
   .studio-fold, .studio-save-label { display: none; }
   .design-save-dot { display: block; }
@@ -1226,7 +1233,7 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-customize-fields:disabled { opacity: .5; }
 .design-customize-row { display: flex; align-items: center; gap: 8px; min-height: 34px; min-width: 0; }
 .design-customize-row.stacked { flex-direction: column; align-items: stretch; gap: 4px; padding-bottom: 8px; }
-.design-customize-row .design-inspector-row-label { width: 72px; }
+.design-customize-row .design-inspector-row-label { width: 96px; }
 .design-customize-row.stacked .design-inspector-row-label { width: auto; }
 .design-customize-row .text-input { flex: 1; min-width: 0; height: 28px; padding: 0 8px; font-family: var(--font); font-size: 12.5px; }
 .design-customize-segments { display: flex; width: 100%; min-width: 0; }

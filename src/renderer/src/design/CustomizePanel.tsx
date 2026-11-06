@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowLeft, ChevronDown, Columns3, LayoutGrid, Rows3 } from "lucide-react";
+import { ArrowLeft, ChevronDown, Code2, Columns3, Diamond, LayoutGrid, Rows3, ToggleLeft, Type } from "lucide-react";
 import { elementLabel, type SelectedElement } from "../../../shared/selection";
 import { api } from "../api";
 import { Select } from "../components/Select";
@@ -52,8 +52,14 @@ const OWN_STYLES = ["background-color", "color", "border-color", "font-size", "l
 /** A kit's declared prop: its options (the first is the default), or none for an on or off one. */
 interface KitProp {
   name: string;
+  /** `choice`, `boolean` or `text`, from the kit's components.json. */
+  type?: string;
+  label?: string;
   options?: string[] | null;
 }
+
+/** A prop row's lead icon, by the prop's type. */
+const PROP_ICONS: Record<string, typeof Diamond> = { choice: Diamond, boolean: ToggleLeft, text: Type };
 
 /** An attribute's value in an element's start tag, or null. `html` comes from the page, so this only reads it. */
 export function attrOf(html: string, name: string): string | null {
@@ -304,7 +310,6 @@ export function CustomizePanel({
         <input className="text-input" type="search" placeholder="Filter props and values" aria-label="Filter props and values" value={filter} onChange={(e) => setFilter(e.target.value)} />
       </div>
       <fieldset className="design-customize-fields" disabled={readOnly}>
-        {flowOf(startAttrs(el.html)) && shows("layout", "flow", "gap", "columns", "align") && <LayoutCard threadId={threadId} designDir={designDir} page={pageRel} reloadKey={reloadKey} el={el} parts={parts} handlers={handlers} onCode={onCode} />}
         {(canHoldText(el) || isField(el)) && shows("content", "value", "placeholder", "text") && (
           <Card title="Content">
             {canHoldText(el) && (
@@ -324,6 +329,31 @@ export function CustomizePanel({
             )}
           </Card>
         )}
+        {propRows.length > 0 && (
+          <Card title="Component">
+            {propRows.map((p) => {
+              const name = `data-${p.name}`;
+              const current = attrOf(el.html, name);
+              const options = p.options ?? null;
+              const type = p.type ?? (options ? "choice" : "boolean");
+              const label = p.label || p.name.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
+              return (
+                <Row key={p.name} label={label} stacked={type !== "boolean"} icon={PROP_ICONS[type]} onReset={current !== null ? () => handlers.onAttr(el, name, null) : undefined}>
+                  {type === "text" ? (
+                    <input className="text-input" key={`p-${el.selector}-${p.name}`} aria-label={label} defaultValue={current ?? ""} onChange={(e) => handlers.onAttr(el, name, e.target.value || null)} />
+                  ) : options && options.length > 4 ? (
+                    <Select<string> value={current ?? options[0] ?? ""} options={options.map((o) => ({ value: o, label: o }))} onChange={(v) => handlers.onAttr(el, name, v === options[0] ? null : v)} ariaLabel={label} className="ghost-select" />
+                  ) : options ? (
+                    <Segments label={label} options={options.map((o) => ({ label: o, value: o }))} value={current ?? options[0] ?? null} onPick={(v) => handlers.onAttr(el, name, v === options[0] ? null : v)} />
+                  ) : (
+                    <Toggle label={label} on={current !== null && current !== "false"} onChange={(on) => handlers.onAttr(el, name, on ? "true" : null)} />
+                  )}
+                </Row>
+              );
+            })}
+          </Card>
+        )}
+        {flowOf(startAttrs(el.html)) && shows("layout", "flow", "gap", "columns", "align") && <LayoutCard el={el} parts={parts} handlers={handlers} />}
         {isText && shows("text", "render", "variant", "color", "tag", "type") && (
           <Card title="Text">
             {retaggable && handlers.onRetag && (
@@ -373,26 +403,6 @@ export function CustomizePanel({
                 <TokenSelect label="Color" tokens={tokenList} value={colourTokenOf(tokenList, "color", inlineStyle(inline, "color"), style.color)} computed={style.color ?? ""} onPick={(token) => setStyle("color", `var(${token})`)} />
               </Row>
             )}
-          </Card>
-        )}
-        {propRows.length > 0 && (
-          <Card title="Component">
-            {propRows.map((p) => {
-              const name = `data-${p.name}`;
-              const current = attrOf(el.html, name);
-              const options = p.options ?? null;
-              return (
-                <Row key={p.name} label={p.name.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase())} stacked={Boolean(options)}>
-                  {options && options.length > 4 ? (
-                    <Select<string> value={current ?? options[0] ?? ""} options={options.map((o) => ({ value: o, label: o }))} onChange={(v) => handlers.onAttr(el, name, v === options[0] ? null : v)} ariaLabel={p.name} className="ghost-select" />
-                  ) : options ? (
-                    <Segments label={p.name} options={options.map((o) => ({ label: o, value: o }))} value={current ?? options[0] ?? null} onPick={(v) => handlers.onAttr(el, name, v === options[0] ? null : v)} />
-                  ) : (
-                    <Toggle label={p.name} on={current !== null && current !== "false"} onChange={(on) => handlers.onAttr(el, name, on ? "true" : null)} />
-                  )}
-                </Row>
-              );
-            })}
           </Card>
         )}
         {canDisable(el) && shows("state", "disabled") && (
@@ -448,6 +458,7 @@ export function CustomizePanel({
           </button>
         </div>
       </fieldset>
+      <SourceRow threadId={threadId} designDir={designDir} page={pageRel} reloadKey={reloadKey} el={el} onCode={onCode} />
     </aside>
   );
 }
@@ -461,24 +472,12 @@ const ALIGNS = ["start", "center", "end", "stretch"];
 
 /**
  * Stack and Grid: Flow changes the component, not just its CSS, and each flow keeps its last values. Gap writes the
- * kit's token name. The code under the controls is what's really in the file, read back after each change.
+ * kit's token name.
  */
-function LayoutCard({ threadId, designDir, page, reloadKey, el, parts, handlers, onCode }: { threadId: string; designDir: string; page: string; reloadKey: string; el: SelectedElement; parts: KitPart[]; handlers: CustomizeHandlers; onCode?: (el: SelectedElement) => void }) {
+function LayoutCard({ el, parts, handlers }: { el: SelectedElement; parts: KitPart[]; handlers: CustomizeHandlers }) {
   const attrs = startAttrs(el.html);
   const flow = flowOf(attrs);
   const memory = useRef<Record<string, Partial<Record<string, string>>>>({});
-  const [source, setSource] = useState<string | null>(null);
-  const [open, setOpen] = useState(true);
-  useEffect(() => {
-    let live = true;
-    void api()
-      .readArtifact(threadId, `${designDir}/${page}`)
-      .then((res) => live && setSource(res.ok && typeof res.text === "string" ? res.text : null))
-      .catch(() => live && setSource(null));
-    return () => {
-      live = false;
-    };
-  }, [threadId, designDir, page, reloadKey]);
   if (!flow) return null;
   const part = parts.find((p) => p.ui === attrs["data-ui"]) ?? null;
   const stackPart = parts.find((p) => p.ui === "stack") ?? part;
@@ -492,7 +491,6 @@ function LayoutCard({ threadId, designDir, page, reloadKey, el, parts, handlers,
     memory.current[el.selector] = { ...memory.current[el.selector], ...attrs };
     handlers.onAttrs(el, flowChanges(attrs, next, memory.current[el.selector]), key);
   };
-  const line = source ? lineOf(source, el.id, el.html) : null;
   const gapIndex = Math.max(0, gaps.indexOf(gapName));
   return (
     <Card title="Layout">
@@ -521,19 +519,43 @@ function LayoutCard({ threadId, designDir, page, reloadKey, el, parts, handlers,
       <Row label={flow === "grid" ? "Place in cell" : "Align"} stacked>
         <Segments label="Align" options={ALIGNS.map((a) => ({ label: a[0]!.toUpperCase() + a.slice(1), value: a }))} value={attrs["data-align"] ?? null} onPick={(a) => set("data-align", a)} />
       </Row>
-      <div className="design-customize-code">
-        <div className="design-customize-code-head">
-          <button className="link-button" title="Open this line in the Code view" onClick={() => onCode?.(el)}>
-            {page}
-            {line ? `:${line}` : ""}
-          </button>
-          <button className="icon-button" aria-label={open ? "Hide the code" : "Show the code"} aria-expanded={open} onClick={() => setOpen(!open)}>
-            <ChevronDown size={14} strokeWidth={1.75} aria-hidden className={open ? "" : "design-customize-chev"} />
-          </button>
-        </div>
-        {open && <code className="design-customize-code-body">{startTagOf(el.html)}</code>}
-      </div>
     </Card>
+  );
+}
+
+/**
+ * The panel's last row: where the element is in the page's source (`index.html:42`, opens the Code view there), and its
+ * start tag as it really is in the file, read back after each change.
+ */
+function SourceRow({ threadId, designDir, page, reloadKey, el, onCode }: { threadId: string; designDir: string; page: string; reloadKey: string; el: SelectedElement; onCode?: (el: SelectedElement) => void }) {
+  const [source, setSource] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void api()
+      .readArtifact(threadId, `${designDir}/${page}`)
+      .then((res) => live && setSource(res.ok && typeof res.text === "string" ? res.text : null))
+      .catch(() => live && setSource(null));
+    return () => {
+      live = false;
+    };
+  }, [threadId, designDir, page, reloadKey]);
+  const line = source ? lineOf(source, el.id, el.html) : null;
+  return (
+    <div className="design-customize-code">
+      <div className="design-customize-code-head">
+        <button className="icon-button" aria-label={open ? "Hide the code" : "Show the code"} aria-expanded={open} onClick={() => setOpen(!open)}>
+          <ChevronDown size={14} strokeWidth={1.75} aria-hidden className={open ? "" : "design-customize-chev"} />
+        </button>
+        <button className="link-button design-customize-source" title="Open this line in the Code view" onClick={() => onCode?.(el)}>
+          <Code2 size={13} strokeWidth={1.75} aria-hidden />
+          {page}
+          {line ? `:${line}` : ""}
+        </button>
+        <span className="design-customize-code-kind">HTML</span>
+      </div>
+      {open && <code className="design-customize-code-body">{startTagOf(el.html)}</code>}
+    </div>
   );
 }
 
@@ -566,10 +588,15 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function Row({ label, stacked = false, children }: { label: string; stacked?: boolean; children: ReactNode }) {
+/** A labelled control. A typed prop leads with its type's icon; one set on the element shows a dot that resets it. */
+function Row({ label, stacked = false, icon: Icon, onReset, children }: { label: string; stacked?: boolean; icon?: typeof Diamond; onReset?: () => void; children: ReactNode }) {
   return (
     <div className={`design-customize-row${stacked ? " stacked" : ""}`}>
-      <span className="design-inspector-row-label">{label}</span>
+      <span className="design-inspector-row-label" title={label}>
+        {Icon && <Icon size={12} strokeWidth={1.75} aria-hidden className="design-customize-prop-icon" />}
+        {label}
+        {onReset && <button type="button" className="design-customize-set" aria-label={`Reset ${label}`} title={`Set here. Click to reset ${label} to the default`} onClick={onReset} />}
+      </span>
       {children}
     </div>
   );
