@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { selectorFor } from "../src/main/browser/picker";
 import { bridgeScript } from "../src/main/design/bridge";
 import { collectSlop } from "../src/main/design/lint";
-import { ACTIONS, VariantCycler, cycleStep } from "../src/renderer/src/design/ElementBar";
+import { ACTION_LABELS, VariantCycler, cycleStep } from "../src/renderer/src/design/variants";
 import { readBridgeMessage } from "../src/renderer/src/design/frame";
 
 const noop = () => {};
@@ -79,7 +79,8 @@ describe("variant skill and action notes", () => {
   });
 
   it("have one short note per action except Freeform", () => {
-    for (const a of ACTIONS) {
+    for (const [id, label] of Object.entries(ACTION_LABELS)) {
+      const a = { id, label };
       const file = join(RESOURCES, "design-actions", `${a.id}.md`);
       if (a.id === "freeform") {
         expect(existsSync(file)).toBe(false);

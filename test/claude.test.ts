@@ -1213,6 +1213,14 @@ describe("harnessToolOptions", () => {
     expect(opts.allowedTools).toEqual([`mcp__${TOOL_SERVER}__browser_snapshot`, `mcp__${TOOL_SERVER}__${MEMORY_READ_TOOL}`, `mcp__${TOOL_SERVER}__${MEMORY_WRITE_TOOL}`]);
   });
 
+  it("keeps a design thread's own tools out of tool search, so a bare `design_*` name is never missed", () => {
+    const opts = harnessToolOptions([tool("design_tokens_apply"), tool("design_screenshot"), tool("browser_snapshot")]);
+    const registered = (opts.mcpServers?.[TOOL_SERVER] as unknown as { instance: { _registeredTools: Record<string, { _meta?: Record<string, unknown> }> } }).instance._registeredTools;
+    expect(registered["design_tokens_apply"]!._meta?.["anthropic/alwaysLoad"]).toBe(true);
+    expect(registered["design_screenshot"]!._meta?.["anthropic/alwaysLoad"]).toBe(true);
+    expect(registered["browser_snapshot"]!._meta?.["anthropic/alwaysLoad"]).toBeUndefined();
+  });
+
   it("passes the tool context through to each tool's run", async () => {
     const seen: (ToolContext | undefined)[] = [];
     const record: HarnessTool = {

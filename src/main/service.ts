@@ -40,16 +40,17 @@ import { bindingKey } from "../shared/bindings";
 import { bindExpertSkills, expertBlock, teamAgents, type ExpertDef, type ExpertSkill, type TeamAgent } from "../shared/experts";
 import { CRITIQUE_ARTIFACT, teamArtifact, withoutExportSources } from "../shared/artifact-kind";
 import type { TweakValues } from "../shared/tweaks";
-import { tierFeatures, tierNote, tierOf, type PrototypeTier } from "../shared/tiers";
+import { tierNote, tierOf, type PrototypeTier } from "../shared/tiers";
 import type { CommentTarget, DesignComment } from "../shared/comments";
 import { designDirName } from "./design/serve";
 import { listDesignPages, promoteVariant } from "./design/pages";
 import { saveRef } from "./design/refs";
 import { addComment, deleteComment, loadComments, saveComments, updateComment } from "./design/comments";
-import { applyStyleEdit, applyTextEdit } from "./design/textedit";
 import { keepTweaks } from "./design/tweaks";
 import { resolveVariantSet } from "./design/variants";
-import { forkSystem, listDesignStyles, listDesignSystems, materializeSystem, pickFromShortlist, resolveDesignSystem, type DesignStyleInfo, type DesignSystemInfo } from "./design/systems";
+import { brandEdits, forkKitSystem } from "./design/kit-library";
+import { DesignKitService } from "./design/kit-service";
+import { forkSystem, KIT_PREFIX, listDesignStyles, listDesignSystems, listKitSystems, materializeSystem, pickFromShortlist, resolveDesignSystem, type DesignStyleInfo, type DesignSystemInfo } from "./design/systems";
 import { AUTO_SYSTEM, isAuto, modeLabel, STYLE_PREFIX, type DesignDirection } from "../shared/direction";
 import { DESIGN_DIRECTION_TOOL } from "./design/tools";
 import { AUTO_LINT_WAIT_MS, autoFixPrompt, autoLintNote, changedPages, type PageLint } from "./design/autolint";
@@ -112,6 +113,21 @@ export class Service {
   private designPatternsDir: string | null = null;
   private designIconsDir: string | null = null;
   private designFontsDir: string | null = null;
+  /** Finds a kit's folder by id: the bundled Foundation first, then what's installed. */
+  private kitDirOf: ((kitId: string) => string | null) | null = null;
+  /** Kits and themes: the picker's lists, theme switches, kit moves, the project's own copies. */
+  readonly kits: DesignKitService = new DesignKitService({
+    getThread: (id) => this.store.getThread(id),
+    threadsOf: (projectId) => (projectId ? this.store.listThreads(projectId) : []),
+    setDesignSystem: (id, system) => this.store.setDesignSystem(id, system),
+    projectPath: (projectId) => this.projectPath(projectId),
+    designRoot: (id) => this.designRoot(id),
+    threadSystem: (thread) => this.threadSystem(thread),
+    systemById: (projectId, id) => this.previewSystem(projectId, id),
+    styles: () => this.designStyles(),
+    kitDir: (kitId) => this.kitDirOf?.(kitId) ?? null,
+    broadcast: (update) => this.broadcast(update),
+  });
   /** Lints a design thread's pages off screen; without it no automatic lint runs. */
   private designAutoLint: ((threadId: string, root: string, rels: string[]) => Promise<PageLint[]>) | null = null;
   /** Per design thread, the automatic lint of its last turn's pages, for the next turn's prompt. */
@@ -1455,6 +1471,11 @@ export class Service {
     this.designFontsDir = fontsDir;
   }
 
+  /** How to find a kit's folder by id. */
+  setDesignKitLookup(lookup: (kitId: string) => string | null): void {
+    this.kitDirOf = lookup;
+  }
+
   /** Where the per-surface pattern notes live (resources/design-patterns): one <surface>.md each. */
   setDesignPatternsDir(dir: string): void {
     this.designPatternsDir = dir;
@@ -1534,8 +1555,21 @@ export class Service {
     return [...listDesignSystems(this.projectPath(projectId)), ...this.designStyles()];
   }
 
+  /**
+   * The kit system named by a `kit:` id. These stay out of `allSystems`, and so out of today's picker and Auto's
+   * shortlist, until the v2 picker offers them.
+   */
+  private kitSystem(id: string | null | undefined): DesignSystemInfo | null {
+    if (!id?.startsWith(KIT_PREFIX)) return null;
+    const kitId = id.slice(KIT_PREFIX.length).split("/")[0] ?? "";
+    const dir = this.kitDirOf?.(kitId) ?? null;
+    if (!dir) return null;
+    return listKitSystems(dir, this.designStyles()).find((s) => s.id === id) ?? null;
+  }
+
   /** `id` when the project's design threads can resolve it, else Auto (null, or a gone one such as a retired built-in). */
   private knownSystem(projectId: string | null, id: string | null): string {
+    if (this.kitSystem(id)) return id as string;
     return id && id !== AUTO_SYSTEM && this.allSystems(projectId).some((s) => s.id === id) ? id : AUTO_SYSTEM;
   }
 
@@ -1553,7 +1587,7 @@ export class Service {
 
   /** One system a project's design threads can use, with its files, for the style picker's preview; null when it isn't listed. */
   previewSystem(projectId: string | null, id: string): DesignSystemInfo | null {
-    return this.allSystems(projectId).find((s) => s.id === id) ?? null;
+    return this.kitSystem(id) ?? this.allSystems(projectId).find((s) => s.id === id) ?? null;
   }
 
   /**
@@ -1567,7 +1601,7 @@ export class Service {
       const style = list.find((s) => s.id === "project") ? "project" : thread.designDirection?.style;
       return style ? (list.find((s) => s.id === style) ?? null) : null;
     }
-    return resolveDesignSystem(list, thread.designSystem);
+    return this.kitSystem(thread.designSystem) ?? resolveDesignSystem(list, thread.designSystem);
   }
 
   /** The styles other design threads in the project used most recently (newest first, at most 3), to avoid repeats. */
@@ -1704,8 +1738,8 @@ export class Service {
       id: system.id,
       name: system.name,
       source: system.source,
-      editable: system.source !== "style" || project !== null,
-      copyOnWrite: system.source === "style",
+      editable: (system.source !== "style" && system.source !== "kit") || project !== null,
+      copyOnWrite: system.source === "style" || system.source === "kit",
       designMd: read(system.designMd),
       groups: parseTokens(read(system.tokensCss)),
     };
@@ -1727,22 +1761,34 @@ export class Service {
     let thread = this.store.getThread(threadId);
     let system = this.threadSystem(thread);
     if (!system) throw new Error("Only a design thread has a design system.");
-    if (system.source === "style") {
+    // Bundled and installed kits are never written in place: the first edit saves a copy in the project, as a style does.
+    if (system.source === "style" || system.source === "kit") {
       const project = this.projectPath(thread.projectId);
-      if (!project) throw new Error("Open a project folder to customize a library style.");
-      system = forkSystem(system, project);
+      if (!project) throw new Error(`Open a project folder to customize a library ${system.source === "kit" ? "kit" : "style"}.`);
+      system = system.source === "kit" ? forkKitSystem(system, project) : forkSystem(system, project);
       thread = this.store.setDesignSystem(threadId, system.id);
     }
-    if ("token" in edit) {
-      if (!system.tokensCss) throw new Error("This design system has no tokens.css.");
-      const { name, scheme, value } = edit.token;
-      writeFileSync(system.tokensCss, setToken(readFileSync(system.tokensCss, "utf8"), name, scheme, value));
-    } else {
-      writeFileSync(system.designMd, edit.designMd);
-    }
-    const root = this.designRoot(threadId);
-    if (root) materializeSystem(system, join(root, "system"));
-    return { doc: this.systemDoc(thread, system), thread };
+    const target = system;
+    const write = (): void => {
+      if ("token" in edit) {
+        if (!target.tokensCss) throw new Error("This design system has no tokens.css.");
+        const { name, scheme, value } = edit.token;
+        writeFileSync(target.tokensCss, setToken(readFileSync(target.tokensCss, "utf8"), name, scheme, value));
+      } else if ("brand" in edit) {
+        if (!target.tokensCss) throw new Error("This design system has no tokens.css.");
+        let css = readFileSync(target.tokensCss, "utf8");
+        for (const token of brandEdits(css, edit.brand)) {
+          css = setToken(css, token.name, "light", token.light);
+          if (token.dark !== null) css = setToken(css, token.name, "dark", token.dark);
+        }
+        writeFileSync(target.tokensCss, css);
+      } else {
+        writeFileSync(target.designMd, edit.designMd);
+      }
+    };
+    const label = "token" in edit ? `${edit.token.name} → ${edit.token.value}` : "brand" in edit ? `Brand colour → ${edit.brand}` : "DESIGN.md";
+    this.kits.recordSystemEdit(threadId, label, target, write);
+    return { doc: this.systemDoc(thread, target), thread };
   }
 
   /**
@@ -1866,7 +1912,7 @@ export class Service {
     try {
       const system = this.threadSystem(thread);
       const ask = isAuto(thread) && !thread.designDirection ? this.autoNote(thread, system) : "";
-      if (!system) return ask;
+      if (!system) return ask + this.kits.takeNote(thread);
       const dir = join(root, "system");
       let before = "";
       try {
@@ -1879,7 +1925,7 @@ export class Service {
         before && before !== system.id
           ? `\n\n(CubiQ: the design system is now ${system.name}; \`${designOf(thread)}/system/\` was replaced. Read its DESIGN.md and restyle with its tokens; a colour the user named still wins.)`
           : "";
-      return switched + ask;
+      return switched + ask + this.kits.takeNote(this.store.getThread(thread.id));
     } catch {
       // A failed copy leaves the last system in place; never fail the turn over it.
       return "";
@@ -2041,46 +2087,26 @@ export class Service {
     return `${dir}/${saveRef(root, bytes)}`;
   }
 
-  /**
-   * Write an in-place text edit from the canvas into a design page: only when
-   * exactly one element has that `data-agent-id`, it holds only text, and its
-   * text is still `before` (else the refusal says to ask the agent). Saved as
-   * versions before and after.
-   */
-  editDesignText(threadId: string, rel: string, edit: { id: string; before: string; after: string }): void {
-    const thread = this.store.getThread(threadId);
+  /** The absolute path of a design thread's page, or null when the thread or the page doesn't exist. */
+  designPageFile(threadId: string, rel: string): string | null {
     const root = this.designRoot(threadId);
-    const dir = designOf(thread);
-    if (!root || !dir) throw new Error("Only a design thread has pages to edit.");
-    if (!listDesignPages(root).includes(rel)) throw new Error("No such page.");
-    const file = join(root, rel);
-    const before = readFileSync(file, "utf8");
-    const after = applyTextEdit(before, edit.id, edit.before, edit.after);
-    if (after === before) return;
-    this.recordDesignPage(threadId, root, dir, rel);
-    writeFileSync(file, after);
-    this.recordDesignPage(threadId, root, dir, rel);
-    if (this.artifacts) this.broadcast({ type: "artifact-ready", threadId, path: `${dir}/${rel}`, files: [`${dir}/${rel}`] });
+    if (!root || !listDesignPages(root).includes(rel)) return null;
+    return join(root, rel);
   }
 
-  /**
-   * Write the inspector's style changes into a design page: into the `style` attribute of the one element with that
-   * `data-agent-id` (see applyStyleEdit). Working and Real app tiers only; on Quick the change goes to the agent as a
-   * message instead. Saved as versions before and after, like a text edit.
-   */
-  editDesignStyle(threadId: string, rel: string, edit: { id: string; changes: { prop: string; value: string }[] }): void {
-    const thread = this.store.getThread(threadId);
+  /** Keep a design page as it stands now as a version, so an edit that follows can be rolled back. */
+  recordDesignPageVersion(threadId: string, rel: string): void {
     const root = this.designRoot(threadId);
-    const dir = designOf(thread);
-    if (!root || !dir) throw new Error("Only a design thread has pages to edit.");
-    if (!tierFeatures(tierOf(thread)).textEdit) throw new Error("The Quick tier sends style changes to the agent.");
-    if (!listDesignPages(root).includes(rel)) throw new Error("No such page.");
-    const file = join(root, rel);
-    const before = readFileSync(file, "utf8");
-    const after = applyStyleEdit(before, edit.id, edit.changes);
-    if (after === before) return;
+    const dir = designOf(this.store.getThread(threadId));
+    if (!root || !dir) return;
     this.recordDesignPage(threadId, root, dir, rel);
-    writeFileSync(file, after);
+  }
+
+  /** The mutation service wrote a page: keep the version and tell the canvas, as a direct edit does. */
+  designPageSaved(threadId: string, rel: string): void {
+    const root = this.designRoot(threadId);
+    const dir = designOf(this.store.getThread(threadId));
+    if (!root || !dir) return;
     this.recordDesignPage(threadId, root, dir, rel);
     if (this.artifacts) this.broadcast({ type: "artifact-ready", threadId, path: `${dir}/${rel}`, files: [`${dir}/${rel}`] });
   }

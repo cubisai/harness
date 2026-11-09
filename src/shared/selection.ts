@@ -41,12 +41,16 @@ export interface SelectedElement {
   selector: string;
   tag: string;
   text: string;
+  /** The text a panel edit replaces, as written in the source (`text` is what shows, after CSS). Absent when no one element holds the text. */
+  ownText?: string;
   html: string;
   rect: { x: number; y: number; width: number; height: number };
   /** Up to four ancestors, outermost first, for a breadcrumb. */
-  path: { label: string; selector: string }[];
+  path: { label: string; selector: string; ui?: string; part?: string }[];
   /** The element's computed style, limited to STYLE_KEYS, when the page reported one. */
   style?: Record<string, string>;
+  /** Its element-child path from `<html>`, which finds it in the file before it has an id. */
+  at?: number[];
 }
 
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
@@ -89,7 +93,10 @@ export function readSelected(raw: unknown): SelectedElement | null {
     if (!step || typeof step !== "object" || Array.isArray(step)) return null;
     const s = step as Record<string, unknown>;
     if (!isStr(s.label, 1, 80) || !isStr(s.selector, 1, 2000)) return null;
-    path.push({ label: s.label, selector: s.selector });
+    const entry: SelectedElement["path"][number] = { label: s.label, selector: s.selector };
+    if (isStr(s.ui, 1, 48) && /^[a-z0-9-]+$/.test(s.ui)) entry.ui = s.ui;
+    if (isStr(s.part, 1, 48) && /^[a-z0-9-]+$/.test(s.part)) entry.part = s.part;
+    path.push(entry);
   }
   const el: SelectedElement = {
     selector: r.selector,
@@ -99,7 +106,9 @@ export function readSelected(raw: unknown): SelectedElement | null {
     rect: { x: box.x, y: box.y, width: box.width, height: box.height },
     path,
   };
+  if (Array.isArray(r.at) && r.at.length <= 64 && r.at.every((n) => Number.isInteger(n) && (n as number) >= 0)) el.at = r.at as number[];
   if (r.id !== undefined) el.id = r.id;
+  if (typeof r.ownText === "string" && r.ownText.length <= 300) el.ownText = r.ownText;
   if (r.style !== undefined) {
     const style = readStyle(r.style);
     if (style) el.style = style;
@@ -111,8 +120,8 @@ export function readSelected(raw: unknown): SelectedElement | null {
  * A short label for a selected element: its text when that is short, else its id (a section's text is a run-on of
  * everything inside it), else its text cut short, else just its tag.
  */
-export function elementLabel(el: Pick<SelectedElement, "tag" | "text" | "id">): string {
-  const text = el.text.replace(/\s+/g, " ").trim();
+export function elementLabel(el: Pick<SelectedElement, "tag" | "text" | "id" | "ownText">): string {
+  const text = (el.ownText || el.text).replace(/\s+/g, " ").trim();
   if (text && (text.length <= 32 || !el.id)) return `${el.tag} "${text.slice(0, 32)}${text.length > 32 ? "…" : ""}"`;
   if (el.id) return `${el.tag} ${el.id}`;
   return el.tag;
@@ -123,14 +132,23 @@ export function scopeBlock(page: string, els: SelectedElement[]): string {
   const n = els.length;
   if (!n) return "";
   const lines = [`Selected in ${page} (${n} element${n === 1 ? "" : "s"}): change only ${n === 1 ? "this element" : "these elements"}. If the request needs changes elsewhere, say so instead of making them.`];
-  els.forEach((el, i) => {
-    lines.push(`${i + 1}. <${el.tag}>${el.id ? ` data-agent-id="${el.id}"` : ""} · selector \`${el.selector}\`${el.text ? ` · text "${el.text.slice(0, 120)}${el.text.length > 120 ? "…" : ""}"` : ""}`);
-  });
-  if (n === 1) {
+  return [...lines, ...elementLines(els)].join("\n");
+}
+
+/** One line per element, and the source of a lone one. */
+function elementLines(els: SelectedElement[]): string[] {
+  const lines = els.map((el, i) => `${i + 1}. <${el.tag}>${el.id ? ` data-agent-id="${el.id}"` : ""} · selector \`${el.selector}\`${el.text ? ` · text "${el.text.slice(0, 120)}${el.text.length > 120 ? "…" : ""}"` : ""}`);
+  if (els.length === 1) {
     const html = els[0]!.html;
     lines.push("```html", html.slice(0, 600) + (html.length > 600 ? "…" : ""), "```");
   }
-  return lines.join("\n");
+  return lines;
+}
+
+/** `Copy context`: where the selection lives and what it is, to paste into another tool. No instructions, unlike the scope. */
+export function contextBlock(page: string, els: SelectedElement[], name?: string): string {
+  if (!els.length) return "";
+  return [`${name ? `${name} in` : "From"} ${page} (${els.length} element${els.length === 1 ? "" : "s"})`, ...elementLines(els)].join("\n");
 }
 
 /** The message body with the selection scope appended: unchanged without a page or elements. */

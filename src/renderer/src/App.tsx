@@ -1,9 +1,10 @@
-import { Suspense, lazy, useCallback, useEffect, useRef, useState, type CSSProperties, type Ref } from "react";
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type Ref } from "react";
 import { ChevronUp, PanelBottom } from "lucide-react";
 import { CommandPalette } from "./components/CommandPalette";
 import { SearchDialog } from "./components/SearchDialog";
 import { Library } from "./components/Library";
 import { Composer } from "./components/Composer";
+import { ComposerLip, StudioActions } from "./components/StudioComposer";
 import { RequestDock } from "./components/RequestDock";
 import { TodoDock } from "./components/TodoDock";
 import { ShellDock } from "./components/ShellDock";
@@ -92,7 +93,8 @@ export function App() {
         showInspector("changes");
       } else if (mod && e.key === "\\") {
         e.preventDefault();
-        toggleSidebar();
+        // In the studio this key belongs to the Layers rail (the canvas handles it); the sidebar has its own button there.
+        if (useStore.getState().studioFold === null) toggleSidebar();
       } else if (e.ctrlKey && e.key === "`") {
         e.preventDefault();
         useStore.getState().toggleTerminal();
@@ -142,10 +144,18 @@ export function App() {
   const designMode = useStore((s) => s.threadKind) === "design";
   // Canvas-first: the canvas fills the main area and the chat is a prompt bar over its foot, the transcript a drawer.
   const canvasFirst = design && Boolean(thread) && Boolean(project) && layout.designLayout === "canvas";
+  // Design v2's studio: one top bar, one Composer. A design thread gets the window, so the sidebar folds while it's open.
+  const studio = canvasFirst;
+  useLayoutEffect(() => {
+    useStore.setState({ studioFold: studio ? true : null });
+  }, [studio]);
+  const studioFold = useStore((s) => s.studioFold);
+  const sidebarCollapsed = studioFold ?? layout.sidebarCollapsed;
   // The main header's slot the canvas puts its own header into (canvas-first only): one top bar, not two.
   const [headSlot, setHeadSlot] = useState<HTMLDivElement | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const hasMessages = useStore((s) => (thread ? (s.events[thread.id]?.length ?? 0) > 0 : false));
+  const systemOpen = useStore((s) => Boolean(studio && thread && s.designSystemWhere[thread.id]));
   const drawerHandle = useRef<HTMLButtonElement>(null);
   // Esc closes the open transcript drawer first (ESCAPE_OWNERS keeps it from stopping the turn), unless a menu or
   // sheet over it owns the key. preventDefault tells the turn-stopping handler too, whichever listener runs first.
@@ -172,7 +182,7 @@ export function App() {
   }, []);
 
   return (
-    <div className={`app${inspectorVisible && pane.inspector !== null ? " with-inspector" : ""}${wide ? " browser-wide" : ""}${layout.sidebarCollapsed ? " sidebar-collapsed" : ""}${design ? " design-thread" : ""}${canvasFirst ? " canvas-first" : ""}`}
+    <div className={`app${inspectorVisible && pane.inspector !== null ? " with-inspector" : ""}${wide ? " browser-wide" : ""}${sidebarCollapsed ? " sidebar-collapsed" : ""}${design ? " design-thread" : ""}${canvasFirst ? " canvas-first" : ""}${studio ? " studio" : ""}`}
       style={
         canvasFirst
           ? ({ "--design-rail-w": layout.designRail ? "232px" : "0px" } as CSSProperties)
@@ -181,7 +191,7 @@ export function App() {
             : undefined
       }
     >
-      {layout.sidebarCollapsed ? <PaneRail /> : <Sidebar />}
+      {sidebarCollapsed ? <PaneRail /> : <Sidebar />}
       <main className="main" id="main">
         {wide ? (
           // The browser holds the main area; the conversation is just a rail.
@@ -190,14 +200,16 @@ export function App() {
         ) : (
           <>
             <header className="main-header drag">
-              {layout.sidebarCollapsed && <CollapsedHeaderControls />}
-              <div className="main-title">
-                {thread ? thread.title : project ? project.name : "CubiQ"}
-                {thread && project && <span className="sub">{project.name}</span>}
-              </div>
+              {sidebarCollapsed && <CollapsedHeaderControls />}
+              {!studio && (
+                <div className="main-title">
+                  {thread ? thread.title : project ? project.name : "CubiQ"}
+                  {thread && project && <span className="sub">{project.name}</span>}
+                </div>
+              )}
               {canvasFirst && <div className="main-header-design" ref={setHeadSlot} />}
               {thread?.expertId && <ExpertChip expertId={thread.expertId} />}
-              {design && thread && (
+              {design && thread && !studio && (
                 <button
                   className={`icon-button${canvasFirst ? " active" : ""}`}
                   aria-pressed={canvasFirst}
@@ -208,7 +220,7 @@ export function App() {
                   <PanelBottom size={16} strokeWidth={1.75} aria-hidden />
                 </button>
               )}
-              {project && (
+              {project && !studio && (
                 <>
                   <button
                     className={`icon-button${inspectorOpen && inspectorTab === "changes" ? " active" : ""}`}
@@ -314,15 +326,23 @@ export function App() {
                   role={canvasFirst ? "region" : undefined}
                   aria-label={canvasFirst ? "Chat" : undefined}
                 >
+                  {studio && <TodoDock threadId={thread.id} quietWhileRunning />}
                   <ThreadView threadId={thread.id} expertId={thread.expertId} />
-                  {canvasFirst && !hasMessages && <p className="design-drawer-empty">No messages yet. Describe what to design below.</p>}
+                  {canvasFirst && !hasMessages && (systemOpen ? (
+                    <p className="design-drawer-empty system">
+                      <strong>New design system chat</strong>
+                      Describe a change to the system below. The agent works on a draft of the kit for you to review.
+                    </p>
+                  ) : (
+                    <p className="design-drawer-empty">No messages yet. Describe what to design below.</p>
+                  ))}
                 </div>
                 <div className="thread-bar" ref={barRef}>
-                <TodoDock threadId={thread.id} />
+                {!studio && <TodoDock threadId={thread.id} />}
                 <ShellDock threadId={thread.id} />
                 <RequestDock threadId={thread.id} />
                 {thread.expertId && <TeamStrip threadId={thread.id} expertId={thread.expertId} agent={thread.agent} leadModel={thread.model} />}
-                {canvasFirst && <DrawerHandle buttonRef={drawerHandle} threadId={thread.id} open={drawerOpen} onToggle={() => setDrawerOpen(!drawerOpen)} />}
+                {canvasFirst && !studio && <DrawerHandle buttonRef={drawerHandle} threadId={thread.id} open={drawerOpen} onToggle={() => setDrawerOpen(!drawerOpen)} />}
                 <Composer
                   threadId={thread.id}
                   mode={
@@ -341,6 +361,9 @@ export function App() {
                   }
                   model={<ThreadModel thread={thread} running={running} />}
                   meters={<ThreadMeters agent={thread.agent} threadId={thread.id} />}
+                  lip={studio ? <ComposerLip threadId={thread.id} /> : undefined}
+                  beforeModel={studio ? <StudioActions buttonRef={drawerHandle} threadId={thread.id} open={drawerOpen} onToggle={() => setDrawerOpen(!drawerOpen)} /> : undefined}
+                  selectionPrompts={studio}
                 />
                 </div>
               </div>
@@ -379,7 +402,7 @@ export function App() {
         min={BOUNDS.sidebar.min}
         max={BOUNDS.sidebar.max}
         defaultValue={DEFAULT_LAYOUT.sidebar}
-        collapsed={layout.sidebarCollapsed}
+        collapsed={sidebarCollapsed}
         className="splitter-sidebar"
         onChange={(v, c) => setPaneLayout({ sidebar: v || layout.sidebar, sidebarCollapsed: c }, false)}
         onCommit={(v, c) => setPaneLayout({ sidebar: v || layout.sidebar, sidebarCollapsed: c }, true)}

@@ -155,10 +155,22 @@ Parsing runs in an Electron `utilityProcess`, with a 25 MB cap and a 10 s timeou
 - Selects use the themed menu component, not native `<select>`, wherever the popup shows.
 - A choice along a scale (Text size) uses the same step slider as Thinking (§7.3), not a segmented control: Smaller ↔ Larger, Reset back to 100%, green from 125% up.
 
+### 7.8 Design studio (design threads)
+- A design thread gets the window: the sidebar folds while it's open, the canvas fills the main area, and the Composer floats over the stage's foot. Popovers, handles and toasts stop above the Composer.
+- **One top bar**: Pages and layers (`⌘\`), the views Design · Preview · Code · System, Desktop | Mobile, Export, More and Customize. No second header row.
+- **Tools**: Select (V), Draw (D) and Comment (C) in one small pill at the stage's top. There is no floating bar under the selection.
+- **Selection**: a name tag and 8 handles drawn on the canvas, in `--canvas-select`. The selection itself is a Composer chip (`Selection: Grid ×`); the chat turn is scoped to it. Actions (right-click on the page, or `/`) groups Structure, Component and Explore (3 variants per direction). `+` on the seam between blocks opens Insert; Swap trades a kit part for another.
+- **Customize** (right): Page Theme when nothing is selected, the element's style when something is. In a narrow window it floats over the stage's right side and the handles stop at its edge.
+- **Variants** written in place show a small cycler under the set: `‹ n / 3 ›`, × (back to the original) and Accept. ← and → step while the focus isn't in a field.
+- Every direct edit saves on its own ("Saving…" / "Saved" / "Not saved" with Retry). A theme switch, kit move or System edit shows a toast with Undo (`⌘Z`) for 6 s. Conflicts and the undo boundary are a bar above the stage, never a dialog.
+- A thread with no kit (flat style, draft, project folder) uses the same studio; only the kit parts (Swap, Insert's parts, Component actions) are missing.
+- Check it at 900px wide, dark and light: the top bar keeps the title, System states stack, nothing overlaps the Composer.
+
 ## 8. Do and don't
 
 - **Do**: tint and hairlines for structure, ink for primary, acid only for "alive", one row of controls, hover to reveal actions, mono for numbers.
-- **Don't**: shadows on static surfaces, blue accents (the old `#0a84ff`), acid text or lines on white, emoji as icons, uppercase section headers in the sidebar, more than one primary button per view, a fixed width on any input inside a flex row.
+- **Don't**: shadows on static surfaces, blue accents (the old `#0a84ff`; the only exception is `--canvas-select`, below), acid text or lines on white, emoji as icons, uppercase section headers in the sidebar, more than one primary button per view, a fixed width on any input inside a flex row.
+- **Exception, design canvas selection**: overlays sit on top of any authored page, so ink can't stay visible on both light and dark pages. `--canvas-select` is a blue used only for the canvas selection outline, its badge and multi-select outlines. Never use it for anything else in the app.
 
 ## 9. Check before you ship a UI change
 

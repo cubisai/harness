@@ -1,0 +1,217 @@
+/* Mantine, unofficial HTML+CSS kit: follows Mantine's default theme (system font stack, 8px default radius, blue primary,
+ * 36px small controls, Mantine's spacing scale and the theme's shadow steps). Link this file before ui.css and use the
+ * custom properties, not raw values. A dark pair follows the system setting, with Mantine's dark surfaces (body #242424).
+ * Roles: --color-accent-text for accent-coloured text; --color-on-accent on accent fills; --color-*-soft behind status
+ * text and selected chips; --color-hover behind a hovered item; --color-border-strong for inputs.
+ * Numbered space names keep Mantine's scale (10px is --space-3, which Mantine calls xs), not a 4px grid. */
+:root {
+  color-scheme: light;
+
+  /* Color */
+  --color-bg: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-2: #f8f9fa;
+  --color-surface-3: #f1f3f5;
+  --color-text: #000000;
+  --color-text-muted: #868e96;
+  --color-border: #dee2e6;
+  --color-border-strong: #ced4da;
+  --color-primary: #e03131;
+  --color-on-primary: #ffffff;
+  --color-primary-hover: #c92a2a;
+  --color-accent: #e03131;
+  --color-on-accent: #ffffff;
+  --color-accent-text: #e03131;
+  --color-accent-soft: #ffe3e3;
+  --color-accent-soft-hover: #ffc9c9;
+  --color-accent-soft-text: #c92a2a;
+  --color-success: #099268;
+  --color-on-success: #ffffff;
+  --color-success-soft: #c3fae8;
+  --color-success-soft-text: #087f5b;
+  --color-warning: #fab005;
+  --color-on-warning: #000000;
+  --color-warning-soft: #fff3bf;
+  --color-warning-soft-text: #e67700;
+  --color-danger: #fa5252;
+  --color-on-danger: #ffffff;
+  --color-danger-soft: #ffe3e3;
+  --color-danger-soft-text: #c92a2a;
+  --color-focus: #e03131;
+  --color-popover: #ffffff;
+  --color-hover: #f8f9fa;
+  --color-hover-strong: #e9ecef;
+  --color-disabled: #e9ecef;
+  --color-disabled-text: #adb5bd;
+  --color-placeholder: #adb5bd;
+  --color-gray-soft: #f1f3f5;
+  --color-gray-soft-text: #212529;
+  --color-highlight: #fff3bf;
+  --color-hue-red: #fa5252;
+  --color-hue-yellow: #fab005;
+  --color-hue-green: #40c057;
+  --color-hue-cyan: #15aabf;
+  --color-hue-blue: #228be6;
+  --color-hue-magenta: #e64980;
+  --color-input: #ffffff;
+  --color-input-filled: #f1f3f5;
+  --color-track: #dee2e6;
+  --color-control: #f1f3f5;
+  --color-raised: #ffffff;
+  --color-default: #ffffff;
+  --color-default-hover: #f8f9fa;
+  --color-item-hover: #f1f3f5;
+  --color-close: #495057;
+  --color-skeleton: #dee2e6;
+  --color-scrim: rgba(0, 0, 0, 0.6);
+  --color-tooltip: #212529;
+  --color-tooltip-text: #ffffff;
+  --color-white: #ffffff;
+  --color-black: #000000;
+
+  /* Type: Mantine's default stack is system fonts only, so nothing is bundled */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-display: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --text-xs: 12px;
+  --leading-xs: 17px;
+  --text-sm: 14px;
+  --leading-sm: 20px;
+  --text-md: 16px;
+  --leading-md: 25px;
+  --text-lg: 18px;
+  --leading-lg: 29px;
+  --text-xl: 20px;
+  --leading-xl: 33px;
+  --text-2xl: 22px;
+  --leading-2xl: 31px;
+  --text-3xl: 26px;
+  --leading-3xl: 35px;
+  --text-4xl: 34px;
+  --leading-4xl: 44px;
+  --text-display: 44px;
+  --leading-display: 57px;
+  --text-display-sm: 34px;
+  --leading-display-sm: 44px;
+  --weight-regular: 400;
+  --weight-medium: 600;
+  --weight-bold: 700;
+  --tracking-display: 0;
+  --tracking-heading: 0;
+  --tracking-label: 0.25px;
+  --numeric-data: tabular-nums;
+
+  /* Space: Mantine's scale. xs 10px, sm 12px, md 16px, lg 20px, xl 32px */
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 10px;
+  --space-4: 12px;
+  --space-6: 16px;
+  --space-8: 20px;
+  --space-10: 32px;
+  --space-12: 40px;
+  --space-16: 48px;
+  --space-20: 64px;
+  --space-24: 80px;
+  --space-xs: 10px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 20px;
+  --space-xl: 32px;
+
+  /* Size */
+  --target-min: 36px;
+  --content-max: 960px;
+  --measure: 68ch;
+
+  /* Radius: Mantine's xs 2px, sm 4px, default md 8px, lg 16px, xl 32px */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 16px;
+  --radius-xl: 32px;
+  --radius-full: 1000px;
+
+  /* Elevation: Mantine's shadow steps xs, md and lg */
+  --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.1);
+  --shadow-2: 0 1px 3px rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.05) 0 20px 25px -5px, rgba(0, 0, 0, 0.04) 0 10px 10px -5px;
+  --shadow-3: 0 1px 3px rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.05) 0 28px 23px -7px, rgba(0, 0, 0, 0.04) 0 12px 12px -7px;
+
+  /* Motion */
+  --duration-fast: 100ms;
+  --duration: 150ms;
+  --ease: ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration: 0ms;
+  }
+}
+
+/* Dark: Mantine's dark palette, from its dark-colour-scheme variables. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --color-bg: #242424;
+    --color-surface: #242424;
+    --color-surface-2: #2e2e2e;
+    --color-surface-3: #3b3b3b;
+    --color-text: #c9c9c9;
+    --color-text-muted: #828282;
+    --color-border: #424242;
+    --color-border-strong: #424242;
+    --color-primary: #e03131;
+    --color-on-primary: #ffffff;
+    --color-primary-hover: #c92a2a;
+    --color-accent: #e03131;
+    --color-on-accent: #ffffff;
+    --color-accent-text: #ff8787;
+    --color-accent-soft: #c92a2a;
+    --color-accent-soft-hover: #e03131;
+    --color-accent-soft-text: #fff5f5;
+    --color-success: #099268;
+    --color-on-success: #ffffff;
+    --color-success-soft: #04402e;
+    --color-success-soft-text: #38d9a9;
+    --color-warning: #f08c00;
+    --color-on-warning: #141414;
+    --color-warning-soft: #733c00;
+    --color-warning-soft-text: #ffd43b;
+    --color-danger: #e03131;
+    --color-on-danger: #ffffff;
+    --color-danger-soft: #651515;
+    --color-danger-soft-text: #ffa8a8;
+    --color-focus: #e03131;
+    --color-popover: #2e2e2e;
+    --color-hover: #2e2e2e;
+    --color-hover-strong: #3b3b3b;
+    --color-disabled: #2e2e2e;
+    --color-disabled-text: #696969;
+    --color-placeholder: #696969;
+    --color-gray-soft: #2e2e2e;
+    --color-gray-soft-text: #f8f9fa;
+    --color-highlight: #733c00;
+    --color-input: #2e2e2e;
+    --color-input-filled: #3b3b3b;
+    --color-track: #3b3b3b;
+    --color-control: #2e2e2e;
+    --color-raised: #424242;
+    --color-default: #2e2e2e;
+    --color-default-hover: #3b3b3b;
+    --color-item-hover: #424242;
+    --color-close: #b8b8b8;
+    --color-skeleton: #424242;
+    --color-scrim: rgba(0, 0, 0, 0.6);
+    --color-tooltip: #e9ecef;
+    --color-tooltip-text: #000000;
+    --color-white: #ffffff;
+    --color-black: #000000;
+  }
+}
+
+::selection {
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}

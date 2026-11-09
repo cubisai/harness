@@ -1,0 +1,325 @@
+/* MUI, unofficial HTML+CSS kit: follows Material UI's default theme (Roboto, 36.5px buttons, 4px radii, elevation shadows,
+ * blue primary, purple secondary). Link this file before ui.css and use the custom properties, not raw values. A dark
+ * pair follows the system setting.
+ * Roles: --color-primary is a fill, --color-on-primary its text, -light and -dark its tints; the same trio exists for
+ * secondary, success, warning, danger (MUI's "error") and info. --color-text-muted is text.secondary. --action-* are
+ * MUI's hover, selected and disabled layers. --shadow-N is elevation N; --paper-N is the matching dark-mode overlay. */
+:root {
+  color-scheme: light;
+
+  /* Color */
+  --color-bg: #fff;
+  --color-surface: #fff;
+  --color-surface-2: #f5f5f5;
+  --color-surface-3: #eee;
+  --color-text: rgba(0, 0, 0, 0.87);
+  --color-text-muted: rgba(0, 0, 0, 0.6);
+  --color-text-disabled: rgba(0, 0, 0, 0.38);
+  --color-border: rgba(0, 0, 0, 0.12);
+  --color-border-strong: rgba(0, 0, 0, 0.23);
+  --color-primary: #1976d2;
+  --color-primary-light: #42a5f5;
+  --color-primary-dark: #1565c0;
+  --color-on-primary: #fff;
+  --color-secondary: #9c27b0;
+  --color-secondary-light: #ba68c8;
+  --color-secondary-dark: #7b1fa2;
+  --color-on-secondary: #fff;
+  --color-accent: #1976d2;
+  --color-on-accent: #fff;
+  --color-accent-text: #1976d2;
+  --color-accent-soft: rgba(25, 118, 210, 0.08);
+  --color-success: #2e7d32;
+  --color-success-light: #4caf50;
+  --color-success-dark: #1b5e20;
+  --color-on-success: #fff;
+  --color-success-soft: #edf7ed;
+  --color-on-success-soft: #1e4620;
+  --color-warning: #ed6c02;
+  --color-warning-light: #ff9800;
+  --color-warning-dark: #e65100;
+  --color-on-warning: #fff;
+  --color-warning-soft: #fff4e5;
+  --color-on-warning-soft: #663c00;
+  --color-danger: #d32f2f;
+  --color-danger-light: #ef5350;
+  --color-danger-dark: #c62828;
+  --color-on-danger: #fff;
+  --color-danger-soft: #fdeded;
+  --color-on-danger-soft: #5f2120;
+  --color-info: #0288d1;
+  --color-info-light: #03a9f4;
+  --color-info-dark: #01579b;
+  --color-on-info: #fff;
+  --color-info-soft: #e5f6fd;
+  --color-on-info-soft: #014361;
+  --color-success-fill: #2e7d32;
+  --color-warning-fill: #ed6c02;
+  --color-danger-fill: #d32f2f;
+  --color-info-fill: #0288d1;
+  --color-on-success-fill: #fff;
+  --color-on-warning-fill: #fff;
+  --color-on-danger-fill: #fff;
+  --color-on-info-fill: #fff;
+  --color-focus: #1976d2;
+  --color-popover: #fff;
+  --color-white: #fff;
+  --color-on-white: rgba(0, 0, 0, 0.87);
+  --chart-1: #02b2af;
+  --chart-2: #2e96ff;
+  --chart-3: #b800d8;
+  --chart-4: #60009b;
+  --chart-5: #2731c8;
+
+  /* MUI's action layers and the per-component colours its theme derives */
+  --action-active: rgba(0, 0, 0, 0.54);
+  --action-hover: rgba(0, 0, 0, 0.04);
+  --action-selected: rgba(0, 0, 0, 0.08);
+  --action-focus: rgba(0, 0, 0, 0.12);
+  --action-disabled: rgba(0, 0, 0, 0.26);
+  --action-disabled-bg: rgba(0, 0, 0, 0.12);
+  --hover-alpha: 4%;
+  --selected-alpha: 8%;
+  --input-underline: rgba(0, 0, 0, 0.42);
+  --input-filled: rgba(0, 0, 0, 0.06);
+  --input-filled-hover: rgba(0, 0, 0, 0.09);
+  --table-border: #e0e0e0;
+  --grey-fill: #e0e0e0;
+  --grey-fill-hover: #d5d5d5;
+  --grey-fill-text: #212121;
+  --avatar-fill: #bdbdbd;
+  --chip-border: #bdbdbd;
+  --chip-icon: #616161;
+  --step-line: #bdbdbd;
+  --step-idle: rgba(0, 0, 0, 0.38);
+  --switch-thumb: #fff;
+  --switch-track: #000;
+  --switch-track-alpha: 38%;
+  --tooltip-fill: rgba(97, 97, 97, 0.92);
+  --snackbar-fill: #323232;
+  --snackbar-text: #fff;
+  --skeleton-fill: rgba(0, 0, 0, 0.11);
+  --appbar-fill: #1976d2;
+  --appbar-text: #fff;
+  --rating-fill: #faaf00;
+  --backdrop: rgba(0, 0, 0, 0.5);
+  --page-wash: #f5f5f5;
+  --progress-mix: #fff 62%;
+  --appbar-default: #f5f5f5;
+  --hero-wash: linear-gradient(#e3f2fd, #fff 60%);
+  --tone-deep-orange: #ff5722;
+  --tone-deep-purple: #673ab7;
+  --tone-green: #4caf50;
+  --tone-pink: #e91e63;
+  --tone-blue: #2196f3;
+  --tone-teal: #009688;
+
+  /* Dark mode lifts paper with a white overlay; light mode has none */
+  --paper-1: none;
+  --paper-2: none;
+  --paper-3: none;
+  --paper-4: none;
+  --paper-6: none;
+  --paper-8: none;
+  --paper-16: none;
+  --paper-24: none;
+
+  /* Type: the default Material scale */
+  --font-sans: Roboto, Helvetica, Arial, sans-serif;
+  --font-display: Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --text-xs: 12px;
+  --leading-xs: 20px;
+  --text-sm: 14px;
+  --leading-sm: 20px;
+  --text-md: 16px;
+  --leading-md: 24px;
+  --text-lg: 20px;
+  --leading-lg: 32px;
+  --text-xl: 24px;
+  --leading-xl: 32px;
+  --text-2xl: 34px;
+  --leading-2xl: 42px;
+  --text-3xl: 48px;
+  --leading-3xl: 56px;
+  --text-4xl: 60px;
+  --leading-4xl: 72px;
+  --text-display: 96px;
+  --leading-display: 112px;
+  --text-display-sm: 60px;
+  --leading-display-sm: 72px;
+  --weight-light: 300;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 700;
+  --tracking-display: -0.01562em;
+  --tracking-heading: 0;
+  --tracking-label: 0.00938em;
+  --tracking-body: 0.00938em;
+  --tracking-body2: 0.01071em;
+  --tracking-button: 0.02857em;
+  --tracking-caption: 0.03333em;
+  --tracking-overline: 0.08333em;
+  --numeric-data: tabular-nums;
+
+  /* Space: MUI's 8px unit, with 4px halves */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* Size */
+  --target-min: 44px;
+  --content-max: 1200px;
+  --measure: 68ch;
+  --control-xs: 24px;
+  --control-sm: 31px;
+  --control-md: 36.5px;
+  --control-lg: 42px;
+  --size-icon: 24px;
+
+  /* Radius: everything starts from one 4px shape */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* Elevation */
+  --shadow-1: 0 2px 1px -1px rgba(0, 0, 0, 0.2), 0 1px 1px 0 rgba(0, 0, 0, 0.14), 0 1px 3px 0 rgba(0, 0, 0, 0.12);
+  --shadow-2: 0 3px 1px -2px rgba(0, 0, 0, 0.2), 0 2px 2px 0 rgba(0, 0, 0, 0.14), 0 1px 5px 0 rgba(0, 0, 0, 0.12);
+  --shadow-3: 0 3px 3px -2px rgba(0, 0, 0, 0.2), 0 3px 4px 0 rgba(0, 0, 0, 0.14), 0 1px 8px 0 rgba(0, 0, 0, 0.12);
+  --shadow-4: 0 2px 4px -1px rgba(0, 0, 0, 0.2), 0 4px 5px 0 rgba(0, 0, 0, 0.14), 0 1px 10px 0 rgba(0, 0, 0, 0.12);
+  --shadow-6: 0 3px 5px -1px rgba(0, 0, 0, 0.2), 0 6px 10px 0 rgba(0, 0, 0, 0.14), 0 1px 18px 0 rgba(0, 0, 0, 0.12);
+  --shadow-8: 0 5px 5px -3px rgba(0, 0, 0, 0.2), 0 8px 10px 1px rgba(0, 0, 0, 0.14), 0 3px 14px 2px rgba(0, 0, 0, 0.12);
+  --shadow-12: 0 7px 8px -4px rgba(0, 0, 0, 0.2), 0 12px 17px 2px rgba(0, 0, 0, 0.14), 0 5px 22px 4px rgba(0, 0, 0, 0.12);
+  --shadow-16: 0 8px 10px -5px rgba(0, 0, 0, 0.2), 0 16px 24px 2px rgba(0, 0, 0, 0.14), 0 6px 30px 5px rgba(0, 0, 0, 0.12);
+  --shadow-24: 0 11px 15px -7px rgba(0, 0, 0, 0.2), 0 24px 38px 3px rgba(0, 0, 0, 0.14), 0 9px 46px 8px rgba(0, 0, 0, 0.12);
+
+  /* Motion */
+  --duration-fast: 150ms;
+  --duration: 250ms;
+  --duration-slow: 300ms;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration: 0ms;
+    --duration-slow: 0ms;
+  }
+}
+
+/* Dark: the same roles, re-tuned; picked up from the system setting. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --color-bg: #121212;
+    --color-surface: #121212;
+    --color-surface-2: #1e1e1e;
+    --color-surface-3: #2a2a2a;
+    --color-text: #fff;
+    --color-text-muted: rgba(255, 255, 255, 0.7);
+    --color-text-disabled: rgba(255, 255, 255, 0.5);
+    --color-border: rgba(255, 255, 255, 0.12);
+    --color-border-strong: rgba(255, 255, 255, 0.23);
+    --color-primary: #90caf9;
+    --color-primary-light: #e3f2fd;
+    --color-primary-dark: #42a5f5;
+    --color-on-primary: rgba(0, 0, 0, 0.87);
+    --color-secondary: #ce93d8;
+    --color-secondary-light: #f3e5f5;
+    --color-secondary-dark: #ab47bc;
+    --color-on-secondary: rgba(0, 0, 0, 0.87);
+    --color-accent: #90caf9;
+    --color-on-accent: rgba(0, 0, 0, 0.87);
+    --color-accent-text: #90caf9;
+    --color-accent-soft: rgba(144, 202, 249, 0.16);
+    --color-success: #66bb6a;
+    --color-success-light: #81c784;
+    --color-success-dark: #388e3c;
+    --color-on-success: rgba(0, 0, 0, 0.87);
+    --color-success-soft: #0c130d;
+    --color-on-success-soft: #cce8cd;
+    --color-warning: #ffa726;
+    --color-warning-light: #ffb74d;
+    --color-warning-dark: #f57c00;
+    --color-on-warning: rgba(0, 0, 0, 0.87);
+    --color-warning-soft: #191207;
+    --color-on-warning-soft: #ffe2b7;
+    --color-danger: #f44336;
+    --color-danger-light: #e57373;
+    --color-danger-dark: #d32f2f;
+    --color-on-danger: #fff;
+    --color-danger-soft: #160b0b;
+    --color-on-danger-soft: #f4c7c7;
+    --color-info: #29b6f6;
+    --color-info-light: #4fc3f7;
+    --color-info-dark: #0288d1;
+    --color-on-info: rgba(0, 0, 0, 0.87);
+    --color-info-soft: #071318;
+    --color-on-info-soft: #b8e7fb;
+    --color-success-fill: #388e3c;
+    --color-on-warning-fill: rgba(0, 0, 0, 0.87);
+    --color-warning-fill: #f57c00;
+    --color-danger-fill: #d32f2f;
+    --color-info-fill: #0288d1;
+    --color-focus: #90caf9;
+    --color-popover: #121212;
+
+    --action-active: #fff;
+    --action-hover: rgba(255, 255, 255, 0.08);
+    --action-selected: rgba(255, 255, 255, 0.16);
+    --action-focus: rgba(255, 255, 255, 0.12);
+    --action-disabled: rgba(255, 255, 255, 0.3);
+    --action-disabled-bg: rgba(255, 255, 255, 0.12);
+    --hover-alpha: 8%;
+    --selected-alpha: 16%;
+    --input-underline: rgba(255, 255, 255, 0.7);
+    --input-filled: rgba(255, 255, 255, 0.09);
+    --input-filled-hover: rgba(255, 255, 255, 0.13);
+    --table-border: #515151;
+    --avatar-fill: #757575;
+    --chip-border: #616161;
+    --chip-icon: #e0e0e0;
+    --step-line: #757575;
+    --step-idle: rgba(255, 255, 255, 0.5);
+    --switch-thumb: #e0e0e0;
+    --switch-track: #fff;
+    --switch-track-alpha: 30%;
+    --snackbar-fill: #fafafa;
+    --snackbar-text: rgba(0, 0, 0, 0.87);
+    --skeleton-fill: rgba(255, 255, 255, 0.13);
+    --appbar-fill: #121212;
+    --appbar-text: #fff;
+    --progress-mix: #000 50%;
+    --page-wash: #121212;
+    --appbar-default: #212121;
+    --hero-wash: linear-gradient(#0d2a44, #121212 60%);
+
+    --paper-1: linear-gradient(rgba(255, 255, 255, 0.051), rgba(255, 255, 255, 0.051));
+    --paper-2: linear-gradient(rgba(255, 255, 255, 0.069), rgba(255, 255, 255, 0.069));
+    --paper-3: linear-gradient(rgba(255, 255, 255, 0.082), rgba(255, 255, 255, 0.082));
+    --paper-4: linear-gradient(rgba(255, 255, 255, 0.092), rgba(255, 255, 255, 0.092));
+    --paper-6: linear-gradient(rgba(255, 255, 255, 0.108), rgba(255, 255, 255, 0.108));
+    --paper-8: linear-gradient(rgba(255, 255, 255, 0.119), rgba(255, 255, 255, 0.119));
+    --paper-16: linear-gradient(rgba(255, 255, 255, 0.148), rgba(255, 255, 255, 0.148));
+    --paper-24: linear-gradient(rgba(255, 255, 255, 0.165), rgba(255, 255, 255, 0.165));
+  }
+}
+
+::selection {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}

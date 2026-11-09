@@ -8,7 +8,9 @@ import { useStore } from "../store";
  * layout is never changed here.
  */
 export function usePaneLayout(inspectorVisible: boolean, mainFloor?: number): { sidebar: number; inspector: number | null; inspectorAutoCollapsed: boolean; inspectorMax: number; width: number } {
-  const layout = useStore((s) => s.paneLayout);
+  const saved = useStore((s) => s.paneLayout);
+  const fold = useStore((s) => s.studioFold);
+  const layout = fold === null ? saved : { ...saved, sidebarCollapsed: fold };
   const [width, setWidth] = useState(() => window.innerWidth);
 
   useEffect(() => {

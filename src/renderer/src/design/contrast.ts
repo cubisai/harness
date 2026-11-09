@@ -75,6 +75,21 @@ export function toHexColor(value: string): string | null {
   return c ? `#${hex2(c.r)}${hex2(c.g)}${hex2(c.b)}` : null;
 }
 
+/**
+ * What a colour this file can't parse (`oklch()`, `hsl()`, a named colour) paints as, read back from a canvas in the
+ * browser. Null outside one, for a value with no fixed colour, and for a fully see-through one.
+ */
+export function paintedHexColor(value: string): string | null {
+  if (typeof document === "undefined" || /var\(/i.test(value) || !CSS.supports("color", value)) return null;
+  const ctx = document.createElement("canvas").getContext("2d");
+  if (!ctx) return null;
+  ctx.fillStyle = value;
+  ctx.fillRect(0, 0, 1, 1);
+  const data = ctx.getImageData(0, 0, 1, 1).data;
+  const [r = 0, g = 0, b = 0, a = 0] = data;
+  return a === 0 ? null : `#${hex2(r)}${hex2(g)}${hex2(b)}`;
+}
+
 /** A colour's alpha (0–1): from a 4- or 8-digit hex, or the rgb/rgba functions' fourth or slashed value, else 1. */
 export function alphaOf(value: string): number {
   const s = value.trim();

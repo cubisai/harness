@@ -15,8 +15,8 @@ import { catalog, closeAfter, tempDir } from "./helpers";
 
 const RESOURCES = join(__dirname, "..", "resources");
 const DESIGN_SKILLS = ["design-critique", "design-handoff", "design-mobile", "design-prototype", "design-slides", "design-system-extract"];
-// Skills the canvas sends by name (the element bar's Go): design-only, but not listed in the guide.
-const CANVAS_SKILLS = ["design-variants"];
+// Skills CubiQ names itself (the element bar's Go, a design intent's note): design-only, but not listed in the guide.
+const CANVAS_SKILLS = ["design-kit", "design-variants"];
 const ALL_DESIGN_SKILLS = [...DESIGN_SKILLS, ...CANVAS_SKILLS].sort();
 describe("Design mode guide (DESIGN-MODE.md)", () => {
   const designMode = join(RESOURCES, "DESIGN-MODE.md");

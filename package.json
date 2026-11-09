@@ -49,6 +49,7 @@
     "lucide-react": "^1.48.0",
     "mammoth": "^1.13.0",
     "node-pty": "1.1.0",
+    "parse5": "8.1.0",
     "pptxgenjs": "4.0.1",
     "quickjs-emscripten": "0.32.0",
     "thinking-orbs": "0.3.2",

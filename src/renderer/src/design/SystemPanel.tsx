@@ -65,7 +65,22 @@ function errorText(err: unknown): string {
  * editable inline; a colour row shows its light and dark values with a WCAG contrast badge. Edits go straight to
  * the file through the agent's IPC, so the canvas re-renders live.
  */
-export function SystemPanel({ threadId, reloadKey }: { threadId: string; reloadKey: string }) {
+export function SystemPanel({
+  threadId,
+  reloadKey,
+  bare = false,
+  filter,
+  onChanged,
+}: {
+  threadId: string;
+  reloadKey: string;
+  /** Just the token rows, for a Foundations page: no title, jump bar or DESIGN.md. */
+  bare?: boolean;
+  /** Which tokens to list. */
+  filter?: (token: DesignToken) => boolean;
+  /** After an edit lands, so the page around it can re-read the system. */
+  onChanged?: (label: string) => void;
+}) {
   const [doc, setDoc] = useState<DesignSystemDoc | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -117,11 +132,12 @@ export function SystemPanel({ threadId, reloadKey }: { threadId: string; reloadK
   const editable = system.editable;
   const fieldClass = "text-input sys-input";
 
-  const tokens = system.groups.flatMap((g) => g.tokens);
-  const byName = new Map(tokens.map((t) => [t.name, t]));
+  const allTokens = system.groups.flatMap((g) => g.tokens);
+  const tokens = filter ? allTokens.filter(filter) : allTokens;
+  const byName = new Map(allTokens.map((t) => [t.name, t]));
   const sections: Record<SectionKey, DesignToken[]> = { colors: [], type: [], space: [], radius: [], shadows: [], other: [] };
   for (const t of tokens) sections[sectionOf(t)].push(t);
-  const hasOverview = system.designMd.trim().length > 0 || editable;
+  const hasOverview = !bare && (system.designMd.trim().length > 0 || editable);
   const subline = system.copyOnWrite
     ? "Library style · your first edit saves a copy in .agents/design-systems/"
     : !editable
@@ -157,6 +173,7 @@ export function SystemPanel({ threadId, reloadKey }: { threadId: string; reloadK
         setDoc(next);
         setError(null);
         dropDraft(key);
+        onChanged?.(`${token.name} → ${value.trim()}`);
       })
       .catch((err) => {
         setError(errorText(err));
@@ -242,16 +259,17 @@ export function SystemPanel({ threadId, reloadKey }: { threadId: string; reloadK
     );
   };
 
+  if (bare && tokens.length === 0) return error ? <p className="sys-error">{error}</p> : null;
   return (
     <>
-      <div className="sys-head">
+      {!bare && <div className="sys-head">
         <span className="sys-title" title={system.name}>
           {system.name}
         </span>
         <span className="sys-sub">{subline}</span>
-      </div>
+      </div>}
       {error && <p className="sys-error">{error}</p>}
-      <div className="sys-jump">
+      {!bare && <div className="sys-jump">
         {hasOverview && (
           <button className="button ghost" onClick={() => jumpTo("overview")}>
             Overview
@@ -262,7 +280,7 @@ export function SystemPanel({ threadId, reloadKey }: { threadId: string; reloadK
             {SECTION_LABELS[s]}
           </button>
         ))}
-      </div>
+      </div>}
       {hasOverview && (
         <div className="design-inspector-group" ref={(el) => { sectionRefs.current.overview = el; }}>
           <h3>Overview</h3>

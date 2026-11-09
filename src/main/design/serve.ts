@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { extname, isAbsolute, join } from "node:path";
 import { resolveInside } from "../artifacts";
+import { textHash } from "../../shared/text-hash";
 
 /** The custom scheme design pages and their assets are served under. */
 export const DESIGN_SCHEME = "cubiq-design";
@@ -94,9 +95,12 @@ export function designHeaders(rel: string): Record<string, string> {
   };
 }
 
-/** Insert the bridge script right after `<head>`, else `<html>`, else at the very start. */
-export function injectBridge(html: string, script: string): string {
-  const tag = `<script>${script.replace(/<\/script/gi, "<\\/script")}</script>`;
+/**
+ * Insert the bridge script right after `<head>`, else `<html>`, else at the very start. `source` is the page text's
+ * fingerprint, so the canvas knows which text the frame loaded and can patch it in place later.
+ */
+export function injectBridge(html: string, script: string, source?: string): string {
+  const tag = `<script${source && /^[a-z0-9-]{1,40}$/.test(source) ? ` data-source="${source}"` : ""}>${script.replace(/<\/script/gi, "<\\/script")}</script>`;
   const head = /<head(?:\s[^>]*)?>/i.exec(html);
   if (head) return html.slice(0, head.index + head[0].length) + tag + html.slice(head.index + head[0].length);
   const root = /<html(?:\s[^>]*)?>/i.exec(html);
@@ -178,7 +182,8 @@ export function serveDesign(url: string, deps: DesignDeps): Response {
 
     let payload: string | Uint8Array<ArrayBuffer>;
     if (contentTypeOf(rel).startsWith("text/html")) {
-      payload = injectBridge(body.toString("utf-8"), deps.bridge);
+      const text = body.toString("utf-8");
+      payload = injectBridge(text, deps.bridge, textHash(text));
     } else {
       const binary = new Uint8Array(body.byteLength);
       binary.set(body);

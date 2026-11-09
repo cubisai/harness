@@ -1,11 +1,12 @@
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { AtSign, BriefcaseBusiness, Check, CircleDot, File, Folder, Puzzle, Slash, Sparkles } from "lucide-react";
+import { AtSign, Blocks, BriefcaseBusiness, Check, CircleDot, File, Folder, ImagePlus, Puzzle, Slash, Sparkles } from "lucide-react";
 import type { PermissionMode, SkillEntry } from "../../../shared/types";
 import { IconArrowUp, IconStop } from "../icons";
 import { api } from "../api";
 import { chipLabel, commandQuery, composeMessage, skillQueryAt, toggleSkill } from "../composer";
 import { MAX_REFS, imageFiles, refLabel, refThumb, withRefs } from "../design/refs";
+import { designChipLabel, designIntent, designPlaceholder, systemChips } from "../design/intent";
 import { elementLabel, withScope } from "../../../shared/selection";
 import { designDirName } from "../../../shared/design";
 import { exactCommand, isCommandSkill, issueCommand, matchCommands, type ComposerCommand } from "../commands";
@@ -38,12 +39,21 @@ function entriesOf(names: string[], extra: SkillEntry[] = []): SkillEntry[] {
   return names.flatMap((n) => all.find((s) => s.name === n) ?? extra.find((s) => s.name === n) ?? []);
 }
 
+/** The studio's one chip: `Selection: StatCard`, or `Selection: 3 elements`. */
+export function selectionChipLabel(selection: { elements: Parameters<typeof elementLabel>[0][]; names?: string[] }): string {
+  const n = selection.elements.length;
+  return `Selection: ${n === 1 ? (selection.names?.[0] ?? elementLabel(selection.elements[0]!)) : `${n} elements`}`;
+}
+
 export function Composer({
   threadId,
   mode,
   compactMode,
   model,
   meters,
+  lip,
+  beforeModel,
+  selectionPrompts = false,
 }: {
   threadId: string | null;
   mode?: ReactNode;
@@ -51,6 +61,12 @@ export function Composer({
   compactMode?: ReactNode;
   model?: ReactNode;
   meters?: ReactNode;
+  /** One quiet line on the box's top edge (the studio's running status). */
+  lip?: ReactNode;
+  /** Controls at the start of the right-hand group (the studio's Chat chip). */
+  beforeModel?: ReactNode;
+  /** Say in the placeholder what a canvas selection is about to be asked. */
+  selectionPrompts?: boolean;
 }) {
   const allSkills = useStore((s) => s.skills);
   // Design-only skills are offered in design threads (and a design draft) only; threadKind follows the open thread.
@@ -89,6 +105,14 @@ export function Composer({
   }, [threadId, pendingRefs]);
   // Elements selected on a design thread's canvas: chips here, and a "change only these" block on the next message.
   const selection = useStore((s) => (threadId ? s.designSelection[threadId] : undefined));
+  // The studio's design chip (`+` menu, System mode) and System mode's context; both ride on the next message.
+  const designChip = useStore((s) => (threadId && selectionPrompts ? s.designChip[threadId] : undefined));
+  const systemWhere = useStore((s) => (threadId && selectionPrompts ? s.designSystemWhere[threadId] : undefined));
+  const [droppedSystem, setDroppedSystem] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => setDroppedSystem(new Set()), [systemWhere?.page, systemWhere?.theme]);
+  const system = systemChips(systemWhere, droppedSystem);
+  const hasChips = Boolean(issue || picked.length || chips.length || refs.length || selection || designChip || system.length);
+  const screenshotInput = useRef<HTMLInputElement>(null);
   const area = useRef<HTMLTextAreaElement>(null);
   const pendingCaret = useRef<number | null>(null);
   /** listFiles results by project id, with when they were fetched, so the picker doesn't refetch per keystroke. */
@@ -233,6 +257,7 @@ export function Composer({
   }, [insert]);
 
   // Grow with the content, up to the CSS max-height; a picked mention moves the caret after its insertion.
+  // Chips change the textarea's padding, so its height is measured again when they come or go.
   useEffect(() => {
     const el = area.current;
     if (!el) return;
@@ -245,7 +270,7 @@ export function Composer({
       el.setSelectionRange(pending, pending);
       setCaret(pending);
     }
-  }, [text]);
+  }, [text, hasChips]);
 
   // Add the skill as a chip, or take it out when it's already picked; the typed `$query` goes away.
   const pick = (s: SkillEntry) => {
@@ -334,17 +359,28 @@ export function Composer({
     const refPaths = refs.map((r) => r.path);
     const message = withRefs(composeMessage(text, chips), refPaths);
     if (!message && !picked.length) return;
+    if (designChip?.kind === "match-screenshot" && !refs.length) {
+      useStore.getState().showNotice("Add the screenshot first: paste it, drop it here, or pick it from + → Match a screenshot….");
+      return;
+    }
     // The selection scopes a real request; on its own it isn't one.
     const body = withScope(message, selection && threadId ? `${designDirName(threadId)}/${selection.page}` : null, selection?.elements ?? []);
     const mentions = [...mentionsIn(text, knownSet), ...refPaths];
     const names = picked.map((p) => p.name);
     if (selection && threadId) useStore.getState().setDesignSelection(threadId, null);
-    if (!threadId) void startThread(body, names, mentions);
-    else if (running) enqueue(threadId, body, names, mentions);
-    else
-      void send(body, names, undefined, mentions).then((ok) => {
-        if (!ok) setText((cur) => cur || text);
-      });
+    const go = () => {
+      if (!threadId) void startThread(body, names, mentions);
+      else if (running) enqueue(threadId, body, names, mentions);
+      else
+        void send(body, names, undefined, mentions).then((ok) => {
+          if (!ok) setText((cur) => cur || text);
+        });
+    };
+    // The intent reaches the main process before the message, which takes it into the turn.
+    const intent = threadId ? designIntent(designChip, system) : null;
+    if (threadId && designChip) useStore.getState().setDesignChip(threadId, null);
+    if (threadId && intent) void api().designSetIntent(threadId, intent).catch(() => {}).then(go);
+    else go();
     setText("");
     setChips([]);
     setRefs([]);
@@ -501,7 +537,10 @@ export function Composer({
         ? `Anything to tell ${picked.map((p) => `$${p.name}`).join(", ")}? Or just press Return.`
         : running
       ? "Queue a message for the next turn…"
-      : "Ask anything — $ for a skill, / for a command";
+      : designPlaceholder(designChip, system) ??
+        (selectionPrompts && selection?.elements.length
+        ? "Describe a change…"
+      : "Ask anything — $ for a skill, / for a command");
 
   // The + starts a trigger at the caret, as if typed: @ mention, $ skill, / command.
   const startTrigger = (ch: "@" | "$" | "/") => {
@@ -577,6 +616,7 @@ export function Composer({
     <div className="composer-wrap">
       <div className={`composer${running ? " running" : ""}`}>
         {running && <Beam />}
+        {lip}
         {menuOpen && (
           <div className="skill-menu" role="listbox">
             {matches.length === 0 && <div className="empty-line">No skill matches “{query}”</div>}
@@ -644,7 +684,7 @@ export function Composer({
         )}
         {/* Skill and context chips sit inline before the text, each with its own ×. */}
         <div
-          className={`composer-input${issue || picked.length || chips.length || refs.length || selection ? " has-chips" : ""}`}
+          className={`composer-input${hasChips ? " has-chips" : ""}`}
           onDragOver={(e) => {
             if (designKind && Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
           }}
@@ -661,7 +701,32 @@ export function Composer({
               </button>
             </span>
           )}
-          {selection?.elements.map((el, i) => (
+          {threadId &&
+            system.map((c) => (
+              <span key={c} className="skill-chip context-chip system-chip" title={c === "Library" ? "This message changes the design system, not the page" : c}>
+                <span className="chip-label">{c}</span>
+                <button className="chip-x" aria-label={`Remove ${c}`} onClick={() => setDroppedSystem((d) => new Set([...d, c]))}>
+                  ×
+                </button>
+              </span>
+            ))}
+          {threadId && designChip && (
+            <span className="skill-chip context-chip design-intent-chip">
+              <span className="chip-label">{designChipLabel(designChip)}</span>
+              <button className="chip-x" aria-label={`Remove ${designChipLabel(designChip)}`} onClick={() => useStore.getState().setDesignChip(threadId, null)}>
+                ×
+              </button>
+            </span>
+          )}
+          {selection && selectionPrompts ? (
+            <span className="skill-chip context-chip select-chip studio-select-chip" title={selection.elements.map((el) => el.selector).join("\n")}>
+              <span className="chip-label">{selectionChipLabel(selection)}</span>
+              <button className="chip-x" aria-label="Clear the selection" onClick={() => threadId && useStore.getState().setDesignSelection(threadId, null)}>
+                ×
+              </button>
+            </span>
+          ) : (
+            selection?.elements.map((el, i) => (
             <span key={el.id ?? el.selector} className="skill-chip context-chip select-chip" title={el.selector}>
               <span className="chip-label">{elementLabel(el)}</span>
               <button
@@ -672,7 +737,8 @@ export function Composer({
                 ×
               </button>
             </span>
-          ))}
+          ))
+          )}
           {refs.map((r) => (
             <span key={r.path} className="skill-chip context-chip ref-chip" title={r.path}>
               {r.thumb && <img className="ref-thumb" src={r.thumb} alt="" />}
@@ -726,12 +792,35 @@ export function Composer({
                 { id: "mention", label: "Mention a file or folder (@)", icon: <AtSign size={14} />, onSelect: () => startTrigger("@") },
                 { id: "skill", label: "Use a skill ($)", icon: <Sparkles size={14} />, onSelect: () => startTrigger("$") },
                 { id: "command", label: "Run a command (/)", icon: <Slash size={14} />, onSelect: () => startTrigger("/") },
+                ...(selectionPrompts && threadId
+                  ? [
+                      { id: "new-kit", label: "Start a new kit…", icon: <Blocks size={14} />, onSelect: () => useStore.getState().setDesignChip(threadId, { kind: "new-kit" }) },
+                      { id: "match-screenshot", label: "Match a screenshot…", icon: <ImagePlus size={14} />, onSelect: () => screenshotInput.current?.click() },
+                    ]
+                  : []),
               ]}
             />
+            {selectionPrompts && threadId && (
+              <input
+                ref={screenshotInput}
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={(e) => {
+                  if (takeImages(e.currentTarget.files)) {
+                    useStore.getState().setDesignChip(threadId, { kind: "match-screenshot" });
+                    if (!text.trim()) setText("Match this screen: ");
+                    area.current?.focus();
+                  }
+                  e.currentTarget.value = "";
+                }}
+              />
+            )}
             {fold >= 2 && compactMode ? compactMode : mode}
             <span className="grow" />
           </div>
           <div className="composer-actions">
+            {beforeModel}
             {model}
             {meters}
             {running && (

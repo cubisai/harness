@@ -1,0 +1,3709 @@
+{
+  "kitId": "chakra-ui",
+  "name": "Chakra UI",
+  "version": "1.0.0",
+  "contractVersion": "1.0",
+  "package": "@chakra-ui/react",
+  "compat": {
+    "themes": [
+      "blue",
+      "red",
+      "purple",
+      "pink",
+      "teal",
+      "green",
+      "orange"
+    ],
+    "migratesFrom": []
+  },
+  "components": [
+    {
+      "name": "Aspect Ratio",
+      "ui": "aspect-ratio",
+      "category": "Layout",
+      "description": "Holds a child at a fixed width-to-height ratio, such as a 16:9 map or photo.",
+      "props": [
+        {
+          "name": "ratio",
+          "label": "Ratio",
+          "type": "choice",
+          "options": [
+            "16/9",
+            "1/1",
+            "4/3",
+            "3/4",
+            "21/9"
+          ],
+          "default": "16/9"
+        }
+      ],
+      "snippet": "<div data-ui=\"aspect-ratio\" data-ratio=\"16/9\"><div data-part=\"content\">Ridgeline Loop map</div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "AspectRatio"
+      }
+    },
+    {
+      "name": "Bleed",
+      "ui": "bleed",
+      "category": "Layout",
+      "description": "Stretches a child past its parent's padding, to the card edge.",
+      "props": [
+        {
+          "name": "inline",
+          "label": "Inline",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "block",
+          "label": "Block",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"card\" data-size=\"sm\"><div data-part=\"content\"><div data-ui=\"bleed\" data-inline=\"true\"><div data-part=\"band\">Next departure: Saturday 08:30</div></div><p data-ui=\"text\" data-size=\"sm\">Meet at the car park by the lake.</p></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Bleed"
+      }
+    },
+    {
+      "name": "Center",
+      "ui": "center",
+      "category": "Layout",
+      "description": "Centres its content on both axes. Takes inline to sit inside a line of text.",
+      "props": [
+        {
+          "name": "inline",
+          "label": "Inline",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"center\" style=\"block-size:120px\">Guided hikes, 4 to 12 people</div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Center"
+      }
+    },
+    {
+      "name": "Container",
+      "ui": "container",
+      "category": "Layout",
+      "description": "Limits content to a readable maximum width and centres it, with side padding.",
+      "props": [
+        {
+          "name": "fluid",
+          "label": "Fluid",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "center-content",
+          "label": "Center Content",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"container\"><p data-ui=\"text\" data-size=\"sm\">Trailmark keeps every booking, guide and trail in one place.</p></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Container"
+      }
+    },
+    {
+      "name": "Flex",
+      "ui": "flex",
+      "category": "Layout",
+      "description": "A flexbox row or column with a gap, alignment and optional wrapping.",
+      "props": [
+        {
+          "name": "direction",
+          "label": "Direction",
+          "type": "choice",
+          "options": [
+            "row",
+            "column"
+          ],
+          "default": "row"
+        },
+        {
+          "name": "gap",
+          "label": "Gap",
+          "type": "choice",
+          "options": [
+            "0",
+            "1",
+            "2",
+            "3",
+            "4",
+            "6",
+            "8"
+          ],
+          "default": "0"
+        },
+        {
+          "name": "align",
+          "label": "Align",
+          "type": "choice",
+          "options": [
+            "stretch",
+            "start",
+            "center",
+            "end"
+          ],
+          "default": "stretch"
+        },
+        {
+          "name": "justify",
+          "label": "Justify",
+          "type": "choice",
+          "options": [
+            "start",
+            "center",
+            "end",
+            "between"
+          ],
+          "default": "start"
+        },
+        {
+          "name": "wrap",
+          "label": "Wrap",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"3\" data-align=\"center\" data-justify=\"between\"><span data-ui=\"text\" data-size=\"sm\">Ridgeline Loop</span><button data-ui=\"button\" data-size=\"sm\" data-variant=\"outline\">Details</button></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Flex"
+      }
+    },
+    {
+      "name": "Float",
+      "ui": "float",
+      "category": "Layout",
+      "description": "Pins a child to a corner of its parent, such as a badge on a photo.",
+      "props": [
+        {
+          "name": "placement",
+          "label": "Placement",
+          "type": "choice",
+          "options": [
+            "top-end",
+            "top-start",
+            "bottom-end",
+            "bottom-start",
+            "top-center",
+            "bottom-center",
+            "middle-end",
+            "middle-start"
+          ],
+          "default": "top-end"
+        }
+      ],
+      "snippet": "<div style=\"position:relative\"><div data-ui=\"aspect-ratio\" data-ratio=\"16/9\"><div data-part=\"content\">Falls Circuit</div></div><span data-ui=\"float\" data-placement=\"top-end\"><span data-ui=\"badge\" data-variant=\"solid\" data-size=\"sm\">Popular</span></span></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Float"
+      }
+    },
+    {
+      "name": "Grid",
+      "ui": "grid",
+      "category": "Layout",
+      "description": "A CSS grid with a set number of equal columns and a gap, collapsing on narrow screens.",
+      "props": [
+        {
+          "name": "columns",
+          "label": "Columns",
+          "type": "choice",
+          "options": [
+            "3",
+            "1",
+            "2",
+            "4",
+            "5",
+            "6",
+            "12"
+          ],
+          "default": "3"
+        },
+        {
+          "name": "gap",
+          "label": "Gap",
+          "type": "choice",
+          "options": [
+            "4",
+            "0",
+            "1",
+            "2",
+            "3",
+            "6",
+            "8"
+          ],
+          "default": "4"
+        }
+      ],
+      "snippet": "<div data-ui=\"grid\" data-columns=\"3\" data-gap=\"4\"><div data-ui=\"card\" data-size=\"sm\"><div data-part=\"content\">Walks</div></div><div data-ui=\"card\" data-size=\"sm\"><div data-part=\"content\">Bikes</div></div><div data-ui=\"card\" data-size=\"sm\"><div data-part=\"content\">Kayaks</div></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Grid"
+      }
+    },
+    {
+      "name": "Group",
+      "ui": "group",
+      "category": "Layout",
+      "description": "Joins buttons or inputs into one attached row, with shared corners.",
+      "props": [
+        {
+          "name": "attached",
+          "label": "Attached",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        }
+      ],
+      "snippet": "<div data-ui=\"group\" role=\"group\"><button data-ui=\"button\" data-variant=\"outline\" data-size=\"sm\">Day</button><button data-ui=\"button\" data-variant=\"outline\" data-size=\"sm\">Week</button><button data-ui=\"button\" data-variant=\"outline\" data-size=\"sm\">Month</button></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "ButtonGroup"
+      }
+    },
+    {
+      "name": "Scroll Area",
+      "ui": "scroll-area",
+      "category": "Layout",
+      "description": "A box with a thin scrollbar that fits its own height, for long lists.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "xs",
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "xs"
+        },
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "vertical",
+            "horizontal",
+            "both"
+          ],
+          "default": "vertical"
+        }
+      ],
+      "snippet": "<div data-ui=\"scroll-area\" data-size=\"md\"><div data-part=\"viewport\"><p data-ui=\"text\" data-size=\"sm\">Ridgeline Loop, 6.2 km, 3 hours.</p><p data-ui=\"text\" data-size=\"sm\">Falls Circuit, 4.8 km, 2 hours.</p><p data-ui=\"text\" data-size=\"sm\">Coastal Path, 11 km, 4 hours.</p><p data-ui=\"text\" data-size=\"sm\">Summit Dawn, 9 km, 5 hours.</p></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "ScrollArea"
+      }
+    },
+    {
+      "name": "Separator",
+      "ui": "separator",
+      "category": "Layout",
+      "description": "A hairline between sections, horizontal or vertical, optionally with a label.",
+      "props": [
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "xs",
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "xs"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "solid",
+            "dashed"
+          ],
+          "default": "solid"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"3\"><p data-ui=\"text\" data-size=\"sm\">Today</p><div data-ui=\"separator\"></div><p data-ui=\"text\" data-size=\"sm\">Tomorrow</p></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Separator"
+      }
+    },
+    {
+      "name": "Simple Grid",
+      "ui": "simple-grid",
+      "category": "Layout",
+      "description": "A grid whose column count follows the width of its container.",
+      "props": [
+        {
+          "name": "min",
+          "label": "Min",
+          "type": "choice",
+          "options": [
+            "180px",
+            "120px",
+            "240px",
+            "300px"
+          ],
+          "default": "180px"
+        }
+      ],
+      "snippet": "<div data-ui=\"simple-grid\" data-min=\"180px\"><div data-ui=\"card\" data-size=\"sm\"><div data-part=\"content\">Ridgeline</div></div><div data-ui=\"card\" data-size=\"sm\"><div data-part=\"content\">Falls</div></div><div data-ui=\"card\" data-size=\"sm\"><div data-part=\"content\">Coast</div></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "SimpleGrid"
+      }
+    },
+    {
+      "name": "Splitter",
+      "ui": "splitter",
+      "category": "Layout",
+      "description": "Two panes with a draggable handle between them. The handle is keyboard-operable.",
+      "props": [
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        }
+      ],
+      "snippet": "<div data-ui=\"splitter\" style=\"block-size:160px\"><div data-part=\"panel\"><p data-ui=\"text\" data-size=\"sm\">Trail list</p></div><div data-part=\"handle\" role=\"separator\" tabindex=\"0\" aria-orientation=\"vertical\"><span></span></div><div data-part=\"panel\"><p data-ui=\"text\" data-size=\"sm\">Map preview</p></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Splitter"
+      }
+    },
+    {
+      "name": "Stack",
+      "ui": "stack",
+      "category": "Layout",
+      "description": "A flex column or row with one gap, for stacking parts with even spacing.",
+      "props": [
+        {
+          "name": "direction",
+          "label": "Direction",
+          "type": "choice",
+          "options": [
+            "column",
+            "row"
+          ],
+          "default": "column"
+        },
+        {
+          "name": "gap",
+          "label": "Gap",
+          "type": "choice",
+          "options": [
+            "2",
+            "0",
+            "1",
+            "3",
+            "4",
+            "6",
+            "8",
+            "10"
+          ],
+          "default": "2"
+        },
+        {
+          "name": "align",
+          "label": "Align",
+          "type": "choice",
+          "options": [
+            "stretch",
+            "start",
+            "center",
+            "end"
+          ],
+          "default": "stretch"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"3\"><h3 data-ui=\"heading\" data-size=\"lg\">Ridgeline Loop</h3><p data-ui=\"text\" data-size=\"sm\" data-color=\"muted\">6.2 km, 3 hours, 480 m of climb.</p><div data-ui=\"flex\" data-gap=\"2\"><button data-ui=\"button\" data-size=\"sm\">Book a place</button></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Stack"
+      }
+    },
+    {
+      "name": "Wrap",
+      "ui": "wrap",
+      "category": "Layout",
+      "description": "A row of items that wraps onto new lines, with a gap between them.",
+      "props": [
+        {
+          "name": "gap",
+          "label": "Gap",
+          "type": "choice",
+          "options": [
+            "2",
+            "0",
+            "1",
+            "3",
+            "4",
+            "6"
+          ],
+          "default": "2"
+        },
+        {
+          "name": "justify",
+          "label": "Justify",
+          "type": "choice",
+          "options": [
+            "start",
+            "center",
+            "end"
+          ],
+          "default": "start"
+        }
+      ],
+      "snippet": "<div data-ui=\"wrap\" data-gap=\"2\"><span data-ui=\"tag\" data-size=\"md\">Dog friendly</span><span data-ui=\"tag\" data-size=\"md\">Family</span><span data-ui=\"tag\" data-size=\"md\">Views</span><span data-ui=\"tag\" data-size=\"md\">Waterfall</span><span data-ui=\"tag\" data-size=\"md\">Shade</span></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Wrap"
+      }
+    },
+    {
+      "name": "Blockquote",
+      "ui": "blockquote",
+      "category": "Typography",
+      "description": "A quotation with an optional cite and a coloured bar on the left.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "subtle",
+            "solid",
+            "outline",
+            "plain"
+          ],
+          "default": "subtle"
+        },
+        {
+          "name": "color-palette",
+          "label": "Color Palette",
+          "type": "choice",
+          "options": [
+            "gray",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "cyan",
+            "purple",
+            "pink"
+          ],
+          "default": "gray"
+        }
+      ],
+      "snippet": "<figure data-ui=\"blockquote\"><p>\"The guide knew every switchback, and waited for everyone at the top.\"</p><figcaption data-part=\"cite\">Mara, Ridgeline Loop, June</figcaption></figure>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Blockquote"
+      }
+    },
+    {
+      "name": "Code",
+      "ui": "code",
+      "category": "Typography",
+      "description": "Inline code in the monospace face, on a tinted chip.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "subtle",
+            "solid",
+            "outline",
+            "surface",
+            "plain"
+          ],
+          "default": "subtle"
+        },
+        {
+          "name": "color-palette",
+          "label": "Color Palette",
+          "type": "choice",
+          "options": [
+            "gray",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "cyan",
+            "purple",
+            "pink"
+          ],
+          "default": "gray"
+        }
+      ],
+      "snippet": "<p data-ui=\"text\" data-size=\"sm\">Booking ref <code data-ui=\"code\">TM-2041</code> is in your confirmation.</p>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Code"
+      }
+    },
+    {
+      "name": "Code Block",
+      "ui": "code-block",
+      "category": "Typography",
+      "description": "A block of code with a header line, for setup notes and API examples.",
+      "props": [],
+      "snippet": "<div data-ui=\"code-block\"><div data-part=\"header\">booking.json</div><pre data-part=\"code\">{ \"trail\": \"ridgeline-loop\", \"guests\": 2, \"date\": \"2026-11-14\" }</pre></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "CodeBlock"
+      }
+    },
+    {
+      "name": "Em",
+      "ui": "em",
+      "category": "Typography",
+      "description": "Emphasised text, in italics and the same colour as its context.",
+      "props": [],
+      "snippet": "<p data-ui=\"text\" data-size=\"sm\">Bring water, <em data-ui=\"em\">and</em> a warm layer for the summit.</p>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Em"
+      }
+    },
+    {
+      "name": "Heading",
+      "ui": "heading",
+      "category": "Typography",
+      "description": "Headings at seven sizes on the type scale, in the heading face and weight.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "xl",
+            "xs",
+            "sm",
+            "md",
+            "lg",
+            "2xl",
+            "3xl",
+            "4xl",
+            "5xl",
+            "6xl",
+            "7xl"
+          ],
+          "default": "xl"
+        }
+      ],
+      "snippet": "<h2 data-ui=\"heading\" data-size=\"xl\">Where are we going next?</h2>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Heading"
+      }
+    },
+    {
+      "name": "Highlight",
+      "ui": "highlight",
+      "category": "Typography",
+      "description": "Marks matching words inside text, using the palette's emphasis colour.",
+      "props": [
+        {
+          "name": "color-palette",
+          "label": "Color Palette",
+          "type": "choice",
+          "options": [
+            "gray",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "cyan",
+            "purple",
+            "pink"
+          ],
+          "default": "gray"
+        }
+      ],
+      "snippet": "<p data-ui=\"text\" data-size=\"sm\"><span data-ui=\"highlight\">Ridgeline</span> Loop has a shaded ridge walk and a lake stop.</p>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Highlight"
+      }
+    },
+    {
+      "name": "Kbd",
+      "ui": "kbd",
+      "category": "Typography",
+      "description": "A keyboard key, raised like a physical key, for shortcuts.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "raised",
+            "outline",
+            "subtle",
+            "plain"
+          ],
+          "default": "raised"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<p data-ui=\"text\" data-size=\"sm\">Search trails with <kbd data-ui=\"kbd\">⌘</kbd> <kbd data-ui=\"kbd\">K</kbd></p>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Kbd"
+      }
+    },
+    {
+      "name": "Link",
+      "ui": "link",
+      "category": "Typography",
+      "description": "A text link in the palette's colour, underlined on hover or always.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "plain",
+            "underline"
+          ],
+          "default": "plain"
+        },
+        {
+          "name": "color-palette",
+          "label": "Color Palette",
+          "type": "choice",
+          "options": [
+            "gray",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "cyan",
+            "purple",
+            "pink"
+          ],
+          "default": "gray"
+        }
+      ],
+      "snippet": "<p data-ui=\"text\" data-size=\"sm\">Read the <a data-ui=\"link\" href=\"#\">trail safety notes</a> before you go. <a data-ui=\"link\" data-variant=\"underline\" href=\"#\">Terms apply</a></p>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Link"
+      }
+    },
+    {
+      "name": "List",
+      "ui": "list",
+      "category": "Typography",
+      "description": "Bulleted, numbered or unstyled lists with a gap between items.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "disc",
+            "decimal",
+            "none"
+          ],
+          "default": "disc"
+        },
+        {
+          "name": "gap",
+          "label": "Gap",
+          "type": "choice",
+          "options": [
+            "2",
+            "1",
+            "3"
+          ],
+          "default": "2"
+        }
+      ],
+      "snippet": "<ul data-ui=\"list\" data-variant=\"disc\"><li>Pack two litres of water</li><li>Check the weather at the trailhead</li><li>Tell someone your return time</li></ul>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "List"
+      }
+    },
+    {
+      "name": "Mark",
+      "ui": "mark",
+      "category": "Typography",
+      "description": "A marker-pen highlight behind text, in the palette's subtle colour.",
+      "props": [
+        {
+          "name": "color-palette",
+          "label": "Color Palette",
+          "type": "choice",
+          "options": [
+            "gray",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "cyan",
+            "purple",
+            "pink"
+          ],
+          "default": "gray"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "subtle",
+            "solid",
+            "plain"
+          ],
+          "default": "subtle"
+        }
+      ],
+      "snippet": "<p data-ui=\"text\" data-size=\"sm\">Leave by <mark data-ui=\"mark\">08:30</mark>, the car park fills by nine.</p>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Mark"
+      }
+    },
+    {
+      "name": "Prose",
+      "ui": "prose",
+      "category": "Typography",
+      "description": "Styles raw headings, paragraphs, lists and links inside it, for long articles.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "sm"
+        }
+      ],
+      "snippet": "<div data-ui=\"prose\"><h3>Before you start</h3><p>Check the trail status the evening before. Carry more water than you think you need, and leave the return time with someone at home.</p><ul><li>Layers for wind on the ridge</li><li>Headlamp for early starts</li></ul></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Prose"
+      }
+    },
+    {
+      "name": "Rich Text Editor",
+      "ui": "rich-text-editor",
+      "category": "Typography",
+      "description": "A toolbar over an editable area, for trail notes and guide briefings.",
+      "props": [],
+      "snippet": "<div data-ui=\"rich-text-editor\"><div data-part=\"toolbar\"><button data-ui=\"icon-button\" data-variant=\"ghost\" data-size=\"sm\" aria-label=\"Bold\"><i data-ui=\"icon\" data-name=\"bold\"></i></button><button data-ui=\"icon-button\" data-variant=\"ghost\" data-size=\"sm\" aria-label=\"Italic\"><i data-ui=\"icon\" data-name=\"italic\"></i></button><button data-ui=\"icon-button\" data-variant=\"ghost\" data-size=\"sm\" aria-label=\"List\"><i data-ui=\"icon\" data-name=\"list\"></i></button></div><div data-part=\"content\" contenteditable=\"true\">Meet at the <strong>car park</strong> by the lake at 08:30.</div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "RichTextEditor"
+      }
+    },
+    {
+      "name": "Text",
+      "ui": "text",
+      "category": "Typography",
+      "description": "Body text on the type scale, with size, weight and colour as props.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "2xs",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "weight",
+          "label": "Weight",
+          "type": "choice",
+          "options": [
+            "regular",
+            "medium",
+            "semibold"
+          ],
+          "default": "regular"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "default",
+            "muted",
+            "subtle",
+            "error"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<p data-ui=\"text\" data-size=\"md\">Two guides, one lake stop, and a hot drink at the top.</p><p data-ui=\"text\" data-size=\"sm\" data-color=\"muted\">Ridgeline Loop, Saturday 14 March</p>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Text"
+      }
+    },
+    {
+      "name": "Button",
+      "ui": "button",
+      "category": "Actions",
+      "description": "The main action control, in six variants and seven sizes, with an optional loading state.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "solid",
+            "outline",
+            "subtle",
+            "surface",
+            "ghost",
+            "plain"
+          ],
+          "default": "solid"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "2xs",
+            "xs",
+            "sm",
+            "lg",
+            "xl",
+            "2xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "color-palette",
+          "label": "Color Palette",
+          "type": "choice",
+          "options": [
+            "gray",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "cyan",
+            "purple",
+            "pink"
+          ],
+          "default": "gray"
+        },
+        {
+          "name": "loading",
+          "label": "Loading",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"2\" data-wrap=\"true\" data-align=\"center\"><button data-ui=\"button\">Book trail</button><button data-ui=\"button\" data-variant=\"outline\">Details</button><button data-ui=\"button\" data-variant=\"subtle\">Save</button><button data-ui=\"button\" data-variant=\"ghost\">Share</button><button data-ui=\"button\" data-variant=\"solid\" data-color-palette=\"teal\">Confirm</button><button data-ui=\"button\" disabled>Full</button></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Button"
+      }
+    },
+    {
+      "name": "Close Button",
+      "ui": "close-button",
+      "category": "Actions",
+      "description": "A small square icon button with a cross, for dismissing a panel or tag.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "2xs",
+            "xs",
+            "sm",
+            "lg",
+            "xl",
+            "2xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "ghost",
+            "plain",
+            "outline",
+            "solid",
+            "subtle"
+          ],
+          "default": "ghost"
+        }
+      ],
+      "snippet": "<button data-ui=\"close-button\" aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"x\"></i></button>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "CloseButton"
+      }
+    },
+    {
+      "name": "Icon Button",
+      "ui": "icon-button",
+      "category": "Actions",
+      "description": "A square button holding one icon, the same heights as Button.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "solid",
+            "outline",
+            "subtle",
+            "surface",
+            "ghost",
+            "plain"
+          ],
+          "default": "solid"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "2xs",
+            "xs",
+            "sm",
+            "lg",
+            "xl",
+            "2xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "color-palette",
+          "label": "Color Palette",
+          "type": "choice",
+          "options": [
+            "gray",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "cyan",
+            "purple",
+            "pink"
+          ],
+          "default": "gray"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"2\" data-align=\"center\"><button data-ui=\"icon-button\" aria-label=\"Share\"><i data-ui=\"icon\" data-name=\"share\"></i></button><button data-ui=\"icon-button\" data-variant=\"outline\" aria-label=\"Save\"><i data-ui=\"icon\" data-name=\"bookmark\"></i></button><button data-ui=\"icon-button\" data-variant=\"subtle\" data-size=\"sm\" aria-label=\"More\"><i data-ui=\"icon\" data-name=\"more\"></i></button></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "IconButton"
+      }
+    },
+    {
+      "name": "Download Trigger",
+      "ui": "download-trigger",
+      "category": "Actions",
+      "description": "A button that downloads a file, with the download icon built in.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "solid",
+            "outline",
+            "subtle",
+            "surface",
+            "ghost",
+            "plain"
+          ],
+          "default": "solid"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "2xs",
+            "xs",
+            "sm",
+            "lg",
+            "xl",
+            "2xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<a data-ui=\"download-trigger\" data-variant=\"outline\" href=\"#\" download><i data-ui=\"icon\" data-name=\"download\"></i>Download GPX</a>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "DownloadTrigger"
+      }
+    },
+    {
+      "name": "Date Input",
+      "ui": "date-input",
+      "category": "Forms",
+      "description": "A segmented date field: day, month and year typed in place.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "2xs",
+            "xs",
+            "sm",
+            "lg",
+            "xl",
+            "2xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outline",
+            "subtle",
+            "flushed"
+          ],
+          "default": "outline"
+        }
+      ],
+      "snippet": "<div data-ui=\"date-input\" data-size=\"md\" role=\"group\" aria-label=\"Arrival date\"><span data-part=\"segment\">14</span><span data-part=\"sep\">/</span><span data-part=\"segment\">11</span><span data-part=\"sep\">/</span><span data-part=\"segment\">2026</span></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "DateInput"
+      }
+    },
+    {
+      "name": "Date Picker",
+      "ui": "date-picker",
+      "category": "Forms",
+      "description": "A date field with a calendar that opens from a trigger button.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "2xs",
+            "xs",
+            "sm",
+            "lg",
+            "xl",
+            "2xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outline",
+            "subtle",
+            "flushed"
+          ],
+          "default": "outline"
+        }
+      ],
+      "snippet": "<div data-ui=\"date-picker\" data-size=\"md\" style=\"anchor-name:--dp1\"><div data-part=\"control\"><input data-ui=\"input\" value=\"14 Nov 2026\" aria-label=\"Date\"><button data-part=\"trigger\" popovertarget=\"dp1\" aria-label=\"Open calendar\"><i data-ui=\"icon\" data-name=\"calendar\"></i></button></div><div data-part=\"content\" popover id=\"dp1\" style=\"position-anchor:--dp1\"><div data-ui=\"calendar\" data-month=\"2026-11\" data-selected=\"2026-11-14\"></div></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "DatePicker"
+      }
+    },
+    {
+      "name": "Calendar",
+      "ui": "calendar",
+      "category": "Forms",
+      "description": "A month grid with a header, weekday row and selectable days, drawn from data-month.",
+      "props": [
+        {
+          "name": "month",
+          "label": "Month",
+          "type": "text"
+        },
+        {
+          "name": "selected",
+          "label": "Selected",
+          "type": "text"
+        },
+        {
+          "name": "min",
+          "label": "Min",
+          "type": "text"
+        },
+        {
+          "name": "max",
+          "label": "Max",
+          "type": "text"
+        }
+      ],
+      "snippet": "<div data-ui=\"calendar\" data-month=\"2026-11\" data-selected=\"2026-11-14\"></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Calendar"
+      }
+    },
+    {
+      "name": "Checkbox",
+      "ui": "checkbox",
+      "category": "Forms",
+      "description": "A square tick box with a label, in solid, outline and subtle variants.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "solid",
+            "outline",
+            "subtle"
+          ],
+          "default": "solid"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "color-palette",
+          "label": "Color Palette",
+          "type": "choice",
+          "options": [
+            "gray",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "cyan",
+            "purple",
+            "pink"
+          ],
+          "default": "gray"
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"3\"><label data-ui=\"checkbox\"><input type=\"checkbox\" checked><span data-part=\"control\"><i data-ui=\"icon\" data-name=\"check\"></i></span><span data-part=\"label\">Lift pass included</span></label><label data-ui=\"checkbox\" data-variant=\"outline\"><input type=\"checkbox\"><span data-part=\"control\"><i data-ui=\"icon\" data-name=\"check\"></i></span><span data-part=\"label\">Need a guide</span></label></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Checkbox"
+      }
+    },
+    {
+      "name": "Checkbox Card",
+      "ui": "checkbox-card",
+      "category": "Forms",
+      "description": "A checkbox presented as a bordered card with a title and a description.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "color-palette",
+          "label": "Color Palette",
+          "type": "choice",
+          "options": [
+            "gray",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "cyan",
+            "purple",
+            "pink"
+          ],
+          "default": "gray"
+        }
+      ],
+      "snippet": "<label data-ui=\"checkbox-card\"><input type=\"checkbox\" checked><span data-part=\"control\"><i data-ui=\"icon\" data-name=\"check\"></i></span><span data-part=\"body\"><span data-part=\"title\">Guided hike</span><span data-part=\"description\">A certified guide walks with you, £38 each.</span></span></label>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "CheckboxCard"
+      }
+    },
+    {
+      "name": "Color Picker",
+      "ui": "color-picker",
+      "category": "Forms",
+      "description": "A swatch field that opens a panel with an area, a hue slider and swatches.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "2xs",
+            "xs",
+            "sm",
+            "lg",
+            "xl",
+            "2xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"color-picker\" data-size=\"md\" style=\"anchor-name:--cp1\"><button data-part=\"trigger\" popovertarget=\"cp1\" aria-label=\"Pick colour\"><span data-ui=\"color-swatch\" data-size=\"xs\" data-color-palette=\"teal\"></span><span data-part=\"value\">#0D9488</span></button><div data-part=\"content\" popover id=\"cp1\" style=\"position-anchor:--cp1\"><div data-part=\"area\"><span data-part=\"thumb\"></span></div><div data-part=\"hue\"><span data-part=\"thumb\"></span></div><div data-part=\"swatches\"><span data-ui=\"color-swatch\" data-size=\"sm\" data-color-palette=\"red\"></span><span data-ui=\"color-swatch\" data-size=\"sm\" data-color-palette=\"teal\"></span><span data-ui=\"color-swatch\" data-size=\"sm\" data-color-palette=\"blue\"></span><span data-ui=\"color-swatch\" data-size=\"sm\" data-color-palette=\"purple\"></span></div></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "ColorPicker"
+      }
+    },
+    {
+      "name": "Color Swatch",
+      "ui": "color-swatch",
+      "category": "Forms",
+      "description": "A small square of a palette colour, used alone or in a picker.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "color-palette",
+          "label": "Color Palette",
+          "type": "choice",
+          "options": [
+            "gray",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "cyan",
+            "purple",
+            "pink"
+          ],
+          "default": "gray"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"2\" data-align=\"center\"><span data-ui=\"color-swatch\" data-size=\"md\" data-color-palette=\"blue\"></span><span data-ui=\"color-swatch\" data-size=\"md\" data-color-palette=\"green\"></span><span data-ui=\"color-swatch\" data-size=\"md\" data-color-palette=\"orange\"></span><span data-ui=\"color-swatch\" data-size=\"md\" data-color-palette=\"pink\"></span></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "ColorSwatch"
+      }
+    },
+    {
+      "name": "Editable",
+      "ui": "editable",
+      "category": "Forms",
+      "description": "Text that looks like plain text until it is clicked and becomes an editable field.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"editable\" data-size=\"md\"><span data-part=\"preview\" contenteditable=\"true\" spellcheck=\"false\">Ridgeline Loop</span></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Editable"
+      }
+    },
+    {
+      "name": "Field",
+      "ui": "field",
+      "category": "Forms",
+      "description": "A label, a control, and helper or error text, stacked or side by side.",
+      "props": [
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "vertical",
+            "horizontal"
+          ],
+          "default": "vertical"
+        },
+        {
+          "name": "invalid",
+          "label": "Invalid",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "required",
+          "label": "Required",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"field\"><label data-part=\"label\" for=\"f-name\">Lead guest name</label><input data-ui=\"input\" id=\"f-name\" placeholder=\"As on your ID\"><span data-part=\"helper\">We will use this on the trailhead list.</span></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Field"
+      }
+    },
+    {
+      "name": "Fieldset",
+      "ui": "fieldset",
+      "category": "Forms",
+      "description": "A group of related fields under one legend, with helper text.",
+      "props": [
+        {
+          "name": "invalid",
+          "label": "Invalid",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<fieldset data-ui=\"fieldset\"><legend data-part=\"legend\">Trip details</legend><div data-part=\"content\"><div data-ui=\"field\"><label data-part=\"label\" for=\"fs-date\">Date</label><input data-ui=\"input\" id=\"fs-date\" value=\"14 Nov 2026\"></div><div data-ui=\"field\"><label data-part=\"label\" for=\"fs-guests\">Guests</label><input data-ui=\"input\" id=\"fs-guests\" value=\"2\"></div></div><span data-part=\"helper\">Groups of over 8 need a second guide.</span></fieldset>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Fieldset"
+      }
+    },
+    {
+      "name": "File Upload",
+      "ui": "file-upload",
+      "category": "Forms",
+      "description": "A dashed drop zone with a browse button, and the list of files chosen.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"file-upload\"><div data-part=\"dropzone\"><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"upload\"></i></span><span data-part=\"title\">Drop your waiver here</span><span data-part=\"hint\">PDF or JPG, up to 5 MB</span><button data-ui=\"button\" data-variant=\"outline\" data-size=\"sm\">Browse files</button></div><ul data-part=\"list\"><li data-part=\"item\"><i data-ui=\"icon\" data-name=\"file\"></i><span>waiver-tm-2041.pdf</span></li></ul></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "FileUpload"
+      }
+    },
+    {
+      "name": "Input",
+      "ui": "input",
+      "category": "Forms",
+      "description": "A single-line text field in three variants and seven sizes, with invalid and disabled states.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outline",
+            "subtle",
+            "flushed"
+          ],
+          "default": "outline"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "2xs",
+            "xs",
+            "sm",
+            "lg",
+            "xl",
+            "2xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "invalid",
+          "label": "Invalid",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"3\"><input data-ui=\"input\" placeholder=\"Search trails\"><input data-ui=\"input\" data-variant=\"subtle\" placeholder=\"Subtle\"><input data-ui=\"input\" data-variant=\"flushed\" placeholder=\"Flushed\"><input data-ui=\"input\" data-invalid=\"true\" value=\"13 Nov\"></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Input"
+      }
+    },
+    {
+      "name": "Number Input",
+      "ui": "number-input",
+      "category": "Forms",
+      "description": "A numeric field with stepper buttons on the right.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outline",
+            "subtle",
+            "flushed"
+          ],
+          "default": "outline"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "2xs",
+            "xs",
+            "sm",
+            "lg",
+            "xl",
+            "2xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"number-input\" data-size=\"md\" data-variant=\"outline\"><input data-part=\"input\" inputmode=\"numeric\" value=\"2\" aria-label=\"Guests\"><div data-part=\"stepper\"><button data-part=\"inc\" aria-label=\"Increase\"><i data-ui=\"icon\" data-name=\"plus\"></i></button><button data-part=\"dec\" aria-label=\"Decrease\"><i data-ui=\"icon\" data-name=\"minus\"></i></button></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "NumberInput"
+      }
+    },
+    {
+      "name": "Password Input",
+      "ui": "password-input",
+      "category": "Forms",
+      "description": "A password field with a button to show or hide the characters.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outline",
+            "subtle",
+            "flushed"
+          ],
+          "default": "outline"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "2xs",
+            "xs",
+            "sm",
+            "lg",
+            "xl",
+            "2xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"password-input\" data-size=\"md\"><input data-ui=\"input\" type=\"password\" value=\"trailmark-2041\" aria-label=\"Password\"><button data-part=\"toggle\" aria-label=\"Show password\"><i data-ui=\"icon\" data-name=\"eye\"></i></button></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "PasswordInput"
+      }
+    },
+    {
+      "name": "Pin Input",
+      "ui": "pin-input",
+      "category": "Forms",
+      "description": "A row of single-character boxes for a one-time code.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "2xs",
+            "xs",
+            "sm",
+            "lg",
+            "xl",
+            "2xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "length",
+          "label": "Length",
+          "type": "choice",
+          "options": [
+            "4",
+            "6"
+          ],
+          "default": "4"
+        }
+      ],
+      "snippet": "<div data-ui=\"pin-input\" data-size=\"md\" role=\"group\" aria-label=\"Code\"><input data-part=\"pin\" inputmode=\"numeric\" maxlength=\"1\" value=\"4\" aria-label=\"Digit 1\"><input data-part=\"pin\" inputmode=\"numeric\" maxlength=\"1\" value=\"8\" aria-label=\"Digit 2\"><input data-part=\"pin\" inputmode=\"numeric\" maxlength=\"1\" value=\"2\" aria-label=\"Digit 3\"><input data-part=\"pin\" inputmode=\"numeric\" maxlength=\"1\" aria-label=\"Digit 4\"><input data-part=\"pin\" inputmode=\"numeric\" maxlength=\"1\" aria-label=\"Digit 5\"><input data-part=\"pin\" inputmode=\"numeric\" maxlength=\"1\" aria-label=\"Digit 6\"></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "PinInput"
+      }
+    },
+    {
+      "name": "Radio Card",
+      "ui": "radio-card",
+      "category": "Forms",
+      "description": "A radio option presented as a bordered card with a title and description.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "color-palette",
+          "label": "Color Palette",
+          "type": "choice",
+          "options": [
+            "gray",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "cyan",
+            "purple",
+            "pink"
+          ],
+          "default": "gray"
+        }
+      ],
+      "snippet": "<div data-part=\"group\" role=\"radiogroup\" aria-label=\"Trip type\"><label data-ui=\"radio-card\"><input type=\"radio\" name=\"rc\" checked><span data-part=\"control\"></span><span data-part=\"body\"><span data-part=\"title\">Half day</span><span data-part=\"description\">Up to 4 hours</span></span></label><label data-ui=\"radio-card\"><input type=\"radio\" name=\"rc\"><span data-part=\"control\"></span><span data-part=\"body\"><span data-part=\"title\">Full day</span><span data-part=\"description\">6 to 9 hours</span></span></label></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "RadioCard"
+      }
+    },
+    {
+      "name": "Radio",
+      "ui": "radio",
+      "category": "Forms",
+      "description": "A round choice inside a group. Only one in a group can be selected.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "solid",
+            "outline",
+            "subtle"
+          ],
+          "default": "solid"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "color-palette",
+          "label": "Color Palette",
+          "type": "choice",
+          "options": [
+            "gray",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "cyan",
+            "purple",
+            "pink"
+          ],
+          "default": "gray"
+        }
+      ],
+      "snippet": "<div data-part=\"group\" role=\"radiogroup\" aria-label=\"Pickup\"><label data-ui=\"radio\"><input type=\"radio\" name=\"pk\" checked><span data-part=\"control\"><span data-part=\"dot\"></span></span><span data-part=\"label\">Trailhead</span></label><label data-ui=\"radio\"><input type=\"radio\" name=\"pk\"><span data-part=\"control\"><span data-part=\"dot\"></span></span><span data-part=\"label\">Hotel lobby</span></label></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Radio"
+      }
+    },
+    {
+      "name": "Rating",
+      "ui": "rating",
+      "category": "Forms",
+      "description": "A row of stars for rating, with filled and empty states.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "color-palette",
+          "label": "Color Palette",
+          "type": "choice",
+          "options": [
+            "gray",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "cyan",
+            "purple",
+            "pink"
+          ],
+          "default": "gray"
+        }
+      ],
+      "snippet": "<div data-ui=\"rating\" role=\"img\" aria-label=\"4 of 5 stars\" data-size=\"md\"><span data-part=\"star\" data-filled=\"true\"><i data-ui=\"icon\" data-name=\"star-filled\"></i></span><span data-part=\"star\" data-filled=\"true\"><i data-ui=\"icon\" data-name=\"star-filled\"></i></span><span data-part=\"star\" data-filled=\"true\"><i data-ui=\"icon\" data-name=\"star-filled\"></i></span><span data-part=\"star\" data-filled=\"true\"><i data-ui=\"icon\" data-name=\"star-filled\"></i></span><span data-part=\"star\"><i data-ui=\"icon\" data-name=\"star\"></i></span></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "RatingGroup"
+      }
+    },
+    {
+      "name": "Segmented Control",
+      "ui": "segmented-control",
+      "category": "Forms",
+      "description": "A row of mutually exclusive options in one pill, with the chosen one raised.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"segmented-control\" data-size=\"md\" role=\"radiogroup\" aria-label=\"View\"><label><input type=\"radio\" name=\"seg\" checked><span>Map</span></label><label><input type=\"radio\" name=\"seg\"><span>List</span></label><label><input type=\"radio\" name=\"seg\"><span>Calendar</span></label></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "SegmentGroup"
+      }
+    },
+    {
+      "name": "Native Select",
+      "ui": "native-select",
+      "category": "Forms",
+      "description": "The browser's own select, drawn to match the other fields.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outline",
+            "subtle",
+            "flushed"
+          ],
+          "default": "outline"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "2xs",
+            "xs",
+            "sm",
+            "lg",
+            "xl",
+            "2xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"native-select\" data-size=\"md\"><select data-part=\"field\" aria-label=\"Difficulty\"><option>Easy</option><option>Moderate</option><option>Hard</option></select><i data-ui=\"icon\" data-name=\"chevron-down\" data-part=\"indicator\"></i></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "NativeSelect"
+      }
+    },
+    {
+      "name": "Switch",
+      "ui": "switch",
+      "category": "Forms",
+      "description": "An on-off toggle in four sizes, in solid or raised style.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "solid",
+            "raised"
+          ],
+          "default": "solid"
+        },
+        {
+          "name": "color-palette",
+          "label": "Color Palette",
+          "type": "choice",
+          "options": [
+            "gray",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "cyan",
+            "purple",
+            "pink"
+          ],
+          "default": "gray"
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"3\"><label data-ui=\"switch\"><input type=\"checkbox\" role=\"switch\" checked><span data-part=\"control\"><span data-part=\"thumb\"></span></span><span data-part=\"label\">Send trail alerts</span></label><label data-ui=\"switch\" data-variant=\"raised\" data-size=\"sm\"><input type=\"checkbox\" role=\"switch\"><span data-part=\"control\"><span data-part=\"thumb\"></span></span><span data-part=\"label\">Weather warnings</span></label></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Switch"
+      }
+    },
+    {
+      "name": "Slider",
+      "ui": "slider",
+      "category": "Forms",
+      "description": "A range from a minimum to a maximum, with a filled track and a round thumb.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outline",
+            "solid"
+          ],
+          "default": "outline"
+        },
+        {
+          "name": "color-palette",
+          "label": "Color Palette",
+          "type": "choice",
+          "options": [
+            "gray",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "cyan",
+            "purple",
+            "pink"
+          ],
+          "default": "gray"
+        }
+      ],
+      "snippet": "<div data-ui=\"slider\" data-size=\"md\"><div data-part=\"head\"><span data-part=\"label\">Max distance</span><span data-part=\"value\">12 km</span></div><div data-part=\"control\"><div data-part=\"track\"><div data-part=\"range\" style=\"inline-size:40%\"></div></div><input data-part=\"input\" type=\"range\" min=\"0\" max=\"30\" value=\"12\" aria-label=\"Max distance\" style=\"--fill:40%\"></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Slider"
+      }
+    },
+    {
+      "name": "Textarea",
+      "ui": "textarea",
+      "category": "Forms",
+      "description": "A multi-line text field with the same variants and sizes as Input.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outline",
+            "subtle",
+            "flushed"
+          ],
+          "default": "outline"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "2xs",
+            "xs",
+            "sm",
+            "lg",
+            "xl",
+            "2xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<textarea data-ui=\"textarea\" rows=\"3\" placeholder=\"Anything the guide should know?\"></textarea>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Textarea"
+      }
+    },
+    {
+      "name": "Tags Input",
+      "ui": "tags-input",
+      "category": "Forms",
+      "description": "A field that turns typed entries into removable tags.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "2xs",
+            "xs",
+            "sm",
+            "lg",
+            "xl",
+            "2xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outline",
+            "subtle",
+            "flushed"
+          ],
+          "default": "outline"
+        }
+      ],
+      "snippet": "<div data-ui=\"tags-input\" data-size=\"md\"><span data-ui=\"tag\" data-size=\"md\"><span data-part=\"label\">Dog friendly</span><button data-ui=\"close-button\" data-size=\"2xs\" aria-label=\"Remove\"><i data-ui=\"icon\" data-name=\"x\"></i></button></span><span data-ui=\"tag\" data-size=\"md\"><span data-part=\"label\">Family</span><button data-ui=\"close-button\" data-size=\"2xs\" aria-label=\"Remove\"><i data-ui=\"icon\" data-name=\"x\"></i></button></span><input data-part=\"input\" placeholder=\"Add a tag\"></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "TagsInput"
+      }
+    },
+    {
+      "name": "Checkmark",
+      "ui": "checkmark",
+      "category": "Forms",
+      "description": "The tick square on its own, as used inside a checkbox.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "solid",
+            "outline",
+            "subtle"
+          ],
+          "default": "solid"
+        },
+        {
+          "name": "state",
+          "label": "State",
+          "type": "choice",
+          "options": [
+            "unchecked",
+            "checked",
+            "indeterminate"
+          ],
+          "default": "unchecked"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"2\" data-align=\"center\"><span data-ui=\"checkmark\" data-size=\"md\" data-state=\"checked\"><i data-ui=\"icon\" data-name=\"check\"></i></span><span data-ui=\"checkmark\" data-size=\"md\" data-state=\"unchecked\"><i data-ui=\"icon\" data-name=\"check\"></i></span></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Checkmark"
+      }
+    },
+    {
+      "name": "Radiomark",
+      "ui": "radiomark",
+      "category": "Forms",
+      "description": "The round dot on its own, as used inside a radio.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "solid",
+            "outline",
+            "subtle"
+          ],
+          "default": "solid"
+        },
+        {
+          "name": "state",
+          "label": "State",
+          "type": "choice",
+          "options": [
+            "unchecked",
+            "checked"
+          ],
+          "default": "unchecked"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"2\" data-align=\"center\"><span data-ui=\"radiomark\" data-size=\"md\" data-state=\"checked\"><span data-part=\"dot\"></span></span><span data-ui=\"radiomark\" data-size=\"md\" data-state=\"unchecked\"><span data-part=\"dot\"></span></span></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Radiomark"
+      }
+    },
+    {
+      "name": "Combobox",
+      "ui": "combobox",
+      "category": "Selection",
+      "description": "A text field that filters a list of options as you type.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "2xs",
+            "xs",
+            "sm",
+            "lg",
+            "xl",
+            "2xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outline",
+            "subtle",
+            "flushed"
+          ],
+          "default": "outline"
+        }
+      ],
+      "snippet": "<div data-ui=\"combobox\" data-size=\"md\"><div data-part=\"control\"><input data-part=\"input\" value=\"Ridge\" aria-label=\"Trail\" role=\"combobox\" aria-expanded=\"true\"><span data-part=\"trigger\"><i data-ui=\"icon\" data-name=\"chevron-down\"></i></span></div><div data-part=\"content\" role=\"listbox\"><div data-part=\"item\" role=\"option\" data-highlighted=\"true\">Ridgeline Loop</div><div data-part=\"item\" role=\"option\">Ridge Walk</div><div data-part=\"item\" role=\"option\" aria-disabled=\"true\">Ridge Summit (closed)</div></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Combobox"
+      }
+    },
+    {
+      "name": "Command",
+      "ui": "command",
+      "category": "Selection",
+      "description": "A search box over a grouped list of commands, for a quick jump menu.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"command\"><div data-part=\"search\"><i data-ui=\"icon\" data-name=\"search\"></i><input data-part=\"input\" placeholder=\"Search trails and bookings\"></div><div data-part=\"list\"><div data-part=\"group-label\">Trails</div><button data-part=\"item\"><i data-ui=\"icon\" data-name=\"map\"></i>Ridgeline Loop<span data-part=\"shortcut\">6.2 km</span></button><button data-part=\"item\"><i data-ui=\"icon\" data-name=\"map\"></i>Falls Circuit<span data-part=\"shortcut\">4.8 km</span></button><div data-part=\"separator\"></div><div data-part=\"group-label\">Bookings</div><button data-part=\"item\"><i data-ui=\"icon\" data-name=\"calendar\"></i>Saturday hike<span data-part=\"shortcut\">14 Nov</span></button></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Command"
+      }
+    },
+    {
+      "name": "Listbox",
+      "ui": "listbox",
+      "category": "Selection",
+      "description": "A plain list of options, one of them selected, for picking inline.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "subtle",
+            "solid",
+            "outline"
+          ],
+          "default": "subtle"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<ul data-ui=\"listbox\" role=\"listbox\" aria-label=\"Difficulty\"><li data-part=\"item\" role=\"option\" aria-selected=\"true\">Easy</li><li data-part=\"item\" role=\"option\">Moderate</li><li data-part=\"item\" role=\"option\">Hard</li></ul>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Listbox"
+      }
+    },
+    {
+      "name": "Select",
+      "ui": "select",
+      "category": "Selection",
+      "description": "A button that opens a list of options in a popover, one option ticked.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outline",
+            "subtle",
+            "ghost"
+          ],
+          "default": "outline"
+        }
+      ],
+      "snippet": "<div data-ui=\"select\" style=\"anchor-name:--sel-trail\"><button data-part=\"trigger\" popovertarget=\"sel-trail\" style=\"anchor-name:--sel-trail\" aria-haspopup=\"listbox\"><span data-part=\"value\">Ridgeline Loop</span><i data-ui=\"icon\" data-name=\"chevron-down\" data-part=\"indicator\"></i></button><div data-part=\"content\" popover id=\"sel-trail\" role=\"listbox\" style=\"position-anchor:--sel-trail\"><div data-part=\"item\" role=\"option\" aria-selected=\"true\"><i data-ui=\"icon\" data-name=\"check\" data-part=\"check\"></i>Ridgeline Loop</div><div data-part=\"item\" role=\"option\">Falls Circuit</div><div data-part=\"item\" role=\"option\">Coastal Path</div></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Select"
+      }
+    },
+    {
+      "name": "Tree View",
+      "ui": "tree-view",
+      "category": "Selection",
+      "description": "A nested list that expands and collapses, for folders or regions.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<ul data-ui=\"tree-view\" role=\"tree\"><li data-part=\"item\" role=\"treeitem\" aria-expanded=\"true\"><div data-part=\"content\"><i data-ui=\"icon\" data-name=\"chevron-down\" data-part=\"indicator\"></i><span data-part=\"label\">Lake District</span></div><ul data-part=\"group\" role=\"group\"><li data-part=\"item\" role=\"treeitem\"><div data-part=\"content\"><span data-part=\"label\">Ridgeline Loop</span></div></li><li data-part=\"item\" role=\"treeitem\"><div data-part=\"content\"><span data-part=\"label\">Falls Circuit</span></div></li></ul></li></ul>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "TreeView"
+      }
+    },
+    {
+      "name": "Action Bar",
+      "ui": "action-bar",
+      "category": "Overlays",
+      "description": "A bar that appears over a list when items are selected, offering bulk actions.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"action-bar\" role=\"toolbar\" aria-label=\"Selection\"><span data-part=\"count\">3 selected</span><span data-part=\"divider\"></span><button data-ui=\"button\" data-variant=\"outline\" data-size=\"sm\">Export</button><button data-ui=\"button\" data-size=\"sm\" data-variant=\"solid\" data-color-palette=\"red\">Cancel</button></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "ActionBar"
+      }
+    },
+    {
+      "name": "Dialog",
+      "ui": "dialog",
+      "category": "Overlays",
+      "description": "A modal window over the page, with a header, body and footer. Opens from a trigger.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl",
+            "cover",
+            "full"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "placement",
+          "label": "Placement",
+          "type": "choice",
+          "options": [
+            "top",
+            "center",
+            "bottom"
+          ],
+          "default": "top"
+        },
+        {
+          "name": "scroll",
+          "label": "Scroll",
+          "type": "choice",
+          "options": [
+            "outside",
+            "inside"
+          ],
+          "default": "outside"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"3\" data-align=\"start\"><button data-ui=\"button\" data-variant=\"outline\" data-dialog-open=\"dlg-cancel\">Cancel a booking</button><dialog data-ui=\"dialog\" id=\"dlg-cancel\" data-size=\"md\"><div data-part=\"header\"><h2 data-part=\"title\">Cancel the Saturday hike?</h2><p data-part=\"description\">You will get £24 back within five working days.</p></div><div data-part=\"body\"><p data-ui=\"text\" data-size=\"sm\">Ridgeline Loop, 14 November, 2 guests.</p></div><div data-part=\"footer\"><button data-ui=\"button\" data-variant=\"outline\" data-size=\"sm\" data-dialog-close>Keep booking</button><button data-ui=\"button\" data-size=\"sm\" data-color-palette=\"red\" data-dialog-close>Cancel booking</button></div><button data-ui=\"close-button\" data-part=\"close\" data-dialog-close aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"x\"></i></button></dialog></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Dialog"
+      }
+    },
+    {
+      "name": "Drawer",
+      "ui": "drawer",
+      "category": "Overlays",
+      "description": "A panel that slides in from an edge of the window, with a header, body and footer.",
+      "props": [
+        {
+          "name": "placement",
+          "label": "Placement",
+          "type": "choice",
+          "options": [
+            "end",
+            "start",
+            "top",
+            "bottom"
+          ],
+          "default": "end"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "xs",
+            "sm",
+            "md",
+            "lg",
+            "xl",
+            "full"
+          ],
+          "default": "xs"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"3\" data-align=\"start\"><button data-ui=\"button\" data-variant=\"outline\" data-dialog-open=\"drw-filters\">Open filters</button><dialog data-ui=\"drawer\" id=\"drw-filters\" data-placement=\"end\" data-size=\"sm\"><div data-part=\"header\"><h2 data-part=\"title\">Filters</h2></div><div data-part=\"body\"><div data-ui=\"stack\" data-gap=\"4\"><div data-ui=\"field\"><label data-part=\"label\" for=\"dr-d\">Difficulty</label><div data-ui=\"native-select\" data-size=\"md\"><select data-part=\"field\" id=\"dr-d\"><option>Any</option><option>Easy</option><option>Moderate</option></select><i data-ui=\"icon\" data-name=\"chevron-down\" data-part=\"indicator\"></i></div></div><div data-ui=\"switch\"><input type=\"checkbox\" role=\"switch\" checked><span data-part=\"control\"><span data-part=\"thumb\"></span></span><span data-part=\"label\">Dog friendly only</span></div></div></div><div data-part=\"footer\"><button data-ui=\"button\" data-variant=\"outline\" data-size=\"sm\" data-dialog-close>Close</button><button data-ui=\"button\" data-size=\"sm\" data-dialog-close>Apply</button></div><button data-ui=\"close-button\" data-part=\"close\" data-dialog-close aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"x\"></i></button></dialog></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Drawer"
+      }
+    },
+    {
+      "name": "Floating Panel",
+      "ui": "floating-panel",
+      "category": "Overlays",
+      "description": "A small window that floats over content, with a title bar and a close button.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "sm"
+        }
+      ],
+      "snippet": "<div data-ui=\"floating-panel\"><div data-part=\"header\"><span data-part=\"title\">Layers</span><button data-ui=\"close-button\" data-size=\"2xs\" aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"x\"></i></button></div><div data-part=\"body\"><label data-ui=\"checkbox\" data-size=\"sm\"><input type=\"checkbox\" checked><span data-part=\"control\"><i data-ui=\"icon\" data-name=\"check\"></i></span><span data-part=\"label\">Trail routes</span></label></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "FloatingPanel"
+      }
+    },
+    {
+      "name": "Hover Card",
+      "ui": "hover-card",
+      "category": "Overlays",
+      "description": "A card that opens beside a link to preview more about it.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "sm"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"2\"><p data-ui=\"text\" data-size=\"sm\">Guide <button type=\"button\" data-ui=\"link\" popovertarget=\"hc-guide\" style=\"anchor-name:--hc-guide\">Mara Ellis</button></p><div data-ui=\"hover-card\" popover id=\"hc-guide\" style=\"position-anchor:--hc-guide\"><div data-part=\"head\"><span data-ui=\"avatar\" data-size=\"md\" data-color-palette=\"teal\">ME</span><div data-part=\"who\"><span data-part=\"name\">Mara Ellis</span><span data-part=\"role\">Mountain guide, 11 years</span></div></div><p data-ui=\"text\" data-size=\"sm\" data-color=\"muted\">Leads Ridgeline and Summit trips. Speaks English and Welsh.</p></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "HoverCard"
+      }
+    },
+    {
+      "name": "Menu",
+      "ui": "menu",
+      "category": "Overlays",
+      "description": "A button that opens a list of actions, with dividers and keyboard shortcuts.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "subtle",
+            "solid"
+          ],
+          "default": "subtle"
+        }
+      ],
+      "snippet": "<button data-ui=\"button\" data-variant=\"outline\" popovertarget=\"menu-booking\" style=\"anchor-name:--menu-booking\" aria-haspopup=\"menu\">Booking actions <i data-ui=\"icon\" data-name=\"chevron-down\"></i></button><div data-ui=\"menu\" popover id=\"menu-booking\" role=\"menu\" style=\"position-anchor:--menu-booking\"><button data-part=\"item\" role=\"menuitem\"><i data-ui=\"icon\" data-name=\"edit\"></i>Change date<span data-part=\"shortcut\">⌘E</span></button><button data-part=\"item\" role=\"menuitem\"><i data-ui=\"icon\" data-name=\"copy\"></i>Copy booking link<span data-part=\"shortcut\">⌘C</span></button><div data-part=\"separator\"></div><button data-part=\"item\" role=\"menuitem\" data-tone=\"danger\"><i data-ui=\"icon\" data-name=\"trash\"></i>Cancel booking</button></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Menu"
+      }
+    },
+    {
+      "name": "Popover",
+      "ui": "popover",
+      "category": "Overlays",
+      "description": "A panel anchored to a button, with a header, body and footer.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "xs",
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "xs"
+        }
+      ],
+      "snippet": "<button data-ui=\"button\" data-variant=\"outline\" popovertarget=\"pop-pass\" style=\"anchor-name:--pop-pass\">Lift pass</button><div data-ui=\"popover\" popover id=\"pop-pass\" style=\"position-anchor:--pop-pass\"><div data-part=\"header\"><span data-part=\"title\">Lift pass</span></div><div data-part=\"body\"><p data-ui=\"text\" data-size=\"sm\" data-color=\"muted\">Included on the Summit Dawn trip. Not valid on the Coastal Path.</p></div><div data-part=\"footer\"><button data-ui=\"button\" data-size=\"sm\" data-variant=\"subtle\" popovertarget=\"pop-pass\" popovertargetaction=\"hide\">Got it</button></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Popover"
+      }
+    },
+    {
+      "name": "Toggle Tip",
+      "ui": "toggle-tip",
+      "category": "Overlays",
+      "description": "A small info button that opens a short explanation next to it.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "xs",
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "xs"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"2\" data-align=\"center\"><span data-ui=\"text\" data-size=\"sm\">Grade</span><button data-ui=\"toggle-tip\" popovertarget=\"tt-grade\" style=\"anchor-name:--tt-grade\" aria-label=\"About grade\"><i data-ui=\"icon\" data-name=\"info\"></i></button><div data-part=\"tip\" popover id=\"tt-grade\" style=\"position-anchor:--tt-grade\">Moderate means 300 to 600 m of climb and some rough steps.</div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "ToggleTip"
+      }
+    },
+    {
+      "name": "Tooltip",
+      "ui": "tooltip",
+      "category": "Overlays",
+      "description": "A short label that appears when a control is hovered or focused.",
+      "props": [
+        {
+          "name": "placement",
+          "label": "Placement",
+          "type": "choice",
+          "options": [
+            "top",
+            "bottom",
+            "left",
+            "right"
+          ],
+          "default": "top"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"2\" data-align=\"center\"><button data-ui=\"icon-button\" data-variant=\"outline\" aria-describedby=\"tp-share\" style=\"anchor-name:--tp-share\" popovertarget=\"tp-share\" popovertargetaction=\"show\"><i data-ui=\"icon\" data-name=\"share\"></i></button><span data-ui=\"tooltip\" role=\"tooltip\" popover=\"manual\" data-placement=\"top\" id=\"tp-share\" style=\"position-anchor:--tp-share\">Share trail</span></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Tooltip"
+      }
+    },
+    {
+      "name": "Accordion",
+      "ui": "accordion",
+      "category": "Navigation",
+      "description": "Stacked sections that open one at a time or several at once, each with a chevron.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outline",
+            "subtle",
+            "enclosed"
+          ],
+          "default": "outline"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"accordion\"><details name=\"faq\" open><summary data-part=\"trigger\"><span data-part=\"title\">What should I bring?</span><i data-ui=\"icon\" data-name=\"chevron-down\" data-part=\"indicator\"></i></summary><div data-part=\"body\">Two litres of water, layers for wind, and a headlamp for early starts.</div></details><details name=\"faq\"><summary data-part=\"trigger\"><span data-part=\"title\">Can children join?</span><i data-ui=\"icon\" data-name=\"chevron-down\" data-part=\"indicator\"></i></summary><div data-part=\"body\">Family trails accept children from six years old with an adult.</div></details></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Accordion"
+      }
+    },
+    {
+      "name": "Breadcrumb",
+      "ui": "breadcrumb",
+      "category": "Navigation",
+      "description": "The path to the current page as links separated by chevrons.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "plain",
+            "underline"
+          ],
+          "default": "plain"
+        }
+      ],
+      "snippet": "<nav data-ui=\"breadcrumb\" aria-label=\"Breadcrumb\"><ol data-part=\"list\"><li data-part=\"item\"><a data-ui=\"link\" href=\"#\">Trails</a></li><li data-part=\"item\" data-part-sep=\"true\"><i data-ui=\"icon\" data-name=\"chevron-right\" data-part=\"separator\"></i></li><li data-part=\"item\"><a data-ui=\"link\" href=\"#\">Lake District</a></li><li data-part=\"item\" data-part-sep=\"true\"><i data-ui=\"icon\" data-name=\"chevron-right\" data-part=\"separator\"></i></li><li data-part=\"item\"><span data-part=\"current\" aria-current=\"page\">Ridgeline Loop</span></li></ol></nav>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Breadcrumb"
+      }
+    },
+    {
+      "name": "Carousel",
+      "ui": "carousel",
+      "category": "Navigation",
+      "description": "A strip of slides with previous and next buttons and dots below.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"carousel\" data-slide=\"0\" aria-roledescription=\"carousel\"><div data-part=\"viewport\"><div data-part=\"slide\">Ridgeline Loop, 6.2 km</div><div data-part=\"slide\">Falls Circuit, 4.8 km</div><div data-part=\"slide\">Coastal Path, 11 km</div></div><button data-part=\"prev\" aria-label=\"Previous\"><i data-ui=\"icon\" data-name=\"chevron-left\"></i></button><button data-part=\"next\" aria-label=\"Next\"><i data-ui=\"icon\" data-name=\"chevron-right\"></i></button><div data-part=\"dots\"><span data-part=\"dot\" data-current=\"true\"></span><span data-part=\"dot\"></span><span data-part=\"dot\"></span></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Carousel"
+      }
+    },
+    {
+      "name": "Collapsible",
+      "ui": "collapsible",
+      "category": "Navigation",
+      "description": "A single section that shows or hides its content behind a trigger.",
+      "props": [],
+      "snippet": "<details data-ui=\"collapsible\" open><summary data-part=\"trigger\">Show packing list <i data-ui=\"icon\" data-name=\"chevron-down\" data-part=\"indicator\"></i></summary><div data-part=\"content\"><ul data-ui=\"list\" data-variant=\"disc\"><li>Water, two litres</li><li>Waterproof shell</li><li>Snacks for the ridge</li></ul></div></details>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Collapsible"
+      }
+    },
+    {
+      "name": "Pagination",
+      "ui": "pagination",
+      "category": "Navigation",
+      "description": "Page buttons with previous and next, the current page highlighted.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outline",
+            "subtle",
+            "solid",
+            "ghost"
+          ],
+          "default": "outline"
+        }
+      ],
+      "snippet": "<nav data-ui=\"pagination\" aria-label=\"Pagination\"><button data-ui=\"icon-button\" data-variant=\"outline\" data-size=\"sm\" aria-label=\"Previous\"><i data-ui=\"icon\" data-name=\"chevron-left\"></i></button><button data-ui=\"button\" data-variant=\"outline\" data-size=\"sm\" aria-current=\"page\" data-current=\"true\">1</button><button data-ui=\"button\" data-variant=\"ghost\" data-size=\"sm\">2</button><button data-ui=\"button\" data-variant=\"ghost\" data-size=\"sm\">3</button><span data-part=\"ellipsis\">…</span><button data-ui=\"button\" data-variant=\"ghost\" data-size=\"sm\">12</button><button data-ui=\"icon-button\" data-variant=\"outline\" data-size=\"sm\" aria-label=\"Next\"><i data-ui=\"icon\" data-name=\"chevron-right\"></i></button></nav>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Pagination"
+      }
+    },
+    {
+      "name": "Steps",
+      "ui": "steps",
+      "category": "Navigation",
+      "description": "A numbered sequence of stages, showing which are done, current or waiting.",
+      "props": [
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<ol data-ui=\"steps\" aria-label=\"Booking progress\"><li data-part=\"item\" data-state=\"complete\"><span data-part=\"indicator\"><i data-ui=\"icon\" data-name=\"check\"></i></span><span data-part=\"title\">Choose trail</span></li><li data-part=\"item\" data-state=\"current\"><span data-part=\"indicator\">2</span><span data-part=\"title\">Add guests</span><span data-part=\"description\">Up to 12 people</span></li><li data-part=\"item\"><span data-part=\"indicator\">3</span><span data-part=\"title\">Pay</span></li></ol>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Steps"
+      }
+    },
+    {
+      "name": "Tabs",
+      "ui": "tabs",
+      "category": "Navigation",
+      "description": "A row of tab buttons, one panel shown at a time, with an indicator under the active tab.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "line",
+            "subtle",
+            "enclosed",
+            "outline"
+          ],
+          "default": "line"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "color-palette",
+          "label": "Color Palette",
+          "type": "choice",
+          "options": [
+            "gray",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "cyan",
+            "purple",
+            "pink"
+          ],
+          "default": "gray"
+        }
+      ],
+      "snippet": "<div data-ui=\"tabs\"><div role=\"tablist\" aria-label=\"Trail info\"><button role=\"tab\" aria-selected=\"true\" aria-controls=\"tp-1\" id=\"tt-1\">Overview</button><button role=\"tab\" aria-selected=\"false\" aria-controls=\"tp-2\" id=\"tt-2\">Route</button><button role=\"tab\" aria-selected=\"false\" aria-controls=\"tp-3\" id=\"tt-3\">Reviews</button></div><div role=\"tabpanel\" id=\"tp-1\" aria-labelledby=\"tt-1\">6.2 km loop with a 480 m climb. Allow three hours.</div><div role=\"tabpanel\" id=\"tp-2\" aria-labelledby=\"tt-2\" hidden>Start at the lake car park and follow the red markers.</div><div role=\"tabpanel\" id=\"tp-3\" aria-labelledby=\"tt-3\" hidden>4.8 average from 212 guests.</div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Tabs"
+      }
+    },
+    {
+      "name": "Alert",
+      "ui": "alert",
+      "category": "Feedback",
+      "description": "A message bar for info, success, warning or error, with an icon and optional title.",
+      "props": [
+        {
+          "name": "status",
+          "label": "Status",
+          "type": "choice",
+          "options": [
+            "info",
+            "success",
+            "warning",
+            "error",
+            "neutral"
+          ],
+          "default": "info"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "subtle",
+            "surface",
+            "outline",
+            "solid"
+          ],
+          "default": "subtle"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"3\"><div data-ui=\"alert\" data-status=\"success\"><span data-part=\"indicator\"><i data-ui=\"icon\" data-name=\"check-circle\"></i></span><div data-part=\"content\"><span data-part=\"title\">Booking confirmed</span><span data-part=\"description\">Ridgeline Loop, Saturday 14 November, 2 guests.</span></div></div><div data-ui=\"alert\" data-status=\"warning\" data-variant=\"surface\"><span data-part=\"indicator\"><i data-ui=\"icon\" data-name=\"alert\"></i></span><div data-part=\"content\"><span data-part=\"title\">Wind warning</span><span data-part=\"description\">Gusts over 50 km/h on the ridge after noon.</span></div></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Alert"
+      }
+    },
+    {
+      "name": "Empty State",
+      "ui": "empty-state",
+      "category": "Feedback",
+      "description": "A centred placeholder with an icon, a title, a line of text and an action.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"empty-state\"><span data-part=\"indicator\"><i data-ui=\"icon\" data-name=\"map\"></i></span><div data-part=\"title\">No trails saved yet</div><p data-part=\"description\">Save a trail to see it here, with its weather and parking.</p><button data-ui=\"button\" data-variant=\"outline\" data-size=\"sm\">Browse trails</button></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "EmptyState"
+      }
+    },
+    {
+      "name": "Progress Circle",
+      "ui": "progress-circle",
+      "category": "Feedback",
+      "description": "A ring that fills to show a percentage, with the value in the middle.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outline",
+            "subtle"
+          ],
+          "default": "outline"
+        },
+        {
+          "name": "color-palette",
+          "label": "Color Palette",
+          "type": "choice",
+          "options": [
+            "gray",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "cyan",
+            "purple",
+            "pink"
+          ],
+          "default": "gray"
+        }
+      ],
+      "snippet": "<div data-ui=\"progress-circle\" data-size=\"md\" role=\"progressbar\" aria-valuenow=\"64\" aria-valuemin=\"0\" aria-valuemax=\"100\" style=\"--pct:64\"><span data-part=\"value\">64%</span></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "ProgressCircle"
+      }
+    },
+    {
+      "name": "Progress",
+      "ui": "progress",
+      "category": "Feedback",
+      "description": "A bar that fills to show progress, with a label and value above it.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outline",
+            "subtle"
+          ],
+          "default": "outline"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "xs",
+            "sm",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "xs"
+        },
+        {
+          "name": "shape",
+          "label": "Shape",
+          "type": "choice",
+          "options": [
+            "rounded",
+            "square",
+            "full"
+          ],
+          "default": "rounded"
+        },
+        {
+          "name": "striped",
+          "label": "Striped",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "animated",
+          "label": "Animated",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "color-palette",
+          "label": "Color Palette",
+          "type": "choice",
+          "options": [
+            "gray",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "cyan",
+            "purple",
+            "pink"
+          ],
+          "default": "gray"
+        }
+      ],
+      "snippet": "<div data-ui=\"progress\" data-size=\"md\" role=\"progressbar\" aria-valuenow=\"64\" aria-valuemin=\"0\" aria-valuemax=\"100\"><div data-part=\"head\"><span data-part=\"label\">Trail booked</span><span data-part=\"value\">64%</span></div><div data-part=\"track\"><div data-part=\"range\" style=\"inline-size:64%\"></div></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Progress"
+      }
+    },
+    {
+      "name": "Skeleton",
+      "ui": "skeleton",
+      "category": "Feedback",
+      "description": "A grey placeholder block that pulses while content loads.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "pulse",
+            "shine",
+            "none"
+          ],
+          "default": "pulse"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"3\"><div data-ui=\"skeleton\" data-size=\"lg\" style=\"inline-size:60%\"></div><div data-ui=\"skeleton\" data-size=\"md\"></div><div data-ui=\"skeleton\" data-size=\"md\" style=\"inline-size:80%\"></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Skeleton"
+      }
+    },
+    {
+      "name": "Spinner",
+      "ui": "spinner",
+      "category": "Feedback",
+      "description": "A ring that turns while something is working, in six sizes.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl",
+            "inherit"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "color-palette",
+          "label": "Color Palette",
+          "type": "choice",
+          "options": [
+            "gray",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "cyan",
+            "purple",
+            "pink"
+          ],
+          "default": "gray"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"4\" data-align=\"center\"><span data-ui=\"spinner\" data-size=\"xs\"></span><span data-ui=\"spinner\" data-size=\"md\"></span><span data-ui=\"spinner\" data-size=\"lg\" data-color-palette=\"teal\"></span></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Spinner"
+      }
+    },
+    {
+      "name": "Status",
+      "ui": "status",
+      "category": "Feedback",
+      "description": "A coloured dot with a label, for a state such as open, paused or closed.",
+      "props": [
+        {
+          "name": "value",
+          "label": "Value",
+          "type": "choice",
+          "options": [
+            "info",
+            "success",
+            "warning",
+            "error",
+            "neutral"
+          ],
+          "default": "info"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"2\"><span data-ui=\"status\" data-value=\"success\">Open for booking</span><span data-ui=\"status\" data-value=\"warning\">Few places left</span><span data-ui=\"status\" data-value=\"error\">Closed for the winter</span></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Status"
+      }
+    },
+    {
+      "name": "Toast",
+      "ui": "toast",
+      "category": "Feedback",
+      "description": "A short message card with a title, text and an optional action, for things that just happened.",
+      "props": [
+        {
+          "name": "status",
+          "label": "Status",
+          "type": "choice",
+          "options": [
+            "info",
+            "success",
+            "warning",
+            "error"
+          ],
+          "default": "info"
+        }
+      ],
+      "snippet": "<div data-ui=\"toast\" data-status=\"success\" role=\"status\"><span data-part=\"indicator\"><i data-ui=\"icon\" data-name=\"check-circle\"></i></span><div data-part=\"content\"><span data-part=\"title\">Saved to your trails</span><span data-part=\"description\">Ridgeline Loop is in your list.</span></div><button data-ui=\"button\" data-variant=\"outline\" data-size=\"xs\" data-part=\"action\">Undo</button><button data-ui=\"close-button\" data-size=\"2xs\" data-part=\"close\" aria-label=\"Dismiss\"><i data-ui=\"icon\" data-name=\"x\"></i></button></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Toaster"
+      }
+    },
+    {
+      "name": "Avatar",
+      "ui": "avatar",
+      "category": "Data Display",
+      "description": "A round or square badge for a person, from initials or a photo.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "2xs",
+            "xs",
+            "sm",
+            "lg",
+            "xl",
+            "2xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "shape",
+          "label": "Shape",
+          "type": "choice",
+          "options": [
+            "full",
+            "rounded",
+            "square"
+          ],
+          "default": "full"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "solid",
+            "subtle",
+            "outline"
+          ],
+          "default": "solid"
+        },
+        {
+          "name": "color-palette",
+          "label": "Color Palette",
+          "type": "choice",
+          "options": [
+            "gray",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "cyan",
+            "purple",
+            "pink"
+          ],
+          "default": "gray"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"3\" data-align=\"center\"><span data-ui=\"avatar\" data-size=\"md\" data-color-palette=\"teal\">ME</span><span data-ui=\"avatar\" data-size=\"md\" data-color-palette=\"purple\" data-variant=\"subtle\">JO</span><span data-ui=\"avatar\" data-size=\"lg\" data-shape=\"rounded\" data-color-palette=\"orange\">KP</span></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Avatar"
+      }
+    },
+    {
+      "name": "Badge",
+      "ui": "badge",
+      "category": "Data Display",
+      "description": "A small label for a count or status, in four variants and four sizes.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "subtle",
+            "solid",
+            "outline",
+            "surface",
+            "plain"
+          ],
+          "default": "subtle"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg"
+          ],
+          "default": "sm"
+        },
+        {
+          "name": "color-palette",
+          "label": "Color Palette",
+          "type": "choice",
+          "options": [
+            "gray",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "cyan",
+            "purple",
+            "pink"
+          ],
+          "default": "gray"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"2\" data-wrap=\"true\" data-align=\"center\"><span data-ui=\"badge\">Open</span><span data-ui=\"badge\" data-variant=\"solid\" data-color-palette=\"green\">Confirmed</span><span data-ui=\"badge\" data-variant=\"outline\" data-color-palette=\"orange\">Waitlist</span><span data-ui=\"badge\" data-variant=\"surface\" data-color-palette=\"red\">Cancelled</span></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Badge"
+      }
+    },
+    {
+      "name": "Card",
+      "ui": "card",
+      "category": "Data Display",
+      "description": "A container with an optional header, body and footer, in three variants and three sizes.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outline",
+            "elevated",
+            "subtle"
+          ],
+          "default": "outline"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "sm"
+        }
+      ],
+      "snippet": "<div data-ui=\"card\" data-variant=\"outline\"><div data-part=\"header\"><h3 data-ui=\"heading\" data-size=\"md\" data-part-title=\"true\">Ridgeline Loop</h3><p data-ui=\"text\" data-size=\"sm\" data-color=\"muted\">6.2 km, moderate, 3 hours</p></div><div data-part=\"content\"><p data-ui=\"text\" data-size=\"sm\">A shaded ridge walk with a lake stop at the halfway point.</p></div><div data-part=\"footer\"><button data-ui=\"button\">Book</button><button data-ui=\"button\" data-variant=\"outline\">Save</button></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Card"
+      }
+    },
+    {
+      "name": "Clipboard",
+      "ui": "clipboard",
+      "category": "Data Display",
+      "description": "A read-only value with a copy button that changes to a tick when copied.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "subtle",
+            "surface",
+            "outline"
+          ],
+          "default": "subtle"
+        }
+      ],
+      "snippet": "<div data-ui=\"clipboard\" data-size=\"md\"><span data-part=\"value\">TM-2041-RIDGE</span><button data-ui=\"icon-button\" data-variant=\"ghost\" data-size=\"xs\" aria-label=\"Copy\"><i data-ui=\"icon\" data-name=\"copy\"></i></button></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Clipboard"
+      }
+    },
+    {
+      "name": "Image",
+      "ui": "image",
+      "category": "Data Display",
+      "description": "A picture that keeps its shape, with rounded corners and a fallback block.",
+      "props": [
+        {
+          "name": "fit",
+          "label": "Fit",
+          "type": "choice",
+          "options": [
+            "cover",
+            "contain"
+          ],
+          "default": "cover"
+        },
+        {
+          "name": "shape",
+          "label": "Shape",
+          "type": "choice",
+          "options": [
+            "rounded",
+            "square",
+            "full"
+          ],
+          "default": "rounded"
+        },
+        {
+          "name": "ratio",
+          "label": "Ratio",
+          "type": "choice",
+          "options": [
+            "16/9",
+            "4/3",
+            "1/1"
+          ],
+          "default": "16/9"
+        }
+      ],
+      "snippet": "<div data-ui=\"image\" data-ratio=\"16/9\" role=\"img\" aria-label=\"Lake at dawn\"><span data-part=\"caption\">Lake at dawn</span></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Image"
+      }
+    },
+    {
+      "name": "Data List",
+      "ui": "data-list",
+      "category": "Data Display",
+      "description": "Label and value pairs in a list, one per row, for details.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        }
+      ],
+      "snippet": "<dl data-ui=\"data-list\" data-size=\"md\"><div data-part=\"item\"><dt data-part=\"term\">Trail</dt><dd data-part=\"value\">Ridgeline Loop</dd></div><div data-part=\"item\"><dt data-part=\"term\">Date</dt><dd data-part=\"value\">Saturday 14 November</dd></div><div data-part=\"item\"><dt data-part=\"term\">Guests</dt><dd data-part=\"value\">2</dd></div></dl>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "DataList"
+      }
+    },
+    {
+      "name": "Icon",
+      "ui": "icon",
+      "category": "Data Display",
+      "description": "An icon drawn in the current text colour, sized by its parent.",
+      "props": [],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"3\" data-align=\"center\" style=\"color:var(--cp-solid)\"><i data-ui=\"icon\" data-name=\"map\"></i><i data-ui=\"icon\" data-name=\"mountain\"></i><i data-ui=\"icon\" data-name=\"sun\"></i><i data-ui=\"icon\" data-name=\"cloud\"></i><i data-ui=\"icon\" data-name=\"pin\"></i></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Icon"
+      }
+    },
+    {
+      "name": "Marquee",
+      "ui": "marquee",
+      "category": "Data Display",
+      "description": "A strip of content that scrolls sideways in a loop, with faded edges.",
+      "props": [
+        {
+          "name": "speed",
+          "label": "Speed",
+          "type": "choice",
+          "options": [
+            "slow",
+            "normal",
+            "fast"
+          ],
+          "default": "slow"
+        }
+      ],
+      "snippet": "<div data-ui=\"marquee\" data-speed=\"normal\"><div data-part=\"track\"><span data-part=\"item\">Ridgeline Loop</span><span data-part=\"item\">Falls Circuit</span><span data-part=\"item\">Coastal Path</span><span data-part=\"item\">Summit Dawn</span></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Marquee"
+      }
+    },
+    {
+      "name": "QR Code",
+      "ui": "qr-code",
+      "category": "Data Display",
+      "description": "A scannable code for a booking or a trail, sized in three steps.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"qr-code\" data-size=\"md\" role=\"img\" aria-label=\"QR code for booking TM-2041\"><svg viewBox=\"0 0 21 21\" width=\"160\" height=\"160\" xmlns=\"http://www.w3.org/2000/svg\" shape-rendering=\"crispEdges\"><path fill=\"#09090B\" d=\"M0 0h1v1h-1zM1 0h1v1h-1zM2 0h1v1h-1zM3 0h1v1h-1zM4 0h1v1h-1zM5 0h1v1h-1zM6 0h1v1h-1zM9 0h1v1h-1zM10 0h1v1h-1zM11 0h1v1h-1zM12 0h1v1h-1zM14 0h1v1h-1zM15 0h1v1h-1zM16 0h1v1h-1zM17 0h1v1h-1zM18 0h1v1h-1zM19 0h1v1h-1zM20 0h1v1h-1zM0 1h1v1h-1zM6 1h1v1h-1zM8 1h1v1h-1zM9 1h1v1h-1zM10 1h1v1h-1zM11 1h1v1h-1zM12 1h1v1h-1zM14 1h1v1h-1zM20 1h1v1h-1zM0 2h1v1h-1zM2 2h1v1h-1zM3 2h1v1h-1zM4 2h1v1h-1zM6 2h1v1h-1zM10 2h1v1h-1zM11 2h1v1h-1zM14 2h1v1h-1zM16 2h1v1h-1zM17 2h1v1h-1zM18 2h1v1h-1zM20 2h1v1h-1zM0 3h1v1h-1zM2 3h1v1h-1zM3 3h1v1h-1zM4 3h1v1h-1zM6 3h1v1h-1zM10 3h1v1h-1zM14 3h1v1h-1zM16 3h1v1h-1zM17 3h1v1h-1zM18 3h1v1h-1zM20 3h1v1h-1zM0 4h1v1h-1zM2 4h1v1h-1zM3 4h1v1h-1zM4 4h1v1h-1zM6 4h1v1h-1zM8 4h1v1h-1zM9 4h1v1h-1zM10 4h1v1h-1zM11 4h1v1h-1zM12 4h1v1h-1zM14 4h1v1h-1zM16 4h1v1h-1zM17 4h1v1h-1zM18 4h1v1h-1zM20 4h1v1h-1zM0 5h1v1h-1zM6 5h1v1h-1zM9 5h1v1h-1zM10 5h1v1h-1zM11 5h1v1h-1zM14 5h1v1h-1zM20 5h1v1h-1zM0 6h1v1h-1zM1 6h1v1h-1zM2 6h1v1h-1zM3 6h1v1h-1zM4 6h1v1h-1zM5 6h1v1h-1zM6 6h1v1h-1zM8 6h1v1h-1zM10 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM15 6h1v1h-1zM16 6h1v1h-1zM17 6h1v1h-1zM18 6h1v1h-1zM19 6h1v1h-1zM20 6h1v1h-1zM10 7h1v1h-1zM0 8h1v1h-1zM2 8h1v1h-1zM4 8h1v1h-1zM6 8h1v1h-1zM9 8h1v1h-1zM12 8h1v1h-1zM16 8h1v1h-1zM19 8h1v1h-1zM0 9h1v1h-1zM3 9h1v1h-1zM5 9h1v1h-1zM9 9h1v1h-1zM10 9h1v1h-1zM11 9h1v1h-1zM13 9h1v1h-1zM14 9h1v1h-1zM15 9h1v1h-1zM18 9h1v1h-1zM20 9h1v1h-1zM2 10h1v1h-1zM3 10h1v1h-1zM5 10h1v1h-1zM6 10h1v1h-1zM7 10h1v1h-1zM8 10h1v1h-1zM9 10h1v1h-1zM11 10h1v1h-1zM13 10h1v1h-1zM15 10h1v1h-1zM16 10h1v1h-1zM19 10h1v1h-1zM0 11h1v1h-1zM2 11h1v1h-1zM3 11h1v1h-1zM4 11h1v1h-1zM5 11h1v1h-1zM7 11h1v1h-1zM9 11h1v1h-1zM11 11h1v1h-1zM12 11h1v1h-1zM13 11h1v1h-1zM19 11h1v1h-1zM20 11h1v1h-1zM0 12h1v1h-1zM4 12h1v1h-1zM6 12h1v1h-1zM8 12h1v1h-1zM11 12h1v1h-1zM16 12h1v1h-1zM20 12h1v1h-1zM8 13h1v1h-1zM9 13h1v1h-1zM18 13h1v1h-1zM0 14h1v1h-1zM1 14h1v1h-1zM2 14h1v1h-1zM3 14h1v1h-1zM4 14h1v1h-1zM5 14h1v1h-1zM6 14h1v1h-1zM10 14h1v1h-1zM12 14h1v1h-1zM13 14h1v1h-1zM15 14h1v1h-1zM19 14h1v1h-1zM0 15h1v1h-1zM6 15h1v1h-1zM9 15h1v1h-1zM13 15h1v1h-1zM15 15h1v1h-1zM17 15h1v1h-1zM19 15h1v1h-1zM20 15h1v1h-1zM0 16h1v1h-1zM2 16h1v1h-1zM3 16h1v1h-1zM4 16h1v1h-1zM6 16h1v1h-1zM8 16h1v1h-1zM9 16h1v1h-1zM10 16h1v1h-1zM12 16h1v1h-1zM14 16h1v1h-1zM15 16h1v1h-1zM16 16h1v1h-1zM18 16h1v1h-1zM19 16h1v1h-1zM20 16h1v1h-1zM0 17h1v1h-1zM2 17h1v1h-1zM3 17h1v1h-1zM4 17h1v1h-1zM6 17h1v1h-1zM9 17h1v1h-1zM10 17h1v1h-1zM11 17h1v1h-1zM13 17h1v1h-1zM16 17h1v1h-1zM17 17h1v1h-1zM19 17h1v1h-1zM0 18h1v1h-1zM2 18h1v1h-1zM3 18h1v1h-1zM4 18h1v1h-1zM6 18h1v1h-1zM8 18h1v1h-1zM9 18h1v1h-1zM11 18h1v1h-1zM14 18h1v1h-1zM17 18h1v1h-1zM18 18h1v1h-1zM20 18h1v1h-1zM0 19h1v1h-1zM6 19h1v1h-1zM11 19h1v1h-1zM12 19h1v1h-1zM13 19h1v1h-1zM15 19h1v1h-1zM16 19h1v1h-1zM17 19h1v1h-1zM19 19h1v1h-1zM20 19h1v1h-1zM0 20h1v1h-1zM1 20h1v1h-1zM2 20h1v1h-1zM3 20h1v1h-1zM4 20h1v1h-1zM5 20h1v1h-1zM6 20h1v1h-1zM8 20h1v1h-1zM9 20h1v1h-1zM11 20h1v1h-1zM14 20h1v1h-1zM16 20h1v1h-1zM18 20h1v1h-1zM20 20h1v1h-1z\"/></svg></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "QrCode"
+      }
+    },
+    {
+      "name": "Stat",
+      "ui": "stat",
+      "category": "Data Display",
+      "description": "A figure with a label above it, an optional help line and a change indicator.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"6\" data-wrap=\"true\"><div data-ui=\"stat\" data-size=\"md\"><span data-part=\"label\">Trails booked</span><span data-part=\"value\">1,284</span><span data-part=\"help\"><span data-part=\"change\" data-type=\"up\"><i data-ui=\"icon\" data-name=\"trending-up\"></i>12%</span> vs last month</span></div><div data-ui=\"stat\" data-size=\"md\"><span data-part=\"label\">Average rating</span><span data-part=\"value\">4.8</span><span data-part=\"help\">From 212 reviews</span></div></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Stat"
+      }
+    },
+    {
+      "name": "Table",
+      "ui": "table",
+      "category": "Data Display",
+      "description": "Rows and columns of data, with a header row, striped or outlined styles and selected rows.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "line",
+            "outline"
+          ],
+          "default": "line"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "sm"
+        },
+        {
+          "name": "striped",
+          "label": "Striped",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "interactive",
+          "label": "Interactive",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<table data-ui=\"table\" data-size=\"md\" data-variant=\"line\"><thead><tr><th data-part=\"header\">Booking</th><th data-part=\"header\">Trail</th><th data-part=\"header\">Date</th><th data-part=\"header\" data-align=\"end\">Paid</th></tr></thead><tbody><tr data-part=\"row\"><td data-part=\"cell\">TM-2041</td><td data-part=\"cell\">Ridgeline Loop</td><td data-part=\"cell\">14 Nov</td><td data-part=\"cell\" data-align=\"end\">£76.00</td></tr><tr data-part=\"row\" data-selected=\"true\"><td data-part=\"cell\">TM-2042</td><td data-part=\"cell\">Falls Circuit</td><td data-part=\"cell\">15 Nov</td><td data-part=\"cell\" data-align=\"end\">£48.00</td></tr><tr data-part=\"row\"><td data-part=\"cell\">TM-2043</td><td data-part=\"cell\">Coastal Path</td><td data-part=\"cell\">21 Nov</td><td data-part=\"cell\" data-align=\"end\">£52.00</td></tr></tbody></table>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Table"
+      }
+    },
+    {
+      "name": "Tag",
+      "ui": "tag",
+      "category": "Data Display",
+      "description": "A removable label for a value such as a filter or a tag on a trail.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "surface",
+            "subtle",
+            "solid",
+            "outline",
+            "plain"
+          ],
+          "default": "surface"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "closable",
+          "label": "Closable",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "color-palette",
+          "label": "Color Palette",
+          "type": "choice",
+          "options": [
+            "gray",
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "teal",
+            "blue",
+            "cyan",
+            "purple",
+            "pink"
+          ],
+          "default": "gray"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"2\" data-wrap=\"true\" data-align=\"center\"><span data-ui=\"tag\" data-size=\"md\"><span data-part=\"label\">Waterfall</span></span><span data-ui=\"tag\" data-size=\"md\" data-color-palette=\"teal\" data-variant=\"subtle\"><span data-part=\"label\">Family</span></span><span data-ui=\"tag\" data-size=\"md\" data-variant=\"solid\" data-color-palette=\"blue\"><span data-part=\"label\">Views</span><button data-ui=\"close-button\" data-size=\"2xs\" aria-label=\"Remove\"><i data-ui=\"icon\" data-name=\"x\"></i></button></span></div>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Tag"
+      }
+    },
+    {
+      "name": "Timeline",
+      "ui": "timeline",
+      "category": "Data Display",
+      "description": "A vertical list of dated events joined by a line, each with a marker.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<ol data-ui=\"timeline\"><li data-part=\"item\"><span data-part=\"indicator\" data-color-palette=\"green\"><i data-ui=\"icon\" data-name=\"check\"></i></span><div data-part=\"content\"><span data-part=\"title\">Booked</span><span data-part=\"description\">Mon 2 Nov, 14:12</span></div></li><li data-part=\"item\"><span data-part=\"indicator\" data-color-palette=\"blue\"><i data-ui=\"icon\" data-name=\"clock\"></i></span><div data-part=\"content\"><span data-part=\"title\">Guide assigned</span><span data-part=\"description\">Mara Ellis, Thu 12 Nov</span></div></li><li data-part=\"item\"><span data-part=\"indicator\"><i data-ui=\"icon\" data-name=\"map\"></i></span><div data-part=\"content\"><span data-part=\"title\">Trailhead meet-up</span><span data-part=\"description\">Saturday 14 Nov, 08:30</span></div></li></ol>",
+      "import": {
+        "package": "@chakra-ui/react",
+        "name": "Timeline"
+      }
+    },
+    {
+      "name": "Hero",
+      "ui": "hero",
+      "category": "Blocks",
+      "description": "A headline, a line of copy, two buttons and a booking card preview.",
+      "props": [],
+      "snippet": "<section data-ui=\"hero\" data-block=\"blocks/hero.html\"></section>",
+      "kind": "composition"
+    },
+    {
+      "name": "Feature grid",
+      "ui": "feature-grid",
+      "category": "Blocks",
+      "description": "Six features, each with an icon, in a three-column grid of cards.",
+      "props": [],
+      "snippet": "<section data-ui=\"feature-grid\" data-block=\"blocks/feature-grid.html\"></section>",
+      "kind": "composition"
+    },
+    {
+      "name": "Pricing",
+      "ui": "pricing",
+      "category": "Blocks",
+      "description": "Three trip tiers, with the middle one highlighted.",
+      "props": [],
+      "snippet": "<section data-ui=\"pricing\" data-block=\"blocks/pricing.html\"></section>",
+      "kind": "composition"
+    },
+    {
+      "name": "Sign in",
+      "ui": "sign-in",
+      "category": "Blocks",
+      "description": "A centred card with a form, a checkbox and a divider.",
+      "props": [],
+      "snippet": "<section data-ui=\"sign-in\" data-block=\"blocks/sign-in.html\"></section>",
+      "kind": "composition"
+    },
+    {
+      "name": "Dashboard",
+      "ui": "dashboard",
+      "category": "Blocks",
+      "description": "A sidebar, stat cards, a table of bookings and a timeline.",
+      "props": [],
+      "snippet": "<section data-ui=\"dashboard\" data-block=\"blocks/dashboard.html\"></section>",
+      "kind": "composition"
+    }
+  ]
+}

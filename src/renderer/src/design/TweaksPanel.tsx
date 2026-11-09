@@ -1,78 +1,7 @@
-import { useEffect, useRef } from "react";
-import { SlidersHorizontal } from "lucide-react";
 import type { Tweak, TweakValues } from "../../../shared/tweaks";
 import { Select } from "../components/Select";
 
-/**
- * The canvas's Tweaks button and popover: the controls a design page declares in its `cubiq-tweaks` manifest.
- * Changes apply live in the frame (no agent turn); Keep writes them into the file, Reset reloads it.
- */
-export function TweaksPanel({
-  tweaks,
-  values,
-  dirty,
-  keeping,
-  open,
-  onOpen,
-  onChange,
-  onReset,
-  onKeep,
-}: {
-  tweaks: Tweak[];
-  values: TweakValues;
-  dirty: boolean;
-  keeping: boolean;
-  open: boolean;
-  onOpen: (open: boolean) => void;
-  onChange: (tweak: Tweak, raw: string) => void;
-  onReset: () => void;
-  onKeep: () => void;
-}) {
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  // Closes on a click outside it or Esc, like the Export menu.
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) onOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onOpen(false);
-      }
-    };
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey, true);
-    return () => {
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey, true);
-    };
-  }, [open, onOpen]);
-
-  return (
-    <div className="artifact-menu-wrap" ref={wrapRef}>
-      <button
-        className={`icon-button design-tweaks-toggle${open ? " active" : ""}`}
-        title={dirty ? "Tweaks (changed, not kept)" : "Tweaks"}
-        aria-label="Tweaks"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={() => onOpen(!open)}
-      >
-        <SlidersHorizontal size={16} strokeWidth={1.75} aria-hidden />
-        {dirty && <span className="design-tweaks-dot" aria-hidden />}
-      </button>
-      {open && (
-        <div className="design-tweaks" role="dialog" aria-label="Tweaks">
-          <TweaksBody tweaks={tweaks} values={values} dirty={dirty} keeping={keeping} onChange={onChange} onReset={onReset} onKeep={onKeep} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** The tweak controls with Reset and Keep: the popover's body, and the inspector's Tweaks tab. */
+/** The tweak controls a page declares in its `cubiq-tweaks` manifest, with Reset and Keep: the Customize panel's Tweaks section. */
 export function TweaksBody({
   tweaks,
   values,

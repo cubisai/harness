@@ -16,7 +16,7 @@ const DEVICE_OF: Partial<Record<Viewport, DeviceKind>> = { mobile: "phone", tabl
  * (`<meta name="cubiq-device">`, or a one-screen phone page), else Fit. A desktop page stays Fit, as before.
  */
 export function viewportForDevice(device: DesignDevice | undefined): Viewport {
-  return device === "mobile" || device === "tablet" || device === "slide" ? device : "fit";
+  return device === "mobile" || device === "tablet" || device === "slide" ? device : "desktop";
 }
 
 /** The device a viewport is shown in, or null when it has none. */
@@ -53,6 +53,8 @@ export function frameLayout(
   stage: { width: number; height: number },
   /** Fit the whole frame (width and height), as a device frame does; otherwise Fit matches the width and the stage scrolls. */
   whole = false,
+  /** Design v2's stage: the page keeps its width at any scale, and its frame reaches the foot of the stage instead of stopping at the preset's height. */
+  fill = false,
 ): { width: number; height: number; scale: number } {
   const size = VIEWPORTS.find((v) => v.value === viewport)?.size ?? null;
   if (!size) return { width: Math.max(0, stage.width), height: Math.max(0, stage.height), scale: zoom === "fit" ? 1 : zoom };
@@ -60,30 +62,38 @@ export function frameLayout(
   const room = { width: Math.max(1, stage.width - 2 * STAGE_PAD), height: Math.max(1, stage.height - 2 * STAGE_PAD) };
   const byWidth = room.width / size.width;
   const scale = Math.min(1, viewport === "slide" || whole ? Math.min(byWidth, room.height / size.height) : byWidth);
-  return { ...size, scale };
+  return fill ? { width: size.width, height: Math.floor(room.height / scale), scale } : { ...size, scale };
 }
 
 export type BridgeMessage =
-  | { type: "ready"; path?: string }
+  /** `loaded`: the fingerprint of the page text the frame loaded (absent when unknown). */
+  | { type: "ready"; path?: string; loaded?: string }
   | { type: "scroll"; x: number; y: number }
   | { type: "selection"; elements: SelectedElement[]; lost: number }
-  | { type: "text-edit"; id: string; before: string; after: string }
+  | { type: "text-commit"; target: { id: string } | { locator: { tag: string; path: number[]; text: string } }; before: string; after: string; live: boolean }
+  | { type: "history-key"; action: "undo" | "redo" }
+  | { type: "pointer" }
+  | { type: "theme"; tokens: Record<string, string> }
   | { type: "edit-refused"; reason: string }
   | { type: "pins"; missing: number[] }
   | { type: "pick-cancel" }
   | { type: "tweaks"; manifest: string; attrs: Record<string, string>; vars: Record<string, string> }
   | { type: "outline"; nodes: OutlineNode[] }
   | { type: "anchor"; anchor: FrameAnchor | null }
-  | { type: "marks"; marks: PageMarks }
-  | { type: "repick-ask"; label: string }
   | { type: "variants"; sets: VariantSetInfo[] }
   | { type: "variant-rect"; set: string; rect: FrameRect | null }
-  | { type: "gap"; gap: InsertGap | null }
-  | { type: "gap-rect"; rect: FrameRect }
-  | { type: "insert-cancel" }
-  | { type: "finding"; n: number };
+  | { type: "finding"; n: number }
+  | { type: "context-menu"; x: number; y: number }
+  | { type: "seam"; seam: PageSeam | null }
+  | { type: "canvas-key"; key: string; mod: boolean; shift: boolean; alt: boolean }
+  | { type: "hit-result"; element: SelectedElement | null }
+  /** The page took a patch in place (`ok`), or the canvas must reload it. `n` is the patch it answers. */
+  | { type: "patched"; ok: boolean; n: number };
 
-/** A gap picked in Insert mode: before or after the anchor element, and the anchor's size (a hint for what fits there). */
+/** A gap between two blocks the pointer is at, in the frame's viewport. */
+export type PageSeam = { position: "before" | "after"; anchor: SelectedElement; rect: FrameRect };
+
+/** Where new content goes: before or after the anchor element, and the anchor's size (a hint for what fits there). */
 export type InsertGap = { position: "before" | "after"; anchor: SelectedElement; size: { width: number; height: number } };
 
 /** An in-place variant set on the page: how many variants it has, which one shows, and what's wrong with it if anything. */
@@ -92,13 +102,9 @@ export type VariantSetInfo = { set: string; count: number; shown: number; malfor
 /** A box in the frame's viewport, in CSS pixels. */
 export type FrameRect = { x: number; y: number; width: number; height: number };
 
-/** Where the picked element is in the frame (and, for the capture, it plus its marks and notes), and whether its text can be edited. */
+/** Where the picked element is in the frame (`bounds`: all of the selection), and whether its text can be edited. */
 export type FrameAnchor = { rect: FrameRect; bounds: FrameRect; editable: boolean; view: { width: number; height: number } };
 
-/** The marks and notes on the picked element, in page coordinates. */
-export type PageMarks = { strokes: { x: number; y: number }[][]; notes: { x: number; y: number; text: string; near: string }[] };
-
-export const NO_MARKS: PageMarks = { strokes: [], notes: [] };
 
 /** One node of the design page's outline (layer tree), as reported by the bridge. Duplicated from main: no cross-import. */
 export interface OutlineNode {
@@ -108,6 +114,8 @@ export interface OutlineNode {
   selector: string;
   label: string;
   depth: number;
+  /** Its kit part, from `data-ui`. */
+  ui?: string;
 }
 
 const num = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -123,7 +131,48 @@ const rect = (v: unknown): v is FrameRect => {
   const r = v as Record<string, unknown>;
   return num(r.x) && num(r.y) && num(r.width) && num(r.height) && r.width >= 0 && r.height >= 0;
 };
-const point = (v: unknown): v is { x: number; y: number } => !!v && typeof v === "object" && num((v as Record<string, unknown>).x) && num((v as Record<string, unknown>).y);
+
+/** The most one frame may send: any message over the size, or any past the rate, is dropped. */
+export const BRIDGE_LIMITS = { bytes: 256 * 1024, perSecond: 300 };
+
+/** The messages that change the file or its history: they must carry this frame load's token. */
+const NEEDS_NONCE = new Set(["text-commit", "history-key", "canvas-key", "patched"]);
+
+/**
+ * Design v2's door for one frame: drops oversize messages and floods, and drops a file-changing message that doesn't
+ * carry the token sent to this load. The page shares a realm with the bridge, so the token doesn't stop its own
+ * scripts; what they can reach is limited by readBridgeMessage and the mutation service, which only touch this page.
+ */
+export function createBridgeGate(newNonce: () => string, now: () => number = () => Date.now()) {
+  let nonce = newNonce();
+  let windowStart = 0;
+  let count = 0;
+  return {
+    /** A new frame load gets a new token. */
+    renew(): string {
+      nonce = newNonce();
+      return nonce;
+    },
+    admit(data: unknown): boolean {
+      if (!data || typeof data !== "object") return false;
+      const t = now();
+      if (t - windowStart >= 1000) {
+        windowStart = t;
+        count = 0;
+      }
+      if (++count > BRIDGE_LIMITS.perSecond) return false;
+      let size = Infinity;
+      try {
+        size = JSON.stringify(data).length;
+      } catch {
+        return false;
+      }
+      if (size > BRIDGE_LIMITS.bytes) return false;
+      const d = data as Record<string, unknown>;
+      return !NEEDS_NONCE.has(String(d.type)) || d.nonce === nonce;
+    },
+  };
+}
 
 /** A message from the design page's bridge, checked field by field (the page is untrusted); null otherwise. */
 export function readBridgeMessage(data: unknown): BridgeMessage | null {
@@ -131,22 +180,42 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
   const d = data as Record<string, unknown>;
   if (d.source !== "cubiq-design") return null;
   if (d.type === "pick-cancel") return { type: "pick-cancel" };
-  if (d.type === "insert-cancel") return { type: "insert-cancel" };
   if (d.type === "finding") return typeof d.n === "number" && Number.isInteger(d.n) && d.n >= 1 && d.n <= 99 ? { type: "finding", n: d.n } : null;
-  if (d.type === "gap") {
-    if (d.gap === null) return { type: "gap", gap: null };
-    const g = d.gap as Record<string, unknown> | undefined;
-    const size = g?.size as Record<string, unknown> | undefined;
-    if (!g || (g.position !== "before" && g.position !== "after") || !size || !num(size.width) || !num(size.height) || size.width < 0 || size.height < 0) return null;
-    const anchor = readSelected(g.anchor);
-    return anchor ? { type: "gap", gap: { position: g.position, anchor, size: { width: size.width, height: size.height } } } : null;
+  if (d.type === "context-menu") return num(d.x) && num(d.y) ? { type: "context-menu", x: d.x, y: d.y } : null;
+  if (d.type === "hit-result") {
+    if (d.element === null) return { type: "hit-result", element: null };
+    const element = readSelected(d.element);
+    return element ? { type: "hit-result", element } : null;
   }
-  if (d.type === "gap-rect") return rect(d.rect) ? { type: "gap-rect", rect: d.rect } : null;
-  if (d.type === "ready") return str(d.path, 2000) ? { type: "ready", path: d.path } : { type: "ready" };
+  if (d.type === "canvas-key") return typeof d.key === "string" && d.key.length <= 16 ? { type: "canvas-key", key: d.key, mod: d.mod === true, shift: d.shift === true, alt: d.alt === true } : null;
+  if (d.type === "seam") {
+    if (d.seam === null) return { type: "seam", seam: null };
+    const s = d.seam as Record<string, unknown> | undefined;
+    if (!s || (s.position !== "before" && s.position !== "after") || !rect(s.rect)) return null;
+    const anchor = readSelected(s.anchor);
+    return anchor ? { type: "seam", seam: { position: s.position, anchor, rect: s.rect as FrameRect } } : null;
+  }
+  if (d.type === "patched") return num(d.n) ? { type: "patched", ok: d.ok === true, n: d.n } : null;
+  if (d.type === "ready") {
+    const loaded = typeof d.loaded === "string" && /^[a-z0-9-]{1,40}$/.test(d.loaded) ? { loaded: d.loaded } : {};
+    return str(d.path, 2000) ? { type: "ready", path: d.path, ...loaded } : { type: "ready", ...loaded };
+  }
   if (d.type === "scroll") return num(d.x) && num(d.y) ? { type: "scroll", x: d.x, y: d.y } : null;
-  if (d.type === "text-edit") {
-    if (!str(d.id, 64) || !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(d.id) || !str(d.before, 4000) || !str(d.after, 2000)) return null;
-    return { type: "text-edit", id: d.id, before: d.before, after: d.after };
+  if (d.type === "text-commit") {
+    if (!str(d.before, 4000) || !str(d.after, 4000) || !d.target || typeof d.target !== "object") return null;
+    const live = d.live === true;
+    const t = d.target as Record<string, unknown>;
+    if (str(t.id, 64) && /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(t.id)) return { type: "text-commit", target: { id: t.id }, before: d.before, after: d.after, live };
+    const l = t.locator as Record<string, unknown> | undefined;
+    if (!l || !str(l.tag, 64) || l.tag === "" || !str(l.text, 80) || !Array.isArray(l.path) || l.path.length > 64 || !l.path.every((n) => Number.isInteger(n) && (n as number) >= 0)) return null;
+    return { type: "text-commit", target: { locator: { tag: l.tag, path: l.path as number[], text: l.text } }, before: d.before, after: d.after, live };
+  }
+  if (d.type === "pointer") return { type: "pointer" };
+  if (d.type === "history-key") return d.action === "undo" || d.action === "redo" ? { type: "history-key", action: d.action } : null;
+  if (d.type === "theme") {
+    if (!d.tokens || typeof d.tokens !== "object" || Array.isArray(d.tokens)) return null;
+    const entries = Object.entries(d.tokens as Record<string, unknown>);
+    return entries.length <= 200 && entries.every(([k, v]) => /^--[a-z0-9-]{1,48}$/.test(k) && str(v, 120)) ? { type: "theme", tokens: d.tokens as Record<string, string> } : null;
   }
   if (d.type === "pins") {
     if (!Array.isArray(d.missing) || d.missing.length > 100) return null;
@@ -175,22 +244,6 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
     if (!rect(d.rect) || !rect(d.bounds) || !view || !num(view.width) || !num(view.height)) return null;
     return { type: "anchor", anchor: { rect: d.rect, bounds: d.bounds, editable: d.editable === true, view: { width: view.width, height: view.height } } };
   }
-  if (d.type === "marks") {
-    if (!Array.isArray(d.strokes) || d.strokes.length > 40 || !Array.isArray(d.notes) || d.notes.length > 20) return null;
-    const strokes: PageMarks["strokes"] = [];
-    for (const s of d.strokes) {
-      if (!Array.isArray(s) || s.length > 400 || !s.every(point)) return null;
-      strokes.push(s.map((p) => ({ x: p.x, y: p.y })));
-    }
-    const notes: PageMarks["notes"] = [];
-    for (const raw of d.notes) {
-      if (!raw || typeof raw !== "object") return null;
-      const n = raw as Record<string, unknown>;
-      if (!num(n.x) || !num(n.y) || !str(n.text, 200) || !n.text.trim() || !str(n.near, 60)) return null;
-      notes.push({ x: n.x, y: n.y, text: n.text, near: n.near });
-    }
-    return { type: "marks", marks: { strokes, notes } };
-  }
   if (d.type === "variants") {
     if (!Array.isArray(d.sets) || d.sets.length > 8) return null;
     const sets: VariantSetInfo[] = [];
@@ -209,7 +262,6 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
     if (d.rect === null) return { type: "variant-rect", set: d.set, rect: null };
     return rect(d.rect) ? { type: "variant-rect", set: d.set, rect: d.rect } : null;
   }
-  if (d.type === "repick-ask") return str(d.label, 80) && d.label ? { type: "repick-ask", label: d.label } : null;
   if (d.type === "outline") {
     if (!Array.isArray(d.nodes) || d.nodes.length > 400) return null;
     const nodes: OutlineNode[] = [];
@@ -221,6 +273,7 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
       if (typeof n.depth !== "number" || !Number.isInteger(n.depth) || n.depth < 0 || n.depth > 8) continue;
       const node: OutlineNode = { tag: n.tag, cls: n.cls, selector: n.selector, label: n.label, depth: n.depth };
       if (str(n.id, 64) && /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(n.id)) node.id = n.id;
+      if (str(n.ui, 48) && /^[a-z0-9][a-z0-9-]{0,47}$/.test(n.ui)) node.ui = n.ui;
       nodes.push(node);
     }
     return { type: "outline", nodes };

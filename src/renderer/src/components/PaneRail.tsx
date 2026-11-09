@@ -36,7 +36,8 @@ export function SidebarToggle({ collapsed }: { collapsed: boolean }) {
 
 export function toggleSidebar(): void {
   const s = useStore.getState();
-  s.setPaneLayout({ sidebarCollapsed: !s.paneLayout.sidebarCollapsed }, true);
+  if (s.studioFold !== null) useStore.setState({ studioFold: !s.studioFold });
+  else s.setPaneLayout({ sidebarCollapsed: !s.paneLayout.sidebarCollapsed }, true);
 }
 
 /** With the sidebar collapsed: its toggle and New thread, at the start of the title bar. */

@@ -31,6 +31,7 @@ import type {
   ThreadKind,
   ThreadTotals,
 } from "../../shared/types";
+import type { DocumentStatus } from "../../shared/design-mutation";
 import { api } from "./api";
 import { appendDelta, applyLiveEvent, emptyLive, flushPending, type LiveThread } from "./live";
 import { DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
@@ -43,11 +44,17 @@ import { buildInCodePrompt, buildThreadPatch, designDirName, handoffPath } from 
 import type { SelectedElement } from "../../shared/selection";
 import type { PrototypeTier } from "../../shared/tiers";
 import type { TurnScore } from "../../shared/learn";
+import type { DesignChip, SystemWhere } from "./design/intent";
 
 /** A design thread's canvas selection: the page it is on and its elements. */
+/** What the next message is about, chosen from the Composer rather than typed. */
+export type { DesignChip };
+
 export interface DesignSelection {
   page: string;
   elements: SelectedElement[];
+  /** The kit's names for the elements (`StatCard`), in order, when the canvas knows them: the Composer chip's label. */
+  names?: string[];
 }
 
 /** The right panel's tabs. Changes and Files need a project; Browser works without one; File shows an artifact. */
@@ -178,6 +185,8 @@ interface State {
   setInboxOpen(open: boolean): void;
   /** Panel widths and collapse state; the raw setting, drawn through clampLayout. */
   paneLayout: PaneLayout;
+  /** The sidebar in the design studio: folded unless opened there, without touching the saved layout. Null outside it. */
+  studioFold: boolean | null;
   setPaneLayout(patch: Partial<PaneLayout>, persist: boolean): void;
   inspectorOpen: boolean;
   inspectorTab: InspectorTab;
@@ -212,10 +221,24 @@ interface State {
   designReload: Record<string, number>;
   /** Each open design thread's latest change: a counter and the raw changed paths (null = unknown), so the board regenerates only the artboards it affects. */
   designChange: Record<string, { n: number; paths: string[] | null }>;
+  /** Open design pages' save and undo state, by document id, with a counter that moves when conflicts wait to be fetched. */
+  designDocuments: Record<string, { status: DocumentStatus; conflicts: number }>;
   /** Each design thread's selected elements on its canvas (one page): chips in the composer, scope for the next message. */
   designSelection: Record<string, DesignSelection>;
   /** Set (or clear, with null or no elements) a design thread's selection. */
   setDesignSelection(threadId: string, selection: DesignSelection | null): void;
+  /** A one-shot ask from across the app to a thread's studio: show a view, or open the style picker. */
+  studioRequest: { threadId: string; view?: "design" | "system"; picker?: boolean; version?: number } | null;
+  requestStudio(request: { threadId: string; view?: "design" | "system"; picker?: boolean; version?: number } | null): void;
+  /** The system change a thread can still step back from: its toast, and what `Undo` and ⌘Z do. `page` means the page's own undo carries it. */
+  systemStep: Record<string, { text: string; undo: (() => Promise<unknown>) | "page" }>;
+  setSystemStep(threadId: string, step: { text: string; undo: (() => Promise<unknown>) | "page" } | null): void;
+  /** The chip a design thread's next message goes out with (`+` menu, System mode). */
+  designChip: Record<string, DesignChip>;
+  setDesignChip(threadId: string, chip: DesignChip | null): void;
+  /** Where System mode is while it's open (its Composer chips: `Library · Colors · Default · Light`). Absent on the page. */
+  designSystemWhere: Record<string, SystemWhere>;
+  setDesignSystemWhere(threadId: string, where: SystemWhere | null): void;
   /** Reference images handed to a design thread's composer from elsewhere (the canvas's Draw tool); the composer takes them. */
   pendingRefs: Record<string, { path: string; thumb: string }[]>;
   addDesignRefs(threadId: string, refs: { path: string; thumb: string }[]): void;
@@ -697,6 +720,7 @@ export const useStore = create<State>((set, get) => ({
     set({ inboxOpen: open });
   },
   paneLayout: { ...DEFAULT_LAYOUT },
+  studioFold: null,
   inspectorOpen: false,
   inspectorTab: "changes",
   artifact: null,
@@ -712,6 +736,7 @@ export const useStore = create<State>((set, get) => ({
   composerInsert: null,
   designReload: {},
   designChange: {},
+  designDocuments: {},
   designSelection: {},
   setDesignSelection(threadId, selection) {
     set((s) => {
@@ -719,6 +744,37 @@ export const useStore = create<State>((set, get) => ({
       if (selection && selection.elements.length) next[threadId] = selection;
       else delete next[threadId];
       return { designSelection: next };
+    });
+  },
+  studioRequest: null,
+  requestStudio(request) {
+    set({ studioRequest: request });
+  },
+  systemStep: {},
+  setSystemStep(threadId, step) {
+    set((s) => {
+      const next = { ...s.systemStep };
+      if (step) next[threadId] = step;
+      else delete next[threadId];
+      return { systemStep: next };
+    });
+  },
+  designChip: {},
+  setDesignChip(threadId, chip) {
+    set((s) => {
+      const next = { ...s.designChip };
+      if (chip) next[threadId] = chip;
+      else delete next[threadId];
+      return { designChip: next };
+    });
+  },
+  designSystemWhere: {},
+  setDesignSystemWhere(threadId, where) {
+    set((s) => {
+      const next = { ...s.designSystemWhere };
+      if (where) next[threadId] = where;
+      else delete next[threadId];
+      return { designSystemWhere: next };
     });
   },
   composerDraft: null,
@@ -1491,9 +1547,16 @@ export const useStore = create<State>((set, get) => ({
         return;
       case "design-changed":
         set((s) => ({
-          designReload: { ...s.designReload, [update.threadId]: (s.designReload[update.threadId] ?? 0) + 1 },
+          // The editor's own save: the frame already shows it, so nothing reloads.
+          designReload: update.own ? s.designReload : { ...s.designReload, [update.threadId]: (s.designReload[update.threadId] ?? 0) + 1 },
           designChange: { ...s.designChange, [update.threadId]: { n: (s.designChange[update.threadId]?.n ?? 0) + 1, paths: update.paths ?? null } },
         }));
+        return;
+      case "design-document":
+        set((s) => {
+          const prior = s.designDocuments[update.status.documentId];
+          return { designDocuments: { ...s.designDocuments, [update.status.documentId]: { status: update.status, conflicts: (prior?.conflicts ?? 0) + (update.conflicts ? 1 : 0) } } };
+        });
         return;
       case "event":
         // A plan proposal is also a new version of the thread's plan artifact: refresh its file list.

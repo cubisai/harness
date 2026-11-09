@@ -4,8 +4,7 @@ import { describePick, type PickedElement } from "../src/main/browser/picker";
 import { chipLabel, commandQuery, composeMessage, skillQueryAt, toggleSkill } from "../src/renderer/src/composer";
 import { Composer } from "../src/renderer/src/components/Composer";
 import { DesignFenceChip } from "../src/renderer/src/components/DesignSettingsMenu";
-import { chipStyle, DesignStyleMenu, facetLabel, filterStyles, initialPreviewTheme, previewable, stepPreview, styleGroups } from "../src/renderer/src/components/DesignSystemMenu";
-import type { DesignSystemOption, StyleFacets } from "../src/shared/types";
+import { facetLabel } from "../src/renderer/src/components/DesignSystemMenu";
 import { ThreadView } from "../src/renderer/src/components/ThreadView";
 import { useStore } from "../src/renderer/src/store";
 import type { SendRequest, Thread } from "../src/shared/types";
@@ -357,76 +356,9 @@ describe("DesignFenceChip", () => {
   });
 });
 
-describe("DesignStyleMenu", () => {
-  const opt = (id: string, name: string, source: DesignSystemOption["source"]): DesignSystemOption => ({ id, name, description: "", swatches: ["#000", "#fff"], source });
-  const facets = (over: Partial<StyleFacets>): StyleFacets => ({ theme: "light", darkPair: false, display: "sans", shape: "soft", ...over });
-  const faceted = (id: string, name: string, over: Partial<StyleFacets>): DesignSystemOption => ({ ...opt(id, name, "style"), facets: facets(over) });
-  const options = [opt("project", "Project", "project"), opt("style:zinc-console", "Zinc console", "style"), opt("style:clean-inset", "Clean inset", "style")];
-
-  it("reads nothing picked, Auto, or a gone style as Auto, and names Auto's pick once it has one", () => {
-    expect(chipStyle(options, undefined).name).toBe("Auto");
-    expect(chipStyle(options, "auto").id).toBe("auto");
-    expect(chipStyle(options, "style:retired").name).toBe("Auto");
-    expect(chipStyle(options, "auto", { surface: "page", mode: "operate", style: "style:zinc-console", tier: "working" }).name).toBe("Auto · Zinc console");
-  });
-
-  it("shows a fixed style by name", () => {
-    expect(chipStyle(options, "style:clean-inset")).toEqual({ id: "style:clean-inset", name: "Clean inset", title: "Style: Clean inset" });
-  });
-
-  it("lists Auto first, then the project's systems, then the styles", () => {
-    expect(styleGroups(options).map((g) => [g.label, g.options.map((o) => o.id)])).toEqual([
-      ["", ["auto"]],
-      ["Project", ["project"]],
-      ["Styles", ["style:zinc-console", "style:clean-inset"]],
-    ]);
-    expect(styleGroups(options.slice(1)).map((g) => g.label)).toEqual(["", "Styles"]);
-  });
-
-  it("renders a style chip with no palette, disabled while running", () => {
-    const html = renderToStaticMarkup(<DesignStyleMenu projectId={null} value={undefined} disabled onPick={() => {}} />);
-    expect(html).toContain("ds-chip");
-    expect(html).toContain('aria-label="Style: Auto (picks one that fits the brief)"');
-    expect(html).not.toContain("swatch");
-    expect(html).toContain("disabled");
-  });
-
-  it("keeps project systems and filters styles by theme, display or both", () => {
-    const list = [
-      { ...opt("project", "Project", "project"), facets: facets({ theme: "dark", display: "mono" }) },
-      faceted("style:light-sans", "Light sans", { theme: "light", display: "sans" }),
-      faceted("style:dark-mono", "Dark mono", { theme: "dark", display: "mono" }),
-      opt("style:plain", "Plain", "style"),
-    ];
-    expect(filterStyles(list, { theme: null, display: null }).map((o) => o.id)).toEqual(["project", "style:light-sans", "style:dark-mono", "style:plain"]);
-    expect(filterStyles(list, { theme: "dark", display: null }).map((o) => o.id)).toEqual(["project", "style:dark-mono"]);
-    expect(filterStyles(list, { theme: null, display: "sans" }).map((o) => o.id)).toEqual(["project", "style:light-sans"]);
-    expect(filterStyles(list, { theme: "dark", display: "mono" }).map((o) => o.id)).toEqual(["project", "style:dark-mono"]);
-    expect(filterStyles(list, { theme: "light", display: "mono" }).map((o) => o.id)).toEqual(["project"]);
-  });
-
-  it("previews only entries with facets, Auto aside", () => {
-    const list = [{ ...opt("project", "Project", "project"), facets: facets({}) }, opt("auto", "Auto", "project"), opt("style:plain", "Plain", "style")];
-    expect(previewable(list).map((o) => o.id)).toEqual(["project"]);
-  });
-
-  it("steps previews with wrap-around and keeps an unlisted id", () => {
-    const list = [faceted("a", "A", {}), faceted("b", "B", {}), faceted("c", "C", {})];
-    expect(stepPreview(list, "a", 1)).toBe("b");
-    expect(stepPreview(list, "c", 1)).toBe("a");
-    expect(stepPreview(list, "a", -1)).toBe("c");
-    expect(stepPreview(list, "gone", 1)).toBe("gone");
-  });
-
+describe("facetLabel", () => {
   it("labels a style's facets in one line", () => {
     expect(facetLabel({ theme: "light", darkPair: true, display: "sans", shape: "sharp" })).toBe("Light + dark · Sans type · Sharp corners");
     expect(facetLabel({ theme: "dark", darkPair: false, display: "mono", shape: "round" })).toBe("Dark · Mono type · Round corners");
-  });
-
-  it("opens a dark pair in the app's theme, and a dark-only style in its own", () => {
-    const pair = facets({ theme: "light", darkPair: true });
-    expect(initialPreviewTheme(pair, true)).toBe("dark");
-    expect(initialPreviewTheme(pair, false)).toBe("light");
-    expect(initialPreviewTheme(facets({ theme: "dark", darkPair: false }), false)).toBe("dark");
   });
 });

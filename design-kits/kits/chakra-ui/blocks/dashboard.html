@@ -1,0 +1,41 @@
+<section data-ui="dashboard">
+  <div data-part="shell">
+    <aside data-part="sidebar" aria-label="Sidebar">
+      <div data-part="brand">Trailmark</div>
+      <a data-part="nav-item" href="#" aria-current="page"><i data-ui="icon" data-name="home"></i>Overview</a>
+      <a data-part="nav-item" href="#"><i data-ui="icon" data-name="calendar"></i>Bookings</a>
+      <a data-part="nav-item" href="#"><i data-ui="icon" data-name="map"></i>Trails</a>
+      <a data-part="nav-item" href="#"><i data-ui="icon" data-name="users"></i>Guides</a>
+      <a data-part="nav-item" href="#"><i data-ui="icon" data-name="settings"></i>Settings</a>
+    </aside>
+    <div data-part="main">
+      <h2 data-part="title">Saturday, 14 November</h2>
+      <div data-part="stats">
+        <div data-ui="card" data-variant="outline"><div data-part="content"><div data-ui="stat" data-size="sm"><span data-part="label">Places booked</span><span data-part="value">38</span><span data-part="help"><span data-part="change" data-type="up"><i data-ui="icon" data-name="trending-up"></i>12%</span> vs last week</span></div></div></div>
+        <div data-ui="card" data-variant="outline"><div data-part="content"><div data-ui="stat" data-size="sm"><span data-part="label">Guides on shift</span><span data-part="value">6</span><span data-part="help">Two trips with no lead yet</span></div></div></div>
+        <div data-ui="card" data-variant="outline"><div data-part="content"><div data-ui="stat" data-size="sm"><span data-part="label">Average rating</span><span data-part="value">4.8</span><span data-part="help">From 212 reviews</span></div></div></div>
+      </div>
+      <div data-part="panels">
+        <div data-part="panel">
+          <h3>Today's bookings</h3>
+          <table data-ui="table" data-size="sm" data-variant="line">
+              <thead><tr><th data-part="header">Booking</th><th data-part="header">Trail</th><th data-part="header">Guests</th><th data-part="header" data-align="end">Status</th></tr></thead>
+              <tbody>
+                <tr data-part="row"><td data-part="cell">TM-2041</td><td data-part="cell">Ridgeline Loop</td><td data-part="cell">2</td><td data-part="cell" data-align="end"><span data-ui="badge" data-variant="solid" data-color-palette="green" data-size="sm">Confirmed</span></td></tr>
+                <tr data-part="row"><td data-part="cell">TM-2042</td><td data-part="cell">Falls Circuit</td><td data-part="cell">4</td><td data-part="cell" data-align="end"><span data-ui="badge" data-variant="outline" data-color-palette="orange" data-size="sm">Waitlist</span></td></tr>
+                <tr data-part="row"><td data-part="cell">TM-2043</td><td data-part="cell">Coastal Path</td><td data-part="cell">1</td><td data-part="cell" data-align="end"><span data-ui="badge" data-variant="surface" data-size="sm">Pending</span></td></tr>
+              </tbody>
+          </table>
+        </div>
+        <div data-part="panel">
+          <h3>Guide timeline</h3>
+          <ol data-ui="timeline" data-size="sm">
+            <li data-part="item"><span data-part="indicator" data-color-palette="green"><i data-ui="icon" data-name="check"></i></span><div data-part="content"><span data-part="title">Mara checked in</span><span data-part="description">06:10, Ridgeline car park</span></div></li>
+            <li data-part="item"><span data-part="indicator" data-color-palette="blue"><i data-ui="icon" data-name="clock"></i></span><div data-part="content"><span data-part="title">Group briefing</span><span data-part="description">08:00, 2 guests</span></div></li>
+            <li data-part="item"><span data-part="indicator"><i data-ui="icon" data-name="map"></i></span><div data-part="content"><span data-part="title">Start the loop</span><span data-part="description">08:30</span></div></li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

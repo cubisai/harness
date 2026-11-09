@@ -54,3 +54,25 @@ export function buildThreadPatch(design: BuildFields, thread: BuildFields): Part
   if ((design.contextWindow ?? null) !== (thread.contextWindow ?? null)) patch.contextWindow = design.contextWindow ?? null;
   return patch;
 }
+
+/** The tokens a brand colour rewrites (with their tints), where a kit has them: System mode asks their reach first. */
+export const BRAND_TOKENS = [
+  "--color-primary",
+  "--color-primary-hover",
+  "--color-primary-active",
+  "--color-primary-light",
+  "--color-primary-dark",
+  "--color-primary-fill",
+  "--color-primary-text",
+  "--color-primary-border",
+  "--color-primary-border-hover",
+  "--color-primary-bg",
+  "--color-primary-bg-hover",
+  "--color-primary-soft",
+  "--color-accent",
+  "--color-accent-soft",
+  "--color-accent-text",
+  "--color-focus",
+  "--color-on-primary",
+  "--color-on-primary-fill",
+] as const;

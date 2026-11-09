@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { IconChevron } from "../icons";
 
 export interface SelectOption<T extends string | number> {
@@ -6,6 +6,10 @@ export interface SelectOption<T extends string | number> {
   label: string;
   /** A quieter second line under the label. */
   detail?: string;
+  /** Drawn before the label, in the list and on the button: a swatch, a type sample. */
+  lead?: ReactNode;
+  /** A quiet note at the row's end, in the list and on the button: `14/20`. */
+  meta?: string;
   disabled?: boolean;
 }
 
@@ -168,7 +172,9 @@ export function Select<T extends string | number>({
           }
         }}
       >
+        {current?.lead}
         <span className="select-value">{current?.label ?? ""}</span>
+        {current?.meta && <span className="select-meta">{current.meta}</span>}
         <IconChevron open size={12} />
       </button>
       {open && (
@@ -199,7 +205,15 @@ export function Select<T extends string | number>({
                 pick(i);
               }}
             >
-              <span className="select-option-label">{o.label}</span>
+              {o.lead || o.meta ? (
+                <span className="select-option-row">
+                  {o.lead}
+                  <span className="select-option-label">{o.label}</span>
+                  {o.meta && <span className="select-meta">{o.meta}</span>}
+                </span>
+              ) : (
+                <span className="select-option-label">{o.label}</span>
+              )}
               {o.detail && <span className="select-option-detail">{o.detail}</span>}
             </div>
           ))}

@@ -278,7 +278,7 @@ export function routerTools(
     input: {
       server: z.string(),
       tool: z.string(),
-      arguments: z.record(z.string(), z.unknown()).optional().describe("Arguments matching the tool's inputSchema from search_tools"),
+      arguments: z.object({}).catchall(z.unknown()).optional().describe("Arguments matching the tool's inputSchema from search_tools"),
     },
     effect: "mutate",
     run: async ({ server, tool, arguments: rawArgs }, ctx) => {

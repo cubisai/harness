@@ -12,6 +12,9 @@ export const DESIGN_SCREENSHOT_TOOL = "design_screenshot";
 export const DESIGN_LINT_TOOL = "design_lint";
 export const DESIGN_CRITIQUE_SAVE_TOOL = "design_critique_save";
 export const DESIGN_DIRECTION_TOOL = "design_set_direction";
+export const DESIGN_KIT_INSPECT_TOOL = "design_kit_inspect";
+export const DESIGN_KIT_SAVE_TOOL = "design_kit_save";
+export const DESIGN_TOKENS_APPLY_TOOL = "design_tokens_apply";
 
 /** The longest critique the save tool keeps. */
 export const CRITIQUE_MAX_CHARS = 32_000;
@@ -34,6 +37,15 @@ export interface DesignToolDeps {
   setDirection(threadId: string, direction: DesignDirection, alternates?: string[], theme?: "light" | "dark"): string;
   /** The style library as one line per style, for the direction tool's description. */
   styleIndex(): string;
+  /** The kit tools; only given when Design v2 is on, so they're not offered otherwise. */
+  kits?: DesignKitToolDeps;
+}
+
+/** What the kit tools need from the app. Each returns what to tell the agent and throws with a message when it can't. */
+export interface DesignKitToolDeps {
+  inspect(threadId: string, query: { kit?: string; component?: string; block?: string; startDraft?: boolean }): string;
+  save(threadId: string): string;
+  applyTokens(threadId: string, rel: string, tokens: Record<string, string>): string;
 }
 
 function define<S extends z.ZodRawShape>(t: HarnessTool<S>): HarnessTool {
@@ -175,6 +187,58 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
         } catch (err) {
           return { text: err instanceof Error ? err.message : String(err), isError: true };
         }
+      },
+    }),
+    ...(deps.kits ? kitTools(deps, deps.kits, threadId) : []),
+  ];
+}
+
+/** Read a kit, save a draft, and rebrand a page. They never touch a component's markup except through a saved kit. */
+function kitTools(deps: DesignToolDeps, kits: DesignKitToolDeps, threadId: string): HarnessTool[] {
+  const guarded = (run: () => string): ToolOutput => {
+    try {
+      return { text: run() };
+    } catch (err) {
+      return { text: err instanceof Error ? err.message : String(err), isError: true };
+    }
+  };
+  return [
+    define({
+      name: DESIGN_KIT_INSPECT_TOOL,
+      description:
+        "Look inside a design kit. With no arguments: the active kit's components by category and its blocks, plus the other kits on this machine. component: that part's props and snippet. block: that block's HTML. kit: ask about another installed kit by id.",
+      input: {
+        kit: z.string().optional().describe("A kit id; default the thread's active kit"),
+        component: z.string().optional().describe("A component's data-ui value"),
+        block: z.string().optional().describe("A block's file name without .html"),
+        start_draft: z.boolean().optional().describe("Make kit/ a working copy of the active kit, when it isn't there yet"),
+      },
+      autoAllow: true,
+      effect: "read",
+      run: async (args) => guarded(() => kits.inspect(threadId, { ...(args.kit ? { kit: args.kit } : {}), ...(args.component ? { component: args.component } : {}), ...(args.block ? { block: args.block } : {}), ...(args.start_draft ? { startDraft: true } : {}) })),
+    }),
+    define({
+      name: DESIGN_KIT_SAVE_TOOL,
+      description: `Validate the draft kit in ${deps.folder(threadId)}/kit/, save it to the project's design systems and switch this design to it, so system/ holds it. Fails with the list of what to fix. Don't call it for a component the user asked to review: they save that themselves.`,
+      input: {},
+      autoAllow: true,
+      effect: "mutate",
+      run: async () => guarded(() => kits.save(threadId)),
+    }),
+    define({
+      name: DESIGN_TOKENS_APPLY_TOOL,
+      description:
+        "Rebrand a page by token values alone: one call is one undo step, and no component or layout changes. tokens: custom property names from system/tokens.css mapped to new values. Names it doesn't have are refused, so read it first. To see a reference image's colours, use your image tool on refs/.",
+      input: {
+        tokens: z.object({}).catchall(z.string()).describe('For example {"--color-primary": "#4f46e5", "--radius-md": "10px"}'),
+        path: z.string().optional().describe("Page inside the design folder; default index.html"),
+      },
+      autoAllow: true,
+      effect: "mutate",
+      run: async (args) => {
+        const page = pageOf(deps, threadId, args.path);
+        if (!("rel" in page)) return page;
+        return guarded(() => kits.applyTokens(threadId, page.rel, args.tokens));
       },
     }),
   ];
