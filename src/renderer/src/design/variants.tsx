@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, type CSSProperties } from "react";
 import { Check, ChevronLeft, ChevronRight, X } from "lucide-react";
-import type { FrameRect, InsertGap, PageMarks } from "./frame";
+import type { FrameRect, InsertGap } from "./frame";
 
 /** What a set of 3 variants pushes on. */
 export type ActionId = "freeform" | "bolder" | "quieter" | "distill" | "polish" | "typeset" | "colorize" | "layout" | "adapt" | "animate" | "delight" | "overdrive";
@@ -21,12 +21,10 @@ export const ACTION_LABELS: Record<ActionId, string> = {
   overdrive: "Overdrive",
 };
 
-/** The message an Explore action sends (the canvas adds the selection scope and the capture). */
-export function goMessage(action: ActionId, prompt: string, marks: PageMarks): string {
+/** The message an Explore action sends (the canvas adds the selection scope). */
+export function goMessage(action: ActionId, prompt: string): string {
   const lines = [action === "freeform" ? "Make 3 variants of the selected element." : `Make 3 variants of the selected element: ${ACTION_LABELS[action]}.`];
   if (prompt.trim()) lines.push(prompt.trim());
-  if (marks.notes.length) lines.push("Notes on the page:", ...marks.notes.map((n) => `- ${n.near ? `near ${n.near}: ` : ""}${n.text}`));
-  if (marks.strokes.length) lines.push(`The reference image shows the element with ${marks.strokes.length === 1 ? "my mark" : `my ${marks.strokes.length} marks`} on it.`);
   return lines.join("\n");
 }
 

@@ -11,7 +11,7 @@ import { affectedPages, useStore } from "../store";
 import { designStyleName, useDesignSystemOptions } from "../components/DesignSystemMenu";
 import { chipLabel } from "../components/StylePicker";
 import { STYLE_PREFIX, readDirection } from "../../../shared/direction";
-import { NO_MARKS, STAGE_PAD, VIEWPORTS, ZOOMS, createBridgeGate, deviceFor, frameLayout, pageFromPath, readBridgeMessage, viewportForDevice, type FrameAnchor, type FrameRect, type OutlineNode, type PageMarks, type PageSeam, type VariantSetInfo, type Viewport, type Zoom } from "./frame";
+import { STAGE_PAD, VIEWPORTS, ZOOMS, createBridgeGate, deviceFor, frameLayout, pageFromPath, readBridgeMessage, viewportForDevice, type FrameAnchor, type FrameRect, type OutlineNode, type PageSeam, type VariantSetInfo, type Viewport, type Zoom } from "./frame";
 import { announceSelection, contextBlock, elementLabel, selectionKey, withScope, type SelectedElement } from "../../../shared/selection";
 import { withRefs } from "./refs";
 import { VariantCycler, cycleStep, escClears, goMessage, insertMessage, placeFloatingBar, type ActionId } from "./variants";
@@ -127,11 +127,8 @@ export default function DesignCanvas({
   const [flow, setFlow] = useState(false);
   // The inspector: the selected element's properties and the page's code, beside the stage.
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  // The element bar: where the picked element is in the frame, the marks and notes on it, an element waiting to be
-  // picked over the marks, the prompt and action, and whether a Go turn is running (or its capture being taken).
+  // Where the picked element is in the frame: the selection's name tag and handles sit on it.
   const [anchor, setAnchor] = useState<FrameAnchor | null>(null);
-  const [marks, setMarks] = useState<PageMarks>(NO_MARKS);
-  const [goCapturing, setGoCapturing] = useState(false);
   // In-place variant sets the agent wrote on this page, the shown variant's box, and an Accept or × on its way.
   const [variantSets, setVariantSets] = useState<VariantSetInfo[]>([]);
   const [variantRect, setVariantRect] = useState<{ set: string; rect: FrameRect | null } | null>(null);
@@ -272,7 +269,6 @@ export default function DesignCanvas({
     setVersion(0);
     setPicking(false);
     setAnchor(null);
-    setMarks(NO_MARKS);
     detectRef.current = { run: detectRef.current.run + 1, rel: null, result: null };
     setDetect(null);
     setVariantSets([]);
@@ -618,10 +614,9 @@ export default function DesignCanvas({
         editsRef.current.sync((html) => {
           if (loaded && version === 0 && textHash(html) === loaded && !patching.current) frameText.current = html;
         });
-        // A fresh load: its tweaks (if any) arrive right after; the marks went with the old document.
+        // A fresh load: its tweaks (if any) arrive right after.
         setTweaks(null);
         setAnchor(null);
-        setMarks(NO_MARKS);
         setVariantSets([]);
         setVariantRect(null);
         // A link inside the page went to another page of the design: follow it (title, versions, export) without
@@ -673,16 +668,6 @@ export default function DesignCanvas({
         studioRef.current.key(msg.key, msg.mod, msg.shift, msg.alt);
       } else if (msg.type === "hit-result") {
         hitWaiter.current?.(msg.element);
-      } else if (msg.type === "text-edit") {
-        // An in-place edit: written into the file only when it's unambiguous; otherwise the page goes back to the file.
-        if (!entry || version !== 0) return;
-        const rel = entry.rel;
-        void api()
-          .designEditText(threadId, rel, { id: msg.id, before: msg.before, after: msg.after })
-          .catch((err: unknown) => {
-            setNotice({ text: ipcError(err), error: true });
-            setManual((n) => n + 1);
-          });
       } else if (msg.type === "text-commit") {
         if (version !== 0) return;
         editsRef.current.send(msg.target, { kind: "setText", before: msg.before, after: msg.after }, msg.live ? "text" : null);
@@ -698,8 +683,6 @@ export default function DesignCanvas({
         if (entry) setPageOutline({ path: `${entry.dir}/${entry.rel}`, nodes: msg.nodes });
       } else if (msg.type === "anchor") {
         setAnchor(msg.anchor);
-      } else if (msg.type === "marks") {
-        setMarks(msg.marks);
       } else if (msg.type === "variants") {
         variantsRef.current = msg.sets.length > 0;
         setVariantSets(msg.sets);
@@ -1246,46 +1229,15 @@ export default function DesignCanvas({
       origin: { x: wr.left, y: wr.top },
     };
   };
-  const showElementBar = onPage && selected.length > 0 && anchor !== null && !goCapturing;
+  const showElementBar = onPage && selected.length > 0 && anchor !== null;
   const barBoxes = showElementBar && anchor ? toWrap(anchor.rect) : null;
-  const markCount = marks.strokes.length + marks.notes.length;
-
-  // An Explore action: the direction, any words and the notes as one message, scoped to the selection; with marks drawn, one capture of
-  // the element and its marks goes with it as a reference image.
+  // An Explore action: 3 variants of the selection in one direction, with the variants skill and that direction's note.
   const go = async (chosen: ActionId, words = "") => {
-    if (!entry || !selected.length || !anchor || agentRunning || (chosen === "freeform" && !words.trim() && markCount === 0)) return;
-    const text = goMessage(chosen, words, marks);
-    const refs: string[] = [];
-    if (marks.strokes.length) {
-      setGoCapturing(true);
-      try {
-        await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-        const boxes = toWrap(anchor.bounds);
-        if (boxes) {
-          const x = Math.max(boxes.el.x, boxes.view.x);
-          const y = Math.max(boxes.el.y, boxes.view.y);
-          const right = Math.min(boxes.el.x + boxes.el.width, boxes.view.x + boxes.view.width);
-          const bottom = Math.min(boxes.el.y + boxes.el.height, boxes.view.y + boxes.view.height);
-          if (right - x >= 8 && bottom - y >= 8) {
-            const res = await api().designCapture(threadId, { x: boxes.origin.x + x, y: boxes.origin.y + y, width: right - x, height: bottom - y });
-            refs.push(res.path);
-          }
-        }
-      } catch (err) {
-        setNotice({ text: `Couldn't capture the marks: ${ipcError(err)}`, error: true });
-        return;
-      } finally {
-        setGoCapturing(false);
-      }
-    }
-    // The variants skill, plus only the chosen action's paragraph.
+    if (!entry || !selected.length || agentRunning) return;
+    const text = goMessage(chosen, words);
     const note = await api().designActionNote(chosen).catch(() => "");
-    const body = withRefs(withScope(note ? `${text}\n\n${note}` : text, `${entry.dir}/${entry.rel}`, selected), refs);
-    const ok = await useStore.getState().send(body, [VARIANTS_SKILL], threadId, refs);
-    if (!ok) return;
-    post({ type: "clear-marks" });
+    await useStore.getState().send(withScope(note ? `${text}\n\n${note}` : text, `${entry.dir}/${entry.rel}`, selected), [VARIANTS_SKILL], threadId);
   };
-
 
   // The cycler for the page's first variant set (a well-formed one before a malformed one).
   const activeSet = onPage ? (variantSets.find((v) => v.malformed === null) ?? variantSets[0] ?? null) : null;

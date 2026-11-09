@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { bridgeScript } from "../src/main/design/bridge";
 import { selectorFor } from "../src/main/browser/picker";
-import { NO_MARKS, readBridgeMessage, type PageMarks } from "../src/renderer/src/design/frame";
+import { readBridgeMessage } from "../src/renderer/src/design/frame";
 import { escClears, goMessage, placeFloatingBar } from "../src/renderer/src/design/variants";
 
 const view = { x: 0, y: 0, width: 800, height: 600 };
@@ -34,19 +34,13 @@ describe("placeFloatingBar", () => {
 });
 
 describe("goMessage", () => {
-  const marks: PageMarks = { strokes: [[{ x: 1, y: 2 }]], notes: [{ x: 10, y: 20, text: "more playful", near: 'button "Subscribe"' }, { x: 5, y: 5, text: "tighter", near: "" }] };
-  it("names the action (Freeform says nothing more) and keeps the prompt", () => {
-    expect(goMessage("freeform", "  warmer  ", NO_MARKS)).toBe("Make 3 variants of the selected element.\nwarmer");
-    expect(goMessage("bolder", "", NO_MARKS)).toBe("Make 3 variants of the selected element: Bolder.");
-  });
-  it("turns notes into text with what they sit near, and points at the capture for marks", () => {
-    expect(goMessage("delight", "", marks)).toBe(
-      'Make 3 variants of the selected element: Delight.\nNotes on the page:\n- near button "Subscribe": more playful\n- tighter\nThe reference image shows the element with my mark on it.',
-    );
+  it("names the direction (Freeform says nothing more) and keeps the words", () => {
+    expect(goMessage("freeform", "  warmer  ")).toBe("Make 3 variants of the selected element.\nwarmer");
+    expect(goMessage("bolder", "")).toBe("Make 3 variants of the selected element: Bolder.");
   });
 });
 
-describe("selection and marks bridge messages", () => {
+describe("selection bridge messages", () => {
   const anchor = { source: "cubiq-design", type: "anchor", rect: { x: 1, y: 2, width: 3, height: 4 }, bounds: { x: 0, y: 0, width: 10, height: 10 }, editable: true, view: { width: 800, height: 600 } };
   it("accepts an anchor or its absence, and rejects a bad box", () => {
     expect(readBridgeMessage(anchor)).toEqual({ type: "anchor", anchor: { rect: anchor.rect, bounds: anchor.bounds, editable: true, view: anchor.view } });
@@ -56,21 +50,18 @@ describe("selection and marks bridge messages", () => {
     expect(readBridgeMessage({ ...anchor, editable: "yes" })).toMatchObject({ anchor: { editable: false } });
   });
 
-  it("accepts marks within their caps and rejects anything malformed", () => {
-    const msg = { source: "cubiq-design", type: "marks", strokes: [[{ x: 1, y: 2 }, { x: 3, y: 4 }]], notes: [{ x: 1, y: 1, text: "more playful", near: "h1" }] };
-    expect(readBridgeMessage(msg)).toEqual({ type: "marks", marks: { strokes: msg.strokes, notes: msg.notes } });
-    expect(readBridgeMessage({ ...msg, strokes: Array.from({ length: 41 }, () => []) })).toBeNull();
-    expect(readBridgeMessage({ ...msg, strokes: [[{ x: "1", y: 2 }]] })).toBeNull();
-    expect(readBridgeMessage({ ...msg, notes: [{ x: 1, y: 1, text: "   ", near: "" }] })).toBeNull();
-    expect(readBridgeMessage({ ...msg, notes: [{ x: 1, y: 1, text: "x".repeat(201), near: "" }] })).toBeNull();
-    expect(readBridgeMessage({ source: "cubiq-design", type: "repick-ask", label: 'span "Hi"' })).toEqual({ type: "repick-ask", label: 'span "Hi"' });
-    expect(readBridgeMessage({ source: "cubiq-design", type: "repick-ask", label: "" })).toBeNull();
+  it("drops the messages only the old pick and Insert mode sent", () => {
+    for (const type of ["marks", "repick-ask", "gap", "gap-rect", "insert-cancel", "text-edit"]) {
+      expect(readBridgeMessage({ source: "cubiq-design", type, label: "x", gap: null, rect: { x: 0, y: 0, width: 1, height: 1 }, strokes: [], notes: [], id: "a", before: "a", after: "b" })).toBeNull();
+    }
   });
 
-  it("still ships a self-contained bridge script with the marks layer", () => {
+  it("ships a self-contained bridge script with no marks layer and no Insert mode", () => {
     const script = bridgeScript(selectorFor);
     expect(() => new Function(script)).not.toThrow();
-    expect(script).toContain("data-cubiq-marks");
+    expect(script).not.toContain("data-cubiq-marks");
+    expect(script).not.toContain("repick-ask");
+    expect(script).not.toContain("insert-cancel");
   });
 });
 

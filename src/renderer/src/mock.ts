@@ -794,8 +794,6 @@ export function installMock(): void {
     designActionNote: async () => "",
     designDetect: async () => ({ pins: [], page: [], total: 0 }),
     designSaveRef: async () => "designs/mock/refs/ref-1.png",
-    designEditText: async () => {},
-    designEditStyle: async () => {},
     designMutate: async (_threadId, _rel, mutation) => ({ ok: false, operationId: mutation.operationId, reason: "read-only", currentRevision: 1 }),
     designHistory: async (_threadId, _rel) => ({
       status: { documentId: "mock", revision: 1, save: "saved", canUndo: false, canRedo: false, atExternalBoundary: false, readOnly: true },

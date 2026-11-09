@@ -623,42 +623,6 @@ describe("Service.send", () => {
     expect(store.listEvents(solo.id).some((e) => e.event.kind === "notice")).toBe(false);
   });
 
-  it("writes an in-place text edit into a design page with versions, and refuses when it isn't safe", () => {
-    const { service, store, updates } = setup(async () => {});
-    service.setArtifacts({
-      addVersion: (threadId, path, sha, bytes, turnSeq) => store.addArtifactVersion(threadId, path, sha, bytes, turnSeq),
-      listVersions: (threadId) => store.listArtifactVersions(threadId),
-      writeBlob: (sha, content) => store.writeBlobBytes(sha, content),
-      readBlob: (sha) => store.readBlobBytes(sha),
-      gitHead: async () => null,
-      preview: async () => ({ ok: false, error: "none" }),
-      fileUrl: () => "",
-    });
-    const project = store.addProject(tempDir());
-    const chat = service.createThread(project.id);
-    const design = service.createThread(project.id, undefined, "design");
-    expect(() => service.editDesignText(chat.id, "index.html", { id: "x", before: "a", after: "b" })).toThrow(/design thread/);
-    const root = service.designRoot(design.id)!;
-    mkdirSync(root, { recursive: true });
-    writeFileSync(join(root, "index.html"), `<main><button data-agent-id="cta-buy">Buy now</button><p>keep</p></main>`);
-    service.editDesignText(design.id, "index.html", { id: "cta-buy", before: "Buy now", after: "Start free trial" });
-    expect(readFileSync(join(root, "index.html"), "utf8")).toBe(`<main><button data-agent-id="cta-buy">Start free trial</button><p>keep</p></main>`);
-    const path = `designs/${design.id.slice(0, 8)}/index.html`;
-    expect(store.listArtifactVersions(design.id).find((v) => v.path === path)!.versions).toHaveLength(2);
-    expect(updates.filter((u) => u.type === "artifact-ready")).toHaveLength(1);
-    // The page moved on (stale before): refused, file untouched.
-    expect(() => service.editDesignText(design.id, "index.html", { id: "cta-buy", before: "Buy now", after: "x" })).toThrow(/changed since/);
-    expect(() => service.editDesignText(design.id, "missing.html", { id: "cta-buy", before: "a", after: "b" })).toThrow("No such page.");
-
-    // Style edits: written with versions on Working, refused on Quick (that tier sends the change to the agent).
-    service.editDesignStyle(design.id, "index.html", { id: "cta-buy", changes: [{ prop: "fontSize", value: "20px" }] });
-    expect(readFileSync(join(root, "index.html"), "utf8")).toContain(`<button data-agent-id="cta-buy" style="font-size: 20px">`);
-    expect(store.listArtifactVersions(design.id).find((v) => v.path === path)!.versions).toHaveLength(3);
-    service.setPrototypeTier(design.id, "quick");
-    expect(() => service.editDesignStyle(design.id, "index.html", { id: "cta-buy", changes: [{ prop: "color", value: "red" }] })).toThrow(/Quick tier/);
-    expect(() => service.editDesignStyle(chat.id, "index.html", { id: "cta-buy", changes: [] })).toThrow(/design thread/);
-  });
-
   it("restores a design page version as the newest, keeping the current page as a version", () => {
     const { service, store } = setup(async () => {});
     service.setArtifacts({
@@ -676,7 +640,9 @@ describe("Service.send", () => {
     const root = service.designRoot(design.id)!;
     mkdirSync(root, { recursive: true });
     writeFileSync(join(root, "index.html"), `<main><button data-agent-id="cta-buy">Buy now</button></main>`);
-    service.editDesignText(design.id, "index.html", { id: "cta-buy", before: "Buy now", after: "Start" });
+    service.recordDesignPageVersion(design.id, "index.html");
+    writeFileSync(join(root, "index.html"), `<main><button data-agent-id="cta-buy">Start</button></main>`);
+    service.recordDesignPageVersion(design.id, "index.html");
     const path = `designs/${design.id.slice(0, 8)}/index.html`;
     const versions = () => store.listArtifactVersions(design.id).find((v) => v.path === path)!.versions;
     expect(versions()).toHaveLength(2);

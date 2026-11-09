@@ -70,7 +70,6 @@ export type BridgeMessage =
   | { type: "ready"; path?: string; loaded?: string }
   | { type: "scroll"; x: number; y: number }
   | { type: "selection"; elements: SelectedElement[]; lost: number }
-  | { type: "text-edit"; id: string; before: string; after: string }
   | { type: "text-commit"; target: { id: string } | { locator: { tag: string; path: number[]; text: string } }; before: string; after: string; live: boolean }
   | { type: "history-key"; action: "undo" | "redo" }
   | { type: "pointer" }
@@ -81,13 +80,8 @@ export type BridgeMessage =
   | { type: "tweaks"; manifest: string; attrs: Record<string, string>; vars: Record<string, string> }
   | { type: "outline"; nodes: OutlineNode[] }
   | { type: "anchor"; anchor: FrameAnchor | null }
-  | { type: "marks"; marks: PageMarks }
-  | { type: "repick-ask"; label: string }
   | { type: "variants"; sets: VariantSetInfo[] }
   | { type: "variant-rect"; set: string; rect: FrameRect | null }
-  | { type: "gap"; gap: InsertGap | null }
-  | { type: "gap-rect"; rect: FrameRect }
-  | { type: "insert-cancel" }
   | { type: "finding"; n: number }
   | { type: "context-menu"; x: number; y: number }
   | { type: "seam"; seam: PageSeam | null }
@@ -99,7 +93,7 @@ export type BridgeMessage =
 /** A gap between two blocks the pointer is at, in the frame's viewport. */
 export type PageSeam = { position: "before" | "after"; anchor: SelectedElement; rect: FrameRect };
 
-/** A gap picked in Insert mode: before or after the anchor element, and the anchor's size (a hint for what fits there). */
+/** Where new content goes: before or after the anchor element, and the anchor's size (a hint for what fits there). */
 export type InsertGap = { position: "before" | "after"; anchor: SelectedElement; size: { width: number; height: number } };
 
 /** An in-place variant set on the page: how many variants it has, which one shows, and what's wrong with it if anything. */
@@ -108,13 +102,9 @@ export type VariantSetInfo = { set: string; count: number; shown: number; malfor
 /** A box in the frame's viewport, in CSS pixels. */
 export type FrameRect = { x: number; y: number; width: number; height: number };
 
-/** Where the picked element is in the frame (and, for the capture, it plus its marks and notes), and whether its text can be edited. */
+/** Where the picked element is in the frame (`bounds`: all of the selection), and whether its text can be edited. */
 export type FrameAnchor = { rect: FrameRect; bounds: FrameRect; editable: boolean; view: { width: number; height: number } };
 
-/** The marks and notes on the picked element, in page coordinates. */
-export type PageMarks = { strokes: { x: number; y: number }[][]; notes: { x: number; y: number; text: string; near: string }[] };
-
-export const NO_MARKS: PageMarks = { strokes: [], notes: [] };
 
 /** One node of the design page's outline (layer tree), as reported by the bridge. Duplicated from main: no cross-import. */
 export interface OutlineNode {
@@ -141,7 +131,6 @@ const rect = (v: unknown): v is FrameRect => {
   const r = v as Record<string, unknown>;
   return num(r.x) && num(r.y) && num(r.width) && num(r.height) && r.width >= 0 && r.height >= 0;
 };
-const point = (v: unknown): v is { x: number; y: number } => !!v && typeof v === "object" && num((v as Record<string, unknown>).x) && num((v as Record<string, unknown>).y);
 
 /** The most one frame may send: any message over the size, or any past the rate, is dropped. */
 export const BRIDGE_LIMITS = { bytes: 256 * 1024, perSecond: 300 };
@@ -191,16 +180,7 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
   const d = data as Record<string, unknown>;
   if (d.source !== "cubiq-design") return null;
   if (d.type === "pick-cancel") return { type: "pick-cancel" };
-  if (d.type === "insert-cancel") return { type: "insert-cancel" };
   if (d.type === "finding") return typeof d.n === "number" && Number.isInteger(d.n) && d.n >= 1 && d.n <= 99 ? { type: "finding", n: d.n } : null;
-  if (d.type === "gap") {
-    if (d.gap === null) return { type: "gap", gap: null };
-    const g = d.gap as Record<string, unknown> | undefined;
-    const size = g?.size as Record<string, unknown> | undefined;
-    if (!g || (g.position !== "before" && g.position !== "after") || !size || !num(size.width) || !num(size.height) || size.width < 0 || size.height < 0) return null;
-    const anchor = readSelected(g.anchor);
-    return anchor ? { type: "gap", gap: { position: g.position, anchor, size: { width: size.width, height: size.height } } } : null;
-  }
   if (d.type === "context-menu") return num(d.x) && num(d.y) ? { type: "context-menu", x: d.x, y: d.y } : null;
   if (d.type === "hit-result") {
     if (d.element === null) return { type: "hit-result", element: null };
@@ -215,17 +195,12 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
     const anchor = readSelected(s.anchor);
     return anchor ? { type: "seam", seam: { position: s.position, anchor, rect: s.rect as FrameRect } } : null;
   }
-  if (d.type === "gap-rect") return rect(d.rect) ? { type: "gap-rect", rect: d.rect } : null;
   if (d.type === "patched") return num(d.n) ? { type: "patched", ok: d.ok === true, n: d.n } : null;
   if (d.type === "ready") {
     const loaded = typeof d.loaded === "string" && /^[a-z0-9-]{1,40}$/.test(d.loaded) ? { loaded: d.loaded } : {};
     return str(d.path, 2000) ? { type: "ready", path: d.path, ...loaded } : { type: "ready", ...loaded };
   }
   if (d.type === "scroll") return num(d.x) && num(d.y) ? { type: "scroll", x: d.x, y: d.y } : null;
-  if (d.type === "text-edit") {
-    if (!str(d.id, 64) || !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(d.id) || !str(d.before, 4000) || !str(d.after, 2000)) return null;
-    return { type: "text-edit", id: d.id, before: d.before, after: d.after };
-  }
   if (d.type === "text-commit") {
     if (!str(d.before, 4000) || !str(d.after, 4000) || !d.target || typeof d.target !== "object") return null;
     const live = d.live === true;
@@ -269,22 +244,6 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
     if (!rect(d.rect) || !rect(d.bounds) || !view || !num(view.width) || !num(view.height)) return null;
     return { type: "anchor", anchor: { rect: d.rect, bounds: d.bounds, editable: d.editable === true, view: { width: view.width, height: view.height } } };
   }
-  if (d.type === "marks") {
-    if (!Array.isArray(d.strokes) || d.strokes.length > 40 || !Array.isArray(d.notes) || d.notes.length > 20) return null;
-    const strokes: PageMarks["strokes"] = [];
-    for (const s of d.strokes) {
-      if (!Array.isArray(s) || s.length > 400 || !s.every(point)) return null;
-      strokes.push(s.map((p) => ({ x: p.x, y: p.y })));
-    }
-    const notes: PageMarks["notes"] = [];
-    for (const raw of d.notes) {
-      if (!raw || typeof raw !== "object") return null;
-      const n = raw as Record<string, unknown>;
-      if (!num(n.x) || !num(n.y) || !str(n.text, 200) || !n.text.trim() || !str(n.near, 60)) return null;
-      notes.push({ x: n.x, y: n.y, text: n.text, near: n.near });
-    }
-    return { type: "marks", marks: { strokes, notes } };
-  }
   if (d.type === "variants") {
     if (!Array.isArray(d.sets) || d.sets.length > 8) return null;
     const sets: VariantSetInfo[] = [];
@@ -303,7 +262,6 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
     if (d.rect === null) return { type: "variant-rect", set: d.set, rect: null };
     return rect(d.rect) ? { type: "variant-rect", set: d.set, rect: d.rect } : null;
   }
-  if (d.type === "repick-ask") return str(d.label, 80) && d.label ? { type: "repick-ask", label: d.label } : null;
   if (d.type === "outline") {
     if (!Array.isArray(d.nodes) || d.nodes.length > 400) return null;
     const nodes: OutlineNode[] = [];

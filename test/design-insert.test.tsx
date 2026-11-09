@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { childGap, gapChoice, type GapLevel } from "../src/main/design/bridge";
 import { listVariantSets, resolveVariantSet } from "../src/main/design/variants";
 import { insertMessage } from "../src/renderer/src/design/variants";
-import { NO_MARKS, readBridgeMessage, type InsertGap } from "../src/renderer/src/design/frame";
+import { type InsertGap } from "../src/renderer/src/design/frame";
 
 const noop = () => {};
 const level = (x: number, y: number, width: number, height: number, over: Partial<GapLevel> = {}): GapLevel => ({ rect: { x, y, width, height }, row: false, siblings: true, ...over });
@@ -62,16 +62,6 @@ describe("childGap", () => {
 const anchor = { selector: "main > section:nth-of-type(2)", tag: "section", text: "Pricing", html: "<section>…</section>", rect: { x: 0, y: 0, width: 960, height: 400 }, path: [], id: "pricing" };
 
 describe("insert messages", () => {
-  it("reads a picked gap and its line from the bridge, and nothing malformed", () => {
-    const gap = { position: "after", anchor, size: { width: 960, height: 400 } };
-    expect(readBridgeMessage({ source: "cubiq-design", type: "gap", gap })).toEqual({ type: "gap", gap });
-    expect(readBridgeMessage({ source: "cubiq-design", type: "gap", gap: null })).toEqual({ type: "gap", gap: null });
-    expect(readBridgeMessage({ source: "cubiq-design", type: "gap", gap: { ...gap, position: "inside" } })).toBeNull();
-    expect(readBridgeMessage({ source: "cubiq-design", type: "gap", gap: { ...gap, anchor: { tag: "p" } } })).toBeNull();
-    expect(readBridgeMessage({ source: "cubiq-design", type: "gap-rect", rect: { x: 0, y: 400, width: 960, height: 0 } })).toEqual({ type: "gap-rect", rect: { x: 0, y: 400, width: 960, height: 0 } });
-    expect(readBridgeMessage({ source: "cubiq-design", type: "insert-cancel" })).toEqual({ type: "insert-cancel" });
-  });
-
   it("asks for 3 new blocks beside the anchor and keeps the anchor itself as it is", () => {
     const gap: InsertGap = { position: "after", anchor, size: { width: 960, height: 400 } };
     const text = insertMessage("design-1/index.html", gap, "  a testimonials strip  ");

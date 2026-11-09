@@ -52,12 +52,7 @@ describe("design frame", () => {
     expect(readBridgeMessage({ ...msg, lost: 3.5 })).toEqual({ type: "selection", elements: [selected], lost: 0 });
   });
 
-  it("accepts an in-place text edit and a refusal, and rejects bad ones", () => {
-    const edit = { source: "cubiq-design", type: "text-edit", id: "cta-buy", before: "Buy now", after: "Start free trial" };
-    expect(readBridgeMessage(edit)).toEqual({ type: "text-edit", id: "cta-buy", before: "Buy now", after: "Start free trial" });
-    expect(readBridgeMessage({ ...edit, id: "bad id" })).toBeNull();
-    expect(readBridgeMessage({ ...edit, after: "x".repeat(2001) })).toBeNull();
-    expect(readBridgeMessage({ ...edit, before: 5 })).toBeNull();
+  it("accepts an edit refusal and rejects an empty one", () => {
     expect(readBridgeMessage({ source: "cubiq-design", type: "edit-refused", reason: "That text has no stable id; ask the agent to change it." })).toEqual({
       type: "edit-refused",
       reason: "That text has no stable id; ask the agent to change it.",

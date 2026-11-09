@@ -1553,10 +1553,6 @@ export interface UnskilledApi {
   designThumb(threadId: string, rel: string): Promise<string>;
   /** Copy a stored version of a design page back as its newest version (the current page is kept as a version first). */
   designRestoreVersion(threadId: string, rel: string, version: number): Promise<void>;
-  /** Write an in-place text edit into a design page; refuses (throws) unless that `data-agent-id` is unique, text-only and unchanged. */
-  designEditText(threadId: string, rel: string, edit: { id: string; before: string; after: string }): Promise<void>;
-  /** Write inspector style changes into the `style` of the page element with that data-agent-id (Working and Real app tiers). */
-  designEditStyle(threadId: string, rel: string, edit: { id: string; changes: { prop: string; value: string }[] }): Promise<void>;
   /** Apply one direct edit to a design page through the main-process mutation service (Design v2 only). */
   designMutate(threadId: string, rel: string, mutation: DesignMutation): Promise<MutationResult>;
   /** Read a design page's status, or undo, redo or close a transaction (Design v2 only). */
