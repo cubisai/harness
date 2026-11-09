@@ -28,7 +28,7 @@ Short on purpose: current state, next steps, open questions and live traps. Repl
 |---|---|
 | M0-M4 | Closed, Windows green |
 | M5 | Pill and Typography pushed, Windows green (run 42166030432). Closes when the agent-turn items have run live |
-| M6 | Slices 1-4, patch, recording gaps, `design-kit` skill (`7b68985`, Windows green run 42548317448), draft-sample fix `8f18d76` (no CI yet). Left: slice 5 (live journeys), in progress |
+| M6 | Slices 1-5 done. Last fixes `8f18d76`, `911029b` (Windows green run 42557473060), `5e7f2f2` (run 42559289386 not checked). Open: journey D (M8 grounding) |
 | M7 | Not started: turn v2 on; delete the old UI, the switch and its tests; update docs |
 | M8 | Planned 2026-11-06: agent side kit-first (skills, guide, tools, styles). See the plan |
 
@@ -57,8 +57,12 @@ Short on purpose: current state, next steps, open questions and live traps. Repl
       - F (251 s): flow works (ref chip, intent, turn card). Not a pass: DeepSeek can't see images ("no image returned to me"); 1 kit part used (`badge`), 114 own classes; dark overrides sit in `@layer page` in `page.css`, which loses to unlayered `tokens.css`, so the "locked dark" page renders light. Needs a vision model (Codex/Sonnet) and M8 guidance on page token overrides.
       - G4 (38 s): **pass**. One scoped rule in `kit/ui.css` (default variant pill + semibold), pages untouched, no save. Literal `999px`/`14px` despite the skill's no-literal rule. Found and fixed: System mode samples rendered the saved kit's CSS, not the `kit/` draft, so the change was invisible (`8f18d76`, tested, checked live).
       - I (564 s): **not a pass**. Ignored the new-component path: rewrote `index.html` as a pricing page from Card/Badge/Button, added no part to `kit/`, left `seg-test.html` (its `rm` was blocked). The kit move to `mantine-custom` was the user's own click on Remove prop.
-      - `journey.mjs` hangs on its last `listThreads` line after writing the chat and shot; kill it.
-    - Next: F and I on Codex and Claude Sonnet. Then M7.
+      - Codex: F **pass** (181 s: read the image, one `design_tokens_apply` of 27 tokens, 25 kit parts kept, lint fixed); I **pass** (260 s: valid `pricing-card` in `kit/`, no save). Small: Appearance shows Light on a dark-token page.
+      - Sonnet high: F and I **pass** after `5e7f2f2` (F 48 s: `design_tokens_apply` + screenshot; I 199 s: `run_code` ×6, `design_kit_inspect` ×4).
+      - **Found:** `z.record` input schemas made the cubiq server's `tools/list` fail for Claude, so Claude had no cubiq tools at all (no `run_code`, `design_*`, todo) since `f2d4873`, while the server showed "connected". Fixed with `z.object({}).catchall(...)` in 3 tools; `test/claude-tool-list.test.ts` lists the real design tools. Never use `z.record` in a harness tool.
+      - M8 notes: no tool renders one draft part (both agents left the new card unseen); DeepSeek skips the new-component path and can't see images.
+      - Driver fixed (`scratch/journey.mjs` in the session scratchpad, not in the zip yet): `TITLE`/`EFFORT` env, closes both CDP connections. Threads are made by `s-setup.mjs`-style scripts per agent.
+    - Next: M7.
 7. **The user runs `publish`:** `release-kits.sh pack` again first (`ui.js` changed), then fill `KIT_CATALOG` with release URLs and SHA-256 hashes.
 
 ## Done in M6
