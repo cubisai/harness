@@ -114,5 +114,5 @@ Slices 1 and 2 and the in-place patch are described in the archive. **Not run li
 
 - Workers: Zen free, then PGA, then TokenHarbor, then Haiku `Explore`. Check `git status` after each run.
 - UI follows `DESIGN.md`. Check it in the real app, in dark and light, at 900px.
-- Live model runs: DeepSeek free first. Codex, Claude Sonnet and PGS Grove are allowed; ask before anything else.
+- Live model runs: DeepSeek free first. Codex, Claude Sonnet (high) and PGS Grove are allowed; ask before anything else. Codex usage was reset on 2026-11-09 (it had been at 92% of the 30-day limit). Claude weekly was at 94% that morning; the user said to go ahead.
 - Lower priority: the PR from `m4` to `main`, the first `release-cubiq.yml` run, the native provider's image-to-text-model bug, and GitHub #10.
