@@ -29,18 +29,16 @@ Short on purpose: current state, next steps, open questions and live traps. Repl
 | M0-M4 | Closed, Windows green |
 | M5 | Pill and Typography pushed, Windows green (run 42166030432). Closes when the agent-turn items have run live |
 | M6 | **Closed 2026-11-09.** Slices 1-5 done; fixes through `17d3ee7`. Journey D moves to M8 |
-| M7 | **Next.** Turn v2 on; delete the old UI, the switch and its tests; update docs |
+| M7 | **In progress.** Code done in `8cf24c7`; the regression gate and the merge question remain |
 | M8 | Planned 2026-11-06: agent side kit-first (skills, guide, tools, styles). See the plan |
 
 ## Next, in this order
 
-1. CI: `gh run list --workflow ci.yml --branch track/design-v2`. Rerun a lone ACP "can't start" timeout once. `5e7f2f2` green (run 42559289386); `17d3ee7` dispatched 2026-11-09, check it.
-2. **M7, start here** (plan row M7; approved). Turn v2 on for everyone, then delete what it replaces:
-    - Remove the `designV2` switch: ~92 refs in 8 `src` files (`grep -rn designV2 src`), plus 1 test file. v2 paths become the only paths.
-    - Delete the old UI: `LiveBar.tsx`, `ElementBar.tsx`, the crumbs, the old Inspector flow; their uses in `DesignCanvas.tsx` and `SelectionChrome.tsx`.
-    - Delete the tests that pin it, together with it (user decision): `design-live-bar`, `design-element-bar`, and the old-UI parts of `design-insert` and `design-variant-cycler`. Keep and rewrite any that cover behaviour v2 still has.
-    - Threads with no kit must behave as today (plan line 78). Update `DESIGN.md` §7 and the design docs for the v2 surfaces.
-    - Gate: full regression on existing threads (chat, code, design with and without a kit, draft, flat-style and project-folder threads), dark and light, 900px, Windows CI. Re-run `.ai/kit-tools` m4-m6 scripts and `scratch/sweep.mjs` (900/1200 × dark/light × Design/Preview/Code/System; clean on `17d3ee7`).
+1. CI: `gh run list --workflow ci.yml --branch track/design-v2`. Rerun a lone ACP "can't start" timeout once. `17d3ee7` green (run 42561859361); `8cf24c7` (M7) is run 42566360789, check it.
+2. **M7, finish the gate.** `8cf24c7` removed the `designV2` switch (main, settings, types, Settings sheet, App, ThreadView), `LiveBar`, `ElementBar`, `InspectorPanel`, the crumbs, the dead Insert mode, the old 32-style `DesignStyleMenu` and 56 dead CSS rules. What v2 still uses moved to `design/variants.tsx`: cycler, Explore `goMessage`, `insertMessage`, `placeFloatingBar`, `escClears`. Tests: 3 files deleted, the rest repointed (`design-variants.test.tsx` is new). `DESIGN.md` §7.8 describes the studio. An undeclared page now opens on Desktop.
+    - Already checked: typecheck, 4478 tests, design:check. The sweep is clean on S3-I. m6-actions passes. The flat walk (`M5_FLAT=1 m5-select`) passes on "Z ping": I wrote a plain page into `chats/65e1aaa6…/designs/65e1aaa6` and `dd8ba0b7…`. All 14 threads open in the studio, and Chat mode is fine.
+    - Still to do: draft and project-folder threads, a code thread, a live agent turn on a kit thread and on a flat thread, the other m4-m6 scripts, and Windows CI. m5-select's kit walk needs its own fixture page: on S3-I it fails at step 1 and then throws.
+    - Left in place: the bridge still parses `gap`, `insert-cancel` and `repick-ask` (nothing sends them now). `TweaksPanel` is still exported but unused. `design:history` logs "No such page" on threads with no page.
     - Ask the user before merging `track/design-v2` into `m4`.
 3. **M8** after M7 (user, 2026-11-06; plan `## M8`): one lean guide, 4 skills (`design-build`, `design-variants`, `design-kit`, `design-review`), grounded tools, 32 flat styles retired, before-and-after bench. Add from M6: a tool that renders one draft part, guidance on page token overrides (`@layer page` loses to `tokens.css`), the no-literal rule, and journey D (new kit grounding).
 4. **The user runs `publish`:** `release-kits.sh pack` again first (`ui.js` changed), then fill `KIT_CATALOG` with release URLs and SHA-256 hashes.
