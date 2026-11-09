@@ -51,7 +51,7 @@ export function browserPair(deferred: HarnessTool[]): [HarnessTool, HarnessTool]
     description: `Run one browser pane tool from ${BROWSER_TOOLS}, with arguments matching its schema, e.g. {"tool": "browser_open", "arguments": {"url": "http://localhost:5173"}}.`,
     input: {
       tool: z.string().describe(`One of: ${names.join(", ")}`),
-      arguments: z.record(z.string(), z.unknown()).optional().describe(`The tool's arguments, per its inputSchema from ${BROWSER_TOOLS}`),
+      arguments: z.object({}).catchall(z.unknown()).optional().describe(`The tool's arguments, per its inputSchema from ${BROWSER_TOOLS}`),
     },
     autoAllow: true,
     // Most of them change the page: run alone, in order.

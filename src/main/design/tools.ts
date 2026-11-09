@@ -230,7 +230,7 @@ function kitTools(deps: DesignToolDeps, kits: DesignKitToolDeps, threadId: strin
       description:
         "Rebrand a page by token values alone: one call is one undo step, and no component or layout changes. tokens: custom property names from system/tokens.css mapped to new values. Names it doesn't have are refused, so read it first. To see a reference image's colours, use your image tool on refs/.",
       input: {
-        tokens: z.record(z.string(), z.string()).describe('For example {"--color-primary": "#4f46e5", "--radius-md": "10px"}'),
+        tokens: z.object({}).catchall(z.string()).describe('For example {"--color-primary": "#4f46e5", "--radius-md": "10px"}'),
         path: z.string().optional().describe("Page inside the design folder; default index.html"),
       },
       autoAllow: true,
