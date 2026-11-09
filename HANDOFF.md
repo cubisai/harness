@@ -28,7 +28,7 @@ Short on purpose: current state, next steps, open questions and live traps. Repl
 |---|---|
 | M0-M4 | Closed, Windows green |
 | M5 | Pill and Typography pushed, Windows green (run 42166030432). Closes when the agent-turn items have run live |
-| M6 | Slices 1-4, the in-place patch and the recording gaps are pushed (… `5eeba59`, slice 4 `d73f57a`, `design-kit` skill `7b68985`). Windows green through `5eeba59` (run 42198562589); `d73f57a`: run 42200597226 not checked; `7b68985`: no CI run started. Left: slice 5 (live journeys), in progress |
+| M6 | Slices 1-4, patch, recording gaps, `design-kit` skill (`7b68985`, Windows green run 42548317448), draft-sample fix `8f18d76` (no CI yet). Left: slice 5 (live journeys), in progress |
 | M7 | Not started: turn v2 on; delete the old UI, the switch and its tests; update docs |
 | M8 | Planned 2026-11-06: agent side kit-first (skills, guide, tools, styles). See the plan |
 
@@ -52,7 +52,13 @@ Short on purpose: current state, next steps, open questions and live traps. Repl
     - H (Flow → Grid, Columns, undo) is covered by `m5-scenario.mjs`; G steps 1-3 (brand colour, reach, Apply, toast) were checked live in slice 3. D, F, G4 and I need agent turns.
     - **User decided 2026-11-06:** write the `design-kit` skill now (pulled forward from M8; done, `7b68985`), then run D, F, G4, I. M8 later reshapes it with the other 3 skills.
     - Journey threads (scratch profile `645c0ed4…/scratchpad/ud`, Mac only): `J-D new kit` (no kit), `J-F match` (Foundation + page), `J-G system` (shadcn/ui + page), `J-I component` (Mantine + page). Driver: `journey.mjs <D|F|G|I> <threadId> <outPrefix>` with `MODEL=…`; reference image `screen.png` (dark, indigo). Both are in the zip under `scratch/`.
-    - D on Zen free: the chip, the intent and the switch to Foundation worked, then **"Free usage limit reached"** at 2 s. Re-run on `PGA/deepseek-v4.1-flash-1017`: the agent called `design_kit_save` (the thread moved to `project:my-kit`) and wrote `index.html` (76 KB) plus `brief.md`, but it kept the name "My kit", added no parts, and built mostly with its own classes (281 `class=`, only 14 `data-ui`, all `avatar`). It was still running after 15 min. **D is not a pass:** this is the M8 grounding gap (kit parts first). Next: F, G4, I on PGS Grove, then one run each on Codex and Claude Sonnet.
+    - D (PGS Grove): saved a kit but kept "My kit", added no parts, used own classes (14 `data-ui` of 281 classes). **Not a pass** (M8 grounding gap).
+    - **2026-11-09, PGS Grove, fresh Mac profile `ccb15691…/scratchpad/ud`:**
+      - F (251 s): flow works (ref chip, intent, turn card). Not a pass: DeepSeek can't see images ("no image returned to me"); 1 kit part used (`badge`), 114 own classes; dark overrides sit in `@layer page` in `page.css`, which loses to unlayered `tokens.css`, so the "locked dark" page renders light. Needs a vision model (Codex/Sonnet) and M8 guidance on page token overrides.
+      - G4 (38 s): **pass**. One scoped rule in `kit/ui.css` (default variant pill + semibold), pages untouched, no save. Literal `999px`/`14px` despite the skill's no-literal rule. Found and fixed: System mode samples rendered the saved kit's CSS, not the `kit/` draft, so the change was invisible (`8f18d76`, tested, checked live).
+      - I (564 s): **not a pass**. Ignored the new-component path: rewrote `index.html` as a pricing page from Card/Badge/Button, added no part to `kit/`, left `seg-test.html` (its `rm` was blocked). The kit move to `mantine-custom` was the user's own click on Remove prop.
+      - `journey.mjs` hangs on its last `listThreads` line after writing the chat and shot; kill it.
+    - Next: F and I on Codex and Claude Sonnet. Then M7.
 7. **The user runs `publish`:** `release-kits.sh pack` again first (`ui.js` changed), then fill `KIT_CATALOG` with release URLs and SHA-256 hashes.
 
 ## Done in M6
