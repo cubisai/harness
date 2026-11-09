@@ -111,6 +111,7 @@ export function Composer({
   const [droppedSystem, setDroppedSystem] = useState<ReadonlySet<string>>(new Set());
   useEffect(() => setDroppedSystem(new Set()), [systemWhere?.page, systemWhere?.theme]);
   const system = systemChips(systemWhere, droppedSystem);
+  const hasChips = Boolean(issue || picked.length || chips.length || refs.length || selection || designChip || system.length);
   const screenshotInput = useRef<HTMLInputElement>(null);
   const area = useRef<HTMLTextAreaElement>(null);
   const pendingCaret = useRef<number | null>(null);
@@ -256,6 +257,7 @@ export function Composer({
   }, [insert]);
 
   // Grow with the content, up to the CSS max-height; a picked mention moves the caret after its insertion.
+  // Chips change the textarea's padding, so its height is measured again when they come or go.
   useEffect(() => {
     const el = area.current;
     if (!el) return;
@@ -268,7 +270,7 @@ export function Composer({
       el.setSelectionRange(pending, pending);
       setCaret(pending);
     }
-  }, [text]);
+  }, [text, hasChips]);
 
   // Add the skill as a chip, or take it out when it's already picked; the typed `$query` goes away.
   const pick = (s: SkillEntry) => {
@@ -682,7 +684,7 @@ export function Composer({
         )}
         {/* Skill and context chips sit inline before the text, each with its own ×. */}
         <div
-          className={`composer-input${issue || picked.length || chips.length || refs.length || selection || designChip || system.length ? " has-chips" : ""}`}
+          className={`composer-input${hasChips ? " has-chips" : ""}`}
           onDragOver={(e) => {
             if (designKind && Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
           }}

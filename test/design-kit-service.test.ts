@@ -321,7 +321,10 @@ describe("System mode's kit view", () => {
     expect(html).toContain('href="kit/ui.css"');
     expect(html).not.toContain('href="system/ui.css"');
     s.kits.sample(s.thread.id, { ui: "button", states: true });
-    expect(readFileSync(join(s.root, ".preview-part.html"), "utf8")).toContain("border-radius: 999px");
+    const states = readFileSync(join(s.root, ".preview-part.html"), "utf8");
+    expect(states).toContain("border-radius: 999px");
+    // Each cell names its state, so a narrow frame can stack them and still say which is which.
+    expect(states).toContain('<td data-state="Hover">');
   });
 
   it("shows a reviewed component as a draft until Save to kit, and Discard removes it", () => {

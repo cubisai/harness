@@ -561,7 +561,7 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 
 .app.canvas-first .main-header { background: var(--bg); }
 .app.canvas-first .main-title { flex: 0 1 auto; max-width: 30%; }
-.main-header-design { flex: 1; min-width: 0; align-self: stretch; display: flex; align-items: center; }
+.main-header-design { flex: 1; min-width: 0; align-self: stretch; display: flex; align-items: center; container: studio-head / inline-size; }
 .main-header .design-canvas-head { flex: 1; min-width: 0; height: auto; align-self: stretch; padding: 0; border: 0; background: none; }
 /* Outside canvas-first these wrappers aren't there to layout: a chat thread is exactly as before. */
 .thread-pane, .thread-drawer, .thread-bar { display: contents; }
@@ -639,9 +639,13 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .studio-right { justify-content: flex-end; flex-shrink: 0; }
 .studio-title { flex: 0 1 auto; min-width: 24px; font: 600 13px var(--font-display); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .studio-slash { flex-shrink: 0; color: var(--text-tertiary); font-size: 12.5px; }
-.studio-page { flex: 0 1 auto; min-width: 0; font-size: 12.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.studio-page { flex: 0 3 auto; min-width: 0; font-size: 12.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .studio-page .select { height: 28px; font-size: 12.5px; max-width: 100%; }
 .studio-left > .select { flex-shrink: 0; height: 28px; font-size: 12.5px; }
+/* Narrow: the right column takes only its icons, so the title keeps the room (the page name gives way first). */
+@container studio-head (max-width: 820px) {
+  .design-canvas-head.studio-bar { grid-template-columns: minmax(0, 1fr) auto max-content; }
+}
 .design-save-status { display: inline-flex; align-items: center; gap: 4px; }
 .design-save-dot { display: none; width: 6px; height: 6px; border-radius: 50%; background: var(--text-tertiary); }
 .design-save-status.error .design-save-dot { background: var(--danger); }
@@ -789,8 +793,10 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .lib-prop .text-input, .lib-add-form .text-input { flex: none; height: 28px; min-width: 0; }
 .lib-prop input[type="checkbox"] { align-self: flex-start; margin: 0; }
 @container (max-width: 860px) {
-  .lib-page-wrap { flex-direction: column; }
-  .lib-panel { width: auto; max-height: 45%; border-left: 0; border-top: 1px solid var(--hairline); }
+  /* Stacked: the page and its panel both end above the floating Composer, so neither hides under it. */
+  .lib-page-wrap { flex-direction: column; padding-bottom: var(--lib-clear, 0px); }
+  .lib-page { padding-bottom: 20px; }
+  .lib-panel { width: auto; max-height: 45%; padding-bottom: 12px; border-left: 0; border-top: 1px solid var(--hairline); }
 }
 @container (max-width: 560px) {
   .lib-rail { width: 160px; }

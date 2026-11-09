@@ -457,7 +457,7 @@ export function partSample(part: { ui: string; snippet: string; props: { name: s
     const lines = (rows.length ? rows : [""]).map((variant) => {
       const props: Record<string, string> = { ...(request.props ?? {}), ...(variant ? { variant } : {}), ...size };
       const label = variant ? `${escapeText(variant)}${variant === variantProp?.default ? ' <span class="cq-tag">default</span>' : ""}` : escapeText(part.ui);
-      return `<tr><th class="cq-label">${label}</th>${states.map((s) => `<td>${instanceHtml(part.snippet, part.ui, props, s.extra)}</td>`).join("")}</tr>`;
+      return `<tr><th class="cq-label">${label}</th>${states.map((s) => `<td data-state="${s.label}">${instanceHtml(part.snippet, part.ui, props, s.extra)}</td>`).join("")}</tr>`;
     });
     body = `<div class="cq-stage cq-flush"><table class="cq-matrix"><thead>${head}</thead><tbody>${lines.join("")}</tbody></table></div>`;
     forced = forcedStateCss(uiCss, folder);
@@ -494,15 +494,16 @@ body{padding:24px 28px 8px;box-sizing:border-box}
 .cq-stage>*{max-width:100%}
 .cq-demo{min-height:320px}
 .cq-stage:has([popover]){align-items:flex-start;min-height:360px}
-.cq-flush{display:block;min-height:0;padding:8px 24px}
+.cq-flush{display:block;min-height:0;padding:8px 24px;overflow-x:auto}
 .cq-stage dialog[open]{position:static;inset:auto;margin:0;transform:none;max-width:100%}
 .cq-stage dialog[open]::backdrop{display:none}
-.cq-matrix{width:100%;table-layout:fixed;border-collapse:collapse}
-.cq-matrix th,.cq-matrix td{padding:20px 12px;text-align:center;vertical-align:middle;overflow:hidden}
+.cq-matrix{width:100%;min-width:max-content;border-collapse:collapse}
+.cq-matrix th,.cq-matrix td{padding:20px 12px;text-align:center;vertical-align:middle;white-space:nowrap}
 .cq-matrix tbody tr{border-top:1px solid var(--color-border)}
 .cq-matrix td>*{margin-inline:auto;max-width:100%}
 .cq-matrix tr>:first-child{width:128px;padding-left:0;text-align:left}
 .cq-matrix thead th{padding:14px 12px 10px;font:500 12px/16px system-ui;color:var(--color-text-muted)}
+@media (max-width:640px){.cq-flush{padding:4px 16px}.cq-matrix{min-width:0}.cq-matrix thead{display:none}.cq-matrix tbody tr:first-child{border-top:0}.cq-matrix tbody tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 12px;padding:12px 0}.cq-matrix tr>:first-child{width:auto}.cq-matrix th.cq-label{grid-column:1/-1;padding:0 0 4px}.cq-matrix td{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 4px;white-space:normal}.cq-matrix td::before{content:attr(data-state);font:500 11px/14px system-ui;color:var(--color-text-muted)}}
 .cq-matrix .cq-label{display:table-cell;font-weight:500;white-space:nowrap;text-overflow:ellipsis}
 .cq-matrix .cq-tag{margin-left:6px}
 </style>${forced ? `<style>${forced.replace(/<\/style/gi, "<\\/style")}</style>` : ""}</head><body>${body}<script src="${folder}/ui.js"></script><script>for(const p of document.querySelectorAll(".cq-stage [popover]"))try{p.showPopover()}catch{}</script></body></html>
