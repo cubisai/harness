@@ -10,7 +10,7 @@ Short on purpose: current state, next steps, open questions and live traps. Repl
 
 ## Start here
 
-1. Worktree `../aiharness-wt/design-v2`, branch `track/design-v2`. To recreate it: `git worktree add`, then `bun install` and `node node_modules/electron/install.js`.
+1. Work on `m4` in the main checkout (the worktree and `track/design-v2` were merged and removed 2026-11-09). For new work, branch off `m4` into a fresh worktree (`git worktree add ../aiharness-wt/<name> -b track/<name> m4`, then `bun install` and `node node_modules/electron/install.js`). The kit tools now live in the main checkout's `.ai/kit-tools` and `.ai/kit-release` (git-ignored, Mac only).
 2. Before every commit: `bun run typecheck`, `bun run test`, `bun run design:check`. Commit only that change's files, 150 characters or fewer, no trailer.
 3. Update this file at each milestone (the user's request). Keep it under about 100 lines.
 
@@ -29,22 +29,27 @@ Short on purpose: current state, next steps, open questions and live traps. Repl
 | M0-M4 | Closed, Windows green |
 | M5 | Pill and Typography pushed, Windows green (run 42166030432). Closes when the agent-turn items have run live |
 | M6 | **Closed 2026-11-09.** Slices 1-5 done; fixes through `17d3ee7`. Journey D moves to M8 |
-| M7 | **Closed 2026-11-09.** Merged into `m4` (`14be44f`) on the user's yes; checks green on `m4`. Not pushed |
-| M8 | **In progress 2026-11-09:** (a) baseline, (b) tools `1e29423`, (c) guide and skills `5593114` done; (e) after-bench running; (d) styles: discuss with the user |
+| M7 | **Closed 2026-11-09.** Merged into `m4` (`14be44f`) |
+| M8 | **In progress.** (a) (b) (c) and the DeepSeek after-bench done; merged into `m4` (`3931300`) and **pushed** 2026-11-09. Open: deck grounding, `system/` hand-writes, (d) styles, Sonnet/Codex runs |
 
 ## Next, in this order
 
-1. CI: `gh run list --workflow ci.yml --branch track/design-v2`. Rerun a lone ACP "can't start" timeout once. `6429027` green (run 42569038106).
-2. **M8, in progress on `track/design-v2` (not merged into `m4`, not pushed).** Plan `## M8` plus the notes under it in `.ai/plans/design-mode-v2.md`.
+1. CI: `gh run list --workflow ci.yml --branch m4` for `3931300` (not checked yet). Rerun a lone ACP "can't start" timeout once.
+2. **M8, on `m4`.** Plan `## M8` plus the notes under it in `.ai/plans/design-mode-v2.md`.
     - (a) Baseline (`6429027`, PGS `PGA/deepseek-v4.1-flash-1017` via opencode, bench agent `opencode-pga-deepseek`; Zen free is at its limit): 0 kit parts on all 3 pages; landing has no direction call; login and deck hit the 12-min cap. Raw: `.ai/plans/m8-bench/before.json`.
     - (b) `1e29423`: lint rule `kit` (`grounding.ts`: unknown part, bad prop value, page CSS redrawing a part, `Kit:` coverage line); `design_kit_inspect` `search:` / `page:`; `design_set_direction` takes `kit` + `theme` + `appearance` from a kit-theme index, and Auto stores `kit:foundation/<style>`. Varelyo `icon.name` is now a text prop (46 icons, over the 32-option cap): **re-pack kits before publish**.
     - (c) `5593114`: guide 548 words; 4 skills `design-build`, `design-variants`, `design-kit` (+ extract path), `design-review` (critique + handoff) replace the 7 old ones.
-    - (e) After-bench was started on the same 3 prompts (out: `<session 435ab7e9…>/scratchpad/m8-after`). Score it with `node .ai/kit-tools/m8-score.mjs <out>` in the worktree, and compare with before.json. Then one live run each on Claude Sonnet and Codex.
+    - (e) After-bench, same DeepSeek model (landing on PGS before it ran out of credit, login and deck on TokenHarbor `deepseek-v4.1-flash:free`, bench agent `opencode-tokenharbor-deepseek`). Raw: `.ai/plans/m8-bench/after.json`, scorer `.ai/kit-tools/m8-score.mjs <bench out>`.
+        - Landing: `foundation/clean-inset`, 15/187 kit parts (8%), 0 errors, 6.4 min (before 0/158).
+        - Login: `foundation/soft-health`, 49/129 (38%), 0 errors, 0 hex, finished in 7.2 min (before 0/164, 21 hex, cap).
+        - Deck: 124/392 (32%), but invented `stat`/`meter`, 5 bad prop values, 20 `[data-ui]` rules in `page.css`, cap again, no lint run. It skipped `design_set_direction` and **hand-wrote `system/`** (`.system` = `kit:foundation/roast`, 4 files, no `components.json`).
+        - Tokens in: 162k before, 201k after (the plan wanted fewer).
+    - **Next fixes:** block agent writes to `system/` (fence) or rebuild it at turn end; make a deck call direction first; more Foundation blocks (only 3, so landing pages stay hand-built); get decks to run lint within the cap; trim tokens. Then one live run each on Claude Sonnet and Codex.
     - Mid-way check after (b) only: Auto landed on `kit:foundation/newsroom`, but the page was 9/230 kit parts and had 2 redraws, so the result rests on (c).
 3. **Discuss next with the user: the 32 flat styles (M8 d).** They are Foundation's only themes (compat `*`) and every Auto pick uses one. The user asked "can we just delete them all?".
     - Claude's view: a full wipe leaves Auto with Foundation's default look or a kit colour swap; decks and mobile lose their only styles (2 each); and it needs the whole style path removed (More styles, style previews, the fonts pack, the direction index, migrating `style:x` threads).
     - Proposed instead: cut to about 12–16 distinct styles covering web, mobile and deck, chosen through an oc review.
-    - Ready for that: specimens (each style on Foundation's hero, feature-grid, pricing and form/table parts) plus contrast numbers in `<session 435ab7e9…>/scratchpad/specimens/` (`index.json`). All 32 pass contrast, so the cut is about taste.
+    - Ready for that: specimens (each style on Foundation's hero, feature-grid, pricing and form/table parts) plus contrast numbers (scratchpad, gone after that session: rebuild by putting each style's `tokens.css` and Foundation's `ui.css` behind its 3 blocks plus field/table/alert/tabs/badge). All 32 pass contrast, so the cut is about taste.
     - Wait for the user's choice: "cut" or "all".
 4. **M8, still open from M6:** a tool that renders one draft part; guidance on page token overrides (`@layer page` loses to `tokens.css`); journey D (new-kit grounding, failed everywhere in M6). The no-literal rule is now in the guide and the lint.
 5. **The user runs `publish`:** `release-kits.sh pack` again first (`ui.js` changed), then fill `KIT_CATALOG` with release URLs and SHA-256 hashes.
