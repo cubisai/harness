@@ -100,7 +100,7 @@ export function colorKey(c: Rgba): string {
 }
 
 /** The lint rules the design lint runs. */
-export type LintRule = "contrast" | "targets" | "spacing" | "color" | "slop";
+export type LintRule = "contrast" | "targets" | "kit" | "spacing" | "color" | "slop";
 
 /** One lint finding. */
 export interface LintFinding {
@@ -1360,7 +1360,7 @@ export const LINT_MAX = 40;
 
 /** Render a lint result as a compact report for the agent. */
 export function formatLint(result: LintResult): string {
-  const order: LintRule[] = ["contrast", "targets", "spacing", "color", "slop"];
+  const order: LintRule[] = ["contrast", "targets", "kit", "spacing", "color", "slop"];
   const deduped: LintFinding[] = [];
   const seen = new Set<string>();
   for (const rule of order) {
@@ -1373,7 +1373,7 @@ export function formatLint(result: LintResult): string {
     }
   }
 
-  const counts: Record<LintRule, number> = { contrast: 0, targets: 0, spacing: 0, color: 0, slop: 0 };
+  const counts: Record<LintRule, number> = { contrast: 0, targets: 0, kit: 0, spacing: 0, color: 0, slop: 0 };
   for (const finding of deduped) counts[finding.rule] += 1;
 
   const lines: string[] = [];
@@ -1381,7 +1381,7 @@ export function formatLint(result: LintResult): string {
     lines.push(`design_lint: no findings (${result.scanned} elements)`);
   } else {
     lines.push(
-      `design_lint: ${deduped.length} findings — contrast ${counts.contrast}, targets ${counts.targets}, spacing ${counts.spacing}, color ${counts.color}, slop ${counts.slop} (${result.scanned} elements)`,
+      `design_lint: ${deduped.length} findings — contrast ${counts.contrast}, targets ${counts.targets}${counts.kit ? `, kit ${counts.kit}` : ""}, spacing ${counts.spacing}, color ${counts.color}, slop ${counts.slop} (${result.scanned} elements)`,
     );
     const shown = deduped.slice(0, LINT_MAX);
     for (const finding of shown) lines.push(`- [${finding.rule}] ${finding.selector} — ${finding.detail}`);

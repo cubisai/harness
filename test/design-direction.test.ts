@@ -508,6 +508,34 @@ describe("a kit system on a design thread", () => {
     expect(service.previewSystem(project.id, "kit:foundation")?.source).toBe("kit");
   });
 
+  it("puts an Auto pick on Foundation in that style, with the kit's parts in system/ and a reply that says to build from them", () => {
+    const { service, store, thread } = kitSetup();
+    const reply = service.setDesignDirection(thread.id, { surface: "page", mode: "persuade", tier: "working", style: "riso" });
+    expect(store.getThread(thread.id).designDirection?.style).toBe("kit:foundation/riso");
+    const root = service.designRoot(thread.id)!;
+    expect(readFileSync(join(root, "system", "DESIGN.md"), "utf8")).toBe("# riso\n");
+    for (const f of ["KIT.md", "ui.css", "components.json", "tokens.css"]) expect(existsSync(join(root, "system", f))).toBe(true);
+    expect(reply).toContain("the Foundation kit in the riso name theme");
+    expect(reply).toContain("`system/KIT.md`");
+    expect(reply).toContain("`system/ui.css`");
+    expect(reply).toContain("data-ui");
+    // A Foundation id given outright goes through the same style checks.
+    expect(() => service.setDesignDirection(thread.id, { surface: "page", mode: "persuade", tier: "working", style: "kit:foundation/nope" })).toThrow('Unknown style "kit:foundation/nope"');
+  });
+
+  it("takes another installed kit's theme, and refuses a kit or theme that isn't there", () => {
+    const { service, store, project } = setup();
+    const mui = join(process.cwd(), "design-kits", "kits", "mui");
+    service.setDesignKitLookup((id) => (id === "foundation" ? FOUNDATION : id === "mui" ? mui : null));
+    const thread = service.createThread(project.id, undefined, "design");
+    const reply = service.setDesignDirection(thread.id, { surface: "screen", mode: "operate", tier: "working", style: "kit:mui/indigo" });
+    expect(store.getThread(thread.id).designDirection?.style).toBe("kit:mui/indigo");
+    expect(reply).toContain("the mui kit in the");
+    expect(existsSync(join(service.designRoot(thread.id)!, "system", "ui.css"))).toBe(true);
+    expect(() => service.setDesignDirection(thread.id, { surface: "screen", mode: "operate", tier: "working", style: "kit:mui/plaid" })).toThrow(/mui has no theme "plaid"\. Pick one of: .*indigo/);
+    expect(() => service.setDesignDirection(thread.id, { surface: "screen", mode: "operate", tier: "working", style: "kit:chakra-ui/blue" })).toThrow('The kit "chakra-ui" isn\'t installed');
+  });
+
   it("never writes into a bundled kit", () => {
     const { service, thread } = kitSetup();
     service.setDesignSystem(thread.id, "kit:foundation");

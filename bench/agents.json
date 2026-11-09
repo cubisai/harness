@@ -2,6 +2,7 @@
   { "id": "claude-sonnet", "agent": "claude", "model": "sonnet" },
   { "id": "codex-luna", "agent": "codex", "model": "gpt-6-luna" },
   { "id": "opencode-zen-deepseek", "agent": "opencode", "model": "opencode/deepseek-v4.1-flash-free", "spaced": true },
+  { "id": "opencode-pga-deepseek", "agent": "opencode", "model": "PGA/deepseek-v4.1-flash-1017", "spaced": true },
   {
     "id": "pgs-deepseek",
     "agent": "provider-pgs",

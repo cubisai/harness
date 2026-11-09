@@ -152,7 +152,7 @@ describe("Service design systems", () => {
     writeFileSync(join(projectDir, "DESIGN.md"), "# Ours");
     const b = service.createThread(project.id, undefined, "design");
     await service.send({ threadId: b.id, text: "x" });
-    expect(prompts[1]).toContain('follows the project\'s own DESIGN.md. Before you build, call design_set_direction once with the surface, mode and tier; use style "project".');
+    expect(prompts[1]).toContain('follows the project\'s own DESIGN.md. Before you build, call design_set_direction once with the surface, mode and tier; use theme "project".');
     const dir = join(projectDir, "designs", b.id.slice(0, 8), "system");
     expect(readFileSync(join(dir, "DESIGN.md"), "utf8")).toBe("# Ours");
     expect(existsSync(join(dir, "tokens.css"))).toBe(false);

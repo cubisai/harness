@@ -50,7 +50,7 @@ import { keepTweaks } from "./design/tweaks";
 import { resolveVariantSet } from "./design/variants";
 import { brandEdits, forkKitSystem } from "./design/kit-library";
 import { DesignKitService } from "./design/kit-service";
-import { forkSystem, KIT_PREFIX, listDesignStyles, listDesignSystems, listKitSystems, materializeSystem, pickFromShortlist, resolveDesignSystem, type DesignStyleInfo, type DesignSystemInfo } from "./design/systems";
+import { FOUNDATION_THEME, forkSystem, KIT_PREFIX, listDesignStyles, listDesignSystems, listKitSystems, materializeSystem, pickFromShortlist, resolveDesignSystem, type DesignStyleInfo, type DesignSystemInfo } from "./design/systems";
 import { AUTO_SYSTEM, isAuto, modeLabel, STYLE_PREFIX, type DesignDirection } from "../shared/direction";
 import { DESIGN_DIRECTION_TOOL } from "./design/tools";
 import { AUTO_LINT_WAIT_MS, autoFixPrompt, autoLintNote, changedPages, type PageLint } from "./design/autolint";
@@ -1599,7 +1599,7 @@ export class Service {
     const list = this.allSystems(thread.projectId);
     if (isAuto(thread)) {
       const style = list.find((s) => s.id === "project") ? "project" : thread.designDirection?.style;
-      return style ? (list.find((s) => s.id === style) ?? null) : null;
+      return style ? (this.kitSystem(style) ?? list.find((s) => s.id === style) ?? null) : null;
     }
     return this.kitSystem(thread.designSystem) ?? resolveDesignSystem(list, thread.designSystem);
   }
@@ -1609,10 +1609,35 @@ export class Service {
     const out: string[] = [];
     for (const t of this.store.listThreads(thread.projectId).sort((a, b) => b.updatedAt - a.updatedAt)) {
       const style = t.id !== thread.id ? t.designDirection?.style : undefined;
-      if (style?.startsWith(STYLE_PREFIX) && !out.includes(style)) out.push(style);
+      const name = style?.startsWith(STYLE_PREFIX) ? style.slice(STYLE_PREFIX.length) : style?.startsWith(KIT_PREFIX) ? style.split("/").slice(1).join("/") : "";
+      if (name && !out.includes(name)) out.push(name);
       if (out.length === 3) break;
     }
-    return out.map((s) => s.slice(STYLE_PREFIX.length));
+    return out;
+  }
+
+  /**
+   * An Auto pick of a kit other than Foundation, `kit:<kit>/<theme>`: the kit must be installed and the theme one of
+   * its own. Alternates are more themes of the same kit; a light or dark ask and the project's recent picks narrow
+   * them the way they narrow styles. Throws with what is valid.
+   */
+  private pickKitTheme(thread: Thread, style: string, alternates: string[], appearance?: "light" | "dark"): string {
+    const [kitId = "", ...rest] = style.slice(KIT_PREFIX.length).split("/");
+    const dir = this.kitDirOf?.(kitId) ?? null;
+    if (!dir) throw new Error(`The kit "${kitId}" isn't installed. Use kit foundation, or one listed in this tool's description.`);
+    const themes = listKitSystems(dir, []).filter((s) => s.id !== `${KIT_PREFIX}${kitId}`);
+    const ids = themes.map((s) => s.id.slice(`${KIT_PREFIX}${kitId}/`.length));
+    const want = rest.join("/");
+    if (!ids.includes(want)) throw new Error(`${kitId} has no theme "${want}". Pick one of: ${ids.join(", ")}.`);
+    let picks = [want, ...alternates.slice(0, 2).map((a) => a.trim().split("/").pop() ?? "")].filter((id, i, all) => ids.includes(id) && all.indexOf(id) === i);
+    if (appearance) {
+      const lit = picks.filter((id) => themes.find((s) => s.id.endsWith(`/${id}`))?.facets?.theme === appearance);
+      if (lit.length) picks = lit;
+    }
+    const recent = this.recentStyles(thread);
+    const fresh = picks.filter((id) => !recent.includes(id));
+    if (fresh.length) picks = fresh;
+    return `${KIT_PREFIX}${kitId}/${pickFromShortlist(picks, thread.id)}`;
   }
 
   /**
@@ -1629,9 +1654,15 @@ export class Service {
     const auto = isAuto(thread);
     let style = direction.style.trim();
     let shortlisted = false;
+    // Foundation's themes are the style library: `kit:foundation/<style>` goes through the style checks below.
+    if (style.startsWith(FOUNDATION_THEME)) style = `${STYLE_PREFIX}${style.slice(FOUNDATION_THEME.length)}`;
     if (auto) {
       if (hasProject) style = "project";
-      else {
+      else if (style.startsWith(KIT_PREFIX)) {
+        const picked = this.pickKitTheme(thread, style, alternates, theme);
+        shortlisted = picked !== style;
+        style = picked;
+      } else {
         if (!style.startsWith(STYLE_PREFIX)) style = `${STYLE_PREFIX}${style}`;
         if (!list.some((s) => s.id === style)) {
           const names = this.designStyles().map((s) => s.id.slice(STYLE_PREFIX.length));
@@ -1666,6 +1697,8 @@ export class Service {
         const picked = pickFromShortlist(picks, threadId);
         shortlisted = picked !== style;
         style = picked;
+        // With Foundation on hand, Auto builds from its parts in the picked style rather than from tokens alone.
+        if (this.kitDirOf?.("foundation")) style = `${FOUNDATION_THEME}${style.slice(STYLE_PREFIX.length)}`;
       }
     }
     const saved = this.store.setDesignDirection(threadId, { ...direction, style: auto ? style : (thread.designSystem ?? "default") });
@@ -1717,9 +1750,13 @@ export class Service {
     const pickedNote = shortlisted
       ? " (CubiQ picked it from your shortlist so designs don't all look alike: build in it)"
       : " (the style you picked)";
-    const where = system
-      ? ` \`${folder}/system/\` now holds ${system.name}${auto && !hasProject ? pickedNote : ""}: read its DESIGN.md before you build, link \`system/tokens.css\` and use its custom properties${system.fontFiles?.length ? "; it declares its fonts from `system/fonts/`" : ""}.`
-      : "";
+    const fonts = system?.fontFiles?.length ? "; it declares its fonts from `system/fonts/`" : "";
+    const kitMd = Boolean(system?.kit && root && existsSync(join(root, "system", "KIT.md")));
+    const where = !system
+      ? ""
+      : system.kit
+        ? ` \`${folder}/system/\` now holds the ${system.kit.id === "foundation" ? "Foundation" : system.kit.id} kit in the ${system.name} theme${auto && !hasProject ? pickedNote : ""}. Read ${kitMd ? "`system/KIT.md` (how to build with the kit) and `system/DESIGN.md` (the theme's look)" : "`system/DESIGN.md`"}, link \`system/tokens.css\` then \`system/ui.css\`${fonts}. Build from the kit's \`data-ui\` parts and \`system/blocks/\` (design_kit_inspect lists them, \`search:\` finds one); write page CSS only for what the kit lacks, with its tokens. design_lint checks the parts.`
+        : ` \`${folder}/system/\` now holds ${system.name}${auto && !hasProject ? pickedNote : ""}: read its DESIGN.md before you build, link \`system/tokens.css\` and use its custom properties${fonts}.`;
     return `${head}${where}${patterns ? ` \`${folder}/system/patterns.md\` has the rules and anatomies for a ${direction.surface}: read it, then write \`${folder}/brief.md\` before the first page.` : ""}${aiParts ? ` If the product has an assistant or agent, \`${folder}/system/ai-parts.md\` has anatomies for its parts (answer, composer, tool call, approval, run).` : ""}${icons ? ` \`${folder}/system/icons.svg\` has line icons (ids listed at its top): copy the symbols a page uses into the page instead of drawing icons or using emoji.` : ""}\n${tierNote(tier)}`;
   }
 
@@ -1893,11 +1930,11 @@ export class Service {
   /** What an Auto thread is told until its agent picks a direction: call the tool first, and which styles to avoid. */
   private autoNote(thread: Thread, system: DesignSystemInfo | null): string {
     if (system?.id === "project") {
-      return `\n\n(CubiQ: this design thread is on Auto and follows the project's own DESIGN.md. Before you build, call ${DESIGN_DIRECTION_TOOL} once with the surface, mode and tier; use style "project".)`;
+      return `\n\n(CubiQ: this design thread is on Auto and follows the project's own DESIGN.md. Before you build, call ${DESIGN_DIRECTION_TOOL} once with the surface, mode and tier; use theme "project".)`;
     }
     const recent = this.recentStyles(thread);
-    const avoid = recent.length ? ` Recently used in this project: ${recent.join(", ")}; pick a different style unless the brief asks for one of them.` : "";
-    return `\n\n(CubiQ: this design thread is on Auto. Before you build, call ${DESIGN_DIRECTION_TOOL} once with the surface, mode, tier and the style that fits this brief, plus up to 2 alternates.${avoid})`;
+    const avoid = recent.length ? ` Recently used in this project: ${recent.join(", ")}; pick a different theme unless the brief asks for one of them.` : "";
+    return `\n\n(CubiQ: this design thread is on Auto. Before you build, call ${DESIGN_DIRECTION_TOOL} once with the surface, mode, tier and the kit theme that fits this brief, plus up to 2 alternates.${avoid})`;
   }
 
   /**
@@ -1974,7 +2011,7 @@ export class Service {
     if (!style) return;
     const updated =
       isAuto(thread) && thread.designDirection
-        ? this.store.setDesignDirection(threadId, { ...thread.designDirection, style: style.id })
+        ? this.store.setDesignDirection(threadId, { ...thread.designDirection, style: thread.designDirection.style.startsWith(FOUNDATION_THEME) ? `${FOUNDATION_THEME}${style.id.slice(STYLE_PREFIX.length)}` : style.id })
         : this.store.setDesignSystem(threadId, style.id);
     this.broadcast({ type: "thread", thread: updated });
   }
@@ -1989,8 +2026,10 @@ export class Service {
     const direction = thread.designDirection;
     const surface = direction?.surface;
     const platforms = surface === "deck" ? ["deck"] : surface === "mobile" ? ["mobile", "any"] : ["web", "any"];
-    const currentTags = new Set(styles.find((s) => s.id === current?.id)?.tags ?? []);
-    const pool = styles.filter((s) => s.id !== current?.id && platforms.includes(s.platform));
+    // A Foundation theme is its library style.
+    const currentId = current?.id.startsWith(FOUNDATION_THEME) ? `${STYLE_PREFIX}${current.id.slice(FOUNDATION_THEME.length)}` : current?.id;
+    const currentTags = new Set(styles.find((s) => s.id === currentId)?.tags ?? []);
+    const pool = styles.filter((s) => s.id !== currentId && platforms.includes(s.platform));
     const picked: DesignStyleInfo[] = [];
     const shared = (a: Iterable<string>, b: string[]): number => b.filter((t) => new Set(a).has(t)).length;
     while (picked.length < count) {

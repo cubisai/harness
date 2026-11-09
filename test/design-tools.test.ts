@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { buildDesignExport, exportFileName, type DesignExportDeps } from "../src/main/design/export";
 import { SHOT_MAX_HEIGHT, Shooter, type ShotWindow } from "../src/main/design/shooter";
-import { designTools, type DesignToolDeps } from "../src/main/design/tools";
+import { kitIndexEntry, kitThemeIndex } from "../src/main/design/systems";
+import { designTools, directionStyle, type DesignToolDeps } from "../src/main/design/tools";
 import { tempDir } from "./helpers";
 
 const PNG = Buffer.from("png-bytes");
@@ -122,7 +123,7 @@ function toolDeps(root: string | null, over: Partial<DesignToolDeps> = {}): Desi
       if (d.style !== "riso") throw new Error(`Unknown style "${d.style}". Pick one of: riso.`);
       return `Direction: ${d.surface}, ${d.mode}, tier ${d.tier}.`;
     },
-    styleIndex: () => "riso: Riso print [print, warm; persuade; web]",
+    kitIndex: () => "riso: Riso print [print, warm; persuade; web]",
     ...over,
   };
 }
@@ -242,5 +243,28 @@ describe("design export", () => {
     expect(exportFileName("<p>no title</p>", "abcd1234ffff", "png", null)).toBe("design-abcd1234.png");
     expect(exportFileName("<title> ... </title>", "abcd1234ffff", "png", null)).toBe("design-abcd1234.png");
     expect(exportFileName(null, "abcd1234ffff", "png", null)).toBe("design-abcd1234.png");
+  });
+});
+
+describe("the direction tool's kit and theme", () => {
+  it("records a Foundation theme as its style and another kit's as kit:<kit>/<theme>", () => {
+    expect(directionStyle(undefined, "riso")).toBe("riso");
+    expect(directionStyle("foundation", "riso")).toBe("riso");
+    expect(directionStyle("kit:mui", "indigo")).toBe("kit:mui/indigo");
+    expect(directionStyle("mui", "mui/indigo")).toBe("kit:mui/indigo");
+    expect(directionStyle("mui", "project")).toBe("project");
+  });
+
+  it("indexes Foundation's themes, then each other kit with its themes", () => {
+    const mui = kitIndexEntry(join(process.cwd(), "design-kits", "kits", "mui"));
+    expect(mui?.id).toBe("mui");
+    expect(mui?.themes).toContain("indigo");
+    const styles = [{ id: "style:riso", name: "Riso", description: "Riso print: inks", tags: ["print"], modes: ["persuade"], platform: "web" }] as never;
+    const index = kitThemeIndex(styles, [mui!, { id: "foundation", name: "Foundation", themes: ["x"] }]).split("\n");
+    expect(index[0]).toMatch(/^Kit "foundation"/);
+    expect(index[1]).toBe("riso: Riso print [print; persuade; web]");
+    expect(index.at(-1)).toMatch(/^mui \(MUI, @mui\/material\): .*indigo/);
+    expect(index.filter((l) => l.startsWith("foundation"))).toEqual([]);
+    expect(kitThemeIndex(styles, []).split("\n")).toHaveLength(2);
   });
 });
