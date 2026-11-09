@@ -30,26 +30,24 @@ Short on purpose: current state, next steps, open questions and live traps. Repl
 | M5 | Pill and Typography pushed, Windows green (run 42166030432). Closes when the agent-turn items have run live |
 | M6 | **Closed 2026-11-09.** Slices 1-5 done; fixes through `17d3ee7`. Journey D moves to M8 |
 | M7 | **Closed 2026-11-09.** Merged into `m4` (`14be44f`) on the user's yes; checks green on `m4`. Not pushed |
-| M8 | Planned 2026-11-06: agent side kit-first (skills, guide, tools, styles). See the plan |
+| M8 | **In progress 2026-11-09:** (a) baseline, (b) tools `1e29423`, (c) guide and skills `5593114` done; (e) after-bench running; (d) styles: discuss with the user |
 
 ## Next, in this order
 
 1. CI: `gh run list --workflow ci.yml --branch track/design-v2`. Rerun a lone ACP "can't start" timeout once. `6429027` green (run 42569038106).
-2. **M7, done and merged** (detail kept below until M8 starts). `8cf24c7` removed the `designV2` switch (main, settings, types, Settings sheet, App, ThreadView), `LiveBar`, `ElementBar`, `InspectorPanel`, the crumbs, the dead Insert mode, the old 32-style `DesignStyleMenu` and 56 dead CSS rules. What v2 still uses moved to `design/variants.tsx`: cycler, Explore `goMessage`, `insertMessage`, `placeFloatingBar`, `escClears`. Tests: 3 files deleted, the rest repointed (`design-variants.test.tsx` is new). `DESIGN.md` §7.8 describes the studio. An undeclared page now opens on Desktop.
-    - `6429027` (the user asked for it before merge): removed the old pick path, the marks/notes layer and Insert mode from the page script (`bridge.ts`). Gone with them: the `marks`, `repick-ask`, `gap`, `gap-rect`, `insert-cancel` and `text-edit` messages, the `design:edit-text` and `design:edit-style` IPCs (with the service methods, `applyTextEdit` and `applyStyleEdit`), `TweaksPanel` and 2 dead CSS rules. `go()` now sends only the direction and words. Pick is always v2 (`startSelectV2`). The gap geometry stays, because the seam `+` uses it.
-    - Passed on `6429027`: typecheck, 4456 tests, design:check. On S3-I: m6-actions (11), m6-customize (7), m5-rest (11), m6-smooth (31). Flat walk (`M5_FLAT=1 m5-select`) on "Z ping" and on the project thread. The sweep and all 14 threads were checked on `8cf24c7`.
-    - Also checked: a draft (New design shows the v2 picker), a project-folder thread ("P-design folder" in project "proj"), and a code thread ("P-code thread"). Chat mode is fine.
-    - m5-select's kit walk fails on S3-I because of the fixture: it needs a hero with `h1 span` and a table. It isn't a regression.
-    - **Fixed `.ai/kit-tools/m4-drive.mjs`:** it now attaches to the visible `.design-frame`. Before, it took the first `cubiq-design://` iframe, which can be the chat turn card's hidden `?v=2` thumbnail, and that gave false failures.
-    - **Live turns pass (2026-11-09, PGS Grove `PGA/deepseek-v4.1-flash-1017`, because Zen free was at its limit):** select, chip, `/`, "3 variants: Bolder", turn, then the cycler going 1/3 → 2/3, and Discard.
-        - Kit: J-F match ("Copy link", 32 s). Flat: new thread "F-flat turn" (`a26b971e`, design system `auto`, "Start free", 29 s).
-        - Discard restores the selected part only. The agent's other edit stayed: J-F's share listener became `querySelectorAll('[data-agent-id^="btn-share"]')`. That's harmless, but Discard doesn't undo it.
-        - Script: `<session 70827509…>/scratchpad/turn.mjs` (env `THREAD SEL DIR MODEL SHOTS`), run through `m4-drive.mjs`. After a restart, the sidebar needs Design mode plus `[aria-controls=sidebar]` before `prep.mjs` can find threads.
-    - Notes: `design:history` logs "No such page" on threads with no page. A project page's `../../tokens.css` didn't apply (page serving is outside M7, so look at it separately).
-    - Scratch, Mac only. Profile: `ccb15691…/scratchpad/ud`, with the "proj" project added straight into `unskilled.db` at `c0fd174b…/scratchpad/proj`. The S3-I page is backed up at `c0fd174b…/scratchpad/s3i-backup.html`. `c0fd174b…/scratchpad/prep.mjs <title>` opens a thread in Design with Customize open.
-    - Merged 2026-11-09 (`14be44f`). The main checkout's `node_modules/xlsx` was broken (bun's cache is bad too): it was copied from the worktree.
-3. **M8** after M7 (user, 2026-11-06; plan `## M8`): one lean guide, 4 skills (`design-build`, `design-variants`, `design-kit`, `design-review`), grounded tools, 32 flat styles retired, before-and-after bench. Add from M6: a tool that renders one draft part, guidance on page token overrides (`@layer page` loses to `tokens.css`), the no-literal rule, and journey D (new kit grounding).
-4. **The user runs `publish`:** `release-kits.sh pack` again first (`ui.js` changed), then fill `KIT_CATALOG` with release URLs and SHA-256 hashes.
+2. **M8, in progress on `track/design-v2` (not merged into `m4`, not pushed).** Plan `## M8` plus the notes under it in `.ai/plans/design-mode-v2.md`.
+    - (a) Baseline (`6429027`, PGS `PGA/deepseek-v4.1-flash-1017` via opencode, bench agent `opencode-pga-deepseek`; Zen free is at its limit): 0 kit parts on all 3 pages; landing has no direction call; login and deck hit the 12-min cap. Raw: `.ai/plans/m8-bench/before.json`.
+    - (b) `1e29423`: lint rule `kit` (`grounding.ts`: unknown part, bad prop value, page CSS redrawing a part, `Kit:` coverage line); `design_kit_inspect` `search:` / `page:`; `design_set_direction` takes `kit` + `theme` + `appearance` from a kit-theme index, and Auto stores `kit:foundation/<style>`. Varelyo `icon.name` is now a text prop (46 icons, over the 32-option cap): **re-pack kits before publish**.
+    - (c) `5593114`: guide 548 words; 4 skills `design-build`, `design-variants`, `design-kit` (+ extract path), `design-review` (critique + handoff) replace the 7 old ones.
+    - (e) After-bench was started on the same 3 prompts (out: `<session 435ab7e9…>/scratchpad/m8-after`). Score it with `node .ai/kit-tools/m8-score.mjs <out>` in the worktree, and compare with before.json. Then one live run each on Claude Sonnet and Codex.
+    - Mid-way check after (b) only: Auto landed on `kit:foundation/newsroom`, but the page was 9/230 kit parts and had 2 redraws, so the result rests on (c).
+3. **Discuss next with the user: the 32 flat styles (M8 d).** They are Foundation's only themes (compat `*`) and every Auto pick uses one. The user asked "can we just delete them all?".
+    - Claude's view: a full wipe leaves Auto with Foundation's default look or a kit colour swap; decks and mobile lose their only styles (2 each); and it needs the whole style path removed (More styles, style previews, the fonts pack, the direction index, migrating `style:x` threads).
+    - Proposed instead: cut to about 12–16 distinct styles covering web, mobile and deck, chosen through an oc review.
+    - Ready for that: specimens (each style on Foundation's hero, feature-grid, pricing and form/table parts) plus contrast numbers in `<session 435ab7e9…>/scratchpad/specimens/` (`index.json`). All 32 pass contrast, so the cut is about taste.
+    - Wait for the user's choice: "cut" or "all".
+4. **M8, still open from M6:** a tool that renders one draft part; guidance on page token overrides (`@layer page` loses to `tokens.css`); journey D (new-kit grounding, failed everywhere in M6). The no-literal rule is now in the guide and the lint.
+5. **The user runs `publish`:** `release-kits.sh pack` again first (`ui.js` changed), then fill `KIT_CATALOG` with release URLs and SHA-256 hashes.
 
 ## M6 close (2026-11-09)
 
