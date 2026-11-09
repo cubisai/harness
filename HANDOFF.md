@@ -28,42 +28,28 @@ Short on purpose: current state, next steps, open questions and live traps. Repl
 |---|---|
 | M0-M4 | Closed, Windows green |
 | M5 | Pill and Typography pushed, Windows green (run 42166030432). Closes when the agent-turn items have run live |
-| M6 | Slices 1-5 done. Last fixes `8f18d76`, `911029b` (Windows green run 42557473060), `5e7f2f2` (run 42559289386 not checked). Open: journey D (M8 grounding) |
-| M7 | Not started: turn v2 on; delete the old UI, the switch and its tests; update docs |
+| M6 | **Closed 2026-11-09.** Slices 1-5 done; fixes through `17d3ee7`. Journey D moves to M8 |
+| M7 | **Next.** Turn v2 on; delete the old UI, the switch and its tests; update docs |
 | M8 | Planned 2026-11-06: agent side kit-first (skills, guide, tools, styles). See the plan |
 
 ## Next, in this order
 
-1. CI: `gh run list --workflow ci.yml --branch track/design-v2`. Rerun a lone ACP "can't start" timeout once.
-2. **Done in M6 slice 3 (`d927301`), for reference:** `SystemMode.tsx` replaces the System view; pure helpers in `system-mode.ts`.
-    - Rail: search (`⌘K`), Foundations with counts, Components by category with usage and `new`/`draft` tags. Bar: theme menu, Light/Dark, crumbs.
-    - Colors: role cards (Fill and Container × Default, Hover, Active; a state the kit lacks is `derived`), palettes worked out from each role, then `SystemPanel` rows (`bare`, `filter`).
-    - Brand colour: picker with hex and kit palette, `Review` shows `designReach` over `BRAND_TOKENS` (shared, tested against `brandEdits`), `Apply`, toast `Changes applied · … Undo ⌘Z`.
-    - Component page: `Variants | Playground | Usage N`. The sample's `states` request inlines ui.css with `:hover`/`:focus` also matching `[data-cq-hover]`/`[data-cq-focus]`. Panel: Canvas shows, add/remove variant (Copy from), add/remove prop.
-    - ⌘Z/⇧⌘Z in System view walk `designSystemHistory`. The step toast now also shows in System view.
-    - Samples (user feedback 2026-11-06): controls (`isStatefulPart`: a control, or a ≤6-element wrapper of one field) get a borderless state table; everything else a docs-style gallery, one centered bordered box per variant, overlays open in place.
-    - Canvas lost its CSS sometimes: system files now write whole (temp + rename), and a failed stylesheet reload keeps the old sheet and retries (`355592c`). Not reproduced on demand; a stress run stayed styled.
-    - Fixed: `copyVariantRules` only read top-level rules, so Add variant failed on all 6 kits (they use `@layer` and nesting). It now walks nested blocks.
-3. **M8, the agent side rebuilt kit-first** (user, 2026-11-06; full spec in the plan's `## M8` section). The 7 skills, `DESIGN-MODE.md`, the style index in `design_set_direction` and `design_lint` all predate kits. M8 replaces them with one lean guide, 4 skills (`design-build`, `design-variants`, `design-kit`, `design-review`), grounded tools and no flat styles, with a before-and-after bench. **User decided 2026-11-06:** the 4 skills, retire the 32 flat styles (good ones become Foundation themes), order M6 → M7 → M8.
-4. **Recording gaps: all built.** Actions (`b2a1062`, `m6-actions.mjs`), Customize (`acf7c8b`, `m6-customize.mjs`), and the agent turn (`5eeba59`): the Composer lip becomes a plan card while a turn with a plan runs (`PlanLip`, render-tested only, **not seen live yet**), and a v2 design turn ends with `DesignTurnCard` (`Built from MUI · N reused · M new`, part chips, version card with thumbnail that shows that version on the canvas). The kit manifest isn't versioned, so there's no `StatCard extended` line.
-5. **M6 slice 4: done (`d73f57a`).** `+` has `Start a new kit…` and `Match a screenshot…` (file picker → ref chip + `Match a screenshot` chip) in v2 design threads. The Composer renders `designChip` (also set by the style picker and System mode's `+ New component`). System mode publishes `designSystemWhere` `{page, theme}`: chips `Library · Colors · MUI · Dark`, each removable (`Library` gone = about the page). On send, `designIntent()` (`design/intent.ts`, tested) goes through `designSetIntent` before the message. Live: 24/24 in dark and light (scratch `m6-intent.mjs`, not saved to kit-tools).
-    - Not built: a separate "New design system chat" thread (multi-thread is unapproved). System mode uses the same thread; only the empty drawer says "New design system chat" (render not seen live: the test thread had messages). `Connect my components…` stays out (later).
-6. **M6 slice 5, in progress:** journeys D, F, G, H, I live. Allowed without asking (2026-11-06): Codex, Claude Sonnet, and OpenCode on PGS Grove.
-    - H (Flow → Grid, Columns, undo) is covered by `m5-scenario.mjs`; G steps 1-3 (brand colour, reach, Apply, toast) were checked live in slice 3. D, F, G4 and I need agent turns.
-    - **User decided 2026-11-06:** write the `design-kit` skill now (pulled forward from M8; done, `7b68985`), then run D, F, G4, I. M8 later reshapes it with the other 3 skills.
-    - Journey threads (scratch profile `645c0ed4…/scratchpad/ud`, Mac only): `J-D new kit` (no kit), `J-F match` (Foundation + page), `J-G system` (shadcn/ui + page), `J-I component` (Mantine + page). Driver: `journey.mjs <D|F|G|I> <threadId> <outPrefix>` with `MODEL=…`; reference image `screen.png` (dark, indigo). Both are in the zip under `scratch/`.
-    - D (PGS Grove): saved a kit but kept "My kit", added no parts, used own classes (14 `data-ui` of 281 classes). **Not a pass** (M8 grounding gap).
-    - **2026-11-09, PGS Grove, fresh Mac profile `ccb15691…/scratchpad/ud`:**
-      - F (251 s): flow works (ref chip, intent, turn card). Not a pass: DeepSeek can't see images ("no image returned to me"); 1 kit part used (`badge`), 114 own classes; dark overrides sit in `@layer page` in `page.css`, which loses to unlayered `tokens.css`, so the "locked dark" page renders light. Needs a vision model (Codex/Sonnet) and M8 guidance on page token overrides.
-      - G4 (38 s): **pass**. One scoped rule in `kit/ui.css` (default variant pill + semibold), pages untouched, no save. Literal `999px`/`14px` despite the skill's no-literal rule. Found and fixed: System mode samples rendered the saved kit's CSS, not the `kit/` draft, so the change was invisible (`8f18d76`, tested, checked live).
-      - I (564 s): **not a pass**. Ignored the new-component path: rewrote `index.html` as a pricing page from Card/Badge/Button, added no part to `kit/`, left `seg-test.html` (its `rm` was blocked). The kit move to `mantine-custom` was the user's own click on Remove prop.
-      - Codex: F **pass** (181 s: read the image, one `design_tokens_apply` of 27 tokens, 25 kit parts kept, lint fixed); I **pass** (260 s: valid `pricing-card` in `kit/`, no save). Small: Appearance shows Light on a dark-token page.
-      - Sonnet high: F and I **pass** after `5e7f2f2` (F 48 s: `design_tokens_apply` + screenshot; I 199 s: `run_code` ×6, `design_kit_inspect` ×4).
-      - **Found:** `z.record` input schemas made the cubiq server's `tools/list` fail for Claude, so Claude had no cubiq tools at all (no `run_code`, `design_*`, todo) since `f2d4873`, while the server showed "connected". Fixed with `z.object({}).catchall(...)` in 3 tools; `test/claude-tool-list.test.ts` lists the real design tools. Never use `z.record` in a harness tool.
-      - M8 notes: no tool renders one draft part (both agents left the new card unseen); DeepSeek skips the new-component path and can't see images.
-      - Driver fixed (`scratch/journey.mjs` in the session scratchpad, not in the zip yet): `TITLE`/`EFFORT` env, closes both CDP connections. Threads are made by `s-setup.mjs`-style scripts per agent.
-    - Next: M7.
-7. **The user runs `publish`:** `release-kits.sh pack` again first (`ui.js` changed), then fill `KIT_CATALOG` with release URLs and SHA-256 hashes.
+1. CI: `gh run list --workflow ci.yml --branch track/design-v2`. Rerun a lone ACP "can't start" timeout once. Not checked yet: `5e7f2f2` (run 42559289386) and `17d3ee7`.
+2. **M7, start here** (plan row M7; approved). Turn v2 on for everyone, then delete what it replaces:
+    - Remove the `designV2` switch: ~92 refs in 8 `src` files (`grep -rn designV2 src`), plus 1 test file. v2 paths become the only paths.
+    - Delete the old UI: `LiveBar.tsx`, `ElementBar.tsx`, the crumbs, the old Inspector flow; their uses in `DesignCanvas.tsx` and `SelectionChrome.tsx`.
+    - Delete the tests that pin it, together with it (user decision): `design-live-bar`, `design-element-bar`, and the old-UI parts of `design-insert` and `design-variant-cycler`. Keep and rewrite any that cover behaviour v2 still has.
+    - Threads with no kit must behave as today (plan line 78). Update `DESIGN.md` §7 and the design docs for the v2 surfaces.
+    - Gate: full regression on existing threads (chat, code, design with and without a kit, draft, flat-style and project-folder threads), dark and light, 900px, Windows CI. Re-run `.ai/kit-tools` m4-m6 scripts and `scratch/sweep.mjs` (900/1200 × dark/light × Design/Preview/Code/System; clean on `17d3ee7`).
+    - Ask the user before merging `track/design-v2` into `m4`.
+3. **M8** after M7 (user, 2026-11-06; plan `## M8`): one lean guide, 4 skills (`design-build`, `design-variants`, `design-kit`, `design-review`), grounded tools, 32 flat styles retired, before-and-after bench. Add from M6: a tool that renders one draft part, guidance on page token overrides (`@layer page` loses to `tokens.css`), the no-literal rule, and journey D (new kit grounding).
+4. **The user runs `publish`:** `release-kits.sh pack` again first (`ui.js` changed), then fill `KIT_CATALOG` with release URLs and SHA-256 hashes.
+
+## M6 close (2026-11-09)
+
+- Journeys: G4 pass (DeepSeek); F and I pass on Codex and Sonnet high; DeepSeek fails F (no vision) and I (builds a page); D fails everywhere tried (M8). Detail in the archive.
+- Fixes: `8f18d76` System samples render the `kit/` draft; `5e7f2f2` `z.record` schemas emptied Claude's whole cubiq tool list (no `run_code`/`design_*` since `f2d4873`): never use `z.record` in a harness tool, `test/claude-tool-list.test.ts` guards it; `911029b` design tools always load for Claude; `17d3ee7` 900px: Composer height follows chips, System states stack in narrow frames, stacked panel ends above the Composer, header title keeps room.
+- Scratch (session `ccb15691…/scratchpad`, Mac): profile `ud` with J-*, S-*, S2-*, S3-*, C-* threads; `zip/scratch/journey.mjs` (fixed: `TITLE`/`EFFORT` env, closes both CDP connections), `sweep.mjs`.
 
 ## Done in M6
 
