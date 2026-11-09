@@ -463,11 +463,12 @@ export class DesignKitService {
     const draft = manifestIn(join(root, "kit"));
     const inKit = system?.kit ? manifestIn(system.kit.dir)?.components.find((c) => c.ui === request.ui) : undefined;
     const inDraft = draft?.components.find((c) => c.ui === request.ui);
-    const part = inKit ?? inDraft;
+    // A draft under review shows its own CSS and tokens, so an edit in `kit/` is what the samples show.
+    const part = inDraft ?? inKit;
     if (!part) throw new Error("That component isn't in the kit.");
-    const folder = inKit ? "system" : "kit";
+    const folder = inDraft ? "kit" : "system";
     const rel = `${PREVIEW}-part.html`;
-    const uiCss = read(join(inKit ? system!.kit!.dir : join(root, "kit"), "ui.css")) ?? "";
+    const uiCss = read(join(inDraft ? join(root, "kit") : system!.kit!.dir, "ui.css")) ?? "";
     writeFileSync(join(root, rel), partSample(part, folder, request, uiCss));
     return rel;
   }

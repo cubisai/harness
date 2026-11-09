@@ -309,6 +309,21 @@ describe("System mode's kit view", () => {
     expect(doc.draft).toBeNull();
   });
 
+  it("samples a kit part from the draft's CSS while a system change is under review", () => {
+    const s = setup("kit:foundation");
+    s.kits.sample(s.thread.id, { ui: "button" });
+    expect(readFileSync(join(s.root, ".preview-part.html"), "utf8")).toContain('href="system/ui.css"');
+    s.kits.setIntent(s.thread.id, { kind: "system", where: "Library · Button" });
+    s.kits.takeNote(s.thread);
+    writeFileSync(join(s.root, "kit", "ui.css"), `${readFileSync(join(s.root, "kit", "ui.css"), "utf8")}\n[data-ui="button"] { border-radius: 999px; }\n`);
+    s.kits.sample(s.thread.id, { ui: "button" });
+    const html = readFileSync(join(s.root, ".preview-part.html"), "utf8");
+    expect(html).toContain('href="kit/ui.css"');
+    expect(html).not.toContain('href="system/ui.css"');
+    s.kits.sample(s.thread.id, { ui: "button", states: true });
+    expect(readFileSync(join(s.root, ".preview-part.html"), "utf8")).toContain("border-radius: 999px");
+  });
+
   it("shows a reviewed component as a draft until Save to kit, and Discard removes it", () => {
     const s = setup("kit:foundation");
     s.kits.setIntent(s.thread.id, { kind: "new-component" });
