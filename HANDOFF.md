@@ -29,16 +29,24 @@ Short on purpose: current state, next steps, open questions and live traps. Repl
 | M0-M4 | Closed, Windows green |
 | M5 | Pill and Typography pushed, Windows green (run 42166030432). Closes when the agent-turn items have run live |
 | M6 | **Closed 2026-11-09.** Slices 1-5 done; fixes through `17d3ee7`. Journey D moves to M8 |
-| M7 | **In progress.** Code done in `8cf24c7`; the regression gate and the merge question remain |
+| M7 | **In progress.** Code done in `8cf24c7` and `6429027`. Left: two live agent turns, CI, and the merge question |
 | M8 | Planned 2026-11-06: agent side kit-first (skills, guide, tools, styles). See the plan |
 
 ## Next, in this order
 
-1. CI: `gh run list --workflow ci.yml --branch track/design-v2`. Rerun a lone ACP "can't start" timeout once. `17d3ee7` green (run 42561859361); `8cf24c7` (M7) is run 42566360789, check it.
+1. CI: `gh run list --workflow ci.yml --branch track/design-v2`. Rerun a lone ACP "can't start" timeout once. `8cf24c7` green (run 42566360789). `6429027` dispatched 2026-11-09: check it.
 2. **M7, finish the gate.** `8cf24c7` removed the `designV2` switch (main, settings, types, Settings sheet, App, ThreadView), `LiveBar`, `ElementBar`, `InspectorPanel`, the crumbs, the dead Insert mode, the old 32-style `DesignStyleMenu` and 56 dead CSS rules. What v2 still uses moved to `design/variants.tsx`: cycler, Explore `goMessage`, `insertMessage`, `placeFloatingBar`, `escClears`. Tests: 3 files deleted, the rest repointed (`design-variants.test.tsx` is new). `DESIGN.md` §7.8 describes the studio. An undeclared page now opens on Desktop.
-    - Already checked: typecheck, 4478 tests, design:check. The sweep is clean on S3-I. m6-actions passes. The flat walk (`M5_FLAT=1 m5-select`) passes on "Z ping": I wrote a plain page into `chats/65e1aaa6…/designs/65e1aaa6` and `dd8ba0b7…`. All 14 threads open in the studio, and Chat mode is fine.
-    - Still to do: draft and project-folder threads, a code thread, a live agent turn on a kit thread and on a flat thread, the other m4-m6 scripts, and Windows CI. m5-select's kit walk needs its own fixture page: on S3-I it fails at step 1 and then throws.
-    - Left in place: the bridge still parses `gap`, `insert-cancel` and `repick-ask` (nothing sends them now). `TweaksPanel` is still exported but unused. `design:history` logs "No such page" on threads with no page.
+    - `6429027` (the user asked for it before merge): removed the old pick path, the marks/notes layer and Insert mode from the page script (`bridge.ts`). Gone with them: the `marks`, `repick-ask`, `gap`, `gap-rect`, `insert-cancel` and `text-edit` messages, the `design:edit-text` and `design:edit-style` IPCs (with the service methods, `applyTextEdit` and `applyStyleEdit`), `TweaksPanel` and 2 dead CSS rules. `go()` now sends only the direction and words. Pick is always v2 (`startSelectV2`). The gap geometry stays, because the seam `+` uses it.
+    - Passed on `6429027`: typecheck, 4456 tests, design:check. On S3-I: m6-actions (11), m6-customize (7), m5-rest (11), m6-smooth (31). Flat walk (`M5_FLAT=1 m5-select`) on "Z ping" and on the project thread. The sweep and all 14 threads were checked on `8cf24c7`.
+    - Also checked: a draft (New design shows the v2 picker), a project-folder thread ("P-design folder" in project "proj"), and a code thread ("P-code thread"). Chat mode is fine.
+    - m5-select's kit walk fails on S3-I because of the fixture: it needs a hero with `h1 span` and a table. It isn't a regression.
+    - **Fixed `.ai/kit-tools/m4-drive.mjs`:** it now attaches to the visible `.design-frame`. Before, it took the first `cubiq-design://` iframe, which can be the chat turn card's hidden `?v=2` thumbnail, and that gave false failures.
+    - **Still to do:** one live agent turn on a kit thread and one on a flat thread.
+        - Kit: J-F match (`484ff5c5`, Foundation, OpenCode). Its model is already set to `opencode/deepseek-v4.1-flash-free`. Select a button, press `/`, pick "3 variants: Bolder", wait for the turn, then check the cycler. Its page has only 2 `data-ui="badge"` parts, so pick a part that exists.
+        - Flat: make an OpenCode design thread with no kit (`createThread(projectId,"opencode",{kind:"design"})`) and give it a page.
+        - Then rerun Windows CI and ask about the merge.
+    - Notes: `design:history` logs "No such page" on threads with no page. A project page's `../../tokens.css` didn't apply (page serving is outside M7, so look at it separately).
+    - Scratch, Mac only. Profile: `ccb15691…/scratchpad/ud`, with the "proj" project added straight into `unskilled.db` at `c0fd174b…/scratchpad/proj`. The S3-I page is backed up at `c0fd174b…/scratchpad/s3i-backup.html`. `c0fd174b…/scratchpad/prep.mjs <title>` opens a thread in Design with Customize open.
     - Ask the user before merging `track/design-v2` into `m4`.
 3. **M8** after M7 (user, 2026-11-06; plan `## M8`): one lean guide, 4 skills (`design-build`, `design-variants`, `design-kit`, `design-review`), grounded tools, 32 flat styles retired, before-and-after bench. Add from M6: a tool that renders one draft part, guidance on page token overrides (`@layer page` loses to `tokens.css`), the no-literal rule, and journey D (new kit grounding).
 4. **The user runs `publish`:** `release-kits.sh pack` again first (`ui.js` changed), then fill `KIT_CATALOG` with release URLs and SHA-256 hashes.
