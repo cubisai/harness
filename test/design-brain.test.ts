@@ -14,9 +14,9 @@ import { EXPERTS } from "../src/shared/experts";
 import { catalog, closeAfter, tempDir } from "./helpers";
 
 const RESOURCES = join(__dirname, "..", "resources");
-const DESIGN_SKILLS = ["design-critique", "design-handoff", "design-mobile", "design-prototype", "design-slides", "design-system-extract"];
-// Skills CubiQ names itself (the element bar's Go, a design intent's note): design-only, but not listed in the guide.
-const CANVAS_SKILLS = ["design-kit", "design-variants"];
+const DESIGN_SKILLS = ["design-build", "design-kit", "design-review"];
+// Skills CubiQ names itself (the canvas's variants): design-only, named in the guide only as the canvas's.
+const CANVAS_SKILLS = ["design-variants"];
 const ALL_DESIGN_SKILLS = [...DESIGN_SKILLS, ...CANVAS_SKILLS].sort();
 describe("Design mode guide (DESIGN-MODE.md)", () => {
   const designMode = join(RESOURCES, "DESIGN-MODE.md");
@@ -73,18 +73,24 @@ describe("bundled design skills", () => {
 
   it("references only files that exist in their folders", () => {
     const refs: Record<string, string[]> = {
-      "design-prototype": ["assets/index.html"],
-      "design-mobile": ["assets/index.html"],
-      "design-slides": ["assets/index.html", "assets/deck.css", "assets/deck.js"],
-      "design-critique": ["references/rubric.md"],
-      "design-handoff": ["assets/handoff-template.md"],
+      "design-build": ["assets/page.html", "assets/mobile.html", "assets/deck.html", "assets/deck.css", "assets/deck.js"],
+      "design-review": ["references/rubric.md", "assets/handoff-template.md"],
     };
     for (const [skill, files] of Object.entries(refs)) {
       const body = readFileSync(join(RESOURCES, "skills", skill, "SKILL.md"), "utf8");
       for (const f of files) {
-        expect(body).toContain(f);
+        expect(body).toContain(f.split("/").pop()!);
         expect(existsSync(join(RESOURCES, "skills", skill, f))).toBe(true);
       }
+    }
+  });
+
+  it("links the kit's ui.css after the theme's tokens in every build scaffold", () => {
+    for (const f of ["page.html", "mobile.html", "deck.html"]) {
+      const html = readFileSync(join(RESOURCES, "skills", "design-build", "assets", f), "utf8");
+      expect(html.indexOf('href="system/tokens.css"'), f).toBeGreaterThan(0);
+      expect(html.indexOf('href="system/ui.css"'), f).toBeGreaterThan(html.indexOf('href="system/tokens.css"'));
+      expect(html, f).toContain('src="system/ui.js"');
     }
   });
 });

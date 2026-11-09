@@ -1,4 +1,4 @@
-/** How much design-prototype discipline a design thread gets. Chat threads have none. */
+/** How much design-build discipline a design thread gets. Chat threads have none. */
 export type PrototypeTier = "quick" | "working" | "real-app";
 
 /** The tier a design thread gets when none was chosen. */
@@ -44,10 +44,10 @@ export function tierFeatures(t: PrototypeTier): TierFeatures {
 export function tierNote(t: PrototypeTier): string {
   switch (t) {
     case "quick":
-      return "Prototype tier: Quick. Speed over polish: get the structure and the main interaction on screen. Tokens are optional; skip the states checklist, tweaks, data-agent-ids and critique.";
+      return "Prototype tier: Quick. Speed over polish: get the structure and the main interaction on screen from the kit's parts. Skip the states checklist, tweaks, data-agent-ids and review.";
     case "working":
-      return "Prototype tier: Working. Full design-prototype discipline: tokens, 8pt, states, real content, data-agent-ids and 2–5 tweaks. Check with design_screenshot and design_lint; run design-critique only when asked.";
+      return "Prototype tier: Working. Full design-build discipline: kit parts, tokens, 8pt, states, real content, data-agent-ids and 2–5 tweaks. Check with design_screenshot and design_lint; run design-review only when asked.";
     case "real-app":
-      return "Prototype tier: Real app. Product-grade: match the project's real design system and component patterns (run design-system-extract first if the project has none), keep data-agent-ids stable, then run design-critique (save it) and offer design-handoff.";
+      return "Prototype tier: Real app. Product-grade: match the project's real design system and component patterns (extract a kit with design-kit first if the project has none), keep data-agent-ids stable, then run design-review's critique (save it) and offer its handoff.";
   }
 }

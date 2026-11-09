@@ -1472,7 +1472,7 @@ describe("turnPolicy", () => {
 
 describe("designSkillsLine", () => {
   it("names the delivered skills root and the SKILL.md path to read", () => {
-    expect(designSkillsLine("/ud/harness-skills-projects/ab12")).toBe("CubiQ's design skills for this thread are in `/ud/harness-skills-projects/ab12`: read `/ud/harness-skills-projects/ab12/<skill>/SKILL.md` (e.g. design-prototype).");
+    expect(designSkillsLine("/ud/harness-skills-projects/ab12")).toBe("CubiQ's design skills for this thread are in `/ud/harness-skills-projects/ab12`: read `/ud/harness-skills-projects/ab12/<skill>/SKILL.md` (e.g. design-build).");
   });
 });
 

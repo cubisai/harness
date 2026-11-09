@@ -20,7 +20,7 @@ export function variantLabel(rel: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-/** The design's developer handoff, beside its pages (written by the design-handoff skill). */
+/** The design's developer handoff, beside its pages (written by the design-review skill). */
 export function handoffPath(dir: string): string {
   return `${dir}/handoff.md`;
 }

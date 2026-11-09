@@ -194,7 +194,7 @@ export function turnPolicy(mode: PermissionMode, design?: string): { approvalPol
 
 /** Where a design thread's CubiQ skills are, so Codex reads them there instead of guessing a root. */
 export function designSkillsLine(root: string): string {
-  return `CubiQ's design skills for this thread are in \`${root}\`: read \`${root}/<skill>/SKILL.md\` (e.g. design-prototype).`;
+  return `CubiQ's design skills for this thread are in \`${root}\`: read \`${root}/<skill>/SKILL.md\` (e.g. design-build).`;
 }
 
 /** Codex's per-turn sandbox policy, as the app-server schema spells it. */

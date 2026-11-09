@@ -2,7 +2,7 @@
 
 The checks behind the five lenses in SKILL.md. Score each lens 0–10: 10 = nothing to fix, 8 = polish only, 6 = noticeable issues, 4 = several major issues, 2 = broken.
 
-Which checks feed which lens: **Brief fit** = the request itself plus States; **Tokens & brand** = 8pt spacing, Contrast and color (palette), Token adherence; **Accessibility** = Contrast (ratios), Accessibility; **Copy** = Copy; **Layout** = Hierarchy, Alignment and layout.
+Which checks feed which lens: **Brief fit** = the request itself plus States; **Kit & tokens** = Kit grounding, 8pt spacing, Contrast and color (palette), Token adherence; **Accessibility** = Contrast (ratios), Accessibility; **Copy** = Copy; **Layout** = Hierarchy, Alignment and layout.
 
 ## Hierarchy
 - One clear focal point per view; the primary action is the most prominent control.
@@ -21,6 +21,11 @@ Which checks feed which lens: **Brief fit** = the request itself plus States; **
 - Muted text on tinted surfaces at small sizes is the usual failure; check it.
 - Color is never the only signal (status has an icon or label; links are underlined or clearly styled).
 - One primary hue for action; status colors only for status.
+
+## Kit grounding
+- The page is composed from the kit's `data-ui` parts and its blocks; `design_lint`'s `Kit:` line gives the share.
+- Only parts, props and values from `components.json` (`kit` findings are facts).
+- A variant, prop or token is used where one exists; page CSS covers only what the kit lacks and never restyles a part through `[data-ui]`.
 
 ## Token adherence
 - Colors, fonts, sizes, radii and shadows come from `system/tokens.css` (`var(--…)`), not raw values.

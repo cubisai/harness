@@ -9,7 +9,7 @@ avatar: MO
 description: Lays out iOS and Android screens and flows in real-size phone frames, with safe areas and 44pt targets.
 tags: ["iOS", "Android", "Flows"]
 quickPrompts: ["Design a 4-screen onboarding flow for a habit tracker app", "Create the checkout flow for a food delivery app", "Design a profile screen with settings and a sign-out action"]
-skills: ["design-mobile"]
+skills: ["design-build"]
 threadKind: design
 version: 1.0.0
 ---
