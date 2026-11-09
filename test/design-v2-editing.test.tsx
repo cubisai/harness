@@ -241,10 +241,9 @@ describe("1440 stage", () => {
     expect(frameLayout("desktop", "fit", { width: 3000, height: 1000 }, false, true).scale).toBe(1);
   });
 
-  it("opens an undeclared page on desktop in v2 only, and keeps a declared device in both", () => {
-    expect(viewportForDevice(undefined, true)).toBe("desktop");
-    expect(viewportForDevice(undefined)).toBe("fit");
-    expect(viewportForDevice("mobile", true)).toBe("mobile");
+  it("opens an undeclared page on desktop, and keeps a declared device", () => {
+    expect(viewportForDevice(undefined)).toBe("desktop");
+    expect(viewportForDevice("mobile")).toBe("mobile");
   });
 
   it("leaves the old layout alone without the switch", () => {

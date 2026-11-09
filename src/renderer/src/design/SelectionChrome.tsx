@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowUp, Diamond, Plus, Search } from "lucide-react";
 import type { FrameRect } from "./frame";
-import type { ActionId } from "./ElementBar";
+import type { ActionId } from "./variants";
 import { menuStep } from "./StudioBar";
 import { groupParts, type KitPart } from "./kit-parts";
 

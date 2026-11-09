@@ -74,17 +74,6 @@ describe("SettingsStore", () => {
     expect(s.get().splash).toBe("off");
   });
 
-  it("stores designV2 only when it is a boolean", () => {
-    const s = new SettingsStore(fresh(), box);
-    expect(s.get().designV2).toBeUndefined();
-    s.update({ designV2: true });
-    expect(s.get().designV2).toBe(true);
-    s.update({ designV2: "yes" as unknown as boolean });
-    expect(s.get().designV2).toBe(true);
-    s.update({ designV2: false });
-    expect(s.get().designV2).toBe(false);
-  });
-
   it("ignores invalid values", () => {
     const s = new SettingsStore(fresh(), box);
     s.update({ theme: "neon" as never, defaultPermissionMode: "yolo" as never });

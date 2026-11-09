@@ -15,8 +15,8 @@ const DEVICE_OF: Partial<Record<Viewport, DeviceKind>> = { mobile: "phone", tabl
  * The viewport a page opens in before the user picks one: the phone, tablet or slide it declares
  * (`<meta name="cubiq-device">`, or a one-screen phone page), else Fit. A desktop page stays Fit, as before.
  */
-export function viewportForDevice(device: DesignDevice | undefined, v2 = false): Viewport {
-  return device === "mobile" || device === "tablet" || device === "slide" ? device : v2 ? "desktop" : "fit";
+export function viewportForDevice(device: DesignDevice | undefined): Viewport {
+  return device === "mobile" || device === "tablet" || device === "slide" ? device : "desktop";
 }
 
 /** The device a viewport is shown in, or null when it has none. */

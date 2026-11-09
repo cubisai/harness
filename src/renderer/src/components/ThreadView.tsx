@@ -587,10 +587,10 @@ const KIND_LABEL: Record<ArtifactKind, string> = {
   docx: "Word document", sheet: "Spreadsheet", pptx: "Presentation", code: "Code", text: "Text",
 };
 
-/** Whether a thread's design pages get the design turn card (v2 design threads) instead of plain file cards. */
+/** Whether a thread's design pages get the design turn card (design threads) instead of plain file cards. */
 function useDesignTurns(threadId: string | null): boolean {
   return useStore((s) => {
-    if (!threadId || s.settings?.designV2 !== true) return false;
+    if (!threadId) return false;
     return Object.values(s.threads).some((list) => list.some((t) => t.id === threadId && t.kind === "design"));
   });
 }

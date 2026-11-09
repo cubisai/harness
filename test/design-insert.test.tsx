@@ -2,9 +2,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { childGap, gapChoice, type GapLevel } from "../src/main/design/bridge";
 import { listVariantSets, resolveVariantSet } from "../src/main/design/variants";
-import { ElementBar, insertMessage } from "../src/renderer/src/design/ElementBar";
+import { insertMessage } from "../src/renderer/src/design/variants";
 import { NO_MARKS, readBridgeMessage, type InsertGap } from "../src/renderer/src/design/frame";
-import { LiveBar, type LiveBarProps } from "../src/renderer/src/design/LiveBar";
 
 const noop = () => {};
 const level = (x: number, y: number, width: number, height: number, over: Partial<GapLevel> = {}): GapLevel => ({ rect: { x, y, width, height }, row: false, siblings: true, ...over });
@@ -81,77 +80,6 @@ describe("insert messages", () => {
     expect(text).toContain('Selected in design-1/index.html: <section> data-agent-id="pricing" · selector `main > section:nth-of-type(2)` · 960px wide.');
     expect(text).toContain("Leave it unchanged: write the set right after it, with an empty original.");
     expect(text).not.toContain("change only");
-  });
-});
-
-describe("insert bar and the + button", () => {
-  const render = (over: Partial<Parameters<typeof ElementBar>[0]> = {}) =>
-    renderToStaticMarkup(
-      <ElementBar
-        insert
-        tag="after section"
-        place={{ left: 10, top: 20, side: "below" }}
-        onSize={noop}
-        prompt=""
-        onPrompt={noop}
-        action="freeform"
-        onAction={noop}
-        marks={NO_MARKS}
-        onClearMarks={noop}
-        canGo={false}
-        goWhy="Say what goes here"
-        onGo={noop}
-        generating={false}
-        onEditText={null}
-        onComment={null}
-        repick={null}
-        onRepick={noop}
-        onClose={noop}
-        {...over}
-      />,
-    );
-
-  it("is the tag, a prompt, dictation and Go, with no action to pick", () => {
-    const html = render();
-    expect(html).toContain('aria-label="Insert after section"');
-    expect(html).toContain('placeholder="What goes here?"');
-    expect(html).toContain('aria-label="Make 3 options for this spot"');
-    expect(html).toContain('aria-label="Dictate"');
-    expect(html).not.toContain("×3");
-    expect(html).not.toContain('aria-haspopup="menu"');
-    expect(render({ generating: true })).toContain("Generating variants…");
-  });
-
-  const props = (over: Partial<LiveBarProps> = {}): LiveBarProps => ({
-    onPage: true,
-    pickWhy: null,
-    picking: false,
-    textEdit: true,
-    onPick: noop,
-    inserting: false,
-    insertWhy: null,
-    onInsert: noop,
-    detect: null,
-    detectWhy: null,
-    onDetect: noop,
-    systemOpen: false,
-    onSystem: noop,
-    onSteer: async () => true,
-    busy: false,
-    comparing: null,
-    onCompare: noop,
-    board: false,
-    onPresent: noop,
-    ...over,
-  });
-  const insertButton = (over: Partial<LiveBarProps> = {}) => /<button[^>]*aria-label="Insert"[^>]*>/.exec(renderToStaticMarkup(<LiveBar {...props(over)} />))?.[0] ?? "";
-
-  it("sits in the live bar, pressed while inserting, off away from one live page", () => {
-    expect(insertButton()).toContain('aria-pressed="false"');
-    expect(insertButton({ inserting: true })).toContain('aria-pressed="true"');
-    const off = insertButton({ onPage: false, insertWhy: "Open a page to insert" });
-    expect(off).toContain("disabled");
-    expect(off).toContain('title="Open a page to insert"');
   });
 });
 

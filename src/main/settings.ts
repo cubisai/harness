@@ -213,7 +213,6 @@ export class SettingsStore {
     if (patch.git && typeof patch.git === "object" && !Array.isArray(patch.git)) next.git = sanitizeGit({ ...(next.git ?? { commitModel: null, coAuthor: false, instructions: null }), ...patch.git });
     if (patch.mcpRouter === "auto" || patch.mcpRouter === "off") next.mcpRouter = patch.mcpRouter;
     if (patch.codeMode === "off" || patch.codeMode === "on") next.codeMode = patch.codeMode;
-    if (typeof patch.designV2 === "boolean") next.designV2 = patch.designV2;
     if (typeof patch.sidebarGroupByProject === "boolean") next.sidebarGroupByProject = patch.sidebarGroupByProject;
     if (typeof patch.uiBlocks === "boolean") next.uiBlocks = patch.uiBlocks;
     if (typeof patch.linkPreviews === "boolean") next.linkPreviews = patch.linkPreviews;

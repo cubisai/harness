@@ -583,15 +583,11 @@ async function main(): Promise<void> {
           saveCritique: (id, markdown) => service.saveCritique(id, markdown),
           setDirection: (id, direction, alternates, theme) => service.setDesignDirection(id, direction, alternates, theme),
           styleIndex: () => styleIndex(service.designStyles()),
-          ...(settings.get().designV2 === true
-            ? {
-                kits: {
-                  inspect: (id, query) => service.kits.inspect(id, query),
-                  save: (id) => service.kits.saveForAgent(id),
-                  applyTokens: (id, rel, tokens) => service.kits.applyTokens(id, rel, tokens),
-                },
-              }
-            : {}),
+          kits: {
+            inspect: (id, query) => service.kits.inspect(id, query),
+            save: (id) => service.kits.saveForAgent(id),
+            applyTokens: (id, rel, tokens) => service.kits.applyTokens(id, rel, tokens),
+          },
         },
         threadId,
       );
@@ -1225,7 +1221,6 @@ async function main(): Promise<void> {
     service.editDesignStyle(threadId, rel, { id: edit.id, changes: list });
   });
   const designDocumentFile = (threadId: unknown, rel: unknown): string => {
-    if (settings.get().designV2 !== true) throw new Error("Direct editing isn't on.");
     if (typeof threadId !== "string" || typeof rel !== "string") throw new Error("No such page.");
     const file = service.designPageFile(threadId, rel);
     if (!file) throw new Error("No such page.");
@@ -1258,11 +1253,10 @@ async function main(): Promise<void> {
     pageFile: (threadId, rel) => service.designPageFile(threadId, rel),
     catalog: () => kitOptions(),
   });
-  /** A design v2 call from the app's own window: never from a page, never with the switch off. */
-  const designV2Handle = <A extends unknown[], R>(channel: string, run: (...args: A) => R): void => {
+  /** A design call from the app's own window: never from a page. */
+  const designHandle = <A extends unknown[], R>(channel: string, run: (...args: A) => R): void => {
     ipcMain.handle(channel, (e, ...args: unknown[]) => {
       if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
-      if (settings.get().designV2 !== true) throw new Error("Kits aren't on.");
       return run(...(args as A));
     });
   };
@@ -1282,35 +1276,33 @@ async function main(): Promise<void> {
     }
     return out;
   };
-  designV2Handle("design:kit-groups", (projectId: string | null) => service.kits.groups(typeof projectId === "string" ? projectId : null));
-  designV2Handle("design:apply-theme", (threadId: string, id: unknown) => service.kits.applyTheme(threadId, idText(id)));
-  designV2Handle("design:migrate-preview", (threadId: string, rel: string, id: unknown) => service.kits.migrationPreview(threadId, rel, idText(id)));
-  designV2Handle("design:migrate-commit", (threadId: string, rel: string, id: unknown) => service.kits.commitMigration(threadId, rel, idText(id)));
-  designV2Handle("design:migrate-cancel", (threadId: string) => service.kits.cancelMigration(threadId));
-  designV2Handle("design:save-theme", (threadId: string, name: unknown, tokens: unknown, sourceId: unknown) => service.kits.saveTheme(threadId, shortText(name), tokenMap(tokens), typeof sourceId === "string" ? idText(sourceId) : undefined));
-  designV2Handle("design:kit-doc", (threadId: string) => service.kits.doc(threadId));
-  designV2Handle("design:kit-sample", (threadId: string, request: unknown) => service.kits.sample(threadId, readKitSample(request)));
-  designV2Handle("design:kit-edit", (threadId: string, edit: unknown) => service.kits.edit(threadId, readKitEdit(edit)));
-  designV2Handle("design:kit-draft-save", (threadId: string) => service.kits.saveForUser(threadId));
-  designV2Handle("design:kit-draft-discard", (threadId: string) => service.kits.discardDraft(threadId));
-  designV2Handle("design:reach", (threadId: string, tokens: unknown) => service.kits.reach(threadId, Array.isArray(tokens) ? tokens.filter((t): t is string => typeof t === "string" && /^--[\w-]+$/.test(t)) : []));
-  designV2Handle("design:system-history", (threadId: string, action: unknown) => {
+  designHandle("design:kit-groups", (projectId: string | null) => service.kits.groups(typeof projectId === "string" ? projectId : null));
+  designHandle("design:apply-theme", (threadId: string, id: unknown) => service.kits.applyTheme(threadId, idText(id)));
+  designHandle("design:migrate-preview", (threadId: string, rel: string, id: unknown) => service.kits.migrationPreview(threadId, rel, idText(id)));
+  designHandle("design:migrate-commit", (threadId: string, rel: string, id: unknown) => service.kits.commitMigration(threadId, rel, idText(id)));
+  designHandle("design:migrate-cancel", (threadId: string) => service.kits.cancelMigration(threadId));
+  designHandle("design:save-theme", (threadId: string, name: unknown, tokens: unknown, sourceId: unknown) => service.kits.saveTheme(threadId, shortText(name), tokenMap(tokens), typeof sourceId === "string" ? idText(sourceId) : undefined));
+  designHandle("design:kit-doc", (threadId: string) => service.kits.doc(threadId));
+  designHandle("design:kit-sample", (threadId: string, request: unknown) => service.kits.sample(threadId, readKitSample(request)));
+  designHandle("design:kit-edit", (threadId: string, edit: unknown) => service.kits.edit(threadId, readKitEdit(edit)));
+  designHandle("design:kit-draft-save", (threadId: string) => service.kits.saveForUser(threadId));
+  designHandle("design:kit-draft-discard", (threadId: string) => service.kits.discardDraft(threadId));
+  designHandle("design:reach", (threadId: string, tokens: unknown) => service.kits.reach(threadId, Array.isArray(tokens) ? tokens.filter((t): t is string => typeof t === "string" && /^--[\w-]+$/.test(t)) : []));
+  designHandle("design:system-history", (threadId: string, action: unknown) => {
     const step = service.kits.history(threadId, action === "redo" ? "redo" : "undo");
     return step ? { ...step, doc: service.designSystemDoc(threadId) } : null;
   });
-  designV2Handle("design:save-composition", (threadId: string, name: unknown, html: unknown, force: unknown) => service.kits.saveComposition(threadId, shortText(name), shortText(html, 8192), force === true));
-  designV2Handle("design:set-intent", (threadId: string, intent: unknown) => service.kits.setIntent(threadId, readIntent(intent)));
+  designHandle("design:save-composition", (threadId: string, name: unknown, html: unknown, force: unknown) => service.kits.saveComposition(threadId, shortText(name), shortText(html, 8192), force === true));
+  designHandle("design:set-intent", (threadId: string, intent: unknown) => service.kits.setIntent(threadId, readIntent(intent)));
   // One install per kit at a time, so a double click can't race its own rename.
   const kitInstalls = new Map<string, Promise<DesignKitEnsureResult>>();
   const KIT_DOWNLOAD_MS = 120_000;
   ipcMain.handle("design:systems:catalog", (e): DesignKitOption[] => {
     if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
-    if (settings.get().designV2 !== true) throw new Error("Kits aren't on.");
     return kitOptions();
   });
   ipcMain.handle("design:systems:ensure", (e, id: unknown): Promise<DesignKitEnsureResult> => {
     if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
-    if (settings.get().designV2 !== true) throw new Error("Kits aren't on.");
     if (id === "foundation") return Promise.resolve({ ok: true });
     const entry = typeof id === "string" ? KIT_CATALOG.find((k) => k.id === id) : undefined;
     if (!entry) return Promise.resolve({ ok: false, code: "unknown", message: "That kit isn't in this version of the app." });

@@ -265,7 +265,7 @@ button { cursor: default; }
 .app.design-thread.canvas-first.with-inspector { grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--inspector-w); }
 .app.canvas-first > .sidebar, .app.canvas-first > .pane-rail { grid-column: 1; grid-row: 1 / -1; }
 .app.canvas-first > .inspector { grid-column: 3; grid-row: 1 / -1; }
-/* Above the canvas's own floating bars (live bar, element bar, cycler: z 20–22), under its Present overlay (z 30). */
+/* Above the canvas's own floating bars (the cycler and the selection chrome: z 20–22), under its Present overlay (z 30). */
 .app.canvas-first > .main { grid-column: 2; grid-row: 1 / -1; position: relative; z-index: 25; background: transparent; pointer-events: none; }
 .app.canvas-first > .main > * { pointer-events: auto; }
 .app.canvas-first > .design-canvas { grid-column: 2; grid-row: 2; border-left: 0; }
@@ -1060,48 +1060,8 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
    --live-bar-room is the strip the stage, Compare and the board keep clear for it. */
 .design-canvas { --live-bar-bottom: 12px; --live-bar-room: 56px; }
 .app { --design-inspector-w: 300px; } /* the canvas Inspector's width; the canvas-first prompt pane keeps clear of it */
-.design-live-bar {
-  position: absolute;
-  left: 50%;
-  bottom: var(--live-bar-bottom);
-  transform: translateX(-50%);
-  z-index: 21;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  max-width: calc(100% - 24px);
-  padding: 2px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-l);
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow-float);
-}
-.design-live-bar > * { flex-shrink: 0; }
-.design-live-pick, .design-live-steer-open {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 10px 0 8px;
-  border: 0;
-  border-radius: var(--radius-s);
-  background: transparent;
-  color: var(--text-secondary);
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 500;
-  white-space: nowrap;
-  transition: background 120ms var(--ease), color 120ms var(--ease);
-}
-.design-live-pick:hover:not(:disabled), .design-live-steer-open:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
-.design-live-pick.active { background: var(--primary-soft); color: var(--primary); }
-.design-live-pick:disabled, .design-live-steer-open:disabled { opacity: 0.4; }
-.design-live-steer { display: flex; align-items: center; gap: 2px; flex-shrink: 1; min-width: 0; }
-.design-live-steer-input { flex: 1 1 260px; min-width: 0; width: 260px; height: 28px; padding: 0 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-s); background: var(--bg); color: var(--text); font: inherit; font-size: 12.5px; }
-.design-live-steer-input:focus { outline: none; border-color: var(--hairline-strong); }
-.design-live-steer-input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .design-float-divider { flex-shrink: 0; width: 1px; height: 20px; margin: 0 2px; background: var(--hairline); }
-/* The element bar: under the picked element (placed by the canvas from the bridge's anchor), a floating overlay. */
+/* The variant cycler's floating bar: under the variant set (placed by the canvas from the bridge's box). */
 .design-element-bar {
   position: absolute;
   z-index: 22;
@@ -1116,34 +1076,12 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
   box-shadow: var(--shadow-float);
 }
 .design-element-bar > * { flex-shrink: 0; }
-.design-element-tag { max-width: 160px; height: 22px; margin: 0 2px 0 4px; padding: 0 6px; overflow: hidden; border-radius: var(--radius-s); background: var(--bg-chip); color: var(--text-secondary); font: 500 11.5px/22px var(--mono); white-space: nowrap; text-overflow: ellipsis; }
-.design-element-bar .design-element-prompt { flex: 1 1 240px; flex-shrink: 1; min-width: 0; width: 240px; height: 28px; padding: 0 6px; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 12.5px; }
-.design-element-prompt::placeholder { color: var(--text-tertiary); }
-.design-element-prompt:focus { outline: none; }
-.design-element-prompt:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: var(--radius-s); }
-.design-element-clear { height: 22px; padding: 0 6px; border: 0; border-radius: var(--radius-s); background: transparent; color: var(--text-secondary); font: 500 11.5px var(--font); white-space: nowrap; }
-.design-element-clear:hover { background: var(--bg-hover); color: var(--text); }
-.design-element-action-wrap { position: relative; }
-.design-element-action { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border: 0; border-radius: var(--radius-s); background: var(--bg-chip); color: var(--text-secondary); font: inherit; font-size: 12.5px; font-weight: 500; white-space: nowrap; transition: background 120ms var(--ease), color 120ms var(--ease); }
-.design-element-action:hover, .design-element-action.open { background: var(--bg-selected); color: var(--text); }
-.design-element-times { font: 500 11px var(--mono); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
-.design-element-go { display: inline-grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: var(--radius-s); background: var(--primary); color: var(--on-primary); transition: opacity 120ms var(--ease); }
-.design-element-go:disabled { opacity: 0.4; }
-.design-element-generating { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 10px; color: var(--signal-ink); font-size: 12.5px; font-weight: 500; white-space: nowrap; }
-.design-element-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--signal-fill); outline: 1px solid var(--text); }
 .design-element-ask { padding: 0 8px; font-size: 12.5px; color: var(--text); white-space: nowrap; }
 .design-element-bar .button { height: 28px; }
 /* The variant cycler takes the element bar's place: ‹ n / 3 ›, ×, Accept. */
 .design-variant-count { min-width: 44px; text-align: center; font: 500 12px var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
 .design-variant-accept { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: var(--radius-s); background: var(--primary); color: var(--on-primary); font: inherit; font-size: 12.5px; font-weight: 500; }
 .design-variant-accept:disabled { opacity: 0.4; }
-/* The action palette: 4 × 3, over the element (up from the bar, or down when the bar sits above it). */
-.design-action-palette { position: absolute; right: 0; top: calc(100% + 8px); z-index: 1; display: grid; grid-template-columns: repeat(4, 76px); gap: 2px; padding: 4px; border: 1px solid var(--hairline); border-radius: var(--radius-l); background: var(--bg-elevated); box-shadow: var(--shadow-float); }
-.design-action-palette.up { top: auto; bottom: calc(100% + 8px); }
-.design-action-cell { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; height: 52px; padding: 0 4px; border: 0; border-radius: var(--radius-m); background: transparent; color: var(--text-secondary); font: inherit; font-size: 11.5px; font-weight: 500; }
-.design-action-cell:hover { background: var(--bg-hover); color: var(--text); }
-.design-action-cell.on { background: var(--bg-selected); color: var(--text); }
-.design-action-cell:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 /* Device chrome around a sized frame: a phone (bezel, island, home indicator), a tablet, or a browser window. Sizes scale with the frame (--s). */
 .device-off { display: contents; }
 .device-shell { position: relative; margin: auto; flex-shrink: 0; box-shadow: var(--shadow-float); }
@@ -1200,16 +1138,10 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-rail-layers .el-row { border-radius: var(--radius-s); }
 .design-rail-layers .el-empty { padding: 2px 14px; color: var(--text-tertiary); }
 .design-inspector { width: var(--design-inspector-w); flex-shrink: 0; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; border-left: 1px solid var(--hairline); background: var(--bg-elevated); }
-.design-inspector-tabs { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; padding: 8px; border-bottom: 1px solid var(--hairline); background: var(--bg-elevated); }
 .design-inspector-empty { margin: 0; padding: 12px; font-size: 12.5px; color: var(--text-secondary); }
-.design-inspector-head { display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 10px 12px 4px; }
-.design-inspector-tag { flex-shrink: 0; font: 600 12.5px var(--mono); color: var(--text); }
-.design-inspector-label { min-width: 0; font-size: 12.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .design-inspector-group { padding: 6px 12px 10px; }
 .design-inspector-group h3 { margin: 0 0 4px; font-size: 11.5px; font-weight: 600; color: var(--text-tertiary); }
-.design-inspector-row { display: flex; align-items: center; gap: 8px; min-height: 34px; }
 .design-inspector-row-label { flex-shrink: 0; width: 92px; font-size: 11.5px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.design-inspector-row .text-input { height: 28px; padding: 0 8px; font-size: 12.5px; font-family: var(--mono); }
 .design-inspector-swatch { flex-shrink: 0; width: 14px; height: 14px; border-radius: var(--radius-s); border: 1px solid var(--hairline-strong); }
 /* The swatch that opens the system colour picker (the text input beside it stays for typing). */
 .design-color-swatch { flex-shrink: 0; width: 18px; height: 18px; padding: 0; border: 1px solid var(--hairline-strong); border-radius: var(--radius-s); background: none; cursor: pointer; }
@@ -1217,10 +1149,6 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-color-swatch::-webkit-color-swatch { border: none; border-radius: calc(var(--radius-s) - 1px); }
 .design-color-swatch:hover { border-color: var(--text-tertiary); }
 .design-color-swatch:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.design-inspector-dot { flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
-.design-inspector-pad { display: flex; gap: 4px; flex: 1; min-width: 0; }
-.design-inspector-pad label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 10.5px; color: var(--text-tertiary); }
-.design-inspector-pad .text-input { flex: none; height: 28px; padding: 0 6px; font-size: 12.5px; font-family: var(--mono); }
 .design-inspector-code-head { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--hairline); background: var(--bg-elevated); }
 .design-inspector-code-path { flex: 1; min-width: 0; font: 11.5px var(--mono); color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .design-inspector-code { flex: 1; min-width: 0; margin: 0; padding: 10px 12px; font: 11.5px/1.5 var(--mono); color: var(--text); white-space: pre; }
@@ -1233,16 +1161,7 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .syn-number { color: var(--syn-number); }
 .syn-comment { color: var(--syn-comment); font-style: italic; }
 .syn-attr { color: var(--text-secondary); }
-.design-inspector-foot { position: sticky; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--hairline); background: var(--bg-elevated); }
-.design-inspector-foot .grow { flex: 1; }
-.design-inspector-hint { min-width: 0; font-size: 11.5px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* Five tabs share the panel's width. */
-.design-inspector-tabs .segmented { flex: 1; min-width: 0; }
-/* Each tab is as wide as its label (equal shares were narrower than "Properties"; the five need ~255px, hence the
-   300px panel); a narrower panel ellipsizes rather than overlapping. */
-.design-inspector-tabs .segmented button { flex: 1 1 auto; min-width: 0; padding: 0 4px; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Width and height: a Hug | Fill | Fixed switch above the value. */
-.design-inspector-size { padding-top: 4px; }
 /* Design v2's Customize panel: Page Theme when nothing is selected, the element's style when something is. */
 .design-customize-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 4px; min-height: 40px; padding: 4px 8px 4px 12px; background: var(--bg); border-bottom: 1px solid var(--hairline); }
 .design-customize-head:has(> .icon-button:first-child) { padding-left: 4px; }
@@ -1280,8 +1199,6 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .link-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: var(--radius-s); }
 .design-save-status { flex-shrink: 0; font-size: 11.5px; color: var(--text-tertiary); white-space: nowrap; }
 .design-save-status.error { color: var(--danger); }
-.design-inspector-sizing { margin-left: 100px; }
-.design-inspector-sizing button { height: 22px; padding: 0 8px; font-size: 11.5px; }
 /* The Tweaks tab: the page's tweak controls, without the popover's frame. */
 .design-inspector .design-tweaks { position: static; width: auto; max-height: none; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
 /* The System tab: the thread's design system — its name, section jumps, DESIGN.md and tokens.css. */
@@ -1339,18 +1256,11 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .el-tag { flex-shrink: 0; margin-left: 6px; font: 10.5px var(--mono); color: var(--text-tertiary); }
 .el-empty { margin: 0; padding: 12px; font-size: 12.5px; color: var(--text-secondary); }
 @media (prefers-reduced-motion: reduce) { .el-twisty svg { transition: none; } }
-/* Selection: a count on the Select button, a breadcrumb bar for one element, and a spoken summary. */
+/* Selection: a count on the Select button and a spoken summary. */
 .design-tools .icon-button { position: relative; }
 .design-select-count { position: absolute; top: 1px; right: 0; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: var(--primary); color: var(--on-primary); font: 600 10px/14px var(--mono); font-variant-numeric: tabular-nums; }
-.design-crumbs { display: flex; align-items: center; gap: 2px; min-width: 0; height: 36px; padding: 0 8px 0 12px; border-bottom: 1px solid var(--hairline); background: var(--bg); font-size: 12.5px; }
-.design-crumb-step { display: inline-flex; align-items: center; gap: 2px; min-width: 0; flex-shrink: 1; }
-.design-crumb { min-width: 0; max-width: 160px; height: 24px; padding: 0 6px; border: 0; border-radius: var(--radius-s); background: transparent; color: var(--text-tertiary); font: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-button.design-crumb:hover { background: var(--bg-hover); color: var(--text); }
-.design-crumb.current { flex-shrink: 0; max-width: 240px; color: var(--text); font-weight: 500; line-height: 24px; }
-.design-crumb-sep { color: var(--text-tertiary); }
-.design-crumbs .grow { flex: 1; }
 .design-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-/* Comments (Real app tier): the inline composer under the breadcrumb, and the list in the toolbar popover. */
+/* Comments: the inline composer and the list in the toolbar popover. */
 .design-comment-new { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 12px; border-bottom: 1px solid var(--hairline); background: var(--bg); }
 .design-comment-input { flex: 1; min-width: 0; height: 28px; padding: 0 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-s); background: var(--bg); color: var(--text); font: inherit; font-size: 12.5px; }
 .design-comment-input:focus { outline: 2px solid var(--focus); outline-offset: 2px; }

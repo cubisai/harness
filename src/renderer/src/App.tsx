@@ -145,8 +145,7 @@ export function App() {
   // Canvas-first: the canvas fills the main area and the chat is a prompt bar over its foot, the transcript a drawer.
   const canvasFirst = design && Boolean(thread) && Boolean(project) && layout.designLayout === "canvas";
   // Design v2's studio: one top bar, one Composer. A design thread gets the window, so the sidebar folds while it's open.
-  const designV2 = useStore((s) => s.settings?.designV2 === true);
-  const studio = canvasFirst && designV2;
+  const studio = canvasFirst;
   useLayoutEffect(() => {
     useStore.setState({ studioFold: studio ? true : null });
   }, [studio]);
