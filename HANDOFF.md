@@ -29,13 +29,13 @@ Short on purpose: current state, next steps, open questions and live traps. Repl
 | M0-M4 | Closed, Windows green |
 | M5 | Pill and Typography pushed, Windows green (run 42166030432). Closes when the agent-turn items have run live |
 | M6 | **Closed 2026-11-09.** Slices 1-5 done; fixes through `17d3ee7`. Journey D moves to M8 |
-| M7 | **Gate passed 2026-11-09.** Code in `8cf24c7` and `6429027`, CI green, both live turns pass. Waiting on the user's merge answer |
+| M7 | **Closed 2026-11-09.** Merged into `m4` (`14be44f`) on the user's yes; checks green on `m4`. Not pushed |
 | M8 | Planned 2026-11-06: agent side kit-first (skills, guide, tools, styles). See the plan |
 
 ## Next, in this order
 
 1. CI: `gh run list --workflow ci.yml --branch track/design-v2`. Rerun a lone ACP "can't start" timeout once. `6429027` green (run 42569038106).
-2. **M7, gate passed; merge is the user's call.** `8cf24c7` removed the `designV2` switch (main, settings, types, Settings sheet, App, ThreadView), `LiveBar`, `ElementBar`, `InspectorPanel`, the crumbs, the dead Insert mode, the old 32-style `DesignStyleMenu` and 56 dead CSS rules. What v2 still uses moved to `design/variants.tsx`: cycler, Explore `goMessage`, `insertMessage`, `placeFloatingBar`, `escClears`. Tests: 3 files deleted, the rest repointed (`design-variants.test.tsx` is new). `DESIGN.md` §7.8 describes the studio. An undeclared page now opens on Desktop.
+2. **M7, done and merged** (detail kept below until M8 starts). `8cf24c7` removed the `designV2` switch (main, settings, types, Settings sheet, App, ThreadView), `LiveBar`, `ElementBar`, `InspectorPanel`, the crumbs, the dead Insert mode, the old 32-style `DesignStyleMenu` and 56 dead CSS rules. What v2 still uses moved to `design/variants.tsx`: cycler, Explore `goMessage`, `insertMessage`, `placeFloatingBar`, `escClears`. Tests: 3 files deleted, the rest repointed (`design-variants.test.tsx` is new). `DESIGN.md` §7.8 describes the studio. An undeclared page now opens on Desktop.
     - `6429027` (the user asked for it before merge): removed the old pick path, the marks/notes layer and Insert mode from the page script (`bridge.ts`). Gone with them: the `marks`, `repick-ask`, `gap`, `gap-rect`, `insert-cancel` and `text-edit` messages, the `design:edit-text` and `design:edit-style` IPCs (with the service methods, `applyTextEdit` and `applyStyleEdit`), `TweaksPanel` and 2 dead CSS rules. `go()` now sends only the direction and words. Pick is always v2 (`startSelectV2`). The gap geometry stays, because the seam `+` uses it.
     - Passed on `6429027`: typecheck, 4456 tests, design:check. On S3-I: m6-actions (11), m6-customize (7), m5-rest (11), m6-smooth (31). Flat walk (`M5_FLAT=1 m5-select`) on "Z ping" and on the project thread. The sweep and all 14 threads were checked on `8cf24c7`.
     - Also checked: a draft (New design shows the v2 picker), a project-folder thread ("P-design folder" in project "proj"), and a code thread ("P-code thread"). Chat mode is fine.
@@ -47,7 +47,7 @@ Short on purpose: current state, next steps, open questions and live traps. Repl
         - Script: `<session 70827509…>/scratchpad/turn.mjs` (env `THREAD SEL DIR MODEL SHOTS`), run through `m4-drive.mjs`. After a restart, the sidebar needs Design mode plus `[aria-controls=sidebar]` before `prep.mjs` can find threads.
     - Notes: `design:history` logs "No such page" on threads with no page. A project page's `../../tokens.css` didn't apply (page serving is outside M7, so look at it separately).
     - Scratch, Mac only. Profile: `ccb15691…/scratchpad/ud`, with the "proj" project added straight into `unskilled.db` at `c0fd174b…/scratchpad/proj`. The S3-I page is backed up at `c0fd174b…/scratchpad/s3i-backup.html`. `c0fd174b…/scratchpad/prep.mjs <title>` opens a thread in Design with Customize open.
-    - **Asked 2026-11-09:** merge `track/design-v2` into `m4`? Don't merge without a yes.
+    - Merged 2026-11-09 (`14be44f`). The main checkout's `node_modules/xlsx` was broken (bun's cache is bad too): it was copied from the worktree.
 3. **M8** after M7 (user, 2026-11-06; plan `## M8`): one lean guide, 4 skills (`design-build`, `design-variants`, `design-kit`, `design-review`), grounded tools, 32 flat styles retired, before-and-after bench. Add from M6: a tool that renders one draft part, guidance on page token overrides (`@layer page` loses to `tokens.css`), the no-literal rule, and journey D (new kit grounding).
 4. **The user runs `publish`:** `release-kits.sh pack` again first (`ui.js` changed), then fill `KIT_CATALOG` with release URLs and SHA-256 hashes.
 
