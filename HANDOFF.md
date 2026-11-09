@@ -34,7 +34,7 @@ Short on purpose: current state, next steps, open questions and live traps. Repl
 
 ## Next, in this order
 
-1. CI: `gh run list --workflow ci.yml --branch track/design-v2`. Rerun a lone ACP "can't start" timeout once. Not checked yet: `5e7f2f2` (run 42559289386) and `17d3ee7`.
+1. CI: `gh run list --workflow ci.yml --branch track/design-v2`. Rerun a lone ACP "can't start" timeout once. `5e7f2f2` green (run 42559289386); `17d3ee7` dispatched 2026-11-09, check it.
 2. **M7, start here** (plan row M7; approved). Turn v2 on for everyone, then delete what it replaces:
     - Remove the `designV2` switch: ~92 refs in 8 `src` files (`grep -rn designV2 src`), plus 1 test file. v2 paths become the only paths.
     - Delete the old UI: `LiveBar.tsx`, `ElementBar.tsx`, the crumbs, the old Inspector flow; their uses in `DesignCanvas.tsx` and `SelectionChrome.tsx`.
