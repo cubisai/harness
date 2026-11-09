@@ -5,7 +5,9 @@ import type { DesignKitOption, DesignMutation } from "../../shared/design-mutati
 import type { DesignIntent, DesignKitDoc, DesignKitEdit, DesignKitGroup, DesignKitPart, DesignKitSampleRequest, DesignMigrationPreview, DesignReach, DesignThemeCard, LiveUpdate, Thread } from "../../shared/types";
 import { addComposition, applyKitEdit, isStatefulPart, compositionWarnings, diffManifests, freeFolder, manifestIn, partCounts, partSample, partsUsingToken, projectKitFolders, projectSystemsDir, saveKitDraft, saveSystemCopy, seedKitDraft, forkKitSystem } from "./kit-library";
 import { migratePage, parseMigrations, type MigrationPlan } from "./kit-migrate";
-import { validateKitDir } from "./kit-schema";
+import { groundPage, groundingSummary } from "./grounding";
+import { validateKitDir, type KitManifest } from "./kit-schema";
+import type { LintFinding } from "./lint";
 import { listDesignPages } from "./pages";
 import { listDesignSystems, listKitSystems, materializeSystem, type DesignStyleInfo, type DesignSystemInfo } from "./systems";
 import { parseTokens } from "./tokens";
@@ -567,8 +569,28 @@ export class DesignKitService {
     return `${entries.length} token${entries.length === 1 ? "" : "s"} changed on ${rel}, no components touched. The user can undo it in one step and save it as a theme.`;
   }
 
+  /** The manifest a thread's pages are checked against: its `kit/` draft when there is one (it holds parts not saved yet), else its kit's. */
+  private pageManifest(thread: Thread): KitManifest | null {
+    const root = this.deps.designRoot(thread.id);
+    const draft = root ? manifestIn(join(root, "kit")) : null;
+    if (draft) return draft;
+    const system = this.deps.threadSystem(thread);
+    return system?.kit ? manifestIn(system.kit.dir) : null;
+  }
+
+  /** `design_lint`'s kit check of one page: null when the thread isn't on a kit or the page can't be read. */
+  ground(threadId: string, rel: string): { findings: LintFinding[]; summary: string } | null {
+    const thread = this.deps.getThread(threadId);
+    const root = this.deps.designRoot(threadId);
+    const manifest = this.pageManifest(thread);
+    const html = root ? read(join(root, rel)) : null;
+    if (!manifest || html === null) return null;
+    const g = groundPage(html, manifest);
+    return { findings: g.findings, summary: groundingSummary(g, manifest.name) };
+  }
+
   /** What `design_kit_inspect` says. */
-  inspect(threadId: string, query: { kit?: string; component?: string; block?: string; startDraft?: boolean }): string {
+  inspect(threadId: string, query: { kit?: string; component?: string; block?: string; search?: string; page?: string; startDraft?: boolean }): string {
     const thread = this.deps.getThread(threadId);
     const root = this.deps.designRoot(threadId);
     const current = this.deps.threadSystem(thread);
@@ -593,6 +615,39 @@ export class DesignKitService {
       const imported = part.import ? `\nReal import: ${part.import.name} from ${part.import.package}` : "";
       return `${part.name} (data-ui="${part.ui}"). ${part.description ?? ""}${imported}\nProps:\n${props || "- none"}\nSnippet:\n${part.snippet}`;
     }
+    if (query.search) {
+      const words = query.search.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+      const score = (text: string): number => words.filter((w) => text.toLowerCase().includes(w)).length;
+      const hits = manifest.components
+        .map((c) => ({ c, s: score(c.ui) * 3 + score(c.name) * 2 + score(`${c.category ?? ""} ${c.description ?? ""}`) }))
+        .filter((h) => h.s > 0)
+        .sort((a, b) => b.s - a.s)
+        .slice(0, 8);
+      const blockHits = blocksIn(dir).filter((b) => score(b) > 0);
+      if (!hits.length && !blockHits.length) return `Nothing in ${manifest.name} matches "${query.search}". Parts: ${manifest.components.map((c) => c.ui).join(", ")}.`;
+      return [
+        ...hits.map(({ c }) => `${c.ui}: ${c.name}${c.description ? `, ${c.description}` : ""}${c.props.length ? ` (props: ${c.props.map((p) => p.name).join(", ")})` : ""}`),
+        blockHits.length ? `Blocks: ${blockHits.join(", ")}` : "",
+        "Ask component:<ui> for a part's props and snippet, block:<name> for a block's HTML.",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    }
+    if (query.page) {
+      if (!root) throw new Error("This thread has no design folder.");
+      const rel = query.page.trim().replace(/\\/g, "/").replace(/^\.?\//, "").replace(new RegExp(`^${designDirName(threadId)}/`), "");
+      if (rel.includes("..")) throw new Error(`${query.page} is outside the design folder.`);
+      const html = read(join(root, rel));
+      if (html === null) throw new Error(`${rel} doesn't exist yet.`);
+      const g = groundPage(html, this.pageManifest(thread) ?? manifest);
+      const lines = g.used.map(({ ui, count }) => {
+        const part = manifest.components.find((c) => c.ui === ui);
+        if (!part) return `${ui}×${count}: not a ${manifest.name} part`;
+        const imported = part.import ? `, ${part.import.name} from ${part.import.package}` : "";
+        return `${ui}×${count}: ${part.name}${imported}`;
+      });
+      return [groundingSummary(g, manifest.name), ...lines].join("\n");
+    }
     if (query.block) {
       const safe = query.block.replace(/[^a-z0-9-]/gi, "");
       const html = read(join(dir, "blocks", `${safe}.html`));
@@ -604,12 +659,7 @@ export class DesignKitService {
       const key = c.category ?? "Other";
       byCategory.set(key, [...(byCategory.get(key) ?? []), c.ui]);
     }
-    let blocks: string[] = [];
-    try {
-      blocks = readdirSync(join(dir, "blocks")).filter((f) => f.endsWith(".html")).map((f) => f.slice(0, -5));
-    } catch {
-      // A kit may have no blocks.
-    }
+    const blocks = blocksIn(dir);
     const others = this.catalog().filter((k) => k.installed && k.id !== kitId).map((k) => k.id);
     return [
       `${manifest.name} ${manifest.version}${manifest.package ? `, modelled on ${manifest.package}` : ""}`,
@@ -683,6 +733,16 @@ export class DesignKitService {
       return `the user chose New component.${start}\`${folder}/kit/\` is a draft copy of ${from.name}. Load the \`design-kit\` skill and follow its new-component path. Don't call design_kit_save: they review it first.`;
     }
     return `this message is about the design system, not the page (${intent.where}). \`${folder}/kit/\` is a draft copy of ${from.name}: change that, not the pages. Load the \`design-kit\` skill. Don't call design_kit_save: they review it first.`;
+  }
+}
+
+/** A kit's block names (file names without .html). */
+function blocksIn(dir: string): string[] {
+  try {
+    return readdirSync(join(dir, "blocks")).filter((f) => f.endsWith(".html")).map((f) => f.slice(0, -5)).sort();
+  } catch {
+    // A kit may have no blocks.
+    return [];
   }
 }
 

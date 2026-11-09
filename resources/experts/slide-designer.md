@@ -9,7 +9,7 @@ avatar: SD
 description: Turns a story into a 1920x1080 deck you can click through, present and print to PDF.
 tags: ["Slides", "Storytelling", "PDF"]
 quickPrompts: ["Turn these notes into a 10-slide investor update", "Make a 6-slide project kickoff deck for the team", "Design a one-slide summary of our quarterly results"]
-skills: ["design-slides"]
+skills: ["design-build"]
 threadKind: design
 version: 1.0.0
 ---

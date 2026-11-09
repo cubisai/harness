@@ -7,7 +7,7 @@ import { DesignDocuments } from "../src/main/design/documents";
 import { DesignKitService } from "../src/main/design/kit-service";
 import { documentIdOf } from "../src/main/design/mutation";
 import { listDesignSystems, listKitSystems, type DesignSystemInfo } from "../src/main/design/systems";
-import { designTools, DESIGN_KIT_INSPECT_TOOL, DESIGN_KIT_SAVE_TOOL, DESIGN_TOKENS_APPLY_TOOL } from "../src/main/design/tools";
+import { designTools, DESIGN_KIT_INSPECT_TOOL, DESIGN_LINT_TOOL, DESIGN_KIT_SAVE_TOOL, DESIGN_TOKENS_APPLY_TOOL } from "../src/main/design/tools";
 import { tempDir } from "./helpers";
 
 const FOUNDATION = join(process.cwd(), "resources", "design-kits", "foundation");
@@ -178,12 +178,12 @@ describe("tokens from the agent", () => {
         screenshot: async () => {
           throw new Error("no");
         },
-        evaluate: async () => "",
+        evaluate: async () => JSON.stringify({ findings: [], skipped: [], scanned: 3 }),
         lintScript: "",
         saveCritique: () => null,
         setDirection: () => "",
-        styleIndex: () => "",
-        kits: { inspect: (id, q) => s.kits.inspect(id, q), save: (id) => s.kits.saveForAgent(id), applyTokens: (id, rel, t) => s.kits.applyTokens(id, rel, t) },
+        kitIndex: () => "",
+        kits: { inspect: (id, q) => s.kits.inspect(id, q), ground: (id, rel) => s.kits.ground(id, rel), save: (id) => s.kits.saveForAgent(id), applyTokens: (id, rel, t) => s.kits.applyTokens(id, rel, t) },
       },
       s.thread.id,
     );
@@ -201,7 +201,7 @@ describe("tokens from the agent", () => {
 
   it("are offered only when the kit tools are given", () => {
     const names = (kits: boolean) =>
-      designTools({ root: () => null, folder: () => "", url: () => "", screenshot: async () => ({}) as never, evaluate: async () => "", lintScript: "", saveCritique: () => null, setDirection: () => "", styleIndex: () => "", ...(kits ? { kits: { inspect: () => "", save: () => "", applyTokens: () => "" } } : {}) }, "t").map((t) => t.name);
+      designTools({ root: () => null, folder: () => "", url: () => "", screenshot: async () => ({}) as never, evaluate: async () => "", lintScript: "", saveCritique: () => null, setDirection: () => "", kitIndex: () => "", ...(kits ? { kits: { inspect: () => "", ground: () => null, save: () => "", applyTokens: () => "" } } : {}) }, "t").map((t) => t.name);
     expect(names(false)).not.toContain(DESIGN_KIT_SAVE_TOOL);
     expect(names(true)).toEqual(expect.arrayContaining([DESIGN_KIT_INSPECT_TOOL, DESIGN_KIT_SAVE_TOOL, DESIGN_TOKENS_APPLY_TOOL]));
   });
@@ -254,6 +254,39 @@ describe("tokens from the agent", () => {
     expect((await run(s, DESIGN_KIT_INSPECT_TOOL, { component: "nope" })).isError).toBe(true);
     expect((await run(s, DESIGN_KIT_INSPECT_TOOL, { kit: "not-here" })).isError).toBe(true);
     expect((await run(s, DESIGN_KIT_INSPECT_TOOL, { kit: "foundation" })).text).toMatch(/^Foundation/);
+  });
+
+  it("inspect finds parts by words and lists the parts a page uses", async () => {
+    const s = setup("kit:foundation");
+    s.write("index.html", PAGE);
+    const found = await run(s, DESIGN_KIT_INSPECT_TOOL, { search: "button" });
+    expect(found.text).toMatch(/^button: /m);
+    expect((await run(s, DESIGN_KIT_INSPECT_TOOL, { search: "zzqx" })).text).toMatch(/^Nothing in Foundation matches/);
+    const page = await run(s, DESIGN_KIT_INSPECT_TOOL, { page: "index.html" });
+    expect(page.text).toMatch(/^Kit: 2 of 2 elements are Foundation parts/);
+    expect(page.text).toMatch(/^button×1: /m);
+    expect((await run(s, DESIGN_KIT_INSPECT_TOOL, { page: "../x.html" })).isError).toBe(true);
+    expect((await run(s, DESIGN_KIT_INSPECT_TOOL, { page: "gone.html" })).isError).toBe(true);
+  });
+
+  it("lint adds the kit check on a kit thread: unknown parts, bad values, redrawn parts, and the coverage line", async () => {
+    const s = setup("kit:foundation");
+    s.write("index.html", '<html><head><style>[data-ui="button"] { background: red; } .hero { padding: 8px; }</style></head><body><div class="hero"><button data-ui="button" data-variant="huge">Go</button><div data-ui="buton">x</div></div></body></html>');
+    const out = await run(s, DESIGN_LINT_TOOL, {});
+    expect(out.isError).toBeFalsy();
+    expect(out.text).toContain("kit 3");
+    expect(out.text).toContain('[kit] [data-ui="buton"] — Foundation has no part "buton"');
+    expect(out.text).toContain("did you mean button");
+    expect(out.text).toMatch(/\[kit\] \[data-ui="button"\]\[data-variant="huge"\] — data-variant="huge" isn't a value of button: use /);
+    expect(out.text).toContain("page CSS redraws the kit's button");
+    expect(out.text).not.toContain(".hero");
+    expect(out.text).toMatch(/Kit: 1 of 3 elements are Foundation parts \(33%\): button×1\./);
+  });
+
+  it("lint says nothing about kits off a kit", async () => {
+    const s = setup("style:swiss-grid");
+    s.write("index.html", PAGE);
+    expect(s.kits.ground(s.thread.id, "index.html")).toBeNull();
   });
 
   it("save refuses a broken draft with its reasons, and switches the thread on a good one", async () => {

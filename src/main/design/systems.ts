@@ -8,6 +8,9 @@ import { parseKitManifest } from "./kit-schema";
 /** A kit system's id: `kit:<kitId>`, or `kit:<kitId>/<theme>` for one of its themes. */
 export const KIT_PREFIX = "kit:";
 
+/** A Foundation theme's id prefix: Foundation takes every library style as a theme, `kit:foundation/<style>`. */
+export const FOUNDATION_THEME = `${KIT_PREFIX}foundation/`;
+
 /** One design system a design thread can be started from. */
 export interface DesignSystemInfo {
   /** "project" (repo-root DESIGN.md), "project:<folder>" (.agents/design-systems), or "style:<folder>" (the style library). */
@@ -380,6 +383,42 @@ export function styleIndex(styles: DesignStyleInfo[]): string {
       return `${s.id.slice(STYLE_PREFIX.length)}: ${gist} [${s.tags.slice(0, 3).join(", ")}; ${s.modes.join("/")}; ${s.platform}${theme}]`;
     })
     .join("\n");
+}
+
+/** An installed kit other than Foundation, for the direction index. */
+export interface KitIndexEntry {
+  id: string;
+  name: string;
+  package?: string;
+  themes: string[];
+}
+
+/** A kit folder as a direction index entry, or null when it can't be read. */
+export function kitIndexEntry(dir: string): KitIndexEntry | null {
+  const kit = kitRef(dir);
+  const parsed = parseKitManifest(readText(join(dir, "components.json")) ?? "");
+  if (!kit || !parsed.ok) return null;
+  const base = `${KIT_PREFIX}${kit.id}/`;
+  const themes = listKitSystems(dir, []).filter((s) => s.id.startsWith(base)).map((s) => s.id.slice(base.length));
+  return { id: kit.id, name: parsed.manifest.name, ...(parsed.manifest.package ? { package: parsed.manifest.package } : {}), themes };
+}
+
+/**
+ * The kit-theme index the direction tool carries: Foundation's themes (the style library, one line each, as
+ * styleIndex writes them), then one line per other installed kit with its themes. Rides on every design turn, so terse.
+ */
+export function kitThemeIndex(styles: DesignStyleInfo[], kits: KitIndexEntry[]): string {
+  const others = kits.filter((k) => k.id !== "foundation" && k.themes.length);
+  return [
+    `Kit "foundation" (the default): its themes are these styles.`,
+    styleIndex(styles),
+    ...(others.length
+      ? [
+          `Other kits, each modelled on a real library: pick one only when the user names it or its library, with one of its themes.`,
+          ...others.map((k) => `${k.id} (${k.name}${k.package ? `, ${k.package}` : ""}): ${k.themes.join(", ")}`),
+        ]
+      : []),
+  ].join("\n");
 }
 
 /** FNV-1a 32-bit hash of `text` with murmur3's finalizer (FNV alone leaves the high bits poorly mixed), unsigned. */

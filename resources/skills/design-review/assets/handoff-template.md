@@ -1,6 +1,6 @@
 # Handoff: <design name>
 
-Design system: <name> · Files: `index.html`, … · Date: <yyyy-mm-dd>
+Kit: <kit> (<package>) · Theme: <theme> · Files: `index.html`, … · Date: <yyyy-mm-dd>
 
 ## Overview
 <What it is, who uses it, the main flow, in 2–3 sentences.>
@@ -20,8 +20,16 @@ Raw values that should be tokens:
 | Gutter / margin | | | |
 | Max width | | | |
 
+## Kit parts used
+| Part | Import | Props as set | Count |
+| --- | --- | --- | --- |
+| `button` | `Button` from `<package>` | `variant="ghost"`, `size="sm"` | 3 |
+
+Built in page CSS (not in the kit):
+- 
+
 ## Components
-### <Component> (`.selector`)
+### <Component> (`[data-agent-id="…"]`)
 - Size: height ·· padding ·· radius ·· type
 - Variants:
 - States:

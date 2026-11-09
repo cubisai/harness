@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { HarnessTool, ToolOutput } from "../agents/types";
 import { resolveInside } from "../artifacts";
 import { styleAllows, withoutAllowed } from "./autolint";
-import { formatLint, type LintResult } from "./lint";
+import { formatLint, type LintFinding, type LintResult } from "./lint";
 import type { Shot } from "./shooter";
 import { MODES, SURFACES, type DesignDirection } from "../../shared/direction";
 
@@ -35,15 +35,17 @@ export interface DesignToolDeps {
   saveCritique(threadId: string, markdown: string): { version: number } | null;
   /** Record the direction and put its style in place; returns what to tell the agent, throws on a bad style. */
   setDirection(threadId: string, direction: DesignDirection, alternates?: string[], theme?: "light" | "dark"): string;
-  /** The style library as one line per style, for the direction tool's description. */
-  styleIndex(): string;
+  /** The kit-theme index (Foundation's themes, then the other installed kits), for the direction tool's description. */
+  kitIndex(): string;
   /** The kit tools; only given when Design v2 is on, so they're not offered otherwise. */
   kits?: DesignKitToolDeps;
 }
 
 /** What the kit tools need from the app. Each returns what to tell the agent and throws with a message when it can't. */
 export interface DesignKitToolDeps {
-  inspect(threadId: string, query: { kit?: string; component?: string; block?: string; startDraft?: boolean }): string;
+  inspect(threadId: string, query: { kit?: string; component?: string; block?: string; search?: string; page?: string; startDraft?: boolean }): string;
+  /** The kit check of a page (unknown parts, prop values, CSS that redraws a part) and its coverage line; null off a kit. */
+  ground(threadId: string, rel: string): { findings: LintFinding[]; summary: string } | null;
   save(threadId: string): string;
   applyTokens(threadId: string, rel: string, tokens: Record<string, string>): string;
 }
@@ -71,6 +73,14 @@ function pageOf(deps: DesignToolDeps, threadId: string, path: string | undefined
   if (!isFile) return { text: `${deps.folder(threadId)}/${rel} doesn't exist yet. Build the page first.`, isError: true };
   if (!/\.(html?|svg)$/i.test(rel)) return { text: `${rel} isn't a page (html or svg).`, isError: true };
   return { rel };
+}
+
+/** The system id the direction tool records: a Foundation theme is its library style (the service maps it), another kit's theme is `kit:<kit>/<theme>`. */
+export function directionStyle(kit: string | undefined, theme: string): string {
+  const k = (kit ?? "").trim().replace(/^kit:/, "");
+  const t = theme.trim();
+  if (!k || k === "foundation" || t === "project" || t.startsWith("kit:")) return t;
+  return `kit:${k}/${t.split("/").pop() ?? t}`;
 }
 
 const failed = (what: string, err: unknown): ToolOutput => ({ text: `${what} failed: ${err instanceof Error ? err.message : String(err)}`, isError: true });
@@ -111,7 +121,7 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
     define({
       name: DESIGN_LINT_TOOL,
       description:
-        "Check a page of this design against the design rules: text contrast (4.5:1, 3:1 large), tap targets (44×44), spacing on the 4px grid, colors that aren't --color-* tokens, and generic-AI tells (eyebrow labels, gradient text, side stripes, hard shadows, identical card grids, emoji icons, overused display fonts). Returns findings with CSS selectors, worst first.",
+        "Check a page of this design against the design rules: text contrast (4.5:1, 3:1 large), tap targets (44×44), on a kit its grounding (parts, props and values outside components.json, page CSS that redraws a part) and how much of the page is kit parts, spacing on the 4px grid, colors that aren't --color-* tokens, and generic-AI tells (eyebrow labels, gradient text, side stripes, hard shadows, identical card grids, emoji icons, overused display fonts). Returns findings with CSS selectors, worst first.",
       input: {
         path: z.string().optional().describe("Page inside the design folder; default index.html"),
         width: z.number().optional().describe("Viewport width in CSS px, 320-2560; default 1440"),
@@ -126,8 +136,10 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
           const raw = await deps.evaluate(deps.url(threadId, page.rel), width, 900, deps.lintScript);
           const root = deps.root(threadId);
           const parsed = JSON.parse(String(raw)) as LintResult;
-          const result = root ? withoutAllowed(parsed, styleAllows(root)) : parsed;
-          return { text: `${deps.folder(threadId)}/${page.rel} at ${width}px\n${formatLint(result)}` };
+          const allowed = root ? withoutAllowed(parsed, styleAllows(root)) : parsed;
+          const kit = deps.kits?.ground(threadId, page.rel) ?? null;
+          const result = kit ? { ...allowed, findings: [...kit.findings, ...allowed.findings] } : allowed;
+          return { text: `${deps.folder(threadId)}/${page.rel} at ${width}px\n${formatLint(result)}${kit ? `\n${kit.summary}` : ""}` };
         } catch (err) {
           return failed("Lint", err);
         }
@@ -161,16 +173,17 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
         "surface: component (one card, badge, modal: no page chrome), page (scrolling site: nav, hero, sections, footer), screen (one task: login, settings), workspace (dashboard, admin, data), deck (16:9 slides), mobile (a 390×844 app screen).",
         "mode, from what the visitor must achieve on this surface (not from the product): persuade (landing, pricing: decide and act; bold, committed), operate (app UI, dashboards, settings: get a task done; precise, restrained), read (docs, articles: understand; calm structure), experience (portfolio, gallery, game: the work leads).",
         "tier: quick (rough exploration), working (everyday: tokens, states, tweaks), real-app (product-grade, critique and handoff). Use quick only when the user asks for a sketch, real-app when they ask for production or handoff.",
-        "style: the style whose world fits the brief's subject and audience; a look or style the user names wins. alternates: up to 2 more styles that fit nearly as well, best first; CubiQ picks one of the three so designs vary. When the user names a look, pass no alternates. Styles:",
-        deps.styleIndex(),
+        "kit: foundation unless the user names another kit or its library. theme: the kit theme whose world fits the brief's subject and audience; a look the user names wins. alternates: up to 2 more themes of the same kit that fit nearly as well, best first; CubiQ picks one of the three so designs vary. When the user names a look, pass no alternates.",
+        deps.kitIndex(),
       ].join("\n"),
       input: {
         surface: z.enum(SURFACES).describe("What is being designed"),
         mode: z.enum(MODES).describe("What the visitor must achieve"),
         tier: z.enum(["quick", "working", "real-app"]).describe("How much discipline the prototype gets"),
-        style: z.string().describe("A style id from the list (e.g. one of the ids before the colon)"),
-        alternates: z.array(z.string()).optional().describe("Up to 2 runner-up style ids, best first"),
-        theme: z.enum(["light", "dark"]).optional().describe("Only when the user asks for a light or dark look; styles marked dark have a dark base"),
+        kit: z.string().optional().describe("A kit id from the list; default foundation"),
+        theme: z.string().describe("A theme id of that kit (for foundation, one of the ids before the colon)"),
+        alternates: z.array(z.string()).optional().describe("Up to 2 runner-up theme ids of the same kit, best first"),
+        appearance: z.enum(["light", "dark"]).optional().describe("Only when the user asks for a light or dark look; themes marked dark have a dark base"),
       },
       autoAllow: true,
       effect: "mutate",
@@ -179,9 +192,9 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
           return {
             text: deps.setDirection(
               threadId,
-              { surface: args.surface, mode: args.mode, tier: args.tier, style: args.style },
+              { surface: args.surface, mode: args.mode, tier: args.tier, style: directionStyle(args.kit, args.theme) },
               args.alternates ?? [],
-              args.theme,
+              args.appearance,
             ),
           };
         } catch (err) {
@@ -206,16 +219,18 @@ function kitTools(deps: DesignToolDeps, kits: DesignKitToolDeps, threadId: strin
     define({
       name: DESIGN_KIT_INSPECT_TOOL,
       description:
-        "Look inside a design kit. With no arguments: the active kit's components by category and its blocks, plus the other kits on this machine. component: that part's props and snippet. block: that block's HTML. kit: ask about another installed kit by id.",
+        "Look inside a design kit. With no arguments: the active kit's components by category and its blocks, plus the other kits on this machine. search: find parts and blocks by words (\"date picker\", \"pricing\"). component: that part's props and snippet. block: that block's HTML. page: the parts a page uses, with their real imports (for a handoff). kit: ask about another installed kit by id.",
       input: {
         kit: z.string().optional().describe("A kit id; default the thread's active kit"),
         component: z.string().optional().describe("A component's data-ui value"),
         block: z.string().optional().describe("A block's file name without .html"),
+        search: z.string().optional().describe("Words to find parts and blocks by"),
+        page: z.string().optional().describe("A page inside the design folder, to list the parts it uses"),
         start_draft: z.boolean().optional().describe("Make kit/ a working copy of the active kit, when it isn't there yet"),
       },
       autoAllow: true,
       effect: "read",
-      run: async (args) => guarded(() => kits.inspect(threadId, { ...(args.kit ? { kit: args.kit } : {}), ...(args.component ? { component: args.component } : {}), ...(args.block ? { block: args.block } : {}), ...(args.start_draft ? { startDraft: true } : {}) })),
+      run: async (args) => guarded(() => kits.inspect(threadId, { ...(args.kit ? { kit: args.kit } : {}), ...(args.component ? { component: args.component } : {}), ...(args.block ? { block: args.block } : {}), ...(args.search ? { search: args.search } : {}), ...(args.page ? { page: args.page } : {}), ...(args.start_draft ? { startDraft: true } : {}) })),
     }),
     define({
       name: DESIGN_KIT_SAVE_TOOL,

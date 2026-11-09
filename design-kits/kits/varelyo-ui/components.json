@@ -212,10 +212,7 @@
         {
           "name": "name",
           "label": "Name",
-          "type": "choice",
-          "options": [
-            "search"
-          ],
+          "type": "text",
           "default": "search"
         },
         {

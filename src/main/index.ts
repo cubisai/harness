@@ -29,7 +29,7 @@ import { bridgeScript } from "./design/bridge";
 import { buildDesignExport, exportFileName, pageTitleSource, type DesignExportDeps } from "./design/export";
 import { lintScript, type LintResult } from "./design/lint";
 import { detectPins, lintWidth, styleAllows, withoutAllowed, type PageLint } from "./design/autolint";
-import { styleIndex } from "./design/systems";
+import { kitIndexEntry, kitThemeIndex, type KitIndexEntry } from "./design/systems";
 import { electronShotWindow } from "./design/shot-window";
 import { Shooter } from "./design/shooter";
 import { DOC_SCHEME, documentUrl, pdfPageCount, serveDocument } from "./documents/serve";
@@ -582,9 +582,18 @@ async function main(): Promise<void> {
           lintScript: designLintJs,
           saveCritique: (id, markdown) => service.saveCritique(id, markdown),
           setDirection: (id, direction, alternates, theme) => service.setDesignDirection(id, direction, alternates, theme),
-          styleIndex: () => styleIndex(service.designStyles()),
+          kitIndex: () => {
+            let kits: KitIndexEntry[] = [];
+            try {
+              kits = kitIndexEntries();
+            } catch {
+              // The kit store isn't ready: Foundation's themes still list.
+            }
+            return kitThemeIndex(service.designStyles(), kits);
+          },
           kits: {
             inspect: (id, query) => service.kits.inspect(id, query),
+            ground: (id, rel) => service.kits.ground(id, rel),
             save: (id) => service.kits.saveForAgent(id),
             applyTokens: (id, rel, tokens) => service.kits.applyTokens(id, rel, tokens),
           },
@@ -1103,6 +1112,15 @@ async function main(): Promise<void> {
     }
     return options;
   };
+  /** The installed kits besides Foundation, with their themes, for the direction tool's index. */
+  const kitIndexEntries = (): KitIndexEntry[] =>
+    kitOptions()
+      .filter((k) => k.installed && k.id !== "foundation")
+      .flatMap((k) => {
+        const dir = kitStore.activeDir(k.id);
+        const entry = dir ? kitIndexEntry(dir) : null;
+        return entry ? [entry] : [];
+      });
   const documents = new DesignDocuments({
     journalDir: join(userData, "design-journal"),
     isBusy: (threadId) => service.isRunning(threadId),

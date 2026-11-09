@@ -916,7 +916,7 @@ export default function DesignCanvas({
       setNotice(null);
       return void useStore.getState().buildDesignInCode(threadId);
     }
-    const ok = await useStore.getState().send("Write the developer handoff for this design.", ["design-handoff"], threadId);
+    const ok = await useStore.getState().send("Write the developer handoff for this design.", ["design-review"], threadId);
     if (ok) setNotice({ text: "Writing the handoff first. Choose Build in code again once handoff.md is there." });
   };
 
