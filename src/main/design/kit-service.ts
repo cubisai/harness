@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { designDirName } from "../../shared/design";
+import { parseReferenceSystemId, referenceSystemId } from "../../shared/direction";
 import type { DesignKitOption, DesignMutation } from "../../shared/design-mutation";
 import type { DesignIntent, DesignKitDoc, DesignKitEdit, DesignKitGroup, DesignKitPart, DesignKitSampleRequest, DesignMigrationPreview, DesignReach, DesignThemeCard, LiveUpdate, Thread } from "../../shared/types";
 import { addComposition, applyKitEdit, isStatefulPart, compositionWarnings, diffManifests, freeFolder, manifestIn, partCounts, partSample, partsUsingToken, projectKitFolders, projectSystemsDir, saveKitDraft, saveSystemCopy, seedKitDraft, forkKitSystem } from "./kit-library";
@@ -21,6 +22,8 @@ export interface KitServiceDeps {
   designRoot(threadId: string): string | null;
   /** The system a thread is on, with its files. */
   threadSystem(thread: Thread): DesignSystemInfo | null;
+  /** Copy the thread's system into its `system/` (a reference stays pinned); plain materialize when absent. */
+  syncSystem?(thread: Thread): void;
   /** A system by id, kits included. */
   systemById(projectId: string | null, id: string): DesignSystemInfo | null;
   /** The kit's own system (`kit:<id>`). */
@@ -180,8 +183,11 @@ export class DesignKitService {
   private switchTo(threadId: string, id: string): Thread {
     const thread = this.deps.setDesignSystem(threadId, id);
     const root = this.deps.designRoot(threadId);
-    const system = this.deps.threadSystem(thread);
-    if (root && system) materializeSystem(system, join(root, "system"));
+    if (this.deps.syncSystem) this.deps.syncSystem(thread);
+    else {
+      const system = this.deps.threadSystem(thread);
+      if (root && system) materializeSystem(system, join(root, "system"));
+    }
     this.deps.broadcast({ type: "thread", thread });
     return thread;
   }
@@ -196,7 +202,9 @@ export class DesignKitService {
     const from = current?.kit?.id ?? "foundation";
     if ((target.kit?.id ?? "foundation") !== from || !this.compatible(current, target)) throw new Error("That theme is in another kit, so the page has to move to it first.");
     // An Auto thread's undo goes back to the look it had: switching to Auto itself would drop what it picked.
-    const previous = current?.id ?? before.designSystem ?? null;
+    // A reference's pinned system reads as plain Foundation: its own id (or an Auto pick's) is the look to go back to.
+    const autoRef = before.designSystem === "auto" && current?.kit?.id === "foundation" ? before.designDirection?.reference : undefined;
+    const previous = parseReferenceSystemId(before.designSystem) ? before.designSystem! : autoRef ? referenceSystemId(autoRef) : (current?.id ?? before.designSystem ?? null);
     const thread = this.switchTo(threadId, id);
     this.addNote(threadId, `the theme is now ${target.name}: tokens only, nothing to rebuild. Read \`system/DESIGN.md\` again before you change the page.`);
     return { thread, previous };

@@ -46,6 +46,24 @@ export function referenceMarker(ref: DirectionReference): string {
   return `${ref.source}/${ref.slug}@${ref.sha256.slice(0, 8)}`;
 }
 
+/**
+ * A design reference picked by the user as a thread's system: `ref:<slug>` (the picker's card, newest download) or
+ * `ref:<slug>@<sha256>` (what a thread stores, so its pin survives a lost `system/`).
+ */
+export const REFERENCE_SYSTEM_PREFIX = "ref:";
+
+/** The system id a thread stores for a picked reference. */
+export function referenceSystemId(ref: DirectionReference): string {
+  return `${REFERENCE_SYSTEM_PREFIX}${ref.slug}@${ref.sha256}`;
+}
+
+/** A reference system id's slug and (when pinned) sha256, or null when `id` isn't a well-formed one. */
+export function parseReferenceSystemId(id: string | null | undefined): { slug: string; sha256?: string } | null {
+  const m = id ? /^ref:([a-z0-9][a-z0-9-]{0,80})(?:@([0-9a-f]{64}))?$/.exec(id) : null;
+  if (!m) return null;
+  return m[2] ? { slug: m[1]!, sha256: m[2] } : { slug: m[1]! };
+}
+
 /** "persuade" -> "Persuade". */
 export function modeLabel(mode: DesignMode): string {
   return mode.charAt(0).toUpperCase() + mode.slice(1);

@@ -39,6 +39,22 @@ export function isPinned(systemDir: string, ref: DirectionReference): boolean {
   return pinnedReference(systemDir) === referenceMarker(ref);
 }
 
+/**
+ * The Customize panel's line for a pinned reference, read back from its REFERENCE.md header (the pin, not the
+ * cache): "Adapted from Stripe · font substituted". Null when there's no such header.
+ */
+export function pinnedNote(systemDir: string): string | null {
+  let text = "";
+  try {
+    text = readFileSync(join(systemDir, REFERENCE_FILE), "utf8").slice(0, 4000);
+  } catch {
+    return null;
+  }
+  const m = /^> CubiQ already adapted its colours and type into `tokens\.css`: Adapted from (.+?) \((?:light|dark); (?:light|dark) derived\)(.*)$/m.exec(text);
+  if (!m) return null;
+  return `Adapted from ${m[1]}${/fonts substituted/.test(m[2] ?? "") ? " · font substituted" : ""}`;
+}
+
 /** Drop a reference's own files from `system/` when the thread moves to a system that isn't one. */
 export function clearReference(systemDir: string): void {
   for (const name of [REFERENCE_FILE, REFERENCE_MARKER]) {

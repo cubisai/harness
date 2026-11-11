@@ -86,6 +86,9 @@ interface State {
   /** The About sheet is open (macOS app menu, or Settings → Updates). */
   aboutOpen: boolean;
   setAboutOpen(open: boolean): void;
+  /** The "Download design references" sheet. */
+  referencesSheetOpen: boolean;
+  setReferencesSheetOpen(open: boolean): void;
   /** The context sheet is open; true with contextSheetThread null means a new thread in the selected project. */
   contextSheetOpen: boolean;
   contextSheetThread: string | null;
@@ -504,6 +507,10 @@ export const useStore = create<State>((set, get) => ({
   aboutOpen: false,
   setAboutOpen(open) {
     set({ aboutOpen: open });
+  },
+  referencesSheetOpen: false,
+  setReferencesSheetOpen(open) {
+    set({ referencesSheetOpen: open });
   },
   contextSheetOpen: false,
   contextSheetThread: null,

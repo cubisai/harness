@@ -571,6 +571,8 @@ async function main(): Promise<void> {
   const designLintJs = lintScript(selectorFor);
   // GradientDeck's design references: downloaded once, on the user's say-so, never bundled.
   const referenceStore = new ReferenceStore(join(userData, "design-references", "gradientdeck"));
+  // The picker's adapted previews: a cache keyed by file hash, never a design's pin.
+  const referencePreviews = join(userData, "design-references", "previews");
   referenceStore.cleanStaging();
   // Each design thread's own tools (bound to it), made once so its list keeps the same identity.
   const designToolLists = new Map<string, HarnessTool[]>();
@@ -1030,7 +1032,7 @@ async function main(): Promise<void> {
   const foundationKit = app.isPackaged ? join(process.resourcesPath, "design-kits", "foundation") : join(app.getAppPath(), "resources", "design-kits", "foundation");
   const kitStore = new KitStore(join(userData, "design-packs"));
   kitStore.cleanStaging();
-  service.setDesignReferences(referenceStore);
+  service.setDesignReferences(referenceStore, referencePreviews);
   service.setDesignKitLookup((kitId) => (kitId === "foundation" ? foundationKit : kitStore.activeDir(kitId)));
   service.setDesignPatternsDir(app.isPackaged ? join(process.resourcesPath, "design-patterns") : join(app.getAppPath(), "resources", "design-patterns"));
   service.setDesignIconsDir(app.isPackaged ? join(process.resourcesPath, "design-icons") : join(app.getAppPath(), "resources", "design-icons"));
@@ -1272,7 +1274,7 @@ async function main(): Promise<void> {
     });
   };
   const idText = (id: unknown): string => {
-    if (typeof id !== "string" || !/^[\w:./-]{1,120}$/.test(id)) throw new Error("Bad design system id.");
+    if (typeof id !== "string" || !/^[\w:./@-]{1,160}$/.test(id)) throw new Error("Bad design system id.");
     return id;
   };
   const shortText = (text: unknown, max = 120): string => {
@@ -1288,9 +1290,9 @@ async function main(): Promise<void> {
     return out;
   };
   designHandle("design:kit-groups", (projectId: string | null) => service.kits.groups(typeof projectId === "string" ? projectId : null));
-  designHandle("design:apply-theme", (threadId: string, id: unknown) => service.kits.applyTheme(threadId, idText(id)));
-  designHandle("design:migrate-preview", (threadId: string, rel: string, id: unknown) => service.kits.migrationPreview(threadId, rel, idText(id)));
-  designHandle("design:migrate-commit", (threadId: string, rel: string, id: unknown) => service.kits.commitMigration(threadId, rel, idText(id)));
+  designHandle("design:apply-theme", (threadId: string, id: unknown) => service.kits.applyTheme(threadId, service.designSystemId(idText(id), threadId)));
+  designHandle("design:migrate-preview", (threadId: string, rel: string, id: unknown) => service.kits.migrationPreview(threadId, rel, service.designSystemId(idText(id), threadId)));
+  designHandle("design:migrate-commit", (threadId: string, rel: string, id: unknown) => service.kits.commitMigration(threadId, rel, service.designSystemId(idText(id), threadId)));
   designHandle("design:migrate-cancel", (threadId: string) => service.kits.cancelMigration(threadId));
   designHandle("design:save-theme", (threadId: string, name: unknown, tokens: unknown, sourceId: unknown) => service.kits.saveTheme(threadId, shortText(name), tokenMap(tokens), typeof sourceId === "string" ? idText(sourceId) : undefined));
   designHandle("design:kit-doc", (threadId: string) => service.kits.doc(threadId));
@@ -1362,6 +1364,14 @@ async function main(): Promise<void> {
     referenceRun = { promise, controller };
     return promise;
   });
+  ipcMain.handle("design:references:cards", (e) => {
+    if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
+    return service.designReferenceCards();
+  });
+  ipcMain.handle("design:references:note", (e, threadId: unknown) => {
+    if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
+    return typeof threadId === "string" ? service.designReferenceNote(threadId) : null;
+  });
   ipcMain.handle("design:references:cancel", (e) => {
     if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
     referenceRun?.controller.abort();
@@ -1373,6 +1383,7 @@ async function main(): Promise<void> {
       await referenceRun.promise;
     }
     referenceStore.remove();
+    rmSync(referencePreviews, { recursive: true, force: true });
     return referenceStore.status();
   });
   ipcMain.handle("design:save-ref", (_e, threadId: string, bytes: Uint8Array) => {
@@ -2016,7 +2027,7 @@ async function main(): Promise<void> {
     return service.setThreadIssue(threadId, picked);
   });
   ipcMain.handle("threads:set-design-system", (_e, threadId: string, id: unknown) =>
-    service.setDesignSystem(threadId, typeof id === "string" && /^[\w:./-]{1,80}$/.test(id) ? id : null),
+    service.setDesignSystem(threadId, typeof id === "string" && /^[\w:./@-]{1,160}$/.test(id) ? id : null),
   );
   ipcMain.handle("design:systems", (_e, projectId: string | null): DesignSystemOption[] => service.designSystems(projectId)),
   ipcMain.handle("design:system-doc", (_e, threadId: string) => service.designSystemDoc(threadId));

@@ -93,6 +93,23 @@ export type DesignReferenceProgress = { done: number; total: number; bytes: numb
 /** A reference download's outcome, in terms the first-run sheet and Settings can word. */
 export type DesignReferenceResult = { ok: true; status: DesignReferenceStatus } | { ok: false; code: "offline" | "invalid" | "cancelled"; message: string };
 
+/** One downloaded reference as the style picker shows it: a card drawn from the index's colours only (no images). */
+export type DesignReferenceCard = {
+  /** The picker's id for it: `ref:<slug>`. */
+  id: string;
+  slug: string;
+  name: string;
+  /** GradientDeck's one-line description of the look. */
+  nickname: string;
+  industry: string;
+  /** The reference's own theme; a mixed one adapts as light with a derived dark. */
+  theme: "light" | "dark" | "mixed";
+  host: string;
+  /** The index's named colours, for search ("lemon", "#f2ff66"). */
+  colors: string[];
+  card: { bg: string; surface: string; text: string; muted: string; accent: string; onAccent: string; border: string; radius: string; font: string };
+};
+
 export type DesignKitEnsureResult = { ok: true } | { ok: false; code: "unknown" | "offline" | "blocked" | "hash" | "archive" | "invalid" | "cancelled"; message: string };
 
 /** What the canvas can ask about a document's history. */

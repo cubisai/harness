@@ -141,6 +141,8 @@ const api: UnskilledApi = {
     ipcRenderer.on("design:references:progress", handler);
     return () => ipcRenderer.removeListener("design:references:progress", handler);
   },
+  designReferenceCards: () => ipcRenderer.invoke("design:references:cards"),
+  designReferenceNote: (threadId) => ipcRenderer.invoke("design:references:note", threadId),
   designComments: (threadId) => ipcRenderer.invoke("design:comments", threadId),
   designCommentAdd: (threadId, input) => ipcRenderer.invoke("design:comment-add", threadId, input),
   designCommentUpdate: (threadId, id, patch) => ipcRenderer.invoke("design:comment-update", threadId, id, patch),

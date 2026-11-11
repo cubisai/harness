@@ -806,6 +806,8 @@ export function installMock(): void {
     designReferencesDownload: async () => ({ ok: false, code: "offline", message: "Not in the preview." }),
     designReferencesCancel: async () => {},
     designReferencesRemove: async () => ({ state: "none" }),
+    designReferenceCards: async () => [],
+    designReferenceNote: async () => null,
     onDesignReferenceProgress: () => () => {},
     designKitGroups: async () => [],
     designApplyTheme: async (threadId) => ({ thread: Object.values(threads).flat().find((t) => t.id === threadId)!, previous: null }),

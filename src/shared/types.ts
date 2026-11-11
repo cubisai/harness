@@ -8,7 +8,7 @@ import type { CommentTarget, DesignComment } from "./comments";
 import type { LearnCase, LearnOverview, LearnSettings, Lesson, LessonAction, TurnScore } from "./learn";
 import type { AutomationInput, AutomationNotice, AutomationsOverview, AutomationView } from "./automations";
 import type { DoctorFixResult, DoctorReport } from "./doctor";
-import type { DesignHistoryRequest, DesignHistoryResult, DesignKitEnsureResult, DesignKitOption, DesignMutation, DesignReferenceProgress, DesignReferenceResult, DesignReferenceStatus, DocumentStatus, MutationResult } from "./design-mutation";
+import type { DesignHistoryRequest, DesignHistoryResult, DesignKitEnsureResult, DesignKitOption, DesignMutation, DesignReferenceCard, DesignReferenceProgress, DesignReferenceResult, DesignReferenceStatus, DocumentStatus, MutationResult } from "./design-mutation";
 
 export type Invocation = "model" | "user";
 
@@ -1573,6 +1573,10 @@ export interface UnskilledApi {
   designReferencesRemove(): Promise<DesignReferenceStatus>;
   /** Progress of a running reference download; returns an unsubscribe. */
   onDesignReferenceProgress(listener: (progress: DesignReferenceProgress) => void): () => void;
+  /** Every downloaded reference as a picker card (empty before the download). */
+  designReferenceCards(): Promise<DesignReferenceCard[]>;
+  /** "Adapted from Stripe · font substituted" for a thread built on a reference, else null. */
+  designReferenceNote(threadId: string): Promise<string | null>;
   /** A design thread's comments (all pages), from its design folder. */
   designComments(threadId: string): Promise<DesignComment[]>;
   /** Add a comment on one element of a design page; the full list after. */
