@@ -37,7 +37,7 @@ export interface DesignToolDeps {
   /** Save the next critique version; null when the text is unchanged. */
   saveCritique(threadId: string, markdown: string): { version: number } | null;
   /** Record the direction and put its style in place; returns what to tell the agent, throws on a bad style. */
-  setDirection(threadId: string, direction: DesignDirection, alternates?: string[], theme?: "light" | "dark"): string;
+  setDirection(threadId: string, direction: DesignDirection, alternates?: string[], theme?: "light" | "dark", reference?: string): string;
   /** The kit-theme index (Foundation's themes, then the other installed kits), for the direction tool's description. */
   kitIndex(): string;
   /** The kit tools; only given when Design v2 is on, so they're not offered otherwise. */
@@ -84,6 +84,8 @@ function pageOf(deps: DesignToolDeps, threadId: string, path: string | undefined
 export function directionStyle(kit: string | undefined, theme: string): string {
   const k = (kit ?? "").trim().replace(/^kit:/, "");
   const t = theme.trim();
+  // Foundation with no theme is its base theme, which a design reference is adapted onto.
+  if (!t && (!k || k === "foundation")) return "kit:foundation";
   if (!k || k === "foundation" || t === "project" || t.startsWith("kit:")) return t;
   return `kit:${k}/${t.split("/").pop() ?? t}`;
 }
@@ -178,7 +180,7 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
         "surface: component (one card, badge, modal: no page chrome), page (scrolling site: nav, hero, sections, footer), screen (one task: login, settings), workspace (dashboard, admin, data), deck (16:9 slides), mobile (a 390×844 app screen).",
         "mode, from what the visitor must achieve on this surface (not from the product): persuade (landing, pricing: decide and act; bold, committed), operate (app UI, dashboards, settings: get a task done; precise, restrained), read (docs, articles: understand; calm structure), experience (portfolio, gallery, game: the work leads).",
         "tier: quick (rough exploration), working (everyday: tokens, states, tweaks), real-app (product-grade, critique and handoff). Use quick only when the user asks for a sketch, real-app when they ask for production or handoff.",
-        "kit: foundation unless the user names another kit or its library. theme: the kit theme whose world fits the brief's subject and audience; a look the user names wins. alternates: up to 2 more themes of the same kit that fit nearly as well, best first; CubiQ picks one of the three so designs vary. When the user names a look, pass no alternates.",
+        "kit: foundation unless the user names another kit or its library. On foundation, pass reference: the slug of a real-site design reference whose world fits the brief's subject and audience (a look or site the user names wins), and no theme; with no reference it uses Foundation's base theme. On another kit, pass one of its themes. alternates: up to 2 more references (or themes of that kit) that fit nearly as well, best first; CubiQ picks one of the three so designs vary. When the user names a look, pass no alternates.",
         deps.kitIndex(),
       ].join("\n"),
       input: {
@@ -186,9 +188,10 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
         mode: z.enum(MODES).describe("What the visitor must achieve"),
         tier: z.enum(["quick", "working", "real-app"]).describe("How much discipline the prototype gets"),
         kit: z.string().optional().describe("A kit id from the list; default foundation"),
-        theme: z.string().describe("A theme id of that kit (for foundation, one of the ids before the colon)"),
-        alternates: z.array(z.string()).optional().describe("Up to 2 runner-up theme ids of the same kit, best first"),
-        appearance: z.enum(["light", "dark"]).optional().describe("Only when the user asks for a light or dark look; themes marked dark have a dark base"),
+        theme: z.string().max(120).optional().describe("A theme id of a kit other than foundation, or \"project\""),
+        reference: z.string().max(120).optional().describe("On foundation: a slug from design_reference_search"),
+        alternates: z.array(z.string().max(120)).max(2).optional().describe("Up to 2 runner-up references (or themes of the same kit), best first"),
+        appearance: z.enum(["light", "dark"]).optional().describe("Only when the user asks for a light or dark look"),
       },
       autoAllow: true,
       effect: "mutate",
@@ -197,9 +200,10 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
           return {
             text: deps.setDirection(
               threadId,
-              { surface: args.surface, mode: args.mode, tier: args.tier, style: directionStyle(args.kit, args.theme) },
+              { surface: args.surface, mode: args.mode, tier: args.tier, style: directionStyle(args.kit, args.theme ?? "") },
               args.alternates ?? [],
               args.appearance,
+              args.reference,
             ),
           };
         } catch (err) {

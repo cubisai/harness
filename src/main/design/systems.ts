@@ -11,6 +11,17 @@ export const KIT_PREFIX = "kit:";
 /** A Foundation theme's id prefix: Foundation takes every library style as a theme, `kit:foundation/<style>`. */
 export const FOUNDATION_THEME = `${KIT_PREFIX}foundation/`;
 
+/** Foundation as it ships, and the base a design reference is adapted onto. */
+export const FOUNDATION_BASE = `${KIT_PREFIX}foundation`;
+
+/**
+ * Whether a system id is one of the retired style library's looks (`style:<x>`, or `kit:foundation/<x>`: Foundation
+ * has no themes of its own, so every one of those is a library style). A thread on one keeps its `system/` as it is.
+ */
+export function isLegacyStyleId(id: string): boolean {
+  return id.startsWith(STYLE_PREFIX) || id.startsWith(FOUNDATION_THEME);
+}
+
 /** One design system a design thread can be started from. */
 export interface DesignSystemInfo {
   /** "project" (repo-root DESIGN.md), "project:<folder>" (.agents/design-systems), or "style:<folder>" (the style library). */
@@ -404,14 +415,14 @@ export function kitIndexEntry(dir: string): KitIndexEntry | null {
 }
 
 /**
- * The kit-theme index the direction tool carries: Foundation's themes (the style library, one line each, as
- * styleIndex writes them), then one line per other installed kit with its themes. Rides on every design turn, so terse.
+ * The index the direction tool carries: Foundation and the design references it adapts (a fixed few lines, never
+ * the references themselves), then one line per other installed kit with its themes. Rides on every design turn.
  */
-export function kitThemeIndex(styles: DesignStyleInfo[], kits: KitIndexEntry[]): string {
+export function kitThemeIndex(kits: KitIndexEntry[], references: string): string {
   const others = kits.filter((k) => k.id !== "foundation" && k.themes.length);
   return [
-    `Kit "foundation" (the default): its themes are these styles.`,
-    styleIndex(styles),
+    `Kit "foundation" (the default): CubiQ's own parts, styled from a design reference or its base theme.`,
+    references,
     ...(others.length
       ? [
           `Other kits, each modelled on a real library: pick one only when the user names it or its library, with one of its themes.`,

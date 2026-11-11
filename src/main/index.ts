@@ -17,6 +17,7 @@ import { DesignDocuments, isFromAppWindow, parseDesignMutation, parseHistoryRequ
 import { KIT_CATALOG } from "./design/kit-catalog";
 import { KitInstallError, KitStore } from "./design/kit-install";
 import { ReferenceDownloadError, ReferenceStore } from "./design/references-store";
+import { referenceSummary } from "./design/reference-system";
 import { parseKitManifest } from "./design/kit-schema";
 import type { DesignKitEnsureResult, DesignKitOption, DesignReferenceResult, DesignReferenceStatus } from "../shared/design-mutation";
 import { readIssueConfig, readIssueSummary } from "./issues";
@@ -593,7 +594,7 @@ async function main(): Promise<void> {
             } catch {
               // The kit store isn't ready: Foundation's themes still list.
             }
-            return kitThemeIndex(service.designStyles(), kits);
+            return kitThemeIndex(kits, referenceSummary(referenceStore));
           },
           kits: {
             inspect: (id, query) => service.kits.inspect(id, query),
@@ -1029,6 +1030,7 @@ async function main(): Promise<void> {
   const foundationKit = app.isPackaged ? join(process.resourcesPath, "design-kits", "foundation") : join(app.getAppPath(), "resources", "design-kits", "foundation");
   const kitStore = new KitStore(join(userData, "design-packs"));
   kitStore.cleanStaging();
+  service.setDesignReferences(referenceStore);
   service.setDesignKitLookup((kitId) => (kitId === "foundation" ? foundationKit : kitStore.activeDir(kitId)));
   service.setDesignPatternsDir(app.isPackaged ? join(process.resourcesPath, "design-patterns") : join(app.getAppPath(), "resources", "design-patterns"));
   service.setDesignIconsDir(app.isPackaged ? join(process.resourcesPath, "design-icons") : join(app.getAppPath(), "resources", "design-icons"));

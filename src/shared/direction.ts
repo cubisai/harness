@@ -14,6 +14,13 @@ export type DesignSurface = (typeof SURFACES)[number];
 export const MODES = ["persuade", "operate", "read", "experience"] as const;
 export type DesignMode = (typeof MODES)[number];
 
+/** A downloaded design reference a direction is built from; `sha256` pins the file it was adapted from. */
+export interface DirectionReference {
+  source: "gradientdeck";
+  slug: string;
+  sha256: string;
+}
+
 /** The direction the agent chose for an Auto design thread (design_set_direction). */
 export interface DesignDirection {
   surface: DesignSurface;
@@ -21,6 +28,22 @@ export interface DesignDirection {
   /** A style id (`style:<folder>`) or "project". */
   style: string;
   tier: PrototypeTier;
+  /** Set when the style is Foundation adapted from a design reference. */
+  reference?: DirectionReference;
+}
+
+/** A stored reference, or null when it isn't a well-formed one. */
+export function readDirectionReference(v: unknown): DirectionReference | null {
+  if (!v || typeof v !== "object") return null;
+  const r = v as Record<string, unknown>;
+  if (r.source !== "gradientdeck" || typeof r.slug !== "string" || typeof r.sha256 !== "string") return null;
+  if (!/^[a-z0-9][a-z0-9-]{0,80}$/.test(r.slug) || !/^[0-9a-f]{64}$/.test(r.sha256)) return null;
+  return { source: "gradientdeck", slug: r.slug, sha256: r.sha256 };
+}
+
+/** The marker a materialized reference leaves in `system/.reference`: `gradientdeck/<slug>@<sha8>`. */
+export function referenceMarker(ref: DirectionReference): string {
+  return `${ref.source}/${ref.slug}@${ref.sha256.slice(0, 8)}`;
 }
 
 /** "persuade" -> "Persuade". */
@@ -42,7 +65,8 @@ export function readDirection(v: unknown): DesignDirection | null {
   const r = o as Record<string, unknown>;
   const tier = readTier(r.tier);
   if (!(SURFACES as readonly unknown[]).includes(r.surface) || !(MODES as readonly unknown[]).includes(r.mode) || typeof r.style !== "string" || !r.style || !tier) return null;
-  return { surface: r.surface as DesignSurface, mode: r.mode as DesignMode, style: r.style, tier };
+  const reference = readDirectionReference(r.reference);
+  return { surface: r.surface as DesignSurface, mode: r.mode as DesignMode, style: r.style, tier, ...(reference ? { reference } : {}) };
 }
 
 /** Whether a design thread picks its own style (a new thread, or one switched back to Auto). */
