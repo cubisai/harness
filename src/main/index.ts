@@ -568,6 +568,9 @@ async function main(): Promise<void> {
   // Renders design pages off screen for the design tools and Export; its window exists only while used.
   const shooter = new Shooter(electronShotWindow);
   const designLintJs = lintScript(selectorFor);
+  // GradientDeck's design references: downloaded once, on the user's say-so, never bundled.
+  const referenceStore = new ReferenceStore(join(userData, "design-references", "gradientdeck"));
+  referenceStore.cleanStaging();
   // Each design thread's own tools (bound to it), made once so its list keeps the same identity.
   const designToolLists = new Map<string, HarnessTool[]>();
   const designToolsOf = (threadId: string): HarnessTool[] => {
@@ -598,6 +601,8 @@ async function main(): Promise<void> {
             save: (id) => service.kits.saveForAgent(id),
             applyTokens: (id, rel, tokens) => service.kits.applyTokens(id, rel, tokens),
           },
+          // Always given, so the tools are always listed; before a download they say so.
+          references: referenceStore,
         },
         threadId,
       );
@@ -1024,9 +1029,6 @@ async function main(): Promise<void> {
   const foundationKit = app.isPackaged ? join(process.resourcesPath, "design-kits", "foundation") : join(app.getAppPath(), "resources", "design-kits", "foundation");
   const kitStore = new KitStore(join(userData, "design-packs"));
   kitStore.cleanStaging();
-  // GradientDeck's design references: downloaded once, on the user's say-so, never bundled.
-  const referenceStore = new ReferenceStore(join(userData, "design-references", "gradientdeck"));
-  referenceStore.cleanStaging();
   service.setDesignKitLookup((kitId) => (kitId === "foundation" ? foundationKit : kitStore.activeDir(kitId)));
   service.setDesignPatternsDir(app.isPackaged ? join(process.resourcesPath, "design-patterns") : join(app.getAppPath(), "resources", "design-patterns"));
   service.setDesignIconsDir(app.isPackaged ? join(process.resourcesPath, "design-icons") : join(app.getAppPath(), "resources", "design-icons"));

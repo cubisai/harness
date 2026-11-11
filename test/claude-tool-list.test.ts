@@ -20,6 +20,7 @@ describe("Claude's tool list", () => {
     const deps = new Proxy({}, { get: () => () => null }) as Parameters<typeof designTools>[0];
     const tools = designTools(deps, "t1");
     expect(await listed(tools)).toEqual(tools.map((t) => t.name));
+    expect(tools.map((t) => t.name)).toEqual(expect.arrayContaining(["design_reference_search", "design_reference_get"]));
   });
 
   it("describes design_tokens_apply's tokens as an object of strings", async () => {

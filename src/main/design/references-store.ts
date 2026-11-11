@@ -248,9 +248,17 @@ type CollectResult = { kind: "saved"; bytes: number } | { kind: "missing"; reaso
  */
 export class ReferenceStore {
   private readonly root: string;
+  private cachedManifest: ReferenceManifest | null | undefined;
+  private cachedIndex: ReferenceIndexEntry[] | undefined;
 
   constructor(root: string) {
     this.root = root;
+  }
+
+  /** Forget the parsed files after the set on disk changes. */
+  private clearCaches(): void {
+    this.cachedManifest = undefined;
+    this.cachedIndex = undefined;
   }
 
   private get currentDir(): string {
@@ -299,20 +307,28 @@ export class ReferenceStore {
 
   /** The installed manifest, or null when it is absent or malformed. */
   manifest(): ReferenceManifest | null {
+    if (this.cachedManifest !== undefined) return this.cachedManifest;
+    let manifest: ReferenceManifest | null;
     try {
-      return parseManifestText(readFileSync(this.currentManifestFile, "utf-8"));
+      manifest = parseManifestText(readFileSync(this.currentManifestFile, "utf-8"));
     } catch {
-      return null;
+      manifest = null;
     }
+    this.cachedManifest = manifest;
+    return manifest;
   }
 
   /** The installed index, or an empty list when it is absent or unreadable. */
   index(): ReferenceIndexEntry[] {
+    if (this.cachedIndex !== undefined) return this.cachedIndex;
+    let entries: ReferenceIndexEntry[];
     try {
-      return parseReferenceIndex(readFileSync(this.currentLibraryFile, "utf-8"));
+      entries = parseReferenceIndex(readFileSync(this.currentLibraryFile, "utf-8"));
     } catch {
-      return [];
+      entries = [];
     }
+    this.cachedIndex = entries;
+    return entries;
   }
 
   /** One Markdown file, but only when its bytes still match the manifest. */
@@ -357,6 +373,7 @@ export class ReferenceStore {
   /** Remove every installed and staged reference. */
   remove(): void {
     removeQuietly(this.root);
+    this.clearCaches();
   }
 
   /**
@@ -474,8 +491,13 @@ export class ReferenceStore {
     writeThroughPart(this.stagingManifestFile, new TextEncoder().encode(JSON.stringify(manifest, null, 2)));
 
     // The swap: the old set is moved aside, staging takes its place, the old folder goes.
-    if (existsSync(this.currentDir)) renameWithRetry(this.currentDir, join(this.root, `old-${randomUUID()}`));
-    renameWithRetry(this.stagingDir, this.currentDir);
+    // Caches are dropped even when a rename throws, since the old set may already be moved aside.
+    try {
+      if (existsSync(this.currentDir)) renameWithRetry(this.currentDir, join(this.root, `old-${randomUUID()}`));
+      renameWithRetry(this.stagingDir, this.currentDir);
+    } finally {
+      this.clearCaches();
+    }
     this.removeOldFolders();
 
     return this.status();
