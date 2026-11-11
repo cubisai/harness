@@ -43,7 +43,7 @@ Short on purpose: current state, next steps, open questions and live traps. Repl
     - Worktree reads: the Read tool refuses paths outside the main checkout. To allow `aiharness-wt`, run `/add-dir /Users/phumrin/Documents/ai-agent/aiharness-wt` in the session.
     - Earlier this session: renderer narrow-width work committed (`f8bde92`, live-checked by `.ai/kit-tools/m8-narrow.mjs`; the rail now folds on the canvas width, not the header).
     - Flakes: a full-suite run failed 5 unnamed tests once (passed on rerun), and `test/mcp-http.test.ts` heartbeat failed once under load (passes alone, also on `m4`). Rerun before concluding anything.
-    - Nothing is pushed: `m4` is ahead of origin by `15b1a06`, `4007142`, `f8bde92`, `7a29c6b`. The user runs the push.
+    - Nothing is pushed: `m4` is 5 commits ahead of origin (`15b1a06` through `bdaf273`). The user runs the push.
 1. **M8 Windows gate passed** on `eae4e6a` ([run 42742566763](https://github.com/cubisai/harness/actions/runs/42742566763); extras skipped). Ordinary `m4` pushes don't trigger CI: `gh workflow run ci.yml --repo cubisai/harness --ref m4 -f os=windows`. Rerun a lone ACP "can't start" timeout once.
 2. **M8 revised: GradientDeck references first.** Research/rollout plan: `.ai/plans/gradientdeck-replacement.md`. The original `.ai/plans/design-mode-v2.md` M8 notes and benchmarks below are the comparison baseline, not the new style-selection design.
     - (a) Baseline (`6429027`, PGS `PGA/deepseek-v4.1-flash-1017` via opencode, bench agent `opencode-pga-deepseek`; Zen free is at its limit): 0 kit parts on all 3 pages; landing has no direction call; login and deck hit the 12-min cap. Raw: `.ai/plans/m8-bench/before.json`.
