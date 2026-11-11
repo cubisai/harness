@@ -598,17 +598,29 @@ export function Composer({
       }
     }
     if (fold >= 3) return;
+    const barRect = bar.getBoundingClientRect();
     const actions = bar.querySelector<HTMLElement>(".composer-actions");
     const first = actions?.firstElementChild;
-    // The actions end-align, so when they don't fit they spill out of their box's start, over the chips.
-    const collides = !!actions && !!first && first.getBoundingClientRect().left < actions.getBoundingClientRect().left - 0.5;
-    const tops = [...(bar.querySelector(".composer-left")?.children ?? [])].map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0).map((r) => r.top);
+    const lastAction = actions?.lastElementChild;
+    const leftKids = [...(bar.querySelector(".composer-left")?.children ?? [])].filter((el) => !el.classList.contains("grow"));
+    const rects = leftKids.map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0);
+    const tops = rects.map((r) => r.top);
+    const lastLeft = rects.at(-1);
+    const actionsRect = actions?.getBoundingClientRect();
+    const firstLeft = first?.getBoundingClientRect().left;
+    const lastActionRight = lastAction?.getBoundingClientRect().right;
+    // The actions end-align, so when they don't fit they spill out of their box's start, over the chips, or past the bar's right edge.
+    const collides =
+      (actionsRect !== undefined && firstLeft !== undefined && firstLeft < actionsRect.left - 0.5) ||
+      (barRect.width > 0 && lastActionRight !== undefined && lastActionRight > barRect.right - 2) ||
+      (lastLeft !== undefined && actionsRect !== undefined && lastLeft.right > actionsRect.left - 2) ||
+      (lastLeft !== undefined && firstLeft !== undefined && lastLeft.right > firstLeft - 2);
     const wrapped = tops.some((top) => Math.abs(top - tops[0]!) > 2);
     if (!collides && !wrapped) return;
     let next = fold + 1;
     if (next === 2 && !compactMode) next = 3;
     // A last-resort second row only for a collision; chips that merely wrap stay as they always have.
-    if (next === 3 && !collides) return;
+    if (next === 3 && !collides && !wrapped) return;
     setFold(next);
   });
 

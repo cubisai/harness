@@ -596,7 +596,8 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 }
 .app.canvas-first .design-drawer[hidden] { display: none; }
 .app.canvas-first .design-drawer .thread-scroll { flex: 0 1 auto; }
-.app.canvas-first .design-drawer .thread-inner { padding: 16px 16px 12px; }
+.app.canvas-first .design-drawer .thread-inner { padding: 16px 16px 24px; }
+.app.canvas-first .design-drawer .waiting-dock { padding: 0 16px; }
 .design-drawer-empty { margin: 0; padding: 12px 16px; font-size: 12.5px; color: var(--text-tertiary); }
 .design-drawer-empty.system { padding: 24px 16px; text-align: center; }
 .design-drawer-empty.system strong { display: block; margin-bottom: 4px; font-weight: 600; color: var(--text); }
@@ -632,16 +633,17 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 
 .app.studio .main > .main-header { padding-right: 10px; }
 .platform-win32 .app.studio:not(.with-inspector) .main-header, .platform-linux .app.studio:not(.with-inspector) .main-header { padding-right: calc(150px / var(--zoom, 1)); }
-.design-canvas-head.studio-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr); align-items: center; gap: 12px; }
+.design-canvas-head.studio-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px; }
 .main-header .design-canvas-head.studio-bar { padding: 0; }
 .studio-left, .studio-right, .studio-center { display: flex; align-items: center; min-width: 0; gap: 4px; }
-.studio-center { gap: 8px; flex-shrink: 0; }
-.studio-right { justify-content: flex-end; flex-shrink: 0; }
+.studio-left { overflow: hidden; }
+.studio-center { gap: 8px; flex-shrink: 0; min-width: max-content; }
+.studio-right { grid-column: 3; justify-content: flex-end; flex-shrink: 0; }
 .studio-title { flex: 0 1 auto; min-width: 24px; font: 600 13px var(--font-display); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .studio-slash { flex-shrink: 0; color: var(--text-tertiary); font-size: 12.5px; }
 .studio-page { flex: 0 3 auto; min-width: 0; font-size: 12.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .studio-page .select { height: 28px; font-size: 12.5px; max-width: 100%; }
-.studio-left > .select { flex-shrink: 0; height: 28px; font-size: 12.5px; }
+.studio-left > .select { flex: 0 1 auto; min-width: 0; height: 28px; font-size: 12.5px; }
 /* Narrow: the right column takes only its icons, so the title keeps the room (the page name gives way first). */
 @container studio-head (max-width: 820px) {
   .design-canvas-head.studio-bar { grid-template-columns: minmax(0, 1fr) auto max-content; }
@@ -935,13 +937,21 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
   .design-save-dot { display: block; }
   .studio-export { padding: 0; width: 28px; justify-content: center; }
 }
+@container studio-head (max-width: 960px) {
+  .studio-fold, .studio-save-label { display: none; }
+  .design-save-dot { display: block; }
+  .studio-export { padding: 0; width: 28px; justify-content: center; }
+}
 @media (max-width: 999px) {
+  .studio-chat-label { display: none; }
+}
+@container studio-head (max-width: 780px) {
   .studio-chat-label { display: none; }
 }
 
 /* ---------- design canvas ---------- */
 
-.design-canvas { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; background: var(--bg-subtle); border-left: 1px solid var(--hairline); }
+.design-canvas { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; background: var(--bg-subtle); border-left: 1px solid var(--hairline); container: studio-head / inline-size; }
 .design-canvas-head {
   height: var(--titlebar);
   display: flex;
@@ -984,11 +994,21 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-stage.fit { padding: 0; overflow: hidden; }
 .design-stage.locked { overflow: hidden; } /* Design v2's 1440 stage: the page scrolls inside its frame, which always fits. */
 .design-stage.locked .design-frame { background: Canvas; } /* A page with no background of its own shows the scheme it's previewed in. */
-/* Below 1000px the Customize panel floats over the stage instead of squeezing the page. */
+/* Below 1000px (or when a side panel narrows the canvas below 952px) the Customize panel floats over the stage instead of squeezing the page. */
 @media (max-width: 999px) {
   .design-stage-row:has(> .design-customize) { position: relative; }
   .design-stage-row > .design-customize { position: absolute; top: 0; right: 0; bottom: calc(var(--design-prompt-h, 0px) + var(--design-pane-pad, 0px) + 8px); z-index: 3; background: var(--bg); box-shadow: var(--shadow-float); }
   .app.canvas-first:has(.design-customize) .main > .thread-pane { padding-right: 16px; }
+}
+@container studio-head (max-width: 951px) {
+  .design-stage-row:has(> .design-customize) { position: relative; }
+  .design-stage-row > .design-customize { position: absolute; top: 0; right: 0; bottom: calc(var(--design-prompt-h, 0px) + var(--design-pane-pad, 0px) + 8px); z-index: 3; background: var(--bg); box-shadow: var(--shadow-float); }
+}
+@container main (max-width: 951px) {
+  .app.canvas-first:has(.design-customize) .main > .thread-pane { padding-right: 16px; }
+}
+@container main (max-width: 720px) {
+  .app.canvas-first .main > .thread-pane { padding-left: 16px; padding-right: 16px; }
 }
 .design-frame-box { position: relative; margin: auto; flex-shrink: 0; background: var(--bg); border: 1px solid var(--hairline); }
 .design-stage.fit .design-frame-box { flex: 1; align-self: stretch; margin: 0; border: 0; }
@@ -1702,10 +1722,10 @@ details.tool > summary::-webkit-details-marker { display: none; }
 .check-row pre { margin: 4px 0 0; }
 /* The running turn's line, in Claude Code's style. */
 .waiting-dock { position: sticky; bottom: 0; z-index: 1; width: 100%; max-width: 720px; margin: -24px auto 0; padding: 0 28px; box-sizing: border-box; background: var(--bg); }
-.waiting-line { display: flex; align-items: center; gap: 6px; margin: 6px 0 8px; font-size: 12.5px; color: var(--text-secondary); }
+.waiting-line { display: flex; align-items: center; gap: 6px; margin: 6px 0 8px; min-width: 0; white-space: nowrap; overflow: hidden; font-size: 12.5px; color: var(--text-secondary); }
 .waiting-orb { width: 20px; height: 20px; flex: none; align-self: center; }
-.waiting-verb { color: var(--signal-ink); font-weight: 500; }
-.waiting-facts { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.waiting-verb { flex-shrink: 0; color: var(--signal-ink); font-weight: 500; }
+.waiting-facts { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .error-card {
   border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
   background: var(--del-bg);
@@ -1902,7 +1922,7 @@ button.qc-option.other { cursor: pointer; }
 
 /* ---------- composer ---------- */
 
-.composer-wrap { padding: 0 28px 20px; flex-shrink: 0; }
+.composer-wrap { padding: 0 28px 20px; flex-shrink: 0; container: composer / inline-size; }
 .composer {
   position: relative;
   max-width: 760px;
@@ -1948,15 +1968,39 @@ button.qc-option.other { cursor: pointer; }
 .chip-x:hover { opacity: 1; }
 .skill-menu .skill-picked { color: var(--primary); flex-shrink: 0; }
 .composer-bar { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; padding: 4px 8px 8px 8px; }
-/* Controls, chips and meters wrap among themselves; the actions row stays put. */
+/* Controls, chips and meters wrap among themselves; the actions row shrinks the model label before the left chips wrap. */
 .composer-left { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; flex: 1; min-width: 0; }
-.composer-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-/* Folding step 1 (Composer measures it): the chips show their icons only, as in a narrow chat. */
-.composer-bar.icons .mode-chip-label, .composer-bar.icons .ds-chip-label { display: none; }
+.composer-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; justify-content: flex-end; }
+.composer-actions .context-ring { flex: 0 0 auto; }
+.composer-actions .model-picker-button { max-width: 100%; }
+/* Folding step 1 (Composer measures it): the chips show their icons only, as in a narrow chat, and stay on one row while the model label gives way. */
+.composer-bar.icons .mode-chip-label, .composer-bar.icons .ds-chip-label, .composer-bar.icons .model-picker-effort, .composer-bar.icons .expert-chip-name { display: none; }
+.composer-bar.icons .composer-left { flex: 0 0 auto; flex-wrap: nowrap; }
+.composer-bar.icons .composer-left .grow { display: none; }
+.composer-bar.icons .composer-actions { flex: 1 1 auto; min-width: 0; }
+.composer-bar.icons .composer-actions .model-picker:not(.context-ring),
+.composer-bar.stacked .composer-actions .model-picker:not(.context-ring) { min-width: 44px; flex: 0 1 auto; }
 /* Too narrow for one row even with the model label at its shortest (Composer measures it): the actions take a row
    of their own, end-aligned, instead of spilling over the chips. */
 .composer-bar.stacked { flex-wrap: wrap; row-gap: 6px; }
+.composer-bar.stacked .composer-left { flex: 1 1 auto; }
 .composer-bar.stacked .composer-actions { flex: 1 0 100%; min-width: 0; justify-content: flex-end; }
+@container composer (max-width: 420px) {
+  .composer .composer-left { flex: 0 0 auto; flex-wrap: nowrap; }
+  .composer .composer-actions { flex: 1 1 auto; min-width: 0; justify-content: flex-end; }
+  .composer .composer-actions .model-picker { min-width: 0; }
+  .composer .composer-actions .context-ring { flex: 0 0 auto; }
+  .composer .mode-chip .mode-chip-label, .composer .ds-chip .ds-chip-label, .composer .model-picker-effort, .composer .expert-chip-name, .composer .studio-chat-label { display: none; }
+  .composer:has(.expert-chip) .mode-chip .chev, .composer:has(.expert-chip) .ds-chip .chev { display: none; }
+  .composer .composer-actions .model-picker:not(.context-ring) { min-width: 44px; }
+  .composer .composer-left .grow { display: none; }
+  .composer .composer-bar, .composer .composer-left { column-gap: 6px; }
+  .composer .model-picker-button { max-width: 100%; }
+  .composer textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+@container composer (max-width: 300px) {
+  .composer .mode-chip .chev, .composer .ds-chip .chev, .composer .model-picker-button .chev { display: none; }
+}
 /* The thread's meters, on their own quiet row below the bar. */
 .composer-meters { display: flex; align-items: center; gap: 10px; padding: 0 12px 8px; font-size: 11px; color: var(--text-tertiary); }
 .composer-meters:empty, .composer-meters:has(> .thread-meters:empty) { display: none; }

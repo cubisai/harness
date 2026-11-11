@@ -205,7 +205,7 @@ export default function DesignCanvas({
   const [railFolded, setRailFolded] = useState(false);
   const railSaved = useStore((s) => s.paneLayout.designRail);
   const railWanted = canvasFirst && railSaved && !railFolded;
-  const railOpen = railWanted && view === "design";
+  const railOpen = railWanted && view === "design" && Boolean(entry);
   const setPaneLayout = useStore((s) => s.setPaneLayout);
   // Comments (Real app tier): kept in the design folder; this page's open ones are pinned in the frame.
   const [comments, setComments] = useState<DesignComment[]>([]);
@@ -1136,20 +1136,43 @@ export default function DesignCanvas({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studioRequest]);
-  // Below 1000px the Layers rail starts collapsed and Customize stays closed until asked for, since it floats over the page.
+  // Below 1000px (or when a side panel narrows the canvas below 952px) the Layers rail starts collapsed and Customize stays closed until asked for, since it floats over the page.
+  // Measured on the canvas itself, as the CSS container (studio-head on .design-canvas) is: the header is narrower.
+  const [canvasWidth, setCanvasWidth] = useState(0);
+  const canvasEl = useRef<HTMLElement | null>(null);
+  const canvasObserver = useRef<ResizeObserver | null>(null);
+  const canvasRef = useCallback((el: HTMLElement | null) => {
+    canvasObserver.current?.disconnect();
+    canvasObserver.current = null;
+    canvasEl.current = el;
+    if (!el) return;
+    setCanvasWidth(el.clientWidth);
+    canvasObserver.current = new ResizeObserver(() => setCanvasWidth(el.clientWidth));
+    canvasObserver.current.observe(el);
+  }, []);
+  const isCanvasNarrow = (width: number) => width > 0 && width < 952;
+  const canvasNarrow = isCanvasNarrow(canvasWidth);
   useEffect(() => {
     const narrow = window.matchMedia("(max-width: 999px)");
-    setInspectorOpen(!narrow.matches);
+    const isNarrow = narrow.matches || isCanvasNarrow(canvasEl.current?.clientWidth ?? 0);
+    setInspectorOpen(!isNarrow);
     const apply = () => {
-      setRailFolded(narrow.matches);
-      if (narrow.matches) setInspectorOpen(false);
+      const nowNarrow = narrow.matches || isCanvasNarrow(canvasEl.current?.clientWidth ?? 0);
+      setRailFolded(nowNarrow);
+      if (nowNarrow) setInspectorOpen(false);
     };
     apply();
     narrow.addEventListener("change", apply);
     return () => narrow.removeEventListener("change", apply);
   }, [threadId]);
+  useEffect(() => {
+    const windowNarrow = window.matchMedia("(max-width: 999px)").matches;
+    const nowNarrow = windowNarrow || canvasNarrow;
+    setRailFolded(nowNarrow);
+    if (nowNarrow) setInspectorOpen(false);
+  }, [canvasNarrow]);
   const toggleRail = () => {
-    if (railSaved && (railFolded || window.matchMedia("(max-width: 999px)").matches)) setRailFolded(!railFolded);
+    if (railSaved && (railFolded || canvasNarrow || window.matchMedia("(max-width: 999px)").matches)) setRailFolded(!railFolded);
     else {
       setRailFolded(false);
       setPaneLayout({ designRail: !railSaved }, true);
@@ -2015,7 +2038,7 @@ export default function DesignCanvas({
   );
 
   return (
-    <section className="design-canvas" aria-label="Design canvas">
+    <section className="design-canvas" aria-label="Design canvas" ref={canvasRef}>
       {/* Canvas-first: in the main header (only the head remounts on a layout switch; the frames never do). */}
       {canvasFirst && headSlot ? createPortal(head, headSlot) : head}
       <div className="design-workspace">
