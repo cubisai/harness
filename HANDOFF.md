@@ -36,8 +36,11 @@ Short on purpose: current state, next steps, open questions and live traps. Repl
 
 0. **Session 2026-11-11, resume here (GradientDeck production, build in progress):**
     - Spec approved: `.ai/plans/gradientdeck-production.md` (defaults taken: OFL font substitution, mixed → light + derived dark, compact + extended, first-run download, nothing bundled).
-    - Worktree `../aiharness-wt/gd-refs`, branch `track/gd-refs` off `m4`. Phase 1 `ad95541` (store, downloader, IPC, setting). Phase 2 **committed `fea2e97`**: `references.ts` search/get/facets, tools `design_reference_search`/`design_reference_get` (always listed in design threads; before a download they say so), store caching. Full suite green (4,495), design:check 0 errors.
-    - **Phase 3 in progress:** `adaptReference` + synthetic unit tests + dev-only corpus sweep; then Windows CI.
+    - Worktree `../aiharness-wt/gd-refs`, branch `track/gd-refs` off `m4`. Phase 1 `ad95541` (store, downloader, IPC, setting). Phase 2 `fea2e97`: `references.ts` search/get/facets, tools `design_reference_search`/`design_reference_get` (always listed in design threads; before a download they say so), store caching. Full suite green (4,495), design:check 0 errors.
+    - Phase 3 **committed `20aef4e`**: `oklch.ts` + `reference-adapter.ts` (`adaptReference({extended, compact}, {baseCss, appearance})` → tokensCss/light/dark/fontFiles/report; `adaptSummary`, `adaptNote`), `test/design-reference-adapter.test.ts` (synthetic fixtures; corpus sweep runs with `GD_CORPUS=<main>/.ai/plans/gradientdeck-corpus/styles`, skipped otherwise). Full suite 4,509 green.
+    - Sweep (`.ai/plans/gradientdeck-adapter-sweep.md`): 0 errors, all 17 pairs pass in both schemes for all 1,295. bg 99.7%, text 100% from the reference; **primary 84.1%, under the 95% bar**: the other 206 take the ink on purpose (154 monochrome, 53 whose prose keeps colours off buttons). Repairs never touch primary/accent.
+    - **Windows CI for phase 3 is owed:** needs `track/gd-refs` pushed (user), then `gh workflow run ci.yml --repo cubisai/harness --ref track/gd-refs -f os=windows`.
+    - Next: phase 4 (direction `reference`, materialize with `REFERENCE.md`/`.reference`, pin, legacy freeze, prompt summary). The adapter takes Foundation's tokens.css as `baseCss` and returns `fontFiles` to copy into `system/fonts/`.
     - Real download (phase 1, live network): 2,590 files, 43 MB, 93 s; no-change update 22 s. `finn` compact always times out (recorded as missing, by design).
     - Remaining phases 4-7 are in the spec.
     - Pre-release: the 32 styles are still in use; nothing user-visible has changed yet. Only the store and tools are new.
