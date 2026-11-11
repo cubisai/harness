@@ -36,9 +36,10 @@ Short on purpose: current state, next steps, open questions and live traps. Repl
 
 0. **Session 2026-11-11, resume here (GradientDeck production, build in progress):**
     - Spec approved: `.ai/plans/gradientdeck-production.md` (defaults taken: OFL font substitution, mixed → light + derived dark, compact + extended, first-run download, nothing bundled).
-    - Worktree `../aiharness-wt/gd-refs`, branch `track/gd-refs` off `m4`. Deps installed. Phase 1 **committed `ad95541`** (store, downloader, IPC `design:references:*`, `designReferencesAsked` setting). Phase 2 **uncommitted**: `references.ts` (search/get/facets text), caching in `references-store.ts`, two tools in `tools.ts` (`design_reference_search`, `design_reference_get`, only when `deps.references` is set), `test/design-references.test.ts`. Typecheck clean; 44 related tests pass. Not yet done: passing `references` into the deps in `src/main/index.ts` (~line 576), the full test run, a review pass, and the commit. Delete `.ai/tmp/` in the worktree before the next phase.
+    - Worktree `../aiharness-wt/gd-refs`, branch `track/gd-refs` off `m4`. Phase 1 `ad95541` (store, downloader, IPC, setting). Phase 2 **committed `fea2e97`**: `references.ts` search/get/facets, tools `design_reference_search`/`design_reference_get` (always listed in design threads; before a download they say so), store caching. Full suite green (4,495), design:check 0 errors.
+    - **Phase 3 in progress:** `adaptReference` + synthetic unit tests + dev-only corpus sweep; then Windows CI.
     - Real download (phase 1, live network): 2,590 files, 43 MB, 93 s; no-change update 22 s. `finn` compact always times out (recorded as missing, by design).
-    - Next: finish phase 2 → phase 3 (adapter `adaptReference` plus a dev-only corpus sweep over `.ai/plans/gradientdeck-corpus`; Windows CI). Remaining phases 4-7 are in the spec.
+    - Remaining phases 4-7 are in the spec.
     - Pre-release: the 32 styles are still in use; nothing user-visible has changed yet. Only the store and tools are new.
     - Worktree reads: the Read tool refuses paths outside the main checkout. To allow `aiharness-wt`, run `/add-dir /Users/phumrin/Documents/ai-agent/aiharness-wt` in the session.
     - Earlier this session: renderer narrow-width work committed (`f8bde92`, live-checked by `.ai/kit-tools/m8-narrow.mjs`; the rail now folds on the canvas width, not the header).
