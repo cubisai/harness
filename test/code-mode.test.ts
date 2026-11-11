@@ -363,6 +363,15 @@ describe("SettingsStore codeMode", () => {
     expect(s.get().issueOffers).toBe(false);
   });
 
+  it("keeps the design references sheet's answer, and ignores anything but a boolean", () => {
+    const s = new SettingsStore(fresh(), box);
+    expect(s.get().designReferencesAsked).toBeUndefined();
+    s.update({ designReferencesAsked: true });
+    expect(s.get().designReferencesAsked).toBe(true);
+    s.update({ designReferencesAsked: "yes" as never });
+    expect(s.get().designReferencesAsked).toBe(true);
+  });
+
   it("accepts off/on and ignores an unknown value, including the removed only", () => {
     const s = new SettingsStore(fresh(), box);
     s.update({ codeMode: "on" });

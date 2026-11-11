@@ -15,9 +15,11 @@ describe("isFromAppWindow", () => {
     expect(isFromAppWindow({})).toBe(false);
   });
 
-  it("guards every handler that edits a page or installs a kit", () => {
+  it("guards every handler that edits a page, installs a kit or downloads references", () => {
     const main = read("src/main/index.ts");
-    for (const channel of ["design:mutate", "design:history", "design:systems:catalog", "design:systems:ensure"]) {
+    const channels = ["design:mutate", "design:history", "design:systems:catalog", "design:systems:ensure"];
+    channels.push("design:references:status", "design:references:download", "design:references:cancel", "design:references:remove");
+    for (const channel of channels) {
       const at = main.indexOf(`ipcMain.handle("${channel}"`);
       expect(at, channel).toBeGreaterThan(-1);
       expect(main.slice(at, at + 200), channel).toContain("isFromAppWindow(e)");

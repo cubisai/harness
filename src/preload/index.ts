@@ -132,6 +132,15 @@ const api: UnskilledApi = {
   designHistory: (threadId, rel, request) => ipcRenderer.invoke("design:history", threadId, rel, request),
   designKitCatalog: () => ipcRenderer.invoke("design:systems:catalog"),
   designKitEnsure: (id) => ipcRenderer.invoke("design:systems:ensure", id),
+  designReferences: () => ipcRenderer.invoke("design:references:status"),
+  designReferencesDownload: () => ipcRenderer.invoke("design:references:download"),
+  designReferencesCancel: () => ipcRenderer.invoke("design:references:cancel"),
+  designReferencesRemove: () => ipcRenderer.invoke("design:references:remove"),
+  onDesignReferenceProgress: (listener) => {
+    const handler = (_e: Electron.IpcRendererEvent, progress: { done: number; total: number; bytes: number }) => listener(progress);
+    ipcRenderer.on("design:references:progress", handler);
+    return () => ipcRenderer.removeListener("design:references:progress", handler);
+  },
   designComments: (threadId) => ipcRenderer.invoke("design:comments", threadId),
   designCommentAdd: (threadId, input) => ipcRenderer.invoke("design:comment-add", threadId, input),
   designCommentUpdate: (threadId, id, patch) => ipcRenderer.invoke("design:comment-update", threadId, id, patch),

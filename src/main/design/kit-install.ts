@@ -366,7 +366,7 @@ function isActiveEntry(value: unknown): value is ActiveEntry {
 }
 
 /** Rename, retrying the transient Windows locks that make a good rename look like a failure. */
-function renameWithRetry(from: string, to: string): void {
+export function renameWithRetry(from: string, to: string): void {
   for (let attempt = 1; ; attempt++) {
     try {
       renameSync(from, to);
@@ -381,7 +381,7 @@ function renameWithRetry(from: string, to: string): void {
 }
 
 /** Remove a path, ignoring any failure: cleanup never turns a success into an error. */
-function removeQuietly(target: string): void {
+export function removeQuietly(target: string): void {
   try {
     rmSync(target, { recursive: true, force: true });
   } catch {

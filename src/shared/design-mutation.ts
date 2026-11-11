@@ -84,6 +84,15 @@ export type DesignKitOption = {
 };
 
 /** Why a kit couldn't be made ready, in terms the picker can word: its `Unavailable offline` and `Retry` states. */
+/** The downloaded GradientDeck design references: none yet, or how many and when. */
+export type DesignReferenceStatus = { state: "none" } | { state: "installed"; count: number; fetchedAt: string; missing: number; bytes: number };
+
+/** How far a reference download got: files done of total, and bytes saved so far. */
+export type DesignReferenceProgress = { done: number; total: number; bytes: number };
+
+/** A reference download's outcome, in terms the first-run sheet and Settings can word. */
+export type DesignReferenceResult = { ok: true; status: DesignReferenceStatus } | { ok: false; code: "offline" | "invalid" | "cancelled"; message: string };
+
 export type DesignKitEnsureResult = { ok: true } | { ok: false; code: "unknown" | "offline" | "blocked" | "hash" | "archive" | "invalid" | "cancelled"; message: string };
 
 /** What the canvas can ask about a document's history. */

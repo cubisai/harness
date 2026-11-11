@@ -16,8 +16,9 @@ import { DesignWatcher } from "./design/watch";
 import { DesignDocuments, isFromAppWindow, parseDesignMutation, parseHistoryRequest } from "./design/documents";
 import { KIT_CATALOG } from "./design/kit-catalog";
 import { KitInstallError, KitStore } from "./design/kit-install";
+import { ReferenceDownloadError, ReferenceStore } from "./design/references-store";
 import { parseKitManifest } from "./design/kit-schema";
-import type { DesignKitEnsureResult, DesignKitOption } from "../shared/design-mutation";
+import type { DesignKitEnsureResult, DesignKitOption, DesignReferenceResult, DesignReferenceStatus } from "../shared/design-mutation";
 import { readIssueConfig, readIssueSummary } from "./issues";
 import { issueTools } from "./issues-tool";
 import { offerPrompt, parseOffer } from "./issue-offer";
@@ -1023,6 +1024,9 @@ async function main(): Promise<void> {
   const foundationKit = app.isPackaged ? join(process.resourcesPath, "design-kits", "foundation") : join(app.getAppPath(), "resources", "design-kits", "foundation");
   const kitStore = new KitStore(join(userData, "design-packs"));
   kitStore.cleanStaging();
+  // GradientDeck's design references: downloaded once, on the user's say-so, never bundled.
+  const referenceStore = new ReferenceStore(join(userData, "design-references", "gradientdeck"));
+  referenceStore.cleanStaging();
   service.setDesignKitLookup((kitId) => (kitId === "foundation" ? foundationKit : kitStore.activeDir(kitId)));
   service.setDesignPatternsDir(app.isPackaged ? join(process.resourcesPath, "design-patterns") : join(app.getAppPath(), "resources", "design-patterns"));
   service.setDesignIconsDir(app.isPackaged ? join(process.resourcesPath, "design-icons") : join(app.getAppPath(), "resources", "design-icons"));
@@ -1321,6 +1325,51 @@ async function main(): Promise<void> {
       .finally(() => kitInstalls.delete(entry.id));
     kitInstalls.set(entry.id, started);
     return started;
+  });
+  // One reference download at a time; a second request joins the first. Cancel aborts it, and so does a run that stalls.
+  let referenceRun: { promise: Promise<DesignReferenceResult>; controller: AbortController } | null = null;
+  const REFERENCE_DOWNLOAD_MS = 15 * 60_000;
+  ipcMain.handle("design:references:status", (e): DesignReferenceStatus => {
+    if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
+    return referenceStore.status();
+  });
+  ipcMain.handle("design:references:download", (e): Promise<DesignReferenceResult> => {
+    if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
+    if (referenceRun) return referenceRun.promise;
+    const controller = new AbortController();
+    const timeout = AbortSignal.timeout(REFERENCE_DOWNLOAD_MS);
+    const sender = e.sender;
+    const promise = referenceStore
+      .download({
+        signal: AbortSignal.any([controller.signal, timeout]),
+        onProgress: (progress) => {
+          if (!sender.isDestroyed()) sender.send("design:references:progress", progress);
+        },
+      })
+      .then((status): DesignReferenceResult => (status.state === "installed" ? { ok: true, status } : { ok: false, code: "invalid", message: "The download finished without any references." }))
+      .catch((error: unknown): DesignReferenceResult => {
+        if (timeout.aborted) return { ok: false, code: "offline", message: "The download took too long." };
+        if (error instanceof ReferenceDownloadError) return { ok: false, code: error.code, message: error.message };
+        return { ok: false, code: "offline", message: "Could not download the design references." };
+      })
+      .finally(() => {
+        referenceRun = null;
+      });
+    referenceRun = { promise, controller };
+    return promise;
+  });
+  ipcMain.handle("design:references:cancel", (e) => {
+    if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
+    referenceRun?.controller.abort();
+  });
+  ipcMain.handle("design:references:remove", async (e): Promise<DesignReferenceStatus> => {
+    if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
+    if (referenceRun) {
+      referenceRun.controller.abort();
+      await referenceRun.promise;
+    }
+    referenceStore.remove();
+    return referenceStore.status();
   });
   ipcMain.handle("design:save-ref", (_e, threadId: string, bytes: Uint8Array) => {
     if (!(bytes instanceof Uint8Array)) throw new Error("Not an image (png, jpg, webp or gif).");
