@@ -114,10 +114,7 @@ export function ReferencesSheet() {
         <div className="sheet-head">
           <h2>Download design references</h2>
         </div>
-        <p>
-          1,295 real-site design references from GradientDeck: each site's colours, type, spacing and components, written up as text. CubiQ adapts one into your design's
-          theme when you or the agent pick it.
-        </p>
+        <p>An additional resource for Design mode.</p>
         <p className="note">About 43 MB, text only (no images or fonts). Saved in CubiQ's data folder; nothing is sent about you or your designs.</p>
         {downloading ? (
           <>

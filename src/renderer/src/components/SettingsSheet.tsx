@@ -698,8 +698,7 @@ function DesignReferencesSection() {
         </p>
       )}
       <p className="note">
-        1,295 real-site references from GradientDeck (about 43 MB, text only). The style picker lists them under Foundation, and Auto can pick one. A design keeps the
-        version it was built from: updating never changes an existing design.
+        An additional resource for Design mode (about 43 MB, text only).
       </p>
     </section>
   );
