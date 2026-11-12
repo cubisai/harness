@@ -246,7 +246,7 @@
   [data-ui="navbar"] > * {
     margin: 0;
   }
-  [data-ui="navbar"] a {
+  [data-ui="navbar"] a:not([data-ui]) {
     color: var(--color-text-muted);
     text-decoration: none;
     font-size: var(--text-sm);
@@ -254,14 +254,14 @@
     padding-block: var(--space-2);
     transition: color var(--duration-fast) var(--ease);
   }
-  [data-ui="navbar"] a:hover {
+  [data-ui="navbar"] a:not([data-ui]):hover {
     color: var(--color-text);
   }
-  [data-ui="navbar"] a[aria-current] {
+  [data-ui="navbar"] a:not([data-ui])[aria-current] {
     color: var(--color-text);
     font-weight: var(--weight-medium);
   }
-  [data-ui="navbar"] a:focus-visible {
+  [data-ui="navbar"] a:not([data-ui]):focus-visible {
     outline: 2px solid var(--color-focus);
     outline-offset: 2px;
     border-radius: var(--radius-sm);
@@ -1059,9 +1059,408 @@
     outline-offset: -2px;
   }
 
+  /* ---------- Metrics ---------- */
+  /* Stat: one number with its label and an optional change. data-trend colours the change. */
+  [data-ui="stat"] {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-inline-size: 0;
+  }
+  [data-ui="stat"] [data-part="label"] {
+    color: var(--color-text-muted);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: var(--leading-sm);
+    font-weight: var(--weight-medium);
+  }
+  [data-ui="stat"] [data-part="value"] {
+    color: var(--color-text);
+    font-family: var(--font-display);
+    font-size: var(--text-3xl);
+    line-height: var(--leading-3xl);
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-heading);
+    font-variant-numeric: var(--numeric-data);
+  }
+  [data-ui="stat"][data-size="sm"] [data-part="value"] {
+    font-size: var(--text-xl);
+    line-height: var(--leading-xl);
+  }
+  [data-ui="stat"][data-size="lg"] [data-part="value"] {
+    font-size: var(--text-4xl);
+    line-height: var(--leading-4xl);
+  }
+  [data-ui="stat"] [data-part="delta"] {
+    color: var(--color-text-muted);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: var(--leading-sm);
+    font-weight: var(--weight-medium);
+    font-variant-numeric: var(--numeric-data);
+  }
+  [data-ui="stat"][data-trend="up"] [data-part="delta"] {
+    color: var(--color-success);
+  }
+  [data-ui="stat"][data-trend="down"] [data-part="delta"] {
+    color: var(--color-danger);
+  }
+
+  /* Progress: a native <progress> (or <meter>) bar in the theme's colours. */
+  [data-ui="progress"] {
+    appearance: none;
+    display: block;
+    inline-size: 100%;
+    block-size: var(--space-2);
+    border: 0;
+    border-radius: var(--radius-full);
+    background: var(--color-surface-3);
+    overflow: hidden;
+    color: var(--color-accent);
+  }
+  [data-ui="progress"][data-size="sm"] {
+    block-size: var(--space-1);
+  }
+  [data-ui="progress"]::-webkit-progress-bar,
+  [data-ui="progress"]::-webkit-meter-inner-element,
+  [data-ui="progress"]::-webkit-meter-bar {
+    background: var(--color-surface-3);
+    border: 0;
+    border-radius: var(--radius-full);
+    block-size: 100%;
+  }
+  [data-ui="progress"]::-webkit-progress-value,
+  [data-ui="progress"]::-webkit-meter-optimum-value,
+  [data-ui="progress"]::-webkit-meter-suboptimum-value,
+  [data-ui="progress"]::-webkit-meter-even-less-good-value {
+    background: currentColor;
+    border-radius: var(--radius-full);
+  }
+  [data-ui="progress"]::-moz-progress-bar {
+    background: currentColor;
+    border-radius: var(--radius-full);
+  }
+  [data-ui="progress"][data-tone="success"] {
+    color: var(--color-success);
+  }
+  [data-ui="progress"][data-tone="warning"] {
+    color: var(--color-warning);
+  }
+  [data-ui="progress"][data-tone="danger"] {
+    color: var(--color-danger);
+  }
+
+  /* ---------- Wayfinding ---------- */
+  /* Breadcrumb: <nav data-ui="breadcrumb"><ol><li><a href>…</a></li>…<li aria-current="page">…</li></ol></nav>. */
+  [data-ui="breadcrumb"] ol {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: var(--leading-sm);
+    color: var(--color-text-muted);
+  }
+  [data-ui="breadcrumb"] li {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  [data-ui="breadcrumb"] li + li::before {
+    content: "/";
+    color: var(--color-border-strong);
+  }
+  [data-ui="breadcrumb"] a {
+    color: inherit;
+    text-decoration: none;
+    border-radius: var(--radius-sm);
+  }
+  [data-ui="breadcrumb"] a:hover {
+    color: var(--color-text);
+    text-decoration: underline;
+  }
+  [data-ui="breadcrumb"] a:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+  [data-ui="breadcrumb"] [aria-current="page"] {
+    color: var(--color-text);
+    font-weight: var(--weight-medium);
+  }
+
+  /* Pagination: <nav data-ui="pagination"> holding page links; aria-current marks the page shown. */
+  [data-ui="pagination"] {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: var(--leading-sm);
+  }
+  [data-ui="pagination"] :is(a, button, span) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: var(--target-min);
+    min-block-size: var(--target-min);
+    padding-inline: var(--space-3);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--color-text);
+    font: inherit;
+    text-decoration: none;
+    font-variant-numeric: var(--numeric-data);
+  }
+  [data-ui="pagination"] :is(a, button):hover {
+    background: var(--color-surface-2);
+  }
+  [data-ui="pagination"] :is(a, button):focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+  [data-ui="pagination"] [aria-current="page"] {
+    border-color: var(--color-border-strong);
+    font-weight: var(--weight-medium);
+  }
+  [data-ui="pagination"] [aria-disabled="true"] {
+    color: var(--color-text-muted);
+    pointer-events: none;
+  }
+
+  /* ---------- Overlays and status ---------- */
+  /* Tooltip: wraps its trigger; data-label is the tip, shown on hover and keyboard focus. */
+  [data-ui="tooltip"] {
+    position: relative;
+    display: inline-flex;
+  }
+  [data-ui="tooltip"]::after {
+    content: attr(data-label);
+    position: absolute;
+    inset-inline-start: 50%;
+    inset-block-end: calc(100% + var(--space-2));
+    translate: -50% 0;
+    z-index: 10;
+    inline-size: max-content;
+    max-inline-size: calc(var(--space-24) * 3);
+    padding-block: var(--space-1);
+    padding-inline: var(--space-2);
+    border-radius: var(--radius-sm);
+    background: var(--color-text);
+    color: var(--color-bg);
+    font-family: var(--font-sans);
+    font-size: var(--text-xs);
+    line-height: var(--leading-xs);
+    font-weight: var(--weight-medium);
+    opacity: 0;
+    pointer-events: none;
+    transition-property: opacity;
+    transition-duration: var(--duration-fast);
+    transition-timing-function: var(--ease);
+  }
+  [data-ui="tooltip"][data-side="bottom"]::after {
+    inset-block-end: auto;
+    inset-block-start: calc(100% + var(--space-2));
+  }
+  [data-ui="tooltip"]:hover::after,
+  [data-ui="tooltip"]:focus-within::after,
+  [data-ui="tooltip"][data-open="true"]::after {
+    opacity: 1;
+  }
+
+  /* Toast: a short message about something that just happened. Place it with page CSS (or leave it in flow). */
+  [data-ui="toast"] {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: start;
+    gap: var(--space-1) var(--space-3);
+    inline-size: min(100%, calc(var(--space-24) * 4));
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--color-border);
+    border-inline-start-width: var(--space-1);
+    border-inline-start-color: var(--color-accent);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    color: var(--color-text);
+    box-shadow: var(--shadow-2);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: var(--leading-sm);
+  }
+  [data-ui="toast"] [data-part="title"] {
+    font-weight: var(--weight-medium);
+  }
+  [data-ui="toast"] [data-part="body"] {
+    grid-column: 1;
+    color: var(--color-text-muted);
+  }
+  [data-ui="toast"] [data-part="action"] {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+  [data-ui="toast"][data-tone="success"] {
+    border-inline-start-color: var(--color-success);
+  }
+  [data-ui="toast"][data-tone="warning"] {
+    border-inline-start-color: var(--color-warning);
+  }
+  [data-ui="toast"][data-tone="danger"] {
+    border-inline-start-color: var(--color-danger);
+  }
+  [data-ui="toast"][data-tone="neutral"] {
+    border-inline-start-color: var(--color-border-strong);
+  }
+
+  /* Skeleton: a placeholder while content loads. Shapes: text (one line), block (fills its box), circle. */
+  [data-ui="skeleton"] {
+    display: block;
+    inline-size: 100%;
+    min-inline-size: var(--space-16);
+    block-size: var(--leading-md);
+    border-radius: var(--radius-sm);
+    background: linear-gradient(90deg, var(--color-surface-2) 25%, var(--color-surface-3) 50%, var(--color-surface-2) 75%);
+    background-size: 400% 100%;
+    animation: cubiq-skeleton calc(var(--duration) * 8) var(--ease) infinite;
+  }
+  [data-ui="skeleton"][data-shape="block"] {
+    block-size: 100%;
+    min-block-size: var(--space-16);
+    border-radius: var(--radius-md);
+  }
+  [data-ui="skeleton"][data-shape="circle"] {
+    min-inline-size: 0;
+    flex-shrink: 0;
+    inline-size: var(--space-10);
+    block-size: var(--space-10);
+    border-radius: var(--radius-full);
+  }
+  @keyframes cubiq-skeleton {
+    from { background-position: 100% 0; }
+    to { background-position: 0 0; }
+  }
+
+  /* Empty state: what a list or view says when it has nothing yet, and the one action that fills it. */
+  [data-ui="empty-state"] {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-12) var(--space-6);
+    border: 1px dashed var(--color-border-strong);
+    border-radius: var(--radius-lg);
+    text-align: center;
+    color: var(--color-text);
+  }
+  [data-ui="empty-state"] [data-part="icon"] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--space-12);
+    block-size: var(--space-12);
+    border-radius: var(--radius-full);
+    background: var(--color-surface-2);
+    color: var(--color-text-muted);
+  }
+  [data-ui="empty-state"] [data-part="body"] {
+    max-inline-size: var(--measure);
+    color: var(--color-text-muted);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: var(--leading-sm);
+  }
+  [data-ui="empty-state"][data-size="sm"] {
+    padding: var(--space-6) var(--space-4);
+  }
+
+  /* ---------- App frame ---------- */
+  /* Dashboard shell: a side navigation and the main view. Below 768px the navigation sits above. */
+  [data-ui="dashboard-shell"] {
+    display: grid;
+    grid-template-columns: calc(var(--space-24) * 2.5) minmax(0, 1fr);
+    min-block-size: 100vh;
+    background: var(--color-bg);
+    color: var(--color-text);
+  }
+  [data-ui="dashboard-shell"] > [data-part="sidebar"] {
+    padding: var(--space-6) var(--space-4);
+    border-inline-end: 1px solid var(--color-border);
+    background: var(--color-surface);
+  }
+  [data-ui="dashboard-shell"] > [data-part="sidebar"] [data-ui="button"] {
+    justify-content: flex-start;
+  }
+  [data-ui="dashboard-shell"] > [data-part="main"] {
+    min-inline-size: 0;
+    padding: var(--space-8);
+  }
+  @media (max-width: 767px) {
+    [data-ui="dashboard-shell"] {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    [data-ui="dashboard-shell"] > [data-part="sidebar"] {
+      border-inline-end: 0;
+      border-block-end: 1px solid var(--color-border);
+    }
+    [data-ui="dashboard-shell"] > [data-part="main"] {
+      padding: var(--space-6) var(--space-4);
+    }
+  }
+
+  /* ---------- Block frames ---------- */
+  /* Sign in: the card centred at a form's width. */
+  [data-ui="sign-in"] {
+    display: grid;
+    justify-items: center;
+  }
+  [data-ui="sign-in"] > [data-ui="card"] {
+    inline-size: min(100%, calc(var(--space-24) * 4.5));
+  }
+
+  /* ---------- Slides ---------- */
+  /* Slide body: inside a 1920x1080 deck slide (deck.css pads it), lays the kit's parts out at twice their screen size,
+   * so a slide is built from the same parts as a page. Layouts: content (stacked), title (left, centred down), split. */
+  [data-ui="slide"] {
+    zoom: 2;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: var(--space-6);
+    box-sizing: border-box;
+    inline-size: 100%;
+    block-size: 100%;
+    color: var(--color-text);
+  }
+  /* The slide blocks are only a name around the slide body: it sizes against the deck slide itself. */
+  [data-ui^="slide-"] {
+    display: contents;
+  }
+  [data-ui="slide"][data-layout="title"] {
+    align-items: flex-start;
+  }
+  [data-ui="slide"][data-layout="split"] {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+    gap: var(--space-12);
+  }
+  [data-ui="slide"] [data-ui="heading"][data-level="display"] {
+    font-size: var(--text-display);
+    line-height: var(--leading-display);
+    letter-spacing: var(--tracking-display);
+  }
+
   @media (prefers-reduced-motion: reduce) {
     [data-ui] * {
       transition-duration: 0ms;
+    }
+    [data-ui="skeleton"] {
+      animation: none;
     }
   }
 }

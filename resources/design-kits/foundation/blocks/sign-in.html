@@ -1,0 +1,30 @@
+<section data-ui="sign-in">
+  <form data-ui="card" data-padding="lg">
+    <div data-part="header">
+      <div data-ui="stack" data-gap="xs">
+        <h1 data-ui="heading" data-level="3">Sign in to Shiftline</h1>
+        <p data-ui="text" data-size="sm" data-tone="muted">New here? <a data-ui="link" href="#">Start a free rota</a></p>
+      </div>
+    </div>
+    <div data-part="body">
+      <div data-ui="stack" data-gap="md">
+        <div data-ui="field">
+          <label data-part="label" for="sign-in-email">Work email</label>
+          <input data-ui="input" id="sign-in-email" type="email" autocomplete="email">
+        </div>
+        <div data-ui="field">
+          <label data-part="label" for="sign-in-password">Password</label>
+          <input data-ui="input" id="sign-in-password" type="password" autocomplete="current-password">
+          <span data-part="hint"><a data-ui="link" data-tone="muted" href="#">Forgot your password?</a></span>
+        </div>
+        <label data-ui="switch">
+          <input type="checkbox" role="switch" checked>
+          <span>Keep me signed in</span>
+        </label>
+      </div>
+    </div>
+    <div data-part="footer">
+      <button data-ui="button" type="submit">Sign in</button>
+    </div>
+  </form>
+</section>

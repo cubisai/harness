@@ -1,0 +1,69 @@
+<div data-ui="dashboard-shell">
+  <nav data-part="sidebar" aria-label="Main">
+    <div data-ui="stack" data-gap="lg">
+      <span data-ui="heading" data-level="4">Shiftline</span>
+      <div data-ui="stack" data-gap="xs">
+        <a data-ui="button" data-variant="secondary" href="#" aria-current="page">Schedule</a>
+        <a data-ui="button" data-variant="ghost" href="#">Swaps</a>
+        <a data-ui="button" data-variant="ghost" href="#">Team</a>
+        <a data-ui="button" data-variant="ghost" href="#">Timesheets</a>
+        <a data-ui="button" data-variant="ghost" href="#">Settings</a>
+      </div>
+    </div>
+  </nav>
+  <main data-part="main">
+    <div data-ui="stack" data-gap="lg">
+      <div data-ui="stack" data-direction="row" data-gap="md" data-justify="between" data-align="center" data-wrap="true">
+        <div data-ui="stack" data-gap="xs">
+          <nav data-ui="breadcrumb" aria-label="Breadcrumb">
+            <ol>
+              <li><a href="#">Harbour Street</a></li>
+              <li aria-current="page">Week 46</li>
+            </ol>
+          </nav>
+          <h1 data-ui="heading" data-level="2">Week 46</h1>
+        </div>
+        <button data-ui="button">Publish week</button>
+      </div>
+      <div data-ui="grid" data-columns="3" data-gap="md">
+        <div data-ui="card">
+          <div data-part="body">
+            <div data-ui="stat" data-size="sm" data-trend="up">
+              <span data-part="label">Shifts covered</span>
+              <span data-part="value">39 of 42</span>
+              <span data-part="delta">+4 since Monday</span>
+            </div>
+          </div>
+        </div>
+        <div data-ui="card">
+          <div data-part="body">
+            <div data-ui="stat" data-size="sm">
+              <span data-part="label">Swaps waiting</span>
+              <span data-part="value">2</span>
+            </div>
+          </div>
+        </div>
+        <div data-ui="card">
+          <div data-part="body">
+            <div data-ui="stat" data-size="sm" data-trend="down">
+              <span data-part="label">Overtime hours</span>
+              <span data-part="value">6.5</span>
+              <span data-part="delta">-3 on last week</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <table data-ui="table">
+        <caption>Open shifts</caption>
+        <thead>
+          <tr><th scope="col">Shift</th><th scope="col">Day</th><th scope="col">Status</th><th scope="col" data-numeric="true">Hours</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Opening</td><td>Saturday</td><td><span data-ui="badge" data-tone="warning">Unfilled</span></td><td data-numeric="true">6.0</td></tr>
+          <tr><td>Close</td><td>Saturday</td><td><span data-ui="badge" data-tone="accent">Offered</span></td><td data-numeric="true">7.5</td></tr>
+          <tr><td>Brunch</td><td>Sunday</td><td><span data-ui="badge" data-tone="warning">Unfilled</span></td><td data-numeric="true">5.0</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>

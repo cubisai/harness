@@ -8,10 +8,10 @@
   <link rel="stylesheet" href="system/ui.css">
   <link rel="stylesheet" href="deck.css">
   <style>
-    /* Slide type: slides are 1920x1080, so sizes are about 2x the screen scale. */
-    .slide h1 { font-family: var(--font-display); font-size: 96px; line-height: 104px; font-weight: var(--weight-bold); }
-    .slide h2 { font-family: var(--font-display); font-size: 64px; line-height: 72px; font-weight: var(--weight-bold); }
-    .slide p, .slide li { font-size: 40px; line-height: 56px; }
+    /* Slide type: slides are 1920x1080, so sizes are about 2x the screen scale. Kit parts are left alone (a kit's slide part scales them). */
+    .slide h1:not([data-ui]) { font-family: var(--font-display); font-size: 96px; line-height: 104px; font-weight: var(--weight-bold); }
+    .slide h2:not([data-ui]) { font-family: var(--font-display); font-size: 64px; line-height: 72px; font-weight: var(--weight-bold); }
+    .slide :is(p, li):not([data-ui], [data-ui] *) { font-size: 40px; line-height: 56px; }
     .slide .muted { color: var(--color-text-muted); }
 
     /* Build the slides below. Tokens for color, radius and the 8pt spacing scale. */

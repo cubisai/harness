@@ -16,6 +16,8 @@ The base kit every page starts from. Neutral, calm and complete: layout, type, f
 - Every form control sits in a `field` with a label. Put the hint above the error.
 - Cards separate with a border or a fill, not both with a shadow.
 - Numbers in tables get `data-numeric="true"`.
+- Headline figures are a `stat`; an empty list or view is an `empty-state` with one action.
+- Deck slides: put a `slide` part inside each 1920x1080 `.slide`; it draws the same parts at twice their screen size, so don't hand-size slide type.
 
 ## Tokens
 Use only the custom properties from `tokens.css`. They cover colour roles (`--color-*`), type sizes and leading (`--text-*`, `--leading-*`), space (`--space-*`), radius, shadow and motion.
@@ -31,7 +33,7 @@ Put page-specific CSS in the page. Tokens only, no literal colours or sizes. Kee
 - `system/tokens.css`: the default tokens, light and dark.
 - `system/ui.css`: every part, in the `cubiq-ui` layer so page CSS wins.
 - `system/ui.js`: tab switching and dialog open and close.
-- `blocks/`: starting points for a hero, a feature grid and pricing.
+- `blocks/`: starting points. Pages: site header and footer, hero, feature grid, stats, logo row, testimonials, pricing, FAQ, CTA band. Forms: sign in, settings. Apps: dashboard shell. Decks: title, content, metric and quote slides.
 - `components.json`: the parts, their props and snippets.
 
 Never edit files under `system/`: they are shared by every page.

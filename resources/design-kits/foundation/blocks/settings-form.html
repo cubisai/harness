@@ -1,0 +1,35 @@
+<section data-ui="settings-form">
+  <form data-ui="stack" data-gap="lg">
+    <div data-ui="stack" data-gap="xs">
+      <h2 data-ui="heading" data-level="3">Location settings</h2>
+      <p data-ui="text" data-size="sm" data-tone="muted">These apply to every rota at Harbour Street.</p>
+    </div>
+    <div data-ui="grid" data-columns="2" data-gap="md">
+      <div data-ui="field">
+        <label data-part="label" for="settings-name">Location name</label>
+        <input data-ui="input" id="settings-name" type="text" value="Harbour Street">
+      </div>
+      <div data-ui="field">
+        <label data-part="label" for="settings-week">Week starts on</label>
+        <select data-ui="select" id="settings-week">
+          <option>Monday</option>
+          <option>Sunday</option>
+        </select>
+      </div>
+    </div>
+    <div data-ui="field">
+      <label data-part="label" for="settings-note">Note on every rota</label>
+      <textarea data-ui="textarea" id="settings-note" rows="3">Swaps need a manager's approval by Thursday.</textarea>
+      <span data-part="hint">Staff see this at the top of the week.</span>
+    </div>
+    <label data-ui="switch">
+      <input type="checkbox" role="switch" checked>
+      <span>Let staff offer shifts to the whole team</span>
+    </label>
+    <hr data-ui="divider">
+    <div data-ui="stack" data-direction="row" data-gap="sm" data-justify="end">
+      <button data-ui="button" data-variant="ghost" type="reset">Cancel</button>
+      <button data-ui="button" type="submit">Save changes</button>
+    </div>
+  </form>
+</section>

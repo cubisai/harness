@@ -538,6 +538,190 @@
       "snippet": "<div data-ui=\"stack\" data-gap=\"md\">\n  <p data-ui=\"text\" data-size=\"sm\">Published by Priya on Friday.</p>\n  <hr data-ui=\"divider\">\n  <p data-ui=\"text\" data-size=\"sm\" data-tone=\"muted\">Next publish is due Thursday.</p>\n</div>"
     },
     {
+      "name": "Stat",
+      "ui": "stat",
+      "category": "Data",
+      "description": "One figure with its label and an optional change; the trend colours the change.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "trend",
+          "label": "Trend",
+          "type": "choice",
+          "options": [
+            "none",
+            "up",
+            "down"
+          ],
+          "default": "none"
+        }
+      ],
+      "snippet": "<div data-ui=\"grid\" data-columns=\"3\" data-gap=\"lg\">\n  <div data-ui=\"stat\">\n    <span data-part=\"label\">Shifts covered</span>\n    <span data-part=\"value\">96%</span>\n  </div>\n  <div data-ui=\"stat\" data-trend=\"up\">\n    <span data-part=\"label\">Swaps approved</span>\n    <span data-part=\"value\">142</span>\n    <span data-part=\"delta\">+18 on last week</span>\n  </div>\n  <div data-ui=\"stat\" data-trend=\"down\">\n    <span data-part=\"label\">Open shifts</span>\n    <span data-part=\"value\">3</span>\n    <span data-part=\"delta\">-5 on last week</span>\n  </div>\n</div>"
+    },
+    {
+      "name": "Progress",
+      "ui": "progress",
+      "category": "Feedback",
+      "description": "A bar for how far along something is: a native <progress> or <meter> in the theme's colours.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "tone",
+          "label": "Tone",
+          "type": "choice",
+          "options": [
+            "accent",
+            "success",
+            "warning",
+            "danger"
+          ],
+          "default": "accent"
+        }
+      ],
+      "snippet": "<div data-ui=\"field\">\n  <label data-part=\"label\" for=\"rota-progress\">Next week's rota</label>\n  <progress data-ui=\"progress\" id=\"rota-progress\" max=\"100\" value=\"64\">64%</progress>\n  <span data-part=\"hint\">27 of 42 shifts filled</span>\n</div>"
+    },
+    {
+      "name": "Breadcrumb",
+      "ui": "breadcrumb",
+      "category": "Navigation",
+      "description": "The path to the current page, as a list of links ending in the page itself.",
+      "props": [],
+      "snippet": "<nav data-ui=\"breadcrumb\" aria-label=\"Breadcrumb\">\n  <ol>\n    <li><a href=\"#\">Locations</a></li>\n    <li><a href=\"#\">Harbour Street</a></li>\n    <li aria-current=\"page\">Week 46</li>\n  </ol>\n</nav>"
+    },
+    {
+      "name": "Pagination",
+      "ui": "pagination",
+      "category": "Navigation",
+      "description": "Links between the pages of a long list; aria-current marks the one shown.",
+      "props": [],
+      "snippet": "<nav data-ui=\"pagination\" aria-label=\"Pages\">\n  <a href=\"#\" aria-disabled=\"true\">Previous</a>\n  <a href=\"#\" aria-current=\"page\">1</a>\n  <a href=\"#\">2</a>\n  <a href=\"#\">3</a>\n  <span>…</span>\n  <a href=\"#\">9</a>\n  <a href=\"#\">Next</a>\n</nav>"
+    },
+    {
+      "name": "Tooltip",
+      "ui": "tooltip",
+      "category": "Feedback",
+      "description": "A short tip on a trigger it wraps, shown on hover and keyboard focus.",
+      "props": [
+        {
+          "name": "side",
+          "label": "Side",
+          "type": "choice",
+          "options": [
+            "top",
+            "bottom"
+          ],
+          "default": "top"
+        },
+        {
+          "name": "open",
+          "label": "Open",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<span data-ui=\"tooltip\" data-label=\"Copies every shift to next week\">\n  <button data-ui=\"button\" data-variant=\"secondary\">Repeat week</button>\n</span>"
+    },
+    {
+      "name": "Toast",
+      "ui": "toast",
+      "category": "Feedback",
+      "description": "A brief message about something that just happened, with an optional action.",
+      "props": [
+        {
+          "name": "tone",
+          "label": "Tone",
+          "type": "choice",
+          "options": [
+            "accent",
+            "neutral",
+            "success",
+            "warning",
+            "danger"
+          ],
+          "default": "accent"
+        }
+      ],
+      "snippet": "<div data-ui=\"toast\" data-tone=\"success\" role=\"status\">\n  <div data-part=\"title\">Rota published</div>\n  <div data-part=\"body\">All 18 staff were notified.</div>\n  <button data-ui=\"button\" data-variant=\"ghost\" data-size=\"sm\" data-part=\"action\">Undo</button>\n</div>"
+    },
+    {
+      "name": "Skeleton",
+      "ui": "skeleton",
+      "category": "Feedback",
+      "description": "A placeholder shape while content loads: a line of text, a block or a circle.",
+      "props": [
+        {
+          "name": "shape",
+          "label": "Shape",
+          "type": "choice",
+          "options": [
+            "text",
+            "block",
+            "circle"
+          ],
+          "default": "text"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\" aria-busy=\"true\">\n  <span data-ui=\"skeleton\" data-shape=\"circle\"></span>\n  <span data-ui=\"skeleton\"></span>\n  <span data-ui=\"skeleton\"></span>\n  <span data-ui=\"skeleton\" data-shape=\"block\"></span>\n</div>"
+    },
+    {
+      "name": "Empty state",
+      "ui": "empty-state",
+      "category": "Feedback",
+      "description": "What a list or view shows when it has nothing yet, with the one action that fills it.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"empty-state\">\n  <span data-part=\"icon\" aria-hidden=\"true\">+</span>\n  <h3 data-ui=\"heading\" data-level=\"4\">No shifts this week</h3>\n  <p data-part=\"body\">Copy last week's rota or add the first shift by hand.</p>\n  <button data-ui=\"button\">Add a shift</button>\n</div>"
+    },
+    {
+      "name": "Slide",
+      "ui": "slide",
+      "category": "Layout",
+      "description": "A deck slide's body: lays the kit's parts out at twice their screen size, so slides use the same parts as pages.",
+      "props": [
+        {
+          "name": "layout",
+          "label": "Layout",
+          "type": "choice",
+          "options": [
+            "content",
+            "title",
+            "split"
+          ],
+          "default": "content"
+        }
+      ],
+      "snippet": "<section class=\"slide\" aria-label=\"Coverage\">\n  <div data-ui=\"slide\" data-layout=\"split\">\n    <div data-ui=\"stack\" data-gap=\"md\">\n      <h2 data-ui=\"heading\" data-level=\"1\">Coverage is up</h2>\n      <p data-ui=\"text\" data-size=\"lg\" data-tone=\"muted\">Fewer gaps since swaps moved into the app.</p>\n    </div>\n    <div data-ui=\"stat\" data-size=\"lg\" data-trend=\"up\">\n      <span data-part=\"label\">Shifts covered</span>\n      <span data-part=\"value\">96%</span>\n      <span data-part=\"delta\">+11 points since May</span>\n    </div>\n  </div>\n</section>"
+    },
+    {
       "name": "Hero",
       "ui": "hero",
       "kind": "composition",
@@ -563,6 +747,132 @@
       "description": "Three plan cards with prices, features and one action each.",
       "props": [],
       "snippet": "<section data-ui=\"pricing\" data-block=\"blocks/pricing.html\"></section>"
+    },
+    {
+      "name": "Site header",
+      "ui": "site-header",
+      "kind": "composition",
+      "category": "Blocks",
+      "description": "A top bar with the brand, the main links and one action.",
+      "props": [],
+      "snippet": "<section data-ui=\"site-header\" data-block=\"blocks/site-header.html\"></section>"
+    },
+    {
+      "name": "Site footer",
+      "ui": "site-footer",
+      "kind": "composition",
+      "category": "Blocks",
+      "description": "A page's closing band: link columns, a short line about the product and the legal row.",
+      "props": [],
+      "snippet": "<section data-ui=\"site-footer\" data-block=\"blocks/site-footer.html\"></section>"
+    },
+    {
+      "name": "CTA band",
+      "ui": "cta-band",
+      "kind": "composition",
+      "category": "Blocks",
+      "description": "A closing call to action: a headline, one line and two buttons.",
+      "props": [],
+      "snippet": "<section data-ui=\"cta-band\" data-block=\"blocks/cta-band.html\"></section>"
+    },
+    {
+      "name": "FAQ",
+      "ui": "faq",
+      "kind": "composition",
+      "category": "Blocks",
+      "description": "Common questions in an accordion under a short heading.",
+      "props": [],
+      "snippet": "<section data-ui=\"faq\" data-block=\"blocks/faq.html\"></section>"
+    },
+    {
+      "name": "Testimonials",
+      "ui": "testimonials",
+      "kind": "composition",
+      "category": "Blocks",
+      "description": "Three customer quotes in cards, each with a name and role.",
+      "props": [],
+      "snippet": "<section data-ui=\"testimonials\" data-block=\"blocks/testimonials.html\"></section>"
+    },
+    {
+      "name": "Stats",
+      "ui": "stats",
+      "kind": "composition",
+      "category": "Blocks",
+      "description": "A row of headline figures with labels.",
+      "props": [],
+      "snippet": "<section data-ui=\"stats\" data-block=\"blocks/stats.html\"></section>"
+    },
+    {
+      "name": "Logo row",
+      "ui": "logo-row",
+      "kind": "composition",
+      "category": "Blocks",
+      "description": "Customer names set as a quiet row of wordmarks, with a line above.",
+      "props": [],
+      "snippet": "<section data-ui=\"logo-row\" data-block=\"blocks/logo-row.html\"></section>"
+    },
+    {
+      "name": "Sign in",
+      "ui": "sign-in",
+      "kind": "composition",
+      "category": "Blocks",
+      "description": "A sign-in card: email, password, a remember switch and the primary action.",
+      "props": [],
+      "snippet": "<section data-ui=\"sign-in\" data-block=\"blocks/sign-in.html\"></section>"
+    },
+    {
+      "name": "Settings form",
+      "ui": "settings-form",
+      "kind": "composition",
+      "category": "Blocks",
+      "description": "A settings page section: labelled fields, a switch and save or cancel.",
+      "props": [],
+      "snippet": "<section data-ui=\"settings-form\" data-block=\"blocks/settings-form.html\"></section>"
+    },
+    {
+      "name": "Dashboard shell",
+      "ui": "dashboard-shell",
+      "kind": "composition",
+      "category": "Blocks",
+      "description": "An app frame: side navigation, a header with breadcrumb, stats and a table.",
+      "props": [],
+      "snippet": "<section data-ui=\"dashboard-shell\" data-block=\"blocks/dashboard-shell.html\"></section>"
+    },
+    {
+      "name": "Title slide",
+      "ui": "slide-title",
+      "kind": "composition",
+      "category": "Blocks",
+      "description": "A deck's opening slide: badge, display headline and subtitle.",
+      "props": [],
+      "snippet": "<section data-ui=\"slide-title\" data-block=\"blocks/slide-title.html\"></section>"
+    },
+    {
+      "name": "Content slide",
+      "ui": "slide-content",
+      "kind": "composition",
+      "category": "Blocks",
+      "description": "A deck slide with a heading and three points in cards.",
+      "props": [],
+      "snippet": "<section data-ui=\"slide-content\" data-block=\"blocks/slide-content.html\"></section>"
+    },
+    {
+      "name": "Metric slide",
+      "ui": "slide-metric",
+      "kind": "composition",
+      "category": "Blocks",
+      "description": "A deck slide built around one big number and what it means.",
+      "props": [],
+      "snippet": "<section data-ui=\"slide-metric\" data-block=\"blocks/slide-metric.html\"></section>"
+    },
+    {
+      "name": "Quote slide",
+      "ui": "slide-quote",
+      "kind": "composition",
+      "category": "Blocks",
+      "description": "A deck slide with one customer quote and who said it.",
+      "props": [],
+      "snippet": "<section data-ui=\"slide-quote\" data-block=\"blocks/slide-quote.html\"></section>"
     }
   ]
 }

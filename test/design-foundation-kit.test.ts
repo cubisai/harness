@@ -56,6 +56,29 @@ describe("the bundled Foundation kit", () => {
     }
   });
 
+  it("lists every block it ships, and ships every block it lists", () => {
+    const parsed = parseKitManifest(read("components.json"));
+    if (!parsed.ok) throw new Error(parsed.errors.join("\n"));
+    const listed = parsed.manifest.components.filter((c) => c.kind === "composition").map((c) => c.ui).sort();
+    const files = readdirSync(join(FOUNDATION, "blocks")).map((f) => f.replace(/\.html$/, "")).sort();
+    expect(listed).toEqual(files);
+    for (const ui of files) expect(read(join("blocks", `${ui}.html`)), ui).toMatch(new RegExp(`^<[a-z]+ data-ui="${ui}"`));
+    expect(listed.length).toBeGreaterThanOrEqual(17);
+  });
+
+  it("has the metric, wayfinding, status and slide parts agents reach for", () => {
+    const parsed = parseKitManifest(read("components.json"));
+    if (!parsed.ok) throw new Error(parsed.errors.join("\n"));
+    const parts = new Set(parsed.manifest.components.filter((c) => c.kind === "component").map((c) => c.ui));
+    for (const ui of ["stat", "progress", "breadcrumb", "pagination", "tooltip", "toast", "skeleton", "empty-state", "slide"]) expect(parts.has(ui), ui).toBe(true);
+  });
+
+  it("never recolours a button link inside a navbar", () => {
+    const css = read("ui.css");
+    expect(css).not.toMatch(/\[data-ui="navbar"\] a(?::[a-z-]+)?\s*\{/);
+    expect(css).toMatch(/\[data-ui="navbar"\] a:not\(\[data-ui\]\) \{/);
+  });
+
   it("keeps ui.js small and self-contained", () => {
     const js = read("ui.js");
     expect(js.length).toBeLessThan(3072);
