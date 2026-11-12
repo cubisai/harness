@@ -397,7 +397,7 @@ export class ReferenceStore {
       });
     } catch {
       if (signal?.aborted) throw new ReferenceDownloadError("cancelled", "The design reference download was cancelled.");
-      throw new ReferenceDownloadError("offline", "Could not download the design reference index.");
+      throw new ReferenceDownloadError("offline", "Could not download the design reference index. Check your connection and try again.");
     }
 
     if (looksLikeHtml(indexBytes)) {
@@ -477,7 +477,7 @@ export class ReferenceStore {
     }
 
     if (Object.keys(files).length === 0) {
-      throw new ReferenceDownloadError("offline", "Could not download any design references.");
+      throw new ReferenceDownloadError("offline", "Could not download any design references. Check your connection and try again.");
     }
 
     const manifest: ReferenceManifest = {

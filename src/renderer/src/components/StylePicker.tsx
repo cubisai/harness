@@ -307,6 +307,8 @@ export function StylePicker({ projectId, thread, value, direction, disabled, onD
   const foundation = group?.id === FOUNDATION;
   const refMatches = useMemo(() => (foundation && refs ? filterReferences(refs, query, refTheme, industry) : []), [foundation, refs, query, refTheme, industry]);
   const refCards = useMemo(() => refMatches.slice(0, shown).map(referenceThemeCard), [refMatches, shown]);
+  // Search outside Foundation still finds references: an empty kit result offers them instead of a dead end.
+  const otherRefs = useMemo(() => (!foundation && refs && query.trim() ? filterReferences(refs, query, "all", null).length : 0), [foundation, refs, query]);
   const findCard = (id: string | null | undefined): DesignThemeCard | undefined => {
     if (!id) return undefined;
     if (id.startsWith(REFERENCE_SYSTEM_PREFIX)) {
@@ -672,7 +674,16 @@ export function StylePicker({ projectId, thread, value, direction, disabled, onD
                     <Download size={13} aria-hidden />
                   </button>
                 )}
-                {!showing && !cards.length && !refCards.length && <p className="sp-empty">{query.trim() ? `No theme in ${group?.name ?? "this kit"} matches "${query.trim()}".` : "This kit has no themes yet."}</p>}
+                {!showing && !cards.length && !refCards.length && (
+                  <div className="sp-status">
+                    <span>{query.trim() ? `No theme in ${group?.name ?? "this kit"} matches "${query.trim()}".` : "This kit has no themes yet."}</span>
+                    {otherRefs > 0 && (
+                      <button type="button" className="button ghost" onClick={() => void pickKit(FOUNDATION)}>
+                        Show {otherRefs.toLocaleString()} matching design {otherRefs === 1 ? "reference" : "references"}
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="sp-preview">
                 {preview ? (

@@ -2286,6 +2286,7 @@ export class Service {
     } catch {
       // No round yet.
     }
+    clearUnbuiltStyles(root);
     const current = this.threadReference(thread)?.slug ?? null;
     const picked = spreadReferences(cards, count, `${thread.id}:${round}`, current, this.recentReferences(thread));
     const made: { slug: string; name: string }[] = [];
@@ -2305,6 +2306,7 @@ export class Service {
       `More styles: rebuild index.html in ${made.length === 1 ? "another style" : `${made.length} other styles`} adapted from real-site design references, one variant page each beside it:`,
       ...lines,
       "Same content and purpose as index.html, but commit to each reference's world: its layout moves, type and signature, not just its colours. Leave index.html and system/ as they are.",
+      ONLY_THIS_ROUND,
     ].join("\n");
     return { names: made.map((r) => r.name), text };
   }
@@ -2322,6 +2324,7 @@ export class Service {
     if (refs) return refs;
     const styles = this.moreStylesFor(thread, Math.max(1, Math.min(4, count)));
     if (!styles.length) throw new Error("No other styles fit this design.");
+    clearUnbuiltStyles(root);
     for (const s of styles) materializeSystem(s, join(root, "styles", s.id.slice(STYLE_PREFIX.length)));
     const lines = styles.map((s) => {
       const id = s.id.slice(STYLE_PREFIX.length);
@@ -2331,6 +2334,7 @@ export class Service {
       `More styles: rebuild index.html in ${styles.length === 1 ? "another style" : `${styles.length} other styles`}, one variant page each beside it:`,
       ...lines,
       "Same content and purpose as index.html, but commit to each style's world: its layout moves, type and signature, not just its colours. Leave index.html and system/ as they are.",
+      ONLY_THIS_ROUND,
     ].join("\n");
     return { names: styles.map((s) => s.name), text };
   }
@@ -2522,6 +2526,33 @@ export class Service {
 }
 
 /** A design thread's folder relative to its working folder, else undefined. */
+/** Told with each "More styles" round: a request from an earlier round that failed is not still owed. */
+const ONLY_THIS_ROUND = "Build only the pages listed here: an earlier More styles request that wasn't finished is replaced by this one.";
+
+/** Drop `styles/<id>/` folders no page uses: a round that failed before building, or a variant that was discarded. */
+function clearUnbuiltStyles(root: string): void {
+  let ids: string[];
+  try {
+    ids = readdirSync(join(root, "styles"));
+  } catch {
+    return;
+  }
+  // A promoted variant's index.html still links its folder until the next turn moves system/.
+  const pages = readdirSync(root)
+    .filter((f) => f.endsWith(".html"))
+    .map((f) => {
+      try {
+        return readFileSync(join(root, f), "utf8");
+      } catch {
+        return "";
+      }
+    })
+    .join("\n");
+  for (const id of ids) {
+    if (!existsSync(join(root, `variant-${id}.html`)) && !pages.includes(`styles/${id}/`)) rmSync(join(root, "styles", id), { recursive: true, force: true });
+  }
+}
+
 function designOf(thread: Thread): string | undefined {
   return thread.kind === "design" ? designDirName(thread.id) : undefined;
 }

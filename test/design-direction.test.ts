@@ -223,6 +223,23 @@ describe("More styles", () => {
     expect(text).toContain("Leave index.html and system/ as they are.");
   });
 
+  it("a new round drops the folders an earlier, unbuilt round left, keeps used ones, and says only this round counts", () => {
+    const { service, project } = realSetup();
+    const thread = service.createThread(project.id, undefined, "design");
+    service.setDesignDirection(thread.id, { surface: "page", mode: "persuade", tier: "working", style: "riso-print" });
+    const root = service.designRoot(thread.id)!;
+    writeFileSync(join(root, "index.html"), "<h1>x</h1>");
+    const first = [...service.prepareMoreStyles(thread.id).text.matchAll(/`variant-([a-z0-9-]+)\.html`/g)].map((m) => m[1]!);
+    const [built, linked, failed] = first as [string, string, string];
+    writeFileSync(join(root, `variant-${built}.html`), "<h1>built</h1>");
+    writeFileSync(join(root, "index.html"), `<link rel="stylesheet" href="styles/${linked}/tokens.css">`);
+    const { text } = service.prepareMoreStyles(thread.id);
+    expect(text).toContain("Build only the pages listed here");
+    expect(existsSync(join(root, "styles", built))).toBe(true);
+    expect(existsSync(join(root, "styles", linked))).toBe(true);
+    if (!text.includes(`variant-${failed}.html`)) expect(existsSync(join(root, "styles", failed))).toBe(false);
+  });
+
   it("keeps a deck to deck styles", () => {
     const { service, project } = realSetup();
     const thread = service.createThread(project.id, undefined, "design");

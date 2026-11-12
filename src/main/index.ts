@@ -1356,7 +1356,7 @@ async function main(): Promise<void> {
       .catch((error: unknown): DesignReferenceResult => {
         if (timeout.aborted) return { ok: false, code: "offline", message: "The download took too long." };
         if (error instanceof ReferenceDownloadError) return { ok: false, code: error.code, message: error.message };
-        return { ok: false, code: "offline", message: "Could not download the design references." };
+        return { ok: false, code: "offline", message: "Could not download the design references. Check your connection and try again." };
       })
       .finally(() => {
         referenceRun = null;
@@ -1401,6 +1401,7 @@ async function main(): Promise<void> {
     return { path, thumb: image.resize({ height: 96 }).toDataURL() };
   });
   // The Pages rail's thumbnails: one off-screen render per page and file version (by mtime), kept for the session.
+  // The system's tokens count too: a theme switch can rewrite only system/tokens.css, after the page was drawn.
   const designThumbs = new Map<string, string>();
   ipcMain.handle("design:thumb", async (_e, threadId: string, rel: string) => {
     if (typeof threadId !== "string" || typeof rel !== "string") return "";
@@ -1412,7 +1413,13 @@ async function main(): Promise<void> {
     } catch {
       return "";
     }
-    const key = `${threadId}|${rel}|${mtime}`;
+    let tokens = 0;
+    try {
+      tokens = statSync(join(root, "system", "tokens.css")).mtimeMs;
+    } catch {
+      // No system yet.
+    }
+    const key = `${threadId}|${rel}|${mtime}:${tokens}`;
     const hit = designThumbs.get(key);
     if (hit !== undefined) return hit;
     let url = "";
