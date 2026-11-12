@@ -85,7 +85,7 @@ export function SeamButton({ rect, position, onOpen }: { rect: FrameRect; positi
 }
 
 /** A search box over the kit's parts, grouped by category, with arrow keys. Shared by Swap and the seam palette. */
-function PartList({ parts, placeholder, exclude, empty, onPick, onEscape }: { parts: KitPart[]; placeholder: string; exclude?: string; empty: string; onPick: (part: KitPart) => void; onEscape: () => void }) {
+function PartList({ parts, placeholder, exclude, empty, preview, onPick, onEscape }: { parts: KitPart[]; placeholder: string; exclude?: string; empty: string; preview?: PartPreview; onPick: (part: KitPart) => void; onEscape: () => void }) {
   const [query, setQuery] = useState("");
   const [at, setAt] = useState(0);
   const groups = useMemo(() => groupParts(parts, query, exclude), [parts, query, exclude]);
@@ -95,6 +95,7 @@ function PartList({ parts, placeholder, exclude, empty, onPick, onEscape }: { pa
   useEffect(() => {
     list.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
   }, [at]);
+  const current = flat[at]?.ui ?? null;
   return (
     <>
       <label className="studio-search">
@@ -121,6 +122,7 @@ function PartList({ parts, placeholder, exclude, empty, onPick, onEscape }: { pa
           }}
         />
       </label>
+      {preview && flat.length > 0 && <PartPreviewPane ui={current} preview={preview} />}
       <div className="studio-part-list" role="listbox" aria-label="Components" ref={list}>
         {flat.length === 0 && <p className="studio-part-empty">{empty}</p>}
         {groups.map((g) => (
@@ -136,6 +138,35 @@ function PartList({ parts, placeholder, exclude, empty, onPick, onEscape }: { pa
       </div>
     </>
   );
+}
+
+/** Draws one part of the kit, live in the page's theme: a page URL, or null when it can't be drawn. */
+export type PartPreview = (ui: string) => Promise<string | null>;
+
+/** The gallery's card for the highlighted part, above Insert's and Swap's list. Arrowing through the list redraws it after a pause. */
+function PartPreviewPane({ ui, preview }: { ui: string | null; preview: PartPreview }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [n, setN] = useState(0);
+  const draw = useRef(preview);
+  draw.current = preview;
+  useEffect(() => {
+    if (!ui) return;
+    let live = true;
+    const timer = setTimeout(() => {
+      void draw.current(ui)
+        .then((next) => {
+          if (!live) return;
+          setN((x) => x + 1);
+          setUrl(next);
+        })
+        .catch(() => live && setUrl(null));
+    }, 120);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [ui]);
+  return <div className="studio-part-preview" aria-hidden>{url && ui && <iframe key={n} title="Preview" src={`${url}?s=${n}`} sandbox="allow-scripts" tabIndex={-1} />}</div>;
 }
 
 /** Keeps a popover inside the stage, next to what opened it. */
@@ -175,14 +206,14 @@ function useClickAway(box: React.RefObject<HTMLElement | null>, onClose: () => v
 }
 
 /** `Swap Button for…`: any part of the kit, with a warning about the props the swap would drop. */
-export function SwapPopover({ at, bounds, name, parts, ui, warn, onSwap, onClose }: { at: { x: number; y: number }; bounds: FrameRect; name: string; parts: KitPart[]; ui: string | undefined; warn: (to: KitPart) => string | null; onSwap: (to: KitPart) => void; onClose: () => void }) {
+export function SwapPopover({ at, bounds, name, parts, ui, warn, preview, onSwap, onClose }: { at: { x: number; y: number }; bounds: FrameRect; name: string; parts: KitPart[]; ui: string | undefined; warn: (to: KitPart) => string | null; preview?: PartPreview; onSwap: (to: KitPart) => void; onClose: () => void }) {
   const { box, style } = usePopoverPlace(at, bounds);
   useClickAway(box, onClose);
   const [hover, setHover] = useState<KitPart | null>(null);
   const note = hover ? warn(hover) : null;
   return (
     <div className="studio-popover" ref={box} style={style} role="dialog" aria-label={`Swap ${name}`} onMouseOver={(e) => setHover(parts.find((p) => p.name === (e.target as HTMLElement).textContent && (e.target as HTMLElement).getAttribute("role") === "option") ?? hover)}>
-      <PartList parts={parts} placeholder={`Swap ${name} for…`} exclude={ui} empty="Nothing in this kit matches." onPick={onSwap} onEscape={onClose} />
+      <PartList parts={parts} placeholder={`Swap ${name} for…`} exclude={ui} empty="Nothing in this kit matches." preview={preview} onPick={onSwap} onEscape={onClose} />
       {note && <p className="studio-popover-note">{note}</p>}
     </div>
   );
@@ -198,6 +229,7 @@ export function SeamPalette({
   position,
   parts,
   busy,
+  preview,
   onInsert,
   onAsk,
   onClose,
@@ -208,6 +240,7 @@ export function SeamPalette({
   position: SeamPosition;
   parts: KitPart[];
   busy: string | null;
+  preview?: PartPreview;
   onInsert: (part: KitPart, position: SeamPosition) => void;
   onAsk: (text: string, position: "before" | "after") => void;
   onClose: () => void;
@@ -231,7 +264,7 @@ export function SeamPalette({
           {anchorName}
         </span>
       </div>
-      {parts.length > 0 && <PartList parts={parts} placeholder="Search components…" empty="Nothing in this kit matches." onPick={(p) => onInsert(p, where)} onEscape={onClose} />}
+      {parts.length > 0 && <PartList parts={parts} placeholder="Search components…" empty="Nothing in this kit matches." preview={preview} onPick={(p) => onInsert(p, where)} onEscape={onClose} />}
       <form
         className="studio-seam-ask"
         onSubmit={(e) => {

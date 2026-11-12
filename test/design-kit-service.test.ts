@@ -473,3 +473,72 @@ describe("pageCssOf", () => {
     expect(css).not.toContain(".kit");
   });
 });
+
+describe("the component gallery", () => {
+  it("draws every part and block of the kit, grouped, with blocks last and drawn from their files", () => {
+    const s = setup("kit:foundation");
+    const rel = s.kits.gallery(s.thread.id);
+    expect(rel).toBe(".preview-gallery.html");
+    const html = readFileSync(join(s.root, rel), "utf8");
+    expect(html).toContain('href="system/ui.css"');
+    for (const ui of ["button", "stat", "toast", "hero", "sign-in", "slide-title"]) expect(html).toContain(`data-cq-ui="${ui}"`);
+    // A block shows its file's markup, not the placeholder snippet.
+    expect(html).toContain("Sign in to Shiftline");
+    expect(html.indexOf(">Blocks <")).toBeGreaterThan(html.indexOf('data-cq-ui="button"'));
+    // Cards can't be used, and a pick reaches the app.
+    expect(html).toContain("inert");
+    expect(html).toContain("cubiqGallery");
+  });
+
+  it("draws only the parts asked for, and one filling the frame for Insert and Swap", () => {
+    const s = setup("kit:foundation");
+    const some = readFileSync(join(s.root, s.kits.gallery(s.thread.id, { uis: ["badge"] })), "utf8");
+    expect(some).toContain('data-cq-ui="badge"');
+    expect(some).not.toContain('data-cq-ui="button"');
+    const rel = s.kits.gallery(s.thread.id, { uis: ["toast"], single: true });
+    expect(rel).toBe(".preview-pick.html");
+    const one = readFileSync(join(s.root, rel), "utf8");
+    expect(one).toContain('data-cq-ui="toast"');
+    expect(one).not.toContain("cq-g-head\">");
+  });
+});
+
+describe("Apply to all", () => {
+  const A = '<!doctype html><html><head></head><body>\n  <button data-ui="button" data-size="sm">One</button>\n  <button data-ui="button">Two</button>\n  <span data-ui="badge" data-size="sm">Keep</span>\n</body></html>';
+  const B = '<!doctype html><html><head></head><body>\n  <a data-ui="button" href="#" data-size="lg">Three</a>\n</body></html>';
+
+  it("counts first, then sets the prop on every part of that kind on every page, leaving the rest byte for byte", () => {
+    const { kits, thread, root, write } = setup("kit:foundation");
+    write("index.html", A);
+    write("about.html", B);
+    expect(kits.applyPropAll(thread.id, "index.html", "button", "data-size", "sm", true)).toEqual({ count: 2, pages: 2 });
+    expect(readFileSync(join(root, "index.html"), "utf8")).toBe(A);
+    expect(kits.applyPropAll(thread.id, "index.html", "button", "data-size", "sm")).toEqual({ count: 2, pages: 2 });
+    expect(readFileSync(join(root, "index.html"), "utf8")).toBe(A.replace('<button data-ui="button">Two', '<button data-ui="button" data-size="sm">Two'));
+    expect(readFileSync(join(root, "about.html"), "utf8")).toBe(B.replace('data-size="lg"', 'data-size="sm"'));
+    // Back to the default removes the attribute and the space before it.
+    kits.applyPropAll(thread.id, "index.html", "button", "data-size", null);
+    expect(readFileSync(join(root, "about.html"), "utf8")).toBe(B.replace(' data-size="lg"', ""));
+  });
+
+  it("undoes every page together from the open one", () => {
+    const { kits, thread, root, write, documents } = setup("kit:foundation");
+    write("index.html", A);
+    write("about.html", B);
+    kits.applyPropAll(thread.id, "index.html", "button", "data-size", "md");
+    const undone = documents.history(thread.id, "index.html", join(root, "index.html"), { action: "undo" });
+    expect(undone.html).toBe(A);
+    const rest = kits.afterHistory(thread.id, "index.html", undone.html, "undo");
+    expect(rest).toEqual(["about.html"]);
+    for (const page of rest) documents.history(thread.id, page, join(root, page), { action: "undo" });
+    expect(readFileSync(join(root, "about.html"), "utf8")).toBe(B);
+    expect(thread.designSystem).toBe("kit:foundation");
+  });
+
+  it("refuses data-ui and anything that isn't a data attribute", () => {
+    const { kits, thread, write } = setup("kit:foundation");
+    write("index.html", A);
+    expect(kits.applyPropAll(thread.id, "index.html", "button", "data-ui", "x", true).count).toBe(0);
+    expect(kits.applyPropAll(thread.id, "index.html", "button", "onclick", "x", true).count).toBe(0);
+  });
+});

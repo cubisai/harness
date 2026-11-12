@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Activity, Component, Layers, MonitorSmartphone, Palette, Plus, Ruler, Search, Square, Type } from "lucide-react";
+import { Activity, Component, LayoutGrid, Layers, MonitorSmartphone, Palette, Plus, Ruler, Search, Square, Type } from "lucide-react";
 import type { DesignKitDoc, DesignKitGroup, DesignKitPart, DesignReach, DesignSystemDoc, DesignToken } from "../../../shared/types";
 import { BRAND_TOKENS } from "../../../shared/design";
 import { api } from "../api";
@@ -11,7 +11,7 @@ import { SystemPanel } from "./SystemPanel";
 import { typeScale } from "./text-styles";
 import { FOUNDATIONS, RAMP_STEPS, colorRoles, foundationGroups, ramp, resolveVars, schemeValues, siblingUrl, tokenMatches, MOD_KEY, type ColorRole, type Foundation, type RoleSwatch } from "./system-mode";
 
-type Page = { kind: "foundation"; id: Foundation } | { kind: "part"; ui: string };
+type Page = { kind: "foundation"; id: Foundation } | { kind: "part"; ui: string } | { kind: "gallery" };
 type PartTab = "variants" | "playground" | "usage";
 type Scheme = "light" | "dark";
 
@@ -161,7 +161,7 @@ export function SystemMode({ threadId, pageUrl, pageRel, reloadKey, startUi }: {
   };
 
   const kitName = kit?.kit?.name ?? sys?.name ?? "System";
-  const where = page.kind === "foundation" ? ["Foundations", FOUNDATIONS.find((f) => f.id === page.id)!.label] : ["Components", part?.name ?? page.ui];
+  const where = page.kind === "foundation" ? ["Foundations", FOUNDATIONS.find((f) => f.id === page.id)!.label] : page.kind === "gallery" ? ["Components", "All"] : ["Components", part?.name ?? page.ui];
   const editable = sys?.editable ?? false;
   // The Composer's System mode chips: `Library · Colors · Default · Light`. Gone when System mode closes.
   const themeName = group?.themes.find((t) => t.id === themeId)?.name ?? kitName;
@@ -213,6 +213,12 @@ export function SystemMode({ threadId, pageUrl, pageRel, reloadKey, startUi }: {
               </button>
             </span>
           </h2>
+          {kit?.kit && (
+            <button className={"lib-row" + (page.kind === "gallery" ? " on" : "")} aria-current={page.kind === "gallery" ? "page" : undefined} onClick={() => setPage({ kind: "gallery" })}>
+              <LayoutGrid size={14} strokeWidth={1.75} aria-hidden />
+              <span className="lib-row-label">All components</span>
+            </button>
+          )}
           {!kit?.kit && !parts.length && <p className="lib-empty">This style has tokens but no components.</p>}
           {kit?.kit && !parts.length && query && <p className="lib-empty">No component matches.</p>}
           {categories.map(([cat, list]) => (
@@ -272,6 +278,8 @@ export function SystemMode({ threadId, pageUrl, pageRel, reloadKey, startUi }: {
             }}
             onError={setError}
           />
+        ) : page.kind === "gallery" ? (
+          <GalleryPage threadId={threadId} kitName={kitName} uis={query.trim() ? parts.filter((p) => !p.draft).map((p) => p.ui) : null} total={(kit?.parts ?? []).filter((p) => !p.draft).length} pageUrl={pageUrl} pageRel={pageRel} scheme={scheme} rev={`${reloadKey}-${rev}`} onOpen={(ui) => setPage({ kind: "part", ui })} onError={setError} />
         ) : part ? (
           <PartPage key={part.ui} threadId={threadId} part={part} pageUrl={pageUrl} pageRel={pageRel} scheme={scheme} rev={`${reloadKey}-${rev}`} editable={kit?.editable ?? false} onStep={(label) => { step(label); refresh(); }} onError={setError} onDoc={setKit} />
         ) : null}
@@ -594,6 +602,60 @@ function BrandCard({ threadId, role, editable, ramps, onDraft, onStep, onError }
 }
 
 /** A component's page: the variant × state matrix, a playground, and where it's used. */
+/** Every part and block of the thread's kit, drawn live on one page; a click opens that part's page. */
+function GalleryPage({ threadId, kitName, uis, total, pageUrl, pageRel, scheme, rev, onOpen, onError }: { threadId: string; kitName: string; uis: string[] | null; total: number; pageUrl: string; pageRel: string; scheme: Scheme; rev: string; onOpen: (ui: string) => void; onError: (e: string) => void }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [n, setN] = useState(0);
+  const frame = useRef<HTMLIFrameElement>(null);
+  const filter = uis ? uis.join("|") : null;
+  useEffect(() => {
+    let live = true;
+    // Typing in the search box redraws the page, so wait for a pause.
+    const timer = setTimeout(() => {
+      void api()
+        .designKitGallery(threadId, filter === null ? {} : { uis: filter ? filter.split("|") : [] })
+        .then((rel) => {
+          if (!live) return;
+          setN((x) => x + 1);
+          setUrl(siblingUrl(pageUrl, pageRel, rel));
+        })
+        .catch((err) => live && onError(errorText(err)));
+    }, filter === null ? 0 : 200);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadId, filter, rev, pageUrl, pageRel]);
+  const open = useRef(onOpen);
+  open.current = onOpen;
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.source !== frame.current?.contentWindow) return;
+      const ui = (e.data as { cubiqGallery?: unknown } | null)?.cubiqGallery;
+      if (typeof ui === "string") open.current(ui);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+  const shown = uis ? uis.length : total;
+  return (
+    <div className="lib-page-wrap">
+      <div className="lib-page lib-part">
+        <h1 className="lib-title">
+          {kitName} <span className="lib-title-meta">{uis ? `${shown} of ${total} match` : `${total} parts and blocks`}</span>
+        </h1>
+        <p className="lib-lede">Every part and block of this kit, live in the current theme. Click one to see its variants and props.</p>
+        {uis && uis.length === 0 ? (
+          <p className="lib-note">No component matches.</p>
+        ) : (
+          <div className="lib-sample lib-gallery">{url && <iframe ref={frame} key={`${n}-${scheme}`} className="lib-sample-frame" title={`${kitName} components`} src={`${url}?s=${n}`} sandbox="allow-scripts" style={{ colorScheme: scheme }} />}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function PartPage({ threadId, part, pageUrl, pageRel, scheme, rev, editable, onStep, onError, onDoc }: { threadId: string; part: DesignKitPart; pageUrl: string; pageRel: string; scheme: Scheme; rev: string; editable: boolean; onStep: (label: string) => void; onError: (e: string) => void; onDoc: (doc: DesignKitDoc) => void }) {
   const [tab, setTab] = useState<PartTab>("variants");
   const variantProp = part.props.find((p) => p.name === "variant");

@@ -33,7 +33,7 @@ import { useDesignEditing } from "./useDesignEditing";
 import { StudioBar, viewportMenu, type StudioMenuItem, type StudioView } from "./StudioBar";
 import { CodeView } from "./CodeView";
 import { SystemMode } from "./SystemMode";
-import { MOD_KEY } from "./system-mode";
+import { MOD_KEY, siblingUrl } from "./system-mode";
 import { ActionsMenu, MORE_DIRECTIONS, SeamButton, SeamPalette, SelectionChrome, SwapPopover, VARIANT_DIRECTIONS, type ActionItem, type SeamPosition } from "./SelectionChrome";
 import { CanvasToolsPill, DrawLayer, drawMessage, strokeBounds, toolForKey, type CanvasTool, type Stroke } from "./CanvasTools";
 import { NamePrompt } from "./NamePrompt";
@@ -1363,6 +1363,11 @@ export default function DesignCanvas({
   const one = selected.length === 1 ? (selected[0] ?? null) : null;
   const oneAttrs = one ? startAttrs(one.html) : {};
   const onePart = (one && kitParts.find((p) => p.ui === oneAttrs["data-ui"])) || null;
+  // Insert's and Swap's preview: the kit gallery's card for one part, in this page's theme.
+  const partPreview = useCallback(
+    (ui: string) => (entry ? api().designKitGallery(threadId, { uis: [ui], single: true }).then((rel) => siblingUrl(entry.url, entry.rel, rel)) : Promise.resolve(null)),
+    [threadId, entry],
+  );
   const selectionName = one ? partLabel(one, kitParts) : `${selected.length} selected`;
   const closePopovers = () => {
     setSwapAt(null);
@@ -1514,13 +1519,16 @@ export default function DesignCanvas({
     const textProp = textVariantProp(onePart?.ui, onePart?.props ?? []);
     const prop = textProp ?? (onePart?.props.find((p) => p.name === "variant" && p.options?.length) ? { name: "variant", options: onePart!.props.find((p) => p.name === "variant")!.options! } : null);
     if (prop) {
-      const now = oneAttrs[`data-${prop.name}`] ?? prop.options[0];
+      // The kit's declared default is the value with no attribute; the first option only when it doesn't declare one.
+      const declared = onePart?.props.find((p) => p.name === prop.name)?.default;
+      const base = typeof declared === "string" && prop.options.includes(declared) ? declared : prop.options[0];
+      const now = oneAttrs[`data-${prop.name}`] ?? base;
       return prop.options.map((v) => ({
         id: `v-${v}`,
         group: "Variant",
         label: `Variant › ${textProp ? optionLabel(prop.name, v) : `${v[0]!.toUpperCase()}${v.slice(1)}`}`,
         disabled: v === now,
-        run: () => applyAttrs(one, [{ name: `data-${prop.name}`, value: v === prop.options[0] ? null : v }], `${one.selector}:data-${prop.name}`),
+        run: () => applyAttrs(one, [{ name: `data-${prop.name}`, value: v === base ? null : v }], `${one.selector}:data-${prop.name}`),
       }));
     }
     if (onePart || !one.ownText || !(RETAG_TAGS as readonly string[]).includes(one.tag)) return [];
@@ -1828,6 +1836,7 @@ export default function DesignCanvas({
           position={palette.position}
           parts={kitParts}
           busy={agentRunning ? "Wait for the current turn to finish" : null}
+          preview={partPreview}
           onInsert={insertPart}
           onAsk={(text, side) => void askAtSeam(text, side)}
           onClose={() => setPalette(null)}
@@ -1844,6 +1853,7 @@ export default function DesignCanvas({
             const dropped = swapPlan(one.html, one.text, onePart, to).dropped;
             return dropped.length ? `Becomes ${to.name}. Drops ${dropped.join(", ")}, which ${to.name} doesn't take.` : `Becomes ${to.name}.`;
           }}
+          preview={partPreview}
           onSwap={swapTo}
           onClose={() => setSwapAt(null)}
         />

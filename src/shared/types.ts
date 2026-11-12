@@ -1612,6 +1612,10 @@ export interface UnskilledApi {
   designKitDoc(threadId: string): Promise<DesignKitDoc>;
   /** One component rendered for System mode; returns the page's path in the design folder. */
   designKitSample(threadId: string, request: DesignKitSampleRequest): Promise<string>;
+  /** The kit drawn as a gallery page (all parts and blocks, or only `uis`; `single` = one entry filling the frame); its path in the design folder. */
+  designKitGallery(threadId: string, request: { uis?: string[]; single?: boolean }): Promise<string>;
+  /** `Apply to all`: set prop `name` (a `data-*` attribute) on every `ui` part of every page in the design; `dryRun` only counts. */
+  designPropAll(threadId: string, rel: string, ui: string, name: string, value: string | null, dryRun?: boolean): Promise<{ count: number; pages: number }>;
   designKitEdit(threadId: string, edit: DesignKitEdit): Promise<{ doc: DesignKitDoc; thread: Thread }>;
   designKitDraftSave(threadId: string): Promise<{ doc: DesignKitDoc; thread: Thread }>;
   designKitDraftDiscard(threadId: string): Promise<DesignKitDoc>;

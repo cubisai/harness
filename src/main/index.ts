@@ -1295,6 +1295,13 @@ async function main(): Promise<void> {
   designHandle("design:save-theme", (threadId: string, name: unknown, tokens: unknown, sourceId: unknown) => service.kits.saveTheme(threadId, shortText(name), tokenMap(tokens), typeof sourceId === "string" ? idText(sourceId) : undefined));
   designHandle("design:kit-doc", (threadId: string) => service.kits.doc(threadId));
   designHandle("design:kit-sample", (threadId: string, request: unknown) => service.kits.sample(threadId, readKitSample(request)));
+  designHandle("design:kit-gallery", (threadId: string, request: unknown) => service.kits.gallery(threadId, readKitGallery(request)));
+  designHandle("design:prop-all", (threadId: string, rel: unknown, ui: unknown, name: unknown, value: unknown, dryRun: unknown) => {
+    if (typeof rel !== "string" || typeof ui !== "string" || !/^[a-z0-9-]{1,64}$/.test(ui) || typeof name !== "string" || !/^data-[a-z0-9-]{1,64}$/.test(name)) throw new Error("Bad prop.");
+    if (value !== null && (typeof value !== "string" || value.length > 200)) throw new Error("Bad prop value.");
+    designDocumentFile(threadId, rel);
+    return service.kits.applyPropAll(threadId, rel, ui, name, value, dryRun === true);
+  });
   designHandle("design:kit-edit", (threadId: string, edit: unknown) => service.kits.edit(threadId, readKitEdit(edit)));
   designHandle("design:kit-draft-save", (threadId: string) => service.kits.saveForUser(threadId));
   designHandle("design:kit-draft-discard", (threadId: string) => service.kits.discardDraft(threadId));
@@ -2536,6 +2543,12 @@ function readKitEdit(raw: unknown): DesignKitEdit {
     default:
       throw new Error("Invalid kit edit.");
   }
+}
+
+function readKitGallery(raw: unknown): { uis?: string[]; single?: boolean } {
+  const r = (raw ?? {}) as { uis?: unknown; single?: unknown };
+  const uis = Array.isArray(r.uis) ? r.uis.filter((v): v is string => typeof v === "string" && /^[a-z0-9-]{1,64}$/.test(v)).slice(0, 400) : undefined;
+  return { ...(uis ? { uis } : {}), ...(r.single === true ? { single: true } : {}) };
 }
 
 function readKitSample(raw: unknown): DesignKitSampleRequest {

@@ -661,3 +661,78 @@ export function projectKitFolders(projectPath: string, kitId: string): string[] 
     return [];
   }
 }
+
+/** One entry of a kit's gallery: a part (its snippet) or a block (its file's markup). */
+export interface GalleryEntry {
+  ui: string;
+  name: string;
+  category: string;
+  /** What the card draws: a part's snippet, or a block's markup. */
+  html: string;
+  block: boolean;
+}
+
+const escapeAttr = (text: string): string => escapeText(text).replace(/"/g, "&quot;");
+
+/**
+ * Every part and block of a kit on one page, grouped by category, linked to the kit in `folder`. Cards are inert (their
+ * controls can't be used) and a click or Enter on one posts `{ cubiqGallery: ui }` to the app. `single` draws one entry
+ * filling the frame, with no headings: the preview beside Insert and Swap.
+ */
+export function kitGallery(entries: GalleryEntry[], folder: string, opts: { single?: boolean } = {}): string {
+  const card = (e: GalleryEntry): string => {
+    // A slide block is drawn in a 1920x1080 frame, any other block at 1280 wide, both scaled down to the card.
+    // A slide (a slide block, or the slide part itself) is drawn in a 1920x1080 frame, any other block at 1280 wide,
+    // both scaled down to the card; a part is drawn a little smaller than life.
+    const slide = /data-ui=["']slide["']/.test(e.html);
+    const scaled = e.block || slide;
+    const stage = scaled ? `<div class="cq-g-scale${slide ? " cq-g-slide" : ""}">${e.html}</div>` : e.html;
+    const label = opts.single ? "" : `<div class="cq-g-name">${escapeText(e.name)}</div>`;
+    return `<article class="cq-g-card${scaled ? " cq-g-wide" : ""}" data-cq-ui="${escapeAttr(e.ui)}" tabindex="0" role="button" aria-label="${escapeAttr(e.name)}">${label}<div class="cq-g-stage${scaled ? " cq-g-blockstage" : ""}" inert>${stage}</div></article>`;
+  };
+  let body: string;
+  if (opts.single) body = entries[0] ? card(entries[0]) : "";
+  else {
+    const groups = new Map<string, GalleryEntry[]>();
+    for (const e of entries) groups.set(e.category, [...(groups.get(e.category) ?? []), e]);
+    body = [...groups]
+      .map(([category, list]) => `<section class="cq-g-group"><h2 class="cq-g-head">${escapeText(category)} <span>${list.length}</span></h2><div class="cq-g-grid${category === "Blocks" ? " cq-g-blocks" : ""}">${list.map(card).join("")}</div></section>`)
+      .join("");
+  }
+  // Overlays open in place, so a dialog or menu shows rather than its trigger alone.
+  body = body.replace(/<dialog\b(?![^>]*\sopen\b)/g, "<dialog open");
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="${folder}/tokens.css"><link rel="stylesheet" href="${folder}/ui.css">
+<style>
+html,body{margin:0;background:var(--color-bg);color:var(--color-text);font-family:var(--font-sans,system-ui)}
+body{padding:${opts.single ? "0" : "20px 24px 8px"};box-sizing:border-box}
+.cq-g-group{margin:0 0 28px}
+.cq-g-head{display:flex;align-items:baseline;gap:8px;margin:0 0 12px;font:600 13px/18px system-ui;color:var(--color-text)}
+.cq-g-head span{font-weight:400;color:var(--color-text-muted)}
+.cq-g-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.cq-g-card{display:flex;flex-direction:column;min-width:0;border:1px solid var(--color-border);border-radius:12px;overflow:hidden;cursor:pointer;outline:none;background:var(--color-bg)}
+.cq-g-card:hover{border-color:var(--color-border-strong,var(--color-text-muted))}
+.cq-g-card:focus-visible{outline:2px solid var(--color-focus,var(--color-accent));outline-offset:2px}
+.cq-g-wide{grid-column:span 2}
+.cq-g-blocks{grid-template-columns:repeat(auto-fill,minmax(420px,1fr))}
+.cq-g-blocks .cq-g-wide{grid-column:auto}
+.cq-g-name{padding:8px 12px;border-bottom:1px solid var(--color-border);font:500 12px/16px system-ui;color:var(--color-text-muted)}
+.cq-g-stage{position:relative;transform:translateZ(0);display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:12px;height:${opts.single ? "100vh" : "168px"};padding:20px;box-sizing:border-box;overflow:hidden}
+.cq-g-stage>*{max-width:100%}
+.cq-g-stage:not(.cq-g-blockstage)>*{zoom:${opts.single ? 0.7 : 0.75};max-width:133%}
+.cq-g-blockstage{display:block;padding:0;height:${opts.single ? "100vh" : "240px"}}
+.cq-g-scale{width:1280px;zoom:${opts.single ? 0.42 : 0.33};padding:32px;box-sizing:border-box}
+.cq-g-slide{width:1920px;height:1080px;padding:96px 128px;zoom:${opts.single ? 0.28 : 0.22};background:var(--color-bg)}
+.cq-g-slide>*{height:100%;box-sizing:border-box}
+.cq-g-stage dialog[open]{position:static;inset:auto;margin:0;transform:none;max-width:100%}
+.cq-g-stage dialog[open]::backdrop{display:none}
+@media (max-width:560px){.cq-g-wide{grid-column:auto}}
+</style></head><body>${body}<script src="${folder}/ui.js"></script><script>
+for(const p of document.querySelectorAll(".cq-g-stage [popover]"))try{p.showPopover()}catch{}
+const pick=(el)=>{const c=el&&el.closest&&el.closest("[data-cq-ui]");if(c)parent.postMessage({cubiqGallery:c.getAttribute("data-cq-ui")},"*")};
+document.addEventListener("click",(e)=>pick(e.target));
+document.addEventListener("keydown",(e)=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();pick(document.activeElement)}});
+</script></body></html>
+`;
+}

@@ -4,8 +4,8 @@ import { designDirName } from "../../shared/design";
 import { parseReferenceSystemId, referenceSystemId } from "../../shared/direction";
 import type { DesignKitOption, DesignMutation } from "../../shared/design-mutation";
 import type { DesignIntent, DesignKitDoc, DesignKitEdit, DesignKitGroup, DesignKitPart, DesignKitSampleRequest, DesignMigrationPreview, DesignReach, DesignThemeCard, LiveUpdate, Thread } from "../../shared/types";
-import { addComposition, applyKitEdit, isStatefulPart, compositionWarnings, diffManifests, freeFolder, manifestIn, partCounts, partSample, partsUsingToken, projectKitFolders, projectSystemsDir, saveKitDraft, saveSystemCopy, seedKitDraft, forkKitSystem } from "./kit-library";
-import { migratePage, parseMigrations, type MigrationPlan } from "./kit-migrate";
+import { addComposition, applyKitEdit, isStatefulPart, kitGallery, type GalleryEntry, compositionWarnings, diffManifests, freeFolder, manifestIn, partCounts, partSample, partsUsingToken, projectKitFolders, projectSystemsDir, saveKitDraft, saveSystemCopy, seedKitDraft, forkKitSystem } from "./kit-library";
+import { migratePage, parseMigrations, setPropEverywhere, type MigrationPlan } from "./kit-migrate";
 import { groundPage, groundingSummary } from "./grounding";
 import { validateKitDir, type KitManifest } from "./kit-schema";
 import type { LintFinding } from "./lint";
@@ -139,6 +139,8 @@ export class DesignKitService {
   private readonly undo = new Map<string, Snapshot[]>();
   private readonly redo = new Map<string, Snapshot[]>();
   private readonly moves = new Map<string, Move[]>();
+  /** The last `Apply to all` per thread: its pages step back and forward together, like a kit move without the kit. */
+  private readonly bulk = new Map<string, Move[]>();
 
   constructor(private readonly deps: KitServiceDeps) {}
 
@@ -266,6 +268,8 @@ export class DesignKitService {
     rmSync(join(root, PREVIEW), { recursive: true, force: true });
     rmSync(join(root, `${PREVIEW}-page.html`), { force: true });
     rmSync(join(root, `${PREVIEW}-part.html`), { force: true });
+    rmSync(join(root, `${PREVIEW}-gallery.html`), { force: true });
+    rmSync(join(root, `${PREVIEW}-pick.html`), { force: true });
   }
 
   /** Move every page of the design, each as one undo step, then the system. Undoing the open page brings the rest back. */
@@ -300,10 +304,42 @@ export class DesignKitService {
   }
 
   /**
+   * `Apply to all`: set one prop on every `ui` part of every page in the design, the open page first. Each changed page
+   * is one undo step, and undoing (or redoing) any of them takes the rest with it. `dryRun` only counts.
+   */
+  applyPropAll(threadId: string, rel: string, ui: string, name: string, value: string | null, dryRun = false): { count: number; pages: number } {
+    const root = this.deps.designRoot(threadId);
+    if (!root || !this.documents) throw new Error("This design can't be changed here.");
+    const pages = listDesignPages(root);
+    const changes: { rel: string; file: string; before: string; after: string; count: number }[] = [];
+    for (const page of [rel, ...pages.filter((p) => p !== rel)]) {
+      const file = this.pageFile?.(threadId, page);
+      if (!file) continue;
+      const before = this.documents.text(threadId, page, file);
+      const next = setPropEverywhere(before, ui, name, value);
+      if (next.count) changes.push({ rel: page, file, before, after: next.html, count: next.count });
+    }
+    const total = { count: changes.reduce((n, c) => n + c.count, 0), pages: changes.length };
+    if (dryRun || !changes.length) return total;
+    for (const c of changes) {
+      const done = this.documents.apply(threadId, c.rel, c.file, ROOT, [{ kind: "replaceDocument", html: c.after }]);
+      if (!done.ok) throw new Error(`${c.rel}: ${done.message}`);
+    }
+    this.bulk.set(threadId, changes.map((c) => ({ rel: c.rel, before: c.before, after: c.after, from: null, to: "" })));
+    this.deps.broadcast({ type: "design-changed", threadId, paths: changes.map((c) => c.rel) });
+    return total;
+  }
+
+  /**
    * A page's undo or redo just landed. When that crossed a kit move, the system goes with it, and the other pages too;
    * returns those pages so the caller can step them the same way.
    */
   afterHistory(threadId: string, rel: string, html: string, action: "undo" | "redo"): string[] {
+    const together = this.bulk.get(threadId);
+    const one = together?.find((m) => m.rel === rel);
+    if (together && one && one.before !== one.after && html === (action === "undo" ? one.before : one.after)) {
+      return together.filter((m) => m.rel !== rel && m.before !== m.after).map((m) => m.rel);
+    }
     const moved = this.moves.get(threadId);
     const hit = moved?.find((m) => m.rel === rel);
     if (!moved || !hit) return [];
@@ -499,6 +535,35 @@ export class DesignKitService {
     const rel = `${PREVIEW}-part.html`;
     const uiCss = read(join(inDraft ? join(root, "kit") : system!.kit!.dir, "ui.css")) ?? "";
     writeFileSync(join(root, rel), partSample(part, folder, request, uiCss));
+    return rel;
+  }
+
+  /**
+   * Draw the thread's kit as a gallery page in the design folder: every part and block grouped by category, or only `uis`
+   * (in the kit's order). `single` draws the first of them filling the frame, for the preview beside Insert and Swap.
+   */
+  gallery(threadId: string, request: { uis?: string[]; single?: boolean } = {}): string {
+    const thread = this.deps.getThread(threadId);
+    const root = this.deps.designRoot(threadId);
+    const system = this.deps.threadSystem(thread);
+    if (!root) throw new Error("This thread has no design folder.");
+    const kitDir = system?.kit?.dir;
+    const manifest = kitDir ? manifestIn(kitDir) : null;
+    if (!kitDir || !manifest) throw new Error("This style has no components to show.");
+    const only = request.uis ? new Set(request.uis) : null;
+    const entries: GalleryEntry[] = [];
+    for (const c of manifest.components) {
+      if (only && !only.has(c.ui)) continue;
+      const block = c.kind === "composition";
+      const file = block ? /data-block=["']([^"']+)["']/.exec(c.snippet)?.[1] : undefined;
+      const inside = file ? relative(kitDir, resolve(kitDir, file)) : "";
+      const html = file && inside && !inside.startsWith("..") && !isAbsolute(inside) ? read(join(kitDir, inside)) : null;
+      entries.push({ ui: c.ui, name: c.name, category: block ? "Blocks" : (c.category ?? "Other"), html: html ?? c.snippet, block: block && html !== null });
+    }
+    // Blocks come after the parts they're made of.
+    entries.sort((a, b) => Number(a.block) - Number(b.block));
+    const rel = `${PREVIEW}-${request.single ? "pick" : "gallery"}.html`;
+    writeFileSync(join(root, rel), kitGallery(request.single ? entries.slice(0, 1) : entries, "system", { single: request.single }));
     return rel;
   }
 

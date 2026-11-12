@@ -56,6 +56,8 @@ interface KitProp {
   type?: string;
   label?: string;
   options?: string[] | null;
+  /** The value the part has with no attribute (components.json's `default`); the first option when it doesn't say. */
+  default?: string | boolean;
 }
 
 /** A prop row's lead icon, by the prop's type. */
@@ -154,6 +156,8 @@ export function CustomizePanel({
 }) {
   const [kitProps, setKitProps] = useState<Record<string, KitProp[]>>({});
   const [filter, setFilter] = useState("");
+  // The kit prop last changed on the selection, for `Apply to all`.
+  const [lastProp, setLastProp] = useState<{ selector: string; name: string; value: string | null } | null>(null);
 
   // A kit thread's parts and their props; a flat style has no manifest, and the element card just has fewer rows.
   useEffect(() => {
@@ -275,6 +279,7 @@ export function CustomizePanel({
   const style = el.style ?? {};
   const ui = attrOf(el.html, "data-ui");
   const props = ui ? (kitProps[ui] ?? []) : [];
+  const partName = (ui && parts.find((p) => p.ui === ui)?.name) || ui || "part";
   const q = filter.trim().toLowerCase();
   const shows = (...terms: string[]): boolean => q === "" || terms.some((t) => t.toLowerCase().includes(q));
   const setStyle = (prop: string, value: string) => handlers.onStyle(el, [{ prop, value }], `${el.selector}:${prop}`);
@@ -336,25 +341,32 @@ export function CustomizePanel({
         {propRows.length > 0 && (
           <Card title="Component">
             {propRows.map((p) => {
+              const setPart = (attr: string, value: string | null) => {
+                handlers.onAttr(el, attr, value);
+                setLastProp({ selector: el.selector, name: attr, value });
+              };
               const name = `data-${p.name}`;
               const current = attrOf(el.html, name);
               const options = p.options ?? null;
+              // The kit's default is the one with no attribute: Foundation's Button size defaults to md, not its first option.
+              const base = typeof p.default === "string" && options?.includes(p.default) ? p.default : (options?.[0] ?? "");
               const type = p.type ?? (options ? "choice" : "boolean");
               const label = p.label || p.name.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
               return (
-                <Row key={p.name} label={label} stacked={type !== "boolean"} icon={PROP_ICONS[type]} onReset={current !== null ? () => handlers.onAttr(el, name, null) : undefined}>
+                <Row key={p.name} label={label} stacked={type !== "boolean"} icon={PROP_ICONS[type]} onReset={current !== null ? () => setPart(name, null) : undefined}>
                   {type === "text" ? (
-                    <input className="text-input" key={`p-${el.selector}-${p.name}`} aria-label={label} defaultValue={current ?? ""} onChange={(e) => handlers.onAttr(el, name, e.target.value || null)} />
+                    <input className="text-input" key={`p-${el.selector}-${p.name}`} aria-label={label} defaultValue={current ?? ""} onChange={(e) => setPart(name, e.target.value || null)} />
                   ) : options && options.length > 4 ? (
-                    <Select<string> value={current ?? options[0] ?? ""} options={options.map((o) => ({ value: o, label: o }))} onChange={(v) => handlers.onAttr(el, name, v === options[0] ? null : v)} ariaLabel={label} className="ghost-select" />
+                    <Select<string> value={current ?? base} options={options.map((o) => ({ value: o, label: o }))} onChange={(v) => setPart(name, v === base ? null : v)} ariaLabel={label} className="ghost-select" />
                   ) : options ? (
-                    <Segments label={label} options={options.map((o) => ({ label: o, value: o }))} value={current ?? options[0] ?? null} onPick={(v) => handlers.onAttr(el, name, v === options[0] ? null : v)} />
+                    <Segments label={label} options={options.map((o) => ({ label: o, value: o }))} value={current ?? base} onPick={(v) => setPart(name, v === base ? null : v)} />
                   ) : (
-                    <Toggle label={label} on={current !== null && current !== "false"} onChange={(on) => handlers.onAttr(el, name, on ? "true" : null)} />
+                    <Toggle label={label} on={current !== null && current !== "false"} onChange={(on) => setPart(name, on ? "true" : null)} />
                   )}
                 </Row>
               );
             })}
+            {ui && lastProp?.selector === el.selector && <ApplyAll key={`${lastProp.name}=${lastProp.value}`} threadId={threadId} pageRel={pageRel} ui={ui} partName={partName} name={lastProp.name} value={lastProp.value} label={propRows.find((p) => `data-${p.name}` === lastProp.name)?.label || lastProp.name.slice(5)} />}
           </Card>
         )}
         {flowOf(startAttrs(el.html)) && shows("layout", "flow", "gap", "columns", "align") && <LayoutCard el={el} parts={parts} handlers={handlers} />}
@@ -581,6 +593,49 @@ function TokenSelect({ label, tokens, value, computed, onPick }: { label: string
     ...tokens.map((t) => ({ value: t.token, label: t.name, lead: swatch(t.value) })),
   ];
   return <Select<string> value={value ?? ""} options={options} onChange={(token) => token && onPick(token)} ariaLabel={label} className="ghost-select block mono-select design-token-select" />;
+}
+
+/**
+ * `Apply to all`: after a kit prop changes on one part, offer the same value for every other part of its kind on every
+ * page of the design. Counted first (nothing to offer when they all match); each page is one undo step, taken together.
+ */
+function ApplyAll({ threadId, pageRel, ui, partName, name, value, label }: { threadId: string; pageRel: string; ui: string; partName: string; name: string; value: string | null; label: string }) {
+  const [reach, setReach] = useState<{ count: number; pages: number } | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    // After the panel's own save of this change has landed, so the selection itself isn't counted.
+    const timer = setTimeout(() => {
+      void api()
+        .designPropAll(threadId, pageRel, ui, name, value, true)
+        .then((r) => live && setReach(r))
+        .catch(() => live && setReach(null));
+    }, 400);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [threadId, pageRel, ui, name, value]);
+  if (done) return <p className="design-customize-apply-note">{done}</p>;
+  if (!reach?.count) return null;
+  const shown = value === null ? "default" : value === "true" ? "on" : value;
+  const plural = reach.count === 1 ? partName : `${partName}s`;
+  return (
+    <button
+      type="button"
+      className="button ghost design-customize-apply"
+      title={`Set ${label} to ${shown} on every ${partName} in this design. ⌘Z takes it back.`}
+      onClick={() =>
+        void api()
+          .designPropAll(threadId, pageRel, ui, name, value)
+          .then((r) => setDone(`${label}: ${shown} on ${r.count} more ${r.count === 1 ? partName : `${partName}s`}${r.pages > 1 ? ` across ${r.pages} pages` : ""}. ⌘Z takes it back.`))
+          .catch((err) => setDone(err instanceof Error ? err.message : String(err)))
+      }
+    >
+      Apply {label}: {shown} to {reach.count} more {plural}
+      {reach.pages > 1 ? ` on ${reach.pages} pages` : ""}
+    </button>
+  );
 }
 
 function Card({ title, children }: { title: string; children: ReactNode }) {

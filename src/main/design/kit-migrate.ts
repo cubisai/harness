@@ -140,3 +140,38 @@ export function migratePage(html: string, from: KitManifest | null, to: KitManif
   plan.changed = next !== html;
   return plan;
 }
+
+/**
+ * Set (or with `value` null, remove) one `data-*` prop on every `data-ui="<ui>"` part of a page, editing only those
+ * attributes so the rest of the source stays byte for byte. `count` is how many parts changed.
+ */
+export function setPropEverywhere(html: string, ui: string, name: string, value: string | null): { html: string; count: number } {
+  if (!/^data-[a-z0-9-]+$/.test(name) || name === "data-ui") return { html, count: 0 };
+  const doc = parse(html, { sourceCodeLocationInfo: true });
+  const splices: Splice[] = [];
+  const quoted = value === null ? "" : value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  let count = 0;
+  for (const el of walk(doc)) {
+    if (attr(el, "data-ui") !== ui) continue;
+    const have = attr(el, name);
+    if (have === value) continue;
+    const loc = el.sourceCodeLocation;
+    const at = loc?.attrs?.[name];
+    if (have !== null && at) {
+      if (value === null) {
+        // The attribute and the space before it, so the tag doesn't gain a gap.
+        const start = /\s/.test(html[at.startOffset - 1] ?? "") ? at.startOffset - 1 : at.startOffset;
+        splices.push({ start, end: at.endOffset, text: "" });
+      } else splices.push({ start: at.startOffset, end: at.endOffset, text: `${name}="${quoted}"` });
+    } else if (have === null && value !== null && loc?.startTag) {
+      // Before the tag's closing `>` (or `/>`).
+      const end = loc.startTag.endOffset;
+      const close = html[end - 2] === "/" ? end - 2 : end - 1;
+      splices.push({ start: close, end: close, text: ` ${name}="${quoted}"` });
+    } else continue;
+    count++;
+  }
+  let next = html;
+  for (const s of splices.sort((a, b) => b.start - a.start)) next = `${next.slice(0, s.start)}${s.text}${next.slice(s.end)}`;
+  return { html: next, count };
+}

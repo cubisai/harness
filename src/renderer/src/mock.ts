@@ -817,6 +817,8 @@ export function installMock(): void {
     designSaveTheme: async (threadId) => ({ thread: Object.values(threads).flat().find((t) => t.id === threadId)!, id: "project:mock", applied: [] }),
     designKitDoc: async () => ({ kit: null, copyOnWrite: false, editable: false, parts: [], blocks: [], draft: null }),
     designKitSample: async () => "index.html",
+    designKitGallery: async () => "index.html",
+    designPropAll: async () => ({ count: 0, pages: 0 }),
     designKitEdit: async (threadId) => ({ doc: { kit: null, copyOnWrite: false, editable: false, parts: [], blocks: [], draft: null }, thread: Object.values(threads).flat().find((t) => t.id === threadId)! }),
     designKitDraftSave: async (threadId) => ({ doc: { kit: null, copyOnWrite: false, editable: false, parts: [], blocks: [], draft: null }, thread: Object.values(threads).flat().find((t) => t.id === threadId)! }),
     designKitDraftDiscard: async () => ({ kit: null, copyOnWrite: false, editable: false, parts: [], blocks: [], draft: null }),
