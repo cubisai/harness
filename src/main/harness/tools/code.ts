@@ -504,7 +504,7 @@ function explain(message: string, o: CodeToolOptions): string {
   }
   if (!/not a function/.test(message)) return message;
   const names = o.tools().map((t) => t.definition.name).filter((n) => !EXCLUDED.has(n));
-  return `${message}. A script's tools are: ${names.join(", ")}. Read files with tools.read (a folder lists), search with tools.grep and tools.glob; edits and shell commands are not available in a script.`;
+  return `${message}. A script's tools are: ${names.join(", ")}. Read files with tools.read (a folder lists), search with tools.grep and tools.glob; edits, shell commands and tools that change state (such as design_set_direction) are not available in a script: call those directly as tool calls, not through run_code.`;
 }
 
 /** Console output before an error still reaches the model, with the error after it. */

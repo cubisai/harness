@@ -883,7 +883,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         const paths = t.changePaths?.get(p.itemId) ?? [];
         const command = typeof p.command === "string" ? p.command : null;
         // A command with no text can't be checked, so it's refused like an edit with no files.
-        const reason = isCommand ? (command !== null ? fenceCommand(t.input.cwd, t.input.design, command) : "Blocked in a design thread: couldn't read this command") : fenceWrite(t.input.cwd, t.input.design, paths);
+        const reason = isCommand ? (command !== null ? fenceCommand(t.input.cwd, t.input.design, command) : "Blocked in a design thread: couldn't read this command") : fenceWrite(t.input.cwd, t.input.design, paths, t.input.designGuard);
         if (reason) {
           t.input.onEvent({ kind: "notice", text: `Blocked in this design thread: ${isCommand ? command : paths.join(", ")}` });
           return { decision: "decline" };

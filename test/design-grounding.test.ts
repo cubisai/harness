@@ -51,3 +51,33 @@ describe("kit grounding", () => {
     expect(groundPage(html, foundation()).findings).toHaveLength(8);
   });
 });
+
+describe("page CSS in grounding", () => {
+  const page = (style: string) => `<html><head><style>${style}</style></head><body><button data-ui="button">Go</button></body></html>`;
+  const ids = (g: ReturnType<typeof groundPage>) => g.findings.map((f) => f.id);
+
+  it("checks the page's own stylesheet like its inline style", () => {
+    const g = groundPage(page(""), foundation(), `[data-ui="button"] { background: var(--color-accent); }`);
+    expect(ids(g)).toContain("redraw-part");
+  });
+
+  it("flags literal colours outside :root and var() fallbacks", () => {
+    expect(ids(groundPage(page(".hero { color: #123456; }"), foundation()))).toContain("literal-color");
+    expect(ids(groundPage(page(".hero { background: rgb(1 2 3); }"), foundation()))).toContain("literal-color");
+    expect(ids(groundPage(page(":root { --brand: #123456; } .hero { color: var(--brand, #fff); }"), foundation()))).not.toContain("literal-color");
+  });
+
+  it("flags element rules that recolour kit parts, not ones that leave parts out", () => {
+    expect(ids(groundPage(page("button, input { font: inherit; color: inherit; }"), foundation()))).toContain("element-recolor");
+    expect(ids(groundPage(page("@layer page { a:hover { color: var(--color-accent); } }"), foundation()))).toContain("element-recolor");
+    expect(ids(groundPage(page(":is(button, input):not([data-ui], [data-ui] *) { color: inherit; }"), foundation()))).not.toContain("element-recolor");
+    expect(ids(groundPage(page(".cta button { color: var(--color-text); } button, input { font: inherit; }"), foundation()))).not.toContain("element-recolor");
+  });
+
+  it("keeps the design-build scaffolds clean", () => {
+    const dir = join(process.cwd(), "resources", "skills", "design-build", "assets");
+    for (const f of readdirSync(dir).filter((x) => x.endsWith(".html"))) {
+      expect(groundPage(readFileSync(join(dir, f), "utf8"), foundation()).findings.filter((x) => x.id === "element-recolor" || x.id === "literal-color"), f).toEqual([]);
+    }
+  });
+});

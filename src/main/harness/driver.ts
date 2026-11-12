@@ -429,7 +429,7 @@ async function runTurn(
     if (input.design) {
       const targets = tool.targets?.(args);
       const reason = targets
-        ? fenceWrite(input.cwd, input.design, targets)
+        ? fenceWrite(input.cwd, input.design, targets, input.designGuard)
         : tool.access === "shell" && typeof args.command === "string"
           ? fenceCommand(input.cwd, input.design, args.command)
           : null;

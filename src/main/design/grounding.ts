@@ -43,8 +43,36 @@ export interface Grounding {
   used: { ui: string; count: number }[];
 }
 
-/** Check a page's markup against its kit's manifest. */
-export function groundPage(html: string, manifest: KitManifest): Grounding {
+/** Elements kit parts are built on: a page rule that recolours one of these recolours every part made of it. */
+const PART_ELEMENTS = new Set(["a", "button", "input", "select", "textarea", "label", "table", "th", "td", "h1", "h2", "h3", "h4", "h5", "h6", "p", "ul", "ol", "li", "nav", "dialog", "details", "summary"]);
+
+/** Declarations that recolour an element (a page element rule with one of these overrides the kit's parts). */
+const LOOK = /(^|;)\s*(background(-color)?|border-color|color)\s*:/i;
+
+/** A selector list split on its top-level commas (not the ones inside `:is(…)` or `:not(…)`). */
+function splitSelectors(list: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let cur = "";
+  for (const ch of list) {
+    if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    if (ch === "," && depth === 0) {
+      out.push(cur);
+      cur = "";
+    } else cur += ch;
+  }
+  return [...out, cur];
+}
+
+/** A literal colour in a declaration's value, outside a `var()` fallback. */
+const LITERAL_COLOR = /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|oklch|oklab|lab|lch)\(/i;
+
+/**
+ * Check a page's markup against its kit's manifest. `pageCss` is the page's own linked stylesheets (not `system/`),
+ * checked with its inline `<style>`.
+ */
+export function groundPage(html: string, manifest: KitManifest, pageCss = ""): Grounding {
   const els = walk(parse(html));
   const byUi = new Map(manifest.components.map((c) => [c.ui, c]));
   const unknown = new Map<string, number>();
@@ -87,6 +115,7 @@ export function groundPage(html: string, manifest: KitManifest): Grounding {
   }
   for (const [selector, detail] of [...badValues].slice(0, MAX_EACH)) findings.push({ rule: "kit", id: "bad-prop", selector, detail });
 
+  css += pageCss;
   let redraws = 0;
   for (const m of css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const selector = m[1]!.trim();
@@ -98,6 +127,36 @@ export function groundPage(html: string, manifest: KitManifest): Grounding {
       id: "redraw-part",
       selector: selector.slice(0, 120),
       detail: `page CSS redraws the kit's ${hit[1]}: use its props (design_kit_inspect component:"${hit[1]}") or a token instead, so it follows theme changes.`,
+    });
+  }
+
+  const plain = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  let literals = 0;
+  for (const m of plain.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selector = m[1]!.trim();
+    if (selector.startsWith("@") || /^:root\b/.test(selector)) continue;
+    const decl = m[2]!.split(";").find((d) => d.includes(":") && LITERAL_COLOR.test(d.slice(d.indexOf(":") + 1).replace(/var\([^()]*(\([^()]*\))?[^()]*\)/g, "")));
+    if (!decl) continue;
+    if (literals++ >= MAX_EACH) break;
+    findings.push({
+      rule: "kit",
+      id: "literal-color",
+      selector: selector.slice(0, 120),
+      detail: `page CSS uses a literal colour (${decl.trim().slice(0, 60)}): use a --color-* token so it follows the theme.`,
+    });
+  }
+  let resets = 0;
+  for (const m of plain.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selector = m[1]!.trim();
+    // A bare element (optionally :hover and the like); `button:not([data-ui], [data-ui] *)` or `.cta button` leaves parts alone.
+    const bare = splitSelectors(selector).map((x) => x.trim().replace(/(?::(?:hover|focus|focus-visible|focus-within|active|visited|link|disabled|first-child|last-child))+$/i, ""));
+    if (!bare.some((t) => PART_ELEMENTS.has(t.toLowerCase())) || !LOOK.test(m[2]!)) continue;
+    if (resets++ >= MAX_EACH) break;
+    findings.push({
+      rule: "kit",
+      id: "element-recolor",
+      selector: selector.slice(0, 120),
+      detail: `this element rule also hits the kit's parts and wins over them (page CSS beats @layer cubiq-ui), e.g. button text the same colour as its background. Leave parts out: ${bare.find((t) => PART_ELEMENTS.has(t.toLowerCase()))}:not([data-ui], [data-ui] *), or a class.`,
     });
   }
 

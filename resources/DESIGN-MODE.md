@@ -14,7 +14,7 @@ Every design is built from a kit: HTML parts marked `data-ui`, styled by `{dir}/
 4. **Verify**: `design_lint` and `design_screenshot`, and loop until the kit, contrast and targets findings are gone.
 5. **Review or hand off** only when asked.
 
-**Grounding rule**: use only the parts, props and prop values `components.json` declares. One you can't find with `design_kit_inspect` doesn't exist. Page CSS only for what the kit lacks, with its tokens: no literal colours or sizes, and never a rule that restyles a part through `[data-ui]`. CubiQ replaces `system/` on a switch; don't edit it.
+**Grounding rule**: use only the parts, props and prop values `components.json` declares. One you can't find with `design_kit_inspect` doesn't exist. Page CSS only for what the kit lacks, with its tokens: no literal colours or sizes, and never a rule that restyles a part through `[data-ui]`. Page CSS beats the kit: keep element resets off parts (`button:not([data-ui], [data-ui] *)`). A one-page token override goes on `:root`, unlayered, after `tokens.css`. `system/` is CubiQ's; writes there are refused.
 
 ## Rules
 

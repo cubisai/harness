@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { designDirName } from "../../shared/design";
 import { parseReferenceSystemId, referenceSystemId } from "../../shared/direction";
 import type { DesignKitOption, DesignMutation } from "../../shared/design-mutation";
@@ -58,6 +58,25 @@ interface Move {
 }
 
 const SNAPSHOT_FILES = ["tokens.css", "components.json", "ui.css", "DESIGN.md"];
+
+/**
+ * A page's own linked stylesheets (`page.css`, `deck.css`), concatenated: local files inside the design folder only,
+ * never `system/` or `styles/` (CubiQ's) or anything remote.
+ */
+export function pageCssOf(root: string, rel: string, html: string): string {
+  let css = "";
+  const base = dirname(join(root, rel));
+  for (const tag of html.match(/<link\b[^>]*>/gi) ?? []) {
+    if (!/\brel\s*=\s*["']?stylesheet/i.test(tag)) continue;
+    const href = /\bhref\s*=\s*["']([^"']+)["']/i.exec(tag)?.[1]?.split(/[?#]/)[0];
+    if (!href || /^[a-z][a-z0-9+.-]*:|^\/\//i.test(href)) continue;
+    const file = resolve(base, href);
+    const inside = relative(root, file);
+    if (!inside || inside.startsWith("..") || isAbsolute(inside) || /^(system|styles)([\\/]|$)/.test(inside)) continue;
+    css += `\n${read(file) ?? ""}`;
+  }
+  return css;
+}
 
 function read(file: string): string | null {
   try {
@@ -592,8 +611,8 @@ export class DesignKitService {
     const root = this.deps.designRoot(threadId);
     const manifest = this.pageManifest(thread);
     const html = root ? read(join(root, rel)) : null;
-    if (!manifest || html === null) return null;
-    const g = groundPage(html, manifest);
+    if (!manifest || html === null || !root) return null;
+    const g = groundPage(html, manifest, pageCssOf(root, rel, html));
     return { findings: g.findings, summary: groundingSummary(g, manifest.name) };
   }
 

@@ -950,6 +950,7 @@ export class Service {
         cwd,
         projectId: thread.projectId,
         design: designOf(thread),
+        ...(thread.kind === "design" ? { designGuard: this.designGuard(thread.id) } : {}),
         ...this.expertInput(thread),
         prompt: turnPrompt,
         ...(compact ? { compact } : {}),
@@ -2153,6 +2154,29 @@ export class Service {
     const recent = [...this.recentReferences(thread), ...this.recentStyles(thread)].slice(0, 3);
     const avoid = recent.length ? ` Recently used in this project: ${recent.join(", ")}; pick a different look unless the brief asks for one of them.` : "";
     return `\n\n(CubiQ: this design thread is on Auto. Before you build, call ${DESIGN_DIRECTION_TOOL} once with the surface, mode, tier and the look that fits this brief: a design reference (design_reference_search finds one) or a kit theme, plus up to 2 alternates.${avoid})`;
+  }
+
+  /**
+   * The live check on a design turn's writes inside its folder: an Auto thread that hasn't set a direction yet has no
+   * `system/` to build from, so its pages wait for design_set_direction (the brief and notes may be written first).
+   * An older Auto thread that already has a `system/` is never held.
+   */
+  private designGuard(threadId: string): (paths: readonly string[]) => string | null {
+    return (paths) => {
+      let thread: Thread;
+      try {
+        thread = this.store.getThread(threadId);
+      } catch {
+        return null;
+      }
+      if (!isAuto(thread) || thread.designDirection) return null;
+      const root = this.designRoot(threadId);
+      if (root && existsSync(join(root, "system", "tokens.css"))) return null;
+      const page = paths.find((p) => /\.html?$/i.test(p));
+      return page
+        ? `Call ${DESIGN_DIRECTION_TOOL} first: this Auto design has no direction yet, so system/ (its kit and tokens) isn't there to build from. Write brief.md if you like, then set the direction, then write ${page.split(/[\\/]/).pop()}`
+        : null;
+    };
   }
 
   /**

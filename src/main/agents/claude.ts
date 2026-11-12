@@ -539,7 +539,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
           what = command;
         } else {
           const targets = claudeWriteTargets(hookInput.tool_name, toolInput);
-          reason = fenceWrite(input.cwd, input.design, targets);
+          reason = fenceWrite(input.cwd, input.design, targets, input.designGuard);
           what = targets.join(", ");
         }
         if (!reason) return {};

@@ -20,7 +20,7 @@
     }
     h1, h2, h3, h4, p { margin: 0; }
     img, svg { display: block; max-width: 100%; }
-    button, input, select, textarea { font: inherit; color: inherit; }
+    :is(button, input, select, textarea):not([data-ui], [data-ui] *) { font: inherit; color: inherit; }
     :focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
     .container { max-width: var(--content-max); margin-inline: auto; padding-inline: var(--space-6); }
     @media (max-width: 767px) { .container { padding-inline: var(--space-4); } }

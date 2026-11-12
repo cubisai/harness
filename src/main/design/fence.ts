@@ -5,7 +5,7 @@
 
 import { homedir, tmpdir } from "node:os";
 import { basename, isAbsolute, relative, resolve } from "node:path";
-import { insideDesignFolder } from "./write-scope";
+import { inDesignRoot, insideDesignFolder, managedDesignDir } from "./write-scope";
 
 /** True when `abs` is `root` or inside it. */
 function within(root: string, abs: string): boolean {
@@ -548,7 +548,13 @@ function analyze(cwd: string, design: string, command: string, depth = 0): strin
     if (PATH_WRITE.has(cmd) || COPY.has(cmd)) {
       let ops = operands(words, quoted, ci + 1);
       if (cmd === "chmod") ops = ops.slice(1);
-      for (const p of ops) if (!allowedPath(cwd, design, current, p)) return `${cmd} outside ${design}/: ${p}`;
+      // cp reads its sources: one in a managed folder (copying a block out of system/blocks/) only has to be in the design folder.
+      const targetFlag = words.slice(ci + 1).some((w) => w === "-t" || w.startsWith("--target-directory"));
+      const last = ops.length - 1;
+      for (const [i, p] of ops.entries()) {
+        const source = cmd === "cp" && !targetFlag && i < last;
+        if (source ? !(allowedPath(cwd, design, current, p) || inDesignRoot(cwd, design, resolvePath(current, p))) : !allowedPath(cwd, design, current, p)) return `${cmd} outside ${design}/: ${p}`;
+      }
     }
     if (cmd === "sed" && sedInPlace(words, ci + 1)) {
       for (const p of sedFiles(words, ci + 1)) {
@@ -572,13 +578,19 @@ function analyze(cwd: string, design: string, command: string, depth = 0): strin
  * every path lands in `<cwd>/<design>`. No paths at all is denied too (an edit
  * that can't be placed). Non-design threads are never fenced.
  */
-export function fenceWrite(cwd: string, design: string | undefined, paths: readonly string[]): string | null {
+export function fenceWrite(cwd: string, design: string | undefined, paths: readonly string[], guard?: DesignGuard): string | null {
   if (!design) return null;
   if (!paths.length) return `This design thread can only change files in ${design}/, and this edit didn't say which files it changes`;
-  if (insideDesignFolder(cwd, design, paths)) return null;
+  if (insideDesignFolder(cwd, design, paths)) return guard?.(paths) ?? null;
+  const managed = paths.map((p) => managedDesignDir(cwd, design, p)).find((d) => d !== null);
+  if (managed === "system") return `${design}/system/ is managed by CubiQ (the kit and its tokens, pinned for this design): don't edit it. Put page styles in the page or its own CSS file, using the tokens; ask the user to change the theme in the style picker`;
+  if (managed) return `${design}/${managed}/ is managed by CubiQ: don't edit it. Write the variant pages beside index.html instead`;
   const outside = paths.find((p) => !insideDesignFolder(cwd, design, [p])) ?? paths[0]!;
   return `This design thread can only change files in ${design}/: ${outside}`;
 }
+
+/** A live check on writes inside the design folder (the thread's current state): why to refuse, or null. */
+export type DesignGuard = (paths: readonly string[]) => string | null;
 
 /**
  * Why `command` must be denied in a design thread, or null when it may run.

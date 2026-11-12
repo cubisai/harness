@@ -31,13 +31,37 @@ function within(root: string, abs: string): boolean {
 }
 
 /**
+ * Folders inside a design folder that CubiQ writes and the agent must not: `system/` (the pinned kit and tokens)
+ * and `styles/` (the systems a "More styles" round copies in). The agent's own `kit/` draft stays writable.
+ */
+export const MANAGED_DESIGN_DIRS = ["system", "styles"] as const;
+
+/** The managed folder (`system`, `styles`) that `path` falls in, or null. */
+export function managedDesignDir(cwd: string, design: string | undefined, path: string): string | null {
+  if (!design || typeof path !== "string" || !path.trim()) return null;
+  const root = physical(resolve(cwd, design));
+  const abs = physical(resolve(cwd, path.trim()));
+  return MANAGED_DESIGN_DIRS.find((d) => within(join(root, d), abs)) ?? null;
+}
+
+/** Whether `path` lands anywhere in the design folder, managed folders included (a place a copy may read from). */
+export function inDesignRoot(cwd: string, design: string | undefined, path: string): boolean {
+  if (!design || typeof path !== "string" || !path.trim()) return false;
+  return within(physical(resolve(cwd, design)), physical(resolve(cwd, path.trim())));
+}
+
+/**
  * Whether every one of `paths` (absolute, or relative to `cwd`) lands inside the
- * design folder `<cwd>/<design>`. False for no design folder or no paths.
+ * design folder `<cwd>/<design>`, outside its managed folders. False for no design folder or no paths.
  */
 export function insideDesignFolder(cwd: string, design: string | undefined, paths: readonly string[]): boolean {
   if (!design || !paths.length) return false;
   const root = physical(resolve(cwd, design));
-  return paths.every((p) => typeof p === "string" && p.trim() !== "" && within(root, physical(resolve(cwd, p.trim()))));
+  return paths.every((p) => {
+    if (typeof p !== "string" || p.trim() === "") return false;
+    const abs = physical(resolve(cwd, p.trim()));
+    return within(root, abs) && !MANAGED_DESIGN_DIRS.some((d) => within(join(root, d), abs));
+  });
 }
 
 /**

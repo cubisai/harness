@@ -461,7 +461,7 @@ export function createAcpDriver(
     // A design thread's fence: edits outside its folder and destructive commands are denied.
     if (t.input.design && t.input.cwd) {
       const paths = ask.kind === "edit" ? ask.summary.split(", ").filter(Boolean) : [];
-      const reason = ask.kind === "execute" ? fenceCommand(t.input.cwd, t.input.design, ask.summary) : ask.kind === "edit" ? fenceWrite(t.input.cwd, t.input.design, paths) : null;
+      const reason = ask.kind === "execute" ? fenceCommand(t.input.cwd, t.input.design, ask.summary) : ask.kind === "edit" ? fenceWrite(t.input.cwd, t.input.design, paths, t.input.designGuard) : null;
       if (reason) {
         t.input.onEvent({ kind: "notice", text: `Blocked in this design thread: ${ask.kind === "edit" ? paths.join(", ") : ask.summary}` });
         return { decision: "deny", reason };
@@ -895,7 +895,7 @@ export function createAcpDriver(
             const editPaths = acpEditTargets(p.toolCall);
             const reason =
               p.toolCall.kind === "edit"
-                ? fenceWrite(t.input.cwd, t.input.design, editPaths)
+                ? fenceWrite(t.input.cwd, t.input.design, editPaths, t.input.designGuard)
                 : p.toolCall.kind === "execute"
                   ? fenceCommand(t.input.cwd, t.input.design, command)
                   : null;

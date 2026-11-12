@@ -55,6 +55,8 @@ export interface TurnInput {
   projectId?: string;
   /** A design thread's folder (relative to cwd), which the guide tells the agent to build in. */
   design?: string;
+  /** A live check on writes inside the design folder (e.g. no page before an Auto thread has a direction): the reason to refuse, or null. */
+  designGuard?: (paths: readonly string[]) => string | null;
   /** The thread's expert persona block (see shared/experts.ts expertBlock), appended to the guide; absent = no expert. */
   expert?: string;
   /** The expert team's members as subagents (Claude SDK agents, OpenCode agents); absent = no team. Fixed for a thread. */

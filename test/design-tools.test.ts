@@ -179,6 +179,15 @@ describe("design tools", () => {
     expect(out.text).toContain("- [targets] button — 20×20px, needs 44×44");
   });
 
+  it("tells the agent a clean page is done, and says nothing of the kind while findings remain", async () => {
+    const root = tempDir();
+    writeFileSync(join(root, "index.html"), "<p>hi</p>");
+    const clean = toolDeps(root, { evaluate: async () => JSON.stringify({ findings: [], skipped: [], scanned: 9 }) });
+    expect((await tool(clean, "design_lint").run({})).text).toContain("Clean: this page is done");
+    const dirty = toolDeps(root, { evaluate: async () => JSON.stringify({ findings: [{ rule: "targets", selector: "a", detail: "20×20px" }], skipped: [], scanned: 9 }) });
+    expect((await tool(dirty, "design_lint").run({})).text).not.toContain("Clean:");
+  });
+
   it("reports a renderer failure as a tool error, not a throw", async () => {
     const root = tempDir();
     writeFileSync(join(root, "index.html"), "<p>hi</p>");

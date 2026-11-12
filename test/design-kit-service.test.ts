@@ -458,3 +458,18 @@ describe("System mode's kit view", () => {
     expect(existsSync(join(s.root, "kit", "ui.css"))).toBe(true);
   });
 });
+
+describe("pageCssOf", () => {
+  it("reads the page's own linked stylesheets, never system/, styles/ or remote ones", async () => {
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    const { pageCssOf } = await import("../src/main/design/kit-service");
+    const root = tempDir();
+    mkdirSync(join(root, "system"), { recursive: true });
+    writeFileSync(join(root, "page.css"), ".a{color:red}");
+    writeFileSync(join(root, "system", "ui.css"), ".kit{}");
+    const html = `<link rel="stylesheet" href="system/ui.css"><link rel="stylesheet" href="page.css?v=2"><link rel="stylesheet" href="https://x.test/a.css"><link rel="stylesheet" href="../outside.css">`;
+    const css = pageCssOf(root, "index.html", html);
+    expect(css).toContain(".a{color:red}");
+    expect(css).not.toContain(".kit");
+  });
+});

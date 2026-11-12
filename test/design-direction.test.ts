@@ -7,6 +7,7 @@ import { Store } from "../src/main/db";
 import { FACES } from "../src/main/design/reference-adapter";
 import { materializeSystem, pickFromShortlist, tokenFacets, type DesignSystemInfo } from "../src/main/design/systems";
 import { Service } from "../src/main/service";
+import { designDirName } from "../src/shared/design";
 import { readDirection, SURFACES } from "../src/shared/direction";
 import type { DesignKitOption } from "../src/shared/design-mutation";
 import { tierOf } from "../src/shared/tiers";
@@ -16,8 +17,9 @@ const RESOURCES = join(__dirname, "..", "resources");
 const FOUNDATION = join(RESOURCES, "design-kits", "foundation");
 const KITS = join(__dirname, "..", "design-kits", "kits");
 
-function fakeDriver(): AgentDriver & { prompts: string[] } {
+function fakeDriver(): AgentDriver & { prompts: string[]; guards: TurnInput["designGuard"][] } {
   const prompts: string[] = [];
+  const guards: TurnInput["designGuard"][] = [];
   return {
     id: "fake",
     label: "Fake",
@@ -27,8 +29,10 @@ function fakeDriver(): AgentDriver & { prompts: string[] } {
     skillCallPrefix: "skilled:",
     models: () => [{ id: "fake-1", label: "Fake 1" }],
     prompts,
+    guards,
     async runTurn(input: TurnInput) {
       prompts.push(input.prompt);
+      guards.push(input.designGuard);
     },
   };
 }
@@ -455,5 +459,38 @@ describe("a kit system on a design thread", () => {
     const { thread: moved } = service.editDesignSystem(thread.id, { designMd: "over" });
     expect(readFileSync(join(FOUNDATION, "DESIGN.md"), "utf8")).toBe(before);
     expect(moved.designSystem).toBe("project:foundation-custom");
+  });
+});
+
+describe("design guard", () => {
+  const DIRECTION = { surface: "page", mode: "persuade", tier: "working" } as const;
+
+  it("holds an Auto thread's pages until it has a direction, live through the turn", async () => {
+    const { service, driver, project } = setup();
+    const thread = service.createThread(project.id, undefined, "design");
+    await service.send({ threadId: thread.id, text: "a landing page" });
+    const guard = driver.guards.at(-1)!;
+    expect(guard(["designs/x/index.html"])).toMatch(/Call design_set_direction first/);
+    expect(guard(["designs/x/brief.md"])).toBeNull();
+    service.setDesignDirection(thread.id, { ...DIRECTION, style: "kit:foundation" });
+    expect(guard(["designs/x/index.html"])).toBeNull();
+  });
+
+  it("never holds an older Auto thread that already has a system/", async () => {
+    const { service, driver, project } = setup();
+    const thread = service.createThread(project.id, undefined, "design");
+    await service.send({ threadId: thread.id, text: "a landing page" });
+    const root = join(project.path, designDirName(thread.id));
+    mkdirSync(join(root, "system"), { recursive: true });
+    writeFileSync(join(root, "system", "tokens.css"), ":root{}");
+    expect(driver.guards.at(-1)!(["designs/x/index.html"])).toBeNull();
+  });
+
+  it("never holds a thread on a fixed system", async () => {
+    const { service, driver, project } = setup();
+    const thread = service.createThread(project.id, undefined, "design");
+    service.setDesignSystem(thread.id, "kit:mui");
+    await service.send({ threadId: thread.id, text: "a landing page" });
+    expect(driver.guards.at(-1)!(["designs/x/index.html"])).toBeNull();
   });
 });

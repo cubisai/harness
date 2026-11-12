@@ -146,7 +146,9 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
           const allowed = root ? withoutAllowed(parsed, styleAllows(root)) : parsed;
           const kit = deps.kits?.ground(threadId, page.rel) ?? null;
           const result = kit ? { ...allowed, findings: [...kit.findings, ...allowed.findings] } : allowed;
-          return { text: `${deps.folder(threadId)}/${page.rel} at ${width}px\n${formatLint(result)}${kit ? `\n${kit.summary}` : ""}` };
+          // A clean page is finished: polishing past this point costs the user time and tokens for little.
+          const done = result.findings.length === 0 ? `\nClean: this page is done. Unless the user asked for more, check any other pages you changed, then report and stop.` : "";
+          return { text: `${deps.folder(threadId)}/${page.rel} at ${width}px\n${formatLint(result)}${kit ? `\n${kit.summary}` : ""}${done}` };
         } catch (err) {
           return failed("Lint", err);
         }
