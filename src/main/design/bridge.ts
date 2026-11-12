@@ -50,7 +50,7 @@ export type BridgeMessage =
   /** Design v2: ⌘Z, ⇧⌘Z or ⌘Y with the keyboard in the frame. */
   | { source: "cubiq-design"; type: "history-key"; action: "undo" | "redo" }
   /** Design v2: the page's own values for the tokens the Customize panel asked about. */
-  | { source: "cubiq-design"; type: "theme"; tokens: Record<string, string> }
+  | { source: "cubiq-design"; type: "theme"; tokens: Record<string, string>; scheme?: "light" | "dark" }
   | { source: "cubiq-design"; type: "edit-refused"; reason: string }
   | { source: "cubiq-design"; type: "pick-cancel" }
   | { source: "cubiq-design"; type: "tweaks"; manifest: string; attrs: Record<string, string>; vars: Record<string, string> }
@@ -96,6 +96,12 @@ export type CanvasMessage =
   | { source: "cubiq-canvas"; type: "set-findings"; findings: { n: number; selector: string; detail: string }[] };
 
 /** Snap an element to its nearest interactive ancestor, or itself when there is none. */
+/** A stylesheet href with a fresh `r=` cache-buster in place of any earlier one: `a.css?r=1` → `a.css?r=2`, `a.css?v=3&r=1` → `a.css?v=3&r=2`. */
+export function restyledHref(href: string, stamp: number): string {
+  const base = href.replace(/([?&])r=\d+&?/, "$1").replace(/[?&]$/, "");
+  return `${base}${base.includes("?") ? "&" : "?"}r=${stamp}`;
+}
+
 export function snapTarget(el: Element): Element {
   return el.closest("a, button, [role=button], input, select, textarea, label, summary") ?? el;
 }
@@ -416,6 +422,7 @@ export function designBridge(
   clickTarget: (selected: Element | null, hit: Element, component: (el: Element) => Element, paints: (el: Element) => boolean) => Element,
   textHolder: (el: Element) => Element | null,
   patchDocument: (live: Document, base: Document, next: Document, own: (node: Node) => boolean) => PatchResult,
+  restyledHref: (href: string, stamp: number) => string,
 ): void {
   // This script's own element, which the page's file doesn't have (a patch must leave it be).
   const bridgeScript = document.currentScript;
@@ -1229,10 +1236,17 @@ export function designBridge(
       if (data.restyle === true) {
         // A copy that fails (the file was mid-rewrite) goes instead, and the old sheet stays until a retry loads.
         const swap = (link: Element, tries: number): void => {
-          const href = link.getAttribute("href") || "";
           const copy = link.cloneNode() as HTMLLinkElement;
-          copy.setAttribute("href", href.replace(/([?&])r=\d+&?/, "$1").replace(/[?&]$/, "") + (href.includes("?") ? "&" : "?") + "r=" + Date.now());
-          copy.addEventListener("load", () => link.remove(), { once: true });
+          copy.setAttribute("href", restyledHref(link.getAttribute("href") || "", Date.now()));
+          copy.addEventListener(
+            "load",
+            () => {
+              link.remove();
+              // The panel's colours follow the new sheet.
+              themeRead?.();
+            },
+            { once: true },
+          );
           copy.addEventListener(
             "error",
             () => {
@@ -1323,7 +1337,9 @@ export function designBridge(
         const style = getComputedStyle(document.documentElement);
         const tokens: Record<string, string> = {};
         for (const name of names) tokens[name] = style.getPropertyValue(name).trim().slice(0, 120);
-        post("theme", { tokens });
+        // A page with one scheme only (e.g. a dark-native reference) says which, so Appearance shows the truth.
+        const only = style.colorScheme.trim();
+        post("theme", only === "dark" || only === "light" ? { tokens, scheme: only } : { tokens });
       };
       send();
       // The scheme can change under the page (the app's theme, or the panel's Appearance): the panel hears the new values.
@@ -1426,5 +1442,5 @@ export function designBridge(
 
 /** The bridge as one script body, embedding the page-side helpers it needs. */
 export function bridgeScript(selectorFor: (el: Element) => string): string {
-  return `(${designBridge.toString()})(${selectorFor.toString()}, ${describeElement.toString()}, ${snapTarget.toString()}, ${resolveTarget.toString()}, ${editableText.toString()}, ${outlineOf.toString()}, ${gapChoice.toString()}, ${childGap.toString()}, ${isSelectableElement.toString()}, ${componentOf.toString()}, ${drillTarget.toString()}, ${parentComponent.toString()}, ${clickTarget.toString()}, ${textHolder.toString()}, ${patchDocument.toString()});`;
+  return `(${designBridge.toString()})(${selectorFor.toString()}, ${describeElement.toString()}, ${snapTarget.toString()}, ${resolveTarget.toString()}, ${editableText.toString()}, ${outlineOf.toString()}, ${gapChoice.toString()}, ${childGap.toString()}, ${isSelectableElement.toString()}, ${componentOf.toString()}, ${drillTarget.toString()}, ${parentComponent.toString()}, ${clickTarget.toString()}, ${textHolder.toString()}, ${patchDocument.toString()}, ${restyledHref.toString()});`;
 }

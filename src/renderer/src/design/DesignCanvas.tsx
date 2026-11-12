@@ -303,6 +303,7 @@ export default function DesignCanvas({
     pendingSelect.current = null;
     setAppearance(null);
     setPageTheme({});
+    setPageScheme(null);
     setPresent(null);
     setNotice(null);
     setTweaks(null);
@@ -549,6 +550,8 @@ export default function DesignCanvas({
   pickMessageRef.current = pickMessage;
   // The page's values for the panel's tokens, and how it's previewed: light or dark, whatever the app's theme.
   const [pageTheme, setPageTheme] = useState<Record<string, string>>({});
+  // The page's only scheme, when it has just one: Appearance shows it rather than the app's.
+  const [pageScheme, setPageScheme] = useState<"light" | "dark" | null>(null);
   // The kit's colour and type token names, from the page's tokens.css: the panel names colours and type styles by them.
   const [kitTokenNames, setKitTokenNames] = useState<string[]>([]);
   const tokenNamesRef = useRef<string[]>([]);
@@ -689,6 +692,7 @@ export default function DesignCanvas({
         if (version === 0) (msg.action === "undo" ? undoRef.current : editsRef.current.redo)();
       } else if (msg.type === "theme") {
         setPageTheme(msg.tokens);
+        setPageScheme(msg.scheme ?? null);
       } else if (msg.type === "pins") {
         setPinMissing(msg.missing);
       } else if (msg.type === "outline") {
@@ -2202,7 +2206,7 @@ export default function DesignCanvas({
               styleName={styleName ?? null}
               styleNote={styleNote}
               theme={pageTheme}
-              appearance={appearance ?? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")}
+              appearance={appearance ?? pageScheme ?? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")}
               onAppearance={setAppearance}
               onClear={clearSelection}
               onViewHtml={() => (one ? void openCodeAt(one) : changeView("code"))}
