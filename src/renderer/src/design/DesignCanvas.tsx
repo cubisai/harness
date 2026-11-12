@@ -194,6 +194,18 @@ export default function DesignCanvas({
       live = false;
     };
   }, [thread?.projectId, thread?.designSystem]);
+  // A reference-built thread says where its look came from; re-read when the system or the page reloads.
+  const [styleNote, setStyleNote] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void api()
+      .designReferenceNote(threadId)
+      .then((note) => live && setStyleNote(note))
+      .catch(() => live && setStyleNote(null));
+    return () => {
+      live = false;
+    };
+  }, [threadId, thread?.designSystem, thread?.designDirection?.reference?.sha256, reload]);
   const styleName = kitGroups.length ? chipLabel(kitGroups, thread?.designSystem, readDirection(thread?.designDirection) ?? null).name : designStyleName(systemOptions, thread?.designSystem, readDirection(thread?.designDirection));
   const styleOf = useCallback((slug: string) => systemOptions.find((o) => o.id === STYLE_PREFIX + slug)?.name, [systemOptions]);
   const labelOf = useCallback((p: BoardPage) => frameLabel(p, styleName, styleOf), [styleName, styleOf]);
@@ -2188,6 +2200,7 @@ export default function DesignCanvas({
               onSaveTheme={() => setNaming({ kind: "theme", warnings: [], error: null, busy: false })}
               readOnly={agentRunning || edits.status?.readOnly === true}
               styleName={styleName ?? null}
+              styleNote={styleNote}
               theme={pageTheme}
               appearance={appearance ?? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")}
               onAppearance={setAppearance}

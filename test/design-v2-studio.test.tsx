@@ -258,6 +258,19 @@ describe("the style picker's rules", () => {
     expect(chipLabel(groups, "auto", { style: "style:atelier" } as DesignDirection).name).toBe("Auto · Atelier");
   });
 
+  it("shows a picked or Auto-picked reference as its ref: card, by name", () => {
+    const sha = "a".repeat(64);
+    const reference = { source: "gradientdeck", slug: "acme-labs", sha256: sha } as const;
+    expect(cardIdOf(`ref:acme-labs@${sha}`)).toBe("ref:acme-labs");
+    expect(cardIdOf("ref:acme-labs")).toBe("ref:acme-labs");
+    expect(cardIdOf("auto", { style: "kit:foundation", reference } as DesignDirection)).toBe("ref:acme-labs");
+    const refs = [{ id: "ref:acme-labs", name: "Acme" }];
+    expect(chipLabel(groups, `ref:acme-labs@${sha}`, null, refs)).toEqual({ name: "Acme", title: "Style: Acme (design reference)" });
+    expect(chipLabel(groups, "auto", { style: "kit:foundation", reference } as DesignDirection, refs).name).toBe("Auto · Acme");
+    // Cards not loaded yet: the slug stands in.
+    expect(chipLabel(groups, `ref:acme-labs@${sha}`, null).name).toBe("Acme Labs");
+  });
+
   it("searches by feel as well as by name", () => {
     const cards = groups[0]!.themes;
     expect(filterCards(cards, "").length).toBe(2);
