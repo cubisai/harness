@@ -15,6 +15,7 @@ export const DESIGN_CRITIQUE_SAVE_TOOL = "design_critique_save";
 export const DESIGN_DIRECTION_TOOL = "design_set_direction";
 export const DESIGN_KIT_INSPECT_TOOL = "design_kit_inspect";
 export const DESIGN_KIT_SAVE_TOOL = "design_kit_save";
+export const DESIGN_PART_PREVIEW_TOOL = "design_part_preview";
 export const DESIGN_TOKENS_APPLY_TOOL = "design_tokens_apply";
 export const DESIGN_REFERENCE_SEARCH_TOOL = "design_reference_search";
 export const DESIGN_REFERENCE_GET_TOOL = "design_reference_get";
@@ -52,6 +53,8 @@ export interface DesignKitToolDeps {
   /** The kit check of a page (unknown parts, prop values, CSS that redraws a part) and its coverage line; null off a kit. */
   ground(threadId: string, rel: string): { findings: LintFinding[]; summary: string } | null;
   save(threadId: string): string;
+  /** Render one part or block of the thread's kit on its own page; returns that page's path in the design folder. */
+  preview(threadId: string, ui: string, props: Record<string, string>): string;
   applyTokens(threadId: string, rel: string, tokens: Record<string, string>): string;
 }
 
@@ -290,6 +293,35 @@ function kitTools(deps: DesignToolDeps, kits: DesignKitToolDeps, threadId: strin
       autoAllow: true,
       effect: "read",
       run: async (args) => guarded(() => kits.inspect(threadId, { ...(args.kit ? { kit: args.kit } : {}), ...(args.component ? { component: args.component } : {}), ...(args.block ? { block: args.block } : {}), ...(args.search ? { search: args.search } : {}), ...(args.page ? { page: args.page } : {}), ...(args.start_draft ? { startDraft: true } : {}) })),
+    }),
+    define({
+      name: DESIGN_PART_PREVIEW_TOOL,
+      description:
+        "Render one part or block of this design's kit off screen and return a PNG: a part's variants side by side, or one instance with the props you give, or a block at full size. Use it to see a part before you place it, instead of writing a preview page of your own.",
+      input: {
+        component: z.string().describe("The part's or block's data-ui value, e.g. button, stat, pricing"),
+        props: z.string().optional().describe('Props as attributes, e.g. "variant=secondary size=sm"; default: every variant'),
+        width: z.number().optional().describe("Viewport width in CSS px, 320-2560; default 1280"),
+      },
+      autoAllow: true,
+      effect: "read",
+      run: async (args) => {
+        const props: Record<string, string> = {};
+        for (const m of (args.props ?? "").matchAll(/([a-z][a-z0-9-]*)\s*=\s*("([^"]*)"|'([^']*)'|[^\s]+)/gi)) props[m[1]!.replace(/^data-/, "")] = m[3] ?? m[4] ?? m[2]!;
+        let rel: string;
+        try {
+          rel = kits.preview(threadId, args.component.trim(), props);
+        } catch (err) {
+          return { text: err instanceof Error ? err.message : String(err), isError: true };
+        }
+        try {
+          const shot = await deps.screenshot(deps.url(threadId, rel), { width: clamp(args.width, 320, 2560, 1280), height: 720, fullPage: true });
+          const what = Object.keys(props).length ? ` with ${Object.entries(props).map(([k, v]) => `${k}=${v}`).join(" ")}` : "";
+          return { text: `${args.component.trim()}${what} at ${shot.width}×${shot.height}.`, imagePng: shot.png.toString("base64") };
+        } catch (err) {
+          return failed("Preview", err);
+        }
+      },
     }),
     define({
       name: DESIGN_KIT_SAVE_TOOL,

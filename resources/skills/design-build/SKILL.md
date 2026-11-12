@@ -11,7 +11,7 @@ The user watches the page appear in CubiQ's canvas. It must look finished, and i
 ## 1. Start
 
 1. Read `system/KIT.md` (how to build with the kit) and `system/DESIGN.md` (the theme's look: colour, type, mood). Without `KIT.md`, `DESIGN.md` covers both. Read `system/patterns.md` for the surface's anatomies.
-2. Run `design_kit_inspect` once: the parts by category and the blocks. Use `search:` to find a part ("date", "table", "pricing") and `component:` for its props and snippet before you use it.
+2. Run `design_kit_inspect` once: the parts by category and the blocks. Use `search:` to find a part ("date", "table", "pricing") and `component:` for its props and snippet before you use it. To see one drawn in the theme, `design_part_preview` (a part's variants, one with props, or a block); don't write preview pages of your own.
 3. If the message names a reference image (`refs/ref-1.png`), open it first. Take its layout, hierarchy, density and type feel; keep the kit's parts and tokens. Say in one line what you took from it.
 4. A vague request: pick a concrete product and content yourself and say so in one line at the end.
 5. A new page: write `.direction.md` (at most 120 words, never linked): the one idea the page owns, from the subject's own world; the colour strategy (restrained, committed, full palette or drenched); the signature moment; what it refuses. Would a similar prompt land on the same plan? Change that part first.

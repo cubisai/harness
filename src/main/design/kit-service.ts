@@ -270,6 +270,7 @@ export class DesignKitService {
     rmSync(join(root, `${PREVIEW}-part.html`), { force: true });
     rmSync(join(root, `${PREVIEW}-gallery.html`), { force: true });
     rmSync(join(root, `${PREVIEW}-pick.html`), { force: true });
+    rmSync(join(root, `${PREVIEW}-agent.html`), { force: true });
   }
 
   /** Move every page of the design, each as one undo step, then the system. Undoing the open page brings the rest back. */
@@ -535,6 +536,39 @@ export class DesignKitService {
     const rel = `${PREVIEW}-part.html`;
     const uiCss = read(join(inDraft ? join(root, "kit") : system!.kit!.dir, "ui.css")) ?? "";
     writeFileSync(join(root, rel), partSample(part, folder, request, uiCss));
+    return rel;
+  }
+
+  /**
+   * The agent's `design_part_preview`: one part (all its variants, or one instance with `props`) or one block at full
+   * size, on its own page in the design folder. Returns that page's path; throws with what to do on a bad name.
+   */
+  previewForAgent(threadId: string, ui: string, props: Record<string, string> = {}): string {
+    const thread = this.deps.getThread(threadId);
+    const root = this.deps.designRoot(threadId);
+    const system = this.deps.threadSystem(thread);
+    if (!root) throw new Error("This thread has no design folder.");
+    const draftDir = join(root, "kit");
+    const draft = manifestIn(draftDir);
+    const kitDir = system?.kit?.dir;
+    const inDraft = draft?.components.find((c) => c.ui === ui);
+    const inKit = kitDir ? manifestIn(kitDir)?.components.find((c) => c.ui === ui) : undefined;
+    const part = inDraft ?? inKit;
+    if (!part) throw new Error(`"${ui}" isn't a part or block of this kit. Find one with design_kit_inspect (search: words).`);
+    const dir = inDraft ? draftDir : kitDir!;
+    let snippet = part.snippet;
+    if (part.kind === "composition") {
+      const file = /data-block=["']([^"']+)["']/.exec(part.snippet)?.[1];
+      const inside = file ? relative(dir, resolve(dir, file)) : "";
+      snippet = (file && inside && !inside.startsWith("..") && !isAbsolute(inside) ? read(join(dir, inside)) : null) ?? part.snippet;
+    }
+    const known = new Set(part.props.map((p) => p.name));
+    const bad = Object.keys(props).filter((k) => !known.has(k));
+    if (bad.length) throw new Error(`${part.name} has no ${bad.join(", ")} prop. Its props: ${[...known].join(", ") || "none"}.`);
+    const variants = part.props.find((p) => p.name === "variant")?.options ?? [];
+    const request = Object.keys(props).length ? { props } : variants.length && part.kind !== "composition" ? { matrix: true } : {};
+    const rel = `${PREVIEW}-agent.html`;
+    writeFileSync(join(root, rel), partSample({ ui: part.ui, snippet, props: part.props }, inDraft ? "kit" : "system", request, read(join(dir, "ui.css")) ?? ""));
     return rel;
   }
 

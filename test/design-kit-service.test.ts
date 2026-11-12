@@ -7,7 +7,7 @@ import { DesignDocuments } from "../src/main/design/documents";
 import { DesignKitService } from "../src/main/design/kit-service";
 import { documentIdOf } from "../src/main/design/mutation";
 import { listDesignSystems, listKitSystems, type DesignSystemInfo } from "../src/main/design/systems";
-import { designTools, DESIGN_KIT_INSPECT_TOOL, DESIGN_LINT_TOOL, DESIGN_KIT_SAVE_TOOL, DESIGN_TOKENS_APPLY_TOOL } from "../src/main/design/tools";
+import { designTools, DESIGN_KIT_INSPECT_TOOL, DESIGN_LINT_TOOL, DESIGN_KIT_SAVE_TOOL, DESIGN_PART_PREVIEW_TOOL, DESIGN_TOKENS_APPLY_TOOL } from "../src/main/design/tools";
 import { tempDir } from "./helpers";
 
 const FOUNDATION = join(process.cwd(), "resources", "design-kits", "foundation");
@@ -192,7 +192,7 @@ describe("tokens from the agent", () => {
         saveCritique: () => null,
         setDirection: () => "",
         kitIndex: () => "",
-        kits: { inspect: (id, q) => s.kits.inspect(id, q), ground: (id, rel) => s.kits.ground(id, rel), save: (id) => s.kits.saveForAgent(id), applyTokens: (id, rel, t) => s.kits.applyTokens(id, rel, t) },
+        kits: { inspect: (id, q) => s.kits.inspect(id, q), ground: (id, rel) => s.kits.ground(id, rel), save: (id) => s.kits.saveForAgent(id), preview: (id, ui, props) => s.kits.previewForAgent(id, ui, props), applyTokens: (id, rel, t) => s.kits.applyTokens(id, rel, t) },
       },
       s.thread.id,
     );
@@ -210,9 +210,10 @@ describe("tokens from the agent", () => {
 
   it("are offered only when the kit tools are given", () => {
     const names = (kits: boolean) =>
-      designTools({ root: () => null, folder: () => "", url: () => "", screenshot: async () => ({}) as never, evaluate: async () => "", lintScript: "", saveCritique: () => null, setDirection: () => "", kitIndex: () => "", ...(kits ? { kits: { inspect: () => "", ground: () => null, save: () => "", applyTokens: () => "" } } : {}) }, "t").map((t) => t.name);
+      designTools({ root: () => null, folder: () => "", url: () => "", screenshot: async () => ({}) as never, evaluate: async () => "", lintScript: "", saveCritique: () => null, setDirection: () => "", kitIndex: () => "", ...(kits ? { kits: { inspect: () => "", ground: () => null, save: () => "", preview: () => "", applyTokens: () => "" } } : {}) }, "t").map((t) => t.name);
     expect(names(false)).not.toContain(DESIGN_KIT_SAVE_TOOL);
-    expect(names(true)).toEqual(expect.arrayContaining([DESIGN_KIT_INSPECT_TOOL, DESIGN_KIT_SAVE_TOOL, DESIGN_TOKENS_APPLY_TOOL]));
+    expect(names(true)).toEqual(expect.arrayContaining([DESIGN_KIT_INSPECT_TOOL, DESIGN_KIT_SAVE_TOOL, DESIGN_TOKENS_APPLY_TOOL, DESIGN_PART_PREVIEW_TOOL]));
+    expect(names(false)).not.toContain(DESIGN_PART_PREVIEW_TOOL);
   });
 
   it("write inline on the page's root, one undo step, even during the turn that asked", async () => {
@@ -540,5 +541,23 @@ describe("Apply to all", () => {
     write("index.html", A);
     expect(kits.applyPropAll(thread.id, "index.html", "button", "data-ui", "x", true).count).toBe(0);
     expect(kits.applyPropAll(thread.id, "index.html", "button", "onclick", "x", true).count).toBe(0);
+  });
+});
+
+describe("design_part_preview", () => {
+  it("draws a part's variants, one instance with props, or a block at full size, and says what's wrong with a bad ask", () => {
+    const s = setup("kit:foundation");
+    const rel = s.kits.previewForAgent(s.thread.id, "button");
+    expect(rel).toBe(".preview-agent.html");
+    const all = readFileSync(join(s.root, rel), "utf8");
+    expect(all).toContain('data-variant="secondary"');
+    expect(all).toContain('data-variant="danger"');
+    const one = readFileSync(join(s.root, s.kits.previewForAgent(s.thread.id, "button", { variant: "ghost", size: "sm" })), "utf8");
+    expect(one).toContain('data-variant="ghost"');
+    expect(one).not.toContain('data-variant="danger"');
+    const block = readFileSync(join(s.root, s.kits.previewForAgent(s.thread.id, "sign-in")), "utf8");
+    expect(block).toContain("Sign in to Shiftline");
+    expect(() => s.kits.previewForAgent(s.thread.id, "carousel")).toThrow(/isn't a part or block.*design_kit_inspect/);
+    expect(() => s.kits.previewForAgent(s.thread.id, "button", { colour: "red" })).toThrow(/no colour prop\. Its props: variant, size/);
   });
 });

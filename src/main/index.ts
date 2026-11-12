@@ -602,6 +602,7 @@ async function main(): Promise<void> {
           kits: {
             inspect: (id, query) => service.kits.inspect(id, query),
             ground: (id, rel) => service.kits.ground(id, rel),
+            preview: (id, ui, props) => service.kits.previewForAgent(id, ui, props),
             save: (id) => service.kits.saveForAgent(id),
             applyTokens: (id, rel, tokens) => service.kits.applyTokens(id, rel, tokens),
           },
