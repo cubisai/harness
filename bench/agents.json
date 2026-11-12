@@ -4,6 +4,7 @@
   { "id": "opencode-zen-deepseek", "agent": "opencode", "model": "opencode/deepseek-v4.1-flash-free", "spaced": true },
   { "id": "opencode-pga-deepseek", "agent": "opencode", "model": "PGA/deepseek-v4.1-flash-1017", "spaced": true },
   { "id": "opencode-tokenharbor-deepseek", "agent": "opencode", "model": "TokenHarbor/deepseek-v4.1-flash:free", "spaced": true },
+  { "id": "opencode-agentrouter-sol", "agent": "opencode", "model": "agentrouter-responses/gpt-6.1-sol", "spaced": true },
   {
     "id": "pgs-deepseek",
     "agent": "provider-pgs",
