@@ -104,7 +104,9 @@ export function themeCard(system: DesignSystemInfo, mine: boolean): DesignThemeC
 /** The moves a plan makes, as the preview shows them. */
 function previewOf(plan: MigrationPlan, target: DesignSystemInfo, previewRel: string, pages: number): DesignMigrationPreview {
   const kitName = target.kit ? manifestIn(target.kit.dir)?.name : undefined;
-  return { targetId: target.id, targetName: kitName && kitName !== target.name ? `${kitName} · ${target.name}` : target.name, previewRel, same: plan.same, renamed: plan.renamed, unsupported: plan.unsupported, droppedProps: plan.droppedProps, review: plan.review, pages };
+  // A reference system's name already leads with its kit ("Foundation · Rainmaker").
+  const named = !kitName || kitName === target.name || target.name.startsWith(`${kitName} · `);
+  return { targetId: target.id, targetName: named ? target.name : `${kitName} · ${target.name}`, previewRel, same: plan.same, renamed: plan.renamed, unsupported: plan.unsupported, droppedProps: plan.droppedProps, review: plan.review, pages };
 }
 
 /**
