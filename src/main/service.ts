@@ -2172,7 +2172,11 @@ export class Service {
       if (!isAuto(thread) || thread.designDirection) return null;
       const root = this.designRoot(threadId);
       if (root && existsSync(join(root, "system", "tokens.css"))) return null;
-      const page = paths.find((p) => /\.html?$/i.test(p));
+      const page = paths.find((p) => /\.html?$/i.test(p) && !/(^|[\\/])kit[\\/]/.test(p));
+      // A new kit in progress: the page is built from it once design_kit_save has put it in system/.
+      if (page && root && existsSync(join(root, "kit", "components.json"))) {
+        return `Save the kit first: call design_kit_save once kit/ has its name, tokens and parts. It puts the kit in system/, and then ${page.split(/[\\/]/).pop()} is built from its data-ui parts`;
+      }
       return page
         ? `Call ${DESIGN_DIRECTION_TOOL} first: this Auto design has no direction yet, so system/ (its kit and tokens) isn't there to build from. Write brief.md if you like, then set the direction, then write ${page.split(/[\\/]/).pop()}`
         : null;

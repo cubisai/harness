@@ -486,6 +486,19 @@ describe("design guard", () => {
     expect(driver.guards.at(-1)!(["designs/x/index.html"])).toBeNull();
   });
 
+  it("asks for the kit to be saved first when a new kit is in progress", async () => {
+    const { service, driver, project } = setup();
+    const thread = service.createThread(project.id, undefined, "design");
+    await service.send({ threadId: thread.id, text: "a landing page" });
+    const root = join(project.path, designDirName(thread.id));
+    mkdirSync(join(root, "kit"), { recursive: true });
+    writeFileSync(join(root, "kit", "components.json"), "{}");
+    const guard = driver.guards.at(-1)!;
+    expect(guard(["designs/x/index.html"])).toMatch(/^Save the kit first: call design_kit_save/);
+    // The kit's own blocks are part of the kit, not the page.
+    expect(guard(["designs/x/kit/blocks/hero.html"])).toBeNull();
+  });
+
   it("never holds a thread on a fixed system", async () => {
     const { service, driver, project } = setup();
     const thread = service.createThread(project.id, undefined, "design");
