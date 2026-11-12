@@ -10,7 +10,7 @@ Short on purpose: current state, next steps, open questions and live traps. Repl
 
 ## Start here
 
-1. Work on `m4` in the main checkout (the worktree and `track/design-v2` were merged and removed 2026-11-09). For new work, branch off `m4` into a fresh worktree (`git worktree add ../aiharness-wt/<name> -b track/<name> m4`, then `bun install` and `node node_modules/electron/install.js`). The kit tools now live in the main checkout's `.ai/kit-tools` and `.ai/kit-release` (git-ignored, Mac only).
+1. Work on `m4` in the main checkout. **No worktrees** (user, 2026-11-12: about 1 GB each); all were removed, and `track/plugin-split` (separate harness-plugin repo idea) was deleted at the user's request. Kit tools live in `.ai/kit-tools` and `.ai/kit-release` (git-ignored, Mac only).
 2. Before every commit: `bun run typecheck`, `bun run test`, `bun run design:check`. Commit only that change's files, 150 characters or fewer, no trailer. Update this file at each milestone (the user's request); keep it under about 100 lines.
 
 ## User decisions
@@ -19,7 +19,8 @@ Short on purpose: current state, next steps, open questions and live traps. Repl
 - **Follow the recording** for whatever the plan still lacks (2026-11-06). That includes the pill: **no floating pill.** The selection is a Composer chip (`Selection: Grid ×`), with a name tag and 8 handles on the canvas.
 - 6 kits in `design-kits/`, all approved. Foundation is bundled. Kit UI is written by Claude, not workers, from real library values, with no copied source and no NOTICE (fonts carry `OFL.md`). Only the user pushes `cubisai/design-kits`.
 - No Varelyo branding beyond that one kit's name. M7 removed the obsolete UI and its pinned tests.
-- **2026-11-10:** replace the 32 taste/style presets with real-site DESIGN.md data from GradientDeck; collect all references and expose a local read-only MCP for testing. This replaces the "cut or all" question; production deletion/migration is not done yet.
+- **2026-11-10:** replace the 32 taste/style presets with real-site DESIGN.md data from GradientDeck. Done and merged 2026-11-12 (`14fd6d4`).
+- **2026-11-12:** "real components like shadcn" = a browse-all gallery built from the existing kits' parts (Insert/Swap reuse it), not shipping library source.
 - Later, not approved: Guardian, production external MCP (the GradientDeck test above is allowed), multi-tab, parallel agents, Sketch, Connect, multi-brand, user repos, signed catalog, Change History.
 
 ## Status
@@ -30,12 +31,12 @@ Short on purpose: current state, next steps, open questions and live traps. Repl
 | M5 | Selection chip and Typography pushed, Windows green (run 42166030432). `3 Variants` passed live on kit and flat threads in M7; remaining agent-turn checks below |
 | M6 | **Closed 2026-11-09.** Slices 1-5 done; fixes through `17d3ee7`. Journey D moves to M8 |
 | M7 | **Closed 2026-11-09.** Merged into `m4` (`14be44f`); CI green on `6429027` (run 42569038106) |
-| M8 | **In progress.** GradientDeck production phases 1-6 done on `track/gd-refs` (`cdc0efe`, 32 styles removed); phase 7 bench, grounding/full lint and model runs remain open |
+| M8 | **In progress.** GradientDeck phases 1-7 merged into `m4` (`14fd6d4`, 2026-11-12; local checks 4,461 passed). Leftovers below |
 
 ## Next, in this order
 
-0. **Resume here (GradientDeck production): phase 6 done and pushed as `cdc0efe` (2026-11-12); Windows CI green (run 43177222440); phase 7 bench run, results below; shortlist now 0.7/0.2/0.1; next: ask before merging into `m4`.**
-    - Spec: `.ai/plans/gradientdeck-production.md`. Worktree `../aiharness-wt/gd-refs`, branch `track/gd-refs` off `m4`, pushed through `cdc0efe` (includes `0ec307e`, the phase 5 follow-ups).
+0. **Resume here: GradientDeck merged into `m4` (`14fd6d4`, 2026-11-12); Windows CI on the same code (`8509f7e`, run 43185767592). User asked to do all leftovers next (items 2-4 below, the unverified live checks and the gallery).**
+    - Spec: `.ai/plans/gradientdeck-production.md`. Branch `track/gd-refs` merged and deleted (remote copy kept).
     - Phase 6: `resources/design-styles` removed; legacy `style:`/`kit:foundation/<x>` threads keep a frozen `system/` ("Legacy style · Name"); no reference falls back to Foundation's base theme; Compare 3 without references uses installed kit themes. 4,460 tests, design:check 0 errors.
     - **Bug fixed in `cdc0efe`:** `src/main/index.ts` wrapped `setDirection` with 4 arguments and dropped `reference`, so in the app an agent's reference pick always fell back to Foundation's base theme (unit tests call the service directly and missed it). Now `(...args)` pass-through, pinned by a source test in `design-reference-direction.test.ts`.
     - Live-checked (m4-built legacy threads, then the phase 6 app): legacy `system/` bytes identical after a turn; chip/Style row/board label say "Legacy style · Atelier/Market Day"; picker without refs = Auto + Foundation + Download card; Compare 3 without refs = 3 different kits, with refs = 3 references; picker switch legacy → Rainmaker pins `.reference` + `REFERENCE.md`, ⌘Z offered; fresh Auto with no refs → `kit:foundation`, no `Pick one of:`; Codex Auto with refs → `gradientdeck/depot@…` pinned.
@@ -46,7 +47,6 @@ Short on purpose: current state, next steps, open questions and live traps. Repl
         - Picks: Notion (landing), Apple from glideapps/whatsapp/apple (login), **Kindsight (SaaS) for the coffee deck**: the agent passed alison-roman with alternates touchy-coffee + kindsight, and the seeded shortlist picked the off-topic alternate. User chose to favour the first pick: weights now 0.7/0.2/0.1 (was 0.5/0.3/0.2); industry filter rejected (112 refs are "other", incl. alison-roman).
         - gpt-6.1-sol via `agentrouter-responses` (bench agent `opencode-agentrouter-sol`): AgentRouter errors "item was created under a different OpenAI resource" and reports no usage, so its numbers aren't usable. Picks were sensible (Evernote, Headspace, Sweetgreen); it reads more (9-13k tokens per run).
     - Providers on 2026-11-12: Zen free and PGS Grove are spent (PGS refills 2026-11-13 10:32 UTC); TokenHarbor free works; Codex is allowed.
-    - Then ask before merging into `m4`.
     - Live recipe: scratch profile with `active.json` kits (below); the old profile's `design-references` (48 MB) is in `scratchpad/ud` of the earlier session and can be copied to test the "with references" case. Offline: `NODE_USE_ENV_PROXY=1 HTTPS_PROXY=http://127.0.0.1:9`. Zen free hit its limit on 2026-11-12; use PGS Grove (`updateThread(id,{model:"PGA/deepseek-v4.1-flash-1017"})`). Real download: 2,590 files, 43 MB, 93 s. `finn` compact always times out (recorded as missing, by design).
     - Flakes: `test/mcp-http.test.ts` heartbeat under load; a full-suite run once failed 5 unnamed tests. Rerun before concluding.
     - `m4` is ahead of origin by the handoff commits. The user runs that push.
