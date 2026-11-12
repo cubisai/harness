@@ -8,7 +8,7 @@ import type { CommentTarget, DesignComment } from "./comments";
 import type { LearnCase, LearnOverview, LearnSettings, Lesson, LessonAction, TurnScore } from "./learn";
 import type { AutomationInput, AutomationNotice, AutomationsOverview, AutomationView } from "./automations";
 import type { DoctorFixResult, DoctorReport } from "./doctor";
-import type { DesignHistoryRequest, DesignHistoryResult, DesignKitEnsureResult, DesignKitOption, DesignMutation, DocumentStatus, MutationResult } from "./design-mutation";
+import type { DesignHistoryRequest, DesignHistoryResult, DesignKitEnsureResult, DesignKitOption, DesignMutation, DesignReferenceCard, DesignReferenceProgress, DesignReferenceResult, DesignReferenceStatus, DocumentStatus, MutationResult } from "./design-mutation";
 
 export type Invocation = "model" | "user";
 
@@ -230,6 +230,8 @@ export interface Settings {
   linkPreviews?: boolean;
   /** "File issue?" cards: in a project with an issue tracker, a cheap background model reads replies that mention a problem. On unless set to false. */
   issueOffers?: boolean;
+  /** Set once the first-run "Download design references" sheet has been answered, either way, so it never asks again. */
+  designReferencesAsked?: boolean;
   /** The launch splash clip; unset means "agent". */
   splash?: Splash;
   /** Self-improve (scorecard, lessons, verified promotion): off unless a project is listed. SettingsStore.get() always fills it in. */
@@ -1561,6 +1563,20 @@ export interface UnskilledApi {
   designKitCatalog(): Promise<DesignKitOption[]>;
   /** Download and verify a kit if it isn't on this machine yet (Design v2 only). */
   designKitEnsure(id: string): Promise<DesignKitEnsureResult>;
+  /** Whether GradientDeck's design references are on this machine. */
+  designReferences(): Promise<DesignReferenceStatus>;
+  /** Download the design references, or bring them up to date (only changed files are fetched). One run at a time. */
+  designReferencesDownload(): Promise<DesignReferenceResult>;
+  /** Stop a running reference download; its complete files are kept for the next run. */
+  designReferencesCancel(): Promise<void>;
+  /** Delete the downloaded design references. */
+  designReferencesRemove(): Promise<DesignReferenceStatus>;
+  /** Progress of a running reference download; returns an unsubscribe. */
+  onDesignReferenceProgress(listener: (progress: DesignReferenceProgress) => void): () => void;
+  /** Every downloaded reference as a picker card (empty before the download). */
+  designReferenceCards(): Promise<DesignReferenceCard[]>;
+  /** "Adapted from Stripe · font substituted" for a thread built on a reference, else null. */
+  designReferenceNote(threadId: string): Promise<string | null>;
   /** A design thread's comments (all pages), from its design folder. */
   designComments(threadId: string): Promise<DesignComment[]>;
   /** Add a comment on one element of a design page; the full list after. */

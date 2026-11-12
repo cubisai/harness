@@ -316,6 +316,8 @@ describe("reading the new bridge messages", () => {
   it("reads only token-shaped theme values", () => {
     expect(readBridgeMessage({ ...base, type: "theme", tokens: { "--color-bg": "#fff" } })).toEqual({ type: "theme", tokens: { "--color-bg": "#fff" } });
     expect(readBridgeMessage({ ...base, type: "theme", tokens: { color: "#fff" } })).toBeNull();
+    expect(readBridgeMessage({ ...base, type: "theme", tokens: {}, scheme: "dark" })).toEqual({ type: "theme", tokens: {}, scheme: "dark" });
+    expect(readBridgeMessage({ ...base, type: "theme", tokens: {}, scheme: "light dark" })).toEqual({ type: "theme", tokens: {} });
   });
 });
 

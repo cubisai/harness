@@ -29,6 +29,8 @@ function setup(designSystem = "kit:foundation", project: string | null = tempDir
   const kitDir = (id: string) => ({ foundation: FOUNDATION, mui: MUI, "shadcn-ui": SHADCN })[id] ?? null;
   const byId = (id: string | undefined): DesignSystemInfo | null => {
     if (!id) return null;
+    // A downloaded reference, as the service resolves one: Foundation's parts under the reference's name.
+    if (id.startsWith("ref:")) return { ...listKitSystems(FOUNDATION).find((s) => s.id === "kit:foundation")!, id, name: "Foundation · Acme" };
     if (id.startsWith("kit:")) {
       const dir = kitDir(id.slice(4).split("/")[0]!);
       return dir ? (listKitSystems(dir).find((s) => s.id === id) ?? null) : null;
@@ -51,7 +53,6 @@ function setup(designSystem = "kit:foundation", project: string | null = tempDir
     designRoot: () => root,
     threadSystem: (t) => byId(t.designSystem),
     systemById: (_p, id) => byId(id),
-    styles: () => [],
     kitDir,
     broadcast: (u) => updates.push(u),
   });
@@ -105,6 +106,14 @@ describe("a theme switch", () => {
     expect(updates.some((u) => u.type === "thread")).toBe(true);
     expect(kits.takeNote(thread)).toMatch(/nothing to rebuild/);
     expect(kits.takeNote(thread)).toBe("");
+  });
+
+  it("names a reference target once, without doubling its kit", () => {
+    const { kits, thread, write } = setup("kit:mui");
+    write("index.html", PAGE);
+    expect(kits.migrationPreview(thread.id, "index.html", "ref:acme").targetName).toBe("Foundation · Acme");
+    expect(kits.migrationPreview(thread.id, "index.html", "kit:foundation").targetName).toBe("Foundation");
+    kits.cancelMigration(thread.id);
   });
 
   it("refuses a theme of another kit, which has to go through the preview", () => {

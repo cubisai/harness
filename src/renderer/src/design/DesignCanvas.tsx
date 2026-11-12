@@ -9,7 +9,7 @@ import { IconClose } from "../icons";
 import "../styles/artifact.css";
 import { affectedPages, useStore } from "../store";
 import { designStyleName, useDesignSystemOptions } from "../components/DesignSystemMenu";
-import { chipLabel } from "../components/StylePicker";
+import { chipLabel, referenceName } from "../components/StylePicker";
 import { STYLE_PREFIX, readDirection } from "../../../shared/direction";
 import { STAGE_PAD, VIEWPORTS, ZOOMS, createBridgeGate, deviceFor, frameLayout, pageFromPath, readBridgeMessage, viewportForDevice, type FrameAnchor, type FrameRect, type OutlineNode, type PageSeam, type VariantSetInfo, type Viewport, type Zoom } from "./frame";
 import { announceSelection, contextBlock, elementLabel, selectionKey, withScope, type SelectedElement } from "../../../shared/selection";
@@ -194,8 +194,32 @@ export default function DesignCanvas({
       live = false;
     };
   }, [thread?.projectId, thread?.designSystem]);
+  // A reference-built thread says where its look came from; re-read when the system or the page reloads.
+  const [styleNote, setStyleNote] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void api()
+      .designReferenceNote(threadId)
+      .then((note) => live && setStyleNote(note))
+      .catch(() => live && setStyleNote(null));
+    return () => {
+      live = false;
+    };
+  }, [threadId, thread?.designSystem, thread?.designDirection?.reference?.sha256, reload]);
   const styleName = kitGroups.length ? chipLabel(kitGroups, thread?.designSystem, readDirection(thread?.designDirection) ?? null).name : designStyleName(systemOptions, thread?.designSystem, readDirection(thread?.designDirection));
-  const styleOf = useCallback((slug: string) => systemOptions.find((o) => o.id === STYLE_PREFIX + slug)?.name, [systemOptions]);
+  // A "More styles" option's own look: a reference by slug, or a kit theme by its folder (`kit:mui/indigo` -> mui-indigo).
+  const styleOf = useCallback(
+    (slug: string) => {
+      const ref = referenceName(slug);
+      if (ref) return ref;
+      for (const g of kitGroups) {
+        const theme = g.themes.find((t) => !t.mine && t.id.replace(/^kit:/, "").replace(/\//g, "-") === slug);
+        if (theme) return theme.name === g.name ? g.name : `${g.name} · ${theme.name}`;
+      }
+      return systemOptions.find((o) => o.id === STYLE_PREFIX + slug)?.name;
+    },
+    [kitGroups, systemOptions],
+  );
   const labelOf = useCallback((p: BoardPage) => frameLabel(p, styleName, styleOf), [styleName, styleOf]);
   // Canvas-first's Pages and Layers rail, open or not (kept in the pane layout).
   // The top bar's view (v2). Preview, Code and System take the whole width: the side panels come back with Design.
@@ -291,6 +315,7 @@ export default function DesignCanvas({
     pendingSelect.current = null;
     setAppearance(null);
     setPageTheme({});
+    setPageScheme(null);
     setPresent(null);
     setNotice(null);
     setTweaks(null);
@@ -537,6 +562,8 @@ export default function DesignCanvas({
   pickMessageRef.current = pickMessage;
   // The page's values for the panel's tokens, and how it's previewed: light or dark, whatever the app's theme.
   const [pageTheme, setPageTheme] = useState<Record<string, string>>({});
+  // The page's only scheme, when it has just one: Appearance shows it rather than the app's.
+  const [pageScheme, setPageScheme] = useState<"light" | "dark" | null>(null);
   // The kit's colour and type token names, from the page's tokens.css: the panel names colours and type styles by them.
   const [kitTokenNames, setKitTokenNames] = useState<string[]>([]);
   const tokenNamesRef = useRef<string[]>([]);
@@ -677,6 +704,7 @@ export default function DesignCanvas({
         if (version === 0) (msg.action === "undo" ? undoRef.current : editsRef.current.redo)();
       } else if (msg.type === "theme") {
         setPageTheme(msg.tokens);
+        setPageScheme(msg.scheme ?? null);
       } else if (msg.type === "pins") {
         setPinMissing(msg.missing);
       } else if (msg.type === "outline") {
@@ -2188,8 +2216,9 @@ export default function DesignCanvas({
               onSaveTheme={() => setNaming({ kind: "theme", warnings: [], error: null, busy: false })}
               readOnly={agentRunning || edits.status?.readOnly === true}
               styleName={styleName ?? null}
+              styleNote={styleNote}
               theme={pageTheme}
-              appearance={appearance ?? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")}
+              appearance={appearance ?? pageScheme ?? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")}
               onAppearance={setAppearance}
               onClear={clearSelection}
               onViewHtml={() => (one ? void openCodeAt(one) : changeView("code"))}

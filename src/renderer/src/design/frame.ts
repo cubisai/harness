@@ -73,7 +73,7 @@ export type BridgeMessage =
   | { type: "text-commit"; target: { id: string } | { locator: { tag: string; path: number[]; text: string } }; before: string; after: string; live: boolean }
   | { type: "history-key"; action: "undo" | "redo" }
   | { type: "pointer" }
-  | { type: "theme"; tokens: Record<string, string> }
+  | { type: "theme"; tokens: Record<string, string>; scheme?: "light" | "dark" }
   | { type: "edit-refused"; reason: string }
   | { type: "pins"; missing: number[] }
   | { type: "pick-cancel" }
@@ -215,7 +215,9 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
   if (d.type === "theme") {
     if (!d.tokens || typeof d.tokens !== "object" || Array.isArray(d.tokens)) return null;
     const entries = Object.entries(d.tokens as Record<string, unknown>);
-    return entries.length <= 200 && entries.every(([k, v]) => /^--[a-z0-9-]{1,48}$/.test(k) && str(v, 120)) ? { type: "theme", tokens: d.tokens as Record<string, string> } : null;
+    if (!(entries.length <= 200 && entries.every(([k, v]) => /^--[a-z0-9-]{1,48}$/.test(k) && str(v, 120)))) return null;
+    const tokens = d.tokens as Record<string, string>;
+    return d.scheme === "light" || d.scheme === "dark" ? { type: "theme", tokens, scheme: d.scheme } : { type: "theme", tokens };
   }
   if (d.type === "pins") {
     if (!Array.isArray(d.missing) || d.missing.length > 100) return null;

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { designDirName } from "../../shared/design";
+import { parseReferenceSystemId, referenceSystemId } from "../../shared/direction";
 import type { DesignKitOption, DesignMutation } from "../../shared/design-mutation";
 import type { DesignIntent, DesignKitDoc, DesignKitEdit, DesignKitGroup, DesignKitPart, DesignKitSampleRequest, DesignMigrationPreview, DesignReach, DesignThemeCard, LiveUpdate, Thread } from "../../shared/types";
 import { addComposition, applyKitEdit, isStatefulPart, compositionWarnings, diffManifests, freeFolder, manifestIn, partCounts, partSample, partsUsingToken, projectKitFolders, projectSystemsDir, saveKitDraft, saveSystemCopy, seedKitDraft, forkKitSystem } from "./kit-library";
@@ -9,7 +10,7 @@ import { groundPage, groundingSummary } from "./grounding";
 import { validateKitDir, type KitManifest } from "./kit-schema";
 import type { LintFinding } from "./lint";
 import { listDesignPages } from "./pages";
-import { listDesignSystems, listKitSystems, materializeSystem, type DesignStyleInfo, type DesignSystemInfo } from "./systems";
+import { listDesignSystems, listKitSystems, materializeSystem, type DesignSystemInfo } from "./systems";
 import { parseTokens } from "./tokens";
 
 /** What the kit features need from the app; injected so they run in plain Node. */
@@ -21,10 +22,10 @@ export interface KitServiceDeps {
   designRoot(threadId: string): string | null;
   /** The system a thread is on, with its files. */
   threadSystem(thread: Thread): DesignSystemInfo | null;
+  /** Copy the thread's system into its `system/` (a reference stays pinned); plain materialize when absent. */
+  syncSystem?(thread: Thread): void;
   /** A system by id, kits included. */
   systemById(projectId: string | null, id: string): DesignSystemInfo | null;
-  /** The kit's own system (`kit:<id>`). */
-  styles(): DesignStyleInfo[];
   kitDir(kitId: string): string | null;
   broadcast(update: LiveUpdate): void;
 }
@@ -101,7 +102,9 @@ export function themeCard(system: DesignSystemInfo, mine: boolean): DesignThemeC
 /** The moves a plan makes, as the preview shows them. */
 function previewOf(plan: MigrationPlan, target: DesignSystemInfo, previewRel: string, pages: number): DesignMigrationPreview {
   const kitName = target.kit ? manifestIn(target.kit.dir)?.name : undefined;
-  return { targetId: target.id, targetName: kitName && kitName !== target.name ? `${kitName} · ${target.name}` : target.name, previewRel, same: plan.same, renamed: plan.renamed, unsupported: plan.unsupported, droppedProps: plan.droppedProps, review: plan.review, pages };
+  // A reference system's name already leads with its kit ("Foundation · Rainmaker").
+  const named = !kitName || kitName === target.name || target.name.startsWith(`${kitName} · `);
+  return { targetId: target.id, targetName: named ? target.name : `${kitName} · ${target.name}`, previewRel, same: plan.same, renamed: plan.renamed, unsupported: plan.unsupported, droppedProps: plan.droppedProps, review: plan.review, pages };
 }
 
 /**
@@ -130,7 +133,7 @@ export class DesignKitService {
   /** The kit's base system (`kit:<id>`), or null when it isn't on this machine. */
   private baseSystem(kitId: string): DesignSystemInfo | null {
     const dir = this.deps.kitDir(kitId);
-    return dir ? (listKitSystems(dir, this.deps.styles())[0] ?? null) : null;
+    return dir ? (listKitSystems(dir)[0] ?? null) : null;
   }
 
   /** Every kit and its themes. Cards never mix kits: the renderer shows one group at a time. */
@@ -150,7 +153,7 @@ export class DesignKitService {
     };
     for (const option of this.catalog()) {
       const dir = option.installed ? this.deps.kitDir(option.id) : null;
-      const systems = dir ? listKitSystems(dir, this.deps.styles()) : [];
+      const systems = dir ? listKitSystems(dir) : [];
       groups.push({
         id: option.id,
         name: option.name,
@@ -180,8 +183,11 @@ export class DesignKitService {
   private switchTo(threadId: string, id: string): Thread {
     const thread = this.deps.setDesignSystem(threadId, id);
     const root = this.deps.designRoot(threadId);
-    const system = this.deps.threadSystem(thread);
-    if (root && system) materializeSystem(system, join(root, "system"));
+    if (this.deps.syncSystem) this.deps.syncSystem(thread);
+    else {
+      const system = this.deps.threadSystem(thread);
+      if (root && system) materializeSystem(system, join(root, "system"));
+    }
     this.deps.broadcast({ type: "thread", thread });
     return thread;
   }
@@ -196,7 +202,9 @@ export class DesignKitService {
     const from = current?.kit?.id ?? "foundation";
     if ((target.kit?.id ?? "foundation") !== from || !this.compatible(current, target)) throw new Error("That theme is in another kit, so the page has to move to it first.");
     // An Auto thread's undo goes back to the look it had: switching to Auto itself would drop what it picked.
-    const previous = current?.id ?? before.designSystem ?? null;
+    // A reference's pinned system reads as plain Foundation: its own id (or an Auto pick's) is the look to go back to.
+    const autoRef = before.designSystem === "auto" && current?.kit?.id === "foundation" ? before.designDirection?.reference : undefined;
+    const previous = parseReferenceSystemId(before.designSystem) ? before.designSystem! : autoRef ? referenceSystemId(autoRef) : (current?.id ?? before.designSystem ?? null);
     const thread = this.switchTo(threadId, id);
     this.addNote(threadId, `the theme is now ${target.name}: tokens only, nothing to rebuild. Read \`system/DESIGN.md\` again before you change the page.`);
     return { thread, previous };

@@ -104,6 +104,7 @@ export function CustomizePanel({
   element,
   readOnly,
   styleName,
+  styleNote = null,
   theme,
   appearance,
   onAppearance,
@@ -128,6 +129,8 @@ export function CustomizePanel({
   /** An agent turn is writing this page. */
   readOnly: boolean;
   styleName: string | null;
+  /** A line under the style name, e.g. "Adapted from Stripe · font substituted" for a reference. */
+  styleNote?: string | null;
   /** The page's own values for THEME_TOKENS. */
   theme: Record<string, string>;
   appearance: "light" | "dark";
@@ -224,6 +227,7 @@ export function CustomizePanel({
                 {PAGE_COLOURS.concat(swatches.slice(3)).map((c) => theme[c.token] && <span key={c.token} className="design-inspector-swatch" style={{ background: theme[c.token] }} />)}
               </span>
             </div>
+            {styleNote && <p className="design-customize-help">{styleNote}</p>}
             {onSwitchStyle && (
               <button type="button" className="button ghost design-customize-switch" onClick={onSwitchStyle}>
                 Switch style…

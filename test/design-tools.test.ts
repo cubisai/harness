@@ -253,18 +253,19 @@ describe("the direction tool's kit and theme", () => {
     expect(directionStyle("kit:mui", "indigo")).toBe("kit:mui/indigo");
     expect(directionStyle("mui", "mui/indigo")).toBe("kit:mui/indigo");
     expect(directionStyle("mui", "project")).toBe("project");
+    expect(directionStyle(undefined, "")).toBe("kit:foundation");
+    expect(directionStyle("foundation", " ")).toBe("kit:foundation");
   });
 
-  it("indexes Foundation's themes, then each other kit with its themes", () => {
+  it("indexes Foundation with the reference summary, then each other kit with its themes", () => {
     const mui = kitIndexEntry(join(process.cwd(), "design-kits", "kits", "mui"));
     expect(mui?.id).toBe("mui");
     expect(mui?.themes).toContain("indigo");
-    const styles = [{ id: "style:riso", name: "Riso", description: "Riso print: inks", tags: ["print"], modes: ["persuade"], platform: "web" }] as never;
-    const index = kitThemeIndex(styles, [mui!, { id: "foundation", name: "Foundation", themes: ["x"] }]).split("\n");
+    const index = kitThemeIndex([mui!, { id: "foundation", name: "Foundation", themes: ["x"] }], "REFS").split("\n");
     expect(index[0]).toMatch(/^Kit "foundation"/);
-    expect(index[1]).toBe("riso: Riso print [print; persuade; web]");
+    expect(index[1]).toBe("REFS");
     expect(index.at(-1)).toMatch(/^mui \(MUI, @mui\/material\): .*indigo/);
     expect(index.filter((l) => l.startsWith("foundation"))).toEqual([]);
-    expect(kitThemeIndex(styles, []).split("\n")).toHaveLength(2);
+    expect(kitThemeIndex([], "REFS").split("\n")).toHaveLength(2);
   });
 });

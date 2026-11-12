@@ -1,6 +1,6 @@
 /* Foundation: the default tokens for CubiQ's base kit. Link this file before app.css or ui.css and use the custom
- * properties, not raw values. A dark pair follows the system setting. Any style in design-styles/ can replace this
- * file because every style defines the same names.
+ * properties, not raw values. A dark pair follows the system setting. A design reference's adapted tokens replace
+ * this file with the same names.
  * Roles: --color-accent-text for accent-coloured text (the accent itself may be too light for text);
  * --color-on-accent on accent fills; --color-*-soft behind status text and selected chips, with the matching
  * colour (or --color-accent-text) on top; --color-surface-3 for hover/pressed wells; --color-border-strong for

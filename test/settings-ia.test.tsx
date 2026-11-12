@@ -24,8 +24,8 @@ const groupIds = SETTINGS_GROUPS.map((g) => g.id);
 const html = Object.fromEntries(groupIds.map((id) => [id, renderToStaticMarkup(<SettingsGroupContent group={id} settings={settings} />)]));
 
 describe("Settings IA", () => {
-  it("has the seven groups in order", () => {
-    expect(SETTINGS_GROUPS.map((g) => g.label)).toEqual(["Appearance", "Threads", "Agents & Providers", "Skills & MCP", "Data & Security", "Updates", "Experiments"]);
+  it("has the eight groups in order", () => {
+    expect(SETTINGS_GROUPS.map((g) => g.label)).toEqual(["Appearance", "Threads", "Agents & Providers", "Skills & MCP", "Design", "Data & Security", "Updates", "Experiments"]);
   });
 
   it("maps every former section heading to exactly one group", () => {

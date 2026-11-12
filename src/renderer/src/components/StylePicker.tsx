@@ -1,7 +1,8 @@
-import { Check, ChevronDown, Search, Shapes } from "lucide-react";
+import { Check, ChevronDown, Download, Search, Shapes } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AUTO_SYSTEM, STYLE_PREFIX, type DesignDirection } from "../../../shared/direction";
+import { AUTO_SYSTEM, parseReferenceSystemId, REFERENCE_SYSTEM_PREFIX, STYLE_PREFIX, type DesignDirection } from "../../../shared/direction";
+import type { DesignReferenceCard } from "../../../shared/design-mutation";
 import { stylePreviewUrl } from "../../../shared/style-preview";
 import type { DesignEntry, DesignKitGroup, DesignMigrationPreview, DesignThemeCard, Thread } from "../../../shared/types";
 import { api } from "../api";
@@ -16,8 +17,25 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err);
 }
 
-/** The card a thread's system shows as: a flat library style is a Foundation theme under the same name. */
+/**
+ * Where the picker sits: just above the Composer at its width, so it never covers the text box. A narrow Composer
+ * gets a 640px picker centred over it. Null when the chip isn't on screen.
+ */
+function placeOver(chip: HTMLElement | null): { left: number; bottom: number; width: number } | null {
+  const r = (chip?.closest(".composer") ?? chip)?.getBoundingClientRect();
+  if (!r) return null;
+  const width = Math.min(Math.max(r.width, 640), window.innerWidth - 32);
+  const left = r.left + (r.width - width) / 2;
+  return { left: Math.max(16, Math.min(left, window.innerWidth - width - 16)), bottom: window.innerHeight - r.top + 8, width };
+}
+
+/** How many reference cards the grid adds at a time as it scrolls. */
+const REFERENCE_PAGE = 48;
+
+/** The card a thread's system shows as: a retired flat style is a (legacy) Foundation theme under the same name, and a reference is `ref:<slug>`. */
 export function cardIdOf(value: string | undefined, direction?: DesignDirection | null): string | null {
+  const ref = value === AUTO_SYSTEM ? direction?.reference : parseReferenceSystemId(value);
+  if (ref) return `${REFERENCE_SYSTEM_PREFIX}${ref.slug}`;
   const id = value === AUTO_SYSTEM ? direction?.style : value;
   if (!id) return null;
   return id.startsWith(STYLE_PREFIX) ? `kit:${FOUNDATION}/${id.slice(STYLE_PREFIX.length)}` : id;
@@ -39,11 +57,42 @@ export function filterCards(cards: readonly DesignThemeCard[], query: string): D
   });
 }
 
+/** Search references by name, look, industry, site and colour names. Every word has to match. */
+export function filterReferences(refs: readonly DesignReferenceCard[], query: string, theme: "all" | "light" | "dark", industry: string | null): DesignReferenceCard[] {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  return refs.filter((r) => {
+    if (theme === "dark" ? r.theme !== "dark" : theme === "light" ? r.theme === "dark" : false) return false;
+    if (industry && r.industry !== industry) return false;
+    if (!words.length) return true;
+    const hay = `${r.name} ${r.nickname} ${r.industry} ${r.host} ${r.theme} ${r.colors.join(" ")}`.toLowerCase();
+    return words.every((w) => hay.includes(w));
+  });
+}
+
+/** A reference drawn as a theme card: its index colours on a miniature stage. */
+function referenceThemeCard(r: DesignReferenceCard): DesignThemeCard {
+  return { id: r.id, name: r.name, description: r.nickname, swatches: [], card: r.card, mine: false };
+}
+
+/** "acme-labs" -> "Acme Labs", for a reference whose card isn't loaded. */
+function slugName(slug: string): string {
+  return slug.split("-").map((w) => (w ? w[0]!.toUpperCase() + w.slice(1) : w)).join(" ");
+}
+
 /** What the chip says: Auto with what it picked, or the kit and its theme. A kit's own default theme is just the kit. */
-export function chipLabel(groups: readonly DesignKitGroup[], value: string | undefined, direction?: DesignDirection | null): { name: string; title: string } {
+export function chipLabel(groups: readonly DesignKitGroup[], value: string | undefined, direction?: DesignDirection | null, refs: readonly { id: string; name: string }[] = []): { name: string; title: string } {
   const id = cardIdOf(value, direction);
+  if (id?.startsWith(REFERENCE_SYSTEM_PREFIX)) {
+    const ref = refs.find((r) => r.id === id)?.name ?? slugName(id.slice(REFERENCE_SYSTEM_PREFIX.length));
+    return value === AUTO_SYSTEM ? { name: `Auto · ${ref}`, title: `Style: Auto, picked the ${ref} reference for this brief` } : { name: ref, title: `Style: ${ref} (design reference)` };
+  }
   const group = id ? groups.find((g) => g.themes.some((t) => t.id === id)) : undefined;
   const theme = group?.themes.find((t) => t.id === id);
+  // A retired library style: Foundation has no themes of its own, so the thread keeps the system/ it was built with.
+  if (!theme && id?.startsWith(`kit:${FOUNDATION}/`)) {
+    const name = `Legacy style · ${slugName(id.slice(`kit:${FOUNDATION}/`.length))}`;
+    return { name, title: `Style: ${name} (retired; this design keeps the files it was built with)` };
+  }
   if (value === AUTO_SYSTEM || !value) {
     return theme ? { name: `Auto · ${theme.name}`, title: `Style: Auto, picked ${theme.name} for this brief` } : { name: "Auto", title: "Style: Auto (picks one that fits the brief)" };
   }
@@ -121,6 +170,32 @@ function ScaledFrame({ title, url }: { title: string; url: string }) {
   );
 }
 
+/** The width a style's sample page is laid out at: a desktop page, scaled down to whatever box the picker has. */
+const SPECIMEN_WIDTH = 960;
+
+/** A style's sample page, always laid out at desktop width and scaled to fit its box. */
+function Specimen({ title, url }: { title: string; url: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ scale: 0.375, height: 0 });
+  useEffect(() => {
+    const el = box.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const resize = () => {
+      const scale = el.clientWidth / SPECIMEN_WIDTH || 0.375;
+      setSize({ scale, height: el.clientHeight / scale });
+    };
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <div className="sp-specimen" ref={box}>
+      <iframe title={title} sandbox="" tabIndex={-1} src={url} style={{ width: SPECIMEN_WIDTH, height: size.height || undefined, transform: `scale(${size.scale})` }} />
+    </div>
+  );
+}
+
 /** What a move to another kit would do, side by side, before anything changes. */
 function KitMovePreview({ preview, entry, busy, onCancel, onCommit }: { preview: DesignMigrationPreview; entry: DesignEntry; busy: boolean; onCancel: () => void; onCommit: () => void }) {
   const after = new URL(preview.previewRel, entry.url).toString();
@@ -174,6 +249,13 @@ function KitMovePreview({ preview, entry, busy, onCancel, onCommit }: { preview:
 
 /** The groups seen last per project, so a remounted chip doesn't blink a wrong name while it re-reads. */
 const lastGroups = new Map<string | null, DesignKitGroup[]>();
+/** The downloaded references seen last (the same for every project); null before the first read. */
+let lastRefs: DesignReferenceCard[] | null = null;
+
+/** A downloaded reference's name by slug, once the picker has read the list this session (else undefined). */
+export function referenceName(slug: string): string | undefined {
+  return lastRefs?.find((r) => r.id === `${REFERENCE_SYSTEM_PREFIX}${slug}`)?.name;
+}
 
 /**
  * Design v2's style picker: the current kit's themes as cards, and a `Kit:` menu for the others. A theme of this kit
@@ -191,6 +273,12 @@ export function StylePicker({ projectId, thread, value, direction, disabled, onD
   const [naming, setNaming] = useState<string | null>(null);
   const [move, setMove] = useState<{ preview: DesignMigrationPreview; entry: DesignEntry } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [refs, setRefs] = useState<DesignReferenceCard[] | null>(lastRefs);
+  const [refTheme, setRefTheme] = useState<"all" | "light" | "dark">("all");
+  const [industry, setIndustry] = useState<string | null>(null);
+  const [shown, setShown] = useState(REFERENCE_PAGE);
+  const more = useRef<HTMLDivElement>(null);
+  const grid = useRef<HTMLDivElement>(null);
   const chip = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
@@ -207,6 +295,18 @@ export function StylePicker({ projectId, thread, value, direction, disabled, onD
       .catch(() => {});
   }, [projectId]);
   useEffect(load, [load, value, open]);
+  // References: read on mount for the chip's name, and again each time the picker opens (a download may have landed).
+  useEffect(() => {
+    if (lastRefs && !open) return;
+    void api()
+      .designReferenceCards()
+      .then((list) => {
+        lastRefs = list;
+        setRefs(list);
+      })
+      .catch(() => {});
+  }, [open]);
+  useEffect(() => setShown(REFERENCE_PAGE), [query, refTheme, industry, kitId]);
 
   const currentId = cardIdOf(value, direction);
   const activeGroup = groupOfCard(groups, currentId);
@@ -214,8 +314,55 @@ export function StylePicker({ projectId, thread, value, direction, disabled, onD
   const sameKit = group?.id === activeGroup?.id;
   const auto = value === AUTO_SYSTEM || !value;
   const cards = useMemo(() => filterCards(group?.themes ?? [], query), [group, query]);
-  const preview = cards.find((c) => c.id === previewId) ?? (group?.themes ?? []).find((c) => c.id === previewId) ?? cards.find((c) => c.id === currentId) ?? cards[0];
-  const label = chipLabel(groups, value, direction);
+  const foundation = group?.id === FOUNDATION;
+  const refMatches = useMemo(() => (foundation && refs ? filterReferences(refs, query, refTheme, industry) : []), [foundation, refs, query, refTheme, industry]);
+  const refCards = useMemo(() => refMatches.slice(0, shown).map(referenceThemeCard), [refMatches, shown]);
+  // Search outside Foundation still finds references: an empty kit result offers them instead of a dead end.
+  const otherRefs = useMemo(() => (!foundation && refs && query.trim() ? filterReferences(refs, query, "all", null).length : 0), [foundation, refs, query]);
+  const findCard = (id: string | null | undefined): DesignThemeCard | undefined => {
+    if (!id) return undefined;
+    if (id.startsWith(REFERENCE_SYSTEM_PREFIX)) {
+      const r = refs?.find((x) => x.id === id);
+      return r ? referenceThemeCard(r) : undefined;
+    }
+    return cards.find((c) => c.id === id) ?? (group?.themes ?? []).find((c) => c.id === id);
+  };
+  // The current reference stays previewable even when the filter hides it.
+  const preview = findCard(previewId) ?? (foundation || !currentId?.startsWith(REFERENCE_SYSTEM_PREFIX) ? findCard(currentId) : undefined) ?? cards[0] ?? refCards[0];
+  const previewRef = preview?.id.startsWith(REFERENCE_SYSTEM_PREFIX) ? refs?.find((r) => r.id === preview.id) : undefined;
+  const industries = useMemo(() => [...new Set((refs ?? []).map((r) => r.industry))].sort((a, b) => (a === "other" ? 1 : b === "other" ? -1 : a.localeCompare(b))), [refs]);
+  const label = chipLabel(groups, value, direction, refs ?? []);
+
+  // The grid grows by a page as its end scrolls into view: 1,295 cards never render at once.
+  useEffect(() => {
+    const el = more.current;
+    if (!open || !el || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) setShown((n) => n + REFERENCE_PAGE);
+    }, { root: grid.current, rootMargin: "200px" });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [open, refCards.length, refMatches.length]);
+  // The Composer moves while it's open (the window is dragged, a side panel folds): it follows, checked once a frame.
+  useEffect(() => {
+    if (!open) return;
+    let frame = 0;
+    const follow = () => {
+      const next = placeOver(chip.current);
+      if (next) setPlace((prev) => (prev && prev.left === next.left && prev.bottom === next.bottom && prev.width === next.width ? prev : next));
+      frame = requestAnimationFrame(follow);
+    };
+    frame = requestAnimationFrame(follow);
+    // A hidden window runs no frames: a resize still lands once the panels have settled.
+    const timers: number[] = [];
+    const settle = () => timers.push(window.setTimeout(() => setPlace((prev) => placeOver(chip.current) ?? prev), 120));
+    window.addEventListener("resize", settle);
+    return () => {
+      cancelAnimationFrame(frame);
+      timers.forEach((t) => clearTimeout(t));
+      window.removeEventListener("resize", settle);
+    };
+  }, [open]);
   const request = useStore((s) => s.studioRequest);
   const clearRequest = useStore((s) => s.requestStudio);
 
@@ -229,15 +376,16 @@ export function StylePicker({ projectId, thread, value, direction, disabled, onD
   }, []);
 
   const openPicker = useCallback(() => {
+    // The first time with nothing downloaded, the references sheet asks first (once, either answer).
+    if (!useStore.getState().settings?.designReferencesAsked && lastRefs !== null && lastRefs.length === 0) {
+      useStore.getState().setReferencesSheetOpen(true);
+      return;
+    }
     setKitId(null);
     setQuery("");
     setPreviewId(null);
     setDark(isDark());
-    const r = chip.current?.getBoundingClientRect();
-    if (r) {
-      const width = Math.min(760, window.innerWidth - 32);
-      setPlace({ left: Math.max(16, Math.min(r.left, window.innerWidth - width - 16)), bottom: window.innerHeight - r.top + 8, width });
-    }
+    setPlace(placeOver(chip.current));
     setOpen(true);
   }, []);
 
@@ -392,7 +540,16 @@ export function StylePicker({ projectId, thread, value, direction, disabled, onD
   }
 
   const isCurrent = preview?.id === currentId && !auto;
-  const facets = preview?.facets ? facetLabel(preview.facets) : "";
+  const facets = previewRef ? [previewRef.industry, previewRef.theme === "mixed" ? "light and dark" : previewRef.theme, previewRef.host].filter(Boolean).join(" · ") : preview?.facets ? facetLabel(preview.facets) : "";
+  const refFilter = [refTheme === "all" ? "" : refTheme === "light" ? "Light" : "Dark", industry ?? ""].filter(Boolean).join(" · ");
+  const filterItems: StudioMenuItem[] = [
+    { kind: "head", id: "h-theme", label: "Theme" },
+    ...(["all", "light", "dark"] as const).map((t): StudioMenuItem => ({ kind: "item", id: `t-${t}`, label: t === "all" ? "Any" : t === "light" ? "Light" : "Dark", checked: refTheme === t, keepOpen: true, onSelect: () => setRefTheme(t) })),
+    { kind: "sep", id: "s-industry" },
+    { kind: "head", id: "h-industry", label: "Industry" },
+    { kind: "item", id: "i-any", label: "Any", checked: industry === null, keepOpen: true, onSelect: () => setIndustry(null) },
+    ...industries.map((i): StudioMenuItem => ({ kind: "item", id: `i-${i}`, label: i === "ai" ? "AI" : i === "saas" ? "SaaS" : i[0]!.toUpperCase() + i.slice(1), checked: industry === i, keepOpen: true, onSelect: () => setIndustry(i) })),
+  ];
   const showing = status?.kit === group?.id ? status : null;
 
   return (
@@ -447,7 +604,7 @@ export function StylePicker({ projectId, thread, value, direction, disabled, onD
               <span className="sp-kit-note">{sameKit ? "Themes for your current kit" : "Another kit: applying one adapts your page"}</span>
             </div>
             <div className="sp-body">
-              <div className="sp-grid" role="listbox" aria-label="Themes" onKeyDown={onGridKey}>
+              <div ref={grid} className="sp-grid" role="listbox" aria-label="Themes" onKeyDown={onGridKey}>
                 {showing?.kind === "preparing" && (
                   <div className="sp-status" role="status">
                     <span>Preparing style…</span>
@@ -492,14 +649,56 @@ export function StylePicker({ projectId, thread, value, direction, disabled, onD
                       onDouble={() => void apply(card)}
                     />
                   ))}
-                {!showing && !cards.length && <p className="sp-empty">{query.trim() ? `No theme in ${group?.name ?? "this kit"} matches "${query.trim()}".` : "This kit has no themes yet."}</p>}
+                {!showing && foundation && refs && refs.length > 0 && (
+                  <div className="sp-section">
+                    <span className="sp-section-name">
+                      Design references · {refMatches.length.toLocaleString()}
+                    </span>
+                    <StudioMenu label="Filter" title="Filter design references" align="right" className="button ghost sp-kit-button" text={<>{refFilter || "Filter"}<ChevronDown size={12} aria-hidden /></>} items={filterItems} />
+                  </div>
+                )}
+                {!showing &&
+                  refCards.map((card) => (
+                    <ThemeCard
+                      key={card.id}
+                      card={card}
+                      dark={dark}
+                      selected={card.id === currentId && !auto}
+                      previewing={card.id === preview?.id}
+                      {...(sameKit ? {} : { badge: "Adapts page" })}
+                      onHover={() => setPreviewId(card.id)}
+                      onClick={() => setPreviewId(card.id)}
+                      onDouble={() => void apply(card)}
+                    />
+                  ))}
+                {!showing && refCards.length < refMatches.length && <div ref={more} className="sp-more" aria-hidden />}
+                {!showing && foundation && refs?.length === 0 && !query.trim() && (
+                  <button type="button" className="sp-card sp-auto" onClick={() => {
+                    close(false);
+                    useStore.getState().setReferencesSheetOpen(true);
+                  }}>
+                    <span className="sp-auto-text">
+                      <span className="sp-card-name">Download design references</span>
+                      <span className="sp-auto-desc">1,295 real-site styles, about 43 MB</span>
+                    </span>
+                    <Download size={13} aria-hidden />
+                  </button>
+                )}
+                {!showing && !cards.length && !refCards.length && (
+                  <div className="sp-status">
+                    <span>{query.trim() ? `No theme in ${group?.name ?? "this kit"} matches "${query.trim()}".` : "This kit has no themes yet."}</span>
+                    {otherRefs > 0 && (
+                      <button type="button" className="button ghost" onClick={() => void pickKit(FOUNDATION)}>
+                        Show {otherRefs.toLocaleString()} matching design {otherRefs === 1 ? "reference" : "references"}
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="sp-preview">
                 {preview ? (
                   <>
-                    <div className="sp-specimen">
-                      <iframe key={`${preview.id}-${dark}`} title={`${preview.name} sample`} sandbox="" tabIndex={-1} src={stylePreviewUrl(projectId, preview.id, dark ? "dark" : "light")} />
-                    </div>
+                    <Specimen key={`${preview.id}-${dark}`} title={`${preview.name} sample`} url={stylePreviewUrl(projectId, preview.id, dark ? "dark" : "light")} />
                     <div className="sp-preview-name">{preview.name}</div>
                     {preview.description && <div className="sp-preview-desc">{preview.description}</div>}
                     <div className="sp-preview-facts">
@@ -534,7 +733,7 @@ export function StylePicker({ projectId, thread, value, direction, disabled, onD
                           </button>
                         )}
                         <button type="button" className="button primary" disabled={busy || isCurrent} onClick={() => void apply(preview)}>
-                          {isCurrent ? "In use" : !thread ? "Use this style" : sameKit ? "Apply theme" : "Adapt page to this style"}
+                          {isCurrent ? "In use" : !thread ? "Use this style" : sameKit ? (previewRef ? "Apply style" : "Apply theme") : "Adapt page to this style"}
                         </button>
                       </div>
                     )}

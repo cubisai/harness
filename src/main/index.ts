@@ -16,8 +16,10 @@ import { DesignWatcher } from "./design/watch";
 import { DesignDocuments, isFromAppWindow, parseDesignMutation, parseHistoryRequest } from "./design/documents";
 import { KIT_CATALOG } from "./design/kit-catalog";
 import { KitInstallError, KitStore } from "./design/kit-install";
+import { ReferenceDownloadError, ReferenceStore } from "./design/references-store";
+import { referenceSummary } from "./design/reference-system";
 import { parseKitManifest } from "./design/kit-schema";
-import type { DesignKitEnsureResult, DesignKitOption } from "../shared/design-mutation";
+import type { DesignKitEnsureResult, DesignKitOption, DesignReferenceResult, DesignReferenceStatus } from "../shared/design-mutation";
 import { readIssueConfig, readIssueSummary } from "./issues";
 import { issueTools } from "./issues-tool";
 import { offerPrompt, parseOffer } from "./issue-offer";
@@ -567,6 +569,11 @@ async function main(): Promise<void> {
   // Renders design pages off screen for the design tools and Export; its window exists only while used.
   const shooter = new Shooter(electronShotWindow);
   const designLintJs = lintScript(selectorFor);
+  // GradientDeck's design references: downloaded once, on the user's say-so, never bundled.
+  const referenceStore = new ReferenceStore(join(userData, "design-references", "gradientdeck"));
+  // The picker's adapted previews: a cache keyed by file hash, never a design's pin.
+  const referencePreviews = join(userData, "design-references", "previews");
+  referenceStore.cleanStaging();
   // Each design thread's own tools (bound to it), made once so its list keeps the same identity.
   const designToolLists = new Map<string, HarnessTool[]>();
   const designToolsOf = (threadId: string): HarnessTool[] => {
@@ -581,7 +588,8 @@ async function main(): Promise<void> {
           evaluate: (url, width, height, script) => shooter.evaluate(url, width, height, script),
           lintScript: designLintJs,
           saveCritique: (id, markdown) => service.saveCritique(id, markdown),
-          setDirection: (id, direction, alternates, theme) => service.setDesignDirection(id, direction, alternates, theme),
+          // Every argument passes through: dropping one (the reference) silently fell back to Foundation's base theme.
+          setDirection: (...args) => service.setDesignDirection(...args),
           kitIndex: () => {
             let kits: KitIndexEntry[] = [];
             try {
@@ -589,7 +597,7 @@ async function main(): Promise<void> {
             } catch {
               // The kit store isn't ready: Foundation's themes still list.
             }
-            return kitThemeIndex(service.designStyles(), kits);
+            return kitThemeIndex(kits, referenceSummary(referenceStore));
           },
           kits: {
             inspect: (id, query) => service.kits.inspect(id, query),
@@ -597,6 +605,8 @@ async function main(): Promise<void> {
             save: (id) => service.kits.saveForAgent(id),
             applyTokens: (id, rel, tokens) => service.kits.applyTokens(id, rel, tokens),
           },
+          // Always given, so the tools are always listed; before a download they say so.
+          references: referenceStore,
         },
         threadId,
       );
@@ -1015,14 +1025,12 @@ async function main(): Promise<void> {
   });
   const syncProviderAgents = () => service.syncDrivers(PROVIDER_AGENT_PREFIX, providerAgents.list());
   syncProviderAgents();
-  service.setDesignStylesDir(
-    app.isPackaged ? join(process.resourcesPath, "design-styles") : join(app.getAppPath(), "resources", "design-styles"),
-    app.isPackaged ? join(process.resourcesPath, "design-fonts") : join(app.getAppPath(), "resources", "design-fonts"),
-  );
+  service.setDesignFontsDir(app.isPackaged ? join(process.resourcesPath, "design-fonts") : join(app.getAppPath(), "resources", "design-fonts"));
   // Foundation ships with the app, so a kit is always there offline; the others are installed under userData.
   const foundationKit = app.isPackaged ? join(process.resourcesPath, "design-kits", "foundation") : join(app.getAppPath(), "resources", "design-kits", "foundation");
   const kitStore = new KitStore(join(userData, "design-packs"));
   kitStore.cleanStaging();
+  service.setDesignReferences(referenceStore, referencePreviews);
   service.setDesignKitLookup((kitId) => (kitId === "foundation" ? foundationKit : kitStore.activeDir(kitId)));
   service.setDesignPatternsDir(app.isPackaged ? join(process.resourcesPath, "design-patterns") : join(app.getAppPath(), "resources", "design-patterns"));
   service.setDesignIconsDir(app.isPackaged ? join(process.resourcesPath, "design-icons") : join(app.getAppPath(), "resources", "design-icons"));
@@ -1264,7 +1272,7 @@ async function main(): Promise<void> {
     });
   };
   const idText = (id: unknown): string => {
-    if (typeof id !== "string" || !/^[\w:./-]{1,120}$/.test(id)) throw new Error("Bad design system id.");
+    if (typeof id !== "string" || !/^[\w:./@-]{1,160}$/.test(id)) throw new Error("Bad design system id.");
     return id;
   };
   const shortText = (text: unknown, max = 120): string => {
@@ -1280,9 +1288,9 @@ async function main(): Promise<void> {
     return out;
   };
   designHandle("design:kit-groups", (projectId: string | null) => service.kits.groups(typeof projectId === "string" ? projectId : null));
-  designHandle("design:apply-theme", (threadId: string, id: unknown) => service.kits.applyTheme(threadId, idText(id)));
-  designHandle("design:migrate-preview", (threadId: string, rel: string, id: unknown) => service.kits.migrationPreview(threadId, rel, idText(id)));
-  designHandle("design:migrate-commit", (threadId: string, rel: string, id: unknown) => service.kits.commitMigration(threadId, rel, idText(id)));
+  designHandle("design:apply-theme", (threadId: string, id: unknown) => service.kits.applyTheme(threadId, service.designSystemId(idText(id), threadId)));
+  designHandle("design:migrate-preview", (threadId: string, rel: string, id: unknown) => service.kits.migrationPreview(threadId, rel, service.designSystemId(idText(id), threadId)));
+  designHandle("design:migrate-commit", (threadId: string, rel: string, id: unknown) => service.kits.commitMigration(threadId, rel, service.designSystemId(idText(id), threadId)));
   designHandle("design:migrate-cancel", (threadId: string) => service.kits.cancelMigration(threadId));
   designHandle("design:save-theme", (threadId: string, name: unknown, tokens: unknown, sourceId: unknown) => service.kits.saveTheme(threadId, shortText(name), tokenMap(tokens), typeof sourceId === "string" ? idText(sourceId) : undefined));
   designHandle("design:kit-doc", (threadId: string) => service.kits.doc(threadId));
@@ -1322,6 +1330,60 @@ async function main(): Promise<void> {
     kitInstalls.set(entry.id, started);
     return started;
   });
+  // One reference download at a time; a second request joins the first. Cancel aborts it, and so does a run that stalls.
+  let referenceRun: { promise: Promise<DesignReferenceResult>; controller: AbortController } | null = null;
+  const REFERENCE_DOWNLOAD_MS = 15 * 60_000;
+  ipcMain.handle("design:references:status", (e): DesignReferenceStatus => {
+    if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
+    return referenceStore.status();
+  });
+  ipcMain.handle("design:references:download", (e): Promise<DesignReferenceResult> => {
+    if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
+    if (referenceRun) return referenceRun.promise;
+    const controller = new AbortController();
+    const timeout = AbortSignal.timeout(REFERENCE_DOWNLOAD_MS);
+    const sender = e.sender;
+    const promise = referenceStore
+      .download({
+        signal: AbortSignal.any([controller.signal, timeout]),
+        onProgress: (progress) => {
+          if (!sender.isDestroyed()) sender.send("design:references:progress", progress);
+        },
+      })
+      .then((status): DesignReferenceResult => (status.state === "installed" ? { ok: true, status } : { ok: false, code: "invalid", message: "The download finished without any references." }))
+      .catch((error: unknown): DesignReferenceResult => {
+        if (timeout.aborted) return { ok: false, code: "offline", message: "The download took too long." };
+        if (error instanceof ReferenceDownloadError) return { ok: false, code: error.code, message: error.message };
+        return { ok: false, code: "offline", message: "Could not download the design references. Check your connection and try again." };
+      })
+      .finally(() => {
+        referenceRun = null;
+      });
+    referenceRun = { promise, controller };
+    return promise;
+  });
+  ipcMain.handle("design:references:cards", (e) => {
+    if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
+    return service.designReferenceCards();
+  });
+  ipcMain.handle("design:references:note", (e, threadId: unknown) => {
+    if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
+    return typeof threadId === "string" ? service.designReferenceNote(threadId) : null;
+  });
+  ipcMain.handle("design:references:cancel", (e) => {
+    if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
+    referenceRun?.controller.abort();
+  });
+  ipcMain.handle("design:references:remove", async (e): Promise<DesignReferenceStatus> => {
+    if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
+    if (referenceRun) {
+      referenceRun.controller.abort();
+      await referenceRun.promise;
+    }
+    referenceStore.remove();
+    rmSync(referencePreviews, { recursive: true, force: true });
+    return referenceStore.status();
+  });
   ipcMain.handle("design:save-ref", (_e, threadId: string, bytes: Uint8Array) => {
     if (!(bytes instanceof Uint8Array)) throw new Error("Not an image (png, jpg, webp or gif).");
     return service.saveDesignRef(threadId, bytes);
@@ -1337,6 +1399,7 @@ async function main(): Promise<void> {
     return { path, thumb: image.resize({ height: 96 }).toDataURL() };
   });
   // The Pages rail's thumbnails: one off-screen render per page and file version (by mtime), kept for the session.
+  // The system's tokens count too: a theme switch can rewrite only system/tokens.css, after the page was drawn.
   const designThumbs = new Map<string, string>();
   ipcMain.handle("design:thumb", async (_e, threadId: string, rel: string) => {
     if (typeof threadId !== "string" || typeof rel !== "string") return "";
@@ -1348,7 +1411,13 @@ async function main(): Promise<void> {
     } catch {
       return "";
     }
-    const key = `${threadId}|${rel}|${mtime}`;
+    let tokens = 0;
+    try {
+      tokens = statSync(join(root, "system", "tokens.css")).mtimeMs;
+    } catch {
+      // No system yet.
+    }
+    const key = `${threadId}|${rel}|${mtime}:${tokens}`;
     const hit = designThumbs.get(key);
     if (hit !== undefined) return hit;
     let url = "";
@@ -1963,7 +2032,7 @@ async function main(): Promise<void> {
     return service.setThreadIssue(threadId, picked);
   });
   ipcMain.handle("threads:set-design-system", (_e, threadId: string, id: unknown) =>
-    service.setDesignSystem(threadId, typeof id === "string" && /^[\w:./-]{1,80}$/.test(id) ? id : null),
+    service.setDesignSystem(threadId, typeof id === "string" && /^[\w:./@-]{1,160}$/.test(id) ? id : null),
   );
   ipcMain.handle("design:systems", (_e, projectId: string | null): DesignSystemOption[] => service.designSystems(projectId)),
   ipcMain.handle("design:system-doc", (_e, threadId: string) => service.designSystemDoc(threadId));
