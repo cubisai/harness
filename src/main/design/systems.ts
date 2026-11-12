@@ -360,10 +360,11 @@ function fnv1a(text: string): number {
 }
 
 /** The weight each rank of a shortlist gets before renormalizing over what is left. */
-const SHORTLIST_WEIGHTS = [0.5, 0.3, 0.2];
+const SHORTLIST_WEIGHTS = [0.7, 0.2, 0.1];
 
 /**
- * One id from a ranked shortlist (best first), weighted 0.5 / 0.3 / 0.2 by rank and renormalized over what is left,
+ * One id from a ranked shortlist (best first), weighted 0.7 / 0.2 / 0.1 by rank (the agent's best match wins most
+ * of the time; a weak runner-up rarely) and renormalized over what is left,
  * seeded by `seed` (the thread id) so the same thread and list always get the same answer.
  */
 export function pickFromShortlist(ids: string[], seed: string): string {

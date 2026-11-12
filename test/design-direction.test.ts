@@ -325,14 +325,14 @@ describe("theme shortlist", () => {
     expect(pickFromShortlist(["only"], "thread-1")).toBe("only");
   });
 
-  it("favours the top pick at about half and still reaches the last one", () => {
+  it("favours the top pick at about 70% and still reaches the last one", () => {
     const counts = new Map<string, number>();
     for (let i = 0; i < 400; i++) {
       const id = pickFromShortlist(["a", "b", "c"], `t${i}`);
       counts.set(id, (counts.get(id) ?? 0) + 1);
     }
-    expect((counts.get("a") ?? 0) / 400).toBeGreaterThan(0.4);
-    expect((counts.get("a") ?? 0) / 400).toBeLessThan(0.6);
+    expect((counts.get("a") ?? 0) / 400).toBeGreaterThan(0.6);
+    expect((counts.get("a") ?? 0) / 400).toBeLessThan(0.8);
     expect(counts.get("c") ?? 0).toBeGreaterThan(0);
   });
 
