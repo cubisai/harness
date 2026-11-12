@@ -17,6 +17,18 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err);
 }
 
+/**
+ * Where the picker sits: just above the Composer at its width, so it never covers the text box. A narrow Composer
+ * gets a 640px picker centred over it. Null when the chip isn't on screen.
+ */
+function placeOver(chip: HTMLElement | null): { left: number; bottom: number; width: number } | null {
+  const r = (chip?.closest(".composer") ?? chip)?.getBoundingClientRect();
+  if (!r) return null;
+  const width = Math.min(Math.max(r.width, 640), window.innerWidth - 32);
+  const left = r.left + (r.width - width) / 2;
+  return { left: Math.max(16, Math.min(left, window.innerWidth - width - 16)), bottom: window.innerHeight - r.top + 8, width };
+}
+
 /** How many reference cards the grid adds at a time as it scrolls. */
 const REFERENCE_PAGE = 48;
 
@@ -319,6 +331,26 @@ export function StylePicker({ projectId, thread, value, direction, disabled, onD
     observer.observe(el);
     return () => observer.disconnect();
   }, [open, refCards.length, refMatches.length]);
+  // The Composer moves while it's open (the window is dragged, a side panel folds): it follows, checked once a frame.
+  useEffect(() => {
+    if (!open) return;
+    let frame = 0;
+    const follow = () => {
+      const next = placeOver(chip.current);
+      if (next) setPlace((prev) => (prev && prev.left === next.left && prev.bottom === next.bottom && prev.width === next.width ? prev : next));
+      frame = requestAnimationFrame(follow);
+    };
+    frame = requestAnimationFrame(follow);
+    // A hidden window runs no frames: a resize still lands once the panels have settled.
+    const timers: number[] = [];
+    const settle = () => timers.push(window.setTimeout(() => setPlace((prev) => placeOver(chip.current) ?? prev), 120));
+    window.addEventListener("resize", settle);
+    return () => {
+      cancelAnimationFrame(frame);
+      timers.forEach((t) => clearTimeout(t));
+      window.removeEventListener("resize", settle);
+    };
+  }, [open]);
   const request = useStore((s) => s.studioRequest);
   const clearRequest = useStore((s) => s.requestStudio);
 
@@ -341,14 +373,7 @@ export function StylePicker({ projectId, thread, value, direction, disabled, onD
     setQuery("");
     setPreviewId(null);
     setDark(isDark());
-    // Sits just above the Composer, flush with its left edge, so it never covers the text box.
-    const r = (chip.current?.closest(".composer") ?? chip.current)?.getBoundingClientRect();
-    if (r) {
-      // The Composer's own width; a narrow Composer gets a 640px picker centred over it.
-      const width = Math.min(Math.max(r.width, 640), window.innerWidth - 32);
-      const left = r.left + (r.width - width) / 2;
-      setPlace({ left: Math.max(16, Math.min(left, window.innerWidth - width - 16)), bottom: window.innerHeight - r.top + 8, width });
-    }
+    setPlace(placeOver(chip.current));
     setOpen(true);
   }, []);
 
@@ -617,7 +642,7 @@ export function StylePicker({ projectId, thread, value, direction, disabled, onD
                     <span className="sp-section-name">
                       Design references · {refMatches.length.toLocaleString()}
                     </span>
-                    <StudioMenu label="Filter" title="Filter design references" align="left" className="button ghost sp-kit-button" text={<>{refFilter || "Filter"}<ChevronDown size={12} aria-hidden /></>} items={filterItems} />
+                    <StudioMenu label="Filter" title="Filter design references" align="right" className="button ghost sp-kit-button" text={<>{refFilter || "Filter"}<ChevronDown size={12} aria-hidden /></>} items={filterItems} />
                   </div>
                 )}
                 {!showing &&
