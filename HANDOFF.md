@@ -34,7 +34,7 @@ Short on purpose: current state, next steps, open questions and live traps. Repl
 
 ## Next, in this order
 
-0. **Resume here (GradientDeck production): phase 6 done and pushed as `cdc0efe` (2026-11-12); Windows CI green (run 43177222440); phase 7 bench run, results below; next: user's call on the shortlist pick and the merge.**
+0. **Resume here (GradientDeck production): phase 6 done and pushed as `cdc0efe` (2026-11-12); Windows CI green (run 43177222440); phase 7 bench run, results below; shortlist now 0.7/0.2/0.1; next: ask before merging into `m4`.**
     - Spec: `.ai/plans/gradientdeck-production.md`. Worktree `../aiharness-wt/gd-refs`, branch `track/gd-refs` off `m4`, pushed through `cdc0efe` (includes `0ec307e`, the phase 5 follow-ups).
     - Phase 6: `resources/design-styles` removed; legacy `style:`/`kit:foundation/<x>` threads keep a frozen `system/` ("Legacy style · Name"); no reference falls back to Foundation's base theme; Compare 3 without references uses installed kit themes. 4,460 tests, design:check 0 errors.
     - **Bug fixed in `cdc0efe`:** `src/main/index.ts` wrapped `setDirection` with 4 arguments and dropped `reference`, so in the app an agent's reference pick always fell back to Foundation's base theme (unit tests call the service directly and missed it). Now `(...args)` pass-through, pinned by a source test in `design-reference-direction.test.ts`.
@@ -43,7 +43,7 @@ Short on purpose: current state, next steps, open questions and live traps. Repl
     - **Phase 7 bench (2026-11-12, `cdc0efe`, prompts 1/3/7, TokenHarbor `deepseek-v4.1-flash:free`, the after-bench model).** Raw: `.ai/plans/m8-bench/refs-deepseek.json` (+ `-oldscorer`), `refs-sol.json`; scorer `.ai/kit-tools/m8-score-refs.ts` (reference, retrieval, page-CSS grounding/hex, rendered full lint in headless Chrome).
         - Kit share: landing 0.08 → 0.50, login 0.38 → 0.35, deck 0.32 → 0.08 (deck now 0 unknown parts/0 bad props, was 2/5, but 5 hex in its own `deck.css`). Final rendered lint: landing 0, login slop 2, deck targets 1 + slop 1.
         - All 3 hit the 12-min cap (before: landing 6.4, login 7.2). Pages are written by ~4-5 min; first lint had 34 findings (6 contrast, 23 targets) and the agent fixed to 0, then kept polishing. Input tokens 202k → 392k. Reference retrieval is small: 1.2k/2.9k/3.3k tokens per run.
-        - Picks: Notion (landing), Apple from glideapps/whatsapp/apple (login), **Kindsight (SaaS) for the coffee deck**: the agent passed alison-roman with alternates touchy-coffee + kindsight, and the seeded shortlist picked the off-topic alternate. Open with the user: weight the first pick / drop off-industry alternates.
+        - Picks: Notion (landing), Apple from glideapps/whatsapp/apple (login), **Kindsight (SaaS) for the coffee deck**: the agent passed alison-roman with alternates touchy-coffee + kindsight, and the seeded shortlist picked the off-topic alternate. User chose to favour the first pick: weights now 0.7/0.2/0.1 (was 0.5/0.3/0.2); industry filter rejected (112 refs are "other", incl. alison-roman).
         - gpt-6.1-sol via `agentrouter-responses` (bench agent `opencode-agentrouter-sol`): AgentRouter errors "item was created under a different OpenAI resource" and reports no usage, so its numbers aren't usable. Picks were sensible (Evernote, Headspace, Sweetgreen); it reads more (9-13k tokens per run).
     - Providers on 2026-11-12: Zen free and PGS Grove are spent (PGS refills 2026-11-13 10:32 UTC); TokenHarbor free works; Codex is allowed.
     - Then ask before merging into `m4`.
