@@ -3,6 +3,7 @@
 import { collectLayoutSlop, layoutSlopFindings } from "./slop-layout";
 import { collectSurfaceSlop, surfaceSlopFindings } from "./slop-surface";
 import { collectSystemSlop, systemSlopFindings } from "./slop-system";
+import { collectCraftSlop, craftSlopFindings } from "./slop-craft";
 import { collectTypeSlop, typeSlopFindings } from "./slop-type";
 
 /** An sRGB color: channels 0-255, alpha 0-1. */
@@ -1347,6 +1348,7 @@ const SLOP_GROUPS = [
   { name: "type", collect: collectTypeSlop, check: typeSlopFindings },
   { name: "surface", collect: collectSurfaceSlop, check: surfaceSlopFindings },
   { name: "system", collect: collectSystemSlop, check: systemSlopFindings },
+  { name: "craft", collect: collectCraftSlop, check: craftSlopFindings },
 ] as const;
 
 /** The design lint as one page expression, embedding the selector and helpers. */

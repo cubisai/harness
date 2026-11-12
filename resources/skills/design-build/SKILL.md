@@ -36,6 +36,19 @@ Unless the brief asks for one: eyebrow labels above every heading, `A · B · C`
 - **Dashboard**: four equal KPI cards → the one number that needs action, large, then a ranked `table` with `data-numeric` figures.
 - **Copy**: "Unlock seamless collaboration" → what it does, for whom ("Assign a ticket from the pull request").
 
+## Craft
+
+What a senior designer checks before calling a screen done. `design_lint` flags the ones it can see.
+- **Actions**: one filled button per group for the main action, the next outlined, the rest as text. Labels are a verb and its object ("Create account", "Delete file"), never Submit, OK or Click here. A destructive confirm names the thing and the cost ("Delete 'Q4 report'? This can't be undone.") with a red button that says the act. While it works, the button shows a spinner and what's happening ("Placing order…") and takes no second tap.
+- **Icons**: an icon with a word beside it; icon-only only for close, search and menu, and then with an `aria-label`.
+- **Familiar first**: patterns people already know. "Forgot password?" is a link, sign-in has one button, "New here? Sign up" sits under it. Show what was chosen or viewed instead of making people remember it.
+- **Less to do**: ask only for the fields that earn their place, and say how long it takes. Group long numbers in threes or fours ("4829 1750 3618 2947").
+- **Endings**: a confirmation says the outcome, the next date and the one next action ("Arrives Thursday · Track order"), not raw IDs or "Status: PROCESSED".
+- **Calm copy**: no exclamation marks, no greeting headlines (title the page by its context: "October 2026"), no periods on headings, buttons or labels. A change says what it compares to ("+12% vs last month").
+- **Quiet chrome, one moment**: navigation, buttons and surfaces stay neutral; spend colour and detail on one thing the product shows. Space separates groups before a line or a box does. Stat cards are a label, a number and its change, nothing added to fill them.
+- **Light and motion**: light comes from above, so shadows fall below, soft and neutral; text is the theme's near-black, never #000. Motion explains something: 120 to 200ms for hover and press, 300 to 500ms to enter, transform and opacity only.
+- **Template check**: swap the product's name for another's. If the screen still fits, push the copy, the moment and one signature detail until it doesn't.
+
 ## 3. Surfaces
 
 **Page, screen, workspace** (`page.html`): one `h1`; content inside `var(--content-max)`; works at 390, 768 and 1440 (`@media`). Several screens: one page each, linked with relative `<a href>`; for a flow name them `<section>--<NN>-<name>.html` so the Board shows numbered artboards.

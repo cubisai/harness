@@ -2,7 +2,7 @@
 
 The checks behind the five lenses in SKILL.md. Score each lens 0–10: 10 = nothing to fix, 8 = polish only, 6 = noticeable issues, 4 = several major issues, 2 = broken.
 
-Which checks feed which lens: **Brief fit** = the request itself plus States; **Kit & tokens** = Kit grounding, 8pt spacing, Contrast and color (palette), Token adherence; **Accessibility** = Contrast (ratios), Accessibility; **Copy** = Copy; **Layout** = Hierarchy, Alignment and layout.
+Which checks feed which lens: **Brief fit** = the request itself plus States; **Kit & tokens** = Kit grounding, 8pt spacing, Contrast and color (palette), Token adherence; **Accessibility** = Contrast (ratios), Accessibility; **Copy** = Copy, Actions; **Layout** = Hierarchy, Alignment and layout, UX laws.
 
 ## Hierarchy
 - One clear focal point per view; the primary action is the most prominent control.
@@ -50,3 +50,19 @@ Which checks feed which lens: **Brief fit** = the request itself plus States; **
 - Specific, plausible content (no lorem ipsum, no "Feature 1").
 - Buttons say what happens ("Start free trial", not "Submit"); sentence case; consistent terms.
 - Error messages say what went wrong and how to fix it.
+
+## Actions
+- One filled button per group; the next is outlined, the rest are text. Three filled buttons in a dialog is a finding.
+- Labels are a verb and its object; Submit, OK, Yes and Click here are findings.
+- Every button has default, hover, pressed, disabled and loading; loading replaces the label with progress ("Placing order…") and blocks a second tap.
+- A destructive confirm names the object and the consequence, with a red button that says the act; "Are you sure?" with OK/Cancel is a finding.
+- Icon-only buttons only for universal icons (close, search, menu), each with an `aria-label`; anything that needs a tooltip needs a word.
+
+## UX laws
+- **Familiar patterns** (Jakob): controls work the way people expect from other products (sign-in, search, checkout, settings).
+- **Chunking** (Miller): long numbers and lists are grouped; this is about readability, not a cap of seven menu items.
+- **Ending** (peak-end): the last screen of a flow shows the outcome and the next step, warmly and plainly, not system status.
+- **Polish** (aesthetic-usability): a calm, consistent screen reads as easier; loud colour and shouting copy read as broken.
+- **Fewer steps** (Occam): every field and step earns its place; optional ones are deferred.
+- **Recognition over recall**: selections, recent items and context stay visible instead of being remembered.
+- **Speed**: no animation stands between the user and the task; feedback is 120–200ms, entrances 300–500ms, never on layout properties.
