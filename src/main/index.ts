@@ -588,7 +588,8 @@ async function main(): Promise<void> {
           evaluate: (url, width, height, script) => shooter.evaluate(url, width, height, script),
           lintScript: designLintJs,
           saveCritique: (id, markdown) => service.saveCritique(id, markdown),
-          setDirection: (id, direction, alternates, theme) => service.setDesignDirection(id, direction, alternates, theme),
+          // Every argument passes through: dropping one (the reference) silently fell back to Foundation's base theme.
+          setDirection: (...args) => service.setDesignDirection(...args),
           kitIndex: () => {
             let kits: KitIndexEntry[] = [];
             try {
@@ -1024,10 +1025,7 @@ async function main(): Promise<void> {
   });
   const syncProviderAgents = () => service.syncDrivers(PROVIDER_AGENT_PREFIX, providerAgents.list());
   syncProviderAgents();
-  service.setDesignStylesDir(
-    app.isPackaged ? join(process.resourcesPath, "design-styles") : join(app.getAppPath(), "resources", "design-styles"),
-    app.isPackaged ? join(process.resourcesPath, "design-fonts") : join(app.getAppPath(), "resources", "design-fonts"),
-  );
+  service.setDesignFontsDir(app.isPackaged ? join(process.resourcesPath, "design-fonts") : join(app.getAppPath(), "resources", "design-fonts"));
   // Foundation ships with the app, so a kit is always there offline; the others are installed under userData.
   const foundationKit = app.isPackaged ? join(process.resourcesPath, "design-kits", "foundation") : join(app.getAppPath(), "resources", "design-kits", "foundation");
   const kitStore = new KitStore(join(userData, "design-packs"));

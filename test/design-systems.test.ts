@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { forkSystem, listDesignStyles, listDesignSystems, materializeSystem, parseSystemIndex, resolveDesignSystem, type DesignStyleInfo, type DesignSystemInfo } from "../src/main/design/systems";
+import { forkSystem, listDesignSystems, materializeSystem, parseSystemIndex, resolveDesignSystem, type DesignSystemInfo } from "../src/main/design/systems";
 import { tempDir } from "./helpers";
 
 /** A design-system folder: index.md, an optional DESIGN.md (null skips it) and optional tokens.css. */
@@ -23,11 +23,13 @@ function ownSystems(project: string): string {
   return join(project, ".agents", "design-systems");
 }
 
-/** A one-style library in a temp folder; returns the listed style. */
-function makeStyle(folder: string, fields: string, design: string, tokens: string): DesignStyleInfo {
-  const styles = tempDir();
-  makeSystem(styles, folder, `---\ntype: design-style\n${fields}---\n`, design, tokens);
-  return listDesignStyles(styles, tempDir())[0]!;
+/** A retired library style as a legacy thread's own system/ gives it (source "style"). */
+function makeStyle(folder: string, fields: { name: string; description?: string; swatches?: string[] }, design: string, tokens: string): DesignSystemInfo {
+  const dir = join(tempDir(), folder);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "DESIGN.md"), design);
+  writeFileSync(join(dir, "tokens.css"), tokens);
+  return { id: `style:${folder}`, name: fields.name, description: fields.description ?? "", swatches: fields.swatches ?? [], source: "style", designMd: join(dir, "DESIGN.md"), tokensCss: join(dir, "tokens.css") };
 }
 
 describe("parseSystemIndex", () => {
@@ -191,8 +193,8 @@ describe("materializeSystem", () => {
 });
 
 describe("forkSystem", () => {
-  it("copies a library style into the project and lists it as a project folder", () => {
-    const warm = makeStyle("warm", "name: Warm\ndescription: Warm one\nswatches: #fff,#000\n", "warm design", "warm tokens");
+  it("copies a legacy library style into the project and lists it as a project folder", () => {
+    const warm = makeStyle("warm", { name: "Warm", description: "Warm one", swatches: ["#fff", "#000"] }, "warm design", "warm tokens");
     const project = tempDir();
 
     const forked = forkSystem(warm!, project);
@@ -217,7 +219,7 @@ describe("forkSystem", () => {
   });
 
   it("keeps a second fork's edits instead of overwriting the copy", () => {
-    const warm = makeStyle("warm", "name: Warm\n", "warm design", "warm tokens");
+    const warm = makeStyle("warm", { name: "Warm" }, "warm design", "warm tokens");
     const project = tempDir();
     const copy = join(project, ".agents", "design-systems", "warm-custom", "tokens.css");
 

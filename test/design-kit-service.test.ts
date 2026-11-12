@@ -53,7 +53,6 @@ function setup(designSystem = "kit:foundation", project: string | null = tempDir
     designRoot: () => root,
     threadSystem: (t) => byId(t.designSystem),
     systemById: (_p, id) => byId(id),
-    styles: () => [],
     kitDir,
     broadcast: (u) => updates.push(u),
   });

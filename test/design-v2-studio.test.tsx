@@ -238,9 +238,11 @@ describe("a failed turn with the chat closed", () => {
 describe("the style picker's rules", () => {
   const card = (id: string, name: string, extra: Partial<DesignThemeCard> = {}): DesignThemeCard => ({ id, name, description: "", swatches: [], card: { bg: "#fff", surface: "#fff", text: "#000", muted: "#555", accent: "#00f", onAccent: "#fff", border: "#ddd", radius: "8px", font: "serif" }, mine: false, ...extra });
   const group = (id: string, name: string, themes: DesignThemeCard[]): DesignKitGroup => ({ id, name, version: "1.0.0", bundled: false, installed: true, components: 5, blocks: 0, mine: false, themes });
-  const groups = [group("foundation", "Foundation", [card("kit:foundation", "Foundation"), card("kit:foundation/atelier", "Atelier", { facets: { theme: "dark", darkPair: true, display: "serif", shape: "sharp" } })]), group("mui", "MUI", [card("kit:mui", "MUI"), card("kit:mui/teal", "Teal"), card("project:brand", "Brand", { mine: true })])];
+  const night = card("kit:mui/night", "Night", { facets: { theme: "dark", darkPair: true, display: "serif", shape: "sharp" } });
+  // Foundation has no themes of its own: references are adapted onto it, and the retired flat styles are legacy.
+  const groups = [group("foundation", "Foundation", [card("kit:foundation", "Foundation")]), group("mui", "MUI", [card("kit:mui", "MUI"), card("kit:mui/teal", "Teal"), night, card("project:brand", "Brand", { mine: true })])];
 
-  it("treats a flat library style as Foundation's theme of that name", () => {
+  it("treats a retired flat library style as a (legacy) Foundation theme of that name", () => {
     expect(cardIdOf("style:atelier")).toBe("kit:foundation/atelier");
     expect(cardIdOf("auto", { style: "style:atelier" } as DesignDirection)).toBe("kit:foundation/atelier");
     expect(cardIdOf("kit:mui/teal")).toBe("kit:mui/teal");
@@ -253,9 +255,11 @@ describe("the style picker's rules", () => {
     expect(chipLabel(groups, "kit:mui", null).name).toBe("MUI");
     expect(chipLabel(groups, "kit:mui/teal", null).name).toBe("MUI · Teal");
     expect(chipLabel(groups, "project:brand", null).name).toBe("Brand");
-    expect(chipLabel(groups, "style:atelier", null).name).toBe("Atelier");
     expect(chipLabel(groups, "auto", null).name).toBe("Auto");
-    expect(chipLabel(groups, "auto", { style: "style:atelier" } as DesignDirection).name).toBe("Auto · Atelier");
+    // A thread still on a retired style keeps its files and says so.
+    expect(chipLabel(groups, "style:atelier", null).name).toBe("Legacy style · Atelier");
+    expect(chipLabel(groups, "kit:foundation/night-bank", null).name).toBe("Legacy style · Night Bank");
+    expect(chipLabel(groups, "auto", { style: "kit:foundation/atelier" } as DesignDirection).name).toBe("Legacy style · Atelier");
   });
 
   it("shows a picked or Auto-picked reference as its ref: card, by name", () => {
@@ -272,10 +276,10 @@ describe("the style picker's rules", () => {
   });
 
   it("searches by feel as well as by name", () => {
-    const cards = groups[0]!.themes;
+    const cards = [...groups[0]!.themes, night];
     expect(filterCards(cards, "").length).toBe(2);
-    expect(filterCards(cards, "dark").map((c) => c.name)).toEqual(["Atelier"]);
-    expect(filterCards(cards, "SERIF sharp").map((c) => c.name)).toEqual(["Atelier"]);
+    expect(filterCards(cards, "dark").map((c) => c.name)).toEqual(["Night"]);
+    expect(filterCards(cards, "SERIF sharp").map((c) => c.name)).toEqual(["Night"]);
     expect(filterCards(cards, "serif round")).toEqual([]);
   });
 

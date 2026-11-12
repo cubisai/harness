@@ -9,7 +9,7 @@ import { IconClose } from "../icons";
 import "../styles/artifact.css";
 import { affectedPages, useStore } from "../store";
 import { designStyleName, useDesignSystemOptions } from "../components/DesignSystemMenu";
-import { chipLabel } from "../components/StylePicker";
+import { chipLabel, referenceName } from "../components/StylePicker";
 import { STYLE_PREFIX, readDirection } from "../../../shared/direction";
 import { STAGE_PAD, VIEWPORTS, ZOOMS, createBridgeGate, deviceFor, frameLayout, pageFromPath, readBridgeMessage, viewportForDevice, type FrameAnchor, type FrameRect, type OutlineNode, type PageSeam, type VariantSetInfo, type Viewport, type Zoom } from "./frame";
 import { announceSelection, contextBlock, elementLabel, selectionKey, withScope, type SelectedElement } from "../../../shared/selection";
@@ -207,7 +207,19 @@ export default function DesignCanvas({
     };
   }, [threadId, thread?.designSystem, thread?.designDirection?.reference?.sha256, reload]);
   const styleName = kitGroups.length ? chipLabel(kitGroups, thread?.designSystem, readDirection(thread?.designDirection) ?? null).name : designStyleName(systemOptions, thread?.designSystem, readDirection(thread?.designDirection));
-  const styleOf = useCallback((slug: string) => systemOptions.find((o) => o.id === STYLE_PREFIX + slug)?.name, [systemOptions]);
+  // A "More styles" option's own look: a reference by slug, or a kit theme by its folder (`kit:mui/indigo` -> mui-indigo).
+  const styleOf = useCallback(
+    (slug: string) => {
+      const ref = referenceName(slug);
+      if (ref) return ref;
+      for (const g of kitGroups) {
+        const theme = g.themes.find((t) => !t.mine && t.id.replace(/^kit:/, "").replace(/\//g, "-") === slug);
+        if (theme) return theme.name === g.name ? g.name : `${g.name} · ${theme.name}`;
+      }
+      return systemOptions.find((o) => o.id === STYLE_PREFIX + slug)?.name;
+    },
+    [kitGroups, systemOptions],
+  );
   const labelOf = useCallback((p: BoardPage) => frameLabel(p, styleName, styleOf), [styleName, styleOf]);
   // Canvas-first's Pages and Layers rail, open or not (kept in the pane layout).
   // The top bar's view (v2). Preview, Code and System take the whole width: the side panels come back with Design.

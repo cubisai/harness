@@ -32,7 +32,7 @@ function placeOver(chip: HTMLElement | null): { left: number; bottom: number; wi
 /** How many reference cards the grid adds at a time as it scrolls. */
 const REFERENCE_PAGE = 48;
 
-/** The card a thread's system shows as: a flat library style is a Foundation theme under the same name, and a reference is `ref:<slug>`. */
+/** The card a thread's system shows as: a retired flat style is a (legacy) Foundation theme under the same name, and a reference is `ref:<slug>`. */
 export function cardIdOf(value: string | undefined, direction?: DesignDirection | null): string | null {
   const ref = value === AUTO_SYSTEM ? direction?.reference : parseReferenceSystemId(value);
   if (ref) return `${REFERENCE_SYSTEM_PREFIX}${ref.slug}`;
@@ -88,6 +88,11 @@ export function chipLabel(groups: readonly DesignKitGroup[], value: string | und
   }
   const group = id ? groups.find((g) => g.themes.some((t) => t.id === id)) : undefined;
   const theme = group?.themes.find((t) => t.id === id);
+  // A retired library style: Foundation has no themes of its own, so the thread keeps the system/ it was built with.
+  if (!theme && id?.startsWith(`kit:${FOUNDATION}/`)) {
+    const name = `Legacy style · ${slugName(id.slice(`kit:${FOUNDATION}/`.length))}`;
+    return { name, title: `Style: ${name} (retired; this design keeps the files it was built with)` };
+  }
   if (value === AUTO_SYSTEM || !value) {
     return theme ? { name: `Auto · ${theme.name}`, title: `Style: Auto, picked ${theme.name} for this brief` } : { name: "Auto", title: "Style: Auto (picks one that fits the brief)" };
   }
@@ -246,6 +251,11 @@ function KitMovePreview({ preview, entry, busy, onCancel, onCommit }: { preview:
 const lastGroups = new Map<string | null, DesignKitGroup[]>();
 /** The downloaded references seen last (the same for every project); null before the first read. */
 let lastRefs: DesignReferenceCard[] | null = null;
+
+/** A downloaded reference's name by slug, once the picker has read the list this session (else undefined). */
+export function referenceName(slug: string): string | undefined {
+  return lastRefs?.find((r) => r.id === `${REFERENCE_SYSTEM_PREFIX}${slug}`)?.name;
+}
 
 /**
  * Design v2's style picker: the current kit's themes as cards, and a `Kit:` menu for the others. A theme of this kit

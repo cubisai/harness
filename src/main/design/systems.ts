@@ -24,7 +24,7 @@ export function isLegacyStyleId(id: string): boolean {
 
 /** One design system a design thread can be started from. */
 export interface DesignSystemInfo {
-  /** "project" (repo-root DESIGN.md), "project:<folder>" (.agents/design-systems), or "style:<folder>" (the style library). */
+  /** "project" (repo-root DESIGN.md), "project:<folder>" (.agents/design-systems), or "style:<folder>" (a retired library style, read from a thread's own system/). */
   id: string;
   name: string;
   description: string;
@@ -49,15 +49,6 @@ export interface KitRef {
   dir: string;
   version: string;
   contractVersion: string;
-}
-
-/** A style from the style library: a design system plus what the agent matches it by. */
-export interface DesignStyleInfo extends DesignSystemInfo {
-  source: "style";
-  tags: string[];
-  modes: string[];
-  /** web | mobile | deck | any */
-  platform: string;
 }
 
 /** Strip one pair of surrounding single or double quotes. */
@@ -236,9 +227,9 @@ function kitRef(dir: string): KitRef | null {
 
 /**
  * The systems one kit offers: the kit on its own tokens, then each theme in its `themes/` folder. A kit whose
- * `compat.themes` has `*` is written against the style library's token names, so every style is a theme of it too.
+ * `compat.themes` has `*` (Foundation) also takes the design references, which the service adapts onto its base.
  */
-export function listKitSystems(dir: string, styles: readonly DesignStyleInfo[] = []): DesignSystemInfo[] {
+export function listKitSystems(dir: string): DesignSystemInfo[] {
   const kit = kitRef(dir);
   const designMd = join(dir, "DESIGN.md");
   const tokensCss = join(dir, "tokens.css");
@@ -296,23 +287,6 @@ export function listKitSystems(dir: string, styles: readonly DesignStyleInfo[] =
     });
   }
 
-  if (parsed.manifest.compat.themes.includes("*")) {
-    for (const style of styles) {
-      if (!style.tokensCss) continue;
-      out.push({
-        id: `${base}/${style.id.slice(STYLE_PREFIX.length)}`,
-        name: style.name,
-        description: style.description,
-        swatches: style.swatches,
-        source: "kit",
-        designMd: style.designMd,
-        tokensCss: style.tokensCss,
-        kit,
-        ...(style.facets ? { facets: style.facets } : {}),
-        ...(style.fontFiles ? { fontFiles: style.fontFiles } : {}),
-      });
-    }
-  }
   return out;
 }
 
@@ -334,68 +308,6 @@ export function listDesignSystems(projectPath: string | null): DesignSystemInfo[
   return out;
 }
 
-/**
- * The style library in `stylesDir`: one folder per style with `index.md`
- * (`type: design-style`, name, description, swatches, tags, modes, platform,
- * fonts), `DESIGN.md` and `tokens.css`. `fonts` names files in `fontsDir` that
- * travel with it. Sorted by folder; anything malformed is skipped.
- */
-export function listDesignStyles(stylesDir: string, fontsDir: string): DesignStyleInfo[] {
-  let folders: string[];
-  try {
-    folders = readdirSync(stylesDir, { withFileTypes: true })
-      .filter((e) => e.isDirectory() && /^[a-z0-9][a-z0-9-]*$/.test(e.name))
-      .map((e) => e.name)
-      .sort();
-  } catch {
-    return [];
-  }
-  const out: DesignStyleInfo[] = [];
-  for (const folder of folders) {
-    const dir = join(stylesDir, folder);
-    const fields = frontmatter(readText(join(dir, "index.md")) ?? "");
-    const designMd = join(dir, "DESIGN.md");
-    const tokensCss = join(dir, "tokens.css");
-    if (fields.get("type") !== "design-style" || !isFile(designMd) || !isFile(tokensCss)) continue;
-    const fontFiles = list(fields.get("fonts"))
-      .filter((f) => /^[\w.-]+\.woff2$/.test(f))
-      .map((f) => join(fontsDir, f))
-      .filter(isFile);
-    const text = readText(tokensCss);
-    const facets = text ? tokenFacets(text) : null;
-    out.push({
-      id: `${STYLE_PREFIX}${folder}`,
-      name: fields.get("name") || folder,
-      description: fields.get("description") || "",
-      swatches: list(fields.get("swatches")).slice(0, 4),
-      source: "style",
-      designMd,
-      tokensCss,
-      ...(facets ? { facets } : {}),
-      ...(fontFiles.length ? { fontFiles } : {}),
-      tags: list(fields.get("tags")),
-      modes: list(fields.get("modes")),
-      platform: fields.get("platform") || "any",
-    });
-  }
-  return out;
-}
-
-/**
- * The style index the agent picks from, one short line per style (it rides in a tool description on every design
- * turn): the description's first clause, three tags, modes, platform, and dark when its base is dark. The full note
- * arrives once a style is picked.
- */
-export function styleIndex(styles: DesignStyleInfo[]): string {
-  return styles
-    .map((s) => {
-      const gist = s.description.split(/[:.;]/)[0]!.trim();
-      const theme = s.facets?.theme === "dark" ? "; dark" : "";
-      return `${s.id.slice(STYLE_PREFIX.length)}: ${gist} [${s.tags.slice(0, 3).join(", ")}; ${s.modes.join("/")}; ${s.platform}${theme}]`;
-    })
-    .join("\n");
-}
-
 /** An installed kit other than Foundation, for the direction index. */
 export interface KitIndexEntry {
   id: string;
@@ -410,7 +322,7 @@ export function kitIndexEntry(dir: string): KitIndexEntry | null {
   const parsed = parseKitManifest(readText(join(dir, "components.json")) ?? "");
   if (!kit || !parsed.ok) return null;
   const base = `${KIT_PREFIX}${kit.id}/`;
-  const themes = listKitSystems(dir, []).filter((s) => s.id.startsWith(base)).map((s) => s.id.slice(base.length));
+  const themes = listKitSystems(dir).filter((s) => s.id.startsWith(base)).map((s) => s.id.slice(base.length));
   return { id: kit.id, name: parsed.manifest.name, ...(parsed.manifest.package ? { package: parsed.manifest.package } : {}), themes };
 }
 

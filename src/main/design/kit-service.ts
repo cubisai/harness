@@ -10,7 +10,7 @@ import { groundPage, groundingSummary } from "./grounding";
 import { validateKitDir, type KitManifest } from "./kit-schema";
 import type { LintFinding } from "./lint";
 import { listDesignPages } from "./pages";
-import { listDesignSystems, listKitSystems, materializeSystem, type DesignStyleInfo, type DesignSystemInfo } from "./systems";
+import { listDesignSystems, listKitSystems, materializeSystem, type DesignSystemInfo } from "./systems";
 import { parseTokens } from "./tokens";
 
 /** What the kit features need from the app; injected so they run in plain Node. */
@@ -26,8 +26,6 @@ export interface KitServiceDeps {
   syncSystem?(thread: Thread): void;
   /** A system by id, kits included. */
   systemById(projectId: string | null, id: string): DesignSystemInfo | null;
-  /** The kit's own system (`kit:<id>`). */
-  styles(): DesignStyleInfo[];
   kitDir(kitId: string): string | null;
   broadcast(update: LiveUpdate): void;
 }
@@ -135,7 +133,7 @@ export class DesignKitService {
   /** The kit's base system (`kit:<id>`), or null when it isn't on this machine. */
   private baseSystem(kitId: string): DesignSystemInfo | null {
     const dir = this.deps.kitDir(kitId);
-    return dir ? (listKitSystems(dir, this.deps.styles())[0] ?? null) : null;
+    return dir ? (listKitSystems(dir)[0] ?? null) : null;
   }
 
   /** Every kit and its themes. Cards never mix kits: the renderer shows one group at a time. */
@@ -155,7 +153,7 @@ export class DesignKitService {
     };
     for (const option of this.catalog()) {
       const dir = option.installed ? this.deps.kitDir(option.id) : null;
-      const systems = dir ? listKitSystems(dir, this.deps.styles()) : [];
+      const systems = dir ? listKitSystems(dir) : [];
       groups.push({
         id: option.id,
         name: option.name,

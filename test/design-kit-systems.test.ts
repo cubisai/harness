@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { forkSystem, listDesignStyles, listDesignSystems, listKitSystems, materializeSystem, type DesignStyleInfo } from "../src/main/design/systems";
+import { forkSystem, listDesignSystems, listKitSystems, materializeSystem, type DesignSystemInfo } from "../src/main/design/systems";
 import { tempDir } from "./helpers";
 
 const MANIFEST = {
@@ -24,25 +24,19 @@ function writeKit(dir: string, manifest: object = MANIFEST): string {
   writeFileSync(join(dir, "components.json"), JSON.stringify(manifest));
   writeFileSync(join(dir, "blocks", "hero.html"), '<section data-ui="hero"></section>');
   writeFileSync(join(dir, "themes", "dusk", "tokens.css"), ":root { --color-bg: #111111; --color-text: #eeeeee; }");
+  // A theme with rules of its own.
+  mkdirSync(join(dir, "themes", "paper"), { recursive: true });
+  writeFileSync(join(dir, "themes", "paper", "DESIGN.md"), "paper design");
+  writeFileSync(join(dir, "themes", "paper", "tokens.css"), ":root { --color-bg: #fafafa; --color-text: #111111; }");
   return dir;
 }
 
-function style(dir: string): DesignStyleInfo {
+/** A flat system (no kit), as a project's own design-systems folder gives. */
+function flat(dir: string): DesignSystemInfo {
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "DESIGN.md"), "style design");
+  writeFileSync(join(dir, "DESIGN.md"), "flat design");
   writeFileSync(join(dir, "tokens.css"), ":root { --color-bg: #fafafa; --color-text: #111111; }");
-  return {
-    id: "style:paper",
-    name: "Paper",
-    description: "A style.",
-    swatches: ["#fff"],
-    source: "style",
-    designMd: join(dir, "DESIGN.md"),
-    tokensCss: join(dir, "tokens.css"),
-    tags: [],
-    modes: [],
-    platform: "any",
-  };
+  return { id: "project:paper", name: "Paper", description: "A flat system.", swatches: ["#fff"], source: "projectFolder", designMd: join(dir, "DESIGN.md"), tokensCss: join(dir, "tokens.css") };
 }
 
 const find = (list: ReturnType<typeof listKitSystems>, id: string) => {
@@ -52,18 +46,13 @@ const find = (list: ReturnType<typeof listKitSystems>, id: string) => {
 };
 
 describe("listKitSystems", () => {
-  it("lists the kit, its themes and, with a * compat, every style", () => {
-    const list = listKitSystems(writeKit(tempDir()), [style(tempDir())]);
+  it("lists the kit and its own themes; a * compat adds nothing here (references are adapted, not listed)", () => {
+    const list = listKitSystems(writeKit(tempDir()));
     expect(list.map((s) => s.id)).toEqual(["kit:acme", "kit:acme/dusk", "kit:acme/paper"]);
     expect(list.every((s) => s.source === "kit" && s.kit?.id === "acme" && s.kit.version === "1.2.0")).toBe(true);
     expect(find(list, "kit:acme/dusk").facets?.theme).toBe("dark");
-    expect(find(list, "kit:acme/paper").name).toBe("Paper");
-  });
-
-  it("offers no styles without a * compat", () => {
     const manifest = { ...MANIFEST, compat: { themes: ["dusk"], migratesFrom: [] } };
-    const list = listKitSystems(writeKit(tempDir(), manifest), [style(tempDir())]);
-    expect(list.map((s) => s.id)).toEqual(["kit:acme", "kit:acme/dusk"]);
+    expect(listKitSystems(writeKit(tempDir(), manifest)).map((s) => s.id)).toEqual(["kit:acme", "kit:acme/dusk", "kit:acme/paper"]);
   });
 
   it("lists nothing for a missing folder, a bad manifest or a missing ui.css", () => {
@@ -86,11 +75,11 @@ describe("materializeSystem with a kit", () => {
     expect(materializeSystem(kit!, dest)).toBe(false);
   });
 
-  it("uses a style's rules and tokens over the kit's, and keeps the kit's rules as KIT.md", () => {
+  it("uses a theme's own rules and tokens over the kit's, and keeps the kit's rules as KIT.md", () => {
     const dest = join(tempDir(), "system");
-    const themed = find(listKitSystems(writeKit(tempDir()), [style(tempDir())]), "kit:acme/paper");
+    const themed = find(listKitSystems(writeKit(tempDir())), "kit:acme/paper");
     materializeSystem(themed, dest);
-    expect(readFileSync(join(dest, "DESIGN.md"), "utf8")).toBe("style design");
+    expect(readFileSync(join(dest, "DESIGN.md"), "utf8")).toBe("paper design");
     expect(readFileSync(join(dest, "KIT.md"), "utf8")).toBe("kit design");
     expect(readFileSync(join(dest, "tokens.css"), "utf8")).toContain("#fafafa");
     expect(existsSync(join(dest, "ui.css"))).toBe(true);
@@ -98,7 +87,7 @@ describe("materializeSystem with a kit", () => {
 
   it("switching a theme swaps tokens and leaves the parts alone", () => {
     const dest = join(tempDir(), "system");
-    const list = listKitSystems(writeKit(tempDir()), [style(tempDir())]);
+    const list = listKitSystems(writeKit(tempDir()));
     materializeSystem(find(list, "kit:acme"), dest);
     const parts = readFileSync(join(dest, "ui.css"), "utf8");
     materializeSystem(find(list, "kit:acme/dusk"), dest);
@@ -106,21 +95,21 @@ describe("materializeSystem with a kit", () => {
     expect(readFileSync(join(dest, "ui.css"), "utf8")).toBe(parts);
   });
 
-  it("removes every kit file when the thread goes back to a flat style", () => {
+  it("removes every kit file when the thread goes back to a flat system", () => {
     const dest = join(tempDir(), "system");
-    const paper = style(tempDir());
-    materializeSystem(find(listKitSystems(writeKit(tempDir()), [paper]), "kit:acme/paper"), dest);
+    const paper = flat(tempDir());
+    materializeSystem(find(listKitSystems(writeKit(tempDir())), "kit:acme/paper"), dest);
     expect(materializeSystem(paper, dest)).toBe(true);
     expect(readdirSync(dest).sort()).toEqual([".system", "DESIGN.md", "tokens.css"]);
     expect(materializeSystem(paper, dest)).toBe(false);
   });
 
-  it("a flat style never removes files it didn't bring, with no kit marker", () => {
+  it("a flat system never removes files it didn't bring, with no kit marker", () => {
     const dest = join(tempDir(), "system");
     mkdirSync(join(dest, "blocks"), { recursive: true });
     writeFileSync(join(dest, "ui.css"), "mine");
     writeFileSync(join(dest, "blocks", "a.html"), "mine");
-    materializeSystem(style(tempDir()), dest);
+    materializeSystem(flat(tempDir()), dest);
     expect(readFileSync(join(dest, "ui.css"), "utf8")).toBe("mine");
     expect(readFileSync(join(dest, "blocks", "a.html"), "utf8")).toBe("mine");
   });
@@ -158,13 +147,5 @@ describe("a project kit", () => {
     const list = listDesignSystems(project);
     expect(list.find((s) => s.id === "project:ours")?.kit?.id).toBe("acme");
     expect(list.find((s) => s.id === "project:flat")?.kit).toBeUndefined();
-  });
-});
-
-describe("the bundled library", () => {
-  it("still lists 32 flat styles, none with a kit", () => {
-    const styles = listDesignStyles(join(process.cwd(), "resources", "design-styles"), join(process.cwd(), "resources", "design-fonts"));
-    expect(styles).toHaveLength(32);
-    expect(styles.every((s) => s.kit === undefined)).toBe(true);
   });
 });

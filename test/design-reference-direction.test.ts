@@ -95,23 +95,13 @@ function memorySource() {
   return source;
 }
 
-function setup(opts: { references?: boolean; styles?: boolean } = {}) {
+function setup(opts: { references?: boolean } = {}) {
   const store = new Store(join(tempDir(), "t.db"));
   closeAfter(() => store.close());
   const driver = fakeDriver();
   const service = new Service(store, () => catalog(), [driver], () => {});
   service.setDesignKitLookup((id) => (id === "foundation" ? FOUNDATION : null));
-  if (opts.styles !== false) {
-    // A one-style library: the legacy path still exists until the 32 are removed.
-    const styles = join(tempDir(), "styles");
-    mkdirSync(join(styles, "riso"), { recursive: true });
-    writeFileSync(join(styles, "riso", "index.md"), "---\ntype: design-style\nname: Riso\ndescription: riso look\ntags: print\nmodes: persuade\nplatform: web\n---\n");
-    writeFileSync(join(styles, "riso", "DESIGN.md"), "# riso\n");
-    writeFileSync(join(styles, "riso", "tokens.css"), ":root { --color-bg: #fff; }\n");
-    service.setDesignStylesDir(styles, FONTS);
-  } else {
-    service.setDesignStylesDir(join(tempDir(), "no-styles"), FONTS);
-  }
+  service.setDesignFontsDir(FONTS);
   const source = memorySource();
   if (opts.references !== false) service.setDesignReferences(source);
   const project = store.addProject(tempDir());
@@ -210,7 +200,7 @@ describe("a design reference on an Auto thread", () => {
   });
 
   it("falls back to Foundation's base theme before the download, with no styles at all", () => {
-    const { service, store, thread } = setup({ references: false, styles: false });
+    const { service, store, thread } = setup({ references: false });
     const reply = service.setDesignDirection(thread.id, { ...DIRECTION }, [], undefined, "acme");
     expect(store.getThread(thread.id).designDirection).toEqual({ ...DIRECTION });
     expect(reply).toContain("Design references aren't downloaded on this machine, so this is Foundation's base theme.");
@@ -223,23 +213,98 @@ describe("a design reference on an Auto thread", () => {
   });
 });
 
+describe("More styles from design references", () => {
+  it("adapts far-apart references into styles/<slug>/, and promoting one moves the thread to that pinned reference", () => {
+    const { service, store, thread, source } = setup();
+    service.setDesignDirection(thread.id, { ...DIRECTION }, [], undefined, "acme");
+    const root = service.designRoot(thread.id)!;
+    writeFileSync(join(root, "index.html"), "<h1>x</h1>");
+    const { names, text } = service.prepareMoreStyles(thread.id, 2);
+    expect(names).toHaveLength(2);
+    expect(text).toContain("Build only the pages listed here");
+    const slugs = [...text.matchAll(/`variant-([a-z0-9-]+)\.html`/g)].map((m) => m[1]!);
+    expect(slugs).not.toContain("acme");
+    const slug = slugs[0]!;
+    for (const f of ["REFERENCE.md", ".reference", "tokens.css", "ui.css"]) expect(existsSync(join(root, "styles", slug, f)), f).toBe(true);
+
+    writeFileSync(join(root, `variant-${slug}.html`), "<h1>new</h1>");
+    service.promoteDesignVariant(thread.id, `variant-${slug}.html`);
+    const saved = store.getThread(thread.id);
+    expect(saved.designSystem).toBe("auto");
+    expect(saved.designDirection?.style).toBe("kit:foundation");
+    expect(saved.designDirection?.reference).toEqual({ source: "gradientdeck", slug, sha256: sha(source.texts.get(slug)!) });
+  });
+
+  it("promotes a fixed reference thread to the variant's reference id", () => {
+    const { service, store, thread, source } = setup();
+    service.setDesignSystem(thread.id, "ref:acme");
+    const root = service.designRoot(thread.id)!;
+    mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, "index.html"), "<h1>x</h1>");
+    const slug = [...service.prepareMoreStyles(thread.id, 1).text.matchAll(/`variant-([a-z0-9-]+)\.html`/g)].map((m) => m[1]!)[0]!;
+    writeFileSync(join(root, `variant-${slug}.html`), "<h1>new</h1>");
+    service.promoteDesignVariant(thread.id, `variant-${slug}.html`);
+    expect(store.getThread(thread.id).designSystem).toBe(`ref:${slug}@${sha(source.texts.get(slug)!)}`);
+  });
+});
+
+/** A thread as the retired style library left it: its direction (or fixed system) names the style, system/ holds it. */
+function legacyThread(store: Store, service: Service, threadId: string, id: string): string {
+  if (id.startsWith("kit:")) store.setDesignDirection(threadId, { surface: "page", mode: "persuade", tier: "working", style: id });
+  else store.setDesignSystem(threadId, id);
+  const sys = join(service.designRoot(threadId)!, "system");
+  mkdirSync(join(sys, "fonts"), { recursive: true });
+  writeFileSync(join(sys, "DESIGN.md"), "# Riso Print\nInk on paper.\n");
+  writeFileSync(join(sys, "tokens.css"), ":root { --color-bg: #fdf6e3; } /* the user's own tweak */\n");
+  writeFileSync(join(sys, "fonts", "Riso.woff2"), "font");
+  writeFileSync(join(sys, ".system"), id);
+  return sys;
+}
+
 describe("a legacy style thread", () => {
-  it("keeps its system/ bytes exactly, even once its style is gone", async () => {
+  it("keeps its system/ bytes exactly with the style library gone, through turns and a repeat of its direction", async () => {
     const { service, store, thread } = setup();
-    service.setDesignDirection(thread.id, { surface: "page", mode: "persuade", tier: "working", style: "riso" });
-    expect(store.getThread(thread.id).designDirection?.style).toBe("kit:foundation/riso");
-    const sys = join(service.designRoot(thread.id)!, "system");
-    writeFileSync(join(sys, "tokens.css"), ":root { --color-bg: #fdf6e3; } /* the user's own tweak */\n");
+    const sys = legacyThread(store, service, thread.id, "kit:foundation/riso-print");
     const before = readFileSync(join(sys, "tokens.css"), "utf8");
 
     await service.send({ threadId: thread.id, text: "next" });
     expect(readFileSync(join(sys, "tokens.css"), "utf8")).toBe(before);
+    expect(readFileSync(join(sys, ".system"), "utf8")).toBe("kit:foundation/riso-print");
+    expect(existsSync(join(sys, "ui.css"))).toBe(false);
 
-    // The style library goes away (phase 6): the thread's files survive.
-    service.setDesignStylesDir(join(tempDir(), "gone"), FONTS);
-    await service.send({ threadId: thread.id, text: "after removal" });
+    // The agent names its own style again: kept, and system/ is still untouched.
+    const reply = service.setDesignDirection(thread.id, { surface: "page", mode: "persuade", tier: "working", style: "kit:foundation/riso-print" });
+    expect(store.getThread(thread.id).designDirection?.style).toBe("kit:foundation/riso-print");
+    expect(reply).toContain("Legacy style · Riso Print");
     expect(readFileSync(join(sys, "tokens.css"), "utf8")).toBe(before);
-    expect(readFileSync(join(sys, ".system"), "utf8")).toBe("kit:foundation/riso");
+    expect(existsSync(join(sys, "fonts", "Riso.woff2"))).toBe(true);
+  });
+
+  it("keeps a fixed style: thread's system/ too", async () => {
+    const { service, store, thread } = setup();
+    const sys = legacyThread(store, service, thread.id, "style:riso-print");
+    const before = readFileSync(join(sys, "tokens.css"), "utf8");
+    await service.send({ threadId: thread.id, text: "next" });
+    expect(readFileSync(join(sys, "tokens.css"), "utf8")).toBe(before);
+    expect(store.getThread(thread.id).designSystem).toBe("style:riso-print");
+  });
+
+  it("builds on Foundation's base theme when no system/ was ever written", async () => {
+    const { service, store, thread } = setup();
+    store.setDesignDirection(thread.id, { surface: "page", mode: "persuade", tier: "working", style: "kit:foundation/riso-print" });
+    await service.send({ threadId: thread.id, text: "go" });
+    const sys = join(service.designRoot(thread.id)!, "system");
+    expect(readFileSync(join(sys, "tokens.css"), "utf8")).toBe(readFileSync(join(FOUNDATION, "tokens.css"), "utf8"));
+  });
+
+  it("gives an unknown theme name Foundation's base theme, never a 'Pick one of' error", () => {
+    const { service, store, thread } = setup({ references: false });
+    for (const style of ["riso-print", "kit:foundation/swiss-grid", "style:night-bank"]) {
+      const reply = service.setDesignDirection(thread.id, { surface: "page", mode: "persuade", tier: "working", style });
+      expect(store.getThread(thread.id).designDirection?.style).toBe("kit:foundation");
+      expect(reply).toMatch(/Foundation has no theme ".+", so this is its base theme/);
+      expect(reply).not.toContain("Pick one of");
+    }
   });
 });
 
@@ -350,5 +415,14 @@ describe("the pinned note", () => {
     expect(pinnedNote(dir)).toBe("Adapted from Stripe · font substituted");
     writeFileSync(join(dir, "REFERENCE.md"), "# something else\n");
     expect(pinnedNote(dir)).toBeNull();
+  });
+});
+
+describe("the app's design tool wiring", () => {
+  it("passes every design_set_direction argument through, the reference included", () => {
+    // Unit tests call the service directly; the app goes through this wrapper, which once dropped `reference`.
+    const src = readFileSync(join(process.cwd(), "src", "main", "index.ts"), "utf8");
+    const line = src.split("\n").find((l) => l.trim().startsWith("setDirection:"));
+    expect(line?.trim()).toBe("setDirection: (...args) => service.setDesignDirection(...args),");
   });
 });

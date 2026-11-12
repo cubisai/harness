@@ -19,9 +19,7 @@ extraResources:
   # Design mode: its guide.
   - from: resources/DESIGN-MODE.md
     to: DESIGN-MODE.md
-  # The style library Auto design threads pick from, and the font pack its styles use.
-  - from: resources/design-styles
-    to: design-styles
+  # The font pack design references' faces are substituted from.
   - from: resources/design-fonts
     to: design-fonts
   # The bundled Foundation kit, so a kit is always there offline.

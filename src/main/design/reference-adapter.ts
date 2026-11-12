@@ -634,7 +634,7 @@ function completeScheme(core: Core, scheme: Scheme, fixes: ContrastFix[]): Recor
 type Face = { family: string; file: string; weights: string; cls: "sans" | "serif" | "mono" | "display"; displayOnly?: boolean; italic?: string };
 
 /** The bundled OFL faces (`resources/design-fonts`) the adapter can point at. */
-const FACES: Face[] = [
+export const FACES: Face[] = [
   { family: "Geist", file: "geist.woff2", weights: "100 900", cls: "sans" },
   { family: "Geist Mono", file: "geist-mono.woff2", weights: "100 900", cls: "mono" },
   { family: "JetBrains Mono", file: "jetbrains-mono.woff2", weights: "100 800", cls: "mono" },
