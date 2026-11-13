@@ -539,6 +539,36 @@ describe("Service.send", () => {
     expect(notes[6]).toContain("- index.html [slop] p.kicker: gradient text");
   });
 
+  it("sends one build round after a turn that saved a kit and left no page, and none once a page exists", async () => {
+    const prompts: string[] = [];
+    const turnEnd = { kind: "turn-end" as const, costUsd: null, inputTokens: 10, outputTokens: 0, durationMs: 5 };
+    let page = false;
+    const { service, store } = setup(async (input) => {
+      prompts.push(input.prompt);
+      if (page) writeFileSync(join(service.designRoot(design.id)!, "index.html"), "<p>x</p>");
+      input.onEvent(turnEnd);
+    });
+    const project = store.addProject(tempDir());
+    const design = service.createThread(project.id, undefined, "design");
+    mkdirSync(service.designRoot(design.id)!, { recursive: true });
+    // The agent's design_kit_save marks the thread; the turn end reads it once.
+    const saved = vi.spyOn(service.kits, "takeSaved").mockReturnValueOnce(true).mockReturnValueOnce(true);
+    await service.send({ threadId: design.id, text: "start a kit" });
+    await vi.waitFor(() => expect(prompts).toHaveLength(2), { timeout: 10_000 });
+    await vi.waitFor(() => expect(service.isRunning(design.id)).toBe(false), { timeout: 10_000 });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(prompts[1]!).toMatch(/^CubiQ saved your kit, but this design still has no page/);
+    // The build round is the last: it saved again and still wrote no page, and CubiQ doesn't ask twice.
+    expect(prompts).toHaveLength(2);
+    expect(store.getThread(design.id).title).not.toContain("CubiQ saved");
+    saved.mockReturnValueOnce(true);
+    page = true;
+    await service.send({ threadId: design.id, text: "again" });
+    await vi.waitFor(() => expect(service.isRunning(design.id)).toBe(false), { timeout: 10_000 });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(prompts).toHaveLength(3);
+  });
+
   it("sends one fix round when a design turn ends with new contrast findings, and none after a failed turn", async () => {
     const prompts: string[] = [];
     const turnEnd = { kind: "turn-end" as const, costUsd: null, inputTokens: 10, outputTokens: 0, durationMs: 5 };

@@ -27,7 +27,7 @@ Reuse before adding: a variant or prop on an existing part beats a new part, and
 2. Rewrite `tokens.css` for the product (colour roles, type, radius, spacing, light and dark) and `DESIGN.md` to match. Keep Foundation's parts and its token names.
 3. Add only the parts the page needs that the kit lacks (`"status": "new"`, rules in `ui.css`).
 4. Call `design_kit_save`. It validates, saves the kit to the project and switches this design to it; fix what it lists and call it again.
-5. Build the page from `system/` as usual, with `data-ui` parts. Say which parts are new.
+5. In the same turn, build the page: load the `design-build` skill and follow it from its scaffold step (no `design_set_direction`: the kit is the direction), with `data-ui` parts from `system/`. The kit isn't done until `index.html` uses it. Say which parts are new.
 
 **New component** (`New component`). Add one entry with `"status": "new"` and its `ui.css` rules, with props for what varies. If a selection is given, start from its markup and replace raw values with tokens. Don't call `design_kit_save` and don't put it on the page: the user tries it in System mode and saves it there.
 

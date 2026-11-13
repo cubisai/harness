@@ -136,6 +136,8 @@ export class DesignKitService {
   private pageFile: ((threadId: string, rel: string) => string | null) | null = null;
   private catalog: () => DesignKitOption[] = () => [];
   private readonly notes = new Map<string, string>();
+  /** Threads whose agent saved a kit since the last `takeSaved`. */
+  private readonly saved = new Set<string>();
   private readonly undo = new Map<string, Snapshot[]>();
   private readonly redo = new Map<string, Snapshot[]>();
   private readonly moves = new Map<string, Move[]>();
@@ -644,8 +646,16 @@ export class DesignKitService {
   saveForAgent(threadId: string): string {
     const done = this.saveDraft(threadId, true);
     if (done.errors.length) throw new Error(`The kit wasn't saved. Fix these in kit/, then call it again:\n- ${done.errors.slice(0, 20).join("\n- ")}`);
+    this.saved.add(threadId);
     const names = done.added.length ? ` New: ${done.added.join(", ")}.` : "";
-    return `Saved ${done.name}. \`system/\` now holds it: build with \`system/ui.css\` and its parts.${names} To add more later, edit \`kit/\` and save again.`;
+    const root = this.deps.designRoot(threadId);
+    const next = root && !hasPage(root) ? ` ${KIT_PAGE_NEXT}` : "";
+    return `Saved ${done.name}. \`system/\` now holds it: build with \`system/ui.css\` and its parts.${names}${next} To add more later, edit \`kit/\` and save again.`;
+  }
+
+  /** Whether the agent saved a kit since the last call (the turn-end page check reads it once). */
+  takeSaved(threadId: string): boolean {
+    return this.saved.delete(threadId);
   }
 
   /** `Save to kit`: a reviewed draft. Nothing it adds is marked new, since the user just looked at it. */
@@ -860,6 +870,25 @@ export class DesignKitService {
     }
     return `this message is about the design system, not the page (${intent.where}). \`${folder}/kit/\` is a draft copy of ${from.name}: change that, not the pages. Load the \`design-kit\` skill. Don't call design_kit_save: they review it first.`;
   }
+}
+
+/** What a saved kit's turn does next when the design has no page yet (journey D: agents stopped at the save). */
+const KIT_PAGE_NEXT =
+  "The kit isn't finished until a page uses it: now, in this same turn, load the `design-build` skill and follow it from its scaffold step (no design_set_direction: this kit is the direction). Write `index.html` linking `system/tokens.css`, `system/ui.css` and `system/ui.js`, build it from the kit's `data-ui` parts (the new ones too), run design_lint, then say which parts are new.";
+
+/** Whether a design folder has a page: a top-level .html file other than CubiQ's dot-file previews. */
+export function hasPage(root: string): boolean {
+  try {
+    return readdirSync(root).some((f) => /\.html?$/i.test(f) && !f.startsWith("."));
+  } catch {
+    return false;
+  }
+}
+
+/** The one follow-up round after a turn that saved a kit (design_kit_save) and left the design without a page; null when it has one. */
+export function kitPagePrompt(root: string | null): string | null {
+  if (!root || hasPage(root)) return null;
+  return `CubiQ saved your kit, but this design still has no page. ${KIT_PAGE_NEXT} CubiQ won't ask again.`;
 }
 
 /** A kit's block names (file names without .html). */

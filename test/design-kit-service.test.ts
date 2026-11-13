@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { DesignKitOption } from "../src/shared/design-mutation";
 import type { LiveUpdate, Thread } from "../src/shared/types";
 import { DesignDocuments } from "../src/main/design/documents";
-import { DesignKitService } from "../src/main/design/kit-service";
+import { DesignKitService, kitPagePrompt } from "../src/main/design/kit-service";
 import { documentIdOf } from "../src/main/design/mutation";
 import { listDesignSystems, listKitSystems, type DesignSystemInfo } from "../src/main/design/systems";
 import { designTools, DESIGN_KIT_INSPECT_TOOL, DESIGN_LINT_TOOL, DESIGN_KIT_SAVE_TOOL, DESIGN_PART_PREVIEW_TOOL, DESIGN_TOKENS_APPLY_TOOL } from "../src/main/design/tools";
@@ -320,11 +320,38 @@ describe("tokens from the agent", () => {
     const good = await run(s, DESIGN_KIT_SAVE_TOOL, {});
     expect(good.isError).toBeFalsy();
     expect(good.text).toContain("New: progress-card");
+    // No page yet: the result sends it on to build one now (journey D stopped at the save), and the turn end knows once.
+    expect(good.text).toMatch(/in this same turn, load the `design-build` skill/);
+    expect(s.kits.takeSaved(s.thread.id)).toBe(true);
+    expect(s.kits.takeSaved(s.thread.id)).toBe(false);
     expect(s.thread.designSystem).toBe("project:projects-kit");
     expect(readFileSync(join(s.root, "system", ".system"), "utf8")).toBe("project:projects-kit");
     const part = s.kits.doc(s.thread.id).parts.find((p) => p.ui === "progress-card");
     expect(part?.isNew).toBe(true);
     expect(part?.draft).toBe(false);
+  });
+});
+
+describe("a saved kit with no page", () => {
+  it("gets one build round until a page exists, ignoring CubiQ's dot-file previews", () => {
+    const s = setup("kit:foundation");
+    expect(() => s.kits.saveForAgent(s.thread.id)).toThrow(/wasn't saved/);
+    expect(s.kits.takeSaved(s.thread.id)).toBe(false);
+    writeFileSync(join(s.root, ".preview-agent.html"), "<p>x</p>");
+    expect(kitPagePrompt(s.root)).toMatch(/still has no page[\s\S]*index\.html/);
+    expect(kitPagePrompt(null)).toBeNull();
+    writeFileSync(join(s.root, "index.html"), "<p>x</p>");
+    expect(kitPagePrompt(s.root)).toBeNull();
+  });
+
+  it("is told nothing extra on a save when a page is already there", () => {
+    const s = setup("kit:foundation");
+    writeFileSync(join(s.root, "index.html"), "<p>x</p>");
+    s.kits.setIntent(s.thread.id, { kind: "new-kit", name: "Paged" });
+    s.kits.takeNote(s.thread);
+    const text = s.kits.saveForAgent(s.thread.id);
+    expect(text).toMatch(/^Saved Paged/);
+    expect(text).not.toMatch(/design-build/);
   });
 });
 

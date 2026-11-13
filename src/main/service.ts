@@ -49,7 +49,7 @@ import { addComment, deleteComment, loadComments, saveComments, updateComment } 
 import { keepTweaks } from "./design/tweaks";
 import { resolveVariantSet } from "./design/variants";
 import { brandEdits, forkKitSystem } from "./design/kit-library";
-import { DesignKitService } from "./design/kit-service";
+import { DesignKitService, kitPagePrompt } from "./design/kit-service";
 import { FOUNDATION_BASE, FOUNDATION_THEME, forkSystem, isLegacyStyleId, KIT_PREFIX, listDesignSystems, listKitSystems, materializeSystem, pickFromShortlist, resolveDesignSystem, type DesignSystemInfo } from "./design/systems";
 import { AUTO_SYSTEM, isAuto, modeLabel, parseReferenceSystemId, referenceSystemId, STYLE_PREFIX, type DesignDirection, type DirectionReference } from "../shared/direction";
 import { adaptNote, adaptReference, adaptSummary, type AdaptReport } from "./design/reference-adapter";
@@ -1221,6 +1221,12 @@ export class Service {
       const late = this.afterTurn.get(thread.id);
       this.afterTurn.delete(thread.id);
       if (!followUp && late?.length) followUp = { threadId: thread.id, text: late.join("\n\n") };
+      // A turn that saved a new kit but built no page gets one round to build it (journey D stopped at the save).
+      const savedKit = this.kits.takeSaved(thread.id);
+      if (!followUp && savedKit && turnEnded && !req.designFixRound && !controller.signal.aborted) {
+        const build = kitPagePrompt(this.designRoot(thread.id));
+        if (build) followUp = { threadId: thread.id, text: build, designFixRound: true };
+      }
       // The fix prompt carries the note, so the next turn doesn't get it again.
       if (!followUp && fix && this.autoLints.get(thread.id) === lintRun) {
         this.autoLints.delete(thread.id);
