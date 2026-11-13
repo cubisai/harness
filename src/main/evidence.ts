@@ -60,9 +60,12 @@ export function claimsPass(answer: string): boolean {
 const CHECK_COMMAND =
   /\b(?:test|tests|vitest|jest|mocha|ava|pytest|unittest|tox|nox|rspec|phpunit|ctest|tsc|typecheck|lint|eslint|biome|ruff|mypy|pyright|clippy|check|build|gradle|gradlew|mvn|make)\b/i;
 
-/** Whether any of the turn's commands looks like a test, typecheck, lint or build run. */
-export function ranChecks(commands: readonly string[]): boolean {
-  return commands.some((c) => CHECK_COMMAND.test(c));
+/** Harness tools that are a check run of their own, under any MCP prefix (`mcp__cubiq__design_lint`, `cubiq_design_lint`). */
+const CHECK_TOOL = /(?:^|[_.])design_lint$/;
+
+/** Whether any of the turn's commands looks like a test, typecheck, lint or build run, or it called a check tool. */
+export function ranChecks(commands: readonly string[], tools: readonly string[] = []): boolean {
+  return commands.some((c) => CHECK_COMMAND.test(c)) || tools.some((t) => CHECK_TOOL.test(t));
 }
 
 export interface EvidenceInput {
@@ -75,6 +78,8 @@ export interface EvidenceInput {
   request: string;
   answer: string;
   commands: string[];
+  /** The names of the tools the turn called: a design turn's `design_lint` is its check run. */
+  tools?: string[];
   /** The project's check gate ran this turn and passed. */
   checkPassed: boolean;
 }
@@ -93,6 +98,6 @@ export function evidenceFlags(i: EvidenceInput): string[] {
   const weakenedPaths = new Set(i.weakened.map((w) => w.path));
   const edited = i.editedTests.filter((p) => !weakenedPaths.has(p));
   if (edited.length && !aboutTests) flags.push(`Changed existing tests: ${list(edited)}. Check they weren't loosened to pass.`);
-  if (claimsPass(i.answer) && !ranChecks(i.commands) && !i.checkPassed) flags.push("Says tests or checks pass, but none ran this turn.");
+  if (claimsPass(i.answer) && !ranChecks(i.commands, i.tools) && !i.checkPassed) flags.push("Says tests or checks pass, but none ran this turn.");
   return flags;
 }

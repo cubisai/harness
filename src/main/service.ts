@@ -1157,7 +1157,7 @@ export class Service {
         try {
           const last = [...this.store.listEvents(thread.id)].reverse().find((e) => e.event.kind === "assistant-text" && e.seq > userEvent.seq);
           const answer = last && last.event.kind === "assistant-text" ? last.event.text : "";
-          const flags = await turnEvidence(cwd, { before, after, testsBefore, editDiffs, commands, answer, request: req.text, checkPassed });
+          const flags = await turnEvidence(cwd, { before, after, testsBefore, editDiffs, commands, tools: toolNames, answer, request: req.text, checkPassed });
           evidence = flags;
           if (flags.length) this.emit(thread.id, { kind: "notice", text: `Worth a second look: ${flags.join(" ")}`, evidence: flags });
         } catch {
@@ -2702,6 +2702,7 @@ async function turnEvidence(
     testsBefore: Map<string, Map<string, number>>;
     editDiffs: { path: string; unified: string }[];
     commands: string[];
+    tools: string[];
     answer: string;
     request: string;
     checkPassed: boolean;
@@ -2730,7 +2731,7 @@ async function turnEvidence(
     const labels = lines ? newMarkers(new Map(), markerCounts(lines)) : newMarkers(t.testsBefore.get(p) ?? new Map(), markerCounts(await addedSinceHead(cwd, p)));
     if (labels.length) weakened.push({ path: p, labels });
   }
-  return evidenceFlags({ editedTests, deletedTests, weakened, request: t.request, answer: t.answer, commands: t.commands, checkPassed: t.checkPassed });
+  return evidenceFlags({ editedTests, deletedTests, weakened, request: t.request, answer: t.answer, commands: t.commands, tools: t.tools, checkPassed: t.checkPassed });
 }
 
 /** Whether two sets hold the same members. */
