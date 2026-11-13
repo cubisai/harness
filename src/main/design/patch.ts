@@ -108,14 +108,22 @@ export function patchDocument(live: Document, base: Document, next: Document, ow
       endA--;
       endB--;
     }
-    // The middle: a node keeps its live copy when the next file has it at the same id, or at the same place with the
-    // same tag when the counts agree (an edited element); everything else is new.
+    // The middle: a node keeps its live copy when the next file has it at the same id, unchanged further on (a change
+    // at the very end, such as a newline added after </html>, which lands in body, mustn't make the page's unchanged
+    // script look new: a new script means reload), or at the same place with the same tag when the counts agree (an
+    // edited element); everything else is new.
     const sameCount = endA - start === endB - start;
     const used = new Set<number>();
+    let after = start;
     const pairOf = (j: number): number => {
       const id = idOf(b[j]!);
       if (id) {
         for (let i = start; i < endA; i++) if (!used.has(i) && idOf(a[i]!) === id && tagOf(a[i]!) === tagOf(b[j]!)) return i;
+      }
+      for (let i = after; i < endA; i++) {
+        if (used.has(i) || !a[i]!.isEqualNode(b[j]!)) continue;
+        after = i + 1;
+        return i;
       }
       const i = j;
       return sameCount && !used.has(i) && idOf(a[i]!) === id && tagOf(a[i]!) === tagOf(b[j]!) ? i : -1;
