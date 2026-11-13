@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { HarnessTool } from "../src/main/agents/types";
-import { acpCodeHint, hasOwnCodeMode, harnessTool } from "../src/main/agents/acp/driver";
+import { acpCodeHint, hasOwnCodeMode, harnessTool, stockToolsOnly } from "../src/main/agents/acp/driver";
 import { CODE_HINT, CODE_HINT_DEFERRED, OWN_CODE_MODE_HINT } from "../src/main/code-hint";
 import { summarizeToolInput } from "../src/main/agents/summarize";
 import { codeModes, createCodeServer, CODE_TOOL, type CodeServerDeps } from "../src/main/code-mode";
@@ -313,6 +313,15 @@ describe("tool server ?c=", () => {
 });
 
 describe("ACP helpers", () => {
+  it("keeps OpenCode's own tools on Zen free models, which refuse a changed tool surface", () => {
+    expect(stockToolsOnly("opencode/deepseek-v4.1-flash-free")).toBe(true);
+    expect(stockToolsOnly("opencode/deepseek-v4.1-flash")).toBe(false);
+    expect(stockToolsOnly("explabs/deepseek-v4.1-flash:free")).toBe(false);
+    expect(stockToolsOnly("PGA/deepseek-v4.1-flash-1017")).toBe(false);
+    expect(stockToolsOnly("default")).toBe(false);
+    expect(stockToolsOnly(null)).toBe(false);
+  });
+
   it("knows which agents bring their own code mode", () => {
     expect(hasOwnCodeMode({ agentInfo: { name: "OpenCode", version: "2.1.0" } })).toBe(true);
     expect(hasOwnCodeMode({ agentInfo: { name: "OpenCode", version: "1.19.0" } })).toBe(false);

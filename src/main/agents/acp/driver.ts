@@ -156,6 +156,15 @@ export function acpCodeHint(init: Pick<InitializeResult, "agentInfo">, on: boole
 
 export const DEFAULT_MODEL = "default";
 
+/**
+ * OpenCode Zen's free models (`opencode/<id>-free`) answer only requests with OpenCode's own built-in tools: hiding
+ * read/glob/grep or adding a top-level tool gets "Free usage limit reached" (provider.free-limit) at once, while MCP
+ * tools are fine. So Code Mode's tool rewrite stays off on them, and run_code is reached through CubiQ's MCP server.
+ */
+export function stockToolsOnly(model: string | null | undefined): boolean {
+  return /^opencode\/[^/]+-free$/.test(model ?? "");
+}
+
 /** Tool kinds that only read, or edit files: allowed without asking in Auto-edit. */
 const AUTO_EDIT_KINDS = new Set<ToolKind>(["read", "search", "think", "fetch", "edit", "move"]);
 
@@ -813,13 +822,19 @@ export function createAcpDriver(
     }
   };
 
+  // Tells the guard plugin (OpenCode v2) to hide read/glob/grep and expose run_code directly, only when run_code will
+  // actually attach and the model takes a changed tool surface. It's fixed at start, so a switch across it restarts.
+  const wantsCodeModeEnv = (input: TurnInput): boolean =>
+    pluginAsks && (cliMajor ?? 1) >= 2 && (deps.codeMode?.(input.threadId) ?? "off") !== "off" && input.tools.length > 0 && Boolean(deps.toolServer) && !stockToolsOnly(input.model);
+
   const connect = async (threadKey: string, input: TurnInput): Promise<Live> => {
     await ensureVariants();
     const existing = live.get(threadKey);
     // A live process has a pick already; a new one resolves from the turn's model.
     const wanted = wantedVariant(threadKey, input, existing);
     const wantedKey = variantKeyOf(wanted);
-    if (existing?.conn.alive && wantedKey === existing.variantKey) return existing;
+    const codeEnv = wantsCodeModeEnv(input);
+    if (existing?.conn.alive && wantedKey === existing.variantKey && (existing.env.CUBIQ_CODE_MODE === "1") === codeEnv) return existing;
     if (existing?.conn.alive) {
       // The variant is fixed when OpenCode starts, so a changed pick (or a
       // reset to default) needs a new process, resumed with the same session.
@@ -842,10 +857,7 @@ export function createAcpDriver(
       input.onEvent({ kind: "notice", text: plan.warning });
     }
     const env: NodeJS.ProcessEnv = { ...(plan?.env ?? process.env), ...config.env };
-    // Tells the guard plugin (OpenCode v2) to hide read/glob/grep and expose run_code directly, only when run_code will actually attach.
-    if (pluginAsks && (cliMajor ?? 1) >= 2 && (deps.codeMode?.(input.threadId) ?? "off") !== "off" && input.tools.length > 0 && Boolean(deps.toolServer)) {
-      env.CUBIQ_CODE_MODE = "1";
-    }
+    if (codeEnv) env.CUBIQ_CODE_MODE = "1";
     if (config.skillsDirEnv && deps.skillsDir) {
       const dir = deps.skillsDir();
       if (dir) env[config.skillsDirEnv] = dir;
