@@ -426,7 +426,9 @@ export function StylePicker({ projectId, thread, value, direction, disabled, onD
       setStatus(null);
       load();
     } else {
-      setStatus({ kit: id, kind: "failed", message: done.code === "offline" ? "Unavailable offline" : done.message });
+      // `offline` also covers a server error or a slow download, which isn't the user's connection.
+      const offline = done.code === "offline" ? (navigator.onLine ? `Couldn't download ${target.name}. Try again later.` : "Unavailable offline") : null;
+      setStatus({ kit: id, kind: "failed", message: offline ?? done.message });
     }
   };
 
