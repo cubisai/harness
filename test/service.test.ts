@@ -1302,6 +1302,28 @@ describe("Service questions", () => {
     release();
     await sending;
   });
+
+  it("doesn't count a harness tool's open question as the agent going silent", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    try {
+      const silent = async (ask: boolean) => {
+        let release!: () => void;
+        const { service, thread, updates } = setup(() => new Promise<void>((r) => (release = r)));
+        const sending = service.send({ threadId: thread.id, text: "go" });
+        await new Promise((r) => setTimeout(r, 10));
+        if (ask) void service.askFromTool(thread.id, questions);
+        vi.advanceTimersByTime(11 * 60_000);
+        const stalls = updates.filter((u) => u.type === "event" && /no activity/i.test(JSON.stringify(u.stored))).length;
+        release();
+        await sending;
+        return stalls;
+      };
+      expect(await silent(false)).toBeGreaterThan(0);
+      expect(await silent(true)).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("Service async questions", () => {

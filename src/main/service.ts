@@ -111,6 +111,8 @@ import { canonicalTool } from "../shared/tools";
  */
 export class Service {
   private running = new Map<string, AbortController>();
+  /** Each running turn's silence watchdog: a question asked through a harness tool pauses it, like the driver's own. */
+  private turnWatchdogs = new Map<string, TurnWatchdog>();
   /** Per thread, the run_code rows still open (no result yet), so a script on the cubiq MCP server can nest its calls under its own row. */
   private openScripts = new Map<string, { toolUseId: string; code: string | null }[]>();
   private artifacts: ArtifactDeps | null = null;
@@ -922,6 +924,7 @@ export class Service {
         },
       });
       watchdog = dog;
+      this.turnWatchdogs.set(thread.id, dog);
       const live = (delta: LiveDelta) => {
         dog.bump();
         this.broadcast({ type: "delta", threadId: thread.id, delta });
@@ -1213,6 +1216,7 @@ export class Service {
       }
     } finally {
       watchdog?.dispose();
+      if (watchdog && this.turnWatchdogs.get(thread.id) === watchdog) this.turnWatchdogs.delete(thread.id);
       const lintRun = lintSince !== null ? this.queueAutoLint(thread.id, lintSince) : null;
       // A design turn that ends with new contrast or target findings gets one fix round now (the thread stays running while it's linted).
       const fix = lintRun && turnEnded && !followUp && !req.designFixRound && !controller.signal.aborted ? await this.designFixNote(lintRun, controller.signal) : null;
@@ -1312,7 +1316,9 @@ export class Service {
   askFromTool(threadId: string, questions: Question[], signal?: AbortSignal): Promise<QuestionAnswer> | null {
     const turn = this.running.get(threadId);
     if (!turn) return null;
-    return this.ask(threadId, questions, signal ? [turn.signal, signal] : [turn.signal]);
+    const asked = this.ask(threadId, questions, signal ? [turn.signal, signal] : [turn.signal]);
+    // Waiting on the user isn't the agent going silent: no stall notice, and no stop, while the card is open.
+    return this.turnWatchdogs.get(threadId)?.waitOn(asked) ?? asked;
   }
 
   /** The user answered (or skipped) an agent's questions: record it, tell the UI, and hand the answer to the agent. */
