@@ -80,6 +80,22 @@ describe("page CSS in grounding", () => {
     expect(ids(groundPage(page(":root { --color-carbon: #1d1d1b; }"), foundation()))).toEqual([]);
   });
 
+  it("treats a custom property in any rule as a token once the theme's names are known", () => {
+    const theme = tokenNamesIn(readFileSync(join(FOUNDATION, "tokens.css"), "utf8"));
+    const at = (style: string) => ids(groundPage(page(style), foundation(), "", theme));
+    expect(at(".deck { --deck-carbon: #1d1d1b; }")).toEqual(["page-token"]);
+    expect(at(".deck { --deck-ink: var(--color-text); color: var(--deck-ink); }")).toEqual([]);
+    expect(at(".deck { --deck-ink: var(--color-text); color: #111; }")).toEqual(["literal-color"]);
+  });
+
+  it("flags inline SVG painted with literal colours, not a kit picture part", () => {
+    const svg = (attrs: string) => ids(groundPage(`<body><svg viewBox="0 0 2 2"><rect ${attrs} width="2" height="2"/></svg></body>`, foundation()));
+    expect(svg('fill="#1d1d1b"')).toEqual(["literal-color"]);
+    expect(svg('stroke="rgb(1 2 3)"')).toEqual(["literal-color"]);
+    expect(svg('fill="var(--color-accent)" stroke="currentColor"')).toEqual([]);
+    expect(ids(groundPage('<body><div data-ui="qr-code" role="img"><svg viewBox="0 0 2 2"><path fill="#09090B" d="M0 0h1v1h-1z"/></svg></div></body>', foundation()))).not.toContain("literal-color");
+  });
+
   it("flags a deck page that doesn't load deck.js", () => {
     const deck = (scripts: string) => `<html><body><main class="deck"><section class="slide"><h1>A</h1></section><section class="slide"><h1>B</h1></section></main>${scripts}</body></html>`;
     expect(ids(groundPage(deck('<script src="system/ui.js"></script>'), foundation()))).toEqual(["deck-runtime"]);

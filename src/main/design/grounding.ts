@@ -65,6 +65,15 @@ function splitSelectors(list: string): string[] {
   return [...out, cur];
 }
 
+/** Inside a kit part that is a picture (`data-ui` with `role="img"`, a QR code): its colours are the kit's. */
+function inKitPicture(el: El5): boolean {
+  for (let n: unknown = el; n && typeof n === "object" && "attrs" in n; n = (n as { parentNode?: unknown }).parentNode) {
+    const attrs = (n as El5).attrs;
+    if (attrs.some((a) => a.name === "data-ui") && attrs.some((a) => a.name === "role" && a.value === "img")) return true;
+  }
+  return false;
+}
+
 /** A literal colour in a declaration's value, outside a `var()` fallback. */
 const LITERAL_COLOR = /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|oklch|oklab|lab|lch)\(/i;
 
@@ -87,8 +96,15 @@ export function groundPage(html: string, manifest: KitManifest, pageCss = "", th
   let elements = 0;
   let parts = 0;
   let css = "";
+  let svgLiterals = 0;
+  let svgExample = "";
   for (const el of els) {
     if (el.tagName === "style") css += kids(el).map((c) => ("value" in c ? String(c.value) : "")).join("");
+    for (const a of el.attrs) {
+      if ((a.name !== "fill" && a.name !== "stroke" && a.name !== "stop-color") || !LITERAL_COLOR.test(a.value) || inKitPicture(el)) continue;
+      svgLiterals += 1;
+      svgExample ||= `<${el.tagName} ${a.name}="${a.value}">`;
+    }
     if (NOT_CONTENT.has(el.tagName)) continue;
     elements += 1;
     const ui = el.attrs.find((a) => a.name === "data-ui")?.value;
@@ -144,7 +160,10 @@ export function groundPage(html: string, manifest: KitManifest, pageCss = "", th
     const selector = m[1]!.trim();
     if (selector.startsWith("@")) continue;
     const root = /^(?::root|html)\b/i.test(selector);
-    if (root && themeTokens?.size) {
+    // With the theme's names known, a custom property anywhere (`:root`, `.deck`) is a token: a new one with a literal
+    // is a colour outside the theme.
+    const tokens = Boolean(themeTokens?.size);
+    if (tokens && themeTokens) {
       for (const d of m[2]!.split(";")) {
         const name = /^\s*(--[a-z0-9_-]+)\s*:/i.exec(d)?.[1]?.toLowerCase();
         if (!name || themeTokens.has(name) || !hasLiteral(d)) continue;
@@ -157,8 +176,8 @@ export function groundPage(html: string, manifest: KitManifest, pageCss = "", th
         });
       }
     }
-    // Custom properties on :root are tokens (checked above); elsewhere a literal is a literal.
-    const decl = m[2]!.split(";").find((d) => hasLiteral(d) && !(root && /^\s*--/.test(d)));
+    // Custom properties were checked as tokens above (on :root only, without the theme's names); the rest are literals.
+    const decl = m[2]!.split(";").find((d) => hasLiteral(d) && !((tokens || root) && /^\s*--/.test(d)));
     if (!decl) continue;
     if (literals++ >= MAX_EACH) break;
     findings.push({
@@ -180,6 +199,15 @@ export function groundPage(html: string, manifest: KitManifest, pageCss = "", th
       id: "element-recolor",
       selector: selector.slice(0, 120),
       detail: `this element rule also hits the kit's parts and wins over them (page CSS beats @layer cubiq-ui), e.g. button text the same colour as its background. Leave parts out: ${bare.find((t) => PART_ELEMENTS.has(t.toLowerCase()))}:not([data-ui], [data-ui] *), or a class.`,
+    });
+  }
+
+  if (svgLiterals) {
+    findings.push({
+      rule: "kit",
+      id: "literal-color",
+      selector: "svg",
+      detail: `inline SVG paints ${svgLiterals} shape${svgLiterals === 1 ? "" : "s"} with a literal colour (${svgExample.slice(0, 60)}): use fill="var(--color-…)" or currentColor, so it follows the theme.`,
     });
   }
 
