@@ -7,7 +7,7 @@ import { fileManagerName } from "../components/OpenIn";
 import { Select } from "../components/Select";
 import { IconClose } from "../icons";
 import "../styles/artifact.css";
-import { affectedPages, useStore } from "../store";
+import { affectedPages, findThread, useStore } from "../store";
 import { designStyleName, useDesignSystemOptions } from "../components/DesignSystemMenu";
 import { chipLabel, referenceName } from "../components/StylePicker";
 import { STYLE_PREFIX, readDirection } from "../../../shared/direction";
@@ -238,6 +238,11 @@ export default function DesignCanvas({
   const [commentDraft, setCommentDraft] = useState<string | null>(null);
   const [sendingComments, setSendingComments] = useState(false);
   const agentRunning = useStore((s) => Boolean(s.running[threadId]));
+  // Chats has no project folder, so there's no codebase to build into: the build thread would start in an empty folder.
+  const noCodebase = useStore((s) => {
+    const t = findThread(s.threads, threadId);
+    return !!t && !!s.projects.find((p) => p.id === t.projectId)?.builtin;
+  });
   // Page thumbnails in the rail: one PNG per page, rendered by the main process (empty until it can).
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const pinsRef = useRef<{ n: number; target: DesignComment["target"] }[]>([]);
@@ -945,7 +950,7 @@ export default function DesignCanvas({
       return void useStore.getState().buildDesignInCode(threadId);
     }
     const ok = await useStore.getState().send("Write the developer handoff for this design.", ["design-review"], threadId);
-    if (ok) setNotice({ text: "Writing the handoff first. Choose Build in code again once handoff.md is there." });
+    if (ok) setNotice({ text: "Writing the handoff first. Choose Build in codebase again once handoff.md is there." });
   };
 
   const rel = entry?.rel ?? null;
@@ -1982,7 +1987,7 @@ export default function DesignCanvas({
     setCompare(!comparing);
   };
   const exportItems: StudioMenuItem[] = [
-    ...(entry ? [{ kind: "item" as const, id: "build", label: "Build in codebase", sub: hasHandoff ? "A chat thread builds it" : "Writes the handoff first", disabled: agentRunning, onSelect: () => void buildInCode() }, { kind: "sep" as const, id: "s-build" }] : []),
+    ...(entry ? [{ kind: "item" as const, id: "build", label: "Build in codebase", sub: noCodebase ? "Needs a project folder" : hasHandoff ? "A chat thread builds it" : "Writes the handoff first", disabled: agentRunning || noCodebase, onSelect: () => void buildInCode() }, { kind: "sep" as const, id: "s-build" }] : []),
     { kind: "item", id: "html", label: "HTML", sub: "One file, works offline", onSelect: () => void runExport("html") },
     { kind: "item", id: "png", label: "PNG", sub: `Full page, ${exportWidth} wide`, onSelect: () => void runExport("png") },
     { kind: "item", id: "pdf", label: "PDF", sub: "Slides print one per page", onSelect: () => void runExport("pdf") },

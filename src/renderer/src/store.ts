@@ -1231,6 +1231,11 @@ export const useStore = create<State>((set, get) => ({
   async buildDesignInCode(designThreadId) {
     const design = findThread(get().threads, designThreadId);
     if (!design || design.kind !== "design") return;
+    // Chats has no codebase: a build thread there starts in its own empty folder and can't find the design.
+    if (get().projects.find((p) => p.id === design.projectId)?.builtin) {
+      get().showNotice("Building in a codebase needs a project folder. Chats has none.");
+      return;
+    }
     let thread: Thread;
     try {
       thread = await api().createThread(design.projectId, design.agent, { kind: "chat" });
