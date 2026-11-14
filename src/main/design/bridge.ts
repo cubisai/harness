@@ -824,13 +824,19 @@ export function designBridge(
       tip.style.display = "none";
     };
 
+    // Where the pointer last was: the outline is worked out again from there when the page moves under a still mouse.
+    let pointer: { x: number; y: number; exact: boolean } | null = null;
     const onMove = (e: MouseEvent): void => {
-      if (postSeam(e.clientX, e.clientY)) return hide();
-      const hit = hitAt(e.clientX, e.clientY);
+      pointer = { x: e.clientX, y: e.clientY, exact: e.metaKey || e.ctrlKey };
+      hoverAt(pointer);
+    };
+    const hoverAt = (at: { x: number; y: number; exact: boolean }): void => {
+      if (postSeam(at.x, at.y)) return hide();
+      const hit = hitAt(at.x, at.y);
       const one = selected.length === 1 ? (selected[0] ?? null) : null;
       if (!hit || isRoot(hit) || editing) return hide();
       // The outline previews what a click would take.
-      const target = e.metaKey || e.ctrlKey ? hit : clickTarget(one, hit, componentOf, paints);
+      const target = at.exact ? hit : clickTarget(one, hit, componentOf, paints);
       if (target === one) return hide();
       const r = target.getBoundingClientRect();
       Object.assign(box.style, { display: "block", left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
@@ -920,6 +926,7 @@ export function designBridge(
       return near;
     };
     const onLeave = (): void => {
+      pointer = null;
       hide();
       if (seamKey) {
         seamKey = "";
@@ -1029,6 +1036,9 @@ export function designBridge(
       document.removeEventListener("contextmenu", onContext, true);
       document.documentElement.removeEventListener("mouseleave", onLeave);
       document.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("scroll", rehover, true);
+      moved.disconnect();
+      cancelAnimationFrame(rehoverFrame);
       if (seamKey) post("seam", { seam: null });
       box.remove();
       tip.remove();
@@ -1043,6 +1053,18 @@ export function designBridge(
     document.addEventListener("contextmenu", onContext, true);
     document.documentElement.addEventListener("mouseleave", onLeave);
     document.addEventListener("keydown", onKey, true);
+    // An insert, a patch or a scroll moves the page under a mouse that stays put: the outline follows on the next frame.
+    let rehoverFrame = 0;
+    const rehover = (): void => {
+      if (rehoverFrame) return;
+      rehoverFrame = requestAnimationFrame(() => {
+        rehoverFrame = 0;
+        if (pointer) hoverAt(pointer);
+      });
+    };
+    const moved = new MutationObserver(rehover);
+    if (document.body) moved.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
+    window.addEventListener("scroll", rehover, { passive: true, capture: true });
     stepKey = step;
     stopSelect = stop;
   };
